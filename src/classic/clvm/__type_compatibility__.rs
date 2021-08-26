@@ -1,3 +1,5 @@
+use std::option::Option;
+
 use hex;
 use std::string::String;
 use bls12_381::G1Affine;
@@ -75,28 +77,33 @@ pub enum BytesFromType {
     G1Element(G1Affine)
 }
 
-// /**
-//  * Unlike python, there is no immutable byte type in javascript.
-//  */
-// export class Bytes {
-//   private readonly _b: Uint8Array;
-//   public static readonly NULL = new Bytes();
-  
-//   public constructor(value?: Uint8Array|Bytes|None) {
-//     if(value instanceof Uint8Array){
-//       this._b = value;
-//     }
-//     else if(isBytes(value)){
-//       this._b = value.raw();
-//     }
-//     else if(!value || value === None){
-//       this._b = new Uint8Array();
-//     }
-//     else{
-//       throw new Error(`Invalid value: ${JSON.stringify(value)}`);
-//     }
-//   }
-  
+pub struct Bytes {
+    _b : Vec<u8>
+}
+
+/**
+ * Unlike python, there is no immutable byte type in javascript.
+ */
+impl Bytes {
+    fn new(value : Option<BytesFromType>) -> Self {
+        match value {
+            None => Bytes { _b: vec!() },
+            Some(BytesFromType::Utf8(v)) => Bytes { _b: v },
+            Some(BytesFromType::Hex(hstr)) => {
+                match hex::decode(hstr) {
+                    Ok(d) => Bytes { _b: d },
+                    _ => Bytes { _b: vec!() }
+                }
+            },
+            Some(BytesFromType::G1Element(g1)) => Bytes { _b: g1.to_uncompressed().to_vec() },
+        }
+    }
+
+    fn length(&self) -> usize {
+        return self._b.len();
+    }
+}
+
 //   public static from(value?: Uint8Array|Bytes|number[]|string|G1Element|None, type?: BytesFromType){
 //     if(value === None || value === undefined){
 //       return new Bytes(value);
@@ -154,10 +161,6 @@ pub enum BytesFromType {
 //     }
     
 //     return new Bytes(w.toUint8Array());
-//   }
-  
-//   public get length(){
-//     return this._b.length;
 //   }
   
 //   public at(i: number){
