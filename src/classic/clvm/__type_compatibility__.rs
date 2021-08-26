@@ -7,7 +7,7 @@ use bls12_381::G1Affine;
 //import {Word32Array} from "jscrypto/Word32Array";
 //import {SHA256} from "jscrypto/SHA256";
 
-pub fn to_hexstr(r: Vec<u8>) -> String {
+pub fn to_hexstr(r: &Vec<u8>) -> String {
     return hex::encode(r);
 }
 
@@ -23,7 +23,7 @@ pub fn char_to_string(ch : char) -> String {
  * @see https://github.com/python/cpython/blob/main/Objects/bytesobject.c#L1337
  * @param {Uint8Array} r - byteArray to stringify
  */
-pub fn PyBytes_Repr(r : Vec<u8>) -> String {
+pub fn PyBytes_Repr(r : &Vec<u8>) -> String {
     let mut squotes = 0;
     let mut dquotes = 0;
     for i in 0..r.len() - 1 {
@@ -148,6 +148,26 @@ impl Bytes {
         }
         return Bytes::new(Some(BytesFromType::Raw(ui8_clone)));
     }
+
+    fn subarray(&self, start: usize, length: Option<usize>) -> Self {
+        return self.slice(start, length);
+    }
+
+    fn data(&self) -> &Vec<u8> {
+        return &self._b;
+    }
+
+    fn clone(&self) -> Self {
+        return Bytes::new(Some(BytesFromType::Raw(self._b.clone())));
+    }
+
+    fn toString(&self) -> String {
+        return PyBytes_Repr(&self._b);
+    }
+
+    fn hex(&self) -> String {
+        return to_hexstr(&self._b);
+    }
 }
 
 //   public static from(value?: Uint8Array|Bytes|number[]|string|G1Element|None, type?: BytesFromType){
@@ -209,30 +229,8 @@ impl Bytes {
 //     return new Bytes(w.toUint8Array());
 //   }
   
-//   public subarray(start: number, length?: number){
-//     const len = typeof length === "number" ? length : (this.length - start);
-//     const ui8_raw = this._b.subarray(start, start+len);
-//     return new Bytes(ui8_raw);
-//   }
-  
 //   public as_word(){
 //     return new Word32Array(this._b);
-//   }
-  
-//   public data(){
-//     return new Uint8Array(this._b);
-//   }
-  
-//   public clone(){
-//     return new Bytes(this._b.slice());
-//   }
-  
-//   public toString(){
-//     return PyBytes_Repr(this._b);
-//   }
-  
-//   public hex(){
-//     return to_hexstr(this._b);
 //   }
   
 //   public decode(){
