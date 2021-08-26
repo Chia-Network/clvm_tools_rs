@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::option::Option;
 
 use hex;
@@ -16,6 +17,10 @@ pub fn char_to_string(ch : char) -> String {
         Ok(s) => s,
         _ => String::new()
     }
+}
+
+pub fn vec_to_string(r: &Vec<u8>) -> String {
+    return String::from_utf8_lossy(r).as_ref().to_string();
 }
 
 /**
@@ -121,7 +126,7 @@ impl Bytes {
         return Bytes::new(Some(BytesFromType::Raw(ret)));
     }
 
-    fn concat(&self, b: Bytes) -> Bytes {
+    fn concat(&self, b: &Bytes) -> Bytes {
         let mut thisBin = self._b.clone();
         let mut thatBin = b.raw();
         let mut concatBin = Vec::<u8>::with_capacity(thisBin.len() + thatBin.len());
@@ -167,6 +172,29 @@ impl Bytes {
 
     fn hex(&self) -> String {
         return to_hexstr(&self._b);
+    }
+
+    fn decode(&self) -> String {
+        return vec_to_string(&self._b);
+    }
+
+    fn startswith(&self, b: &Bytes) -> bool {
+        for i in 0..min(b.length(), self._b.len()) - 1 {
+            if b.at(i) != self._b[i] {
+                return false
+            }
+        }
+        return true
+    }
+
+    fn endswith(&self, b: &Bytes) -> bool {
+        let blen = min(b.length(), self._b.len()) - 1;
+        for i in 0..blen {
+            if b.at(blen - i) != self._b[blen - i] {
+                return false
+            }
+        }
+        return true
     }
 }
 
@@ -231,18 +259,6 @@ impl Bytes {
   
 //   public as_word(){
 //     return new Word32Array(this._b);
-//   }
-  
-//   public decode(){
-//     return Utf8.stringify(this.as_word());
-//   }
-  
-//   public startswith(b: Bytes){
-//     return this.hex().startsWith(b.hex());
-//   }
-  
-//   public endswith(b: Bytes){
-//     return this.hex().endsWith(b.hex());
 //   }
   
 //   public equal_to(b: Bytes|None|any){
