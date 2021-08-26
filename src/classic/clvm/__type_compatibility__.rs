@@ -1,4 +1,5 @@
 use std::cmp::min;
+use std::cmp::Ordering;
 use std::option::Option;
 
 use hex;
@@ -84,6 +85,14 @@ pub enum BytesFromType {
 
 pub struct Bytes {
     _b : Vec<u8>
+}
+
+pub fn ordering_to_int(o : Ordering) -> i32 {
+    match o {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1
+    }
 }
 
 /**
@@ -211,6 +220,32 @@ impl Bytes {
         }
         return true;
     }
+
+    /**
+     * Returns:
+     *   +1 if argument is smaller
+     *   0 if this and argument is the same
+     *   -1 if argument is larger
+     * @param other
+     */
+    fn compare(&self, other: Bytes) -> Ordering {
+        let slen = min(self._b.len(), other.length());
+
+        for i in 0..slen - 1 {
+            let diff = other.at(i) - self._b[i];
+            if diff < 0 {
+                return Ordering::Less;
+            } else if diff > 0 {
+                return Ordering::Greater;
+            }
+        }
+        if self._b.len() < slen {
+            return Ordering::Less;
+        } else if slen < other.length() {
+            return Ordering::Greater;
+        }
+        return Ordering::Equal;
+    }
 }
 
 //   public static from(value?: Uint8Array|Bytes|number[]|string|G1Element|None, type?: BytesFromType){
@@ -274,43 +309,6 @@ impl Bytes {
   
 //   public as_word(){
 //     return new Word32Array(this._b);
-//   }
-  
-//   /**
-//    * Returns:
-//    *   +1 if argument is smaller
-//    *   0 if this and argument is the same
-//    *   -1 if argument is larger
-//    * @param other
-//    */
-//   public compare(other: Bytes): -1|0|1 {
-//     if(this.length !== other.length){
-//       return this.length > other.length ? 1 : -1;
-//     }
-//     const self_raw_byte = this._b;
-//     const dv_self = new DataView(self_raw_byte.buffer, self_raw_byte.byteOffset, self_raw_byte.byteLength);
-//     const other_raw_byte = other.raw();
-//     const dv_other = new DataView(other_raw_byte.buffer, other_raw_byte.byteOffset, other_raw_byte.byteLength);
-  
-//     const ui32MaxCount = (this.length / 4) | 0;
-//     for(let i=0;i<ui32MaxCount;i++){
-//       const ui32_self = dv_self.getUint32(i*4);
-//       const ui32_other = dv_other.getUint32(i*4);
-//       if(ui32_self !== ui32_other){
-//         return ui32_self > ui32_other ? 1 : -1;
-//       }
-//     }
-  
-//     const offset = ui32MaxCount*4;
-//     for(let i=offset;i<this.length;i++){
-//       const ui8_self = dv_self.getUint8(i);
-//       const ui8_other = dv_other.getUint8(i);
-//       if(ui8_self !== ui8_other){
-//         return ui8_self > ui8_other ? 1 : -1;
-//       }
-//     }
-  
-//     return 0;
 //   }
 // }
 
