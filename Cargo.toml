@@ -1,0 +1,23 @@
+[package]
+name = "clvm_tools_rs"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clvm_rs = "0.1.8"
+
+hex = "0.4.3"
+num-bigint = "0.4.0"
+bls12_381 = "0.5.0"
+
+#[target.'cfg(not(unix))'.dependencies]
+sha2 = "0.9.5"
+
+[target.'cfg(target_family="wasm")'.dependencies]
+wasm-bindgen = "0.2.75"
+wasm-bindgen-test = "0.3.25"
+
+[target.'cfg(not(target_family="wasm"))'.dependencies]
+pyo3 = "0.14.2"
