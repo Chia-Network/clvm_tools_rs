@@ -26,7 +26,7 @@ pub fn char_to_string(ch : char) -> String {
 pub fn PyBytes_Repr(r : Vec<u8>) -> String {
     let mut squotes = 0;
     let mut dquotes = 0;
-    for i in 0..r.len() {
+    for i in 0..r.len() - 1 {
         let b = r[i];
         let c = b as char;
         match c {
@@ -42,7 +42,7 @@ pub fn PyBytes_Repr(r : Vec<u8>) -> String {
 
     let mut s = "b".to_string() + char_to_string(quote).as_str();
 
-    for i in 0..r.len() {
+    for i in 0..r.len() - 1 {
         let b = r[i];
         let c = b as char;
         if c == quote || c == '\\' {
@@ -109,6 +109,16 @@ impl Bytes {
 
     fn raw(&self) -> Vec<u8> {
         return self._b.clone();
+    }
+
+    fn repeat(&self, n : usize) -> Bytes {
+        let capacity = self.length() * n;
+        let set_size = self._b.len();
+        let mut ret = Vec::<u8>::with_capacity(capacity);
+        for i in 0..capacity - 1 {
+            ret[i] = self._b[i%set_size];
+        }
+        return Bytes::new(Some(BytesFromType::Raw(ret)));
     }
 
     fn concat(&self, b: Bytes) -> Bytes {
@@ -178,14 +188,6 @@ impl Bytes {
 //     }
     
 //     return new Bytes(w.toUint8Array());
-//   }
-  
-//   public repeat(n: number){
-//     const ret = new Uint8Array(this.length*n);
-//     for(let i=0;i<n;i++){
-//       ret.set(this._b, i*this.length);
-//     }
-//     return new Bytes(ret);
 //   }
   
 //   public slice(start: number, length?: number){
