@@ -1,10 +1,12 @@
 use std::cmp::min;
 use std::cmp::Ordering;
 use std::option::Option;
-
-use hex;
 use std::string::String;
+
 use bls12_381::G1Affine;
+use hex;
+use sha2::Sha256;
+use sha2::Digest;
 
 //import {Word32Array} from "jscrypto/Word32Array";
 //import {SHA256} from "jscrypto/SHA256";
@@ -248,6 +250,13 @@ impl Bytes {
     }
 }
 
+fn SHA256(value: Bytes) -> Bytes {
+    let hashed = Sha256::digest(&value.data()[..]);
+    let hashed_iter = hashed.into_iter();
+    let newvec : Vec<u8> = hashed_iter.collect();
+    return Bytes::new(Some(BytesFromType::Raw(newvec)));
+}
+
 //   public static from(value?: Uint8Array|Bytes|number[]|string|G1Element|None, type?: BytesFromType){
 //     if(value === None || value === undefined){
 //       return new Bytes(value);
@@ -286,27 +295,7 @@ impl Bytes {
     
 //     throw new Error(`Invalid value: ${JSON.stringify(value)}`);
 //   }
-  
-//   public static SHA256(value: string|Bytes|Uint8Array){
-//     let w;
-//     if(typeof value === "string"){
-//       w = SHA256.hash(value);
-//     }
-//     else if(value instanceof Uint8Array){
-//       w = new Word32Array(value);
-//       w = SHA256.hash(w);
-//     }
-//     else if(isBytes(value)){
-//       w = value.as_word();
-//       w = SHA256.hash(w);
-//     }
-//     else{
-//       throw new Error("Invalid argument");
-//     }
-    
-//     return new Bytes(w.toUint8Array());
-//   }
-  
+
 //   public as_word(){
 //     return new Word32Array(this._b);
 //   }
