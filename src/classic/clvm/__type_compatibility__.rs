@@ -73,7 +73,7 @@ pub fn PyBytes_Repr(r : Vec<u8>) -> String {
 
 pub enum BytesFromType {
     Hex(String),
-    Utf8(Vec<u8>),
+    Raw(Vec<u8>),
     G1Element(G1Affine)
 }
 
@@ -88,7 +88,7 @@ impl Bytes {
     fn new(value : Option<BytesFromType>) -> Self {
         match value {
             None => Bytes { _b: vec!() },
-            Some(BytesFromType::Utf8(v)) => Bytes { _b: v },
+            Some(BytesFromType::Raw(v)) => Bytes { _b: v },
             Some(BytesFromType::Hex(hstr)) => {
                 match hex::decode(hstr) {
                     Ok(d) => Bytes { _b: d },
@@ -105,6 +105,19 @@ impl Bytes {
 
     fn at(&self, i: usize) -> u8 {
         return self._b[i];
+    }
+
+    fn raw(&self) -> Vec<u8> {
+        return self._b.clone();
+    }
+
+    fn concat(&self, b: Bytes) -> Bytes {
+        let mut thisBin = self._b.clone();
+        let mut thatBin = b.raw();
+        let mut concatBin = Vec::<u8>::with_capacity(thisBin.len() + thatBin.len());
+        concatBin.append(&mut thisBin);
+        concatBin.append(&mut thatBin);
+        return Bytes::new(Some(BytesFromType::Raw(concatBin)));
     }
 }
 
@@ -167,15 +180,6 @@ impl Bytes {
 //     return new Bytes(w.toUint8Array());
 //   }
   
-//   public concat(b: Bytes){
-//     const thisBin = this._b;
-//     const thatBin = b.raw();
-//     const concatBin = new Uint8Array(thisBin.length + thatBin.length);
-//     concatBin.set(thisBin, 0);
-//     concatBin.set(thatBin, thisBin.length);
-//     return new Bytes(concatBin);
-//   }
-  
 //   public repeat(n: number){
 //     const ret = new Uint8Array(this.length*n);
 //     for(let i=0;i<n;i++){
@@ -202,10 +206,6 @@ impl Bytes {
   
 //   public data(){
 //     return new Uint8Array(this._b);
-//   }
-  
-//   public raw(){
-//     return this._b;
 //   }
   
 //   public clone(){
