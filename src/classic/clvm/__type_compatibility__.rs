@@ -196,6 +196,21 @@ impl Bytes {
         }
         return true
     }
+
+    fn equal_to(&self, b: Bytes) -> bool {
+        let slen = self._b.len();
+        let blen = b.length();
+        if slen != blen {
+            return false;
+        } else {
+            for i in 0..slen {
+                if b.at(i) != self._b[i] {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
 }
 
 //   public static from(value?: Uint8Array|Bytes|number[]|string|G1Element|None, type?: BytesFromType){
@@ -259,19 +274,6 @@ impl Bytes {
   
 //   public as_word(){
 //     return new Word32Array(this._b);
-//   }
-  
-//   public equal_to(b: Bytes|None|any){
-//     if(b === None){
-//       return false;
-//     }
-//     else if(typeof b.length === "number" && isBytes(b)){
-//       return this.compare(b) === 0;
-//     }
-//     else if(typeof b.equal_to === "function"){
-//       return b.equal_to(this) as boolean;
-//     }
-//     return false;
 //   }
   
 //   /**
