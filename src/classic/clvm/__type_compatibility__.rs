@@ -129,6 +129,25 @@ impl Bytes {
         concatBin.append(&mut thatBin);
         return Bytes::new(Some(BytesFromType::Raw(concatBin)));
     }
+
+    fn slice(&self, start: usize, length: Option<usize>) -> Self {
+        let len =
+            match length {
+                Some(x) => {
+                    if self._b.len() > start + x {
+                        x
+                    } else {
+                        self._b.len() - start
+                    }
+                },
+                None => self._b.len() - start
+            };
+        let mut ui8_clone = Vec::<u8>::with_capacity(len);
+        for i in start..start + len - 1 {
+            ui8_clone.push(self._b[i]);
+        }
+        return Bytes::new(Some(BytesFromType::Raw(ui8_clone)));
+    }
 }
 
 //   public static from(value?: Uint8Array|Bytes|number[]|string|G1Element|None, type?: BytesFromType){
@@ -188,12 +207,6 @@ impl Bytes {
 //     }
     
 //     return new Bytes(w.toUint8Array());
-//   }
-  
-//   public slice(start: number, length?: number){
-//     const len = typeof length === "number" ? length : (this.length - start);
-//     const ui8_clone = this._b.slice(start, start+len);
-//     return new Bytes(ui8_clone);
 //   }
   
 //   public subarray(start: number, length?: number){
