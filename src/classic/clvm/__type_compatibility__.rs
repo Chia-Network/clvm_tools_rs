@@ -102,6 +102,10 @@ impl Bytes {
     fn length(&self) -> usize {
         return self._b.len();
     }
+
+    fn at(&self, i: usize) -> u8 {
+        return self._b[i];
+    }
 }
 
 //   public static from(value?: Uint8Array|Bytes|number[]|string|G1Element|None, type?: BytesFromType){
@@ -161,10 +165,6 @@ impl Bytes {
 //     }
     
 //     return new Bytes(w.toUint8Array());
-//   }
-  
-//   public at(i: number){
-//     return this._b[i] | 0;
 //   }
   
 //   public concat(b: Bytes){
