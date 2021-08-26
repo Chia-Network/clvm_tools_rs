@@ -1,11 +1,9 @@
 use hex;
 use std::string::String;
+use bls12_381::G1Affine;
 
-//import {Utf8} from "jscrypto/Utf8";
 //import {Word32Array} from "jscrypto/Word32Array";
 //import {SHA256} from "jscrypto/SHA256";
-//import {None} from "./__python_types__";
-//import {G1Element} from "@chiamine/bls-signatures";
 
 pub fn to_hexstr(r: Vec<u8>) -> String {
     return hex::encode(r);
@@ -71,7 +69,11 @@ pub fn PyBytes_Repr(r : Vec<u8>) -> String {
     return s;
 }
 
-// export type BytesFromType = "hex"|"utf8"|"G1Element";
+pub enum BytesFromType {
+    Hex(String),
+    Utf8(Vec<u8>),
+    G1Element(G1Affine)
+}
 
 // /**
 //  * Unlike python, there is no immutable byte type in javascript.
