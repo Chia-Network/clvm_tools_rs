@@ -113,6 +113,7 @@ dependencies = [
  "clvm_rs",
  "hex",
  "num-bigint",
+ "num-traits",
  "pyo3",
  "sha2",
  "wasm-bindgen",

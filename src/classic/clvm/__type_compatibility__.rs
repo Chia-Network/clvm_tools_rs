@@ -3,11 +3,14 @@ use std::cmp::{min, max};
 use std::cmp::Ordering;
 use std::option::Option;
 use std::string::String;
+use num_traits::{Zero, One};
 
 use bls12_381::G1Affine;
 use hex;
 use sha2::Sha256;
 use sha2::Digest;
+
+use crate::util::Number;
 
 //import {Word32Array} from "jscrypto/Word32Array";
 //import {SHA256} from "jscrypto/SHA256";
@@ -534,51 +537,53 @@ impl Stream {
     }
 }
 
-// export class Stream {
-//   public static readonly INITIAL_BUFFER_SIZE = 64*1024;
-//   private _seek: number;
-//   private _length: number;
-//   private _buffer: Uint8Array;
-//   private _bufAllocMultiplier = 4;
+pub struct ChiaError {
+    line: u32,
+    col: u32,
+    desc: String
+}
 
-// /**
-//  * Python's style division.
-//  * In javascript, `-8 / 5 === -1` while `-8 / 5 == -2` in Python
-//  */
-// export function division(a: bigint, b: bigint): bigint {
-//   if(a === BigInt(0)){
-//     return a;
-//   }
-//   else if(b === BigInt(0)){
-//     throw new Error("Division by zero!");
-//   }
-//   else if(a > BigInt(0) && b > BigInt(0) && a < b){
-//     return BigInt(0);
-//   }
-//   else if(a < BigInt(0) && b < BigInt(0) && a > b){
-//     return BigInt(0);
-//   }
-  
-//   const div = a / b;
-//   if(a === div*b){
-//     return div;
-//   }
-//   else if(div > BigInt(0)){
-//     return div;
-//   }
-//   return div - BigInt(1);
-// }
+impl ChiaError {
+    fn new_str(s : String) -> ChiaError {
+        return ChiaError { line: 0, col: 0, desc: s };
+    }
+}
 
-// /**
-//  * Python's style modulo.
-//  * In javascript, `-8 % 5 === -3` while `-8 % 5 == 2` in Python
-//  */
-// export function modulo(a: bigint, b: bigint): bigint {
-//   const div = division(a, b);
-//   return a - b*div;
-// }
+pub fn biZero() -> Number { return Zero::zero(); }
+pub fn biOne() -> Number { return One::one(); }
 
-// export function divmod(a: bigint, b: bigint): Tuple<bigint, bigint> {
-//   const div = division(a, b);
-//   return t(div, a - b*div);
-// }
+/**
+ * Python's style division.
+ * In javascript, `-8 / 5 === -1` while `-8 / 5 == -2` in Python
+ */
+pub fn division(a: &Number, b: &Number) -> Result<Number, ChiaError> {
+    if *a == biZero() {
+        return Ok(a.clone());
+    } else if *b == biZero() {
+        return Err(ChiaError::new_str("Division by zero".to_string()));
+    } else if *a > biZero() && *b > biZero() && *a < *b {
+        return Ok(biZero());
+    } else if *a < biZero() && *b < biZero() && *a > *b {
+        return Ok(biZero());
+    }
+
+    let div = a / b;
+    if *a == div.clone() * b {
+        return Ok(div);
+    } else if div > biZero() {
+        return Ok(div);
+    }
+    return Ok(div - biOne());
+}
+
+/**
+ * Python's style modulo.
+ * In javascript, `-8 % 5 === -3` while `-8 % 5 == 2` in Python
+ */
+pub fn modulo(a: Number, b: Number) -> Result<Number,ChiaError> {
+    return division(&a, &b).map(|d| a - b*d);
+}
+
+pub fn divmod(a: Number, b: Number) -> Result<Tuple<Number, Number>,ChiaError> {
+    return division(&a, &b).map(|d| t(d.clone(), a - b*d));
+}
