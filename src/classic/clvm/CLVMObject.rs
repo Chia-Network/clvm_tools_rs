@@ -1,8 +1,5 @@
 use crate::classic::clvm::__type_compatibility__::{Bytes, Tuple};
-
-// import {None, Optional} from "./__python_types__";
-// import {Bytes, isTuple, Tuple} from "./__type_compatibility__";
-// import {EvalError} from "./EvalError";
+use crate::classic::clvm::EvalError::EvalError;
 
 pub enum CLVMObject {
     Atom(Bytes),
@@ -13,47 +10,26 @@ pub fn nil() -> CLVMObject {
     return CLVMObject::Atom(Bytes::new(None));
 }
 
-// /*
-//   This class implements the CLVM Object protocol in the simplest possible way,
-//   by just having an "atom" and a "pair" field
-//  */
-// export class CLVMObject implements CLVMType {
-//   atom: Optional<Bytes> = None;
-//   // this is always a 2-tuple of an object implementing the CLVM object protocol.
-//   pair: Optional<Tuple<any, any>> = None;
-  
-//   public constructor(v: any) {
-//     if(isCLVMObject(v)){
-//       this.atom = v.atom;
-//       this.pair = v.pair;
-//     }
-//     else if(isTuple(v)){
-//       this.pair = v;
-//       this.atom = None;
-//     }
-//     else{
-//       this.atom = v;
-//       this.pair = None;
-//     }
-//   }
-// }
+/*
+  This class implements the CLVM Object protocol in the simplest possible way,
+  by just having an "atom" and a "pair" field
+ */
+impl CLVMObject {
+    pub fn new() -> Self {
+        return nil();
+    }
 
-// export function isAtom(obj: CLVMType): obj is Atom {
-//   if((obj.atom && obj.pair) || (!obj.atom && !obj.pair)){
-//     throw new EvalError("Invalid clvm", obj);
-//   }
-  
-//   return Boolean(obj.atom && !obj.pair);
-// }
+    pub fn isAtom(obj: CLVMObject) -> bool {
+        match obj {
+            CLVMObject::Atom(_) => true,
+            _ => false
+        }
+    }
 
-// export function isCons(obj: CLVMType): obj is Cons {
-//   if((obj.atom && obj.pair) || (!obj.atom && !obj.pair)){
-//     throw new EvalError("Invalid clvm", obj);
-//   }
-  
-//   return Boolean((!obj.atom && obj.pair));
-// }
-
-// export function isCLVMObject(v: any): v is CLVMObject {
-//   return v && typeof v.atom !== "undefined" && typeof v.pair !== "undefined";
-// }
+    pub fn isCons(obj: CLVMObject) -> bool {
+        match obj {
+            CLVMObject::Pair(_) => true,
+            _ => false
+        }
+    }
+}
