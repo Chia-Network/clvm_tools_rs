@@ -11,6 +11,7 @@ use sha2::Sha256;
 use sha2::Digest;
 
 use crate::util::Number;
+use crate::classic::clvm::EvalError::EvalError;
 
 //import {Word32Array} from "jscrypto/Word32Array";
 //import {SHA256} from "jscrypto/SHA256";
@@ -105,7 +106,7 @@ pub fn ordering_to_int(o : Ordering) -> i32 {
  * Unlike python, there is no immutable byte type in javascript.
  */
 impl Bytes {
-    fn new(value : Option<BytesFromType>) -> Self {
+    pub fn new(value : Option<BytesFromType>) -> Self {
         match value {
             None => Bytes { _b: vec!() },
             Some(BytesFromType::Raw(v)) => Bytes { _b: v },
@@ -119,19 +120,19 @@ impl Bytes {
         }
     }
 
-    fn length(&self) -> usize {
+    pub fn length(&self) -> usize {
         return self._b.len();
     }
 
-    fn at(&self, i: usize) -> u8 {
+    pub fn at(&self, i: usize) -> u8 {
         return self._b[i];
     }
 
-    fn raw(&self) -> Vec<u8> {
+    pub fn raw(&self) -> Vec<u8> {
         return self._b.clone();
     }
 
-    fn repeat(&self, n : usize) -> Bytes {
+    pub fn repeat(&self, n : usize) -> Bytes {
         let capacity = self.length() * n;
         let set_size = self._b.len();
         let mut ret = Vec::<u8>::with_capacity(capacity);
@@ -141,7 +142,7 @@ impl Bytes {
         return Bytes::new(Some(BytesFromType::Raw(ret)));
     }
 
-    fn concat(&self, b: &Bytes) -> Bytes {
+    pub fn concat(&self, b: &Bytes) -> Bytes {
         let mut thisBin = self._b.clone();
         let mut thatBin = b.raw();
         let mut concatBin = Vec::<u8>::with_capacity(thisBin.len() + thatBin.len());
@@ -150,7 +151,7 @@ impl Bytes {
         return Bytes::new(Some(BytesFromType::Raw(concatBin)));
     }
 
-    fn slice(&self, start: usize, length: Option<usize>) -> Self {
+    pub fn slice(&self, start: usize, length: Option<usize>) -> Self {
         let len =
             match length {
                 Some(x) => {
@@ -169,31 +170,31 @@ impl Bytes {
         return Bytes::new(Some(BytesFromType::Raw(ui8_clone)));
     }
 
-    fn subarray(&self, start: usize, length: Option<usize>) -> Self {
+    pub fn subarray(&self, start: usize, length: Option<usize>) -> Self {
         return self.slice(start, length);
     }
 
-    fn data(&self) -> &Vec<u8> {
+    pub fn data(&self) -> &Vec<u8> {
         return &self._b;
     }
 
-    fn clone(&self) -> Self {
+    pub fn clone(&self) -> Self {
         return Bytes::new(Some(BytesFromType::Raw(self._b.clone())));
     }
 
-    fn toString(&self) -> String {
+    pub fn toString(&self) -> String {
         return PyBytes_Repr(&self._b);
     }
 
-    fn hex(&self) -> String {
+    pub fn hex(&self) -> String {
         return to_hexstr(&self._b);
     }
 
-    fn decode(&self) -> String {
+    pub fn decode(&self) -> String {
         return vec_to_string(&self._b);
     }
 
-    fn startswith(&self, b: &Bytes) -> bool {
+    pub fn startswith(&self, b: &Bytes) -> bool {
         for i in 0..min(b.length(), self._b.len()) - 1 {
             if b.at(i) != self._b[i] {
                 return false
@@ -202,7 +203,7 @@ impl Bytes {
         return true
     }
 
-    fn endswith(&self, b: &Bytes) -> bool {
+    pub fn endswith(&self, b: &Bytes) -> bool {
         let blen = min(b.length(), self._b.len()) - 1;
         for i in 0..blen {
             if b.at(blen - i) != self._b[blen - i] {
@@ -212,7 +213,7 @@ impl Bytes {
         return true
     }
 
-    fn equal_to(&self, b: Bytes) -> bool {
+    pub fn equal_to(&self, b: Bytes) -> bool {
         let slen = self._b.len();
         let blen = b.length();
         if slen != blen {
@@ -234,7 +235,7 @@ impl Bytes {
      *   -1 if argument is larger
      * @param other
      */
-    fn compare(&self, other: Bytes) -> Ordering {
+    pub fn compare(&self, other: Bytes) -> Ordering {
         let slen = min(self._b.len(), other.length());
 
         for i in 0..slen - 1 {
@@ -537,18 +538,6 @@ impl Stream {
     }
 }
 
-pub struct ChiaError {
-    line: u32,
-    col: u32,
-    desc: String
-}
-
-impl ChiaError {
-    fn new_str(s : String) -> ChiaError {
-        return ChiaError { line: 0, col: 0, desc: s };
-    }
-}
-
 pub fn biZero() -> Number { return Zero::zero(); }
 pub fn biOne() -> Number { return One::one(); }
 
@@ -556,11 +545,11 @@ pub fn biOne() -> Number { return One::one(); }
  * Python's style division.
  * In javascript, `-8 / 5 === -1` while `-8 / 5 == -2` in Python
  */
-pub fn division(a: &Number, b: &Number) -> Result<Number, ChiaError> {
+pub fn division(a: &Number, b: &Number) -> Result<Number, EvalError> {
     if *a == biZero() {
         return Ok(a.clone());
     } else if *b == biZero() {
-        return Err(ChiaError::new_str("Division by zero".to_string()));
+        return Err(EvalError::new_str("Division by zero".to_string()));
     } else if *a > biZero() && *b > biZero() && *a < *b {
         return Ok(biZero());
     } else if *a < biZero() && *b < biZero() && *a > *b {
@@ -580,10 +569,10 @@ pub fn division(a: &Number, b: &Number) -> Result<Number, ChiaError> {
  * Python's style modulo.
  * In javascript, `-8 % 5 === -3` while `-8 % 5 == 2` in Python
  */
-pub fn modulo(a: Number, b: Number) -> Result<Number,ChiaError> {
+pub fn modulo(a: Number, b: Number) -> Result<Number,EvalError> {
     return division(&a, &b).map(|d| a - b*d);
 }
 
-pub fn divmod(a: Number, b: Number) -> Result<Tuple<Number, Number>,ChiaError> {
+pub fn divmod(a: Number, b: Number) -> Result<Tuple<Number, Number>,EvalError> {
     return division(&a, &b).map(|d| t(d.clone(), a - b*d));
 }

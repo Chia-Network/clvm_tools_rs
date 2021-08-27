@@ -1,7 +1,19 @@
-use crate::classic::clvm::__type_compatibility__;
+use std::string::String;
 
-// import {G1Element} from "@chiamine/bls-signatures";
-// import {None, Optional} from "./__python_types__";
+use bls12_381::G1Affine;
+
+use crate::util::Number;
+use crate::classic::clvm::__type_compatibility__::{
+    Tuple,
+    Bytes,
+    t,
+    biZero,
+    biOne
+};
+use crate::classic::clvm::CLVMObject::{CLVMObject, nil};
+
+type SExp = CLVMObject;
+
 // import {CLVMObject, CLVMType} from "./CLVMObject";
 // import {Bytes, isIterable, Tuple, t, Stream, isBytes, isTuple} from "./__type_compatibility__";
 // import {bigint_from_bytes, bigint_to_bytes, int_from_bytes, int_to_bytes} from "./casts";
@@ -10,13 +22,12 @@ use crate::classic::clvm::__type_compatibility__;
 // import {EvalError} from "./EvalError";
 
 pub enum CastableType {
-    SExp,
-    CLVMType,
-    Bytes,
-    String,
-    Number,
-    None,
-    G1Affine,
+    SExp(SExp),
+//    CLVMType(),
+    Bytes(Bytes),
+    String(String),
+    Number(Number),
+    G1Affine(G1Affine),
     ListOf(Vec<CastableType>),
     TupleOf(Box<CastableType>, Box<CastableType>)
 }
@@ -62,13 +73,25 @@ pub enum CastableType {
 //   throw new Error(`can't cast ${JSON.stringify(v)} to bytes`);
 // }
 
-// const op_convert = 0;
-// const op_set_left = 1;
-// const op_set_right = 2;
-// const op_prepend_list = 3;
+pub enum SexpStackOp {
+    Op_convert,
+    Op_set_left,
+    Op_set_right,
+    Op_prepend_list
+}
+
 // type operations = typeof op_convert | typeof op_set_left | typeof op_set_right | typeof op_prepend_list;
 // type op_target = number | None;
 // type op_and_target = Tuple<operations, op_target>;
+
+pub type op_and_target = Tuple<SexpStackOp, Option<Number>>;
+
+pub fn to_sexp_type(value: CastableType) -> CLVMObject {
+    let mut v: Option<CastableType> = Some(value);
+    let stack = vec!(v);
+    let ops = vec!(t(biZero(), nil()));
+    return nil();
+}
 
 // export function to_sexp_type(value: CastableType): CLVMObject {
 //   let v: CastableType|undefined = value;
