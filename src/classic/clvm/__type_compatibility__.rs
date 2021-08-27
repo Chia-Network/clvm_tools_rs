@@ -1,3 +1,4 @@
+use std::clone::Clone;
 use std::cmp::min;
 use std::cmp::Ordering;
 use std::option::Option;
@@ -250,7 +251,7 @@ impl Bytes {
     }
 }
 
-fn SHA256(value: Bytes) -> Bytes {
+pub fn SHA256(value: Bytes) -> Bytes {
     let hashed = Sha256::digest(&value.data()[..]);
     let hashed_iter = hashed.into_iter();
     let newvec : Vec<u8> = hashed_iter.collect();
@@ -309,43 +310,67 @@ fn SHA256(value: Bytes) -> Bytes {
 //   return Bytes.from(hexStr, "hex");
 // }
 
-// export function list<T = unknown>(iterable: Iterable<T>){
-//   const arr: T[] = [];
-//   for(const item of iterable){
-//     arr.push(item);
-//   }
-//   return arr;
-// }
+pub fn list<E, I>(vals : I) -> Vec<E>
+where
+    I: Iterator<Item = E>,
+    E: Clone
+{
+    return vals.map(|v| v.clone()).collect();
+}
 
-// export function str(x: any){
-//   if(typeof x.toString === "function"){
-//     return x.toString();
-//   }
-//   return `${x}`;
-// }
+pub trait PythonStr {
+    fn py_str(&self) -> String;
+}
 
-// export function repr(x: any){
-//   if(typeof x.__repr__ === "function"){
-//     return x.__repr__();
-//   }
-//   return str(x);
-// }
+pub fn str<T>(thing : T) -> String
+where
+    T : PythonStr
+{
+    return thing.py_str();
+}
 
-// export class Tuple<T1, T2> extends Array<any> {
-//   public constructor(...items: [T1, T2]) {
-//     super(...items);
-//     Object.freeze(this);
-//     return this;
-//   }
-  
-//   public toString(){
-//     return `(${this[0]}, ${this[1]})`;
-//   }
-// }
+pub trait PythonRepr {
+    fn py_repr(&self) -> String;
+}
 
-// export function t<T1, T2>(v1: T1, v2: T2){
-//   return new Tuple(v1, v2);
-// }
+pub fn repr<T>(thing : T) -> String
+where
+    T : PythonRepr
+{
+    return thing.py_repr();
+}
+
+pub struct Tuple<T1, T2> {
+    first : T1,
+    second : T2
+}
+
+impl<T1, T2> Tuple<T1, T2> {
+    fn toString(&self) -> String
+    where
+        T1 : PythonStr,
+        T2 : PythonStr
+    {
+        return
+            "(".to_owned() +
+            self.first.py_str().as_str() +
+            ", " +
+            self.second.py_str().as_str() +
+            ")";
+    }
+}
+
+pub fn t<T1, T2>(v1 : T1, v2 : T2) -> Tuple<T1, T2> {
+    return Tuple { first: v1, second: v2 };
+}
+
+impl <T1, T2> PythonStr for Tuple<T1, T2>
+where
+    T1 : PythonStr,
+    T2 : PythonStr
+{
+    fn py_str(&self) -> String { return self.toString(); }
+}
 
 // export function isTuple(v: unknown): v is Tuple<unknown, unknown> {
 //   return v instanceof Array && Object.isFrozen(v) && v.length === 2;
