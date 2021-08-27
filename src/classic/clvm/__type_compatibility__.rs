@@ -508,6 +508,30 @@ impl Stream {
         self.seek += b.length(); // Don't move this line prior to `this._length = newLength`!
         return b.length();
     }
+
+    fn read(&mut self, size: usize) -> Bytes {
+        if self.seek > self.length-1 {
+            return Bytes::new(None); // Return empty byte
+        }
+
+        let size =
+            if self.seek + size <= self.length {
+                self.seek + size
+            } else {
+                self.length - self.seek
+            };
+
+        let mut u8 = Vec::<u8>::with_capacity(size);
+        for i in 0..size - 1 {
+            u8[i] = self.buffer[self.seek + i];
+        }
+        self.seek += size;
+        return Bytes::new(Some(BytesFromType::Raw(u8)));
+    }
+
+    fn getValue(&self) -> Bytes {
+        return Bytes::new(Some(BytesFromType::Raw(self.buffer.clone())));
+    }
 }
 
 // export class Stream {
@@ -516,41 +540,6 @@ impl Stream {
 //   private _length: number;
 //   private _buffer: Uint8Array;
 //   private _bufAllocMultiplier = 4;
-  
-//   public write(b: Bytes){
-//     const newLength = Math.max(this.length, b.length + this._seek);
-//     if(newLength > this._buffer.length){
-//       this.reAllocate(newLength * this._bufAllocMultiplier);
-//     }
-    
-//     const offset = this.seek;
-//     this._buffer.set(b.raw(), offset);
-    
-//     this._length = newLength;
-//     this.seek += b.length; // Don't move this line prior to `this._length = newLength`!
-//     return b.length;
-//   }
-  
-//   public read(size: number): Bytes {
-//     if(this.seek > this.length-1){
-//       return new Bytes(); // Return empty byte
-//     }
-    
-//     if(this.seek + size <= this.length){
-//       const u8 = this._buffer.subarray(this.seek, this.seek + size);
-//       this.seek += size;
-//       return new Bytes(u8);
-//     }
-    
-//     const u8 = this._buffer.subarray(this.seek, this.length);
-//     this.seek += size;
-//     return new Bytes(u8);
-//   }
-  
-//   public getValue(): Bytes {
-//     return new Bytes(this._buffer.subarray(0, this.length));
-//   }
-// }
 
 // /**
 //  * Python's style division.
