@@ -1,5 +1,5 @@
 use std::clone::Clone;
-use std::cmp::min;
+use std::cmp::{min, max};
 use std::cmp::Ordering;
 use std::option::Option;
 use std::string::String;
@@ -408,65 +408,114 @@ where
 //   ;
 // }
 
+const bufAllocMultiplier : usize = 4;
+const STREAM_INITIAL_BUFFER_SIZE : usize = 64*1024;
+
+pub struct Stream {
+    seek: usize,
+    length: usize,
+    buffer: Vec<u8>
+}
+
+impl Stream {
+    fn new(b : Option<Bytes>) -> Self {
+        match b {
+            None => {
+                return Stream {
+                    seek: 0,
+                    length: 0,
+                    buffer: vec!()
+                };
+            },
+            Some(b) => {
+                let mut stream = Stream {
+                    seek: 0,
+                    length: 0,
+                    buffer: vec!()
+                };
+
+                if b.length() > STREAM_INITIAL_BUFFER_SIZE {
+                    stream.buffer = Vec::<u8>::with_capacity(b.length()*2);
+                }
+                else{
+                    stream.buffer =
+                        Vec::<u8>::with_capacity(STREAM_INITIAL_BUFFER_SIZE);
+                }
+
+                for i in 0..b.length() - 1 {
+                    stream.buffer.push(b.at(i));
+                }
+                stream.length = b.length();
+
+                return stream;
+            }
+        }
+    }
+
+    fn get_seek(&self) -> usize {
+        return self.seek;
+    }
+
+    fn set_seek(&mut self, value: usize) {
+        if value < 0 {
+            self.seek = self.length - 1;
+        }
+        else if value > self.length - 1 {
+            self.seek = self.length;
+        }
+        else {
+            self.seek = value;
+        }
+    }
+
+    fn get_length(&self) -> usize {
+        return self.length;
+    }
+
+    fn reAllocate(&mut self, size: Option<usize>) {
+        let mut s =
+            match size {
+                None => self.buffer.len() * bufAllocMultiplier,
+                Some(s) => s
+            };
+
+        /**
+         * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Errors/Invalid_array_length
+         */
+        if s > 4294967295 { // 4294967295 = 2**32 - 1
+            s = 4294967295;
+        }
+
+        let mut buf = Vec::<u8>::with_capacity(s);
+        for i in 0..self.buffer.len() - 1 {
+            buf[i] = self.buffer[i];
+        }
+        self.buffer = buf;
+    }
+
+    fn write(&mut self, b: Bytes) -> usize {
+        let newLength = max(self.buffer.len(), b.length() + self.seek);
+        if newLength > self.buffer.len() {
+            self.reAllocate(Some(newLength * bufAllocMultiplier));
+        }
+
+        let offset = self.seek;
+        for i in 0..b.length() - 1 {
+            self.buffer[i + offset] = b.at(i);
+        }
+
+        self.length = newLength;
+        self.seek += b.length(); // Don't move this line prior to `this._length = newLength`!
+        return b.length();
+    }
+}
+
 // export class Stream {
 //   public static readonly INITIAL_BUFFER_SIZE = 64*1024;
 //   private _seek: number;
 //   private _length: number;
 //   private _buffer: Uint8Array;
 //   private _bufAllocMultiplier = 4;
-  
-//   public constructor(b?: Bytes) {
-//     this._seek = 0;
-    
-//     if(b){
-//       if(b.length > Stream.INITIAL_BUFFER_SIZE){
-//         this._buffer = new Uint8Array(b.length*2);
-//       }
-//       else{
-//         this._buffer = new Uint8Array(Stream.INITIAL_BUFFER_SIZE);
-//       }
-      
-//       this._buffer.set(b.raw());
-//       this._length = b.length;
-//     }
-//     else{
-//       this._buffer = new Uint8Array(Stream.INITIAL_BUFFER_SIZE);
-//       this._length = 0;
-//     }
-//   }
-  
-//   public get seek(){
-//     return this._seek;
-//   }
-  
-//   public set seek(value){
-//     if(value < 0){
-//       this._seek = this.length - 1;
-//     }
-//     else if(value > this.length - 1){
-//       this._seek = this.length;
-//     }
-//     else{
-//       this._seek = value;
-//     }
-//   }
-  
-//   public get length(){
-//     return this._length;
-//   }
-  
-//   protected reAllocate(size?: number){
-//     let s = typeof size === "number" ? size : this._buffer.length * this._bufAllocMultiplier;
-//     /**
-//      * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Errors/Invalid_array_length
-//      */
-//     if(s > 4294967295){ // 4294967295 = 2**32 - 1
-//       s = 4294967295;
-//     }
-//     const buf = new Uint8Array(s);
-//     buf.set(this._buffer);
-//     this._buffer = buf;
-//   }
   
 //   public write(b: Bytes){
 //     const newLength = Math.max(this.length, b.length + this._seek);
