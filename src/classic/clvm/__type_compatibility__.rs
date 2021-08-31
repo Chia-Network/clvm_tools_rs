@@ -1,6 +1,7 @@
 use std::clone::Clone;
 use std::cmp::{min, max};
 use std::cmp::Ordering;
+use std::fmt::Debug;
 use std::option::Option;
 use std::string::String;
 use num_traits::{Zero, One};
@@ -90,6 +91,7 @@ pub enum BytesFromType {
     G1Element(G1Affine)
 }
 
+#[derive(Debug)]
 pub struct Bytes {
     _b : Vec<u8>
 }
@@ -344,12 +346,23 @@ where
     return thing.py_repr();
 }
 
-pub struct Tuple<T1, T2> {
-    first : T1,
-    second : T2
+pub enum Tuple<T1, T2> {
+    Tuple(T1,T2)
 }
 
 impl<T1, T2> Tuple<T1, T2> {
+    fn first(&self) -> &T1 {
+        return match self {
+            Tuple::Tuple(f,_) => f
+        };
+    }
+
+    fn rest(&self) -> &T2 {
+        return match self {
+            Tuple::Tuple(_,r) => r
+        };
+    }
+
     fn toString(&self) -> String
     where
         T1 : PythonStr,
@@ -357,15 +370,15 @@ impl<T1, T2> Tuple<T1, T2> {
     {
         return
             "(".to_owned() +
-            self.first.py_str().as_str() +
+            self.first().py_str().as_str() +
             ", " +
-            self.second.py_str().as_str() +
+            self.rest().py_str().as_str() +
             ")";
     }
 }
 
 pub fn t<T1, T2>(v1 : T1, v2 : T2) -> Tuple<T1, T2> {
-    return Tuple { first: v1, second: v2 };
+    return Tuple::Tuple(v1,v2);
 }
 
 impl <T1, T2> PythonStr for Tuple<T1, T2>
@@ -575,4 +588,14 @@ pub fn modulo(a: Number, b: Number) -> Result<Number,EvalError> {
 
 pub fn divmod(a: Number, b: Number) -> Result<Tuple<Number, Number>,EvalError> {
     return division(&a, &b).map(|d| t(d.clone(), a - b*d));
+}
+
+/**
+ * none check
+ */
+pub fn isNone<T>(o : &Option<T>) -> bool {
+    return match o {
+        None => true,
+        _ => false
+    };
 }

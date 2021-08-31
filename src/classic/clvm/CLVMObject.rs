@@ -1,9 +1,10 @@
-use crate::classic::clvm::__type_compatibility__::{Bytes, Tuple};
-use crate::classic::clvm::EvalError::EvalError;
+use std::fmt::Debug;
+use crate::classic::clvm::__type_compatibility__::{Bytes};
 
+#[derive(Debug)]
 pub enum CLVMObject {
     Atom(Bytes),
-    Pair(Tuple<Box<CLVMObject>, Box<CLVMObject>>)
+    Pair(Box<CLVMObject>, Box<CLVMObject>)
 }
 
 pub fn nil() -> CLVMObject {
@@ -28,7 +29,7 @@ impl CLVMObject {
 
     pub fn isCons(obj: CLVMObject) -> bool {
         match obj {
-            CLVMObject::Pair(_) => true,
+            CLVMObject::Pair(_, _) => true,
             _ => false
         }
     }

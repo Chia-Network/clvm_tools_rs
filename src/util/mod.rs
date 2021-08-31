@@ -9,3 +9,7 @@ pub fn number_from_u8(v: &[u8]) -> Number {
         Number::from_signed_bytes_be(v)
     }
 }
+
+pub fn u8_from_number(v: Number) -> Vec<u8> {
+    return v.to_signed_bytes_be();
+}
