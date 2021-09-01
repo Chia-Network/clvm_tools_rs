@@ -351,19 +351,19 @@ pub enum Tuple<T1, T2> {
 }
 
 impl<T1, T2> Tuple<T1, T2> {
-    fn first(&self) -> &T1 {
+    pub fn first(&self) -> &T1 {
         return match self {
             Tuple::Tuple(f,_) => f
         };
     }
 
-    fn rest(&self) -> &T2 {
+    pub fn rest(&self) -> &T2 {
         return match self {
             Tuple::Tuple(_,r) => r
         };
     }
 
-    fn toString(&self) -> String
+    pub fn toString(&self) -> String
     where
         T1 : PythonStr,
         T2 : PythonStr

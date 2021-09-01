@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::mem::swap;
+use std::rc::Rc;
 use std::string::String;
 
 use bls12_381::G1Affine;
@@ -8,12 +9,14 @@ use crate::util::{Number, u8_from_number};
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
     BytesFromType,
-    isNone
+    Tuple,
+    isNone,
+    t
 };
 use crate::classic::clvm::CLVMObject::{CLVMObject};
 use crate::classic::clvm::EvalError::EvalError;
 
-type SExp = CLVMObject;
+pub type SExp = CLVMObject;
 
 // import {CLVMObject, CLVMType} from "./CLVMObject";
 // import {Bytes, isIterable, Tuple, t, Stream, isBytes, isTuple} from "./__type_compatibility__";
@@ -106,7 +109,7 @@ pub fn to_sexp_type(value: CastableType) -> Result<CLVMObject, EvalError> {
                     Some(CastableType::TupleOf(left, right)) => {
                         let targetIndex = stack.len();
                         stack.push(
-                            CastableType::CLVMObject(CLVMObject::Pair(Box::new(CLVMObject::new()), Box::new(CLVMObject::new())))
+                            CastableType::CLVMObject(CLVMObject::Pair(Rc::new(CLVMObject::new()), Rc::new(CLVMObject::new())))
                         );
 
                         stack.push(*right);
@@ -191,16 +194,16 @@ pub fn to_sexp_type(value: CastableType) -> Result<CLVMObject, EvalError> {
                                     stack[target] =
                                         CastableType::CLVMObject(
                                             CLVMObject::Pair(
-                                                Box::new(*l),
-                                                Box::new(new_value)
+                                                l.clone(),
+                                                Rc::new(new_value)
                                             )
                                         );
                                 } else {
                                     stack[target] =
                                         CastableType::CLVMObject(
                                             CLVMObject::Pair(
-                                                Box::new(new_value),
-                                                Box::new(*r)
+                                                Rc::new(new_value),
+                                                r.clone()
                                             )
                                         );
                                 }
@@ -241,7 +244,7 @@ pub fn to_sexp_type(value: CastableType) -> Result<CLVMObject, EvalError> {
                             CastableType::CLVMObject(o) => {
                                 stack[target] =
                                     CastableType::CLVMObject(
-                                        CLVMObject::Pair(Box::new(f), Box::new(o))
+                                        CLVMObject::Pair(Rc::new(f), Rc::new(o))
                                     );
                             },
 
@@ -287,19 +290,80 @@ pub fn to_sexp_type(value: CastableType) -> Result<CLVMObject, EvalError> {
     };
 }
 
-// /*
-//  SExp provides higher level API on top of any object implementing the CLVM
-//  object protocol.
-//  The tree of values is not a tree of SExp objects, it's a tree of CLVMObject
-//  like objects. SExp simply wraps them to privide a uniform view of any
-//  underlying conforming tree structure.
- 
-//  The CLVM object protocol (concept) exposes two attributes:
-//  1. "atom" which is either None or bytes
-//  2. "pair" which is either None or a tuple of exactly two elements. Both
-//  elements implementing the CLVM object protocol.
-//  Exactly one of "atom" and "pair" must be None.
-//  */
+/*
+ SExp provides higher level API on top of any object implementing the CLVM
+ object protocol.
+ The tree of values is not a tree of SExp objects, it's a tree of CLVMObject
+ like objects. SExp simply wraps them to privide a uniform view of any
+ underlying conforming tree structure.
+
+ The CLVM object protocol (concept) exposes two attributes:
+ 1. "atom" which is either None or bytes
+ 2. "pair" which is either None or a tuple of exactly two elements. Both
+ elements implementing the CLVM object protocol.
+ Exactly one of "atom" and "pair" must be None.
+ */
+impl SExp {
+    pub fn explode(&self) -> Result<Tuple<Rc<SExp>, Rc<SExp>>, EvalError> {
+        match self {
+            CLVMObject::Pair(f,r) => {
+                return Ok(t(f.clone(), r.clone()));
+            },
+            _ => {
+                return Err(
+                    EvalError::new_str(
+                        format!("explode called on non-pair {:?}", self)
+                    )
+                );
+            }
+        }
+    }
+
+    pub fn nullp(&self) -> bool {
+        match self {
+            CLVMObject::Atom(b) => { return b.length() == 0; },
+            _ => { return false; }
+        }
+    }
+
+    pub fn listp(&self) -> bool {
+        match self {
+            CLVMObject::Atom(_) => { return false; },
+            _ => { return true; }
+        }
+    }
+
+    pub fn first(&self) -> Result<Rc<CLVMObject>, EvalError> {
+        return self.explode().map(|t| t.first().clone());
+      }
+
+    pub fn rest(&self) -> Result<Rc<SExp>, EvalError> {
+        return self.explode().map(|t| t.rest().clone());
+    }
+
+    pub fn list_len(&self) -> usize {
+        let null = CLVMObject::new();
+        let mut v: &SExp = self;
+        let mut holder = Rc::new(CLVMObject::new());
+        let mut size = 0;
+
+        while v.listp() {
+            size += 1;
+            match v.rest() {
+                Ok(r) => {
+                    holder = r.clone();
+                    v = &*holder;
+                },
+                _ => {
+                    v = &null;
+                }
+            };
+        }
+
+        return size;
+    }
+}
+
 // export class SExp implements CLVMType {
 //   atom: Optional<Bytes> = None;
 //   // this is always a 2-tuple of an object implementing the CLVM object protocol.
@@ -339,14 +403,6 @@ pub fn to_sexp_type(value: CastableType) -> Result<CLVMObject, EvalError> {
 //     return t(new SExp(pair[0]), new SExp(pair[1]));
 //   }
   
-//   public listp(){
-//     return this.pair !== None;
-//   }
-  
-//   public nullp(){
-//     return this.atom !== None && this.atom.length === 0;
-//   }
-  
 //   public as_int(){
 //     return int_from_bytes(this.atom, {signed: true});
 //   }
@@ -363,22 +419,6 @@ pub fn to_sexp_type(value: CastableType) -> Result<CLVMObject, EvalError> {
   
 //   public cons(right: any){
 //     return SExp.to(t(this, right));
-//   }
-  
-//   public first(){
-//     const pair = this.pair;
-//     if(pair){
-//       return new SExp(pair[0]);
-//     }
-//     throw new EvalError("first of non-cons", this);
-//   }
-  
-//   public rest(){
-//     const pair = this.pair;
-//     if(pair){
-//       return new SExp(pair[1]);
-//     }
-//     throw new EvalError("rest of non-cons", this);
 //   }
   
 //   public *as_iter(){
@@ -415,16 +455,6 @@ pub fn to_sexp_type(value: CastableType) -> Result<CLVMObject, EvalError> {
 //     catch(e){
 //       return false;
 //     }
-//   }
-  
-//   public list_len(){
-//     let v: SExp = this;
-//     let size = 0;
-//     while(v.listp()){
-//       size += 1;
-//       v = v.rest();
-//     }
-//     return size;
 //   }
   
 //   public as_javascript(){

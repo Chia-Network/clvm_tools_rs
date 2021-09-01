@@ -1,10 +1,12 @@
 use std::fmt::Debug;
+use std::rc::Rc;
+
 use crate::classic::clvm::__type_compatibility__::{Bytes};
 
 #[derive(Debug)]
 pub enum CLVMObject {
     Atom(Bytes),
-    Pair(Box<CLVMObject>, Box<CLVMObject>)
+    Pair(Rc<CLVMObject>, Rc<CLVMObject>)
 }
 
 pub fn nil() -> CLVMObject {
