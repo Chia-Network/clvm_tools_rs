@@ -362,6 +362,25 @@ impl SExp {
 
         return size;
     }
+
+    pub fn as_bytes(&self) -> Result<Bytes, EvalError> {
+        match self {
+            CLVMObject::Atom(b) => Ok(b.clone()),
+            _ => Err(EvalError::new_str("pair converted to bytes".to_string()))
+        }
+    }
+}
+
+pub fn cons(left: Rc<SExp>, right: Rc<SExp>) -> SExp {
+    return CLVMObject::Pair(left, right);
+}
+
+pub fn bool_sexp(b: bool) -> SExp {
+    if b {
+        return CLVMObject::Atom(Bytes::new(Some(BytesFromType::Raw(vec!(1)))));
+    } else {
+        return CLVMObject::new();
+    }
 }
 
 // export class SExp implements CLVMType {
@@ -390,11 +409,6 @@ impl SExp {
 //     return SExp.__NULL__;
 //   }
   
-//   public constructor(v: CLVMObject) {
-//     this.atom = v.atom;
-//     this.pair = v.pair;
-//   }
-  
 //   public as_pair(): Tuple<SExp, SExp>|None {
 //     const pair = this.pair;
 //     if(pair === None){
@@ -415,10 +429,6 @@ impl SExp {
 //     const f = new Stream();
 //     sexp_to_stream(this, f);
 //     return f.getValue();
-//   }
-  
-//   public cons(right: any){
-//     return SExp.to(t(this, right));
 //   }
   
 //   public *as_iter(){

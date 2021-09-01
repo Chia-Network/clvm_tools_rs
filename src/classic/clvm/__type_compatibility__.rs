@@ -215,7 +215,7 @@ impl Bytes {
         return true
     }
 
-    pub fn equal_to(&self, b: Bytes) -> bool {
+    pub fn equal_to(&self, b: &Bytes) -> bool {
         let slen = self._b.len();
         let blen = b.length();
         if slen != blen {
