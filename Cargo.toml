@@ -26,5 +26,5 @@ wasm-bindgen-test = "0.3.25"
 pyo3 = "0.14.2"
 
 [[bin]]
-name = "run"
-path = "src/classic/bins/run.rs"
+name = "opd"
+path = "src/classic/bins/opd.rs"
