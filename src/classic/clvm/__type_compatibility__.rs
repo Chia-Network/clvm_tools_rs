@@ -1,6 +1,7 @@
 use std::clone::Clone;
 use std::cmp::{min, max};
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::option::Option;
 use std::string::String;
@@ -88,6 +89,7 @@ pub fn PyBytes_Repr(r : &Vec<u8>) -> String {
 pub enum BytesFromType {
     Hex(String),
     Raw(Vec<u8>),
+    String(String),
     G1Element(G1Affine)
 }
 
@@ -112,6 +114,14 @@ impl Bytes {
         match value {
             None => Bytes { _b: vec!() },
             Some(BytesFromType::Raw(v)) => Bytes { _b: v },
+            Some(BytesFromType::String(s)) => {
+                let bytes = s.as_bytes();
+                let mut bvec = vec!();
+                for b in bytes {
+                    bvec.push(*b);
+                }
+                Bytes::new(Some(BytesFromType::Raw(bvec)))
+            }
             Some(BytesFromType::Hex(hstr)) => {
                 match hex::decode(hstr) {
                     Ok(d) => Bytes { _b: d },
@@ -428,6 +438,8 @@ where
 const bufAllocMultiplier : usize = 4;
 const STREAM_INITIAL_BUFFER_SIZE : usize = 64*1024;
 
+pub type Record<K,V> = HashMap<K,V>;
+
 pub struct Stream {
     seek: usize,
     length: usize,
@@ -435,7 +447,7 @@ pub struct Stream {
 }
 
 impl Stream {
-    fn new(b : Option<Bytes>) -> Self {
+    pub fn new(b : Option<Bytes>) -> Self {
         match b {
             None => {
                 return Stream {
@@ -469,11 +481,11 @@ impl Stream {
         }
     }
 
-    fn get_seek(&self) -> usize {
+    pub fn get_seek(&self) -> usize {
         return self.seek;
     }
 
-    fn set_seek(&mut self, value: usize) {
+    pub fn set_seek(&mut self, value: usize) {
         if value < 0 {
             self.seek = self.length - 1;
         }
@@ -485,7 +497,7 @@ impl Stream {
         }
     }
 
-    fn get_length(&self) -> usize {
+    pub fn get_length(&self) -> usize {
         return self.length;
     }
 
@@ -510,7 +522,7 @@ impl Stream {
         self.buffer = buf;
     }
 
-    fn write(&mut self, b: Bytes) -> usize {
+    pub fn write(&mut self, b: Bytes) -> usize {
         let newLength = max(self.buffer.len(), b.length() + self.seek);
         if newLength > self.buffer.len() {
             self.reAllocate(Some(newLength * bufAllocMultiplier));
@@ -526,7 +538,7 @@ impl Stream {
         return b.length();
     }
 
-    fn read(&mut self, size: usize) -> Bytes {
+    pub fn read(&mut self, size: usize) -> Bytes {
         if self.seek > self.length-1 {
             return Bytes::new(None); // Return empty byte
         }
@@ -546,7 +558,7 @@ impl Stream {
         return Bytes::new(Some(BytesFromType::Raw(u8)));
     }
 
-    fn getValue(&self) -> Bytes {
+    pub fn getValue(&self) -> Bytes {
         return Bytes::new(Some(BytesFromType::Raw(self.buffer.clone())));
     }
 }
@@ -598,4 +610,12 @@ pub fn isNone<T>(o : &Option<T>) -> bool {
         None => true,
         _ => false
     };
+}
+
+pub fn getU32(v: &Vec<u8>, n: usize) -> u32 {
+    let p1 = v[n] as u32;
+    let p2 = v[n+1] as u32;
+    let p3 = v[n+2] as u32;
+    let p4 = v[n+3] as u32;
+    return p1 | (p2 << 8) | (p3 << 16) | (p4 << 24);
 }

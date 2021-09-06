@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use crate::classic::clvm::CLVMObject::{CLVMObject};
 
+#[derive(Debug)]
 pub struct EvalError {
     line: u32,
     col: u32,

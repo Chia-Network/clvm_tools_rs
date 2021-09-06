@@ -112,6 +112,7 @@ dependencies = [
  "bytestream",
  "clvm_rs",
  "hex",
+ "lazy_static",
  "num-bigint",
  "num-traits",
  "pyo3",
