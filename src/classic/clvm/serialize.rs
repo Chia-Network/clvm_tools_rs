@@ -14,15 +14,13 @@ leading bits is the count of bytes to read of size
  */
 
 use std::borrow::Borrow;
-use std::ops::Fn;
 use std::rc::Rc;
 use std::vec::Vec;
 
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
     BytesFromType,
-    Stream,
-    t
+    Stream
 };
 use crate::classic::clvm::as_rust::{TToSexpF, TValStack};
 use crate::classic::clvm::casts::int_from_bytes;
@@ -96,7 +94,7 @@ impl Iterator for SExpToBytesIterator {
     type Item = Vec<u8>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while true {
+        loop {
             match self.state.pop() {
                 None => { break; }
                 Some(SExpToByteOp::Object(x)) => {
@@ -125,10 +123,10 @@ impl Iterator for SExpToBytesIterator {
 }
 
 pub trait OpStackEntry {
-    fn invoke(&self, op_stack: &mut TOpStack, val_stack: &mut TValStack, f: &mut Stream, to_sexp_f: Box<TToSexpF>) -> Option<EvalError>;
+    fn invoke(&self, op_stack: &mut TOpStack, val_stack: &mut TValStack, f: &mut Stream, to_sexp_f: Box<dyn TToSexpF>) -> Option<EvalError>;
 }
 
-type TOpStack = Vec<Option<Box<OpStackEntry>>>;
+type TOpStack = Vec<Option<Box<dyn OpStackEntry>>>;
 
 pub fn sexp_to_stream(sexp: Rc<SExp>, f: &mut Stream) {
     for b in SExpToBytesIterator::new(sexp) {
@@ -139,7 +137,7 @@ pub fn sexp_to_stream(sexp: Rc<SExp>, f: &mut Stream) {
 struct OpCons { }
 
 impl OpStackEntry for OpCons {
-    fn invoke(&self, op_stack: &mut TOpStack, val_stack: &mut TValStack, f: &mut Stream, to_sexp_f: Box<TToSexpF>) -> Option<EvalError> {
+    fn invoke(&self, op_stack: &mut TOpStack, val_stack: &mut TValStack, f: &mut Stream, to_sexp_f: Box<dyn TToSexpF>) -> Option<EvalError> {
         return val_stack.pop().and_then(|l| {
             return val_stack.pop().and_then(|r| {
                 match to_sexp_f.invoke(
@@ -161,7 +159,7 @@ impl OpStackEntry for OpCons {
 struct OpReadSexp { }
 
 impl OpStackEntry for OpReadSexp {
-    fn invoke(&self, op_stack: &mut TOpStack, val_stack: &mut TValStack, f: &mut Stream, to_sexp_f: Box<TToSexpF>) -> Option<EvalError> {
+    fn invoke(&self, op_stack: &mut TOpStack, val_stack: &mut TValStack, f: &mut Stream, to_sexp_f: Box<dyn TToSexpF>) -> Option<EvalError> {
         let blob = f.read(1);
         if blob.length() == 0 {
             return Some(EvalError::new_str("bad encoding".to_string()));
@@ -192,7 +190,7 @@ impl TToSexpF for SimpleCreateCLVMObject {
     }
 }
 
-pub fn sexp_from_stream(f: &mut Stream, to_sexp_f: Box<TToSexpF>) -> Result<Rc<SExp>, EvalError> {
+pub fn sexp_from_stream(f: &mut Stream, to_sexp_f: Box<dyn TToSexpF>) -> Result<Rc<SExp>, EvalError> {
     let mut op_stack: TOpStack = vec!(Some(Box::new(OpReadSexp {})));
     let mut val_stack: TValStack = vec!();
 
@@ -276,7 +274,7 @@ than parsing and returning a python S-expression tree.
 //   return buffer.getValue();
 // }
 
-pub fn atom_from_stream(f: &mut Stream, b_: u8, to_sexp_f: Box<TToSexpF>) -> Result<SExp, EvalError> {
+pub fn atom_from_stream(f: &mut Stream, b_: u8, to_sexp_f: Box<dyn TToSexpF>) -> Result<SExp, EvalError> {
     let mut b = b_;
 
     if b == 0x80 {
@@ -304,7 +302,7 @@ pub fn atom_from_stream(f: &mut Stream, b_: u8, to_sexp_f: Box<TToSexpF>) -> Res
         size_blob = size_blob.concat(&bin);
     }
     return int_from_bytes(Some(size_blob), None).and_then(|size| {
-        if(size >= 0x400000000){
+        if size >= 0x400000000 {
             return Err(EvalError::new_str("blob too large".to_string()));
         }
         let blob = f.read(size as usize);

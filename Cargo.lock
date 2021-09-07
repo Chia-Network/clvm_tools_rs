@@ -117,6 +117,7 @@ dependencies = [
  "num-traits",
  "pyo3",
  "sha2",
+ "unicode-segmentation",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]
@@ -570,6 +571,12 @@ name = "typenum"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "879f6906492a7cd215bfa4cf595b600146ccfac0c79bcbd1f3000162af5e8b06"
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8895849a949e7845e06bd6dc1aa51731a103c42707010a5b591c0038fb73385b"
 
 [[package]]
 name = "unicode-xid"

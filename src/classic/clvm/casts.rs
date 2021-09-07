@@ -1,12 +1,8 @@
-use num_bigint::ToBigInt;
-
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
-    biOne,
     getU32
 };
 use crate::classic::clvm::EvalError::EvalError;
-use crate::util::Number;
 
 pub struct TConvertOption {
     signed: bool
@@ -51,7 +47,7 @@ pub fn int_from_bytes(b: Option<Bytes>, option: Option<TConvertOption>) -> Resul
             }
 
             // If the first bit is 1, it is recognized as a negative number.
-            if(signed && ((dv[0] & 0x80) != 0)){
+            if signed && ((dv[0] & 0x80) != 0) {
                 return Ok((unsigned64 - 1 << (b.length()*8)) as u64);
             }
             return Ok(unsigned64);

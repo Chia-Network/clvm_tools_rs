@@ -1,6 +1,5 @@
 use std::borrow::Borrow;
 use std::fmt::Debug;
-use std::mem::swap;
 use std::rc::Rc;
 use std::string::String;
 

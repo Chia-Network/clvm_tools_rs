@@ -1,11 +1,22 @@
+use std::cmp::PartialEq;
 use std::collections::HashMap;
+use std::rc::Rc;
 
+use crate::classic::clvm::__type_compatibility__::Record;
+use crate::util::{
+    index_of_match,
+    skip_leading
+};
+
+#[derive(PartialEq)]
+#[derive(Debug)]
 pub enum TArgOptionAction {
     Store,
     StoreTrue,
     Append
 }
 
+#[derive(PartialEq)]
 pub enum NArgsSpec {
     KleeneStar,
     Plus,
@@ -17,36 +28,55 @@ pub enum NArgsSpec {
 pub enum ArgumentValue {
     ArgString(String),
     ArgInt(i64),
-    ArgBool(bool)
+    ArgBool(bool),
+    ArgArray(Vec<ArgumentValue>)
 }
 
 pub trait ArgumentValueConv {
-    fn convert(&self, s: &String) -> ArgumentValue;
+    fn convert(&self, s: &String) -> Result<ArgumentValue, String>;
 }
 
 struct EmptyConversion { }
 impl ArgumentValueConv for EmptyConversion {
-    fn convert(&self, s: &String) -> ArgumentValue {
-        return ArgumentValue::ArgString(s.to_string());
+    fn convert(&self, s: &String) -> Result<ArgumentValue, String> {
+        return Ok(ArgumentValue::ArgString(s.to_string()));
+    }
+}
+
+struct IntConversion {
+    helpMessager: fn() -> String
+}
+
+impl ArgumentValueConv for IntConversion {
+    fn convert(&self, v: &String) -> Result<ArgumentValue, String> {
+        match v.parse::<i64>() {
+            Ok(n) => return Ok(ArgumentValue::ArgInt(n)),
+            _ => {
+                let usage = (self.helpMessager)();
+                return Err(
+                    format!("{}\n\nError: Invalid parameter: {}", usage, v)
+                );
+            }
+        }
     }
 }
 
 pub struct Argument {
     action: TArgOptionAction,
-    typeofarg: Box<ArgumentValueConv>,
+    typeofarg: Rc<dyn ArgumentValueConv>,
     default: Option<ArgumentValue>,
     help: String,
-    nargs: NArgsSpec
+    nargs: Option<NArgsSpec>
 }
 
 impl Argument {
     pub fn new() -> Self {
         return Argument {
             action: TArgOptionAction::Store,
-            typeofarg: Box::new(EmptyConversion {}),
+            typeofarg: Rc::new(EmptyConversion {}),
             default: None,
             help: "".to_string(),
-            nargs: NArgsSpec::KleeneStar
+            nargs: None
         };
     }
 
@@ -55,7 +85,7 @@ impl Argument {
         s.action = a;
         return s;
     }
-    pub fn setType(self, t: Box<ArgumentValueConv>) -> Self {
+    pub fn setType(self, t: Rc<dyn ArgumentValueConv>) -> Self {
         let mut s = self;
         s.typeofarg = t;
         return s;
@@ -72,7 +102,7 @@ impl Argument {
     }
     pub fn setNArgs(self, n: NArgsSpec) -> Self {
         let mut s = self;
-        s.nargs = n;
+        s.nargs = Some(n);
         return s;
     }
 }
@@ -126,249 +156,400 @@ impl ArgumentParser {
         self.positional_args.push(Arg { names: argName, options: options });
     }
 
-    pub fn parse_args(&mut self, args: &Vec<String>) -> HashMap<String, Vec<ArgumentValue>> {
-        // XXX
-        return HashMap::new();
+    pub fn parse_args(&mut self, args: &Vec<String>) -> Result<HashMap<String, ArgumentValue>, String> {
+        let normalizedArgs = self.normalizeArgs(args);
+        let mut params: Record<String, ArgumentValue> = HashMap::new();
+
+        // Set default value
+        for k in 0..self.optional_args.len()-1 {
+            let optional_arg_k = &self.optional_args[k];
+            let defaultValue = &optional_arg_k.options.default;
+
+            match defaultValue {
+                Some(dv) => {
+                    match self.getOptionalArgName(optional_arg_k) {
+                        Ok(name) => {
+                            params.insert(name, dv.clone());
+                        },
+                        Err(e) => { return Err(e); }
+                    }
+                },
+                _ => {}
+            }
+        }
+
+        let mut input_positional_args: Vec<String> = vec!();
+        let mut ioff = 0;
+
+        for i in 0..normalizedArgs.len()-1 {
+            let arg = &normalizedArgs[i + ioff];
+
+            // positional argument
+            if !isOptional(arg.to_string()) {
+                input_positional_args.push(arg.clone());
+                continue;
+            }
+
+            let optional_arg_idx =
+                index_of_match(
+                    |a: &Arg| index_of_match(|a: &String| a == arg, &a.names) >= 0,
+                    &self.optional_args
+                );
+
+            if optional_arg_idx < 0 {
+                let usage = self.compileHelpMessages();
+                return Err(format!("{}\n\nError: Unknown option: {}", usage, arg));
+            }
+
+            let optional_arg = &self.optional_args[optional_arg_idx as usize];
+            let mut name : String = "".to_string();
+
+            match self.getOptionalArgName(&optional_arg) {
+                Ok(n) => { name = n; },
+                Err(e) => { return Err(e); }
+            }
+
+            if optional_arg.options.action == TArgOptionAction::StoreTrue {
+                params.insert(name, ArgumentValue::ArgBool(true));
+                continue;
+            }
+
+            let converter =
+                self.getConverter(Some(optional_arg.options.typeofarg.clone()));
+
+            ioff += 1;
+
+            let value = &normalizedArgs[i];
+            if value == "" && optional_arg.options.default.is_none() {
+                let usage = self.compileHelpMessages();
+                return Err(format!("{}\n\nError: {} requires a value", usage, name));
+            }
+            if optional_arg.options.action == TArgOptionAction::Store {
+                match converter.convert(&value) {
+                    Ok(c) => {
+                        params.insert(name, c);
+                    },
+                    _ => {
+                        match &optional_arg.options.default {
+                            Some(v) => {
+                                params.insert(name, v.clone());
+                            },
+                            _ => { }
+                        }
+                    }
+                }
+            }
+            else if optional_arg.options.action == TArgOptionAction::Append {
+                match params.get(&name) {
+                    Some(ArgumentValue::ArgArray(l)) => {
+                        match converter.convert(&value) {
+                            Ok(v) => {
+                                let mut lcopy = l.clone();
+                                lcopy.push(v);
+                                params.insert(name, ArgumentValue::ArgArray(lcopy));
+                            },
+                            _ => {
+                                match &optional_arg.options.default {
+                                    Some(v) => {
+                                        let mut lcopy = l.clone();
+                                        lcopy.push(v.clone());
+                                        params.insert(name, ArgumentValue::ArgArray(lcopy));
+                                    },
+                                    None => { }
+                                }
+                            }
+                        }
+                    },
+                    _ => {
+                        match converter.convert(&value) {
+                            Ok(v) => {
+                                params.insert(name, ArgumentValue::ArgArray(vec!(v)));
+                            },
+                            _ => {
+                                match &optional_arg.options.default {
+                                    Some(v) => {
+                                        params.insert(
+                                            name,
+                                            ArgumentValue::ArgArray(vec!(v.clone()))
+                                        );
+                                    },
+                                    None => { }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                let usage = self.compileHelpMessages();
+                return Err(format!("{}\n\nError: Unknown action: {:?}", usage, optional_arg.options.action));
+            }
+        }
+
+        let mut i = 0;
+        for k in 0..self.positional_args.len()-1 {
+            let positional_arg_k = &self.positional_args[k];
+            let mut input_arg = &input_positional_args[i];
+
+            let name = &positional_arg_k.names[0];
+            let nargs = &positional_arg_k.options.nargs;
+            let converter = self.getConverter(Some(positional_arg_k.options.typeofarg.clone()));
+
+            match nargs {
+                None => {
+                    match converter.convert(&input_arg) {
+                        Ok(v) => {
+                            params.insert(name.to_string(), v);
+                            i += 1;
+                        },
+                        _ => {}
+                    }
+                },
+                Some(NArgsSpec::Definite(nargs)) => {
+                    for j in 0..nargs-1 {
+                        if i >= input_positional_args.len() {
+                            let usage = self.compileHelpMessages();
+                            return Err(format!("{}\n\nError: Requires {} positional arguments but got {}", usage, nargs, i));
+                        }
+
+                        let input_arg = &input_positional_args[i];
+                        match params.get(name) {
+                            Some(ArgumentValue::ArgArray(l)) => {
+                                match converter.convert(&input_arg) {
+                                    Ok(v) => {
+                                        let mut lcopy = l.clone();
+                                        lcopy.push(v);
+                                        params.insert(name.to_string(), ArgumentValue::ArgArray(lcopy));
+                                    },
+                                    _ => {}
+                                }
+                            },
+                            _ => {
+                                match converter.convert(&input_arg) {
+                                    Ok(v) => { params.insert(name.to_string(), ArgumentValue::ArgArray(vec!(v))); },
+                                    _ => {}
+                                }
+                            },
+                        }
+                        i += 1;
+                    }
+                },
+                Some(Optional) => {
+                    if i >= input_positional_args.len() {
+                        match &positional_arg_k.options.default {
+                            None => {
+                                match converter.convert(&"".to_string()) {
+                                    Ok(v) => { params.insert(name.to_string(), v); },
+                                    _ => { }
+                                }
+                            },
+                            Some(l) => {
+                                match converter.convert(&"".to_string()) {
+                                    Ok(v) => { params.insert(name.to_string(), v); },
+                                    _ => { },
+                                }
+                            }
+                        }
+
+                        i += 1;
+                    } else {
+                        match converter.convert(&input_arg) {
+                            Ok(v) => { params.insert(name.to_string(), v); },
+                            _ => { }
+                        }
+
+                        i += 1;
+                    }
+                }
+                /*
+                
+                _ => {
+                    if i >= input_positional_args.len() {
+                        if nargs == &Some(NArgsSpec::Plus) {
+                            let usage = self.compileHelpMessages();
+                            return Err(format!("{}\n\nError: The following arguments are required: {}", usage, name));
+                        }
+
+                        params.insert(name.to_string(), ArgumentValue::ArgArray(vec!()));
+
+                        i += 1;
+                        continue;
+                    }
+
+                    for i in 0..input_positional_args.len() {
+                        input_arg = &input_positional_args[i];
+                        match params.get(name) {
+                            Some(ArgumentValue::ArgArray(l)) => {
+                                match converter.convert(&input_arg) {
+                                    Ok(v) => {
+                                        let mut lcopy = l.clone();
+                                        lcopy.push(v);
+                                        params.insert(name.to_string(), ArgumentValue::ArgArray(lcopy));
+                                    },
+                                    _ => { },
+                                }
+                            },
+                            _ => {
+                                match converter.convert(&input_arg) {
+                                    Ok(v) => {
+                                        params.insert(name.to_string(), ArgumentValue::ArgArray(vec!(v)));
+                                    },
+                                    _ => { }
+                                }
+                            },
+                        }
+                    }
+                }
+*/
+            }
+        }
+
+        match params.get(&"help".to_string()) {
+            Some(_) => {
+                let usage = self.compileHelpMessages();
+                return Err(usage);
+            },
+            _ => { }
+        }
+
+        return Ok(params);
     }
 
-//     const normalizedArgs = this.normalizeArgs(args);
-//     const params: Record<string, unknown> = {};
-    
-//     // Set default value
-//     for(let k=0;k<this._optional_args.length;k++){
-//       const optional_arg_k = this._optional_args[k];
-//       const defaultValue = optional_arg_k.options.default;
-//       if(typeof defaultValue === "undefined"){
-//         continue;
-//       }
-  
-//       const name = this._getOptionalArgName(optional_arg_k);
-//       params[name] = defaultValue;
-//     }
-    
-//     const input_positional_args: string[] = [];
-//     for(let i=0;i<normalizedArgs.length;i++){
-//       const arg = normalizedArgs[i];
-      
-//       // positional argument
-//       if(!isOptional(arg)){
-//         input_positional_args.push(arg);
-//         continue;
-//       }
-      
-//       const optional_arg = this._optional_args.find(a => a.names.includes(arg));
-//       if(!optional_arg){
-//         const usage = this.compileHelpMessages();
-//         throw `${usage}\n\nError: Unknown option: ${arg}`;
-//       }
-  
-//       const name = this._getOptionalArgName(optional_arg);
-//       if(optional_arg.options.action === "store_true"){
-//         params[name] = true;
-//         continue;
-//       }
-  
-//       const converter = this._getConverter(optional_arg.options.type);
-  
-//       ++i;
-//       const value = normalizedArgs[i];
-//       if(!value && !optional_arg.options.default){
-//         const usage = this.compileHelpMessages();
-//         throw `${usage}\n\nError: ${name} requires a value`;
-//       }
-//       if(!optional_arg.options.action || optional_arg.options.action === "store"){
-//         params[name] = converter(value) || optional_arg.options.default;
-//       }
-//       else if(optional_arg.options.action === "append"){
-//         const param_value = (params[name] || []) as unknown[];
-//         params[name] = param_value.concat(converter(value) || optional_arg.options.default);
-//       }
-//       else{
-//         const usage = this.compileHelpMessages();
-//         throw `${usage}\n\nError: Unknown action: ${optional_arg.options.action}`;
-//       }
-//     }
-    
-//     let i = 0;
-//     for(let k=0;k<this._positional_args.length;k++){
-//       const positional_arg_k = this._positional_args[k];
-//       let input_arg = input_positional_args[i];
-  
-//       const name = positional_arg_k.names[0];
-//       const nargs = positional_arg_k.options.nargs;
-//       const converter = this._getConverter(positional_arg_k.options.type);
-  
-//       if(typeof nargs === "undefined"){
-//         params[name] = converter(input_arg);
-//         i++;
-//       }
-//       else if(typeof nargs === "number"){
-//         for(let j=0;j<nargs;j++){
-//           if(i >= input_positional_args.length){
-//             const usage = this.compileHelpMessages();
-//             throw `${usage}\n\nError: Requires ${nargs} positional arguments but got ${i}`;
-//           }
-//           input_arg = input_positional_args[i];
-//           const param_value = (params[name] || []) as unknown[];
-//           params[name] = param_value.concat(converter(input_arg));
-//           i++;
-//         }
-//       }
-//       else if(nargs === "?"){
-//         if(i >= input_positional_args.length){
-//           if(typeof positional_arg_k.options.default === "undefined"){
-//             params[name] = converter("");
-//             i++;
-//             continue;
-//           }
-//           params[name] = positional_arg_k.options.default;
-//           i++;
-//         }
-//         else{
-//           params[name] = converter(input_arg);
-//           i++;
-//         }
-//       }
-//       else if(nargs === "*" || nargs === "+"){
-//         if(i >= input_positional_args.length){
-//           if(nargs === "+"){
-//             const usage = this.compileHelpMessages();
-//             throw `${usage}\n\nError: The following arguments are required: ${name}`;
-//           }
-//           params[name] = [];
-//           i++;
-//           continue;
-//         }
-        
-//         for(;i<input_positional_args.length;i++){
-//           input_arg = input_positional_args[i];
-//           const param_value = (params[name] || []) as unknown[];
-//           params[name] = param_value.concat(converter(input_arg));
-//         }
-//       }
-//       else{
-//         throw `Unknown nargs: ${nargs}. It is a program bug. Contact a developer and report this error.`;
-//       }
-//     }
-    
-//     if(params["help"]){
-//       const usage = this.compileHelpMessages();
-//       throw `${usage}`;
-//     }
-    
-//     return params;
-//   }
+    fn compileHelpMessages(&self) -> String {
+        let iterator = |a: &Arg| {
+            let mut msg = " ".to_string() + &a.names.join(", ");
+            let default_value =
+                match &a.options.default {
+                    Some(ArgumentValue::ArgString(s)) => s.to_string(),
+                    _ => "".to_string()
+                };
+
+            if a.options.help != "" {
+                msg += &("  ".to_string() + &a.options.help);
+                msg = msg.replace("%(prog)", &self.prog);
+                msg = msg.replace("%(default)", &default_value);
+            }
+            return msg;
+        };
+
+        let mut arg_conversions = vec!();
+
+        for arg in &self.optional_args {
+            arg_conversions.push(format!("[{}]", arg.names[0]));
+        }
+
+        let mut messages = vec!(
+            format!("usage: {}, {}", self.prog, arg_conversions.join(" "))
+        );
+
+        if self.positional_args.len() > 0 {
+            messages.push("".to_string());
+            messages.push("positional arguments:".to_string());
+            for a in &self.positional_args {
+                messages.push(iterator(a.clone()));
+            }
+        }
+        if self.optional_args.len() > 0 {
+            messages.push("".to_string());
+            messages.push("optional arguments:".to_string());
+            for a in &self.optional_args {
+                messages.push(iterator(a.clone()));
+            }
+        }
+
+        return messages.join("\n");
+    }
+
+    /**
+     * Separate short form argument which doesn't have space character between name and value.
+     * For example, turn:
+     *   "-x1" => ["-x", "1"]
+     *   "-x 1" => ["-x", "1"]
+     *   "-xxxxx" => ["-x", "xxxx"]
+     * @param args - arguments passed
+     */
+    pub fn normalizeArgs(&self, args: &Vec<String>) -> Vec<String> {
+        if self.optional_args.len() < 1 {
+            return args.to_vec();
+        }
+
+        let mut norm: Vec<String> = vec!();
+
+        for i in 0..args.len()-1 {
+            let mut optionalArgWithoutSpaceFound = false;
+            let arg = &args[i];
+
+            // Only short form args like '-x' are targets.
+            if arg.starts_with("-") &&
+                !arg.starts_with("--") {
+                norm.push(arg.to_string());
+                continue;
+            }
+
+            for k in 0..self.optional_args.len()-1 {
+                let index =
+                    index_of_match(|n: &String| {
+                        return n.starts_with(&"-".to_string()) &&
+                            !n.starts_with(&"--".to_string()) &&
+                            n != arg && arg.starts_with(n);
+                    }, &self.optional_args[k].names);
+
+                if index < 0 {
+                    continue;
+                }
+
+                let name = &self.optional_args[k].names[index as usize];
+                let index2 =
+                    match arg.find(name) {
+                        Some(i) => i,
+                        _ => 0
+                    } + name.len();
+                let value = &arg[index2..].to_string();
+
+                norm.push(name.to_string());
+                norm.push(value.to_string());
+                optionalArgWithoutSpaceFound = true;
+                break;
+            }
+
+            if !optionalArgWithoutSpaceFound {
+                norm.push(arg.to_string());
+            }
+        }
+
+        return norm;
+    }
+
+    pub fn getOptionalArgName(&self, arg: &Arg) -> Result<String,String> {
+        let names = &arg.names;
+        let doubleHyphenArgIndex =
+            index_of_match(|n: &String| n.starts_with("--"), &names);
+
+        if doubleHyphenArgIndex > -1 {
+            let name = &names[doubleHyphenArgIndex as usize];
+            let first_non_dash = skip_leading(&name, "-").replace("-", "_");
+            return Ok(first_non_dash);
+        }
+
+        let singleHyphenArgIndex =
+            index_of_match(
+                |n: &String|
+                n.starts_with("-") &&
+                    !n.starts_with("--"),
+                &names
+            );
+        if singleHyphenArgIndex > -1 {
+            let name = &names[singleHyphenArgIndex as usize];
+            let first_non_dash = skip_leading(&name, "-").replace("-", "_");
+            return Ok(first_non_dash);
+        }
+        return Err("Invalid argument name".to_string());
+    }
+
+    fn getConverter(&self, typeofarg: Option<Rc<dyn ArgumentValueConv>>) -> Rc<dyn ArgumentValueConv> {
+        match typeofarg {
+            None => return Rc::new(EmptyConversion {}),
+            Some(ty) => return ty
+        }
+    }
 }
 
-//   protected _getConverter(type?: "str"|"int"|((v: string) => unknown)){
-//     if(!type || type === "str"){ // string
-//       return (v: string) => v;
-//     }
-//     else if(type === "int"){
-//       return (v: string) => {
-//         const n = +v;
-//         if(isNaN(n) || !isFinite(n)){
-//           const usage = this.compileHelpMessages();
-//           throw `${usage}\n\nError: Invalid parameter: ${v}`;
-//         }
-//         return n;
-//       };
-//     }
-//     else if(typeof type === "function"){
-//       return type as (v: string) => unknown;
-//     }
-//     else{
-//       const usage = this.compileHelpMessages();
-//       throw `${usage}\n\nError: Unknown type: ${type}`;
-//     }
-//   }
-  
-//   protected _getOptionalArgName(arg: Arg){
-//     const names = arg.names;
-//     const doubleHyphenArgIndex = names.findIndex(n => /^[-]{2}/.test(n));
-//     if(doubleHyphenArgIndex > -1){
-//       const name = names[doubleHyphenArgIndex];
-//       return name.replace(/^[-]+/, "").replace(/[-]/g, "_");
-//     }
-//     const singleHyphenArgIndex = names.findIndex(n => /^[-][^-]/.test(n));
-//     if(singleHyphenArgIndex > -1){
-//       const name = names[singleHyphenArgIndex];
-//       return name.replace(/^[-]/, "").replace(/[-]/g, "_");
-//     }
-//     throw new Error("Invalid argument name");
-//   }
-  
-//   public compileHelpMessages(){
-//     const iterator = (a: Arg) => {
-//       let msg = " " + a.names.join(", ");
-//       if(a.options.help){
-//         msg += `  ${a.options.help}`;
-//         msg = msg.replace(/%\(prog\)s/, this._prog);
-//         msg = msg.replace(/%\(default\)s/, (a.options.default as string) || "");
-//       }
-//       return msg;
-//     };
-    
-//     const messages = [
-//       `usage: ${this._prog} ` + this._optional_args.concat(this._positional_args).map(a => `[${a.names[0]}]`).join(" "),
-//     ];
-    
-//     if(this._positional_args.length > 0){
-//       messages.push("");
-//       messages.push("positional arguments:");
-//       messages.push(...this._positional_args.map(iterator));
-//     }
-//     if(this._optional_args.length > 0){
-//       messages.push("");
-//       messages.push("optional arguments:");
-//       messages.push(...this._optional_args.map(iterator));
-//     }
-    
-//     return messages.join("\n");
-//   }
-  
-//   /**
-//    * Separate short form argument which doesn't have space character between name and value. 
-//    * For example, turn:
-//    *   "-x1" => ["-x", "1"]
-//    *   "-x 1" => ["-x", "1"]
-//    *   "-xxxxx" => ["-x", "xxxx"]
-//    * @param args - arguments passed
-//    */
-//   public normalizeArgs(args: string[]) {
-//     if(this._optional_args.length < 1){
-//       return args;
-//     }
-    
-//     const norm: string[] = [];
-//     for(let i=0;i<args.length;i++){
-//       const arg = args[i];
-//       // Only short form args like '-x' are targets.
-//       if(!/^[-][^-]/.test(arg)){
-//         norm.push(arg);
-//         continue;
-//       }
-      
-//       let optionalArgWithoutSpaceFound = false;
-//       for(let k=0;k<this._optional_args.length;k++){
-//         const opt = this._optional_args[k];
-//         const index = opt.names.findIndex(n => /^[-][^-]$/.test(n) && n !== arg && new RegExp(`^${n}`).test(arg));
-//         if(index < 0){
-//           continue;
-//         }
-//         const name = opt.names[index];
-//         const index2 = arg.indexOf(name) + name.length;
-//         const value = arg.substring(index2);
-//         norm.push(name, value);
-//         optionalArgWithoutSpaceFound = true;
-//         break;
-//       }
-      
-//       if(!optionalArgWithoutSpaceFound){
-//         norm.push(arg);
-//       }
-//     }
-    
-//     return norm;
-//   }
-// }

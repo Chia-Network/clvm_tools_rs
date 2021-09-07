@@ -7,7 +7,6 @@ use crate::classic::clvm::CLVMObject::CLVMObject;
 use crate::classic::clvm::SExp::SExp;
 
 pub fn sha256tree(v: &SExp) -> Bytes {
-    let mut s = Bytes::new(None);
     match v {
         CLVMObject::Pair(l,r) => {
             let left = sha256tree(&*l);

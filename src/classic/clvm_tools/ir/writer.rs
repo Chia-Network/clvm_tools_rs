@@ -6,9 +6,7 @@ use crate::classic::clvm::__type_compatibility__::{
     BytesFromType,
     Stream
 };
-use crate::classic::clvm::casts::int_from_bytes;
 use crate::classic::clvm::CLVMObject::CLVMObject;
-use crate::classic::clvm::serialize::sexp_to_stream;
 use crate::classic::clvm::SExp::SExp;
 
 // import {SExp, int_from_bytes, sexp_to_stream, str, Stream, b} from "clvm";
@@ -48,7 +46,7 @@ impl Iterator for IROutputIterator {
     fn next(&mut self) -> Option<Self::Item> {
         match self.state.pop() {
             None => None,
-            Some(EndParen) => { return Some(")".to_string()); },
+            Some(IROutputState::EndParen) => { return Some(")".to_string()); },
             Some(IROutputState::Start(v)) => {
                 match v.borrow() {
                     CLVMObject::Atom(a) => {

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::fs;
 
@@ -14,13 +15,11 @@ use crate::classic::clvm::serialize::{
     sexp_from_stream
 };
 use crate::classic::clvm::SExp::{
-    SExp,
-    to_sexp_type
+    SExp
 };
 use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::platform::argparse::{
-    Arg,
     Argument,
     ArgumentParser,
     ArgumentValue,
@@ -65,10 +64,10 @@ use crate::classic::platform::argparse::{
 pub struct PathOrCodeConv { }
 
 impl ArgumentValueConv for PathOrCodeConv {
-    fn convert(&self, arg: &String) -> ArgumentValue {
+    fn convert(&self, arg: &String) -> Result<ArgumentValue,String> {
         match fs::read_to_string(arg) {
-            Ok(s) => { return ArgumentValue::ArgString(s); },
-            Err(_) => { return ArgumentValue::ArgString(arg.to_string()); }
+            Ok(s) => { return Ok(ArgumentValue::ArgString(s)); },
+            Err(_) => { return Ok(ArgumentValue::ArgString(arg.to_string())); }
         }
     }
 }
@@ -82,7 +81,7 @@ impl ArgumentValueConv for PathOrCodeConv {
 pub trait TConversion {
     fn invoke(&self, text: &String) -> Result<Tuple<Rc<SExp>, String>, EvalError>;
 }
-pub fn call_tool(tool_name: String, desc: String, conversion: Box<TConversion>, input_args: &Vec<String>) {
+pub fn call_tool(tool_name: String, desc: String, conversion: Box<dyn TConversion>, input_args: &Vec<String>) {
     let props = TArgumentParserProps {
         description: desc,
         prog: tool_name
@@ -101,7 +100,7 @@ pub fn call_tool(tool_name: String, desc: String, conversion: Box<TConversion>, 
         vec!("path_or_code".to_string()),
         Argument::new().
             setNArgs(NArgsSpec::KleeneStar).
-            setType(Box::new(PathOrCodeConv {})).
+            setType(Rc::new(PathOrCodeConv {})).
             setHelp("path to clvm script, or literal script".to_string())
     );
 
@@ -109,18 +108,33 @@ pub fn call_tool(tool_name: String, desc: String, conversion: Box<TConversion>, 
     for a in input_args[1..].into_iter() {
         rest_args.push(a.to_string());
     }
-    let args = parser.parse_args(&rest_args);
+    let args_res = parser.parse_args(&rest_args);
+    let mut args : HashMap<String, ArgumentValue> = HashMap::new();
+
+    match args_res {
+        Ok(a) => { args = a; },
+        Err(e) => {
+            print!("{:?}", e);
+            return;
+        }
+    }
+
+    let args_path_or_code_val =
+        match args.get(&"path_or_code".to_string()) {
+            None => ArgumentValue::ArgArray(vec!()),
+            Some(v) => v.clone()
+        };
 
     let args_path_or_code =
-        match args.get(&"path_or_code".to_string()) {
-            None => vec!(),
-            Some(v) => v.to_vec()
+        match args_path_or_code_val {
+            ArgumentValue::ArgArray(v) => v,
+            _ => vec!()
         };
 
     for program in args_path_or_code {
         match program {
             ArgumentValue::ArgString(s) => {
-                if(s == "-"){
+                if s == "-" {
                     panic!("Read stdin is not supported at this time");
                 }
 

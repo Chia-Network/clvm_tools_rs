@@ -1,10 +1,9 @@
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::Record;
 use crate::classic::clvm::CLVMObject::CLVMObject;
 use crate::classic::clvm::SExp::SExp;
-use crate::classic::clvm::{KEYWORD_FROM_ATOM, KEYWORD_TO_ATOM};
+use crate::classic::clvm::{KEYWORD_TO_ATOM};
 use crate::classic::clvm_tools::ir::writer::write_ir;
 
 // import {
@@ -100,7 +99,7 @@ use crate::classic::clvm_tools::ir::writer::write_ir;
 
 pub fn disassemble_to_ir_with_kw(
   sexp: &SExp,
-  keyword_from_atom: &Record<String, String>
+  _keyword_from_atom: &Record<String, String>
 ) -> SExp {
   // if(is_ir(sexp) && allow_keyword !== false){
   //   return ir_cons(ir_symbol("ir"), sexp);

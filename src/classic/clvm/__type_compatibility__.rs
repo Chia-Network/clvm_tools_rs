@@ -508,7 +508,7 @@ impl Stream {
                 Some(s) => s
             };
 
-        /**
+        /*
          * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Errors/Invalid_array_length
          */
         if s > 4294967295 { // 4294967295 = 2**32 - 1

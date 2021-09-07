@@ -1,11 +1,6 @@
 use std::rc::Rc;
 
 use crate::classic::clvm::SExp::{CastableType, SExp};
-use crate::classic::clvm::__type_compatibility__::{
-    Bytes,
-    Tuple,
-    t
-};
 use crate::classic::clvm::EvalError::EvalError;
 
 pub type TValStack = Vec<CastableType>;
