@@ -10,7 +10,6 @@ use crate::classic::clvm::__type_compatibility__::{
     Bytes,
     BytesFromType,
     Tuple,
-    isNone,
     t
 };
 use crate::classic::clvm::CLVMObject::{CLVMObject};
@@ -97,7 +96,7 @@ pub fn to_sexp_type(value: CastableType) -> Result<Rc<CLVMObject>, EvalError> {
     let mut ops : Vec<SexpStackOp> = vec!(SexpStackOp::OpConvert);
     let mut op = ops.pop();
 
-    while !isNone(&op) {
+    while !op.is_none() {
         // convert value
         match op {
             None => {
@@ -113,31 +112,31 @@ pub fn to_sexp_type(value: CastableType) -> Result<Rc<CLVMObject>, EvalError> {
                             },
                             Some(rc) => {
                                 match rc.borrow() {
-                                    CastableType::CLVMObject(o) => {
+                                    CastableType::CLVMObject(_) => {
                                         stack.push(rc.clone());
                                     },
                                     CastableType::TupleOf(left, right) => {
-                                        let targetIndex = stack.len();
+                                        let target_index = stack.len();
                                         stack.push(
                                             Rc::new(CastableType::CLVMObject(Rc::new(CLVMObject::Pair(Rc::new(CLVMObject::new()), Rc::new(CLVMObject::new())))))
                                         );
 
                                         stack.push(right.clone());
-                                        ops.push(SexpStackOp::OpSetPair(true, targetIndex)); // set right
+                                        ops.push(SexpStackOp::OpSetPair(true, target_index)); // set right
                                         ops.push(SexpStackOp::OpConvert); // convert
 
                                         stack.push(left.clone());
-                                        ops.push(SexpStackOp::OpSetPair(false, targetIndex));
+                                        ops.push(SexpStackOp::OpSetPair(false, target_index));
                                         ops.push(SexpStackOp::OpConvert);
                                     },
-                                    CastableType::ListOf(sel,v) => {
-                                        let targetIndex = stack.len();
+                                    CastableType::ListOf(_sel,v) => {
+                                        let target_index = stack.len();
                                         stack.push(
                                             Rc::new(CastableType::CLVMObject(Rc::new(CLVMObject::new())))
                                         );
                                         for i in 0..v.len() - 1 {
                                             stack.push(v[i].clone());
-                                            ops.push(SexpStackOp::OpPrepend(targetIndex));
+                                            ops.push(SexpStackOp::OpPrepend(target_index));
                                             // we only need to convert if it's not already the right type
                                             ops.push(SexpStackOp::OpConvert);
                                         }
@@ -379,7 +378,7 @@ impl SExp {
     pub fn list_len(&self) -> usize {
         let null = CLVMObject::new();
         let mut v: &SExp = self;
-        let mut holder = Rc::new(CLVMObject::new());
+        let mut holder;
         let mut size = 0;
 
         while v.listp() {

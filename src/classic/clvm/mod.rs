@@ -11,19 +11,59 @@ pub mod more_ops;
 pub mod serialize;
 pub mod SExp;
 
+struct KwAtomPair {
+    v: u8,
+    n: &'static str
+}
+
+const kw_pairs: [KwAtomPair; 32] = [
+    KwAtomPair { v: 0x01, n: "q" },
+    KwAtomPair { v: 0x02, n: "a" },
+    KwAtomPair { v: 0x03, n: "i" },
+    KwAtomPair { v: 0x04, n: "c" },
+    KwAtomPair { v: 0x05, n: "f" },
+    KwAtomPair { v: 0x06, n: "r" },
+    KwAtomPair { v: 0x07, n: "l" },
+    KwAtomPair { v: 0x08, n: "x" },
+    KwAtomPair { v: 0x09, n: "=" },
+    KwAtomPair { v: 0x0a, n: ">s" },
+    KwAtomPair { v: 0x0b, n: "sha256" },
+    KwAtomPair { v: 0x0c, n: "substr" },
+    KwAtomPair { v: 0x0d, n: "strlen" },
+    KwAtomPair { v: 0x0e, n: "concat" },
+    KwAtomPair { v: 0x10, n: "+" },
+    KwAtomPair { v: 0x11, n: "-" },
+    KwAtomPair { v: 0x12, n: "*" },
+    KwAtomPair { v: 0x13, n: "/" },
+    KwAtomPair { v: 0x14, n: "divmod" },
+    KwAtomPair { v: 0x15, n: ">" },
+    KwAtomPair { v: 0x16, n: "ash" },
+    KwAtomPair { v: 0x17, n: "lsh" },
+    KwAtomPair { v: 0x18, n: "logand" },
+    KwAtomPair { v: 0x19, n: "logior" },
+    KwAtomPair { v: 0x1a, n: "logxor" },
+    KwAtomPair { v: 0x1b, n: "lognot" },
+    KwAtomPair { v: 0x1d, n: "point_add" },
+    KwAtomPair { v: 0x1e, n: "pubkey_for_exp" },
+    KwAtomPair { v: 0x20, n: "not" },
+    KwAtomPair { v: 0x21, n: "any" },
+    KwAtomPair { v: 0x22, n: "all" },
+    KwAtomPair { v: 0x24, n: "softfork" }
+];
+
 lazy_static! {
-    static ref keyword_from_atom : HashMap<String, String> = {
-        HashMap::new()
+    pub static ref KEYWORD_FROM_ATOM : HashMap<Vec<u8>, String> = {
+        let mut result = HashMap::new();
+        for pair in kw_pairs {
+            result.insert(vec!(pair.v), pair.n.to_string());
+        }
+        return result;
     };
-    static ref keyword_to_atom : HashMap<String, String> = {
-        HashMap::new()
+    pub static ref KEYWORD_TO_ATOM : HashMap<String, Vec<u8>> = {
+        let mut result = HashMap::new();
+        for pair in kw_pairs {
+            result.insert(pair.n.to_string(), vec!(pair.v));
+        }
+        return result;
     };
-}
-
-pub fn KEYWORD_FROM_ATOM() -> &'static HashMap<String, String> {
-    return &keyword_from_atom;
-}
-
-pub fn KEYWORD_TO_ATOM() -> &'static HashMap<String, String> {
-    return &keyword_to_atom;
 }

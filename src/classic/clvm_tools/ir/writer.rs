@@ -6,34 +6,29 @@ use crate::classic::clvm::__type_compatibility__::{
     BytesFromType,
     Stream
 };
-use crate::classic::clvm::CLVMObject::CLVMObject;
-use crate::classic::clvm::SExp::SExp;
+use crate::classic::clvm::casts::{
+    TConvertOption,
+    bigint_from_bytes
+};
 
-// import {SExp, int_from_bytes, sexp_to_stream, str, Stream, b} from "clvm";
-// import {Type} from "./Type";
-// import {
-//   ir_nullp,
-//   ir_type,
-//   ir_listp,
-//   ir_first,
-//   ir_rest,
-//   ir_as_atom,
-//   ir_val,
-// } from "./utils";
+use crate::classic::clvm_tools::ir::Type::IRRepr;
 
+#[derive(Debug)]
 enum IROutputState {
-    Start(Rc<SExp>),
-    ListOf(Rc<SExp>),
-    DotThen(Rc<SExp>),
+    Start(Rc<IRRepr>),
+    MaybeSep(Rc<IRRepr>),
+    ListOf(Rc<IRRepr>),
+    DotThen(Rc<IRRepr>),
     EndParen,
 }
 
+#[derive(Debug)]
 struct IROutputIterator {
     state : Vec<IROutputState>
 }
 
 impl IROutputIterator {
-    fn new(ir_sexp: Rc<SExp>) -> IROutputIterator {
+    fn new(ir_sexp: Rc<IRRepr>) -> IROutputIterator {
         return IROutputIterator {
             state: vec!(IROutputState::Start(ir_sexp))
         };
@@ -44,53 +39,62 @@ impl Iterator for IROutputIterator {
     type Item = String;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.state.pop() {
-            None => None,
-            Some(IROutputState::EndParen) => { return Some(")".to_string()); },
-            Some(IROutputState::Start(v)) => {
-                match v.borrow() {
-                    CLVMObject::Atom(a) => {
-                        if a.length() == 0 {
-                            return Some("()".to_string());
-                        }
-
-                        // TODO: stringify bytes properly.
-                        return Some(("0x".to_string() + &a.hex()).to_string());
-                    },
-                    CLVMObject::Pair(l,r) => {
-                        self.state.push(IROutputState::ListOf(Rc::new(CLVMObject::Pair(l.clone(),r.clone()))));
-                        return Some("(".to_string());
+        loop {
+            match self.state.pop() {
+                None => { return None; },
+                Some(IROutputState::EndParen) => { return Some(")".to_string()); },
+                Some(IROutputState::Start(v)) => {
+                    match v.borrow() {
+                        IRRepr::Cons(l,r) => {
+                            self.state.push(IROutputState::ListOf(Rc::new(IRRepr::Cons(l.clone(),r.clone()))));
+                            return Some("(".to_string());
+                        },
+                        IRRepr::Null => { return Some("()".to_string()); },
+                        IRRepr::Quotes(q) => { return Some(q.to_formal_string()); },
+                        IRRepr::Int(i,signed) => {
+                            let opts = TConvertOption { signed: *signed };
+                            return Some(bigint_from_bytes(i, Some(opts)).to_string());
+                        },
+                        IRRepr::Hex(h) => { return Some("0x".to_string() + &h.hex()); },
+                        IRRepr::Symbol(s) => { return Some(s.to_string()); }
                     }
-                }
-            },
-            Some(IROutputState::ListOf(v)) => {
-                match v.borrow() {
-                    CLVMObject::Atom(a) => {
-                        if a.length() == 0 {
-                            return Some(")".to_string());
+                },
+                Some(IROutputState::MaybeSep(sub)) => {
+                    match sub.borrow() {
+                        IRRepr::Null => {
+                            self.state.push(IROutputState::EndParen);
+                        },
+                        _ => {
+                            self.state.push(IROutputState::ListOf(sub.clone()));
+                            return Some(" ".to_string());
                         }
-                        self.state.push(IROutputState::DotThen(Rc::new(CLVMObject::Atom(a.clone()))));
-                        return Some(".".to_string());
-                    },
-                    CLVMObject::Pair(l,r) => {
-                        self.state.push(IROutputState::ListOf(l.clone()));
-                        return self.next();
                     }
-                }
-            },
-            Some(IROutputState::DotThen(v)) => {
-                self.state.push(IROutputState::EndParen);
-                match v.borrow() {
-                    CLVMObject::Atom(a) => {
-                        if a.length() == 0 {
-                            return Some(")".to_string());
+                },
+                Some(IROutputState::ListOf(v)) => {
+                    match v.borrow() {
+                        IRRepr::Cons(l,r) => {
+                            self.state.push(IROutputState::MaybeSep(r.clone()));
+                            self.state.push(IROutputState::Start(l.clone()));
+                        },
+                        IRRepr::Null => {
+                            self.state.push(IROutputState::EndParen);
+                        },
+                        _ => {
+                            self.state.push(IROutputState::EndParen);
+                            self.state.push(IROutputState::DotThen(v.clone()));
+                            return Some(". ".to_string());
                         }
-                        self.state.push(IROutputState::DotThen(Rc::new(CLVMObject::Atom(a.clone()))));
-                        return Some(".".to_string());
-                    },
-                    CLVMObject::Pair(l,r) => {
-                        self.state.push(IROutputState::ListOf(l.clone()));
-                        return self.next();
+                    }
+                },
+                Some(IROutputState::DotThen(v)) => {
+                    match v.borrow() {
+                        IRRepr::Cons(l,r) => {
+                            self.state.push(IROutputState::ListOf(r.clone()));
+                            self.state.push(IROutputState::Start(l.clone()));
+                        },
+                        _ => {
+                            self.state.push(IROutputState::Start(v.clone()));
+                        }
                     }
                 }
             }
@@ -98,14 +102,14 @@ impl Iterator for IROutputIterator {
     }
 }
 
-pub fn write_ir_to_stream(ir_sexp: Rc<SExp>, f: &mut Stream) {
+pub fn write_ir_to_stream(ir_sexp: Rc<IRRepr>, f: &mut Stream) {
     for b in IROutputIterator::new(ir_sexp) {
         f.write(Bytes::new(Some(BytesFromType::String(b))));
     }
 }
 
-pub fn write_ir(ir_sexp: Rc<SExp>) -> String {
+pub fn write_ir(ir_sexp: Rc<IRRepr>) -> String {
     let mut s = Stream::new(None);
     write_ir_to_stream(ir_sexp, &mut s);
-    return s.getValue().decode();
+    return s.get_value().decode();
 }

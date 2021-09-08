@@ -15,9 +15,6 @@ use sha2::Digest;
 use crate::util::Number;
 use crate::classic::clvm::EvalError::EvalError;
 
-//import {Word32Array} from "jscrypto/Word32Array";
-//import {SHA256} from "jscrypto/SHA256";
-
 pub fn to_hexstr(r: &Vec<u8>) -> String {
     return hex::encode(r);
 }
@@ -38,10 +35,10 @@ pub fn vec_to_string(r: &Vec<u8>) -> String {
  * @see https://github.com/python/cpython/blob/main/Objects/bytesobject.c#L1337
  * @param {Uint8Array} r - byteArray to stringify
  */
-pub fn PyBytes_Repr(r : &Vec<u8>) -> String {
+pub fn PyBytes_Repr(r : &Vec<u8>, dquoted: bool) -> String {
     let mut squotes = 0;
     let mut dquotes = 0;
-    for i in 0..r.len() - 1 {
+    for i in 0..r.len() {
         let b = r[i];
         let c = b as char;
         match c {
@@ -51,13 +48,19 @@ pub fn PyBytes_Repr(r : &Vec<u8>) -> String {
         }
     }
     let mut quote = '\'';
-    if squotes > 0 && dquotes == 0 {
+    if squotes > 0 && dquotes == 0 || dquoted {
         quote = '\"';
     }
 
-    let mut s = "b".to_string() + char_to_string(quote).as_str();
+    let mut s = "".to_string();
 
-    for i in 0..r.len() - 1 {
+    if !dquoted {
+        s = s + "b";
+    }
+
+    s = s + char_to_string(quote).as_str();
+
+    for i in 0..r.len() {
         let b = r[i];
         let c = b as char;
         if c == quote || c == '\\' {
@@ -123,7 +126,14 @@ impl Bytes {
                 Bytes::new(Some(BytesFromType::Raw(bvec)))
             }
             Some(BytesFromType::Hex(hstr)) => {
-                match hex::decode(hstr) {
+                let hex_stripped =
+                    hstr.
+                    replace(" ","").
+                    replace("\t","").
+                    replace("\r","").
+                    replace("\n","");
+
+                match hex::decode(hex_stripped) {
                     Ok(d) => Bytes { _b: d },
                     _ => Bytes { _b: vec!() }
                 }
@@ -155,12 +165,13 @@ impl Bytes {
     }
 
     pub fn concat(&self, b: &Bytes) -> Bytes {
-        let mut thisBin = self._b.clone();
-        let mut thatBin = b.raw();
-        let mut concatBin = Vec::<u8>::with_capacity(thisBin.len() + thatBin.len());
-        concatBin.append(&mut thisBin);
-        concatBin.append(&mut thatBin);
-        return Bytes::new(Some(BytesFromType::Raw(concatBin)));
+        let mut this_bin = self._b.clone();
+        let mut that_bin = b.raw();
+        let mut concat_bin =
+            Vec::<u8>::with_capacity(this_bin.len() + that_bin.len());
+        concat_bin.append(&mut this_bin);
+        concat_bin.append(&mut that_bin);
+        return Bytes::new(Some(BytesFromType::Raw(concat_bin)));
     }
 
     pub fn slice(&self, start: usize, length: Option<usize>) -> Self {
@@ -194,8 +205,12 @@ impl Bytes {
         return Bytes::new(Some(BytesFromType::Raw(self._b.clone())));
     }
 
-    pub fn toString(&self) -> String {
-        return PyBytes_Repr(&self._b);
+    pub fn to_string(&self) -> String {
+        return PyBytes_Repr(&self._b, false);
+    }
+
+    pub fn to_formal_string(&self) -> String {
+        return PyBytes_Repr(&self._b, true);
     }
 
     pub fn hex(&self) -> String {
@@ -209,20 +224,20 @@ impl Bytes {
     pub fn startswith(&self, b: &Bytes) -> bool {
         for i in 0..min(b.length(), self._b.len()) - 1 {
             if b.at(i) != self._b[i] {
-                return false
+                return false;
             }
         }
-        return true
+        return true;
     }
 
     pub fn endswith(&self, b: &Bytes) -> bool {
         let blen = min(b.length(), self._b.len()) - 1;
         for i in 0..blen {
             if b.at(blen - i) != self._b[blen - i] {
-                return false
+                return false;
             }
         }
-        return true
+        return true;
     }
 
     pub fn equal_to(&self, b: &Bytes) -> bool {
@@ -251,7 +266,7 @@ impl Bytes {
         let slen = min(self._b.len(), other.length());
 
         for i in 0..slen - 1 {
-            let diff = other.at(i) - self._b[i];
+            let diff : i32 = other.at(i) as i32 - self._b[i] as i32;
             if diff < 0 {
                 return Ordering::Less;
             } else if diff > 0 {
@@ -267,64 +282,12 @@ impl Bytes {
     }
 }
 
-pub fn SHA256(value: Bytes) -> Bytes {
+pub fn sha256(value: Bytes) -> Bytes {
     let hashed = Sha256::digest(&value.data()[..]);
     let hashed_iter = hashed.into_iter();
     let newvec : Vec<u8> = hashed_iter.collect();
     return Bytes::new(Some(BytesFromType::Raw(newvec)));
 }
-
-//   public static from(value?: Uint8Array|Bytes|number[]|string|G1Element|None, type?: BytesFromType){
-//     if(value === None || value === undefined){
-//       return new Bytes(value);
-//     }
-//     else if(value instanceof Uint8Array){
-//       return new Bytes(value.slice());
-//     }
-//     else if(isBytes(value)){
-//       return new Bytes(value.data());
-//     }
-//     else if(Array.isArray(value) && value.every(v => typeof v === "number")){
-//       if(value.some(v => (v < 0 || v > 255))){
-//         throw new Error("Bytes must be in range [0, 256)");
-//       }
-//       return new Bytes(Uint8Array.from(value));
-//     }
-//     else if(typeof value === "string"){
-//       if(!value){
-//         return new Bytes();
-//       }
-//       if(type === "hex"){
-//         value = value.replace(/^0x/, "");
-//         return new Bytes(Hex.parse(value).toUint8Array());
-//       }
-//       else /* if(type === "utf8") */ {
-//         return new Bytes(Utf8.parse(value).toUint8Array());
-//       }
-//     }
-//     else if(type === "G1Element"){
-//       if(typeof (value as G1Element).serialize !== "function"){
-//         throw new Error("Invalid G1Element");
-//       }
-//       const uint8array = (value as G1Element).serialize();
-//       return new Bytes(uint8array);
-//     }
-    
-//     throw new Error(`Invalid value: ${JSON.stringify(value)}`);
-//   }
-
-//   public as_word(){
-//     return new Word32Array(this._b);
-//   }
-// }
-
-// export function b(utf8Str: string, type:"utf8"|"hex" = "utf8"){
-//   return Bytes.from(utf8Str, type);
-// }
-
-// export function h(hexStr: string){
-//   return Bytes.from(hexStr, "hex");
-// }
 
 pub fn list<E, I>(vals : I) -> Vec<E>
 where
@@ -356,6 +319,7 @@ where
     return thing.py_repr();
 }
 
+#[derive(Debug)]
 pub enum Tuple<T1, T2> {
     Tuple(T1,T2)
 }
@@ -373,7 +337,7 @@ impl<T1, T2> Tuple<T1, T2> {
         };
     }
 
-    pub fn toString(&self) -> String
+    pub fn to_string(&self) -> String
     where
         T1 : PythonStr,
         T2 : PythonStr
@@ -396,50 +360,15 @@ where
     T1 : PythonStr,
     T2 : PythonStr
 {
-    fn py_str(&self) -> String { return self.toString(); }
+    fn py_str(&self) -> String { return self.to_string(); }
 }
 
-// export function isTuple(v: unknown): v is Tuple<unknown, unknown> {
-//   return v instanceof Array && Object.isFrozen(v) && v.length === 2;
-// }
-
-// /**
-//  * Check whether an argument is a list and not a tuple
-//  */
-// export function isList(v: unknown): v is unknown[] {
-//   return Array.isArray(v) && !isTuple(v);
-// }
-
-// export function isIterable(v: any): v is unknown[] {
-//   if(Array.isArray(v)){ // Including Tuple.
-//     return true;
-//   }
-//   else if(typeof v === "string"){
-//     return false;
-//   }
-//   else if(typeof v[Symbol.iterator] === "function"){
-//     return true;
-//   }
-//   return false;
-// }
-
-// export function isBytes(v: any): v is Bytes {
-//   return v && typeof v.length === "number"
-//     && typeof v.at === "function"
-//     && typeof v.raw === "function"
-//     && typeof v.data === "function"
-//     && typeof v.hex === "function"
-//     && typeof v.decode === "function"
-//     && typeof v.equal_to === "function"
-//     && typeof v.compare === "function"
-//   ;
-// }
-
-const bufAllocMultiplier : usize = 4;
+const BUF_ALLOC_MULTIPLIER : usize = 4;
 const STREAM_INITIAL_BUFFER_SIZE : usize = 64*1024;
 
 pub type Record<K,V> = HashMap<K,V>;
 
+#[derive(Debug)]
 pub struct Stream {
     seek: usize,
     length: usize,
@@ -457,24 +386,12 @@ impl Stream {
                 };
             },
             Some(b) => {
-                let mut stream = Stream {
+                let data = b.data().to_vec();
+                let stream = Stream {
                     seek: 0,
-                    length: 0,
-                    buffer: vec!()
+                    length: data.len(),
+                    buffer: data
                 };
-
-                if b.length() > STREAM_INITIAL_BUFFER_SIZE {
-                    stream.buffer = Vec::<u8>::with_capacity(b.length()*2);
-                }
-                else{
-                    stream.buffer =
-                        Vec::<u8>::with_capacity(STREAM_INITIAL_BUFFER_SIZE);
-                }
-
-                for i in 0..b.length() - 1 {
-                    stream.buffer.push(b.at(i));
-                }
-                stream.length = b.length();
 
                 return stream;
             }
@@ -485,15 +402,15 @@ impl Stream {
         return self.seek;
     }
 
-    pub fn set_seek(&mut self, value: usize) {
+    pub fn set_seek(&mut self, value: i64) {
         if value < 0 {
             self.seek = self.length - 1;
         }
-        else if value > self.length - 1 {
+        else if value as usize > self.length - 1 {
             self.seek = self.length;
         }
         else {
-            self.seek = value;
+            self.seek = value as usize;
         }
     }
 
@@ -501,10 +418,10 @@ impl Stream {
         return self.length;
     }
 
-    fn reAllocate(&mut self, size: Option<usize>) {
+    fn re_allocate(&mut self, size: Option<usize>) {
         let mut s =
             match size {
-                None => self.buffer.len() * bufAllocMultiplier,
+                None => self.buffer.len() * BUF_ALLOC_MULTIPLIER,
                 Some(s) => s
             };
 
@@ -516,78 +433,81 @@ impl Stream {
         }
 
         let mut buf = Vec::<u8>::with_capacity(s);
-        for i in 0..self.buffer.len() - 1 {
-            buf[i] = self.buffer[i];
+        for by in &self.buffer {
+            buf.push(*by);
         }
         self.buffer = buf;
     }
 
     pub fn write(&mut self, b: Bytes) -> usize {
-        let newLength = max(self.buffer.len(), b.length() + self.seek);
-        if newLength > self.buffer.len() {
-            self.reAllocate(Some(newLength * bufAllocMultiplier));
+        let new_length = max(self.buffer.len(), b.length() + self.seek);
+        if new_length > self.buffer.len() {
+            self.re_allocate(Some(new_length * BUF_ALLOC_MULTIPLIER));
         }
 
-        let offset = self.seek;
-        for i in 0..b.length() - 1 {
-            self.buffer[i + offset] = b.at(i);
+        if b.length() > 0 {
+            self.buffer.resize(max(self.seek + b.length(), self.buffer.len()), 0);
+
+            for i in 0..b.length() {
+                self.buffer[i + self.seek] = b.at(i);
+            }
         }
 
-        self.length = newLength;
+        self.length = new_length;
         self.seek += b.length(); // Don't move this line prior to `this._length = newLength`!
         return b.length();
     }
 
     pub fn read(&mut self, size: usize) -> Bytes {
-        if self.seek > self.length-1 {
+        if self.seek > self.length || size == 0 {
             return Bytes::new(None); // Return empty byte
         }
 
         let size =
             if self.seek + size <= self.length {
-                self.seek + size
+                size
             } else {
                 self.length - self.seek
             };
 
         let mut u8 = Vec::<u8>::with_capacity(size);
-        for i in 0..size - 1 {
-            u8[i] = self.buffer[self.seek + i];
+        for i in 0..size {
+            u8.push(self.buffer[self.seek + i]);
         }
         self.seek += size;
         return Bytes::new(Some(BytesFromType::Raw(u8)));
     }
 
-    pub fn getValue(&self) -> Bytes {
+    pub fn get_value(&self) -> Bytes {
         return Bytes::new(Some(BytesFromType::Raw(self.buffer.clone())));
     }
 }
 
-pub fn biZero() -> Number { return Zero::zero(); }
-pub fn biOne() -> Number { return One::one(); }
+pub fn bi_zero() -> Number { return Zero::zero(); }
+pub fn bi_one() -> Number { return One::one(); }
 
 /**
  * Python's style division.
  * In javascript, `-8 / 5 === -1` while `-8 / 5 == -2` in Python
  */
 pub fn division(a: &Number, b: &Number) -> Result<Number, EvalError> {
-    if *a == biZero() {
+    if *a == bi_zero() {
         return Ok(a.clone());
-    } else if *b == biZero() {
+    } else if *b == bi_zero() {
         return Err(EvalError::new_str("Division by zero".to_string()));
-    } else if *a > biZero() && *b > biZero() && *a < *b {
-        return Ok(biZero());
-    } else if *a < biZero() && *b < biZero() && *a > *b {
-        return Ok(biZero());
+    } else if *a > bi_zero() && *b > bi_zero() && *a < *b {
+        return Ok(bi_zero());
+    } else if *a < bi_zero() && *b < bi_zero() && *a > *b {
+        return Ok(bi_zero());
     }
 
     let div = a / b;
     if *a == div.clone() * b {
         return Ok(div);
-    } else if div > biZero() {
+    } else if div > bi_zero() {
         return Ok(div);
     }
-    return Ok(div - biOne());
+    return Ok(div - bi_one());
 }
 
 /**
@@ -602,17 +522,7 @@ pub fn divmod(a: Number, b: Number) -> Result<Tuple<Number, Number>,EvalError> {
     return division(&a, &b).map(|d| t(d.clone(), a - b*d));
 }
 
-/**
- * none check
- */
-pub fn isNone<T>(o : &Option<T>) -> bool {
-    return match o {
-        None => true,
-        _ => false
-    };
-}
-
-pub fn getU32(v: &Vec<u8>, n: usize) -> u32 {
+pub fn get_u32(v: &Vec<u8>, n: usize) -> u32 {
     let p1 = v[n] as u32;
     let p2 = v[n+1] as u32;
     let p3 = v[n+2] as u32;

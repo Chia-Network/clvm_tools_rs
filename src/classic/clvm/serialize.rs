@@ -137,9 +137,10 @@ pub fn sexp_to_stream(sexp: Rc<SExp>, f: &mut Stream) {
 struct OpCons { }
 
 impl OpStackEntry for OpCons {
-    fn invoke(&self, op_stack: &mut TOpStack, val_stack: &mut TValStack, f: &mut Stream, to_sexp_f: Box<dyn TToSexpF>) -> Option<EvalError> {
-        return val_stack.pop().and_then(|l| {
-            return val_stack.pop().and_then(|r| {
+    fn invoke(&self, _op_stack: &mut TOpStack, val_stack: &mut TValStack,
+              _f: &mut Stream, to_sexp_f: Box<dyn TToSexpF>) -> Option<EvalError> {
+        return val_stack.pop().and_then(|r| {
+            return val_stack.pop().and_then(|l| {
                 match to_sexp_f.invoke(
                     CastableType::TupleOf(Rc::new(l), Rc::new(r))
                 ) {
@@ -164,6 +165,7 @@ impl OpStackEntry for OpReadSexp {
         if blob.length() == 0 {
             return Some(EvalError::new_str("bad encoding".to_string()));
         }
+
         let b = blob.at(0);
         if b == CONS_BOX_MARKER as u8 {
             op_stack.push(Some(Box::new(OpCons {})));
@@ -194,10 +196,18 @@ pub fn sexp_from_stream(f: &mut Stream, to_sexp_f: Box<dyn TToSexpF>) -> Result<
     let mut op_stack: TOpStack = vec!(Some(Box::new(OpReadSexp {})));
     let mut val_stack: TValStack = vec!();
 
-    while op_stack.len() > 0 {
-        op_stack.pop().and_then(|x| x).map(|func| {
-            func.invoke(&mut op_stack, &mut val_stack, f, Box::new(SimpleCreateCLVMObject {}));
-        });
+    loop {
+        match op_stack.pop() {
+            Some(Some(func)) => {
+                func.invoke(
+                    &mut op_stack,
+                    &mut val_stack,
+                    f,
+                    Box::new(SimpleCreateCLVMObject {})
+                );
+            },
+            _ => { break; }
+        }
     }
 
     return val_stack.pop().map(|v| to_sexp_f.invoke(v)).
@@ -274,7 +284,7 @@ than parsing and returning a python S-expression tree.
 //   return buffer.getValue();
 // }
 
-pub fn atom_from_stream(f: &mut Stream, b_: u8, to_sexp_f: Box<dyn TToSexpF>) -> Result<SExp, EvalError> {
+pub fn atom_from_stream(f: &mut Stream, b_: u8, _to_sexp_f: Box<dyn TToSexpF>) -> Result<SExp, EvalError> {
     let mut b = b_;
 
     if b == 0x80 {
@@ -301,7 +311,7 @@ pub fn atom_from_stream(f: &mut Stream, b_: u8, to_sexp_f: Box<dyn TToSexpF>) ->
         }
         size_blob = size_blob.concat(&bin);
     }
-    return int_from_bytes(Some(size_blob), None).and_then(|size| {
+    return int_from_bytes(size_blob, None).and_then(|size| {
         if size >= 0x400000000 {
             return Err(EvalError::new_str("blob too large".to_string()));
         }

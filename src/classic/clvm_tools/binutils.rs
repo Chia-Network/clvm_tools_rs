@@ -1,45 +1,30 @@
+use std::borrow::Borrow;
 use std::rc::Rc;
 
-use crate::classic::clvm::__type_compatibility__::Record;
+use encoding8::ascii::is_printable;
+use unicode_segmentation::UnicodeSegmentation;
+
+use crate::classic::clvm::__type_compatibility__::{
+    Bytes,
+    Record
+};
 use crate::classic::clvm::CLVMObject::CLVMObject;
 use crate::classic::clvm::SExp::SExp;
-use crate::classic::clvm::{KEYWORD_TO_ATOM};
+use crate::classic::clvm::{
+    KEYWORD_TO_ATOM,
+    KEYWORD_FROM_ATOM
+};
+use crate::classic::clvm_tools::ir::Type::IRRepr;
 use crate::classic::clvm_tools::ir::writer::write_ir;
 
-// import {
-//   KEYWORD_FROM_ATOM,
-//   KEYWORD_TO_ATOM,
-//   int_from_bytes,
-//   int_to_bytes,
-//   SExp,
-//   str,
-//   Bytes,
-//   int,
-//   Tuple,
-//   t,
-//   h,
-// } from "clvm";
-// import {read_ir} from "../ir/reader";
-// import {write_ir} from "../ir/writer";
-// import {
-//   ir_as_symbol,
-//   ir_cons,
-//   ir_first,
-//   ir_listp,
-//   ir_null,
-//   ir_nullp,
-//   ir_rest,
-//   ir_symbol,
-//   ir_val,
-//   is_ir,
-// } from "../ir/utils";
-// import {Type} from "../ir/Type";
-
-// function isPrintable(s: str){
-//   // eslint-disable-next-line no-control-regex
-//   const regex = /^[0-9a-zA-Z!"#$%&'()*+,-./:;<=>?@\\[\]^_`{|}~ \t\n\r\x0b\x0c]+$/;
-//   return regex.test(s);
-// }
+pub fn is_printable_string(s: &String) -> bool {
+    for ch in s.graphemes(true) {
+        if ch.chars().nth(0).unwrap() > 0xff as char || !is_printable(ch.chars().nth(0).unwrap() as u8) {
+            return false;
+        }
+    }
+    return true;
+}
 
 // export function assemble_from_ir(ir_sexp: SExp): SExp {
 //   let keyword = ir_as_symbol(ir_sexp);
@@ -78,69 +63,83 @@ use crate::classic::clvm_tools::ir::writer::write_ir;
 //   return sexp_1.cons(sexp_2);
 // }
 
-// export function type_for_atom(atom: Bytes): int {
-//   if(atom.length > 2){
-//     try{
-//       const v = atom.decode();
-//       if(isPrintable(v)){
-//         return Type.QUOTES.i;
-//       }
-//     }
-//     catch (e) {
-//       // do nothing
-//     }
-//     return Type.HEX.i;
-//   }
-//   if(int_to_bytes(int_from_bytes(atom)).equal_to(atom)){
-//     return Type.INT.i;
-//   }
-//   return Type.HEX.i;
-// }
+pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
+    if atom.length() == 0 {
+        return IRRepr::Null;
+    }
+    if atom.length() > 2 {
+        match String::from_utf8(atom.data().to_vec()) {
+            Ok(v) => {
+                if is_printable_string(&v) {
+                    return IRRepr::Quotes(atom.clone());
+                }
+            },
+            _ => { }
+        }
+        // Determine whether the bytes identity an integer in canonical form.
+    } else {
+        if allow_keyword {
+            match KEYWORD_FROM_ATOM.get(atom.data()) {
+                Some(kw) => { return IRRepr::Symbol(kw.to_string()); },
+                _ => { }
+            }
+        }
 
+        if atom.length() == 1 || (atom.length() > 1 && atom.data()[0] != 0) {
+            return IRRepr::Int(atom.clone(), true);
+        }
+    }
+    return IRRepr::Hex(atom.clone());
+}
+
+/*
+ * (2 2 (2) (2 3 4)) => (a 2 (a) (a 3 4))
+ *
+ * d(P(2,P(2,P(P(2,()),P(P(2,P(3,P(4))))))), head=true)
+ * a(2,true); d(P(2,P(P(2,()),P(P(2,P(3,P(4)))))), head=false)
+ * a(2,false); d(P(P(2,()),P(P(2,P(3,P(4))))), head=false)
+ * d(P(2,()), head=true); d(P(P(2,P(3,P(4)))), head=false)
+ * a(2,true); d((), head=false); d(P(P(2,P(3,P(4)))), head=false)
+ * a((),false); d(P(P(2,P(3,P(4)))), head=false)
+ */
 pub fn disassemble_to_ir_with_kw(
-  sexp: &SExp,
-  _keyword_from_atom: &Record<String, String>
-) -> SExp {
-  // if(is_ir(sexp) && allow_keyword !== false){
-  //   return ir_cons(ir_symbol("ir"), sexp);
-  // }
-  
-  // if(sexp.listp()){
-  //   if(sexp.first().listp() || allow_keyword !== false){
-  //     allow_keyword = true as A;
-  //   }
-  //   const v0 = disassemble_to_ir(sexp.first(), keyword_from_atom, allow_keyword);
-  //   const v1 = disassemble_to_ir(sexp.rest(), keyword_from_atom, false);
-  //   return ir_cons(v0, v1);
-  // }
-  
-  // const as_atom = sexp.atom as Bytes;
-  // if(allow_keyword){
-  //   const v = keyword_from_atom[as_atom.hex()];
-  //   if(v && v !== "."){
-  //     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  //     // @ts-ignore
-  //     return ir_symbol(v); // @todo Find a good way not to use `ts-ignore`
-  //   }
-  // }
-  
-  // if(sexp.nullp()){
-  //   return ir_null();
-  // }
-  
-    // return SExp.to(t(type_for_atom(as_atom), as_atom));
-    return CLVMObject::new();
+    sexp: Rc<SExp>,
+    keyword_from_atom: &Record<String, Vec<u8>>,
+    head: bool,
+    allow_keyword: bool
+) -> IRRepr {
+    match sexp.borrow() {
+        CLVMObject::Pair(l,r) => {
+            let new_head =
+                match l.borrow() {
+                    CLVMObject::Pair(_,_) => true,
+                    _ => head
+                };
+
+            let v0 =
+                disassemble_to_ir_with_kw(
+                    l.clone(), keyword_from_atom, new_head, allow_keyword
+                );
+            let v1 =
+                disassemble_to_ir_with_kw(
+                    r.clone(), keyword_from_atom, false, allow_keyword
+                );
+            return IRRepr::Cons(Rc::new(v0), Rc::new(v1));
+        },
+
+        CLVMObject::Atom(a) => { return ir_for_atom(a, head && allow_keyword); }
+    }
 }
 
 pub fn disassemble_with_kw(
-    sexp: &SExp, keyword_from_atom: &Record<String, String>
+    sexp: Rc<SExp>, keyword_from_atom: &Record<String, Vec<u8>>
 ) -> String {
-  let symbols = disassemble_to_ir_with_kw(sexp, &keyword_from_atom);
+  let symbols = disassemble_to_ir_with_kw(sexp, &keyword_from_atom, true, true);
   return write_ir(Rc::new(symbols));
 }
 
 pub fn disassemble(sexp: Rc<SExp>) -> String {
-    return disassemble_with_kw(&sexp, KEYWORD_TO_ATOM());
+    return disassemble_with_kw(sexp.clone(), &KEYWORD_TO_ATOM);
 }
 
 // export function assemble(s: str){

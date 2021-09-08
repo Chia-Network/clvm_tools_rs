@@ -1,95 +1,103 @@
+use num_bigint::ToBigInt;
+
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
-    getU32
+    bi_zero,
+    bi_one,
+    get_u32
 };
 use crate::classic::clvm::EvalError::EvalError;
+use crate::util::Number;
 
 pub struct TConvertOption {
-    signed: bool
+    pub signed: bool
 }
 
-pub fn int_from_bytes(b: Option<Bytes>, option: Option<TConvertOption>) -> Result<u64, EvalError> {
-    match b {
-        None => { return Ok(0); },
-        Some(b) => {
-            if b.length() == 0 {
-                return Ok(0);
-            }  else if b.length() * 8 > 64 {
-                return Err(EvalError::new_str("Cannot convert Bytes to Integer larger than 64bit. Use bigint_from_bytes instead.".to_string()));
-            }
+pub fn int_from_bytes(b: Bytes, option: Option<TConvertOption>) -> Result<u64, EvalError> {
+    if b.length() == 0 {
+        return Ok(0);
+    }  else if b.length() * 8 > 64 {
+        return Err(EvalError::new_str("Cannot convert Bytes to Integer larger than 64bit. Use bigint_from_bytes instead.".to_string()));
+    }
 
-            let signed = option.map(|o| true).unwrap_or_else(|| false);
-            let mut unsigned64 : u64 = 0;
-            let dv = b.raw();
+    let signed = option.map(|cvt| cvt.signed).unwrap_or_else(|| false);
+    let mut unsigned64 : u64 = 0;
+    let dv = b.raw();
 
-            let bytes4Remain = dv.len() % 4;
-            let bytes4Length = (dv.len() - bytes4Remain) / 4;
+    let bytes4_remain = dv.len() % 4;
+    let bytes4_length = (dv.len() - bytes4_remain) / 4;
 
-            let mut order : u64 = 1;
+    let mut order : u64 = 1;
 
-            for iReverse in 0..bytes4Length-1 {
-                let i = bytes4Length - iReverse - 1;
-                let byte32 = getU32(&dv, i*4 + bytes4Remain) as u64;
-                unsigned64 += byte32 * order;
-                order = order << 32;
-            }
-
-            if bytes4Remain > 0 {
-                if bytes4Length == 0 {
-                    order = 1;
-                }
-                for iReverse in 0..bytes4Remain-1 {
-                    let i = bytes4Remain - iReverse - 1;
-                    let byte = dv[i] as u64;
-                    unsigned64 += byte * order;
-                    order = order << 8;
-                }
-            }
-
-            // If the first bit is 1, it is recognized as a negative number.
-            if signed && ((dv[0] & 0x80) != 0) {
-                return Ok((unsigned64 - 1 << (b.length()*8)) as u64);
-            }
-            return Ok(unsigned64);
+    if bytes4_length > 0 {
+        for i_reverse in 0..bytes4_length {
+            let i = bytes4_length - i_reverse - 1;
+            let byte32 = get_u32(&dv, i*4 + bytes4_remain) as u64;
+            unsigned64 += byte32 * order;
+            order = order << 32;
         }
     }
+
+    if bytes4_remain > 0 {
+        if bytes4_length == 0 {
+            order = 1;
+        }
+        for i_reverse in 0..bytes4_remain {
+            let i = bytes4_remain - i_reverse - 1;
+            let byte = dv[i] as u64;
+            unsigned64 += byte * order;
+            order = order << 8;
+        }
+    }
+
+    // If the first bit is 1, it is recognized as a negative number.
+    if signed && ((dv[0] & 0x80) != 0) {
+        return Ok((unsigned64 - 1 << (b.length()*8)) as u64);
+    }
+    return Ok(unsigned64);
 }
 
-// export function bigint_from_bytes(b: Bytes|None, option?: Partial<TConvertOption>): bigint {
-//   if(!b || b.length === 0){
-//     return BigInt(0);
-//   }
-//   const signed = (option && typeof option.signed === "boolean") ? option.signed : false;
-//   let unsigned32 = BigInt(0);
-//   const ui8array = b.raw();
-//   const dv = new DataView(ui8array.buffer, ui8array.byteOffset, ui8array.byteLength);
-//   const bytes4Remain = dv.byteLength % 4;
-//   const bytes4Length = (dv.byteLength - bytes4Remain) / 4;
-  
-//   let order = BigInt(1);
-//   for(let i=bytes4Length-1;i>=0;i--){
-//     const byte32 = dv.getUint32(i*4 + bytes4Remain);
-//     unsigned32 += BigInt(byte32) * order;
-//     order <<= BigInt(32);
-//   }
-  
-//   if(bytes4Remain > 0){
-//     if(bytes4Length === 0){
-//       order = BigInt(1);
-//     }
-//     for(let i=bytes4Remain-1;i>=0;i--){
-//       const byte = ui8array[i];
-//       unsigned32 += BigInt(byte) * order;
-//       order <<= BigInt(8);
-//     }
-//   }
-  
-//   // If the first bit is 1, it is recognized as a negative number.
-//   if(signed && (ui8array[0] & 0x80)){
-//     return unsigned32 - (BigInt(1) << BigInt(b.length*8));
-//   }
-//   return unsigned32;
-// }
+pub fn bigint_from_bytes(b: &Bytes, option: Option<TConvertOption>) -> Number {
+    if b.length() == 0 {
+        return bi_zero();
+    }
+
+    let signed = option.map(|cvt| cvt.signed).unwrap_or_else(|| false);
+    let mut unsigned = bi_zero();
+    let dv = b.raw();
+
+    let bytes4_remain = dv.len() % 4;
+    let bytes4_length = (dv.len() - bytes4_remain) / 4;
+
+    let mut order = bi_one();
+
+    if bytes4_length > 0 {
+        for i_reverse in 0..bytes4_length {
+            let i = bytes4_length - i_reverse - 1;
+            let byte32 = get_u32(&dv, i*4 + bytes4_remain);
+            unsigned += byte32.to_bigint().unwrap() * order.clone();
+            order <<= 32;
+        }
+    }
+
+    if bytes4_remain > 0 {
+        if bytes4_length == 0 {
+            order = bi_one();
+        }
+        for i_reverse in 0..bytes4_remain {
+            let i = bytes4_remain - i_reverse - 1;
+            let byte = dv[i];
+            unsigned += byte.to_bigint().unwrap() * order.clone();
+            order <<= 8;
+        }
+    }
+
+    // If the first bit is 1, it is recognized as a negative number.
+    if signed && ((dv[0] & 0x80) != 0) {
+        return unsigned - (bi_one() << (b.length()*8));
+    }
+    return unsigned;
+}
 
 // export function int_to_bytes(v: number, option?: Partial<TConvertOption>): Bytes {
 //   if(v > Number.MAX_SAFE_INTEGER || v < Number.MIN_SAFE_INTEGER){

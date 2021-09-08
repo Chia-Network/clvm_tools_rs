@@ -22,14 +22,14 @@ impl CLVMObject {
         return nil();
     }
 
-    pub fn isAtom(obj: CLVMObject) -> bool {
+    pub fn is_atom(obj: CLVMObject) -> bool {
         match obj {
             CLVMObject::Atom(_) => true,
             _ => false
         }
     }
 
-    pub fn isCons(obj: CLVMObject) -> bool {
+    pub fn is_cons(obj: CLVMObject) -> bool {
         match obj {
             CLVMObject::Pair(_, _) => true,
             _ => false

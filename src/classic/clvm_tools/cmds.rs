@@ -84,8 +84,9 @@ pub trait TConversion {
 pub fn call_tool(tool_name: String, desc: String, conversion: Box<dyn TConversion>, input_args: &Vec<String>) {
     let props = TArgumentParserProps {
         description: desc,
-        prog: tool_name
+        prog: tool_name.to_string()
     };
+
     let mut parser = ArgumentParser::new(Some(props));
     parser.add_argument(
         vec!(
@@ -93,15 +94,15 @@ pub fn call_tool(tool_name: String, desc: String, conversion: Box<dyn TConversio
             "--script-hash".to_string()
         ),
         Argument::new().
-            setAction(TArgOptionAction::StoreTrue).
-            setHelp("Show only sha256 tree hash of program".to_string())
+            set_action(TArgOptionAction::StoreTrue).
+            set_help("Show only sha256 tree hash of program".to_string())
     );
     parser.add_argument(
         vec!("path_or_code".to_string()),
         Argument::new().
-            setNArgs(NArgsSpec::KleeneStar).
-            setType(Rc::new(PathOrCodeConv {})).
-            setHelp("path to clvm script, or literal script".to_string())
+            set_n_args(NArgsSpec::KleeneStar).
+            set_type(Rc::new(PathOrCodeConv {})).
+            set_help("path to clvm script, or literal script".to_string())
     );
 
     let mut rest_args = Vec::new();
@@ -109,12 +110,12 @@ pub fn call_tool(tool_name: String, desc: String, conversion: Box<dyn TConversio
         rest_args.push(a.to_string());
     }
     let args_res = parser.parse_args(&rest_args);
-    let mut args : HashMap<String, ArgumentValue> = HashMap::new();
+    let args : HashMap<String, ArgumentValue>;
 
     match args_res {
         Ok(a) => { args = a; },
         Err(e) => {
-            print!("{:?}", e);
+            print!("{:?}\n", e);
             return;
         }
     }
@@ -144,9 +145,9 @@ pub fn call_tool(tool_name: String, desc: String, conversion: Box<dyn TConversio
                         let sexp = conv_result.first().clone();
                         let text = conv_result.rest();
                         if args.contains_key(&"script_hash".to_string()) {
-                            print!("{}", sha256tree(&*sexp).hex());
+                            print!("{}\n", sha256tree(&*sexp).hex());
                         } else if text.len() > 0 {
-                            print!("{}", text);
+                            print!("{}\n", text);
                         }
                     },
                     Err(e) => {
@@ -177,18 +178,18 @@ pub fn call_tool(tool_name: String, desc: String, conversion: Box<dyn TConversio
 //   call_tool("opc", "Compile a clvm script.", conversion, args);
 // }
 
-struct OpdConversion { }
+pub struct OpdConversion { }
 
 impl TConversion for OpdConversion {
-    fn invoke(&self, hexText: &String) -> Result<Tuple<Rc<SExp>, String>, EvalError> {
+    fn invoke(&self, hex_text: &String) -> Result<Tuple<Rc<SExp>, String>, EvalError> {
         return sexp_from_stream(
-            &mut Stream::new(Some(Bytes::new(Some(BytesFromType::Hex(hexText.to_string()))))),
+            &mut Stream::new(Some(Bytes::new(Some(BytesFromType::Hex(hex_text.to_string()))))),
             Box::new(SimpleCreateCLVMObject {})
-        ).map(
-            |sexp| {
-                return t(sexp.clone(), disassemble(sexp.clone()));
-            }
-        );
+        ).map(|sexp| {
+            let sexp_clone = sexp.clone();
+            let disassembled = disassemble(sexp_clone.clone());
+            return t(sexp_clone.clone(), disassembled);
+        });
     }
 }
 
