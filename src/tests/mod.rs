@@ -6,7 +6,6 @@ use crate::classic::clvm_tools::cmds::{
     OpdConversion,
     TConversion
 };
-use crate::classic::clvm_tools::ir::writer::write_ir;
 
 #[test]
 fn basic_opd() {

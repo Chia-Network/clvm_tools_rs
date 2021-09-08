@@ -13,3 +13,13 @@ pub enum IRRepr {
     Hex(Bytes),
     Symbol(String)
 }
+
+pub struct SyntaxError {
+    text: String
+}
+
+impl SyntaxError {
+    pub fn new(text: String) -> Self {
+        return SyntaxError { text: text };
+    }
+}

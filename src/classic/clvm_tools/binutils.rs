@@ -6,7 +6,9 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
-    Record
+    BytesFromType,
+    Record,
+    Stream
 };
 use crate::classic::clvm::CLVMObject::CLVMObject;
 use crate::classic::clvm::SExp::SExp;
@@ -15,6 +17,7 @@ use crate::classic::clvm::{
     KEYWORD_FROM_ATOM
 };
 use crate::classic::clvm_tools::ir::Type::IRRepr;
+use crate::classic::clvm_tools::ir::reader::IRReader;
 use crate::classic::clvm_tools::ir::writer::write_ir;
 
 pub fn is_printable_string(s: &String) -> bool {
@@ -26,42 +29,32 @@ pub fn is_printable_string(s: &String) -> bool {
     return true;
 }
 
-// export function assemble_from_ir(ir_sexp: SExp): SExp {
-//   let keyword = ir_as_symbol(ir_sexp);
-//   if(keyword){
-//     if(keyword[0] === "#"){
-//       keyword = keyword.substring(1);
-//     }
-//     const atom = KEYWORD_TO_ATOM[keyword as keyof typeof KEYWORD_TO_ATOM];
-//     if(atom){
-//       return SExp.to(h(atom));
-//     }
-//     else{
-//       return ir_val(ir_sexp);
-//     }
-//     // Original code raises an Error, which never reaches.
-//     // throw new SyntaxError(`can't parse ${keyrowd} at ${ir_sexp._offset}`);
-//   }
-  
-//   if(!ir_listp(ir_sexp)){
-//     return ir_val(ir_sexp);
-//   }
-  
-//   if(ir_nullp(ir_sexp)){
-//     return SExp.to([]);
-//   }
-  
-//   // handle "q"
-//   const first = ir_first(ir_sexp);
-//   keyword = ir_as_symbol(first);
-//   if(keyword === "q"){
-//     // pass;
-//   }
-  
-//   const sexp_1 = assemble_from_ir(first);
-//   const sexp_2 = assemble_from_ir(ir_rest(ir_sexp));
-//   return sexp_1.cons(sexp_2);
-// }
+pub fn assemble_from_ir(ir_sexp: Rc<IRRepr>) -> SExp {
+    match ir_sexp.borrow() {
+        IRRepr::Null => { return CLVMObject::new(); },
+        IRRepr::Quotes(b) => { return CLVMObject::Atom(b.clone()); },
+        IRRepr::Int(b,_signed) => { return CLVMObject::Atom(b.clone()); },
+        IRRepr::Hex(b) => { return CLVMObject::Atom(b.clone()); },
+        IRRepr::Symbol(s) => {
+            let mut s_real_name = s.clone();
+            if s.starts_with("#") {
+                s_real_name = s[1..].to_string();
+            } else {
+                match KEYWORD_TO_ATOM.get(&s_real_name) {
+                    Some(v) => {
+                        return CLVMObject::Atom(Bytes::new(Some(BytesFromType::Raw(v.to_vec()))));
+                    },
+                    None => { }
+                }
+            }
+            let v: Vec<u8> = s_real_name.as_bytes().to_vec();
+            return CLVMObject::Atom(Bytes::new(Some(BytesFromType::Raw(v))));
+        },
+        IRRepr::Cons(l,r) => {
+            return CLVMObject::Pair(Rc::new(assemble_from_ir(l.clone())), Rc::new(assemble_from_ir(r.clone())));
+        }
+    }
+}
 
 pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
     if atom.length() == 0 {
@@ -142,7 +135,9 @@ pub fn disassemble(sexp: Rc<SExp>) -> String {
     return disassemble_with_kw(sexp.clone(), &KEYWORD_TO_ATOM);
 }
 
-// export function assemble(s: str){
-//   const symbols = read_ir(s);
-//   return assemble_from_ir(symbols);
-// }
+pub fn assemble(s: &String) -> Result<SExp, String> {
+    let v = s.as_bytes().to_vec();
+    let stream = Stream::new(Some(Bytes::new(Some(BytesFromType::Raw(v)))));
+    let mut reader = IRReader::new(stream);
+    return reader.read_expr().map(|ir| assemble_from_ir(Rc::new(ir)));
+}

@@ -9,11 +9,13 @@ use crate::util::{Number, u8_from_number};
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
     BytesFromType,
+    Stream,
     Tuple,
     t
 };
 use crate::classic::clvm::CLVMObject::{CLVMObject};
 use crate::classic::clvm::EvalError::EvalError;
+use crate::classic::clvm::serialize::sexp_to_stream;
 
 pub type SExp = CLVMObject;
 
@@ -405,6 +407,12 @@ impl SExp {
     }
 }
 
+pub fn sexp_as_bin(sexp: Rc<SExp>) -> Bytes {
+    let mut f = Stream::new(None);
+    sexp_to_stream(sexp, &mut f);
+    return f.get_value();
+}
+
 pub fn cons(left: Rc<SExp>, right: Rc<SExp>) -> SExp {
     return CLVMObject::Pair(left, right);
 }
@@ -457,12 +465,6 @@ pub fn bool_sexp(b: bool) -> SExp {
   
 //   public as_bigint(){
 //     return bigint_from_bytes(this.atom, {signed: true});
-//   }
-  
-//   public as_bin(){
-//     const f = new Stream();
-//     sexp_to_stream(this, f);
-//     return f.getValue();
 //   }
   
 //   public *as_iter(){

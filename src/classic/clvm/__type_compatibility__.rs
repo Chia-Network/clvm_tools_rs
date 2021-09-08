@@ -529,3 +529,14 @@ pub fn get_u32(v: &Vec<u8>, n: usize) -> u32 {
     let p4 = v[n+3] as u32;
     return p1 | (p2 << 8) | (p3 << 16) | (p4 << 24);
 }
+
+pub fn set_u8(vec: &mut Vec<u8>, n: usize, v: u8) {
+    vec[n] = v;
+}
+
+pub fn set_u32(vec: &mut Vec<u8>, n: usize, v: u32) {
+    vec[n] = (v & 0xff) as u8;
+    vec[n+1] = ((v >> 8) & 0xff) as u8;
+    vec[n+2] = ((v >> 16) & 0xff) as u8;
+    vec[n+3] = ((v >> 24) & 0xff) as u8;
+}

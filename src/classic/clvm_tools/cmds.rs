@@ -15,10 +15,16 @@ use crate::classic::clvm::serialize::{
     sexp_from_stream
 };
 use crate::classic::clvm::SExp::{
-    SExp
+    SExp,
+    sexp_as_bin
 };
-use crate::classic::clvm_tools::binutils::disassemble;
+use crate::classic::clvm_tools::binutils::{
+    disassemble,
+    assemble_from_ir
+};
 use crate::classic::clvm_tools::sha256tree::sha256tree;
+use crate::classic::clvm_tools::ir::reader::read_ir;
+
 use crate::classic::platform::argparse::{
     Argument,
     ArgumentParser,
@@ -163,20 +169,18 @@ pub fn call_tool(tool_name: String, desc: String, conversion: Box<dyn TConversio
     }
 }
 
-// export function opc(args: string[]){
-//   function conversion(text: str){
-//     try{
-//       const ir_sexp = reader.read_ir(text);
-//       const sexp = binutils.assemble_from_ir(ir_sexp);
-//       return t(sexp, sexp.as_bin().hex());
-//     }
-//     catch(ex){
-//       print(`${ex instanceof Error ? ex.message : JSON.stringify(ex)}`);
-//       return t(None, None);
-//     }
-//   }
-//   call_tool("opc", "Compile a clvm script.", conversion, args);
-// }
+pub struct OpcConversion { }
+
+impl TConversion for OpcConversion {
+    fn invoke(&self, hex_text: &String) -> Result<Tuple<Rc<SExp>, String>, EvalError> {
+        return read_ir(hex_text).map(|ir_sexp| {
+            return assemble_from_ir(Rc::new(ir_sexp));
+        }).map(|sexp_| {
+            let sexp = Rc::new(sexp_);
+            return t(sexp.clone(), sexp_as_bin(sexp.clone()).hex());
+        }).map_err(|e| EvalError::new_str(e));
+    }
+}
 
 pub struct OpdConversion { }
 
@@ -191,6 +195,10 @@ impl TConversion for OpdConversion {
             return t(sexp_clone.clone(), disassembled);
         });
     }
+}
+
+pub fn opc(args: &Vec<String>) {
+    call_tool("opc".to_string(), "Compile a clvm script.".to_string(), Box::new(OpcConversion {}), args);
 }
 
 pub fn opd(args: &Vec<String>) {

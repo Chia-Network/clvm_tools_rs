@@ -17,6 +17,7 @@ lazy_static = "1.4.0"
 unicode-segmentation = "1.8.0"
 derivative = "2.2.0"
 encoding8 = "0.3.2"
+num = "0.4.0"
 
 #[target.'cfg(not(unix))'.dependencies]
 sha2 = "0.9.5"
@@ -31,3 +32,7 @@ pyo3 = "0.14.2"
 [[bin]]
 name = "opd"
 path = "src/classic/bins/opd.rs"
+
+[[bin]]
+name = "opc"
+path = "src/classic/bins/opc.rs"

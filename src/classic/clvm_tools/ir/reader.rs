@@ -1,216 +1,254 @@
-// import {to_sexp_f, b, int, str, Tuple, t, Optional, None, Bytes, SExp} from "clvm";
-// import {Type} from "./Type";
-// import {ir_new, ir_cons} from "./utils";
-// import {for_of} from "../platform/for_of";
+use std::rc::Rc;
 
-// export type Token = Tuple<str, int>;
+use crate::classic::clvm::__type_compatibility__::{
+    Bytes,
+    BytesFromType,
+    Stream
+};
+use crate::classic::clvm::casts::{
+    TConvertOption,
+    bigint_to_bytes
+};
+use crate::classic::clvm_tools::ir::Type::IRRepr;
+use crate::util::Number;
 
-// export function consume_whitespace(s: str, offset: int): int {
-//   // This also deals with comments
-//   // eslint-disable-next-line no-constant-condition
-//   while(true){
-//     while(offset < s.length && /\s+/.test(s[offset])){
-//       offset += 1;
-//     }
-//     if(offset >= s.length || s[offset] !== ";"){
-//       break;
-//     }
-//     while(offset < s.length && !/[\n\r]/.test(s[offset])){
-//       offset += 1;
-//     }
-//   }
-//   return offset;
-// }
+pub struct IRReader {
+    stream: Stream
+}
 
-// export function consume_until_whitespace(s: str, offset: int): Token {
-//   const start = offset;
-//   while(offset < s.length && !/\s+/.test(s[offset]) && s[offset] !== ")"){
-//     offset += 1;
-//   }
-//   return t(s.substring(start, offset), offset);
-// }
+// XXX Allows us to track line and column later if desired.
+impl IRReader {
+    fn read(&mut self, n: usize) -> Bytes {
+        return self.stream.read(n);
+    }
 
-// export function next_cons_token(stream: Generator<Token>): Token {
-//   let token: str = "";
-//   let offset: int = -1;
-  
-//   // Fix generator spec incompatibility between python and javascript.
-//   // Javascript iterator cannot be re-used while python can.
-//   /*
-//   for(const s of stream){
-//     found = true;
-//     ([token, offset] = s);
-//     break;
-//   }
-//    */
-//   const isExecutedOnce = for_of(stream, (value) => {
-//     ([token, offset] = value);
-//     return "stop";
-//   });
-//   if(!isExecutedOnce){
-//     throw new SyntaxError("missing )");
-//   }
-  
-//   return t(token, offset);
-// }
+    fn backup(&mut self, n: usize) {
+        let cur_seek = self.stream.get_seek();
+        if n > cur_seek {
+            self.stream.set_seek(0);
+        } else {
+            self.stream.set_seek((cur_seek - n) as i64);
+        }
+    }
 
-// export function tokenize_cons(token: str, offset: int, stream: Generator<Token>): SExp {
-//   if(token === ")"){
-//     return ir_new(Type.NULL.i, 0, offset);
-//   }
-  
-//   const initial_offset = offset;
-//   const first_sexp = tokenize_sexp(token, offset, stream);
-  
-//   ([token, offset] = next_cons_token(stream));
-  
-//   let rest_sexp;
-//   if(token === "."){
-//     const dot_offset = offset;
-//     // grab the last item
-//     ([token, offset] = next_cons_token(stream));
-//     rest_sexp = tokenize_sexp(token, offset, stream);
-//     ([token, offset] = next_cons_token(stream));
-//     if(token !== ")"){
-//       throw new SyntaxError(`illegal dot expression at ${dot_offset}`);
-//     }
-//   }
-//   else{
-//     rest_sexp = tokenize_cons(token, offset, stream);
-//   }
-//   return ir_cons(first_sexp, rest_sexp, initial_offset);
-// }
+    pub fn read_expr(&mut self) -> Result<IRRepr, String> {
+        return consume_object(self);
+    }
 
-// export function tokenize_int(token: str, offset: int): Optional<SExp> {
-//   try{
-//     // Don't recognize hex string to int
-//     if(token.slice(0, 2).toUpperCase() === "0X"){
-//       return None;
-//     }
-//     const nToken = +token;
-//     if(isNaN(nToken) || !isFinite(nToken)){
-//       return None;
-//     }
-    
-//     return ir_new(Type.INT.i, nToken, offset);
-//   }
-//   catch (e){
-//     // Skip
-//   }
-//   return None;
-// }
+    pub fn new(s: Stream) -> Self {
+        return IRReader { stream: s };
+    }
+}
 
-// export function tokenize_hex(token: str, offset: int): Optional<SExp> {
-//   if(token.slice(0, 2).toUpperCase() === "0X"){
-//     try{
-//       token = token.substring(2);
-//       if(token.length % 2 === 1){
-//         token = `0${token}`;
-//       }
-//       return ir_new(Type.HEX.i, Bytes.from(token, "hex"), offset);
-//     }
-//     catch(e){
-//       throw new SyntaxError(`invalid hex at ${offset}: 0x${token}`);
-//     }
-//   }
-//   return None;
-// }
+pub fn is_eol(chval: u8) -> bool {
+    return chval == '\r' as u8 || chval == '\n' as u8;
+}
 
-// export function tokenize_quotes(token: str, offset: int){
-//   if(token.length < 2){
-//     return None;
-//   }
-//   const c = token[0];
-//   if(!/['"]/.test(c)){
-//     return None;
-//   }
-  
-//   if(token[token.length-1] !== c){
-//     throw new SyntaxError(`unterminated string starting at ${offset}: ${token}`);
-//   }
-  
-//   const q_type = c === "'" ? Type.SINGLE_QUOTE : Type.DOUBLE_QUOTE;
-//   return t(t(q_type.i, offset), b(token.substring(1, token.length-1)));
-// }
+pub fn is_space(chval: u8) -> bool {
+    return chval == ' ' as u8 || chval == '\t' as u8 || is_eol(chval);
+}
 
-// export function tokenize_symbol(token: str, offset: int){
-//   return t(t(Type.SYMBOL.i, offset), b(token));
-// }
+pub fn consume_whitespace(s: &mut IRReader) {
+    let mut in_comment = false;
 
-// export function tokenize_sexp(token: str, offset: int, stream: Generator<Token>){
-//   if(token === "("){
-//     const [token, offset] = next_cons_token(stream);
-//     return tokenize_cons(token, offset, stream);
-//   }
-  
-//   for(const f of [
-//     tokenize_int,
-//     tokenize_hex,
-//     tokenize_quotes,
-//     tokenize_symbol,
-//   ]){
-//     const r = f(token, offset);
-//     if(r !== None){
-//       return r;
-//     }
-//   }
-  
-//   return None;
-// }
+    // This also deals with comments
+    // eslint-disable-next-line no-constant-condition
+    loop {
+        let b = s.read(1);
+        if b.length() == 0 {
+            return;
+        }
 
-// export function* token_stream(s: str): Generator<Token> {
-//   let offset = 0;
-//   while(offset < s.length){
-//     offset = consume_whitespace(s, offset);
-//     if(offset >= s.length){
-//       break;
-//     }
-//     const c = s[offset];
-//     if(/[(.)]/.test(c)){
-//       yield t(c, offset);
-//       offset += 1;
-//       continue;
-//     }
-//     if(/["']/.test(c)){
-//       const start = offset;
-//       const initial_c = s[start];
-//       offset += 1;
-//       while(offset < s.length && s[offset] !== initial_c){
-//         offset += 1;
-//       }
-//       if(offset < s.length){
-//         yield t(s.substring(start, offset+1), start);
-//         offset += 1;
-//         continue;
-//       }
-//       else{
-//         throw new SyntaxError(`unterminated string starting at ${start}: ${s.substring(start)}`);
-//       }
-//     }
-//     const [token, end_offset] = consume_until_whitespace(s, offset);
-//     yield t(token, offset);
-//     offset = end_offset;
-//   }
-// }
+        let ch = b.at(0);
+        if in_comment {
+            if is_eol(ch) {
+                in_comment = false;
+            } else {
+                continue;
+            }
+        }
 
-// export function read_ir(s: str, to_sexp: typeof to_sexp_f = to_sexp_f){
-//   const stream = token_stream(s);
-  
-//   // Fix generator spec incompatibility between python and javascript.
-//   // Javascript iterator cannot be re-used while python can.
-//   /*
-//   for(const [token, offset] of stream){
-//     return to_sexp(tokenize_sexp(token, offset, stream));
-//   }
-//    */
-//   let retVal: SExp|undefined;
-//   const isExecutedOnce = for_of(stream, (value) => {
-//     const [token, offset] = value;
-//     retVal = to_sexp(tokenize_sexp(token, offset, stream));
-//     return "stop";
-//   });
-//   if(!isExecutedOnce){
-//     throw new SyntaxError("unexpected end of stream");
-//   }
-//   return retVal as SExp;
-// }
+        if ch == ';' as u8 {
+            in_comment = true;
+            continue;
+        }
+
+        if is_space(ch) {
+            continue;
+        }
+
+        break;
+    }
+
+    s.backup(1);
+}
+
+pub fn consume_quoted(s: &mut IRReader, q: char) -> Result<IRRepr, String> {
+    let starting_at = s.stream.get_seek() - 1;
+    let mut bs = false;
+    let mut qchars = vec!();
+
+    loop {
+        let b = s.read(1);
+        if b.length() == 0 {
+            return Err(format!("unterminated string starting at {}, {}", starting_at, Bytes::new(Some(BytesFromType::Raw(qchars))).decode()));
+        }
+
+        if bs {
+            bs = false;
+            qchars.push(b.at(0));
+        } else if b.at(0) == '\\' as u8 {
+            bs = true;
+        } else if b.at(0) == q as u8 {
+            break;
+        } else {
+            qchars.push(b.at(0));
+        }
+    }
+
+    return Ok(IRRepr::Quotes(Bytes::new(Some(BytesFromType::Raw(qchars)))));
+}
+
+pub fn is_hex(chars: &Vec<u8>) -> bool {
+    return chars.len() > 2 && chars[0] == '0' as u8 &&
+        (chars[1] == 'x' as u8 || chars[1] == 'X' as u8);
+}
+
+pub fn is_dec(chars: &Vec<u8>) -> bool {
+    let mut first = true;
+
+    for ch in chars.iter() {
+        if first {
+            first = false;
+            if *ch == '-' as u8 {
+                continue;
+            }
+        }
+        if *ch > '9' as u8 || *ch < '0' as u8 {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+pub fn interpret_atom_value(chars: &Vec<u8>) -> IRRepr {
+    if chars.len() == 0 {
+        return IRRepr::Null;
+    } else if is_hex(chars) {
+        let mut string_bytes =
+            if chars.len() % 2 > 0 {
+                Bytes::new(Some(BytesFromType::Raw(vec!('0' as u8))))
+            } else {
+                Bytes::new(None)
+            };
+        string_bytes =
+            string_bytes.concat(&Bytes::new(Some(BytesFromType::Raw(chars[2..].to_vec()))));
+
+        return IRRepr::Hex(
+            Bytes::new(Some(BytesFromType::Hex(string_bytes.decode())))
+        );
+    } else {
+        match String::from_utf8(chars.to_vec()).ok().
+            and_then(|s| s.parse::<Number>().ok()).
+            and_then(|n| bigint_to_bytes(&n, Some(TConvertOption { signed: true })).ok())
+        {
+            Some(n) => { return IRRepr::Int(n,true); },
+            None => {
+                let string_bytes = Bytes::new(Some(BytesFromType::Raw(chars.to_vec())));
+                return IRRepr::Symbol(string_bytes.decode());
+            }
+        }
+    }
+}
+
+pub fn consume_atom(s: &mut IRReader, b: &Bytes) -> Option<IRRepr> {
+    let mut result_vec = b.data().to_vec();
+    loop {
+        let b = s.read(1);
+        if b.length() == 0 {
+            return None;
+        }
+
+        if b.at(0) == '(' as u8 || b.at(0) == ')' as u8 || b.at(0) == '.' as u8 || is_space(b.at(0)) {
+            s.backup(1);
+            return Some(interpret_atom_value(&result_vec));
+        }
+
+        result_vec.push(b.at(0));
+    }
+}
+
+pub fn consume_cons_body(s: &mut IRReader) -> Result<IRRepr, String> {
+    consume_whitespace(s);
+
+    let b = s.read(1);
+    if b.length() == 0 {
+        return Err("missing )".to_string());
+    }
+
+    if b.at(0) == ')' as u8 {
+        return Ok(IRRepr::Null);
+    }
+
+    if b.at(0) == '(' as u8 {
+        return consume_cons_body(s).and_then(|f| {
+            return consume_cons_body(s).map(|r| {
+                return IRRepr::Cons(Rc::new(f), Rc::new(r));
+            });
+        });
+    }
+
+    if b.at(0) == '.' as u8 {
+        let result = consume_object(s);
+        consume_whitespace(s);
+        let b = s.read(1);
+        if b.length() == 0 || b.at(0) != ')' as u8 {
+            return Err("missing )".to_string());
+        }
+        return result;
+    }
+
+    if b.at(0) == '\"' as u8 || b.at(0) == '\'' as u8 {
+        match consume_quoted(s, b.at(0) as char) {
+            Err(e) => { return Err(e); },
+            Ok(v) => { return Ok(v); }
+        }
+    } else {
+        match consume_atom(s, &b) {
+            Some(r) => { return Ok(r); },
+            _ => { return Err("missing )".to_string()); }
+        }
+    }
+
+}
+
+pub fn consume_object(s: &mut IRReader) -> Result<IRRepr, String> {
+    consume_whitespace(s);
+    let b = s.read(1);
+
+    if b.length() == 0 {
+        return Ok(IRRepr::Null);
+    } else if b.at(0) == '(' as u8 {
+        return consume_cons_body(s);
+    } else {
+        if b.at(0) == '\"' as u8 || b.at(0) == '\'' as u8 {
+            match consume_quoted(s, b.at(0) as char) {
+                Err(e) => { return Err(e); },
+                Ok(v) => { return Ok(v); }
+            }
+        } else {
+            match consume_atom(s, &b) {
+                None => { return Err("empty stream".to_string()); },
+                Some(ir) => { return Ok(ir); }
+            }
+        }
+    }
+}
+
+pub fn read_ir(s: &String) -> Result<IRRepr, String> {
+    let bytes_of_string = Bytes::new(Some(BytesFromType::Raw(s.as_bytes().to_vec())));
+    let stream = Stream::new(Some(bytes_of_string));
+    let mut reader = IRReader::new(stream);
+    return reader.read_expr();
+}

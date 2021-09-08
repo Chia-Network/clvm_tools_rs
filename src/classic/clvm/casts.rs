@@ -1,10 +1,14 @@
 use num_bigint::ToBigInt;
+use num::pow;
 
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
+    BytesFromType,
     bi_zero,
     bi_one,
-    get_u32
+    get_u32,
+    set_u32,
+    set_u8
 };
 use crate::classic::clvm::EvalError::EvalError;
 use crate::util::Number;
@@ -146,62 +150,69 @@ pub fn bigint_from_bytes(b: &Bytes, option: Option<TConvertOption>) -> Number {
 //   return new Bytes(u8);
 // }
 
-// export function bigint_to_bytes(v: bigint, option?: Partial<TConvertOption>): Bytes {
-//   if(v === BigInt(0)){
-//     return Bytes.NULL;
-//   }
-  
-//   const signed = (option && typeof option.signed === "boolean") ? option.signed : false;
-//   if(!signed && v < BigInt(0)){
-//     throw new Error("OverflowError: can't convert negative int to unsigned");
-//   }
-//   let byte_count = 1;
-//   const div = BigInt(signed ? 1 : 0);
-//   const b32 = BigInt(4294967296);
-//   if(v > 0){
-//     let right_hand = (v + BigInt(1)) * (div + BigInt(1));
-//     while((b32 ** BigInt((byte_count-1)/4 + 1)) < right_hand){
-//       byte_count += 4;
-//     }
-//     right_hand = (v + BigInt(1)) * (div + BigInt(1));
-//     while (BigInt(2) ** (BigInt(8) * BigInt(byte_count)) < right_hand) {
-//       byte_count++;
-//     }
-//   }
-//   else if(v < 0){
-//     let right_hand = (-v + BigInt(1)) * (div + BigInt(1));
-//     while((b32 ** BigInt((byte_count-1)/4 + 1)) < right_hand){
-//       byte_count += 4;
-//     }
-//     right_hand = -v * BigInt(2);
-//     while (BigInt(2) ** (BigInt(8) * BigInt(byte_count)) < right_hand) {
-//       byte_count++;
-//     }
-//   }
-  
-//   const extraByte = (signed && v > 0 && ((v >> (BigInt(byte_count-1)*BigInt(8))) & BigInt(0x80)) > BigInt(0)) ? 1 : 0;
-//   const total_bytes = byte_count + extraByte;
-//   const u8 = new Uint8Array(total_bytes);
-//   const dv = new DataView(u8.buffer);
-//   const byte4Remain = byte_count % 4;
-//   const byte4Length = (byte_count - byte4Remain) / 4;
-  
-//   let bitmask = BigInt(0xffffffff);
-//   for(let i=0;i<byte4Length;i++){
-//     const num = Number((v >> BigInt(32)*BigInt(i)) & bitmask);
-//     const pointer = extraByte + byte4Remain + (byte4Length-1 - i)*4;
-//     dv.setUint32(pointer, num);
-//   }
-//   v >>= BigInt(32) * BigInt(byte4Length);
-//   bitmask = BigInt(0xff);
-//   for(let i=0;i<byte4Remain;i++){
-//     const num = Number((v >> BigInt(8)*BigInt(i)) & bitmask);
-//     const pointer = extraByte + byte4Remain-1-i;
-//     dv.setUint8(pointer, num);
-//   }
-  
-//   return new Bytes(u8);
-// }
+pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<Bytes, String> {
+    let v = v_.clone();
+
+    if v == bi_zero() {
+        return Ok(Bytes::new(None));
+    }
+
+    let signed = option.map(|o| o.signed).unwrap_or_else(|| false);
+    if !signed && v < bi_zero() {
+        return Err("OverflowError: can't convert negative int to unsigned".to_string());
+    }
+    let mut byte_count = 1;
+    let div = if signed { bi_one() } else { bi_zero() };
+    let b32 : u64 = 1_u64 << 32;
+    let bval = b32.to_bigint().unwrap();
+
+    if v > bi_zero() {
+        let mut right_hand = (v.clone() + bi_one()) * (div.clone() + bi_one());
+        while pow(bval.clone(), (byte_count-1)/4 + 1) < right_hand {
+            byte_count += 4;
+        }
+        right_hand = (v.clone() + bi_one()) * (div.clone() + bi_one());
+        while pow(2_u32.to_bigint().unwrap(), 8 * byte_count) < right_hand {
+            byte_count += 1;
+        }
+    } else if v < bi_zero() {
+        let mut right_hand = (-(v.clone()) + bi_one()) * (div + bi_one());
+        while pow(bval.clone(), (byte_count-1)/4 + 1) < right_hand {
+            byte_count += 4;
+        }
+        right_hand = -(v.clone()) * 2.to_bigint().unwrap();
+        while pow(2.to_bigint().unwrap(), 8 * byte_count) < right_hand {
+            byte_count += 1;
+        }
+    }
+
+    let extra_byte =
+        if signed && v > bi_zero() && ((v.clone() >> ((byte_count-1) * 8)) & 0x80_u32.to_bigint().unwrap()) > bi_zero() { 1 } else { 0 };
+
+    let total_bytes = byte_count + extra_byte;
+    let mut dv = Vec::<u8>::with_capacity(total_bytes);
+    let byte4_remain = byte_count % 4;
+    let byte4_length = (byte_count - byte4_remain) / 4;
+
+    dv.resize(total_bytes, 0);
+
+    let (_sign, u32_digits) = v.to_u32_digits();
+    for i in 0..byte4_length {
+        let num = u32_digits[i];
+        let pointer = extra_byte + byte4_remain + (byte4_length-1 - i)*4;
+        set_u32(&mut dv, pointer, num);
+    }
+
+    let lastbytes = u32_digits[u32_digits.len() - 1];
+    let bytes_bitmask = 0xff;
+    for i in 0..byte4_remain {
+        let num = (lastbytes >> (8*i)) & bytes_bitmask;
+        let pointer = extra_byte + byte4_remain-1-i;
+        set_u8(&mut dv, pointer, num as u8);
+    }
+
+    return Ok(Bytes::new(Some(BytesFromType::Raw(dv))));
+}
 
 // /**
 //  * Return the number of bytes required to represent this integer.
