@@ -85,8 +85,8 @@ pub struct DefaultProgramRunner {
 impl DefaultProgramRunner {
     pub fn new() -> Self {
         return DefaultProgramRunner {
-            apply_kw_vec: vec!('a' as u8),
-            quote_kw_vec: vec!('q' as u8),
+            apply_kw_vec: vec!(2 as u8),
+            quote_kw_vec: vec!(1 as u8),
         };
     }
 }

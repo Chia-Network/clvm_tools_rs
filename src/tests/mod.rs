@@ -118,3 +118,18 @@ fn can_echo_quoted() {
         _ => { assert_eq!("expected pair", ""); }
     }
 }
+
+#[test]
+fn can_echo_quoted_atom() {
+    let mut allocator = Allocator::new();
+    let null = allocator.null();
+    let res = run_from_source(&mut allocator, "(1 . 3)".to_string());
+    match allocator.sexp(res) {
+        SExp::Atom(b) => {
+            let res_bytes = allocator.buf(&b).to_vec();
+            assert_eq!(res_bytes.len(), 1);
+            assert_eq!(res_bytes[0], 3);
+        },
+        _ => { assert_eq!("expected atom", ""); }
+    }
+}
