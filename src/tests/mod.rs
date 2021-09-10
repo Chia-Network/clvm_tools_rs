@@ -1,12 +1,24 @@
 use std::fs;
 use std::path::PathBuf;
+use std::rc::Rc;
 
-use clvm_rs::allocator::Allocator;
+use clvm_rs::allocator::{
+    Allocator,
+    NodePtr,
+    SExp
+};
 
 use crate::classic::clvm::__type_compatibility__::t;
 use crate::classic::clvm_tools::cmds::{
     OpdConversion,
     TConversion
+};
+
+use crate::classic::clvm_tools::binutils::assemble_from_ir;
+use crate::classic::clvm_tools::ir::reader::read_ir;
+use crate::classic::clvm_tools::stages::stage_0::{
+    DefaultProgramRunner,
+    TRunProgram
 };
 
 #[test]
@@ -50,4 +62,31 @@ fn big_decode_opd() {
         &expected.first()
     ).unwrap();
     assert_eq!(expected.rest(), result.rest());
+}
+
+fn run_from_source<'a>(allocator: &'a mut Allocator, src: String) -> NodePtr {
+    let ir = read_ir(&src).unwrap();
+    let assembled = assemble_from_ir(allocator, Rc::new(ir)).unwrap();
+    let runner = DefaultProgramRunner::new();
+    let null = allocator.null();
+    let res = runner.run_program(
+        allocator,
+        assembled,
+        null,
+        None
+    ).unwrap();
+    return res.1;
+}
+
+#[test]
+fn can_run_from_source_nil() {
+    let mut allocator = Allocator::new();
+    let res = run_from_source(&mut allocator, "()".to_string());
+    match allocator.sexp(res) {
+        SExp::Atom(b) => {
+            let res_bytes = allocator.buf(&b).to_vec();
+            assert_eq!(res_bytes.len(), 0);
+        },
+        _ => { assert_eq!("expected atom", ""); }
+    }
 }

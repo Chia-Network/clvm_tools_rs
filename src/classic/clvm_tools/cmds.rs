@@ -434,7 +434,7 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
     //         }
     //     }
 
-    //     let assembled_sexp = binutils.emble_from_ir(src_sexp);
+    //     let assembled_sexp = binutils.assemble_from_ir(src_sexp);
     //     if(!parsedArgs["env"]){
     //         parsedArgs["env"] = "()";
     //     }
