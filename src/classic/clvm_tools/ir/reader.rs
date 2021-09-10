@@ -216,7 +216,11 @@ pub fn consume_cons_body(s: &mut IRReader) -> Result<IRRepr, String> {
         }
     } else {
         match consume_atom(s, &b) {
-            Some(r) => { return Ok(r); },
+            Some(f) => {
+                return consume_cons_body(s).map(|r| {
+                    return IRRepr::Cons(Rc::new(f), Rc::new(r));
+                });
+            },
             _ => { return Err("missing )".to_string()); }
         }
     }
