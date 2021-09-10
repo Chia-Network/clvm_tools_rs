@@ -133,3 +133,18 @@ fn can_echo_quoted_atom() {
         _ => { assert_eq!("expected atom", ""); }
     }
 }
+
+#[test]
+fn can_do_operations() {
+    let mut allocator = Allocator::new();
+    let null = allocator.null();
+    let res = run_from_source(&mut allocator, "(12 (1 . 3) (1 . 5))".to_string());
+    match allocator.sexp(res) {
+        SExp::Atom(b) => {
+            let res_bytes = allocator.buf(&b).to_vec();
+            assert_eq!(res_bytes.len(), 1);
+            assert_eq!(res_bytes[0], 8);
+        },
+        _ => { assert_eq!("expected atom", ""); }
+    }
+}
