@@ -13,7 +13,6 @@ use sha2::Sha256;
 use sha2::Digest;
 
 use crate::util::Number;
-use crate::classic::clvm::EvalError::EvalError;
 
 pub fn to_hexstr(r: &Vec<u8>) -> String {
     return hex::encode(r);
@@ -485,42 +484,6 @@ impl Stream {
 
 pub fn bi_zero() -> Number { return Zero::zero(); }
 pub fn bi_one() -> Number { return One::one(); }
-
-/**
- * Python's style division.
- * In javascript, `-8 / 5 === -1` while `-8 / 5 == -2` in Python
- */
-pub fn division(a: &Number, b: &Number) -> Result<Number, EvalError> {
-    if *a == bi_zero() {
-        return Ok(a.clone());
-    } else if *b == bi_zero() {
-        return Err(EvalError::new_str("Division by zero".to_string()));
-    } else if *a > bi_zero() && *b > bi_zero() && *a < *b {
-        return Ok(bi_zero());
-    } else if *a < bi_zero() && *b < bi_zero() && *a > *b {
-        return Ok(bi_zero());
-    }
-
-    let div = a / b;
-    if *a == div.clone() * b {
-        return Ok(div);
-    } else if div > bi_zero() {
-        return Ok(div);
-    }
-    return Ok(div - bi_one());
-}
-
-/**
- * Python's style modulo.
- * In javascript, `-8 % 5 === -3` while `-8 % 5 == 2` in Python
- */
-pub fn modulo(a: Number, b: Number) -> Result<Number,EvalError> {
-    return division(&a, &b).map(|d| a - b*d);
-}
-
-pub fn divmod(a: Number, b: Number) -> Result<Tuple<Number, Number>,EvalError> {
-    return division(&a, &b).map(|d| t(d.clone(), a - b*d));
-}
 
 pub fn get_u32(v: &Vec<u8>, n: usize) -> u32 {
     let p1 = v[n] as u32;

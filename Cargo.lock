@@ -90,8 +90,6 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 [[package]]
 name = "clvm_rs"
 version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7127805ea9e0ab68d215ead32db6afe6e9100a99f220183e0f3897e0ee92097f"
 dependencies = [
  "bls12_381",
  "hex",
@@ -114,6 +112,7 @@ dependencies = [
  "derivative",
  "encoding8",
  "hex",
+ "indoc 1.0.3",
  "lazy_static",
  "num",
  "num-bigint",
@@ -238,6 +237,15 @@ checksum = "47741a8bc60fb26eb8d6e0238bbb26d8575ff623fdc97b1a2c00c050b9684ed8"
 dependencies = [
  "indoc-impl",
  "proc-macro-hack",
+]
+
+[[package]]
+name = "indoc"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5a75aeaaef0ce18b58056d306c27b07436fbb34b8816c53094b76dd81803136"
+dependencies = [
+ "unindent",
 ]
 
 [[package]]
@@ -507,7 +515,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af205762ba65eec9f27a2fa1a57a40644e8e3368784b8c8b2f2de48f6e8ddd96"
 dependencies = [
  "cfg-if 1.0.0",
- "indoc",
+ "indoc 0.3.6",
  "libc",
  "parking_lot",
  "paste",

@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 
+use clvm_rs::allocator::{
+    Allocator,
+    NodePtr
+};
+
 pub mod __type_compatibility__;
 pub mod as_rust;
-pub mod CLVMObject;
 pub mod casts;
 pub mod costs;
-pub mod core_ops;
-pub mod EvalError;
-pub mod more_ops;
 pub mod serialize;
 pub mod SExp;
 
@@ -52,18 +53,26 @@ const kw_pairs: [KwAtomPair; 32] = [
 ];
 
 lazy_static! {
-    pub static ref KEYWORD_FROM_ATOM : HashMap<Vec<u8>, String> = {
+    pub static ref KEYWORD_FROM_ATOM_ : HashMap<Vec<u8>, String> = {
         let mut result = HashMap::new();
         for pair in kw_pairs {
             result.insert(vec!(pair.v), pair.n.to_string());
         }
         return result;
     };
-    pub static ref KEYWORD_TO_ATOM : HashMap<String, Vec<u8>> = {
+    pub static ref KEYWORD_TO_ATOM_ : HashMap<String, Vec<u8>> = {
         let mut result = HashMap::new();
         for pair in kw_pairs {
             result.insert(pair.n.to_string(), vec!(pair.v));
         }
         return result;
     };
+}
+
+pub fn KEYWORD_FROM_ATOM() -> &'static HashMap<Vec<u8>, String> {
+    return &KEYWORD_FROM_ATOM_;
+}
+
+pub fn KEYWORD_TO_ATOM() -> &'static HashMap<String, Vec<u8>> {
+    return &KEYWORD_TO_ATOM_;
 }

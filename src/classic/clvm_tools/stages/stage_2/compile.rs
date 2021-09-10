@@ -1,10 +1,26 @@
-// import {KEYWORD_TO_ATOM, b, SExp, int, Bytes, None, t, h} from "clvm";
-// import {disassemble} from "../../clvm_tools/binutils";
-// import {LEFT, TOP} from "../../clvm_tools/NodePath";
-// import {default_macro_lookup} from "./defaults";
-// import {brun, evaluate, quote} from "./helpers";
-// import {compile_mod} from "./mod";
-// import {TRunProgram} from "../stage_0";
+use std::rc::Rc;
+
+use clvm_rs::allocator::{
+    Allocator,
+    NodePtr,
+    SExp
+};
+use clvm_rs::cost::Cost;
+use clvm_rs::reduction::{
+    EvalErr,
+    Reduction,
+    Response
+};
+
+use clvm_rs::run_program::{
+    OperatorHandler
+};
+
+use crate::classic::clvm_tools::stages::stage_0::{
+    TRunProgram
+};
+
+use crate::classic::clvm_tools::stages::stage_2::defaults::DEFAULT_MACRO_LOOKUP;
 
 // export const QUOTE_ATOM = KEYWORD_TO_ATOM["q"];
 // export const APPLY_ATOM = KEYWORD_TO_ATOM["a"];
@@ -12,53 +28,54 @@
 
 // export const PASS_THROUGH_OPERATORS = new Set(Object.values(KEYWORD_TO_ATOM));
 
-// for(const _ of ["com", "opt"]){
-//   PASS_THROUGH_OPERATORS.add(b(_).hex());
-// }
+pub struct DoComProg<'a> {
+    runner: Rc<dyn TRunProgram<'a>>
+}
 
-// export function compile_qq(
-//   args: SExp,
-//   macro_lookup: SExp,
-//   symbol_table: SExp,
-//   run_program: TRunProgram,
-//   level: int = 1,
-// ): SExp {
-//   /*
-//   (qq ATOM) => (q . ATOM)
-//   (qq (unquote X)) => X
-//   (qq (a . B)) => (c (qq a) (qq B))
-//    */
-//   const com = function com(sexp: SExp){
-//     return do_com_prog(sexp, macro_lookup, symbol_table, run_program);
-//   };
-  
-//   const sexp = args.first();
-//   if(!sexp.listp() || sexp.nullp()){
-//     // (qq ATOM) => (q . ATOM)
-//     return SExp.to(quote(sexp));
-//   }
-  
-//   if(sexp.listp() && !sexp.first().listp()){
-//     const op = sexp.first().atom as Bytes;
-//     if(op.equal_to(b("qq"))){
-//       const subexp = compile_qq(sexp.rest(), macro_lookup, symbol_table, run_program, level+1);
-//       return com(SExp.to([h(CONS_ATOM), op, [h(CONS_ATOM), subexp, quote(0)]]));
-//     }
-//     else if(op.equal_to(b("unquote"))){
-//       if(level === 1){
-//         // (qq (unquote X)) => X
-//         return com(sexp.rest().first());
-//       }
-//       const subexp = compile_qq(sexp.rest(), macro_lookup, symbol_table, run_program, level-1);
-//       return com(SExp.to([h(CONS_ATOM), op, [h(CONS_ATOM), subexp, quote(0)]]));
-//     }
-//   }
-  
-//   // (qq (a . B)) => (c (qq a) (qq B))
-//   const A = com(SExp.to([b("qq"), sexp.first()]));
-//   const B = com(SExp.to([b("qq"), sexp.rest()]));
-//   return SExp.to([h(CONS_ATOM), A, B]);
-// }
+pub fn compile_qq<'a>(
+    allocator: &'a mut Allocator,
+    args: NodePtr,
+    macro_lookup: NodePtr,
+    symbol_table: NodePtr,
+    run_program: Rc<dyn TRunProgram>,
+    level: usize,
+) -> Result<NodePtr, EvalErr> {
+    /*
+     * (qq ATOM) => (q . ATOM)
+     * (qq (unquote X)) => X
+     * (qq (a . B)) => (c (qq a) (qq B))
+     */
+    let com = |sexp| {
+        return do_com_prog(sexp, macro_lookup, symbol_table, run_program);
+    };
+
+    const sexp = args.first();
+    if(!sexp.listp() || sexp.nullp()){
+        // (qq ATOM) => (q . ATOM)
+        return SExp.to(quote(sexp));
+    }
+
+    if(sexp.listp() && !sexp.first().listp()){
+        const op = sexp.first().atom as Bytes;
+        if(op.equal_to(b("qq"))){
+            const subexp = compile_qq(sexp.rest(), macro_lookup, symbol_table, run_program, level+1);
+            return com(SExp.to([h(CONS_ATOM), op, [h(CONS_ATOM), subexp, quote(0)]]));
+        }
+        else if(op.equal_to(b("unquote"))){
+            if(level === 1){
+                // (qq (unquote X)) => X
+                return com(sexp.rest().first());
+            }
+            const subexp = compile_qq(sexp.rest(), macro_lookup, symbol_table, run_program, level-1);
+            return com(SExp.to([h(CONS_ATOM), op, [h(CONS_ATOM), subexp, quote(0)]]));
+        }
+    }
+
+    // (qq (a . B)) => (c (qq a) (qq B))
+    const A = com(SExp.to([b("qq"), sexp.first()]));
+    const B = com(SExp.to([b("qq"), sexp.rest()]));
+    return SExp.to([h(CONS_ATOM), A, B]);
+}
 
 // export function compile_macros(args: SExp, macro_lookup: SExp, symbol_table: SExp, run_program: TRunProgram){
 //   return SExp.to(quote(macro_lookup));
@@ -106,6 +123,15 @@
 //   }
 // }
 
+pub fn do_com_prog<'a>(
+    allocator: &'a Allocator,
+    prog: NodePtr,
+    macro_lookup: NodePtr,
+    symbol_table: NodePtr,
+    run_program: Rc<dyn TRunProgram>
+) -> Response {
+    return Ok(Reduction(1, allocator.null()));
+}
 // export function do_com_prog(
 //   prog: SExp,
 //   macro_lookup: SExp,
@@ -204,21 +230,42 @@
 //   throw new SyntaxError(`can't compile ${disassemble(prog)}, unknown operator`);
 // }
 
-// export function make_do_com(run_program: TRunProgram){
-//   return function do_com(sexp: SExp){
-//     const prog = sexp.first();
-//     let symbol_table = SExp.null();
-//     let macro_lookup;
-//     if(!sexp.rest().nullp()){
-//       macro_lookup = sexp.rest().first();
-//       if(!sexp.rest().rest().nullp()){
-//         symbol_table = sexp.rest().rest().first();
-//       }
-//     }
-//     else{
-//       macro_lookup = default_macro_lookup(run_program);
-//     }
-    
-//     return t(1, do_com_prog(prog, macro_lookup as SExp, symbol_table, run_program));
-//   };
-// }
+impl<'a> OperatorHandler for DoComProg<'a> {
+    fn op(&self, allocator: &mut Allocator, op: NodePtr, sexp: NodePtr, max_cost: Cost) -> Response {
+        match allocator.sexp(sexp) {
+            SExp::Pair(prog,extras) => {
+                let mut macro_lookup = allocator.null();
+                let mut symbol_table = allocator.null();
+                match allocator.sexp(extras) {
+                    SExp::Pair(macros, symbols) => {
+                        macro_lookup = macros;
+                        symbol_table = symbols;
+                    },
+                    _ => {
+                        macro_lookup = DEFAULT_MACRO_LOOKUP(&mut allocator);
+                    }
+                }
+                return do_com_prog(
+                    allocator,
+                    prog,
+                    macro_lookup,
+                    symbol_table,
+                    self.runner
+                );
+            },
+            _ => {
+                return Err(EvalErr(sexp, "Program is not a pair in do_com_prog".to_string()));
+            }
+        }
+    }
+}
+
+impl<'a> DoComProg<'a> {
+    fn new(runner: Rc<dyn TRunProgram<'a>>) -> Self {
+        return DoComProg { runner: runner };
+    }
+}
+
+pub fn make_do_com<'a>(runner: Rc<dyn TRunProgram<'a>>) -> DoComProg<'a> {
+    return DoComProg::new(runner);
+}

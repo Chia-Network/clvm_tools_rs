@@ -1,6 +1,9 @@
 use num_bigint::ToBigInt;
 use num::pow;
 
+use clvm_rs::allocator::Allocator;
+use clvm_rs::reduction::EvalErr;
+
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
     BytesFromType,
@@ -10,18 +13,17 @@ use crate::classic::clvm::__type_compatibility__::{
     set_u32,
     set_u8
 };
-use crate::classic::clvm::EvalError::EvalError;
 use crate::util::Number;
 
 pub struct TConvertOption {
     pub signed: bool
 }
 
-pub fn int_from_bytes(b: Bytes, option: Option<TConvertOption>) -> Result<u64, EvalError> {
+pub fn int_from_bytes<'a>(allocator: &'a mut Allocator, b: Bytes, option: Option<TConvertOption>) -> Result<u64, EvalErr> {
     if b.length() == 0 {
         return Ok(0);
     }  else if b.length() * 8 > 64 {
-        return Err(EvalError::new_str("Cannot convert Bytes to Integer larger than 64bit. Use bigint_from_bytes instead.".to_string()));
+        return Err(EvalErr(allocator.null(), "Cannot convert Bytes to Integer larger than 64bit. Use bigint_from_bytes instead.".to_string()));
     }
 
     let signed = option.map(|cvt| cvt.signed).unwrap_or_else(|| false);

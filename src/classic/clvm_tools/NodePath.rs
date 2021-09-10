@@ -1,29 +1,39 @@
-// /*
-// We treat an s-expression as a binary tree, where leaf nodes are atoms and pairs
-// are nodes with two children. We then number the paths as follows:
-//               1
-//              / \
-//             /   \
-//            /     \
-//           /       \
-//          /         \
-//         /           \
-//        2             3
-//       / \           / \
-//      /   \         /   \
-//     4      6      5     7
-//    / \    / \    / \   / \
-//   8   12 10  14 9  13 11  15
-// etc.
-// You're probably thinking "the first two rows make sense, but why do the numbers
-// do that weird thing after?" The reason has to do with making the implementation simple.
-// We want a simple loop which starts with the root node, then processes bits starting with
-// the least significant, moving either left or right (first or rest). So the LEAST significant
-// bit controls the first branch, then the next-least the second, and so on. That leads to this
-// ugly-numbered tree.
-//  */
+/*
+ * We treat an s-expression as a binary tree, where leaf nodes are atoms and pairs
+ * are nodes with two children. We then number the paths as follows:
+ *               1
+ *              / \
+ *             /   \
+ *            /     \
+ *           /       \
+ *          /         \
+ *         /           \
+ *        2             3
+ *       / \           / \
+ *      /   \         /   \
+ *     4      6      5     7
+ *    / \    / \    / \   / \
+ *   8   12 10  14 9  13 11  15
+ * etc.
+ * You're probably thinking "the first two rows make sense, but why do the numbers
+ * do that weird thing after?" The reason has to do with making the implementation simple.
+ * We want a simple loop which starts with the root node, then processes bits starting with
+ * the least significant, moving either left or right (first or rest). So the LEAST significant
+ * bit controls the first branch, then the next-least the second, and so on. That leads to this
+ * ugly-numbered tree.
+ */
 
-// import {int, h, uint32} from "clvm";
+use crate::classic::clvm::__type_compatibility__::{
+    Bytes,
+    bi_zero,
+    bi_one
+};
+use crate::classic::clvm::casts::{
+    TConvertOption,
+    bigint_from_bytes,
+    bigint_to_bytes
+};
+use crate::util::Number;
 
 // export function compose_paths(path_0: int, path_1: int){
 //   /*
@@ -50,36 +60,32 @@
 //   return path_1 | (path_0 & mask);
 // }
 
-// export class NodePath {
-//   /*
-//   Use 1-based paths
-//    */
-//   private _index: uint32;
-//   public as_path = this.as_short_path;
-//   public get index(){
-//     return this._index;
-//   }
-  
-//   public constructor(index: int = 1) {
-//     if(index < 0){
-//       const byte_count = ((-index).toString(2).length + 7) >>> 3;
-//       let hex = (index >>> 0).toString(16);
-//       hex = hex.substring(hex.length - byte_count*2);
-//       index = parseInt(hex, 16);
-//     }
-    
-//     this._index = index;
-//   }
-  
-//   public as_short_path(){
-//     const index = this._index;
-//     let hexStr = (index >>> 0).toString(16);
-//     if(index >= 0){
-//       hexStr = hexStr.length % 2 ? `0${hexStr}` : hexStr;
-//     }
-//     return h(hexStr);
-//   }
-  
+pub struct NodePath {
+    /*
+     * Use 1-based paths
+     */
+    index: Number
+}
+
+impl NodePath {
+    pub fn new(index: Option<Number>) -> Self {
+        match index {
+            Some(index) => {
+                if index < bi_zero() {
+                    let bytes_repr = bigint_to_bytes(&index, Some(TConvertOption { signed: true })).unwrap();
+                    let unsigned = bigint_from_bytes(&bytes_repr, None);
+                    return NodePath { index: unsigned };
+                } else {
+                    return NodePath { index: index.clone() };
+                }
+            },
+            None => return NodePath { index: bi_one() }
+        }
+    }
+
+    pub fn as_path(&self) -> Bytes { return bigint_to_bytes(&self.index, None).unwrap(); }
+}
+
 //   public add(other_node: NodePath){
 //     const composedPath = compose_paths(this.index, other_node.index);
 //     return new NodePath(composedPath);
@@ -102,6 +108,9 @@
 //   }
 // }
 
-// export const TOP = new NodePath();
+lazy_static! {
+    pub static ref TOP : NodePath = NodePath::new(None);
+}
+
 // export const LEFT = TOP.first();
 // export const RIGHT = TOP.rest();

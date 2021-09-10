@@ -1,5 +1,6 @@
 #![allow(clippy::blacklisted_name, clippy::redundant_clone, clippy::trivially_copy_pass_by_ref)]
 
+use std::borrow::Borrow;
 use std::cmp::PartialEq;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -12,6 +13,7 @@ use crate::util::{
 
 #[derive(PartialEq)]
 #[derive(Debug)]
+#[derive(Clone)]
 pub enum TArgOptionAction {
     Store,
     StoreTrue,
@@ -20,6 +22,7 @@ pub enum TArgOptionAction {
 
 #[derive(PartialEq)]
 #[derive(Debug)]
+#[derive(Clone)]
 pub enum NArgsSpec {
     KleeneStar,
     Plus,
@@ -47,16 +50,17 @@ impl ArgumentValueConv for EmptyConversion {
     }
 }
 
-struct IntConversion {
-    help_messager: fn() -> String
+pub struct IntConversion {
+    help_messager: Rc<dyn Fn() -> String>
 }
 
-impl ArgumentValueConv for IntConversion {
+impl<'a> ArgumentValueConv for IntConversion {
     fn convert(&self, v: &String) -> Result<ArgumentValue, String> {
         match v.parse::<i64>() {
             Ok(n) => return Ok(ArgumentValue::ArgInt(n)),
             _ => {
-                let usage = (self.help_messager)();
+                let m : &dyn Fn() -> String = self.help_messager.borrow();
+                let usage = m();
                 return Err(
                     format!("{}\n\nError: Invalid parameter: {}", usage, v)
                 );
@@ -65,7 +69,15 @@ impl ArgumentValueConv for IntConversion {
     }
 }
 
+impl IntConversion {
+    pub fn new(f: Rc<dyn Fn() -> String>) -> Self
+    {
+        return IntConversion { help_messager: f };
+    }
+}
+
 #[derive(Derivative)]
+#[derive(Clone)]
 #[derivative(Debug)]
 pub struct Argument {
     action: TArgOptionAction,
@@ -115,6 +127,7 @@ impl Argument {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct Arg {
     names: Vec<String>,
     options: Argument
@@ -131,6 +144,7 @@ pub struct TArgumentParserProps {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct ArgumentParser {
     prog: String,
     desc: String,
@@ -432,7 +446,7 @@ impl ArgumentParser {
         return Ok(params);
     }
 
-    fn compile_help_messages(&self) -> String {
+    pub fn compile_help_messages(&self) -> String {
         let iterator = |a: &Arg| {
             let mut msg = " ".to_string() + &a.names.join(", ");
             let default_value =
@@ -463,14 +477,14 @@ impl ArgumentParser {
             messages.push("".to_string());
             messages.push("positional arguments:".to_string());
             for a in &self.positional_args {
-                messages.push(iterator(a.clone()));
+                messages.push(iterator(&a.clone()));
             }
         }
         if self.optional_args.len() > 0 {
             messages.push("".to_string());
             messages.push("optional arguments:".to_string());
             for a in &self.optional_args {
-                messages.push(iterator(a.clone()));
+                messages.push(iterator(&a.clone()));
             }
         }
 

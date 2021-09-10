@@ -4,14 +4,19 @@ use std::rc::Rc;
 use encoding8::ascii::is_printable;
 use unicode_segmentation::UnicodeSegmentation;
 
+use clvm_rs::allocator::{
+    Allocator,
+    NodePtr,
+    SExp
+};
+use clvm_rs::reduction::EvalErr;
+
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
     BytesFromType,
     Record,
     Stream
 };
-use crate::classic::clvm::CLVMObject::CLVMObject;
-use crate::classic::clvm::SExp::SExp;
 use crate::classic::clvm::{
     KEYWORD_TO_ATOM,
     KEYWORD_FROM_ATOM
@@ -29,29 +34,34 @@ pub fn is_printable_string(s: &String) -> bool {
     return true;
 }
 
-pub fn assemble_from_ir(ir_sexp: Rc<IRRepr>) -> SExp {
+pub fn assemble_from_ir<'a>(
+    allocator: &'a mut Allocator,
+    ir_sexp: Rc<IRRepr>
+) -> Result<NodePtr, EvalErr> {
     match ir_sexp.borrow() {
-        IRRepr::Null => { return CLVMObject::new(); },
-        IRRepr::Quotes(b) => { return CLVMObject::Atom(b.clone()); },
-        IRRepr::Int(b,_signed) => { return CLVMObject::Atom(b.clone()); },
-        IRRepr::Hex(b) => { return CLVMObject::Atom(b.clone()); },
+        IRRepr::Null => { return Ok(allocator.null()); },
+        IRRepr::Quotes(b) => { return allocator.new_atom(b.data()); },
+        IRRepr::Int(b,_signed) => { return allocator.new_atom(b.data()); },
+        IRRepr::Hex(b) => { return allocator.new_atom(b.data()); },
         IRRepr::Symbol(s) => {
             let mut s_real_name = s.clone();
             if s.starts_with("#") {
                 s_real_name = s[1..].to_string();
             } else {
-                match KEYWORD_TO_ATOM.get(&s_real_name) {
-                    Some(v) => {
-                        return CLVMObject::Atom(Bytes::new(Some(BytesFromType::Raw(v.to_vec()))));
-                    },
+                match KEYWORD_TO_ATOM().get(&s_real_name) {
+                    Some(v) => { return allocator.new_atom(v); },
                     None => { }
                 }
             }
             let v: Vec<u8> = s_real_name.as_bytes().to_vec();
-            return CLVMObject::Atom(Bytes::new(Some(BytesFromType::Raw(v))));
+            return allocator.new_atom(&v);
         },
         IRRepr::Cons(l,r) => {
-            return CLVMObject::Pair(Rc::new(assemble_from_ir(l.clone())), Rc::new(assemble_from_ir(r.clone())));
+            return assemble_from_ir(allocator, l.clone()).and_then(|l| {
+                return assemble_from_ir(allocator, r.clone()).and_then(|r| {
+                    return allocator.new_pair(l,r);
+                });
+            });
         }
     }
 }
@@ -72,7 +82,7 @@ pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
         // Determine whether the bytes identity an integer in canonical form.
     } else {
         if allow_keyword {
-            match KEYWORD_FROM_ATOM.get(atom.data()) {
+            match KEYWORD_FROM_ATOM().get(atom.data()) {
                 Some(kw) => { return IRRepr::Symbol(kw.to_string()); },
                 _ => { }
             }
@@ -95,49 +105,76 @@ pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
  * a(2,true); d((), head=false); d(P(P(2,P(3,P(4)))), head=false)
  * a((),false); d(P(P(2,P(3,P(4)))), head=false)
  */
-pub fn disassemble_to_ir_with_kw(
-    sexp: Rc<SExp>,
+pub fn disassemble_to_ir_with_kw<'a>(
+    allocator: &'a mut Allocator,
+    sexp: NodePtr,
     keyword_from_atom: &Record<String, Vec<u8>>,
     head: bool,
     allow_keyword: bool
 ) -> IRRepr {
-    match sexp.borrow() {
-        CLVMObject::Pair(l,r) => {
+    match allocator.sexp(sexp) {
+        SExp::Pair(l,r) => {
             let new_head =
-                match l.borrow() {
-                    CLVMObject::Pair(_,_) => true,
+                match allocator.sexp(l) {
+                    SExp::Pair(_,_) => true,
                     _ => head
                 };
 
             let v0 =
                 disassemble_to_ir_with_kw(
-                    l.clone(), keyword_from_atom, new_head, allow_keyword
+                    allocator, l.clone(), keyword_from_atom, new_head, allow_keyword
                 );
             let v1 =
                 disassemble_to_ir_with_kw(
-                    r.clone(), keyword_from_atom, false, allow_keyword
+                    allocator, r.clone(), keyword_from_atom, false, allow_keyword
                 );
             return IRRepr::Cons(Rc::new(v0), Rc::new(v1));
         },
 
-        CLVMObject::Atom(a) => { return ir_for_atom(a, head && allow_keyword); }
+        SExp::Atom(a) => {
+            let bytes =
+                Bytes::new(Some(BytesFromType::Raw(allocator.buf(&a).to_vec())));
+            return ir_for_atom(&bytes, head && allow_keyword);
+        }
     }
 }
 
-pub fn disassemble_with_kw(
-    sexp: Rc<SExp>, keyword_from_atom: &Record<String, Vec<u8>>
+pub fn disassemble_with_kw<'a>(
+    allocator: &'a mut Allocator,
+    sexp: NodePtr,
+    keyword_from_atom: &Record<String, Vec<u8>>
 ) -> String {
-  let symbols = disassemble_to_ir_with_kw(sexp, &keyword_from_atom, true, true);
-  return write_ir(Rc::new(symbols));
+    let symbols = disassemble_to_ir_with_kw(
+        allocator,
+        sexp,
+        &keyword_from_atom,
+        true,
+        true
+    );
+    return write_ir(Rc::new(symbols));
 }
 
-pub fn disassemble(sexp: Rc<SExp>) -> String {
-    return disassemble_with_kw(sexp.clone(), &KEYWORD_TO_ATOM);
+pub fn disassemble<'a>(
+    allocator: &'a mut Allocator,
+    sexp: NodePtr
+) -> String {
+    return disassemble_with_kw(
+        allocator,
+        sexp,
+        KEYWORD_TO_ATOM()
+    );
 }
 
-pub fn assemble(s: &String) -> Result<SExp, String> {
+pub fn assemble<'a>(
+    allocator: &'a mut Allocator,
+    s: &String
+) -> Result<NodePtr, EvalErr> {
     let v = s.as_bytes().to_vec();
     let stream = Stream::new(Some(Bytes::new(Some(BytesFromType::Raw(v)))));
     let mut reader = IRReader::new(stream);
-    return reader.read_expr().map(|ir| assemble_from_ir(Rc::new(ir)));
+    return reader.read_expr().
+        map_err(|e| EvalErr(allocator.null(), e)).
+        and_then(
+        |ir| assemble_from_ir(allocator, Rc::new(ir))
+        );
 }

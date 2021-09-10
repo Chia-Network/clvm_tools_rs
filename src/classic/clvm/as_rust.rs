@@ -1,12 +1,14 @@
-use std::rc::Rc;
+use clvm_rs::allocator::Allocator;
+use clvm_rs::reduction::{
+    Response
+};
 
-use crate::classic::clvm::SExp::{CastableType, SExp};
-use crate::classic::clvm::EvalError::EvalError;
+use crate::classic::clvm::SExp::CastableType;
 
 pub type TValStack = Vec<CastableType>;
 // export type TValStack = Array<Bytes|SExp|SExp[]|Tuple<SExp, SExp>>;
-pub trait TToSexpF {
-    fn invoke(&self, arg: CastableType) -> Result<Rc<SExp>, EvalError>;
+pub trait TToSexpF<'a> {
+    fn invoke(&self, allocator: &'a mut Allocator, arg: CastableType) -> Response;
 }
 
 // export type TToJavascript = Bytes | Bytes[] | Tuple<TToJavascript, TToJavascript> | TToJavascript[];

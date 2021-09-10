@@ -3,21 +3,22 @@ use std::fmt::Debug;
 use std::rc::Rc;
 use std::string::String;
 
+use clvm_rs::allocator::{
+    Allocator,
+    NodePtr,
+    SExp
+};
+use clvm_rs::reduction::EvalErr;
+
 use bls12_381::G1Affine;
 
 use crate::util::{Number, u8_from_number};
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
     BytesFromType,
-    Stream,
-    Tuple,
-    t
+    Stream
 };
-use crate::classic::clvm::CLVMObject::{CLVMObject};
-use crate::classic::clvm::EvalError::EvalError;
 use crate::classic::clvm::serialize::sexp_to_stream;
-
-pub type SExp = CLVMObject;
 
 // import {CLVMObject, CLVMType} from "./CLVMObject";
 // import {Bytes, isIterable, Tuple, t, Stream, isBytes, isTuple} from "./__type_compatibility__";
@@ -28,7 +29,7 @@ pub type SExp = CLVMObject;
 
 #[derive(Debug)]
 pub enum CastableType {
-    CLVMObject(Rc<CLVMObject>),
+    CLVMObject(NodePtr),
     Bytes(Bytes),
     String(String),
     Number(Number),
@@ -93,335 +94,260 @@ fn replace_stack_top(stack : &mut Vec<CastableType>, v : CastableType) {
     stack[vlen - 1] = v;
 }
 
-pub fn to_sexp_type(value: CastableType) -> Result<Rc<CLVMObject>, EvalError> {
+pub fn to_sexp_type<'a>(allocator: &'a mut Allocator, value: CastableType) -> Result<NodePtr, EvalErr> {
     let mut stack = vec!(Rc::new(value));
     let mut ops : Vec<SexpStackOp> = vec!(SexpStackOp::OpConvert);
-    let mut op = ops.pop();
 
-    while !op.is_none() {
-        // convert value
-        match op {
+    loop {
+        let mut op = SexpStackOp::OpConvert;
+
+        match ops.pop() {
+            None => { break; },
+            Some(o) => { op = o; }
+        }
+
+        let mut top =
+            Rc::new(CastableType::CLVMObject(allocator.null()));
+
+        match stack.pop() {
             None => {
-                return Err(EvalError::new_str("empty value stack".to_string()));
+                return Err(EvalErr(allocator.null(), "empty value stack".to_string()));
             },
-            Some(op) => {
-                match op.borrow() {
-                    SexpStackOp::OpConvert => {
-                        let top = stack.pop();
-                        match top {
-                            None => {
-                                return Err(EvalError::new_str("empty value stack".to_string()));
-                            },
-                            Some(rc) => {
-                                match rc.borrow() {
-                                    CastableType::CLVMObject(_) => {
-                                        stack.push(rc.clone());
-                                    },
-                                    CastableType::TupleOf(left, right) => {
-                                        let target_index = stack.len();
-                                        stack.push(
-                                            Rc::new(CastableType::CLVMObject(Rc::new(CLVMObject::Pair(Rc::new(CLVMObject::new()), Rc::new(CLVMObject::new())))))
-                                        );
+            Some(rc) => { top = rc; }
+        }
 
-                                        stack.push(right.clone());
-                                        ops.push(SexpStackOp::OpSetPair(true, target_index)); // set right
-                                        ops.push(SexpStackOp::OpConvert); // convert
-
-                                        stack.push(left.clone());
-                                        ops.push(SexpStackOp::OpSetPair(false, target_index));
-                                        ops.push(SexpStackOp::OpConvert);
-                                    },
-                                    CastableType::ListOf(_sel,v) => {
-                                        let target_index = stack.len();
-                                        stack.push(
-                                            Rc::new(CastableType::CLVMObject(Rc::new(CLVMObject::new())))
-                                        );
-                                        for i in 0..v.len() - 1 {
-                                            stack.push(v[i].clone());
-                                            ops.push(SexpStackOp::OpPrepend(target_index));
-                                            // we only need to convert if it's not already the right type
-                                            ops.push(SexpStackOp::OpConvert);
-                                        }
-                                    },
-                                    CastableType::Bytes(b) => {
-                                        stack.push(
-                                            Rc::new(CastableType::CLVMObject(Rc::new(CLVMObject::Atom(b.clone()))))
-                                        );
-                                    },
-                                    CastableType::String(s) => {
-                                        stack.push(
-                                            Rc::new(CastableType::CLVMObject(
-                                                Rc::new(CLVMObject::Atom(
-                                                    Bytes::new(
-                                                        Some(
-                                                            BytesFromType::Raw(
-                                                                s.as_bytes().into_iter().map(|x| *x).collect()
-                                                            )
-                                                        )
-                                                    )
-                                                ))
-                                            ))
-                                        );
-                                    },
-                                    CastableType::Number(n) => {
-                                        stack.push(
-                                            Rc::new(CastableType::CLVMObject(
-                                                Rc::new(CLVMObject::Atom(
-                                                    Bytes::new(
-                                                        Some(BytesFromType::Raw(u8_from_number(n.clone())))
-                                                    )
-                                                ))
-                                            ))
-                                        );
-                                    },
-                                    CastableType::G1Affine(g) => {
-                                        stack.push(
-                                            Rc::new(CastableType::CLVMObject(
-                                                Rc::new(CLVMObject::Atom(
-                                                    Bytes::new(Some(BytesFromType::G1Element(*g)))
-                                                ))
-                                            ))
-                                        );
-                                    }
-                                }
-                            }
-                        }
+        // convert value
+        print!("op: {:?}, top: {:?}, ops: {:?}, stack: {:?}\n", &op, &top, &ops, &stack);
+        match op {
+            SexpStackOp::OpConvert => {
+                match top.borrow() {
+                    CastableType::CLVMObject(_) => {
+                        stack.push(top.clone());
                     },
-
-                    SexpStackOp::OpSetPair(toset, target) => {
-                        match stack.pop() {
-                            None => {
-                                return Err(EvalError::new_str("empty value stack".to_string()));
-                            },
-                            Some(top) => {
-                                match top.borrow() {
-                                    CastableType::CLVMObject(new_value) => {
-                                        match stack[*target].borrow() {
-                                            CastableType::CLVMObject(target_value) => {
-                                                match target_value.borrow() {
-                                                    CLVMObject::Pair(l,r) => {
-                                                        if *toset {
-                                                            stack[*target] =
-                                                                Rc::new(CastableType::CLVMObject(
-                                                                    Rc::new(CLVMObject::Pair(
-                                                                        l.clone(),
-                                                                        new_value.clone()
-                                                                    ))
-                                                                ));
-                                                        } else {
-                                                            stack[*target] =
-                                                                Rc::new(CastableType::CLVMObject(
-                                                                    Rc::new(CLVMObject::Pair(
-                                                                        new_value.clone(),
-                                                                        r.clone()
-                                                                    ))
-                                                                ));
-                                                        }
-                                                    },
-                                                    CLVMObject::Atom(_) => {
-                                                        return Err(
-                                                            EvalError::new_str("attempt to set_pair in atom".to_string())
-                                                        );
-                                                    }
-                                                }
-                                            },
-                                            _ => {
-                                                return Err(
-                                                    EvalError::new_str(format!(
-                                                        "Setting wing of non pair {:?}",
-                                                        stack[*target]
-                                                    ))
-                                                );
-                                            }
-                                        }
-                                    },
-                                    _ => {
-                                        return Err(
-                                            EvalError::new_str(format!(
-                                                "op_set_pair on atom item {:?} in vec {:?} ops {:?}",
-                                                target,
-                                                stack,
-                                                ops
-                                            ))
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    },
-
-                    SexpStackOp::OpPrepend(target) => {
-                        match stack.pop() {
-                            None => {
-                                return Err(
-                                    EvalError::new_str(
-                                        "no pair for prepend".to_string()
+                    CastableType::TupleOf(left, right) => {
+                        let target_index = stack.len();
+                        match allocator.new_pair(allocator.null(), allocator.null()) {
+                            Ok(pair) => {
+                                stack.push(
+                                    Rc::new(
+                                        CastableType::CLVMObject(pair)
                                     )
                                 );
                             },
+                            Err(e) => { return Err(e); }
+                        };
+                        stack.push(right.clone());
+                        ops.push(SexpStackOp::OpSetPair(true, target_index)); // set right
+                        ops.push(SexpStackOp::OpConvert); // convert
 
-                            Some(top) => {
-                                match top.borrow() {
-                                    CastableType::CLVMObject(f) => {
-                                        match stack[*target].borrow() {
-                                            CastableType::CLVMObject(o) => {
-                                                stack[*target] =
-                                                    Rc::new(CastableType::CLVMObject(
-                                                        Rc::new(CLVMObject::Pair(f.clone(), o.clone()))
-                                                    ));
-                                            },
+                        stack.push(left.clone());
+                        ops.push(SexpStackOp::OpSetPair(false, target_index));
+                        ops.push(SexpStackOp::OpConvert);
+                    },
+                    CastableType::ListOf(_sel,v) => {
+                        let target_index = stack.len();
+                        stack.push(
+                            Rc::new(CastableType::CLVMObject(allocator.null()))
+                        );
+                        for i in 0..v.len() - 1 {
+                            stack.push(v[i].clone());
+                            ops.push(SexpStackOp::OpPrepend(target_index));
+                            // we only need to convert if it's not already the right type
+                            ops.push(SexpStackOp::OpConvert);
+                        }
+                    },
+                    CastableType::Bytes(b) => {
+                        match allocator.new_atom(b.data()) {
+                            Ok(a) => {
+                                stack.push(
+                                    Rc::new(CastableType::CLVMObject(a))
+                                );
+                            },
+                            Err(e) => { return Err(e); }
+                        }
+                    },
+                    CastableType::String(s) => {
+                        let result_vec : Vec<u8> = s.as_bytes().into_iter().map(|x| *x).collect();
+                        match allocator.new_atom(&result_vec) {
+                            Ok(a) => {
+                                stack.push(
+                                    Rc::new(CastableType::CLVMObject(a))
+                                );
+                            },
+                            Err(e) => { return Err(e); }
+                        };
+                    },
+                    CastableType::Number(n) => {
+                        match allocator.new_atom(&u8_from_number(n.clone())) {
+                            Ok(a) => {
+                                stack.push(
+                                    Rc::new(CastableType::CLVMObject(a))
+                                );
+                            },
+                            Err(e) => { return Err(e); }
+                        }
+                    },
+                    CastableType::G1Affine(g) => {
+                        let bytes_ver =
+                            Bytes::new(Some(BytesFromType::G1Element(*g)));
 
-                                            _ => {
-                                                return Err(
-                                                    EvalError::new_str(
-                                                        format!(
-                                                            "unrealized pair prepended {:?}",
-                                                            stack[*target]
-                                                        )
-                                                    )
-                                                );
-                                            }
-                                        }
-                                    },
-
-                                    _ => {
-                                        return Err(
-                                            EvalError::new_str(
-                                                format!(
-                                                    "unrealized prepend {:?}",
-                                                    top
-                                                )
-                                            )
-                                        );
-                                    }
-                                }
-                            }
+                        match allocator.new_atom(bytes_ver.data()) {
+                            Ok(a) => {
+                                stack.push(
+                                    Rc::new(CastableType::CLVMObject(a))
+                                );
+                            },
+                            Err(e) => { return Err(e); }
                         }
                     }
                 }
-            }
-        };
+            },
+            SexpStackOp::OpSetPair(toset, target) => {
+                match top.borrow() {
+                    CastableType::CLVMObject(new_value) => {
+                        match stack[target].borrow() {
+                            CastableType::CLVMObject(target_value) => {
+                                match allocator.sexp(*target_value) {
+                                    SExp::Pair(l,r) => {
+                                        if toset {
+                                            match allocator.new_pair(
+                                                l,
+                                                *new_value
+                                            ) {
+                                                Ok(pair) => {
+                                                    stack[target] =
+                                                        Rc::new(CastableType::CLVMObject(pair));
+                                                },
+                                                Err(e) => { return Err(e); }
+                                            }
+                                        } else {
+                                            match allocator.new_pair(
+                                                *new_value,
+                                                r
+                                            ) {
+                                                Ok(pair) => {
+                                                    stack[target] =
+                                                        Rc::new(CastableType::CLVMObject(pair));
+                                                },
+                                                Err(e) => { return Err(e); }
+                                            }
+                                        }
+                                    },
+                                    SExp::Atom(_) => {
+                                        return Err(
+                                            EvalErr(*target_value, "attempt to set_pair in atom".to_string())
+                                        );
+                                    }
+                                }
+                            },
+                            _ => {
+                                return Err(
+                                    EvalErr(
+                                        allocator.null(),
+                                        format!(
+                                            "Setting wing of non pair {:?}",
+                                            stack[target]
+                                        )
+                                    )
+                                );
+                            }
+                        }
+                    },
+                    _ => {
+                        return Err(
+                            EvalErr(
+                                allocator.null(),
+                                format!(
+                                    "op_set_pair on atom item {:?} in vec {:?} ops {:?}",
+                                    target,
+                                    stack,
+                                    ops
+                                )
+                            )
+                        );
+                    }
+                }
+            },
 
-        op = ops.pop();
+            SexpStackOp::OpPrepend(target) => {
+                match top.borrow() {
+                    CastableType::CLVMObject(f) => {
+                        match stack[target].borrow() {
+                            CastableType::CLVMObject(o) => {
+                                match allocator.new_pair(*f, *o) {
+                                    Ok(pair) => {
+                                        stack[target] =
+                                            Rc::new(CastableType::CLVMObject(pair));
+                                    },
+                                    Err(e) => { return Err(e); }
+                                }
+                            },
+                            _ => {
+                                return Err(
+                                    EvalErr(
+                                        allocator.null(),
+                                        format!(
+                                            "unrealized pair prepended {:?}",
+                                            stack[target]
+                                        )
+                                    )
+                                );
+                            }
+                        }
+                    },
+                    _ => {
+                        return Err(
+                            EvalErr(
+                                allocator.null(),
+                                format!(
+                                    "unrealized prepend {:?}",
+                                    top
+                                )
+                            )
+                        );
+                    }
+                }
+            }
+        }
     }
+
+    print!("post conversion: {:?}\n", &stack);
 
     if stack.len() != 1 {
         return Err(
-            EvalError::new_str(format!("too many values left on op stack {:?}", stack))
+            EvalErr(
+                allocator.null(),
+                format!("too many values left on op stack {:?}", stack)
+            )
         );
     }
 
     return match stack.pop() {
         None => {
-            Err(EvalError::new_str("stack empty".to_string()))
+            Err(EvalErr(allocator.null(), "stack empty".to_string()))
         },
         Some(top) => {
             match top.borrow() {
                 CastableType::CLVMObject(o) => Ok(o.clone()),
                 _ => {
-                    Err(EvalError::new_str(format!("unimplemented {:?}", stack[0])))
+                    Err(EvalErr(allocator.null(), format!("unimplemented {:?}", stack[0])))
                 }
             }
         }
     };
 }
 
-/*
- SExp provides higher level API on top of any object implementing the CLVM
- object protocol.
- The tree of values is not a tree of SExp objects, it's a tree of CLVMObject
- like objects. SExp simply wraps them to privide a uniform view of any
- underlying conforming tree structure.
-
- The CLVM object protocol (concept) exposes two attributes:
- 1. "atom" which is either None or bytes
- 2. "pair" which is either None or a tuple of exactly two elements. Both
- elements implementing the CLVM object protocol.
- Exactly one of "atom" and "pair" must be None.
- */
-impl SExp {
-    pub fn explode(&self) -> Result<Tuple<Rc<SExp>, Rc<SExp>>, EvalError> {
-        match self {
-            CLVMObject::Pair(f,r) => {
-                return Ok(t(f.clone(), r.clone()));
-            },
-            _ => {
-                return Err(
-                    EvalError::new_str(
-                        format!("explode called on non-pair {:?}", self)
-                    )
-                );
-            }
-        }
-    }
-
-    pub fn nullp(&self) -> bool {
-        match self {
-            CLVMObject::Atom(b) => { return b.length() == 0; },
-            _ => { return false; }
-        }
-    }
-
-    pub fn listp(&self) -> bool {
-        match self {
-            CLVMObject::Atom(_) => { return false; },
-            _ => { return true; }
-        }
-    }
-
-    pub fn first(&self) -> Result<Rc<CLVMObject>, EvalError> {
-        return self.explode().map(|t| t.first().clone());
-      }
-
-    pub fn rest(&self) -> Result<Rc<SExp>, EvalError> {
-        return self.explode().map(|t| t.rest().clone());
-    }
-
-    pub fn list_len(&self) -> usize {
-        let null = CLVMObject::new();
-        let mut v: &SExp = self;
-        let mut holder;
-        let mut size = 0;
-
-        while v.listp() {
-            size += 1;
-            match v.rest() {
-                Ok(r) => {
-                    holder = r.clone();
-                    v = &*holder;
-                },
-                _ => {
-                    v = &null;
-                }
-            };
-        }
-
-        return size;
-    }
-
-    pub fn as_bytes(&self) -> Result<Bytes, EvalError> {
-        match self {
-            CLVMObject::Atom(b) => Ok(b.clone()),
-            _ => Err(EvalError::new_str("pair converted to bytes".to_string()))
-        }
-    }
-}
-
-pub fn sexp_as_bin(sexp: Rc<SExp>) -> Bytes {
+pub fn sexp_as_bin<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> Bytes {
     let mut f = Stream::new(None);
-    sexp_to_stream(sexp, &mut f);
+    sexp_to_stream(allocator, sexp, &mut f);
     return f.get_value();
 }
 
-pub fn cons(left: Rc<SExp>, right: Rc<SExp>) -> SExp {
-    return CLVMObject::Pair(left, right);
-}
-
-pub fn bool_sexp(b: bool) -> SExp {
+pub fn bool_sexp<'a>(allocator: &'a mut Allocator, b: bool) -> NodePtr {
     if b {
-        return CLVMObject::Atom(Bytes::new(Some(BytesFromType::Raw(vec!(1)))));
+        return allocator.one();
     } else {
-        return CLVMObject::new();
+        return allocator.null();
     }
 }
 
@@ -524,3 +450,24 @@ pub fn bool_sexp(b: bool) -> SExp {
 //     && typeof v.cons === "function"
 //   ;
 // }
+
+pub fn non_nil<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> bool {
+    match allocator.sexp(sexp) {
+        SExp::Pair(_,_) => { return true; },
+        SExp::Atom(b) => { return allocator.buf(&b).len() > 0; }
+    }
+}
+
+pub fn first<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> Result<NodePtr, EvalErr> {
+    match allocator.sexp(sexp) {
+        SExp::Pair(f,_) => { return Ok(f); },
+        _ => { return Err(EvalErr(sexp, "first of non-cons".to_string())); }
+    }
+}
+
+pub fn rest<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> Result<NodePtr, EvalErr> {
+    match allocator.sexp(sexp) {
+        SExp::Pair(_,r) => { return Ok(r); },
+        _ => { return Err(EvalErr(sexp, "rest of non-cons".to_string())); }
+    }
+}

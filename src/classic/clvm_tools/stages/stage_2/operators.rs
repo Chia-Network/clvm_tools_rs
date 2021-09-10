@@ -1,76 +1,208 @@
-// import {
-//   Bytes,
-//   CLVMObject,
-//   EvalError,
-//   OPERATOR_LOOKUP as ORIGINAL_OPERATOR_LOOKUP,
-//   OperatorDict,
-//   SExp,
-//   str,
-//   t,
-//   b,
-// } from "clvm";
-// import {read_ir} from "../../ir/reader";
-// import {write_ir_to_stream} from "../../ir/writer";
-// import {assemble_from_ir, disassemble_to_ir} from "../../clvm_tools/binutils";
-// import {
-//   run_program as run_program_0, RunProgramOption,
-// } from "../stage_0";
-// import {make_do_com} from "./compile";
-// import {make_do_opt} from "./optimize";
-// import {FileStream, fs_read, Path} from "../../platform/io";
+use std::collections::HashMap;
+use std::fs;
+use std::rc::Rc;
+use std::path::PathBuf;
 
-// export function do_read(args: SExp){
-//   const filename = args.first().atom as Bytes;
-//   const s = fs_read(filename.decode());
-//   const ir_sexp = SExp.to(read_ir(s));
-//   const sexp = assemble_from_ir(ir_sexp);
-//   return t(1, sexp);
-// }
+use clvm_rs::allocator::{
+    Allocator,
+    NodePtr,
+    SExp
+};
+use clvm_rs::cost::Cost;
+use clvm_rs::reduction::{
+    EvalErr,
+    Reduction,
+    Response
+};
 
-// export function do_write(args: SExp){
-//   const filename = args.first().atom as Bytes;
-//   const data = args.rest().first();
-//   const f = new FileStream(filename.decode());
-//   write_ir_to_stream(disassemble_to_ir(data, {}), f);
-//   f.flush();
-//   return t(1, SExp.to(0));
-// }
+use clvm_rs::run_program::OperatorHandler;
 
-// export function run_program_for_search_paths(search_paths: str[]){
-//   const do_full_path_for_name = (args: SExp) => {
-//     const filename = args.first().atom as Bytes;
-//     for(const path of search_paths){
-//       const f_path = Path.join(path, filename.decode());
-//       if(f_path.is_file()){
-//         return t(1, SExp.to(b(f_path.toString())));
-//       }
-//     }
-//     throw new EvalError(`can't open ${filename}`, args);
-//   };
-  
-//   const _operator_lookup = OperatorDict(ORIGINAL_OPERATOR_LOOKUP as any);
-  
-//   const run_program = (
-//     program: SExp,
-//     args: CLVMObject,
-//     option?: RunProgramOption,
-//   ) => {
-//     const operator_lookup = (option && option.operator_lookup) || _operator_lookup;
-//     option = option ? {...option, operator_lookup} : {operator_lookup};
-//     return run_program_0(program, args, option);
-//   };
-  
-//   const BINDINGS = {
-//     [b("com").hex()]: make_do_com(run_program),
-//     [b("opt").hex()]: make_do_opt(run_program),
-//     [b("_full_path_for_name").hex()]: do_full_path_for_name,
-//     [b("_read").hex()]: do_read,
-//     [b("_write").hex()]: do_write,
-//   };
-  
-//   Object.entries(BINDINGS).forEach(([key, value]) => {
-//     (_operator_lookup as Record<str, unknown>)[key] = value;
-//   });
-  
-//   return run_program;
-// }
+use crate::classic::clvm::__type_compatibility__::{
+    Bytes,
+    BytesFromType,
+    Stream
+};
+
+use crate::classic::clvm::{
+    KEYWORD_TO_ATOM
+};
+
+use crate::classic::clvm_tools::binutils::{
+    assemble_from_ir,
+    disassemble_to_ir_with_kw
+};
+use crate::classic::clvm_tools::ir::reader::read_ir;
+use crate::classic::clvm_tools::ir::writer::write_ir_to_stream;
+use crate::classic::clvm_tools::stages::stage_0::{
+    DefaultProgramRunner,
+    RunProgramOption,
+    TRunProgram
+};
+use crate::classic::clvm_tools::stages::stage_2::compile::make_do_com;
+use crate::classic::clvm_tools::stages::stage_2::optimize::make_do_opt;
+
+struct DoRead {
+}
+
+impl OperatorHandler for DoRead {
+    fn op(&self, allocator: &mut Allocator, op: NodePtr, sexp: NodePtr, max_cost: Cost) -> Response {
+        match allocator.sexp(sexp) {
+            SExp::Pair(f,r) => {
+                match allocator.sexp(f) {
+                    SExp::Atom(b) => {
+                        let filename = Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
+                        return fs::read_to_string(filename).map_err(
+                            |_| EvalErr(allocator.null(), "Failed to read file".to_string())
+                        ).and_then(|content| {
+                            return read_ir(&content).
+                                map_err(|e| EvalErr(allocator.null(), e)).
+                                and_then(|ir| {
+                                    return assemble_from_ir(allocator, Rc::new(ir)).map(|ir_sexp| {
+                                        return Reduction(1, ir_sexp);
+                                    });
+                                });
+                        });
+                    },
+                    _ => {
+                        return Err(EvalErr(allocator.null(), "filename is not an atom".to_string()));
+                    }
+                }
+            },
+            _ => {
+                return Err(EvalErr(allocator.null(), "given a program that is an atom".to_string()));
+            }
+        }
+    }
+}
+
+struct DoWrite {
+}
+
+impl OperatorHandler for DoWrite {
+    fn op(&self, allocator: &mut Allocator, op: NodePtr, sexp: NodePtr, max_cost: Cost) -> Response {
+        match allocator.sexp(sexp) {
+            SExp::Pair(filename_sexp,r) => {
+                match allocator.sexp(r) {
+                    SExp::Pair(data,_) => {
+                        match allocator.sexp(filename_sexp) {
+                            SExp::Atom(filename_buf) => {
+                                let filename_buf = allocator.buf(&filename_buf);
+                                let filename_bytes = Bytes::new(Some(BytesFromType::Raw(filename_buf.to_vec())));
+                                let ir = disassemble_to_ir_with_kw(
+                                    allocator,
+                                    data,
+                                    KEYWORD_TO_ATOM(),
+                                    true,
+                                    true
+                                );
+                                let mut stream = Stream::new(None);
+                                write_ir_to_stream(Rc::new(ir), &mut stream);
+                                return fs::write(filename_bytes.decode(), stream.get_value().decode()).map_err(|_| {
+                                    return EvalErr(sexp, format!("failed to write {}", filename_bytes.decode()));
+                                }).map(|_| {
+                                    return Reduction(1, allocator.null());
+                                });
+                            },
+                            _ => {}
+                        }
+                    },
+                    _ => {}
+                }
+            }
+        }
+
+        return Err(EvalErr(sexp, "failed to write data".to_string()));
+    }
+}
+
+struct GetFullPathForName {
+    search_paths: Vec<String>
+}
+
+impl OperatorHandler for GetFullPathForName {
+    fn op(&self, allocator: &mut Allocator, op: NodePtr, sexp: NodePtr, max_cost: Cost) -> Response {
+        match allocator.sexp(sexp) {
+            SExp::Pair(l,r) => {
+                match allocator.sexp(l) {
+                    SExp::Atom(b) => {
+                        let filename = Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
+                        for path in self.search_paths {
+                            let path_buf = PathBuf::new();
+                            path_buf.push(path);
+                            path_buf.push(filename);
+                            let f_path = path_buf.as_path();
+                            if f_path.exists() {
+                                return f_path.to_str().
+                                    map(|r| Ok(r)).
+                                    unwrap_or_else(|| Err(EvalErr(sexp, "could not compute absolute path".to_string()))).
+                                    and_then(|p| {
+                                        return allocator.new_atom(p.as_bytes()).map(|res| {
+                                            return Reduction(1, res);
+                                        });
+                                    });
+                            }
+                        }
+                    },
+                    _ => { }
+                }
+            },
+            _ => {}
+        }
+
+        return Err(EvalErr(sexp, "can't open file".to_string()));
+    }
+}
+
+struct RunProgramWithSearchPaths {
+    operator_lookup: HashMap<Vec<u8>, Rc<dyn OperatorHandler>>,
+    search_paths: Vec<String>
+}
+
+impl<'a> RunProgramWithSearchPaths {
+    fn new(
+        operators: &HashMap<Vec<u8>, Rc<dyn OperatorHandler>>,
+        search_paths: &Vec<String>
+    ) -> Rc<Self> {
+        let mut result = Rc::new(RunProgramWithSearchPaths {
+            operator_lookup: operators.clone(),
+            search_paths: search_paths.to_vec()
+        });
+
+        result.operator_lookup.insert(
+            vec!('c' as u8, 'o' as u8, 'm' as u8),
+            Rc::new(make_do_com(result.clone()))
+        );
+        result.operator_lookup.insert(
+            vec!('o' as u8, 'p' as u8, 't' as u8),
+            Rc::new(make_do_opt(result.clone()))
+        );
+        result.operator_lookup.insert(
+            "_full_path_for_name".as_bytes().to_vec(),
+            Rc::new(GetFullPathForName { search_paths: search_paths.to_vec() })
+        );
+        result.operator_lookup.insert("_read".as_bytes().to_vec(), Rc::new(DoRead {}));
+        result.operator_lookup.insert("_write".as_bytes().to_vec(), Rc::new(DoWrite {}));
+
+        return result;
+    }
+}
+
+impl<'a> TRunProgram<'a> for RunProgramWithSearchPaths {
+    fn run_program(
+        &self,
+        allocator: &'a mut Allocator,
+        program: NodePtr,
+        args: NodePtr,
+        option: Option<RunProgramOption>
+    ) -> Response {
+        let runner = DefaultProgramRunner::new();
+        return runner.run_program(allocator, program, args, option);
+    }
+}
+
+pub fn run_program_for_search_paths<'a>(
+    operators: &HashMap<Vec<u8>, Rc<dyn OperatorHandler>>,
+    search_paths: &Vec<String>
+) -> Rc<RunProgramWithSearchPaths> {
+    return RunProgramWithSearchPaths::new(operators, &search_paths.to_vec());
+}

@@ -13,10 +13,19 @@ leading bits is the count of bytes to read of size
 0xf7-0xfb is 5 bytes ((perform logical and of first byte with 0x3))
  */
 
-use std::borrow::Borrow;
 use std::rc::Rc;
 use std::vec::Vec;
 
+use clvm_rs::allocator::{
+    Allocator,
+    NodePtr,
+    SExp
+};
+use clvm_rs::reduction::{
+    EvalErr,
+    Reduction,
+    Response
+};
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
     BytesFromType,
@@ -26,16 +35,13 @@ use crate::classic::clvm::as_rust::{TToSexpF, TValStack};
 use crate::classic::clvm::casts::int_from_bytes;
 use crate::classic::clvm::SExp::{
     CastableType,
-    SExp,
     to_sexp_type
 };
-use crate::classic::clvm::EvalError::EvalError;
-use crate::classic::clvm::CLVMObject::CLVMObject;
 
 const MAX_SINGLE_BYTE : u32 = 0x7F;
 const CONS_BOX_MARKER : u32 = 0xFF;
 
-fn atom_size_blob(b: &Bytes) -> Result<Vec<u8>,EvalError> {
+fn atom_size_blob(b: &Bytes) -> Result<Vec<u8>,String> {
     let size = b.length();
     if size == 0 {
         return Ok(vec!(0x80));
@@ -69,28 +75,30 @@ fn atom_size_blob(b: &Bytes) -> Result<Vec<u8>,EvalError> {
             (size & 0xFF) as u8
         ));
     } else {
-        return Err(EvalError::new_str(format!("oversize bytes is unrepresentable {:?}", size)));
+        return Err(format!("oversize bytes is unrepresentable {:?}", size));
     }
 }
 
 enum SExpToByteOp {
     Blob(Vec<u8>),
-    Object(Rc<SExp>)
+    Object(NodePtr)
 }
 
-struct SExpToBytesIterator {
-    pub state: Vec<SExpToByteOp>
+struct SExpToBytesIterator<'a> {
+    allocator: &'a mut Allocator,
+    state: Vec<SExpToByteOp>
 }
 
-impl SExpToBytesIterator {
-    fn new(sexp: Rc<SExp>) -> Self {
+impl<'a> SExpToBytesIterator<'a> {
+    fn new(allocator: &'a mut Allocator, sexp: NodePtr) -> Self {
         return SExpToBytesIterator {
-            state: vec!(SExpToByteOp::Object(sexp.clone()))
+            allocator: allocator,
+            state: vec!(SExpToByteOp::Object(sexp))
         };
     }
 }
 
-impl Iterator for SExpToBytesIterator {
+impl<'a> Iterator for SExpToBytesIterator<'a> {
     type Item = Vec<u8>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -98,17 +106,19 @@ impl Iterator for SExpToBytesIterator {
             match self.state.pop() {
                 None => { break; }
                 Some(SExpToByteOp::Object(x)) => {
-                    match x.borrow() {
-                        CLVMObject::Atom(b) => {
-                            self.state.push(SExpToByteOp::Blob(b.data().clone()));
-                            match atom_size_blob(&b) {
+                    match self.allocator.sexp(x) {
+                        SExp::Atom(b) => {
+                            let buf = self.allocator.buf(&b).to_vec();
+                            let bytes = Bytes::new(Some(BytesFromType::Raw(buf.to_vec())));
+                            self.state.push(SExpToByteOp::Blob(buf));
+                            match atom_size_blob(&bytes) {
                                 Ok(b) => { return Some(b); },
                                 Err(_) => { return None; }
                             }
                         },
-                        CLVMObject::Pair(f,r) => {
-                            self.state.push(SExpToByteOp::Object(r.clone()));
-                            self.state.push(SExpToByteOp::Object(f.clone()));
+                        SExp::Pair(f,r) => {
+                            self.state.push(SExpToByteOp::Object(r));
+                            self.state.push(SExpToByteOp::Object(f));
                             return Some(vec!(CONS_BOX_MARKER as u8));
                         }
                     }
@@ -123,13 +133,13 @@ impl Iterator for SExpToBytesIterator {
 }
 
 pub trait OpStackEntry {
-    fn invoke(&self, op_stack: &mut TOpStack, val_stack: &mut TValStack, f: &mut Stream, to_sexp_f: Box<dyn TToSexpF>) -> Option<EvalError>;
+    fn invoke<'a>(&self, allocator: &'a mut Allocator, op_stack: &mut TOpStack<'a>, val_stack: &mut TValStack, f: &mut Stream, to_sexp_f: Box<dyn TToSexpF<'a>>) -> Option<EvalErr>;
 }
 
-type TOpStack = Vec<Option<Box<dyn OpStackEntry>>>;
+type TOpStack<'a> = Vec<Option<Box<dyn OpStackEntry>>>;
 
-pub fn sexp_to_stream(sexp: Rc<SExp>, f: &mut Stream) {
-    for b in SExpToBytesIterator::new(sexp) {
+pub fn sexp_to_stream<'a>(allocator: &'a mut Allocator, sexp: NodePtr, f: &mut Stream) {
+    for b in SExpToBytesIterator::new(allocator, sexp) {
         f.write(Bytes::new(Some(BytesFromType::Raw(b))));
     }
 }
@@ -137,33 +147,50 @@ pub fn sexp_to_stream(sexp: Rc<SExp>, f: &mut Stream) {
 struct OpCons { }
 
 impl OpStackEntry for OpCons {
-    fn invoke(&self, _op_stack: &mut TOpStack, val_stack: &mut TValStack,
-              _f: &mut Stream, to_sexp_f: Box<dyn TToSexpF>) -> Option<EvalError> {
-        return val_stack.pop().and_then(|r| {
-            return val_stack.pop().and_then(|l| {
+    fn invoke<'a>(
+        &self,
+        allocator: &'a mut Allocator,
+        _op_stack: &mut TOpStack<'a>,
+        val_stack: &mut TValStack,
+        _f: &mut Stream,
+        to_sexp_f: Box<dyn TToSexpF<'a>>
+    ) -> Option<EvalErr> {
+        match val_stack.pop().and_then(|r| {
+            return val_stack.pop().map(|l| {
+                return (l,r);
+            });
+        }) {
+            None => { return None; },
+            Some((l,r)) => {
                 match to_sexp_f.invoke(
+                    allocator,
                     CastableType::TupleOf(Rc::new(l), Rc::new(r))
                 ) {
                     Ok(c) => {
-                        val_stack.push(CastableType::CLVMObject(c.clone()));
+                        val_stack.push(CastableType::CLVMObject(c.1));
                         return None;
                     },
-                    Err(e) => {
-                        return Some(e);
-                    }
+                    Err(e) => { return Some(e); }
                 }
-            });
-        });
+            }
+        }
     }
 }
 
 struct OpReadSexp { }
 
 impl OpStackEntry for OpReadSexp {
-    fn invoke(&self, op_stack: &mut TOpStack, val_stack: &mut TValStack, f: &mut Stream, to_sexp_f: Box<dyn TToSexpF>) -> Option<EvalError> {
+    fn invoke<'a>(
+        &self,
+        allocator: &'a mut Allocator,
+        op_stack: &mut TOpStack<'a>,
+        val_stack: &mut TValStack,
+        f: &mut Stream,
+        to_sexp_f: Box<dyn TToSexpF<'a>>
+    ) -> Option<EvalErr> {
         let blob = f.read(1);
         if blob.length() == 0 {
-            return Some(EvalError::new_str("bad encoding".to_string()));
+            return Some(EvalErr(allocator.null(), "bad encoding".to_string()));
         }
 
         let b = blob.at(0);
@@ -174,9 +201,9 @@ impl OpStackEntry for OpReadSexp {
             return None;
         }
 
-        match atom_from_stream(f, b, to_sexp_f) {
+        match atom_from_stream(allocator, f, b, to_sexp_f) {
             Ok(v) => {
-                val_stack.push(CastableType::CLVMObject(Rc::new(v)));
+                val_stack.push(CastableType::CLVMObject(v));
                 return None;
             },
             Err(e) => { return Some(e); }
@@ -186,20 +213,28 @@ impl OpStackEntry for OpReadSexp {
 
 pub struct SimpleCreateCLVMObject { }
 
-impl TToSexpF for SimpleCreateCLVMObject {
-    fn invoke(&self, v: CastableType) -> Result<Rc<SExp>, EvalError> {
-        return to_sexp_type(v);
+impl<'a> TToSexpF<'a> for SimpleCreateCLVMObject {
+    fn invoke(&self, allocator: &'a mut Allocator, v: CastableType) -> Response {
+        return to_sexp_type(allocator, v).map(|sexp| {
+            return Reduction(1, sexp);
+        });
     }
 }
 
-pub fn sexp_from_stream(f: &mut Stream, to_sexp_f: Box<dyn TToSexpF>) -> Result<Rc<SExp>, EvalError> {
+pub fn sexp_from_stream<'a>(
+    allocator: &'a mut Allocator,
+    f: &mut Stream,
+    to_sexp_f: Box<dyn TToSexpF<'a>>
+) -> Response {
     let mut op_stack: TOpStack = vec!(Some(Box::new(OpReadSexp {})));
     let mut val_stack: TValStack = vec!();
 
     loop {
+        print!("val_stack: {:?}\n", &val_stack);
         match op_stack.pop() {
             Some(Some(func)) => {
                 func.invoke(
+                    allocator,
                     &mut op_stack,
                     &mut val_stack,
                     f,
@@ -210,11 +245,14 @@ pub fn sexp_from_stream(f: &mut Stream, to_sexp_f: Box<dyn TToSexpF>) -> Result<
         }
     }
 
-    return val_stack.pop().map(|v| to_sexp_f.invoke(v)).
-        unwrap_or_else(|| Err(EvalError::new_str(
-            "No value left after conversion".
-                to_string())
-        ));
+    match val_stack.pop() {
+        Some(v) => {
+            return to_sexp_f.invoke(allocator, v);
+        },
+        _ => { }
+    }
+
+    return Err(EvalErr(allocator.null(), "No value left after conversion".to_string()));
 }
 
 // function _op_consume_sexp(f: Stream){
@@ -284,14 +322,14 @@ than parsing and returning a python S-expression tree.
 //   return buffer.getValue();
 // }
 
-pub fn atom_from_stream(f: &mut Stream, b_: u8, _to_sexp_f: Box<dyn TToSexpF>) -> Result<SExp, EvalError> {
+pub fn atom_from_stream<'a>(allocator: &'a mut Allocator, f: &mut Stream, b_: u8, _to_sexp_f: Box<dyn TToSexpF<'a>>) -> Result<NodePtr, EvalErr> {
     let mut b = b_;
 
     if b == 0x80 {
-        return Ok(CLVMObject::new());
+        return Ok(allocator.null());
     }
     else if b <= MAX_SINGLE_BYTE as u8 {
-        return Ok(CLVMObject::Atom(Bytes::new(Some(BytesFromType::Raw(vec!(b))))));
+        return allocator.new_atom(&vec!(b));
     }
 
     let mut bit_count = 0;
@@ -307,18 +345,22 @@ pub fn atom_from_stream(f: &mut Stream, b_: u8, _to_sexp_f: Box<dyn TToSexpF>) -
     if bit_count > 1 {
         let bin = f.read(bit_count - 1);
         if bin.length() != bit_count - 1 {
-            return Err(EvalError::new_str("bad encoding".to_string()));
+            return Err(EvalErr(allocator.null(), "bad encoding".to_string()));
         }
         size_blob = size_blob.concat(&bin);
     }
-    return int_from_bytes(size_blob, None).and_then(|size| {
+    return int_from_bytes(
+        allocator,
+        size_blob,
+        None
+    ).and_then(|size| {
         if size >= 0x400000000 {
-            return Err(EvalError::new_str("blob too large".to_string()));
+            return Err(EvalErr(allocator.null(), "blob too large".to_string()));
         }
         let blob = f.read(size as usize);
         if blob.length() != size as usize {
-            return Err(EvalError::new_str("bad encoding".to_string()));
+            return Err(EvalErr(allocator.null(), "bad encoding".to_string()));
         }
-        return Ok(CLVMObject::Atom(blob));
+        return allocator.new_atom(blob.data());
     });
 }

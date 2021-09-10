@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::PathBuf;
 
+use clvm_rs::allocator::Allocator;
+
 use crate::classic::clvm::__type_compatibility__::t;
 use crate::classic::clvm_tools::cmds::{
     OpdConversion,
@@ -9,18 +11,26 @@ use crate::classic::clvm_tools::cmds::{
 
 #[test]
 fn basic_opd() {
-    let result = OpdConversion {}.invoke(&"80".to_string()).unwrap();
+    let mut allocator = Allocator::new();
+    let result = OpdConversion {}.invoke(
+        &mut allocator, &"80".to_string()
+    ).unwrap();
     assert_eq!(result.rest(), "()");
 }
 
 #[test]
 fn nil_in_list_opd() {
-    let result = OpdConversion {}.invoke(&"ff8080".to_string()).unwrap();
+    let mut allocator = Allocator::new();
+    let result = OpdConversion {}.invoke(
+        &mut allocator,
+        &"ff8080".to_string()
+    ).unwrap();
     assert_eq!(result.rest(), "(())");
 }
 
 #[test]
 fn big_decode_opd() {
+    let mut allocator = Allocator::new();
     let mut testpath = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     testpath.push("resources/tests");
     let mut in_path = testpath.clone();
@@ -35,6 +45,9 @@ fn big_decode_opd() {
             });
         }).unwrap();
 
-    let result = OpdConversion {}.invoke(&expected.first()).unwrap();
+    let result = OpdConversion {}.invoke(
+        &mut allocator,
+        &expected.first()
+    ).unwrap();
     assert_eq!(expected.rest(), result.rest());
 }
