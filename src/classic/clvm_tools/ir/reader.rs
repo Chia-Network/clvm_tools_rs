@@ -200,8 +200,8 @@ pub fn consume_cons_body(s: &mut IRReader) -> Result<IRRepr, String> {
     }
 
     if b.at(0) == '.' as u8 {
-        let result = consume_object(s);
         consume_whitespace(s);
+        let result = consume_object(s);
         let b = s.read(1);
         if b.length() == 0 || b.at(0) != ')' as u8 {
             return Err("missing )".to_string());

@@ -41,39 +41,39 @@ use crate::classic::clvm::SExp::{
 const MAX_SINGLE_BYTE : u32 = 0x7F;
 const CONS_BOX_MARKER : u32 = 0xFF;
 
-fn atom_size_blob(b: &Bytes) -> Result<Vec<u8>,String> {
+fn atom_size_blob(b: &Bytes) -> Result<(bool, Vec<u8>),String> {
     let size = b.length();
     if size == 0 {
-        return Ok(vec!(0x80));
+        return Ok((false, vec!(0x80)));
     } else if size == 1 && b.at(0) <= MAX_SINGLE_BYTE as u8 {
-        return Ok(b.data().clone());
+        return Ok((false, b.data().clone()));
     }
 
     if size < 0x40 {
-        return Ok(vec!(0x80 | size as u8));
+        return Ok((true, vec!(0x80 | size as u8)));
     } else if size < 0x2000 {
-        return Ok(vec!(0xC0 | ((size >> 8) as u8), ((size >> 0) & 0xFF) as u8));
+        return Ok((true, vec!(0xC0 | ((size >> 8) as u8), ((size >> 0) & 0xFF) as u8)));
     } else if size < 0x100000 {
-        return Ok(vec!(
+        return Ok((true, vec!(
             0xE0 | ((size >> 16) as u8),
             ((size >> 8) & 0xFF) as u8,
             ((size >> 0) & 0xFF) as u8
-        ));
+        )));
     } else if size < 0x8000000 {
-        return Ok(vec!(
+        return Ok((true, vec!(
             0xF0 | ((size >> 24) as u8),
             ((size >> 16) & 0xFF) as u8,
             ((size >> 8) & 0xFF) as u8,
             ((size >> 0) & 0xFF) as u8
-        ));
+        )));
     } else if size < 0x400000000 {
-        return Ok(vec!(
+        return Ok((true, vec!(
             0xF8 | ((size / (65536 * 65536)) as u8),// (size >> 32),
             ((size >> 24) & 0xFF) as u8,
             ((size >> 16) & 0xFF) as u8,
             ((size >> 8) & 0xFF) as u8,
             (size & 0xFF) as u8
-        ));
+        )));
     } else {
         return Err(format!("oversize bytes is unrepresentable {:?}", size));
     }
@@ -110,9 +110,13 @@ impl<'a> Iterator for SExpToBytesIterator<'a> {
                         SExp::Atom(b) => {
                             let buf = self.allocator.buf(&b).to_vec();
                             let bytes = Bytes::new(Some(BytesFromType::Raw(buf.to_vec())));
-                            self.state.push(SExpToByteOp::Blob(buf));
                             match atom_size_blob(&bytes) {
-                                Ok(b) => { return Some(b); },
+                                Ok((original, b)) => {
+                                    if original {
+                                        self.state.push(SExpToByteOp::Blob(buf));
+                                    }
+                                    return Some(b);
+                                },
                                 Err(_) => { return None; }
                             }
                         },
@@ -230,7 +234,6 @@ pub fn sexp_from_stream<'a>(
     let mut val_stack: TValStack = vec!();
 
     loop {
-        print!("val_stack: {:?}\n", &val_stack);
         match op_stack.pop() {
             Some(Some(func)) => {
                 func.invoke(

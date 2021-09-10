@@ -10,6 +10,7 @@ use clvm_rs::allocator::{
 
 use crate::classic::clvm::__type_compatibility__::t;
 use crate::classic::clvm_tools::cmds::{
+    OpcConversion,
     OpdConversion,
     TConversion
 };
@@ -147,4 +148,31 @@ fn can_do_operations() {
         },
         _ => { assert_eq!("expected atom", ""); }
     }
+}
+
+#[test]
+fn basic_opc() {
+    let mut allocator = Allocator::new();
+    let result = OpcConversion {}.invoke(
+        &mut allocator, &"()".to_string()
+    ).unwrap();
+    assert_eq!(result.rest(), "80");
+}
+
+#[test]
+fn basic_opc_lil() {
+    let mut allocator = Allocator::new();
+    let result = OpcConversion {}.invoke(
+        &mut allocator, &"(())".to_string()
+    ).unwrap();
+    assert_eq!(result.rest(), "ff8080");
+}
+
+#[test]
+fn basic_opc_quoted_1() {
+    let mut allocator = Allocator::new();
+    let result = OpcConversion {}.invoke(
+        &mut allocator, &"(q . 1)".to_string()
+    ).unwrap();
+    assert_eq!(result.rest(), "ff0101");
 }
