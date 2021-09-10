@@ -1,6 +1,8 @@
+use std::collections::HashMap;
 use std::borrow::Borrow;
 use std::rc::Rc;
 
+use crate::classic::clvm::KEYWORD_TO_ATOM;
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
     BytesFromType,
@@ -24,12 +26,14 @@ enum IROutputState {
 
 #[derive(Debug)]
 struct IROutputIterator {
-    state : Vec<IROutputState>
+    kw_translation: HashMap<String, Vec<u8>>,
+    state: Vec<IROutputState>
 }
 
 impl IROutputIterator {
-    fn new(ir_sexp: Rc<IRRepr>) -> IROutputIterator {
+    fn new(kw_translation: HashMap<String, Vec<u8>>, ir_sexp: Rc<IRRepr>) -> IROutputIterator {
         return IROutputIterator {
+            kw_translation: kw_translation,
             state: vec!(IROutputState::Start(ir_sexp))
         };
     }
@@ -103,7 +107,7 @@ impl Iterator for IROutputIterator {
 }
 
 pub fn write_ir_to_stream(ir_sexp: Rc<IRRepr>, f: &mut Stream) {
-    for b in IROutputIterator::new(ir_sexp) {
+    for b in IROutputIterator::new(KEYWORD_TO_ATOM().clone(), ir_sexp) {
         f.write(Bytes::new(Some(BytesFromType::String(b))));
     }
 }

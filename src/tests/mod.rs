@@ -67,7 +67,6 @@ fn big_decode_opd() {
 
 fn run_from_source<'a>(allocator: &'a mut Allocator, src: String) -> NodePtr {
     let ir = read_ir(&src).unwrap();
-    print!("ir {:?}\n", &ir);
     let assembled = assemble_from_ir(allocator, Rc::new(ir)).unwrap();
     let runner = DefaultProgramRunner::new();
     let null = allocator.null();
@@ -139,7 +138,22 @@ fn can_echo_quoted_atom() {
 fn can_do_operations() {
     let mut allocator = Allocator::new();
     let null = allocator.null();
-    let res = run_from_source(&mut allocator, "(12 (1 . 3) (1 . 5))".to_string());
+    let res = run_from_source(&mut allocator, "(16 (1 . 3) (1 . 5))".to_string());
+    match allocator.sexp(res) {
+        SExp::Atom(b) => {
+            let res_bytes = allocator.buf(&b).to_vec();
+            assert_eq!(res_bytes.len(), 1);
+            assert_eq!(res_bytes[0], 8);
+        },
+        _ => { assert_eq!("expected atom", ""); }
+    }
+}
+
+#[test]
+fn can_do_operations_kw() {
+    let mut allocator = Allocator::new();
+    let null = allocator.null();
+    let res = run_from_source(&mut allocator, "(+ (q . 3) (q . 5))".to_string());
     match allocator.sexp(res) {
         SExp::Atom(b) => {
             let res_bytes = allocator.buf(&b).to_vec();

@@ -117,7 +117,6 @@ pub fn to_sexp_type<'a>(allocator: &'a mut Allocator, value: CastableType) -> Re
         }
 
         // convert value
-        print!("op: {:?}, top: {:?}, ops: {:?}, stack: {:?}\n", &op, &top, &ops, &stack);
         match op {
             SexpStackOp::OpConvert => {
                 match top.borrow() {
