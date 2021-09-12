@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::cell::{
+    RefCell,
+    RefMut
+};
 use std::fs;
 use std::rc::Rc;
 use std::path::PathBuf;
@@ -26,6 +29,7 @@ use crate::classic::clvm::__type_compatibility__::{
 use crate::classic::clvm::{
     KEYWORD_TO_ATOM
 };
+use crate::classic::clvm::sexp::atom;
 
 use crate::classic::clvm_tools::binutils::{
     assemble_from_ir,
@@ -38,16 +42,16 @@ use crate::classic::clvm_tools::stages::stage_0::{
     RunProgramOption,
     TRunProgram
 };
-use crate::classic::clvm_tools::stages::stage_2::compile::make_do_com;
-use crate::classic::clvm_tools::stages::stage_2::optimize::make_do_opt;
+use crate::classic::clvm_tools::stages::stage_2::compile::DoComProg;
+use crate::classic::clvm_tools::stages::stage_2::optimize::DoOptProg;
 
 struct DoRead {
 }
 
 impl OperatorHandler for DoRead {
-    fn op(&self, allocator: &mut Allocator, op: NodePtr, sexp: NodePtr, max_cost: Cost) -> Response {
+    fn op(&self, allocator: &mut Allocator, _op: NodePtr, sexp: NodePtr, _max_cost: Cost) -> Response {
         match allocator.sexp(sexp) {
-            SExp::Pair(f,r) => {
+            SExp::Pair(f,_) => {
                 match allocator.sexp(f) {
                     SExp::Atom(b) => {
                         let filename = Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
@@ -79,7 +83,7 @@ struct DoWrite {
 }
 
 impl OperatorHandler for DoWrite {
-    fn op(&self, allocator: &mut Allocator, op: NodePtr, sexp: NodePtr, max_cost: Cost) -> Response {
+    fn op(&self, allocator: &mut Allocator, _op: NodePtr, sexp: NodePtr, _max_cost: Cost) -> Response {
         match allocator.sexp(sexp) {
             SExp::Pair(filename_sexp,r) => {
                 match allocator.sexp(r) {
@@ -108,7 +112,8 @@ impl OperatorHandler for DoWrite {
                     },
                     _ => {}
                 }
-            }
+            },
+            _ => {}
         }
 
         return Err(EvalErr(sexp, "failed to write data".to_string()));
@@ -120,16 +125,16 @@ struct GetFullPathForName {
 }
 
 impl OperatorHandler for GetFullPathForName {
-    fn op(&self, allocator: &mut Allocator, op: NodePtr, sexp: NodePtr, max_cost: Cost) -> Response {
+    fn op(&self, allocator: &mut Allocator, _op: NodePtr, sexp: NodePtr, _max_cost: Cost) -> Response {
         match allocator.sexp(sexp) {
-            SExp::Pair(l,r) => {
+            SExp::Pair(l,_r) => {
                 match allocator.sexp(l) {
                     SExp::Atom(b) => {
                         let filename = Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
-                        for path in self.search_paths {
-                            let path_buf = PathBuf::new();
+                        for path in &self.search_paths {
+                            let mut path_buf = PathBuf::new();
                             path_buf.push(path);
-                            path_buf.push(filename);
+                            path_buf.push(filename.clone());
                             let f_path = path_buf.as_path();
                             if f_path.exists() {
                                 return f_path.to_str().
@@ -153,56 +158,88 @@ impl OperatorHandler for GetFullPathForName {
     }
 }
 
-struct RunProgramWithSearchPaths {
-    operator_lookup: HashMap<Vec<u8>, Rc<dyn OperatorHandler>>,
+pub struct RunProgramWithSearchPaths {
+    runner: RefCell<DefaultProgramRunner>,
+    do_com_prog: Box<DoComProg>,
+    do_opt_prog: Box<DoOptProg>,
     search_paths: Vec<String>
 }
 
-impl<'a> RunProgramWithSearchPaths {
-    fn new(
-        operators: &HashMap<Vec<u8>, Rc<dyn OperatorHandler>>,
-        search_paths: &Vec<String>
-    ) -> Rc<Self> {
-        let mut result = Rc::new(RunProgramWithSearchPaths {
-            operator_lookup: operators.clone(),
-            search_paths: search_paths.to_vec()
-        });
-
-        result.operator_lookup.insert(
-            vec!('c' as u8, 'o' as u8, 'm' as u8),
-            Rc::new(make_do_com(result.clone()))
-        );
-        result.operator_lookup.insert(
-            vec!('o' as u8, 'p' as u8, 't' as u8),
-            Rc::new(make_do_opt(result.clone()))
-        );
-        result.operator_lookup.insert(
-            "_full_path_for_name".as_bytes().to_vec(),
-            Rc::new(GetFullPathForName { search_paths: search_paths.to_vec() })
-        );
-        result.operator_lookup.insert("_read".as_bytes().to_vec(), Rc::new(DoRead {}));
-        result.operator_lookup.insert("_write".as_bytes().to_vec(), Rc::new(DoWrite {}));
-
-        return result;
+impl OperatorHandler for RunProgramWithSearchPaths {
+    fn op(
+        &self,
+        allocator: &mut Allocator,
+        op: NodePtr,
+        sexp: NodePtr,
+        max_cost: Cost
+    ) -> Response {
+        return m! {
+            op_buf <- atom(allocator, op);
+            let op_vec = allocator.buf(&op_buf).to_vec();
+            if op_vec == vec!('c' as u8, 'o' as u8, 'm' as u8) {
+                self.do_com_prog.op(allocator, op, sexp, max_cost)
+            } else if op_vec == vec!('o' as u8, 'p' as u8, 't' as u8) {
+                self.do_opt_prog.op(allocator, op, sexp, max_cost)
+            } else {
+                Err(EvalErr(sexp, "unknown op".to_string()))
+            }
+        }
     }
 }
 
-impl<'a> TRunProgram<'a> for RunProgramWithSearchPaths {
+impl RunProgramWithSearchPaths {
+    fn new(search_paths: &Vec<String>) -> Self {
+        return RunProgramWithSearchPaths {
+            do_com_prog: Box::new(DoComProg::new()),
+            do_opt_prog: Box::new(DoOptProg::new()),
+            runner: RefCell::new(DefaultProgramRunner::new()),
+            search_paths: search_paths.to_vec()
+        };
+    }
+
+    fn setup(&self, myself: Rc<RunProgramWithSearchPaths>) {
+        RefMut::map(self.runner.borrow_mut(), |runner| {
+            runner.add_handler(
+                &"_full_path_for_name".as_bytes().to_vec(),
+                Rc::new(GetFullPathForName { search_paths: self.search_paths.to_vec() })
+            );
+            runner.add_handler(
+                &"_read".as_bytes().to_vec(),
+                Rc::new(DoRead {})
+            );
+            runner.add_handler(
+                &"_write".as_bytes().to_vec(),
+                Rc::new(DoWrite {})
+            );
+            runner.add_handler(
+                &"com".as_bytes().to_vec(),
+                myself.clone()
+            );
+            runner.add_handler(
+                &"opt".as_bytes().to_vec(),
+                myself.clone()
+            );
+            return runner;
+        });
+    }
+}
+
+impl TRunProgram for RunProgramWithSearchPaths {
     fn run_program(
         &self,
-        allocator: &'a mut Allocator,
+        allocator: &mut Allocator,
         program: NodePtr,
         args: NodePtr,
         option: Option<RunProgramOption>
     ) -> Response {
-        let runner = DefaultProgramRunner::new();
-        return runner.run_program(allocator, program, args, option);
+        return self.runner.borrow().run_program(allocator, program, args, option);
     }
 }
 
-pub fn run_program_for_search_paths<'a>(
-    operators: &HashMap<Vec<u8>, Rc<dyn OperatorHandler>>,
+pub fn run_program_for_search_paths(
     search_paths: &Vec<String>
 ) -> Rc<RunProgramWithSearchPaths> {
-    return RunProgramWithSearchPaths::new(operators, &search_paths.to_vec());
+    let prog = Rc::new(RunProgramWithSearchPaths::new(&search_paths.to_vec()));
+    prog.setup(prog.clone());
+    return prog;
 }

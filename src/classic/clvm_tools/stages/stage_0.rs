@@ -24,8 +24,8 @@ pub type TOperatorDict = HashMap<String, Vec<u8>>;
 
 pub struct OpQuote { }
 
-impl<'a> OperatorHandler for OpQuote {
-    fn op(&self, allocator: &mut Allocator, op: NodePtr, sexp: NodePtr, max_cost: Cost) -> Response {
+impl OperatorHandler for OpQuote {
+    fn op(&self, _allocator: &mut Allocator, _op: NodePtr, sexp: NodePtr, _max_cost: Cost) -> Response {
         return Ok(Reduction(1, sexp));
     }
 }
@@ -34,67 +34,6 @@ pub struct OpRouter {
     routes: HashMap<Vec<u8>, Rc<dyn OperatorHandler>>,
     f_lookup: FLookup,
     strict: bool,
-}
-
-impl<'a> OperatorHandler for OpRouter {
-    fn op(&self, allocator: &mut Allocator, op: NodePtr, sexp: NodePtr, max_cost: Cost) -> Response {
-        match allocator.sexp(op) {
-            SExp::Atom(b) => {
-                let buf = &allocator.buf(&b).to_vec();
-                match self.routes.get(buf) {
-                    Some(handler) => {
-                        return handler.op(allocator, op, sexp, max_cost);
-                    },
-                    _ => {
-                        if buf.len() == 1 {
-                            if let Some(f) = self.f_lookup[buf[0] as usize] {
-                                return f(allocator, sexp, max_cost);
-                            }
-                        }
-                        if self.strict {
-                            return Err(EvalErr(op, "unimplemented operator".to_string()))
-                        } else {
-                            op_unknown(allocator, op, sexp, max_cost)
-                        }
-                    }
-                }
-            },
-            _ => {
-                return Err(EvalErr(op, "unknown pair operator".to_string()));
-            }
-        }
-    }
-}
-
-pub struct RunProgramOption {
-    operator_lookup: TOperatorDict,
-    max_cost: Option<Cost>,
-    pre_eval_f: Option<PreEval>,
-    strict: bool
-}
-
-pub trait TRunProgram<'a> {
-    fn run_program(&self, allocator: &'a mut Allocator, program: NodePtr, args: NodePtr, option: Option<RunProgramOption>) -> Response;
-}
-
-pub struct DefaultProgramRunner {
-    quote_kw_vec: Vec<u8>,
-    apply_kw_vec: Vec<u8>
-}
-
-impl DefaultProgramRunner {
-    pub fn new() -> Self {
-        return DefaultProgramRunner {
-            apply_kw_vec: vec!(2 as u8),
-            quote_kw_vec: vec!(1 as u8),
-        };
-    }
-}
-
-impl<'a> OperatorHandler for DefaultProgramRunner {
-    fn op(&self, allocator: &mut Allocator, op: NodePtr, args: NodePtr, max_cost: Cost) -> Response {
-        return Err(EvalErr(allocator.null(), "lol".to_string()));
-    }
 }
 
 impl OpRouter {
@@ -149,10 +88,81 @@ impl OpRouter {
             strict: true,
         };
     }
+
+    pub fn add_handler(&mut self, op: &Vec<u8>, handler: Rc<dyn OperatorHandler>) {
+        self.routes.insert(op.to_vec(), handler);
+    }
 }
 
-impl<'a> TRunProgram<'a> for DefaultProgramRunner {
-    fn run_program(&self, allocator: &'a mut Allocator, program: NodePtr, args: NodePtr, option: Option<RunProgramOption>) -> Response {
+impl<'a> OperatorHandler for OpRouter {
+    fn op(&self, allocator: &mut Allocator, op: NodePtr, sexp: NodePtr, max_cost: Cost) -> Response {
+        match allocator.sexp(op) {
+            SExp::Atom(b) => {
+                let buf = &allocator.buf(&b).to_vec();
+                match self.routes.get(buf) {
+                    Some(handler) => {
+                        return handler.op(allocator, op, sexp, max_cost);
+                    },
+                    _ => {
+                        if buf.len() == 1 {
+                            if let Some(f) = self.f_lookup[buf[0] as usize] {
+                                return f(allocator, sexp, max_cost);
+                            }
+                        }
+                        if self.strict {
+                            return Err(EvalErr(op, "unimplemented operator".to_string()))
+                        } else {
+                            op_unknown(allocator, op, sexp, max_cost)
+                        }
+                    }
+                }
+            },
+            _ => {
+                return Err(EvalErr(op, "unknown pair operator".to_string()));
+            }
+        }
+    }
+}
+
+pub struct RunProgramOption {
+    operator_lookup: TOperatorDict,
+    max_cost: Option<Cost>,
+    pre_eval_f: Option<PreEval>,
+    strict: bool
+}
+
+pub trait TRunProgram {
+    fn run_program(&self, allocator: &mut Allocator, program: NodePtr, args: NodePtr, option: Option<RunProgramOption>) -> Response;
+}
+
+pub struct DefaultProgramRunner {
+    router: OpRouter,
+    quote_kw_vec: Vec<u8>,
+    apply_kw_vec: Vec<u8>
+}
+
+impl DefaultProgramRunner {
+    pub fn new() -> Self {
+        return DefaultProgramRunner {
+            router: OpRouter::new(),
+            apply_kw_vec: vec!(2 as u8),
+            quote_kw_vec: vec!(1 as u8),
+        };
+    }
+
+    pub fn add_handler(&mut self, op: &Vec<u8>, handler: Rc<dyn OperatorHandler>) {
+        self.router.add_handler(&op.to_vec(), handler);
+    }
+}
+
+impl TRunProgram for DefaultProgramRunner {
+    fn run_program(
+        &self,
+        allocator: &mut Allocator,
+        program: NodePtr,
+        args: NodePtr,
+        option: Option<RunProgramOption>
+    ) -> Response {
         let mut max_cost = 0;
 
         match &option {

@@ -5,6 +5,7 @@ use std::string::String;
 
 use clvm_rs::allocator::{
     Allocator,
+    AtomBuf,
     NodePtr,
     SExp
 };
@@ -99,15 +100,14 @@ pub fn to_sexp_type<'a>(allocator: &'a mut Allocator, value: CastableType) -> Re
     let mut ops : Vec<SexpStackOp> = vec!(SexpStackOp::OpConvert);
 
     loop {
-        let mut op = SexpStackOp::OpConvert;
+        let op;
 
         match ops.pop() {
             None => { break; },
             Some(o) => { op = o; }
         }
 
-        let mut top =
-            Rc::new(CastableType::CLVMObject(allocator.null()));
+        let top;
 
         match stack.pop() {
             None => {
@@ -468,5 +468,112 @@ pub fn rest<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> Result<NodePtr, 
     match allocator.sexp(sexp) {
         SExp::Pair(_,r) => { return Ok(r); },
         _ => { return Err(EvalErr(sexp, "rest of non-cons".to_string())); }
+    }
+}
+
+pub fn atom<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> Result<AtomBuf, EvalErr> {
+    match allocator.sexp(sexp) {
+        SExp::Atom(abuf) => { return Ok(abuf); },
+        _ => { return Err(EvalErr(sexp, "not an atom".to_string())); }
+    }
+}
+
+pub fn proper_list<'a>(allocator: &'a mut Allocator, sexp: NodePtr, store: bool) -> Option<Vec<NodePtr>> {
+    let mut args = vec!();
+    let mut args_sexp = sexp;
+    loop {
+        match allocator.sexp(args_sexp) {
+            SExp::Atom(_) => {
+                if args_sexp == allocator.null() {
+                    return Some(args);
+                } else {
+                    return None;
+                }
+            },
+            SExp::Pair(f,r) => {
+                if store {
+                    args.push(f);
+                }
+                args_sexp = r;
+            }
+        }
+    }
+}
+
+pub fn enlist<'a>(allocator: &'a mut Allocator, vec: &Vec<NodePtr>) -> Result<NodePtr, EvalErr> {
+    let mut built = allocator.null();
+    for i_reverse in 0..vec.len() {
+        let i = i_reverse - vec.len() - 1;
+        match allocator.new_pair(vec[i], built) {
+            Err(e) => { return Err(e) },
+            Ok(v) => { built = v; }
+        }
+    }
+    return Ok(built);
+}
+
+pub fn mapM(
+    allocator: &mut Allocator,
+    iter: &mut impl Iterator<Item = NodePtr>,
+    f: &dyn Fn(&mut Allocator, NodePtr) -> Result<NodePtr, EvalErr>
+) -> Result<Vec<NodePtr>, EvalErr> {
+    let mut result = Vec::new();
+    loop {
+        match iter.next() {
+            None => { return Ok(result); },
+            Some(v) => {
+                match f(allocator, v) {
+                    Err(e) => { return Err(e); },
+                    Ok(v) => { result.push(v); }
+                }
+            }
+        }
+    }
+}
+
+pub fn foldM<A,B>(
+    allocator: &mut Allocator,
+    f: &dyn Fn(&mut Allocator, A, B) -> Result<A, EvalErr>,
+    start_: A,
+    iter: &mut impl Iterator<Item = B>
+) -> Result<A, EvalErr> {
+    let mut start = start_;
+    loop {
+        match iter.next() {
+            None => { return Ok(start); },
+            Some(v) => {
+                match f(allocator, start, v) {
+                    Err(e) => { return Err(e); },
+                    Ok(v) => { start = v; }
+                }
+            }
+        }
+    }
+}
+
+pub fn equal_to<'a>(
+    allocator: &'a mut Allocator,
+    first_: NodePtr,
+    second_: NodePtr
+) -> bool {
+    let mut first = first_;
+    let mut second = second_;
+
+    loop {
+        match (allocator.sexp(first), allocator.sexp(second)) {
+            (SExp::Atom(fbuf), SExp::Atom(sbuf)) => {
+                return
+                    allocator.buf(&fbuf).to_vec() ==
+                    allocator.buf(&sbuf).to_vec();
+            },
+            (SExp::Pair(ff,fr), SExp::Pair(rf,rr)) => {
+                if !equal_to(allocator, ff, rf) {
+                    return false;
+                }
+                first = fr;
+                second = rr;
+            },
+            _ => { return false; }
+        }
     }
 }

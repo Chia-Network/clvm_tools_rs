@@ -20,24 +20,45 @@ use crate::classic::clvm_tools::stages::stage_0::{
     TRunProgram
 };
 
-use crate::classic::clvm_tools::stages::stage_2::defaults::DEFAULT_MACRO_LOOKUP;
+use crate::classic::clvm::sexp::{
+    enlist,
+    first,
+    rest
+};
 
-// export const QUOTE_ATOM = KEYWORD_TO_ATOM["q"];
-// export const APPLY_ATOM = KEYWORD_TO_ATOM["a"];
-// export const CONS_ATOM = KEYWORD_TO_ATOM["c"];
+use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use crate::classic::clvm_tools::stages::stage_2::defaults::DEFAULT_MACRO_LOOKUP;
+use crate::classic::clvm_tools::stages::stage_2::helpers::quote;
 
 // export const PASS_THROUGH_OPERATORS = new Set(Object.values(KEYWORD_TO_ATOM));
 
-pub struct DoComProg<'a> {
-    runner: Rc<dyn TRunProgram<'a>>
+fn qq_atom() -> Vec<u8> { return vec!('q' as u8, 'q' as u8); }
+fn unquote_atom() -> Vec<u8> { return "unquote".as_bytes().to_vec(); }
+
+pub struct DoComProg {
+    runner: Rc<dyn TRunProgram>
 }
 
-pub fn compile_qq<'a>(
-    allocator: &'a mut Allocator,
+fn com_qq(
+    allocator: &mut Allocator,
+    macro_lookup: NodePtr,
+    symbol_table: NodePtr,
+    runner: Rc<dyn TRunProgram>,
+    sexp: NodePtr
+) -> Result<NodePtr, EvalErr> {
+    return m! {
+        qq <- allocator.new_atom(&qq_atom());
+        com_prog <- allocator.new_pair(qq, sexp);
+        do_com_prog(allocator, com_prog, macro_lookup, symbol_table, runner)
+    }.map(|x| x.1);
+}
+
+pub fn compile_qq(
+    allocator: &mut Allocator,
     args: NodePtr,
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
-    run_program: Rc<dyn TRunProgram>,
+    runner: Rc<dyn TRunProgram>,
     level: usize,
 ) -> Result<NodePtr, EvalErr> {
     /*
@@ -45,36 +66,54 @@ pub fn compile_qq<'a>(
      * (qq (unquote X)) => X
      * (qq (a . B)) => (c (qq a) (qq B))
      */
-    let com = |sexp| {
-        return do_com_prog(sexp, macro_lookup, symbol_table, run_program);
-    };
 
-    const sexp = args.first();
-    if(!sexp.listp() || sexp.nullp()){
-        // (qq ATOM) => (q . ATOM)
-        return SExp.to(quote(sexp));
-    }
+    let null = allocator.null();
 
-    if(sexp.listp() && !sexp.first().listp()){
-        const op = sexp.first().atom as Bytes;
-        if(op.equal_to(b("qq"))){
-            const subexp = compile_qq(sexp.rest(), macro_lookup, symbol_table, run_program, level+1);
-            return com(SExp.to([h(CONS_ATOM), op, [h(CONS_ATOM), subexp, quote(0)]]));
-        }
-        else if(op.equal_to(b("unquote"))){
-            if(level === 1){
-                // (qq (unquote X)) => X
-                return com(sexp.rest().first());
+    match allocator.sexp(args) {
+        SExp::Atom(_b) => {
+            // (qq ATOM) => (q . ATOM)
+            return quote(allocator, args);
+        },
+        SExp::Pair(l,r) => {
+            match allocator.sexp(l) {
+                SExp::Atom(op) => {
+                    if allocator.buf(&op).to_vec() == qq_atom() {
+                        return m! {
+                            cons_atom <- allocator.new_atom(&vec!(4));
+                            subexp <-
+                                compile_qq(allocator, r, macro_lookup, symbol_table, runner.clone(), level+1);
+                            consed <- enlist(allocator, &vec!(cons_atom, subexp, null));
+                            enlist(allocator, &vec!(cons_atom, l, consed))
+                        };
+                    } else if allocator.buf(&op).to_vec() == unquote_atom() {
+                        if level == 1 {
+                            // (qq (unquote X)) => X
+                            return m! {
+                                rest_of <- rest(allocator, args);
+                                first(allocator, rest_of)
+                            };
+                        }
+                        return m! {
+                            cons_atom <- allocator.new_atom(&vec!(4));
+                            subexp <-
+                                compile_qq(allocator, r, macro_lookup, symbol_table, runner.clone(), level-1);
+                            consed <- enlist(allocator, &vec!(cons_atom, subexp, null));
+                            enlist(allocator, &vec!(cons_atom, l, consed))
+                        };
+                    }
+
+                    // (qq (a . B)) => (c (qq a) (qq B))
+                    return m! {
+                        cons_atom <- allocator.new_atom(&vec!(4));
+                        compiled_l <- com_qq(allocator, macro_lookup, symbol_table, runner.clone(), l);
+                        compiled_r <- com_qq(allocator, macro_lookup, symbol_table, runner, r);
+                        enlist(allocator, &vec!(cons_atom, compiled_l, compiled_r))
+                    };
+                },
+                _ => Ok(args)
             }
-            const subexp = compile_qq(sexp.rest(), macro_lookup, symbol_table, run_program, level-1);
-            return com(SExp.to([h(CONS_ATOM), op, [h(CONS_ATOM), subexp, quote(0)]]));
         }
     }
-
-    // (qq (a . B)) => (c (qq a) (qq B))
-    const A = com(SExp.to([b("qq"), sexp.first()]));
-    const B = com(SExp.to([b("qq"), sexp.rest()]));
-    return SExp.to([h(CONS_ATOM), A, B]);
 }
 
 // export function compile_macros(args: SExp, macro_lookup: SExp, symbol_table: SExp, run_program: TRunProgram){
@@ -123,32 +162,24 @@ pub fn compile_qq<'a>(
 //   }
 // }
 
-pub fn do_com_prog<'a>(
-    allocator: &'a Allocator,
-    prog: NodePtr,
-    macro_lookup: NodePtr,
-    symbol_table: NodePtr,
-    run_program: Rc<dyn TRunProgram>
+pub fn do_com_prog(
+    allocator: &mut Allocator,
+    _prog: NodePtr,
+    _macro_lookup: NodePtr,
+    _symbol_table: NodePtr,
+    _run_program: Rc<dyn TRunProgram>
 ) -> Response {
-    return Ok(Reduction(1, allocator.null()));
-}
-// export function do_com_prog(
-//   prog: SExp,
-//   macro_lookup: SExp,
-//   symbol_table: SExp,
-//   run_program: TRunProgram,
-// ): SExp {
-//   /*
-//     Turn the given program `prog` into a clvm program using
-//     the macros to do transformation.
-//     prog is an uncompiled s-expression.
-//     Return a new expanded s-expression PROG_EXP that is equivalent by rewriting
-//     based upon the operator, where "equivalent" means
-//     (a (com (q PROG) (MACROS)) ARGS) == (a (q PROG_EXP) ARGS)
-//     for all ARGS.
-//     Also, (opt (com (q PROG) (MACROS))) == (opt (com (q PROG_EXP) (MACROS)))
-//    */
-  
+    /*
+     * Turn the given program `prog` into a clvm program using
+     * the macros to do transformation.
+     * prog is an uncompiled s-expression.
+     * Return a new expanded s-expression PROG_EXP that is equivalent by rewriting
+     * based upon the operator, where "equivalent" means
+     * (a (com (q PROG) (MACROS)) ARGS) == (a (q PROG_EXP) ARGS)
+     * for all ARGS.
+     * Also, (opt (com (q PROG) (MACROS))) == (opt (com (q PROG_EXP) (MACROS)))
+     */
+
 //   // lower "quote" to "q"
 //   prog = lower_quote(prog, macro_lookup, symbol_table, run_program);
   
@@ -228,29 +259,39 @@ pub fn do_com_prog<'a>(
 //   }
   
 //   throw new SyntaxError(`can't compile ${disassemble(prog)}, unknown operator`);
-// }
 
-impl<'a> OperatorHandler for DoComProg<'a> {
-    fn op(&self, allocator: &mut Allocator, op: NodePtr, sexp: NodePtr, max_cost: Cost) -> Response {
+    return Ok(Reduction(1, allocator.null()));
+}
+
+impl OperatorHandler for DoComProg {
+    fn op(
+        &self,
+        allocator: &mut Allocator,
+        _op: NodePtr,
+        sexp: NodePtr,
+        _max_cost: Cost
+    ) -> Response {
         match allocator.sexp(sexp) {
             SExp::Pair(prog,extras) => {
-                let mut macro_lookup = allocator.null();
+                let macro_lookup;
                 let mut symbol_table = allocator.null();
+
                 match allocator.sexp(extras) {
                     SExp::Pair(macros, symbols) => {
                         macro_lookup = macros;
                         symbol_table = symbols;
                     },
                     _ => {
-                        macro_lookup = DEFAULT_MACRO_LOOKUP(&mut allocator);
+                        macro_lookup = DEFAULT_MACRO_LOOKUP(allocator);
                     }
                 }
+
                 return do_com_prog(
                     allocator,
                     prog,
                     macro_lookup,
                     symbol_table,
-                    self.runner
+                    self.runner.clone()
                 );
             },
             _ => {
@@ -260,12 +301,12 @@ impl<'a> OperatorHandler for DoComProg<'a> {
     }
 }
 
-impl<'a> DoComProg<'a> {
-    fn new(runner: Rc<dyn TRunProgram<'a>>) -> Self {
-        return DoComProg { runner: runner };
+impl DoComProg {
+    pub fn new() -> Self {
+        return DoComProg { runner: Rc::new(DefaultProgramRunner::new()) };
     }
-}
 
-pub fn make_do_com<'a>(runner: Rc<dyn TRunProgram<'a>>) -> DoComProg<'a> {
-    return DoComProg::new(runner);
+    pub fn setup(&mut self, runner: Rc<dyn TRunProgram>) {
+        self.runner = runner;
+    }
 }

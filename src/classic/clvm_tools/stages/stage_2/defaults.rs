@@ -84,9 +84,9 @@ fn DEFAULT_MACROS_SRC() -> Vec<&'static str> {
         "});
 }
 
-fn build_default_macro_lookup<'a>(
-    allocator: &'a mut Allocator,
-    eval_f: Rc<dyn TRunProgram<'a>>,
+fn build_default_macro_lookup(
+    allocator: &mut Allocator,
+    eval_f: Rc<dyn TRunProgram>,
     macros_src: &Vec<String>,
 ) -> NodePtr {
     let run = assemble(allocator, &"(a (com 2 3) 1)".to_string()).unwrap();
@@ -101,10 +101,10 @@ fn build_default_macro_lookup<'a>(
     return default_macro_lookup;
 }
 
-pub fn DEFAULT_MACRO_LOOKUP<'a>(allocator: &'a mut Allocator) -> NodePtr {
+pub fn DEFAULT_MACRO_LOOKUP(allocator: &mut Allocator) -> NodePtr {
     let runner = DefaultProgramRunner::new();
     return build_default_macro_lookup(
-        &mut allocator,
+        allocator,
         Rc::new(runner),
         &DEFAULT_MACROS_SRC().iter().map(|s| s.to_string()).collect()
     );

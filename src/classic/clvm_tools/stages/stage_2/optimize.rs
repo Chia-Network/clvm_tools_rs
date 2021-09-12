@@ -1,40 +1,55 @@
+use std::collections::HashMap;
 use std::rc::Rc;
+
+use num_bigint::ToBigInt;
+
 use clvm_rs::allocator::{
     Allocator,
-    NodePtr
+    NodePtr,
+    SExp
 };
 use clvm_rs::cost::Cost;
-use clvm_rs::reduction::Response;
+use clvm_rs::reduction::{
+    EvalErr,
+    Reduction,
+    Response
+};
 use clvm_rs::run_program::OperatorHandler;
 
-use crate::classic::clvm::{
-    non_nil,
-    rest
+use crate::classic::clvm::__type_compatibility__::{
+    bi_zero,
+    bi_one
 };
-use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
+use crate::classic::clvm::sexp::{
+    atom,
+    enlist,
+    first,
+    foldM,
+    mapM,
+    non_nil,
+    proper_list
+};
+use crate::classic::clvm_tools::NodePath::NodePath;
+use crate::classic::clvm_tools::pattern_match::match_sexp;
+use crate::classic::clvm_tools::stages::assemble;
+use crate::classic::clvm_tools::stages::stage_0::{
+    DefaultProgramRunner,
+    TRunProgram
+};
+use crate::classic::clvm_tools::stages::stage_2::helpers::quote;
 
-// import {h, Bytes, KEYWORD_TO_ATOM, None, SExp, t} from "clvm";
-// import {match} from "../../clvm_tools/pattern_match";
-// import {assemble} from "../../clvm_tools/binutils";
-// import {NodePath, LEFT, RIGHT} from "../../clvm_tools/NodePath";
-// import {quote} from "./helpers";
-// import {TRunProgram} from "../stage_0";
-// import {print} from "../../platform/print";
+use crate::util::{
+    number_from_u8,
+    u8_from_number
+};
 
-// export const QUOTE_ATOM = KEYWORD_TO_ATOM["q"];
-// export const APPLY_ATOM = KEYWORD_TO_ATOM["a"];
-// export const FIRST_ATOM = KEYWORD_TO_ATOM["f"];
-// export const REST_ATOM = KEYWORD_TO_ATOM["r"];
-// export const CONS_ATOM = KEYWORD_TO_ATOM["c"];
-// export const RAISE_ATOM = KEYWORD_TO_ATOM["x"];
-
-pub struct DoOptProg<'a> {
-    runner: Rc<dyn TRunProgram<'a>>
+pub struct DoOptProg {
+    runner: Rc<dyn TRunProgram>
 }
 
-// const DEBUG_OPTIMIZATIONS = 0;
+const DEBUG_OPTIMIZATIONS : u32 = 0;
 
-pub fn seems_constant_tail(allocator: &'a mut Allocator, sexp_: NodePtr) -> bool {
+pub fn seems_constant_tail<'a>(allocator: &'a mut Allocator, sexp_: NodePtr) -> bool {
     let mut sexp = sexp_;
 
     loop {
@@ -51,13 +66,13 @@ pub fn seems_constant_tail(allocator: &'a mut Allocator, sexp_: NodePtr) -> bool
     }
 }
 
-pub fn seems_constant(allocator: &'a mut Allocator, sexp: NodePtr) -> bool {
+pub fn seems_constant<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> bool {
     match allocator.sexp(sexp) {
-        SExp::Atom(b) => { return !non_nil(sexp); },
-        SExp::Pair(operator,r) => {
+        SExp::Atom(_b) => { return !non_nil(allocator, sexp); },
+        SExp::Pair(operator,_r) => {
             match allocator.sexp(operator) {
                 SExp::Atom(b) => {
-                    let atom = allocator.buf(b);
+                    let atom = allocator.buf(&b);
                     if atom.len() == 1 && atom[0] == 1 {
                         return true;
                     } else if atom.len() == 1 && atom[0] == 8 {
@@ -66,14 +81,12 @@ pub fn seems_constant(allocator: &'a mut Allocator, sexp: NodePtr) -> bool {
                         return true;
                     }
                 },
-                SExp::Pair(l,r) => {
-                    if (!seems_constant(allocator, operator)) {
+                SExp::Pair(_,r) => {
+                    if !seems_constant(allocator, operator) {
                         return false;
                     }
 
-                    if !seems_constant_tail(allocator, r).
-                        unwrap_or_else(|| false)
-                    {
+                    if !seems_constant_tail(allocator, r) {
                         return false;
                     }
                 }
@@ -84,288 +97,538 @@ pub fn seems_constant(allocator: &'a mut Allocator, sexp: NodePtr) -> bool {
     return true;
 }
 
-
-struct ConstantOptimizer {
+fn constant_optimizer<'a>(
+    allocator: &mut Allocator,
+    r: NodePtr,
+    _max_cost: Cost,
     runner: Rc<dyn TRunProgram>
-}
-
-impl<'a> OperatorHandler for ConstantOptimizer {
-    fn op(&self, allocator: &mut Allocator, op: NodePtr, r: NodePtr, max_cost: Cost) -> Response {
-        /*
-         * If the expression does not depend upon @ anywhere,
-         * it's a constant. So we can simply evaluate it and
-         * return the quoted result.
-         */
-        if seems_constant(r) && non_nil(r) {
-            return self.runner.run_program(allocator, r, max_cost, None).
-                map(|res| res.1).and_then(|r1| quote(allocator, r1));
-        }
-
-        return Reduction(1, r);
+) -> Result<NodePtr, EvalErr> {
+    /*
+     * If the expression does not depend upon @ anywhere,
+     * it's a constant. So we can simply evaluate it and
+     * return the quoted result.
+     */
+    if seems_constant(allocator, r) && non_nil(allocator, r) {
+        return m! {
+            res <- runner.run_program(
+                allocator,
+                r,
+                allocator.null(),
+                None
+            );
+            let r1 = res.1;
+            quoted <- quote(allocator, r1);
+            Ok(quoted)
+        };
     }
+
+    return Ok(r);
 }
 
-pub fn is_args_call(allocator: &'a mut Allocator, r: NodePtr) -> bool {
+pub fn is_args_call<'a>(allocator: &'a mut Allocator, r: NodePtr) -> bool {
     match allocator.sexp(r) {
         SExp::Atom(b) => {
-            let buf = allocator.buf(b);
+            let buf = allocator.buf(&b);
             return buf.len() == 1 && buf[0] == 1;
         },
         _ => { return false; }
     }
 }
 
-pub fn CONS_Q_A_OPTIMIZER_PATTERN<'a>(allocator: &'a mut Allocator) -> NodePtr {
-    return assemble(allocator, "(a (q . (: . sexp)) (: . args))").unwrap();
+pub fn cons_q_a_optimizer_pattern<'a>(allocator: &'a mut Allocator) -> NodePtr {
+    return assemble(
+        allocator,
+        &"(a (q . (: . sexp)) (: . args))".to_string()
+    ).unwrap();
 }
 
-pub fn cons_q_a_optimizer(
-    allocator: &'a mut Allocator,
+pub fn cons_q_a_optimizer<'a>(
+    allocator: &mut Allocator,
     r: NodePtr,
-    eval_f: TRunProgram
-) -> NodePtr {
+    _eval_f: Rc<dyn TRunProgram>
+) -> Result<NodePtr, EvalErr> {
+    let CONS_Q_A_OPTIMIZER_PATTERN = cons_q_a_optimizer_pattern(allocator);
+
     /*
      * This applies the transform
      * (a (q . SEXP) @) => SEXP
      */
-    
-    const t1 = match(CONS_Q_A_OPTIMIZER_PATTERN, r);
-    if(t1 && is_args_call(t1["args"])){
-        return t1["sexp"];
-    }
-    return r;
+
+    return match match_sexp(allocator, CONS_Q_A_OPTIMIZER_PATTERN, r, HashMap::new()).and_then(|t1| t1.get("args").map(|i| *i)) {
+        Some(args) => {
+            if is_args_call(allocator, args) {
+                Ok(args)
+            } else {
+                Ok(r)
+            }
+        },
+        _ => Ok(r)
+    };
 }
 
-// export const CONS_PATTERN = assemble("(c (: . first) (: . rest)))");
+fn cons_pattern<'a>(allocator: &'a mut Allocator) -> NodePtr {
+    return assemble(allocator, &"(c (: . first) (: . rest)))".to_string()).unwrap();
+}
 
-// export function cons_f(args: SExp){
-//   const t = match(CONS_PATTERN, args);
-//   if(t){
-//     return t["first"];
-//   }
-//   return SExp.to([h(FIRST_ATOM), args]);
-// }
-
-// export function cons_r(args: SExp){
-//   const t = match(CONS_PATTERN, args);
-//   if(t){
-//     return t["rest"];
-//   }
-//   return SExp.to([h(REST_ATOM), args]);
-// }
-
-// export function path_from_args(sexp: SExp, new_args: SExp): SExp {
-//   const v = sexp.as_int();
-//   if(v <= 1){
-//     return new_args;
-//   }
-//   sexp = SExp.to(v >> 1);
-//   if(v & 1){
-//     return path_from_args(sexp, cons_r(new_args));
-//   }
-//   return path_from_args(sexp, cons_f(new_args));
-// }
-
-// export function sub_args(sexp: SExp, new_args: SExp): SExp {
-//   if(sexp.nullp() || !sexp.listp()){
-//     return path_from_args(sexp, new_args);
-//   }
-  
-//   let first = sexp.first();
-//   if(first.listp()){
-//     first = sub_args(first, new_args);
-//   }
-//   else{
-//     const op = first.atom as Bytes;
-//     if(op.hex() === QUOTE_ATOM){
-//       return sexp;
-//     }
-//   }
-  
-//   const args = [first];
-//   for(const _ of sexp.rest().as_iter()){
-//     args.push(sub_args(_, new_args));
-//   }
-  
-//   return SExp.to(args);
-// }
-
-// export const VAR_CHANGE_OPTIMIZER_CONS_EVAL_PATTERN = assemble("(a (q . (: . sexp)) (: . args))");
-
-// export function var_change_optimizer_cons_eval(r: SExp, eval_f: TRunProgram){
-//   /*
-//     This applies the transform
-//     (a (q . (op SEXP1...)) (ARGS)) => (q . RET_VAL) where ARGS != @
-//     via
-//     (op (a SEXP1 (ARGS)) ...) (ARGS)) and then "children_optimizer" of this.
-//     In some cases, this can result in a constant in some of the children.
-
-//     If we end up needing to push the "change of variables" to only one child, keep
-//     the optimization. Otherwise discard it.
-//    */
-  
-//   const t1 = match(VAR_CHANGE_OPTIMIZER_CONS_EVAL_PATTERN, r);
-  
-//   if(t1 === None){
-//     return r;
-//   }
-  
-//   const original_args = t1["args"];
-//   const original_call = t1["sexp"];
-  
-//   const new_eval_sexp_args = sub_args(original_call, original_args);
-  
-//   // Do not iterate into a quoted value as if it were a list
-//   if(seems_constant(new_eval_sexp_args)){
-//     const opt_operands = optimize_sexp(new_eval_sexp_args, eval_f);
-//     return SExp.to(opt_operands);
-//   }
-  
-//   const new_operands: SExp[] = [];
-//   for(const item of new_eval_sexp_args.as_iter()){
-//     new_operands.push(item);
-//   }
-//   const opt_operands: SExp[] = new_operands.map(_ => optimize_sexp(_, eval_f));
-//   const non_constant_count = opt_operands.reduce((acc, val) => {
-//     return acc + (val.listp() && !val.first().equal_to(h(QUOTE_ATOM)) ? 1 : 0);
-//   }, 0);
-//   if(non_constant_count < 1){
-//     return SExp.to(opt_operands);
-//   }
-//   return r;
-// }
-
-// export function children_optimizer(r: SExp, eval_f: TRunProgram){
-//   // Recursively apply optimizations to all non-quoted child nodes.
-//   if(!r.listp()){
-//     return r;
-//   }
-//   const operator = r.first();
-//   if(!operator.listp()){
-//     const op = operator.atom as Bytes;
-//     if(op.hex() === QUOTE_ATOM){
-//       return r;
-//     }
-//   }
-//   const optimized: SExp[] = [];
-//   for(const _ of r.as_iter()){
-//     optimized.push(optimize_sexp(_, eval_f));
-//   }
-//   return SExp.to(optimized);
-// }
-
-// export const CONS_OPTIMIZER_PATTERN_FIRST = assemble("(f (c (: . first) (: . rest)))")
-// export const CONS_OPTIMIZER_PATTERN_REST = assemble("(r (c (: . first) (: . rest)))")
-
-// export function cons_optimizer(r: SExp, eval_f: TRunProgram){
-//   /*
-//     This applies the transform
-//     (f (c A B)) => A
-//     and
-//     (r (c A B)) => B
-//    */
-//   let t1 = match(CONS_OPTIMIZER_PATTERN_FIRST, r);
-//   if(t1){
-//     return t1["first"];
-//   }
-//   t1 = match(CONS_OPTIMIZER_PATTERN_REST, r);
-//   if(t1){
-//     return t1["rest"];
-//   }
-//   return r;
-// }
-
-// export const FIRST_ATOM_PATTERN = assemble("(f ($ . atom))")
-// export const REST_ATOM_PATTERN = assemble("(r ($ . atom))")
-
-// export function path_optimizer(r: SExp, eval_f: TRunProgram){
-//   /*
-//     This applies the transform
-//     (f N) => A
-//     and
-//     (r N) => B
-//    */
-//   let t1 = match(FIRST_ATOM_PATTERN, r);
-//   if(t1 && non_nil(t1["atom"])){
-//     let node = new NodePath(t1["atom"].as_int());
-//     node = node.add(LEFT);
-//     return SExp.to(node.as_short_path());
-//   }
-  
-//   t1 = match(REST_ATOM_PATTERN, r);
-//   if(t1 && non_nil(t1["atom"])){
-//     let node = new NodePath(t1["atom"].as_int());
-//     node = node.add(RIGHT);
-//     return SExp.to(node.as_short_path());
-//   }
-//   return r;
-// }
-
-// export const QUOTE_PATTERN_1 = assemble("(q . 0)");
-
-// export function quote_null_optimizer(r: SExp, eval_f: TRunProgram){
-//   // This applies the transform `(q . 0)` => `0`
-//   const t1 = match(QUOTE_PATTERN_1, r);
-//   if(t1){
-//     return SExp.to(0);
-//   }
-//   return r;
-// }
-
-// export const APPLY_NULL_PATTERN_1 = assemble("(a 0 . (: . rest))");
-
-// export function apply_null_optimizer(r: SExp, eval_f: TRunProgram){
-//   // This applies the transform `(a 0 ARGS)` => `0`
-//   const t1 = match(APPLY_NULL_PATTERN_1, r);
-//   if(t1){
-//     return SExp.to(0);
-//   }
-//   return r;
-// }
-
-impl<'a> OperatorHandler for DoOptProg<'a> {
-    fn op(&self, allocator: &mut Allocator, op: NodePtr, r: NodePtr, max_cost: Cost) -> Response {
-        /*
-         * Optimize an s-expression R written for clvm to R_opt where
-         * (a R args) == (a R_opt args) for ANY args.
-         */
-        match allocator.sexp(sexp) {
-            SExp::Atom(_) => { return Response(1, r); }
-            _ => { }
-        }
-
-        const OPTIMIZERS = vec!(
-            cons_optimizer,
-            constant_optimizer,
-            cons_q_a_optimizer,
-            var_change_optimizer_cons_eval,
-            children_optimizer,
-            path_optimizer,
-            quote_null_optimizer,
-            apply_null_optimizer,
-        );
-
-        while(r.listp()){
-            const start_r = r as SExp;
-            let opt: typeof OPTIMIZERS extends Array<infer T> ? T : never = OPTIMIZERS[0];
-            for(opt of OPTIMIZERS){
-                r = opt(r, eval_f);
-                if(!start_r.equal_to(r)){
-                    break;
+fn cons_f<'a>(allocator: &'a mut Allocator, args: NodePtr) -> Result<NodePtr, EvalErr> {
+    return m! {
+        let CONS_PATTERN = cons_pattern(allocator);
+        match match_sexp(allocator, CONS_PATTERN, args, HashMap::new()).and_then(|t| t.get("first").map(|i| *i)) {
+            Some(first) => Ok(first),
+            _ => {
+                m! {
+                    first_atom <- allocator.new_atom(&vec!(5));
+                    tail <- allocator.new_pair(args, allocator.null());
+                    allocator.new_pair(first_atom, tail)
                 }
             }
-            if(start_r.equal_to(r)){
-                return r;
-            }
-            if(DEBUG_OPTIMIZATIONS){
-                print(`OPT-${opt.name}[${start_r}] => ${r}`);
+        }
+    };
+}
+
+fn cons_r<'a>(allocator: &'a mut Allocator, args: NodePtr) -> Result<NodePtr, EvalErr> {
+    return m! {
+        let CONS_PATTERN = cons_pattern(allocator);
+        match match_sexp(allocator, CONS_PATTERN, args, HashMap::new()).and_then(|t| t.get("rest").map(|i| *i)) {
+            Some(rest) => Ok(rest),
+            _ => {
+                m! {
+                    rest_atom <- allocator.new_atom(&vec!(6));
+                    tail <- allocator.new_pair(args, allocator.null());
+                    allocator.new_pair(rest_atom, tail)
+                }
             }
         }
+    };
+}
 
-        return r;
+fn path_from_args<'a>(allocator: &'a mut Allocator, sexp: NodePtr, new_args: NodePtr) -> Result<NodePtr, EvalErr> {
+    match allocator.sexp(sexp) {
+        SExp::Atom(v_buf) => {
+            let v = number_from_u8(allocator.buf(&v_buf));
+            if v.clone() <= bi_one() {
+                return Ok(new_args);
+            }
+
+            return m! {
+                sexp <- allocator.new_atom(&u8_from_number(v.clone() >> 1).to_vec());
+                if (v & 1_u32.to_bigint().unwrap()) != bi_zero() {
+                    m! {
+                        cons_r_res <- cons_r(allocator, new_args);
+                        path_from_args(allocator, sexp, cons_r_res)
+                    }
+                } else {
+                    m! {
+                        cons_f_res <- cons_f(allocator, new_args);
+                        path_from_args(allocator, sexp, cons_f_res)
+                    }
+                }
+            };
+        },
+        _ => { return Ok(new_args); }
     }
 }
 
-pub fn make_do_opt(runner: Rc<dyn TRunProgram>) -> DoOptProg {
-    return DoOptProg::new(runner);
+fn sub_args<'a>(allocator: &'a mut Allocator, sexp: NodePtr, new_args: NodePtr) -> Result<NodePtr, EvalErr> {
+    match allocator.sexp(sexp) {
+        SExp::Atom(_) => { return path_from_args(allocator, sexp, new_args); },
+        SExp::Pair(_,_) => {
+            return m! {
+                first_pre <- first(allocator, sexp);
+                first <-
+                    match allocator.sexp(first_pre) {
+                        SExp::Pair(_,_) => {
+                            sub_args(allocator, first_pre, new_args)
+                        },
+                        _ => { Ok(first_pre) }
+                    };
+
+                match proper_list(allocator, first, true) {
+                    Some(args) => { enlist(allocator, &args) },
+                    None => { path_from_args(allocator, sexp, new_args) },
+                }
+            }
+        }
+    }
+}
+
+fn var_change_optimizer_cons_eval_pattern<'a>(allocator: &'a mut Allocator) -> NodePtr {
+    return assemble(allocator, &"(a (q . (: . sexp)) (: . args))".to_string()).unwrap();
+}
+
+fn var_change_optimizer_cons_eval(
+    allocator: &mut Allocator,
+    r: NodePtr,
+    eval_f: Rc<dyn TRunProgram>
+) -> Result<NodePtr, EvalErr> {
+    /*
+     * This applies the transform
+     * (a (q . (op SEXP1...)) (ARGS)) => (q . RET_VAL) where ARGS != @
+     * via
+     * (op (a SEXP1 (ARGS)) ...) (ARGS)) and then "children_optimizer" of this.
+     * In some cases, this can result in a constant in some of the children.
+     *
+     * If we end up needing to push the "change of variables" to only one child, keep
+     * the optimization. Otherwise discard it.
+     */
+
+    let VAR_CHANGE_OPTIMIZER_CONS_EVAL_PATTERN =
+        var_change_optimizer_cons_eval_pattern(allocator);
+
+    return m! {
+        let t1 =
+            match_sexp(
+                allocator,
+                VAR_CHANGE_OPTIMIZER_CONS_EVAL_PATTERN,
+                r,
+                HashMap::new()
+            );
+
+        let original_args =
+            match t1.clone().and_then(|t1| t1.get("args").map(|i| *i)) {
+                Some(v) => v,
+                _ => allocator.null()
+            };
+        let original_call =
+            match t1.and_then(|t1| t1.get("sexp").map(|i| *i)) {
+                Some(v) => v,
+                _ => allocator.null()
+            };
+
+        new_eval_sexp_args <- sub_args(allocator, original_call, original_args);
+
+        // Do not iterate into a quoted value as if it were a list
+        if seems_constant(allocator, new_eval_sexp_args) {
+            optimize_sexp(allocator, new_eval_sexp_args, eval_f)
+        } else {
+            match proper_list(allocator, new_eval_sexp_args, true) {
+                Some(new_operands) => {
+                    m! {
+                        opt_operands <-
+                            mapM(allocator, &mut new_operands.into_iter(), &|allocator, o| {
+                                optimize_sexp(allocator, o, eval_f.clone())
+                            });
+
+                        non_constant_count <-
+                            foldM(allocator, &|allocator, acc, val| {
+                                match allocator.sexp(val) {
+                                    SExp::Atom(_v) => { return Ok(acc); },
+                                    SExp::Pair(f,_r) => {
+                                        match allocator.sexp(f) {
+                                            SExp::Atom(q) => {
+                                                if allocator.buf(&q) == vec!(1) {
+                                                    return Ok(acc);
+                                                } else {
+                                                    return Ok(acc + 1);
+                                                }
+                                            },
+                                            _ => {
+                                                if proper_list(allocator, val, false).is_none() {
+                                                    return Ok(acc);
+                                                } else {
+                                                    return Ok(acc + 1);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }, 0, &mut opt_operands.iter().map(|x| *x));
+
+                        if non_constant_count < 1 {
+                            enlist(allocator, &opt_operands)
+                        } else {
+                            Ok(r)
+                        }
+                    }
+                },
+                None => Ok(r)
+            }
+        }
+    };
+}
+
+fn children_optimizer(
+    allocator: &mut Allocator,
+    r: NodePtr,
+    eval_f: Rc<dyn TRunProgram>
+) -> Result<NodePtr, EvalErr> {
+    // Recursively apply optimizations to all non-quoted child nodes.
+    match proper_list(allocator, r, true) {
+        None => Ok(r),
+        Some(list) => {
+            if list.len() == 0 { return Ok(r); }
+            match allocator.sexp(list[0]) {
+                SExp::Atom(op_buf) => {
+                    if allocator.buf(&op_buf).to_vec() == vec!(1) {
+                        return Ok(r);
+                    }
+                },
+                _ => {}
+            }
+
+            m! {
+                optimized <- mapM(
+                    allocator,
+                    &mut list.into_iter(),
+                    &|allocator, v| optimize_sexp(allocator, v, eval_f.clone())
+                );
+                enlist(allocator, &optimized)
+            }
+        }
+    }
+}
+
+fn cons_optimizer_pattern_first<'a>(allocator: &'a mut Allocator) -> NodePtr {
+    return assemble(
+        allocator,
+        &"(f (c (: . first) (: . rest)))".to_string()
+    ).unwrap();
+}
+
+fn cons_optimizer_pattern_rest<'a>(allocator: &'a mut Allocator) -> NodePtr {
+    return assemble(
+        allocator,
+        &"(r (c (: . first) (: . rest)))".to_string()
+    ).unwrap();
+}
+
+fn cons_optimizer<'a>(
+    allocator: &mut Allocator,
+    r: NodePtr,
+    _eval_f: Rc<dyn TRunProgram>
+) -> Result<NodePtr, EvalErr> {
+    /*
+     * This applies the transform
+     *  (f (c A B)) => A
+     *  and
+     *  (r (c A B)) => B
+     */
+    let CONS_OPTIMIZER_PATTERN_FIRST = cons_optimizer_pattern_first(allocator);
+    let CONS_OPTIMIZER_PATTERN_REST = cons_optimizer_pattern_rest(allocator);
+
+    return m! {
+        let t1 = match_sexp(
+            allocator, CONS_OPTIMIZER_PATTERN_FIRST, r, HashMap::new()
+        );
+        match t1.and_then(|t| t.get("first").map(|i| *i)) {
+            Some(first) => Ok(first),
+            _ => {
+                m! {
+                    let t2 = match_sexp(
+                        allocator, CONS_OPTIMIZER_PATTERN_REST, r, HashMap::new()
+                    );
+                    match t2.and_then(|t| t.get("rest").map(|i| *i)) {
+                        Some(rest) => Ok(rest),
+                        _ => Ok(r)
+                    }
+                }
+            }
+        }
+    };
+}
+
+fn first_atom_pattern<'a>(allocator: &'a mut Allocator) -> NodePtr {
+    return assemble(
+        allocator,
+        &"(f ($ . atom))".to_string()
+    ).unwrap();
+}
+
+fn rest_atom_pattern<'a>(allocator: &'a mut Allocator) -> NodePtr {
+    return assemble(
+        allocator,
+        &"(r ($ . atom))".to_string()
+    ).unwrap();
+}
+
+fn path_optimizer<'a>(
+    allocator: &mut Allocator,
+    r: NodePtr,
+    _eval_f: Rc<dyn TRunProgram>
+) -> Result<NodePtr, EvalErr> {
+    let FIRST_ATOM_PATTERN = first_atom_pattern(allocator);
+    let REST_ATOM_PATTERN = rest_atom_pattern(allocator);
+
+    /*
+     * This applies the transform
+     *   (f N) => A
+     * and
+     *   (r N) => B
+     */
+
+    let first_match = match_sexp(allocator, FIRST_ATOM_PATTERN, r, HashMap::new());
+    let rest_match = match_sexp(allocator, REST_ATOM_PATTERN, r, HashMap::new());
+
+    return m! {
+        match (first_match, rest_match) {
+            (Some(first), _) => {
+                match first.
+                    get("atom").
+                    and_then(|a| atom(allocator, *a).ok()).
+                    map(|atom| number_from_u8(allocator.buf(&atom)))
+                {
+                    Some(atom) => {
+                        let node =
+                            NodePath::new(Some(atom)).
+                            add(NodePath::new(None).first());
+                        allocator.new_atom(node.as_path().data())
+                    },
+                    _ => { Ok(r) }
+                }
+            },
+            (_, Some(rest)) => {
+                match rest.
+                    get("atom").
+                    and_then(|a| atom(allocator, *a).ok()).
+                    map(|atom| number_from_u8(allocator.buf(&atom)))
+                {
+                    Some(atom) => {
+                        let node =
+                            NodePath::new(Some(atom)).
+                            add(NodePath::new(None).first());
+                        allocator.new_atom(node.as_path().data())
+                    },
+                    _ => { Ok(r) }
+                }
+            },
+            _ => Ok(r)
+        }
+    };
+}
+
+fn quote_pattern_1(
+    allocator: &mut Allocator
+) -> NodePtr {
+    return assemble(allocator, &"(q . 0)".to_string()).unwrap();
+}
+
+fn quote_null_optimizer<'a>(
+    allocator: &mut Allocator,
+    r: NodePtr,
+    _eval_f: Rc<dyn TRunProgram>
+) -> Result<NodePtr, EvalErr> {
+    let QUOTE_PATTERN_1 = quote_pattern_1(allocator);
+
+    // This applies the transform `(q . 0)` => `0`
+    let t1 = match_sexp(allocator, QUOTE_PATTERN_1, r, HashMap::new());
+    return Ok(t1.map(|_| allocator.null()).unwrap_or_else(|| r));
+}
+
+fn apply_null_pattern_1(allocator: &mut Allocator) -> NodePtr {
+    return assemble(allocator, &"(a 0 . (: . rest))".to_string()).unwrap();
+}
+
+fn apply_null_optimizer<'a>(
+    allocator: &mut Allocator,
+    r: NodePtr,
+    _eval_f: Rc<dyn TRunProgram>
+) -> Result<NodePtr, EvalErr> {
+    let APPLY_NULL_PATTERN_1 = apply_null_pattern_1(allocator);
+
+    // This applies the transform `(a 0 ARGS)` => `0`
+    let t1 = match_sexp(allocator, APPLY_NULL_PATTERN_1, r, HashMap::new());
+    return Ok(t1.map(|_| allocator.null()).unwrap_or_else(|| r));
+}
+
+struct OptimizerRunner<'a> {
+    pub name: String,
+    to_run: &'a dyn Fn(&mut Allocator, NodePtr, Rc<dyn TRunProgram>) -> Result<NodePtr, EvalErr>
+}
+
+impl<'a> OptimizerRunner<'a> {
+    pub fn invoke(
+        &self,
+        allocator: &mut Allocator,
+        r: NodePtr,
+        eval_f: Rc<dyn TRunProgram>
+    ) -> Result<NodePtr, EvalErr> {
+        return (self.to_run)(allocator, r, eval_f);
+    }
+
+    pub fn new(
+        name: &str,
+        to_run: &'a dyn Fn(
+            &mut Allocator,
+            NodePtr,
+            Rc<dyn TRunProgram>
+        ) -> Result<NodePtr, EvalErr>
+    ) -> Self {
+        return OptimizerRunner { name: name.to_string(), to_run: to_run };
+    }
+}
+
+pub fn optimize_sexp<'a>(allocator: &mut Allocator, r_: NodePtr, eval_f: Rc<dyn TRunProgram>) -> Result<NodePtr, EvalErr> {
+    let mut r = r_;
+
+    /*
+     * Optimize an s-expression R written for clvm to R_opt where
+     * (a R args) == (a R_opt args) for ANY args.
+     */
+    match allocator.sexp(r) {
+        SExp::Atom(_) => { return Ok(r); }
+        _ => { }
+    }
+
+    let OPTIMIZERS : Vec<OptimizerRunner> = vec!(
+        OptimizerRunner::new("cons_optimizer", &cons_optimizer),
+        OptimizerRunner::new("constant_optimizer", &|allocator, r, eval_f| constant_optimizer(allocator, r, 0, eval_f.clone())),
+        OptimizerRunner::new("cons_q_a_optimizer", &cons_q_a_optimizer),
+        OptimizerRunner::new(
+            "var_change_optimizer_cons_eval",
+            &var_change_optimizer_cons_eval
+        ),
+        OptimizerRunner::new("children_optimizer", &children_optimizer),
+        OptimizerRunner::new("path_optimizer", &path_optimizer),
+        OptimizerRunner::new("quote_null_optimizer", &quote_null_optimizer),
+        OptimizerRunner::new("apply_null_optimizer", &apply_null_optimizer)
+    );
+
+    while !proper_list(allocator, r, false).is_none() {
+        let start_r = r;
+
+        for opt in OPTIMIZERS.iter() {
+            match opt.invoke(allocator, r, eval_f.clone()) {
+                Err(e) => { return Err(e); },
+                Ok(res) => {
+                    if start_r != r {
+                        break;
+                    }
+                    r = res;
+                }
+            }
+
+            if start_r == r {
+                return Ok(r);
+            }
+
+            if DEBUG_OPTIMIZATIONS > 0 {
+                print!("OPT-{:?}[{:?}] => {:?}", &opt.name, &start_r, &r);
+            }
+        }
+    }
+
+    return Ok(r);
+}
+
+impl DoOptProg {
+    pub fn new() -> Self {
+        return DoOptProg { runner: Rc::new(DefaultProgramRunner::new()) };
+    }
+
+    pub fn set_runner(&mut self, runner: Rc<dyn TRunProgram>) {
+        self.runner = runner;
+    }
+}
+
+impl OperatorHandler for DoOptProg {
+    fn op(
+        &self,
+        allocator: &mut Allocator,
+        _op: NodePtr,
+        r: NodePtr,
+        _max_cost: Cost
+    ) -> Response {
+        return optimize_sexp(allocator, r, self.runner.clone()).
+            map(|optimized| Reduction(1, optimized));
+    }
 }

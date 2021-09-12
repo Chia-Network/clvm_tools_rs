@@ -3,7 +3,7 @@ use clvm_rs::reduction::{
     Response
 };
 
-use crate::classic::clvm::SExp::CastableType;
+use crate::classic::clvm::sexp::CastableType;
 
 pub type TValStack = Vec<CastableType>;
 // export type TValStack = Array<Bytes|SExp|SExp[]|Tuple<SExp, SExp>>;

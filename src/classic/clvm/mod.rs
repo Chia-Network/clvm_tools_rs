@@ -1,16 +1,11 @@
 use std::collections::HashMap;
 
-use clvm_rs::allocator::{
-    Allocator,
-    NodePtr
-};
-
 pub mod __type_compatibility__;
 pub mod as_rust;
 pub mod casts;
 pub mod costs;
 pub mod serialize;
-pub mod SExp;
+pub mod sexp;
 
 struct KwAtomPair {
     v: u8,

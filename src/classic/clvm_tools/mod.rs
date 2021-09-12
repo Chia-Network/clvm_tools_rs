@@ -5,6 +5,6 @@ pub mod curry;
 pub mod debug;
 pub mod ir;
 pub mod NodePath;
-// pub mod pattern_match;
+pub mod pattern_match;
 pub mod sha256tree;
 pub mod stages;

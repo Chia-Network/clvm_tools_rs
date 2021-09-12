@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::time::SystemTime;
 use std::fs;
 
 use clvm_rs::allocator::{
@@ -7,7 +8,7 @@ use clvm_rs::allocator::{
     NodePtr
 };
 
-use crate::classic::clvm::KEYWORD_FROM_ATOM;
+//use crate::classic::clvm::KEYWORD_FROM_ATOM;
 use crate::classic::clvm::__type_compatibility__::{
     BytesFromType,
     Bytes,
@@ -19,7 +20,7 @@ use crate::classic::clvm::serialize::{
     SimpleCreateCLVMObject,
     sexp_from_stream
 };
-use crate::classic::clvm::SExp::{
+use crate::classic::clvm::sexp::{
     sexp_as_bin
 };
 use crate::classic::clvm_tools::binutils::{
@@ -27,6 +28,11 @@ use crate::classic::clvm_tools::binutils::{
     assemble_from_ir
 };
 use crate::classic::clvm_tools::sha256tree::sha256tree;
+use crate::classic::clvm_tools::stages;
+use crate::classic::clvm_tools::stages::stage_0::{
+    DefaultProgramRunner,
+    TRunProgram
+};
 use crate::classic::clvm_tools::ir::reader::read_ir;
 
 use crate::classic::platform::PathJoin;
@@ -370,8 +376,7 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
     );
 
     let arg_vec = args[1..].to_vec();
-    let mut parsedArgs: HashMap<String, ArgumentValue> =
-        HashMap::new();
+    let parsedArgs: HashMap<String, ArgumentValue>;
 
     match parser.parse_args(&arg_vec) {
         Err(e) => {
@@ -381,69 +386,116 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
         Ok(pa) => { parsedArgs = pa; }
     }
 
-    let empty_map = HashMap::new();
-    let keywords =
-        match parsedArgs.get("no_keywords") {
-            None => KEYWORD_FROM_ATOM(),
-            Some(ArgumentValue::ArgBool(b)) => &empty_map,
-            _ => KEYWORD_FROM_ATOM()
-        };
+    // let empty_map = HashMap::new();
+    // let keywords =
+    //     match parsedArgs.get("no_keywords") {
+    //         None => KEYWORD_FROM_ATOM(),
+    //         Some(ArgumentValue::ArgBool(b)) => &empty_map,
+    //         _ => KEYWORD_FROM_ATOM()
+    //     };
 
-    // let mut run_program: Rc<TRunProgram>;
-    // match parsedArgs.get("include") {
-    //     Some(ArgArray(v)) => {
-    //         run_program = Rc::new(stage_2::run_program_for_search_paths(
-                
-    //         );
-    // );
-    // match parsedArgs.get("stage") {
-    //     Some(s) => {
-    // if(typeof (parsedArgs["stage"] as typeof stage_2).run_program_for_search_paths == "function"){
-    //     run_program = (parsedArgs["stage"] as typeof stage_2).run_program_for_search_paths(parsedArgs["include"] as str[]);
-    // }
-    // else{
-    //     run_program = (parsedArgs["stage"] as typeof stage_0).run_program;
-    // }
+    //let mut run_program: Rc<dyn TRunProgram>;
+    match parsedArgs.get("include") {
+        Some(ArgumentValue::ArgArray(v)) => {
+            let mut bare_paths = Vec::with_capacity(v.len());
+            for p in v {
+                match p {
+                    ArgumentValue::ArgString(s) => bare_paths.push(s.to_string()),
+                    _ => { }
+                }
+            }
+            //run_program = Rc::new(run_program_for_search_paths(&bare_paths));
+        },
+        _ => {
+            //run_program = Rc::new(DefaultProgramRunner::new());
+        }
+    }
 
-    // let input_serialized: Bytes|None = None;
-    // let input_sexp: SExp|None = None;
+    let mut allocator = Allocator::new();
 
-    // const time_start = now();
-    // let time_read_hex = -1;
-    // let time_assemble = -1;
-    // let time_parse_input = -1;
-    // let time_done = -1;
-    // if(parsedArgs["hex"]){
-    //     const assembled_serialized = Bytes.from(parsedArgs["path_or_code"] as str, "hex");
-    //     if(!parsedArgs["env"]){
-    //         parsedArgs["env"] = "80";
-    //     }
-    //     const env_serialized = Bytes.from(parsedArgs["env"] as str, "hex");
-    //     time_read_hex = now();
+    let input_serialized;
+    let input_sexp;
 
-    //     input_serialized = h("0xff").concat(assembled_serialized).concat(env_serialized);
-    // }
-    // else {
-    //     const src_text = parsedArgs["path_or_code"] as str;
-    //     let mut src_sexp;
-    //     match reader.read_ir(src_text) {
-    //         Ok(s) => { src_sexp = s; },
-    //         Err(e) => {
-    //             print!("FAIL: {}\n", e);
-    //             return;
-    //         }
-    //     }
+    // let time_start = SystemTime::now();
+    let mut _time_read_hex;
+    let mut _time_assemble;
+    // let mut time_parse_input;
+    // let mut time_done = time_start;
 
-    //     let assembled_sexp = binutils.assemble_from_ir(src_sexp);
-    //     if(!parsedArgs["env"]){
-    //         parsedArgs["env"] = "()";
-    //     }
-    //     const env_ir = reader.read_ir(parsedArgs["env"] as str);
-    //     const env = binutils.assemble_from_ir(env_ir);
-    //     time_assemble = now();
+    let mut input_program = "".to_string();
+    let mut input_args = "".to_string();
 
-    //     input_sexp = to_sexp_f(t(assembled_sexp, env));
-    // }
+    match parsedArgs.get("path_or_code") {
+        Some(ArgumentValue::ArgString(path_or_code)) => {
+            input_program = path_or_code.to_string();
+        },
+        _ => { }
+    }
+
+    match parsedArgs.get("hex") {
+        Some(_) => {
+            let assembled_serialized =
+                Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
+            if input_args.len() == 0 {
+                input_args = "80".to_string();
+            }
+
+            let env_serialized =
+                Bytes::new(Some(BytesFromType::Hex(input_args.to_string())));
+            _time_read_hex = SystemTime::now();
+
+            input_serialized =
+                Some(
+                    Bytes::new(Some(BytesFromType::Raw(vec!(0xff)))).
+                        concat(&assembled_serialized).
+                        concat(&env_serialized)
+                );
+
+            let mut stream = Stream::new(input_serialized);
+            input_sexp = Some(
+                sexp_from_stream(
+                    &mut allocator,
+                    &mut stream,
+                    Box::new(SimpleCreateCLVMObject {}),
+                ).unwrap().1
+            );
+        },
+        _ => {
+            let src_sexp;
+            match parsedArgs.get("path_or_code") {
+                Some(ArgumentValue::ArgString(s)) => {
+                    match read_ir(&s) {
+                        Ok(s) => { src_sexp = s; },
+                        Err(e) => {
+                            print!("FAIL: {}\n", e);
+                            return;
+                        }
+                    }
+                },
+                _ => {
+                    print!("FAIL: {}\n", "non-string argument");
+                    return;
+                }
+            }
+
+            let assembled_sexp =
+                assemble_from_ir(&mut allocator, Rc::new(src_sexp)).unwrap();
+            let mut parsed_args_result = "()".to_string();
+
+            match parsedArgs.get("env") {
+                Some(ArgumentValue::ArgString(s)) => {
+                    parsed_args_result = s.to_string();
+                },
+                _ => { }
+            }
+
+            let env_ir = read_ir(&parsed_args_result).unwrap();
+            let env = assemble_from_ir(&mut allocator, Rc::new(env_ir)).unwrap();
+            _time_assemble = SystemTime::now();
+
+            input_sexp = allocator.new_pair(assembled_sexp, env).ok();
+        }
+    }
 
     // let pre_eval_f: TPreEvalF|None = None;
     // let symbol_table: Record<str, str>|None = None;
@@ -457,12 +509,28 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
     //     pre_eval_f = make_trace_pre_eval(log_entries);
     // }
 
-    // const run_script = (parsedArgs["stage"] as Record<str, SExp>)[tool_name];
+    let run_script =
+        match parsedArgs.get("stage") {
+            Some(ArgumentValue::ArgInt(0)) => { stages::brun(&mut allocator) },
+            _ => { stages::run(&mut allocator) }
+        };
 
     // let cost = 0;
-    // let result: SExp;
-    // let output = "(didn't finish)";
+    // let mut result: NodePtr;
+    // let mut output = "(didn't finish)".to_string();
     // const cost_offset = calculate_cost_offset(run_program, run_script);
+
+    // XXX
+    let runner = DefaultProgramRunner::new();
+    let res = runner.run_program(
+        &mut allocator,
+        run_script,
+        input_sexp.unwrap(),
+        None
+    ).unwrap();
+
+    let disassembled = disassemble(&mut allocator, res.1);
+    print!("{}\n", disassembled);
 
     // try{
     //     const arg_max_cost = parsedArgs["max_cost"] as int;

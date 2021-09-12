@@ -7,6 +7,9 @@ extern crate derivative;
 #[macro_use]
 extern crate indoc;
 
+#[macro_use]
+extern crate do_notation;
+
 mod util;
 
 pub mod classic;

@@ -33,7 +33,7 @@ use crate::classic::clvm::__type_compatibility__::{
 };
 use crate::classic::clvm::as_rust::{TToSexpF, TValStack};
 use crate::classic::clvm::casts::int_from_bytes;
-use crate::classic::clvm::SExp::{
+use crate::classic::clvm::sexp::{
     CastableType,
     to_sexp_type
 };

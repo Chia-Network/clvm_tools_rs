@@ -23,6 +23,8 @@
  * ugly-numbered tree.
  */
 
+use num_bigint::ToBigInt;
+
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
     bi_zero,
@@ -35,30 +37,33 @@ use crate::classic::clvm::casts::{
 };
 use crate::util::Number;
 
-// export function compose_paths(path_0: int, path_1: int){
-//   /*
-//     The binary representation of a path is a 1 (which means "stop"), followed by the
-//     path as binary digits, where 0 is "left" and 1 is "right".
-//     Look at the diagram at the top for these examples.
-//     Example: 9 = 0b1001, so right, left, left
-//     Example: 10 = 0b1010, so left, right, left
-//     How it works: we write both numbers as binary. We ignore the terminal in path_0, since it's
-//     not the terminating condition anymore. We shift path_1 enough places to OR in the rest of path_0.
-//     Example: path_0 = 9 = 0b1001, path_1 = 10 = 0b1010.
-//     Shift path_1 three places (so there is room for 0b001) to 0b1010000.
-//     Then OR in 0b001 to yield 0b1010001 = 81, which is right, left, left, left, right, left.
-//    */
-//   let mask = 1;
-//   let temp_path = path_0;
-//   while(temp_path > 1){
-//     path_1 <<= 1;
-//     mask <<= 1;
-//     temp_path >>= 1;
-//   }
-  
-//   mask -= 1;
-//   return path_1 | (path_0 & mask);
-// }
+pub fn compose_paths(path_0_: &Number, path_1_: &Number) -> Number {
+    let path_0 = path_0_.clone();
+    let mut path_1 = path_1_.clone();
+
+    /*
+     * The binary representation of a path is a 1 (which means "stop"), followed by the
+     * path as binary digits, where 0 is "left" and 1 is "right".
+     * Look at the diagram at the top for these examples.
+     * Example: 9 = 0b1001, so right, left, left
+     * Example: 10 = 0b1010, so left, right, left
+     * How it works: we write both numbers as binary. We ignore the terminal in path_0, since it's
+     * not the terminating condition anymore. We shift path_1 enough places to OR in the rest of path_0.
+     * Example: path_0 = 9 = 0b1001, path_1 = 10 = 0b1010.
+     * Shift path_1 three places (so there is room for 0b001) to 0b1010000.
+     * Then OR in 0b001 to yield 0b1010001 = 81, which is right, left, left, left, right, left.
+     */
+    let mut mask = bi_one();
+    let mut temp_path = path_0.clone();
+    while temp_path > bi_one() {
+        path_1 <<= 1;
+        mask <<= 1;
+        temp_path >>= 1;
+    }
+
+    mask -= bi_one();
+    return path_1 | (path_0 & mask);
+}
 
 pub struct NodePath {
     /*
@@ -84,21 +89,21 @@ impl NodePath {
     }
 
     pub fn as_path(&self) -> Bytes { return bigint_to_bytes(&self.index, None).unwrap(); }
+
+    pub fn add(&self, other_node: NodePath) -> Self {
+        let composedPath = compose_paths(&self.index, &other_node.index);
+        return NodePath::new(Some(composedPath));
+    }
+
+    pub fn first(&self) -> Self {
+        return NodePath::new(Some(self.index.clone()*2_u32.to_bigint().unwrap()));
+    }
+
+    pub fn rest(&self) -> Self {
+        return NodePath::new(Some(self.index.clone()*2_u32.to_bigint().unwrap()));
+    }
 }
 
-//   public add(other_node: NodePath){
-//     const composedPath = compose_paths(this.index, other_node.index);
-//     return new NodePath(composedPath);
-//   }
-  
-//   public first(){
-//     return new NodePath(this.index*2);
-//   }
-  
-//   public rest(){
-//     return new NodePath(this.index*2 + 1);
-//   }
-  
 //   public toString(){
 //     return `NodePath: ${this.index}`;
 //   }
@@ -107,10 +112,3 @@ impl NodePath {
 //     return `NodePath: ${this.index}`;
 //   }
 // }
-
-lazy_static! {
-    pub static ref TOP : NodePath = NodePath::new(None);
-}
-
-// export const LEFT = TOP.first();
-// export const RIGHT = TOP.rest();

@@ -122,7 +122,6 @@ fn can_echo_quoted() {
 #[test]
 fn can_echo_quoted_atom() {
     let mut allocator = Allocator::new();
-    let null = allocator.null();
     let res = run_from_source(&mut allocator, "(1 . 3)".to_string());
     match allocator.sexp(res) {
         SExp::Atom(b) => {
@@ -137,7 +136,6 @@ fn can_echo_quoted_atom() {
 #[test]
 fn can_do_operations() {
     let mut allocator = Allocator::new();
-    let null = allocator.null();
     let res = run_from_source(&mut allocator, "(16 (1 . 3) (1 . 5))".to_string());
     match allocator.sexp(res) {
         SExp::Atom(b) => {
@@ -152,7 +150,6 @@ fn can_do_operations() {
 #[test]
 fn can_do_operations_kw() {
     let mut allocator = Allocator::new();
-    let null = allocator.null();
     let res = run_from_source(&mut allocator, "(+ (q . 3) (q . 5))".to_string());
     match allocator.sexp(res) {
         SExp::Atom(b) => {
