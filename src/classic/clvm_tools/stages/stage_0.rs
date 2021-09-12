@@ -8,6 +8,7 @@ use clvm_rs::f_table::{
     FLookup
 };
 use clvm_rs::more_ops::op_unknown;
+use clvm_rs::operator_handler::OperatorHandler;
 use clvm_rs::reduction::{
     EvalErr,
     Reduction,
@@ -15,7 +16,6 @@ use clvm_rs::reduction::{
 };
 
 use clvm_rs::run_program::{
-    OperatorHandler,
     PreEval,
     run_program
 };
@@ -185,12 +185,12 @@ impl TRunProgram for DefaultProgramRunner {
 
         let res = run_program(
             allocator,
-            program,
-            args,
             &self.quote_kw_vec,
             &self.apply_kw_vec,
-            max_cost,
             &self.router,
+            program,
+            args,
+            max_cost,
             option.and_then(|o| o.pre_eval_f)
         );
         return res;

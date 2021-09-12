@@ -9,12 +9,12 @@ use clvm_rs::allocator::{
     SExp
 };
 use clvm_rs::cost::Cost;
+use clvm_rs::operator_handler::OperatorHandler;
 use clvm_rs::reduction::{
     EvalErr,
     Reduction,
     Response
 };
-use clvm_rs::run_program::OperatorHandler;
 
 use crate::classic::clvm::__type_compatibility__::{
     bi_zero,

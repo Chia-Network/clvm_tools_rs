@@ -12,10 +12,7 @@ use clvm_rs::reduction::{
     Response
 };
 
-use clvm_rs::run_program::{
-    OperatorHandler
-};
-
+use clvm_rs::operator_handler::OperatorHandler;
 use crate::classic::clvm_tools::stages::stage_0::{
     TRunProgram
 };
