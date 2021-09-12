@@ -21,6 +21,7 @@ use crate::classic::clvm::serialize::{
     sexp_from_stream
 };
 use crate::classic::clvm::sexp::{
+    first,
     sexp_as_bin
 };
 use crate::classic::clvm_tools::binutils::{
@@ -33,6 +34,7 @@ use crate::classic::clvm_tools::stages::stage_0::{
     DefaultProgramRunner,
     TRunProgram
 };
+use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::clvm_tools::ir::reader::read_ir;
 
 use crate::classic::platform::PathJoin;
@@ -422,8 +424,8 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
     // let mut time_parse_input;
     // let mut time_done = time_start;
 
-    let mut input_program = "".to_string();
-    let mut input_args = "".to_string();
+    let mut input_program = "()".to_string();
+    let mut input_args = "()".to_string();
 
     match parsedArgs.get("path_or_code") {
         Some(ArgumentValue::ArgString(path_or_code)) => {
@@ -497,6 +499,10 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
         }
     }
 
+    let first_of = first(&mut allocator, input_sexp.unwrap()).unwrap();
+    let disassembled = disassemble(&mut allocator, first_of);
+    print!("disassembled {}\n", disassembled);
+
     // let pre_eval_f: TPreEvalF|None = None;
     // let symbol_table: Record<str, str>|None = None;
     // const log_entries: Array<[SExp, SExp, Optional<SExp>]> = [];
@@ -521,11 +527,12 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
     // const cost_offset = calculate_cost_offset(run_program, run_script);
 
     // XXX
-    let runner = DefaultProgramRunner::new();
+    let runner = run_program_for_search_paths(&vec!(".".to_string()));
+    print!("handlers {}\n", runner.showtable());
     let res = runner.run_program(
         &mut allocator,
         run_script,
-        input_sexp.unwrap(),
+        first_of,
         None
     ).unwrap();
 

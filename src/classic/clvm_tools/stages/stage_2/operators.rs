@@ -1,3 +1,5 @@
+use std::borrow::Borrow;
+use std::borrow::BorrowMut;
 use std::cell::{
     RefCell,
     RefMut
@@ -160,8 +162,8 @@ impl OperatorHandler for GetFullPathForName {
 
 pub struct RunProgramWithSearchPaths {
     runner: RefCell<DefaultProgramRunner>,
-    do_com_prog: Box<DoComProg>,
-    do_opt_prog: Box<DoOptProg>,
+    do_com_prog: RefCell<DoComProg>,
+    do_opt_prog: RefCell<DoOptProg>,
     search_paths: Vec<String>
 }
 
@@ -177,9 +179,9 @@ impl OperatorHandler for RunProgramWithSearchPaths {
             op_buf <- atom(allocator, op);
             let op_vec = allocator.buf(&op_buf).to_vec();
             if op_vec == vec!('c' as u8, 'o' as u8, 'm' as u8) {
-                self.do_com_prog.op(allocator, op, sexp, max_cost)
+                self.do_com_prog.borrow().op(allocator, op, sexp, max_cost)
             } else if op_vec == vec!('o' as u8, 'p' as u8, 't' as u8) {
-                self.do_opt_prog.op(allocator, op, sexp, max_cost)
+                self.do_opt_prog.borrow().op(allocator, op, sexp, max_cost)
             } else {
                 Err(EvalErr(sexp, "unknown op".to_string()))
             }
@@ -190,15 +192,15 @@ impl OperatorHandler for RunProgramWithSearchPaths {
 impl RunProgramWithSearchPaths {
     fn new(search_paths: &Vec<String>) -> Self {
         return RunProgramWithSearchPaths {
-            do_com_prog: Box::new(DoComProg::new()),
-            do_opt_prog: Box::new(DoOptProg::new()),
+            do_com_prog: RefCell::new(DoComProg::new()),
+            do_opt_prog: RefCell::new(DoOptProg::new()),
             runner: RefCell::new(DefaultProgramRunner::new()),
             search_paths: search_paths.to_vec()
         };
     }
 
     fn setup(&self, myself: Rc<RunProgramWithSearchPaths>) {
-        RefMut::map(self.runner.borrow_mut(), |runner| {
+        self.runner.replace_with(|runner| {
             runner.add_handler(
                 &"_full_path_for_name".as_bytes().to_vec(),
                 Rc::new(GetFullPathForName { search_paths: self.search_paths.to_vec() })
@@ -219,8 +221,23 @@ impl RunProgramWithSearchPaths {
                 &"opt".as_bytes().to_vec(),
                 myself.clone()
             );
-            return runner;
+
+            return runner.clone();
         });
+
+        self.do_com_prog.replace_with(|do_com_prog| {
+            do_com_prog.set_runner(myself.clone());
+            return do_com_prog.clone();
+        });
+
+        self.do_opt_prog.replace_with(|do_opt_prog| {
+            do_opt_prog.set_runner(myself.clone());
+            return do_opt_prog.clone();
+        });
+    }
+
+    pub fn showtable(&self) -> String {
+        return self.runner.borrow().router.showtable();
     }
 }
 

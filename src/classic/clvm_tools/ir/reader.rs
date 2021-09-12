@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use std::mem::swap;
 
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
@@ -19,7 +20,8 @@ pub struct IRReader {
 // XXX Allows us to track line and column later if desired.
 impl IRReader {
     fn read(&mut self, n: usize) -> Bytes {
-        return self.stream.read(n);
+        let res = self.stream.read(n);
+        return res;
     }
 
     fn backup(&mut self, n: usize) {
@@ -179,49 +181,74 @@ pub fn consume_atom(s: &mut IRReader, b: &Bytes) -> Option<IRRepr> {
     }
 }
 
+fn enlist_ir(vec: &mut Vec<IRRepr>, tail: IRRepr) -> IRRepr {
+    let mut result = tail;
+    for i_reverse in 0..vec.len() {
+        let i = vec.len() - i_reverse - 1;
+        let mut next_head = IRRepr::Null;
+        swap(&mut vec[i], &mut next_head);
+        result = IRRepr::Cons(Rc::new(next_head), Rc::new(result));
+    }
+    return result;
+}
+
 pub fn consume_cons_body(s: &mut IRReader) -> Result<IRRepr, String> {
-    consume_whitespace(s);
+    let mut result = vec!();
 
-    let b = s.read(1);
-    if b.length() == 0 {
-        return Err("missing )".to_string());
-    }
-
-    if b.at(0) == ')' as u8 {
-        return Ok(IRRepr::Null);
-    }
-
-    if b.at(0) == '(' as u8 {
-        return consume_cons_body(s).and_then(|f| {
-            return consume_cons_body(s).map(|r| {
-                return IRRepr::Cons(Rc::new(f), Rc::new(r));
-            });
-        });
-    }
-
-    if b.at(0) == '.' as u8 {
+    loop {
         consume_whitespace(s);
-        let result = consume_object(s);
+
         let b = s.read(1);
-        if b.length() == 0 || b.at(0) != ')' as u8 {
+        if b.length() == 0 {
             return Err("missing )".to_string());
         }
-        return result;
-    }
 
-    if b.at(0) == '\"' as u8 || b.at(0) == '\'' as u8 {
-        match consume_quoted(s, b.at(0) as char) {
-            Err(e) => { return Err(e); },
-            Ok(v) => { return Ok(v); }
+        if b.at(0) == ')' as u8 {
+            return Ok(enlist_ir(&mut result, IRRepr::Null));
         }
-    } else {
-        match consume_atom(s, &b) {
-            Some(f) => {
-                return consume_cons_body(s).map(|r| {
-                    return IRRepr::Cons(Rc::new(f), Rc::new(r));
-                });
-            },
-            _ => { return Err("missing )".to_string()); }
+
+        if b.at(0) == '(' as u8 {
+            match consume_cons_body(s) {
+                Err(e) => { return Err(e); },
+                Ok(v) => {
+                    result.push(v);
+                    continue;
+                }
+            }
+        }
+
+        if b.at(0) == '.' as u8 {
+            consume_whitespace(s);
+            let tail_obj = consume_object(s);
+            match tail_obj {
+                Err(e) => { return Err(e); },
+                Ok(v) => {
+                    consume_whitespace(s);
+                    let b = s.read(1);
+                    if b.length() == 0 || b.at(0) != ')' as u8 {
+                        return Err("missing )".to_string());
+                    }
+                    return Ok(enlist_ir(&mut result, v));
+                }
+            }
+        }
+
+        if b.at(0) == '\"' as u8 || b.at(0) == '\'' as u8 {
+            match consume_quoted(s, b.at(0) as char) {
+                Err(e) => { return Err(e); },
+                Ok(v) => {
+                    result.push(v);
+                    continue;
+                }
+            }
+        } else {
+            match consume_atom(s, &b) {
+                Some(f) => {
+                    result.push(f);
+                    continue;
+                },
+                _ => { return Err("missing )".to_string()); }
+            }
         }
     }
 

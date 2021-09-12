@@ -43,6 +43,7 @@ use crate::util::{
     u8_from_number
 };
 
+#[derive(Clone)]
 pub struct DoOptProg {
     runner: Rc<dyn TRunProgram>
 }

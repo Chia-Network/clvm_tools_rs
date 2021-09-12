@@ -35,6 +35,7 @@ use crate::classic::clvm_tools::stages::stage_2::helpers::quote;
 fn qq_atom() -> Vec<u8> { return vec!('q' as u8, 'q' as u8); }
 fn unquote_atom() -> Vec<u8> { return "unquote".as_bytes().to_vec(); }
 
+#[derive(Clone)]
 pub struct DoComProg {
     runner: Rc<dyn TRunProgram>
 }
@@ -282,7 +283,8 @@ impl OperatorHandler for DoComProg {
                         symbol_table = symbols;
                     },
                     _ => {
-                        macro_lookup = DEFAULT_MACRO_LOOKUP(allocator);
+                        macro_lookup =
+                            DEFAULT_MACRO_LOOKUP(allocator, self.runner.clone());
                     }
                 }
 
@@ -306,7 +308,7 @@ impl DoComProg {
         return DoComProg { runner: Rc::new(DefaultProgramRunner::new()) };
     }
 
-    pub fn setup(&mut self, runner: Rc<dyn TRunProgram>) {
+    pub fn set_runner(&mut self, runner: Rc<dyn TRunProgram>) {
         self.runner = runner;
     }
 }

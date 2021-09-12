@@ -101,11 +101,10 @@ fn build_default_macro_lookup(
     return default_macro_lookup;
 }
 
-pub fn DEFAULT_MACRO_LOOKUP(allocator: &mut Allocator) -> NodePtr {
-    let runner = DefaultProgramRunner::new();
+pub fn DEFAULT_MACRO_LOOKUP(allocator: &mut Allocator, runner: Rc<dyn TRunProgram>) -> NodePtr {
     return build_default_macro_lookup(
         allocator,
-        Rc::new(runner),
+        runner.clone(),
         &DEFAULT_MACROS_SRC().iter().map(|s| s.to_string()).collect()
     );
 }

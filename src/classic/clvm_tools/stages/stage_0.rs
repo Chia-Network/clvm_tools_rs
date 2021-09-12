@@ -30,6 +30,7 @@ impl OperatorHandler for OpQuote {
     }
 }
 
+#[derive(Clone)]
 pub struct OpRouter {
     routes: HashMap<Vec<u8>, Rc<dyn OperatorHandler>>,
     f_lookup: FLookup,
@@ -92,6 +93,11 @@ impl OpRouter {
     pub fn add_handler(&mut self, op: &Vec<u8>, handler: Rc<dyn OperatorHandler>) {
         self.routes.insert(op.to_vec(), handler);
     }
+
+    pub fn showtable(&self) -> String {
+        let keys: Vec<Vec<u8>> = self.routes.keys().map(|v| v.to_vec()).collect();
+        return format!("{:?}", keys);
+    }
 }
 
 impl<'a> OperatorHandler for OpRouter {
@@ -99,6 +105,7 @@ impl<'a> OperatorHandler for OpRouter {
         match allocator.sexp(op) {
             SExp::Atom(b) => {
                 let buf = &allocator.buf(&b).to_vec();
+                print!("op {:?} handlers {}\n", buf, self.showtable());
                 match self.routes.get(buf) {
                     Some(handler) => {
                         return handler.op(allocator, op, sexp, max_cost);
@@ -135,8 +142,9 @@ pub trait TRunProgram {
     fn run_program(&self, allocator: &mut Allocator, program: NodePtr, args: NodePtr, option: Option<RunProgramOption>) -> Response;
 }
 
+#[derive(Clone)]
 pub struct DefaultProgramRunner {
-    router: OpRouter,
+    pub router: OpRouter,
     quote_kw_vec: Vec<u8>,
     apply_kw_vec: Vec<u8>
 }
@@ -175,7 +183,6 @@ impl TRunProgram for DefaultProgramRunner {
             _ => { }
         }
 
-        let op_router = OpRouter::new();
         let res = run_program(
             allocator,
             program,
@@ -183,7 +190,7 @@ impl TRunProgram for DefaultProgramRunner {
             &self.quote_kw_vec,
             &self.apply_kw_vec,
             max_cost,
-            &op_router,
+            &self.router,
             option.and_then(|o| o.pre_eval_f)
         );
         return res;

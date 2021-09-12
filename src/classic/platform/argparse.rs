@@ -210,6 +210,10 @@ impl ArgumentParser {
 
         if normalized_args.len() > 0 {
             for i in 0..normalized_args.len() {
+                if i + ioff >= normalized_args.len() {
+                    break;
+                }
+
                 let arg = &normalized_args[i + ioff];
 
                 // positional argument
