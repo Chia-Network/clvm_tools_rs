@@ -96,6 +96,7 @@ pub enum BytesFromType {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct Bytes {
     _b : Vec<u8>
 }

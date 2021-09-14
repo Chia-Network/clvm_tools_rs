@@ -1,3 +1,37 @@
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::rc::Rc;
+
+use clvm_rs::allocator::{
+    Allocator,
+    NodePtr,
+    SExp
+};
+use clvm_rs::reduction::{
+    EvalErr
+};
+
+use crate::classic::clvm::__type_compatibility__::{
+    Bytes,
+    BytesFromType
+};
+use crate::classic::clvm::sexp::{
+    enlist,
+    first,
+    flatten,
+    foldM,
+    proper_list,
+    rest
+};
+use crate::classic::clvm_tools::NodePath::NodePath;
+use crate::classic::clvm_tools::stages::assemble;
+use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
+use crate::classic::clvm_tools::stages::stage_2::helpers::{
+    evaluate,
+    quote
+};
+use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
+
 // import {Bytes, KEYWORD_TO_ATOM, SExp, str, t, Tuple, b, isAtom, h} from "clvm";
 // import * as binutils from "../../clvm_tools/binutils";
 // import {build_symbol_dump} from "../../clvm_tools/debug";
@@ -9,41 +43,65 @@
 // export const QUOTE_ATOM = KEYWORD_TO_ATOM["q"];
 // export const CONS_ATOM = KEYWORD_TO_ATOM["c"];
 
-// export const MAIN_NAME = "";
+lazy_static! {
+    pub static ref MAIN_NAME : String = {
+        return "".to_string();
+    };
+}
+
+struct CollectionResult {
+    pub functions: HashMap<Vec<u8>, NodePtr>,
+    pub constants: HashMap<Vec<u8>, NodePtr>,
+    pub macros: Vec<(Vec<u8>, NodePtr)>
+}
 
 // export type TBuildTree = Bytes | Tuple<TBuildTree, TBuildTree> | [];
-// export function build_tree(items: str[]): TBuildTree {
-//   // This function takes a Python list of items and turns it into a binary tree
-//   // of the items, suitable for casting to an s-expression.
-//   const size = items.length;
-//   if(size === 0){
-//     return [];
-//   }
-//   else if(size === 1){
-//     return h(items[0]); // items[0] is expected to be a hex string representing constant name atom
-//   }
-//   const half_size = size >> 1;
-//   const left = build_tree(items.slice(0, half_size));
-//   const right = build_tree(items.slice(half_size));
-//   return t(left, right);
-// }
+fn build_tree(
+    allocator: &mut Allocator,
+    items: &Vec<Vec<u8>>
+) -> Result<NodePtr, EvalErr> {
+    if items.len() == 0 {
+        return Ok(allocator.null());
+    } else if items.len() == 1 {
+        return allocator.new_atom(&items[0]);
+    } else {
+        return m! {
+            let half_size = items.len() >> 1;
+            left <- build_tree(allocator, &items[..half_size].to_vec());
+            right <- build_tree(allocator, &items[half_size..].to_vec());
+            allocator.new_pair(left, right)
+        };
+    }
+}
 
 // export type TBuildTreeProgram = SExp | [Bytes, TBuildTree, TBuildTree] | [Tuple<Bytes, SExp>];
-// export function build_tree_program(items: SExp[]): TBuildTreeProgram {
-//   // This function takes a Python list of items and turns it into a program that
-//   //  a binary tree of the items, suitable for casting to an s-expression.
-//   const size = items.length;
-//   if(size === 0){
-//     return [quote([])] as [Tuple<Bytes, SExp>];
-//   }
-//   else if(size === 1){
-//     return items[0];
-//   }
-//   const half_size = size >> 1;
-//   const left = build_tree_program(items.slice(0, half_size));
-//   const right = build_tree_program(items.slice(half_size));
-//   return [h(CONS_ATOM), left, right] as [Bytes, TBuildTree, TBuildTree];
-// }
+fn build_tree_program(
+    allocator: &mut Allocator,
+    items: &Vec<NodePtr>
+) -> Result<NodePtr, EvalErr> {
+    // This function takes a Python list of items and turns it into a program that
+    //  a binary tree of the items, suitable for casting to an s-expression.
+    let size = items.len();
+    if size == 0 {
+        return m! {
+            list_of_nil <- enlist(allocator, &vec!(allocator.null()));
+            quote(allocator, list_of_nil)
+        }
+    } else if size == 1 {
+        return Ok(items[0]);
+    } else {
+        return m! {
+            let half_size = items.len() >> 1;
+            left <-
+                build_tree_program(allocator, &items[..half_size].to_vec());
+            right <-
+                build_tree_program(allocator, &items[half_size..].to_vec());
+
+            cons_atom <- allocator.new_atom(&vec!(4 as u8));
+            enlist(allocator, &vec!(cons_atom, left, right))
+        };
+    }
+}
 
 // export function flatten(sexp: SExp): Bytes[] {
 //   // Return a (python) list of every atom.
@@ -58,261 +116,608 @@
 
 // export type TNameToSExp = Record<str, SExp>;
 
-// /**
-//  * @return Used constants name array in `hex string` format.
-//  */
-// export function build_used_constants_names(functions: TNameToSExp, constants: TNameToSExp, macros: SExp[]){
-//   /*
-//     Do a naïve pruning of unused symbols. It may be too big, but it shouldn't
-//     be too small. Return a list of all atoms used that are also the names of
-//     functions or constants, starting with the MAIN_NAME function.
-//    */
-//   const macro_as_dict = macros.reduce((acc, _) => {
-//     acc[(_.rest().first().atom as Bytes).hex()] = _;
-//     return acc;
-//   }, {} as Record<str, SExp>);
-  
-//   const possible_symbols = new Set(Object.keys(functions));
-//   Object.keys(constants).forEach(c => possible_symbols.add(c));
-  
-//   let new_names = new Set<str>([MAIN_NAME]);
-//   const used_names = new Set<str>(new_names);
-//   while(new_names.size){
-//     const prior_new_names = new Set(new_names);
-//     new_names = new Set();
-//     for(const _ of prior_new_names){
-//       for(const k of [functions, macro_as_dict]){
-//         if(_ in k){
-//           flatten(k[_]).forEach(atom => new_names.add(atom.hex()));
-//         }
-//       }
-//     }
-//     // new_names.difference_update(used_names)
-//     used_names.forEach(n => new_names.delete(n));
-//     // used_names.update(new_names)
-//     new_names.forEach(n => used_names.add(n));
-//   }
-//   // used_names.intersection_update(possible_symbols)
-//   const used_name_list: str[] = [];
-//   used_names.forEach(n => {
-//     if(possible_symbols.has(n) && n !== MAIN_NAME){
-//       used_name_list.push(n);
-//     }
-//   });
-  
-//   used_name_list.sort();
-//   return used_name_list;
-// }
+/**
+ * @return Used constants name array in `hex string` format.
+ */
+fn build_used_constants_names(
+    allocator: &mut Allocator,
+    functions: &HashMap<Vec<u8>, NodePtr>,
+    constants: &HashMap<Vec<u8>, NodePtr>,
+    macros: &Vec<(Vec<u8>, NodePtr)>
+) -> Result<Vec<Vec<u8>>, EvalErr> {
+  /*
+    Do a naïve pruning of unused symbols. It may be too big, but it shouldn't
+    be too small. Return a list of all atoms used that are also the names of
+    functions or constants, starting with the MAIN_NAME function.
+     */
+    let mut macro_as_dict = HashMap::new();
 
-// export function parse_include(
-//   name: SExp,
-//   namespace: Set<str>,
-//   functions: TNameToSExp,
-//   constants: TNameToSExp,
-//   macros: SExp[],
-//   run_program: TRunProgram,
-// ){
-//   const prog = binutils.assemble("(_read (_full_path_for_name 1))");
-//   const assembled_sexp = run_program(prog, name)[1];
-//   for(const sexp of assembled_sexp.as_iter()){
-//     parse_mod_sexp(sexp, namespace, functions, constants, macros, run_program);
-//   }
-// }
+    for nv in macros {
+        let (name, value) = nv;
+        macro_as_dict.insert(name.to_vec(), *value);
+    }
 
-// export function unquote_args(code: SExp, args: Bytes[]): SExp {
-//   if(code.listp()){
-//     const c1 = code.first();
-//     const c2 = code.rest();
-//     return unquote_args(c1, args).cons(unquote_args(c2, args));
-//   }
-  
-//   if(isAtom(code) && args.some(arg => arg.equal_to(code.atom))){
-//     return SExp.to([b("unquote"), code]);
-//   }
-  
-//   return code;
-// }
+    let mut possible_symbols = HashSet::new();
+    let _ =
+        for key in functions.keys() {
+            possible_symbols.insert(key);
+        };
 
+    let _ =
+        for key in constants.keys() {
+            possible_symbols.insert(key);
+        };
 
-// export function defun_inline_to_macro(declaration_sexp: SExp){
-//   const d2 = declaration_sexp.rest();
-//   const d3 = d2.rest();
-//   const r = [b("defmacro"), d2.first(), d3.first()];
-//   const code = d3.rest().first();
-//   const args = flatten(d3.first()).filter(_ => !_.equal_to(Bytes.NULL));
-//   const unquoted_code = unquote_args(code, args);
-//   const r2 = [...r, [b("qq"), unquoted_code]];
-//   return SExp.to(r2);
-// }
+    let mut new_names : HashSet<Vec<u8>> = HashSet::new();
+    new_names.insert(MAIN_NAME.as_bytes().to_vec());
+    let mut used_names = new_names.clone();
 
-// export function parse_mod_sexp(
-//   declaration_sexp: SExp,
-//   namespace: Set<str>,
-//   functions: TNameToSExp,
-//   constants: TNameToSExp,
-//   macros: SExp[],
-//   run_program: TRunProgram,
-// ){
-//   const op = declaration_sexp.first().atom as Bytes;
-//   const name = declaration_sexp.rest().first();
-  
-//   if(op.equal_to(b("include"))){
-//     parse_include(name, namespace, functions, constants, macros, run_program);
-//     return;
-//   }
-  
-//   const name_atom = name.atom as Bytes;
-//   if(namespace.has(name_atom.hex())){
-//     throw new SyntaxError(`symbol "${name_atom.decode()}" redefined`);
-//   }
-//   namespace.add(name_atom.hex());
-  
-//   if(op.equal_to(b("defmacro"))){
-//     macros.push(declaration_sexp);
-//   }
-//   else if(op.equal_to(b("defun"))){
-//     functions[name_atom.hex()] = declaration_sexp.rest().rest();
-//   }
-//   else if(op.equal_to(b("defun-inline"))){
-//     macros.push(defun_inline_to_macro(declaration_sexp));
-//   }
-//   else if(op.equal_to(b("defconstant"))){
-//     constants[name_atom.hex()] = SExp.to(quote(declaration_sexp.rest().rest().first()));
-//   }
-//   else{
-//     throw new SyntaxError("expected defun, defmacro, or defconstant");
-//   }
-// }
+    let _ =
+        while new_names.len() > 0 {
+            new_names = HashSet::new();
 
-// export function compile_mod_stage_1(args: SExp, run_program: TRunProgram){
-//   // stage 1: collect up names of globals (functions, constants, macros)
-  
-//   const functions: TNameToSExp = {};
-//   const constants: TNameToSExp = {};
-//   const macros: SExp[] = [];
-//   const main_local_arguments = args.first();
-  
-//   const namespace = new Set<str>();
-//   // eslint-disable-next-line no-constant-condition
-//   while (true){
-//     args = args.rest();
-//     if(args.rest().nullp()){
-//       break;
-//     }
-//     parse_mod_sexp(args.first(), namespace, functions, constants, macros, run_program);
-//   }
-  
-//   const uncompiled_main = args.first();
-//   functions[MAIN_NAME] = SExp.to([main_local_arguments, uncompiled_main]);
-  
-//   return [functions, constants, macros] as [TNameToSExp, TNameToSExp, SExp[]];
-// }
+            for name in new_names.clone().iter() {
+                let functions_and_macros = vec!(
+                    functions.get(name),
+                    macro_as_dict.get(name)
+                );
+
+                let matching_names =
+                    functions_and_macros.iter().map(
+                        |v| v.and_then(|v| match allocator.sexp(*v) {
+                            SExp::Atom(b) => { Some(allocator.buf(&b).to_vec()) },
+                            _ => { None }
+                        })
+                    ).flatten();
+
+                for name in matching_names {
+                    if !used_names.contains(&name) {
+                        used_names.insert(name.to_vec());
+                        new_names.insert(name);
+                    }
+                }
+            }
+        };
+
+    // used_names.intersection_update(possible_symbols)
+    let mut used_name_list: Vec<Vec<u8>> = Vec::new();
+    for name in used_names.iter() {
+        if  possible_symbols.contains(name) && *name != MAIN_NAME.as_bytes() {
+            used_name_list.push(name.to_vec());
+        }
+    }
+
+    used_name_list.sort();
+    return Ok(used_name_list);
+}
+
+fn parse_include(
+    allocator: &mut Allocator,
+    name: NodePtr,
+    namespace: &mut HashSet<Vec<u8>>,
+    functions: &mut HashMap<Vec<u8>, NodePtr>,
+    constants: &mut HashMap<Vec<u8>, NodePtr>,
+    macros: &mut Vec<(Vec<u8>, NodePtr)>,
+    run_program: Rc<dyn TRunProgram>
+) -> Result<(), EvalErr> {
+    return m! {
+        prog <- assemble(
+            allocator,
+            &"(_read (_full_path_for_name 1))".to_string()
+        );
+        assembled_sexp <- run_program.run_program(
+            allocator,
+            prog,
+            name,
+            None
+        );
+        match proper_list(allocator, assembled_sexp.1, true) {
+            None => { Err(EvalErr(name, "include returned malformed result".to_string())) },
+            Some(assembled) => {
+                for sexp in assembled {
+                    match parse_mod_sexp(
+                        allocator,
+                        sexp,
+                        namespace,
+                        functions,
+                        constants,
+                        macros,
+                        run_program.clone()
+                    ) {
+                        Err(e) => { return Err(e); },
+                        Ok(_) => { }
+                    }
+                };
+                Ok(())
+            }
+        }
+    };
+}
+
+fn unquote_args(
+    allocator: &mut Allocator,
+    code: NodePtr,
+    args: &Vec<Vec<u8>>
+) -> Result<NodePtr, EvalErr> {
+    match allocator.sexp(code) {
+        SExp::Atom(code_buf) => {
+            let code_atom = allocator.buf(&code_buf);
+            let matching_args =
+                args.iter().filter(|arg| *arg == code_atom).
+                map(|v| v.clone()).
+                collect::<Vec<Vec<u8>>>();
+            if matching_args.len() > 0 {
+                return m! {
+                    unquote_atom <- allocator.new_atom("unquote".as_bytes());
+                    enlist(allocator, &vec!(unquote_atom, code))
+                };
+            }
+
+            return Ok(code);
+        },
+        SExp::Pair(c1,c2) => {
+            return m! {
+                unquoted_c2 <- unquote_args(allocator, c2, args);
+                unquoted_c1 <- unquote_args(allocator, c1, args);
+                allocator.new_pair(unquoted_c1, unquoted_c2)
+            };
+        }
+    }
+}
+
+fn defun_inline_to_macro(
+    allocator: &mut Allocator,
+    declaration_sexp: NodePtr
+) -> Result<NodePtr, EvalErr> {
+    m! {
+        d2 <- rest(allocator, declaration_sexp);
+        d3 <- rest(allocator, d2);
+        defmacro_atom <- allocator.new_atom("defmacro".as_bytes());
+        d2_first <- first(allocator, d2);
+        d3_first <- first(allocator, d3);
+        let mut r_vec = vec!(defmacro_atom, d2_first, d3_first);
+        code_rest <- rest(allocator, d3);
+        code <- first(allocator, code_rest);
+        let mut arg_atom_list = Vec::new();
+        let _ = flatten(allocator, d3_first, &mut arg_atom_list);
+        let arg_name_list = arg_atom_list.iter().map(|x| {
+            match allocator.sexp(*x) {
+                SExp::Atom(a) => Some(allocator.buf(&a)),
+                _ => None
+            }
+        }).flatten().filter(|x| x.len() > 0).
+            map(|v| v.to_vec()).
+            collect::<Vec<Vec<u8>>>();
+        unquoted_code <- unquote_args(allocator, code, &arg_name_list);
+        qq_atom <- allocator.new_atom("qq".as_bytes());
+        qq_list <- enlist(allocator, &vec!(qq_atom, unquoted_code));
+        let _ = r_vec.push(qq_list);
+        enlist(allocator, &r_vec)
+    }
+}
+
+fn parse_mod_sexp(
+    allocator: &mut Allocator,
+    declaration_sexp: NodePtr,
+    namespace: &mut HashSet<Vec<u8>>,
+    functions: &mut HashMap<Vec<u8>, NodePtr>,
+    constants: &mut HashMap<Vec<u8>, NodePtr>,
+    macros: &mut Vec<(Vec<u8>, NodePtr)>,
+    run_program: Rc<dyn TRunProgram>
+) -> Result<(), EvalErr> {
+    return m! {
+        op_node <- first(allocator, declaration_sexp);
+        dec_rest <- rest(allocator, declaration_sexp);
+        name_node <- first(allocator, dec_rest);
+        let op =
+            match allocator.sexp(op_node) {
+                SExp::Atom(b) => allocator.buf(&b).to_vec(),
+                _ => Vec::new()
+            };
+        let name =
+            match allocator.sexp(name_node) {
+                SExp::Atom(b) => allocator.buf(&b).to_vec(),
+                _ => Vec::new()
+            };
+
+        if op == "include".as_bytes() {
+            parse_include(
+                allocator,
+                name_node,
+                namespace,
+                functions,
+                constants,
+                macros,
+                run_program.clone()
+            )
+        } else {
+            if namespace.contains(&name) {
+                Err(EvalErr(declaration_sexp, format!("symbol \"{}\" redefined", Bytes::new(Some(BytesFromType::Raw(name))).decode())))
+            } else {
+                namespace.insert(name.to_vec());
+
+                if op == "defmacro".as_bytes() {
+                    macros.push((name.to_vec(), declaration_sexp));
+                    Ok(())
+                } else if op == "defun".as_bytes() {
+                    m! {
+                        declaration_sexp_r <- rest(allocator, declaration_sexp);
+                        declaration_sexp_rr <- rest(allocator, declaration_sexp_r);
+                        let _ = functions.insert(name, declaration_sexp_rr);
+                        Ok(())
+                    }
+                } else if op == "defun-inline".as_bytes() {
+                    m! {
+                        defined_macro <-
+                            defun_inline_to_macro(allocator, declaration_sexp);
+                        let _ = macros.push((name, defined_macro));
+                        Ok(())
+                    }
+                } else if op == "defconstant".as_bytes() {
+                    m! {
+                        r_of_declaration <- rest(allocator, declaration_sexp);
+                        rr_of_declaration <- rest(allocator, r_of_declaration);
+                        frr_of_declaration <- first(allocator, rr_of_declaration);
+                        quoted_decl <- quote(allocator, frr_of_declaration);
+                        let _ = constants.insert(name, quoted_decl);
+                        Ok(())
+                    }
+                } else {
+                    Err(EvalErr(declaration_sexp, "expected defun, defmacro, or defconstant".to_string()))
+                }
+            }
+        }
+    };
+}
+
+fn compile_mod_stage_1(
+    allocator: &mut Allocator,
+    args_: NodePtr,
+    run_program: Rc<dyn TRunProgram>
+) -> Result<CollectionResult, EvalErr> {
+    // stage 1: collect up names of globals (functions, constants, macros)
+    m! {
+        let mut args = args_;
+        let mut functions = HashMap::new();
+        let mut constants = HashMap::new();
+        let mut macros = Vec::new();
+
+        main_local_arguments <- first(allocator, args);
+
+        let mut namespace = HashSet::new();
+
+        // eslint-disable-next-line no-constant-condition
+        let _ =
+            loop {
+                match allocator.sexp(args) {
+                    SExp::Atom(_) => { break; },
+                    SExp::Pair(l,r) => {
+                        if r == allocator.null() {
+                            break;
+                        }
+                        match parse_mod_sexp(
+                            allocator,
+                            l,
+                            &mut namespace,
+                            &mut functions,
+                            &mut constants,
+                            &mut macros,
+                            run_program.clone()
+                        ) {
+                            Err(e) => { return Err(e); },
+                            _ => { args = r; }
+                        }
+                    }
+                }
+            };
+
+        match allocator.sexp(args) {
+            SExp::Atom(_) => {
+                return Err(EvalErr(args, "improper tail list for mod".to_string()));
+            },
+            SExp::Pair(l,r) => {
+                return m! {
+                    let uncompiled_main = l;
+                    main_list <-
+                        enlist(
+                            allocator,
+                            &vec!(main_local_arguments, uncompiled_main)
+                        );
+                    let _ = functions.insert(MAIN_NAME.as_bytes().to_vec(), main_list);
+
+                    Ok(CollectionResult {
+                        functions: functions,
+                        constants: constants,
+                        macros: macros
+                    })
+                };
+            }
+        }
+    }
+}
 
 // export type TSymbolTable = Array<[SExp, Bytes]>;
-// export function symbol_table_for_tree(tree: SExp, root_node: NodePath): TSymbolTable {
-//   if(tree.nullp()){
-//     return [];
-//   }
-//   else if(!tree.listp()){
-//     return [[tree, root_node.as_path()]];
-//   }
-  
-//   const left = symbol_table_for_tree(tree.first(), root_node.add(LEFT));
-//   const right = symbol_table_for_tree(tree.rest(), root_node.add(RIGHT));
-  
-//   return left.concat(right);
-// }
 
-// export function build_macro_lookup_program(macro_lookup: SExp, macros: SExp[], run_program: TRunProgram){
-//   let macro_lookup_program = SExp.to(quote(macro_lookup));
-//   for(const macro of macros){
-//     macro_lookup_program = evaluate(SExp.to(
-//       [b("opt"), [b("com"), quote([h(CONS_ATOM), macro, macro_lookup_program]), macro_lookup_program]]),
-//     TOP.as_path(),
-//     );
-//     macro_lookup_program = optimize_sexp(macro_lookup_program, run_program);
-//   }
-//   return macro_lookup_program;
-// }
+fn symbol_table_for_tree(
+    allocator: &mut Allocator,
+    tree: NodePtr,
+    root_node: &NodePath
+) -> Result<Vec<(NodePtr, Vec<u8>)>, EvalErr> {
+    if tree == allocator.null() {
+        return Ok(Vec::new());
+    }
 
-// export function compile_functions(
-//   functions: TNameToSExp,
-//   macro_lookup_program: SExp,
-//   constants_symbol_table: Array<[SExp, Bytes]>,
-//   args_root_node: NodePath,
-// ){
-//   const compiled_functions: Record<str, SExp> = {};
-//   for(const [name, lambda_expression] of Object.entries(functions)){
-//     const local_symbol_table = symbol_table_for_tree(lambda_expression.first(), args_root_node);
-//     const all_symbols = local_symbol_table.concat(constants_symbol_table);
-//     compiled_functions[name] = SExp.to(
-//       [b("opt"), [b("com"),
-//         quote(lambda_expression.rest().first()),
-//         macro_lookup_program,
-//         quote(all_symbols)]]);
-//   }
-//   return compiled_functions;
-// }
+    match allocator.sexp(tree) {
+        SExp::Atom(_) => {
+            return Ok(vec!((tree, root_node.as_path().data().to_vec())));
+        },
+        SExp::Pair(f,r) => {
+            return m! {
+                let left_bytes = NodePath::new(None).first();
+                let right_bytes = NodePath::new(None).rest();
 
-// export function compile_mod(args: SExp, macro_lookup: SExp, symbol_table: SExp, run_program: TRunProgram){
-//   // Deal with the "mod" keyword.
-//   const [functions, constants, macros] = compile_mod_stage_1(args, run_program);
-  
-//   // move macros into the macro lookup
-//   const macro_lookup_program = build_macro_lookup_program(macro_lookup, macros, run_program);
-  
-//   // get a list of all symbols that are possibly used
-//   const all_constants_names = build_used_constants_names(functions, constants, macros);
-//   const has_constants_tree = all_constants_names.length > 0;
-  
-//   // build defuns table, with function names as keys
-  
-//   const constants_tree = SExp.to(build_tree(all_constants_names));
-  
-//   const constants_root_node = LEFT;
-//   let args_root_node;
-//   if(has_constants_tree){
-//     args_root_node = RIGHT;
-//   }
-//   else{
-//     args_root_node = TOP;
-//   }
-  
-//   const constants_symbol_table = symbol_table_for_tree(constants_tree, constants_root_node);
-  
-//   const compiled_functions = compile_functions(
-//     functions,
-//     macro_lookup_program,
-//     constants_symbol_table,
-//     args_root_node,
-//   );
-  
-//   const main_path_src = binutils.disassemble(compiled_functions[MAIN_NAME]);
-  
-//   let main_code;
-//   if(has_constants_tree){
-//     const all_constants_lookup: typeof compiled_functions = {};
-//     Object.entries(compiled_functions).forEach(([k, v]) => {
-//       if(all_constants_names.includes(k)){
-//         all_constants_lookup[k] = v;
-//       }
-//     });
-//     Object.entries(constants).forEach(([k, v]) => {
-//       all_constants_lookup[k] = v;
-//     });
-    
-//     const all_constants_list = all_constants_names.map(_ => all_constants_lookup[_]);
-//     const all_constants_tree_program = SExp.to(build_tree_program(all_constants_list));
-    
-//     const all_constants_tree_src = binutils.disassemble(all_constants_tree_program);
-//     const arg_tree_src = `(c ${all_constants_tree_src} 1)`;
-//     main_code = `(opt (q . (a ${main_path_src} ${arg_tree_src})))`;
-//     build_symbol_dump(all_constants_lookup, run_program, "main.sym");
-//   }
-//   else{
-//     const arg_tree_src = "1";
-//     main_code = `(opt (q . (a ${main_path_src} ${arg_tree_src})))`;
-//   }
-  
-//   return binutils.assemble(main_code);
-// }
+                tree_first <- first(allocator, tree);
+                tree_rest <- rest(allocator, tree);
+
+                left <-
+                    symbol_table_for_tree(
+                        allocator,
+                        tree_first,
+                        &root_node.add(left_bytes)
+                    );
+                right <-
+                    symbol_table_for_tree(
+                        allocator,
+                        tree_rest,
+                        &root_node.add(right_bytes)
+                    );
+
+                let mut left_fin = left.to_vec();
+                let mut right_fin = right.to_vec();
+                let _ = left_fin.append(&mut right_fin);
+                Ok(left_fin)
+            };
+        }
+    }
+}
+
+fn build_macro_lookup_program(
+    allocator: &mut Allocator,
+    macro_lookup: NodePtr,
+    macros: &Vec<(Vec<u8>, NodePtr)>,
+    run_program: Rc<dyn TRunProgram>
+) -> Result<NodePtr, EvalErr> {
+    return m! {
+        com_atom <- allocator.new_atom("com".as_bytes());
+        cons_atom <- allocator.new_atom(&vec!(4));
+        opt_atom <- allocator.new_atom("opt".as_bytes());
+
+        let runner = || run_program.clone();
+        macro_lookup_program <- quote(allocator, macro_lookup);
+        foldM(
+            allocator,
+            &|allocator, macro_lookup_program, macro_def: &(Vec<u8>, NodePtr)| m! {
+                cons_list <-
+                    enlist(
+                        allocator,
+                        &vec!(cons_atom, macro_def.1, macro_lookup_program)
+                    );
+                quoted_to_compile <- quote(allocator, cons_list);
+                compile_form <-
+                    enlist(
+                        allocator,
+                        &vec!(com_atom, quoted_to_compile, macro_lookup_program)
+                    );
+                opt_form <- enlist(allocator, &vec!(opt_atom, compile_form));
+                top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
+                macro_evaluated <- evaluate(allocator, opt_form, top_atom);
+                optimize_sexp(allocator, macro_lookup_program, runner())
+            },
+            macro_lookup_program,
+            &mut macros.iter()
+        )
+    };
+}
+
+fn add_one_function(
+    allocator: &mut Allocator,
+    args_root_node: &NodePath,
+    macro_lookup_program: NodePtr,
+    constants_symbol_table: &Vec<(NodePtr, Vec<u8>)>,
+    compiled_functions_: HashMap<Vec<u8>, NodePtr>,
+    name: &Vec<u8>,
+    lambda_expression: NodePtr
+) -> Result<HashMap<Vec<u8>, NodePtr>, EvalErr> {
+    let mut compiled_functions = compiled_functions_;
+    return m! {
+        com_atom <- allocator.new_atom("com".as_bytes());
+        opt_atom <- allocator.new_atom("opt".as_bytes());
+
+        le_first <- first(allocator, lambda_expression);
+        local_symbol_table <- symbol_table_for_tree(
+            allocator, le_first, args_root_node
+        );
+        let mut all_symbols = local_symbol_table.clone();
+        let mut constants_st_clone = constants_symbol_table.clone();
+        let _ = all_symbols.append(&mut constants_st_clone);
+        lambda_form_content <- rest(allocator, lambda_expression);
+        lambda_body <- first(allocator, lambda_form_content);
+        quoted_lambda_expr <- quote(allocator, lambda_body);
+        all_symbols_list <-
+            enlist(
+                allocator,
+                &all_symbols.iter().map(|pair| pair.0).
+                    collect::<Vec<NodePtr>>()
+            );
+        quoted_symbols <- quote(allocator, all_symbols_list);
+        com_list <- enlist(
+            allocator,
+            &vec!(
+                com_atom,
+                quoted_lambda_expr,
+                macro_lookup_program,
+                quoted_symbols
+            )
+        );
+        opt_list <- enlist(allocator, &vec!(opt_atom, com_list));
+        let _ = compiled_functions.insert(name.to_vec(), opt_list);
+        Ok(compiled_functions)
+    };
+}
+
+fn compile_functions(
+    allocator: &mut Allocator,
+    functions: &HashMap<Vec<u8>, NodePtr>,
+    macro_lookup_program: NodePtr,
+    constants_symbol_table: &Vec<(NodePtr, Vec<u8>)>,
+    args_root_node: &NodePath
+) -> Result<HashMap<Vec<u8>, NodePtr>, EvalErr> {
+    let compiled_functions = HashMap::new();
+
+    return foldM(
+        allocator,
+        &|allocator: &mut Allocator,
+         compiled_functions,
+         name_exp: (&Vec<u8>, &NodePtr)|
+        add_one_function(
+            allocator,
+            args_root_node,
+            macro_lookup_program,
+            constants_symbol_table,
+            compiled_functions,
+            name_exp.0,
+            *name_exp.1
+        ),
+        compiled_functions,
+        &mut functions.iter()
+    );
+}
+
+pub fn compile_mod(
+    allocator: &mut Allocator,
+    args: NodePtr,
+    macro_lookup: NodePtr,
+    symbol_table: NodePtr,
+    run_program: Rc<dyn TRunProgram>,
+    _level: usize
+) -> Result<NodePtr, EvalErr> {
+    // Deal with the "mod" keyword.
+    match compile_mod_stage_1(allocator, args, run_program.clone()) {
+        Err(e) => { return Err(e); },
+        Ok(cr) => {
+            return m! {
+                q_atom <- allocator.new_atom(&vec!(1));
+                a_atom <- allocator.new_atom(&vec!(2));
+                cons_atom <- allocator.new_atom(&vec!(4));
+                opt_atom <- allocator.new_atom("opt".as_bytes());
+
+                // move macros into the macro lookup
+                macro_lookup_program <- build_macro_lookup_program(
+                    allocator, macro_lookup, &cr.macros, run_program.clone()
+                );
+
+                // get a list of all symbols that are possibly used
+                all_constants_names <- build_used_constants_names(
+                    allocator, &cr.functions, &cr.constants, &cr.macros
+                );
+
+                let has_constants_tree = all_constants_names.len() > 0;
+
+                // build defuns table, with function names as keys
+
+                constants_tree <- build_tree(allocator, &all_constants_names);
+
+                let constants_root_node = NodePath::new(None).first();
+                let args_root_node =
+                    if has_constants_tree {
+                        NodePath::new(None).rest()
+                    } else {
+                        NodePath::new(None)
+                    };
+
+                constants_symbol_table <- symbol_table_for_tree(
+                    allocator, constants_tree, &constants_root_node
+                );
+
+                compiled_functions <- compile_functions(
+                    allocator,
+                    &cr.functions,
+                    macro_lookup_program,
+                    &constants_symbol_table,
+                    &args_root_node,
+                );
+
+                let main_path = compiled_functions[MAIN_NAME.as_bytes()];
+
+                if has_constants_tree {
+                    m! {
+                        let mut all_constants_lookup = HashMap::new();
+                        let _ = {
+                            for (k,v) in compiled_functions {
+                                if all_constants_names.contains(&k) {
+                                    all_constants_lookup.insert(k, v);
+                                }
+                            }
+                        };
+                        let _ = {
+                            for (k,v) in cr.constants.iter() {
+                                all_constants_lookup.insert(k.to_vec(), *v);
+                            }
+                        };
+
+                        let all_constants_list =
+                            all_constants_names.iter().map(
+                                |name| all_constants_lookup.get(name)
+                            ).flatten().map(|x| *x).collect::<Vec<NodePtr>>();
+
+                        all_constants_tree_program <-
+                            build_tree_program(allocator, &all_constants_list);
+
+                        top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
+                        arg_tree <-
+                            enlist(
+                                allocator,
+                                &vec!(cons_atom, all_constants_tree_program, top_atom)
+                            );
+                        apply_list <-
+                            enlist(
+                                allocator,
+                                &vec!(a_atom, main_path, arg_tree)
+                            );
+                        quoted_apply_list <-
+                            allocator.new_pair(q_atom, apply_list);
+                        opt_list <-
+                            enlist(
+                                allocator,
+                                &vec!(opt_atom, quoted_apply_list)
+                            );
+
+                        // let _ = build_symbol_dump(
+                        //     allocator,
+                        //     all_constants_lookup,
+                        //     run_program.clone(),
+                        //     "main.sym"
+                        // );
+
+                        Ok(opt_list)
+                    }
+                } else {
+                    m! {
+                        top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
+                        apply_list <-
+                            enlist(
+                                allocator,
+                                &vec!(a_atom, main_path, top_atom)
+                            );
+                        quoted_apply_list <-
+                            allocator.new_pair(q_atom, apply_list);
+                        enlist(
+                            allocator,
+                            &vec!(opt_atom, quoted_apply_list)
+                        )
+                    }
+                }
+            };
+        }
+    };
+}

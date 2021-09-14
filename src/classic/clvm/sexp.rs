@@ -531,12 +531,12 @@ pub fn mapM(
     }
 }
 
-pub fn foldM<A,B>(
+pub fn foldM<A,B,E>(
     allocator: &mut Allocator,
-    f: &dyn Fn(&mut Allocator, A, B) -> Result<A, EvalErr>,
+    f: &dyn Fn(&mut Allocator, A, B) -> Result<A, E>,
     start_: A,
     iter: &mut impl Iterator<Item = B>
-) -> Result<A, EvalErr> {
+) -> Result<A, E> {
     let mut start = start_;
     loop {
         match iter.next() {
@@ -574,6 +574,30 @@ pub fn equal_to<'a>(
                 second = rr;
             },
             _ => { return false; }
+        }
+    }
+}
+
+pub fn flatten<'a>(
+    allocator: &'a mut Allocator,
+    tree_: NodePtr,
+    res: &mut Vec<NodePtr>
+) {
+    let mut tree = tree_;
+
+    loop {
+        match allocator.sexp(tree) {
+            SExp::Atom(b) => {
+                if tree == allocator.null() {
+                    return;
+                } else {
+                    res.push(tree);
+                }
+            },
+            SExp::Pair(l,r) => {
+                flatten(allocator, l, res);
+                tree = r;
+            }
         }
     }
 }

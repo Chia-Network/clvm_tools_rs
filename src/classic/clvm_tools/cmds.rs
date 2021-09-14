@@ -31,7 +31,6 @@ use crate::classic::clvm_tools::binutils::{
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{
-    DefaultProgramRunner,
     TRunProgram
 };
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;

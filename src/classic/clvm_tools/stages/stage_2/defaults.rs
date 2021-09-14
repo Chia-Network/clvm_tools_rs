@@ -9,7 +9,6 @@ use crate::classic::clvm_tools::binutils::{
     assemble
 };
 use crate::classic::clvm_tools::stages::stage_0::{
-    DefaultProgramRunner,
     TRunProgram
 };
 
