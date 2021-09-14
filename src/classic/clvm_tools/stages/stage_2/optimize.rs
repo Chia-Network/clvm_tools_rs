@@ -23,12 +23,14 @@ use crate::classic::clvm::__type_compatibility__::{
 use crate::classic::clvm::sexp::{
     atom,
     enlist,
+    equal_to,
     first,
     foldM,
     mapM,
     non_nil,
     proper_list
 };
+use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::NodePath::NodePath;
 use crate::classic::clvm_tools::pattern_match::match_sexp;
 use crate::classic::clvm_tools::stages::assemble;
@@ -48,7 +50,7 @@ pub struct DoOptProg {
     runner: Rc<dyn TRunProgram>
 }
 
-const DEBUG_OPTIMIZATIONS : u32 = 0;
+const DEBUG_OPTIMIZATIONS : u32 = 1;
 
 pub fn seems_constant_tail<'a>(allocator: &'a mut Allocator, sexp_: NodePtr) -> bool {
     let mut sexp = sexp_;
@@ -567,8 +569,10 @@ pub fn optimize_sexp<'a>(allocator: &mut Allocator, r_: NodePtr, eval_f: Rc<dyn 
      */
     match allocator.sexp(r) {
         SExp::Atom(_) => { return Ok(r); }
-        _ => { }
+        SExp::Pair(first,rest) => { r = first; }
     }
+
+    print!("optimize_sexp {}\n", disassemble(allocator, r));
 
     let OPTIMIZERS : Vec<OptimizerRunner> = vec!(
         OptimizerRunner::new("cons_optimizer", &cons_optimizer),
@@ -588,23 +592,25 @@ pub fn optimize_sexp<'a>(allocator: &mut Allocator, r_: NodePtr, eval_f: Rc<dyn 
         let start_r = r;
 
         for opt in OPTIMIZERS.iter() {
+            print!("optimize pass: {} on {}\n", &opt.name, disassemble(allocator, r));
             match opt.invoke(allocator, r, eval_f.clone()) {
                 Err(e) => { return Err(e); },
                 Ok(res) => {
-                    if start_r != r {
+                    if !equal_to(allocator, start_r, res) {
+                        print!("optimize {} -> {}\n", &opt.name, disassemble(allocator, res));
+                        r = res;
                         break;
                     }
-                    r = res;
                 }
             }
 
-            if start_r == r {
-                return Ok(r);
-            }
-
             if DEBUG_OPTIMIZATIONS > 0 {
-                print!("OPT-{:?}[{:?}] => {:?}", &opt.name, &start_r, &r);
+                print!("OPT-{:?}[{}] => {}\n", &opt.name, disassemble(allocator, start_r), disassemble(allocator, r));
             }
+        }
+
+        if equal_to(allocator, start_r, r) {
+            return Ok(r);
         }
     }
 

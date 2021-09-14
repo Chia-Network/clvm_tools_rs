@@ -19,7 +19,10 @@ use clvm_rs::reduction::{
 
 use clvm_rs::operator_handler::OperatorHandler;
 
-use crate::classic::clvm::KEYWORD_TO_ATOM;
+use crate::classic::clvm::{
+    KEYWORD_FROM_ATOM,
+    KEYWORD_TO_ATOM
+};
 use crate::classic::clvm::sexp::{
     proper_list,
     enlist,
@@ -46,6 +49,9 @@ lazy_static! {
         let mut result = HashSet::new();
         for key in KEYWORD_TO_ATOM().keys() {
             result.insert(key.as_bytes().to_vec());
+        }
+        for key in KEYWORD_FROM_ATOM().keys() {
+            result.insert(key.to_vec());
         }
         return result;
     };
@@ -195,6 +201,10 @@ pub fn lower_quote(
 
     match proper_list(allocator, prog, true) {
         Some(qlist) => {
+            if qlist.len() == 0 {
+                return Ok(prog);
+            }
+
             match allocator.sexp(qlist[0]) {
                 SExp::Atom(q) => {
                     if allocator.buf(&q).to_vec() == "quote".as_bytes().to_vec() {
@@ -389,6 +399,8 @@ fn compile_operator_atom(
     let COMPILE_BINDINGS = compile_bindings();
     let avec = allocator.buf(a).to_vec();
 
+    print!("avec {:?} bindings {:?}\n", avec, COMPILE_BINDINGS.keys().collect::<Vec<&Vec<u8>>>());
+
     match COMPILE_BINDINGS.get(&avec) {
         Some(f) => {
             return m! {
@@ -405,6 +417,8 @@ fn compile_operator_atom(
                 quoted_post_prog <- quote(allocator, post_prog);
                 top_atom <-
                     allocator.new_atom(NodePath::new(None).as_path().data());
+
+                let _ = print!("evaluate {}\n", disassemble(allocator, quoted_post_prog));
 
                 evaluate(
                     allocator,
@@ -492,27 +506,22 @@ fn compile_application(
     let error_result =
         Err(EvalErr(prog, format!("can't compile {}, unknown operator", disassemble(allocator, prog))));
 
-    match proper_list(allocator, operator, true) {
+    match proper_list(allocator, rest, true) {
         Some(prog_args) => {
-            let mut first = true;
             for arg in prog_args {
                 match do_com_prog(allocator, arg, macro_lookup, symbol_table, run_program.clone()) {
                     Err(e) => { return Err(e); },
-                    Ok(compiled) => {
-                        if first {
-                            first = false;
-                        } else {
-                            compiled_args.push(compiled.1);
-                        }
-                    }
+                    Ok(compiled) => { compiled_args.push(compiled.1); }
                 }
             }
 
             let opbuf = allocator.buf(&fbuf).to_vec();
+            print!("opbuf {:?} args {:?}\n", opbuf, compiled_args);
             if PASS_THROUGH_OPERATORS.contains(&opbuf) || (opbuf.len() > 0 && opbuf[0] == '_' as u8) {
                 return enlist(allocator, &compiled_args);
             }
 
+            print!("find symbol\n");
             find_symbol_match(
                 allocator,
                 prog,
@@ -578,93 +587,101 @@ pub fn do_com_prog(
      */
 
     // lower "quote" to "q"
-    match lower_quote(allocator, prog, macro_lookup, symbol_table, run_program.clone()) {
-        Err(e) => { return Err(e); },
-        Ok(prog) => {
-            // quote atoms
-            match allocator.sexp(prog) {
-                SExp::Atom(a) => {
-                    return transform_program_atom(
-                        allocator,
-                        prog,
-                        &a,
-                        macro_lookup,
-                        symbol_table,
-                        run_program.clone()
-                    );
-                },
-                SExp::Pair(operator,r) => {
-                    match proper_list(allocator, operator, false) {
-                        Some(_) => {
-                            // (com ((OP) . RIGHT)) => (a (com (q OP)) 1)
-                            return m! {
-                                com_atom <- allocator.new_atom("com".as_bytes());
-                                quoted_op <- quote(allocator, operator);
-                                quoted_macro_lookup <-
-                                    quote(allocator, macro_lookup);
-                                quoted_symbol_table <-
-                                    quote(allocator, symbol_table);
-                                top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
-                                eval_list <- enlist(allocator, &vec!(
-                                    com_atom,
-                                    quoted_op,
-                                    quoted_macro_lookup,
-                                    quoted_symbol_table
-                                ));
-                                inner_exp <- evaluate(
-                                    allocator, eval_list, top_atom
-                                );
-                                enlist(allocator, &vec!(inner_exp)).
-                                    map(|x| Reduction(1, x))
-                            };
-                        },
-                        _ => { }
-                    }
+    print!("do_com_prog {}\n", disassemble(allocator, prog));
+    return m! {
+        prog <- lower_quote(
+            allocator, prog, macro_lookup, symbol_table, run_program.clone()
+        );
 
-                    get_macro_program(allocator, operator, macro_lookup).
-                        and_then(|x| match x {
-                            Some(value) => {
-                                try_expand_macro_for_atom(
-                                    allocator,
-                                    value,
-                                    prog,
-                                    macro_lookup,
-                                    symbol_table,
-                                    run_program.clone()
-                                )
-                            },
-                            None => {
-                                match allocator.sexp(operator) {
-                                    SExp::Atom(a) => {
-                                        compile_operator_atom(
+        let _ = print!("lowered {}\n", disassemble(allocator, prog));
+
+        // quote atoms
+        match allocator.sexp(prog) {
+            SExp::Atom(a) => {
+                transform_program_atom(
+                    allocator,
+                    prog,
+                    &a,
+                    macro_lookup,
+                    symbol_table,
+                    run_program.clone()
+                )
+            },
+            SExp::Pair(operator,r) => {
+                let _ = print!("operator {}\n", disassemble(allocator, operator));
+                match proper_list(allocator, operator, false) {
+                    Some(_) => {
+                        // (com ((OP) . RIGHT)) => (a (com (q OP)) 1)
+                        return m! {
+                            com_atom <- allocator.new_atom("com".as_bytes());
+                            quoted_op <- quote(allocator, operator);
+                            quoted_macro_lookup <-
+                                quote(allocator, macro_lookup);
+                            quoted_symbol_table <-
+                                quote(allocator, symbol_table);
+                            top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
+                            eval_list <- enlist(allocator, &vec!(
+                                com_atom,
+                                quoted_op,
+                                quoted_macro_lookup,
+                                quoted_symbol_table
+                            ));
+                            let _ = print!("compile: {} {}\n", disassemble(allocator, eval_list), disassemble(allocator, top_atom));
+                            inner_exp <- evaluate(
+                                allocator, eval_list, top_atom
+                            );
+                            enlist(allocator, &vec!(inner_exp)).
+                                map(|x| Reduction(1, x))
+                        };
+                    },
+                    _ => {
+                    }
+                }
+
+                get_macro_program(allocator, operator, macro_lookup).
+                    and_then(|x| match x {
+                        Some(value) => {
+                            try_expand_macro_for_atom(
+                                allocator,
+                                value,
+                                prog,
+                                macro_lookup,
+                                symbol_table,
+                                run_program.clone()
+                            )
+                        },
+                        None => {
+                            match allocator.sexp(operator) {
+                                SExp::Atom(a) => {
+                                    compile_operator_atom(
+                                        allocator,
+                                        prog,
+                                        &a,
+                                        macro_lookup,
+                                        symbol_table,
+                                        run_program.clone()
+                                    ).and_then(|x| x.map(|y| Ok(y)).unwrap_or_else(|| m! {
+                                        rest <- rest(allocator, prog);
+                                        let _ = print!("handling program body with op {} and args {}\n", disassemble(allocator, operator), disassemble(allocator, rest));
+                                        compile_application(
                                             allocator,
                                             prog,
+                                            operator,
                                             &a,
+                                            rest,
                                             macro_lookup,
                                             symbol_table,
                                             run_program.clone()
-                                        ).and_then(|x| x.map(|y| Ok(y)).unwrap_or_else(|| m! {
-                                            rest <- rest(allocator, prog);
-                                            compile_application(
-                                                allocator,
-                                                prog,
-                                                operator,
-                                                &a,
-                                                rest,
-                                                macro_lookup,
-                                                symbol_table,
-                                                run_program.clone()
-                                            )
-                                        })).map(|x| Reduction(1, x))
-                                    },
-                                    SExp::Pair(f,l) => { Ok(Reduction(1, prog)) }
-                                }
+                                        )
+                                    })).map(|x| Reduction(1, x))
+                                },
+                                SExp::Pair(f,l) => { Ok(Reduction(1, prog)) }
                             }
-                        })
-                }
+                        }
+                    })
             }
         }
-    }
+    };
 }
 
 impl OperatorHandler for DoComProg {
@@ -686,8 +703,8 @@ impl OperatorHandler for DoComProg {
                         symbol_table = symbols;
                     },
                     _ => {
-                        macro_lookup =
-                            DEFAULT_MACRO_LOOKUP(allocator, self.runner.clone());
+                        macro_lookup = allocator.null();
+                        //DEFAULT_MACRO_LOOKUP(allocator, self.runner.clone());
                     }
                 }
 

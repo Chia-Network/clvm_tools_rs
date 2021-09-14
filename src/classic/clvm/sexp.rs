@@ -502,8 +502,9 @@ pub fn proper_list<'a>(allocator: &'a mut Allocator, sexp: NodePtr, store: bool)
 
 pub fn enlist<'a>(allocator: &'a mut Allocator, vec: &Vec<NodePtr>) -> Result<NodePtr, EvalErr> {
     let mut built = allocator.null();
+
     for i_reverse in 0..vec.len() {
-        let i = i_reverse - vec.len() - 1;
+        let i = vec.len() - i_reverse - 1;
         match allocator.new_pair(vec[i], built) {
             Err(e) => { return Err(e) },
             Ok(v) => { built = v; }
@@ -562,9 +563,9 @@ pub fn equal_to<'a>(
     loop {
         match (allocator.sexp(first), allocator.sexp(second)) {
             (SExp::Atom(fbuf), SExp::Atom(sbuf)) => {
-                return
-                    allocator.buf(&fbuf).to_vec() ==
-                    allocator.buf(&sbuf).to_vec();
+                let fvec = allocator.buf(&fbuf).to_vec();
+                let svec = allocator.buf(&sbuf).to_vec();
+                return fvec == svec;
             },
             (SExp::Pair(ff,fr), SExp::Pair(rf,rr)) => {
                 if !equal_to(allocator, ff, rf) {

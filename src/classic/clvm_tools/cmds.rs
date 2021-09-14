@@ -21,7 +21,6 @@ use crate::classic::clvm::serialize::{
     sexp_from_stream
 };
 use crate::classic::clvm::sexp::{
-    first,
     sexp_as_bin
 };
 use crate::classic::clvm_tools::binutils::{
@@ -48,38 +47,6 @@ use crate::classic::platform::argparse::{
     TArgOptionAction,
     TArgumentParserProps
 };
-
-// import {
-//   KEYWORD_FROM_ATOM,
-//   SExp,
-//   EvalError,
-//   sexp_from_stream,
-//   sexp_to_stream,
-//   str,
-//   Tuple,
-//   None,
-//   t,
-//   Bytes,
-//   int,
-//   h,
-//   TPreEvalF,
-//   Optional,
-//   CLVMObject,
-// } from "clvm";
-
-// import * as reader from "../ir/reader";
-// import * as binutils from "./binutils";
-// import {make_trace_pre_eval, trace_to_text, trace_to_table} from "./debug";
-// import {sha256tree} from "./sha256tree";
-// import {fs_exists, fs_isFile, fs_read, path_join} from "../platform/io";
-// import {Stream} from "clvm/dist/__type_compatibility__";
-// import * as argparse from "../platform/argparse";
-// import * as stage_0 from "../stages/stage_0";
-// import * as stage_1 from "../stages/stage_1";
-// import * as stage_2 from "../stages/stage_2/index";
-// import {TRunProgram} from "../stages/stage_0";
-// import {now} from "../platform/performance";
-// import {print} from "../platform/print";
 
 pub struct PathOrCodeConv { }
 
@@ -498,8 +465,7 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
         }
     }
 
-    let first_of = first(&mut allocator, input_sexp.unwrap()).unwrap();
-    let disassembled = disassemble(&mut allocator, first_of);
+    let disassembled = disassemble(&mut allocator, input_sexp.unwrap());
     print!("disassembled {}\n", disassembled);
 
     // let pre_eval_f: TPreEvalF|None = None;
@@ -531,12 +497,12 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
     let res = runner.run_program(
         &mut allocator,
         run_script,
-        first_of,
+        input_sexp.unwrap(),
         None
     ).unwrap();
 
     let disassembled = disassemble(&mut allocator, res.1);
-    print!("{}\n", disassembled);
+    print!("disassembled {}\n", disassembled);
 
     // try{
     //     const arg_max_cost = parsedArgs["max_cost"] as int;

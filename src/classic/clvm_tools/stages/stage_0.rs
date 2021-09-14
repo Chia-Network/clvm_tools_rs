@@ -19,6 +19,7 @@ use clvm_rs::run_program::{
     PreEval,
     run_program
 };
+use crate::classic::clvm_tools::binutils::disassemble;
 
 pub type TOperatorDict = HashMap<String, Vec<u8>>;
 
@@ -193,6 +194,16 @@ impl TRunProgram for DefaultProgramRunner {
             max_cost,
             option.and_then(|o| o.pre_eval_f)
         );
+
+        match res {
+            Err(ref e) => {
+                let dis_prog = disassemble(allocator, program);
+                let dis_args = disassemble(allocator, args);
+                print!("error {:?} for program {} args {}\n", e, dis_prog, dis_args);
+            }
+            Ok(_) => { }
+        }
+
         return res;
     }
 }

@@ -23,6 +23,7 @@ use crate::classic::clvm::sexp::{
     proper_list,
     rest
 };
+use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::NodePath::NodePath;
 use crate::classic::clvm_tools::stages::assemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
@@ -31,17 +32,6 @@ use crate::classic::clvm_tools::stages::stage_2::helpers::{
     quote
 };
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
-
-// import {Bytes, KEYWORD_TO_ATOM, SExp, str, t, Tuple, b, isAtom, h} from "clvm";
-// import * as binutils from "../../clvm_tools/binutils";
-// import {build_symbol_dump} from "../../clvm_tools/debug";
-// import {LEFT, NodePath, RIGHT, TOP} from "../../clvm_tools/NodePath";
-// import {evaluate, quote} from "./helpers";
-// import {optimize_sexp} from "./optimize";
-// import {TRunProgram} from "../stage_0";
-
-// export const QUOTE_ATOM = KEYWORD_TO_ATOM["q"];
-// export const CONS_ATOM = KEYWORD_TO_ATOM["c"];
 
 lazy_static! {
     pub static ref MAIN_NAME : String = {
@@ -102,19 +92,6 @@ fn build_tree_program(
         };
     }
 }
-
-// export function flatten(sexp: SExp): Bytes[] {
-//   // Return a (python) list of every atom.
-//   if(sexp.listp()){
-//     let r: Bytes[] = [];
-//     r = r.concat(flatten(sexp.first()));
-//     r = r.concat(flatten(sexp.rest()));
-//     return r;
-//   }
-//   return [sexp.atom as Bytes];
-// }
-
-// export type TNameToSExp = Record<str, SExp>;
 
 /**
  * @return Used constants name array in `hex string` format.
@@ -305,6 +282,7 @@ fn parse_mod_sexp(
     macros: &mut Vec<(Vec<u8>, NodePtr)>,
     run_program: Rc<dyn TRunProgram>
 ) -> Result<(), EvalErr> {
+    print!("parse_mod_sexp {}\n", disassemble(allocator, declaration_sexp));
     return m! {
         op_node <- first(allocator, declaration_sexp);
         dec_rest <- rest(allocator, declaration_sexp);
@@ -383,6 +361,8 @@ fn compile_mod_stage_1(
         let mut macros = Vec::new();
 
         main_local_arguments <- first(allocator, args);
+        new_args <- rest(allocator, args);
+        let _ = args = new_args;
 
         let mut namespace = HashSet::new();
 
@@ -392,7 +372,9 @@ fn compile_mod_stage_1(
                 match allocator.sexp(args) {
                     SExp::Atom(_) => { break; },
                     SExp::Pair(l,r) => {
+                        print!("compile_mod_stage1 {} {}\n", disassemble(allocator, l), disassemble(allocator, r));
                         if r == allocator.null() {
+                            args = l;
                             break;
                         }
                         match parse_mod_sexp(
@@ -411,28 +393,19 @@ fn compile_mod_stage_1(
                 }
             };
 
-        match allocator.sexp(args) {
-            SExp::Atom(_) => {
-                return Err(EvalErr(args, "improper tail list for mod".to_string()));
-            },
-            SExp::Pair(l,r) => {
-                return m! {
-                    let uncompiled_main = l;
-                    main_list <-
-                        enlist(
-                            allocator,
-                            &vec!(main_local_arguments, uncompiled_main)
-                        );
-                    let _ = functions.insert(MAIN_NAME.as_bytes().to_vec(), main_list);
-
-                    Ok(CollectionResult {
-                        functions: functions,
-                        constants: constants,
-                        macros: macros
-                    })
-                };
-            }
-        }
+        let uncompiled_main = args;
+        let _ = print!("uncompiled_main {}\n", disassemble(allocator, args));
+        main_list <-
+            enlist(
+                allocator,
+                &vec!(main_local_arguments, uncompiled_main)
+            );
+        let _ = functions.insert(MAIN_NAME.as_bytes().to_vec(), main_list);
+        Ok(CollectionResult {
+            functions: functions,
+            constants: constants,
+            macros: macros
+        })
     }
 }
 
@@ -560,6 +533,7 @@ fn add_one_function(
             )
         );
         opt_list <- enlist(allocator, &vec!(opt_atom, com_list));
+        let _ = print!("opt_list {}\n", disassemble(allocator, opt_list));
         let _ = compiled_functions.insert(name.to_vec(), opt_list);
         Ok(compiled_functions)
     };
@@ -602,6 +576,7 @@ pub fn compile_mod(
     _level: usize
 ) -> Result<NodePtr, EvalErr> {
     // Deal with the "mod" keyword.
+    print!("compile_mod {}\n", disassemble(allocator, args));
     match compile_mod_stage_1(allocator, args, run_program.clone()) {
         Err(e) => { return Err(e); },
         Ok(cr) => {
