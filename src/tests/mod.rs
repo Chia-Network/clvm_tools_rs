@@ -7,6 +7,7 @@ use clvm_rs::allocator::{
     NodePtr,
     SExp
 };
+use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::t;
 use crate::classic::clvm_tools::cmds::{
@@ -15,12 +16,17 @@ use crate::classic::clvm_tools::cmds::{
     TConversion
 };
 
-use crate::classic::clvm_tools::binutils::assemble_from_ir;
+use crate::classic::clvm_tools::binutils::{
+    assemble_from_ir,
+    disassemble
+};
 use crate::classic::clvm_tools::ir::reader::read_ir;
+use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{
     DefaultProgramRunner,
     TRunProgram
 };
+use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 
 #[test]
 fn basic_opd() {
@@ -77,6 +83,23 @@ fn run_from_source<'a>(allocator: &'a mut Allocator, src: String) -> NodePtr {
         None
     ).unwrap();
     return res.1;
+}
+
+fn compile_program<'a>(allocator: &'a mut Allocator, src: String) -> Result<String, EvalErr> {
+    let run_script = stages::run(allocator);
+    let runner = run_program_for_search_paths(&vec!(".".to_string()));
+    let input_ir = read_ir(&src);
+    let input_program =
+        assemble_from_ir(allocator, Rc::new(input_ir.unwrap())).unwrap();
+    let input_sexp = allocator.new_pair(input_program, allocator.null()).unwrap();
+    let res = runner.run_program(
+        allocator,
+        run_script,
+        input_sexp,
+        None
+    );
+
+    return res.map(|x| disassemble(allocator, x.1));
 }
 
 #[test]
@@ -186,4 +209,11 @@ fn basic_opc_quoted_1() {
         &mut allocator, &"(q . 1)".to_string()
     ).unwrap();
     assert_eq!(result.rest(), "ff0101");
+}
+
+#[test]
+fn very_simple_compile() {
+    let mut allocator = Allocator::new();
+    let result = compile_program(&mut allocator, "(mod () (+ 3 2))".to_string());
+    assert_eq!(result, Ok("(q . 5)".to_string()));
 }

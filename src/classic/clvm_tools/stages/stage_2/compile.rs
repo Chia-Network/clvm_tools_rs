@@ -521,7 +521,6 @@ fn compile_application(
                 return enlist(allocator, &compiled_args);
             }
 
-            print!("find symbol\n");
             find_symbol_match(
                 allocator,
                 prog,

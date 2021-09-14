@@ -493,7 +493,6 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
 
     // XXX
     let runner = run_program_for_search_paths(&vec!(".".to_string()));
-    print!("handlers {}\n", runner.showtable());
     let res = runner.run_program(
         &mut allocator,
         run_script,
@@ -502,7 +501,6 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
     ).unwrap();
 
     let disassembled = disassemble(&mut allocator, res.1);
-    print!("disassembled {}\n", disassembled);
 
     // try{
     //     const arg_max_cost = parsedArgs["max_cost"] as int;
