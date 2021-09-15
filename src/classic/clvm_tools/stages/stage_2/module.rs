@@ -20,6 +20,7 @@ use crate::classic::clvm::sexp::{
     first,
     flatten,
     foldM,
+    mapM,
     proper_list,
     rest
 };
@@ -131,21 +132,31 @@ fn build_used_constants_names(
 
     let _ =
         while new_names.len() > 0 {
+            let iterate_names = new_names.clone();
             new_names = HashSet::new();
 
-            for name in new_names.clone().iter() {
+            for name in iterate_names {
                 let functions_and_macros = vec!(
-                    functions.get(name),
-                    macro_as_dict.get(name)
+                    functions.get(&name),
+                    macro_as_dict.get(&name)
                 );
 
-                let matching_names =
+                let matching_names_1 =
                     functions_and_macros.iter().map(
-                        |v| v.and_then(|v| match allocator.sexp(*v) {
-                            SExp::Atom(b) => { Some(allocator.buf(&b).to_vec()) },
-                            _ => { None }
-                        })
-                    ).flatten();
+                        |v| {
+                            v.map(|v| {
+                                let mut res = Vec::new();
+                                flatten(allocator, *v, &mut res);
+                                res
+                            }).unwrap_or_else(|| Vec::new())
+                        }
+                    ).flatten().collect::<Vec<NodePtr>>();
+
+                let matching_names =
+                    matching_names_1.iter().map(|v| match allocator.sexp(*v) {
+                        SExp::Atom(b) => { Some(allocator.buf(&b).to_vec()) },
+                        _ => { None }
+                    }).flatten();
 
                 for name in matching_names {
                     if !used_names.contains(&name) {
@@ -159,7 +170,7 @@ fn build_used_constants_names(
     // used_names.intersection_update(possible_symbols)
     let mut used_name_list: Vec<Vec<u8>> = Vec::new();
     for name in used_names.iter() {
-        if  possible_symbols.contains(name) && *name != MAIN_NAME.as_bytes() {
+        if possible_symbols.contains(name) && *name != MAIN_NAME.as_bytes() {
             used_name_list.push(name.to_vec());
         }
     }
@@ -484,6 +495,7 @@ fn build_macro_lookup_program(
                 opt_form <- enlist(allocator, &vec!(opt_atom, compile_form));
                 top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
                 macro_evaluated <- evaluate(allocator, opt_form, top_atom);
+                let _ = print!("optimize_sexp from build_macro_lookup_program {}\n", disassemble(allocator, macro_lookup_program));
                 optimize_sexp(allocator, macro_lookup_program, runner())
             },
             macro_lookup_program,
@@ -516,12 +528,19 @@ fn add_one_function(
         lambda_form_content <- rest(allocator, lambda_expression);
         lambda_body <- first(allocator, lambda_form_content);
         quoted_lambda_expr <- quote(allocator, lambda_body);
-        all_symbols_list <-
-            enlist(
+        all_symbols_list_sexp <-
+            mapM(
                 allocator,
-                &all_symbols.iter().map(|pair| pair.0).
-                    collect::<Vec<NodePtr>>()
+                &mut all_symbols.iter(),
+                &|allocator, pair| m! {
+                    path_atom <- allocator.new_atom(&pair.1);
+                    enlist(allocator, &vec!(pair.0, path_atom))
+                }
             );
+
+        all_symbols_list <-
+            enlist(allocator, &all_symbols_list_sexp);
+
         quoted_symbols <- quote(allocator, all_symbols_list);
         com_list <- enlist(
             allocator,
@@ -596,6 +615,8 @@ pub fn compile_mod(
                     allocator, &cr.functions, &cr.constants, &cr.macros
                 );
 
+                let _ = print!("all_constants_names {:?}\n", all_constants_names);
+
                 let has_constants_tree = all_constants_names.len() > 0;
 
                 // build defuns table, with function names as keys
@@ -654,6 +675,7 @@ pub fn compile_mod(
                                 allocator,
                                 &vec!(cons_atom, all_constants_tree_program, top_atom)
                             );
+
                         apply_list <-
                             enlist(
                                 allocator,

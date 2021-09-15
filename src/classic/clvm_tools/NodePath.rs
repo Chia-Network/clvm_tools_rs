@@ -100,7 +100,7 @@ impl NodePath {
     }
 
     pub fn rest(&self) -> Self {
-        return NodePath::new(Some(self.index.clone()*2_u32.to_bigint().unwrap()));
+        return NodePath::new(Some((self.index.clone()*2_u32.to_bigint().unwrap()) + bi_one()));
     }
 }
 

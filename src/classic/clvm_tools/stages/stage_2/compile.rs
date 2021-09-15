@@ -352,10 +352,17 @@ fn transform_program_atom(
         return allocator.new_atom(NodePath::new(None).as_path().data()).
             map(|x| Reduction(1, x));
     }
+    let atom_name = allocator.buf(a).to_vec();
+    print!(
+        "transform_program_atom {:?} {}\n",
+        atom_name,
+        disassemble(allocator, symbol_table)
+    );
     match proper_list(allocator, symbol_table, true) {
         None => { },
         Some(symlist) => {
             for sym in symlist {
+                print!("sym {}\n", disassemble(allocator, sym));
                 match proper_list(allocator, sym, true) {
                     None => { },
                     Some(v) => {
@@ -449,6 +456,9 @@ fn find_symbol_match(
     compiled_args: Vec<NodePtr>,
     symbol_table: NodePtr
 ) -> Result<Option<SymbolResult>, EvalErr> {
+    let opname = allocator.buf(&opbuf).to_vec();
+    let dissym = disassemble(allocator, symbol_table);
+    print!("find_symbol_match {:?} {}\n", opname, dissym);
     match proper_list(allocator, symbol_table, true) {
         Some(symlist) => {
             for sym in symlist {
@@ -506,6 +516,7 @@ fn compile_application(
     let error_result =
         Err(EvalErr(prog, format!("can't compile {}, unknown operator", disassemble(allocator, prog))));
 
+    print!("symbol_table {}\n", disassemble(allocator, symbol_table));
     match proper_list(allocator, rest, true) {
         Some(prog_args) => {
             for arg in prog_args {
@@ -586,7 +597,7 @@ pub fn do_com_prog(
      */
 
     // lower "quote" to "q"
-    print!("do_com_prog {}\n", disassemble(allocator, prog));
+    print!("do_com_prog {} {}\n", disassemble(allocator, prog), disassemble(allocator, symbol_table));
     return m! {
         prog <- lower_quote(
             allocator, prog, macro_lookup, symbol_table, run_program.clone()
@@ -693,17 +704,22 @@ impl OperatorHandler for DoComProg {
     ) -> Response {
         match allocator.sexp(sexp) {
             SExp::Pair(prog,extras) => {
-                let macro_lookup;
                 let mut symbol_table = allocator.null();
+                let macro_lookup;
 
-                match allocator.sexp(extras) {
-                    SExp::Pair(macros, symbols) => {
-                        macro_lookup = macros;
-                        symbol_table = symbols;
-                    },
-                    _ => {
-                        macro_lookup = allocator.null();
-                        //DEFAULT_MACRO_LOOKUP(allocator, self.runner.clone());
+                let mut elist = Vec::new();
+                match proper_list(allocator, extras, true) {
+                    Some(elist_vec) => { elist = elist_vec.to_vec(); }
+                    _ => { }
+                }
+
+                if elist.len() == 0 {
+                    macro_lookup = allocator.null();
+                    //DEFAULT_MACRO_LOOKUP(allocator, self.runner.clone());
+                } else {
+                    macro_lookup = elist[0];
+                    if elist.len() > 1 {
+                        symbol_table = elist[1];
                     }
                 }
 

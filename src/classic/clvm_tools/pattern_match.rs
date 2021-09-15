@@ -9,6 +9,7 @@ use crate::classic::clvm::__type_compatibility__::{
     BytesFromType
 };
 use crate::classic::clvm::sexp::equal_to;
+use crate::classic::clvm_tools::binutils::disassemble;
 
 lazy_static! {
     pub static ref ATOM_MATCH : Vec<u8> = {
@@ -22,14 +23,14 @@ lazy_static! {
 pub fn unify_bindings<'a>(
     allocator: &'a mut Allocator,
     bindings: HashMap<String, NodePtr>,
-    new_key: &Bytes,
+    new_key: &Vec<u8>,
     new_value: NodePtr
 ) -> Option<HashMap<String, NodePtr>> {
     /*
      * Try to add a new binding to the list, rejecting it if it conflicts
      * with an existing binding.
      */
-    let new_key_str = new_key.decode();
+    let new_key_str = Bytes::new(Some(BytesFromType::Raw(new_key.to_vec()))).decode();
     match bindings.get(&new_key_str) {
         Some(binding) => {
             if !equal_to(allocator, *binding, new_value) {
@@ -45,7 +46,7 @@ pub fn unify_bindings<'a>(
     }
 }
 
-pub fn match_sexp<'a>(
+pub fn match_sexp_<'a>(
     allocator: &'a mut Allocator,
     pattern: NodePtr,
     sexp: NodePtr,
@@ -63,53 +64,83 @@ pub fn match_sexp<'a>(
      *         and bindings are the unification (as long as unification is possible)
      */
 
+    print!("matching {} {}\n", disassemble(allocator, pattern), disassemble(allocator, sexp));
     match (allocator.sexp(pattern), allocator.sexp(sexp)) {
         (SExp::Atom(pat_buf), SExp::Atom(sexp_buf)) => {
-            if allocator.buf(&pat_buf).to_vec() == allocator.buf(&sexp_buf).to_vec() {
+            let sexp_bytes = allocator.buf(&sexp_buf).to_vec();
+            if allocator.buf(&pat_buf).to_vec() == sexp_bytes {
                 return Some(known_bindings);
             } else {
                 return None;
             }
         },
-        (SExp::Pair(pleft,pright), SExp::Atom(sexp_buf)) => {
+        (SExp::Pair(pleft,pright), _) => {
             match (allocator.sexp(pleft), allocator.sexp(pright)) {
                 (SExp::Atom(pat_left), SExp::Atom(pat_right)) => {
-                    let pat_right_bytes =
-                        Bytes::new(Some(BytesFromType::Raw(allocator.buf(&pat_right).to_vec())));
+                    let pat_right_bytes = allocator.buf(&pat_right).to_vec();
+                    let pat_left_bytes = allocator.buf(&pat_left).to_vec();
 
-                    if allocator.buf(&pat_left).to_vec() == ATOM_MATCH.to_vec() {
-                        if allocator.buf(&pat_right).to_vec() == ATOM_MATCH.to_vec() {
-                            if allocator.buf(&sexp_buf).to_vec() == ATOM_MATCH.to_vec() {
+                    match allocator.sexp(sexp) {
+                        SExp::Atom(sexp_buf) => {
+                            let sexp_bytes = allocator.buf(&sexp_buf).to_vec();
+                            if pat_left_bytes == ATOM_MATCH.to_vec() {
+                                if pat_right_bytes == ATOM_MATCH.to_vec() {
+                                    if sexp_bytes == ATOM_MATCH.to_vec() {
+                                        return Some(HashMap::new());
+                                    }
+                                    return None;
+                                }
 
-                                return Some(HashMap::new());
+                                return unify_bindings(allocator, known_bindings, &pat_right_bytes, sexp);
                             }
-                            return None;
-                        }
+                            if pat_left_bytes == SEXP_MATCH.to_vec() {
+                                if pat_right_bytes == SEXP_MATCH.to_vec() {
+                                    if sexp_bytes == SEXP_MATCH.to_vec() {
+                                        return Some(HashMap::new());
+                                    }
+                                }
 
-                        return unify_bindings(allocator, known_bindings, &pat_right_bytes, sexp);
-                    } else if allocator.buf(&pat_left).to_vec() == SEXP_MATCH.to_vec() {
-                        if allocator.buf(&pat_right).to_vec() == SEXP_MATCH.to_vec() {
-                            if allocator.buf(&sexp_buf).to_vec() == SEXP_MATCH.to_vec() {
-                                return Some(HashMap::new());
+                                return unify_bindings(allocator, known_bindings, &pat_right_bytes, sexp);
                             }
-                            return None;
-                        }
 
-                        return unify_bindings(allocator, known_bindings, &pat_right_bytes, sexp);
-                    } else {
-                        return None;
+                            return None;
+                        },
+                        SExp::Pair(sleft,sright) => {
+                            if pat_left_bytes == SEXP_MATCH.to_vec() {
+                                if pat_right_bytes != SEXP_MATCH.to_vec() {
+                                    return unify_bindings(allocator, known_bindings, &pat_right_bytes, sexp);
+                                }
+                            }
+
+                            return match_sexp(allocator, pleft, sleft, known_bindings).and_then(|new_bindings| {
+                                return match_sexp(allocator, pright, sright, new_bindings);
+                            });
+                        }
                     }
                 },
                 _ => {
-                    return None;
+                    match allocator.sexp(sexp) {
+                        SExp::Atom(sexp_buf) => { return None; },
+                        SExp::Pair(sleft,sright) => {
+                            return match_sexp(allocator, pleft, sleft, known_bindings).and_then(|new_bindings| {
+                                return match_sexp(allocator, pright, sright, new_bindings);
+                            });
+                        }
+                    }
                 }
             }
         },
-        (SExp::Pair(pleft,pright), SExp::Pair(sleft,sright)) => {
-            return match_sexp(allocator, pleft, sleft, known_bindings).and_then(|new_bindings| {
-                return match_sexp(allocator, pright, sright, new_bindings);
-            });
-        },
         (SExp::Atom(_), _) => { return None; }
     }
+}
+
+pub fn match_sexp<'a>(
+    allocator: &'a mut Allocator,
+    pattern: NodePtr,
+    sexp: NodePtr,
+    known_bindings: HashMap<String, NodePtr>
+) -> Option<HashMap<String, NodePtr>> {
+    let res = match_sexp_(allocator, pattern, sexp, known_bindings);
+    print!("match_sexp {} {} {:?}\n", disassemble(allocator, pattern), disassemble(allocator, sexp), res);
+    return res;
 }

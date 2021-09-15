@@ -20,6 +20,7 @@ use crate::classic::clvm::__type_compatibility__::{
     Stream
 };
 use crate::classic::clvm::serialize::sexp_to_stream;
+use crate::classic::clvm_tools::binutils::disassemble;
 
 // import {CLVMObject, CLVMType} from "./CLVMObject";
 // import {Bytes, isIterable, Tuple, t, Stream, isBytes, isTuple} from "./__type_compatibility__";
@@ -513,10 +514,10 @@ pub fn enlist<'a>(allocator: &'a mut Allocator, vec: &Vec<NodePtr>) -> Result<No
     return Ok(built);
 }
 
-pub fn mapM(
+pub fn mapM<T>(
     allocator: &mut Allocator,
-    iter: &mut impl Iterator<Item = NodePtr>,
-    f: &dyn Fn(&mut Allocator, NodePtr) -> Result<NodePtr, EvalErr>
+    iter: &mut impl Iterator<Item = T>,
+    f: &dyn Fn(&mut Allocator, T) -> Result<NodePtr, EvalErr>
 ) -> Result<Vec<NodePtr>, EvalErr> {
     let mut result = Vec::new();
     loop {
@@ -593,6 +594,7 @@ pub fn flatten<'a>(
                     return;
                 } else {
                     res.push(tree);
+                    return;
                 }
             },
             SExp::Pair(l,r) => {

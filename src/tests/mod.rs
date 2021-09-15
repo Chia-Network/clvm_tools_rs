@@ -21,6 +21,7 @@ use crate::classic::clvm_tools::binutils::{
     disassemble
 };
 use crate::classic::clvm_tools::ir::reader::read_ir;
+use crate::classic::clvm_tools::NodePath::NodePath;
 use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{
     DefaultProgramRunner,
@@ -216,4 +217,26 @@ fn very_simple_compile() {
     let mut allocator = Allocator::new();
     let result = compile_program(&mut allocator, "(mod () (+ 3 2))".to_string());
     assert_eq!(result, Ok("(q . 5)".to_string()));
+}
+
+#[test]
+fn node_path_top_left() {
+    assert_eq!(*NodePath::new(None).first().as_path().data(), vec!(2 as u8));
+}
+
+#[test]
+fn node_path_top_right() {
+    assert_eq!(*NodePath::new(None).rest().as_path().data(), vec!(3 as u8));
+}
+
+#[test]
+fn node_path_2nd_of_list() {
+    assert_eq!(*NodePath::new(None).first().rest().as_path().data(), vec!(5 as u8));
+}
+
+#[test]
+fn compile_prog_with_args() {
+    let mut allocator = Allocator::new();
+    let result = compile_program(&mut allocator, "(mod (A B) (+ A B))".to_string());
+    assert_eq!(result, Ok("(+ 2 5)".to_string()));
 }
