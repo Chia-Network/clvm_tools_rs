@@ -667,14 +667,59 @@ impl OperatorHandler for DoOptProg {
     }
 }
 
-#[test]
-fn cons_q_a_optimizer_example() {
+fn test_cons_q_a(src: String) -> String {
     let mut allocator = Allocator::new();
-    let src = "(a (q \"opt\" (q 2 (\"opt\" (\"com\" (q 88 65 66) (q () () ((q . \"list\") (a (q (q . 97) (q (q . 97) (q . 2) (c (q . 2) (c (q . 3) (q)))) (c (q (q . 97) (i (q . 5) (q (q . 99) 4 (c (q . 9) (c (a (q . 2) (c (q . 2) (c (q . 13) (q)))) (q)))) (q (q . 1))) (q . 1)) (q . 1))) (q . 1))) ((q . \"defmacro\") (c \"list\" (c (f (q . 1)) (c (c \"mod\" (c (f (r (q . 1))) (c (f (r (r (q . 1)))) (q)))) (q)))))) (q (65 5) (66 11) (88 2)))) (c (\"opt\" (\"com\" (q 16 65 66) (q () () ((q . \"list\") (a (q (q . 97) (q (q . 97) (q . 2) (c (q . 2) (c (q . 3) (q)))) (c (q (q . 97) (i (q . 5) (q (q . 99) 4 (c (q . 9) (c (a (q . 2) (c (q . 2) (c (q . 13) (q)))) (q)))) (q (q . 1))) (q . 1)) (q . 1))) (q . 1))) ((q . \"defmacro\") (c \"list\" (c (f (q . 1)) (c (c \"mod\" (c (f (r (q . 1))) (c (f (r (r (q . 1)))) (q)))) (q)))))) (q (65 5) (66 11) (88 2)))) 1))) 1)".to_string();
     let input_ir = read_ir(&src).unwrap();
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths(&vec!(".".to_string()));
     let optimized =
         cons_q_a_optimizer(&mut allocator, assembled, runner.clone()).unwrap();
-    assert_eq!(disassemble(&mut allocator, optimized), "(\"opt\" (q 2 (\"opt\" (\"com\" (q 88 65 66) (q () () ((q . \"list\") (a (q (q . 97) (q (q . 97) (q . 2) (c (q . 2) (c (q . 3) (q)))) (c (q (q . 97) (i (q . 5) (q (q . 99) 4 (c (q . 9) (c (a (q . 2) (c (q . 2) (c (q . 13) (q)))) (q)))) (q (q . 1))) (q . 1)) (q . 1))) (q . 1))) ((q . \"defmacro\") (c \"list\" (c (f (q . 1)) (c (c \"mod\" (c (f (r (q . 1))) (c (f (r (r (q . 1)))) (q)))) (q)))))) (q (65 5) (66 11) (88 2)))) (c (\"opt\" (\"com\" (q 16 65 66) (q () () ((q . \"list\") (a (q (q . 97) (q (q . 97) (q . 2) (c (q . 2) (c (q . 3) (q)))) (c (q (q . 97) (i (q . 5) (q (q . 99) 4 (c (q . 9) (c (a (q . 2) (c (q . 2) (c (q . 13) (q)))) (q)))) (q (q . 1))) (q . 1)) (q . 1))) (q . 1))) ((q . \"defmacro\") (c \"list\" (c (f (q . 1)) (c (c \"mod\" (c (f (r (q . 1))) (c (f (r (r (q . 1)))) (q)))) (q)))))) (q (65 5) (66 11) (88 2)))) 1)))".to_string());
+    return disassemble(&mut allocator, optimized);
+}
+
+fn test_children_optimizer(src: String) -> String {
+    let mut allocator = Allocator::new();
+    let input_ir = read_ir(&src).unwrap();
+    let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
+    let runner = run_program_for_search_paths(&vec!(".".to_string()));
+    let optimized =
+        children_optimizer(&mut allocator, assembled, runner.clone()).unwrap();
+    return disassemble(&mut allocator, optimized);
+}
+
+fn test_constant_optimizer(src: String) -> String {
+    let mut allocator = Allocator::new();
+    let input_ir = read_ir(&src).unwrap();
+    let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
+    let runner = run_program_for_search_paths(&vec!(".".to_string()));
+    let optimized =
+        constant_optimizer(&mut allocator, assembled, 0, runner.clone()).unwrap();
+    return disassemble(&mut allocator, optimized);
+}
+
+#[test]
+fn cons_q_a_simple() {
+    assert_eq!(
+        test_cons_q_a("(a (q 1 . \"opt\") 1)".to_string()),
+        "(q . \"opt\")".to_string()
+    );
+}
+
+#[test]
+fn cons_q_a_optimizer_example() {
+    let src = "(a (q \"opt\" (q 2 (\"opt\" (\"com\" (q 88 65 66) (q () () ((q . \"list\") (a (q (q . 97) (q (q . 97) (q . 2) (c (q . 2) (c (q . 3) (q)))) (c (q (q . 97) (i (q . 5) (q (q . 99) 4 (c (q . 9) (c (a (q . 2) (c (q . 2) (c (q . 13) (q)))) (q)))) (q (q . 1))) (q . 1)) (q . 1))) (q . 1))) ((q . \"defmacro\") (c \"list\" (c (f (q . 1)) (c (c \"mod\" (c (f (r (q . 1))) (c (f (r (r (q . 1)))) (q)))) (q)))))) (q (65 5) (66 11) (88 2)))) (c (\"opt\" (\"com\" (q 16 65 66) (q () () ((q . \"list\") (a (q (q . 97) (q (q . 97) (q . 2) (c (q . 2) (c (q . 3) (q)))) (c (q (q . 97) (i (q . 5) (q (q . 99) 4 (c (q . 9) (c (a (q . 2) (c (q . 2) (c (q . 13) (q)))) (q)))) (q (q . 1))) (q . 1)) (q . 1))) (q . 1))) ((q . \"defmacro\") (c \"list\" (c (f (q . 1)) (c (c \"mod\" (c (f (r (q . 1))) (c (f (r (r (q . 1)))) (q)))) (q)))))) (q (65 5) (66 11) (88 2)))) 1))) 1)".to_string();
+    let optimized = test_cons_q_a(src);
+    assert_eq!(optimized, "(\"opt\" (q 2 (\"opt\" (\"com\" (q 88 65 66) (q () () ((q . \"list\") (a (q (q . 97) (q (q . 97) (q . 2) (c (q . 2) (c (q . 3) (q)))) (c (q (q . 97) (i (q . 5) (q (q . 99) 4 (c (q . 9) (c (a (q . 2) (c (q . 2) (c (q . 13) (q)))) (q)))) (q (q . 1))) (q . 1)) (q . 1))) (q . 1))) ((q . \"defmacro\") (c \"list\" (c (f (q . 1)) (c (c \"mod\" (c (f (r (q . 1))) (c (f (r (r (q . 1)))) (q)))) (q)))))) (q (65 5) (66 11) (88 2)))) (c (\"opt\" (\"com\" (q 16 65 66) (q () () ((q . \"list\") (a (q (q . 97) (q (q . 97) (q . 2) (c (q . 2) (c (q . 3) (q)))) (c (q (q . 97) (i (q . 5) (q (q . 99) 4 (c (q . 9) (c (a (q . 2) (c (q . 2) (c (q . 13) (q)))) (q)))) (q (q . 1))) (q . 1)) (q . 1))) (q . 1))) ((q . \"defmacro\") (c \"list\" (c (f (q . 1)) (c (c \"mod\" (c (f (r (q . 1))) (c (f (r (r (q . 1)))) (q)))) (q)))))) (q (65 5) (66 11) (88 2)))) 1)))".to_string());
+}
+
+#[test]
+fn children_optimizer_example() {
+    let src = "(c (a (q 1 . 1) 1) (a (q . 2) 1))".to_string();
+    assert_eq!(test_children_optimizer(src), "(c (q . 1) 2)");
+}
+
+#[test]
+fn constant_optimizer_example() {
+    let src = "(c (q . 29041) (c (c (q . \"unquote\") (c (c (a (q 1 . \"macros\") (q . 1)) (a (q 1) (q . 1))) (q))) (q)))".to_string();
+    assert_eq!(test_constant_optimizer(src), "(q 29041 (\"unquote\" (\"macros\")))".to_string());
 }
