@@ -574,7 +574,13 @@ fn compile_application(
                 None => { error_result }
             })
         },
-        None => { error_result }
+        None => {
+            if allocator.buf(fbuf).to_vec() == vec!(1) {
+                Ok(rest)
+            } else {
+                error_result
+            }
+        }
     }
 }
 
@@ -714,8 +720,8 @@ impl OperatorHandler for DoComProg {
                 }
 
                 if elist.len() == 0 {
-                    macro_lookup = allocator.null();
-                    //DEFAULT_MACRO_LOOKUP(allocator, self.runner.clone());
+                    macro_lookup =
+                        DEFAULT_MACRO_LOOKUP(allocator, self.runner.clone());
                 } else {
                     macro_lookup = elist[0];
                     if elist.len() > 1 {

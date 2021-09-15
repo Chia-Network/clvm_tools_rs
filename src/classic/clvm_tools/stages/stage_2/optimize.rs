@@ -30,7 +30,11 @@ use crate::classic::clvm::sexp::{
     non_nil,
     proper_list
 };
-use crate::classic::clvm_tools::binutils::disassemble;
+use crate::classic::clvm_tools::binutils::{
+    assemble_from_ir,
+    disassemble
+};
+use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::NodePath::NodePath;
 use crate::classic::clvm_tools::pattern_match::match_sexp;
 use crate::classic::clvm_tools::stages::assemble;
@@ -39,6 +43,7 @@ use crate::classic::clvm_tools::stages::stage_0::{
     TRunProgram
 };
 use crate::classic::clvm_tools::stages::stage_2::helpers::quote;
+use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 
 use crate::util::{
     number_from_u8,
@@ -167,6 +172,7 @@ pub fn cons_q_a_optimizer<'a>(
     return match (matched.as_ref().and_then(|t1| t1.get("args").map(|i| *i)), matched.as_ref().and_then(|t1| t1.get("sexp").map(|i| *i))) {
         (Some(args), Some(sexp)) => {
             if is_args_call(allocator, args) {
+                print!("cons_q_a_optimization {}\n", disassemble(allocator, sexp));
                 Ok(sexp)
             } else {
                 Ok(r)
@@ -659,4 +665,16 @@ impl OperatorHandler for DoOptProg {
                 map(|optimized| Reduction(1, optimized))
         };
     }
+}
+
+#[test]
+fn cons_q_a_optimizer_example() {
+    let mut allocator = Allocator::new();
+    let src = "(a (q \"opt\" (q 2 (\"opt\" (\"com\" (q 88 65 66) (q () () ((q . \"list\") (a (q (q . 97) (q (q . 97) (q . 2) (c (q . 2) (c (q . 3) (q)))) (c (q (q . 97) (i (q . 5) (q (q . 99) 4 (c (q . 9) (c (a (q . 2) (c (q . 2) (c (q . 13) (q)))) (q)))) (q (q . 1))) (q . 1)) (q . 1))) (q . 1))) ((q . \"defmacro\") (c \"list\" (c (f (q . 1)) (c (c \"mod\" (c (f (r (q . 1))) (c (f (r (r (q . 1)))) (q)))) (q)))))) (q (65 5) (66 11) (88 2)))) (c (\"opt\" (\"com\" (q 16 65 66) (q () () ((q . \"list\") (a (q (q . 97) (q (q . 97) (q . 2) (c (q . 2) (c (q . 3) (q)))) (c (q (q . 97) (i (q . 5) (q (q . 99) 4 (c (q . 9) (c (a (q . 2) (c (q . 2) (c (q . 13) (q)))) (q)))) (q (q . 1))) (q . 1)) (q . 1))) (q . 1))) ((q . \"defmacro\") (c \"list\" (c (f (q . 1)) (c (c \"mod\" (c (f (r (q . 1))) (c (f (r (r (q . 1)))) (q)))) (q)))))) (q (65 5) (66 11) (88 2)))) 1))) 1)".to_string();
+    let input_ir = read_ir(&src).unwrap();
+    let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
+    let runner = run_program_for_search_paths(&vec!(".".to_string()));
+    let optimized =
+        cons_q_a_optimizer(&mut allocator, assembled, runner.clone()).unwrap();
+    assert_eq!(disassemble(&mut allocator, optimized), "(\"opt\" (q 2 (\"opt\" (\"com\" (q 88 65 66) (q () () ((q . \"list\") (a (q (q . 97) (q (q . 97) (q . 2) (c (q . 2) (c (q . 3) (q)))) (c (q (q . 97) (i (q . 5) (q (q . 99) 4 (c (q . 9) (c (a (q . 2) (c (q . 2) (c (q . 13) (q)))) (q)))) (q (q . 1))) (q . 1)) (q . 1))) (q . 1))) ((q . \"defmacro\") (c \"list\" (c (f (q . 1)) (c (c \"mod\" (c (f (r (q . 1))) (c (f (r (r (q . 1)))) (q)))) (q)))))) (q (65 5) (66 11) (88 2)))) (c (\"opt\" (\"com\" (q 16 65 66) (q () () ((q . \"list\") (a (q (q . 97) (q (q . 97) (q . 2) (c (q . 2) (c (q . 3) (q)))) (c (q (q . 97) (i (q . 5) (q (q . 99) 4 (c (q . 9) (c (a (q . 2) (c (q . 2) (c (q . 13) (q)))) (q)))) (q (q . 1))) (q . 1)) (q . 1))) (q . 1))) ((q . \"defmacro\") (c \"list\" (c (f (q . 1)) (c (c \"mod\" (c (f (r (q . 1))) (c (f (r (r (q . 1)))) (q)))) (q)))))) (q (65 5) (66 11) (88 2)))) 1)))".to_string());
 }

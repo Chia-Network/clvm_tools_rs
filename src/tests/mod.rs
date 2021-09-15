@@ -240,3 +240,10 @@ fn compile_prog_with_args() {
     let result = compile_program(&mut allocator, "(mod (A B) (+ A B))".to_string());
     assert_eq!(result, Ok("(+ 2 5)".to_string()));
 }
+
+#[test]
+fn compile_prog_with_a_function() {
+    let mut allocator = Allocator::new();
+    let result = compile_program(&mut allocator, "(mod (A B) (defun X (A B) (+ A B)) (X A B))".to_string());
+    assert_eq!(result, Ok("(a (q 2 2 (c 2 (c 5 (c 11 ())))) (c (q 16 5 11) 1))".to_string()));
+}
