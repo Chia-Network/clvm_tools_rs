@@ -6,14 +6,12 @@ use clvm_rs::allocator::{
 };
 
 use crate::classic::clvm_tools::binutils::{
-    assemble
+    assemble,
+    disassemble
 };
 use crate::classic::clvm_tools::stages::stage_0::{
     TRunProgram
 };
-
-// import {None, SExp, t, to_sexp_f} from "clvm";
-// import * as binutils from "../../clvm_tools/binutils";
 
 /*
 "function" is used in front of a constant uncompiled
@@ -68,19 +66,19 @@ fn DEFAULT_MACROS_SRC() -> Vec<&'static str> {
                                1)
                         1))
                 1))
+        "}/*, indoc! {"
+        (defmacro function (BODY)
+            (qq (opt (com (q . (unquote BODY))
+                     (qq (unquote (macros)))
+                     (qq (unquote (symbols)))))))
         "}, indoc! {"
-        ;(defmacro function (BODY)
-        ;    (qq (opt (com (q . (unquote BODY))
-        ;             (qq (unquote (macros)))
-        ;             (qq (unquote (symbols)))))))
-        ;"}, indoc! {"
-        ;(defmacro if (A B C)
-        ;  (qq (a
-        ;      (i (unquote A)
-        ;         (function (unquote B))
-        ;         (function (unquote C)))
-        ;      @)))
-        ;"});
+        (defmacro if (A B C)
+          (qq (a
+              (i (unquote A)
+                 (function (unquote B))
+                 (function (unquote C)))
+              @)))
+        "}*/);
 }
 
 fn build_default_macro_lookup(
@@ -93,7 +91,9 @@ fn build_default_macro_lookup(
     for macro_src in macros_src {
         let macro_sexp = assemble(allocator, &macro_src.to_string()).unwrap();
         let env = allocator.new_pair(macro_sexp, default_macro_lookup).unwrap();
+        print!("run_macro {} {}\n", disassemble(allocator, run), disassemble(allocator, env));
         let new_macro = eval_f.run_program(allocator, run, env, None).unwrap().1;
+        print!("new_macro {}\n", disassemble(allocator, new_macro));
         default_macro_lookup =
             allocator.new_pair(new_macro, default_macro_lookup).unwrap();
     }

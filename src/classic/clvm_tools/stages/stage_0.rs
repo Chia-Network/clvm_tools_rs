@@ -103,10 +103,10 @@ impl OpRouter {
 
 impl<'a> OperatorHandler for OpRouter {
     fn op(&self, allocator: &mut Allocator, op: NodePtr, sexp: NodePtr, max_cost: Cost) -> Response {
+        print!("op {} sexp {}\n", disassemble(allocator, op), disassemble(allocator, sexp));
         match allocator.sexp(op) {
             SExp::Atom(b) => {
                 let buf = &allocator.buf(&b).to_vec();
-                print!("op {:?} handlers {}\n", buf, self.showtable());
                 match self.routes.get(buf) {
                     Some(handler) => {
                         return handler.op(allocator, op, sexp, max_cost);
@@ -174,6 +174,7 @@ impl TRunProgram for DefaultProgramRunner {
     ) -> Response {
         let mut max_cost = 0;
 
+        print!("run {} <- {}\n", disassemble(allocator, program), disassemble(allocator, args));
         match &option {
             Some(o) => {
                 match o.max_cost {
