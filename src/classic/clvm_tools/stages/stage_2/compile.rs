@@ -37,11 +37,7 @@ use crate::classic::clvm_tools::stages::stage_0::{
     TRunProgram
 };
 use crate::classic::clvm_tools::stages::stage_2::defaults::DEFAULT_MACRO_LOOKUP;
-use crate::classic::clvm_tools::stages::stage_2::helpers::{
-    brun,
-    evaluate,
-    quote
-};
+use crate::classic::clvm_tools::stages::stage_2::helpers::quote;
 use crate::classic::clvm_tools::stages::stage_2::module::compile_mod;
 
 lazy_static! {
@@ -282,7 +278,7 @@ fn try_expand_macro_for_atom(
         macro_pair_rest <- rest(allocator, macro_value);
         macro_code <- first(allocator, macro_pair_rest);
         prog_rest <- rest(allocator, prog);
-        post_prog <- brun(allocator, macro_code, prog);
+        post_prog <- run_program.run_program(allocator, macro_code, prog, None).map(|x| x.1);
         quoted_macros <- quote(allocator, macro_lookup);
         quoted_symbols <- quote(allocator, symbol_table);
         to_eval <- enlist(
@@ -295,7 +291,12 @@ fn try_expand_macro_for_atom(
             )
         );
         top_path <- allocator.new_atom(NodePath::new(None).as_path().data());
-        evaluate(allocator, to_eval, top_path).map(|x| Reduction(1, x))
+        run_program.run_program(
+            allocator,
+            to_eval,
+            top_path,
+            None
+        )
     };
 }
 
@@ -418,7 +419,7 @@ fn compile_operator_atom(
                         prog_rest,
                         macro_lookup,
                         symbol_table,
-                        run_program,
+                        run_program.clone(),
                         2
                     );
                 quoted_post_prog <- quote(allocator, post_prog);
@@ -427,11 +428,12 @@ fn compile_operator_atom(
 
                 let _ = print!("evaluate {}\n", disassemble(allocator, quoted_post_prog));
 
-                evaluate(
+                run_program.run_program(
                     allocator,
                     quoted_post_prog,
-                    top_atom
-                ).map(|x| Some(x))
+                    top_atom,
+                    None
+                ).map(|x| Some(x.1))
             };
         },
         None => { }
@@ -558,7 +560,7 @@ fn compile_application(
                                 quoted_symbols <- quote(allocator, symbol_table);
                                 compiled <- enlist(allocator, &vec!(com_atom, list_application, quoted_macros, quoted_symbols));
                                 to_run <- enlist(allocator, &vec!(opt_atom, compiled));
-                                new_args <- evaluate(allocator, to_run, top_atom);
+                                new_args <- run_program.run_program(allocator, to_run, top_atom, None).map(|x| x.1);
 
                                 cons_enlisted <- enlist(allocator, &vec!(cons_atom, left_atom, new_args));
 
@@ -643,9 +645,9 @@ pub fn do_com_prog(
                                 quoted_symbol_table
                             ));
                             let _ = print!("compile: {} {}\n", disassemble(allocator, eval_list), disassemble(allocator, top_atom));
-                            inner_exp <- evaluate(
-                                allocator, eval_list, top_atom
-                            );
+                            inner_exp <- run_program.run_program(
+                                allocator, eval_list, top_atom, None
+                            ).map(|x| x.1);
                             enlist(allocator, &vec!(inner_exp)).
                                 map(|x| Reduction(1, x))
                         };
