@@ -670,9 +670,8 @@ fn do_com_prog_(
                     Some(lst) => {
                         // (com ((OP) . RIGHT)) => (a (com (q OP)) 1)
                         return m! {
-                            op_first <- first(allocator, operator);
                             com_atom <- allocator.new_atom("com".as_bytes());
-                            quoted_op <- quote(allocator, op_first);
+                            quoted_op <- quote(allocator, operator);
                             quoted_macro_lookup <-
                                 quote(allocator, macro_lookup);
                             quoted_symbol_table <-
