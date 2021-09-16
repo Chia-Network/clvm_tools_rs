@@ -28,10 +28,7 @@ use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::NodePath::NodePath;
 use crate::classic::clvm_tools::stages::assemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
-use crate::classic::clvm_tools::stages::stage_2::helpers::{
-    evaluate,
-    quote
-};
+use crate::classic::clvm_tools::stages::stage_2::helpers::quote;
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
 lazy_static! {
@@ -494,7 +491,7 @@ fn build_macro_lookup_program(
                     );
                 opt_form <- enlist(allocator, &vec!(opt_atom, compile_form));
                 top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
-                macro_evaluated <- evaluate(allocator, opt_form, top_atom);
+                macro_evaluated <- runner().run_program(allocator, opt_form, top_atom, None);
                 let _ = print!("optimize_sexp from build_macro_lookup_program {}\n", disassemble(allocator, macro_lookup_program));
                 optimize_sexp(allocator, macro_lookup_program, runner())
             },
