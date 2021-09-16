@@ -270,7 +270,7 @@ pub fn lower_quote(
 
 fn try_expand_macro_for_atom(
     allocator: &mut Allocator,
-    macro_value: NodePtr,
+    macro_pair_rest: NodePtr,
     prog: NodePtr,
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
@@ -278,7 +278,6 @@ fn try_expand_macro_for_atom(
 ) -> Response {
     return m! {
         com_atom <- allocator.new_atom("com".as_bytes());
-        macro_pair_rest <- rest(allocator, macro_value);
         macro_code <- first(allocator, macro_pair_rest);
         prog_rest <- rest(allocator, prog);
         post_prog <- run_program.run_program(allocator, macro_code, prog, None).map(|x| x.1);
@@ -330,6 +329,7 @@ fn get_macro_program(
                         match allocator.sexp(mp_list[0]) {
                             SExp::Atom(macro_name) => {
                                 if allocator.buf(&macro_name).to_vec() == allocator.buf(&a).to_vec() {
+                                    return Ok(Some(value));
                                 }
                             },
                             SExp::Pair(_,_) => { continue; }
