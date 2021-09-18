@@ -47,14 +47,17 @@ pub fn assemble_from_ir<'a>(
             let mut s_real_name = s.clone();
             if s.starts_with("#") {
                 s_real_name = s[1..].to_string();
-            } else {
-                match KEYWORD_TO_ATOM().get(&s_real_name) {
-                    Some(v) => { return allocator.new_atom(v); },
-                    None => { }
+            }
+
+            match KEYWORD_TO_ATOM().get(&s_real_name) {
+                Some(v) => {
+                    return allocator.new_atom(v);
+                },
+                None => {
+                    let v: Vec<u8> = s_real_name.as_bytes().to_vec();
+                    return allocator.new_atom(&v);
                 }
             }
-            let v: Vec<u8> = s_real_name.as_bytes().to_vec();
-            return allocator.new_atom(&v);
         },
         IRRepr::Cons(l,r) => {
             return assemble_from_ir(allocator, l.clone()).and_then(|l| {

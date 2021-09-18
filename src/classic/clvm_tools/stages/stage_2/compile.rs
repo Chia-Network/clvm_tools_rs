@@ -27,18 +27,28 @@ use crate::classic::clvm::sexp::{
     proper_list,
     enlist,
     first,
+    mapM,
     rest
 };
 
-use crate::classic::clvm_tools::binutils::disassemble;
+use crate::classic::clvm_tools::binutils::{
+    assemble_from_ir,
+    disassemble
+};
+use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::NodePath::NodePath;
 use crate::classic::clvm_tools::stages::stage_0::{
     DefaultProgramRunner,
     TRunProgram
 };
 use crate::classic::clvm_tools::stages::stage_2::defaults::DEFAULT_MACRO_LOOKUP;
-use crate::classic::clvm_tools::stages::stage_2::helpers::quote;
+use crate::classic::clvm_tools::stages::stage_2::helpers::{
+    brun,
+    evaluate,
+    quote
+};
 use crate::classic::clvm_tools::stages::stage_2::module::compile_mod;
+use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 
 lazy_static! {
     static ref PASS_THROUGH_OPERATORS: HashSet<Vec<u8>> = {
@@ -90,11 +100,8 @@ fn com_qq(
     runner: Rc<dyn TRunProgram>,
     sexp: NodePtr
 ) -> Result<NodePtr, EvalErr> {
-    return m! {
-        qq <- allocator.new_atom(&qq_atom());
-        com_prog <- allocator.new_pair(qq, sexp);
-        do_com_prog(allocator, com_prog, macro_lookup, symbol_table, runner)
-    }.map(|x| x.1);
+    print!("com_qq {}\n", disassemble(allocator, sexp));
+    return do_com_prog(allocator, sexp, macro_lookup, symbol_table, runner).map(|x| x.1);
 }
 
 pub fn compile_qq(
@@ -111,54 +118,63 @@ pub fn compile_qq(
      * (qq (a . B)) => (c (qq a) (qq B))
      */
 
+    print!("compile_qq? {}\n", disassemble(allocator, args));
+    
     let null = allocator.null();
+    let mut sexp = null;
 
-    match allocator.sexp(args) {
-        SExp::Atom(_b) => {
+    match first(allocator, args) {
+        Err(e) => { return Err(e); },
+        Ok(x) => { sexp = x; }
+    }
+
+    match allocator.sexp(sexp) {
+        SExp::Atom(_) => {
             // (qq ATOM) => (q . ATOM)
-            return quote(allocator, args);
+            return quote(allocator, sexp);
         },
-        SExp::Pair(l,r) => {
-            match allocator.sexp(l) {
-                SExp::Atom(op) => {
-                    if allocator.buf(&op).to_vec() == qq_atom() {
+        SExp::Pair(op,sexp_rest) => {
+            match allocator.sexp(op) {
+                SExp::Atom(opbuf) => {
+                    if allocator.buf(&opbuf).to_vec() == qq_atom() {
                         return m! {
                             cons_atom <- allocator.new_atom(&vec!(4));
                             subexp <-
-                                compile_qq(allocator, r, macro_lookup, symbol_table, runner.clone(), level+1);
+                                compile_qq(allocator, sexp_rest, macro_lookup, symbol_table, runner.clone(), level+1);
                             consed <- enlist(allocator, &vec!(cons_atom, subexp, null));
-                            run_list <- enlist(allocator, &vec!(cons_atom, l, consed));
+                            run_list <- enlist(allocator, &vec!(cons_atom, op, consed));
+                            let _ = print!("recurse qq: {}\n", disassemble(allocator, run_list));
                             com_qq(allocator, macro_lookup, symbol_table, runner, run_list)
                         };
-                    } else if allocator.buf(&op).to_vec() == unquote_atom() {
+                    } else if allocator.buf(&opbuf).to_vec() == unquote_atom() {
                         if level == 1 {
                             // (qq (unquote X)) => X
                             return m! {
-                                rest_of <- rest(allocator, args);
-                                first_of_rest <- first(allocator, rest_of);
-                                com_qq(allocator, macro_lookup, symbol_table, runner, first_of_rest)
+                                sexp_rf <- first(allocator, sexp_rest);
+                                com_qq(allocator, macro_lookup, symbol_table, runner, sexp_rf)
                             };
                         }
                         return m! {
+                            // (qq (a . B)) => (c (qq a) (qq B))
                             cons_atom <- allocator.new_atom(&vec!(4));
                             subexp <-
-                                compile_qq(allocator, r, macro_lookup, symbol_table, runner.clone(), level-1);
-                            consed <- enlist(allocator, &vec!(cons_atom, subexp, null));
-                            run_list <- enlist(allocator, &vec!(cons_atom, l, consed));
+                                compile_qq(allocator, sexp_rest, macro_lookup, symbol_table, runner.clone(), level-1);
+                            consed_subexp <- enlist(allocator, &vec!(cons_atom, subexp, null));
+                            run_list <- enlist(allocator, &vec!(cons_atom, op, consed_subexp));
                             com_qq(allocator, macro_lookup, symbol_table, runner, run_list)
                         };
                     }
-
-                    // (qq (a . B)) => (c (qq a) (qq B))
-                    return m! {
-                        cons_atom <- allocator.new_atom(&vec!(4));
-                        compiled_l <- com_qq(allocator, macro_lookup, symbol_table, runner.clone(), l);
-                        compiled_r <- com_qq(allocator, macro_lookup, symbol_table, runner, r);
-                        enlist(allocator, &vec!(cons_atom, compiled_l, compiled_r))
-                    };
                 },
-                _ => Ok(args)
+                _ => { }
             }
+
+            // (qq (a . B)) => (c (qq a) (qq B))
+            return m! {
+                cons_atom <- allocator.new_atom(&vec!(4));
+                compiled_l <- com_qq(allocator, macro_lookup, symbol_table, runner.clone(), op);
+                compiled_r <- com_qq(allocator, macro_lookup, symbol_table, runner, sexp_rest);
+                enlist(allocator, &vec!(cons_atom, compiled_l, compiled_r))
+            };
         }
     }
 }
@@ -268,19 +284,21 @@ pub fn lower_quote(
     return Ok(prog);
 }
 
-fn try_expand_macro_for_atom(
+fn try_expand_macro_for_atom_(
     allocator: &mut Allocator,
-    macro_pair_rest: NodePtr,
-    prog: NodePtr,
+    macro_code: NodePtr,
+    prog_rest: NodePtr,
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
     run_program: Rc<dyn TRunProgram>
 ) -> Response {
+    print!("expand macro {} for {}\n", disassemble(allocator, macro_code), disassemble(allocator, prog_rest));
+    print!("running macro code {} for program {}\n", disassemble(allocator, macro_code), disassemble(allocator, prog_rest));
     return m! {
         com_atom <- allocator.new_atom("com".as_bytes());
-        macro_code <- first(allocator, macro_pair_rest);
-        prog_rest <- rest(allocator, prog);
-        post_prog <- run_program.run_program(allocator, macro_code, prog, None).map(|x| x.1);
+        post_prog <- brun(allocator, macro_code, prog_rest);
+
+        let _ = print!("finalize_macro_at_call_site {}\n", disassemble(allocator, post_prog));
         quoted_macros <- quote(allocator, macro_lookup);
         quoted_symbols <- quote(allocator, symbol_table);
         to_eval <- enlist(
@@ -293,25 +311,43 @@ fn try_expand_macro_for_atom(
             )
         );
         top_path <- allocator.new_atom(NodePath::new(None).as_path().data());
-        run_program.run_program(
+        evaluate(
             allocator,
             to_eval,
-            top_path,
-            None
-        )
+            top_path
+        ).map(|x| Reduction(1, x))
+    };
+}
+
+fn try_expand_macro_for_atom(
+    allocator: &mut Allocator,
+    macro_code: NodePtr,
+    prog_rest: NodePtr,
+    macro_lookup: NodePtr,
+    symbol_table: NodePtr,
+    run_program: Rc<dyn TRunProgram>
+) -> Response {
+    return m! {
+        res <- try_expand_macro_for_atom_(
+            allocator,
+            macro_code,
+            prog_rest,
+            macro_lookup,
+            symbol_table,
+            run_program
+        );
+        let _ = print!("TRY_EXPAND_MACRO {} WITH {} GIVES {} MACROS {} SYMBOLS {}\n", disassemble(allocator, macro_code), disassemble(allocator, prog_rest), disassemble(allocator, res.1), disassemble(allocator, macro_lookup), disassemble(allocator, symbol_table));
+        Ok(res)
     };
 }
 
 fn get_macro_program(
     allocator: &mut Allocator,
-    operator: NodePtr,
+    operator: &Vec<u8>,
     macro_lookup: NodePtr
 ) -> Result<Option<NodePtr>, EvalErr> {
-    match (
-        allocator.sexp(operator),
-        proper_list(allocator, macro_lookup, true)
-    ) {
-        (SExp::Atom(a), Some(mlist)) => {
+    match proper_list(allocator, macro_lookup, true) {
+        Some(mlist) => {
             for macro_pair in mlist {
                 match proper_list(allocator, macro_pair, true) {
                     None => { },
@@ -328,7 +364,7 @@ fn get_macro_program(
 
                         match allocator.sexp(mp_list[0]) {
                             SExp::Atom(macro_name) => {
-                                if allocator.buf(&macro_name).to_vec() == allocator.buf(&a).to_vec() {
+                                if allocator.buf(&macro_name).to_vec() == *operator {
                                     return Ok(Some(value));
                                 }
                             },
@@ -402,17 +438,20 @@ fn transform_program_atom(
 fn compile_operator_atom(
     allocator: &mut Allocator,
     prog: NodePtr,
-    a: &AtomBuf,
+    avec: &Vec<u8>,
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
     run_program: Rc<dyn TRunProgram>
 ) -> Result<Option<NodePtr>, EvalErr> {
     let COMPILE_BINDINGS = compile_bindings();
-    let avec = allocator.buf(a).to_vec();
 
     print!("avec {:?} bindings {:?}\n", avec, COMPILE_BINDINGS.keys().collect::<Vec<&Vec<u8>>>());
 
-    match COMPILE_BINDINGS.get(&avec) {
+    if *avec == vec!(1) {
+        return Ok(Some(prog));
+    }
+
+    match COMPILE_BINDINGS.get(avec) {
         Some(f) => {
             return m! {
                 prog_rest <- rest(allocator, prog);
@@ -442,25 +481,20 @@ fn compile_operator_atom(
         None => { }
     }
 
-    if avec == vec!('q' as u8) {
-        return Ok(Some(prog));
-    } else {
-        return Ok(None);
-    }
+    return Ok(None);
 }
 
 enum SymbolResult {
-    Direct(Response),
+    Direct(NodePtr),
     Matched(NodePtr,NodePtr)
 }
 
 fn find_symbol_match(
     allocator: &mut Allocator,
-    opbuf: &AtomBuf,
+    opname: &Vec<u8>,
     compiled_args: Vec<NodePtr>,
     symbol_table: NodePtr
 ) -> Result<Option<SymbolResult>, EvalErr> {
-    let opname = allocator.buf(&opbuf).to_vec();
     let dissym = disassemble(allocator, symbol_table);
     print!("find_symbol_match {:?} {}\n", opname, dissym);
     match proper_list(allocator, symbol_table, true) {
@@ -481,15 +515,14 @@ fn find_symbol_match(
                                     };
 
                                 let symbuf = allocator.buf(&symptr).to_vec();
-                                let opvec = allocator.buf(&opbuf).to_vec();
                                 if vec!('*' as u8) == symbuf {
-                                        return enlist(
-                                            allocator,
-                                            &compiled_args
-                                        ).map(|v| Some(SymbolResult::Direct(Ok(Reduction(1, v)))));
-                                    } else if opvec == symbuf {
-                                        return Ok(Some(SymbolResult::Matched(symbol,value)));
-                                    }
+                                    return enlist(
+                                        allocator,
+                                        &compiled_args
+                                    ).map(|v| Some(SymbolResult::Direct(v)));
+                                } else if *opname == symbuf {
+                                    return Ok(Some(SymbolResult::Matched(symbol,value)));
+                                }
                             },
 
                             SExp::Pair(l,r) => { }
@@ -509,7 +542,7 @@ fn compile_application(
     allocator: &mut Allocator,
     prog: NodePtr,
     operator: NodePtr,
-    fbuf: &AtomBuf,
+    opbuf: &Vec<u8>,
     rest: NodePtr,
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
@@ -520,87 +553,92 @@ fn compile_application(
     let error_result =
         Err(EvalErr(prog, format!("can't compile {}, unknown operator", disassemble(allocator, prog))));
 
-    let opbuf = allocator.buf(&fbuf).to_vec();
-    print!("opbuf {:?} args {:?}\n", opbuf, compiled_args);
+    print!("op {} args {}\n", disassemble(allocator, operator), disassemble(allocator, rest));
 
-    if opbuf == vec!(1) || opbuf == vec!('q' as u8) {
+    if *opbuf == vec!(1 as u8) || *opbuf == vec!('q' as u8) {
         return allocator.new_pair(operator, rest);
     }
 
     print!("symbol_table {}\n", disassemble(allocator, symbol_table));
     match proper_list(allocator, rest, true) {
         Some(prog_args) => {
-            for arg in prog_args {
-                match do_com_prog(allocator, arg, macro_lookup, symbol_table, run_program.clone()) {
-                    Err(e) => { return Err(e); },
-                    Ok(compiled) => { compiled_args.push(compiled.1); }
-                }
-            }
+            m! {
+                new_args <-
+                    mapM(
+                        allocator,
+                        &mut prog_args.iter(),
+                        &|allocator, arg| {
+                            do_com_prog(
+                                allocator,
+                                *arg,
+                                macro_lookup,
+                                symbol_table,
+                                run_program.clone()
+                            ).map(|x| x.1)
+                        }
+                    );
 
-            if PASS_THROUGH_OPERATORS.contains(&opbuf) || (opbuf.len() > 0 && opbuf[0] == '_' as u8) {
-                return enlist(allocator, &compiled_args);
-            }
+                let _ = compiled_args.append(&mut new_args.clone());
 
-            find_symbol_match(
-                allocator,
-                &fbuf,
-                compiled_args,
-                symbol_table
-            ).and_then(|x| match x {
-                Some(SymbolResult::Direct(v)) => { v.map(|x| x.1) },
-                Some(SymbolResult::Matched(symbol,value)) => {
-                    return match proper_list(allocator, rest, true) {
-                        Some(proglist) => {
-                            m! {
-                                let _ = print!("matched symbol {} for prog {}\n", disassemble(allocator, value), disassemble(allocator, prog));
-                                apply_atom <- allocator.new_atom(&vec!(2));
-                                list_atom <- allocator.new_atom("list".as_bytes());
-                                cons_atom <- allocator.new_atom(&vec!(4));
-                                com_atom <- allocator.new_atom("com".as_bytes());
-                                opt_atom <- allocator.new_atom("opt".as_bytes());
-                                top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
-                                left_atom <- allocator.new_atom(NodePath::new(None).first().as_path().data());
+                if PASS_THROUGH_OPERATORS.contains(opbuf) || (opbuf.len() > 0 && opbuf[0] == '_' as u8) {
+                    enlist(allocator, &compiled_args)
+                } else {
+                    find_symbol_match(
+                        allocator,
+                        opbuf,
+                        compiled_args,
+                        symbol_table
+                    ).and_then(|x| match x {
+                        Some(SymbolResult::Direct(v)) => { Ok(v) },
+                        Some(SymbolResult::Matched(symbol,value)) => {
+                            return match proper_list(allocator, rest, true) {
+                                Some(proglist) => {
+                                    m! {
+                                        let _ = print!("matched symbol {} for prog {}\n", disassemble(allocator, value), disassemble(allocator, prog));
+                                        apply_atom <- allocator.new_atom(&vec!(2));
+                                        list_atom <- allocator.new_atom("list".as_bytes());
+                                        cons_atom <- allocator.new_atom(&vec!(4));
+                                        com_atom <- allocator.new_atom("com".as_bytes());
+                                        opt_atom <- allocator.new_atom("opt".as_bytes());
+                                        top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
+                                        left_atom <- allocator.new_atom(NodePath::new(None).first().as_path().data());
 
-                                enlisted <- enlist(allocator, &proglist[1..].to_vec());
-                                list_application <- allocator.new_pair(list_atom, enlisted);
+                                        enlisted <- enlist(allocator, &proglist);
+                                        list_application <- allocator.new_pair(list_atom, enlisted);
 
-                                let _ = print!("list_application {}\n", disassemble(allocator, list_application));
+                                        let _ = print!("list_application {}\n", disassemble(allocator, list_application));
 
-                                quoted_list <- quote(allocator, list_application);
-                                quoted_macros <- quote(allocator, macro_lookup);
-                                quoted_symbols <- quote(allocator, symbol_table);
-                                compiled <- enlist(allocator, &vec!(com_atom, quoted_list, quoted_macros, quoted_symbols));
-                                to_run <- enlist(allocator, &vec!(opt_atom, compiled));
-                                let _ = print!("to_run {}\n", disassemble(allocator, to_run));
-                                new_args <- run_program.run_program(allocator, to_run, top_atom, None).map(|x| x.1);
+                                        quoted_list <- quote(allocator, list_application);
+                                        quoted_macros <- quote(allocator, macro_lookup);
+                                        quoted_symbols <- quote(allocator, symbol_table);
+                                        compiled <- enlist(allocator, &vec!(com_atom, quoted_list, quoted_macros, quoted_symbols));
+                                        to_run <- enlist(allocator, &vec!(opt_atom, compiled));
+                                        let _ = print!("to_run {}\n", disassemble(allocator, to_run));
+                                        new_args <- evaluate(allocator, to_run, top_atom);
 
-                                let _ = print!("new_args {}\n", disassemble(allocator, new_args));
+                                        let _ = print!("new_args {}\n", disassemble(allocator, new_args));
 
-                                cons_enlisted <- enlist(allocator, &vec!(cons_atom, left_atom, new_args));
+                                        cons_enlisted <- enlist(allocator, &vec!(cons_atom, left_atom, new_args));
 
-                                result <- enlist(
-                                    allocator,
-                                    &vec!(apply_atom, value, cons_enlisted)
-                                );
+                                        result <- enlist(
+                                            allocator,
+                                            &vec!(apply_atom, value, cons_enlisted)
+                                        );
 
-                                let _ = print!("compiled {}\n", disassemble(allocator, result));
+                                        let _ = print!("compiled {}\n", disassemble(allocator, result));
 
-                                Ok(result)
-                            }
+                                        Ok(result)
+                                    }
+                                },
+                                None => { error_result }
+                            };
                         },
                         None => { error_result }
-                    };
-                },
-                None => { error_result }
-            })
-        },
-        None => {
-            if allocator.buf(fbuf).to_vec() == vec!(1) {
-                Ok(rest)
-            } else {
-                error_result
+                    })
+                }
             }
-        }
+        },
+        None => { error_result }
     }
 }
 
@@ -664,10 +702,48 @@ fn do_com_prog_(
                     run_program.clone()
                 )
             },
-            SExp::Pair(operator,r) => {
+            SExp::Pair(operator,prog_rest) => {
                 let _ = print!("operator {}\n", disassemble(allocator, operator));
-                match proper_list(allocator, operator, true) {
-                    Some(lst) => {
+                match allocator.sexp(operator) {
+                    SExp::Atom(a) => {
+                        let opbuf = allocator.buf(&a).to_vec();
+                        get_macro_program(allocator, &opbuf, macro_lookup).
+                            and_then(|x| match x {
+                                Some(value) => {
+                                    try_expand_macro_for_atom(
+                                        allocator,
+                                        value,
+                                        prog_rest,
+                                        macro_lookup,
+                                        symbol_table,
+                                        run_program.clone()
+                                    )
+                                },
+                                None => {
+                                    compile_operator_atom(
+                                        allocator,
+                                        prog,
+                                        &opbuf,
+                                        macro_lookup,
+                                        symbol_table,
+                                        run_program.clone()
+                                    ).and_then(|x| x.map(|y| Ok(y)).unwrap_or_else(|| m! {
+                                        let _ = print!("handling program body with op {:?} and args {}\n", operator, disassemble(allocator, prog_rest));
+                                        compile_application(
+                                            allocator,
+                                            prog,
+                                            operator,
+                                            &opbuf,
+                                            prog_rest,
+                                            macro_lookup,
+                                            symbol_table,
+                                            run_program.clone()
+                                        )
+                                    })).map(|x| Reduction(1, x))
+                                }
+                            })
+                    },
+                    _ => {
                         // (com ((OP) . RIGHT)) => (a (com (q OP)) 1)
                         return m! {
                             com_atom <- allocator.new_atom("com".as_bytes());
@@ -683,59 +759,14 @@ fn do_com_prog_(
                                 quoted_macro_lookup,
                                 quoted_symbol_table
                             ));
-                            let _ = print!("compile: {} {}\n", disassemble(allocator, eval_list), disassemble(allocator, top_atom));
-                            inner_exp <- run_program.run_program(
+
+                            run_program.run_program(
                                 allocator, eval_list, top_atom, None
-                            ).map(|x| x.1);
-                            enlist(allocator, &vec!(inner_exp)).
+                            ).and_then(|x| enlist(allocator, &vec!(x.1))).
                                 map(|x| Reduction(1, x))
                         };
-                    },
-                    _ => {
                     }
                 }
-
-                get_macro_program(allocator, operator, macro_lookup).
-                    and_then(|x| match x {
-                        Some(value) => {
-                            try_expand_macro_for_atom(
-                                allocator,
-                                value,
-                                prog,
-                                macro_lookup,
-                                symbol_table,
-                                run_program.clone()
-                            )
-                        },
-                        None => {
-                            match allocator.sexp(operator) {
-                                SExp::Atom(a) => {
-                                    compile_operator_atom(
-                                        allocator,
-                                        prog,
-                                        &a,
-                                        macro_lookup,
-                                        symbol_table,
-                                        run_program.clone()
-                                    ).and_then(|x| x.map(|y| Ok(y)).unwrap_or_else(|| m! {
-                                        rest <- rest(allocator, prog);
-                                        let _ = print!("handling program body with op {} and args {}\n", disassemble(allocator, operator), disassemble(allocator, rest));
-                                        compile_application(
-                                            allocator,
-                                            prog,
-                                            operator,
-                                            &a,
-                                            rest,
-                                            macro_lookup,
-                                            symbol_table,
-                                            run_program.clone()
-                                        )
-                                    })).map(|x| Reduction(1, x))
-                                },
-                                SExp::Pair(f,l) => { Ok(Reduction(1, prog)) }
-                            }
-                        }
-                    })
             }
         }
     };
@@ -793,4 +824,69 @@ impl DoComProg {
     pub fn set_runner(&mut self, runner: Rc<dyn TRunProgram>) {
         self.runner = runner;
     }
+}
+
+fn test_expand_macro(
+    allocator: &mut Allocator,
+    macro_data: String,
+    prog_rest: String,
+    macros: String,
+    symbols: String
+) -> String {
+    let runner = run_program_for_search_paths(&vec!(".".to_string()));
+    let macro_ir = read_ir(&macro_data).unwrap();
+    let macro_source = assemble_from_ir(allocator, Rc::new(macro_ir)).unwrap();
+    let prog_ir = read_ir(&prog_rest).unwrap();
+    let prog_source = assemble_from_ir(allocator, Rc::new(prog_ir)).unwrap();
+    let macros_ir = read_ir(&macros).unwrap();
+    let macros_source = assemble_from_ir(allocator, Rc::new(macros_ir)).unwrap();
+    let symbols_ir = read_ir(&symbols).unwrap();
+    let symbols_source = assemble_from_ir(allocator, Rc::new(symbols_ir)).unwrap();
+    let exp_res = try_expand_macro_for_atom(
+        allocator,
+        macro_source,
+        prog_source,
+        macros_source,
+        symbols_source,
+        runner
+    ).unwrap();
+    return disassemble(allocator, exp_res.1);
+}
+
+fn test_inner_expansion(
+    allocator: &mut Allocator,
+    macro_code: String,
+    prog_rest: String,
+) -> String {
+    let runner = run_program_for_search_paths(&vec!(".".to_string()));
+    let macro_ir = read_ir(&macro_code).unwrap();
+    let macro_source = assemble_from_ir(allocator, Rc::new(macro_ir)).unwrap();
+    let prog_ir = read_ir(&prog_rest).unwrap();
+    let prog_source = assemble_from_ir(allocator, Rc::new(prog_ir)).unwrap();
+    let exp_res = brun(allocator, macro_source, prog_source).unwrap();
+    return disassemble(allocator, exp_res);
+}
+
+#[test]
+fn test_macro_expansion() {
+    let mut allocator = Allocator::new();
+    let res = test_expand_macro(
+        &mut allocator,
+        "(c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q))))".to_string(),
+        "(\"function\" (\"BODY\") (29041 (\"opt\" (\"com\" (q \"unquote\" \"BODY\") (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))))".to_string(),
+        "((\"list\" (a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)) (\"defmacro\" (c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q))))))".to_string(),
+        "()".to_string()
+    );
+    assert_eq!(res, "(a (\"com\" (a (q 4 (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q)))) (q \"function\" (\"BODY\") (29041 (\"opt\" (\"com\" (q \"unquote\" \"BODY\") (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))))) (q (\"list\" (a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)) (\"defmacro\" (c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q)))))) (q)) 1)".to_string());
+}
+
+#[test]
+fn test_inner_macro_exp() {
+    let mut allocator = Allocator::new();
+    let res = test_inner_expansion(
+        &mut allocator,
+        "(c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q))))".to_string(),
+        "(\"function\" (\"BODY\") (29041 (\"opt\" (\"com\" (q \"unquote\" \"BODY\") (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))))".to_string()
+    );
+    assert_eq!(res, "(a (q 4 (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q)))) (q \"function\" (\"BODY\") (29041 (\"opt\" (\"com\" (q \"unquote\" \"BODY\") (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\"))))))))".to_string());
 }
