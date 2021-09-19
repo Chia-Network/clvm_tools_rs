@@ -1,3 +1,4 @@
-pub mod gensym;
-pub mod sexp;
-pub mod srcloc;
+mod comptypes;
+mod gensym;
+mod sexp;
+mod srcloc;

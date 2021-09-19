@@ -1,6 +1,8 @@
+use std::rc::Rc;
+
 #[derive(Clone)]
 pub struct Srcloc {
-    file: String,
+    file: Rc<String>,
     line: usize,
     col: usize,
     until: Option<(usize, usize)>
@@ -46,7 +48,7 @@ pub fn src_location_max(a: &Srcloc) -> (usize, usize) {
 
 fn add_onto(x: &Srcloc, y: &Srcloc) -> Srcloc {
     Srcloc {
-        file: x.file.to_string(),
+        file: x.file.clone(),
         line: x.line,
         col: x.col,
         until: Some(src_location_max(y))
@@ -69,9 +71,9 @@ pub fn combine_src_location(a: &Srcloc, b: &Srcloc) -> Srcloc {
     }
 }
 
-pub fn start(file: String) -> Srcloc {
+pub fn start(file: &String) -> Srcloc {
     Srcloc {
-        file: file.to_string(),
+        file: Rc::new(file.to_string()),
         line: 1,
         col: 1,
         until: None
@@ -82,7 +84,7 @@ pub fn advance(loc: &Srcloc, ch: char) -> Srcloc {
     match ch {
         '\n' =>
             Srcloc {
-                file: loc.file.to_string(),
+                file: loc.file.clone(),
                 col: 1,
                 line: loc.line + 1,
                 until: loc.until
@@ -90,14 +92,14 @@ pub fn advance(loc: &Srcloc, ch: char) -> Srcloc {
         '\t' => {
             let next_tab = (loc.col + 8) & !7;
             Srcloc {
-                file: loc.file.to_string(),
+                file: loc.file.clone(),
                 col: next_tab,
                 line: loc.line,
                 until: loc.until
             }
         },
         _ => Srcloc {
-            file: loc.file.to_string(),
+            file: loc.file.clone(),
             col: loc.col + 1,
             line: loc.line,
             until: loc.until
