@@ -241,9 +241,9 @@ fn compile_prog_with_args() {
     assert_eq!(result, Ok("(+ 2 5)".to_string()));
 }
 
-// #[test]
-// fn compile_function_macro() {
-//     let mut allocator = Allocator::new();
-//     let result = compile_program(&mut allocator, "(\"defmacro\" \"function\" (\"BODY\") (29041 (\"opt\" (\"com\" (q \"unquote\" \"BODY\") (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))))".to_string());
-//     assert_eq!(result, Ok("(\"function\" (c (q . \"opt\") (c (c (q . \"com\") (c (c (q . 1) 2) (q (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))) ())))".to_string()));
-// }
+#[test]
+fn compile_function_macro() {
+    let mut allocator = Allocator::new();
+    let result = compile_program(&mut allocator, "(\"defmacro\" \"function\" (\"BODY\") (29041 (\"opt\" (\"com\" (q \"unquote\" \"BODY\") (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))))".to_string());
+    assert_eq!(result, Ok("(\"function\" (c (q . \"opt\") (c (c (q . \"com\") (c (c (q . 1) 2) (q (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))) ())))".to_string()));
+}

@@ -71,14 +71,14 @@ fn DEFAULT_MACROS_SRC() -> Vec<&'static str> {
             (qq (opt (com (q . (unquote BODY))
                      (qq (unquote (macros)))
                      (qq (unquote (symbols)))))))
-        "}/*, indoc! {"
+        "}, indoc! {"
         (defmacro if (A B C)
           (qq (a
               (i (unquote A)
                  (function (unquote B))
                  (function (unquote C)))
               @)))
-        "}*/);
+        "});
 }
 
 fn build_default_macro_lookup(
