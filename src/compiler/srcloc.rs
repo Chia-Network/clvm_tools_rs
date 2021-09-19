@@ -27,11 +27,15 @@ pub struct Srcloc {
 //   |> Js.Json.object_
 
 impl Srcloc {
-    fn to_string(&self) -> String {
+    pub fn to_string(&self) -> String {
         match self.until {
             None => format!("{}({}):{}", self.file, self.line, self.col),
             Some((l,c)) => format!("{}({}):{}-{}({}):{}", self.file, self.line, self.col, self.file, l, c)
         }
+    }
+
+    pub fn ext(&self, other: &Srcloc) -> Srcloc {
+        combine_src_location(self, other)
     }
 }
 
