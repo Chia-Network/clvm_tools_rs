@@ -95,6 +95,12 @@ pub fn advance(loc: &Srcloc, ch: char) -> Srcloc {
                 line: loc.line,
                 until: loc.until
             }
+        },
+        _ => Srcloc {
+            file: loc.file.to_string(),
+            col: loc.col + 1,
+            line: loc.line,
+            until: loc.until
         }
     }
 }
