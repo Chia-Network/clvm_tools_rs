@@ -32,6 +32,7 @@ use crate::classic::clvm::sexp::atom;
 
 use crate::classic::clvm_tools::binutils::{
     assemble_from_ir,
+    disassemble,
     disassemble_to_ir_with_kw
 };
 use crate::classic::clvm_tools::ir::reader::read_ir;
@@ -246,6 +247,7 @@ impl TRunProgram for RunProgramWithSearchPaths {
         args: NodePtr,
         option: Option<RunProgramOption>
     ) -> Response {
+        print!("run {} {}\n", disassemble(allocator, program), disassemble(allocator, args));
         return self.runner.borrow().run_program(allocator, program, args, option);
     }
 }

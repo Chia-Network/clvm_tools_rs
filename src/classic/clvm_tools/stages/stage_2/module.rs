@@ -28,7 +28,10 @@ use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::NodePath::NodePath;
 use crate::classic::clvm_tools::stages::assemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
-use crate::classic::clvm_tools::stages::stage_2::helpers::quote;
+use crate::classic::clvm_tools::stages::stage_2::helpers::{
+    evaluate,
+    quote
+};
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
 lazy_static! {
@@ -403,6 +406,7 @@ fn compile_mod_stage_1(
                         );
 
                     let _ = functions.insert(MAIN_NAME.as_bytes().to_vec(), main_list);
+                    let _ = print!("functions {}\n", disassemble(allocator, main_list));
                     Ok(CollectionResult {
                         functions: functions,
                         constants: constants,
@@ -488,9 +492,8 @@ fn build_macro_lookup_program(
                     );
                 opt_form <- enlist(allocator, &vec!(opt_atom, compile_form));
                 top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
-                macro_evaluated <- runner().run_program(allocator, opt_form, top_atom, None);
-                let _ = print!("optimize_sexp from build_macro_lookup_program {}\n", disassemble(allocator, macro_lookup_program));
-                optimize_sexp(allocator, macro_lookup_program, runner())
+                macro_evaluated <- evaluate(allocator, opt_form, top_atom);
+                optimize_sexp(allocator, macro_evaluated, runner())
             },
             macro_lookup_program,
             &mut macros.iter()
@@ -519,8 +522,7 @@ fn add_one_function(
             allocator, le_first, args_root_node
         );
         let mut all_symbols = local_symbol_table.clone();
-        let mut constants_st_clone = constants_symbol_table.clone();
-        let _ = all_symbols.append(&mut constants_st_clone);
+        let _ = all_symbols.append(&mut constants_symbol_table.clone());
         lambda_form_content <- rest(allocator, lambda_expression);
         lambda_body <- first(allocator, lambda_form_content);
         quoted_lambda_expr <- quote(allocator, lambda_body);
@@ -548,7 +550,7 @@ fn add_one_function(
             )
         );
         opt_list <- enlist(allocator, &vec!(opt_atom, com_list));
-        let _ = print!("opt_list {}\n", disassemble(allocator, opt_list));
+        let _ = print!("compiled_functions \"{}\" {}\n", Bytes::new(Some(BytesFromType::Raw(name.to_vec()))).decode(), disassemble(allocator, opt_list));
         let _ = compiled_functions.insert(name.to_vec(), opt_list);
         Ok(compiled_functions)
     };
@@ -594,7 +596,6 @@ pub fn compile_mod(
     print!("compile_mod {}\n", disassemble(allocator, args));
     return m! {
         cr <- compile_mod_stage_1(allocator, args, run_program.clone());
-        q_atom <- allocator.new_atom(&vec!(1));
         a_atom <- allocator.new_atom(&vec!(2));
         cons_atom <- allocator.new_atom(&vec!(4));
         opt_atom <- allocator.new_atom("opt".as_bytes());
@@ -608,8 +609,6 @@ pub fn compile_mod(
         all_constants_names <- build_used_constants_names(
             allocator, &cr.functions, &cr.constants, &cr.macros
         );
-
-        let _ = print!("all_constants_names {:?}\n", all_constants_names);
 
         let has_constants_tree = all_constants_names.len() > 0;
 
@@ -675,8 +674,7 @@ pub fn compile_mod(
                         allocator,
                         &vec!(a_atom, main_path, arg_tree)
                     );
-                quoted_apply_list <-
-                    allocator.new_pair(q_atom, apply_list);
+                quoted_apply_list <- quote(allocator, apply_list);
                 opt_list <-
                     enlist(
                         allocator,
@@ -700,8 +698,7 @@ pub fn compile_mod(
                         allocator,
                         &vec!(a_atom, main_path, top_atom)
                     );
-                quoted_apply_list <-
-                    allocator.new_pair(q_atom, apply_list);
+                quoted_apply_list <- quote(allocator, apply_list);
                 enlist(
                     allocator,
                     &vec!(opt_atom, quoted_apply_list)

@@ -46,7 +46,7 @@ pub fn unify_bindings<'a>(
     }
 }
 
-pub fn match_sexp_<'a>(
+pub fn match_sexp<'a>(
     allocator: &'a mut Allocator,
     pattern: NodePtr,
     sexp: NodePtr,
@@ -64,7 +64,6 @@ pub fn match_sexp_<'a>(
      *         and bindings are the unification (as long as unification is possible)
      */
 
-    print!("matching {} {}\n", disassemble(allocator, pattern), disassemble(allocator, sexp));
     match (allocator.sexp(pattern), allocator.sexp(sexp)) {
         (SExp::Atom(pat_buf), SExp::Atom(sexp_buf)) => {
             let sexp_bytes = allocator.buf(&sexp_buf).to_vec();
@@ -132,15 +131,4 @@ pub fn match_sexp_<'a>(
         },
         (SExp::Atom(_), _) => { return None; }
     }
-}
-
-pub fn match_sexp<'a>(
-    allocator: &'a mut Allocator,
-    pattern: NodePtr,
-    sexp: NodePtr,
-    known_bindings: HashMap<String, NodePtr>
-) -> Option<HashMap<String, NodePtr>> {
-    let res = match_sexp_(allocator, pattern, sexp, known_bindings);
-    print!("match_sexp {} {} {:?}\n", disassemble(allocator, pattern), disassemble(allocator, sexp), res);
-    return res;
 }

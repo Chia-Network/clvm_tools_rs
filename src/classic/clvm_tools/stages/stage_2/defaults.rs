@@ -66,12 +66,12 @@ fn DEFAULT_MACROS_SRC() -> Vec<&'static str> {
                                1)
                         1))
                 1))
-        "}/*, indoc! {"
+        "}, indoc! {"
         (defmacro function (BODY)
             (qq (opt (com (q . (unquote BODY))
                      (qq (unquote (macros)))
                      (qq (unquote (symbols)))))))
-        "}, indoc! {"
+        "}/*, indoc! {"
         (defmacro if (A B C)
           (qq (a
               (i (unquote A)
