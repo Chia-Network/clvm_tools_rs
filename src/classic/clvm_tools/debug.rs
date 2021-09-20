@@ -195,7 +195,7 @@ fn display_trace(
 
         let h = sha256tree(allocator, form).hex();
         let symbol =
-            symbol_table.clone().and_then(
+            symbol_table.as_ref().and_then(
                 |st| st.get(&h).map(|x| x.to_string())
             );
         display_fun(allocator, stdout, disassemble_f, form, symbol, env, &rv);
@@ -244,9 +244,9 @@ pub fn trace_pre_eval(
     args: NodePtr
 ) -> Result<Option<NodePtr>, EvalErr> {
     let h = sha256tree(allocator, sexp);
-    let recognized = symbol_table.and_then(|symbol_table| symbol_table.get(&h.hex()).map(|x| x.to_string()));
+    let recognized = symbol_table.as_ref().and_then(|symbol_table| symbol_table.get(&h.hex()).map(|x| x.to_string()));
 
-    if recognized.is_none() {
+    if recognized.is_none() && !symbol_table.is_none() {
         Ok(None)
     } else {
         m! {

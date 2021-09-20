@@ -597,91 +597,50 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
         }
     );
 
-    /*
-    match (log_entries.pop(), n) {
-        (Some(ent), Some(n)) => {
-            match proper_list(alloc, ent, true) {
-                Some(list) => {
-                    enlist(
-                        alloc,
-                        &vec!(list[0], list[1], n)
-                    ).map(|x| {
-                        log_entries.push(x);
-                        return x;
-                    });
-                },
-                _ => { }
-            }
-        }
+    let mut emit_symbol_output = false;
+    let symbol_table_clone =
+        parsedArgs.get("symbol_table").and_then(|jstring| match jstring {
+            ArgumentValue::ArgString(s) => {
+                fs::read_to_string(s).ok().and_then(|s| {
+                    let decoded_symbol_table: Option<HashMap<String,String>> =
+                        serde_json::from_str(&s).ok();
+                    decoded_symbol_table
+                })
+            },
+            _ => None
+        }).map(|st| {
+            emit_symbol_output = true;
+            symbol_table = Some(st.clone());
+            st
+        });
+
+
+    match parsedArgs.get("verbose") {
+        Some(ArgumentValue::ArgBool(true)) => {
+            emit_symbol_output = true;
+        },
         _ => { }
     }
-     */
 
-    match parsedArgs.get("symbol_table").and_then(|jstring| match jstring {
-        ArgumentValue::ArgString(s) => {
-            fs::read_to_string(s).ok().and_then(|s| {
-                let decoded_symbol_table: Option<HashMap<String,String>> =
-                    serde_json::from_str(&s).ok();
-                decoded_symbol_table
-            })
-        },
-        _ => None
-    }) {
-        Some(st) => {
-            // Part 1 of supporting callbacks in unlifetimed boxes: allow the
-            // callbacks to take everything they need with them, effectively
-            // becoming immortal functions.
-            //
-            // This means they must *move* everything they need and can have
-            // no shared references with anything in any function scope.
-            let symbol_table_clone: HashMap<String,String> = st.clone();
-            symbol_table = Some(st);
+    if emit_symbol_output {
+        let pre_eval_f_closure:
+            Box<dyn Fn(&mut Allocator, NodePtr, NodePtr) ->
+                Result<Option<Box<(dyn Fn(Option<NodePtr>))>>, EvalErr>
+            > = Box::new(move |allocator, sexp, args| {
+                let pre_eval_clone = pre_eval_fn.clone();
+                trace_pre_eval(
+                    allocator,
+                    &|allocator, n| (*pre_eval_clone)(allocator, n),
+                    symbol_table_clone.clone(),
+                    sexp,
+                    args,
+                ).map(|t| t.map(|log_ent| {
+                    let closure_clone = closure.clone();
+                    return (*closure_clone)(log_ent);
+                }))
+            });
 
-            let pre_eval_f_closure:
-               Box<dyn Fn(&mut Allocator, NodePtr, NodePtr) ->
-                  Result<Option<Box<(dyn Fn(Option<NodePtr>))>>, EvalErr>
-               > =
-                Box::new(move |allocator, sexp, args| {
-                    let pre_eval_clone = pre_eval_fn.clone();
-                    trace_pre_eval(
-                        allocator,
-                        &|allocator, n| (*pre_eval_clone)(allocator, n),
-                        Some(symbol_table_clone.clone()),
-                        sexp,
-                        args,
-                    ).map(|t| t.map(|log_ent| {
-                        let closure_clone = closure.clone();
-                        return (*closure_clone)(log_ent);
-                    }))
-                });
-
-            pre_eval_f = Some(pre_eval_f_closure);
-        },
-        _ => {
-            /*
-            match (parsedArgs.get("verbose"), parsedArgs.get("table")) {
-                (Some(ArgumentValue::ArgBool(true)), Some(_)) => {
-                    pre_eval_f = Some(Box::new(|allocator, sexp, args| {
-                        trace_pre_eval(
-                            &mut allocator,
-                            &mut log_entries,
-                            None,
-                            sexp,
-                            args
-                        ).map(|t| t.map(|_| {
-                            let closure: Box<dyn Fn(Option<NodePtr>)> = Box::new(
-                                move |n| {
-                                    post_eval_req_out.send(n);
-                                    post_eval_resp_in.recv().unwrap();
-                                });
-                            return closure;
-                        }))
-                    }))
-                },
-                _ => { }
-            }
-            */
-        }
+        pre_eval_f = Some(pre_eval_f_closure);
     }
 
     let run_script =
@@ -820,12 +779,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
     }));
 
     stdout.write_string(format!("{}\n", output));
-    let trace_to_text_enabled =
-        !symbol_table.is_none() ||
-        match parsedArgs.get("verbose") {
-            Some(ArgumentValue::ArgBool(true)) => true,
-            _ => false
-        };
 
     // Third part of our scheme: now that we have results from the forward pass
     // and the pass doing the post callbacks, we can integrate them in the main
@@ -835,14 +788,13 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
     let log_updates = log_updates.lock().unwrap().finish();
     fix_log(&mut allocator, &mut log_content, &log_updates);
 
-    if trace_to_text_enabled {
-        let use_symtab = symbol_table.clone().unwrap_or_else(|| HashMap::new());
+    if emit_symbol_output {
         stdout.write_string(format!("\n"));
         trace_to_text(
             &mut allocator,
             stdout,
             &log_content,
-            Some(use_symtab.clone()),
+            symbol_table.clone(),
             &disassemble
         );
         if !parsedArgs.get("table").is_none() {
