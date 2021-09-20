@@ -251,7 +251,7 @@ impl ArgumentParser {
 
                 ioff += 1;
 
-                let value = &normalized_args[i];
+                let value = &normalized_args[i+ioff];
                 if value == "" && optional_arg.options.default.is_none() {
                     let usage = self.compile_help_messages();
                     return Err(format!("{}\n\nError: {} requires a value", usage, name));
