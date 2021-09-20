@@ -556,8 +556,11 @@ impl ArgumentParser {
 
     pub fn get_optional_arg_name(&self, arg: &Arg) -> Result<String,String> {
         let names = &arg.names;
+
         let double_hyphen_arg_index =
             index_of_match(|n: &String| n.starts_with("--"), &names);
+
+        print!("names {:?} dhi {}\n", names, double_hyphen_arg_index);
 
         if double_hyphen_arg_index > -1 {
             let name = &names[double_hyphen_arg_index as usize];

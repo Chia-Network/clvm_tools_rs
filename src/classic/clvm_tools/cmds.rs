@@ -7,6 +7,7 @@ use std::sync::mpsc::{
     Sender,
     Receiver
 };
+use std::thread;
 use std::time::SystemTime;
 use std::fs;
 
@@ -270,7 +271,7 @@ fn calculate_cost_offset(
     allocator: &mut Allocator,
     run_program: Rc<dyn TRunProgram>,
     run_script: NodePtr
-) -> u64 {
+) -> i64 {
   /*
     These commands are used by the test suite, and many of them expect certain costs.
     If boilerplate invocation code changes by a fixed cost, you can tweak this
@@ -287,7 +288,7 @@ fn calculate_cost_offset(
         None
     ).map(|x| x.0).unwrap_or_else(|_| 0);
 
-    return 53 - cost;
+    return 53 - cost as i64;
 }
 
 pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
@@ -404,6 +405,8 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
         Ok(pa) => { parsedArgs = pa; }
     }
 
+    print!("parsed args {:?}\n", parsedArgs);
+
     let empty_map = HashMap::new();
     let keywords =
         match parsedArgs.get("no_keywords") {
@@ -517,6 +520,10 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
         Rc::new(RunLog { log_entries: RefCell::new(Vec::new()) });
     let mut symbol_table: Option<HashMap<String,String>> = None;
 
+    // clvm_rs uses boxed callbacks with unspecified lifetimes so in order to
+    // support logging as intended, we must have values that can be moved so
+    // the callbacks can become immortal.  Our strategy is to use channels
+    // and threads for this.
     let (pre_eval_req_out, pre_eval_req_in) = channel();
     let (pre_eval_resp_out, pre_eval_resp_in): (Sender<()>, Receiver<()>) =
         channel();
@@ -554,6 +561,12 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
         _ => None
     }) {
         Some(st) => {
+            // Part 1 of supporting callbacks in unlifetimed boxes: allow the
+            // callbacks to take everything they need with them, effectively
+            // becoming immortal functions.
+            //
+            // This means they must *move* everything they need and can have
+            // no shared references with anything in any function scope.
             let symbol_table_clone: HashMap<String,String> = st.clone();
             symbol_table = Some(st);
 
@@ -641,21 +654,20 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
 
     let max_cost =
         parsedArgs.get("max_cost").map(|x| match x {
-            ArgumentValue::ArgInt(i) => *i as u64 - cost_offset,
+            ArgumentValue::ArgInt(i) => *i as i64 - cost_offset,
             _ => 0
         }).unwrap_or_else(|| 0);
     let max_cost = max(0, max_cost);
 
-    let _ =
-        if input_sexp.is_none() {
-            input_sexp = sexp_from_stream(
-                &mut allocator,
-                &mut Stream::new(input_serialized.clone()),
-                Box::new(SimpleCreateCLVMObject {})
-            ).map(|x| Some(x.1)).unwrap();
-        };
+    if input_sexp.is_none() {
+        input_sexp = sexp_from_stream(
+            &mut allocator,
+            &mut Stream::new(input_serialized.clone()),
+            Box::new(SimpleCreateCLVMObject {})
+        ).map(|x| Some(x.1)).unwrap();
+    };
 
-    let _ = time_parse_input = SystemTime::now();
+    time_parse_input = SystemTime::now();
     let res =
         run_program.run_program(
             &mut allocator,
@@ -663,12 +675,12 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
             input_sexp.unwrap(),
             Some(RunProgramOption {
                 operator_lookup: None,
-                max_cost: Some(1),
+                max_cost: if max_cost == 0 { None } else { Some(max_cost as u64) },
                 pre_eval_f: pre_eval_f,
                 strict: parsedArgs.get("strict").map(|_| true).unwrap_or_else(|| false)
             })
         ).map(|run_program_result| {
-            let mut cost = run_program_result.0;
+            let mut cost: i64 = run_program_result.0 as i64;
             let result = run_program_result.1;
             let time_done = SystemTime::now();
 

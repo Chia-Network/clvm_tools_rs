@@ -20,7 +20,7 @@ pub fn index_of_match<F,T>(cb: F, haystack: &Vec<T>) -> i32
 where
     F: Fn(&T) -> bool
 {
-    for i in 0..haystack.len()-1 {
+    for i in 0..haystack.len() {
         if cb(&haystack[i]) { return i as i32; }
     }
     return -1;
