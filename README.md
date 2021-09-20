@@ -1,16 +1,16 @@
 clvm_tools_rs
 =
 
-This is a second-hand port of chia's [https://github.com/Chia-Network/clvm_tools/](clvm tools) to rust via the work of
+This is a second-hand port of chia's [clvm tools](https://github.com/Chia-Network/clvm_tools/) to rust via the work of
 ChiaMineJP porting to typescript.  This would have been a lot harder to
 get to where it is without prior work mapping out the types of various
 semi-dynamic things (thanks, ChiaMineJP).
 
 Some reasons for doing this are:
 
- - Chia switched the clvm implementation to rust: [https://github.com/Chia-Network/clvm_rs](clvm_rs), and this code may both pick up speed and track clvm better being in the same language.
+ - Chia switched the clvm implementation to rust: [clvm_rs](https://github.com/Chia-Network/clvm_rs), and this code may both pick up speed and track clvm better being in the same language.
  
- - I wrote a new compiler with a simpler, less intricate structure that should be easier to improve and verify in the future in ocaml: [https://github.com/prozacchiwawa/ochialisp](ochialisp).
+ - I wrote a new compiler with a simpler, less intricate structure that should be easier to improve and verify in the future in ocaml: [ochialisp](https://github.com/prozacchiwawa/ochialisp).
 
 All acceptance tests i've brought over so far work, and more are being added.
 As of now, I'm not aware of anything that shouldn't be authentic when running
