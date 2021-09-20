@@ -14,3 +14,11 @@ fn basic_run_test() {
         "(+ 2 5)".to_string()
     );
 }
+
+#[test]
+fn add_1_test() {
+    assert_eq!(
+        do_basic_run(&vec!("run".to_string(), "(opt (com (q . (+ 6 55))))".to_string())).trim(),
+        "(q . 61)".to_string()
+    );
+}
