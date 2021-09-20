@@ -96,7 +96,6 @@ impl OperatorHandler for DoWrite {
                                     allocator,
                                     data,
                                     KEYWORD_FROM_ATOM(),
-                                    true,
                                     true
                                 );
                                 let mut stream = Stream::new(None);

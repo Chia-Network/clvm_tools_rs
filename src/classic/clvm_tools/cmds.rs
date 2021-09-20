@@ -4,11 +4,20 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::io;
 use std::io::Write;
+use std::mem::swap;
 use std::rc::Rc;
 use std::sync::mpsc::{
     channel,
     Sender,
     Receiver
+};
+use std::sync::{
+    Arc,
+    Mutex
+};
+use std::sync::atomic::{
+    AtomicUsize,
+    Ordering
 };
 use std::thread;
 use std::time::SystemTime;
@@ -33,7 +42,6 @@ use crate::classic::clvm::__type_compatibility__::{
     t
 };
 use crate::classic::clvm_tools::debug::{
-    TracePostAction,
     trace_to_text,
     trace_to_table
 };
@@ -252,22 +260,24 @@ pub fn brun(args: &Vec<String>) {
     io::stdout().write_all(s.get_value().data());
 }
 
-struct RunLog {
-    log_entries: RefCell<Vec<NodePtr>>
+struct RunLog<T> {
+    log_entries: RefCell<Vec<T>>
 }
 
-impl RunLog {
-    fn push(&self, new_log: NodePtr) {
+impl<T> RunLog<T> {
+    fn push(&self, new_log: T) {
         self.log_entries.replace_with(|log| {
-            log.push(new_log);
-            return log.to_vec();
+            let mut empty_log = Vec::new();
+            swap(&mut empty_log, &mut *log);
+            empty_log.push(new_log);
+            return empty_log;
         });
     }
 
-    fn finish(&self) -> Vec<NodePtr> {
+    fn finish(&self) -> Vec<T> {
         let mut empty_log = Vec::new();
         self.log_entries.replace_with(|log| {
-            empty_log = log.to_vec();
+            swap(&mut empty_log, &mut *log);
             return Vec::new();
         });
         return empty_log;
@@ -296,6 +306,29 @@ fn calculate_cost_offset(
     ).map(|x| x.0).unwrap_or_else(|_| 0);
 
     return 53 - cost as i64;
+}
+
+fn fix_log(
+    allocator: &mut Allocator,
+    log_result: &mut Vec<NodePtr>,
+    log_updates: &Vec<(NodePtr, Option<NodePtr>)>
+) {
+    let mut update_map : HashMap<NodePtr, Option<NodePtr>> = HashMap::new();
+    for update in log_updates {
+        update_map.insert(update.0, update.1);
+    }
+
+    for i in 0..log_result.len() {
+        let entry = log_result[i];
+        update_map.get(&entry).and_then(|v| *v).map(
+            |v| {
+                proper_list(allocator, entry, true).map(|list| {
+                    let mut updated = list.to_vec();
+                    updated.push(v);
+                    log_result[i] = enlist(allocator, &updated).unwrap();
+                })
+            });
+    }
 }
 
 pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, default_stage: u32) {
@@ -521,8 +554,13 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
     }
 
     let mut pre_eval_f: Option<PreEval> = None;
-    let log_entries: Rc<RunLog> =
-        Rc::new(RunLog { log_entries: RefCell::new(Vec::new()) });
+
+    // Collections used to generate the run log.
+    let log_entries: Arc<Mutex<RunLog<NodePtr>>> =
+        Arc::new(Mutex::new(RunLog { log_entries: RefCell::new(Vec::new()) }));
+    let log_updates: Arc<Mutex<RunLog<(NodePtr, Option<NodePtr>)>>> =
+        Arc::new(Mutex::new(RunLog { log_entries: RefCell::new(Vec::new()) }));
+
     let mut symbol_table: Option<HashMap<String,String>> = None;
 
     // clvm_rs uses boxed callbacks with unspecified lifetimes so in order to
@@ -536,6 +574,28 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
     let (post_eval_req_out, post_eval_req_in) = channel();
     let (post_eval_resp_out, post_eval_resp_in): (Sender<()>, Receiver<()>) =
         channel();
+
+    let post_eval_fn: Rc<dyn Fn(NodePtr, Option<NodePtr>)> =
+        Rc::new(move |at,n| {
+            post_eval_req_out.send((at,n));
+            post_eval_resp_in.recv().unwrap();
+        });
+
+    let pre_eval_fn: Rc<dyn Fn(&mut Allocator, NodePtr)> =
+        Rc::new(move |allocator, new_log| {
+            pre_eval_req_out.send(new_log);
+            pre_eval_resp_in.recv().unwrap();
+        });
+
+    let closure: Rc<dyn Fn(NodePtr) -> Box<dyn Fn(Option<NodePtr>)>> = Rc::new(
+        move |v| {
+            let post_eval_fn_clone = post_eval_fn.clone();
+            Box::new(move |n| {
+                let post_eval_fn_clone_2 = post_eval_fn_clone.clone();
+                (*post_eval_fn_clone_2)(v, n)
+            })
+        }
+    );
 
     /*
     match (log_entries.pop(), n) {
@@ -559,9 +619,11 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
 
     match parsedArgs.get("symbol_table").and_then(|jstring| match jstring {
         ArgumentValue::ArgString(s) => {
-            let decoded_symbol_table: Option<HashMap<String,String>> =
-                serde_json::from_str(s).ok();
-            return decoded_symbol_table;
+            fs::read_to_string(s).ok().and_then(|s| {
+                let decoded_symbol_table: Option<HashMap<String,String>> =
+                    serde_json::from_str(&s).ok();
+                decoded_symbol_table
+            })
         },
         _ => None
     }) {
@@ -575,28 +637,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
             let symbol_table_clone: HashMap<String,String> = st.clone();
             symbol_table = Some(st);
 
-            let post_eval_fn: Rc<dyn Fn(Option<NodePtr>)> =
-                Rc::new(move |n| {
-                    post_eval_req_out.send(n);
-                    post_eval_resp_in.recv().unwrap();
-                });
-
-            let pre_eval_fn: Rc<dyn Fn(&mut Allocator, NodePtr)> =
-                Rc::new(move |allocator, new_log| {
-                    pre_eval_req_out.send(new_log);
-                    pre_eval_resp_in.recv().unwrap();
-                });
-
-            let closure: Rc<dyn Fn() -> Box<dyn Fn(Option<NodePtr>)>> = Rc::new(
-                move || {
-                    let post_eval_fn_clone = post_eval_fn.clone();
-                    Box::new(move |n| {
-                        let post_eval_fn_clone_2 = post_eval_fn_clone.clone();
-                        (*post_eval_fn_clone_2)(n)
-                    })
-                }
-            );
-
             let pre_eval_f_closure:
                Box<dyn Fn(&mut Allocator, NodePtr, NodePtr) ->
                   Result<Option<Box<(dyn Fn(Option<NodePtr>))>>, EvalErr>
@@ -609,9 +649,9 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
                         Some(symbol_table_clone.clone()),
                         sexp,
                         args,
-                    ).map(|t| t.map(|_| {
+                    ).map(|t| t.map(|log_ent| {
                         let closure_clone = closure.clone();
-                        return (*closure_clone)();
+                        return (*closure_clone)(log_ent);
                     }))
                 });
 
@@ -671,6 +711,46 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
             Box::new(SimpleCreateCLVMObject {})
         ).map(|x| Some(x.1)).unwrap();
     };
+
+    // Part 2 of doing pre_eval: Have a thing that receives the messages and
+    // performs some action.
+    let log_entries_clone = log_entries.clone();
+    thread::spawn(move || {
+        let pre_in = pre_eval_req_in;
+        let pre_out = pre_eval_resp_out;
+
+        loop {
+            match pre_in.recv() {
+                Ok(received) => {
+                    {
+                        let locked = log_entries_clone.lock();
+                        locked.unwrap().push(received);
+                    }
+                    pre_out.send(());
+                },
+                Err(e) => { break; }
+            }
+        }
+    });
+
+    let log_updates_clone = log_updates.clone();
+    thread::spawn(move || {
+        let post_in = post_eval_req_in;
+        let post_out = post_eval_resp_out;
+
+        loop {
+            match post_in.recv() {
+                Ok(received) => {
+                    {
+                        let locked = log_updates_clone.lock();
+                        locked.unwrap().push(received);
+                    }
+                    post_out.send(());
+                },
+                Err(e) => { break; }
+            }
+        }
+    });
 
     time_parse_input = SystemTime::now();
     let res =
@@ -747,16 +827,28 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
             _ => false
         };
 
-    let mut log_content = log_entries.finish();
+    // Third part of our scheme: now that we have results from the forward pass
+    // and the pass doing the post callbacks, we can integrate them in the main
+    // thread.  We didn't do this in the callbacks because we didn't want to
+    // deal with a possibly escaping mutable allocator &.
+    let mut log_content = log_entries.lock().unwrap().finish();
+    let log_updates = log_updates.lock().unwrap().finish();
+    fix_log(&mut allocator, &mut log_content, &log_updates);
+
     if trace_to_text_enabled {
         let use_symtab = symbol_table.clone().unwrap_or_else(|| HashMap::new());
-        stdout.write_string(format!(""));
+        stdout.write_string(format!("\n"));
         trace_to_text(
-            &mut allocator, &log_content, Some(use_symtab.clone()), &disassemble
+            &mut allocator,
+            stdout,
+            &log_content,
+            Some(use_symtab.clone()),
+            &disassemble
         );
         if !parsedArgs.get("table").is_none() {
             trace_to_table(
                 &mut allocator,
+                stdout,
                 &mut log_content,
                 symbol_table,
                 &disassemble

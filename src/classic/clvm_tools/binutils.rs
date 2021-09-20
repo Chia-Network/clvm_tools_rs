@@ -100,36 +100,28 @@ pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
 
 /*
  * (2 2 (2) (2 3 4)) => (a 2 (a) (a 3 4))
- *
- * d(P(2,P(2,P(P(2,()),P(P(2,P(3,P(4))))))), head=true)
- * a(2,true); d(P(2,P(P(2,()),P(P(2,P(3,P(4)))))), head=false)
- * a(2,false); d(P(P(2,()),P(P(2,P(3,P(4))))), head=false)
- * d(P(2,()), head=true); d(P(P(2,P(3,P(4)))), head=false)
- * a(2,true); d((), head=false); d(P(P(2,P(3,P(4)))), head=false)
- * a((),false); d(P(P(2,P(3,P(4)))), head=false)
  */
 pub fn disassemble_to_ir_with_kw<'a>(
     allocator: &'a mut Allocator,
     sexp: NodePtr,
     keyword_from_atom: &Record<Vec<u8>, String>,
-    head: bool,
-    allow_keyword: bool
+    allow_keyword_: bool
 ) -> IRRepr {
+    let mut allow_keyword = allow_keyword_;
     match allocator.sexp(sexp) {
         SExp::Pair(l,r) => {
-            let new_head =
-                match allocator.sexp(l) {
-                    SExp::Pair(_,_) => true,
-                    _ => head
-                };
+            match allocator.sexp(l) {
+                SExp::Pair(_,_) => { allow_keyword = true; },
+                _ => { }
+            };
 
             let v0 =
                 disassemble_to_ir_with_kw(
-                    allocator, l.clone(), keyword_from_atom, new_head, allow_keyword
+                    allocator, l.clone(), keyword_from_atom, allow_keyword
                 );
             let v1 =
                 disassemble_to_ir_with_kw(
-                    allocator, r.clone(), keyword_from_atom, false, allow_keyword
+                    allocator, r.clone(), keyword_from_atom, false
                 );
             return IRRepr::Cons(Rc::new(v0), Rc::new(v1));
         },
@@ -137,7 +129,7 @@ pub fn disassemble_to_ir_with_kw<'a>(
         SExp::Atom(a) => {
             let bytes =
                 Bytes::new(Some(BytesFromType::Raw(allocator.buf(&a).to_vec())));
-            return ir_for_atom(&bytes, head && allow_keyword);
+            return ir_for_atom(&bytes, allow_keyword);
         }
     }
 }
@@ -147,12 +139,17 @@ pub fn disassemble_with_kw<'a>(
     sexp: NodePtr,
     keyword_from_atom: &Record<Vec<u8>, String>
 ) -> String {
+    let with_keywords =
+        match allocator.sexp(sexp) {
+            SExp::Atom(_) => false,
+            _ => true
+        };
+
     let symbols = disassemble_to_ir_with_kw(
         allocator,
         sexp,
         &keyword_from_atom,
-        true,
-        true
+        with_keywords
     );
     return write_ir(Rc::new(symbols));
 }

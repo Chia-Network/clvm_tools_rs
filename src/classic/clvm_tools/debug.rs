@@ -24,10 +24,6 @@ use crate::classic::clvm::sexp::{
 
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 
-pub enum TracePostAction {
-    PostActionReplaceMostRecentLogEntry
-}
-
 // export const PRELUDE = `<html>
 // <head>
 //   <link rel="stylesheet"
@@ -105,6 +101,7 @@ pub enum TracePostAction {
 
 fn text_trace(
     allocator: &mut Allocator,
+    output: &mut Stream,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
     form: NodePtr,
     symbol: Option<String>,
@@ -126,11 +123,12 @@ fn text_trace(
         }
     }
 
-    print!("{} => {}\n\n", symbol_val, result);
+    output.write_string(format!("{} => {}\n\n", symbol_val, result));
 }
 
 fn table_trace(
     allocator: &mut Allocator,
+    stdout: &mut Stream,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
     form: NodePtr, symbol: Option<String>, env: NodePtr, result: &String
 ) {
@@ -140,10 +138,10 @@ fn table_trace(
             SExp::Atom(_) => (form, allocator.null())
         };
 
-    print!("exp: {}\n", disassemble_f(allocator, sexp));
-    print!("arg: {}\n", disassemble_f(allocator, args));
-    print!("env: {}\n", disassemble_f(allocator, env));
-    print!("val: {}\n", result);
+    stdout.write_string(format!("exp: {}\n", disassemble_f(allocator, sexp)));
+    stdout.write_string(format!("arg: {}\n", disassemble_f(allocator, args)));
+    stdout.write_string(format!("env: {}\n", disassemble_f(allocator, env)));
+    stdout.write_string(format!("val: {}\n", result));
     let mut sexp_stream = Stream::new(None);
     sexp_to_stream(
         allocator,
@@ -162,19 +160,21 @@ fn table_trace(
         env,
         &mut benv_stream
     );
-    print!("bexp: {}\n", sexp_stream.get_value().hex());
-    print!("barg: {}\n", args_stream.get_value().hex());
-    print!("benv: {}\n", benv_stream.get_value().hex());
-    print!("--");
+    stdout.write_string(format!("bexp: {}\n", sexp_stream.get_value().hex()));
+    stdout.write_string(format!("barg: {}\n", args_stream.get_value().hex()));
+    stdout.write_string(format!("benv: {}\n", benv_stream.get_value().hex()));
+    stdout.write_string(format!("--\n"));
 }
 
 fn display_trace(
     allocator: &mut Allocator,
+    stdout: &mut Stream,
     trace: &Vec<NodePtr>,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
     symbol_table: Option<HashMap<String, String>>,
     display_fun: &dyn Fn(
         &mut Allocator,
+        &mut Stream,
         &dyn Fn(&mut Allocator, NodePtr) -> String,
         NodePtr,
         Option<String>,
@@ -198,26 +198,42 @@ fn display_trace(
             symbol_table.clone().and_then(
                 |st| st.get(&h).map(|x| x.to_string())
             );
-        display_fun(allocator, disassemble_f, form, symbol, env, &rv);
+        display_fun(allocator, stdout, disassemble_f, form, symbol, env, &rv);
     }
 }
 
 pub fn trace_to_text(
     allocator: &mut Allocator,
+    stdout: &mut Stream,
     trace: &Vec<NodePtr>,
     symbol_table: Option<HashMap<String, String>>,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String
 ) {
-    display_trace(allocator, trace, disassemble_f, symbol_table, &text_trace);
+    display_trace(
+        allocator,
+        stdout,
+        trace,
+        disassemble_f,
+        symbol_table,
+        &text_trace
+    );
 }
 
 pub fn trace_to_table(
     allocator: &mut Allocator,
+    stdout: &mut Stream,
     trace: &Vec<NodePtr>,
     symbol_table: Option<HashMap<String, String>>,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String
 ) {
-    display_trace(allocator, trace, disassemble_f, symbol_table, &table_trace);
+    display_trace(
+        allocator,
+        stdout,
+        trace,
+        disassemble_f,
+        symbol_table,
+        &table_trace
+    );
 }
 
 pub fn trace_pre_eval(
@@ -226,7 +242,7 @@ pub fn trace_pre_eval(
     symbol_table: Option<HashMap<String, String>>,
     sexp: NodePtr,
     args: NodePtr
-) -> Result<Option<TracePostAction>, EvalErr> {
+) -> Result<Option<NodePtr>, EvalErr> {
     let h = sha256tree(allocator, sexp);
     let recognized = symbol_table.and_then(|symbol_table| symbol_table.get(&h.hex()).map(|x| x.to_string()));
 
@@ -236,7 +252,7 @@ pub fn trace_pre_eval(
         m! {
             log_entry <- enlist(allocator, &vec!(sexp, args));
             let _ = append_log(allocator, log_entry);
-            Ok(Some(TracePostAction::PostActionReplaceMostRecentLogEntry))
+            Ok(Some(log_entry))
         }
     }
 }
