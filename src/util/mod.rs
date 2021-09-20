@@ -29,3 +29,10 @@ where
 pub fn skip_leading(s: &String, dash: &str) -> String {
     return s.graphemes(true).skip_while(|ch| dash == *ch).collect();
 }
+
+pub fn collapse<A>(r: Result<A,A>) -> A {
+    match r {
+        Ok(a) => a,
+        Err(e) => e
+    }
+}

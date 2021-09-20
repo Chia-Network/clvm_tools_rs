@@ -26,7 +26,7 @@ use crate::classic::clvm::__type_compatibility__::{
 };
 
 use crate::classic::clvm::{
-    KEYWORD_TO_ATOM
+    KEYWORD_FROM_ATOM
 };
 use crate::classic::clvm::sexp::atom;
 
@@ -95,7 +95,7 @@ impl OperatorHandler for DoWrite {
                                 let ir = disassemble_to_ir_with_kw(
                                     allocator,
                                     data,
-                                    KEYWORD_TO_ATOM(),
+                                    KEYWORD_FROM_ATOM(),
                                     true,
                                     true
                                 );

@@ -1,13 +1,32 @@
-// import {b, h, int, None, Optional, SExp, str} from "clvm";
-// import {sha256tree} from "./sha256tree";
-// import {disassemble} from "./binutils";
-// import {TRunProgram} from "../stages/stage_0";
-// import {fs_write} from "../platform/io";
-// import {print} from "../platform/print";
+use std::collections::HashMap;
 
-// export type OpCallable = (v1: any, v2: ValStackType) => int;
-// export type ValStackType = SExp[];
-// export type OpStackType = OpCallable[];
+use clvm_rs::allocator::{
+    Allocator,
+    NodePtr,
+    SExp
+};
+use clvm_rs::reduction::EvalErr;
+
+use crate::classic::clvm::__type_compatibility__::{
+    Bytes,
+    BytesFromType,
+    Stream
+};
+use crate::classic::clvm::serialize::{
+    SimpleCreateCLVMObject,
+    sexp_to_stream
+};
+use crate::classic::clvm::sexp::{
+    enlist,
+    rest,
+    proper_list
+};
+
+use crate::classic::clvm_tools::sha256tree::sha256tree;
+
+pub enum TracePostAction {
+    PostActionReplaceMostRecentLogEntry
+}
 
 // export const PRELUDE = `<html>
 // <head>
@@ -84,95 +103,140 @@
 //   fs_write(path, output);
 // }
 
-// export function text_trace(disassemble_f: typeof disassemble, form: SExp, symbol: Optional<str>, env: SExp, result: str){
-//   if(symbol){
-//     env = env.rest();
-//     symbol = disassemble_f(SExp.to(b(symbol)).cons(env));
-//   }
-//   else{
-//     symbol = `${disassemble_f(form)} [${disassemble_f(env)}]`
-//   }
-//   print(`${symbol} => ${result}`);
-//   print("");
-// }
+fn text_trace(
+    allocator: &mut Allocator,
+    disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
+    form: NodePtr,
+    symbol: Option<String>,
+    env_: NodePtr,
+    result: &String
+) {
+    let mut symbol_val = "".to_string();
+    let mut env = env_;
+    match symbol {
+        Some(sym) => {
+            env = rest(allocator, env).unwrap();
+            let symbol_atom =
+                allocator.new_atom(&sym.as_bytes().to_vec()).unwrap();
+            let symbol_list = allocator.new_pair(symbol_atom, env).unwrap();
+            symbol_val = disassemble_f(allocator, symbol_list);
+        },
+        _ => {
+            symbol_val = format!("{} [{}]", disassemble_f(allocator, form), disassemble_f(allocator, env));
+        }
+    }
 
-// export function table_trace(disassemble_f: typeof disassemble, form: SExp, symbol: Optional<str>, env: SExp, result: str){
-//   let sexp;
-//   let args;
-//   if(form.listp()){
-//     sexp = form.first();
-//     args = form.rest();
-//   }
-//   else{
-//     sexp = form;
-//     args = SExp.null();
-//   }
-  
-//   print(`exp: ${disassemble_f(sexp)}`);
-//   print(`arg: ${disassemble_f(args)}`);
-//   print(`env: ${disassemble_f(env)}`);
-//   print(`val: ${result}`);
-//   print(`bexp: ${sexp.as_bin()}`);
-//   print(`barg: ${args.as_bin()}`);
-//   print(`benv: ${env.as_bin()}`);
-//   print("--");
-// }
+    print!("{} => {}\n\n", symbol_val, result);
+}
 
-// export function display_trace(
-//   trace: Array<[SExp, SExp, Optional<SExp>]>,
-//   disassemble_f: typeof disassemble,
-//   symbol_table: Optional<Record<str, str>>,
-//   display_fun: typeof text_trace,
-// ){
-//   for(const item of trace){
-//     const [form, env, _rv] = item;
-//     let rv;
-//     if(_rv === None){
-//       rv = "(didn't finish)";
-//     }
-//     else{
-//       rv = disassemble_f(_rv);
-//     }
-    
-//     const h = sha256tree(form).hex();
-//     const symbol = symbol_table ? symbol_table[h] : symbol_table;
-//     display_fun(disassemble_f, form, symbol, env, rv);
-//   }
-// }
+fn table_trace(
+    allocator: &mut Allocator,
+    disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
+    form: NodePtr, symbol: Option<String>, env: NodePtr, result: &String
+) {
+    let (sexp, args) =
+        match allocator.sexp(form) {
+            SExp::Pair(sexp, args) => (sexp, args),
+            SExp::Atom(_) => (form, allocator.null())
+        };
 
-// export function trace_to_text(
-//   trace: Array<[SExp, SExp, Optional<SExp>]>,
-//   disassemble_f: typeof disassemble,
-//   symbol_table: Record<str, str>,
-// ){
-//   display_trace(trace, disassemble_f, symbol_table, text_trace);
-// }
+    print!("exp: {}\n", disassemble_f(allocator, sexp));
+    print!("arg: {}\n", disassemble_f(allocator, args));
+    print!("env: {}\n", disassemble_f(allocator, env));
+    print!("val: {}\n", result);
+    let mut sexp_stream = Stream::new(None);
+    sexp_to_stream(
+        allocator,
+        sexp,
+        &mut sexp_stream
+    );
+    let mut args_stream = Stream::new(None);
+    sexp_to_stream(
+        allocator,
+        args,
+        &mut args_stream
+    );
+    let mut benv_stream = Stream::new(None);
+    sexp_to_stream(
+        allocator,
+        env,
+        &mut benv_stream
+    );
+    print!("bexp: {}\n", sexp_stream.get_value().hex());
+    print!("barg: {}\n", args_stream.get_value().hex());
+    print!("benv: {}\n", benv_stream.get_value().hex());
+    print!("--");
+}
 
-// export function trace_to_table(
-//   trace: Array<[SExp, SExp, Optional<SExp>]>,
-//   disassemble_f: typeof disassemble,
-//   symbol_table: Optional<Record<str, str>>,
-// ){
-//   display_trace(trace, disassemble_f, symbol_table, table_trace);
-// }
+fn display_trace(
+    allocator: &mut Allocator,
+    trace: &Vec<NodePtr>,
+    disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
+    symbol_table: Option<HashMap<String, String>>,
+    display_fun: &dyn Fn(
+        &mut Allocator,
+        &dyn Fn(&mut Allocator, NodePtr) -> String,
+        NodePtr,
+        Option<String>,
+        NodePtr,
+        &String
+    )
+) {
+    for item in trace {
+        let item_vec = proper_list(allocator, *item, true).unwrap();
+        let form = item_vec[0];
+        let env = item_vec[1];
+        let rv =
+            if item_vec.len() > 2 {
+                disassemble_f(allocator, item_vec[2])
+            } else {
+                "(didn't finish)".to_string()
+            };
 
-// export function make_trace_pre_eval(
-//   log_entries: Array<[SExp, SExp, Optional<SExp>]>,
-//   symbol_table: Optional<Record<str, str>> = None,
-// ){
-//   return function pre_eval_f(sexp: SExp, args: SExp){
-//     const [_sexp, _args] = [sexp, args].map(_ => SExp.to(_));
-//     if(symbol_table){
-//       const h = sha256tree(_sexp).hex();
-//       if(!(h in symbol_table)){
-//         return None;
-//       }
-//     }
-//     const log_entry: [SExp, SExp, Optional<SExp>] = [_sexp, _args, None];
-//     log_entries.push(log_entry);
-    
-//     return function callback_f(r: SExp){
-//       log_entry[log_entry.length-1] = SExp.to(r);
-//     };
-//   };
-// }
+        let h = sha256tree(allocator, form).hex();
+        let symbol =
+            symbol_table.clone().and_then(
+                |st| st.get(&h).map(|x| x.to_string())
+            );
+        display_fun(allocator, disassemble_f, form, symbol, env, &rv);
+    }
+}
+
+pub fn trace_to_text(
+    allocator: &mut Allocator,
+    trace: &Vec<NodePtr>,
+    symbol_table: Option<HashMap<String, String>>,
+    disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String
+) {
+    display_trace(allocator, trace, disassemble_f, symbol_table, &text_trace);
+}
+
+pub fn trace_to_table(
+    allocator: &mut Allocator,
+    trace: &Vec<NodePtr>,
+    symbol_table: Option<HashMap<String, String>>,
+    disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String
+) {
+    display_trace(allocator, trace, disassemble_f, symbol_table, &table_trace);
+}
+
+pub fn trace_pre_eval(
+    allocator: &mut Allocator,
+    append_log: &dyn Fn(&mut Allocator, NodePtr),
+    symbol_table: Option<HashMap<String, String>>,
+    sexp: NodePtr,
+    args: NodePtr
+) -> Result<Option<TracePostAction>, EvalErr> {
+    let h = sha256tree(allocator, sexp);
+    let recognized = symbol_table.and_then(|symbol_table| symbol_table.get(&h.hex()).map(|x| x.to_string()));
+
+    if recognized.is_none() {
+        Ok(None)
+    } else {
+        m! {
+            log_entry <- enlist(allocator, &vec!(sexp, args));
+            let _ = append_log(allocator, log_entry);
+            Ok(Some(TracePostAction::PostActionReplaceMostRecentLogEntry))
+        }
+    }
+}

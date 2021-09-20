@@ -1,14 +1,26 @@
+use core::cell::RefCell;
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::mpsc::{
+    channel,
+    Sender,
+    Receiver
+};
 use std::time::SystemTime;
 use std::fs;
 
+use core::cmp::max;
+
 use clvm_rs::allocator::{
     Allocator,
-    NodePtr
+    NodePtr,
+    SExp
 };
+use clvm_rs::reduction::EvalErr;
+use clvm_rs::run_program::PreEval;
 
-//use crate::classic::clvm::KEYWORD_FROM_ATOM;
+use crate::classic::clvm::KEYWORD_FROM_ATOM;
 use crate::classic::clvm::__type_compatibility__::{
     BytesFromType,
     Bytes,
@@ -16,20 +28,32 @@ use crate::classic::clvm::__type_compatibility__::{
     Tuple,
     t
 };
+use crate::classic::clvm_tools::debug::{
+    TracePostAction,
+    trace_to_text,
+    trace_to_table
+};
 use crate::classic::clvm::serialize::{
     SimpleCreateCLVMObject,
-    sexp_from_stream
+    sexp_from_stream,
+    sexp_to_stream
 };
 use crate::classic::clvm::sexp::{
+    enlist,
+    proper_list,
     sexp_as_bin
 };
 use crate::classic::clvm_tools::binutils::{
+    assemble_from_ir,
     disassemble,
-    assemble_from_ir
+    disassemble_with_kw
 };
+use crate::classic::clvm_tools::debug::trace_pre_eval;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{
+    DefaultProgramRunner,
+    RunProgramOption,
     TRunProgram
 };
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
@@ -47,6 +71,7 @@ use crate::classic::platform::argparse::{
     TArgOptionAction,
     TArgumentParserProps
 };
+use crate::util::collapse;
 
 pub struct PathOrCodeConv { }
 
@@ -211,34 +236,59 @@ impl ArgumentValueConv for StageImport {
     }
 }
 
-// export function as_bin(streamer_f: (s: Stream) => unknown){
-//   const f = new Stream();
-//   streamer_f(f);
-//   return f.getValue();
-// }
-
 pub fn run(args: &Vec<String>) {
     return launch_tool(args, &"run".to_string(), 2);
 }
 
-// export function brun(args: str[]){
-//   return launch_tool(args, "brun");
-// }
+pub fn brun(args: &Vec<String>) {
+    return launch_tool(args, &"brun".to_string(), 0);
+}
 
-// export function calculate_cost_offset(run_program: TRunProgram, run_script: SExp){
-//   /*
-//     These commands are used by the test suite, and many of them expect certain costs.
-//     If boilerplate invocation code changes by a fixed cost, you can tweak this
-//     value so you don't have to change all the tests' expected costs.
-//     Eventually you should re-tare this to zero and alter the tests' costs though.
-//     This is a hack and need to go away, probably when we do dialects for real,
-//     and then the dialect can have a `run_program` API.
-//    */
-//   const _null = binutils.assemble("0");
-//   const result = run_program(run_script, _null.cons(_null));
-//   const cost = result[0] as int;
-//   return 53 - cost;
-// }
+struct RunLog {
+    log_entries: RefCell<Vec<NodePtr>>
+}
+
+impl RunLog {
+    fn push(&self, new_log: NodePtr) {
+        self.log_entries.replace_with(|log| {
+            log.push(new_log);
+            return log.to_vec();
+        });
+    }
+
+    fn finish(&self) -> Vec<NodePtr> {
+        let mut empty_log = Vec::new();
+        self.log_entries.replace_with(|log| {
+            empty_log = log.to_vec();
+            return Vec::new();
+        });
+        return empty_log;
+    }
+}
+
+fn calculate_cost_offset(
+    allocator: &mut Allocator,
+    run_program: Rc<dyn TRunProgram>,
+    run_script: NodePtr
+) -> u64 {
+  /*
+    These commands are used by the test suite, and many of them expect certain costs.
+    If boilerplate invocation code changes by a fixed cost, you can tweak this
+    value so you don't have to change all the tests' expected costs.
+    Eventually you should re-tare this to zero and alter the tests' costs though.
+    This is a hack and need to go away, probably when we do dialects for real,
+    and then the dialect can have a `run_program` API.
+   */
+    let almost_empty_list = enlist(allocator, &vec!(allocator.null())).unwrap();
+    let cost = run_program.run_program(
+        allocator,
+        run_script,
+        almost_empty_list,
+        None
+    ).map(|x| x.0).unwrap_or_else(|_| 0);
+
+    return 53 - cost;
+}
 
 pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
     let props = TArgumentParserProps {
@@ -354,15 +404,15 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
         Ok(pa) => { parsedArgs = pa; }
     }
 
-    // let empty_map = HashMap::new();
-    // let keywords =
-    //     match parsedArgs.get("no_keywords") {
-    //         None => KEYWORD_FROM_ATOM(),
-    //         Some(ArgumentValue::ArgBool(b)) => &empty_map,
-    //         _ => KEYWORD_FROM_ATOM()
-    //     };
+    let empty_map = HashMap::new();
+    let keywords =
+        match parsedArgs.get("no_keywords") {
+            None => KEYWORD_FROM_ATOM(),
+            Some(ArgumentValue::ArgBool(b)) => &empty_map,
+            _ => KEYWORD_FROM_ATOM()
+        };
 
-    //let mut run_program: Rc<dyn TRunProgram>;
+    let mut run_program: Rc<dyn TRunProgram>;
     match parsedArgs.get("include") {
         Some(ArgumentValue::ArgArray(v)) => {
             let mut bare_paths = Vec::with_capacity(v.len());
@@ -372,23 +422,22 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
                     _ => { }
                 }
             }
-            //run_program = Rc::new(run_program_for_search_paths(&bare_paths));
+            run_program = run_program_for_search_paths(&bare_paths);
         },
         _ => {
-            //run_program = Rc::new(DefaultProgramRunner::new());
+            run_program = Rc::new(DefaultProgramRunner::new());
         }
     }
 
     let mut allocator = Allocator::new();
 
-    let input_serialized;
-    let input_sexp;
+    let mut input_serialized = None;
+    let mut input_sexp = None;
 
-    // let time_start = SystemTime::now();
-    let mut _time_read_hex;
-    let mut _time_assemble;
-    // let mut time_parse_input;
-    // let mut time_done = time_start;
+    let time_start = SystemTime::now();
+    let mut time_read_hex = SystemTime::now();
+    let mut time_assemble = SystemTime::now();
+    let mut time_parse_input;
 
     let mut input_program = "()".to_string();
     let mut input_args = "()".to_string();
@@ -410,7 +459,7 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
 
             let env_serialized =
                 Bytes::new(Some(BytesFromType::Hex(input_args.to_string())));
-            _time_read_hex = SystemTime::now();
+            time_read_hex = SystemTime::now();
 
             input_serialized =
                 Some(
@@ -419,14 +468,12 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
                         concat(&env_serialized)
                 );
 
-            let mut stream = Stream::new(input_serialized);
-            input_sexp = Some(
-                sexp_from_stream(
-                    &mut allocator,
-                    &mut stream,
-                    Box::new(SimpleCreateCLVMObject {}),
-                ).unwrap().1
-            );
+            let mut stream = Stream::new(input_serialized.clone());
+            input_sexp = sexp_from_stream(
+                &mut allocator,
+                &mut stream,
+                Box::new(SimpleCreateCLVMObject {}),
+            ).map(|x| Some(x.1)).unwrap();
         },
         _ => {
             let src_sexp;
@@ -459,26 +506,125 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
 
             let env_ir = read_ir(&parsed_args_result).unwrap();
             let env = assemble_from_ir(&mut allocator, Rc::new(env_ir)).unwrap();
-            _time_assemble = SystemTime::now();
+            time_assemble = SystemTime::now();
 
-            input_sexp = allocator.new_pair(assembled_sexp, env).ok();
+            input_sexp = allocator.new_pair(assembled_sexp, env).map(|x| Some(x)).unwrap();
         }
     }
 
-    let disassembled = disassemble(&mut allocator, input_sexp.unwrap());
-    print!("disassembled {}\n", disassembled);
+    let mut pre_eval_f: Option<PreEval> = None;
+    let log_entries: Rc<RunLog> =
+        Rc::new(RunLog { log_entries: RefCell::new(Vec::new()) });
+    let mut symbol_table: Option<HashMap<String,String>> = None;
 
-    // let pre_eval_f: TPreEvalF|None = None;
-    // let symbol_table: Record<str, str>|None = None;
-    // const log_entries: Array<[SExp, SExp, Optional<SExp>]> = [];
+    let (pre_eval_req_out, pre_eval_req_in) = channel();
+    let (pre_eval_resp_out, pre_eval_resp_in): (Sender<()>, Receiver<()>) =
+        channel();
 
-    // if(parsedArgs["symbol_table"]){
-    //     symbol_table = JSON.parse(fs_read(parsedArgs["symbol_table"] as str));
-    //     pre_eval_f = make_trace_pre_eval(log_entries, symbol_table);
-    // }
-    // else if(parsedArgs["verbose"] || parsedArgs["table"]){
-    //     pre_eval_f = make_trace_pre_eval(log_entries);
-    // }
+    let (post_eval_req_out, post_eval_req_in) = channel();
+    let (post_eval_resp_out, post_eval_resp_in): (Sender<()>, Receiver<()>) =
+        channel();
+
+    /*
+    match (log_entries.pop(), n) {
+        (Some(ent), Some(n)) => {
+            match proper_list(alloc, ent, true) {
+                Some(list) => {
+                    enlist(
+                        alloc,
+                        &vec!(list[0], list[1], n)
+                    ).map(|x| {
+                        log_entries.push(x);
+                        return x;
+                    });
+                },
+                _ => { }
+            }
+        }
+        _ => { }
+    }
+     */
+
+    match parsedArgs.get("symbol_table").and_then(|jstring| match jstring {
+        ArgumentValue::ArgString(s) => {
+            let decoded_symbol_table: Option<HashMap<String,String>> =
+                serde_json::from_str(s).ok();
+            return decoded_symbol_table;
+        },
+        _ => None
+    }) {
+        Some(st) => {
+            let symbol_table_clone: HashMap<String,String> = st.clone();
+            symbol_table = Some(st);
+
+            let post_eval_fn: Rc<dyn Fn(Option<NodePtr>)> =
+                Rc::new(move |n| {
+                    post_eval_req_out.send(n);
+                    post_eval_resp_in.recv().unwrap();
+                });
+
+            let pre_eval_fn: Rc<dyn Fn(&mut Allocator, NodePtr)> =
+                Rc::new(move |allocator, new_log| {
+                    pre_eval_req_out.send(new_log);
+                    pre_eval_resp_in.recv().unwrap();
+                });
+
+            let closure: Rc<dyn Fn() -> Box<dyn Fn(Option<NodePtr>)>> = Rc::new(
+                move || {
+                    let post_eval_fn_clone = post_eval_fn.clone();
+                    Box::new(move |n| {
+                        let post_eval_fn_clone_2 = post_eval_fn_clone.clone();
+                        (*post_eval_fn_clone_2)(n)
+                    })
+                }
+            );
+
+            let pre_eval_f_closure:
+               Box<dyn Fn(&mut Allocator, NodePtr, NodePtr) ->
+                  Result<Option<Box<(dyn Fn(Option<NodePtr>))>>, EvalErr>
+               > =
+                Box::new(move |allocator, sexp, args| {
+                    let pre_eval_clone = pre_eval_fn.clone();
+                    trace_pre_eval(
+                        allocator,
+                        &|allocator, n| (*pre_eval_clone)(allocator, n),
+                        Some(symbol_table_clone.clone()),
+                        sexp,
+                        args,
+                    ).map(|t| t.map(|_| {
+                        let closure_clone = closure.clone();
+                        return (*closure_clone)();
+                    }))
+                });
+
+            pre_eval_f = Some(pre_eval_f_closure);
+        },
+        _ => {
+            /*
+            match (parsedArgs.get("verbose"), parsedArgs.get("table")) {
+                (Some(ArgumentValue::ArgBool(true)), Some(_)) => {
+                    pre_eval_f = Some(Box::new(|allocator, sexp, args| {
+                        trace_pre_eval(
+                            &mut allocator,
+                            &mut log_entries,
+                            None,
+                            sexp,
+                            args
+                        ).map(|t| t.map(|_| {
+                            let closure: Box<dyn Fn(Option<NodePtr>)> = Box::new(
+                                move |n| {
+                                    post_eval_req_out.send(n);
+                                    post_eval_resp_in.recv().unwrap();
+                                });
+                            return closure;
+                        }))
+                    }))
+                },
+                _ => { }
+            }
+            */
+        }
+    }
 
     let run_script =
         match parsedArgs.get("stage") {
@@ -486,84 +632,120 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
             _ => { stages::run(&mut allocator) }
         };
 
-    // let cost = 0;
-    // let mut result: NodePtr;
-    // let mut output = "(didn't finish)".to_string();
-    // const cost_offset = calculate_cost_offset(run_program, run_script);
-
-    // XXX
-    let runner = run_program_for_search_paths(&vec!(".".to_string()));
-    let res = runner.run_program(
+    let mut output = "(didn't finish)".to_string();
+    let cost_offset = calculate_cost_offset(
         &mut allocator,
-        run_script,
-        input_sexp.unwrap(),
-        None
-    ).unwrap();
+        run_program.clone(),
+        run_script
+    );
 
-    let disassembled = disassemble(&mut allocator, res.1);
+    let max_cost =
+        parsedArgs.get("max_cost").map(|x| match x {
+            ArgumentValue::ArgInt(i) => *i as u64 - cost_offset,
+            _ => 0
+        }).unwrap_or_else(|| 0);
+    let max_cost = max(0, max_cost);
 
-    // try{
-    //     const arg_max_cost = parsedArgs["max_cost"] as int;
-    //     const max_cost = Math.max(0, (arg_max_cost !== 0 ? arg_max_cost - cost_offset : 0));
-    //     // if use_rust: ...
-    //     // else
-    //     if(input_sexp === None){
-    //         input_sexp = sexp_from_stream(new Stream(input_serialized as Bytes), to_sexp_f);
-    //     }
-    //     time_parse_input = now();
-    //     const run_program_result = run_program(
-    //         run_script, input_sexp, {max_cost, pre_eval_f, strict: parsedArgs["strict"] as boolean}
-    //     );
-    //     cost = run_program_result[0] as int;
-    //     result = run_program_result[1] as SExp;
-    //     time_done = now();
+    let _ =
+        if input_sexp.is_none() {
+            input_sexp = sexp_from_stream(
+                &mut allocator,
+                &mut Stream::new(input_serialized.clone()),
+                Box::new(SimpleCreateCLVMObject {})
+            ).map(|x| Some(x.1)).unwrap();
+        };
 
-    //     if(parsedArgs["cost"]){
-    //         cost += cost > 0 ? cost_offset : 0;
-    //         print!("cost = {}\n", cost);
-    //     }
+    let _ = time_parse_input = SystemTime::now();
+    let res =
+        run_program.run_program(
+            &mut allocator,
+            run_script,
+            input_sexp.unwrap(),
+            Some(RunProgramOption {
+                operator_lookup: None,
+                max_cost: Some(1),
+                pre_eval_f: pre_eval_f,
+                strict: parsedArgs.get("strict").map(|_| true).unwrap_or_else(|| false)
+            })
+        ).map(|run_program_result| {
+            let mut cost = run_program_result.0;
+            let result = run_program_result.1;
+            let time_done = SystemTime::now();
 
-    //     if(parsedArgs["time"]){
-    //         if(parsedArgs["hex"]){
-    //             print!("read_hex: {}\n", time_read_hex - time_start);
-    //         }
-    //         else{
-    //             print!("assemble_from_ir: {}\n", time_assemble - time_start);
-    //             print!("to_sexp_f: {}\n", time_parse_input - time_assemble);
-    //         }
-    //         print!("run_program: {}\n", time_done - time_parse_input);
-    //     }
+            let _ =
+                if !parsedArgs.get("cost").is_none() {
+                    if cost > 0 {
+                        cost += cost_offset;
+                    }
+                    print!("cost = {}\n", cost);
+                };
 
-    //     if(parsedArgs["dump"]){
-    //         const blob = as_bin(f => sexp_to_stream(result, f));
-    //         output = blob.hex();
-    //     }
-    //     else if(parsedArgs["quiet"]){
-    //         output = "";
-    //     }
-    //     else{
-    //         output = binutils.disassemble(result, keywords);
-    //     }
-    // }
-    // catch (ex) {
-    //     if(ex instanceof EvalError){
-    //         result = to_sexp_f(ex._sexp as CLVMObject);
-    //         output = format!("FAIL: {} {}", ex.message, binutils.disassemble(result, keywords));
-    //         return -1;
-    //     }
-    //     output = ex instanceof Error ? ex.message : typeof ex === "string" ? ex : JSON.stringify(ex);
-    //     throw new Error(ex.message);
-    // }
-    // finally {
-    //     print(output);
-    //     if(parsedArgs["verbose"] || symbol_table){
-    //         print("");
-    //         trace_to_text(log_entries, binutils.disassemble, symbol_table || {});
-    //     }
-    //     if(parsedArgs["table"]){
-    //         trace_to_table(log_entries, binutils.disassemble, symbol_table);
-    //     }
-    // }
+            let _ =
+                match parsedArgs.get("time") {
+                    Some(ArgumentValue::ArgInt(t)) => {
+                        match parsedArgs.get("hex") {
+                            Some(_) => {
+                                print!("read_hex: {}\n", time_read_hex.duration_since(time_start).unwrap().as_millis());
+                            },
+                            _ => {
+                                print!("assemble_from_ir: {}\n", time_assemble.duration_since(time_start).unwrap().as_millis());
+                                print!("to_sexp_f: {}\n", time_parse_input.duration_since(time_assemble).unwrap().as_millis());
+                            }
+                        }
+                        print!("run_program: {}\n", time_done.duration_since(time_parse_input).unwrap().as_millis());
+                    },
+                    _ => { }
+                };
+
+            let _ = output = disassemble_with_kw(&mut allocator, result, keywords);
+            let _ =
+                match parsedArgs.get("dump") {
+                    Some(ArgumentValue::ArgBool(true)) => {
+                        let mut f = Stream::new(None);
+                        sexp_to_stream(&mut allocator, result, &mut f);
+                        output = f.get_value().hex();
+                    },
+                    _ => {
+                        match parsedArgs.get("quiet") {
+                            Some(ArgumentValue::ArgBool(true)) => {
+                                output = "".to_string();
+                            },
+                            _ => { }
+                        }
+                    }
+                };
+
+            output
+        });
+
+    let output = collapse(res.map_err(|ex| {
+        format!("FAIL: {} {}", ex.1, disassemble_with_kw(&mut allocator, ex.0, keywords))
+    }));
+
+    print!("{}\n", output);
+    let trace_to_text_enabled =
+        !symbol_table.is_none() ||
+        match parsedArgs.get("verbose") {
+            Some(ArgumentValue::ArgBool(true)) => true,
+            _ => false
+        };
+
+    let mut log_content = log_entries.finish();
+    if trace_to_text_enabled {
+        let use_symtab = symbol_table.clone().unwrap_or_else(|| HashMap::new());
+        print!("");
+        trace_to_text(
+            &mut allocator, &log_content, Some(use_symtab.clone()), &disassemble
+        );
+        if !parsedArgs.get("table").is_none() {
+            trace_to_table(
+                &mut allocator,
+                &mut log_content,
+                symbol_table,
+                &disassemble
+            );
+        }
+    }
 }
 
 // export function read_ir(args: str[]){

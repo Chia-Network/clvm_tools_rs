@@ -111,7 +111,7 @@ pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
 pub fn disassemble_to_ir_with_kw<'a>(
     allocator: &'a mut Allocator,
     sexp: NodePtr,
-    keyword_from_atom: &Record<String, Vec<u8>>,
+    keyword_from_atom: &Record<Vec<u8>, String>,
     head: bool,
     allow_keyword: bool
 ) -> IRRepr {
@@ -145,7 +145,7 @@ pub fn disassemble_to_ir_with_kw<'a>(
 pub fn disassemble_with_kw<'a>(
     allocator: &'a mut Allocator,
     sexp: NodePtr,
-    keyword_from_atom: &Record<String, Vec<u8>>
+    keyword_from_atom: &Record<Vec<u8>, String>
 ) -> String {
     let symbols = disassemble_to_ir_with_kw(
         allocator,
@@ -164,7 +164,7 @@ pub fn disassemble<'a>(
     return disassemble_with_kw(
         allocator,
         sexp,
-        KEYWORD_TO_ATOM()
+        KEYWORD_FROM_ATOM()
     );
 }
 

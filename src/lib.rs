@@ -1,3 +1,5 @@
+#![feature(in_band_lifetimes)]
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -9,6 +11,9 @@ extern crate indoc;
 
 #[macro_use]
 extern crate do_notation;
+
+#[macro_use]
+extern crate serde_json;
 
 mod util;
 

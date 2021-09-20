@@ -132,10 +132,10 @@ impl<'a> OperatorHandler for OpRouter {
 }
 
 pub struct RunProgramOption {
-    operator_lookup: TOperatorDict,
-    max_cost: Option<Cost>,
-    pre_eval_f: Option<PreEval>,
-    strict: bool
+    pub operator_lookup: Option<TOperatorDict>,
+    pub max_cost: Option<Cost>,
+    pub pre_eval_f: Option<PreEval>,
+    pub strict: bool
 }
 
 pub trait TRunProgram {
