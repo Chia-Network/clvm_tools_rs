@@ -293,7 +293,6 @@ fn parse_mod_sexp(
     macros: &mut Vec<(Vec<u8>, NodePtr)>,
     run_program: Rc<dyn TRunProgram>
 ) -> Result<(), EvalErr> {
-    print!("parse_mod_sexp {}\n", disassemble(allocator, declaration_sexp));
     return m! {
         op_node <- first(allocator, declaration_sexp);
         dec_rest <- rest(allocator, declaration_sexp);
@@ -333,7 +332,6 @@ fn parse_mod_sexp(
                         declaration_sexp_r <- rest(allocator, declaration_sexp);
                         declaration_sexp_rr <- rest(allocator, declaration_sexp_r);
                         let _ = functions.insert(name, declaration_sexp_rr);
-                        let _ = print!("new function {}\n", disassemble(allocator, declaration_sexp_rr));
                         Ok(())
                     }
                 } else if op == "defun-inline".as_bytes() {
@@ -406,7 +404,6 @@ fn compile_mod_stage_1(
                         );
 
                     let _ = functions.insert(MAIN_NAME.as_bytes().to_vec(), main_list);
-                    let _ = print!("functions {}\n", disassemble(allocator, main_list));
                     Ok(CollectionResult {
                         functions: functions,
                         constants: constants,
@@ -498,7 +495,6 @@ fn build_macro_lookup_program(
             macro_lookup_program,
             &mut macros.iter()
         );
-        let _ = print!("build_macro_lookup_program {}\n", disassemble(allocator, result_program));
         Ok(result_program)
     };
 }
@@ -550,7 +546,6 @@ fn add_one_function(
             )
         );
         opt_list <- enlist(allocator, &vec!(opt_atom, com_list));
-        let _ = print!("compiled_functions \"{}\" {}\n", Bytes::new(Some(BytesFromType::Raw(name.to_vec()))).decode(), disassemble(allocator, opt_list));
         let _ = compiled_functions.insert(name.to_vec(), opt_list);
         Ok(compiled_functions)
     };
@@ -593,7 +588,6 @@ pub fn compile_mod(
     _level: usize
 ) -> Result<NodePtr, EvalErr> {
     // Deal with the "mod" keyword.
-    print!("compile_mod {}\n", disassemble(allocator, args));
     return m! {
         cr <- compile_mod_stage_1(allocator, args, run_program.clone());
         a_atom <- allocator.new_atom(&vec!(2));

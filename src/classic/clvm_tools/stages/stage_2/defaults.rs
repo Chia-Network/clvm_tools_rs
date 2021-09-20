@@ -91,9 +91,7 @@ fn build_default_macro_lookup(
     for macro_src in macros_src {
         let macro_sexp = assemble(allocator, &macro_src.to_string()).unwrap();
         let env = allocator.new_pair(macro_sexp, default_macro_lookup).unwrap();
-        print!("run_macro {} {}\n", disassemble(allocator, run), disassemble(allocator, env));
         let new_macro = eval_f.run_program(allocator, run, env, None).unwrap().1;
-        print!("new_macro {}\n", disassemble(allocator, new_macro));
         default_macro_lookup =
             allocator.new_pair(new_macro, default_macro_lookup).unwrap();
     }

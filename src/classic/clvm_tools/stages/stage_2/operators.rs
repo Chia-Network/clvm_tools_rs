@@ -247,7 +247,6 @@ impl TRunProgram for RunProgramWithSearchPaths {
         args: NodePtr,
         option: Option<RunProgramOption>
     ) -> Response {
-        print!("run {} {}\n", disassemble(allocator, program), disassemble(allocator, args));
         return self.runner.borrow().run_program(allocator, program, args, option);
     }
 }

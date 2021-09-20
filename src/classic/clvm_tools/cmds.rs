@@ -1,6 +1,9 @@
 use core::cell::RefCell;
+
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::io;
+use std::io::Write;
 use std::rc::Rc;
 use std::sync::mpsc::{
     channel,
@@ -238,11 +241,15 @@ impl ArgumentValueConv for StageImport {
 }
 
 pub fn run(args: &Vec<String>) {
-    return launch_tool(args, &"run".to_string(), 2);
+    let mut s = Stream::new(None);
+    launch_tool(&mut s, args, &"run".to_string(), 2);
+    io::stdout().write_all(s.get_value().data());
 }
 
 pub fn brun(args: &Vec<String>) {
-    return launch_tool(args, &"brun".to_string(), 0);
+    let mut s = Stream::new(None);
+    launch_tool(&mut s, args, &"brun".to_string(), 0);
+    io::stdout().write_all(s.get_value().data());
 }
 
 struct RunLog {
@@ -291,7 +298,7 @@ fn calculate_cost_offset(
     return 53 - cost as i64;
 }
 
-pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
+pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, default_stage: u32) {
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
         prog: format!("clvm_tools {}", tool_name)
@@ -399,13 +406,11 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
 
     match parser.parse_args(&arg_vec) {
         Err(e) => {
-            print!("FAIL: {}\n", e);
+            stdout.write_string(format!("FAIL: {}\n", e));
             return;
         },
         Ok(pa) => { parsedArgs = pa; }
     }
-
-    print!("parsed args {:?}\n", parsedArgs);
 
     let empty_map = HashMap::new();
     let keywords =
@@ -485,13 +490,13 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
                     match read_ir(&s) {
                         Ok(s) => { src_sexp = s; },
                         Err(e) => {
-                            print!("FAIL: {}\n", e);
+                            stdout.write_string(format!("FAIL: {}\n", e));
                             return;
                         }
                     }
                 },
                 _ => {
-                    print!("FAIL: {}\n", "non-string argument");
+                    stdout.write_string(format!("FAIL: {}\n", "non-string argument"));
                     return;
                 }
             }
@@ -689,7 +694,7 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
                     if cost > 0 {
                         cost += cost_offset;
                     }
-                    print!("cost = {}\n", cost);
+                    stdout.write_string(format!("cost = {}\n", cost));
                 };
 
             let _ =
@@ -697,14 +702,14 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
                     Some(ArgumentValue::ArgInt(t)) => {
                         match parsedArgs.get("hex") {
                             Some(_) => {
-                                print!("read_hex: {}\n", time_read_hex.duration_since(time_start).unwrap().as_millis());
+                                stdout.write_string(format!("read_hex: {}\n", time_read_hex.duration_since(time_start).unwrap().as_millis()));
                             },
                             _ => {
-                                print!("assemble_from_ir: {}\n", time_assemble.duration_since(time_start).unwrap().as_millis());
-                                print!("to_sexp_f: {}\n", time_parse_input.duration_since(time_assemble).unwrap().as_millis());
+                                stdout.write_string(format!("assemble_from_ir: {}\n", time_assemble.duration_since(time_start).unwrap().as_millis()));
+                                stdout.write_string(format!("to_sexp_f: {}\n", time_parse_input.duration_since(time_assemble).unwrap().as_millis()));
                             }
                         }
-                        print!("run_program: {}\n", time_done.duration_since(time_parse_input).unwrap().as_millis());
+                        stdout.write_string(format!("run_program: {}\n", time_done.duration_since(time_parse_input).unwrap().as_millis()));
                     },
                     _ => { }
                 };
@@ -734,7 +739,7 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
         format!("FAIL: {} {}", ex.1, disassemble_with_kw(&mut allocator, ex.0, keywords))
     }));
 
-    print!("{}\n", output);
+    stdout.write_string(format!("{}\n", output));
     let trace_to_text_enabled =
         !symbol_table.is_none() ||
         match parsedArgs.get("verbose") {
@@ -745,7 +750,7 @@ pub fn launch_tool(args: &Vec<String>, tool_name: &String, default_stage: u32) {
     let mut log_content = log_entries.finish();
     if trace_to_text_enabled {
         let use_symtab = symbol_table.clone().unwrap_or_else(|| HashMap::new());
-        print!("");
+        stdout.write_string(format!(""));
         trace_to_text(
             &mut allocator, &log_content, Some(use_symtab.clone()), &disassemble
         );

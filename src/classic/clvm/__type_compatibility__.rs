@@ -458,6 +458,10 @@ impl Stream {
         return b.length();
     }
 
+    pub fn write_string(&mut self, s: String) -> usize {
+        return self.write(Bytes::new(Some(BytesFromType::Raw(s.as_bytes().to_vec()))));
+    }
+
     pub fn read(&mut self, size: usize) -> Bytes {
         if self.seek > self.length || size == 0 {
             return Bytes::new(None); // Return empty byte

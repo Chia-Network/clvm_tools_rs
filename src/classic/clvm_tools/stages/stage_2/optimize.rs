@@ -55,7 +55,7 @@ pub struct DoOptProg {
     runner: Rc<dyn TRunProgram>
 }
 
-const DEBUG_OPTIMIZATIONS : u32 = 1;
+const DEBUG_OPTIMIZATIONS : u32 = 0;
 
 pub fn seems_constant_tail<'a>(allocator: &'a mut Allocator, sexp_: NodePtr) -> bool {
     let mut sexp = sexp_;
@@ -295,8 +295,6 @@ fn var_change_optimizer_cons_eval(
         if t1.is_none() {
             Ok(r)
         } else { m! {
-            let _ = print!("match_sexp {} with {} gives {:?}\n", disassemble(allocator, VAR_CHANGE_OPTIMIZER_CONS_EVAL_PATTERN), disassemble(allocator, r), t1);
-
             let original_args =
                 match t1.clone().and_then(|t1| t1.get("args").map(|i| *i)) {
                     Some(v) => v,
@@ -609,7 +607,6 @@ pub fn optimize_sexp_<'a>(allocator: &mut Allocator, r_: NodePtr, eval_f: Rc<dyn
                 Err(e) => { return Err(e); },
                 Ok(res) => {
                     if !equal_to(allocator, r, res) {
-                        print!("optimize {} -> {}\n", &opt.name, disassemble(allocator, res));
                         r = res;
                         break;
                     }
@@ -630,12 +627,7 @@ pub fn optimize_sexp_<'a>(allocator: &mut Allocator, r_: NodePtr, eval_f: Rc<dyn
 }
 
 pub fn optimize_sexp<'a>(allocator: &mut Allocator, r: NodePtr, eval_f: Rc<dyn TRunProgram>) -> Result<NodePtr, EvalErr> {
-    return m! {
-        let _ = print!("START OPTIMIZE {}\n", disassemble(allocator, r));
-        res <- optimize_sexp_(allocator, r, eval_f);
-        let _ = print!("OPTIMIZE_SEXP {} GIVING {}\n",disassemble(allocator, r), disassemble(allocator, res));
-        Ok(res)
-    };
+    optimize_sexp_(allocator, r, eval_f)
 }
 
 impl DoOptProg {

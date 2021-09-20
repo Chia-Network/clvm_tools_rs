@@ -183,7 +183,7 @@ impl TRunProgram for DefaultProgramRunner {
             _ => { }
         }
 
-        let res = run_program(
+        run_program(
             allocator,
             &self.quote_kw_vec,
             &self.apply_kw_vec,
@@ -192,17 +192,6 @@ impl TRunProgram for DefaultProgramRunner {
             args,
             max_cost,
             option.and_then(|o| o.pre_eval_f)
-        );
-
-        match res {
-            Err(ref e) => {
-                let dis_prog = disassemble(allocator, program);
-                let dis_args = disassemble(allocator, args);
-                print!("error {:?} for program {} args {}\n", e, dis_prog, dis_args);
-            }
-            Ok(_) => { }
-        }
-
-        return res;
+        )
     }
 }

@@ -560,8 +560,6 @@ impl ArgumentParser {
         let double_hyphen_arg_index =
             index_of_match(|n: &String| n.starts_with("--"), &names);
 
-        print!("names {:?} dhi {}\n", names, double_hyphen_arg_index);
-
         if double_hyphen_arg_index > -1 {
             let name = &names[double_hyphen_arg_index as usize];
             let first_non_dash = skip_leading(&name, "-").replace("-", "_");

@@ -104,7 +104,6 @@ fn com_qq(
     runner: Rc<dyn TRunProgram>,
     sexp: NodePtr
 ) -> Result<NodePtr, EvalErr> {
-    print!("com_qq {} {}\n", ident, disassemble(allocator, sexp));
     return do_com_prog(allocator, sexp, macro_lookup, symbol_table, runner).map(|x| x.1);
 }
 
@@ -116,8 +115,6 @@ pub fn compile_qq(
     runner: Rc<dyn TRunProgram>,
     level: usize
 ) -> Result<NodePtr, EvalErr> {
-    print!("compile_qq? {} {}\n", level, disassemble(allocator, args));
-
     /*
      * (qq ATOM) => (q . ATOM)
      * (qq (unquote X)) => X
@@ -299,13 +296,10 @@ fn try_expand_macro_for_atom_(
     symbol_table: NodePtr,
     run_program: Rc<dyn TRunProgram>
 ) -> Response {
-    print!("expand macro {} for {}\n", disassemble(allocator, macro_code), disassemble(allocator, prog_rest));
-    print!("running macro code {} for program {}\n", disassemble(allocator, macro_code), disassemble(allocator, prog_rest));
     return m! {
         com_atom <- allocator.new_atom("com".as_bytes());
         post_prog <- brun(allocator, macro_code, prog_rest);
 
-        let _ = print!("finalize_macro_at_call_site {}\n", disassemble(allocator, post_prog));
         quoted_macros <- quote(allocator, macro_lookup);
         quoted_symbols <- quote(allocator, symbol_table);
         to_eval <- enlist(
@@ -343,7 +337,6 @@ fn try_expand_macro_for_atom(
             symbol_table,
             run_program
         );
-        let _ = print!("TRY_EXPAND_MACRO {} WITH {} GIVES {} MACROS {} SYMBOLS {}\n", disassemble(allocator, macro_code), disassemble(allocator, prog_rest), disassemble(allocator, res.1), disassemble(allocator, macro_lookup), disassemble(allocator, symbol_table));
         Ok(res)
     };
 }
@@ -404,7 +397,6 @@ fn transform_program_atom(
         None => { },
         Some(symlist) => {
             for sym in symlist {
-                print!("sym {}\n", disassemble(allocator, sym));
                 match proper_list(allocator, sym, true) {
                     None => { },
                     Some(v) => {
@@ -468,8 +460,6 @@ fn compile_operator_atom(
                 top_atom <-
                     allocator.new_atom(NodePath::new(None).as_path().data());
 
-                let _ = print!("COMPILE_BINDINGS {}\n", disassemble(allocator, quoted_post_prog));
-
                 evaluate(allocator, quoted_post_prog, top_atom).map(|x| Some(x))
             };
         },
@@ -491,7 +481,6 @@ fn find_symbol_match(
     symbol_table: NodePtr
 ) -> Result<Option<SymbolResult>, EvalErr> {
     let dissym = disassemble(allocator, symbol_table);
-    print!("find_symbol_match {:?} {}\n", opname, dissym);
     match proper_list(allocator, symbol_table, true) {
         Some(symlist) => {
             for sym in symlist {
@@ -552,7 +541,6 @@ fn compile_application(
         return allocator.new_pair(operator, rest);
     }
 
-    print!("symbol_table {}\n", disassemble(allocator, symbol_table));
     match proper_list(allocator, rest, true) {
         Some(prog_args) => {
             m! {
@@ -561,7 +549,6 @@ fn compile_application(
                         allocator,
                         &mut prog_args.iter(),
                         &|allocator, arg| {
-                            print!("do_com_prog for arg {}\n", disassemble(allocator, *arg));
                             do_com_prog(
                                 allocator,
                                 *arg,
@@ -576,7 +563,6 @@ fn compile_application(
                 r <- enlist(allocator, &compiled_args);
 
                 if PASS_THROUGH_OPERATORS.contains(opbuf) || (opbuf.len() > 0 && opbuf[0] == '_' as u8) {
-                    print!("PASS THROUGH {}\n", disassemble(allocator, r));
                     return Ok(r);
                 } else {
                     find_symbol_match(
@@ -590,7 +576,6 @@ fn compile_application(
                             return match proper_list(allocator, rest, true) {
                                 Some(proglist) => {
                                     m! {
-                                        let _ = print!("matched symbol {} for prog {}\n", disassemble(allocator, value), disassemble(allocator, prog));
                                         apply_atom <- allocator.new_atom(&vec!(2));
                                         list_atom <- allocator.new_atom("list".as_bytes());
                                         cons_atom <- allocator.new_atom(&vec!(4));
@@ -602,17 +587,14 @@ fn compile_application(
                                         enlisted <- enlist(allocator, &proglist);
                                         list_application <- allocator.new_pair(list_atom, enlisted);
 
-                                        let _ = print!("list_application {}\n", disassemble(allocator, list_application));
 
                                         quoted_list <- quote(allocator, list_application);
                                         quoted_macros <- quote(allocator, macro_lookup);
                                         quoted_symbols <- quote(allocator, symbol_table);
                                         compiled <- enlist(allocator, &vec!(com_atom, quoted_list, quoted_macros, quoted_symbols));
                                         to_run <- enlist(allocator, &vec!(opt_atom, compiled));
-                                        let _ = print!("to_run {}\n", disassemble(allocator, to_run));
                                         new_args <- evaluate(allocator, to_run, top_atom);
 
-                                        let _ = print!("new_args {}\n", disassemble(allocator, new_args));
 
                                         cons_enlisted <- enlist(allocator, &vec!(cons_atom, left_atom, new_args));
 
@@ -621,7 +603,6 @@ fn compile_application(
                                             &vec!(apply_atom, value, cons_enlisted)
                                         );
 
-                                        let _ = print!("compiled {}\n", disassemble(allocator, result));
 
                                         Ok(result)
                                     }
@@ -645,24 +626,7 @@ pub fn do_com_prog(
     symbol_table: NodePtr,
     run_program: Rc<dyn TRunProgram>
 ) -> Response {
-    return m! {
-        let _ = print!(
-            "START COMPILE {} MACRO {} SYMBOLS {}\n",
-            disassemble(allocator, prog),
-            disassemble(allocator, macro_lookup),
-            disassemble(allocator, symbol_table),
-        );
-        res <- do_com_prog_(allocator, prog, macro_lookup, symbol_table, run_program);
-        let _ = print!(
-            "DO_COM_PROG {} MACRO {} SYMBOLS {} RESULT {}\n",
-            disassemble(allocator, prog),
-            disassemble(allocator, macro_lookup),
-            disassemble(allocator, symbol_table),
-            disassemble(allocator, res.1)
-        );
-
-        Ok(res)
-    };
+    do_com_prog_(allocator, prog, macro_lookup, symbol_table, run_program)
 }
 
 fn do_com_prog_(
@@ -726,7 +690,6 @@ fn do_com_prog_(
                                         symbol_table,
                                         run_program.clone()
                                     ).and_then(|x| x.map(|y| Ok(y)).unwrap_or_else(|| m! {
-                                        let _ = print!("handling program body with op {} and args {}\n", disassemble(allocator, operator), disassemble(allocator, prog_rest));
                                         compile_application(
                                             allocator,
                                             prog,
