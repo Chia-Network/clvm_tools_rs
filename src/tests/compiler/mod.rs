@@ -31,8 +31,14 @@ fn test_sexp_parse_print() {
             Rc::new(SExp::Integer(num_loc, 3_i32.to_bigint().unwrap()))
         )));
 
+    let parse_result = parse_sexp(start.clone(), &"(hi . 3)".to_string());
     assert_eq!(
-        format!("{:?}", parse_sexp(start.clone(), &"(hi . 3)".to_string())),
+        format!("{:?}", parse_result),
         format!("{:?}", my_result)
     );
+
+    assert_eq!(
+        parse_result.unwrap()[0].to_string(),
+        "(hi . 3)".to_string()
+    )
 }
