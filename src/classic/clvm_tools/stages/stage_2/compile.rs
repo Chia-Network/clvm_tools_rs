@@ -142,7 +142,8 @@ pub fn compile_qq(
                             cons_atom <- allocator.new_atom(&vec!(4));
                             subexp <-
                                 compile_qq(allocator, sexp_rest, macro_lookup, symbol_table, runner.clone(), level+1);
-                            consed <- enlist(allocator, &vec!(cons_atom, subexp, null));
+                            quoted_null <- quote(allocator, allocator.null());
+                            consed <- enlist(allocator, &vec!(cons_atom, subexp, quoted_null));
                             run_list <- enlist(allocator, &vec!(cons_atom, op, consed));
                             com_qq(allocator, "qq sexp pair".to_string(), macro_lookup, symbol_table, runner, run_list)
                         };
