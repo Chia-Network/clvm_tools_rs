@@ -64,7 +64,7 @@ pub fn compile_clvm(input_path: &String, output_path: &String, search_paths: &Ve
                     format!("Error writing {}: {:?}", input_path, x)
                 });
                 let mut f = f_;
-                _ <- f.write_all(&result_stream.get_value().data()).map_err(
+                _ <- f.write_all(&result_stream.get_value().hex().as_bytes()).map_err(
                     |_| format!("failed to write to {}", output_path)
                 );
                 _ <- f.write_all(&"\n".as_bytes()).map_err(
