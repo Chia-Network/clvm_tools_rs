@@ -1,5 +1,5 @@
 mod comptypes;
 mod gensym;
 mod runtypes;
-mod sexp;
-mod srcloc;
+pub mod sexp;
+pub mod srcloc;

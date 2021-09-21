@@ -1,0 +1,38 @@
+use std::rc::Rc;
+use num_bigint::ToBigInt;
+
+use crate::compiler::sexp::{
+    parse_sexp,
+    SExp
+};
+use crate::compiler::srcloc::Srcloc;
+
+#[test]
+fn test_sexp_parse_print() {
+    let start = Srcloc::start(&"test.cl".to_string());
+    let mut end = start.clone();
+    end.col = 2;
+    end.until = Some((1, 8));
+
+    let mut atom_loc = start.clone();
+    atom_loc.col = 2;
+    atom_loc.until = Some((1, 4));
+
+    let mut num_loc = start.clone();
+    num_loc.col = 7;
+
+    let my_result: Result<Vec<SExp>, (Srcloc, String)> =
+        Ok(vec!(SExp::Cons(
+            end,
+            Rc::new(SExp::Atom(
+                atom_loc,
+                vec!('h' as u8, 'i' as u8)
+            )),
+            Rc::new(SExp::Integer(num_loc, 3_i32.to_bigint().unwrap()))
+        )));
+
+    assert_eq!(
+        format!("{:?}", parse_sexp(start.clone(), &"(hi . 3)".to_string())),
+        format!("{:?}", my_result)
+    );
+}

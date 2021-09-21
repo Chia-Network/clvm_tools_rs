@@ -1,1 +1,2 @@
 mod classic;
+mod compiler;
