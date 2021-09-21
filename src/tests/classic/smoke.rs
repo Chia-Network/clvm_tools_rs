@@ -247,3 +247,10 @@ fn compile_function_macro() {
     let result = compile_program(&mut allocator, "(\"defmacro\" \"function\" (\"BODY\") (29041 (\"opt\" (\"com\" (q \"unquote\" \"BODY\") (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))))".to_string());
     assert_eq!(result, Ok("(\"function\" (c (q . \"opt\") (c (c (q . \"com\") (c (c (q . 1) 2) (q (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))) ())))".to_string()));
 }
+
+#[test]
+fn basic_if_expansion() {
+    let mut allocator = Allocator::new();
+    let result = compile_program(&mut allocator, "(mod (A B) (if A (* 2 A) (+ 1 A)))".to_string());
+    assert_eq!(result, Ok("(a (i 2 (q 18 (q . 2) 2) (q 16 (q . 1) 2)) 1)".to_string()));
+}
