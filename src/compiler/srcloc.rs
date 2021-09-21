@@ -1,11 +1,12 @@
 use std::rc::Rc;
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct Srcloc {
-    file: Rc<String>,
-    line: usize,
-    col: usize,
-    until: Option<(usize, usize)>
+    pub file: Rc<String>,
+    pub line: usize,
+    pub col: usize,
+    pub until: Option<(usize, usize)>
 }
 
 // let srcLocationToJson sl =
@@ -36,6 +37,42 @@ impl Srcloc {
 
     pub fn ext(&self, other: &Srcloc) -> Srcloc {
         combine_src_location(self, other)
+    }
+
+    pub fn advance(&self, ch: u8) -> Srcloc {
+        match ch as char {
+            '\n' =>
+                Srcloc {
+                    file: self.file.clone(),
+                    col: 1,
+                    line: self.line + 1,
+                    until: self.until
+                },
+            '\t' => {
+                let next_tab = (self.col + 8) & !7;
+                Srcloc {
+                    file: self.file.clone(),
+                    col: next_tab,
+                    line: self.line,
+                    until: self.until
+                }
+            },
+            _ => Srcloc {
+                file: self.file.clone(),
+                col: self.col + 1,
+                line: self.line,
+                until: self.until
+            }
+        }
+    }
+
+    pub fn start(file: &String) -> Srcloc {
+        Srcloc {
+            file: Rc::new(file.to_string()),
+            line: 1,
+            col: 1,
+            until: None
+        }
     }
 }
 
@@ -72,41 +109,5 @@ pub fn combine_src_location(a: &Srcloc, b: &Srcloc) -> Srcloc {
         }
     } else {
         add_onto(b, a)
-    }
-}
-
-pub fn start(file: &String) -> Srcloc {
-    Srcloc {
-        file: Rc::new(file.to_string()),
-        line: 1,
-        col: 1,
-        until: None
-    }
-}
-
-pub fn advance(loc: &Srcloc, ch: char) -> Srcloc {
-    match ch {
-        '\n' =>
-            Srcloc {
-                file: loc.file.clone(),
-                col: 1,
-                line: loc.line + 1,
-                until: loc.until
-            },
-        '\t' => {
-            let next_tab = (loc.col + 8) & !7;
-            Srcloc {
-                file: loc.file.clone(),
-                col: next_tab,
-                line: loc.line,
-                until: loc.until
-            }
-        },
-        _ => Srcloc {
-            file: loc.file.clone(),
-            col: loc.col + 1,
-            line: loc.line,
-            until: loc.until
-        }
     }
 }
