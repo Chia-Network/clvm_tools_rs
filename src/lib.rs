@@ -1,5 +1,3 @@
-#![feature(in_band_lifetimes)]
-
 #[macro_use]
 extern crate lazy_static;
 
@@ -15,10 +13,16 @@ extern crate do_notation;
 #[macro_use]
 extern crate serde_json;
 
+#[macro_use]
+extern crate pyo3;
+
 mod util;
 
 pub mod classic;
 pub mod compiler;
+
+// Python impl
+mod py;
 
 #[cfg(test)]
 mod tests;

@@ -6,6 +6,7 @@ use crate::classic::platform::argparse::{
 };
 
 pub mod argparse;
+pub mod distutils;
 
 pub struct PathJoin {
 }
