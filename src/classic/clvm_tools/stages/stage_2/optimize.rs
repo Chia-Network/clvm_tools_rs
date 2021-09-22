@@ -499,7 +499,7 @@ fn path_optimizer<'a>(
                     Some(atom) => {
                         let node =
                             NodePath::new(Some(atom)).
-                            add(NodePath::new(None).first());
+                            add(NodePath::new(None).rest());
                         allocator.new_atom(node.as_path().data())
                     },
                     _ => { Ok(r) }

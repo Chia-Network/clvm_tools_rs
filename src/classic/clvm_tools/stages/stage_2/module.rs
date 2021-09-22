@@ -605,7 +605,6 @@ pub fn compile_mod(
         );
 
         let has_constants_tree = all_constants_names.len() > 0;
-
         // build defuns table, with function names as keys
 
         constants_tree <- build_tree(allocator, &all_constants_names);

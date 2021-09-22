@@ -270,8 +270,7 @@ fn try_expand_macro_for_atom_(
     macro_code: NodePtr,
     prog_rest: NodePtr,
     macro_lookup: NodePtr,
-    symbol_table: NodePtr,
-    run_program: Rc<dyn TRunProgram>
+    symbol_table: NodePtr
 ) -> Response {
     return m! {
         com_atom <- allocator.new_atom("com".as_bytes());
@@ -302,8 +301,7 @@ fn try_expand_macro_for_atom(
     macro_code: NodePtr,
     prog_rest: NodePtr,
     macro_lookup: NodePtr,
-    symbol_table: NodePtr,
-    run_program: Rc<dyn TRunProgram>
+    symbol_table: NodePtr
 ) -> Response {
     return m! {
         res <- try_expand_macro_for_atom_(
@@ -311,14 +309,10 @@ fn try_expand_macro_for_atom(
             macro_code,
             prog_rest,
             macro_lookup,
-            symbol_table,
-            run_program
+            symbol_table
         );
         Ok(res)
-    }.map_err(|x| {
-        print!("try_expand_macro returned error: CODE {} PROG_REST {}\n", disassemble(allocator, macro_code), disassemble(allocator, prog_rest));
-        x
-    });
+    };
 }
 
 fn get_macro_program(
@@ -603,13 +597,7 @@ pub fn do_com_prog(
     symbol_table: NodePtr,
     run_program: Rc<dyn TRunProgram>
 ) -> Response {
-    do_com_prog_(allocator, prog, macro_lookup, symbol_table, run_program).map_err(|x| {
-        print!("error in do_com_prog for {}\n", disassemble(allocator, prog));
-        x
-    }).map(|x| {
-        print!("DO_COM_PROG {} MACRO {} SYMBOLS {} RESULT {}\n", disassemble(allocator, prog), disassemble(allocator, macro_lookup), disassemble(allocator, symbol_table), disassemble(allocator, x.1));
-        x
-    })
+    do_com_prog_(allocator, prog, macro_lookup, symbol_table, run_program)
 }
 
 fn do_com_prog_(
@@ -658,8 +646,7 @@ fn do_com_prog_(
                                         value,
                                         prog_rest,
                                         macro_lookup,
-                                        symbol_table,
-                                        run_program.clone()
+                                        symbol_table
                                     )
                                 },
                                 None => {
@@ -775,7 +762,6 @@ fn test_expand_macro(
     macros: String,
     symbols: String
 ) -> String {
-    let runner = run_program_for_search_paths(&vec!(".".to_string()));
     let macro_ir = read_ir(&macro_data).unwrap();
     let macro_source = assemble_from_ir(allocator, Rc::new(macro_ir)).unwrap();
     let prog_ir = read_ir(&prog_rest).unwrap();
@@ -789,8 +775,7 @@ fn test_expand_macro(
         macro_source,
         prog_source,
         macros_source,
-        symbols_source,
-        runner
+        symbols_source
     ).unwrap();
     return disassemble(allocator, exp_res.1);
 }
@@ -800,7 +785,6 @@ fn test_inner_expansion(
     macro_code: String,
     prog_rest: String,
 ) -> String {
-    let runner = run_program_for_search_paths(&vec!(".".to_string()));
     let macro_ir = read_ir(&macro_code).unwrap();
     let macro_source = assemble_from_ir(allocator, Rc::new(macro_ir)).unwrap();
     let prog_ir = read_ir(&prog_rest).unwrap();

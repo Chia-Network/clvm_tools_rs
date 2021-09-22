@@ -254,3 +254,11 @@ fn basic_if_expansion() {
     let result = compile_program(&mut allocator, "(mod (A B) (if A (* 2 A) (+ 1 A)))".to_string());
     assert_eq!(result, Ok("(a (i 2 (q 18 (q . 2) 2) (q 16 (q . 1) 2)) 1)".to_string()));
 }
+
+#[test]
+fn basic_assert_macro() {
+    let mut allocator = Allocator::new();
+    let program = "(mod () (defmacro assert items (if (r items) (list if (f items) (c assert (r items)) (q . (x))) (f items))) (assert 1))";
+    let result = compile_program(&mut allocator, program.to_string());
+    assert_eq!(result, Ok("(q . 1)".to_string()));
+}
