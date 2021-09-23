@@ -86,9 +86,13 @@ fn run_from_source<'a>(allocator: &'a mut Allocator, src: String) -> NodePtr {
     return res.1;
 }
 
-fn compile_program<'a>(allocator: &'a mut Allocator, src: String) -> Result<String, EvalErr> {
+fn compile_program<'a>(
+    allocator: &'a mut Allocator,
+    include_path: String,
+    src: String
+) -> Result<String, EvalErr> {
     let run_script = stages::run(allocator);
-    let runner = run_program_for_search_paths(&vec!(".".to_string()));
+    let runner = run_program_for_search_paths(&vec!(include_path));
     let input_ir = read_ir(&src);
     let input_program =
         assemble_from_ir(allocator, Rc::new(input_ir.unwrap())).unwrap();
@@ -215,7 +219,11 @@ fn basic_opc_quoted_1() {
 #[test]
 fn very_simple_compile() {
     let mut allocator = Allocator::new();
-    let result = compile_program(&mut allocator, "(mod () (+ 3 2))".to_string());
+    let result = compile_program(
+        &mut allocator,
+        ".".to_string(),
+        "(mod () (+ 3 2))".to_string()
+    );
     assert_eq!(result, Ok("(q . 5)".to_string()));
 }
 
@@ -237,21 +245,32 @@ fn node_path_2nd_of_list() {
 #[test]
 fn compile_prog_with_args() {
     let mut allocator = Allocator::new();
-    let result = compile_program(&mut allocator, "(mod (A B) (+ A B))".to_string());
+    let result = compile_program(
+        &mut allocator,
+        ".".to_string(),
+        "(mod (A B) (+ A B))".to_string()
+    );
     assert_eq!(result, Ok("(+ 2 5)".to_string()));
 }
 
 #[test]
 fn compile_function_macro() {
     let mut allocator = Allocator::new();
-    let result = compile_program(&mut allocator, "(\"defmacro\" \"function\" (\"BODY\") (29041 (\"opt\" (\"com\" (q \"unquote\" \"BODY\") (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))))".to_string());
+    let result = compile_program(
+        &mut allocator,
+        ".".to_string(),
+        "(\"defmacro\" \"function\" (\"BODY\") (29041 (\"opt\" (\"com\" (q \"unquote\" \"BODY\") (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))))".to_string());
     assert_eq!(result, Ok("(\"function\" (c (q . \"opt\") (c (c (q . \"com\") (c (c (q . 1) 2) (q (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))) ())))".to_string()));
 }
 
 #[test]
 fn basic_if_expansion() {
     let mut allocator = Allocator::new();
-    let result = compile_program(&mut allocator, "(mod (A B) (if A (* 2 A) (+ 1 A)))".to_string());
+    let result = compile_program(
+        &mut allocator,
+        ".".to_string(),
+        "(mod (A B) (if A (* 2 A) (+ 1 A)))".to_string()
+    );
     assert_eq!(result, Ok("(a (i 2 (q 18 (q . 2) 2) (q 16 (q . 1) 2)) 1)".to_string()));
 }
 
@@ -259,6 +278,42 @@ fn basic_if_expansion() {
 fn basic_assert_macro() {
     let mut allocator = Allocator::new();
     let program = "(mod () (defmacro assert items (if (r items) (list if (f items) (c assert (r items)) (q . (x))) (f items))) (assert 1))";
-    let result = compile_program(&mut allocator, program.to_string());
+    let result = compile_program(
+        &mut allocator,
+        ".".to_string(),
+        program.to_string()
+    );
     assert_eq!(result, Ok("(q . 1)".to_string()));
+}
+
+fn check_compile_to_hex(name: String) -> (String, String) {
+    let mut allocator = Allocator::new();
+    let mut testpath = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let name_cc = name.clone() + ".clvm";
+    let name_hex_orig = name_cc.clone() + ".hex.orig";
+    testpath.push("resources/tests/stage_2/");
+    let mut in_path = testpath.clone();
+    in_path.push(name_cc);
+    let mut out_path = testpath.clone();
+    out_path.push(name_hex_orig);
+
+    let expected =
+        fs::read_to_string(in_path).and_then(|input| {
+            return fs::read_to_string(out_path).map(|output| {
+                t(input, output.trim().to_string())
+            });
+        }).unwrap();
+    let result = compile_program(
+        &mut allocator,
+        testpath.into_os_string().into_string().unwrap(),
+        expected.first().to_string()
+    ).unwrap();
+    let hex = OpcConversion {}.invoke(&mut allocator, &result).unwrap();
+    return (hex.rest().to_string(), expected.rest().to_string());
+}
+
+#[test]
+fn compile_p2_clvm() {
+    let (wanted, have) = check_compile_to_hex("p2_singleton".to_string());
+    assert_eq!(wanted, have);
 }
