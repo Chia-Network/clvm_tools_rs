@@ -41,20 +41,24 @@ fn DEFAULT_MACROS_SRC() -> Vec<&'static str> {
                           (c (f (r (r 1)))
                              (q . ()))))
                     (q . ()))))))
-        "}, indoc! {"
-        ;(defmacro list ARGS
-        ;    ((c (mod args
-        ;        (defun compile-list
-        ;               (args)
-        ;               (if args
-        ;                   (qq (c (unquote (f args))
-        ;                         (unquote (compile-list (r args)))))
-        ;                   ()))
-        ;            (compile-list args)
-        ;        )
-        ;        ARGS
-        ;    ))
-        ;)
+        "},
+            /*
+                    ;(defmacro list ARGS
+                    ;    ((c (mod args
+                    ;        (defun compile-list
+                    ;               (args)
+                    ;               (if args
+                    ;                   (qq (c (unquote (f args))
+                    ;                         (unquote (compile-list (r args)))))
+                    ;                   ()))
+                    ;            (compile-list args)
+                    ;        )
+                    ;        ARGS
+                    ;    ))
+                    ;)
+             */
+
+           indoc! {"
         (q \"list\"
             (a (q #a (q #a 2 (c 2 (c 3 (q))))
                      (c (q #a (i 5

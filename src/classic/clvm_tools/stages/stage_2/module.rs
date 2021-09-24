@@ -21,6 +21,7 @@ use crate::classic::clvm::sexp::{
     flatten,
     foldM,
     mapM,
+    non_nil,
     proper_list,
     rest
 };
@@ -422,7 +423,7 @@ fn symbol_table_for_tree(
     tree: NodePtr,
     root_node: &NodePath
 ) -> Result<Vec<(NodePtr, Vec<u8>)>, EvalErr> {
-    if tree == allocator.null() {
+    if !non_nil(allocator, tree) {
         return Ok(Vec::new());
     }
 

@@ -89,8 +89,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "clvm_rs"
-version = "0.1.11"
-source = "git+https://github.com/Chia-Network/clvm_rs#53a88a7ecf82650a50a7a57f36d75f60f37e19bf#53a88a7ecf82650a50a7a57f36d75f60f37e19bf"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c03a27610452b82d22a517d86efd3f9a51a5775a1734ab03ea1d2eb1bde0e66c"
 dependencies = [
  "bls12_381",
  "hex",

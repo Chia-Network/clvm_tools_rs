@@ -28,6 +28,7 @@ use crate::classic::clvm::sexp::{
     enlist,
     first,
     mapM,
+    non_nil,
     rest
 };
 
@@ -49,6 +50,8 @@ use crate::classic::clvm_tools::stages::stage_2::helpers::{
 };
 use crate::classic::clvm_tools::stages::stage_2::module::compile_mod;
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
+
+const DIAG_OUTPUT: bool = false;
 
 lazy_static! {
     static ref PASS_THROUGH_OPERATORS: HashSet<Vec<u8>> = {
@@ -104,7 +107,17 @@ fn com_qq(
     runner: Rc<dyn TRunProgram>,
     sexp: NodePtr
 ) -> Result<NodePtr, EvalErr> {
-    return do_com_prog(allocator, sexp, macro_lookup, symbol_table, runner).map(|x| x.1);
+    if DIAG_OUTPUT {
+        print!("com_qq {} {}\n", ident, disassemble(allocator, sexp));
+    }
+    return do_com_prog(
+        allocator,
+        110,
+        sexp,
+        macro_lookup,
+        symbol_table,
+        runner
+    ).map(|x| x.1);
 }
 
 pub fn compile_qq(
@@ -212,7 +225,7 @@ pub fn lower_quote(
     allocator: &mut Allocator,
     prog: NodePtr
 ) -> Result<NodePtr, EvalErr> {
-    if prog == allocator.null() {
+    if !non_nil(allocator, prog) {
         return Ok(prog);
     }
 
@@ -292,7 +305,19 @@ fn try_expand_macro_for_atom_(
             allocator,
             to_eval,
             top_path
-        ).map(|x| Reduction(1, x))
+        ).map(|x| {
+            if DIAG_OUTPUT {
+                print!(
+                    "TRY_EXPAND_MACRO {} WITH {} GIVES {} MACROS {} SYMBOLS {}\n",
+                    disassemble(allocator, macro_code),
+                    disassemble(allocator, prog_rest),
+                    disassemble(allocator, x),
+                    disassemble(allocator, macro_lookup),
+                    disassemble(allocator, symbol_table)
+                );
+            }
+            Reduction(1, x)
+        })
     };
 }
 
@@ -434,6 +459,9 @@ fn compile_operator_atom(
                 top_atom <-
                     allocator.new_atom(NodePath::new(None).as_path().data());
 
+                let _ = if DIAG_OUTPUT {
+                    print!("COMPILE_BINDINGS {}\n", disassemble(allocator, quoted_post_prog));
+                };
                 evaluate(allocator, quoted_post_prog, top_atom).map(|x| Some(x))
             };
         },
@@ -522,6 +550,7 @@ fn compile_application(
                         &|allocator, arg| {
                             do_com_prog(
                                 allocator,
+                                544,
                                 *arg,
                                 macro_lookup,
                                 symbol_table,
@@ -592,12 +621,34 @@ fn compile_application(
 
 pub fn do_com_prog(
     allocator: &mut Allocator,
+    from: usize,
     prog: NodePtr,
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
     run_program: Rc<dyn TRunProgram>
 ) -> Response {
-    do_com_prog_(allocator, prog, macro_lookup, symbol_table, run_program)
+    if DIAG_OUTPUT {
+        print!(
+            "START COMPILE {}: {} MACRO {} SYMBOLS {}\n",
+            from,
+            disassemble(allocator, prog),
+            disassemble(allocator, macro_lookup),
+            disassemble(allocator, symbol_table),
+        );
+    }
+    do_com_prog_(allocator, prog, macro_lookup, symbol_table, run_program).map(|x| {
+        if DIAG_OUTPUT {
+            print!(
+                "DO_COM_PROG {}: {} MACRO {} SYMBOLS {} RESULT {}\n",
+                from,
+                disassemble(allocator, prog),
+                disassemble(allocator, macro_lookup),
+                disassemble(allocator, symbol_table),
+                disassemble(allocator, x.1)
+            );
+        }
+        x
+    })
 }
 
 fn do_com_prog_(
@@ -732,6 +783,7 @@ impl OperatorHandler for DoComProg {
 
                 return do_com_prog(
                     allocator,
+                    773,
                     prog,
                     macro_lookup,
                     symbol_table,
@@ -807,7 +859,7 @@ fn test_do_com_prog(
     let sym_ir = read_ir(&symbol_table_src).unwrap();
     let symbol_table = assemble_from_ir(allocator, Rc::new(sym_ir)).unwrap();
     let result = do_com_prog(
-        allocator, program, macro_lookup, symbol_table, runner
+        allocator, 849, program, macro_lookup, symbol_table, runner
     ).unwrap();
     return disassemble(allocator, result.1);
 }

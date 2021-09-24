@@ -286,34 +286,43 @@ fn basic_assert_macro() {
     assert_eq!(result, Ok("(q . 1)".to_string()));
 }
 
-fn check_compile_to_hex(name: String) -> (String, String) {
+#[test]
+fn macro_mod_1() {
     let mut allocator = Allocator::new();
-    let mut testpath = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let name_cc = name.clone() + ".clvm";
-    let name_hex_orig = name_cc.clone() + ".hex.orig";
-    testpath.push("resources/tests/stage_2/");
-    let mut in_path = testpath.clone();
-    in_path.push(name_cc);
-    let mut out_path = testpath.clone();
-    out_path.push(name_hex_orig);
-
-    let expected =
-        fs::read_to_string(in_path).and_then(|input| {
-            return fs::read_to_string(out_path).map(|output| {
-                t(input, output.trim().to_string())
-            });
-        }).unwrap();
+    let program = indoc! {"
+    (opt (com (quote (mod (ARGS) \
+                      (defmacro if1 (A B C) \
+                       (qq (a \
+                            (i (unquote A) \
+                             (function (unquote B)) \
+                             (function (unquote C))) \
+                            @)) \
+                      ) \
+                      (defmacro and1 ARGS \
+                       (if1 ARGS \
+                        (qq (if1 (unquote (f ARGS)) \
+                             (unquote (c and1 (r ARGS))) \
+                             () \
+                        )) \
+                        1) \
+                      ) \
+                      (and1 (f @) 30) \
+                      ))))"};
     let result = compile_program(
         &mut allocator,
-        testpath.into_os_string().into_string().unwrap(),
-        expected.first().to_string()
-    ).unwrap();
-    let hex = OpcConversion {}.invoke(&mut allocator, &result).unwrap();
-    return (hex.rest().to_string(), expected.rest().to_string());
+        ".".to_string(),
+        program.to_string()
+    );
+    assert_eq!(result, Ok("(q 2 (i 2 (q 1 . 1) ()) 1)".to_string()));
 }
 
-#[test]
-fn compile_p2_clvm() {
-    let (wanted, have) = check_compile_to_hex("p2_singleton".to_string());
-    assert_eq!(wanted, have);
+fn map_6() {
+    let mut allocator = Allocator::new();
+    let program = "(a (mod (ARGS) (defun double (VAL) (* 2 VAL)) (defun square (VAL) (* VAL VAL)) (defun map (func items) (if items (c (func (f items)) (map func (r items))) ())) (map square (map double ARGS))) (quote ((4 3 2 1))))".to_string();
+    let result = compile_program(
+        &mut allocator,
+        ".".to_string(),
+        program.to_string()
+    );
+    assert_eq!(result, Ok("(64 36 16 4)".to_string()));
 }

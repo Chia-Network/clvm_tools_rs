@@ -22,13 +22,6 @@ use crate::classic::clvm::__type_compatibility__::{
 use crate::classic::clvm::serialize::sexp_to_stream;
 use crate::classic::clvm_tools::binutils::disassemble;
 
-// import {CLVMObject, CLVMType} from "./CLVMObject";
-// import {Bytes, isIterable, Tuple, t, Stream, isBytes, isTuple} from "./__type_compatibility__";
-// import {bigint_from_bytes, bigint_to_bytes, int_from_bytes, int_to_bytes} from "./casts";
-// import {sexp_to_stream} from "./serialize";
-// import {as_javascript} from "./as_javascript";
-// import {EvalError} from "./EvalError";
-
 #[derive(Debug)]
 pub enum CastableType {
     CLVMObject(NodePtr),
@@ -485,7 +478,7 @@ pub fn proper_list<'a>(allocator: &'a mut Allocator, sexp: NodePtr, store: bool)
     loop {
         match allocator.sexp(args_sexp) {
             SExp::Atom(_) => {
-                if args_sexp == allocator.null() {
+                if !non_nil(allocator, args_sexp) {
                     return Some(args);
                 } else {
                     return None;
@@ -590,7 +583,7 @@ pub fn flatten<'a>(
     loop {
         match allocator.sexp(tree) {
             SExp::Atom(b) => {
-                if tree == allocator.null() {
+                if !non_nil(allocator, tree) {
                     return;
                 } else {
                     res.push(tree);
