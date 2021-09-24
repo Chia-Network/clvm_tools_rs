@@ -809,18 +809,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
     }
 }
 
-// export function read_ir(args: str[]){
-//   const parser = new argparse.ArgumentParser({description: "Read script and tokenize to IR."});
-//   parser.add_argument(
-//     ["script"], {help: "script in hex or uncompiled text"});
-  
-//   const parsedArgs = parser.parse_args(args.slice(1));
-  
-//   const sexp = reader.read_ir(parsedArgs["script"] as string);
-//   const blob = stream_to_bin(f => sexp_to_stream(sexp, f));
-//   print(blob.hex());
-// }
-
 /*
 Copyright 2018 Chia Network Inc
 Licensed under the Apache License, Version 2.0 (the "License");

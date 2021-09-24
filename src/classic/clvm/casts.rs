@@ -105,53 +105,6 @@ pub fn bigint_from_bytes(b: &Bytes, option: Option<TConvertOption>) -> Number {
     return unsigned;
 }
 
-// export function int_to_bytes(v: number, option?: Partial<TConvertOption>): Bytes {
-//   if(v > Number.MAX_SAFE_INTEGER || v < Number.MIN_SAFE_INTEGER){
-//     throw new Error(`The int value is beyond ${v > 0 ? "MAX_SAFE_INTEGER" : "MIN_SAFE_INTEGER"}: ${v}`);
-//   }
-//   if(v === 0){
-//     return Bytes.NULL;
-//   }
-  
-//   const signed = (option && typeof option.signed === "boolean") ? option.signed : false;
-//   if(!signed && v < 0){
-//     throw new Error("OverflowError: can't convert negative int to unsigned");
-//   }
-  
-//   let byte_count = 1;
-//   const div = signed ? 1 : 0;
-//   const b16 = 65536;
-//   if(v > 0){
-//     let right_hand = (v + 1) * (div + 1);
-//     while((b16 ** ((byte_count-1)/2 + 1)) < right_hand){
-//       byte_count += 2;
-//     }
-//     right_hand = (v + 1) * (div + 1);
-//     while (2 ** (8 * byte_count) < right_hand) {
-//       byte_count++;
-//     }
-//   }
-//   else if(v < 0){
-//     let right_hand = (-v + 1) * (div + 1);
-//     while((b16 ** ((byte_count-1)/2 + 1)) < right_hand){
-//       byte_count += 2;
-//     }
-//     right_hand = -v * 2;
-//     while (2 ** (8 * byte_count) < right_hand) {
-//       byte_count++;
-//     }
-//   }
-  
-//   const extraByte = signed && v > 0 && ((v >> ((byte_count-1)*8)) & 0x80) > 0 ? 1 : 0;
-//   const u8 = new Uint8Array(byte_count + extraByte);
-//   for(let i=0;i<byte_count;i++){
-//     const j = extraByte ? i+1 : i;
-//     u8[j] = (v >> (byte_count-i-1)*8) & 0xff;
-//   }
-  
-//   return new Bytes(u8);
-// }
-
 pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<Bytes, String> {
     let v = v_.clone();
 
@@ -159,8 +112,10 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
         return Ok(Bytes::new(None));
     }
 
+    let negative = v < bi_zero();
+
     let signed = option.map(|o| o.signed).unwrap_or_else(|| false);
-    if !signed && v < bi_zero() {
+    if !signed && negative {
         return Err("OverflowError: can't convert negative int to unsigned".to_string());
     }
     let mut byte_count = 1;
@@ -168,22 +123,22 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
     let b32 : u64 = 1_u64 << 32;
     let bval = b32.to_bigint().unwrap();
 
-    if v > bi_zero() {
-        let mut right_hand = (v.clone() + bi_one()) * (div.clone() + bi_one());
-        while pow(bval.clone(), (byte_count-1)/4 + 1) < right_hand {
-            byte_count += 4;
-        }
-        right_hand = (v.clone() + bi_one()) * (div.clone() + bi_one());
-        while pow(2_u32.to_bigint().unwrap(), 8 * byte_count) < right_hand {
-            byte_count += 1;
-        }
-    } else if v < bi_zero() {
+    if negative {
         let mut right_hand = (-(v.clone()) + bi_one()) * (div + bi_one());
         while pow(bval.clone(), (byte_count-1)/4 + 1) < right_hand {
             byte_count += 4;
         }
         right_hand = -(v.clone()) * 2.to_bigint().unwrap();
         while pow(2.to_bigint().unwrap(), 8 * byte_count) < right_hand {
+            byte_count += 1;
+        }
+    } else {
+        let mut right_hand = (v.clone() + bi_one()) * (div.clone() + bi_one());
+        while pow(bval.clone(), (byte_count-1)/4 + 1) < right_hand {
+            byte_count += 4;
+        }
+        right_hand = (v.clone() + bi_one()) * (div.clone() + bi_one());
+        while pow(2_u32.to_bigint().unwrap(), 8 * byte_count) < right_hand {
             byte_count += 1;
         }
     }
@@ -202,7 +157,13 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
     for i in 0..byte4_length {
         let num = u32_digits[i];
         let pointer = extra_byte + byte4_remain + (byte4_length-1 - i)*4;
-        set_u32(&mut dv, pointer, num);
+        let setval =
+            if negative {
+                (1_u64 << 32) - num as u64
+            } else {
+                num as u64
+            };
+        set_u32(&mut dv, pointer, setval as u32);
     }
 
     let lastbytes = u32_digits[u32_digits.len() - 1];
@@ -210,7 +171,13 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
     for i in 0..byte4_remain {
         let num = (lastbytes >> (8*i)) & bytes_bitmask;
         let pointer = extra_byte + byte4_remain-1-i;
-        set_u8(&mut dv, pointer, num as u8);
+        let setval =
+            if negative {
+                (1_u32 << 8) - num as u32
+            } else {
+                num as u32
+            };
+        set_u8(&mut dv, pointer, setval as u8);
     }
 
     return Ok(Bytes::new(Some(BytesFromType::Raw(dv))));

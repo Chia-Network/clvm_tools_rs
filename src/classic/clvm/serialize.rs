@@ -258,73 +258,6 @@ pub fn sexp_from_stream<'a>(
     return Err(EvalErr(allocator.null(), "No value left after conversion".to_string()));
 }
 
-// function _op_consume_sexp(f: Stream){
-//   const blob = f.read(1);
-//   if(blob.length === 0){
-//     throw new Error("bad encoding");
-//   }
-//   const b = blob.at(0);
-//   if(b === CONS_BOX_MARKER){
-//     return t(blob, 2);
-//   }
-//   return t(_consume_atom(f, b), 0);
-// }
-
-// function _consume_atom(f: Stream, b: number){
-//   if(b === 0x80){
-//     return Bytes.from([b]);
-//   }
-//   else if(b <= MAX_SINGLE_BYTE){
-//     return Bytes.from([b]);
-//   }
-  
-//   let bit_count = 0;
-//   let bit_mask = 0x80;
-//   let ll = b;
-  
-//   while(ll & bit_mask){
-//     bit_count += 1;
-//     ll &= 0xFF ^ bit_mask;
-//     bit_mask >>= 1;
-//   }
-  
-//   let size_blob = Bytes.from([ll]);
-//   if(bit_count > 1){
-//     const ll2 = f.read(bit_count-1);
-//     if(ll2.length !== bit_count-1){
-//       throw new Error("bad encoding");
-//     }
-//     size_blob = size_blob.concat(ll2);
-//   }
-  
-//   const size = int_from_bytes(size_blob);
-//   if(size >= 0x400000000){
-//     throw new Error("blob too large");
-//   }
-//   const blob = f.read(size);
-//   if(blob.length !== size){
-//     throw new Error("bad encoding");
-//   }
-//   return Bytes.from([b]).concat(size_blob.subarray(1)).concat(blob);
-// }
-
-/*
-instead of parsing the input stream, this function pulls out all the bytes
-that represent on S-expression tree, and returns them. This is more efficient
-than parsing and returning a python S-expression tree.
- */
-// export function sexp_buffer_from_stream(f: Stream): Bytes {
-//   const buffer = new Stream();
-//   let depth = 1;
-//   while(depth > 0){
-//     depth -= 1;
-//     const [buf, d] = _op_consume_sexp(f) as [Bytes, number];
-//     depth += d;
-//     buffer.write(buf);
-//   }
-//   return buffer.getValue();
-// }
-
 pub fn atom_from_stream<'a>(allocator: &'a mut Allocator, f: &mut Stream, b_: u8, _to_sexp_f: Box<dyn TToSexpF<'a>>) -> Result<NodePtr, EvalErr> {
     let mut b = b_;
 
@@ -340,7 +273,7 @@ pub fn atom_from_stream<'a>(allocator: &'a mut Allocator, f: &mut Stream, b_: u8
 
     while (b & bit_mask) != 0 {
         bit_count += 1;
-        b &= 0xFF ^ bit_mask;
+        b ^= bit_mask;
         bit_mask >>= 1;
     }
 

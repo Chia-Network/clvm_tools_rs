@@ -67,9 +67,6 @@ pub fn compile_clvm(input_path: &String, output_path: &String, search_paths: &Ve
                 _ <- f.write_all(&result_stream.get_value().hex().as_bytes()).map_err(
                     |_| format!("failed to write to {}", output_path)
                 );
-                _ <- f.write_all(&"\n".as_bytes()).map_err(
-                    |_| format!("failed to finish {}", output_path)
-                );
                 Ok(output_path.to_string())
             }
         } else {

@@ -9,8 +9,12 @@ use clvm_rs::allocator::{
 };
 use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::t;
+use crate::classic::clvm::__type_compatibility__::{
+    Stream,
+    t
+};
 use crate::classic::clvm_tools::cmds::{
+    launch_tool,
     OpcConversion,
     OpdConversion,
     TConversion
@@ -105,6 +109,23 @@ fn compile_program<'a>(
     );
 
     return res.map(|x| disassemble(allocator, x.1));
+}
+
+#[test]
+fn quoted_negative() {
+    let mut s = Stream::new(None);
+    launch_tool(
+        &mut s,
+        &vec!(
+            "run".to_string(),
+            "-d".to_string(),
+            "(q . -3)".to_string()
+        ),
+        &"run".to_string(),
+        2
+    );
+    let result = s.get_value().decode().trim().to_string();
+    assert_eq!(result, "81fd".to_string());
 }
 
 #[test]
@@ -325,4 +346,97 @@ fn map_6() {
         program.to_string()
     );
     assert_eq!(result, Ok("(64 36 16 4)".to_string()));
+}
+
+#[test]
+fn pool_member_innerpuz() {
+    let mut testpath = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    testpath.push("resources/tests/stage_2");
+    let program = indoc! {"
+        (mod (POOL_PUZZLE_HASH
+              P2_SINGLETON_PUZZLE_HASH
+              OWNER_PUBKEY
+              POOL_REWARD_PREFIX
+              WAITINGROOM_PUZHASH
+              Truths
+              p1
+              pool_reward_height
+              )
+        
+        
+          ; POOL_PUZZLE_HASH is commitment to the pool's puzzle hash
+          ; P2_SINGLETON_PUZZLE_HASH is the puzzle hash for your pay to singleton puzzle
+          ; OWNER_PUBKEY is the farmer pubkey which authorises a travel
+          ; POOL_REWARD_PREFIX is network-specific data (mainnet vs testnet) that helps determine if a coin is a pool reward
+          ; WAITINGROOM_PUZHASH is the puzzle_hash you'll go to when you iniate the leaving process
+        
+          ; Absorbing money if pool_reward_height is an atom
+          ; Escaping if pool_reward_height is ()
+        
+          ; p1 is pool_reward_amount if absorbing money
+          ; p1 is extra_data key_value_list if escaping
+        
+          ; pool_reward_amount is the value of the coin reward - this is passed in so that this puzzle will still work after halvenings
+          ; pool_reward_height is the block height that the reward was generated at. This is used to calculate the coin ID.
+          ; key_value_list is signed extra data that the wallet may want to publicly announce for syncing purposes
+        
+          (include condition_codes.clvm)
+          (include singleton_truths.clib)
+        
+          ; takes a lisp tree and returns the hash of it
+          (defun sha256tree (TREE)
+              (if (l TREE)
+                  (sha256 2 (sha256tree (f TREE)) (sha256tree (r TREE)))
+                  (sha256 1 TREE)
+              )
+          )
+        
+          (defun-inline calculate_pool_reward (pool_reward_height P2_SINGLETON_PUZZLE_HASH POOL_REWARD_PREFIX pool_reward_amount)
+            (sha256 (logior POOL_REWARD_PREFIX (logand (- (lsh (q . 1) (q . 128)) (q . 1)) pool_reward_height)) P2_SINGLETON_PUZZLE_HASH pool_reward_amount)
+          )
+        
+          (defun absorb_pool_reward (POOL_PUZZLE_HASH my_inner_puzzle_hash my_amount pool_reward_amount pool_reward_id)
+            (list
+                (list CREATE_COIN my_inner_puzzle_hash my_amount)
+                (list CREATE_COIN POOL_PUZZLE_HASH pool_reward_amount)
+                (list CREATE_PUZZLE_ANNOUNCEMENT pool_reward_id)
+                (list ASSERT_COIN_ANNOUNCEMENT (sha256 pool_reward_id '$'))
+            )
+          )
+        
+          (defun-inline travel_to_waitingroom (OWNER_PUBKEY WAITINGROOM_PUZHASH my_amount extra_data)
+            (list (list AGG_SIG_ME OWNER_PUBKEY (sha256tree extra_data))
+                  (list CREATE_COIN WAITINGROOM_PUZHASH my_amount)
+            )
+          )
+        
+          ; main
+        
+          (if pool_reward_height
+            (absorb_pool_reward POOL_PUZZLE_HASH
+                                (my_inner_puzzle_hash_truth Truths)
+                                (my_amount_truth Truths)
+                                p1
+                                (calculate_pool_reward pool_reward_height P2_SINGLETON_PUZZLE_HASH POOL_REWARD_PREFIX p1)
+            )
+            (travel_to_waitingroom OWNER_PUBKEY WAITINGROOM_PUZHASH (my_amount_truth Truths) p1)
+            )
+          )
+        )
+    "};
+    let desired = "(a (q 2 (i 767 (q 2 22 (c 2 (c 5 (c 1215 (c 1727 (c 383 (c (sha256 (logior 47 (logand (q . 0x00ffffffffffffffffffffffffffffffff) 767)) 11 383) ()))))))) (q 4 (c 8 (c 23 (c (a 30 (c 2 (c 383 ()))) ()))) (c (c 28 (c 95 (c 1727 ()))) ()))) 1) (c (q (50 61 . 51) 62 (c (c 28 (c 11 (c 23 ()))) (c (c 28 (c 5 (c 47 ()))) (c (c 10 (c 95 ())) (c (c 20 (c (sha256 95 (q . 36)) ())) ())))) 2 (i (l 5) (q 11 (q . 2) (a 30 (c 2 (c 9 ()))) (a 30 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) 1))".to_string();
+    let mut s = Stream::new(None);
+    launch_tool(
+        &mut s,
+        &vec!(
+            "run".to_string(),
+            "-i".to_string(),
+            testpath.into_os_string().into_string().unwrap(),
+            program.to_string()
+        ),
+        &"run".to_string(),
+        2
+    );
+    let result = s.get_value().decode().trim().to_string();
+    assert_eq!(result, desired);
 }
