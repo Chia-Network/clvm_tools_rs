@@ -169,7 +169,11 @@ pub fn consume_atom(s: &mut IRReader, b: &Bytes) -> Option<IRRepr> {
     loop {
         let b = s.read(1);
         if b.length() == 0 {
-            return None;
+            if result_vec.len() == 0 {
+                return None;
+            } else {
+                return Some(interpret_atom_value(&result_vec));
+            }
         }
 
         if b.at(0) == '(' as u8 || b.at(0) == ')' as u8 || is_space(b.at(0)) {
