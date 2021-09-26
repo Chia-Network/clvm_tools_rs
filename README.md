@@ -12,6 +12,8 @@ Some reasons for doing this are:
  
  - I wrote a new compiler with a simpler, less intricate structure that should be easier to improve and verify in the future in ocaml: [ochialisp](https://github.com/prozacchiwawa/ochialisp).
 
+ - Also it's faster even in this unoptimized form.
+
 All acceptance tests i've brought over so far work, and more are being added.
 As of now, I'm not aware of anything that shouldn't be authentic when running
 these command line tools from clvm_tools in their equivalents in this repository
@@ -36,3 +38,10 @@ The directory structure is expected to be:
     src/compiler <-- a newer compiler (ochialisp) with a simpler
                      structure.  My expectation is that run --std=cl21
                      will select the new compiler when it's available.
+
+Use with chia-blockchain
+===
+
+    # Activate your venv, then
+    $ maturin develop --release
+
