@@ -852,3 +852,12 @@ fn constant_optimize_test_from_file(src: String) -> (String, String) {
         });
     }).unwrap();
 }
+
+#[test]
+fn test_optimize_1() {
+    let src = "(\"opt\" (\"com\" (q 29041 (\"opt\" (\"com\" (q \"unquote\" \"BODY\") (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))) (q (\"list\" (a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)) (\"defmacro\" (c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q)))))) (q (\"BODY\" 2))))".to_string();
+    assert_eq!(
+        test_optimizer(src),
+        "(q 4 (q . \"opt\") (c (c (q . \"com\") (c (c (q . 1) 2) (q (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))) ()))".to_string()
+    );
+}

@@ -221,7 +221,7 @@ pub fn compile_symbols(
 
 // # Transform "quote" to "q" everywhere. Note that quote will not be compiled if behind qq.
 // # Overrides symbol table defns.
-pub fn lower_quote(
+fn lower_quote_(
     allocator: &mut Allocator,
     prog: NodePtr
 ) -> Result<NodePtr, EvalErr> {
@@ -238,34 +238,15 @@ pub fn lower_quote(
             match allocator.sexp(qlist[0]) {
                 SExp::Atom(q) => {
                     if allocator.buf(&q).to_vec() == "quote".as_bytes().to_vec() {
-                        // Note: quote should have exactly one arg, so the length of
-                        // quoted list should be 2: "(quote arg)"
-                        if qlist.len() == 1 {
-                            return Ok(allocator.null());
-                        } else if qlist.len() > 2 {
-                            return Err(EvalErr(prog, format!("Compilation error while compiling [{:?}]. quote takes exactly one argument.", disassemble(allocator, prog))));
+                        if qlist.len() != 2 {
+                            // quoted list should be 2: "(quote arg)"
+                            return Err(EvalErr(prog, format!("Compilation error while compiling [{}]. quote takes exactly one argument.", disassemble(allocator, prog))));
                         }
 
+                        // Note: quote should have exactly one arg, so the length of
                         return m! {
                             lowered <- lower_quote(allocator, qlist[1]);
                             quote(allocator, lowered)
-                        };
-                    } else {
-                        // XXX Note that this recognizes potentially unintended
-                        // syntax, in that (sha256 3 quote ()) is valid in this
-                        // code.  It is corrected in the new compiler but left
-                        // here in case this bug is exploited.
-                        // Like a good neighbor, UB is there☺
-                        match allocator.sexp(prog) {
-                            SExp::Pair(f,r) => {
-                                return m! {
-                                    first <- lower_quote(allocator, f);
-                                    rest <- lower_quote(allocator, r);
-                                    allocator.new_pair(first, rest)
-                                };
-                            },
-                            SExp::Atom(_) => { }
-
                         };
                     }
                 },
@@ -275,7 +256,41 @@ pub fn lower_quote(
         _ => { }
     }
 
+    // XXX Note that this recognizes potentially unintended
+    // syntax, in that (sha256 3 quote ()) is valid in this
+    // code.  It is corrected in the new compiler but left
+    // here in case this bug is exploited.
+    // Like a good neighbor, UB is there☺
+    match allocator.sexp(prog) {
+        SExp::Pair(f,r) => {
+            return m! {
+                first <- lower_quote(allocator, f);
+                rest <- lower_quote(allocator, r);
+                allocator.new_pair(first, rest)
+            };
+        },
+        SExp::Atom(_) => { }
+    }
+
     return Ok(prog);
+}
+
+pub fn lower_quote(
+    allocator: &mut Allocator,
+    prog: NodePtr
+) -> Result<NodePtr, EvalErr> {
+    let res = lower_quote_(allocator, prog);
+    if DIAG_OUTPUT {
+        res.as_ref().map(|x| {
+            print!(
+                "LOWER_QUOTE {} TO {}\n",
+                disassemble(allocator, prog),
+                disassemble(allocator, *x)
+            );
+            x
+        });
+    }
+    res
 }
 
 fn try_expand_macro_for_atom_(
@@ -653,7 +668,7 @@ pub fn do_com_prog(
 
 fn do_com_prog_(
     allocator: &mut Allocator,
-    prog: NodePtr,
+    prog_: NodePtr,
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
     run_program: Rc<dyn TRunProgram>
@@ -671,7 +686,7 @@ fn do_com_prog_(
 
     // lower "quote" to "q"
     return m! {
-        prog <- lower_quote(allocator, prog);
+        prog <- lower_quote(allocator, prog_);
 
         // quote atoms
         match allocator.sexp(prog) {
