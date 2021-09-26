@@ -19,7 +19,6 @@ use clvm_rs::run_program::{
     PreEval,
     run_program
 };
-use crate::classic::clvm_tools::binutils::disassemble;
 
 pub type TOperatorDict = HashMap<String, Vec<u8>>;
 

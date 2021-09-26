@@ -6,8 +6,7 @@ use clvm_rs::allocator::{
 };
 
 use crate::classic::clvm_tools::binutils::{
-    assemble,
-    disassemble
+    assemble
 };
 use crate::classic::clvm_tools::stages::stage_0::{
     TRunProgram

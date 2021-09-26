@@ -1,6 +1,5 @@
 use core::cell::RefCell;
 
-use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::io;
 use std::io::Write;
@@ -15,10 +14,6 @@ use std::sync::{
     Arc,
     Mutex
 };
-use std::sync::atomic::{
-    AtomicUsize,
-    Ordering
-};
 use std::thread;
 use std::time::SystemTime;
 use std::fs;
@@ -27,8 +22,7 @@ use core::cmp::max;
 
 use clvm_rs::allocator::{
     Allocator,
-    NodePtr,
-    SExp
+    NodePtr
 };
 use clvm_rs::reduction::EvalErr;
 use clvm_rs::run_program::PreEval;
@@ -449,11 +443,11 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
     let keywords =
         match parsedArgs.get("no_keywords") {
             None => KEYWORD_FROM_ATOM(),
-            Some(ArgumentValue::ArgBool(b)) => &empty_map,
+            Some(ArgumentValue::ArgBool(_b)) => &empty_map,
             _ => KEYWORD_FROM_ATOM()
         };
 
-    let mut run_program: Rc<dyn TRunProgram>;
+    let run_program: Rc<dyn TRunProgram>;
     match parsedArgs.get("include") {
         Some(ArgumentValue::ArgArray(v)) => {
             let mut bare_paths = Vec::with_capacity(v.len());
@@ -473,12 +467,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
     let mut allocator = Allocator::new();
 
     let mut input_serialized = None;
-    let mut input_sexp = None;
+    let mut input_sexp;
 
     let time_start = SystemTime::now();
     let mut time_read_hex = SystemTime::now();
     let mut time_assemble = SystemTime::now();
-    let mut time_parse_input;
+    let time_parse_input;
 
     let mut input_program = "()".to_string();
     let mut input_args = "()".to_string();
@@ -582,7 +576,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
         });
 
     let pre_eval_fn: Rc<dyn Fn(&mut Allocator, NodePtr)> =
-        Rc::new(move |allocator, new_log| {
+        Rc::new(move |_allocator, new_log| {
             pre_eval_req_out.send(new_log);
             pre_eval_resp_in.recv().unwrap();
         });
@@ -687,7 +681,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
                     }
                     pre_out.send(());
                 },
-                Err(e) => { break; }
+                Err(_e) => { break; }
             }
         }
     });
@@ -706,7 +700,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
                     }
                     post_out.send(());
                 },
-                Err(e) => { break; }
+                Err(_e) => { break; }
             }
         }
     });
@@ -738,7 +732,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
 
             let _ =
                 match parsedArgs.get("time") {
-                    Some(ArgumentValue::ArgInt(t)) => {
+                    Some(ArgumentValue::ArgInt(_t)) => {
                         match parsedArgs.get("hex") {
                             Some(_) => {
                                 stdout.write_string(format!("read_hex: {}\n", time_read_hex.duration_since(time_start).unwrap().as_millis()));

@@ -7,8 +7,6 @@ use num_traits::{
     Num,
     zero
 };
-use unicode_segmentation::UnicodeSegmentation;
-
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
     BytesFromType
@@ -140,16 +138,14 @@ fn resume(p: SExpParseState) -> SExpParseResult {
 
 fn escape_quote(q: u8, s: &Vec<u8>) -> String {
     let mut res: Vec<char> = Vec::new();
-    let basic_escape =
-        s.iter().map(|ch| {
-            if *ch == q as u8 {
-                res.push('\\');
-                res.push(*ch as char);
-            } else {
-                res.push(*ch as char);
-            }
-        });
-
+    s.iter().map(|ch| {
+        if *ch == q as u8 {
+            res.push('\\');
+            res.push(*ch as char);
+        } else {
+            res.push(*ch as char);
+        }
+    });
     res.into_iter().collect()
 }
 
@@ -272,7 +268,7 @@ impl SExp {
 
                 v.append(&mut bi_bytes);
             },
-            SExp::QuotedString(_,q,s) => encode_integer_value(s, v),
+            SExp::QuotedString(_,_,s) => encode_integer_value(s, v),
             SExp::Atom(_,a) => encode_integer_value(a, v)
         }
     }
@@ -337,7 +333,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
             match this_char as char {
                 '\r' => resume(SExpParseState::CommentText(pl.clone(),t.to_vec())),
                 '\n' => resume(SExpParseState::Empty),
-                x => {
+                _ => {
                     let mut tcopy = t.to_vec();
                     tcopy.push(this_char);
                     resume(SExpParseState::CommentText(pl.ext(&loc), tcopy))
@@ -375,7 +371,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
             match this_char as char {
                 ')' => emit(Rc::new(SExp::Nil(pl.ext(&loc))),SExpParseState::Empty),
                 '.' => error(loc, &"Dot can't appear directly after begin paren".to_string()),
-                x => {
+                _ => {
                     match parse_sexp_step(loc.clone(), &SExpParseState::Empty, this_char) {
                         SExpParseResult::PEmit(o,p) => {
                             resume(SExpParseState::ParsingList(pl.ext(&loc), Rc::new(p), vec!(o)))
@@ -398,7 +394,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                     updated_list.push(Rc::new(parsed_atom));
                     emit(Rc::new(enlist(pl.clone(), updated_list)), SExpParseState::Empty)
                 },
-                (ch, _) => {
+                (_, _) => {
                     match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
                         SExpParseResult::PEmit(o,p) => {
                             let result = SExpParseState::ParsingList(pl.ext(&loc), Rc::new(p), vec!(o));
@@ -437,7 +433,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                         }
                     }
                 },
-                (ch, _) => {
+                (_, _) => {
                     match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
                         SExpParseResult::PEmit (o,p) => {
                             let mut list_copy = list_content.to_vec();

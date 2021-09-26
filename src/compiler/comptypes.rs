@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::compiler::sexp;
 use crate::compiler::sexp::{
     SExp
 };
 
-use crate::compiler::srcloc;
 use crate::compiler::srcloc::{
     Srcloc
 };

@@ -134,8 +134,7 @@ pub fn compile_qq(
      * (qq (a . B)) => (c (qq a) (qq B))
      */
 
-    let null = allocator.null();
-    let mut sexp = null;
+    let sexp;
 
     match first(allocator, args) {
         Err(e) => { return Err(e); },
@@ -199,10 +198,10 @@ pub fn compile_qq(
 
 pub fn compile_macros(
     allocator: &mut Allocator,
-    args: NodePtr,
+    _args: NodePtr,
     macro_lookup: NodePtr,
-    symbol_table: NodePtr,
-    run_program: Rc<dyn TRunProgram>,
+    _symbol_table: NodePtr,
+    _run_program: Rc<dyn TRunProgram>,
     _level: usize
 ) -> Result<NodePtr, EvalErr> {
     return quote(allocator, macro_lookup);
@@ -210,10 +209,10 @@ pub fn compile_macros(
 
 pub fn compile_symbols(
     allocator: &mut Allocator,
-    args: NodePtr,
-    macro_lookup: NodePtr,
+    _args: NodePtr,
+    _macro_lookup: NodePtr,
     symbol_table: NodePtr,
-    run_program: Rc<dyn TRunProgram>,
+    _run_program: Rc<dyn TRunProgram>,
     _level: usize
 ) -> Result<NodePtr, EvalErr> {
     return quote(allocator, symbol_table);
@@ -398,15 +397,12 @@ fn transform_program_atom(
     allocator: &mut Allocator,
     prog: NodePtr,
     a: &AtomBuf,
-    macro_lookup: NodePtr,
-    symbol_table: NodePtr,
-    run_program: Rc<dyn TRunProgram>
+    symbol_table: NodePtr
 ) -> Response {
     if allocator.buf(&a).to_vec() == "@".as_bytes().to_vec() {
         return allocator.new_atom(NodePath::new(None).as_path().data()).
             map(|x| Reduction(1, x));
     }
-    let atom_name = allocator.buf(a).to_vec();
     match proper_list(allocator, symbol_table, true) {
         None => { },
         Some(symlist) => {
@@ -431,8 +427,7 @@ fn transform_program_atom(
                                     return Ok(Reduction(1, value));
                                 }
                             },
-                            SExp::Pair(l,r) => {
-                            }
+                            SExp::Pair(_,_) => { }
                         }
                     }
                 }
@@ -497,7 +492,6 @@ fn find_symbol_match(
     r: NodePtr,
     symbol_table: NodePtr
 ) -> Result<Option<SymbolResult>, EvalErr> {
-    let dissym = disassemble(allocator, symbol_table);
     match proper_list(allocator, symbol_table, true) {
         Some(symlist) => {
             for sym in symlist {
@@ -523,7 +517,7 @@ fn find_symbol_match(
                                 }
                             },
 
-                            SExp::Pair(l,r) => { }
+                            SExp::Pair(_,_) => { }
                         }
                     },
                     _ => { }
@@ -587,7 +581,7 @@ fn compile_application(
                         symbol_table
                     ).and_then(|x| match x {
                         Some(SymbolResult::Direct(v)) => { Ok(v) },
-                        Some(SymbolResult::Matched(symbol,value)) => {
+                        Some(SymbolResult::Matched(_symbol,value)) => {
                             return match proper_list(allocator, rest, true) {
                                 Some(proglist) => {
                                     m! {
@@ -695,9 +689,7 @@ fn do_com_prog_(
                     allocator,
                     prog,
                     &a,
-                    macro_lookup,
-                    symbol_table,
-                    run_program.clone()
+                    symbol_table
                 )
             },
             SExp::Pair(operator,prog_rest) => {

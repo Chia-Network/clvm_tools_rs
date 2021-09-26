@@ -9,7 +9,6 @@ use crate::classic::clvm::__type_compatibility__::{
     BytesFromType
 };
 use crate::classic::clvm::sexp::equal_to;
-use crate::classic::clvm_tools::binutils::disassemble;
 
 lazy_static! {
     pub static ref ATOM_MATCH : Vec<u8> = {
@@ -119,7 +118,7 @@ pub fn match_sexp<'a>(
                 },
                 _ => {
                     match allocator.sexp(sexp) {
-                        SExp::Atom(sexp_buf) => { return None; },
+                        SExp::Atom(_) => { return None; },
                         SExp::Pair(sleft,sright) => {
                             return match_sexp(allocator, pleft, sleft, known_bindings).and_then(|new_bindings| {
                                 return match_sexp(allocator, pright, sright, new_bindings);

@@ -25,7 +25,6 @@ use crate::classic::clvm::sexp::{
     proper_list,
     rest
 };
-use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::NodePath::NodePath;
 use crate::classic::clvm_tools::stages::assemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
@@ -431,7 +430,7 @@ fn symbol_table_for_tree(
         SExp::Atom(_) => {
             return Ok(vec!((tree, root_node.as_path().data().to_vec())));
         },
-        SExp::Pair(f,r) => {
+        SExp::Pair(_,_) => {
             return m! {
                 let left_bytes = NodePath::new(None).first();
                 let right_bytes = NodePath::new(None).rest();
@@ -584,7 +583,7 @@ pub fn compile_mod(
     allocator: &mut Allocator,
     args: NodePtr,
     macro_lookup: NodePtr,
-    symbol_table: NodePtr,
+    _symbol_table: NodePtr,
     run_program: Rc<dyn TRunProgram>,
     _level: usize
 ) -> Result<NodePtr, EvalErr> {

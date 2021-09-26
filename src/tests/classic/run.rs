@@ -33,7 +33,7 @@ fn add_1_test() {
 
 #[test]
 fn brun_y_1_test() {
-    let mut testpath = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let testpath = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut sym_path = testpath.clone();
     sym_path.push("resources/tests/stage_2/brun-y-1.sym");
     assert_eq!(

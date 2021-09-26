@@ -5,8 +5,7 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::{
     Allocator,
-    NodePtr,
-    SExp
+    NodePtr
 };
 use clvm_rs::reduction::EvalErr;
 

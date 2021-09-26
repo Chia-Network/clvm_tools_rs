@@ -20,7 +20,6 @@ use crate::classic::clvm::__type_compatibility__::{
     Stream
 };
 use crate::classic::clvm::serialize::sexp_to_stream;
-use crate::classic::clvm_tools::binutils::disassemble;
 
 #[derive(Debug)]
 pub enum CastableType {
@@ -33,60 +32,11 @@ pub enum CastableType {
     TupleOf(Rc<CastableType>, Rc<CastableType>)
 }
 
-// export function looks_like_clvm_object(o: any): o is CLVMObject {
-//   if(!o || typeof o !== "object"){
-//     return false;
-//   }
-  
-//   return Boolean("atom" in o && "pair" in o);
-// }
-
-// // this function recognizes some common types and turns them into plain bytes
-// export function convert_atom_to_bytes(v: any): Bytes {
-//   if(isBytes(v)){
-//     return v;
-//   }
-//   else if(typeof v === "string"){
-//     return Bytes.from(v, "utf8");
-//   }
-//   else if(typeof v === "number"){
-//     return int_to_bytes(v, {signed: true});
-//   }
-//   else if(typeof v === "boolean"){ // Tips. In Python, isinstance(True, int) == True. 
-//     return int_to_bytes(v ? 1 : 0, {signed: true});
-//   }
-//   else if(typeof v === "bigint"){
-//     return bigint_to_bytes(v, {signed: true});
-//   }
-//   else if(v === None || !v){
-//     return Bytes.NULL;
-//   }
-//   else if(isIterable(v)){
-//     if(v.length > 0){
-//       throw new Error(`can't cast ${JSON.stringify(v)} to bytes`);
-//     }
-//     return Bytes.NULL
-//   }
-//   else if(typeof v.serialize === "function"){
-//     return Bytes.from(v, "G1Element");
-//   }
-  
-//   throw new Error(`can't cast ${JSON.stringify(v)} to bytes`);
-// }
-
 #[derive(Debug)]
 pub enum SexpStackOp {
     OpConvert,
     OpSetPair(bool, usize),
     OpPrepend(usize)
-}
-
-// type operations = typeof op_convert | typeof op_set_left | typeof op_set_right | typeof op_prepend_list;
-// type op_target = number | None;
-
-fn replace_stack_top(stack : &mut Vec<CastableType>, v : CastableType) {
-    let vlen = stack.len();
-    stack[vlen - 1] = v;
 }
 
 pub fn to_sexp_type<'a>(allocator: &'a mut Allocator, value: CastableType) -> Result<NodePtr, EvalErr> {
@@ -582,7 +532,7 @@ pub fn flatten<'a>(
 
     loop {
         match allocator.sexp(tree) {
-            SExp::Atom(b) => {
+            SExp::Atom(_) => {
                 if !non_nil(allocator, tree) {
                     return;
                 } else {

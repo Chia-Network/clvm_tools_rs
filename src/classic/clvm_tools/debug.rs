@@ -8,12 +8,9 @@ use clvm_rs::allocator::{
 use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{
-    Bytes,
-    BytesFromType,
     Stream
 };
 use crate::classic::clvm::serialize::{
-    SimpleCreateCLVMObject,
     sexp_to_stream
 };
 use crate::classic::clvm::sexp::{
@@ -108,7 +105,7 @@ fn text_trace(
     env_: NodePtr,
     result: &String
 ) {
-    let mut symbol_val = "".to_string();
+    let symbol_val;
     let mut env = env_;
     match symbol {
         Some(sym) => {
@@ -130,7 +127,7 @@ fn table_trace(
     allocator: &mut Allocator,
     stdout: &mut Stream,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
-    form: NodePtr, symbol: Option<String>, env: NodePtr, result: &String
+    form: NodePtr, _symbol: Option<String>, env: NodePtr, result: &String
 ) {
     let (sexp, args) =
         match allocator.sexp(form) {

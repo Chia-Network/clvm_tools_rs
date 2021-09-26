@@ -364,7 +364,6 @@ where
 }
 
 const BUF_ALLOC_MULTIPLIER : usize = 4;
-const STREAM_INITIAL_BUFFER_SIZE : usize = 64*1024;
 
 pub type Record<K,V> = HashMap<K,V>;
 

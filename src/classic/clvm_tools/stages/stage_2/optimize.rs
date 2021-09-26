@@ -265,7 +265,6 @@ fn sub_args<'a>(allocator: &'a mut Allocator, sexp: NodePtr, new_args: NodePtr) 
                         _ => { Ok(first_pre) }
                     };
 
-                let args = vec!(first);
                 match proper_list(allocator, rest, true) {
                     Some(tail_args) => m! {
                         res <- mapM(
@@ -671,7 +670,7 @@ pub fn optimize_sexp_<'a>(allocator: &mut Allocator, r_: NodePtr, eval_f: Rc<dyn
 
         match allocator.sexp(r) {
             SExp::Atom(_) => { return Ok(r); }
-            SExp::Pair(first,rest) => {
+            SExp::Pair(_,_) => {
                 for opt in OPTIMIZERS.iter() {
                     name = opt.name.clone();
                     match opt.invoke(allocator, r, eval_f.clone()) {
