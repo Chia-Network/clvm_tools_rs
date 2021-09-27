@@ -1,3 +1,5 @@
+use core::cell::RefCell;
+
 use std::rc::Rc;
 use std::collections::{
     HashMap,
@@ -23,6 +25,10 @@ use crate::classic::clvm::{
     KEYWORD_FROM_ATOM,
     KEYWORD_TO_ATOM
 };
+use crate::classic::clvm::__type_compatibility__::{
+    Bytes,
+    BytesFromType
+};
 use crate::classic::clvm::sexp::{
     proper_list,
     enlist,
@@ -38,6 +44,7 @@ use crate::classic::clvm_tools::binutils::{
 };
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::NodePath::NodePath;
+use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::{
     DefaultProgramRunner,
     TRunProgram
@@ -96,6 +103,7 @@ fn unquote_atom() -> Vec<u8> { return "unquote".as_bytes().to_vec(); }
 
 #[derive(Clone)]
 pub struct DoComProg {
+    compile_outcomes: RefCell<HashMap<String, String>>,
     runner: Rc<dyn TRunProgram>
 }
 
@@ -759,6 +767,28 @@ fn do_com_prog_(
     };
 }
 
+fn dequote(
+    allocator: &mut Allocator,
+    prog: NodePtr
+) -> NodePtr {
+    match allocator.sexp(prog) {
+        SExp::Atom(_) => { prog },
+        SExp::Pair(l,r) => {
+            match allocator.sexp(l) {
+                SExp::Atom(b) => {
+                    let v = allocator.buf(&b).to_vec();
+                    if v == "opt".as_bytes().to_vec() {
+                        r
+                    } else {
+                        prog
+                    }
+                },
+                _ => { prog }
+            }
+        }
+    }
+}
+
 impl OperatorHandler for DoComProg {
     fn op(
         &self,
@@ -788,14 +818,26 @@ impl OperatorHandler for DoComProg {
                     }
                 }
 
-                return do_com_prog(
+                // XXX enable extra info in sym file.
+                // let dequoted = dequote(allocator, prog);
+                // let sexp_dis = disassemble(allocator, dequoted);
+
+                do_com_prog(
                     allocator,
                     773,
                     prog,
                     macro_lookup,
                     symbol_table,
                     self.runner.clone()
-                );
+                ).map(|x| {
+                    // XXX Enable extra info in sym file.
+                    // self.compile_outcomes.replace_with(|co| {
+                    //     let key = sha256tree(allocator, x.1).hex();
+                    //     co.insert(key, sexp_dis);
+                    //     co.clone()
+                    // });
+                    x
+                })
             },
             _ => {
                 return Err(EvalErr(sexp, "Program is not a pair in do_com_prog".to_string()));
@@ -806,11 +848,56 @@ impl OperatorHandler for DoComProg {
 
 impl DoComProg {
     pub fn new() -> Self {
-        return DoComProg { runner: Rc::new(DefaultProgramRunner::new()) };
+        return DoComProg {
+            compile_outcomes: RefCell::new(HashMap::new()),
+            runner: Rc::new(DefaultProgramRunner::new())
+        };
     }
 
     pub fn set_runner(&mut self, runner: Rc<dyn TRunProgram>) {
         self.runner = runner;
+    }
+
+    pub fn set_symbol_table(
+        &self,
+        allocator: &mut Allocator,
+        table: NodePtr
+    ) -> Result<Reduction, EvalErr> {
+        match proper_list(allocator, table, true).
+            and_then(|t| proper_list(allocator, t[0], true))
+        {
+            Some(symtable) => {
+                for kv in symtable.iter() {
+                    match allocator.sexp(*kv) {
+                        SExp::Pair(hash,name) => {
+                            match (allocator.sexp(hash), allocator.sexp(name)) {
+                                (SExp::Atom(hash), SExp::Atom(name)) => {
+                                    let hash_text =
+                                        Bytes::new(Some(BytesFromType::Raw(allocator.buf(&hash).to_vec()))).decode();
+                                    let name_text =
+                                        Bytes::new(Some(BytesFromType::Raw(allocator.buf(&name).to_vec()))).decode();
+
+                                    self.compile_outcomes.replace_with(|co| {
+                                        let mut result = co.clone();
+                                        result.insert(hash_text, name_text);
+                                        result
+                                    });
+                                },
+                                _ => {}
+                            }
+                        },
+                        _ => {}
+                    }
+                }
+            },
+            _ => {}
+        };
+
+        Ok(Reduction(1, allocator.null()))
+    }
+
+    pub fn get_compiles(&self) -> HashMap<String, String> {
+        return self.compile_outcomes.borrow().clone();
     }
 }
 

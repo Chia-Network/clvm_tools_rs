@@ -25,6 +25,7 @@ use crate::classic::clvm::sexp::{
     proper_list,
     rest
 };
+use crate::classic::clvm_tools::debug::build_symbol_dump;
 use crate::classic::clvm_tools::NodePath::NodePath;
 use crate::classic::clvm_tools::stages::assemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
@@ -674,12 +675,23 @@ pub fn compile_mod(
                         &vec!(opt_atom, quoted_apply_list)
                     );
 
-                // let _ = build_symbol_dump(
-                //     allocator,
-                //     all_constants_lookup,
-                //     run_program.clone(),
-                //     "main.sym"
-                // );
+                symbols <- build_symbol_dump(
+                    allocator,
+                    all_constants_lookup,
+                    run_program.clone()
+                );
+
+                to_run <- assemble(
+                    allocator,
+                    &"(_set_symbol_table 1)".to_string()
+                );
+
+                _ <- run_program.run_program(
+                    allocator,
+                    to_run,
+                    symbols,
+                    None
+                );
 
                 Ok(opt_list)
             }

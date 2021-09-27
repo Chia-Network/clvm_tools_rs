@@ -58,7 +58,6 @@ use crate::classic::clvm_tools::debug::trace_pre_eval;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{
-    DefaultProgramRunner,
     RunProgramOption,
     TRunProgram
 };
@@ -325,6 +324,19 @@ fn fix_log(
     }
 }
 
+fn write_sym_output(
+    compiled_lookup: &HashMap<String, String>,
+    path: &String
+) -> Result<(), String> { m! {
+    output <- serde_json::to_string(compiled_lookup).map_err(|_| {
+        "failed to serialize to json".to_string()
+    });
+
+    fs::write(path.clone(), output).map_err(|_| {
+        format!("failed to write {}", path)
+    }).map(|_| ())
+} }
+
 pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, default_stage: u32) {
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
@@ -427,6 +439,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
             set_default(ArgumentValue::ArgInt(11000000000)).
             set_help("Maximum cost".to_string())
     );
+    parser.add_argument(
+        vec!("--human".to_string()),
+        Argument::new().
+            set_action(TArgOptionAction::StoreTrue).
+            set_help("Human readable trace output".to_string())
+    );
 
     let arg_vec = args[1..].to_vec();
     let parsedArgs: HashMap<String, ArgumentValue>;
@@ -447,6 +465,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
             _ => KEYWORD_FROM_ATOM()
         };
 
+    let dpr;
     let run_program: Rc<dyn TRunProgram>;
     match parsedArgs.get("include") {
         Some(ArgumentValue::ArgArray(v)) => {
@@ -457,10 +476,14 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
                     _ => { }
                 }
             }
-            run_program = run_program_for_search_paths(&bare_paths);
+            let special_runner = run_program_for_search_paths(&bare_paths);
+            dpr = special_runner.clone();
+            run_program = special_runner;
         },
         _ => {
-            run_program = Rc::new(DefaultProgramRunner::new());
+            let ordinary_runner = run_program_for_search_paths(&Vec::new());
+            dpr = ordinary_runner.clone();
+            run_program = ordinary_runner;
         }
     }
 
@@ -771,6 +794,11 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
     let output = collapse(res.map_err(|ex| {
         format!("FAIL: {} {}", ex.1, disassemble_with_kw(&mut allocator, ex.0, keywords))
     }));
+
+    let compile_sym_out = dpr.get_compiles();
+    if compile_sym_out.len() > 0 {
+        write_sym_output(&compile_sym_out, &"main.sym".to_string());
+    }
 
     stdout.write_string(format!("{}\n", output));
 

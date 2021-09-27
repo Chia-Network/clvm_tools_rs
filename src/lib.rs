@@ -10,6 +10,9 @@ extern crate indoc;
 #[macro_use]
 extern crate do_notation;
 
+#[macro_use]
+extern crate pyo3;
+
 mod util;
 
 pub mod classic;

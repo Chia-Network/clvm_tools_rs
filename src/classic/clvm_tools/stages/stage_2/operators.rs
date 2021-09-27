@@ -1,6 +1,7 @@
 use std::cell::{
     RefCell
 };
+use std::collections::HashMap;
 use std::fs;
 use std::rc::Rc;
 use std::path::PathBuf;
@@ -32,6 +33,7 @@ use crate::classic::clvm::sexp::atom;
 
 use crate::classic::clvm_tools::binutils::{
     assemble_from_ir,
+    disassemble,
     disassemble_to_ir_with_kw
 };
 use crate::classic::clvm_tools::ir::reader::read_ir;
@@ -178,6 +180,8 @@ impl OperatorHandler for RunProgramWithSearchPaths {
                 self.do_com_prog.borrow().op(allocator, op, sexp, max_cost)
             } else if op_vec == vec!('o' as u8, 'p' as u8, 't' as u8) {
                 self.do_opt_prog.borrow().op(allocator, op, sexp, max_cost)
+            } else if op_vec == "_set_symbol_table".as_bytes().to_vec() {
+                self.do_com_prog.borrow().set_symbol_table(allocator, sexp)
             } else {
                 Err(EvalErr(sexp, "unknown op".to_string()))
             }
@@ -217,6 +221,10 @@ impl RunProgramWithSearchPaths {
                 &"opt".as_bytes().to_vec(),
                 myself.clone()
             );
+            runner.add_handler(
+                &"_set_symbol_table".as_bytes().to_vec(),
+                myself.clone()
+            );
 
             return runner.clone();
         });
@@ -234,6 +242,10 @@ impl RunProgramWithSearchPaths {
 
     pub fn showtable(&self) -> String {
         return self.runner.borrow().router.showtable();
+    }
+
+    pub fn get_compiles(&self) -> HashMap<String, String> {
+        return self.do_com_prog.borrow().get_compiles();
     }
 }
 

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use clvm_rs::allocator::{
     Allocator,
@@ -15,11 +16,13 @@ use crate::classic::clvm::serialize::{
 };
 use crate::classic::clvm::sexp::{
     enlist,
-    rest,
-    proper_list
+    mapM,
+    proper_list,
+    rest
 };
 
 use crate::classic::clvm_tools::sha256tree::sha256tree;
+use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 // export const PRELUDE = `<html>
 // <head>
@@ -85,16 +88,36 @@ use crate::classic::clvm_tools::sha256tree::sha256tree;
 // }
 // */
 
-// export function build_symbol_dump(constants_lookup: Record<str, SExp>, run_program: TRunProgram, path: str){
-//   const compiled_lookup: Record<str, str> = {};
-//   const entries = Object.entries(constants_lookup);
-//   for(const [k, v] of entries){
-//     const [, v1] = run_program(v, SExp.null());
-//     compiled_lookup[sha256tree(v1).hex()] = h(k).decode();
-//   }
-//   const output = JSON.stringify(compiled_lookup);
-//   fs_write(path, output);
-// }
+pub fn build_symbol_dump(
+    allocator: &mut Allocator,
+    constants_lookup: HashMap<Vec<u8>, NodePtr>,
+    run_program: Rc<dyn TRunProgram>,
+) -> Result<NodePtr, EvalErr> {
+    let compiled_unrolled: Vec<(Vec<u8>, NodePtr)> =
+        constants_lookup.into_iter().collect();
+
+    m! {
+        map_result <- mapM(
+            allocator,
+            &mut compiled_unrolled.iter(),
+            &|allocator, kv| m! {
+                run_result <- run_program.run_program(
+                    allocator,
+                    kv.1,
+                    allocator.null(),
+                    None
+                );
+
+                let sha256 = sha256tree(allocator, run_result.1).hex();
+                sha_atom <- allocator.new_atom(&sha256.as_bytes().to_vec());
+                name_atom <- allocator.new_atom(&kv.0.clone());
+                allocator.new_pair(sha_atom, name_atom)
+            }
+        );
+
+        enlist(allocator, &map_result)
+    }
+}
 
 fn text_trace(
     allocator: &mut Allocator,
