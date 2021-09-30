@@ -252,64 +252,83 @@ pub fn run(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
-    sexp: Rc<SExp>,
-    context: Rc<SExp>
+    sexp_: Rc<SExp>,
+    context_: Rc<SExp>
 ) -> Result<Rc<SExp>, RunFailure> {
-    match sexp.borrow() {
-        SExp::Integer(l,v) => {
-            /* An integer picks a value from the context */
-            choose_path(
-                l.clone(),
-                v.clone(),
-                v.clone(),
-                context.clone(),
-                context.clone()
-            )
-        },
-        SExp::QuotedString (_,_,_) => {
-            Ok(sexp.clone())
-        },
-        SExp::Atom(l,v) => {
-            run(
-                allocator,
-                runner.clone(),
-                prim_map,
-                Rc::new(SExp::Integer(l.clone(), number_from_u8(v))),
-                context
-            )
-        },
-        SExp::Nil(l) => Ok(sexp.clone()),
-        SExp::Cons(l,a,b) => {
-            translate_head(
-                allocator,
-                runner.clone(),
-                prim_map.clone(),
-                l.clone(),
-                a.clone(),
-                context.clone()
-            ).and_then(|head| {
+    let mut sexp = sexp_.clone();
+    let mut context = context_.clone();
+
+    loop {
+        match sexp.borrow() {
+            SExp::Integer(l,v) => {
+                /* An integer picks a value from the context */
+                return choose_path(
+                    l.clone(),
+                    v.clone(),
+                    v.clone(),
+                    context.clone(),
+                    context.clone()
+                );
+            },
+            SExp::QuotedString (l,_,v) => {
+                sexp = Rc::new(SExp::Integer(l.clone(), number_from_u8(v)));
+            },
+            SExp::Atom(l,v) => {
+                sexp = Rc::new(SExp::Integer(l.clone(), number_from_u8(v)));
+            },
+            SExp::Nil(l) => { return Ok(sexp.clone()); },
+            SExp::Cons(l,a,b) => {
+                let head = translate_head(
+                    allocator,
+                    runner.clone(),
+                    prim_map.clone(),
+                    l.clone(),
+                    a.clone(),
+                    context.clone()
+                )?;
+
                 if atom_value(head.clone())? == bi_one() {
-                    Ok(b.clone())
-                } else {
-                    eval_args(
+                    return Ok(b.clone());
+                }
+
+                let tail = eval_args(
+                    allocator,
+                    runner.clone(),
+                    prim_map.clone(),
+                    b.clone(),
+                    context.clone()
+                )?;
+
+                if atom_value(head.clone())? != 2_i32.to_bigint().unwrap() {
+                    return apply_op(
                         allocator,
                         runner.clone(),
-                        prim_map,
-                        b.clone(),
-                        context.clone()
-                    ).and_then(
-                        |tail| {
-                            apply_op(
-                                allocator,
-                                runner.clone(),
-                                l.clone(),
-                                head.clone(),
-                                tail.clone()
-                            )
-                        }
-                    )
+                        l.clone(),
+                        head.clone(),
+                        tail.clone()
+                    );
                 }
-            })
+
+                // Handle apply here.
+                match b.proper_list() {
+                    None => {
+                        return Err(RunFailure::RunErr(
+                            b.loc(),
+                            format!("Bad parameter list for apply atom {}", b.to_string())
+                        ));
+                    },
+                    Some(l) => {
+                        if l.len() != 2 {
+                            return Err(RunFailure::RunErr(
+                                b.loc(),
+                                format!("Wrong parameter list length for apply atom {}", b.to_string())
+                            ));
+                        }
+                        sexp = Rc::new(l[0].clone());
+                        context = Rc::new(l[1].clone());
+                    }
+                }
+            }
         }
     }
 }
