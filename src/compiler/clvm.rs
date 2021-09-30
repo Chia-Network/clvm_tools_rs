@@ -20,11 +20,11 @@ use crate::classic::clvm_tools::stages::stage_0::{
     TRunProgram
 };
 
-use crate::compiler::comptypes::decode_string;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{
     SExp,
+    decode_string,
     parse_sexp
 };
 use crate::compiler::srcloc::Srcloc;
@@ -353,6 +353,10 @@ pub fn parse_and_run(
         Err(RunFailure::RunErr(Srcloc::start(file), "no args".to_string()))
     } else {
         let prim_map = prims::prim_map();
-        run(allocator, runner, prim_map, code[0].clone(), args[0].clone())
+        let res = run(
+            allocator, runner, prim_map, code[0].clone(), args[0].clone()
+        );
+        print!("run {} {} => {:?}", code[0].to_string(), args[0].to_string(), res);
+        return res;
     }
 }

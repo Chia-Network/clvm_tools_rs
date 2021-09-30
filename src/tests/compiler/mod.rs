@@ -7,6 +7,8 @@ use crate::compiler::sexp::{
 };
 use crate::compiler::srcloc::Srcloc;
 
+mod clvm;
+
 #[test]
 fn test_sexp_parse_print() {
     let start = Srcloc::start(&"test.cl".to_string());

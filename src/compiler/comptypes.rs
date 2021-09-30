@@ -3,7 +3,8 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::compiler::sexp::{
-    SExp
+    SExp,
+    decode_string
 };
 
 use crate::compiler::srcloc::{
@@ -376,10 +377,6 @@ pub fn foldM<R,T,E>(f: &dyn Fn(&R,&T) -> Result<R,E>, start: R, list: &Vec<T>) -
         res = f(&res, elt)?;
     }
     return Ok(res);
-}
-
-pub fn decode_string(v: &Vec<u8>) -> String {
-    return String::from_utf8_lossy(v).as_ref().to_string();
 }
 
 pub fn join_vecs_to_string(sep: Vec<u8>, vecs: &Vec<Vec<u8>>) -> String {

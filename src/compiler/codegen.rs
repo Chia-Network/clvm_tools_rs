@@ -17,7 +17,10 @@ use crate::classic::clvm::__type_compatibility__::{
 use crate::compiler::clvm::run;
 use crate::compiler::gensym::gensym;
 use crate::compiler::prims::prims;
-use crate::compiler::sexp::SExp;
+use crate::compiler::sexp::{
+    SExp,
+    decode_string
+};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::comptypes::{
     Binding,
@@ -31,7 +34,6 @@ use crate::compiler::comptypes::{
     HelperForm,
     PrimaryCodegen,
     cons_of_string_map,
-    decode_string,
     foldM,
     join_vecs_to_string,
     list_to_cons,

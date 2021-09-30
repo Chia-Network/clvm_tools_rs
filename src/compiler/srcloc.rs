@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 #[derive(Clone)]
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub struct Srcloc {
     pub file: Rc<String>,
     pub line: usize,

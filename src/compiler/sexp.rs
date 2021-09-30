@@ -7,9 +7,11 @@ use num_traits::{
     Num,
     zero
 };
+
 use crate::classic::clvm::__type_compatibility__::{
     Bytes,
-    BytesFromType
+    BytesFromType,
+    bi_zero
 };
 use crate::classic::clvm::casts::{
     TConvertOption,
@@ -17,7 +19,10 @@ use crate::classic::clvm::casts::{
     bigint_to_bytes
 };
 use crate::compiler::srcloc::Srcloc;
-use crate::util::Number;
+use crate::util::{
+    Number,
+    number_from_u8
+};
 
 // Compiler view of SExp
 #[derive(Clone)]
@@ -138,14 +143,14 @@ fn resume(p: SExpParseState) -> SExpParseResult {
 
 fn escape_quote(q: u8, s: &Vec<u8>) -> String {
     let mut res: Vec<char> = Vec::new();
-    s.iter().map(|ch| {
+    let _: Vec<()> = s.iter().map(|ch| {
         if *ch == q as u8 {
             res.push('\\');
             res.push(*ch as char);
         } else {
             res.push(*ch as char);
         }
-    });
+    }).collect();
     res.into_iter().collect()
 }
 
@@ -187,6 +192,10 @@ fn encode_integer_value(v: &Vec<u8>, res: &mut Vec<u8>) {
     }
 }
 
+pub fn decode_string(v: &Vec<u8>) -> String {
+    return String::from_utf8_lossy(v).as_ref().to_string();
+}
+
 impl SExp {
     pub fn loc(&self) -> Srcloc {
         match self {
@@ -213,12 +222,10 @@ impl SExp {
     pub fn to_string(&self) -> String {
         match self {
             SExp::Nil(_) => "()".to_string(),
-            SExp::Cons(_,a,b) => "(".to_owned() + &list_no_parens(a,b) + ")",
+            SExp::Cons(_,a,b) => format!("({})", list_no_parens(a,b)),
             SExp::Integer(_,v) => v.to_string(),
-            SExp::QuotedString(_,q,s) =>
-                "\"".to_owned() + &escape_quote(*q,s) + "\"",
-            SExp::Atom(_,a) =>
-                Bytes::new(Some(BytesFromType::Raw(a.to_vec()))).decode()
+            SExp::QuotedString(_,q,s) => format!("\"{}\"", escape_quote(*q,s)),
+            SExp::Atom(_,a) => decode_string(a)
         }
     }
 
@@ -315,7 +322,7 @@ impl SExp {
 
     pub fn proper_list(&self) -> Option<Vec<SExp>> {
         let mut res = Vec::new();
-        let mut track = Rc::new(SExp::Nil(self.loc()));
+        let mut track = Rc::new(self.clone());
 
         loop {
             match track.borrow() {
@@ -329,6 +336,18 @@ impl SExp {
                     return Some(res);
                 },
                 _ => { return None; }
+            }
+        }
+    }
+
+    pub fn get_number(&self) -> Result<Number, (Srcloc, String)> {
+        match self {
+            SExp::Integer(_,i) => Ok(i.clone()),
+            SExp::Atom(_,v) => Ok(number_from_u8(v)),
+            SExp::QuotedString(_,_,v) => Ok(number_from_u8(v)),
+            SExp::Nil(_) => Ok(bi_zero()),
+            _ => {
+                Err((self.loc(), format!("wanted atom got cons cell {}", self.to_string())))
             }
         }
     }
@@ -421,7 +440,9 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                 (_, _) => {
                     match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
                         SExpParseResult::PEmit(o,p) => {
-                            let result = SExpParseState::ParsingList(pl.ext(&loc), Rc::new(p), vec!(o));
+                            let mut list_copy = list_content.clone();
+                            list_copy.push(o);
+                            let result = SExpParseState::ParsingList(pl.ext(&loc), Rc::new(p), list_copy);
                             resume(result)
                         },
                         SExpParseResult::PResume(rp) =>
@@ -436,8 +457,13 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                 ('.', SExpParseState::Empty) => {
                     error(loc, &"Multiple dots in list notation are illegal".to_string())
                 },
-                (')', SExpParseState::Empty) =>
-                    emit(Rc::new(enlist(pl.clone(), list_content.to_vec())), SExpParseState::Empty),
+                (')', SExpParseState::Empty) => {
+                    if list_content.len() == 1 {
+                        emit(list_content[0].clone(), SExpParseState::Empty)
+                    } else {
+                        emit(Rc::new(enlist(pl.clone(), list_content.to_vec())), SExpParseState::Empty)
+                    }
+                },
                 (')', SExpParseState::Bareword (l,t)) => {
                     let parsed_atom = make_atom(l.clone(), t.to_vec());
                     let mut list_copy = list_content.to_vec();
@@ -465,7 +491,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                                 Some(v) => {
                                     let new_tail = make_cons(v, o);
                                     list_copy.push(Rc::new(new_tail));
-                                    resume(SExpParseState::ParsingList(pl.ext(&loc), Rc::new(p), list_copy))
+                                    resume(SExpParseState::TermList(pl.ext(&loc), Rc::new(p), list_copy))
                                 },
                                 None => {
                                     error(loc, &"Dot as first element of list?".to_string())
