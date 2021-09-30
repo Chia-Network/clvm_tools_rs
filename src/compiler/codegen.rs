@@ -29,6 +29,7 @@ use crate::compiler::comptypes::{
     PrimaryCodegen,
     cons_of_string_map,
     decode_string,
+    foldM,
     join_vecs_to_string,
     list_to_cons,
     mapM,
@@ -622,7 +623,7 @@ pub fn empty_compiler(l: Srcloc) -> PrimaryCodegen {
         constants: HashMap::new(),
         macros: HashMap::new(),
         defuns: HashMap::new(),
-        parentfns: HashMap::new(),
+        parentfns: HashSet::new(),
         env: Rc::new(SExp::Cons(l.clone(), nil_rc.clone(), nil_rc.clone())),
         to_process: Vec::new(),
         final_expr: Rc::new(BodyForm::Quoted(nil.clone())),
@@ -769,16 +770,14 @@ fn start_codegen(opts: Rc<dyn CompilerOpts>, comp: CompileForm) -> PrimaryCodege
 fn final_codegen(
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
-    comp: &CompileForm
 ) -> Result<PrimaryCodegen, CompileErr> {
     generate_expr_code(opts, compiler, compiler.final_expr.clone()).map(|code| {
         let mut final_comp = compiler.clone();
-        final_comp.final_code = Some(CompiledCode(comp.loc.clone(),code.1));
+        final_comp.final_code = Some(CompiledCode(code.0,code.1));
         final_comp
     })
 }
 
-/*
 fn finalize_env_(
     opts: Rc<dyn CompilerOpts>,
     c: &PrimaryCodegen,
@@ -788,15 +787,18 @@ fn finalize_env_(
     match env.borrow() {
         SExp::Atom(l,v) => {
             match c.defuns.get(v) {
-                Some(res) => Ok(res.code),
+                Some(res) => {
+                    let res_code_copy: &SExp = res.code.borrow();
+                    Ok(res_code_copy.clone())
+                },
                 None => {
                     /* Parentfns are functions in progress in the parent */
-                    if c.parentns.contains(v) {
+                    if !c.parentfns.get(v).is_none() {
                         Ok(SExp::Nil(l.clone()))
                     } else {
                         Err(CompileErr(
                             l.clone(),
-                            format!("A defun was referenced in the defun env but not found {}", v.to_string())
+                            format!("A defun was referenced in the defun env but not found {}", decode_string(v))
                         ))
                     }
                 }
@@ -804,74 +806,95 @@ fn finalize_env_(
         },
 
         SExp::Cons (l,h,r) => {
-            finalize_env_ opts c l h
-                |> compBind
-                (fun h ->
-                 finalize_env_ opts c l r |> compMap (fun r -> Cons (l,h,r))
-                )
+            finalize_env_(opts.clone(), c, l.clone(), h.clone()).and_then(|h| {
+                finalize_env_(opts.clone(), c, l.clone(), r.clone()).map(|r| {
+                    SExp::Cons(l.clone(),Rc::new(h.clone()),Rc::new(r.clone()))
+                })
+            })
         },
 
-        _ => Ok(env)
+        _ => {
+            let env_copy: &SExp = env.borrow();
+            Ok(env_copy.clone())
+        }
     }
 }
 
-and finalize_env opts c =
-  match c.env with
-  | Cons (l,h,_) -> finalize_env_ opts c l h
-  | any -> CompileOk any
+fn finalize_env(
+    opts: Rc<dyn CompilerOpts>,
+    c: &PrimaryCodegen
+) -> Result<SExp, CompileErr> {
+    match c.env.borrow() {
+        SExp::Cons(l,h,_) => finalize_env_(opts, c, l.clone(), h.clone()),
+        _ => {
+            let env_copy: &SExp = c.env.borrow();
+            Ok(env_copy.clone())
+        }
+    }
+}
 
-and dummy_functions compiler =
-  List.fold_left
-    (fun c -> function
-       | Defconstant _ -> c
-       | Defmacro _ -> c
-       | Defun (_,name,_,_,_) ->
-         { c with parentfns = StringSet.add name c.parentfns }
+fn dummy_functions(
+    compiler: &PrimaryCodegen
+) -> Result<PrimaryCodegen, CompileErr> {
+    foldM(
+        &|compiler: &PrimaryCodegen, form: &HelperForm| {
+            match form {
+                HelperForm::Defun(_,name,_,_,_) => {
+                    let mut c_copy = compiler.clone();
+                    c_copy.parentfns.insert(name.clone());
+                    return Ok(c_copy);
+                },
+                _ => Ok(compiler.clone())
+            }
+        },
+        compiler.clone(),
+        &compiler.to_process
     )
-    compiler
-    compiler.to_process
+}
 
-and codegen opts cmod =
-  let compiler =
-    start_codegen opts cmod
-    |> dummy_functions
-  in
-  List.fold_left
-    (fun c f -> c |> compBind (fun comp -> codegen_ opts comp f))
-    (CompileOk compiler)
-    compiler.to_process
-  |> compBind (final_codegen opts)
-  |> compBind
-    (fun c ->
-       finalize_env opts c
-       |> compBind
-         (fun final_env ->
-            match c.final_code with
-            | None ->
-              CompileError (Srcloc.start opts.filename, "Failed to generate code")
-            | Some (Code (l,code)) ->
-              if opts.inDefun then
-                let final_code =
-                  (primapply
-                     l
-                     (primquote l code)
-                     (Integer (l,"1"))
-                  )
-                in
-                CompileOk final_code
-              else
-                let final_code =
-                  (primapply
-                     l
-                     (primquote l code)
-                     (primcons
-                        l
-                        (primquote l final_env)
-                        (Integer (l,"1"))
-                     )
-                  )
-                in
-                CompileOk final_code
-         )
-    )
-*/
+fn codegen(
+    opts: Rc<dyn CompilerOpts>,
+    cmod: &CompileForm
+) -> Result<SExp, CompileErr> {
+    let compiler = dummy_functions(&start_codegen(opts.clone(), cmod.clone()))?;
+    foldM(
+        &|comp: &PrimaryCodegen, f| codegen_(opts.clone(), comp, f),
+        compiler.clone(),
+        &compiler.to_process
+    ).and_then(|comp| final_codegen(opts.clone(), &comp)).and_then(|c| {
+        let final_env = finalize_env(opts.clone(), &c)?;
+        match c.final_code {
+            None => {
+                Err(CompileErr(
+                    Srcloc::start(&opts.filename()),
+                    "Failed to generate code".to_string()
+                ))
+            },
+            Some(code) => {
+                if opts.in_defun() {
+                    let final_code =
+                        primapply(
+                            code.0.clone(),
+                            Rc::new(primquote(code.0.clone(), code.1)),
+                            Rc::new(SExp::Integer(code.0.clone(), bi_one()))
+                        );
+
+                    Ok(final_code)
+                } else {
+                    let final_code =
+                        primapply(
+                            code.0.clone(),
+                            Rc::new(primquote(code.0.clone(), code.1)),
+                            Rc::new(primcons(
+                                code.0.clone(),
+                                Rc::new(primquote(code.0.clone(), Rc::new(final_env))),
+                                Rc::new(SExp::Integer(code.0.clone(), bi_one()))
+                            ))
+                        );
+
+                    Ok(final_code)
+                }
+            }
+        }
+    })
+}

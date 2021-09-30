@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::compiler::sexp::{
@@ -78,7 +79,7 @@ pub struct PrimaryCodegen {
     pub constants: HashMap<Vec<u8>, Rc<SExp>>,
     pub macros: HashMap<Vec<u8>, Rc<SExp>>,
     pub defuns: HashMap<Vec<u8>, DefunCall>,
-    pub parentfns: HashMap<Vec<u8>, Rc<SExp>>,
+    pub parentfns: HashSet<Vec<u8>>,
     pub env: Rc<SExp>,
     pub to_process: Vec<HelperForm>,
     pub final_expr: Rc<BodyForm>,
@@ -366,6 +367,14 @@ pub fn mapM<T,U,E>(f: &dyn Fn(&T) -> Result<U, E>, list: &Vec<T>) -> Result<Vec<
         result.push(val);
     }
     return Ok(result);
+}
+
+pub fn foldM<R,T,E>(f: &dyn Fn(&R,&T) -> Result<R,E>, start: R, list: &Vec<T>) -> Result<R,E> {
+    let mut res: R = start;
+    for elt in list.iter() {
+        res = f(&res, elt)?;
+    }
+    return Ok(res);
 }
 
 pub fn decode_string(v: &Vec<u8>) -> String {
