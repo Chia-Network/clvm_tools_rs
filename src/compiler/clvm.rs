@@ -2,11 +2,22 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use clvm_rs::allocator::{
+    Allocator,
+    NodePtr
+};
+use clvm_rs::allocator;
+use clvm_rs::reduction::EvalErr;
+
 use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{
     bi_zero,
     bi_one
+};
+use crate::classic::clvm_tools::stages::stage_0::{
+    DefaultProgramRunner,
+    TRunProgram
 };
 
 use crate::compiler::comptypes::decode_string;
@@ -19,7 +30,8 @@ use crate::compiler::sexp::{
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{
     Number,
-    number_from_u8
+    number_from_u8,
+    u8_from_number
 };
 
 fn choose_path(
@@ -55,6 +67,8 @@ fn choose_path(
 }
 
 fn translate_head(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     l: Srcloc,
     sexp: Rc<SExp>,
@@ -66,6 +80,8 @@ fn translate_head(
         },
         SExp::QuotedString(l,_,v) => {
             translate_head(
+                allocator,
+                runner,
                 prim_map,
                 l.clone(),
                 Rc::new(SExp::Atom(l.clone(),v.clone())),
@@ -88,6 +104,8 @@ fn translate_head(
             match nil.borrow() {
                 SExp::Nil(l1) => {
                     run(
+                        allocator,
+                        runner,
                         prim_map,
                         Rc::new(SExp::Cons(
                             l.clone(),
@@ -107,6 +125,8 @@ fn translate_head(
 }
 
 fn eval_args(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     args: Rc<SExp>,
     context: Rc<SExp>
@@ -114,8 +134,20 @@ fn eval_args(
     match args.borrow() {
         SExp::Nil(l) => Ok(args),
         SExp::Cons(l,a,b) => {
-            run(prim_map.clone(), a.clone(), context.clone()).and_then(|aval| {
-                eval_args(prim_map, b.clone(), context.clone()).map(|atail| {
+            run(
+                allocator,
+                runner.clone(),
+                prim_map.clone(),
+                a.clone(),
+                context.clone()
+            ).and_then(|aval| {
+                eval_args(
+                    allocator,
+                    runner,
+                    prim_map,
+                    b.clone(),
+                    context.clone()
+                ).map(|atail| {
                     Rc::new(SExp::Cons(l.clone(),aval,atail))
                 })
             })
@@ -124,19 +156,81 @@ fn eval_args(
     }
 }
 
+fn convert_to_clvm_rs(
+    allocator: &mut Allocator,
+    head: Rc<SExp>
+) -> Result<NodePtr, RunFailure> {
+    match head.borrow() {
+        SExp::Nil(_) => Ok(allocator.null()),
+        SExp::Atom(l,x) => allocator.new_atom(x).map_err(|e| {
+            RunFailure::RunErr(
+                head.loc(),
+                format!("failed to alloc atom {}", head.to_string())
+            )
+        }),
+        SExp::QuotedString(_,_,x) => allocator.new_atom(x).map_err(|e| {
+            RunFailure::RunErr(
+                head.loc(),
+                format!("failed to alloc string {}", head.to_string())
+            )
+        }),
+        SExp::Integer(_,i) => allocator.new_atom(&u8_from_number(i.clone())).map_err(|e| {
+            RunFailure::RunErr(
+                head.loc(),
+                format!("failed to alloc integer {}", head.to_string())
+            )
+        }),
+        SExp::Cons(_,a,b) => {
+            convert_to_clvm_rs(allocator, a.clone()).and_then(|head| {
+                convert_to_clvm_rs(allocator, b.clone()).and_then(|tail| {
+                    allocator.new_pair(head, tail).map_err(|e| {
+                        RunFailure::RunErr(
+                            a.loc(),
+                            format!("failed to alloc cons {}", head.to_string())
+                        )
+                    })
+                })
+            })
+        }
+    }
+}
+
+fn convert_from_clvm_rs(
+    allocator: &mut Allocator,
+    loc: Srcloc,
+    head: NodePtr
+) -> Result<Rc<SExp>, RunFailure> {
+    match allocator.sexp(head) {
+        allocator::SExp::Atom(h) => {
+            Ok(Rc::new(SExp::Integer(loc, number_from_u8(allocator.buf(&h)))))
+        },
+        allocator::SExp::Pair(a,b) => {
+            convert_from_clvm_rs(allocator, loc.clone(), a).and_then(|h| {
+                convert_from_clvm_rs(allocator, loc.clone(), b).map(|t| {
+                    Rc::new(SExp::Cons(loc.clone(), h, t))
+                })
+            })
+        }
+    }
+}
+
 fn apply_op(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
     l: Srcloc,
     head: Rc<SExp>,
     args: Rc<SExp>
 ) -> Result<Rc<SExp>, RunFailure> {
-    Err(RunFailure::RunErr(
-        l,
-        format!(
-            "unimplemented apply prim {} {}",
-            head.to_string(),
-            args.to_string()
-        )
-    ))
+    let converted_head = convert_to_clvm_rs(allocator, head.clone())?;
+    let converted_tail = convert_to_clvm_rs(allocator, args)?;
+    runner.run_program(
+        allocator,
+        converted_head,
+        converted_tail,
+        None
+    ).map_err(|e| {
+        RunFailure::RunErr(head.loc(), e.1)
+    }).and_then(|v| convert_from_clvm_rs(allocator, head.loc(), v.1))
 }
 
 fn atom_value(head: Rc<SExp>) -> Result<Number, RunFailure> {
@@ -155,6 +249,8 @@ fn atom_value(head: Rc<SExp>) -> Result<Number, RunFailure> {
 }
 
 pub fn run(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     sexp: Rc<SExp>,
     context: Rc<SExp>
@@ -175,6 +271,8 @@ pub fn run(
         },
         SExp::Atom(l,v) => {
             run(
+                allocator,
+                runner.clone(),
                 prim_map,
                 Rc::new(SExp::Integer(l.clone(), number_from_u8(v))),
                 context
@@ -183,6 +281,8 @@ pub fn run(
         SExp::Nil(l) => Ok(sexp.clone()),
         SExp::Cons(l,a,b) => {
             translate_head(
+                allocator,
+                runner.clone(),
                 prim_map.clone(),
                 l.clone(),
                 a.clone(),
@@ -191,8 +291,22 @@ pub fn run(
                 if atom_value(head.clone())? == bi_one() {
                     Ok(b.clone())
                 } else {
-                    eval_args(prim_map, b.clone(), context.clone()).and_then(
-                        |tail| apply_op(l.clone(),head.clone(),tail.clone())
+                    eval_args(
+                        allocator,
+                        runner.clone(),
+                        prim_map,
+                        b.clone(),
+                        context.clone()
+                    ).and_then(
+                        |tail| {
+                            apply_op(
+                                allocator,
+                                runner.clone(),
+                                l.clone(),
+                                head.clone(),
+                                tail.clone()
+                            )
+                        }
                     )
                 }
             })
@@ -201,6 +315,8 @@ pub fn run(
 }
 
 pub fn parse_and_run(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
     file: &String,
     content: &String,
     args: &String
@@ -218,6 +334,6 @@ pub fn parse_and_run(
         Err(RunFailure::RunErr(Srcloc::start(file), "no args".to_string()))
     } else {
         let prim_map = prims::prim_map();
-        run(prim_map, code[0].clone(), args[0].clone())
+        run(allocator, runner, prim_map, code[0].clone(), args[0].clone())
     }
 }
