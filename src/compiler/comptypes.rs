@@ -75,7 +75,7 @@ pub struct DefunCall {
 
 #[derive(Clone)]
 pub struct PrimaryCodegen {
-    pub prims: HashMap<Vec<u8>, Rc<SExp>>,
+    pub prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     pub constants: HashMap<Vec<u8>, Rc<SExp>>,
     pub macros: HashMap<Vec<u8>, Rc<SExp>>,
     pub defuns: HashMap<Vec<u8>, DefunCall>,
@@ -103,6 +103,7 @@ pub trait CompilerOpts {
     fn assemble(&self) -> bool;
     fn stdenv(&self) -> bool;
     fn start_env(&self) -> Option<Rc<SExp>>;
+    fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>>;
 
     fn set_assemble(&self, new_assemble: bool) -> Rc<dyn CompilerOpts>;
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts>;

@@ -1,27 +1,37 @@
-use crate::compiler::comptypes;
-use crate::compiler::comptypes::compilerOpts;
-use crate::compiler::sexp;
-use crate::compiler::sexp::SExp;
-use crate::compiler::frontend;
-use crate::compiler::codegen;
+use std::rc::Rc;
 
-// let compile_file opts content : string compileResult =
-//   let parse_result =
-//     parse_sexp
-//       Srcloc.combineSrcLocation
-//       (Srcloc.start opts.filename)
-//       Srcloc.advance
-//       content
-//   in
-//   match parse_result with
-//   | Sexp.Failure (loc, err) -> CompileError (loc, err)
-//   | Sexp.Success pre_forms ->
-//     frontend opts pre_forms
-//     |> compBind (codegen opts)
-//     |> compMap
-//       (fun result ->
-//         if opts.assemble then
-//           Sexp.encode result
-//         else
-//           Sexp.to_string result
-//       )
+use crate::classic::clvm::__type_compatibility__::{
+    Bytes,
+    BytesFromType
+};
+use crate::compiler::comptypes::{
+    CompileErr,
+    CompilerOpts
+};
+use crate::compiler::sexp::{
+    SExp,
+    parse_sexp
+};
+use crate::compiler::srcloc::Srcloc;
+use crate::compiler::frontend::frontend;
+use crate::compiler::codegen::codegen;
+
+pub fn compile_file(
+    opts: Rc<dyn CompilerOpts>,
+    content: String
+) -> Result<String, CompileErr> {
+    let pre_forms =
+        parse_sexp(Srcloc::start(&opts.filename()), &content).map_err(|e| {
+            CompileErr(e.0, e.1)
+        })?;
+
+    frontend(opts.clone(), pre_forms).
+        and_then(|g| codegen(opts.clone(), &g)).
+        map(|result| {
+            if opts.assemble() {
+                Bytes::new(Some(BytesFromType::Raw(result.encode()))).hex()
+            } else {
+                result.to_string()
+            }
+        })
+}

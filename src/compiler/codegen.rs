@@ -291,7 +291,7 @@ fn process_macro_call(
     let converted_args: Vec<Rc<SExp>> =
         args.iter().map(|b| b.to_sexp()).collect();
     let args_to_macro = list_to_cons(l.clone(), &converted_args);
-    run(code, Rc::new(args_to_macro)).map_err(|e| { match e {
+    run(opts.prim_map(), code, Rc::new(args_to_macro)).map_err(|e| { match e {
         RunFailure::RunExn(ml,x) => {
             CompileErr(
                 l,
@@ -312,9 +312,8 @@ fn process_macro_call(
                 )
             )
         }
-    }}).and_then(|v| {
-        compile_bodyform(Rc::new(v))
-    }).and_then(|body| generate_expr_code(opts, compiler, Rc::new(body)))
+    }}).and_then(|v| compile_bodyform(v.clone())).
+        and_then(|body| generate_expr_code(opts, compiler, Rc::new(body)))
 }
 
 fn generate_args_code(
@@ -539,7 +538,11 @@ fn codegen_(
 
             let updated_opts = opts.set_compiler(compiler.clone());
             let code = updated_opts.compile_program(expand_program)?;
-            run(Rc::new(code), Rc::new(SExp::Nil(loc.clone()))).map_err(|r| {
+            run(
+                opts.prim_map(),
+                Rc::new(code),
+                Rc::new(SExp::Nil(loc.clone()))
+            ).map_err(|r| {
                 CompileErr(
                     loc.clone(),
                     format!(
@@ -548,7 +551,7 @@ fn codegen_(
                     )
                 )
             }).map(|res| {
-                let quoted = primquote(loc.clone(), Rc::new(res));
+                let quoted = primquote(loc.clone(), res);
                 compiler.add_constant(&name, Rc::new(quoted))
             })
         },
@@ -609,17 +612,15 @@ fn is_defun(b: &HelperForm) -> bool {
     }
 }
 
-pub fn empty_compiler(l: Srcloc) -> PrimaryCodegen {
-    let mut prim_map = HashMap::new();
-    for p in prims() {
-        prim_map.insert(p.0.as_bytes().to_vec(), Rc::new(p.1));
-    }
-
+pub fn empty_compiler(
+    prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    l: Srcloc
+) -> PrimaryCodegen {
     let nil = SExp::Nil(l.clone());
     let nil_rc = Rc::new(nil.clone());
 
     PrimaryCodegen {
-        prims: prim_map,
+        prims: prim_map.clone(),
         constants: HashMap::new(),
         macros: HashMap::new(),
         defuns: HashMap::new(),
@@ -743,7 +744,7 @@ fn process_helper_let_bindings(
 fn start_codegen(opts: Rc<dyn CompilerOpts>, comp: CompileForm) -> PrimaryCodegen {
     let mut use_compiler =
         match opts.compiler() {
-            None => empty_compiler(comp.loc.clone()),
+            None => empty_compiler(opts.prim_map(), comp.loc.clone()),
             Some(c) => c
         };
 
@@ -852,7 +853,7 @@ fn dummy_functions(
     )
 }
 
-fn codegen(
+pub fn codegen(
     opts: Rc<dyn CompilerOpts>,
     cmod: &CompileForm
 ) -> Result<SExp, CompileErr> {

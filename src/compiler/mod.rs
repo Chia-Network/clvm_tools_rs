@@ -1,5 +1,6 @@
 pub mod clvm;
 mod codegen;
+mod compiler;
 mod comptypes;
 mod gensym;
 pub mod prims;

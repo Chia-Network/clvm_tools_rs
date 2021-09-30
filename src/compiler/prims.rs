@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::rc::Rc;
 use num_bigint::ToBigInt;
 
@@ -6,42 +7,50 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 
-pub fn prims() -> Vec<(String, SExp)> {
+pub fn prims() -> Vec<(Vec<u8>, SExp)> {
     let primloc = Srcloc::start(&"*prims*".to_string());
     vec!(
-        ("q".to_string(), SExp::Integer (primloc.clone(), 1_u32.to_bigint().unwrap())),
-        ("a".to_string(), SExp::Integer (primloc.clone(), 2_u32.to_bigint().unwrap())),
-        ("i".to_string(), SExp::Integer (primloc.clone(), 3_u32.to_bigint().unwrap())),
-        ("c".to_string(), SExp::Integer (primloc.clone(), 4_u32.to_bigint().unwrap())),
-        ("f".to_string(), SExp::Integer (primloc.clone(), 5_u32.to_bigint().unwrap())),
-        ("r".to_string(), SExp::Integer (primloc.clone(), 6_u32.to_bigint().unwrap())),
-        ("l".to_string(), SExp::Integer (primloc.clone(), 7_u32.to_bigint().unwrap())),
-        ("x".to_string(), SExp::Integer (primloc.clone(), 8_u32.to_bigint().unwrap())),
-        ("=".to_string(), SExp::Integer (primloc.clone(), 9_u32.to_bigint().unwrap())),
-        (">s".to_string(), SExp::Integer (primloc.clone(), 10_u32.to_bigint().unwrap())),
-        ("sha256".to_string(), SExp::Integer (primloc.clone(), 11_u32.to_bigint().unwrap())),
-        ("substr".to_string(), SExp::Integer (primloc.clone(), 12_u32.to_bigint().unwrap())),
-        ("strlen".to_string(), SExp::Integer (primloc.clone(), 13_u32.to_bigint().unwrap())),
-        ("concat".to_string(), SExp::Integer (primloc.clone(), 14_u32.to_bigint().unwrap())),
-        ("+".to_string(), SExp::Integer (primloc.clone(), 16_u32.to_bigint().unwrap())),
-        ("-".to_string(), SExp::Integer (primloc.clone(), 17_u32.to_bigint().unwrap())),
-        ("*".to_string(), SExp::Integer (primloc.clone(), 18_u32.to_bigint().unwrap())),
-        ("/".to_string(), SExp::Integer (primloc.clone(), 19_u32.to_bigint().unwrap())),
-        ("divmod".to_string(), SExp::Integer (primloc.clone(), 20_u32.to_bigint().unwrap())),
-        (">".to_string(), SExp::Integer (primloc.clone(), 21_u32.to_bigint().unwrap())),
-        ("ash".to_string(), SExp::Integer (primloc.clone(), 22_u32.to_bigint().unwrap())),
-        ("lsh".to_string(), SExp::Integer (primloc.clone(), 23_u32.to_bigint().unwrap())),
-        ("logand".to_string(), SExp::Integer (primloc.clone(), 24_u32.to_bigint().unwrap())),
-        ("logior".to_string(), SExp::Integer (primloc.clone(), 25_u32.to_bigint().unwrap())),
-        ("logxor".to_string(), SExp::Integer (primloc.clone(), 26_u32.to_bigint().unwrap())),
-        ("lognot".to_string(), SExp::Integer (primloc.clone(), 27_u32.to_bigint().unwrap())),
-        ("point_add".to_string(), SExp::Integer (primloc.clone(), 29_u32.to_bigint().unwrap())),
-        ("pubkey_for_exp".to_string(), SExp::Integer (primloc.clone(), 30_u32.to_bigint().unwrap())),
-        ("not".to_string(), SExp::Integer (primloc.clone(), 32_u32.to_bigint().unwrap())),
-        ("any".to_string(), SExp::Integer (primloc.clone(), 33_u32.to_bigint().unwrap())),
-        ("all".to_string(), SExp::Integer (primloc.clone(), 34_u32.to_bigint().unwrap())),
-        ("softfork".to_string(), SExp::Integer (primloc.clone(), 36_u32.to_bigint().unwrap()))
+        ("q".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 1_u32.to_bigint().unwrap())),
+        ("a".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 2_u32.to_bigint().unwrap())),
+        ("i".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 3_u32.to_bigint().unwrap())),
+        ("c".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 4_u32.to_bigint().unwrap())),
+        ("f".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 5_u32.to_bigint().unwrap())),
+        ("r".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 6_u32.to_bigint().unwrap())),
+        ("l".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 7_u32.to_bigint().unwrap())),
+        ("x".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 8_u32.to_bigint().unwrap())),
+        ("=".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 9_u32.to_bigint().unwrap())),
+        (">s".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 10_u32.to_bigint().unwrap())),
+        ("sha256".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 11_u32.to_bigint().unwrap())),
+        ("substr".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 12_u32.to_bigint().unwrap())),
+        ("strlen".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 13_u32.to_bigint().unwrap())),
+        ("concat".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 14_u32.to_bigint().unwrap())),
+        ("+".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 16_u32.to_bigint().unwrap())),
+        ("-".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 17_u32.to_bigint().unwrap())),
+        ("*".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 18_u32.to_bigint().unwrap())),
+        ("/".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 19_u32.to_bigint().unwrap())),
+        ("divmod".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 20_u32.to_bigint().unwrap())),
+        (">".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 21_u32.to_bigint().unwrap())),
+        ("ash".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 22_u32.to_bigint().unwrap())),
+        ("lsh".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 23_u32.to_bigint().unwrap())),
+        ("logand".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 24_u32.to_bigint().unwrap())),
+        ("logior".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 25_u32.to_bigint().unwrap())),
+        ("logxor".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 26_u32.to_bigint().unwrap())),
+        ("lognot".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 27_u32.to_bigint().unwrap())),
+        ("point_add".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 29_u32.to_bigint().unwrap())),
+        ("pubkey_for_exp".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 30_u32.to_bigint().unwrap())),
+        ("not".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 32_u32.to_bigint().unwrap())),
+        ("any".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 33_u32.to_bigint().unwrap())),
+        ("all".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 34_u32.to_bigint().unwrap())),
+        ("softfork".as_bytes().to_vec(), SExp::Integer (primloc.clone(), 36_u32.to_bigint().unwrap()))
     )
+}
+
+pub fn prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
+    let mut out_map = HashMap::new();
+    for p in prims() {
+        out_map.insert(p.0, Rc::new(p.1));
+    }
+    return Rc::new(out_map);
 }
 
 pub fn primquote(l: Srcloc, a: Rc<SExp>) -> SExp {
