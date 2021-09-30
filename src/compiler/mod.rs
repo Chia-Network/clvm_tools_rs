@@ -1,6 +1,11 @@
+pub mod clvm;
+mod codegen;
 mod comptypes;
 mod gensym;
 pub mod prims;
-mod runtypes;
+pub mod runtypes;
 pub mod sexp;
 pub mod srcloc;
+pub mod frontend;
+pub mod preprocessor;
+pub mod rename;

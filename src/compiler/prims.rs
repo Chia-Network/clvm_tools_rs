@@ -6,11 +6,6 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 
-pub struct PrimDesc {
-    name: String,
-    val: SExp
-}
-
 pub fn prims() -> Vec<(String, SExp)> {
     let primloc = Srcloc::start(&"*prims*".to_string());
     vec!(

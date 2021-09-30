@@ -202,6 +202,10 @@ impl SExp {
         return SExp::Atom(loc, s.as_bytes().to_vec());
     }
 
+    pub fn atom_from_vec(loc: Srcloc, s: &Vec<u8>) -> SExp {
+        return SExp::Atom(loc, s.to_vec());
+    }
+
     pub fn quoted_from_string(loc: Srcloc, s: &String) -> SExp {
         return SExp::QuotedString(loc, '\"' as u8, s.as_bytes().to_vec());
     }
@@ -305,6 +309,26 @@ impl SExp {
                 (_, SExp::Cons(_,_,_)) => false,
                 (SExp::Integer(_,a), SExp::Integer(_,b)) => a == b,
                 (a,b) => a.encode() == b.encode()
+            }
+        }
+    }
+
+    pub fn proper_list(&self) -> Option<Vec<SExp>> {
+        let mut res = Vec::new();
+        let mut track = Rc::new(SExp::Nil(self.loc()));
+
+        loop {
+            match track.borrow() {
+                SExp::Cons(_,l,r) => {
+                    let borrowed: &SExp = l.borrow();
+                    let cloned: SExp = borrowed.clone();
+                    res.push(cloned);
+                    track = r.clone();
+                },
+                SExp::Nil(_) => {
+                    return Some(res);
+                },
+                _ => { return None; }
             }
         }
     }
