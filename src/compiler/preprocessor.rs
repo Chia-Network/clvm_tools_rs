@@ -11,6 +11,7 @@ use crate::compiler::comptypes::{
     CompilerOpts
 };
 use crate::compiler::sexp::{
+    enlist,
     parse_sexp,
     SExp
 };
@@ -26,8 +27,17 @@ pub fn process_include(
 
     let start_of_file = Srcloc::start(&opts.filename());
 
-    parse_sexp(start_of_file, &content).map_err(|e| {
+    parse_sexp(start_of_file.clone(), &content).map_err(|e| {
         CompileErr(e.0.clone(), e.1.clone())
+    }).and_then(|x| {
+        match x[0].proper_list() {
+            None => { Err(CompileErr(start_of_file, "Includes should contain a list of forms".to_string())) },
+            Some(v) => {
+                let res: Vec<Rc<SExp>> =
+                    v.iter().map(|x| Rc::new(x.clone())).collect();
+                Ok(res)
+            }
+        }
     })
 }
 
@@ -107,20 +117,35 @@ fn preprocess_(
 }
 
 fn inject_std_macros(body: Rc<SExp>) -> SExp {
-    let l = body.loc();
-    SExp::Cons(
-        l.clone(),
-        Rc::new(SExp::Cons(
-            l.clone(),
-            Rc::new(SExp::atom_from_string(l.clone(), &"include".to_string())),
-            Rc::new(SExp::Cons(
-                l.clone(),
-                Rc::new(SExp::quoted_from_string(l.clone(), &"*macros*".to_string())),
-                Rc::new(SExp::Nil(l.clone()))
-            ))
-        )),
-        body
-    )
+    match body.proper_list() {
+        Some(v) => {
+            match v[0].borrow() {
+                SExp::Atom(_,kw) => {
+                    if *kw == "mod".as_bytes().to_vec() {
+                        let include_form = Rc::new(SExp::Cons(
+                            body.loc(),
+                            Rc::new(SExp::atom_from_string(body.loc(), &"include".to_string())),
+                            Rc::new(SExp::Cons(
+                                body.loc(),
+                                Rc::new(SExp::quoted_from_string(body.loc(), &"*macros*".to_string())),
+                                Rc::new(SExp::Nil(body.loc()))
+                            ))
+                        ));
+                        let mut v_clone: Vec<Rc<SExp>> =
+                            v.iter().map(|x| Rc::new(x.clone())).collect();
+                        let include_copy: &SExp = include_form.borrow();
+                        v_clone.insert(2, Rc::new(include_copy.clone()));
+                        return enlist(body.loc(), v_clone);
+                    }
+                },
+                _ => { }
+            }
+        },
+        _ => { }
+    }
+
+    let body_clone: &SExp = body.borrow();
+    return body_clone.clone();
 }
 
 pub fn preprocess(
@@ -134,5 +159,6 @@ pub fn preprocess(
             cmod
         };
 
+    print!("to_compile {}\n", tocompile.to_string());
     preprocess_(opts, tocompile)
 }

@@ -120,7 +120,7 @@ fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
     }
 }
 
-fn enlist(l: Srcloc, v: Vec<Rc<SExp>>) -> SExp {
+pub fn enlist(l: Srcloc, v: Vec<Rc<SExp>>) -> SExp {
     let mut result = SExp::Nil(l);
     for i_reverse in 0..v.len() {
         let i = v.len() - i_reverse - 1;

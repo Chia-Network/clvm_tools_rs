@@ -2,6 +2,10 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
+use clvm_rs::allocator::Allocator;
+
+use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
+
 use crate::compiler::sexp::{
     SExp,
     decode_string
@@ -12,9 +16,11 @@ use crate::compiler::srcloc::{
 };
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct CompileErr(pub Srcloc, pub String);
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct CompiledCode(pub Srcloc, pub Rc<SExp>);
 
 pub enum Callable {
@@ -39,6 +45,7 @@ pub fn list_to_cons(l: Srcloc, list: &Vec<Rc<SExp>>) -> SExp {
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct Binding {
     pub loc: Srcloc,
     pub name: Vec<u8>,
@@ -46,6 +53,7 @@ pub struct Binding {
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub enum BodyForm {
     Let(Srcloc, Vec<Rc<Binding>>, Rc<BodyForm>),
     Quoted(SExp),
@@ -54,6 +62,7 @@ pub enum BodyForm {
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub enum HelperForm {
     Defconstant(Srcloc, Vec<u8>, Rc<BodyForm>),
     Defmacro(Srcloc, Vec<u8>, Rc<SExp>, Rc<CompileForm>),
@@ -61,6 +70,7 @@ pub enum HelperForm {
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct CompileForm {
     pub loc: Srcloc,
     pub args: Rc<SExp>,
@@ -69,12 +79,14 @@ pub struct CompileForm {
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct DefunCall {
     pub required_env: Rc<SExp>,
     pub code: Rc<SExp>
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct PrimaryCodegen {
     pub prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     pub constants: HashMap<Vec<u8>, Rc<SExp>>,
@@ -87,16 +99,6 @@ pub struct PrimaryCodegen {
     pub final_code: Option<CompiledCode>
 }
 
-pub struct DefaultCompilerOpts {
-    pub include_dirs: Vec<String>,
-    pub filename: String,
-    pub compiler: Option<PrimaryCodegen>,
-    pub in_defun: bool,
-    pub assemble: bool,
-    pub stdenv: bool,
-    pub start_env: Option<Rc<SExp>>
-}
-
 pub trait CompilerOpts {
     fn filename(&self) -> String;
     fn compiler(&self) -> Option<PrimaryCodegen>;
@@ -106,6 +108,7 @@ pub trait CompilerOpts {
     fn start_env(&self) -> Option<Rc<SExp>>;
     fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>>;
 
+    fn set_search_paths(&self, dirs: &Vec<String>) -> Rc<dyn CompilerOpts>;
     fn set_assemble(&self, new_assemble: bool) -> Rc<dyn CompilerOpts>;
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts>;
     fn set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts>;
@@ -113,7 +116,7 @@ pub trait CompilerOpts {
     fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts>;
 
     fn read_new_file(&self, inc_from: String, filename: String) -> Result<(String,String), CompileErr>;
-    fn compile_program(&self, sexp: Rc<SExp>) -> Result<SExp, CompileErr>;
+    fn compile_program(&self, allocator: &mut Allocator, runner: Rc<dyn TRunProgram>, sexp: Rc<SExp>) -> Result<SExp, CompileErr>;
 }
 
 /* Frontend uses this to accumulate frontend forms */

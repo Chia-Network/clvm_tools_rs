@@ -47,6 +47,7 @@ use crate::compiler::prims::{
     primquote
 };
 use crate::compiler::runtypes::RunFailure;
+use crate::util::u8_from_number;
 
 /* As in the python code, produce a pair whose (thanks richard)
  *
@@ -128,9 +129,12 @@ fn create_name_lookup_(
             }
         },
         SExp::Cons (l,head,rest) => {
-            create_name_lookup_(l.clone(), name, env, head.clone()).map(
-                |v| 2 * v
-            )
+            match create_name_lookup_(l.clone(), name, env.clone(), head.clone()) {
+                Err(_) => create_name_lookup_(l.clone(), name, env, rest.clone()).map(
+                    |v| 2 * v + 1
+                ),
+                Ok(v) => Ok(2 * v)
+            }
         },
         _ => {
             Err(CompileErr(
@@ -259,6 +263,7 @@ fn get_callable(
             match (macro_def, defun, prim, atom_is_com) {
                 (Some(macro_def), _, _, _) => {
                     let macro_def_clone: &SExp = macro_def.borrow();
+                    print!("get_callable: macro {}\n", macro_def.to_string());
                     Ok(Callable::CallMacro(macro_def_clone.clone()))
                 },
                 (_, Ok(defun), _, _) => {
@@ -298,6 +303,7 @@ fn process_macro_call(
     let converted_args: Vec<Rc<SExp>> =
         args.iter().map(|b| b.to_sexp()).collect();
     let args_to_macro = list_to_cons(l.clone(), &converted_args);
+    print!("process_macro_call {} {}\n", code.to_string(), args_to_macro.to_string());
     run(
         allocator,
         runner.clone(),
@@ -419,81 +425,95 @@ fn compile_call(
             join_vecs_to_string(";".as_bytes().to_vec(), &arg_string_list)
         )
     ));
-    match list[0].borrow() {
-        BodyForm::Value(SExp::Atom(al,an)) => {
-            let tl = list.iter().skip(1).map(|x| x.clone()).collect();
-            get_callable(opts.clone(), compiler, al.clone(), Rc::new(SExp::Atom(al.clone(), an.to_vec()))).
-                and_then(|calltype| match calltype {
-                    Callable::CallMacro(code) => {
-                        process_macro_call(
-                            allocator,
-                            runner,
-                            opts.clone(),
-                            compiler,
-                            l.clone(),
-                            tl,
-                            Rc::new(code)
-                        )
-                    },
-                    Callable::CallDefun(lookup) => {
-                        generate_args_code(
-                            allocator,
-                            runner,
-                            opts.clone(),
-                            compiler,
-                            l.clone(),
-                            &tl
-                        ).and_then(|args| {
-                            process_defun_call(opts.clone(), compiler, l.clone(), Rc::new(args), Rc::new(lookup))
-                        })
-                    },
 
-                    Callable::CallPrim(p) => {
-                        generate_args_code(
-                            allocator,
-                            runner,
-                            opts,
-                            compiler,
-                            l.clone(),
-                            &tl
-                        ).map(|args| {
-                            CompiledCode(l.clone(), Rc::new(SExp::Cons(l,Rc::new(p),Rc::new(args))))
-                        })
-                    },
+    let compile_atom_head = |al: Srcloc, an: &Vec<u8>| {
+        let tl = list.iter().skip(1).map(|x| x.clone()).collect();
+        get_callable(opts.clone(), compiler, al.clone(), Rc::new(SExp::Atom(al.clone(), an.to_vec()))).
+            and_then(|calltype| match calltype {
+                Callable::CallMacro(code) => {
+                    process_macro_call(
+                        allocator,
+                        runner,
+                        opts.clone(),
+                        compiler,
+                        l.clone(),
+                        tl,
+                        Rc::new(code)
+                    )
+                },
 
-                    Callable::RunCompiler => {
-                        if list.len() == 2 {
-                            let updated_opts = opts.
-                                set_assemble(false).
-                                set_stdenv(false).
-                                set_in_defun(true).
-                                set_compiler(compiler.clone());
+                Callable::CallDefun(lookup) => {
+                    generate_args_code(
+                        allocator,
+                        runner,
+                        opts.clone(),
+                        compiler,
+                        l.clone(),
+                        &tl
+                    ).and_then(|args| {
+                        process_defun_call(opts.clone(), compiler, l.clone(), Rc::new(args), Rc::new(lookup))
+                    })
+                },
 
-                            let use_body =
-                                SExp::Cons(
+                Callable::CallPrim(p) => {
+                    generate_args_code(
+                        allocator,
+                        runner,
+                        opts,
+                        compiler,
+                        l.clone(),
+                        &tl
+                    ).map(|args| {
+                        CompiledCode(l.clone(), Rc::new(SExp::Cons(l,Rc::new(p),Rc::new(args))))
+                    })
+                },
+
+                Callable::RunCompiler => {
+                    if list.len() >= 2 {
+                        let updated_opts = opts.
+                            set_assemble(false).
+                            set_stdenv(false).
+                            set_in_defun(true).
+                            set_compiler(compiler.clone());
+
+                        let use_body =
+                            SExp::Cons(
+                                l.clone(),
+                                Rc::new(SExp::Atom (l.clone(), "mod".as_bytes().to_vec())),
+                                Rc::new(SExp::Cons(
                                     l.clone(),
-                                    Rc::new(SExp::Atom (l.clone(), "mod".as_bytes().to_vec())),
+                                        Rc::new(SExp::Nil(l.clone())),
                                     Rc::new(SExp::Cons(
                                         l.clone(),
-                                        Rc::new(SExp::Nil(l.clone())),
-                                        Rc::new(SExp::Cons(
-                                            l.clone(),
-                                            list[1].to_sexp(),
-                                            Rc::new(SExp::Nil(l.clone()))
-                                        ))
+                                        list[1].to_sexp(),
+                                        Rc::new(SExp::Nil(l.clone()))
                                     ))
-                                );
+                                ))
+                            );
 
-                            updated_opts.compile_program(
-                                Rc::new(use_body)
-                            ).map(|code| {
-                                CompiledCode(l.clone(), Rc::new(primquote(l.clone(), Rc::new(code))))
-                            })
-                        } else {
-                            error
-                        }
+                        updated_opts.compile_program(
+                            allocator,
+                            runner,
+                            Rc::new(use_body)
+                        ).map(|code| {
+                            CompiledCode(l.clone(), Rc::new(primquote(l.clone(), Rc::new(code))))
+                        })
+                    } else {
+                        error.clone()
                     }
-                })
+                }
+            })
+    };
+    
+    match list[0].borrow() {
+        BodyForm::Value(SExp::Integer(al,an)) => {
+            compile_atom_head(al.clone(), &u8_from_number(an.clone()))
+        },
+        BodyForm::Value(SExp::QuotedString(al,_,an)) => {
+            compile_atom_head(al.clone(), an)
+        },
+        BodyForm::Value(SExp::Atom(al,an)) => {
+            compile_atom_head(al.clone(), an)
         }
         _ => {
             error
@@ -587,7 +607,11 @@ fn codegen_(
                 }.to_sexp();
 
             let updated_opts = opts.set_compiler(compiler.clone());
-            let code = updated_opts.compile_program(expand_program)?;
+            let code = updated_opts.compile_program(
+                allocator,
+                runner.clone(),
+                expand_program
+            )?;
             run(
                 allocator,
                 runner,
@@ -608,15 +632,34 @@ fn codegen_(
             })
         },
 
-        HelperForm::Defmacro(_loc, name, _args, body) => {
-            let macro_program = body.to_sexp();
+        HelperForm::Defmacro(loc, name, args, body) => {
+            let macro_program =
+                SExp::Cons(
+                    loc.clone(),
+                    Rc::new(SExp::atom_from_string(loc.clone(), &"mod".to_string())),
+                    Rc::new(SExp::Cons(
+                        loc.clone(),
+                        args.clone(),
+                        Rc::new(SExp::Cons(
+                            loc.clone(),
+                            body.exp.to_sexp(),
+                            Rc::new(SExp::Nil(loc.clone()))
+                        ))
+                    ))
+                );
+
             let updated_opts =
                 opts.
                 set_compiler(compiler.clone()).
                 set_assemble(false).
                 set_stdenv(false);
 
-            opts.compile_program(macro_program).map(|code| {
+            print!("codegen_ defmacro {} {} {}\n", decode_string(&name), args.to_string(), macro_program.to_string());
+            updated_opts.compile_program(
+                allocator,
+                runner,
+                Rc::new(macro_program)
+            ).map(|code| {
                 compiler.add_macro(name, Rc::new(code))
             })
         }
@@ -647,7 +690,7 @@ fn codegen_(
                     ))
                 );
 
-            updated_opts.compile_program(Rc::new(tocompile)).map(|code| {
+            updated_opts.compile_program(allocator, runner, Rc::new(tocompile)).map(|code| {
                 compiler.add_defun(name, DefunCall {
                     required_env: args.clone(),
                     code: Rc::new(code)

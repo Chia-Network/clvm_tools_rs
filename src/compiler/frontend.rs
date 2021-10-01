@@ -17,7 +17,10 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
-use crate::compiler::sexp::SExp;
+use crate::compiler::sexp::{
+    enlist,
+    SExp
+};
 use crate::compiler::srcloc::Srcloc;
 
 fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
@@ -134,10 +137,12 @@ fn qq_to_expression(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
     body.proper_list().map(|x| {
         match &x[..] {
             [SExp::Atom(_,op), applied] => { // (q . (3)), (quote 3), (unquote x)
-                if (op.len() == 1 && op[0] == 'q' as u8) ||
-                    *op == "quote".as_bytes().to_vec()
-                {
+                if op.len() == 1 && op[0] == 'q' as u8 {
                     return Ok(BodyForm::Quoted(body_copy.clone()));
+                } else if *op == "quote".as_bytes().to_vec() {
+                    return Ok(BodyForm::Quoted(applied.clone()));
+                } else if *op == "unquote".as_bytes().to_vec() {
+                    return compile_bodyform(Rc::new(applied.clone()));
                 }
             },
             [SExp::Atom(_,op)] => { // (q)
@@ -160,6 +165,7 @@ fn qq_to_expression(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
 }
 
 fn qq_to_expression_list(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
+    print!("qq_to_expression_list {}\n", body.to_string());
     match body.borrow() {
         SExp::Cons(l,f,r) => { m! {
             f_qq <- qq_to_expression(f.clone());
@@ -173,21 +179,27 @@ fn qq_to_expression_list(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
             )))
         } },
         SExp::Nil(l) => { Ok(BodyForm::Quoted(SExp::Nil(l.clone()))) },
-        _ => { Err(CompileErr(body.loc(), "Bad list tail ".to_string() + &body.to_string())) }
+        _ => {
+            Err(CompileErr(
+                body.loc(),
+                format!("Bad list tail {}", body.to_string())
+            ))
+        }
     }
 }
 
 fn args_to_expression_list(body: Rc<SExp>) -> Result<Vec<Rc<BodyForm>>, CompileErr> {
+    print!("args_to_expression_list {}\n", body.to_string());
     match body.borrow() {
         SExp::Nil(_) => Ok(vec!()),
-        SExp::Cons(_l, first, rest) => { m! {
-            args <- args_to_expression_list(rest.clone());
-            f_compiled <- compile_bodyform(first.clone());
-
-            let mut result_list = args;
-            let _ = result_list.push(Rc::new(f_compiled));
+        SExp::Cons(_l, first, rest) => {
+            let mut result_list = Vec::new();
+            let f_compiled = compile_bodyform(first.clone())?;
+            result_list.push(Rc::new(f_compiled));
+            let mut args = args_to_expression_list(rest.clone())?;
+            result_list.append(&mut args);
             Ok(result_list)
-        } },
+        },
         _ => Err(CompileErr(body.loc(), "Bad list tail ".to_string() + &body.to_string()))
     }
 }
@@ -227,75 +239,98 @@ fn make_let_bindings(body: Rc<SExp>) -> Result<Vec<Rc<Binding>>, CompileErr> {
 }
 
 pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
+    print!("compile_bodyform {}\n", body.to_string());
     match body.borrow() {
         SExp::Cons(l, op, tail) => {
-            tail.proper_list().map(|x| {
-                match (op.borrow(), &x[..]) {
-                    (SExp::Atom(_,atom_name), [bindings, body]) => {
-                        if *atom_name == "let".as_bytes().to_vec() {
-                            let let_bindings = make_let_bindings(Rc::new(bindings.clone()))?;
-                            let compiled_body = compile_bodyform(Rc::new(body.clone()))?;
-                            return Ok(BodyForm::Let(l.clone(), let_bindings, Rc::new(compiled_body)));
-                        } else if *atom_name == "quote".as_bytes().to_vec() {
-                            return Err(CompileErr(l.clone(), "bad quote form".to_string()));
-                        } else if *atom_name == "qq".as_bytes().to_vec() {
-                            return Err(CompileErr(l.clone(), "bad qq form".to_string()));
-                        } else if *atom_name == "q".as_bytes().to_vec() {
-                            let tail_copy: &SExp = tail.borrow();
-                            return Ok(BodyForm::Quoted(tail_copy.clone()));
-                        }
-                    },
-                    (SExp::Atom(_,atom_name), [quote_body]) => {
-                        if *atom_name == "quote".as_bytes().to_vec() {
-                            return Ok(BodyForm::Quoted(quote_body.clone()));
-                        } else if *atom_name == "qq".as_bytes().to_vec() {
-                            return qq_to_expression(Rc::new(quote_body.clone()));
-                        }
-                    },
-                    (SExp::Atom(_,atom_name), _) => {
-                        if *atom_name == "let".as_bytes().to_vec() {
-                            return Err(CompileErr(l.clone(), "bad let form".to_string()));
-                        } else if *atom_name == "q".as_bytes().to_vec() {
-                            let tail_copy: &SExp = tail.borrow();
-                            return Ok(BodyForm::Quoted(tail_copy.clone()));
-                        } else if *atom_name == "quote".as_bytes().to_vec() {
-                            return Err(CompileErr(l.clone(), "bad quote form".to_string()));
-                        } else if *atom_name == "qq".as_bytes().to_vec() {
-                            return Err(CompileErr(l.clone(), "bad qq form".to_string()));
-                        }
-                    },
-                    (SExp::Integer(_,i), _) => {
-                        if *i == bi_one() {
-                            let tail_copy: &SExp = tail.borrow();
-                            return Ok(BodyForm::Quoted(tail_copy.clone()));
-                        }
-                    },
-                    _ => {
-                    }
-                }
+            let application = || {
+                args_to_expression_list(tail.clone()).and_then(|args| {
+                    compile_bodyform(op.clone()).map(|func| {
+                        let mut result_call = vec!(Rc::new(func));
+                        let mut args_clone = args.to_vec();
+                        result_call.append(&mut args_clone);
+                        BodyForm::Call(l.clone(), result_call)
+                    })
+                })
+            };
 
-                args_to_expression_list(tail.clone()).and_then(|args| {
-                    compile_bodyform(op.clone()).map(|func| {
-                        let mut result_call = vec!(Rc::new(func));
-                        let mut args_clone = args.to_vec();
-                        result_call.append(&mut args_clone);
-                        BodyForm::Call(l.clone(), result_call)
-                    })
-                })
-            }).unwrap_or_else(|| {
-                args_to_expression_list(tail.clone()).and_then(|args| {
-                    compile_bodyform(op.clone()).map(|func| {
-                        let mut result_call = vec!(Rc::new(func));
-                        let mut args_clone = args.to_vec();
-                        result_call.append(&mut args_clone);
-                        BodyForm::Call(l.clone(), result_call)
-                    })
-                })
-            })
+            let finish_err = || {
+                Err(CompileErr(
+                    l.clone(),
+                    format!("bad argument list for form {}", body.to_string())
+                ))
+            };
+
+            match op.borrow() {
+                SExp::Atom(_,atom_name) => {
+                    if *atom_name == "q".as_bytes().to_vec() ||
+                        (atom_name.len() == 1 && atom_name[0] == 1)
+                    {
+                        let tail_copy: &SExp = tail.borrow();
+                        return Ok(BodyForm::Quoted(tail_copy.clone()));
+                    }
+
+                    match tail.proper_list() {
+                        Some(v) => {
+                            if *atom_name == "let".as_bytes().to_vec() {
+                                if v.len() != 2 {
+                                    return finish_err();
+                                }
+
+                                let bindings = v[1].clone();
+                                let body = v[2].clone();
+
+                                let let_bindings = make_let_bindings(Rc::new(bindings.clone()))?;
+                                let compiled_body = compile_bodyform(Rc::new(body.clone()))?;
+                                return Ok(BodyForm::Let(l.clone(), let_bindings, Rc::new(compiled_body)));
+                            } else if *atom_name == "quote".as_bytes().to_vec() {
+                                if v.len() != 1 {
+                                    return finish_err();
+                                }
+
+                                let quote_body = v[0].clone();
+
+                                return Ok(BodyForm::Quoted(quote_body.clone()));
+                            } else if *atom_name == "qq".as_bytes().to_vec() {
+                                if v.len() != 1 {
+                                    return finish_err();
+                                }
+
+                                let quote_body = v[0].clone();
+
+                                return qq_to_expression(Rc::new(quote_body.clone()));
+                            } else {
+                                return application();
+                            }
+                        },
+                        None => {
+                            return finish_err();
+                        }
+                    }
+                },
+                SExp::Integer(_,i) => {
+                    if *i == bi_one() {
+                        let tail_copy: &SExp = tail.borrow();
+                        return Ok(BodyForm::Quoted(tail_copy.clone()));
+                    } else {
+                        return application();
+                    }
+                },
+                SExp::QuotedString(_,_,s) => {
+                    let body_copy: &SExp = body.borrow();
+                    return Ok(BodyForm::Value(body_copy.clone()));
+                },
+                SExp::Nil(l) => {
+                    let body_copy: &SExp = body.borrow();
+                    return Ok(BodyForm::Quoted(body_copy.clone()));
+                },
+                SExp::Cons(_,_,_) => {
+                    return finish_err();
+                }
+            }
         },
         _ => {
             let body_copy: &SExp = body.borrow();
-            Ok(BodyForm::Value(body_copy.clone()))
+            return Ok(BodyForm::Value(body_copy.clone()));
         }
     }
 }
@@ -331,11 +366,17 @@ fn compile_defmacro(
         Rc::new(SExp::Cons(
             l.clone(),
             args.clone(),
-            body
+            Rc::new(SExp::Cons(
+                l.clone(),
+                body,
+                Rc::new(SExp::Nil(l.clone()))
+            ))
         ))
     );
     let new_opts = opts.set_stdenv(false);
+    print!("program = {}\n", program.to_string());
     frontend(new_opts, vec!(Rc::new(program))).map(|p| {
+        print!("macro body {}\n", p.exp.to_sexp().to_string());
         HelperForm::Defmacro(l, name, args.clone(), Rc::new(p))
     })
 }
@@ -345,6 +386,7 @@ fn compile_helperform(
     body: Rc<SExp>
 ) -> Option<HelperForm> {
     let l = body.loc();
+    print!("compile_helperform {}\n", body.to_string());
     body.proper_list().and_then(|x| {
         match &x[..] {
             [SExp::Atom(_,op_name), SExp::Atom(_,name), body] => {
@@ -356,6 +398,7 @@ fn compile_helperform(
             },
             [SExp::Atom(_,op_name), SExp::Atom(_,name), args, body] => {
                 if *op_name == "defmacro".as_bytes().to_vec() {
+                    print!("defmacro? {} {}\n", args.to_string(), body.to_string());
                     return compile_defmacro(opts, l, name.to_vec(), Rc::new(args.clone()), Rc::new(body.clone())).ok();
                 } else if *op_name == "defun".as_bytes().to_vec() {
                     return compile_defun(l, false, name.to_vec(), Rc::new(args.clone()), Rc::new(body.clone())).ok();
@@ -376,6 +419,7 @@ fn compile_mod_(
     args: Rc<SExp>,
     content: Rc<SExp>
 ) -> Result<ModAccum, CompileErr> {
+    print!("compile_mod_ {} {}\n", args.to_string(), content.to_string());
     match content.borrow() {
         SExp::Nil(l) => {
             return Err(CompileErr(l.clone(), "no expression at end of mod".to_string()));
@@ -400,6 +444,7 @@ fn compile_mod_(
                 _ => {
                     match compile_helperform(opts.clone(), body.clone()) {
                         None => {
+                            print!("not a helperform: {}\n", body.to_string());
                             return Err(CompileErr(
                                 l.clone(),
                                 "only the last form can be an exprssion in mod".to_string()
@@ -461,8 +506,12 @@ fn frontend_start(
         };
         let l = pre_forms[0].loc();
         return pre_forms[0].proper_list().map(|x| {
-            match &x[..] {
-                [SExp::Atom(_,mod_atom), args, body] => {
+            if x.len() < 3 {
+                return finish();
+            }
+
+            match &x[0] {
+                SExp::Atom(_,mod_atom) => {
                     if pre_forms.len() > 1 {
                         return Err(CompileErr(
                             pre_forms[0].loc(), "one toplevel mod form allowed".to_string()
@@ -470,11 +519,21 @@ fn frontend_start(
                     }
 
                     if *mod_atom == "mod".as_bytes().to_vec() {
-                        let ls = preprocess(opts.clone(), Rc::new(body.clone()))?;
+                        let args = Rc::new(x[1].clone());
+                        let body_vec = x.iter().skip(2).
+                            map(|s| Rc::new(s.clone())).collect();
+                        let body = Rc::new(enlist(
+                            pre_forms[0].loc(),
+                            body_vec
+                        ));
+
+                        print!("body of form: {}\n", body.to_string());
+
+                        let ls = preprocess(opts.clone(), body.clone())?;
                         return compile_mod_(
                             &ModAccum::new(l.clone()),
                             opts.clone(),
-                            Rc::new(args.clone()),
+                            args.clone(),
                             Rc::new(list_to_cons(l, &ls))
                         );
                     }
