@@ -21,9 +21,9 @@ let clvm_tests : RunExecTest.t list =
         ; input = "(a (q 2 4 (c 2 (c 6 ()))) (c (q 13 26729 \"there\" \"fool\") 1))"
         ; args = "()"
     }
-        ; { expected = RunOk "(4 1 (4 2 ()))"
-            ; input = "(a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)"
-            ; args = "(1 2)"
+        ; { expected = RunOk ""
+            ; input = ""
+; args = "(1 2)"
         }
         ; { expected = RunOk "13"
             ; input = "(2 (3 (1) (1 16 (1 . 1) (1 . 3)) (1 16 (1 . 5) (1 . 8))) 1)"
@@ -118,7 +118,19 @@ fn test_clvm_1() {
     let want =
         parse_sexp(loc, &"(\"there\" \"fool\")".to_string()).unwrap();
 
-    print!("result {}\n", result.to_string());
-    print!("want {}\n", want[0].to_string());
+    assert!(result.equal_to(want[0].borrow()));
+}
+
+#[test]
+fn test_clvm_2() {
+    let loc = Srcloc::start(&"*test*".to_string());
+    let result =
+        test_compiler_clvm(
+            &"(a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)".to_string(),
+            &"(1 2)".to_string(),
+        ).unwrap();
+    let want =
+        parse_sexp(loc, &"(4 1 (4 2 ()))".to_string()).unwrap();
+
     assert!(result.equal_to(want[0].borrow()));
 }

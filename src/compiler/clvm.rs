@@ -103,7 +103,12 @@ fn translate_head(
                 Some(v) => Ok(v.clone())
             }
         },
-        SExp::Integer (_,_) => Ok(sexp.clone()),
+        SExp::Integer (_,i) => {
+            match prim_map.get(&u8_from_number(i.clone())) {
+                None => Ok(sexp.clone()),
+                Some(v) => Ok(v.clone())
+            }
+        },
         SExp::Cons(l,a,nil) => {
             match nil.borrow() {
                 SExp::Nil(l1) => {
@@ -156,7 +161,14 @@ fn eval_args(
                 })
             })
         },
-        _ => Err(RunFailure::RunErr(args.loc(), "bad argument list".to_string()))
+        _ => Err(RunFailure::RunErr(
+            args.loc(),
+            format!(
+                "bad argument list {} {}",
+                args.to_string(),
+                context.to_string()
+            )
+        ))
     }
 }
 
@@ -222,17 +234,14 @@ fn convert_from_clvm_rs(
     }
 }
 
-fn enquote(sexp: Rc<SExp>) -> Rc<SExp> {
+fn generate_argument_refs(start: Number, sexp: Rc<SExp>) -> Rc<SExp> {
     match sexp.borrow() {
         SExp::Cons(l,a,b) => {
-            let tail = enquote(b.clone());
+            let next_index = bi_one() + 2_i32.to_bigint().unwrap() * start.clone();
+            let tail = generate_argument_refs(next_index, b.clone());
             Rc::new(SExp::Cons(
                 l.clone(),
-                Rc::new(SExp::Cons(
-                    l.clone(),
-                    Rc::new(SExp::atom_from_vec(l.clone(), &vec!(1))),
-                    a.clone()
-                )),
+                Rc::new(SExp::Integer(a.loc(), start)),
                 tail
             ))
         },
@@ -247,15 +256,26 @@ fn apply_op(
     head: Rc<SExp>,
     args: Rc<SExp>
 ) -> Result<Rc<SExp>, RunFailure> {
-    let application = Rc::new(SExp::Cons(l.clone(), head.clone(), enquote(args.clone())));
+    let wrapped_args = Rc::new(SExp::Cons(
+        l.clone(),
+        Rc::new(SExp::Nil(l.clone())),
+        args.clone()
+    ));
+    let application = Rc::new(SExp::Cons(
+        l.clone(),
+        head.clone(),
+        generate_argument_refs(5_i32.to_bigint().unwrap(), args.clone())
+    ));
     let converted_app = convert_to_clvm_rs(allocator, application.clone())?;
+    let converted_args = convert_to_clvm_rs(allocator, wrapped_args.clone())?;
+
     runner.run_program(
         allocator,
         converted_app,
-        allocator.null(),
+        converted_args,
         None
     ).map_err(|e| {
-        RunFailure::RunErr(head.loc(), e.1)
+        RunFailure::RunErr(head.loc(), format!("{} in {} {}", e.1, application.to_string(), wrapped_args.to_string()))
     }).and_then(|v| convert_from_clvm_rs(allocator, head.loc(), v.1))
 }
 
