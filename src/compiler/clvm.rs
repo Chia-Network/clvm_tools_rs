@@ -91,10 +91,14 @@ fn translate_head(
         SExp::Atom(l,v) => {
             match prim_map.get(v) {
                 None => {
-                    Err(RunFailure::RunErr(
+                    translate_head(
+                        allocator,
+                        runner,
+                        prim_map,
                         l.clone(),
-                        format!("Can't find operator '{}'", decode_string(v))
-                    ))
+                        Rc::new(SExp::Integer(l.clone(),number_from_u8(v))),
+                        context.clone()
+                    )
                 },
                 Some(v) => Ok(v.clone())
             }
@@ -202,7 +206,11 @@ fn convert_from_clvm_rs(
 ) -> Result<Rc<SExp>, RunFailure> {
     match allocator.sexp(head) {
         allocator::SExp::Atom(h) => {
-            Ok(Rc::new(SExp::Integer(loc, number_from_u8(allocator.buf(&h)))))
+            if h.len() == 0 {
+                Ok(Rc::new(SExp::Nil(loc)))
+            } else {
+                Ok(Rc::new(SExp::Integer(loc, number_from_u8(allocator.buf(&h)))))
+            }
         },
         allocator::SExp::Pair(a,b) => {
             convert_from_clvm_rs(allocator, loc.clone(), a).and_then(|h| {
@@ -214,6 +222,24 @@ fn convert_from_clvm_rs(
     }
 }
 
+fn enquote(sexp: Rc<SExp>) -> Rc<SExp> {
+    match sexp.borrow() {
+        SExp::Cons(l,a,b) => {
+            let tail = enquote(b.clone());
+            Rc::new(SExp::Cons(
+                l.clone(),
+                Rc::new(SExp::Cons(
+                    l.clone(),
+                    Rc::new(SExp::atom_from_vec(l.clone(), &vec!(1))),
+                    a.clone()
+                )),
+                tail
+            ))
+        },
+        _ => sexp.clone(),
+    }
+}
+
 fn apply_op(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -221,12 +247,12 @@ fn apply_op(
     head: Rc<SExp>,
     args: Rc<SExp>
 ) -> Result<Rc<SExp>, RunFailure> {
-    let converted_head = convert_to_clvm_rs(allocator, head.clone())?;
-    let converted_tail = convert_to_clvm_rs(allocator, args)?;
+    let application = Rc::new(SExp::Cons(l.clone(), head.clone(), enquote(args.clone())));
+    let converted_app = convert_to_clvm_rs(allocator, application.clone())?;
     runner.run_program(
         allocator,
-        converted_head,
-        converted_tail,
+        converted_app,
+        allocator.null(),
         None
     ).map_err(|e| {
         RunFailure::RunErr(head.loc(), e.1)
@@ -259,6 +285,9 @@ pub fn run(
     let mut context = context_.clone();
 
     loop {
+        let sexp_first = sexp.clone();
+        let context_first = context.clone();
+
         match sexp.borrow() {
             SExp::Integer(l,v) => {
                 /* An integer picks a value from the context */
@@ -310,7 +339,7 @@ pub fn run(
                 }
 
                 // Handle apply here.
-                match b.proper_list() {
+                match tail.proper_list() {
                     None => {
                         return Err(RunFailure::RunErr(
                             b.loc(),
@@ -353,10 +382,8 @@ pub fn parse_and_run(
         Err(RunFailure::RunErr(Srcloc::start(file), "no args".to_string()))
     } else {
         let prim_map = prims::prim_map();
-        let res = run(
+        run(
             allocator, runner, prim_map, code[0].clone(), args[0].clone()
-        );
-        print!("run {} {} => {:?}", code[0].to_string(), args[0].to_string(), res);
-        return res;
+        )
     }
 }
