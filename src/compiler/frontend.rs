@@ -18,10 +18,12 @@ use crate::compiler::comptypes::{
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
 use crate::compiler::sexp::{
+    decode_string,
     enlist,
     SExp
 };
 use crate::compiler::srcloc::Srcloc;
+use crate::util::u8_from_number;
 
 fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
     match body.borrow() {
@@ -134,34 +136,59 @@ fn calculate_live_helpers(
 
 fn qq_to_expression(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
     let body_copy: &SExp = body.borrow();
-    body.proper_list().map(|x| {
-        match &x[..] {
-            [SExp::Atom(_,op), applied] => { // (q . (3)), (quote 3), (unquote x)
-                if op.len() == 1 && op[0] == 'q' as u8 {
-                    return Ok(BodyForm::Quoted(body_copy.clone()));
-                } else if *op == "quote".as_bytes().to_vec() {
-                    return Ok(BodyForm::Quoted(applied.clone()));
-                } else if *op == "unquote".as_bytes().to_vec() {
-                    return compile_bodyform(Rc::new(applied.clone()));
-                }
-            },
-            [SExp::Atom(_,op)] => { // (q)
-                if op.len() == 1 && op[0] == 'q' as u8 {
-                    return Ok(BodyForm::Quoted(body_copy.clone()));
-                }
-            },
-            _ => {
-                match body.borrow() {
-                    SExp::Cons(_,_,_) => {
-                        return qq_to_expression_list(body.clone());
-                    }
+
+    match body.borrow() {
+        SExp::Cons(l,f,r) => {
+            let op =
+                match f.borrow() {
+                    SExp::Atom(_,o) => o.clone(),
+                    SExp::QuotedString(_,_,s) => s.clone(),
+                    SExp::Integer(_,i) => u8_from_number(i.clone()),
+                    _ => Vec::new()
+                };
+
+            print!("got operator {}\n", decode_string(&op));
+
+            if op.len() == 1 && (op[0] == 'q' as u8 || op[0] == 1) {
+                return Ok(BodyForm::Quoted(body_copy.clone()));
+            } else {
+                match r.proper_list() {
+                    Some(list) => {
+                        if *op == "quote".as_bytes().to_vec() {
+                            if list.len() != 1 {
+                                return Err(CompileErr(
+                                    l.clone(),
+                                    format!("bad form {}", body.to_string())
+                                ));
+                            }
+
+                            return Ok(BodyForm::Quoted(list[0].clone()));
+                        } else if *op == "unquote".as_bytes().to_vec() {
+                            if list.len() != 1 {
+                                return Err(CompileErr(
+                                    l.clone(),
+                                    format!("bad form {}", body.to_string())
+                                ));
+                            }
+
+                            return compile_bodyform(Rc::new(list[0].clone()));
+                        }
+                    },
                     _ => { }
                 }
             }
-        }
+        },
+        _ => { }
+    }
 
-        return Ok(BodyForm::Quoted(body_copy.clone()));
-    }).unwrap_or_else(|| Ok(BodyForm::Quoted(body_copy.clone())))
+    match body.borrow() {
+        SExp::Cons(_,_,_) => {
+            return qq_to_expression_list(body.clone());
+        }
+        _ => { }
+    }
+
+    return Ok(BodyForm::Quoted(body_copy.clone()));
 }
 
 fn qq_to_expression_list(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
@@ -384,33 +411,32 @@ fn compile_defmacro(
 fn compile_helperform(
     opts: Rc<dyn CompilerOpts>,
     body: Rc<SExp>
-) -> Option<HelperForm> {
+) -> Result<Option<HelperForm>, CompileErr> {
     let l = body.loc();
     print!("compile_helperform {}\n", body.to_string());
-    body.proper_list().and_then(|x| {
-        match &x[..] {
+    let plist = body.proper_list();
+
+    match plist {
+        Some(pl) => match &pl[..] {
             [SExp::Atom(_,op_name), SExp::Atom(_,name), body] => {
                 if *op_name == "defconstant".as_bytes().to_vec() {
-                    return compile_defconstant(l, name.to_vec(), Rc::new(body.clone())).ok();
-                } else {
-                    return None;
+                    return compile_defconstant(l, name.to_vec(), Rc::new(body.clone())).map(|x| Some(x));
                 }
             },
             [SExp::Atom(_,op_name), SExp::Atom(_,name), args, body] => {
                 if *op_name == "defmacro".as_bytes().to_vec() {
-                    print!("defmacro? {} {}\n", args.to_string(), body.to_string());
-                    return compile_defmacro(opts, l, name.to_vec(), Rc::new(args.clone()), Rc::new(body.clone())).ok();
+                    return compile_defmacro(opts, l, name.to_vec(), Rc::new(args.clone()), Rc::new(body.clone())).map(|x| Some(x));
                 } else if *op_name == "defun".as_bytes().to_vec() {
-                    return compile_defun(l, false, name.to_vec(), Rc::new(args.clone()), Rc::new(body.clone())).ok();
+                    return compile_defun(l, false, name.to_vec(), Rc::new(args.clone()), Rc::new(body.clone())).map(|x| Some(x));
                 } else if *op_name == "defun-inline".as_bytes().to_vec() {
-                    return compile_defun(l, true, name.to_vec(), Rc::new(args.clone()), Rc::new(body.clone())).ok();
-                } else {
-                    return None;
+                    return compile_defun(l, true, name.to_vec(), Rc::new(args.clone()), Rc::new(body.clone())).map(|x| Some(x));
                 }
             },
-            _ => { return None; }
-        }
-    })
+            _ => { }
+        },
+        _ => { }
+    }
+    return Ok(None);
 }
 
 fn compile_mod_(
@@ -442,7 +468,8 @@ fn compile_mod_(
                     }
                 },
                 _ => {
-                    match compile_helperform(opts.clone(), body.clone()) {
+                    let helper = compile_helperform(opts.clone(), body.clone())?;
+                    match helper {
                         None => {
                             print!("not a helperform: {}\n", body.to_string());
                             return Err(CompileErr(
