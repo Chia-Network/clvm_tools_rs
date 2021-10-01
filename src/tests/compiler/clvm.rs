@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::rc::Rc;
 
 use num_bigint::ToBigInt;
@@ -38,7 +39,7 @@ let clvm_tests : RunExecTest.t list =
 fn test_compiler_clvm(
     to_run: &String,
     args: &String
-) -> Result<String, RunFailure> {
+) -> Result<Rc<SExp>, RunFailure> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
     parse_and_run(
@@ -47,7 +48,7 @@ fn test_compiler_clvm(
         &"*test*".to_string(),
         &to_run,
         &args
-    ).map(|v| v.to_string())
+    )
 }
 
 #[test]
@@ -108,11 +109,16 @@ fn test_sexp_parse_8() {
 
 #[test]
 fn test_clvm_1() {
+    let loc = Srcloc::start(&"*test*".to_string());
     let result =
         test_compiler_clvm(
             &"(a (q 2 4 (c 2 (c 6 ()))) (c (q 13 26729 \"there\" \"fool\") 1))".to_string(),
             &"()".to_string()
-        );
+        ).unwrap();
+    let want =
+        parse_sexp(loc, &"(\"there\" \"fool\")".to_string()).unwrap();
 
-    assert_eq!(result, Ok("(\"there\" \"fool\")".to_string()));
+    print!("result {}\n", result.to_string());
+    print!("want {}\n", want[0].to_string());
+    assert!(result.equal_to(want[0].borrow()));
 }

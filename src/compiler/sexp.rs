@@ -162,36 +162,6 @@ fn list_no_parens(a: &SExp, b: &SExp) -> String {
     }
 }
 
-fn encode_hex_digit_list(v: &Vec<u8>, res: &mut Vec<u8>) {
-    let enclen = v.len().to_bigint().unwrap();
-    let lenor =
-        if enclen < 0x40.to_bigint().unwrap() {
-            0x80.to_bigint().unwrap()
-        } else if enclen < 0x2000.to_bigint().unwrap() {
-            0xc000.to_bigint().unwrap()
-        } else if enclen < 0x1000000.to_bigint().unwrap() {
-            0xe0000000_u64.to_bigint().unwrap()
-        } else if enclen < 0x80000000_u64.to_bigint().unwrap() {
-            0xf0000000_u64.to_bigint().unwrap()
-        } else {
-            0xf80000000000_u64.to_bigint().unwrap()
-        };
-    let combined_prefix = lenor | enclen;
-    let encoded_prefix = bigint_to_bytes(&combined_prefix, None).unwrap();
-    let mut encoded_data = encoded_prefix.data().to_vec();
-    res.append(&mut encoded_data);
-}
-
-fn encode_integer_value(v: &Vec<u8>, res: &mut Vec<u8>) {
-    if v.len() == 1 && v[0] < 0x80 {
-        res.push(v[0]);
-    } else {
-        encode_hex_digit_list(v, res);
-        let mut vcopy = v.to_vec();
-        res.append(&mut vcopy);
-    }
-}
-
 pub fn decode_string(v: &Vec<u8>) -> String {
     return String::from_utf8_lossy(v).as_ref().to_string();
 }
@@ -279,8 +249,12 @@ impl SExp {
 
                 v.append(&mut bi_bytes);
             },
-            SExp::QuotedString(_,_,s) => encode_integer_value(s, v),
-            SExp::Atom(_,a) => encode_integer_value(a, v)
+            SExp::QuotedString(l,_,s) => {
+                SExp::Integer(l.clone(),number_from_u8(s)).encode_mut(v);
+            }
+            SExp::Atom(l,a) => {
+                SExp::Integer(l.clone(),number_from_u8(a)).encode_mut(v);
+            }
         }
     }
 
@@ -315,7 +289,10 @@ impl SExp {
                 (SExp::Cons(_,_,_), _) => false,
                 (_, SExp::Cons(_,_,_)) => false,
                 (SExp::Integer(_,a), SExp::Integer(_,b)) => a == b,
-                (a,b) => a.encode() == b.encode()
+                (a,b) => {
+                    print!("A {:?} B {:?}\n", a.encode(), b.encode());
+                    a.encode() == b.encode()
+                }
             }
         }
     }
