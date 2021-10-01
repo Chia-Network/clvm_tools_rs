@@ -15,27 +15,6 @@ use crate::compiler::srcloc::Srcloc;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::clvm::parse_and_run;
 
-/*
-let clvm_tests : RunExecTest.t list =
-    [ { expected = RunOk "(\"there\" \"fool\")"
-        ; input = "(a (q 2 4 (c 2 (c 6 ()))) (c (q 13 26729 \"there\" \"fool\") 1))"
-        ; args = "()"
-    }
-        ; { expected = RunOk ""
-            ; input = ""
-; args = "(1 2)"
-        }
-        ; { expected = RunOk "13"
-            ; input = "(2 (3 (1) (1 16 (1 . 1) (1 . 3)) (1 16 (1 . 5) (1 . 8))) 1)"
-            ; args = "()"
-        }
-        ; { expected = RunOk "(30000 . 3392)"
-            ; input = "(divmod (1 . 300000003392) (1 . 10000000))"
-            ; args = "()"
-        }
-    ]
- */
-
 fn test_compiler_clvm(
     to_run: &String,
     args: &String
@@ -131,6 +110,34 @@ fn test_clvm_2() {
         ).unwrap();
     let want =
         parse_sexp(loc, &"(4 1 (4 2 ()))".to_string()).unwrap();
+
+    assert!(result.equal_to(want[0].borrow()));
+}
+
+#[test]
+fn test_clvm_3() {
+    let loc = Srcloc::start(&"*test*".to_string());
+    let result =
+        test_compiler_clvm(
+            &"(2 (3 (1) (1 16 (1 . 1) (1 . 3)) (1 16 (1 . 5) (1 . 8))) 1)".to_string(),
+            &"()".to_string(),
+        ).unwrap();
+    let want =
+        parse_sexp(loc, &"13".to_string()).unwrap();
+
+    assert!(result.equal_to(want[0].borrow()));
+}
+
+#[test]
+fn test_clvm_4() {
+    let loc = Srcloc::start(&"*test*".to_string());
+    let result =
+        test_compiler_clvm(
+            &"(divmod (1 . 300000003392) (1 . 10000000))".to_string(),
+            &"()".to_string(),
+        ).unwrap();
+    let want =
+        parse_sexp(loc, &"(30000 . 3392)".to_string()).unwrap();
 
     assert!(result.equal_to(want[0].borrow()));
 }
