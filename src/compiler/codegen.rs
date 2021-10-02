@@ -19,7 +19,8 @@ use crate::compiler::gensym::gensym;
 use crate::compiler::prims::prims;
 use crate::compiler::sexp::{
     SExp,
-    decode_string
+    decode_string,
+    enlist
 };
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::comptypes::{
@@ -128,6 +129,21 @@ fn create_name_lookup_(
                 ))
             }
         },
+        SExp::Integer(l,i) => {
+            let a = u8_from_number(i.clone());
+            if a == *name {
+                Ok(1_u64)
+            } else {
+                Err(CompileErr(
+                    l.clone(),
+                    format!(
+                        "{} not found (via {})",
+                        decode_string(&name),
+                        decode_string(&a)
+                    )
+                ))
+            }
+        },
         SExp::Cons (l,head,rest) => {
             match create_name_lookup_(l.clone(), name, env.clone(), head.clone()) {
                 Err(_) => create_name_lookup_(l.clone(), name, env, rest.clone()).map(
@@ -140,7 +156,7 @@ fn create_name_lookup_(
             Err(CompileErr(
                 l.clone(),
                 format!(
-                    "{} not found checking {} in {}",
+                    "operator or function atom {} not found checking {} in {}",
                     decode_string(&name),
                     find.to_string(),
                     env.to_string()
@@ -263,7 +279,6 @@ fn get_callable(
             match (macro_def, defun, prim, atom_is_com) {
                 (Some(macro_def), _, _, _) => {
                     let macro_def_clone: &SExp = macro_def.borrow();
-                    print!("get_callable: macro {}\n", macro_def.to_string());
                     Ok(Callable::CallMacro(macro_def_clone.clone()))
                 },
                 (_, Ok(defun), _, _) => {
@@ -303,7 +318,6 @@ fn process_macro_call(
     let converted_args: Vec<Rc<SExp>> =
         args.iter().map(|b| b.to_sexp()).collect();
     let args_to_macro = list_to_cons(l.clone(), &converted_args);
-    print!("process_macro_call {} {}\n", code.to_string(), args_to_macro.to_string());
     run(
         allocator,
         runner.clone(),
@@ -654,7 +668,6 @@ fn codegen_(
                 set_assemble(false).
                 set_stdenv(false);
 
-            print!("codegen_ defmacro {} {} {}\n", decode_string(&name), args.to_string(), macro_program.to_string());
             updated_opts.compile_program(
                 allocator,
                 runner,

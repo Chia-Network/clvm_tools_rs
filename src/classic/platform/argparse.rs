@@ -33,7 +33,7 @@ pub enum NArgsSpec {
 #[derive(Clone)]
 #[derive(Debug)]
 pub enum ArgumentValue {
-    ArgString(String),
+    ArgString(Option<String>, String),
     ArgInt(i64),
     ArgBool(bool),
     ArgArray(Vec<ArgumentValue>)
@@ -46,7 +46,7 @@ pub trait ArgumentValueConv {
 struct EmptyConversion { }
 impl ArgumentValueConv for EmptyConversion {
     fn convert(&self, s: &String) -> Result<ArgumentValue, String> {
-        return Ok(ArgumentValue::ArgString(s.to_string()));
+        return Ok(ArgumentValue::ArgString(None, s.to_string()));
     }
 }
 
@@ -455,7 +455,7 @@ impl ArgumentParser {
             let mut msg = " ".to_string() + &a.names.join(", ");
             let default_value =
                 match &a.options.default {
-                    Some(ArgumentValue::ArgString(s)) => s.to_string(),
+                    Some(ArgumentValue::ArgString(None, s)) => s.to_string(),
                     _ => "".to_string()
                 };
 

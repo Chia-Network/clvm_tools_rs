@@ -112,6 +112,11 @@ impl CompilerOpts for DefaultCompilerOpts {
                 (defmacro list args (defun makelist (args) (if args (c (q . c) (c (f args) (c (makelist (r args)) (q . ())))) (q . ()))) (makelist args))
             )"};
             return Ok((filename, macros.to_string()));
+        } else if filename == "*standard-cl-21*" {
+            let content = indoc! {"(
+                (defconstant *chialisp-version* 21)
+            )"};
+            return Ok((filename, content.to_string()));
         }
 
         for dir in self.include_dirs.iter() {
@@ -132,7 +137,7 @@ impl CompilerOpts for DefaultCompilerOpts {
 }
 
 impl DefaultCompilerOpts {
-    pub fn new() -> DefaultCompilerOpts {
+    pub fn new(filename: &String) -> DefaultCompilerOpts {
         let mut prim_map = HashMap::new();
 
         for p in prims::prims() {
@@ -141,7 +146,7 @@ impl DefaultCompilerOpts {
 
         DefaultCompilerOpts {
             include_dirs: vec!(".".to_string()),
-            filename: "*spontaneous*".to_string(),
+            filename: filename.clone(),
             compiler: None,
             in_defun: false,
             assemble: false,
@@ -150,4 +155,5 @@ impl DefaultCompilerOpts {
             prim_map: Rc::new(prim_map)
         }
     }
+
 }

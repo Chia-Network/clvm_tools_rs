@@ -22,7 +22,8 @@ use core::cmp::max;
 
 use clvm_rs::allocator::{
     Allocator,
-    NodePtr
+    NodePtr,
+    SExp
 };
 use clvm_rs::reduction::EvalErr;
 use clvm_rs::run_program::PreEval;
@@ -58,6 +59,7 @@ use crate::classic::clvm_tools::debug::trace_pre_eval;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{
+    DefaultProgramRunner,
     RunProgramOption,
     TRunProgram
 };
@@ -76,6 +78,10 @@ use crate::classic::platform::argparse::{
     TArgOptionAction,
     TArgumentParserProps
 };
+use crate::compiler::compiler::{
+    compile_file,
+    DefaultCompilerOpts
+};
 use crate::util::collapse;
 
 pub struct PathOrCodeConv { }
@@ -83,8 +89,8 @@ pub struct PathOrCodeConv { }
 impl ArgumentValueConv for PathOrCodeConv {
     fn convert(&self, arg: &String) -> Result<ArgumentValue,String> {
         match fs::read_to_string(arg) {
-            Ok(s) => { return Ok(ArgumentValue::ArgString(s)); },
-            Err(_) => { return Ok(ArgumentValue::ArgString(arg.to_string())); }
+            Ok(s) => { return Ok(ArgumentValue::ArgString(Some(arg.to_string()), s)); },
+            Err(_) => { return Ok(ArgumentValue::ArgString(None, arg.to_string())); }
         }
     }
 }
@@ -151,7 +157,7 @@ pub fn call_tool<'a>(allocator: &'a mut Allocator, tool_name: String, desc: Stri
 
     for program in args_path_or_code {
         match program {
-            ArgumentValue::ArgString(s) => {
+            ArgumentValue::ArgString(_,s) => {
                 if s == "-" {
                     panic!("Read stdin is not supported at this time");
                 }
@@ -337,6 +343,44 @@ fn write_sym_output(
     }).map(|_| ())
 } }
 
+fn detect_modern(
+    allocator: &mut Allocator,
+    sexp: NodePtr
+) -> bool {
+    match proper_list(allocator, sexp, true) {
+        None => { return false; },
+        Some(l) => {
+            for elt in l.iter() {
+                if detect_modern(allocator, *elt) {
+                    return true;
+                }
+
+                match proper_list(allocator, *elt, true) {
+                    None => { continue; },
+                    Some(e) => {
+                        if e.len() != 2 {
+                            continue;
+                        }
+
+                        match (allocator.sexp(e[0]), allocator.sexp(e[1])) {
+                            (SExp::Atom(inc), SExp::Atom(name)) => {
+                                if allocator.buf(&inc) == "include".as_bytes().to_vec() &&
+                                    allocator.buf(&name) == "*standard-cl-21*".as_bytes().to_vec()
+                                {
+                                    return true;
+                                }
+                            },
+                            _ => { continue; }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
 pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, default_stage: u32) {
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
@@ -472,7 +516,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
             let mut bare_paths = Vec::with_capacity(v.len());
             for p in v {
                 match p {
-                    ArgumentValue::ArgString(s) => bare_paths.push(s.to_string()),
+                    ArgumentValue::ArgString(_,s) => bare_paths.push(s.to_string()),
                     _ => { }
                 }
             }
@@ -489,6 +533,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
 
     let mut allocator = Allocator::new();
 
+    let mut input_file = None;
     let mut input_serialized = None;
     let mut input_sexp;
 
@@ -501,7 +546,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
     let mut input_args = "()".to_string();
 
     match parsedArgs.get("path_or_code") {
-        Some(ArgumentValue::ArgString(path_or_code)) => {
+        Some(ArgumentValue::ArgString(file, path_or_code)) => {
+            input_file = file.clone();
             input_program = path_or_code.to_string();
         },
         _ => { }
@@ -536,9 +582,13 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
         _ => {
             let src_sexp;
             match parsedArgs.get("path_or_code") {
-                Some(ArgumentValue::ArgString(s)) => {
-                    match read_ir(&s) {
-                        Ok(s) => { src_sexp = s; },
+                Some(ArgumentValue::ArgString(f,content)) => {
+                    match read_ir(&content) {
+                        Ok(s) => {
+                            input_program = content.clone();
+                            input_file = f.clone();
+                            src_sexp = s;
+                        },
                         Err(e) => {
                             stdout.write_string(format!("FAIL: {}\n", e));
                             return;
@@ -556,7 +606,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
             let mut parsed_args_result = "()".to_string();
 
             match parsedArgs.get("env") {
-                Some(ArgumentValue::ArgString(s)) => {
+                Some(ArgumentValue::ArgString(f,s)) => {
                     parsed_args_result = s.to_string();
                 },
                 _ => { }
@@ -568,6 +618,22 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
 
             input_sexp = allocator.new_pair(assembled_sexp, env).map(|x| Some(x)).unwrap();
         }
+    }
+
+    // In testing: short circuit for modern compilation.
+    if input_sexp.map(|i| detect_modern(&mut allocator, i)).unwrap_or_else(|| false) {
+        let runner = Rc::new(DefaultProgramRunner::new());
+        let opts = Rc::new(DefaultCompilerOpts::new(&input_file.unwrap_or_else(|| "*command*".to_string())));
+        let res = compile_file(&mut allocator, runner, opts, &input_program);
+        match res {
+            Ok(r) => {
+                print!("{}\n", r.to_string());
+            },
+            Err(c) => {
+                print!("{}: {}\n", c.0.to_string(), c.1);
+            }
+        }
+        return;
     }
 
     let mut pre_eval_f: Option<PreEval> = None;
@@ -617,7 +683,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
     let mut emit_symbol_output = false;
     let symbol_table_clone =
         parsedArgs.get("symbol_table").and_then(|jstring| match jstring {
-            ArgumentValue::ArgString(s) => {
+            ArgumentValue::ArgString(_,s) => {
                 fs::read_to_string(s).ok().and_then(|s| {
                     let decoded_symbol_table: Option<HashMap<String,String>> =
                         serde_json::from_str(&s).ok();
@@ -729,6 +795,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
     });
 
     time_parse_input = SystemTime::now();
+
     let res =
         run_program.run_program(
             &mut allocator,

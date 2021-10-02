@@ -119,33 +119,26 @@ fn preprocess_(
 fn inject_std_macros(body: Rc<SExp>) -> SExp {
     match body.proper_list() {
         Some(v) => {
-            match v[0].borrow() {
-                SExp::Atom(_,kw) => {
-                    if *kw == "mod".as_bytes().to_vec() {
-                        let include_form = Rc::new(SExp::Cons(
-                            body.loc(),
-                            Rc::new(SExp::atom_from_string(body.loc(), &"include".to_string())),
-                            Rc::new(SExp::Cons(
-                                body.loc(),
-                                Rc::new(SExp::quoted_from_string(body.loc(), &"*macros*".to_string())),
-                                Rc::new(SExp::Nil(body.loc()))
-                            ))
-                        ));
-                        let mut v_clone: Vec<Rc<SExp>> =
-                            v.iter().map(|x| Rc::new(x.clone())).collect();
-                        let include_copy: &SExp = include_form.borrow();
-                        v_clone.insert(2, Rc::new(include_copy.clone()));
-                        return enlist(body.loc(), v_clone);
-                    }
-                },
-                _ => { }
-            }
+            let include_form = Rc::new(SExp::Cons(
+                body.loc(),
+                Rc::new(SExp::atom_from_string(body.loc(), &"include".to_string())),
+                Rc::new(SExp::Cons(
+                    body.loc(),
+                    Rc::new(SExp::quoted_from_string(body.loc(), &"*macros*".to_string())),
+                    Rc::new(SExp::Nil(body.loc()))
+                ))
+            ));
+            let mut v_clone: Vec<Rc<SExp>> =
+                v.iter().map(|x| Rc::new(x.clone())).collect();
+            let include_copy: &SExp = include_form.borrow();
+            v_clone.insert(0, Rc::new(include_copy.clone()));
+            return enlist(body.loc(), v_clone);
         },
-        _ => { }
+        _ => {
+            let body_clone: &SExp = body.borrow();
+            return body_clone.clone();
+        }
     }
-
-    let body_clone: &SExp = body.borrow();
-    return body_clone.clone();
 }
 
 pub fn preprocess(
@@ -154,11 +147,11 @@ pub fn preprocess(
 ) -> Result<Vec<Rc<SExp>>, CompileErr> {
     let tocompile =
         if opts.stdenv() {
-            Rc::new(inject_std_macros(cmod))
+            let injected = inject_std_macros(cmod);
+            Rc::new(injected)
         } else {
             cmod
         };
 
-    print!("to_compile {}\n", tocompile.to_string());
     preprocess_(opts, tocompile)
 }
