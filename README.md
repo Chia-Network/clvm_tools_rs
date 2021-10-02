@@ -36,8 +36,9 @@ The directory structure is expected to be:
                      the original chia repo.
                     
     src/compiler <-- a newer compiler (ochialisp) with a simpler
-                     structure.  My expectation is that run --std=cl21
-                     will select the new compiler when it's available.
+                     structure.  Select new style compilation by
+                     including a `(include *standard-cl-21*)`
+                     form in your toplevel `mod` form.
 
 Use with chia-blockchain
 ===
