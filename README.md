@@ -37,8 +37,8 @@ The directory structure is expected to be:
                     
     src/compiler <-- a newer compiler (ochialisp) with a simpler
                      structure.  Select new style compilation by
-                     including a ```(include *standard-cl-21*)```
-                     form in your toplevel ```mod``` form.
+                     including a `(include *standard-cl-21*)`
+                     form in your toplevel `mod` form.
 
 Use with chia-blockchain
 ===
