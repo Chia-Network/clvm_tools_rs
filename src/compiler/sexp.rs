@@ -166,6 +166,16 @@ pub fn decode_string(v: &Vec<u8>) -> String {
     return String::from_utf8_lossy(v).as_ref().to_string();
 }
 
+fn printable(a: &Vec<u8>) -> bool {
+    for ch in a.iter() {
+        if (*ch as char).is_control() || !(*ch as char).is_ascii() {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 impl SExp {
     pub fn loc(&self) -> Srcloc {
         match self {
@@ -195,7 +205,13 @@ impl SExp {
             SExp::Cons(_,a,b) => format!("({})", list_no_parens(a,b)),
             SExp::Integer(_,v) => v.to_string(),
             SExp::QuotedString(_,q,s) => format!("\"{}\"", escape_quote(*q,s)),
-            SExp::Atom(_,a) => decode_string(a)
+            SExp::Atom(l,a) => {
+                if printable(a) {
+                    decode_string(a)
+                } else {
+                    SExp::Integer(l.clone(),number_from_u8(a)).to_string()
+                }
+            }
         }
     }
 

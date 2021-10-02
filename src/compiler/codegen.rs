@@ -48,7 +48,10 @@ use crate::compiler::prims::{
     primquote
 };
 use crate::compiler::runtypes::RunFailure;
-use crate::util::u8_from_number;
+use crate::util::{
+    number_from_u8,
+    u8_from_number
+};
 
 /* As in the python code, produce a pair whose (thanks richard)
  *
@@ -346,9 +349,10 @@ fn process_macro_call(
             )
         }
     }}).and_then(|v| compile_bodyform(v.clone())).
-        and_then(|body| generate_expr_code(
-            allocator, runner, opts, compiler, Rc::new(body))
-        )
+        and_then(|body| {
+            generate_expr_code(
+                allocator, runner, opts, compiler, Rc::new(body))
+        })
 }
 
 fn generate_args_code(
@@ -518,7 +522,7 @@ fn compile_call(
                 }
             })
     };
-    
+
     match list[0].borrow() {
         BodyForm::Value(SExp::Integer(al,an)) => {
             compile_atom_head(al.clone(), &u8_from_number(an.clone()))
@@ -559,9 +563,33 @@ fn generate_expr_code(
                         Ok(CompiledCode(l.clone(), Rc::new(SExp::Integer(l.clone(), bi_one()))))
                     } else {
                         create_name_lookup(compiler, l.clone(), atom).map(|f| {
-                            CompiledCode(l.clone(), f)
+                            Ok(CompiledCode(l.clone(), f))
+                        }).unwrap_or_else(|_| {
+                            // Pass through atoms that don't look up on behalf of
+                            // macros, as it's possible that a macro returned
+                            // something that's canonically a name in number form.
+                            generate_expr_code(
+                                allocator,
+                                runner,
+                                opts,
+                                compiler,
+                                Rc::new(BodyForm::Quoted(SExp::Atom(l.clone(),atom.clone())))
+                            )
                         })
                     }
+                },
+                // Since macros are in this language and the runtime has
+                // a very narrow data representation, we'll need to
+                // accomodate bare numbers coming back in place of identifiers.
+                // I'm considering ways to make this better.
+                SExp::Integer(l,i) => {
+                    generate_expr_code(
+                        allocator,
+                        runner,
+                        opts,
+                        compiler,
+                        Rc::new(BodyForm::Value(SExp::Atom(l.clone(),u8_from_number(i.clone()))))
+                    )
                 },
                 _ => {
                     Ok(CompiledCode(v.loc(), Rc::new(primquote(v.loc(), Rc::new(v.clone())))))
