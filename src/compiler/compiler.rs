@@ -37,7 +37,6 @@ pub struct DefaultCompilerOpts {
     pub filename: String,
     pub compiler: Option<PrimaryCodegen>,
     pub in_defun: bool,
-    pub assemble: bool,
     pub stdenv: bool,
     pub start_env: Option<Rc<SExp>>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>
@@ -48,28 +47,20 @@ pub fn compile_file(
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     content: &String
-) -> Result<String, CompileErr> {
+) -> Result<SExp, CompileErr> {
     let pre_forms =
         parse_sexp(Srcloc::start(&opts.filename()), content).map_err(|e| {
             CompileErr(e.0, e.1)
         })?;
 
     frontend(opts.clone(), pre_forms).
-        and_then(|g| codegen(allocator, runner, opts.clone(), &g)).
-        map(|result| {
-            if opts.assemble() {
-                Bytes::new(Some(BytesFromType::Raw(result.encode()))).hex()
-            } else {
-                result.to_string()
-            }
-        })
+        and_then(|g| codegen(allocator, runner, opts.clone(), &g))
 }
 
 impl CompilerOpts for DefaultCompilerOpts {
     fn filename(&self) -> String { self.filename.clone() }
     fn compiler(&self) -> Option<PrimaryCodegen> { self.compiler.clone() }
     fn in_defun(&self) -> bool { self.in_defun }
-    fn assemble(&self) -> bool { self.assemble }
     fn stdenv(&self) -> bool { self.stdenv }
     fn start_env(&self) -> Option<Rc<SExp>> { self.start_env.clone() }
     fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>> { self.prim_map.clone() }
@@ -77,11 +68,6 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn set_search_paths(&self, dirs: &Vec<String>) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.include_dirs = dirs.clone();
-        return Rc::new(copy);
-    }
-    fn set_assemble(&self, new_assemble: bool) -> Rc<dyn CompilerOpts> {
-        let mut copy = self.clone();
-        copy.assemble = new_assemble;
         return Rc::new(copy);
     }
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts> {
@@ -157,11 +143,9 @@ impl DefaultCompilerOpts {
             filename: filename.clone(),
             compiler: None,
             in_defun: false,
-            assemble: false,
             stdenv: true,
             start_env: None,
             prim_map: Rc::new(prim_map)
         }
     }
-
 }

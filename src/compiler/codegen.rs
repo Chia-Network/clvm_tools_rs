@@ -270,7 +270,7 @@ fn codegen_to_sexp(
 fn get_callable(
     _opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
-    _l: Srcloc,
+    l: Srcloc,
     atom: Rc<SExp>
 ) -> Result<Callable, CompileErr> {
     match atom.borrow() {
@@ -282,15 +282,15 @@ fn get_callable(
             match (macro_def, defun, prim, atom_is_com) {
                 (Some(macro_def), _, _, _) => {
                     let macro_def_clone: &SExp = macro_def.borrow();
-                    Ok(Callable::CallMacro(macro_def_clone.clone()))
+                    Ok(Callable::CallMacro(l.clone(),macro_def_clone.clone()))
                 },
                 (_, Ok(defun), _, _) => {
                     let defun_clone: &SExp = defun.borrow();
-                    Ok(Callable::CallDefun(defun_clone.clone()))
+                    Ok(Callable::CallDefun(l.clone(),defun_clone.clone()))
                 },
                 (_, _, Some(prim), _) => {
                     let prim_clone: &SExp = prim.borrow();
-                    Ok(Callable::CallPrim(prim_clone.clone()))
+                    Ok(Callable::CallPrim(l.clone(),prim_clone.clone()))
                 },
                 (_, _, _, true) => Ok(Callable::RunCompiler),
                 _ => Err(CompileErr(
@@ -299,8 +299,8 @@ fn get_callable(
                 ))
             }
         },
-        SExp::Integer(l,v) => {
-            Ok(Callable::CallPrim(SExp::Integer(l.clone(),v.clone())))
+        SExp::Integer(_,v) => {
+            Ok(Callable::CallPrim(l.clone(),SExp::Integer(l.clone(),v.clone())))
         },
         _ => Err(CompileErr(
             atom.loc(),
@@ -446,9 +446,9 @@ fn compile_call(
 
     let compile_atom_head = |al: Srcloc, an: &Vec<u8>| {
         let tl = list.iter().skip(1).map(|x| x.clone()).collect();
-        get_callable(opts.clone(), compiler, al.clone(), Rc::new(SExp::Atom(al.clone(), an.to_vec()))).
+        get_callable(opts.clone(), compiler, l.clone(), Rc::new(SExp::Atom(al.clone(), an.to_vec()))).
             and_then(|calltype| match calltype {
-                Callable::CallMacro(code) => {
+                Callable::CallMacro(l,code) => {
                     process_macro_call(
                         allocator,
                         runner,
@@ -460,7 +460,7 @@ fn compile_call(
                     )
                 },
 
-                Callable::CallDefun(lookup) => {
+                Callable::CallDefun(l,lookup) => {
                     generate_args_code(
                         allocator,
                         runner,
@@ -473,7 +473,7 @@ fn compile_call(
                     })
                 },
 
-                Callable::CallPrim(p) => {
+                Callable::CallPrim(l,p) => {
                     generate_args_code(
                         allocator,
                         runner,
@@ -489,7 +489,6 @@ fn compile_call(
                 Callable::RunCompiler => {
                     if list.len() >= 2 {
                         let updated_opts = opts.
-                            set_assemble(false).
                             set_stdenv(false).
                             set_in_defun(true).
                             set_compiler(compiler.clone());
@@ -502,7 +501,7 @@ fn compile_call(
                                     l.clone(),
                                         Rc::new(SExp::Nil(l.clone())),
                                     Rc::new(SExp::Cons(
-                                        l.clone(),
+                                        list[1].loc(),
                                         list[1].to_sexp(),
                                         Rc::new(SExp::Nil(l.clone()))
                                     ))
@@ -684,7 +683,6 @@ fn codegen_(
             let updated_opts =
                 opts.
                 set_compiler(compiler.clone()).
-                set_assemble(false).
                 set_stdenv(false);
 
             updated_opts.compile_program(
@@ -701,7 +699,6 @@ fn codegen_(
                 opts.
                 set_compiler(compiler.clone()).
                 set_in_defun(true).
-                set_assemble(false).
                 set_stdenv(false).
                 set_start_env(Some(
                     combine_defun_env(compiler.env.clone(), args.clone())

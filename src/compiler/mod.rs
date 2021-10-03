@@ -2,6 +2,7 @@ pub mod clvm;
 mod codegen;
 pub mod compiler;
 pub mod comptypes;
+pub mod debug;
 mod gensym;
 pub mod prims;
 pub mod runtypes;

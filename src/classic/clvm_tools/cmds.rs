@@ -82,6 +82,7 @@ use crate::compiler::compiler::{
     compile_file,
     DefaultCompilerOpts
 };
+use crate::compiler::debug::build_symbol_table_mut;
 use crate::util::collapse;
 
 pub struct PathOrCodeConv { }
@@ -620,6 +621,35 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
         }
     }
 
+    // Symbol table related checks: should one be loaded, should one be saved.
+    // This code is confusingly woven due to 'run' and 'brun' serving many roles.
+    let mut symbol_table: Option<HashMap<String,String>> = None;
+    let mut emit_symbol_output = false;
+
+    let symbol_table_clone =
+        parsedArgs.get("symbol_table").and_then(|jstring| match jstring {
+            ArgumentValue::ArgString(_,s) => {
+                fs::read_to_string(s).ok().and_then(|s| {
+                    let decoded_symbol_table: Option<HashMap<String,String>> =
+                        serde_json::from_str(&s).ok();
+                    decoded_symbol_table
+                })
+            },
+            _ => None
+        }).map(|st| {
+            emit_symbol_output = true;
+            symbol_table = Some(st.clone());
+            st
+        });
+
+
+    match parsedArgs.get("verbose") {
+        Some(ArgumentValue::ArgBool(true)) => {
+            emit_symbol_output = true;
+        },
+        _ => { }
+    }
+
     // In testing: short circuit for modern compilation.
     if input_sexp.map(|i| detect_modern(&mut allocator, i)).unwrap_or_else(|| false) {
         let runner = Rc::new(DefaultProgramRunner::new());
@@ -628,11 +658,16 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
         match res {
             Ok(r) => {
                 print!("{}\n", r.to_string());
+
+                let mut st = HashMap::new();
+                build_symbol_table_mut(&mut st, &r);
+                write_sym_output(&st, &"main.sym".to_string());
             },
             Err(c) => {
                 print!("{}: {}\n", c.0.to_string(), c.1);
             }
         }
+
         return;
     }
 
@@ -643,8 +678,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
         Arc::new(Mutex::new(RunLog { log_entries: RefCell::new(Vec::new()) }));
     let log_updates: Arc<Mutex<RunLog<(NodePtr, Option<NodePtr>)>>> =
         Arc::new(Mutex::new(RunLog { log_entries: RefCell::new(Vec::new()) }));
-
-    let mut symbol_table: Option<HashMap<String,String>> = None;
 
     // clvm_rs uses boxed callbacks with unspecified lifetimes so in order to
     // support logging as intended, we must have values that can be moved so
@@ -679,31 +712,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
             })
         }
     );
-
-    let mut emit_symbol_output = false;
-    let symbol_table_clone =
-        parsedArgs.get("symbol_table").and_then(|jstring| match jstring {
-            ArgumentValue::ArgString(_,s) => {
-                fs::read_to_string(s).ok().and_then(|s| {
-                    let decoded_symbol_table: Option<HashMap<String,String>> =
-                        serde_json::from_str(&s).ok();
-                    decoded_symbol_table
-                })
-            },
-            _ => None
-        }).map(|st| {
-            emit_symbol_output = true;
-            symbol_table = Some(st.clone());
-            st
-        });
-
-
-    match parsedArgs.get("verbose") {
-        Some(ArgumentValue::ArgBool(true)) => {
-            emit_symbol_output = true;
-        },
-        _ => { }
-    }
 
     if emit_symbol_output {
         let pre_eval_f_closure:

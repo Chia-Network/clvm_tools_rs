@@ -21,7 +21,7 @@ fn compile_string(content: &String) -> Result<String, CompileErr> {
         runner,
         opts,
         &content
-    )
+    ).map(|x| x.to_string())
 }
 
 #[test]

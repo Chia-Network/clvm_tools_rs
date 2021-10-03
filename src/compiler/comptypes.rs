@@ -24,9 +24,9 @@ pub struct CompileErr(pub Srcloc, pub String);
 pub struct CompiledCode(pub Srcloc, pub Rc<SExp>);
 
 pub enum Callable {
-    CallMacro(SExp),
-    CallDefun(SExp),
-    CallPrim(SExp),
+    CallMacro(Srcloc,SExp),
+    CallDefun(Srcloc,SExp),
+    CallPrim(Srcloc,SExp),
     RunCompiler
 }
 
@@ -103,13 +103,11 @@ pub trait CompilerOpts {
     fn filename(&self) -> String;
     fn compiler(&self) -> Option<PrimaryCodegen>;
     fn in_defun(&self) -> bool;
-    fn assemble(&self) -> bool;
     fn stdenv(&self) -> bool;
     fn start_env(&self) -> Option<Rc<SExp>>;
     fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>>;
 
     fn set_search_paths(&self, dirs: &Vec<String>) -> Rc<dyn CompilerOpts>;
-    fn set_assemble(&self, new_assemble: bool) -> Rc<dyn CompilerOpts>;
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts>;
     fn set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts>;
     fn set_compiler(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts>;

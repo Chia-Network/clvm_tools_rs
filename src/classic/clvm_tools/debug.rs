@@ -132,7 +132,7 @@ fn text_trace(
     let mut env = env_;
     match symbol {
         Some(sym) => {
-            env = rest(allocator, env).unwrap();
+            env = rest(allocator, env).unwrap_or_else(|_| allocator.null());
             let symbol_atom =
                 allocator.new_atom(&sym.as_bytes().to_vec()).unwrap();
             let symbol_list = allocator.new_pair(symbol_atom, env).unwrap();
