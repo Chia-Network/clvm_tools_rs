@@ -273,7 +273,7 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
             };
 
             match op.borrow() {
-                SExp::Atom(_,atom_name) => {
+                SExp::Atom(l,atom_name) => {
                     if *atom_name == "q".as_bytes().to_vec() ||
                         (atom_name.len() == 1 && atom_name[0] == 1)
                     {
@@ -321,7 +321,7 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                 },
                 SExp::Integer(il,i) => {
                     return compile_bodyform(Rc::new(SExp::Cons(
-                        l.clone(),
+                        il.clone(),
                         Rc::new(SExp::Atom(il.clone(), u8_from_number(i.clone()))),
                         tail.clone()
                     )));
