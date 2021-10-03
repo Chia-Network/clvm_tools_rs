@@ -108,8 +108,16 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn read_new_file(&self, inc_from: String, filename: String) -> Result<(String,String), CompileErr> {
         if filename == "*macros*" {
             let macros = indoc! {"(
-                (defmacro if (A B C) (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @)))
-                (defmacro list args (defun makelist (args) (if args (c (q . c) (c (f args) (c (makelist (r args)) (q . ())))) (q . ()))) (makelist args))
+            (defmacro if (A B C) (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @)))
+            (defmacro list ARGS
+                            (defun compile-list
+                                   (args)
+                                   (if args
+                                       (qq (c (unquote (f args))
+                                             (unquote (compile-list (r args)))))
+                                       ()))
+                            (compile-list ARGS)
+                    )
             )"};
             return Ok((filename, macros.to_string()));
         } else if filename == "*standard-cl-21*" {

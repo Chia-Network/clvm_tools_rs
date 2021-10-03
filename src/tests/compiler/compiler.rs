@@ -68,3 +68,12 @@ fn compile_test_5() {
         ).unwrap();
     assert_eq!(result, "(2 (1 2 (3 5 (1 2 (1 16 (1 . 1) (1 . 3)) 1) (1 2 (1 16 (1 . 1) (1 . 4)) 1)) 1) (4 (1) 1))".to_string());
 }
+
+#[test]
+fn compile_test_6() {
+    let result =
+        compile_string(
+            &"(mod () (list 1 2 3))".to_string()
+        ).unwrap();
+    assert_eq!(result, "(2 (1 4 (1 . 1) (4 (1 . 2) (4 (1 . 3) (1)))) (4 (1) 1))".to_string());
+}

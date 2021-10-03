@@ -675,20 +675,11 @@ fn codegen_(
         },
 
         HelperForm::Defmacro(loc, name, args, body) => {
-            let macro_program =
-                SExp::Cons(
-                    loc.clone(),
-                    Rc::new(SExp::atom_from_string(loc.clone(), &"mod".to_string())),
-                    Rc::new(SExp::Cons(
-                        loc.clone(),
-                        args.clone(),
-                        Rc::new(SExp::Cons(
-                            loc.clone(),
-                            body.exp.to_sexp(),
-                            Rc::new(SExp::Nil(loc.clone()))
-                        ))
-                    ))
-                );
+            let macro_program = Rc::new(SExp::Cons(
+                loc.clone(),
+                Rc::new(SExp::Atom(loc.clone(), "mod".as_bytes().to_vec())),
+                body.to_sexp()
+            ));
 
             let updated_opts =
                 opts.
@@ -699,7 +690,7 @@ fn codegen_(
             updated_opts.compile_program(
                 allocator,
                 runner,
-                Rc::new(macro_program)
+                macro_program
             ).map(|code| {
                 compiler.add_macro(name, Rc::new(code))
             })
@@ -851,13 +842,13 @@ fn process_helper_let_bindings(
                 let hoisted_helpers = helper_result.0;
                 let hoisted_body = helper_result.1.clone();
 
-                result.insert(i, HelperForm::Defun(
+                result[i] = HelperForm::Defun(
                     l.clone(),
                     name.clone(),
                     inline,
                     args.clone(),
                     hoisted_body
-                ));
+                );
                 i += 1;
 
                 for j in 0..hoisted_helpers.len() {

@@ -201,7 +201,7 @@ fn qq_to_expression_list(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
         _ => {
             Err(CompileErr(
                 body.loc(),
-                format!("Bad list tail {}", body.to_string())
+                format!("Bad list tail in qq {}", body.to_string())
             ))
         }
     }
@@ -218,7 +218,7 @@ fn args_to_expression_list(body: Rc<SExp>) -> Result<Vec<Rc<BodyForm>>, CompileE
             result_list.append(&mut args);
             Ok(result_list)
         },
-        _ => Err(CompileErr(body.loc(), "Bad list tail ".to_string() + &body.to_string()))
+        _ => Err(CompileErr(body.loc(), "Bad arg list tail ".to_string() + &body.to_string()))
     }
 }
 
@@ -319,13 +319,12 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                         }
                     }
                 },
-                SExp::Integer(_,i) => {
-                    if *i == bi_one() {
-                        let tail_copy: &SExp = tail.borrow();
-                        return Ok(BodyForm::Quoted(tail_copy.clone()));
-                    } else {
-                        return application();
-                    }
+                SExp::Integer(il,i) => {
+                    return compile_bodyform(Rc::new(SExp::Cons(
+                        l.clone(),
+                        Rc::new(SExp::Atom(il.clone(), u8_from_number(i.clone()))),
+                        tail.clone()
+                    )));
                 },
                 SExp::QuotedString(_,_,_) => {
                     let body_copy: &SExp = body.borrow();
@@ -360,8 +359,13 @@ fn compile_defun(
     args: Rc<SExp>,
     body: Rc<SExp>
 ) -> Result<HelperForm, CompileErr> {
-    compile_bodyform(body).map(|bf| {
-        HelperForm::Defun(l, name, inline, args, Rc::new(bf))
+    let mut take_form = body.clone();
+    match body.borrow() {
+        SExp::Cons(_,f,r) => { take_form = f.clone(); },
+        _ => { }
+    }
+    compile_bodyform(take_form).map(|bf| {
+        HelperForm::Defun(l, name, inline, args.clone(), Rc::new(bf))
     })
 }
 
@@ -378,11 +382,7 @@ fn compile_defmacro(
         Rc::new(SExp::Cons(
             l.clone(),
             args.clone(),
-            Rc::new(SExp::Cons(
-                l.clone(),
-                body,
-                Rc::new(SExp::Nil(l.clone()))
-            ))
+            body.clone()
         ))
     );
     let new_opts = opts.set_stdenv(false);
@@ -411,7 +411,11 @@ fn match_op_name_4(
 
             match &pl[1] {
                 SExp::Atom(_,name) => {
-                    return Some((op_name.clone(), name.clone(), Rc::new(pl[2].clone()), Rc::new(pl[3].clone())));
+                    let mut tail_list = Vec::new();
+                    for elt in pl.iter().skip(3) {
+                        tail_list.push(Rc::new(elt.clone()));
+                    }
+                    return Some((op_name.clone(), name.clone(), Rc::new(pl[2].clone()), Rc::new(enlist(l.clone(), tail_list))));
                 },
                 _ => {
                     return Some((op_name.clone(), Vec::new(), Rc::new(SExp::Nil(l.clone())), Rc::new(SExp::Nil(l.clone()))));

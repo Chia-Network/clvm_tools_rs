@@ -120,6 +120,7 @@ pub trait CompilerOpts {
 }
 
 /* Frontend uses this to accumulate frontend forms */
+#[derive(Debug)]
 pub struct ModAccum {
     pub loc: Srcloc,
     pub helpers: Vec<HelperForm>,
@@ -203,13 +204,14 @@ impl HelperForm {
                 ))
             },
             HelperForm::Defmacro(loc,name,args,body) => {
-                Rc::new(list_to_cons(
+                Rc::new(SExp::Cons(
                     loc.clone(),
-                    &vec!(
-                        Rc::new(SExp::atom_from_string(loc.clone(), &"defmacro".to_string())),
+                    Rc::new(SExp::atom_from_string(loc.clone(), &"defmacro".to_string())),
+                    Rc::new(SExp::Cons(
+                        loc.clone(),
                         Rc::new(SExp::atom_from_vec(loc.clone(), &name)),
                         body.to_sexp()
-                    )
+                    ))
                 ))
             },
             HelperForm::Defun(loc,name,inline,arg,body) => {
