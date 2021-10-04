@@ -15,6 +15,10 @@ use crate::classic::clvm::__type_compatibility__::{
 };
 
 use crate::compiler::clvm::run;
+use crate::compiler::debug::{
+    build_swap_table_mut,
+    relabel
+};
 use crate::compiler::gensym::gensym;
 use crate::compiler::prims::prims;
 use crate::compiler::sexp::{
@@ -320,7 +324,10 @@ fn process_macro_call(
 ) -> Result<CompiledCode, CompileErr> {
     let converted_args: Vec<Rc<SExp>> =
         args.iter().map(|b| b.to_sexp()).collect();
+    let mut swap_table = HashMap::new();
     let args_to_macro = list_to_cons(l.clone(), &converted_args);
+    build_swap_table_mut(&mut swap_table, &args_to_macro);
+
     run(
         allocator,
         runner.clone(),
@@ -348,11 +355,13 @@ fn process_macro_call(
                 )
             )
         }
-    }}).and_then(|v| compile_bodyform(v.clone())).
-        and_then(|body| {
-            generate_expr_code(
-                allocator, runner, opts, compiler, Rc::new(body))
-        })
+    }}).and_then(|v| {
+        let relabeled_expr = relabel(&mut swap_table, &v);
+        compile_bodyform(Rc::new(relabeled_expr))
+    }).and_then(|body| {
+        generate_expr_code(
+            allocator, runner, opts, compiler, Rc::new(body))
+    })
 }
 
 fn generate_args_code(

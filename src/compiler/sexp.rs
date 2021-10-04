@@ -184,10 +184,13 @@ fn escape_quote(q: u8, s: &Vec<u8>) -> String {
 }
 
 fn list_no_parens(a: &SExp, b: &SExp) -> String {
-    match b {
-        SExp::Nil(_) => a.to_string(),
-        SExp::Cons(_,b,c) => a.to_string() + " " + &list_no_parens(b,c),
-        _ => a.to_string() + " . " + &b.to_string()
+    if b.nilp() {
+        a.to_string()
+    } else {
+        match b {
+            SExp::Cons(_,b,c) => a.to_string() + " " + &list_no_parens(b,c),
+            _ => a.to_string() + " . " + &b.to_string()
+        }
     }
 }
 
@@ -357,17 +360,18 @@ impl SExp {
         let mut track = Rc::new(self.clone());
 
         loop {
-            match track.borrow() {
-                SExp::Cons(_,l,r) => {
-                    let borrowed: &SExp = l.borrow();
-                    let cloned: SExp = borrowed.clone();
-                    res.push(cloned);
-                    track = r.clone();
-                },
-                SExp::Nil(_) => {
-                    return Some(res);
-                },
-                _ => { return None; }
+            if track.nilp() {
+                return Some(res);
+            } else {
+                match track.borrow() {
+                    SExp::Cons(_,l,r) => {
+                        let borrowed: &SExp = l.borrow();
+                        let cloned: SExp = borrowed.clone();
+                        res.push(cloned);
+                        track = r.clone();
+                    },
+                    _ => { return None; }
+                }
             }
         }
     }

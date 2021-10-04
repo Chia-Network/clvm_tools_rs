@@ -58,3 +58,54 @@ pub fn build_symbol_table_mut(
         code
     )
 }
+
+pub fn build_swap_table_mut(
+    code_map: &mut HashMap<String, SExp>,
+    code: &SExp
+) -> Bytes {
+    build_table_mut(
+        code_map,
+        &|sexp| sexp.clone(),
+        code
+    )
+}
+
+fn relabel_inner_(
+    code_map: &HashMap<String, SExp>,
+    swap_table: &HashMap<SExp, String>,
+    code: &SExp
+) -> SExp {
+    swap_table.get(code).and_then(|res| {
+        print!("code lookup {} => {}\n", code.to_string(), res.to_string());
+        code_map.get(res)
+    }).map(|x| {
+        print!("with hash gives {} {}\n", x.to_string(), x.loc().to_string());
+        x.clone()
+    }).
+        unwrap_or_else(|| {
+            match code {
+                SExp::Cons(l,a,b) => {
+                    let new_a = relabel_inner_(code_map, swap_table, a.borrow());
+                    let new_b = relabel_inner_(code_map, swap_table, b.borrow());
+                    return SExp::Cons(l.clone(),Rc::new(new_a),Rc::new(new_b));
+                },
+                _ => { return code.clone(); }
+            }
+        })
+}
+
+pub fn relabel(
+    code_map: &HashMap<String, SExp>,
+    code: &SExp
+) -> SExp {
+    let mut inv_swap_table = HashMap::new();
+    build_swap_table_mut(&mut inv_swap_table, code);
+    let mut swap_table = HashMap::new();
+    for ent in inv_swap_table.iter() {
+        swap_table.insert(ent.1.clone(), ent.0.clone());
+    }
+    for ent in code_map.iter() {
+        print!("collected {} {}\n", ent.1.to_string(), ent.0);
+    }
+    relabel_inner_(code_map, &swap_table, code)
+}

@@ -208,17 +208,20 @@ fn qq_to_expression_list(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
 }
 
 fn args_to_expression_list(body: Rc<SExp>) -> Result<Vec<Rc<BodyForm>>, CompileErr> {
-    match body.borrow() {
-        SExp::Nil(_) => Ok(vec!()),
-        SExp::Cons(_l, first, rest) => {
-            let mut result_list = Vec::new();
-            let f_compiled = compile_bodyform(first.clone())?;
-            result_list.push(Rc::new(f_compiled));
-            let mut args = args_to_expression_list(rest.clone())?;
-            result_list.append(&mut args);
-            Ok(result_list)
-        },
-        _ => Err(CompileErr(body.loc(), "Bad arg list tail ".to_string() + &body.to_string()))
+    if body.nilp() {
+        Ok(vec!())
+    } else {
+        match body.borrow() {
+            SExp::Cons(_l, first, rest) => {
+                let mut result_list = Vec::new();
+                let f_compiled = compile_bodyform(first.clone())?;
+                result_list.push(Rc::new(f_compiled));
+                let mut args = args_to_expression_list(rest.clone())?;
+                result_list.append(&mut args);
+                Ok(result_list)
+            },
+            _ => Err(CompileErr(body.loc(), "Bad arg list tail ".to_string() + &body.to_string()))
+        }
     }
 }
 
@@ -265,10 +268,10 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                 })
             };
 
-            let finish_err = || {
+            let finish_err = |site| {
                 Err(CompileErr(
                     l.clone(),
-                    format!("bad argument list for form {}", body.to_string())
+                    format!("{}: bad argument list for form {}", site, body.to_string())
                 ))
             };
 
@@ -285,7 +288,7 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                         Some(v) => {
                             if *atom_name == "let".as_bytes().to_vec() {
                                 if v.len() != 2 {
-                                    return finish_err();
+                                    return finish_err("let");
                                 }
 
                                 let bindings = v[0].clone();
@@ -296,7 +299,7 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                                 return Ok(BodyForm::Let(l.clone(), let_bindings, Rc::new(compiled_body)));
                             } else if *atom_name == "quote".as_bytes().to_vec() {
                                 if v.len() != 1 {
-                                    return finish_err();
+                                    return finish_err("quote");
                                 }
 
                                 let quote_body = v[0].clone();
@@ -304,7 +307,7 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                                 return Ok(BodyForm::Quoted(quote_body.clone()));
                             } else if *atom_name == "qq".as_bytes().to_vec() {
                                 if v.len() != 1 {
-                                    return finish_err();
+                                    return finish_err("qq");
                                 }
 
                                 let quote_body = v[0].clone();
@@ -315,7 +318,7 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                             }
                         },
                         None => {
-                            return finish_err();
+                            return finish_err("tail_proper");
                         }
                     }
                 },
@@ -335,7 +338,7 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                     return Ok(BodyForm::Quoted(body_copy.clone()));
                 },
                 SExp::Cons(_,_,_) => {
-                    return finish_err();
+                    return finish_err("bad cons");
                 }
             }
         },
