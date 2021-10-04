@@ -76,10 +76,8 @@ fn relabel_inner_(
     code: &SExp
 ) -> SExp {
     swap_table.get(code).and_then(|res| {
-        print!("code lookup {} => {}\n", code.to_string(), res.to_string());
         code_map.get(res)
     }).map(|x| {
-        print!("with hash gives {} {}\n", x.to_string(), x.loc().to_string());
         x.clone()
     }).
         unwrap_or_else(|| {
@@ -103,9 +101,6 @@ pub fn relabel(
     let mut swap_table = HashMap::new();
     for ent in inv_swap_table.iter() {
         swap_table.insert(ent.1.clone(), ent.0.clone());
-    }
-    for ent in code_map.iter() {
-        print!("collected {} {}\n", ent.1.to_string(), ent.0);
     }
     relabel_inner_(code_map, &swap_table, code)
 }
