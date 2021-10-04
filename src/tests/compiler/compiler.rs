@@ -163,3 +163,14 @@ fn run_test_5() {
         ).unwrap();
     assert_eq!(result.to_string(), "(1 2)".to_string());
 }
+
+#[test]
+fn run_test_6() {
+    let result =
+        run_string(
+            &"(mod args (defmacro square (input) (qq (* (unquote input) (unquote input)))) (defun sqre_list (my_list) (if my_list (c (square (f my_list)) (sqre_list (r my_list))) my_list)) (sqre_list args))".to_string(),
+            &"(10 9 8 7)".to_string()
+        ).unwrap();
+    assert_eq!(result.to_string(), "(100 81 64 49)".to_string());
+}
+
