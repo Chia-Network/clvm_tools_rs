@@ -153,3 +153,13 @@ fn run_test_4() {
         ).unwrap();
     assert_eq!(result.to_string(), "(4 1 (4 2 (4 3 ())))".to_string());
 }
+
+#[test]
+fn run_test_5() {
+    let result =
+        run_string(
+            &"(mod (a) (list 1 2))".to_string(),
+            &"()".to_string()
+        ).unwrap();
+    assert_eq!(result.to_string(), "(1 2)".to_string());
+}
