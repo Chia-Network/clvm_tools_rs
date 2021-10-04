@@ -1,4 +1,8 @@
 use std::borrow::Borrow;
+use std::hash::{
+    Hash,
+    Hasher
+};
 use std::rc::Rc;
 use std::string::String;
 
@@ -21,7 +25,8 @@ use crate::classic::clvm::casts::{
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{
     Number,
-    number_from_u8
+    number_from_u8,
+    u8_from_number
 };
 
 // Compiler view of SExp
@@ -35,13 +40,37 @@ pub enum SExp {
     Atom(Srcloc, Vec<u8>)
 }
 
+impl Eq for SExp { }
+
 impl PartialEq for SExp {
     fn eq(&self, other: &Self) -> bool {
         return self.equal_to(other);
     }
+}
 
-    fn ne(&self, other: &Self) -> bool {
-        return !self.eq(other);
+impl Hash for SExp {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            SExp::Nil(l) => {
+                SExp::Atom(l.clone(),Vec::new()).hash(state);
+            },
+            SExp::Cons(_,a,b) => {
+                a.hash(state);
+                b.hash(state);
+            },
+            SExp::Atom(_,a) => {
+                a.hash(state);
+            },
+            SExp::QuotedString(_,_,a) => {
+                a.hash(state);
+            },
+            SExp::Integer(_,i) => {
+                u8_from_number(i.clone()).hash(state);
+            }
+        }
     }
 }
 
@@ -206,7 +235,9 @@ impl SExp {
             SExp::Integer(_,v) => v.to_string(),
             SExp::QuotedString(_,q,s) => format!("\"{}\"", escape_quote(*q,s)),
             SExp::Atom(l,a) => {
-                if printable(a) {
+                if a.len() == 0 {
+                    "()".to_string()
+                } else if printable(a) {
                     decode_string(a)
                 } else {
                     SExp::Integer(l.clone(),number_from_u8(a)).to_string()
@@ -304,11 +335,19 @@ impl SExp {
                 },
                 (SExp::Cons(_,_,_), _) => false,
                 (_, SExp::Cons(_,_,_)) => false,
-                (SExp::Integer(_,a), SExp::Integer(_,b)) => a == b,
-                (a,b) => {
-                    print!("A {:?} B {:?}\n", a.encode(), b.encode());
-                    a.encode() == b.encode()
+                (SExp::Integer(l,a), b) => {
+                    SExp::Atom(l.clone(),u8_from_number(a.clone())) == *b
                 }
+                (SExp::QuotedString(l,_,a), b) => {
+                    SExp::Atom(l.clone(),a.clone()) == *b
+                },
+                (SExp::Nil(l), b) => {
+                    SExp::Atom(l.clone(),Vec::new()) == *b
+                },
+                (SExp::Atom(_,_), SExp::Integer(_,_)) => other == self,
+                (SExp::Atom(_,_), SExp::QuotedString(_,_,_)) => other == self,
+                (SExp::Atom(_,_), SExp::Nil(_)) => other == self,
+                (SExp::Atom(_,a), SExp::Atom(_,b)) => a == b
             }
         }
     }
