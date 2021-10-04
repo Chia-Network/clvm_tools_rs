@@ -408,8 +408,6 @@ fn match_op_name_4(
         SExp::Atom(_,op_name) => {
             if pl.len() < 3 {
                 return Some((op_name.clone(), Vec::new(), Rc::new(SExp::Nil(l.clone())), Rc::new(SExp::Nil(l.clone()))));
-            } else if pl.len() < 4 {
-                return Some((op_name.clone(), Vec::new(), Rc::new(SExp::Nil(l.clone())), body.clone()));
             }
 
             match &pl[1] {
@@ -441,7 +439,7 @@ fn compile_helperform(
     match plist.and_then(|pl| match_op_name_4(body.clone(), &pl)) {
         Some((op_name,name,args,body)) => {
             if *op_name == "defconstant".as_bytes().to_vec() {
-                return compile_defconstant(l, name.to_vec(), body.clone()).map(|x| Some(x));
+                return compile_defconstant(l, name.to_vec(), args.clone()).map(|x| Some(x));
             } else if *op_name == "defmacro".as_bytes().to_vec() {
                 return compile_defmacro(opts, l, name.to_vec(), args.clone(), body.clone()).map(|x| Some(x));
             } else if *op_name == "defun".as_bytes().to_vec() {

@@ -649,18 +649,25 @@ fn codegen_(
     match h {
         HelperForm::Defconstant(loc, name, body) => {
             let expand_program =
-                CompileForm {
-                    loc: loc.clone(),
-                    args: Rc::new(SExp::Nil(loc.clone())),
-                    helpers: Vec::new(),
-                    exp: body.clone()
-                }.to_sexp();
+                SExp::Cons(
+                    loc.clone(),
+                    Rc::new(SExp::Atom(loc.clone(), "mod".as_bytes().to_vec())),
+                    Rc::new(SExp::Cons(
+                        loc.clone(),
+                        Rc::new(SExp::Nil(loc.clone())),
+                        Rc::new(SExp::Cons(
+                            loc.clone(),
+                            body.to_sexp(),
+                            Rc::new(SExp::Nil(loc.clone()))
+                        ))
+                    ))
+                );
 
             let updated_opts = opts.set_compiler(compiler.clone());
             let code = updated_opts.compile_program(
                 allocator,
                 runner.clone(),
-                expand_program
+                Rc::new(expand_program)
             )?;
             run(
                 allocator,

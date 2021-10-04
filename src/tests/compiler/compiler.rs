@@ -174,3 +174,12 @@ fn run_test_6() {
     assert_eq!(result.to_string(), "(100 81 64 49)".to_string());
 }
 
+#[test]
+fn run_test_7() {
+    let result =
+        run_string(
+            &"(mod (PASSWORD_HASH password new_puzhash amount) (defconstant CREATE_COIN 51) (defun check_password (PASSWORD_HASH password new_puzhash amount) (if (= (sha256 password) PASSWORD_HASH) (list (list CREATE_COIN new_puzhash amount)) (x))) (check_password PASSWORD_HASH password new_puzhash amount))".to_string(),
+            &"(0x2ac6aecf15ac3042db34af4863da46111da7e1bf238fc13da1094f7edc8972a1 \"sha256ftw\" 0x12345678 1000000000)".to_string()
+        ).unwrap();
+    assert_eq!(result.to_string(), "((51 305419896 1000000000))".to_string());
+}
