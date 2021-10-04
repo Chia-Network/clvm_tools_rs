@@ -1,8 +1,10 @@
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use crate::compiler::clvm::run;
 use crate::compiler::compiler::{
     DefaultCompilerOpts,
     compile_file
@@ -10,6 +12,12 @@ use crate::compiler::compiler::{
 use crate::compiler::comptypes::{
     CompileErr
 };
+use crate::compiler::runtypes::RunFailure;
+use crate::compiler::sexp::{
+    SExp,
+    parse_sexp
+};
+use crate::compiler::srcloc::Srcloc;
 
 fn compile_string(content: &String) -> Result<String, CompileErr> {
     let mut allocator = Allocator::new();
@@ -22,6 +30,34 @@ fn compile_string(content: &String) -> Result<String, CompileErr> {
         opts,
         &content
     ).map(|x| x.to_string())
+}
+
+fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
+    let mut allocator = Allocator::new();
+    let runner = Rc::new(DefaultProgramRunner::new());
+    let srcloc = Srcloc::start(&"*test*".to_string());
+    let opts = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
+    let sexp_args = parse_sexp(srcloc.clone(), &args).map_err(|e| {
+        CompileErr(e.0, e.1)
+    })?[0].clone();
+
+    compile_file(
+        &mut allocator,
+        runner.clone(),
+        opts,
+        &content
+    ).and_then(|x| {
+        run(
+            &mut allocator,
+            runner,
+            Rc::new(HashMap::new()),
+            Rc::new(x),
+            sexp_args
+        ).map_err(|e| match e {
+            RunFailure::RunErr(l,s) => CompileErr(l, s),
+            RunFailure::RunExn(l,s) => CompileErr(l, s.to_string())
+        })
+    })
 }
 
 #[test]
@@ -76,4 +112,14 @@ fn compile_test_6() {
             &"(mod () (list 1 2 3))".to_string()
         ).unwrap();
     assert_eq!(result, "(2 (1 4 (1 . 1) (4 (1 . 2) (4 (1 . 3) (1)))) (4 (1) 1))".to_string());
+}
+
+#[test]
+fn run_test_1() {
+    let result =
+        run_string(
+            &"(mod () (defun f (a b) (+ (* a a) b)) (f 3 1))".to_string(),
+            &"()".to_string()
+        ).unwrap();
+    assert_eq!(result.to_string(), "10".to_string());
 }
