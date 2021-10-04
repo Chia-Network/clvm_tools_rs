@@ -123,3 +123,13 @@ fn run_test_1() {
         ).unwrap();
     assert_eq!(result.to_string(), "10".to_string());
 }
+
+#[test]
+fn run_test_2() {
+    let result =
+        run_string(
+            &"(mod (c) (defun f (a b) (+ (* a a) b)) (f 3 c))".to_string(),
+            &"(4)".to_string()
+        ).unwrap();
+    assert_eq!(result.to_string(), "13".to_string());
+}
