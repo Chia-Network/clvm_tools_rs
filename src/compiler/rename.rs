@@ -184,13 +184,13 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
             let new_renamed_bindings: Vec<Rc<Binding>> =
                 renames.iter().map(|(_,x)| Rc::new(x.clone())).collect();
             let mut local_namemap = HashMap::new();
-            renames.iter().map(|x| {
+            for x in renames.iter() {
                 match x {
                     (oldname, binding) => {
                         local_namemap.insert(oldname.to_vec(), binding.name.clone());
                     }
                 }
-            });
+            }
             let new_bindings =
                 new_renamed_bindings.iter().map(|x| {
                     Rc::new(Binding {
@@ -237,13 +237,13 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
         },
         HelperForm::Defmacro(l,n,arg,body) => {
             let mut new_names: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
-            invent_new_names_sexp(arg.clone()).iter().map(|x| {
-                new_names.insert(x.0.clone(), x.1.clone())
-            });
+            for x in invent_new_names_sexp(arg.clone()).iter() {
+                new_names.insert(x.0.clone(), x.1.clone());
+            }
             let mut local_namemap = HashMap::new();
-            new_names.iter().map(|x| {
-                local_namemap.insert(x.0.to_vec(), x.1.to_vec())
-            });
+            for x in new_names.iter() {
+                local_namemap.insert(x.0.to_vec(), x.1.to_vec());
+            }
             let local_renamed_arg = rename_in_cons(&local_namemap, arg.clone());
             let local_renamed_body = rename_args_compileform(body);
             HelperForm::Defmacro(
@@ -256,7 +256,9 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
         HelperForm::Defun(l,n,inline,arg,body) => {
             let new_names = invent_new_names_sexp(arg.clone());
             let mut local_namemap = HashMap::new();
-            new_names.iter().map(|x| local_namemap.insert(x.0.clone(), x.1.clone()));
+            for x in new_names.iter() {
+                local_namemap.insert(x.0.clone(), x.1.clone());
+            }
             let local_renamed_arg = rename_in_cons(&local_namemap, arg.clone());
             let local_renamed_body = rename_args_bodyform(body);
             HelperForm::Defun(
@@ -297,7 +299,9 @@ pub fn rename_children_compileform(c: &CompileForm) -> CompileForm {
 pub fn rename_args_compileform(c: &CompileForm) -> CompileForm {
     let new_names = invent_new_names_sexp(c.args.clone());
     let mut local_namemap = HashMap::new();
-    new_names.iter().map(|x| local_namemap.insert(x.0.clone(), x.1.clone()));
+    for x in new_names.iter() {
+        local_namemap.insert(x.0.clone(), x.1.clone());
+    }
     let local_renamed_arg = rename_in_cons(&local_namemap, c.args.clone());
     let local_renamed_helpers: Vec<HelperForm> =
         c.helpers.iter().map(|h| rename_args_helperform(h)).collect();

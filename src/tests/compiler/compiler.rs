@@ -133,3 +133,23 @@ fn run_test_2() {
         ).unwrap();
     assert_eq!(result.to_string(), "13".to_string());
 }
+
+#[test]
+fn run_test_3() {
+    let result =
+        run_string(
+            &"(mod (arg_one) (defun factorial (input) (if (= input 1) 1 (* (factorial (- input 1)) input))) (factorial arg_one))".to_string(),
+            &"(5)".to_string()
+        ).unwrap();
+    assert_eq!(result.to_string(), "120".to_string());
+}
+
+#[test]
+fn run_test_4() {
+    let result =
+        run_string(
+            &"(mod () (defun makelist (a) (if a (c (q . 4) (c (f a) (c (makelist (r a)) (q . ())))) (q . ()))) (makelist (q . (1 2 3))))".to_string(),
+            &"()".to_string()
+        ).unwrap();
+    assert_eq!(result.to_string(), "(4 1 (4 2 (4 3 ())))".to_string());
+}
