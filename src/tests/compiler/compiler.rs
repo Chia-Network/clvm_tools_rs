@@ -203,3 +203,13 @@ fn run_test_9() {
         ).unwrap();
     assert_eq!(result.to_string(), "1".to_string());
 }
+
+#[test]
+fn run_test_10() {
+    let result =
+        run_string(
+            &"(mod (a) (defun f (i) (let ((x (not i)) (y (* i 2))) (+ x y))) (f a))".to_string(),
+            &"(3)".to_string()
+        ).unwrap();
+    assert_eq!(result.to_string(), "6".to_string());
+}
