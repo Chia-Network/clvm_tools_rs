@@ -20,13 +20,7 @@ use crate::compiler::debug::{
     relabel
 };
 use crate::compiler::gensym::gensym;
-use crate::compiler::prims::prims;
-use crate::compiler::sexp::{
-    SExp,
-    decode_string,
-    enlist
-};
-use crate::compiler::srcloc::Srcloc;
+use crate::compiler::compiler::run_optimizer;
 use crate::compiler::comptypes::{
     Binding,
     BodyForm,
@@ -46,10 +40,17 @@ use crate::compiler::comptypes::{
     with_heading
 };
 use crate::compiler::frontend::compile_bodyform;
+use crate::compiler::sexp::{
+    SExp,
+    decode_string,
+    enlist
+};
+use crate::compiler::srcloc::Srcloc;
 use crate::compiler::prims::{
     primapply,
     primcons,
-    primquote
+    primquote,
+    prims
 };
 use crate::compiler::runtypes::RunFailure;
 use crate::util::{
@@ -703,10 +704,20 @@ fn codegen_(
 
             updated_opts.compile_program(
                 allocator,
-                runner,
+                runner.clone(),
                 macro_program
-            ).map(|code| {
-                compiler.add_macro(name, Rc::new(code))
+            ).and_then(|code| {
+                if opts.optimize() {
+                    run_optimizer(
+                        allocator,
+                        runner,
+                        Rc::new(code)
+                    )
+                } else {
+                    Ok(Rc::new(code))
+                }
+            }).map(|code| {
+                compiler.add_macro(name, code)
             })
         }
 
@@ -735,10 +746,24 @@ fn codegen_(
                     ))
                 );
 
-            updated_opts.compile_program(allocator, runner, Rc::new(tocompile)).map(|code| {
+            updated_opts.compile_program(
+                allocator,
+                runner.clone(),
+                Rc::new(tocompile)
+            ).and_then(|code| {
+                if opts.optimize() {
+                    run_optimizer(
+                        allocator,
+                        runner,
+                        Rc::new(code)
+                    )
+                } else {
+                    Ok(Rc::new(code))
+                }
+            }).map(|code| {
                 compiler.add_defun(name, DefunCall {
                     required_env: args.clone(),
-                    code: Rc::new(code)
+                    code: code
                 })
             })
         }

@@ -168,7 +168,7 @@ fn eval_args(
     }
 }
 
-fn convert_to_clvm_rs(
+pub fn convert_to_clvm_rs(
     allocator: &mut Allocator,
     head: Rc<SExp>
 ) -> Result<NodePtr, RunFailure> {
@@ -213,7 +213,7 @@ fn convert_to_clvm_rs(
     }
 }
 
-fn convert_from_clvm_rs(
+pub fn convert_from_clvm_rs(
     allocator: &mut Allocator,
     loc: Srcloc,
     head: NodePtr

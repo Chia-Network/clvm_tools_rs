@@ -64,7 +64,7 @@ use crate::classic::clvm_tools::stages::stage_0::{
     TRunProgram
 };
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
-use crate::classic::clvm_tools::ir::reader::read_ir;
+use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;use crate::classic::clvm_tools::ir::reader::read_ir;
 
 use crate::classic::platform::PathJoin;
 
@@ -80,8 +80,10 @@ use crate::classic::platform::argparse::{
 };
 use crate::compiler::compiler::{
     compile_file,
+    run_optimizer,
     DefaultCompilerOpts
 };
+use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::debug::build_symbol_table_mut;
 use crate::util::collapse;
 
@@ -485,10 +487,10 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
             set_help("Maximum cost".to_string())
     );
     parser.add_argument(
-        vec!("--human".to_string()),
+        vec!("-O".to_string(), "--optimize".to_string()),
         Argument::new().
             set_action(TArgOptionAction::StoreTrue).
-            set_help("Human readable trace output".to_string())
+            set_help("run optimizer".to_string())
     );
 
     let arg_vec = args[1..].to_vec();
@@ -652,9 +654,34 @@ pub fn launch_tool(stdout: &mut Stream, args: &Vec<String>, tool_name: &String, 
 
     // In testing: short circuit for modern compilation.
     if input_sexp.map(|i| detect_modern(&mut allocator, i)).unwrap_or_else(|| false) {
+        let do_optimize =
+            parsedArgs.get("optimize").map(|x| match x {
+                ArgumentValue::ArgBool(true) => true,
+                _ => false
+            }).unwrap_or_else(|| false);
         let runner = Rc::new(DefaultProgramRunner::new());
-        let opts = Rc::new(DefaultCompilerOpts::new(&input_file.unwrap_or_else(|| "*command*".to_string())));
-        let res = compile_file(&mut allocator, runner, opts, &input_program);
+        let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
+        let opts = Rc::new(
+            DefaultCompilerOpts::new(&use_filename)
+        ).set_optimize(do_optimize);
+
+        let unopt_res = compile_file(
+            &mut allocator,
+            runner.clone(),
+            opts.clone(),
+            &input_program
+        );
+        let res =
+            if do_optimize {
+                unopt_res.and_then(|x| run_optimizer(
+                    &mut allocator,
+                    runner,
+                    Rc::new(x)
+                ))
+            } else {
+                unopt_res.map(|x| Rc::new(x))
+            };
+
         match res {
             Ok(r) => {
                 print!("{}\n", r.to_string());
