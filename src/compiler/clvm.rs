@@ -103,7 +103,7 @@ fn translate_head(
                 Some(v) => Ok(v.clone())
             }
         },
-        SExp::Integer (_,i) => {
+        SExp::Integer(_,i) => {
             match prim_map.get(&u8_from_number(i.clone())) {
                 None => Ok(sexp.clone()),
                 Some(v) => Ok(v.clone())
@@ -116,11 +116,7 @@ fn translate_head(
                         allocator,
                         runner,
                         prim_map,
-                        Rc::new(SExp::Cons(
-                            l.clone(),
-                            a.clone(),
-                            Rc::new(SExp::Nil(l1.clone()))
-                        )),
+                        sexp.clone(),
                         context.clone()
                     )
                 },
@@ -190,12 +186,18 @@ fn convert_to_clvm_rs(
                 format!("failed to alloc string {}", head.to_string())
             )
         }),
-        SExp::Integer(_,i) => allocator.new_atom(&u8_from_number(i.clone())).map_err(|e| {
-            RunFailure::RunErr(
-                head.loc(),
-                format!("failed to alloc integer {}", head.to_string())
-            )
-        }),
+        SExp::Integer(_,i) => {
+            if *i == bi_zero() {
+                Ok(allocator.null())
+            } else {
+                allocator.new_atom(&u8_from_number(i.clone())).map_err(|e| {
+                    RunFailure::RunErr(
+                        head.loc(),
+                        format!("failed to alloc integer {}", head.to_string())
+                    )
+                })
+            }
+        },
         SExp::Cons(_,a,b) => {
             convert_to_clvm_rs(allocator, a.clone()).and_then(|head| {
                 convert_to_clvm_rs(allocator, b.clone()).and_then(|tail| {
