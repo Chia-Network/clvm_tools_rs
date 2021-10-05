@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::compiler::gensym::gensym;
-use crate::compiler::sexp::SExp;
+use crate::compiler::sexp::{
+    SExp,
+    decode_string
+};
 use crate::compiler::comptypes::{
     Binding,
     BodyForm,
@@ -127,6 +130,8 @@ fn rename_in_bodyform(
     namemap: &HashMap<Vec<u8>, Vec<u8>>,
     b: Rc<BodyForm>
 ) -> BodyForm {
+    let names: Vec<String> = namemap.iter().map(|x| decode_string(x.0)).collect();
+    print!("rename_in_bodyform {:?} {}\n", names, b.to_sexp().to_string());
     match b.borrow() {
         BodyForm::Let(l,bindings,body) => {
             let new_bindings =
@@ -200,7 +205,9 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
                     })
                 }).collect();
             let locally_renamed_body = rename_in_bodyform(&local_namemap,body.clone());
-            BodyForm::Let(l.clone(), new_bindings, Rc::new(locally_renamed_body))
+            let new_body = BodyForm::Let(l.clone(), new_bindings, Rc::new(locally_renamed_body));
+            print!("body_with_renames: {}\n", new_body.to_sexp().to_string());
+            new_body
         },
 
         BodyForm::Quoted(e) => { BodyForm::Quoted(e.clone()) },

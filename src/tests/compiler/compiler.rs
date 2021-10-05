@@ -183,3 +183,13 @@ fn run_test_7() {
         ).unwrap();
     assert_eq!(result.to_string(), "((51 305419896 1000000000))".to_string());
 }
+
+#[test]
+fn run_test_8() {
+    let result =
+        run_string(
+            &"(mod (a b) (let ((x (+ a 1)) (y (+ b 1))) (+ x y)))".to_string(),
+            &"(5 8)".to_string()
+        ).unwrap();
+    assert_eq!(result.to_string(), "15".to_string());
+}

@@ -789,7 +789,7 @@ fn generate_let_defun(
 
     let new_arguments: Vec<Rc<SExp>> =
         bindings.iter().map(|b| {
-            Rc::new(SExp::Atom(l.clone(), name.clone()))
+            Rc::new(SExp::Atom(l.clone(), b.name.clone()))
         }).collect();
 
     let inner_function_args =
@@ -862,6 +862,7 @@ fn process_helper_let_bindings(
                     args.clone(),
                     hoisted_body
                 );
+
                 i += 1;
 
                 for j in 0..hoisted_helpers.len() {
