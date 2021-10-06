@@ -284,20 +284,22 @@ fn get_callable(
             let defun = create_name_lookup(compiler, l.clone(), name);
             let prim = compiler.prims.get(name);
             let atom_is_com = *name == "com".as_bytes().to_vec();
-            match (macro_def, defun, prim, atom_is_com) {
-                (Some(macro_def), _, _, _) => {
+            let atom_is_at = *name == "@".as_bytes().to_vec();
+            match (macro_def, defun, prim, atom_is_com, atom_is_at) {
+                (Some(macro_def), _, _, _, _) => {
                     let macro_def_clone: &SExp = macro_def.borrow();
                     Ok(Callable::CallMacro(l.clone(),macro_def_clone.clone()))
                 },
-                (_, Ok(defun), _, _) => {
+                (_, Ok(defun), _, _, _) => {
                     let defun_clone: &SExp = defun.borrow();
                     Ok(Callable::CallDefun(l.clone(),defun_clone.clone()))
                 },
-                (_, _, Some(prim), _) => {
+                (_, _, Some(prim), _, _) => {
                     let prim_clone: &SExp = prim.borrow();
                     Ok(Callable::CallPrim(l.clone(),prim_clone.clone()))
                 },
-                (_, _, _, true) => Ok(Callable::RunCompiler),
+                (_, _, _, true, _) => Ok(Callable::RunCompiler),
+                (_, _, _, _, true) => Ok(Callable::EnvPath),
                 _ => Err(CompileErr(
                     l.clone(),
                     format!("no such callable '{}'", decode_string(name))
@@ -494,6 +496,21 @@ fn compile_call(
                     ).map(|args| {
                         CompiledCode(l.clone(), Rc::new(SExp::Cons(l,Rc::new(p),Rc::new(args))))
                     })
+                },
+
+                Callable::EnvPath => {
+                    if tl.len() == 1 {
+                        match tl[0].borrow() {
+                            BodyForm::Value(SExp::Integer(l,i)) => {
+                                Ok(CompiledCode(l.clone(), Rc::new(SExp::Integer(l.clone(),i.clone()))))
+                            },
+                            _ => {
+                                Err(CompileErr(al.clone(), format!("@ form only accepts integers at present")))
+                            }
+                        }
+                    } else {
+                        Err(CompileErr(al.clone(), format!("@ form accepts one argument")))
+                    }
                 },
 
                 Callable::RunCompiler => {

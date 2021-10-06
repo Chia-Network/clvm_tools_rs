@@ -27,7 +27,8 @@ pub enum Callable {
     CallMacro(Srcloc,SExp),
     CallDefun(Srcloc,SExp),
     CallPrim(Srcloc,SExp),
-    RunCompiler
+    RunCompiler,
+    EnvPath
 }
 
 pub fn list_to_cons(l: Srcloc, list: &Vec<Rc<SExp>>) -> SExp {
