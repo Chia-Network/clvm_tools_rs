@@ -501,6 +501,7 @@ fn compile_call(
                         let updated_opts = opts.
                             set_stdenv(false).
                             set_in_defun(true).
+                            set_start_env(Some(compiler.env.clone())).
                             set_compiler(compiler.clone());
 
                         let use_body =
@@ -928,6 +929,7 @@ fn start_codegen(opts: Rc<dyn CompilerOpts>, comp: CompileForm) -> PrimaryCodege
             Some(env) => env,
             None => Rc::new(compute_env_shape(comp.loc.clone(), comp.args.clone(), &live_helpers))
         };
+
     use_compiler.to_process = let_helpers_with_expr;
     use_compiler.final_expr = expr.clone();
 
