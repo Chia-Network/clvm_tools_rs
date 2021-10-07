@@ -676,12 +676,11 @@ fn codegen_(
                         Rc::new(SExp::Nil(loc.clone())),
                         Rc::new(SExp::Cons(
                             loc.clone(),
-                            body.to_sexp(),
+                            Rc::new(primquote(loc.clone(), body.to_sexp())),
                             Rc::new(SExp::Nil(loc.clone()))
                         ))
                     ))
                 );
-
             let updated_opts = opts.set_compiler(compiler.clone());
             let code = updated_opts.compile_program(
                 allocator,
