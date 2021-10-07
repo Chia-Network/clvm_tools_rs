@@ -213,3 +213,29 @@ fn run_test_10() {
         ).unwrap();
     assert_eq!(result.to_string(), "6".to_string());
 }
+
+#[test]
+fn test_defconstant() {
+    let result =
+        run_string(&indoc!{"
+            (mod (password new_puzhash amount)
+              (include *standard-cl-21*) ;; Specify chialisp-21 compilation.
+              (defconstant CREATE_COIN 51)
+              (defun check-password (password)
+                (let ((password-hash (sha256 password))
+                      (real-hash 0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824))
+                  (= password-hash real-hash)
+                  )
+                )
+
+              (if (check-password password)
+                (list (list CREATE_COIN new_puzhash amount))
+                (x)
+                )
+              )
+        "}.to_string(),
+        &"(hello 0x5f5767744f91c1c326d927a63d9b34fa7035c10e3eb838c44e3afe127c1b7675 2)".to_string(),
+        ).unwrap();
+
+    assert_eq!(result.to_string(), "((51 43124150325653191095732712509762329830013206679743532022320461771503765780085 2))".to_string());
+}
