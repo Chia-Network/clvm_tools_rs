@@ -4,6 +4,7 @@ pub mod compiler;
 pub mod comptypes;
 pub mod debug;
 mod gensym;
+mod inline;
 pub mod prims;
 mod optimize;
 pub mod runtypes;

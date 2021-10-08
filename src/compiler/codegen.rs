@@ -31,6 +31,7 @@ use crate::compiler::comptypes::{
     CompilerOpts,
     DefunCall,
     HelperForm,
+    InlineFunction,
     PrimaryCodegen,
     cons_of_string_map,
     foldM,
@@ -40,6 +41,7 @@ use crate::compiler::comptypes::{
     with_heading
 };
 use crate::compiler::frontend::compile_bodyform;
+use crate::compiler::inline::replace_in_inline;
 use crate::compiler::optimize::optimize_expr;
 use crate::compiler::prims::{
     primapply,
@@ -282,25 +284,29 @@ pub fn get_callable(
     match atom.borrow() {
         SExp::Atom(l,name) => {
             let macro_def = compiler.macros.get(name);
+            let inline = compiler.inlines.get(name);
             let defun = create_name_lookup(compiler, l.clone(), name);
             let prim = compiler.prims.get(name);
             let atom_is_com = *name == "com".as_bytes().to_vec();
             let atom_is_at = *name == "@".as_bytes().to_vec();
-            match (macro_def, defun, prim, atom_is_com, atom_is_at) {
-                (Some(macro_def), _, _, _, _) => {
+            match (macro_def, inline, defun, prim, atom_is_com, atom_is_at) {
+                (Some(macro_def), _, _, _, _, _) => {
                     let macro_def_clone: &SExp = macro_def.borrow();
                     Ok(Callable::CallMacro(l.clone(),macro_def_clone.clone()))
                 },
-                (_, Ok(defun), _, _, _) => {
+                (_, Some(inline), _, _, _, _) => {
+                    Ok(Callable::CallInline(l.clone(),inline.clone()))
+                },
+                (_, _, Ok(defun), _, _, _) => {
                     let defun_clone: &SExp = defun.borrow();
                     Ok(Callable::CallDefun(l.clone(),defun_clone.clone()))
                 },
-                (_, _, Some(prim), _, _) => {
+                (_, _, _, Some(prim), _, _) => {
                     let prim_clone: &SExp = prim.borrow();
                     Ok(Callable::CallPrim(l.clone(),prim_clone.clone()))
                 },
-                (_, _, _, true, _) => Ok(Callable::RunCompiler),
-                (_, _, _, _, true) => Ok(Callable::EnvPath),
+                (_, _, _, _, true, _) => Ok(Callable::RunCompiler),
+                (_, _, _, _, _, true) => Ok(Callable::EnvPath),
                 _ => Err(CompileErr(
                     l.clone(),
                     format!("no such callable '{}'", decode_string(name))
@@ -473,6 +479,19 @@ fn compile_call(
                     )
                 },
 
+                Callable::CallInline(l,inline) => {
+                    replace_in_inline(
+                        allocator,
+                        runner,
+                        opts.clone(),
+                        compiler,
+                        l.clone(),
+                        an.clone(),
+                        &inline,
+                        Some(&tl)
+                    )
+                },
+
                 Callable::CallDefun(l,lookup) => {
                     generate_args_code(
                         allocator,
@@ -567,7 +586,7 @@ fn compile_call(
     }
 }
 
-fn generate_expr_code(
+pub fn generate_expr_code(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
@@ -739,72 +758,79 @@ fn codegen_(
             })
         }
 
-        HelperForm::Defun (loc, name, _inline, args, body) => {
-            let updated_opts =
-                opts.
-                set_compiler(compiler.clone()).
-                set_in_defun(true).
-                set_stdenv(false).
-                set_start_env(Some(
-                    combine_defun_env(compiler.env.clone(), args.clone())
-                ));
+        HelperForm::Defun (loc, name, inline, args, body) => {
+            if *inline {
+                Ok(compiler.add_inline(
+                    name,
+                    &InlineFunction { args: args.clone(), body: body.clone() }
+                ))
+            } else {
+                let updated_opts =
+                    opts.
+                    set_compiler(compiler.clone()).
+                    set_in_defun(true).
+                    set_stdenv(false).
+                    set_start_env(Some(
+                        combine_defun_env(compiler.env.clone(), args.clone())
+                    ));
 
-            let opt =
-                if opts.optimize() {
-                    // Run optimizer on frontend style forms.
-                    optimize_expr(
-                        allocator,
-                        opts.clone(),
-                        runner.clone(),
-                        compiler,
+                let opt =
+                    if opts.optimize() {
+                        // Run optimizer on frontend style forms.
+                        optimize_expr(
+                            allocator,
+                            opts.clone(),
+                            runner.clone(),
+                            compiler,
+                            body.clone()
+                        ).map(|x| x.1).unwrap_or_else(|| body.clone())
+                    } else {
                         body.clone()
-                    ).map(|x| x.1).unwrap_or_else(|| body.clone())
-                } else {
-                    body.clone()
-                };
+                    };
 
-            let tocompile =
-                SExp::Cons(
-                    loc.clone(),
-                    Rc::new(SExp::Atom(loc.clone(),"mod".as_bytes().to_vec())),
-                    Rc::new(SExp::Cons(
+                let tocompile =
+                    SExp::Cons(
                         loc.clone(),
-                        args.clone(),
+                        Rc::new(SExp::Atom(loc.clone(),"mod".as_bytes().to_vec())),
                         Rc::new(SExp::Cons(
                             loc.clone(),
-                            opt.to_sexp(),
-                            Rc::new(SExp::Nil(loc.clone()))
+                            args.clone(),
+                            Rc::new(SExp::Cons(
+                                loc.clone(),
+                                opt.to_sexp(),
+                                Rc::new(SExp::Nil(loc.clone()))
+                            ))
                         ))
-                    ))
-                );
+                    );
 
-            updated_opts.compile_program(
-                allocator,
-                runner.clone(),
-                Rc::new(tocompile)
-            ).and_then(|code| {
-                if opts.optimize() {
-                    run_optimizer(
-                        allocator,
-                        runner,
-                        Rc::new(code)
-                    )
-                } else {
-                    Ok(Rc::new(code))
-                }
-            }).map(|code| {
-                compiler.add_defun(name, DefunCall {
-                    required_env: args.clone(),
-                    code: code
+                updated_opts.compile_program(
+                    allocator,
+                    runner.clone(),
+                    Rc::new(tocompile)
+                ).and_then(|code| {
+                    if opts.optimize() {
+                        run_optimizer(
+                            allocator,
+                            runner,
+                            Rc::new(code)
+                        )
+                    } else {
+                        Ok(Rc::new(code))
+                    }
+                }).map(|code| {
+                    compiler.add_defun(name, DefunCall {
+                        required_env: args.clone(),
+                        code: code
+                    })
                 })
-            })
+            }
         }
     }
 }
 
 fn is_defun(b: &HelperForm) -> bool {
     match b {
-        HelperForm::Defun(_,_,_,_,_) => true,
+        HelperForm::Defun(_,_,false,_,_) => true,
         _ => false
     }
 }
@@ -819,6 +845,7 @@ pub fn empty_compiler(
     PrimaryCodegen {
         prims: prim_map.clone(),
         constants: HashMap::new(),
+        inlines: HashMap::new(),
         macros: HashMap::new(),
         defuns: HashMap::new(),
         parentfns: HashSet::new(),
@@ -833,17 +860,10 @@ fn generate_let_defun(
     compiler: &PrimaryCodegen,
     l: Srcloc,
     name: &Vec<u8>,
+    args: Rc<SExp>,
     bindings: Vec<Rc<Binding>>,
     body: Rc<BodyForm>
 ) -> HelperForm {
-    let args =
-        match compiler.env.borrow() {
-            SExp::Cons(l, _, fnargs) => {
-                fnargs.clone()
-            },
-            _ => Rc::new(SExp::Nil(compiler.env.loc()))
-        };
-
     let new_arguments: Vec<Rc<SExp>> =
         bindings.iter().map(|b| {
             Rc::new(SExp::Atom(l.clone(), b.name.clone()))
@@ -865,6 +885,7 @@ fn generate_let_args(l: Srcloc, blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {
 
 fn hoist_body_let_binding(
     compiler: &PrimaryCodegen,
+    args: Rc<SExp>,
     body: Rc<BodyForm>
 ) -> (Vec<HelperForm>, Rc<BodyForm>) {
     match body.borrow() {
@@ -874,6 +895,7 @@ fn hoist_body_let_binding(
                 compiler,
                 l.clone(),
                 &defun_name,
+                args.clone(),
                 bindings.to_vec(),
                 body.clone()
             );
@@ -891,7 +913,8 @@ fn hoist_body_let_binding(
             call_args.push(Rc::new(pass_env.clone()));
             call_args.append(&mut let_args);
 
-            (vec!(generated_defun), Rc::new(BodyForm::Call(l.clone(), call_args)))
+            let final_call = BodyForm::Call(l.clone(), call_args);
+            (vec!(generated_defun), Rc::new(final_call.clone()))
         },
         _ => (Vec::new(), body.clone())
     }
@@ -908,7 +931,7 @@ fn process_helper_let_bindings(
     while i < result.len() {
         match result[i].clone() {
             HelperForm::Defun(l, name, inline, args, body) => {
-                let helper_result = hoist_body_let_binding(compiler, body.clone());
+                let helper_result = hoist_body_let_binding(compiler, args.clone(), body.clone());
                 let hoisted_helpers = helper_result.0;
                 let hoisted_body = helper_result.1.clone();
 
@@ -946,7 +969,7 @@ fn start_codegen(opts: Rc<dyn CompilerOpts>, comp: CompileForm) -> PrimaryCodege
             Some(c) => c
         };
 
-    let hoisted_bindings = hoist_body_let_binding(&use_compiler, comp.exp);
+    let hoisted_bindings = hoist_body_let_binding(&use_compiler, comp.args.clone(), comp.exp);
     let mut new_helpers = hoisted_bindings.0;
     let expr = hoisted_bindings.1;
     new_helpers.append(&mut comp.helpers.clone());
@@ -1000,6 +1023,8 @@ fn final_codegen(
 }
 
 fn finalize_env_(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     c: &PrimaryCodegen,
     l: Srcloc,
@@ -1013,22 +1038,55 @@ fn finalize_env_(
                     Ok(res_code_copy.clone())
                 },
                 None => {
-                    /* Parentfns are functions in progress in the parent */
-                    if !c.parentfns.get(v).is_none() {
-                        Ok(SExp::Nil(l.clone()))
-                    } else {
-                        Err(CompileErr(
-                            l.clone(),
-                            format!("A defun was referenced in the defun env but not found {}", decode_string(v))
-                        ))
+                    match c.inlines.get(v) {
+                        Some(res) => {
+                            replace_in_inline(
+                                allocator,
+                                runner.clone(),
+                                opts.clone(),
+                                c,
+                                l.clone(),
+                                "*main*".as_bytes().to_vec(),
+                                res,
+                                None
+                            ).map(|x| {
+                                let borrowed_sexp: &SExp = x.1.borrow();
+                                borrowed_sexp.clone()
+                            })
+                        },
+                        None => {
+                            /* Parentfns are functions in progress in the parent */
+                            if !c.parentfns.get(v).is_none() {
+                                Ok(SExp::Nil(l.clone()))
+                            } else {
+                                Err(CompileErr(
+                                    l.clone(),
+                                    format!("A defun was referenced in the defun env but not found {}", decode_string(v))
+                                ))
+                            }
+                        }
                     }
                 }
             }
         },
 
         SExp::Cons (l,h,r) => {
-            finalize_env_(opts.clone(), c, l.clone(), h.clone()).and_then(|h| {
-                finalize_env_(opts.clone(), c, l.clone(), r.clone()).map(|r| {
+            finalize_env_(
+                allocator,
+                runner.clone(),
+                opts.clone(),
+                c,
+                l.clone(),
+                h.clone()
+            ).and_then(|h| {
+                finalize_env_(
+                    allocator,
+                    runner.clone(),
+                    opts.clone(),
+                    c,
+                    l.clone(),
+                    r.clone()
+                ).map(|r| {
                     SExp::Cons(l.clone(),Rc::new(h.clone()),Rc::new(r.clone()))
                 })
             })
@@ -1042,11 +1100,20 @@ fn finalize_env_(
 }
 
 fn finalize_env(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     c: &PrimaryCodegen
 ) -> Result<SExp, CompileErr> {
     match c.env.borrow() {
-        SExp::Cons(l,h,_) => finalize_env_(opts, c, l.clone(), h.clone()),
+        SExp::Cons(l,h,_) => finalize_env_(
+            allocator,
+            runner.clone(),
+            opts.clone(),
+            c,
+            l.clone(),
+            h.clone()
+        ),
         _ => {
             let env_copy: &SExp = c.env.borrow();
             Ok(env_copy.clone())
@@ -1060,10 +1127,16 @@ fn dummy_functions(
     foldM(
         &|compiler: &PrimaryCodegen, form: &HelperForm| {
             match form {
-                HelperForm::Defun(_,name,_,_,_) => {
+                HelperForm::Defun(_,name,false,_,_) => {
                     let mut c_copy = compiler.clone();
                     c_copy.parentfns.insert(name.clone());
                     return Ok(c_copy);
+                },
+                HelperForm::Defun(_,name,true,args,body) => {
+                    Ok(compiler.add_inline(name, &InlineFunction {
+                        args: args.clone(),
+                        body: body.clone()
+                    }))
                 },
                 _ => Ok(compiler.clone())
             }
@@ -1093,8 +1166,14 @@ pub fn codegen(
         )?;
     }
 
-    final_codegen(allocator, runner, opts.clone(), &compiler).and_then(|c| {
-        let final_env = finalize_env(opts.clone(), &c)?;
+    final_codegen(allocator, runner.clone(), opts.clone(), &compiler).and_then(|c| {
+        let final_env =
+            finalize_env(
+                allocator,
+                runner.clone(),
+                opts.clone(),
+                &c
+            )?;
         match c.final_code {
             None => {
                 Err(CompileErr(

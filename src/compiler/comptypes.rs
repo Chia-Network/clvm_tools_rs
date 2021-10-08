@@ -23,9 +23,17 @@ pub struct CompileErr(pub Srcloc, pub String);
 #[derive(Debug)]
 pub struct CompiledCode(pub Srcloc, pub Rc<SExp>);
 
+#[derive(Clone)]
+#[derive(Debug)]
+pub struct InlineFunction {
+    pub args: Rc<SExp>,
+    pub body: Rc<BodyForm>
+}
+
 pub enum Callable {
     CallMacro(Srcloc,SExp),
     CallDefun(Srcloc,SExp),
+    CallInline(Srcloc,InlineFunction),
     CallPrim(Srcloc,SExp),
     RunCompiler,
     EnvPath
@@ -92,6 +100,7 @@ pub struct PrimaryCodegen {
     pub prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     pub constants: HashMap<Vec<u8>, Rc<SExp>>,
     pub macros: HashMap<Vec<u8>, Rc<SExp>>,
+    pub inlines: HashMap<Vec<u8>, InlineFunction>,
     pub defuns: HashMap<Vec<u8>, DefunCall>,
     pub parentfns: HashSet<Vec<u8>>,
     pub env: Rc<SExp>,
@@ -319,6 +328,12 @@ impl PrimaryCodegen {
     pub fn add_macro(&self, name: &Vec<u8>, value: Rc<SExp>) -> Self {
         let mut codegen_copy = self.clone();
         codegen_copy.macros.insert(name.clone(), value);
+        return codegen_copy;
+    }
+
+    pub fn add_inline(&self, name: &Vec<u8>, value: &InlineFunction) -> Self {
+        let mut codegen_copy = self.clone();
+        codegen_copy.inlines.insert(name.clone(), value.clone());
         return codegen_copy;
     }
 

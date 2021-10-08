@@ -239,3 +239,18 @@ fn test_defconstant() {
 
     assert_eq!(result.to_string(), "((51 43124150325653191095732712509762329830013206679743532022320461771503765780085 2))".to_string());
 }
+
+#[test]
+fn inline_compile_test() {
+    let result =
+        compile_string(&indoc!{"
+        (mod (A)
+          (include *standard-cl-21*)
+
+          (defun-inline f (x) (+ x 1))
+          (f A)
+          )
+        "}.to_string()
+        ).unwrap();
+    assert_eq!(result, "(2 (1 16 5 (1 . 1)) (4 (1) 1))".to_string());
+}
