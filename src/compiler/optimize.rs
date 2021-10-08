@@ -13,9 +13,19 @@ use crate::compiler::comptypes::{
     CompilerOpts,
     PrimaryCodegen
 };
+use crate::compiler::prims::primquote;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::u8_from_number;
+
+fn is_at_form(head: Rc<BodyForm>) -> bool {
+    match head.borrow() {
+        BodyForm::Value(SExp::Atom(_,a)) => {
+            a.len() == 1 && a[0] == '@' as u8
+        },
+        _ => false
+    }
+}
 
 pub fn optimize_expr(
     allocator: &mut Allocator,
@@ -30,6 +40,8 @@ pub fn optimize_expr(
             // () evaluates to ()
             if forms.len() == 0 {
                 return Some((true, body));
+            } else if is_at_form(forms[0].clone()) {
+                return None;
             }
 
             let mut examine_call = |al: Srcloc, an: &Vec<u8>| {
@@ -96,6 +108,9 @@ pub fn optimize_expr(
                 _ => None
             }
         },
+        BodyForm::Value(SExp::Integer(l,i)) => {
+            Some((true, Rc::new(BodyForm::Quoted(SExp::Integer(l.clone(),i.clone())))))
+        }
         _ => None
     }
 }
