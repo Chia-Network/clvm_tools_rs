@@ -40,12 +40,7 @@ use crate::compiler::comptypes::{
     with_heading
 };
 use crate::compiler::frontend::compile_bodyform;
-use crate::compiler::sexp::{
-    SExp,
-    decode_string,
-    enlist
-};
-use crate::compiler::srcloc::Srcloc;
+use crate::compiler::optimize::optimize_expr;
 use crate::compiler::prims::{
     primapply,
     primcons,
@@ -53,6 +48,12 @@ use crate::compiler::prims::{
     prims
 };
 use crate::compiler::runtypes::RunFailure;
+use crate::compiler::sexp::{
+    SExp,
+    decode_string,
+    enlist
+};
+use crate::compiler::srcloc::Srcloc;
 use crate::util::{
     number_from_u8,
     u8_from_number
@@ -272,7 +273,7 @@ fn codegen_to_sexp(
     )
 }
 
-fn get_callable(
+pub fn get_callable(
     _opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
     l: Srcloc,
@@ -748,6 +749,20 @@ fn codegen_(
                     combine_defun_env(compiler.env.clone(), args.clone())
                 ));
 
+            let opt =
+                if opts.optimize() {
+                    // Run optimizer on frontend style forms.
+                    optimize_expr(
+                        allocator,
+                        opts.clone(),
+                        runner.clone(),
+                        compiler,
+                        body.clone()
+                    ).map(|x| x.1).unwrap_or_else(|| body.clone())
+                } else {
+                    body.clone()
+                };
+
             let tocompile =
                 SExp::Cons(
                     loc.clone(),
@@ -757,7 +772,7 @@ fn codegen_(
                         args.clone(),
                         Rc::new(SExp::Cons(
                             loc.clone(),
-                            body.to_sexp(),
+                            opt.to_sexp(),
                             Rc::new(SExp::Nil(loc.clone()))
                         ))
                     ))
@@ -958,12 +973,25 @@ fn final_codegen(
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
 ) -> Result<PrimaryCodegen, CompileErr> {
+    let opt_final_expr =
+        if opts.optimize() {
+            optimize_expr(
+                allocator,
+                opts.clone(),
+                runner.clone(),
+                compiler,
+                compiler.final_expr.clone()
+            ).map(|x| x.1).unwrap_or_else(|| compiler.final_expr.clone())
+        } else {
+            compiler.final_expr.clone()
+        };
+
     generate_expr_code(
         allocator,
         runner,
         opts,
         compiler,
-        compiler.final_expr.clone()
+        opt_final_expr
     ).map(|code| {
         let mut final_comp = compiler.clone();
         final_comp.final_code = Some(CompiledCode(code.0,code.1));

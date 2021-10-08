@@ -5,6 +5,7 @@ pub mod comptypes;
 pub mod debug;
 mod gensym;
 pub mod prims;
+mod optimize;
 pub mod runtypes;
 pub mod sexp;
 pub mod srcloc;
