@@ -21,11 +21,11 @@ fn collapse<A>(r: Result<A,A>) -> A {
 impl RunFailure {
     pub fn to_string(&self) -> String {
         match self {
-            RunFailure::RunErr(l, s) => {
-                format!("{}: throw(x) {}", l.to_string(), s)
-            },
             RunFailure::RunExn(l, s) => {
-                format!("{}: {}", l.to_string(), s.to_string())
+                format!("{}: throw(x) {}", l.to_string(), s.to_string())
+            },
+            RunFailure::RunErr(l, s) => {
+                format!("{}: {}", l.to_string(), s)
             }
         }
     }

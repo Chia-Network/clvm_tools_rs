@@ -50,3 +50,7 @@ path = "src/classic/bins/run.rs"
 [[bin]]
 name = "brun"
 path = "src/classic/bins/brun.rs"
+
+[[bin]]
+name = "cldb"
+path = "src/classic/bins/cldb.rs"

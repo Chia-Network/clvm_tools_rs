@@ -34,6 +34,15 @@ use crate::util::{
     u8_from_number
 };
 
+
+#[derive(Clone)]
+#[derive(Debug)]
+pub enum RunStep {
+    Done(Rc<SExp>),
+    Op(Rc<SExp>, Rc<SExp>, Rc<SExp>, Option<Vec<Rc<SExp>>>, Rc<RunStep>),
+    Step(Rc<SExp>, Rc<SExp>, Rc<RunStep>)
+}
+
 fn choose_path(
     l: Srcloc,
     orig: Number,
@@ -133,38 +142,40 @@ fn eval_args(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
-    args: Rc<SExp>,
-    context: Rc<SExp>
-) -> Result<Rc<SExp>, RunFailure> {
-    match args.borrow() {
-        SExp::Nil(l) => Ok(args),
-        SExp::Cons(l,a,b) => {
-            run(
-                allocator,
-                runner.clone(),
-                prim_map.clone(),
-                a.clone(),
-                context.clone()
-            ).and_then(|aval| {
-                eval_args(
-                    allocator,
-                    runner,
-                    prim_map,
-                    b.clone(),
-                    context.clone()
-                ).map(|atail| {
-                    Rc::new(SExp::Cons(l.clone(),aval,atail))
-                })
-            })
-        },
-        _ => Err(RunFailure::RunErr(
-            args.loc(),
-            format!(
-                "bad argument list {} {}",
-                args.to_string(),
-                context.to_string()
-            )
-        ))
+    head: Rc<SExp>,
+    sexp_: Rc<SExp>,
+    context_: Rc<SExp>,
+    parent: Rc<RunStep>,
+) -> Result<RunStep, RunFailure> {
+    let mut sexp = sexp_.clone();
+    let mut eval_list: Vec<Rc<SExp>> = Vec::new();
+
+    loop {
+        match sexp.borrow() {
+            SExp::Nil(l) => {
+                return Ok(RunStep::Op(
+                    head,
+                    context_.clone(),
+                    sexp.clone(),
+                    Some(eval_list),
+                    parent.clone()
+                ));
+            }
+            SExp::Cons(l,a,b) => {
+                eval_list.push(a.clone());
+                sexp = b.clone();
+            },
+            _ => {
+                return Err(RunFailure::RunErr(
+                    sexp.loc(),
+                    format!(
+                        "bad argument list {} {}",
+                        sexp_.to_string(),
+                        context_.to_string()
+                    )
+                ));
+            }
+        }
     }
 }
 
@@ -296,6 +307,174 @@ fn atom_value(head: Rc<SExp>) -> Result<Number, RunFailure> {
     }
 }
 
+pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
+    match (a, b.borrow()) {
+        (RunStep::Done(x), RunStep::Done(_)) => {
+            RunStep::Done(x.clone())
+        },
+        (RunStep::Done(x), RunStep::Op(head, context, args, Some(remain), parent)) => {
+            RunStep::Op(
+                head.clone(),
+                context.clone(),
+                Rc::new(SExp::Cons(
+                    x.loc(),
+                    x.clone(),
+                    args.clone()
+                )),
+                Some(remain.clone()),
+                parent.clone()
+            )
+        },
+        (RunStep::Done(x), RunStep::Op(head, context, args, None, parent)) => {
+            combine(a, parent.borrow())
+        },
+        (RunStep::Done(x), RunStep::Step(sexp, context, parent)) => {
+            combine(a, parent.borrow())
+        },
+        _ => a.clone()
+    }
+}
+
+pub fn run_step(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    step_: &RunStep
+) -> Result<RunStep, RunFailure> {
+    let mut step = step_.clone();
+
+    match &step {
+        RunStep::Done(x) => { step = RunStep::Done(x.clone()); },
+        RunStep::Step(sexp, context, parent) => {
+            match sexp.borrow() {
+                SExp::Integer(l,v) => {
+                    /* An integer picks a value from the context */
+                    step = RunStep::Done(choose_path(
+                        l.clone(),
+                        v.clone(),
+                        v.clone(),
+                        context.clone(),
+                        context.clone()
+                    )?);
+                },
+                SExp::QuotedString(l,_,v) => {
+                    step = RunStep::Step(
+                        Rc::new(SExp::Integer(l.clone(), number_from_u8(v))),
+                        context.clone(),
+                        parent.clone()
+                    );
+                },
+                SExp::Atom(l,v) => {
+                    step = RunStep::Step(
+                        Rc::new(SExp::Integer(l.clone(), number_from_u8(v))),
+                        context.clone(),
+                        parent.clone()
+                    );
+                },
+                SExp::Nil(l) => {
+                    step = RunStep::Done(sexp.clone());
+                },
+                SExp::Cons(l,a,b) => {
+                    let head = translate_head(
+                        allocator,
+                        runner.clone(),
+                        prim_map.clone(),
+                        l.clone(),
+                        a.clone(),
+                        context.clone()
+                    )?;
+
+                    if atom_value(head.clone())? == bi_one() {
+                        step = RunStep::Done(b.clone());
+                    } else {
+                        step = eval_args(
+                            allocator,
+                            runner.clone(),
+                            prim_map.clone(),
+                            head.clone(),
+                            b.clone(),
+                            context.clone(),
+                            parent.clone()
+                        )?;
+                    }
+                }
+            }
+        },
+        RunStep::Op(head, context, tail, Some(rest), parent) => {
+            let mut rest_mut = rest.clone();
+            match rest_mut.pop() {
+                Some(x) => {
+                    step = RunStep::Step(
+                        x.clone(),
+                        context.clone(),
+                        Rc::new(RunStep::Op(
+                            head.clone(),
+                            context.clone(),
+                            tail.clone(),
+                            Some(rest_mut),
+                            parent.clone()
+                        ))
+                    );
+                },
+                None => {
+                    step = RunStep::Op(
+                        head.clone(),
+                        context.clone(),
+                        tail.clone(),
+                        None,
+                        parent.clone()
+                    );
+                }
+            }
+        },
+        RunStep::Op(head, context, tail, None, parent) => {
+            if atom_value(head.clone())? != 2_i32.to_bigint().unwrap() {
+                let result = apply_op(
+                    allocator,
+                    runner.clone(),
+                    head.loc(),
+                    head.clone(),
+                    tail.clone()
+                )?;
+
+                step = RunStep::Done(result);
+            } else {
+                // Handle apply here.
+                match tail.proper_list() {
+                    None => {
+                        return Err(RunFailure::RunErr(
+                            tail.loc(),
+                            format!("Bad parameter list for apply atom {}", tail.to_string())
+                        ));
+                    },
+                    Some(l) => {
+                        if l.len() != 2 {
+                            return Err(RunFailure::RunErr(
+                                tail.loc(),
+                                format!("Wrong parameter list length for apply atom {}", tail.to_string())
+                            ));
+                        }
+                        step = RunStep::Step(
+                            Rc::new(l[0].clone()),
+                            Rc::new(l[1].clone()),
+                            parent.clone()
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(combine(&step, step_))
+}
+
+pub fn start_step(
+    sexp_: Rc<SExp>,
+    context_: Rc<SExp>
+) -> RunStep {
+    RunStep::Step(sexp_.clone(), context_.clone(), Rc::new(RunStep::Done(sexp_.clone())))
+}
+
 pub fn run(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -303,83 +482,13 @@ pub fn run(
     sexp_: Rc<SExp>,
     context_: Rc<SExp>
 ) -> Result<Rc<SExp>, RunFailure> {
-    let mut sexp = sexp_.clone();
-    let mut context = context_.clone();
+    let mut step = start_step(sexp_.clone(), context_.clone());
 
     loop {
-        let sexp_first = sexp.clone();
-        let context_first = context.clone();
-
-        match sexp.borrow() {
-            SExp::Integer(l,v) => {
-                /* An integer picks a value from the context */
-                return choose_path(
-                    l.clone(),
-                    v.clone(),
-                    v.clone(),
-                    context.clone(),
-                    context.clone()
-                );
-            },
-            SExp::QuotedString (l,_,v) => {
-                sexp = Rc::new(SExp::Integer(l.clone(), number_from_u8(v)));
-            },
-            SExp::Atom(l,v) => {
-                sexp = Rc::new(SExp::Integer(l.clone(), number_from_u8(v)));
-            },
-            SExp::Nil(l) => { return Ok(sexp.clone()); },
-            SExp::Cons(l,a,b) => {
-                let head = translate_head(
-                    allocator,
-                    runner.clone(),
-                    prim_map.clone(),
-                    l.clone(),
-                    a.clone(),
-                    context.clone()
-                )?;
-
-                if atom_value(head.clone())? == bi_one() {
-                    return Ok(b.clone());
-                }
-
-                let tail = eval_args(
-                    allocator,
-                    runner.clone(),
-                    prim_map.clone(),
-                    b.clone(),
-                    context.clone()
-                )?;
-
-                if atom_value(head.clone())? != 2_i32.to_bigint().unwrap() {
-                    return apply_op(
-                        allocator,
-                        runner.clone(),
-                        l.clone(),
-                        head.clone(),
-                        tail.clone()
-                    );
-                }
-
-                // Handle apply here.
-                match tail.proper_list() {
-                    None => {
-                        return Err(RunFailure::RunErr(
-                            b.loc(),
-                            format!("Bad parameter list for apply atom {}", b.to_string())
-                        ));
-                    },
-                    Some(l) => {
-                        if l.len() != 2 {
-                            return Err(RunFailure::RunErr(
-                                b.loc(),
-                                format!("Wrong parameter list length for apply atom {}", b.to_string())
-                            ));
-                        }
-                        sexp = Rc::new(l[0].clone());
-                        context = Rc::new(l[1].clone());
-                    }
-                }
-            }
+        step = run_step(allocator, runner.clone(), prim_map.clone(), &step)?;
+        match step {
+            RunStep::Done(x) => { return Ok(x); },
+            _ => { }
         }
     }
 }

@@ -1,5 +1,6 @@
 use core::cell::RefCell;
 
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::io;
 use std::io::Write;
@@ -78,6 +79,11 @@ use crate::classic::platform::argparse::{
     TArgOptionAction,
     TArgumentParserProps
 };
+use crate::compiler::clvm::{
+    RunStep,
+    run_step,
+    start_step
+};
 use crate::compiler::compiler::{
     compile_file,
     run_optimizer,
@@ -85,6 +91,11 @@ use crate::compiler::compiler::{
 };
 use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::debug::build_symbol_table_mut;
+use crate::compiler::prims;
+use crate::compiler::runtypes::RunFailure;
+use crate::compiler::sexp;
+use crate::compiler::sexp::parse_sexp;
+use crate::compiler::srcloc::Srcloc;
 use crate::util::collapse;
 
 pub struct PathOrCodeConv { }
@@ -260,6 +271,214 @@ pub fn brun(args: &Vec<String>) {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, &"brun".to_string(), 0);
     io::stdout().write_all(s.get_value().data());
+}
+
+pub fn cldb(args: &Vec<String>) {
+    let tool_name = "cldb".to_string();
+    let dpr;
+    let props = TArgumentParserProps {
+        description: "Execute a clvm script.".to_string(),
+        prog: format!("clvm_tools {}", tool_name)
+    };
+
+    let mut parser = ArgumentParser::new(Some(props));
+    parser.add_argument(
+        vec!("-i".to_string(), "--include".to_string()),
+        Argument::new().
+            set_type(Rc::new(PathJoin {})).
+            set_help("add a search path for included files".to_string()).
+            set_action(TArgOptionAction::Append).
+            set_default(ArgumentValue::ArgArray(vec!()))
+    );
+    parser.add_argument(
+        vec!("path_or_code".to_string()),
+        Argument::new().
+            set_type(Rc::new(PathOrCodeConv {})).
+            set_help("filepath to clvm script, or a literal script".to_string())
+    );
+    parser.add_argument(
+        vec!("env".to_string()),
+        Argument::new().
+            set_n_args(NArgsSpec::Optional).
+            set_type(Rc::new(PathOrCodeConv {})).
+            set_help("clvm script environment, as clvm src, or hex".to_string())
+    );
+    parser.add_argument(
+        vec!("-O".to_string(), "--optimize".to_string()),
+        Argument::new().
+            set_action(TArgOptionAction::StoreTrue).
+            set_help("run optimizer".to_string())
+    );
+    let arg_vec = args[1..].to_vec();
+    let parsedArgs: HashMap<String, ArgumentValue>;
+
+    let mut input_file = None;
+    let mut input_program = "()".to_string();
+
+    match parser.parse_args(&arg_vec) {
+        Err(e) => {
+            print!("FAIL: {}\n", e);
+            return;
+        },
+        Ok(pa) => { parsedArgs = pa; }
+    }
+
+    match parsedArgs.get("path_or_code") {
+        Some(ArgumentValue::ArgString(file, path_or_code)) => {
+            input_file = file.clone();
+            input_program = path_or_code.to_string();
+        },
+        _ => { }
+    }
+
+    let run_program: Rc<dyn TRunProgram>;
+    match parsedArgs.get("include") {
+        Some(ArgumentValue::ArgArray(v)) => {
+            let mut bare_paths = Vec::with_capacity(v.len());
+            for p in v {
+                match p {
+                    ArgumentValue::ArgString(_,s) => bare_paths.push(s.to_string()),
+                    _ => { }
+                }
+            }
+            let special_runner = run_program_for_search_paths(&bare_paths);
+            dpr = special_runner.clone();
+            run_program = special_runner;
+        },
+        _ => {
+            let ordinary_runner = run_program_for_search_paths(&Vec::new());
+            dpr = ordinary_runner.clone();
+            run_program = ordinary_runner;
+        }
+    }
+
+    let mut allocator = Allocator::new();
+
+    let do_optimize =
+        parsedArgs.get("optimize").map(|x| match x {
+            ArgumentValue::ArgBool(true) => true,
+            _ => false
+        }).unwrap_or_else(|| false);
+    let runner = Rc::new(DefaultProgramRunner::new());
+    let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
+    let opts = Rc::new(
+        DefaultCompilerOpts::new(&use_filename)
+    ).set_optimize(do_optimize);
+
+    let unopt_res = compile_file(
+        &mut allocator,
+        runner.clone(),
+        opts.clone(),
+        &input_program
+    );
+    let res =
+        if do_optimize {
+            unopt_res.and_then(|x| run_optimizer(
+                &mut allocator,
+                runner.clone(),
+                Rc::new(x)
+            ))
+        } else {
+            unopt_res.map(|x| Rc::new(x))
+        };
+
+    let mut parsed_args_result: String = "".to_string();
+    let mut program = Rc::new(sexp::SExp::Nil(Srcloc::start(&"*nil*".to_string())));
+    let mut args = program.clone();
+
+    match res {
+        Ok(r) => {
+            program = r.clone();
+        },
+        Err(c) => {
+            print!("{}: {}\n", c.0.to_string(), c.1);
+            return;
+        }
+    }
+
+    match parsedArgs.get("env") {
+        Some(ArgumentValue::ArgString(f,s)) => {
+            parsed_args_result = s.to_string();
+        },
+        _ => { }
+    }
+
+    match parse_sexp(Srcloc::start(&"*arg*".to_string()), &parsed_args_result) {
+        Ok(r) => {
+            if r.len() > 0 {
+                args = r[0].clone();
+            }
+        },
+        Err(c) => {
+            print!("{}: {}\n", c.0.to_string(), c.1);
+            return;
+        }
+    }
+
+    let mut prim_map_ = HashMap::new();
+
+    for p in prims::prims() {
+        prim_map_.insert(p.0.clone(), Rc::new(p.1.clone()));
+    }
+
+    let prim_map = Rc::new(prim_map_);
+
+    let mut step = start_step(program.clone(), args.clone());
+    loop {
+        let new_step = run_step(
+            &mut allocator,
+            runner.clone(),
+            prim_map.clone(),
+            &step
+        );
+
+        match &new_step {
+            Ok(RunStep::Done(x)) => {
+                print!("Result: {}\n", x.to_string());
+                return;
+            },
+            Ok(RunStep::Step(sexp,c,p)) => {
+                let mut history_len = 0;
+                let mut parent = p.clone();
+                loop {
+                    match parent.borrow() {
+                        RunStep::Done(_) => { break; },
+                        RunStep::Step(_,_,p) => {
+                            history_len += 1;
+                            parent = p.clone();
+                        },
+                        RunStep::Op(_,_,_,_,p) => {
+                            history_len += 1;
+                            parent = p.clone();
+                        }
+                    }
+                }
+
+                print!("Step: {} {} :: {} more\n", sexp.to_string(), c.to_string(), history_len);
+                step = RunStep::Step(sexp.clone(),c.clone(),p.clone());
+            },
+            Ok(RunStep::Op(sexp,c,a,v,p)) => {
+                print!("Preparing operator {} {}\n", sexp.loc().to_string(), sexp.to_string());
+                print!("Context: {}\n", c.to_string());
+                print!("Prepared arguments: {}\n", a.to_string());
+                print!("Remaining:\n");
+                let empty_vec = Vec::new();
+                for nv in v.as_ref().unwrap_or_else(|| &empty_vec).iter() {
+                    print!("- {} {}\n", nv.loc().to_string(), nv.to_string());
+                }
+                step = RunStep::Op(sexp.clone(),c.clone(),a.clone(),v.clone(),p.clone());
+            },
+            Err(RunFailure::RunExn(l,s)) => {
+                print!("Thrown exception at {}: {}\n", l.to_string(), s.to_string());
+                return;
+            },
+            Err(RunFailure::RunErr(l,s)) => {
+                print!("Failed at {}: {}\n", l.to_string(), s.to_string());
+                return;
+            },
+            _ => { }
+        }
+    }
 }
 
 struct RunLog<T> {

@@ -42,7 +42,7 @@ const MAX_SINGLE_BYTE : u32 = 0x7F;
 const CONS_BOX_MARKER : u32 = 0xFF;
 
 fn atom_size_blob(b: &Bytes) -> Result<(bool, Vec<u8>),String> {
-    let size = b.length();
+    let size = b.length() as i64;
     if size == 0 {
         return Ok((false, vec!(0x80)));
     } else if size == 1 && b.at(0) <= MAX_SINGLE_BYTE as u8 {
