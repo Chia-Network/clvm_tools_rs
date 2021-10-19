@@ -433,8 +433,8 @@ pub fn cldb(args: &Vec<String>) {
         );
 
         match &new_step {
-            Ok(RunStep::Done(x)) => {
-                print!("Result: {}\n", x.to_string());
+            Ok(RunStep::Done(l,x)) => {
+                print!("Result: {} {}\n", l.to_string(), x.to_string());
                 return;
             },
             Ok(RunStep::Step(sexp,c,p)) => {
@@ -442,7 +442,7 @@ pub fn cldb(args: &Vec<String>) {
                 let mut parent = p.clone();
                 loop {
                     match parent.borrow() {
-                        RunStep::Done(_) => { break; },
+                        RunStep::Done(_,_) => { break; },
                         RunStep::Step(_,_,p) => {
                             history_len += 1;
                             parent = p.clone();
@@ -458,7 +458,7 @@ pub fn cldb(args: &Vec<String>) {
                 step = RunStep::Step(sexp.clone(),c.clone(),p.clone());
             },
             Ok(RunStep::Op(sexp,c,a,v,p)) => {
-                print!("Preparing operator {} {}\n", sexp.loc().to_string(), sexp.to_string());
+                print!("Preparing operator: {} {}\n", a.loc().to_string(), sexp.to_string());
                 print!("Context: {}\n", c.to_string());
                 print!("Prepared arguments: {}\n", a.to_string());
                 print!("Remaining:\n");

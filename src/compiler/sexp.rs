@@ -219,6 +219,18 @@ impl SExp {
         }
     }
 
+    pub fn with_loc(&self, loc: Srcloc) -> SExp {
+        match self {
+            SExp::Nil(_) => SExp::Nil(loc.clone()),
+            SExp::Cons(_,a,b) => SExp::Cons(loc.clone(),a.clone(),b.clone()),
+            SExp::Integer(_,i) => SExp::Integer(loc.clone(),i.clone()),
+            SExp::QuotedString(_,q,s) => {
+                SExp::QuotedString(loc.clone(),*q,s.clone())
+            },
+            SExp::Atom(_,a) => SExp::Atom(loc.clone(),a.clone())
+        }
+    }
+
     pub fn atom_from_string(loc: Srcloc, s: &String) -> SExp {
         return SExp::Atom(loc, s.as_bytes().to_vec());
     }

@@ -38,7 +38,7 @@ use crate::util::{
 #[derive(Clone)]
 #[derive(Debug)]
 pub enum RunStep {
-    Done(Rc<SExp>),
+    Done(Srcloc,Rc<SExp>),
     Op(Rc<SExp>, Rc<SExp>, Rc<SExp>, Option<Vec<Rc<SExp>>>, Rc<RunStep>),
     Step(Rc<SExp>, Rc<SExp>, Rc<RunStep>)
 }
@@ -109,13 +109,13 @@ fn translate_head(
                         context.clone()
                     )
                 },
-                Some(v) => Ok(v.clone())
+                Some(v) => Ok(Rc::new(v.with_loc(l.clone())))
             }
         },
-        SExp::Integer(_,i) => {
+        SExp::Integer(l,i) => {
             match prim_map.get(&u8_from_number(i.clone())) {
                 None => Ok(sexp.clone()),
-                Some(v) => Ok(v.clone())
+                Some(v) => Ok(Rc::new(v.with_loc(l.clone())))
             }
         },
         SExp::Cons(l,a,nil) => {
@@ -309,15 +309,15 @@ fn atom_value(head: Rc<SExp>) -> Result<Number, RunFailure> {
 
 pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
     match (a, b.borrow()) {
-        (RunStep::Done(x), RunStep::Done(_)) => {
-            RunStep::Done(x.clone())
+        (RunStep::Done(l,x), RunStep::Done(_,_)) => {
+            RunStep::Done(l.clone(),x.clone())
         },
-        (RunStep::Done(x), RunStep::Op(head, context, args, Some(remain), parent)) => {
+        (RunStep::Done(l,x), RunStep::Op(head, context, args, Some(remain), parent)) => {
             RunStep::Op(
                 head.clone(),
                 context.clone(),
                 Rc::new(SExp::Cons(
-                    x.loc(),
+                    l.clone(),
                     x.clone(),
                     args.clone()
                 )),
@@ -325,10 +325,10 @@ pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
                 parent.clone()
             )
         },
-        (RunStep::Done(x), RunStep::Op(head, context, args, None, parent)) => {
+        (RunStep::Done(l,x), RunStep::Op(head, context, args, None, parent)) => {
             combine(a, parent.borrow())
         },
-        (RunStep::Done(x), RunStep::Step(sexp, context, parent)) => {
+        (RunStep::Done(l,x), RunStep::Step(sexp, context, parent)) => {
             combine(a, parent.borrow())
         },
         _ => a.clone()
@@ -344,12 +344,12 @@ pub fn run_step(
     let mut step = step_.clone();
 
     match &step {
-        RunStep::Done(x) => { step = RunStep::Done(x.clone()); },
+        RunStep::Done(l,x) => { step = RunStep::Done(l.clone(),x.clone()); },
         RunStep::Step(sexp, context, parent) => {
             match sexp.borrow() {
                 SExp::Integer(l,v) => {
                     /* An integer picks a value from the context */
-                    step = RunStep::Done(choose_path(
+                    step = RunStep::Done(l.clone(),choose_path(
                         l.clone(),
                         v.clone(),
                         v.clone(),
@@ -372,20 +372,20 @@ pub fn run_step(
                     );
                 },
                 SExp::Nil(l) => {
-                    step = RunStep::Done(sexp.clone());
+                    step = RunStep::Done(l.clone(), sexp.clone());
                 },
                 SExp::Cons(l,a,b) => {
-                    let head = translate_head(
+                    let head = Rc::new(translate_head(
                         allocator,
                         runner.clone(),
                         prim_map.clone(),
                         l.clone(),
                         a.clone(),
                         context.clone()
-                    )?;
+                    )?.with_loc(l.clone()));
 
                     if atom_value(head.clone())? == bi_one() {
-                        step = RunStep::Done(b.clone());
+                        step = RunStep::Done(l.clone(), b.clone());
                     } else {
                         step = eval_args(
                             allocator,
@@ -437,7 +437,7 @@ pub fn run_step(
                     tail.clone()
                 )?;
 
-                step = RunStep::Done(result);
+                step = RunStep::Done(head.loc(), result);
             } else {
                 // Handle apply here.
                 match tail.proper_list() {
@@ -472,7 +472,7 @@ pub fn start_step(
     sexp_: Rc<SExp>,
     context_: Rc<SExp>
 ) -> RunStep {
-    RunStep::Step(sexp_.clone(), context_.clone(), Rc::new(RunStep::Done(sexp_.clone())))
+    RunStep::Step(sexp_.clone(), context_.clone(), Rc::new(RunStep::Done(sexp_.loc(), sexp_.clone())))
 }
 
 pub fn run(
@@ -487,7 +487,7 @@ pub fn run(
     loop {
         step = run_step(allocator, runner.clone(), prim_map.clone(), &step)?;
         match step {
-            RunStep::Done(x) => { return Ok(x); },
+            RunStep::Done(_,x) => { return Ok(x); },
             _ => { }
         }
     }
