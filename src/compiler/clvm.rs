@@ -307,6 +307,13 @@ fn atom_value(head: Rc<SExp>) -> Result<Number, RunFailure> {
     }
 }
 
+pub fn truthy(sexp: Rc<SExp>) -> bool {
+    // Fails for cons, but cons is truthy
+    let t = atom_value(sexp.clone()).unwrap_or_else(|_| bi_one()) != bi_zero();
+    print!("truthy {} => {}\n", sexp.to_string(), t);
+    return t;
+}
+
 pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
     match (a, b.borrow()) {
         (RunStep::Done(l,x), RunStep::Done(_,_)) => {
@@ -428,37 +435,101 @@ pub fn run_step(
             }
         },
         RunStep::Op(head, context, tail, None, parent) => {
-            if atom_value(head.clone())? != 2_i32.to_bigint().unwrap() {
-                let result = apply_op(
-                    allocator,
-                    runner.clone(),
-                    head.loc(),
-                    head.clone(),
-                    tail.clone()
-                )?;
+            let aval = atom_value(head.clone())?;
+            let apply_atom = 2_i32.to_bigint().unwrap();
+            let if_atom = 3_i32.to_bigint().unwrap();
+            let cons_atom = 4_i32.to_bigint().unwrap();
+            let first_atom = 5_i32.to_bigint().unwrap();
+            let rest_atom = 6_i32.to_bigint().unwrap();
 
-                step = RunStep::Done(head.loc(), result);
-            } else {
-                // Handle apply here.
-                match tail.proper_list() {
-                    None => {
+            let wanted_args: i32 =
+                if aval == if_atom {
+                    3
+                } else if aval == cons_atom || aval == apply_atom {
+                    2
+                } else if aval == first_atom || aval == rest_atom {
+                    1
+                } else {
+                    -1
+                };
+
+            let op =
+                if aval == apply_atom {
+                    "apply".to_string()
+                } else if aval == if_atom {
+                    "i (primitive if)".to_string()
+                } else if aval == cons_atom {
+                    "cons".to_string()
+                } else if aval == first_atom {
+                    "first".to_string()
+                } else if aval == rest_atom {
+                    "rest".to_string()
+                } else {
+                    format!("operator {}", aval)
+                };
+
+            match tail.proper_list() {
+                None => {
+                    return Err(RunFailure::RunErr(
+                        tail.loc(),
+                        format!("Bad arguments given to cons {}", tail.to_string())
+                    ));
+                },
+                Some(l) => {
+                    if wanted_args != -1 && l.len() as i32 != wanted_args {
                         return Err(RunFailure::RunErr(
                             tail.loc(),
-                            format!("Bad parameter list for apply atom {}", tail.to_string())
+                            format!("Wrong number of parameters to {}: {}", op, tail.to_string())
                         ));
-                    },
-                    Some(l) => {
-                        if l.len() != 2 {
-                            return Err(RunFailure::RunErr(
-                                tail.loc(),
-                                format!("Wrong parameter list length for apply atom {}", tail.to_string())
-                            ));
+                    }
+
+                    if aval == if_atom {
+                        let outcome =
+                            if truthy(Rc::new(l[0].clone())) {
+                                l[1].clone()
+                            } else {
+                                l[2].clone()
+                            };
+
+                        step = RunStep::Done(outcome.loc(), Rc::new(outcome));
+                    } else if aval == cons_atom {
+                        step = RunStep::Done(head.loc(), Rc::new(SExp::Cons(
+                            head.loc(),
+                            Rc::new(l[0].clone()),
+                            Rc::new(l[1].clone())
+                        )));
+                    } else if aval == first_atom || aval == rest_atom {
+                        match &l[0] {
+                            SExp::Cons(_,a,b) => {
+                                if aval == first_atom {
+                                    step = RunStep::Done(a.loc(), a.clone());
+                                } else {
+                                    step = RunStep::Done(b.loc(), b.clone());
+                                }
+                            },
+                            _ => {
+                                return Err(RunFailure::RunErr(
+                                    tail.loc(),
+                                    format!("Cons expected for {}, got {}", op, tail.to_string())
+                                ));
+                            }
                         }
+                    } else if aval == apply_atom {
                         step = RunStep::Step(
                             Rc::new(l[0].clone()),
                             Rc::new(l[1].clone()),
                             parent.clone()
                         );
+                    } else {
+                        let result = apply_op(
+                            allocator,
+                            runner.clone(),
+                            head.loc(),
+                            head.clone(),
+                            tail.clone()
+                        )?;
+
+                        step = RunStep::Done(head.loc(), result);
                     }
                 }
             }
