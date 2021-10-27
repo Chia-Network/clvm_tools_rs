@@ -38,7 +38,8 @@ use crate::util::{
 #[derive(Clone)]
 #[derive(Debug)]
 pub enum RunStep {
-    Done(Srcloc,Rc<SExp>),
+    Done(Srcloc, Rc<SExp>),
+    OpResult(Srcloc, Rc<SExp>, Rc<RunStep>),
     Op(Rc<SExp>, Rc<SExp>, Rc<SExp>, Option<Vec<Rc<SExp>>>, Rc<RunStep>),
     Step(Rc<SExp>, Rc<SExp>, Rc<RunStep>)
 }
@@ -307,11 +308,18 @@ fn atom_value(head: Rc<SExp>) -> Result<Number, RunFailure> {
     }
 }
 
+pub fn get_history_len(step: Rc<RunStep>) -> usize {
+        match step.borrow() {
+            RunStep::Done(_,_) => 1,
+            RunStep::OpResult(_,_,p) => 1 + get_history_len(p.clone()),
+            RunStep::Op(_,_,_,_,p) => 1 + get_history_len(p.clone()),
+            RunStep::Step(_,_,p) => 1 + get_history_len(p.clone())
+        }
+}
+
 pub fn truthy(sexp: Rc<SExp>) -> bool {
     // Fails for cons, but cons is truthy
-    let t = atom_value(sexp.clone()).unwrap_or_else(|_| bi_one()) != bi_zero();
-    print!("truthy {} => {}\n", sexp.to_string(), t);
-    return t;
+    atom_value(sexp.clone()).unwrap_or_else(|_| bi_one()) != bi_zero()
 }
 
 pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
@@ -351,18 +359,29 @@ pub fn run_step(
     let mut step = step_.clone();
 
     match &step {
-        RunStep::Done(l,x) => { step = RunStep::Done(l.clone(),x.clone()); },
+        RunStep::OpResult(l,x,p) => {
+            let parent: &RunStep = p.borrow();
+            return Ok(combine(
+                &RunStep::Done(l.clone(),x.clone()),
+                parent
+            ));
+        },
+        RunStep::Done(l,x) => { },
         RunStep::Step(sexp, context, parent) => {
             match sexp.borrow() {
                 SExp::Integer(l,v) => {
                     /* An integer picks a value from the context */
-                    step = RunStep::Done(l.clone(),choose_path(
+                    return Ok(RunStep::OpResult(
                         l.clone(),
-                        v.clone(),
-                        v.clone(),
-                        context.clone(),
-                        context.clone()
-                    )?);
+                        choose_path(
+                            l.clone(),
+                            v.clone(),
+                            v.clone(),
+                            context.clone(),
+                            context.clone(),
+                        )?,
+                        Rc::new(step_.clone())
+                    ));
                 },
                 SExp::QuotedString(l,_,v) => {
                     step = RunStep::Step(
@@ -379,7 +398,11 @@ pub fn run_step(
                     );
                 },
                 SExp::Nil(l) => {
-                    step = RunStep::Done(l.clone(), sexp.clone());
+                    return Ok(RunStep::OpResult(
+                        l.clone(),
+                        sexp.clone(),
+                        Rc::new(step_.clone())
+                    ));
                 },
                 SExp::Cons(l,a,b) => {
                     let head = Rc::new(translate_head(
@@ -493,18 +516,30 @@ pub fn run_step(
 
                         step = RunStep::Done(outcome.loc(), Rc::new(outcome));
                     } else if aval == cons_atom {
-                        step = RunStep::Done(head.loc(), Rc::new(SExp::Cons(
+                        return Ok(RunStep::OpResult(
                             head.loc(),
-                            Rc::new(l[0].clone()),
-                            Rc::new(l[1].clone())
-                        )));
+                            Rc::new(SExp::Cons(
+                                head.loc(),
+                                Rc::new(l[0].clone()),
+                                Rc::new(l[1].clone())
+                            )),
+                            Rc::new(step_.clone())
+                        ));
                     } else if aval == first_atom || aval == rest_atom {
                         match &l[0] {
                             SExp::Cons(_,a,b) => {
                                 if aval == first_atom {
-                                    step = RunStep::Done(a.loc(), a.clone());
+                                    return Ok(RunStep::OpResult(
+                                        a.loc(),
+                                        a.clone(),
+                                        Rc::new(step_.clone())
+                                    ));
                                 } else {
-                                    step = RunStep::Done(b.loc(), b.clone());
+                                    return Ok(RunStep::OpResult(
+                                        b.loc(),
+                                        b.clone(),
+                                        Rc::new(step_.clone())
+                                    ));
                                 }
                             },
                             _ => {
@@ -529,7 +564,11 @@ pub fn run_step(
                             tail.clone()
                         )?;
 
-                        step = RunStep::Done(head.loc(), result);
+                        return Ok(RunStep::OpResult(
+                            head.loc(),
+                            result,
+                            Rc::new(step_.clone())
+                        ));
                     }
                 }
             }

@@ -25,7 +25,7 @@ pub fn process_include(
         opts.read_new_file(opts.filename(), name.to_string())?;
     let content = filename_and_content.1;
 
-    let start_of_file = Srcloc::start(&opts.filename());
+    let start_of_file = Srcloc::start(&name);
 
     parse_sexp(start_of_file.clone(), &content).map_err(|e| {
         CompileErr(e.0.clone(), e.1.clone())
