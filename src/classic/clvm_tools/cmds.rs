@@ -497,21 +497,21 @@ pub fn cldb(args: &Vec<String>) {
 
     let add_context = |s: &sexp::SExp, c: &sexp::SExp, args: Option<Rc<sexp::SExp>>, context_result: &mut BTreeMap<String, String>| {
         whether_is_apply(s, context_result, &|context_result| {
-        }, &|context_result| {
             match c {
                 sexp::SExp::Cons(_,a,b) => {
                     context_result.insert("Env".to_string(), a.to_string());
                     context_result.insert("Env-Args".to_string(), b.to_string());
-                    match &args {
-                        Some(a) => {
-                            context_result.insert("Arguments".to_string(), a.to_string());
-                        },
-                        _ => {
-                        }
-                    }
-                },
+                }
                 _ => {
                     context_result.insert("Function-Context".to_string(), c.to_string());
+                }
+            }
+        }, &|context_result| {
+            match &args {
+                Some(a) => {
+                    context_result.insert("Arguments".to_string(), a.to_string());
+                },
+                _ => {
                 }
             }
         });
