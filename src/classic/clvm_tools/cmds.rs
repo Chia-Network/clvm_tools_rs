@@ -32,6 +32,7 @@ use clvm_rs::run_program::PreEval;
 use num_bigint::ToBigInt;
 #[macro_use]
 use yamlette::yamlette;
+use yamlette::model::yaml::str::FORCE_QUOTES;
 
 use crate::classic::clvm::KEYWORD_FROM_ATOM;
 use crate::classic::clvm::__type_compatibility__::{
@@ -392,7 +393,7 @@ pub fn cldb(args: &Vec<String>) {
     let mut args = program.clone();
 
     let yamlette_string = |to_print: BTreeMap<String, String>| {
-        yamlette!(write; [[(vec!(to_print.clone()))]]).unwrap_or_else(|e| {
+        yamlette!(write; [[( # FORCE_QUOTES => vec!(to_print.clone()))]]).unwrap_or_else(|e| {
             format!("error producing yaml: {:?}", e)
         })
     };
