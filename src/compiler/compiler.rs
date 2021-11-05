@@ -155,7 +155,9 @@ impl CompilerOpts for DefaultCompilerOpts {
                                        ()))
                             (compile-list ARGS)
                     )
-            )"};
+            (defun-inline / (A B) (f (divmod A B)))
+            )
+            "};
             return Ok((filename, macros.to_string()));
         } else if filename == "*standard-cl-21*" {
             let content = indoc! {"(

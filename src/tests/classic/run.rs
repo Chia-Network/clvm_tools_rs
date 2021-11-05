@@ -32,6 +32,14 @@ fn add_1_test() {
 }
 
 #[test]
+fn div_test() {
+    assert_eq!(
+        do_basic_run(&vec!("run".to_string(), "(mod (X) (/ X 10))".to_string())).trim(),
+        "(f (divmod 2 (q . 10)))".to_string()
+    );
+}
+
+#[test]
 fn brun_y_1_test() {
     let testpath = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut sym_path = testpath.clone();

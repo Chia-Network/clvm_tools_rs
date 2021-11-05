@@ -115,6 +115,15 @@ fn compile_test_6() {
 }
 
 #[test]
+fn compile_test_7() {
+    let result =
+        compile_string(
+            &"(mod (X) (include *standard-cl-21*) (/ X 10))".to_string(),
+        ).unwrap();
+    assert_eq!(result, "(2 (1 5 (20 5 (1 . 10))) (4 (1) 1))".to_string());
+}
+
+#[test]
 fn run_test_1() {
     let result =
         run_string(
