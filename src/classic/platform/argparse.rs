@@ -222,7 +222,7 @@ impl ArgumentParser {
                 }
 
                 let optional_arg_idx = index_of_match(
-                    |a: &Arg| index_of_match(|a: &String| a == arg, &a.names) >= 0,
+                    |a: &Arg| index_of_match(|a: &String| arg.starts_with(a), &a.names) >= 0,
                     &self.optional_args,
                 );
 
@@ -516,7 +516,7 @@ impl ArgumentParser {
             let mut optional_arg_without_space_found = false;
 
             // Only short form args like '-x' are targets.
-            if arg.starts_with("-") && !arg.starts_with("--") {
+            if arg.starts_with("--") {
                 norm.push(arg.to_string());
                 continue;
             }
