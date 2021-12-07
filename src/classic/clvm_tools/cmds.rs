@@ -469,14 +469,21 @@ pub fn cldb(args: &Vec<String>) {
             })
         }).and_then(|coords| {
             let use_line = coords.0;
-            let use_col = coords.1;
-            let end_col = coords.2;
+            let mut use_col = coords.1;
+            let mut end_col = coords.2;
 
             if use_line >= program_lines.len() {
                 None
             } else {
                 let line_text = program_lines[use_line].to_string();
-                Some(line_text[use_col..end_col].to_string())
+                if (use_col >= line_text.len()) {
+                    None
+                } else if (end_col >= line_text.len()) {
+                    end_col = line_text.len();
+                    Some(line_text[use_col..end_col].to_string())
+                } else {
+                    Some(line_text[use_col..end_col].to_string())
+                }
             }
         })
     };
