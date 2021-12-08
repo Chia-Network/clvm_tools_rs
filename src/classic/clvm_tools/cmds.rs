@@ -88,14 +88,18 @@ use crate::compiler::clvm::{
     get_history_len,
     RunStep,
     run_step,
-    start_step
+    start_step,
+    convert_from_clvm_rs
 };
 use crate::compiler::compiler::{
     compile_file,
     run_optimizer,
     DefaultCompilerOpts
 };
-use crate::compiler::comptypes::CompilerOpts;
+use crate::compiler::comptypes::{
+    CompileErr,
+    CompilerOpts
+};
 use crate::compiler::debug::build_symbol_table_mut;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
@@ -279,6 +283,29 @@ pub fn brun(args: &Vec<String>) {
     io::stdout().write_all(s.get_value().data());
 }
 
+pub fn hex_to_modern_sexp(
+    allocator: &mut Allocator,
+    loc: Srcloc,
+    input_program: &String
+) -> Result<Rc<sexp::SExp>, RunFailure> {
+    let input_serialized =
+        Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
+
+    let mut stream = Stream::new(Some(input_serialized.clone()));
+    match sexp_from_stream(
+        allocator,
+        &mut stream,
+        Box::new(SimpleCreateCLVMObject {}),
+    ).map(|x| x.1) {
+        Ok(res) => {
+            convert_from_clvm_rs(allocator, loc, res)
+        },
+        Err(_) => {
+            Err(RunFailure::RunErr(loc, "Bad conversion from hex".to_string()))
+        }
+    }
+}
+
 pub fn cldb(args: &Vec<String>) {
     let tool_name = "cldb".to_string();
     let dpr;
@@ -297,6 +324,18 @@ pub fn cldb(args: &Vec<String>) {
             set_default(ArgumentValue::ArgArray(vec!()))
     );
     parser.add_argument(
+        vec!("-O".to_string(), "--optimize".to_string()),
+        Argument::new().
+            set_action(TArgOptionAction::StoreTrue).
+            set_help("run optimizer".to_string())
+    );
+    parser.add_argument(
+        vec!("-x".to_string(), "--hex".to_string()),
+        Argument::new().
+            set_action(TArgOptionAction::StoreTrue).
+            set_help("parse input program and arguments from hex".to_string())
+    );
+    parser.add_argument(
         vec!("path_or_code".to_string()),
         Argument::new().
             set_type(Rc::new(PathOrCodeConv {})).
@@ -309,17 +348,19 @@ pub fn cldb(args: &Vec<String>) {
             set_type(Rc::new(PathOrCodeConv {})).
             set_help("clvm script environment, as clvm src, or hex".to_string())
     );
-    parser.add_argument(
-        vec!("-O".to_string(), "--optimize".to_string()),
-        Argument::new().
-            set_action(TArgOptionAction::StoreTrue).
-            set_help("run optimizer".to_string())
-    );
     let arg_vec = args[1..].to_vec();
     let parsedArgs: HashMap<String, ArgumentValue>;
 
     let mut input_file = None;
     let mut input_program = "()".to_string();
+
+    let prog_srcloc = Srcloc::start(&"*program*".to_string());
+    let args_srcloc = Srcloc::start(&"*args*".to_string());
+
+    let mut args = Rc::new(sexp::SExp::atom_from_string(
+        args_srcloc.clone(), &"".to_string()
+    ));
+    let mut parsed_args_result: String = "".to_string();
 
     match parser.parse_args(&arg_vec) {
         Err(e) => {
@@ -333,6 +374,13 @@ pub fn cldb(args: &Vec<String>) {
         Some(ArgumentValue::ArgString(file, path_or_code)) => {
             input_file = file.clone();
             input_program = path_or_code.to_string();
+        },
+        _ => { }
+    }
+
+    match parsedArgs.get("env") {
+        Some(ArgumentValue::ArgString(f,s)) => {
+            parsed_args_result = s.to_string();
         },
         _ => { }
     }
@@ -377,26 +425,40 @@ pub fn cldb(args: &Vec<String>) {
         opts.clone(),
         &input_program
     );
-    let res =
-        if do_optimize {
-            unopt_res.and_then(|x| run_optimizer(
-                &mut allocator,
-                runner.clone(),
-                Rc::new(x)
-            ))
-        } else {
-            unopt_res.map(|x| Rc::new(x))
-        };
 
-    let mut parsed_args_result: String = "".to_string();
     let mut program = Rc::new(sexp::SExp::Nil(Srcloc::start(&"*nil*".to_string())));
-    let mut args = program.clone();
-
-    let yamlette_string = |to_print: BTreeMap<String, String>| {
-        yamlette!(write; [[( # FORCE_QUOTES => vec!(to_print.clone()))]]).unwrap_or_else(|e| {
-            format!("error producing yaml: {:?}", e)
-        })
+    let mut output = Vec::new();
+    let yamlette_string = |to_print: Vec<BTreeMap<String, String>>| {
+        match yamlette!(write; [[( # FORCE_QUOTES => to_print )]]) {
+            Ok(s) => s,
+            Err(e) => format!("error producing yaml: {:?}", e)
+        }
     };
+
+    let res =
+        match parsedArgs.get("hex") {
+            Some(ArgumentValue::ArgBool(true)) => {
+                hex_to_modern_sexp(
+                    &mut allocator,
+                    prog_srcloc.clone(),
+                    &input_program
+                ).map_err(|e| {
+                    CompileErr(prog_srcloc, "Failed to parse hex".to_string())
+                })
+            },
+            _ => {
+                if do_optimize {
+                    unopt_res.and_then(|x| run_optimizer(
+                        &mut allocator,
+                        runner.clone(),
+                        Rc::new(x)
+                    ))
+                } else {
+                    unopt_res.map(|x| Rc::new(x))
+                }
+            },
+
+        };
 
     match res {
         Ok(r) => {
@@ -406,32 +468,52 @@ pub fn cldb(args: &Vec<String>) {
             let mut parse_error = BTreeMap::new();
             parse_error.insert("Error-Location".to_string(), c.0.to_string());
             parse_error.insert("Error".to_string(), c.1);
-            print!("{}\n", yamlette_string(parse_error.clone()));
+            output.push(parse_error.clone());
+            print!("{}\n", yamlette_string(output));
             return;
         }
     }
 
-    match parsedArgs.get("env") {
-        Some(ArgumentValue::ArgString(f,s)) => {
-            parsed_args_result = s.to_string();
-        },
-        _ => { }
-    }
-
-    match parse_sexp(Srcloc::start(&"*arg*".to_string()), &parsed_args_result) {
-        Ok(r) => {
-            if r.len() > 0 {
-                args = r[0].clone();
+    match parsedArgs.get("hex") {
+        Some(ArgumentValue::ArgBool(true)) => {
+            match hex_to_modern_sexp(
+                &mut allocator,
+                args_srcloc.clone(),
+                &parsed_args_result
+            ) {
+                Ok(r) => {
+                    args = r;
+                },
+                Err(p) => {
+                    let mut parse_error = BTreeMap::new();
+                    parse_error.insert("Error".to_string(), p.to_string());
+                    output.push(parse_error.clone());
+                    print!("{}\n", yamlette_string(output));
+                    return;
+                }
             }
         },
-        Err(c) => {
-            let mut parse_error = BTreeMap::new();
-            parse_error.insert("Error-Location".to_string(), c.0.to_string());
-            parse_error.insert("Error".to_string(), c.1);
-            print!("{}\n", yamlette_string(parse_error.clone()));
-            return;
+        _ => {
+            match parse_sexp(
+                Srcloc::start(&"*arg*".to_string()),
+                &parsed_args_result
+            ) {
+                Ok(r) => {
+                    if r.len() > 0 {
+                        args = r[0].clone();
+                    }
+                },
+                Err(c) => {
+                    let mut parse_error = BTreeMap::new();
+                    parse_error.insert("Error-Location".to_string(), c.0.to_string());
+                    parse_error.insert("Error".to_string(), c.1);
+                    output.push(parse_error.clone());
+                    print!("{}\n", yamlette_string(output));
+                    return;
+                }
+            }
         }
-    }
+    };
 
     let mut prim_map_ = HashMap::new();
 
@@ -558,7 +640,7 @@ pub fn cldb(args: &Vec<String>) {
                     to_print.insert("Result-Location".to_string(), l.to_string());
                     to_print.insert("Value".to_string(), x.to_string());
                     in_expr = false;
-                    print!("{}\n", yamlette_string(to_print.clone()));
+                    output.push(to_print.clone());
                     to_print = BTreeMap::new();
                     in_expr = false;
                 }
@@ -566,6 +648,8 @@ pub fn cldb(args: &Vec<String>) {
             Ok(RunStep::Done(l,x)) => {
                 to_print.insert("Final-Location".to_string(), l.to_string());
                 to_print.insert("Final".to_string(), x.to_string());
+                output.push(to_print.clone());
+                print!("{}\n", yamlette_string(output));
                 return;
             },
             Ok(RunStep::Step(sexp,c,p)) => {
@@ -585,13 +669,15 @@ pub fn cldb(args: &Vec<String>) {
             Err(RunFailure::RunExn(l,s)) => {
                 to_print.insert("Throw-Location".to_string(), l.to_string());
                 to_print.insert("Throw".to_string(), s.to_string());
-                print!("{}\n", yamlette_string(to_print.clone()));
+                output.push(to_print.clone());
+                print!("{}\n", yamlette_string(output));
                 return;
             },
             Err(RunFailure::RunErr(l,s)) => {
                 to_print.insert("Failure-Location".to_string(), l.to_string());
                 to_print.insert("Failure".to_string(), s.to_string());
-                print!("{}\n", yamlette_string(to_print.clone()));
+                output.push(to_print.clone());
+                print!("{}\n", yamlette_string(output));
                 return;
             },
             _ => { }
