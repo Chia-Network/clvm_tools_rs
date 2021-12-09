@@ -254,8 +254,6 @@ pub fn to_sexp_type<'a>(allocator: &'a mut Allocator, value: CastableType) -> Re
         }
     }
 
-    print!("post conversion: {:?}\n", &stack);
-
     if stack.len() != 1 {
         return Err(
             EvalErr(
