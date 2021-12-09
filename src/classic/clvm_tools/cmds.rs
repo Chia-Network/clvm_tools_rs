@@ -283,8 +283,55 @@ pub fn brun(args: &Vec<String>) {
     io::stdout().write_all(s.get_value().data());
 }
 
+pub fn hex_to_modern_sexp_inner(
+    allocator: &mut Allocator,
+    symbol_table: &HashMap<String,String>,
+    loc: Srcloc,
+    program: NodePtr
+) -> Result<Rc<sexp::SExp>, EvalErr> {
+    let hash = sha256tree(allocator, program);
+    let hash_str = hash.hex();
+    let srcloc =
+        symbol_table.get(&hash_str).map(|f| {
+            Srcloc::start(f)
+        }).unwrap_or_else(|| loc.clone());
+
+    match allocator.sexp(program) {
+        SExp::Pair(a,b) => {
+            Ok(Rc::new(sexp::SExp::Cons(
+                srcloc.clone(),
+                hex_to_modern_sexp_inner(
+                    allocator,
+                    symbol_table,
+                    srcloc.clone(),
+                    a
+                )?,
+                hex_to_modern_sexp_inner(
+                    allocator,
+                    symbol_table,
+                    srcloc,
+                    b
+                )?
+            )))
+        },
+        _ => {
+            convert_from_clvm_rs(
+                allocator,
+                srcloc,
+                program
+            ).map_err(|_| {
+                EvalErr(
+                    Allocator::null(allocator),
+                    "clvm_rs allocator failed".to_string()
+                )
+            })
+        }
+    }
+}
+
 pub fn hex_to_modern_sexp(
     allocator: &mut Allocator,
+    symbol_table: &HashMap<String,String>,
     loc: Srcloc,
     input_program: &String
 ) -> Result<Rc<sexp::SExp>, RunFailure> {
@@ -292,18 +339,22 @@ pub fn hex_to_modern_sexp(
         Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
 
     let mut stream = Stream::new(Some(input_serialized.clone()));
-    match sexp_from_stream(
+    let sexp = sexp_from_stream(
         allocator,
         &mut stream,
         Box::new(SimpleCreateCLVMObject {}),
-    ).map(|x| x.1) {
-        Ok(res) => {
-            convert_from_clvm_rs(allocator, loc, res)
-        },
-        Err(_) => {
-            Err(RunFailure::RunErr(loc, "Bad conversion from hex".to_string()))
-        }
-    }
+    ).map(|x| x.1).map_err(|_| {
+        RunFailure::RunErr(loc.clone(), "Bad conversion from hex".to_string())
+    })?;
+
+    hex_to_modern_sexp_inner(
+        allocator,
+        symbol_table,
+        loc.clone(),
+        sexp
+    ).map_err(|_| {
+        RunFailure::RunErr(loc, "Failed to convert from classic to modern".to_string())
+    })
 }
 
 pub fn cldb(args: &Vec<String>) {
@@ -334,6 +385,12 @@ pub fn cldb(args: &Vec<String>) {
         Argument::new().
             set_action(TArgOptionAction::StoreTrue).
             set_help("parse input program and arguments from hex".to_string())
+    );
+    parser.add_argument(
+        vec!("-y".to_string(), "--symbol-table".to_string()),
+        Argument::new().
+            set_type(Rc::new(PathOrCodeConv {})).
+            set_help("path to symbol file".to_string())
     );
     parser.add_argument(
         vec!("path_or_code".to_string()),
@@ -408,6 +465,16 @@ pub fn cldb(args: &Vec<String>) {
 
     let mut allocator = Allocator::new();
 
+    let symbol_table =
+        parsedArgs.get("symbol_table").and_then(|jstring| match jstring {
+            ArgumentValue::ArgString(f,s) => {
+                let decoded_symbol_table: Option<HashMap<String,String>> =
+                    serde_json::from_str(&s).ok();
+                decoded_symbol_table
+            },
+            _ => None
+        });
+
     let do_optimize =
         parsedArgs.get("optimize").map(|x| match x {
             ArgumentValue::ArgBool(true) => true,
@@ -440,6 +507,7 @@ pub fn cldb(args: &Vec<String>) {
             Some(ArgumentValue::ArgBool(true)) => {
                 hex_to_modern_sexp(
                     &mut allocator,
+                    &symbol_table.unwrap_or_else(|| HashMap::new()),
                     prog_srcloc.clone(),
                     &input_program
                 ).map_err(|e| {
@@ -478,6 +546,7 @@ pub fn cldb(args: &Vec<String>) {
         Some(ArgumentValue::ArgBool(true)) => {
             match hex_to_modern_sexp(
                 &mut allocator,
+                &HashMap::new(),
                 args_srcloc.clone(),
                 &parsed_args_result
             ) {

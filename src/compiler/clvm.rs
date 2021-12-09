@@ -9,7 +9,10 @@ use clvm_rs::allocator::{
 use clvm_rs::allocator;
 use clvm_rs::reduction::EvalErr;
 
-use num_bigint::ToBigInt;
+use num_bigint::{
+    Sign,
+    ToBigInt
+};
 
 use crate::classic::clvm::__type_compatibility__::{
     bi_zero,
@@ -350,6 +353,12 @@ pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
     }
 }
 
+pub fn flatten_signed_int(v: Number) -> Number {
+    let mut sign_digits = v.to_signed_bytes_le();
+    sign_digits.push(0);
+    return Number::from_signed_bytes_le(&sign_digits);
+}
+
 pub fn run_step(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -371,12 +380,13 @@ pub fn run_step(
             match sexp.borrow() {
                 SExp::Integer(l,v) => {
                     /* An integer picks a value from the context */
+                    let flat_v = flatten_signed_int(v.clone());
                     return Ok(RunStep::OpResult(
                         l.clone(),
                         choose_path(
                             l.clone(),
-                            v.clone(),
-                            v.clone(),
+                            flat_v.clone(),
+                            flat_v,
                             context.clone(),
                             context.clone(),
                         )?,
