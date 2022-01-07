@@ -359,6 +359,7 @@ pub fn hex_to_modern_sexp(
 
 pub fn cldb(args: &Vec<String>) {
     let tool_name = "cldb".to_string();
+    let mut hex = false;
     let dpr;
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
@@ -505,6 +506,7 @@ pub fn cldb(args: &Vec<String>) {
     let res =
         match parsedArgs.get("hex") {
             Some(ArgumentValue::ArgBool(true)) => {
+                hex = true;
                 hex_to_modern_sexp(
                     &mut allocator,
                     &symbol_table.unwrap_or_else(|| HashMap::new()),

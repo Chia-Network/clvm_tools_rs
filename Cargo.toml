@@ -23,7 +23,8 @@ sha2 = "0.9.5"
 yamlette = "0.0.8"
 
 [dependencies.clvm_rs]
-version = "0.1.12"
+path = "../clvm_rs"
+# version = "0.1.12"
 default-features = false
 
 [lib]
