@@ -26,7 +26,11 @@ fn basic_run_test() {
 #[test]
 fn add_1_test() {
     assert_eq!(
-        do_basic_run(&vec!("run".to_string(), "(opt (com (q . (+ 6 55))))".to_string())).trim(),
+        do_basic_run(&vec!(
+            "run".to_string(),
+            "(opt (com (q . (+ 6 55))))".to_string()
+        ))
+        .trim(),
         "(q . 61)".to_string()
     );
 }
@@ -73,13 +77,12 @@ fn brun_y_1_test() {
 #[test]
 fn brun_v_test() {
     assert_eq!(
-        do_basic_brun(
-            &vec!(
-                "brun".to_string(),
-                "-v".to_string(),
-                "(a (q + (q . 3) (q . 5)) 1)".to_string()
-            )
-        ).trim(),
+        do_basic_brun(&vec!(
+            "brun".to_string(),
+            "-v".to_string(),
+            "(a (q + (q . 3) (q . 5)) 1)".to_string()
+        ))
+        .trim(),
         indoc! {"8
             
             (a 2 3) [((a (q 16 (q . 3) (q . 5)) 1))] => 8

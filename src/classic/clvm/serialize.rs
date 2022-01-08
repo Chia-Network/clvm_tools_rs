@@ -16,64 +16,61 @@ leading bits is the count of bytes to read of size
 use std::rc::Rc;
 use std::vec::Vec;
 
-use clvm_rs::allocator::{
-    Allocator,
-    NodePtr,
-    SExp
-};
-use clvm_rs::reduction::{
-    EvalErr,
-    Reduction,
-    Response
-};
-use crate::classic::clvm::__type_compatibility__::{
-    Bytes,
-    BytesFromType,
-    Stream
-};
+use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 use crate::classic::clvm::as_rust::{TToSexpF, TValStack};
 use crate::classic::clvm::casts::int_from_bytes;
-use crate::classic::clvm::sexp::{
-    CastableType,
-    to_sexp_type
-};
+use crate::classic::clvm::sexp::{to_sexp_type, CastableType};
+use clvm_rs::allocator::{Allocator, NodePtr, SExp};
+use clvm_rs::reduction::{EvalErr, Reduction, Response};
 
-const MAX_SINGLE_BYTE : u32 = 0x7F;
-const CONS_BOX_MARKER : u32 = 0xFF;
+const MAX_SINGLE_BYTE: u32 = 0x7F;
+const CONS_BOX_MARKER: u32 = 0xFF;
 
-fn atom_size_blob(b: &Bytes) -> Result<(bool, Vec<u8>),String> {
+fn atom_size_blob(b: &Bytes) -> Result<(bool, Vec<u8>), String> {
     let size = b.length() as i64;
     if size == 0 {
-        return Ok((false, vec!(0x80)));
+        return Ok((false, vec![0x80]));
     } else if size == 1 && b.at(0) <= MAX_SINGLE_BYTE as u8 {
         return Ok((false, b.data().clone()));
     }
 
     if size < 0x40 {
-        return Ok((true, vec!(0x80 | size as u8)));
+        return Ok((true, vec![0x80 | size as u8]));
     } else if size < 0x2000 {
-        return Ok((true, vec!(0xC0 | ((size >> 8) as u8), ((size >> 0) & 0xFF) as u8)));
+        return Ok((
+            true,
+            vec![0xC0 | ((size >> 8) as u8), ((size >> 0) & 0xFF) as u8],
+        ));
     } else if size < 0x100000 {
-        return Ok((true, vec!(
-            0xE0 | ((size >> 16) as u8),
-            ((size >> 8) & 0xFF) as u8,
-            ((size >> 0) & 0xFF) as u8
-        )));
+        return Ok((
+            true,
+            vec![
+                0xE0 | ((size >> 16) as u8),
+                ((size >> 8) & 0xFF) as u8,
+                ((size >> 0) & 0xFF) as u8,
+            ],
+        ));
     } else if size < 0x8000000 {
-        return Ok((true, vec!(
-            0xF0 | ((size >> 24) as u8),
-            ((size >> 16) & 0xFF) as u8,
-            ((size >> 8) & 0xFF) as u8,
-            ((size >> 0) & 0xFF) as u8
-        )));
+        return Ok((
+            true,
+            vec![
+                0xF0 | ((size >> 24) as u8),
+                ((size >> 16) & 0xFF) as u8,
+                ((size >> 8) & 0xFF) as u8,
+                ((size >> 0) & 0xFF) as u8,
+            ],
+        ));
     } else if size < 0x400000000 {
-        return Ok((true, vec!(
-            0xF8 | ((size / (65536 * 65536)) as u8),// (size >> 32),
-            ((size >> 24) & 0xFF) as u8,
-            ((size >> 16) & 0xFF) as u8,
-            ((size >> 8) & 0xFF) as u8,
-            (size & 0xFF) as u8
-        )));
+        return Ok((
+            true,
+            vec![
+                0xF8 | ((size / (65536 * 65536)) as u8), // (size >> 32),
+                ((size >> 24) & 0xFF) as u8,
+                ((size >> 16) & 0xFF) as u8,
+                ((size >> 8) & 0xFF) as u8,
+                (size & 0xFF) as u8,
+            ],
+        ));
     } else {
         return Err(format!("oversize bytes is unrepresentable {:?}", size));
     }
@@ -81,19 +78,19 @@ fn atom_size_blob(b: &Bytes) -> Result<(bool, Vec<u8>),String> {
 
 enum SExpToByteOp {
     Blob(Vec<u8>),
-    Object(NodePtr)
+    Object(NodePtr),
 }
 
 struct SExpToBytesIterator<'a> {
     allocator: &'a mut Allocator,
-    state: Vec<SExpToByteOp>
+    state: Vec<SExpToByteOp>,
 }
 
 impl<'a> SExpToBytesIterator<'a> {
     fn new(allocator: &'a mut Allocator, sexp: NodePtr) -> Self {
         return SExpToBytesIterator {
             allocator: allocator,
-            state: vec!(SExpToByteOp::Object(sexp))
+            state: vec![SExpToByteOp::Object(sexp)],
         };
     }
 }
@@ -104,27 +101,29 @@ impl<'a> Iterator for SExpToBytesIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match self.state.pop() {
-                None => { break; }
-                Some(SExpToByteOp::Object(x)) => {
-                    match self.allocator.sexp(x) {
-                        SExp::Atom(b) => {
-                            let buf = self.allocator.buf(&b).to_vec();
-                            let bytes = Bytes::new(Some(BytesFromType::Raw(buf.to_vec())));
-                            match atom_size_blob(&bytes) {
-                                Ok((original, b)) => {
-                                    if original {
-                                        self.state.push(SExpToByteOp::Blob(buf));
-                                    }
-                                    return Some(b);
-                                },
-                                Err(_) => { return None; }
+                None => {
+                    break;
+                }
+                Some(SExpToByteOp::Object(x)) => match self.allocator.sexp(x) {
+                    SExp::Atom(b) => {
+                        let buf = self.allocator.buf(&b).to_vec();
+                        let bytes = Bytes::new(Some(BytesFromType::Raw(buf.to_vec())));
+                        match atom_size_blob(&bytes) {
+                            Ok((original, b)) => {
+                                if original {
+                                    self.state.push(SExpToByteOp::Blob(buf));
+                                }
+                                return Some(b);
                             }
-                        },
-                        SExp::Pair(f,r) => {
-                            self.state.push(SExpToByteOp::Object(r));
-                            self.state.push(SExpToByteOp::Object(f));
-                            return Some(vec!(CONS_BOX_MARKER as u8));
+                            Err(_) => {
+                                return None;
+                            }
                         }
+                    }
+                    SExp::Pair(f, r) => {
+                        self.state.push(SExpToByteOp::Object(r));
+                        self.state.push(SExpToByteOp::Object(f));
+                        return Some(vec![CONS_BOX_MARKER as u8]);
                     }
                 },
                 Some(SExpToByteOp::Blob(b)) => {
@@ -137,7 +136,14 @@ impl<'a> Iterator for SExpToBytesIterator<'a> {
 }
 
 pub trait OpStackEntry {
-    fn invoke<'a>(&self, allocator: &'a mut Allocator, op_stack: &mut TOpStack<'a>, val_stack: &mut TValStack, f: &mut Stream, to_sexp_f: Box<dyn TToSexpF<'a>>) -> Option<EvalErr>;
+    fn invoke<'a>(
+        &self,
+        allocator: &'a mut Allocator,
+        op_stack: &mut TOpStack<'a>,
+        val_stack: &mut TValStack,
+        f: &mut Stream,
+        to_sexp_f: Box<dyn TToSexpF<'a>>,
+    ) -> Option<EvalErr>;
 }
 
 type TOpStack<'a> = Vec<Option<Box<dyn OpStackEntry>>>;
@@ -148,7 +154,7 @@ pub fn sexp_to_stream<'a>(allocator: &'a mut Allocator, sexp: NodePtr, f: &mut S
     }
 }
 
-struct OpCons { }
+struct OpCons {}
 
 impl OpStackEntry for OpCons {
     fn invoke<'a>(
@@ -157,31 +163,32 @@ impl OpStackEntry for OpCons {
         _op_stack: &mut TOpStack<'a>,
         val_stack: &mut TValStack,
         _f: &mut Stream,
-        to_sexp_f: Box<dyn TToSexpF<'a>>
+        to_sexp_f: Box<dyn TToSexpF<'a>>,
     ) -> Option<EvalErr> {
         match val_stack.pop().and_then(|r| {
             return val_stack.pop().map(|l| {
-                return (l,r);
+                return (l, r);
             });
         }) {
-            None => { return None; },
-            Some((l,r)) => {
-                match to_sexp_f.invoke(
-                    allocator,
-                    CastableType::TupleOf(Rc::new(l), Rc::new(r))
-                ) {
+            None => {
+                return None;
+            }
+            Some((l, r)) => {
+                match to_sexp_f.invoke(allocator, CastableType::TupleOf(Rc::new(l), Rc::new(r))) {
                     Ok(c) => {
                         val_stack.push(CastableType::CLVMObject(c.1));
                         return None;
-                    },
-                    Err(e) => { return Some(e); }
+                    }
+                    Err(e) => {
+                        return Some(e);
+                    }
                 }
             }
         }
     }
 }
 
-struct OpReadSexp { }
+struct OpReadSexp {}
 
 impl OpStackEntry for OpReadSexp {
     fn invoke<'a>(
@@ -190,7 +197,7 @@ impl OpStackEntry for OpReadSexp {
         op_stack: &mut TOpStack<'a>,
         val_stack: &mut TValStack,
         f: &mut Stream,
-        to_sexp_f: Box<dyn TToSexpF<'a>>
+        to_sexp_f: Box<dyn TToSexpF<'a>>,
     ) -> Option<EvalErr> {
         let blob = f.read(1);
         if blob.length() == 0 {
@@ -209,13 +216,15 @@ impl OpStackEntry for OpReadSexp {
             Ok(v) => {
                 val_stack.push(CastableType::CLVMObject(v));
                 return None;
-            },
-            Err(e) => { return Some(e); }
+            }
+            Err(e) => {
+                return Some(e);
+            }
         }
     }
 }
 
-pub struct SimpleCreateCLVMObject { }
+pub struct SimpleCreateCLVMObject {}
 
 impl<'a> TToSexpF<'a> for SimpleCreateCLVMObject {
     fn invoke(&self, allocator: &'a mut Allocator, v: CastableType) -> Response {
@@ -228,10 +237,10 @@ impl<'a> TToSexpF<'a> for SimpleCreateCLVMObject {
 pub fn sexp_from_stream<'a>(
     allocator: &'a mut Allocator,
     f: &mut Stream,
-    to_sexp_f: Box<dyn TToSexpF<'a>>
+    to_sexp_f: Box<dyn TToSexpF<'a>>,
 ) -> Response {
-    let mut op_stack: TOpStack = vec!(Some(Box::new(OpReadSexp {})));
-    let mut val_stack: TValStack = vec!();
+    let mut op_stack: TOpStack = vec![Some(Box::new(OpReadSexp {}))];
+    let mut val_stack: TValStack = vec![];
 
     loop {
         match op_stack.pop() {
@@ -241,31 +250,40 @@ pub fn sexp_from_stream<'a>(
                     &mut op_stack,
                     &mut val_stack,
                     f,
-                    Box::new(SimpleCreateCLVMObject {})
+                    Box::new(SimpleCreateCLVMObject {}),
                 );
-            },
-            _ => { break; }
+            }
+            _ => {
+                break;
+            }
         }
     }
 
     match val_stack.pop() {
         Some(v) => {
             return to_sexp_f.invoke(allocator, v);
-        },
-        _ => { }
+        }
+        _ => {}
     }
 
-    return Err(EvalErr(allocator.null(), "No value left after conversion".to_string()));
+    return Err(EvalErr(
+        allocator.null(),
+        "No value left after conversion".to_string(),
+    ));
 }
 
-pub fn atom_from_stream<'a>(allocator: &'a mut Allocator, f: &mut Stream, b_: u8, _to_sexp_f: Box<dyn TToSexpF<'a>>) -> Result<NodePtr, EvalErr> {
+pub fn atom_from_stream<'a>(
+    allocator: &'a mut Allocator,
+    f: &mut Stream,
+    b_: u8,
+    _to_sexp_f: Box<dyn TToSexpF<'a>>,
+) -> Result<NodePtr, EvalErr> {
     let mut b = b_;
 
     if b == 0x80 {
         return Ok(allocator.null());
-    }
-    else if b <= MAX_SINGLE_BYTE as u8 {
-        return allocator.new_atom(&vec!(b));
+    } else if b <= MAX_SINGLE_BYTE as u8 {
+        return allocator.new_atom(&vec![b]);
     }
 
     let mut bit_count = 0;
@@ -277,7 +295,7 @@ pub fn atom_from_stream<'a>(allocator: &'a mut Allocator, f: &mut Stream, b_: u8
         bit_mask >>= 1;
     }
 
-    let mut size_blob = Bytes::new(Some(BytesFromType::Raw(vec!(b))));
+    let mut size_blob = Bytes::new(Some(BytesFromType::Raw(vec![b])));
     if bit_count > 1 {
         let bin = f.read(bit_count - 1);
         if bin.length() != bit_count - 1 {
@@ -285,11 +303,7 @@ pub fn atom_from_stream<'a>(allocator: &'a mut Allocator, f: &mut Stream, b_: u8
         }
         size_blob = size_blob.concat(&bin);
     }
-    return int_from_bytes(
-        allocator,
-        size_blob,
-        None
-    ).and_then(|size| {
+    return int_from_bytes(allocator, size_blob, None).and_then(|size| {
         if size >= 0x400000000 {
             return Err(EvalErr(allocator.null(), "blob too large".to_string()));
         }

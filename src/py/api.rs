@@ -1,11 +1,15 @@
-use pyo3::prelude::*;
 use pyo3::exceptions::PyException;
+use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 
 use crate::classic::clvm_tools::clvmc;
 
-#[pyfunction(arg3="[]")]
-fn compile_clvm(input_path: &PyAny, output_path: String, search_paths: Vec<String>) -> PyResult<String> {
+#[pyfunction(arg3 = "[]")]
+fn compile_clvm(
+    input_path: &PyAny,
+    output_path: String,
+    search_paths: Vec<String>,
+) -> PyResult<String> {
     m! {
         has_atom <- input_path.hasattr("atom");
         has_pair <- input_path.hasattr("pair");

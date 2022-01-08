@@ -2,53 +2,34 @@ use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use clvm_rs::allocator::{
-    Allocator,
-    NodePtr,
-    SExp
-};
+use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::{
-    Stream,
-    t
-};
-use crate::classic::clvm_tools::cmds::{
-    launch_tool,
-    OpcConversion,
-    OpdConversion,
-    TConversion
-};
+use crate::classic::clvm::__type_compatibility__::{t, Stream};
+use crate::classic::clvm_tools::cmds::{launch_tool, OpcConversion, OpdConversion, TConversion};
 
-use crate::classic::clvm_tools::binutils::{
-    assemble_from_ir,
-    disassemble
-};
+use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble};
 use crate::classic::clvm_tools::ir::reader::read_ir;
-use crate::classic::clvm_tools::NodePath::NodePath;
 use crate::classic::clvm_tools::stages;
-use crate::classic::clvm_tools::stages::stage_0::{
-    DefaultProgramRunner,
-    TRunProgram
-};
+use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
+use crate::classic::clvm_tools::NodePath::NodePath;
 
 #[test]
 fn basic_opd() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}.invoke(
-        &mut allocator, &"80".to_string()
-    ).unwrap();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &"80".to_string())
+        .unwrap();
     assert_eq!(result.rest(), "()");
 }
 
 #[test]
 fn nil_in_list_opd() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}.invoke(
-        &mut allocator,
-        &"ff8080".to_string()
-    ).unwrap();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &"ff8080".to_string())
+        .unwrap();
     assert_eq!(result.rest(), "(())");
 }
 
@@ -62,17 +43,15 @@ fn big_decode_opd() {
     let mut out_path = testpath.clone();
     out_path.push("big_decode_out.txt");
 
-    let expected =
-        fs::read_to_string(in_path).and_then(|input| {
-            return fs::read_to_string(out_path).map(|output| {
-                t(input, output.trim().to_string())
-            });
-        }).unwrap();
+    let expected = fs::read_to_string(in_path)
+        .and_then(|input| {
+            return fs::read_to_string(out_path).map(|output| t(input, output.trim().to_string()));
+        })
+        .unwrap();
 
-    let result = OpdConversion {}.invoke(
-        &mut allocator,
-        &expected.first()
-    ).unwrap();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &expected.first())
+        .unwrap();
     assert_eq!(expected.rest(), result.rest());
 }
 
@@ -81,32 +60,23 @@ fn run_from_source<'a>(allocator: &'a mut Allocator, src: String) -> NodePtr {
     let assembled = assemble_from_ir(allocator, Rc::new(ir)).unwrap();
     let runner = DefaultProgramRunner::new();
     let null = allocator.null();
-    let res = runner.run_program(
-        allocator,
-        assembled,
-        null,
-        None
-    ).unwrap();
+    let res = runner
+        .run_program(allocator, assembled, null, None)
+        .unwrap();
     return res.1;
 }
 
 fn compile_program<'a>(
     allocator: &'a mut Allocator,
     include_path: String,
-    src: String
+    src: String,
 ) -> Result<String, EvalErr> {
     let run_script = stages::run(allocator);
-    let runner = run_program_for_search_paths(&vec!(include_path));
+    let runner = run_program_for_search_paths(&vec![include_path]);
     let input_ir = read_ir(&src);
-    let input_program =
-        assemble_from_ir(allocator, Rc::new(input_ir.unwrap())).unwrap();
+    let input_program = assemble_from_ir(allocator, Rc::new(input_ir.unwrap())).unwrap();
     let input_sexp = allocator.new_pair(input_program, allocator.null()).unwrap();
-    let res = runner.run_program(
-        allocator,
-        run_script,
-        input_sexp,
-        None
-    );
+    let res = runner.run_program(allocator, run_script, input_sexp, None);
 
     return res.map(|x| disassemble(allocator, x.1));
 }
@@ -116,13 +86,9 @@ fn quoted_negative() {
     let mut s = Stream::new(None);
     launch_tool(
         &mut s,
-        &vec!(
-            "run".to_string(),
-            "-d".to_string(),
-            "(q . -3)".to_string()
-        ),
+        &vec!["run".to_string(), "-d".to_string(), "(q . -3)".to_string()],
         &"run".to_string(),
-        2
+        2,
     );
     let result = s.get_value().decode().trim().to_string();
     assert_eq!(result, "81fd".to_string());
@@ -136,8 +102,10 @@ fn can_run_from_source_nil() {
         SExp::Atom(b) => {
             let res_bytes = allocator.buf(&b).to_vec();
             assert_eq!(res_bytes.len(), 0);
-        },
-        _ => { assert_eq!("expected atom", ""); }
+        }
+        _ => {
+            assert_eq!("expected atom", "");
+        }
     }
 }
 
@@ -149,8 +117,10 @@ fn can_echo_quoted_nil() {
         SExp::Atom(b) => {
             let res_bytes = allocator.buf(&b).to_vec();
             assert_eq!(res_bytes.len(), 0);
-        },
-        _ => { assert_eq!("expected atom", ""); }
+        }
+        _ => {
+            assert_eq!("expected atom", "");
+        }
     }
 }
 
@@ -160,11 +130,13 @@ fn can_echo_quoted() {
     let null = allocator.null();
     let res = run_from_source(&mut allocator, "(1 ())".to_string());
     match allocator.sexp(res) {
-        SExp::Pair(l,r) => {
+        SExp::Pair(l, r) => {
             assert_eq!(l, null);
             assert_eq!(r, null);
-        },
-        _ => { assert_eq!("expected pair", ""); }
+        }
+        _ => {
+            assert_eq!("expected pair", "");
+        }
     }
 }
 
@@ -177,8 +149,10 @@ fn can_echo_quoted_atom() {
             let res_bytes = allocator.buf(&b).to_vec();
             assert_eq!(res_bytes.len(), 1);
             assert_eq!(res_bytes[0], 3);
-        },
-        _ => { assert_eq!("expected atom", ""); }
+        }
+        _ => {
+            assert_eq!("expected atom", "");
+        }
     }
 }
 
@@ -191,8 +165,10 @@ fn can_do_operations() {
             let res_bytes = allocator.buf(&b).to_vec();
             assert_eq!(res_bytes.len(), 1);
             assert_eq!(res_bytes[0], 8);
-        },
-        _ => { assert_eq!("expected atom", ""); }
+        }
+        _ => {
+            assert_eq!("expected atom", "");
+        }
     }
 }
 
@@ -205,35 +181,37 @@ fn can_do_operations_kw() {
             let res_bytes = allocator.buf(&b).to_vec();
             assert_eq!(res_bytes.len(), 1);
             assert_eq!(res_bytes[0], 8);
-        },
-        _ => { assert_eq!("expected atom", ""); }
+        }
+        _ => {
+            assert_eq!("expected atom", "");
+        }
     }
 }
 
 #[test]
 fn basic_opc() {
     let mut allocator = Allocator::new();
-    let result = OpcConversion {}.invoke(
-        &mut allocator, &"()".to_string()
-    ).unwrap();
+    let result = OpcConversion {}
+        .invoke(&mut allocator, &"()".to_string())
+        .unwrap();
     assert_eq!(result.rest(), "80");
 }
 
 #[test]
 fn basic_opc_lil() {
     let mut allocator = Allocator::new();
-    let result = OpcConversion {}.invoke(
-        &mut allocator, &"(())".to_string()
-    ).unwrap();
+    let result = OpcConversion {}
+        .invoke(&mut allocator, &"(())".to_string())
+        .unwrap();
     assert_eq!(result.rest(), "ff8080");
 }
 
 #[test]
 fn basic_opc_quoted_1() {
     let mut allocator = Allocator::new();
-    let result = OpcConversion {}.invoke(
-        &mut allocator, &"(q . 1)".to_string()
-    ).unwrap();
+    let result = OpcConversion {}
+        .invoke(&mut allocator, &"(q . 1)".to_string())
+        .unwrap();
     assert_eq!(result.rest(), "ff0101");
 }
 
@@ -243,7 +221,7 @@ fn very_simple_compile() {
     let result = compile_program(
         &mut allocator,
         ".".to_string(),
-        "(mod () (+ 3 2))".to_string()
+        "(mod () (+ 3 2))".to_string(),
     );
     assert_eq!(result, Ok("(q . 5)".to_string()));
 }
@@ -260,7 +238,10 @@ fn node_path_top_right() {
 
 #[test]
 fn node_path_2nd_of_list() {
-    assert_eq!(*NodePath::new(None).first().rest().as_path().data(), vec!(5 as u8));
+    assert_eq!(
+        *NodePath::new(None).first().rest().as_path().data(),
+        vec!(5 as u8)
+    );
 }
 
 #[test]
@@ -269,7 +250,7 @@ fn compile_prog_with_args() {
     let result = compile_program(
         &mut allocator,
         ".".to_string(),
-        "(mod (A B) (+ A B))".to_string()
+        "(mod (A B) (+ A B))".to_string(),
     );
     assert_eq!(result, Ok("(+ 2 5)".to_string()));
 }
@@ -290,20 +271,19 @@ fn basic_if_expansion() {
     let result = compile_program(
         &mut allocator,
         ".".to_string(),
-        "(mod (A B) (if A (* 2 A) (+ 1 A)))".to_string()
+        "(mod (A B) (if A (* 2 A) (+ 1 A)))".to_string(),
     );
-    assert_eq!(result, Ok("(a (i 2 (q 18 (q . 2) 2) (q 16 (q . 1) 2)) 1)".to_string()));
+    assert_eq!(
+        result,
+        Ok("(a (i 2 (q 18 (q . 2) 2) (q 16 (q . 1) 2)) 1)".to_string())
+    );
 }
 
 #[test]
 fn basic_assert_macro() {
     let mut allocator = Allocator::new();
     let program = "(mod () (defmacro assert items (if (r items) (list if (f items) (c assert (r items)) (q . (x))) (f items))) (assert 1))";
-    let result = compile_program(
-        &mut allocator,
-        ".".to_string(),
-        program.to_string()
-    );
+    let result = compile_program(&mut allocator, ".".to_string(), program.to_string());
     assert_eq!(result, Ok("(q . 1)".to_string()));
 }
 
@@ -312,28 +292,24 @@ fn macro_mod_1() {
     let mut allocator = Allocator::new();
     let program = indoc! {"
     (opt (com (quote (mod (ARGS) \
-                      (defmacro if1 (A B C) \
-                       (qq (a \
-                            (i (unquote A) \
-                             (function (unquote B)) \
-                             (function (unquote C))) \
-                            @)) \
-                      ) \
-                      (defmacro and1 ARGS \
-                       (if1 ARGS \
-                        (qq (if1 (unquote (f ARGS)) \
-                             (unquote (c and1 (r ARGS))) \
-                             () \
-                        )) \
-                        1) \
-                      ) \
-                      (and1 (f @) 30) \
-                      ))))"};
-    let result = compile_program(
-        &mut allocator,
-        ".".to_string(),
-        program.to_string()
-    );
+    (defmacro if1 (A B C) \
+     (qq (a \
+          (i (unquote A) \
+           (function (unquote B)) \
+           (function (unquote C))) \
+          @)) \
+    ) \
+    (defmacro and1 ARGS \
+     (if1 ARGS \
+      (qq (if1 (unquote (f ARGS)) \
+           (unquote (c and1 (r ARGS))) \
+           () \
+      )) \
+      1) \
+    ) \
+    (and1 (f @) 30) \
+    ))))"};
+    let result = compile_program(&mut allocator, ".".to_string(), program.to_string());
     assert_eq!(result, Ok("(q 2 (i 2 (q 1 . 1) ()) 1)".to_string()));
 }
 
@@ -341,11 +317,7 @@ fn macro_mod_1() {
 fn map_6() {
     let mut allocator = Allocator::new();
     let program = "(a (mod (ARGS) (defun double (VAL) (* 2 VAL)) (defun square (VAL) (* VAL VAL)) (defun map (func items) (if items (c (func (f items)) (map func (r items))) ())) (map square (map double ARGS))) (quote ((4 3 2 1))))".to_string();
-    let result = compile_program(
-        &mut allocator,
-        ".".to_string(),
-        program.to_string()
-    );
+    let result = compile_program(&mut allocator, ".".to_string(), program.to_string());
     assert_eq!(result, Ok("(64 36 16 4)".to_string()));
 }
 
@@ -429,14 +401,14 @@ fn pool_member_innerpuz() {
     let mut s = Stream::new(None);
     launch_tool(
         &mut s,
-        &vec!(
+        &vec![
             "run".to_string(),
             "-i".to_string(),
             testpath.into_os_string().into_string().unwrap(),
-            program.to_string()
-        ),
+            program.to_string(),
+        ],
         &"run".to_string(),
-        2
+        2,
     );
     let result = s.get_value().decode().trim().to_string();
     assert_eq!(result, desired);

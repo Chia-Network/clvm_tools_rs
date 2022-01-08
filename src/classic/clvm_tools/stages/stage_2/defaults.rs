@@ -1,16 +1,9 @@
 use std::rc::Rc;
 
-use clvm_rs::allocator::{
-    Allocator,
-    NodePtr
-};
+use clvm_rs::allocator::{Allocator, NodePtr};
 
-use crate::classic::clvm_tools::binutils::{
-    assemble
-};
-use crate::classic::clvm_tools::stages::stage_0::{
-    TRunProgram
-};
+use crate::classic::clvm_tools::binutils::assemble;
+use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 /*
 "function" is used in front of a constant uncompiled
@@ -27,7 +20,8 @@ goals is to compile PROG as much as possible.
  */
 
 fn DEFAULT_MACROS_SRC() -> Vec<&'static str> {
-        return vec!(indoc! {"
+    return vec![
+        indoc! {"
         ; we have to compile this externally, since it uses itself
         ;(defmacro defmacro (name params body)
         ;    (qq (list (unquote name) (mod (unquote params) (unquote body))))
@@ -41,23 +35,22 @@ fn DEFAULT_MACROS_SRC() -> Vec<&'static str> {
                              (q . ()))))
                     (q . ()))))))
         "},
-            /*
-                    ;(defmacro list ARGS
-                    ;    ((c (mod args
-                    ;        (defun compile-list
-                    ;               (args)
-                    ;               (if args
-                    ;                   (qq (c (unquote (f args))
-                    ;                         (unquote (compile-list (r args)))))
-                    ;                   ()))
-                    ;            (compile-list args)
-                    ;        )
-                    ;        ARGS
-                    ;    ))
-                    ;)
-             */
-
-           indoc! {"
+        /*
+               ;(defmacro list ARGS
+               ;    ((c (mod args
+               ;        (defun compile-list
+               ;               (args)
+               ;               (if args
+               ;                   (qq (c (unquote (f args))
+               ;                         (unquote (compile-list (r args)))))
+               ;                   ()))
+               ;            (compile-list args)
+               ;        )
+               ;        ARGS
+               ;    ))
+               ;)
+        */
+        indoc! {"
         (q \"list\"
             (a (q #a (q #a 2 (c 2 (c 3 (q))))
                      (c (q #a (i 5
@@ -69,19 +62,22 @@ fn DEFAULT_MACROS_SRC() -> Vec<&'static str> {
                                1)
                         1))
                 1))
-        "}, indoc! {"
+        "},
+        indoc! {"
         (defmacro function (BODY)
             (qq (opt (com (q . (unquote BODY))
                      (qq (unquote (macros)))
                      (qq (unquote (symbols)))))))
-        "}, indoc! {"
+        "},
+        indoc! {"
         (defmacro if (A B C)
           (qq (a
               (i (unquote A)
                  (function (unquote B))
                  (function (unquote C)))
               @)))
-        "});
+        "},
+    ];
 }
 
 fn build_default_macro_lookup(
@@ -90,13 +86,14 @@ fn build_default_macro_lookup(
     macros_src: &Vec<String>,
 ) -> NodePtr {
     let run = assemble(allocator, &"(a (com 2 3) 1)".to_string()).unwrap();
-    let mut default_macro_lookup : NodePtr = allocator.null();
+    let mut default_macro_lookup: NodePtr = allocator.null();
     for macro_src in macros_src {
         let macro_sexp = assemble(allocator, &macro_src.to_string()).unwrap();
-        let env = allocator.new_pair(macro_sexp, default_macro_lookup).unwrap();
+        let env = allocator
+            .new_pair(macro_sexp, default_macro_lookup)
+            .unwrap();
         let new_macro = eval_f.run_program(allocator, run, env, None).unwrap().1;
-        default_macro_lookup =
-            allocator.new_pair(new_macro, default_macro_lookup).unwrap();
+        default_macro_lookup = allocator.new_pair(new_macro, default_macro_lookup).unwrap();
     }
     return default_macro_lookup;
 }
@@ -105,6 +102,6 @@ pub fn DEFAULT_MACRO_LOOKUP(allocator: &mut Allocator, runner: Rc<dyn TRunProgra
     return build_default_macro_lookup(
         allocator,
         runner.clone(),
-        &DEFAULT_MACROS_SRC().iter().map(|s| s.to_string()).collect()
+        &DEFAULT_MACROS_SRC().iter().map(|s| s.to_string()).collect(),
     );
 }

@@ -6,37 +6,29 @@ use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::sexp::{
-    SExp,
-    decode_string
-};
+use crate::compiler::sexp::{decode_string, SExp};
 
-use crate::compiler::srcloc::{
-    Srcloc
-};
+use crate::compiler::srcloc::Srcloc;
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct CompileErr(pub Srcloc, pub String);
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct CompiledCode(pub Srcloc, pub Rc<SExp>);
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct InlineFunction {
     pub args: Rc<SExp>,
-    pub body: Rc<BodyForm>
+    pub body: Rc<BodyForm>,
 }
 
 pub enum Callable {
-    CallMacro(Srcloc,SExp),
-    CallDefun(Srcloc,SExp),
-    CallInline(Srcloc,InlineFunction),
-    CallPrim(Srcloc,SExp),
+    CallMacro(Srcloc, SExp),
+    CallDefun(Srcloc, SExp),
+    CallInline(Srcloc, InlineFunction),
+    CallPrim(Srcloc, SExp),
     RunCompiler,
-    EnvPath
+    EnvPath,
 }
 
 pub fn list_to_cons(l: Srcloc, list: &Vec<Rc<SExp>>) -> SExp {
@@ -53,49 +45,43 @@ pub fn list_to_cons(l: Srcloc, list: &Vec<Rc<SExp>>) -> SExp {
     return result;
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Binding {
     pub loc: Srcloc,
     pub name: Vec<u8>,
-    pub body: Rc<BodyForm>
+    pub body: Rc<BodyForm>,
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum BodyForm {
     Let(Srcloc, Vec<Rc<Binding>>, Rc<BodyForm>),
     Quoted(SExp),
     Value(SExp),
-    Call(Srcloc, Vec<Rc<BodyForm>>)
+    Call(Srcloc, Vec<Rc<BodyForm>>),
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum HelperForm {
     Defconstant(Srcloc, Vec<u8>, Rc<BodyForm>),
     Defmacro(Srcloc, Vec<u8>, Rc<SExp>, Rc<CompileForm>),
-    Defun(Srcloc, Vec<u8>, bool, Rc<SExp>, Rc<BodyForm>)
+    Defun(Srcloc, Vec<u8>, bool, Rc<SExp>, Rc<BodyForm>),
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct CompileForm {
     pub loc: Srcloc,
     pub args: Rc<SExp>,
     pub helpers: Vec<HelperForm>,
-    pub exp: Rc<BodyForm>
+    pub exp: Rc<BodyForm>,
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DefunCall {
     pub required_env: Rc<SExp>,
-    pub code: Rc<SExp>
+    pub code: Rc<SExp>,
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PrimaryCodegen {
     pub prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     pub constants: HashMap<Vec<u8>, Rc<SExp>>,
@@ -106,7 +92,7 @@ pub struct PrimaryCodegen {
     pub env: Rc<SExp>,
     pub to_process: Vec<HelperForm>,
     pub final_expr: Rc<BodyForm>,
-    pub final_code: Option<CompiledCode>
+    pub final_code: Option<CompiledCode>,
 }
 
 pub trait CompilerOpts {
@@ -125,8 +111,17 @@ pub trait CompilerOpts {
     fn set_compiler(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts>;
     fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts>;
 
-    fn read_new_file(&self, inc_from: String, filename: String) -> Result<(String,String), CompileErr>;
-    fn compile_program(&self, allocator: &mut Allocator, runner: Rc<dyn TRunProgram>, sexp: Rc<SExp>) -> Result<SExp, CompileErr>;
+    fn read_new_file(
+        &self,
+        inc_from: String,
+        filename: String,
+    ) -> Result<(String, String), CompileErr>;
+    fn compile_program(
+        &self,
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        sexp: Rc<SExp>,
+    ) -> Result<SExp, CompileErr>;
 }
 
 /* Frontend uses this to accumulate frontend forms */
@@ -134,7 +129,7 @@ pub trait CompilerOpts {
 pub struct ModAccum {
     pub loc: Srcloc,
     pub helpers: Vec<HelperForm>,
-    pub exp_form: Option<CompileForm>
+    pub exp_form: Option<CompileForm>,
 }
 
 impl ModAccum {
@@ -142,7 +137,7 @@ impl ModAccum {
         ModAccum {
             loc: self.loc.clone(),
             helpers: self.helpers.clone(),
-            exp_form: Some(c.clone())
+            exp_form: Some(c.clone()),
         }
     }
 
@@ -153,7 +148,7 @@ impl ModAccum {
         ModAccum {
             loc: self.loc.clone(),
             helpers: hs,
-            exp_form: self.exp_form.clone()
+            exp_form: self.exp_form.clone(),
         }
     }
 
@@ -161,7 +156,7 @@ impl ModAccum {
         ModAccum {
             loc: loc,
             helpers: Vec::new(),
-            exp_form: None
+            exp_form: None,
         }
     }
 }
@@ -172,14 +167,13 @@ impl CompileForm {
     }
 
     pub fn to_sexp(&self) -> Rc<SExp> {
-        let mut sexp_forms: Vec<Rc<SExp>> =
-            self.helpers.iter().map(|x| x.to_sexp()).collect();
+        let mut sexp_forms: Vec<Rc<SExp>> = self.helpers.iter().map(|x| x.to_sexp()).collect();
         sexp_forms.push(self.exp.to_sexp());
 
         Rc::new(SExp::Cons(
             self.loc.clone(),
             self.args.clone(),
-            Rc::new(list_to_cons(self.loc.clone(), &sexp_forms))
+            Rc::new(list_to_cons(self.loc.clone(), &sexp_forms)),
         ))
     }
 }
@@ -187,61 +181,56 @@ impl CompileForm {
 impl HelperForm {
     pub fn name(&self) -> Vec<u8> {
         match self {
-            HelperForm::Defconstant(_,name,_) => name.clone(),
-            HelperForm::Defmacro(_,name,_,_) => name.clone(),
-            HelperForm::Defun(_,name,_,_,_) => name.clone()
+            HelperForm::Defconstant(_, name, _) => name.clone(),
+            HelperForm::Defmacro(_, name, _, _) => name.clone(),
+            HelperForm::Defun(_, name, _, _, _) => name.clone(),
         }
     }
 
     pub fn loc(&self) -> Srcloc {
         match self {
-            HelperForm::Defconstant(l,_,_) => l.clone(),
-            HelperForm::Defmacro(l,_,_,_) => l.clone(),
-            HelperForm::Defun(l,_,_,_,_) => l.clone()
+            HelperForm::Defconstant(l, _, _) => l.clone(),
+            HelperForm::Defmacro(l, _, _, _) => l.clone(),
+            HelperForm::Defun(l, _, _, _, _) => l.clone(),
         }
     }
 
     pub fn to_sexp(&self) -> Rc<SExp> {
         match self {
-            HelperForm::Defconstant(loc,name,body) => {
-                Rc::new(list_to_cons(
-                    loc.clone(),
-                    &vec!(
-                        Rc::new(SExp::atom_from_string(loc.clone(), &"defconstant".to_string())),
-                        Rc::new(SExp::atom_from_vec(loc.clone(), &name)),
-                        body.to_sexp(),
-                    )
-                ))
-            },
-            HelperForm::Defmacro(loc,name,args,body) => {
+            HelperForm::Defconstant(loc, name, body) => Rc::new(list_to_cons(
+                loc.clone(),
+                &vec![
+                    Rc::new(SExp::atom_from_string(
+                        loc.clone(),
+                        &"defconstant".to_string(),
+                    )),
+                    Rc::new(SExp::atom_from_vec(loc.clone(), &name)),
+                    body.to_sexp(),
+                ],
+            )),
+            HelperForm::Defmacro(loc, name, args, body) => Rc::new(SExp::Cons(
+                loc.clone(),
+                Rc::new(SExp::atom_from_string(loc.clone(), &"defmacro".to_string())),
                 Rc::new(SExp::Cons(
                     loc.clone(),
-                    Rc::new(SExp::atom_from_string(loc.clone(), &"defmacro".to_string())),
-                    Rc::new(SExp::Cons(
-                        loc.clone(),
-                        Rc::new(SExp::atom_from_vec(loc.clone(), &name)),
-                        body.to_sexp()
-                    ))
-                ))
-            },
-            HelperForm::Defun(loc,name,inline,arg,body) => {
+                    Rc::new(SExp::atom_from_vec(loc.clone(), &name)),
+                    body.to_sexp(),
+                )),
+            )),
+            HelperForm::Defun(loc, name, inline, arg, body) => {
                 let di_string = "defun-inline".to_string();
                 let d_string = "defun".to_string();
                 Rc::new(list_to_cons(
                     loc.clone(),
-                    &vec!(
+                    &vec![
                         Rc::new(SExp::atom_from_string(
                             loc.clone(),
-                            if *inline {
-                                &di_string
-                            } else {
-                                &d_string
-                            }
+                            if *inline { &di_string } else { &d_string },
                         )),
                         Rc::new(SExp::atom_from_vec(loc.clone(), &name)),
                         arg.clone(),
-                        body.to_sexp()
-                    )
+                        body.to_sexp(),
+                    ],
                 ))
             }
         }
@@ -251,17 +240,18 @@ impl HelperForm {
 impl BodyForm {
     pub fn loc(&self) -> Srcloc {
         match self {
-            BodyForm::Let(loc,_,_) => loc.clone(),
+            BodyForm::Let(loc, _, _) => loc.clone(),
             BodyForm::Quoted(a) => a.loc(),
-            BodyForm::Call(loc,_) => loc.clone(),
-            BodyForm::Value(a) => a.loc()
+            BodyForm::Call(loc, _) => loc.clone(),
+            BodyForm::Value(a) => a.loc(),
         }
     }
 
     pub fn to_sexp(&self) -> Rc<SExp> {
         match self {
-            BodyForm::Let(loc,bindings,body) => {
-                let translated_bindings: Vec<Rc<SExp>> = bindings.iter().map(|x| x.to_sexp()).collect();
+            BodyForm::Let(loc, bindings, body) => {
+                let translated_bindings: Vec<Rc<SExp>> =
+                    bindings.iter().map(|x| x.to_sexp()).collect();
                 let bindings_cons = list_to_cons(loc.clone(), &translated_bindings);
                 let translated_body = body.to_sexp();
                 Rc::new(SExp::Cons(
@@ -273,20 +263,18 @@ impl BodyForm {
                         Rc::new(SExp::Cons(
                             loc.clone(),
                             translated_body,
-                            Rc::new(SExp::Nil(loc.clone()))
-                        ))
-                    ))
+                            Rc::new(SExp::Nil(loc.clone())),
+                        )),
+                    )),
                 ))
-            },
-            BodyForm::Quoted(body) => {
-                Rc::new(SExp::Cons(
-                    body.loc(),
-                    Rc::new(SExp::atom_from_string(body.loc(), &"q".to_string())),
-                    Rc::new(body.clone())
-                ))
-            },
+            }
+            BodyForm::Quoted(body) => Rc::new(SExp::Cons(
+                body.loc(),
+                Rc::new(SExp::atom_from_string(body.loc(), &"q".to_string())),
+                Rc::new(body.clone()),
+            )),
             BodyForm::Value(body) => Rc::new(body.clone()),
-            BodyForm::Call(loc,exprs) => {
+            BodyForm::Call(loc, exprs) => {
                 let converted: Vec<Rc<SExp>> = exprs.iter().map(|x| x.to_sexp()).collect();
                 Rc::new(list_to_cons(loc.clone(), &converted))
             }
@@ -302,8 +290,8 @@ impl Binding {
             Rc::new(SExp::Cons(
                 self.loc.clone(),
                 self.body.to_sexp(),
-                Rc::new(SExp::Nil(self.loc.clone()))
-            ))
+                Rc::new(SExp::Nil(self.loc.clone())),
+            )),
         ))
     }
 
@@ -348,42 +336,44 @@ impl PrimaryCodegen {
         codegen_copy.env = env.clone();
         return codegen_copy;
     }
-
 }
 
 pub fn with_heading(l: Srcloc, name: &String, body: Rc<SExp>) -> SExp {
     SExp::Cons(
         l.clone(),
         Rc::new(SExp::atom_from_string(l.clone(), &name.to_string())),
-        body.clone()
+        body.clone(),
     )
 }
 
 pub fn cons_of_string_map<X>(
     l: Srcloc,
     cvt_body: &dyn Fn(&X) -> Rc<SExp>,
-    map: &HashMap<Vec<u8>, X>
+    map: &HashMap<Vec<u8>, X>,
 ) -> SExp {
     // Thanks: https://users.rust-lang.org/t/sort-hashmap-data-by-keys/37095/3
     let mut v: Vec<_> = map.into_iter().collect();
-    v.sort_by(|x,y| x.0.cmp(&y.0));
+    v.sort_by(|x, y| x.0.cmp(&y.0));
 
-    let sorted_converted: Vec<Rc<SExp>> = v.iter().map(|x| {
-        Rc::new(SExp::Cons(
-            l.clone(),
-            Rc::new(SExp::QuotedString(l.clone(), '\"' as u8, x.0.to_vec())),
+    let sorted_converted: Vec<Rc<SExp>> = v
+        .iter()
+        .map(|x| {
             Rc::new(SExp::Cons(
                 l.clone(),
-                cvt_body(x.1.clone()),
-                Rc::new(SExp::Nil(l.clone()))
+                Rc::new(SExp::QuotedString(l.clone(), '\"' as u8, x.0.to_vec())),
+                Rc::new(SExp::Cons(
+                    l.clone(),
+                    cvt_body(x.1.clone()),
+                    Rc::new(SExp::Nil(l.clone())),
+                )),
             ))
-        ))
-    }).collect();
+        })
+        .collect();
 
     list_to_cons(l.clone(), &sorted_converted)
 }
 
-pub fn mapM<T,U,E>(f: &dyn Fn(&T) -> Result<U, E>, list: &Vec<T>) -> Result<Vec<U>, E> {
+pub fn mapM<T, U, E>(f: &dyn Fn(&T) -> Result<U, E>, list: &Vec<T>) -> Result<Vec<U>, E> {
     let mut result = Vec::new();
     for e in list {
         let val = f(e)?;
@@ -392,7 +382,7 @@ pub fn mapM<T,U,E>(f: &dyn Fn(&T) -> Result<U, E>, list: &Vec<T>) -> Result<Vec<
     return Ok(result);
 }
 
-pub fn foldM<R,T,E>(f: &dyn Fn(&R,&T) -> Result<R,E>, start: R, list: &Vec<T>) -> Result<R,E> {
+pub fn foldM<R, T, E>(f: &dyn Fn(&R, &T) -> Result<R, E>, start: R, list: &Vec<T>) -> Result<R, E> {
     let mut res: R = start;
     for elt in list.iter() {
         res = f(&res, elt)?;

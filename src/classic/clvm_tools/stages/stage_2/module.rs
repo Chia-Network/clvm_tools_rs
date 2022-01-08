@@ -2,41 +2,20 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use clvm_rs::allocator::{
-    Allocator,
-    NodePtr,
-    SExp
-};
-use clvm_rs::reduction::{
-    EvalErr
-};
+use clvm_rs::allocator::{Allocator, NodePtr, SExp};
+use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::{
-    Bytes,
-    BytesFromType
-};
-use crate::classic::clvm::sexp::{
-    enlist,
-    first,
-    flatten,
-    foldM,
-    mapM,
-    non_nil,
-    proper_list,
-    rest
-};
+use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
+use crate::classic::clvm::sexp::{enlist, first, flatten, foldM, mapM, non_nil, proper_list, rest};
 use crate::classic::clvm_tools::debug::build_symbol_dump;
-use crate::classic::clvm_tools::NodePath::NodePath;
 use crate::classic::clvm_tools::stages::assemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
-use crate::classic::clvm_tools::stages::stage_2::helpers::{
-    evaluate,
-    quote
-};
+use crate::classic::clvm_tools::stages::stage_2::helpers::{evaluate, quote};
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
+use crate::classic::clvm_tools::NodePath::NodePath;
 
 lazy_static! {
-    pub static ref MAIN_NAME : String = {
+    pub static ref MAIN_NAME: String = {
         return "".to_string();
     };
 }
@@ -44,14 +23,11 @@ lazy_static! {
 struct CollectionResult {
     pub functions: HashMap<Vec<u8>, NodePtr>,
     pub constants: HashMap<Vec<u8>, NodePtr>,
-    pub macros: Vec<(Vec<u8>, NodePtr)>
+    pub macros: Vec<(Vec<u8>, NodePtr)>,
 }
 
 // export type TBuildTree = Bytes | Tuple<TBuildTree, TBuildTree> | [];
-fn build_tree(
-    allocator: &mut Allocator,
-    items: &Vec<Vec<u8>>
-) -> Result<NodePtr, EvalErr> {
+fn build_tree(allocator: &mut Allocator, items: &Vec<Vec<u8>>) -> Result<NodePtr, EvalErr> {
     if items.len() == 0 {
         return Ok(allocator.null());
     } else if items.len() == 1 {
@@ -67,10 +43,7 @@ fn build_tree(
 }
 
 // export type TBuildTreeProgram = SExp | [Bytes, TBuildTree, TBuildTree] | [Tuple<Bytes, SExp>];
-fn build_tree_program(
-    allocator: &mut Allocator,
-    items: &Vec<NodePtr>
-) -> Result<NodePtr, EvalErr> {
+fn build_tree_program(allocator: &mut Allocator, items: &Vec<NodePtr>) -> Result<NodePtr, EvalErr> {
     // This function takes a Python list of items and turns it into a program that
     //  a binary tree of the items, suitable for casting to an s-expression.
     let size = items.len();
@@ -78,7 +51,7 @@ fn build_tree_program(
         return m! {
             list_of_nil <- enlist(allocator, &vec!(allocator.null()));
             quote(allocator, list_of_nil)
-        }
+        };
     } else if size == 1 {
         return Ok(items[0]);
     } else {
@@ -102,9 +75,9 @@ fn build_used_constants_names(
     allocator: &mut Allocator,
     functions: &HashMap<Vec<u8>, NodePtr>,
     constants: &HashMap<Vec<u8>, NodePtr>,
-    macros: &Vec<(Vec<u8>, NodePtr)>
+    macros: &Vec<(Vec<u8>, NodePtr)>,
 ) -> Result<Vec<Vec<u8>>, EvalErr> {
-  /*
+    /*
     Do a naïve pruning of unused symbols. It may be too big, but it shouldn't
     be too small. Return a list of all atoms used that are also the names of
     functions or constants, starting with the MAIN_NAME function.
@@ -117,56 +90,54 @@ fn build_used_constants_names(
     }
 
     let mut possible_symbols = HashSet::new();
-    let _ =
-        for key in functions.keys() {
-            possible_symbols.insert(key);
-        };
+    let _ = for key in functions.keys() {
+        possible_symbols.insert(key);
+    };
 
-    let _ =
-        for key in constants.keys() {
-            possible_symbols.insert(key);
-        };
+    let _ = for key in constants.keys() {
+        possible_symbols.insert(key);
+    };
 
-    let mut new_names : HashSet<Vec<u8>> = HashSet::new();
+    let mut new_names: HashSet<Vec<u8>> = HashSet::new();
     new_names.insert(MAIN_NAME.as_bytes().to_vec());
     let mut used_names = new_names.clone();
 
-    let _ =
-        while new_names.len() > 0 {
-            let iterate_names = new_names.clone();
-            new_names = HashSet::new();
+    let _ = while new_names.len() > 0 {
+        let iterate_names = new_names.clone();
+        new_names = HashSet::new();
 
-            for name in iterate_names {
-                let functions_and_macros = vec!(
-                    functions.get(&name),
-                    macro_as_dict.get(&name)
-                );
+        for name in iterate_names {
+            let functions_and_macros = vec![functions.get(&name), macro_as_dict.get(&name)];
 
-                let matching_names_1 =
-                    functions_and_macros.iter().map(
-                        |v| {
-                            v.map(|v| {
-                                let mut res = Vec::new();
-                                flatten(allocator, *v, &mut res);
-                                res
-                            }).unwrap_or_else(|| Vec::new())
-                        }
-                    ).flatten().collect::<Vec<NodePtr>>();
+            let matching_names_1 = functions_and_macros
+                .iter()
+                .map(|v| {
+                    v.map(|v| {
+                        let mut res = Vec::new();
+                        flatten(allocator, *v, &mut res);
+                        res
+                    })
+                    .unwrap_or_else(|| Vec::new())
+                })
+                .flatten()
+                .collect::<Vec<NodePtr>>();
 
-                let matching_names =
-                    matching_names_1.iter().map(|v| match allocator.sexp(*v) {
-                        SExp::Atom(b) => { Some(allocator.buf(&b).to_vec()) },
-                        _ => { None }
-                    }).flatten();
+            let matching_names = matching_names_1
+                .iter()
+                .map(|v| match allocator.sexp(*v) {
+                    SExp::Atom(b) => Some(allocator.buf(&b).to_vec()),
+                    _ => None,
+                })
+                .flatten();
 
-                for name in matching_names {
-                    if !used_names.contains(&name) {
-                        used_names.insert(name.to_vec());
-                        new_names.insert(name);
-                    }
+            for name in matching_names {
+                if !used_names.contains(&name) {
+                    used_names.insert(name.to_vec());
+                    new_names.insert(name);
                 }
             }
-        };
+        }
+    };
 
     // used_names.intersection_update(possible_symbols)
     let mut used_name_list: Vec<Vec<u8>> = Vec::new();
@@ -187,7 +158,7 @@ fn parse_include(
     functions: &mut HashMap<Vec<u8>, NodePtr>,
     constants: &mut HashMap<Vec<u8>, NodePtr>,
     macros: &mut Vec<(Vec<u8>, NodePtr)>,
-    run_program: Rc<dyn TRunProgram>
+    run_program: Rc<dyn TRunProgram>,
 ) -> Result<(), EvalErr> {
     return m! {
         prog <- assemble(
@@ -226,15 +197,16 @@ fn parse_include(
 fn unquote_args(
     allocator: &mut Allocator,
     code: NodePtr,
-    args: &Vec<Vec<u8>>
+    args: &Vec<Vec<u8>>,
 ) -> Result<NodePtr, EvalErr> {
     match allocator.sexp(code) {
         SExp::Atom(code_buf) => {
             let code_atom = allocator.buf(&code_buf);
-            let matching_args =
-                args.iter().filter(|arg| *arg == code_atom).
-                map(|v| v.clone()).
-                collect::<Vec<Vec<u8>>>();
+            let matching_args = args
+                .iter()
+                .filter(|arg| *arg == code_atom)
+                .map(|v| v.clone())
+                .collect::<Vec<Vec<u8>>>();
             if matching_args.len() > 0 {
                 return m! {
                     unquote_atom <- allocator.new_atom("unquote".as_bytes());
@@ -243,8 +215,8 @@ fn unquote_args(
             }
 
             return Ok(code);
-        },
-        SExp::Pair(c1,c2) => {
+        }
+        SExp::Pair(c1, c2) => {
             return m! {
                 unquoted_c2 <- unquote_args(allocator, c2, args);
                 unquoted_c1 <- unquote_args(allocator, c1, args);
@@ -256,7 +228,7 @@ fn unquote_args(
 
 fn defun_inline_to_macro(
     allocator: &mut Allocator,
-    declaration_sexp: NodePtr
+    declaration_sexp: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
     m! {
         d2 <- rest(allocator, declaration_sexp);
@@ -292,7 +264,7 @@ fn parse_mod_sexp(
     functions: &mut HashMap<Vec<u8>, NodePtr>,
     constants: &mut HashMap<Vec<u8>, NodePtr>,
     macros: &mut Vec<(Vec<u8>, NodePtr)>,
-    run_program: Rc<dyn TRunProgram>
+    run_program: Rc<dyn TRunProgram>,
 ) -> Result<(), EvalErr> {
     return m! {
         op_node <- first(allocator, declaration_sexp);
@@ -362,7 +334,7 @@ fn parse_mod_sexp(
 fn compile_mod_stage_1(
     allocator: &mut Allocator,
     args: NodePtr,
-    run_program: Rc<dyn TRunProgram>
+    run_program: Rc<dyn TRunProgram>,
 ) -> Result<CollectionResult, EvalErr> {
     // stage 1: collect up names of globals (functions, constants, macros)
     m! {
@@ -421,7 +393,7 @@ fn compile_mod_stage_1(
 fn symbol_table_for_tree(
     allocator: &mut Allocator,
     tree: NodePtr,
-    root_node: &NodePath
+    root_node: &NodePath,
 ) -> Result<Vec<(NodePtr, Vec<u8>)>, EvalErr> {
     if !non_nil(allocator, tree) {
         return Ok(Vec::new());
@@ -429,9 +401,9 @@ fn symbol_table_for_tree(
 
     match allocator.sexp(tree) {
         SExp::Atom(_) => {
-            return Ok(vec!((tree, root_node.as_path().data().to_vec())));
-        },
-        SExp::Pair(_,_) => {
+            return Ok(vec![(tree, root_node.as_path().data().to_vec())]);
+        }
+        SExp::Pair(_, _) => {
             return m! {
                 let left_bytes = NodePath::new(None).first();
                 let right_bytes = NodePath::new(None).rest();
@@ -465,7 +437,7 @@ fn build_macro_lookup_program(
     allocator: &mut Allocator,
     macro_lookup: NodePtr,
     macros: &Vec<(Vec<u8>, NodePtr)>,
-    run_program: Rc<dyn TRunProgram>
+    run_program: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
     return m! {
         com_atom <- allocator.new_atom("com".as_bytes());
@@ -507,7 +479,7 @@ fn add_one_function(
     constants_symbol_table: &Vec<(NodePtr, Vec<u8>)>,
     compiled_functions_: HashMap<Vec<u8>, NodePtr>,
     name: &Vec<u8>,
-    lambda_expression: NodePtr
+    lambda_expression: NodePtr,
 ) -> Result<HashMap<Vec<u8>, NodePtr>, EvalErr> {
     let mut compiled_functions = compiled_functions_;
     return m! {
@@ -557,26 +529,25 @@ fn compile_functions(
     functions: &HashMap<Vec<u8>, NodePtr>,
     macro_lookup_program: NodePtr,
     constants_symbol_table: &Vec<(NodePtr, Vec<u8>)>,
-    args_root_node: &NodePath
+    args_root_node: &NodePath,
 ) -> Result<HashMap<Vec<u8>, NodePtr>, EvalErr> {
     let compiled_functions = HashMap::new();
 
     return foldM(
         allocator,
-        &|allocator: &mut Allocator,
-         compiled_functions,
-         name_exp: (&Vec<u8>, &NodePtr)|
-        add_one_function(
-            allocator,
-            args_root_node,
-            macro_lookup_program,
-            constants_symbol_table,
-            compiled_functions,
-            name_exp.0,
-            *name_exp.1
-        ),
+        &|allocator: &mut Allocator, compiled_functions, name_exp: (&Vec<u8>, &NodePtr)| {
+            add_one_function(
+                allocator,
+                args_root_node,
+                macro_lookup_program,
+                constants_symbol_table,
+                compiled_functions,
+                name_exp.0,
+                *name_exp.1,
+            )
+        },
         compiled_functions,
-        &mut functions.iter()
+        &mut functions.iter(),
     );
 }
 
@@ -586,7 +557,7 @@ pub fn compile_mod(
     macro_lookup: NodePtr,
     _symbol_table: NodePtr,
     run_program: Rc<dyn TRunProgram>,
-    _level: usize
+    _level: usize,
 ) -> Result<NodePtr, EvalErr> {
     // Deal with the "mod" keyword.
     return m! {

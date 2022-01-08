@@ -71,13 +71,13 @@
 //   if(sexp.atom !== None){
 //     return false;
 //   }
-  
+
 //   const [type_sexp, val_sexp] = sexp.pair as Tuple<SExp, SExp>;
 //   const f = type_sexp.atom;
 //   if(f === None || f.length > 1){
 //     return false;
 //   }
-  
+
 //   const the_type = int_from_bytes(f);
 //   let t;
 //   try{
@@ -86,7 +86,7 @@
 //   catch (e){
 //     return false;
 //   }
-  
+
 //   if(t.is(Type.CONS)){
 //     if(val_sexp.atom.equal_to(Bytes.NULL)){
 //       return true;
@@ -96,6 +96,6 @@
 //     }
 //     return false;
 //   }
-  
+
 //   return val_sexp.atom !== None;
 // }

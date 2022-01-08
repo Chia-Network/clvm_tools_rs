@@ -1,25 +1,12 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use clvm_rs::allocator::{
-    Allocator,
-    NodePtr,
-    SExp
-};
+use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::{
-    Stream
-};
-use crate::classic::clvm::serialize::{
-    sexp_to_stream
-};
-use crate::classic::clvm::sexp::{
-    enlist,
-    mapM,
-    proper_list,
-    rest
-};
+use crate::classic::clvm::__type_compatibility__::Stream;
+use crate::classic::clvm::serialize::sexp_to_stream;
+use crate::classic::clvm::sexp::{enlist, mapM, proper_list, rest};
 
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
@@ -87,14 +74,12 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 //     // @todo Implement here if original python code is fixed.
 // }
 // */
-
 pub fn build_symbol_dump(
     allocator: &mut Allocator,
     constants_lookup: HashMap<Vec<u8>, NodePtr>,
     run_program: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
-    let compiled_unrolled: Vec<(Vec<u8>, NodePtr)> =
-        constants_lookup.into_iter().collect();
+    let compiled_unrolled: Vec<(Vec<u8>, NodePtr)> = constants_lookup.into_iter().collect();
 
     m! {
         map_result <- mapM(
@@ -126,20 +111,23 @@ fn text_trace(
     form: NodePtr,
     symbol: Option<String>,
     env_: NodePtr,
-    result: &String
+    result: &String,
 ) {
     let symbol_val;
     let mut env = env_;
     match symbol {
         Some(sym) => {
             env = rest(allocator, env).unwrap_or_else(|_| allocator.null());
-            let symbol_atom =
-                allocator.new_atom(&sym.as_bytes().to_vec()).unwrap();
+            let symbol_atom = allocator.new_atom(&sym.as_bytes().to_vec()).unwrap();
             let symbol_list = allocator.new_pair(symbol_atom, env).unwrap();
             symbol_val = disassemble_f(allocator, symbol_list);
-        },
+        }
         _ => {
-            symbol_val = format!("{} [{}]", disassemble_f(allocator, form), disassemble_f(allocator, env));
+            symbol_val = format!(
+                "{} [{}]",
+                disassemble_f(allocator, form),
+                disassemble_f(allocator, env)
+            );
         }
     }
 
@@ -150,36 +138,26 @@ fn table_trace(
     allocator: &mut Allocator,
     stdout: &mut Stream,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
-    form: NodePtr, _symbol: Option<String>, env: NodePtr, result: &String
+    form: NodePtr,
+    _symbol: Option<String>,
+    env: NodePtr,
+    result: &String,
 ) {
-    let (sexp, args) =
-        match allocator.sexp(form) {
-            SExp::Pair(sexp, args) => (sexp, args),
-            SExp::Atom(_) => (form, allocator.null())
-        };
+    let (sexp, args) = match allocator.sexp(form) {
+        SExp::Pair(sexp, args) => (sexp, args),
+        SExp::Atom(_) => (form, allocator.null()),
+    };
 
     stdout.write_string(format!("exp: {}\n", disassemble_f(allocator, sexp)));
     stdout.write_string(format!("arg: {}\n", disassemble_f(allocator, args)));
     stdout.write_string(format!("env: {}\n", disassemble_f(allocator, env)));
     stdout.write_string(format!("val: {}\n", result));
     let mut sexp_stream = Stream::new(None);
-    sexp_to_stream(
-        allocator,
-        sexp,
-        &mut sexp_stream
-    );
+    sexp_to_stream(allocator, sexp, &mut sexp_stream);
     let mut args_stream = Stream::new(None);
-    sexp_to_stream(
-        allocator,
-        args,
-        &mut args_stream
-    );
+    sexp_to_stream(allocator, args, &mut args_stream);
     let mut benv_stream = Stream::new(None);
-    sexp_to_stream(
-        allocator,
-        env,
-        &mut benv_stream
-    );
+    sexp_to_stream(allocator, env, &mut benv_stream);
     stdout.write_string(format!("bexp: {}\n", sexp_stream.get_value().hex()));
     stdout.write_string(format!("barg: {}\n", args_stream.get_value().hex()));
     stdout.write_string(format!("benv: {}\n", benv_stream.get_value().hex()));
@@ -199,25 +177,23 @@ fn display_trace(
         NodePtr,
         Option<String>,
         NodePtr,
-        &String
-    )
+        &String,
+    ),
 ) {
     for item in trace {
         let item_vec = proper_list(allocator, *item, true).unwrap();
         let form = item_vec[0];
         let env = item_vec[1];
-        let rv =
-            if item_vec.len() > 2 {
-                disassemble_f(allocator, item_vec[2])
-            } else {
-                "(didn't finish)".to_string()
-            };
+        let rv = if item_vec.len() > 2 {
+            disassemble_f(allocator, item_vec[2])
+        } else {
+            "(didn't finish)".to_string()
+        };
 
         let h = sha256tree(allocator, form).hex();
-        let symbol =
-            symbol_table.as_ref().and_then(
-                |st| st.get(&h).map(|x| x.to_string())
-            );
+        let symbol = symbol_table
+            .as_ref()
+            .and_then(|st| st.get(&h).map(|x| x.to_string()));
         display_fun(allocator, stdout, disassemble_f, form, symbol, env, &rv);
     }
 }
@@ -227,7 +203,7 @@ pub fn trace_to_text(
     stdout: &mut Stream,
     trace: &Vec<NodePtr>,
     symbol_table: Option<HashMap<String, String>>,
-    disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String
+    disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
 ) {
     display_trace(
         allocator,
@@ -235,7 +211,7 @@ pub fn trace_to_text(
         trace,
         disassemble_f,
         symbol_table,
-        &text_trace
+        &text_trace,
     );
 }
 
@@ -244,7 +220,7 @@ pub fn trace_to_table(
     stdout: &mut Stream,
     trace: &Vec<NodePtr>,
     symbol_table: Option<HashMap<String, String>>,
-    disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String
+    disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
 ) {
     display_trace(
         allocator,
@@ -252,7 +228,7 @@ pub fn trace_to_table(
         trace,
         disassemble_f,
         symbol_table,
-        &table_trace
+        &table_trace,
     );
 }
 
@@ -261,10 +237,12 @@ pub fn trace_pre_eval(
     append_log: &dyn Fn(&mut Allocator, NodePtr),
     symbol_table: Option<HashMap<String, String>>,
     sexp: NodePtr,
-    args: NodePtr
+    args: NodePtr,
 ) -> Result<Option<NodePtr>, EvalErr> {
     let h = sha256tree(allocator, sexp);
-    let recognized = symbol_table.as_ref().and_then(|symbol_table| symbol_table.get(&h.hex()).map(|x| x.to_string()));
+    let recognized = symbol_table
+        .as_ref()
+        .and_then(|symbol_table| symbol_table.get(&h.hex()).map(|x| x.to_string()));
 
     if recognized.is_none() && !symbol_table.is_none() {
         Ok(None)

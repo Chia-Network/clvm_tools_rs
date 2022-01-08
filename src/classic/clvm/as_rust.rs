@@ -1,7 +1,5 @@
 use clvm_rs::allocator::Allocator;
-use clvm_rs::reduction::{
-    Response
-};
+use clvm_rs::reduction::Response;
 
 use crate::classic::clvm::sexp::CastableType;
 
@@ -13,7 +11,6 @@ pub trait TToSexpF<'a> {
 
 // export type TToJavascript = Bytes | Bytes[] | Tuple<TToJavascript, TToJavascript> | TToJavascript[];
 
-
 // export function as_javascript(sexp: SExp){
 //   function _roll(op_stack: TOpStack, val_stack: TValStack){
 //     const v1 = val_stack.pop() as SExp;
@@ -21,7 +18,7 @@ pub trait TToSexpF<'a> {
 //     val_stack.push(v1);
 //     val_stack.push(v2);
 //   }
-  
+
 //   function _make_tuple(op_stack: TOpStack, val_stack: TValStack){
 //     const left = val_stack.pop() as SExp;
 //     const right = val_stack.pop() as SExp;
@@ -32,14 +29,14 @@ pub trait TToSexpF<'a> {
 //       val_stack.push(t(left, right));
 //     }
 //   }
-  
+
 //   function _extend_list(op_stack: TOpStack, val_stack: TValStack){
 //     let left = [val_stack.pop()];
 //     const right = val_stack.pop();
 //     left = left.concat(right);
 //     val_stack.push(left as SExp[]);
 //   }
-  
+
 //   function _as_javascript(op_stack: TOpStack, val_stack: TValStack){
 //     const v = val_stack.pop() as SExp;
 //     const pair = v.as_pair();
@@ -61,7 +58,7 @@ pub trait TToSexpF<'a> {
 //       val_stack.push(v.atom as Bytes);
 //     }
 //   }
-  
+
 //   const op_stack: TOpStack = [_as_javascript];
 //   const val_stack = [sexp];
 //   while(op_stack.length){
@@ -70,6 +67,6 @@ pub trait TToSexpF<'a> {
 //       op_f(op_stack, val_stack);
 //     }
 //   }
-  
+
 //   return (val_stack[val_stack.length-1] as unknown) as TToJavascript;
 // }

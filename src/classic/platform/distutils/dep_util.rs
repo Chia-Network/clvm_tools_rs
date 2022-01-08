@@ -5,11 +5,11 @@ pub fn newer(input_path: &String, output_path: &String) -> Result<bool, String> 
         return Ok(true);
     }
 
-    fs::metadata(input_path).map_err(|_| {
-        "source does not exist".to_string()
-    }).and_then(|im| {
-        fs::metadata(output_path).map(|om| {
-            im.modified().unwrap() >= om.modified().unwrap()
-        }).map_err(|_| "could not stat dest".to_string())
-    })
+    fs::metadata(input_path)
+        .map_err(|_| "source does not exist".to_string())
+        .and_then(|im| {
+            fs::metadata(output_path)
+                .map(|om| im.modified().unwrap() >= om.modified().unwrap())
+                .map_err(|_| "could not stat dest".to_string())
+        })
 }

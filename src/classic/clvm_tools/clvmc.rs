@@ -3,30 +3,24 @@ use std::fs::File;
 use std::io::Write;
 use std::rc::Rc;
 
-use clvm_rs::allocator::{
-    Allocator,
-    NodePtr
-};
+use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::Stream;
 use crate::classic::clvm::serialize::sexp_to_stream;
-use crate::classic::clvm_tools::binutils::{
-    assemble_from_ir,
-    disassemble
-};
+use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble};
 use crate::classic::clvm_tools::ir::reader::read_ir;
+use crate::classic::clvm_tools::stages::run;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
-use crate::classic::clvm_tools::stages::run;
 
-use crate::classic::platform::distutils::log;
 use crate::classic::platform::distutils::dep_util::newer;
+use crate::classic::platform::distutils::log;
 
 fn compile_clvm_text(
     allocator: &mut Allocator,
     text: String,
-    search_paths: &Vec<String>
+    search_paths: &Vec<String>,
 ) -> Result<NodePtr, EvalErr> {
     m! {
         ir_src <- read_ir(&text).map_err(|s| EvalErr(allocator.null(), s));
@@ -42,11 +36,15 @@ fn compile_clvm_text(
     }
 }
 
-pub fn compile_clvm(input_path: &String, output_path: &String, search_paths: &Vec<String>) -> Result<String, String> {
+pub fn compile_clvm(
+    input_path: &String,
+    output_path: &String,
+    search_paths: &Vec<String>,
+) -> Result<String, String> {
     let mut allocator = Allocator::new();
 
-    newer(input_path, output_path).and_then(
-        |is_newer| if is_newer {
+    newer(input_path, output_path).and_then(|is_newer| {
+        if is_newer {
             m! {
                 let _ = log::info(format!("clvmcc {} -o {}", input_path, output_path));
                 text <- fs::read_to_string(input_path).map_err(
@@ -72,7 +70,7 @@ pub fn compile_clvm(input_path: &String, output_path: &String, search_paths: &Ve
             log::info(format!("skipping {}, compiled recently", input_path));
             Ok(output_path.to_string())
         }
-    )
+    })
 }
 
 // export function find_files(path: str = ""){

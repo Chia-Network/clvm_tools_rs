@@ -25,16 +25,8 @@
 
 use num_bigint::ToBigInt;
 
-use crate::classic::clvm::__type_compatibility__::{
-    Bytes,
-    bi_zero,
-    bi_one
-};
-use crate::classic::clvm::casts::{
-    TConvertOption,
-    bigint_from_bytes,
-    bigint_to_bytes
-};
+use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, Bytes};
+use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes, TConvertOption};
 use crate::util::Number;
 
 pub fn compose_paths(path_0_: &Number, path_1_: &Number) -> Number {
@@ -69,7 +61,7 @@ pub struct NodePath {
     /*
      * Use 1-based paths
      */
-    index: Number
+    index: Number,
 }
 
 impl NodePath {
@@ -77,18 +69,23 @@ impl NodePath {
         match index {
             Some(index) => {
                 if index < bi_zero() {
-                    let bytes_repr = bigint_to_bytes(&index, Some(TConvertOption { signed: true })).unwrap();
+                    let bytes_repr =
+                        bigint_to_bytes(&index, Some(TConvertOption { signed: true })).unwrap();
                     let unsigned = bigint_from_bytes(&bytes_repr, None);
                     return NodePath { index: unsigned };
                 } else {
-                    return NodePath { index: index.clone() };
+                    return NodePath {
+                        index: index.clone(),
+                    };
                 }
-            },
-            None => return NodePath { index: bi_one() }
+            }
+            None => return NodePath { index: bi_one() },
         }
     }
 
-    pub fn as_path(&self) -> Bytes { return bigint_to_bytes(&self.index, None).unwrap(); }
+    pub fn as_path(&self) -> Bytes {
+        return bigint_to_bytes(&self.index, None).unwrap();
+    }
 
     pub fn add(&self, other_node: NodePath) -> Self {
         let composedPath = compose_paths(&self.index, &other_node.index);
@@ -96,18 +93,20 @@ impl NodePath {
     }
 
     pub fn first(&self) -> Self {
-        return NodePath::new(Some(self.index.clone()*2_u32.to_bigint().unwrap()));
+        return NodePath::new(Some(self.index.clone() * 2_u32.to_bigint().unwrap()));
     }
 
     pub fn rest(&self) -> Self {
-        return NodePath::new(Some((self.index.clone()*2_u32.to_bigint().unwrap()) + bi_one()));
+        return NodePath::new(Some(
+            (self.index.clone() * 2_u32.to_bigint().unwrap()) + bi_one(),
+        ));
     }
 }
 
 //   public toString(){
 //     return `NodePath: ${this.index}`;
 //   }
-  
+
 //   public __repl__(){
 //     return `NodePath: ${this.index}`;
 //   }

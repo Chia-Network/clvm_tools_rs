@@ -3,29 +3,25 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::cost::Cost;
-use clvm_rs::f_table::{
-    f_lookup_for_hashmap,
-    FLookup
-};
+use clvm_rs::f_table::{f_lookup_for_hashmap, FLookup};
 use clvm_rs::more_ops::op_unknown;
 use clvm_rs::operator_handler::OperatorHandler;
-use clvm_rs::reduction::{
-    EvalErr,
-    Reduction,
-    Response
-};
+use clvm_rs::reduction::{EvalErr, Reduction, Response};
 
-use clvm_rs::run_program::{
-    PreEval,
-    run_program
-};
+use clvm_rs::run_program::{run_program, PreEval};
 
 pub type TOperatorDict = HashMap<String, Vec<u8>>;
 
-pub struct OpQuote { }
+pub struct OpQuote {}
 
 impl OperatorHandler for OpQuote {
-    fn op(&self, _allocator: &mut Allocator, _op: NodePtr, sexp: NodePtr, _max_cost: Cost) -> Response {
+    fn op(
+        &self,
+        _allocator: &mut Allocator,
+        _op: NodePtr,
+        sexp: NodePtr,
+        _max_cost: Cost,
+    ) -> Response {
         return Ok(Reduction(1, sexp));
     }
 }
@@ -72,7 +68,7 @@ impl OpRouter {
             (34, "op_all"),
             (36, "op_softfork"),
         ]
-            .iter()
+        .iter()
         {
             let v: Vec<u8> = vec![*v as u8];
             opcode_lookup_by_name.insert(s.to_string(), v);
@@ -80,8 +76,8 @@ impl OpRouter {
 
         let f_lookup = f_lookup_for_hashmap(opcode_lookup_by_name);
 
-        let mut routes : HashMap<Vec<u8>, Rc<dyn OperatorHandler>> = HashMap::new();
-        routes.insert(vec!(1), Rc::new(OpQuote {}));
+        let mut routes: HashMap<Vec<u8>, Rc<dyn OperatorHandler>> = HashMap::new();
+        routes.insert(vec![1], Rc::new(OpQuote {}));
 
         return OpRouter {
             routes: routes,
@@ -101,14 +97,20 @@ impl OpRouter {
 }
 
 impl<'a> OperatorHandler for OpRouter {
-    fn op(&self, allocator: &mut Allocator, op: NodePtr, sexp: NodePtr, max_cost: Cost) -> Response {
+    fn op(
+        &self,
+        allocator: &mut Allocator,
+        op: NodePtr,
+        sexp: NodePtr,
+        max_cost: Cost,
+    ) -> Response {
         match allocator.sexp(op) {
             SExp::Atom(b) => {
                 let buf = &allocator.buf(&b).to_vec();
                 match self.routes.get(buf) {
                     Some(handler) => {
                         return handler.op(allocator, op, sexp, max_cost);
-                    },
+                    }
                     _ => {
                         if buf.len() == 1 {
                             if let Some(f) = self.f_lookup[buf[0] as usize] {
@@ -116,13 +118,13 @@ impl<'a> OperatorHandler for OpRouter {
                             }
                         }
                         if self.strict {
-                            return Err(EvalErr(op, "unimplemented operator".to_string()))
+                            return Err(EvalErr(op, "unimplemented operator".to_string()));
                         } else {
                             op_unknown(allocator, op, sexp, max_cost)
                         }
                     }
                 }
-            },
+            }
             _ => {
                 return Err(EvalErr(op, "unknown pair operator".to_string()));
             }
@@ -134,26 +136,32 @@ pub struct RunProgramOption {
     pub operator_lookup: Option<TOperatorDict>,
     pub max_cost: Option<Cost>,
     pub pre_eval_f: Option<PreEval>,
-    pub strict: bool
+    pub strict: bool,
 }
 
 pub trait TRunProgram {
-    fn run_program(&self, allocator: &mut Allocator, program: NodePtr, args: NodePtr, option: Option<RunProgramOption>) -> Response;
+    fn run_program(
+        &self,
+        allocator: &mut Allocator,
+        program: NodePtr,
+        args: NodePtr,
+        option: Option<RunProgramOption>,
+    ) -> Response;
 }
 
 #[derive(Clone)]
 pub struct DefaultProgramRunner {
     pub router: OpRouter,
     quote_kw_vec: Vec<u8>,
-    apply_kw_vec: Vec<u8>
+    apply_kw_vec: Vec<u8>,
 }
 
 impl DefaultProgramRunner {
     pub fn new() -> Self {
         return DefaultProgramRunner {
             router: OpRouter::new(),
-            apply_kw_vec: vec!(2 as u8),
-            quote_kw_vec: vec!(1 as u8),
+            apply_kw_vec: vec![2 as u8],
+            quote_kw_vec: vec![1 as u8],
         };
     }
 
@@ -168,18 +176,18 @@ impl TRunProgram for DefaultProgramRunner {
         allocator: &mut Allocator,
         program: NodePtr,
         args: NodePtr,
-        option: Option<RunProgramOption>
+        option: Option<RunProgramOption>,
     ) -> Response {
         let mut max_cost = 0;
 
         match &option {
-            Some(o) => {
-                match o.max_cost {
-                    Some(c) => { max_cost = c; },
-                    _ => { }
+            Some(o) => match o.max_cost {
+                Some(c) => {
+                    max_cost = c;
                 }
+                _ => {}
             },
-            _ => { }
+            _ => {}
         }
 
         run_program(
@@ -190,7 +198,7 @@ impl TRunProgram for DefaultProgramRunner {
             program,
             args,
             max_cost,
-            option.and_then(|o| o.pre_eval_f)
+            option.and_then(|o| o.pre_eval_f),
         )
     }
 }

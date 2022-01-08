@@ -1,62 +1,27 @@
 use core::cell::RefCell;
 
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::collections::{
-    HashMap,
-    HashSet
-};
 
-use clvm_rs::allocator::{
-    Allocator,
-    AtomBuf,
-    NodePtr,
-    SExp
-};
+use clvm_rs::allocator::{Allocator, AtomBuf, NodePtr, SExp};
 use clvm_rs::cost::Cost;
-use clvm_rs::reduction::{
-    EvalErr,
-    Reduction,
-    Response
-};
+use clvm_rs::reduction::{EvalErr, Reduction, Response};
 
 use clvm_rs::operator_handler::OperatorHandler;
 
-use crate::classic::clvm::{
-    KEYWORD_FROM_ATOM,
-    KEYWORD_TO_ATOM
-};
-use crate::classic::clvm::__type_compatibility__::{
-    Bytes,
-    BytesFromType
-};
-use crate::classic::clvm::sexp::{
-    proper_list,
-    enlist,
-    first,
-    mapM,
-    non_nil,
-    rest
-};
+use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
+use crate::classic::clvm::sexp::{enlist, first, mapM, non_nil, proper_list, rest};
+use crate::classic::clvm::{KEYWORD_FROM_ATOM, KEYWORD_TO_ATOM};
 
-use crate::classic::clvm_tools::binutils::{
-    assemble_from_ir,
-    disassemble
-};
+use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble};
 use crate::classic::clvm_tools::ir::reader::read_ir;
-use crate::classic::clvm_tools::NodePath::NodePath;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
-use crate::classic::clvm_tools::stages::stage_0::{
-    DefaultProgramRunner,
-    TRunProgram
-};
+use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 use crate::classic::clvm_tools::stages::stage_2::defaults::DEFAULT_MACRO_LOOKUP;
-use crate::classic::clvm_tools::stages::stage_2::helpers::{
-    brun,
-    evaluate,
-    quote
-};
+use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote};
 use crate::classic::clvm_tools::stages::stage_2::module::compile_mod;
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
+use crate::classic::clvm_tools::NodePath::NodePath;
 
 const DIAG_OUTPUT: bool = false;
 
@@ -78,18 +43,40 @@ lazy_static! {
 
 struct Closure<'a> {
     name: String,
-    to_run: &'a dyn Fn(&mut Allocator, NodePtr, NodePtr, NodePtr, Rc<dyn TRunProgram>, usize) -> Result<NodePtr, EvalErr>
+    to_run: &'a dyn Fn(
+        &mut Allocator,
+        NodePtr,
+        NodePtr,
+        NodePtr,
+        Rc<dyn TRunProgram>,
+        usize,
+    ) -> Result<NodePtr, EvalErr>,
 }
 
 fn compile_bindings<'a>() -> HashMap<Vec<u8>, Closure<'a>> {
     let mut bindings = HashMap::new();
-    let bindings_source = vec!(
-        Closure { name: "qq".to_string(), to_run: &compile_qq },
-        Closure { name: "macros".to_string(), to_run: &compile_macros },
-        Closure { name: "symbols".to_string(), to_run: &compile_symbols },
-        Closure { name: "lambda".to_string(), to_run: &compile_mod },
-        Closure { name: "mod".to_string(), to_run: &compile_mod }
-    );
+    let bindings_source = vec![
+        Closure {
+            name: "qq".to_string(),
+            to_run: &compile_qq,
+        },
+        Closure {
+            name: "macros".to_string(),
+            to_run: &compile_macros,
+        },
+        Closure {
+            name: "symbols".to_string(),
+            to_run: &compile_symbols,
+        },
+        Closure {
+            name: "lambda".to_string(),
+            to_run: &compile_mod,
+        },
+        Closure {
+            name: "mod".to_string(),
+            to_run: &compile_mod,
+        },
+    ];
 
     for c in bindings_source {
         bindings.insert(c.name.as_bytes().to_vec(), c);
@@ -98,13 +85,17 @@ fn compile_bindings<'a>() -> HashMap<Vec<u8>, Closure<'a>> {
     return bindings;
 }
 
-fn qq_atom() -> Vec<u8> { return vec!('q' as u8, 'q' as u8); }
-fn unquote_atom() -> Vec<u8> { return "unquote".as_bytes().to_vec(); }
+fn qq_atom() -> Vec<u8> {
+    return vec!['q' as u8, 'q' as u8];
+}
+fn unquote_atom() -> Vec<u8> {
+    return "unquote".as_bytes().to_vec();
+}
 
 #[derive(Clone)]
 pub struct DoComProg {
     compile_outcomes: RefCell<HashMap<String, String>>,
-    runner: Rc<dyn TRunProgram>
+    runner: Rc<dyn TRunProgram>,
 }
 
 fn com_qq(
@@ -113,19 +104,12 @@ fn com_qq(
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
     runner: Rc<dyn TRunProgram>,
-    sexp: NodePtr
+    sexp: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
     if DIAG_OUTPUT {
         print!("com_qq {} {}\n", ident, disassemble(allocator, sexp));
     }
-    return do_com_prog(
-        allocator,
-        110,
-        sexp,
-        macro_lookup,
-        symbol_table,
-        runner
-    ).map(|x| x.1);
+    return do_com_prog(allocator, 110, sexp, macro_lookup, symbol_table, runner).map(|x| x.1);
 }
 
 pub fn compile_qq(
@@ -134,7 +118,7 @@ pub fn compile_qq(
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
     runner: Rc<dyn TRunProgram>,
-    level: usize
+    level: usize,
 ) -> Result<NodePtr, EvalErr> {
     /*
      * (qq ATOM) => (q . ATOM)
@@ -145,16 +129,20 @@ pub fn compile_qq(
     let sexp;
 
     match first(allocator, args) {
-        Err(e) => { return Err(e); },
-        Ok(x) => { sexp = x; }
+        Err(e) => {
+            return Err(e);
+        }
+        Ok(x) => {
+            sexp = x;
+        }
     }
 
     match allocator.sexp(sexp) {
         SExp::Atom(_) => {
             // (qq ATOM) => (q . ATOM)
             return quote(allocator, sexp);
-        },
-        SExp::Pair(op,sexp_rest) => {
+        }
+        SExp::Pair(op, sexp_rest) => {
             match allocator.sexp(op) {
                 SExp::Atom(opbuf) => {
                     if allocator.buf(&opbuf).to_vec() == qq_atom() {
@@ -186,8 +174,8 @@ pub fn compile_qq(
                             com_qq(allocator, "qq pair general".to_string(), macro_lookup, symbol_table, runner, run_list)
                         };
                     }
-                },
-                _ => { }
+                }
+                _ => {}
             }
 
             // (qq (a . B)) => (c (qq a) (qq B))
@@ -210,7 +198,7 @@ pub fn compile_macros(
     macro_lookup: NodePtr,
     _symbol_table: NodePtr,
     _run_program: Rc<dyn TRunProgram>,
-    _level: usize
+    _level: usize,
 ) -> Result<NodePtr, EvalErr> {
     return quote(allocator, macro_lookup);
 }
@@ -221,17 +209,14 @@ pub fn compile_symbols(
     _macro_lookup: NodePtr,
     symbol_table: NodePtr,
     _run_program: Rc<dyn TRunProgram>,
-    _level: usize
+    _level: usize,
 ) -> Result<NodePtr, EvalErr> {
     return quote(allocator, symbol_table);
 }
 
 // # Transform "quote" to "q" everywhere. Note that quote will not be compiled if behind qq.
 // # Overrides symbol table defns.
-fn lower_quote_(
-    allocator: &mut Allocator,
-    prog: NodePtr
-) -> Result<NodePtr, EvalErr> {
+fn lower_quote_(allocator: &mut Allocator, prog: NodePtr) -> Result<NodePtr, EvalErr> {
     if !non_nil(allocator, prog) {
         return Ok(prog);
     }
@@ -256,11 +241,11 @@ fn lower_quote_(
                             quote(allocator, lowered)
                         };
                     }
-                },
-                _ => { }
+                }
+                _ => {}
             }
-        },
-        _ => { }
+        }
+        _ => {}
     }
 
     // XXX Note that this recognizes potentially unintended
@@ -269,23 +254,20 @@ fn lower_quote_(
     // here in case this bug is exploited.
     // Like a good neighbor, UB is there☺
     match allocator.sexp(prog) {
-        SExp::Pair(f,r) => {
+        SExp::Pair(f, r) => {
             return m! {
                 first <- lower_quote(allocator, f);
                 rest <- lower_quote(allocator, r);
                 allocator.new_pair(first, rest)
             };
-        },
-        SExp::Atom(_) => { }
+        }
+        SExp::Atom(_) => {}
     }
 
     return Ok(prog);
 }
 
-pub fn lower_quote(
-    allocator: &mut Allocator,
-    prog: NodePtr
-) -> Result<NodePtr, EvalErr> {
+pub fn lower_quote(allocator: &mut Allocator, prog: NodePtr) -> Result<NodePtr, EvalErr> {
     let res = lower_quote_(allocator, prog);
     if DIAG_OUTPUT {
         res.as_ref().map(|x| {
@@ -305,7 +287,7 @@ fn try_expand_macro_for_atom_(
     macro_code: NodePtr,
     prog_rest: NodePtr,
     macro_lookup: NodePtr,
-    symbol_table: NodePtr
+    symbol_table: NodePtr,
 ) -> Response {
     return m! {
         com_atom <- allocator.new_atom("com".as_bytes());
@@ -348,7 +330,7 @@ fn try_expand_macro_for_atom(
     macro_code: NodePtr,
     prog_rest: NodePtr,
     macro_lookup: NodePtr,
-    symbol_table: NodePtr
+    symbol_table: NodePtr,
 ) -> Response {
     return m! {
         res <- try_expand_macro_for_atom_(
@@ -365,37 +347,38 @@ fn try_expand_macro_for_atom(
 fn get_macro_program(
     allocator: &mut Allocator,
     operator: &Vec<u8>,
-    macro_lookup: NodePtr
+    macro_lookup: NodePtr,
 ) -> Result<Option<NodePtr>, EvalErr> {
     match proper_list(allocator, macro_lookup, true) {
         Some(mlist) => {
             for macro_pair in mlist {
                 match proper_list(allocator, macro_pair, true) {
-                    None => { },
+                    None => {}
                     Some(mp_list) => {
                         if mp_list.len() == 0 {
                             continue;
                         }
-                        let value =
-                            if mp_list.len() > 1 {
-                                mp_list[1]
-                            } else {
-                                allocator.null()
-                            };
+                        let value = if mp_list.len() > 1 {
+                            mp_list[1]
+                        } else {
+                            allocator.null()
+                        };
 
                         match allocator.sexp(mp_list[0]) {
                             SExp::Atom(macro_name) => {
                                 if allocator.buf(&macro_name).to_vec() == *operator {
                                     return Ok(Some(value));
                                 }
-                            },
-                            SExp::Pair(_,_) => { continue; }
+                            }
+                            SExp::Pair(_, _) => {
+                                continue;
+                            }
                         }
                     }
                 }
             }
-        },
-        _ => { }
+        }
+        _ => {}
     }
 
     return Ok(None);
@@ -405,37 +388,33 @@ fn transform_program_atom(
     allocator: &mut Allocator,
     prog: NodePtr,
     a: &AtomBuf,
-    symbol_table: NodePtr
+    symbol_table: NodePtr,
 ) -> Response {
     if allocator.buf(&a).to_vec() == "@".as_bytes().to_vec() {
-        return allocator.new_atom(NodePath::new(None).as_path().data()).
-            map(|x| Reduction(1, x));
+        return allocator
+            .new_atom(NodePath::new(None).as_path().data())
+            .map(|x| Reduction(1, x));
     }
     match proper_list(allocator, symbol_table, true) {
-        None => { },
+        None => {}
         Some(symlist) => {
             for sym in symlist {
                 match proper_list(allocator, sym, true) {
-                    None => { },
+                    None => {}
                     Some(v) => {
                         if v.len() == 0 {
                             continue;
                         }
 
-                        let value =
-                            if v.len() > 1 {
-                                v[1]
-                            } else {
-                                allocator.null()
-                            };
+                        let value = if v.len() > 1 { v[1] } else { allocator.null() };
 
                         match allocator.sexp(v[0]) {
                             SExp::Atom(s) => {
                                 if allocator.buf(&s).to_vec() == allocator.buf(a).to_vec() {
                                     return Ok(Reduction(1, value));
                                 }
-                            },
-                            SExp::Pair(_,_) => { }
+                            }
+                            SExp::Pair(_, _) => {}
                         }
                     }
                 }
@@ -452,11 +431,11 @@ fn compile_operator_atom(
     avec: &Vec<u8>,
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
-    run_program: Rc<dyn TRunProgram>
+    run_program: Rc<dyn TRunProgram>,
 ) -> Result<Option<NodePtr>, EvalErr> {
     let COMPILE_BINDINGS = compile_bindings();
 
-    if *avec == vec!(1) {
+    if *avec == vec![1] {
         return Ok(Some(prog));
     }
 
@@ -482,8 +461,8 @@ fn compile_operator_atom(
                 };
                 evaluate(allocator, quoted_post_prog, top_atom).map(|x| Some(x))
             };
-        },
-        None => { }
+        }
+        None => {}
     }
 
     return Ok(None);
@@ -491,48 +470,49 @@ fn compile_operator_atom(
 
 enum SymbolResult {
     Direct(NodePtr),
-    Matched(NodePtr,NodePtr)
+    Matched(NodePtr, NodePtr),
 }
 
 fn find_symbol_match(
     allocator: &mut Allocator,
     opname: &Vec<u8>,
     r: NodePtr,
-    symbol_table: NodePtr
+    symbol_table: NodePtr,
 ) -> Result<Option<SymbolResult>, EvalErr> {
     match proper_list(allocator, symbol_table, true) {
         Some(symlist) => {
             for sym in symlist {
                 match proper_list(allocator, sym, true) {
                     Some(symdef) => {
-                        if symdef.len() < 1 { continue; }
+                        if symdef.len() < 1 {
+                            continue;
+                        }
 
                         match allocator.sexp(symdef[0]) {
                             SExp::Atom(symptr) => {
                                 let symbol = symdef[0];
-                                let value =
-                                    if symdef.len() == 1 {
-                                        allocator.null()
-                                    } else {
-                                        symdef[1]
-                                    };
+                                let value = if symdef.len() == 1 {
+                                    allocator.null()
+                                } else {
+                                    symdef[1]
+                                };
 
                                 let symbuf = allocator.buf(&symptr).to_vec();
-                                if vec!('*' as u8) == symbuf {
+                                if vec!['*' as u8] == symbuf {
                                     return Ok(Some(SymbolResult::Direct(r)));
                                 } else if *opname == symbuf {
-                                    return Ok(Some(SymbolResult::Matched(symbol,value)));
+                                    return Ok(Some(SymbolResult::Matched(symbol, value)));
                                 }
-                            },
+                            }
 
-                            SExp::Pair(_,_) => { }
+                            SExp::Pair(_, _) => {}
                         }
-                    },
-                    _ => { }
+                    }
+                    _ => {}
                 }
             }
-        },
-        _ => { }
+        }
+        _ => {}
     }
 
     return Ok(None);
@@ -546,14 +526,19 @@ fn compile_application(
     rest: NodePtr,
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
-    run_program: Rc<dyn TRunProgram>
+    run_program: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
-    let mut compiled_args = vec!(operator);
+    let mut compiled_args = vec![operator];
 
-    let error_result =
-        Err(EvalErr(prog, format!("can't compile {}, unknown operator", disassemble(allocator, prog))));
+    let error_result = Err(EvalErr(
+        prog,
+        format!(
+            "can't compile {}, unknown operator",
+            disassemble(allocator, prog)
+        ),
+    ));
 
-    if *opbuf == vec!(1 as u8) || *opbuf == vec!('q' as u8) {
+    if *opbuf == vec![1 as u8] || *opbuf == vec!['q' as u8] {
         return allocator.new_pair(operator, rest);
     }
 
@@ -631,8 +616,8 @@ fn compile_application(
                     })
                 }
             }
-        },
-        None => { error_result }
+        }
+        None => error_result,
     }
 }
 
@@ -642,7 +627,7 @@ pub fn do_com_prog(
     prog: NodePtr,
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
-    run_program: Rc<dyn TRunProgram>
+    run_program: Rc<dyn TRunProgram>,
 ) -> Response {
     if DIAG_OUTPUT {
         print!(
@@ -673,7 +658,7 @@ fn do_com_prog_(
     prog_: NodePtr,
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
-    run_program: Rc<dyn TRunProgram>
+    run_program: Rc<dyn TRunProgram>,
 ) -> Response {
     /*
      * Turn the given program `prog` into a clvm program using
@@ -767,25 +752,20 @@ fn do_com_prog_(
     };
 }
 
-fn dequote(
-    allocator: &mut Allocator,
-    prog: NodePtr
-) -> NodePtr {
+fn dequote(allocator: &mut Allocator, prog: NodePtr) -> NodePtr {
     match allocator.sexp(prog) {
-        SExp::Atom(_) => { prog },
-        SExp::Pair(l,r) => {
-            match allocator.sexp(l) {
-                SExp::Atom(b) => {
-                    let v = allocator.buf(&b).to_vec();
-                    if v == "opt".as_bytes().to_vec() {
-                        r
-                    } else {
-                        prog
-                    }
-                },
-                _ => { prog }
+        SExp::Atom(_) => prog,
+        SExp::Pair(l, r) => match allocator.sexp(l) {
+            SExp::Atom(b) => {
+                let v = allocator.buf(&b).to_vec();
+                if v == "opt".as_bytes().to_vec() {
+                    r
+                } else {
+                    prog
+                }
             }
-        }
+            _ => prog,
+        },
     }
 }
 
@@ -795,22 +775,23 @@ impl OperatorHandler for DoComProg {
         allocator: &mut Allocator,
         _op: NodePtr,
         sexp: NodePtr,
-        _max_cost: Cost
+        _max_cost: Cost,
     ) -> Response {
         match allocator.sexp(sexp) {
-            SExp::Pair(prog,extras) => {
+            SExp::Pair(prog, extras) => {
                 let mut symbol_table = allocator.null();
                 let macro_lookup;
 
                 let mut elist = Vec::new();
                 match proper_list(allocator, extras, true) {
-                    Some(elist_vec) => { elist = elist_vec.to_vec(); }
-                    _ => { }
+                    Some(elist_vec) => {
+                        elist = elist_vec.to_vec();
+                    }
+                    _ => {}
                 }
 
                 if elist.len() == 0 {
-                    macro_lookup =
-                        DEFAULT_MACRO_LOOKUP(allocator, self.runner.clone());
+                    macro_lookup = DEFAULT_MACRO_LOOKUP(allocator, self.runner.clone());
                 } else {
                     macro_lookup = elist[0];
                     if elist.len() > 1 {
@@ -828,8 +809,9 @@ impl OperatorHandler for DoComProg {
                     prog,
                     macro_lookup,
                     symbol_table,
-                    self.runner.clone()
-                ).map(|x| {
+                    self.runner.clone(),
+                )
+                .map(|x| {
                     // XXX Enable extra info in sym file.
                     // self.compile_outcomes.replace_with(|co| {
                     //     let key = sha256tree(allocator, x.1).hex();
@@ -838,9 +820,12 @@ impl OperatorHandler for DoComProg {
                     // });
                     x
                 })
-            },
+            }
             _ => {
-                return Err(EvalErr(sexp, "Program is not a pair in do_com_prog".to_string()));
+                return Err(EvalErr(
+                    sexp,
+                    "Program is not a pair in do_com_prog".to_string(),
+                ));
             }
         }
     }
@@ -850,7 +835,7 @@ impl DoComProg {
     pub fn new() -> Self {
         return DoComProg {
             compile_outcomes: RefCell::new(HashMap::new()),
-            runner: Rc::new(DefaultProgramRunner::new())
+            runner: Rc::new(DefaultProgramRunner::new()),
         };
     }
 
@@ -861,35 +846,37 @@ impl DoComProg {
     pub fn set_symbol_table(
         &self,
         allocator: &mut Allocator,
-        table: NodePtr
+        table: NodePtr,
     ) -> Result<Reduction, EvalErr> {
-        match proper_list(allocator, table, true).
-            and_then(|t| proper_list(allocator, t[0], true))
-        {
+        match proper_list(allocator, table, true).and_then(|t| proper_list(allocator, t[0], true)) {
             Some(symtable) => {
                 for kv in symtable.iter() {
                     match allocator.sexp(*kv) {
-                        SExp::Pair(hash,name) => {
+                        SExp::Pair(hash, name) => {
                             match (allocator.sexp(hash), allocator.sexp(name)) {
                                 (SExp::Atom(hash), SExp::Atom(name)) => {
-                                    let hash_text =
-                                        Bytes::new(Some(BytesFromType::Raw(allocator.buf(&hash).to_vec()))).decode();
-                                    let name_text =
-                                        Bytes::new(Some(BytesFromType::Raw(allocator.buf(&name).to_vec()))).decode();
+                                    let hash_text = Bytes::new(Some(BytesFromType::Raw(
+                                        allocator.buf(&hash).to_vec(),
+                                    )))
+                                    .decode();
+                                    let name_text = Bytes::new(Some(BytesFromType::Raw(
+                                        allocator.buf(&name).to_vec(),
+                                    )))
+                                    .decode();
 
                                     self.compile_outcomes.replace_with(|co| {
                                         let mut result = co.clone();
                                         result.insert(hash_text, name_text);
                                         result
                                     });
-                                },
+                                }
                                 _ => {}
                             }
-                        },
+                        }
                         _ => {}
                     }
                 }
-            },
+            }
             _ => {}
         };
 
@@ -906,7 +893,7 @@ fn test_expand_macro(
     macro_data: String,
     prog_rest: String,
     macros: String,
-    symbols: String
+    symbols: String,
 ) -> String {
     let macro_ir = read_ir(&macro_data).unwrap();
     let macro_source = assemble_from_ir(allocator, Rc::new(macro_ir)).unwrap();
@@ -921,8 +908,9 @@ fn test_expand_macro(
         macro_source,
         prog_source,
         macros_source,
-        symbols_source
-    ).unwrap();
+        symbols_source,
+    )
+    .unwrap();
     return disassemble(allocator, exp_res.1);
 }
 
@@ -943,18 +931,16 @@ fn test_do_com_prog(
     allocator: &mut Allocator,
     program_src: String,
     macro_lookup_src: String,
-    symbol_table_src: String
+    symbol_table_src: String,
 ) -> String {
-    let runner = run_program_for_search_paths(&vec!(".".to_string()));
+    let runner = run_program_for_search_paths(&vec![".".to_string()]);
     let prog_ir = read_ir(&program_src).unwrap();
     let program = assemble_from_ir(allocator, Rc::new(prog_ir)).unwrap();
     let macro_ir = read_ir(&macro_lookup_src).unwrap();
     let macro_lookup = assemble_from_ir(allocator, Rc::new(macro_ir)).unwrap();
     let sym_ir = read_ir(&symbol_table_src).unwrap();
     let symbol_table = assemble_from_ir(allocator, Rc::new(sym_ir)).unwrap();
-    let result = do_com_prog(
-        allocator, 849, program, macro_lookup, symbol_table, runner
-    ).unwrap();
+    let result = do_com_prog(allocator, 849, program, macro_lookup, symbol_table, runner).unwrap();
     return disassemble(allocator, result.1);
 }
 

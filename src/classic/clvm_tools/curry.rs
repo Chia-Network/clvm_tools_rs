@@ -9,7 +9,6 @@
 // # the text below has been hand-optimized to replace `((c (q X) Y))` with `(a (q X) Y)`
 // # and `(q 0)` with `0`
 //  */
-
 // export const CURRY_OBJ_CODE = assemble(
 //   // eslint-disable-next-line max-len
 //   "(a (q #a 4 (c 2 (c 5 (c 7 0)))) (c (q (c (q . 2) (c (c (q . 1) 5) (c (a 6 (c 2 (c 11 (q 1)))) 0))) #a (i 5 (q 4 (q . 4) (c (c (q . 1) 9) (c (a 6 (c 2 (c 13 (c 11 0)))) 0))) (q . 11)) 1) 1))"
@@ -37,10 +36,10 @@
 //   if(!r){
 //     return r;
 //   }
-  
+
 //   const f = r["function"];
 //   let core = r["core"];
-  
+
 //   const args: SExp[] = [];
 //   // eslint-disable-next-line no-constant-condition
 //   while(true){
@@ -51,7 +50,7 @@
 //     args.push(r["parm"]);
 //     core = r["core"];
 //   }
-  
+
 //   if((core.as_javascript() as Bytes).equal_to(h("0x01"))){
 //     return t(f, SExp.to(args));
 //   }
