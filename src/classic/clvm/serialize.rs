@@ -99,12 +99,9 @@ impl<'a> Iterator for SExpToBytesIterator<'a> {
     type Item = Vec<u8>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self.state.pop() {
-                None => {
-                    break;
-                }
-                Some(SExpToByteOp::Object(x)) => match self.allocator.sexp(x) {
+        self.state.pop().and_then(|step| {
+            match step {
+                SExpToByteOp::Object(x) => match self.allocator.sexp(x) {
                     SExp::Atom(b) => {
                         let buf = self.allocator.buf(&b).to_vec();
                         let bytes = Bytes::new(Some(BytesFromType::Raw(buf.to_vec())));
@@ -126,12 +123,11 @@ impl<'a> Iterator for SExpToBytesIterator<'a> {
                         return Some(vec![CONS_BOX_MARKER as u8]);
                     }
                 },
-                Some(SExpToByteOp::Blob(b)) => {
+                SExpToByteOp::Blob(b) => {
                     return Some(b);
                 }
             }
-        }
-        return None;
+        })
     }
 }
 

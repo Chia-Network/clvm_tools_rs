@@ -363,7 +363,7 @@ pub fn cons_of_string_map<X>(
                 Rc::new(SExp::QuotedString(l.clone(), '\"' as u8, x.0.to_vec())),
                 Rc::new(SExp::Cons(
                     l.clone(),
-                    cvt_body(x.1.clone()),
+                    cvt_body(x.1),
                     Rc::new(SExp::Nil(l.clone())),
                 )),
             ))
