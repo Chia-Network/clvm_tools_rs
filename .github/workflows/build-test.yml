@@ -119,7 +119,7 @@ jobs:
         git clone https://github.com/Chia-Network/clvm.git --branch=main --single-branch
         python -m pip install ./clvm
 
-        git clone https://github.com/Chia-Network/clvm_tools_rs.git --branch=main --single-branch
+        git clone https://github.com/Chia-Network/clvm_tools_rs.git --branch=dev --single-branch
         (cd clvm_tools_rs && maturin develop --release)
 
     - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed
@@ -128,7 +128,7 @@ jobs:
         python -c 'import clvm'
         python -c 'import clvm; print(clvm.__file__)'
         python -c 'import clvm_rs; print(clvm_rs.__file__)'
-        python -c 'import clvm_tools; print(clvm_tools_rs.__file__)'
+        python -c 'import clvm_tools_rs; print(clvm_tools_rs.__file__)'
 
     - name: Run tests from clvm
       run: |
