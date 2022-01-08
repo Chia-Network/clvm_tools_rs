@@ -99,33 +99,31 @@ impl<'a> Iterator for SExpToBytesIterator<'a> {
     type Item = Vec<u8>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.state.pop().and_then(|step| {
-            match step {
-                SExpToByteOp::Object(x) => match self.allocator.sexp(x) {
-                    SExp::Atom(b) => {
-                        let buf = self.allocator.buf(&b).to_vec();
-                        let bytes = Bytes::new(Some(BytesFromType::Raw(buf.to_vec())));
-                        match atom_size_blob(&bytes) {
-                            Ok((original, b)) => {
-                                if original {
-                                    self.state.push(SExpToByteOp::Blob(buf));
-                                }
-                                return Some(b);
+        self.state.pop().and_then(|step| match step {
+            SExpToByteOp::Object(x) => match self.allocator.sexp(x) {
+                SExp::Atom(b) => {
+                    let buf = self.allocator.buf(&b).to_vec();
+                    let bytes = Bytes::new(Some(BytesFromType::Raw(buf.to_vec())));
+                    match atom_size_blob(&bytes) {
+                        Ok((original, b)) => {
+                            if original {
+                                self.state.push(SExpToByteOp::Blob(buf));
                             }
-                            Err(_) => {
-                                return None;
-                            }
+                            return Some(b);
+                        }
+                        Err(_) => {
+                            return None;
                         }
                     }
-                    SExp::Pair(f, r) => {
-                        self.state.push(SExpToByteOp::Object(r));
-                        self.state.push(SExpToByteOp::Object(f));
-                        return Some(vec![CONS_BOX_MARKER as u8]);
-                    }
-                },
-                SExpToByteOp::Blob(b) => {
-                    return Some(b);
                 }
+                SExp::Pair(f, r) => {
+                    self.state.push(SExpToByteOp::Object(r));
+                    self.state.push(SExpToByteOp::Object(f));
+                    return Some(vec![CONS_BOX_MARKER as u8]);
+                }
+            },
+            SExpToByteOp::Blob(b) => {
+                return Some(b);
             }
         })
     }
