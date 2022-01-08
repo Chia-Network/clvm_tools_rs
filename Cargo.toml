@@ -23,8 +23,9 @@ sha2 = "0.9.5"
 yamlette = "0.0.8"
 
 [dependencies.clvm_rs]
-version = "0.1.12"
-default-features = false
+git = "https://github.com/prozacchiwawa/clvm_rs"
+branch = "20211029-try-config"
+package = "clvm_rust"
 
 [lib]
 name = "clvm_tools_rs"
@@ -35,7 +36,10 @@ wasm-bindgen = "0.2.75"
 wasm-bindgen-test = "0.3.25"
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
-pyo3 = "0.14.2"
+pyo3 = { version = "0.14.2", features = ["abi3-py37", "extension-module"] }
+
+[build-dependencies]
+pyo3-build-config = "0.15.1"
 
 [[bin]]
 name = "opd"
