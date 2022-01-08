@@ -733,8 +733,7 @@ dependencies = [
 [[package]]
 name = "skimmer"
 version = "0.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a998f51f908fe464e755f7438a19fba9f42580d47277dbd49ab1e2b66e37d718"
+source = "git+https://github.com/dnsl48/skimmer?rev=ca914ef624ecf39a75ed7afef10e7838fffe9127#ca914ef624ecf39a75ed7afef10e7838fffe9127"
 
 [[package]]
 name = "smallvec"
