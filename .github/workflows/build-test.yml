@@ -90,7 +90,7 @@ jobs:
         ln -s venv\Scripts\Activate.ps1 activate
         maturin build --no-sdist -i python --release --strip
         # this does NOT work: pip install target/wheels/clvm_tools_rs-*.whl
-        python -c 'import os; print("$env:WHEEL_PATH = \"target/wheels/%s\"" % list(filter(lambda x: x.endswith("whl"), os.listdir("target/wheels")))[0])' > usewheel.ps1
+        python support/wheelname.py
         . usewheel.ps1
         pip install $env:WHEEL_PATH
         # maturin develop --release
