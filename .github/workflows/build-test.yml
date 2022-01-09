@@ -120,10 +120,13 @@ jobs:
         python -m pip install ./clvm
 
         git clone https://github.com/prozacchiwawa/clvm_tools_rs.git --branch=dev --single-branch
+        echo "installing clvm_tools_rs"
         (cd clvm_tools_rs && maturin develop --release)
 
+        echo "installing clvm_rs via pip"
         pip install clvm_rs
 
+        echo "installing clvm_tools for clvm tests"
         # clvm tools is required to run the tests is clvm
         python -m pip install clvm_tools
 
