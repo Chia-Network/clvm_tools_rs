@@ -91,7 +91,7 @@ jobs:
         maturin build --no-sdist -i python --release --strip
         # this does NOT work: pip install target/wheels/clvm_tools_rs-*.whl
         python support/wheelname.py
-        . usewheel.ps1
+        . .\usewheel.ps1
         pip install $env:WHEEL_PATH
         # maturin develop --release
         # the line above also doesn't seem to work
