@@ -93,7 +93,8 @@ jobs:
         # it'd be better to use the wheel, but I can't figure out how to do that
         # TODO: figure this out
         # this does NOT work: pip install target/wheels/clvm_tools_rs-*.whl
-        maturin develop --release
+        pip install target/wheels/clvm_tools_rs-*.whl
+        # maturin develop --release
         # the line above also doesn't seem to work
 
     - name: Install clvm_tools_rs wheel
