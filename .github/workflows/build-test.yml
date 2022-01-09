@@ -124,6 +124,9 @@ jobs:
 
         pip install clvm_rs
 
+        # clvm tools is required to run the tests is clvm
+        python -m pip install clvm_tools
+
     - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed
       run: |
         . ./activate
