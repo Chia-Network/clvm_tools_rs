@@ -99,6 +99,9 @@ jobs:
     - name: Install clvm_tools_rs wheel
       if: ${{ !startsWith(matrix.os, 'windows') }}
       run: |
+        python -m venv venv
+        ln -s venv/bin/activate
+
         . ./activate
         ls target/wheels/
         # this mess puts the name of the `.whl` file into `$WHEEL_PATH`
@@ -118,10 +121,6 @@ jobs:
         . ./activate
         git clone https://github.com/Chia-Network/clvm.git --branch=main --single-branch
         python -m pip install ./clvm
-
-        git clone https://github.com/prozacchiwawa/clvm_tools_rs.git --branch=dev --single-branch
-        echo "installing clvm_tools_rs"
-        (cd clvm_tools_rs && maturin develop --release)
 
         echo "installing clvm_rs via pip"
         pip install clvm_rs
