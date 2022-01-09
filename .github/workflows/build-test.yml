@@ -122,6 +122,8 @@ jobs:
         git clone https://github.com/prozacchiwawa/clvm_tools_rs.git --branch=dev --single-branch
         (cd clvm_tools_rs && maturin develop --release)
 
+        pip install clvm_rs
+
     - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed
       run: |
         . ./activate
