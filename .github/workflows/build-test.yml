@@ -123,8 +123,9 @@ jobs:
         # clvm tools is required to run the tests is clvm
         python -m pip install clvm_tools
 
-      if: ${{ startsWith(matrix.os, 'windows') }}
     - name:
+      if: ${{ startsWith(matrix.os, 'windows') }}
+      run: |
         python -m venv venv
         python -c 'import clvm'
         python -c 'import clvm; print(clvm.__file__)'
