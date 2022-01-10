@@ -85,13 +85,10 @@ jobs:
     - name: Build Windows with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'windows')
       run: |
-        python -m venv venv
         . .\venv\Scripts\Activate.ps1
-        ln -s venv\Scripts\Activate.ps1 activate
         maturin build --no-sdist -i python --release --strip
+        # Find and install the newly built wheel
         python support/wheelname.py
-        . .\usewheel.ps1
-        pip install $env:WHEEL_PATH
 
     - name: Install clvm_tools_rs wheel
       if: ${{ !startsWith(matrix.os, 'windows') }}
@@ -110,7 +107,7 @@ jobs:
         python -m pip install pytest
         python -m pip install blspy
 
-    - name: install clvm & clvm_tools_rs
+    - name: install clvm & clvm_tools
       run: |
         . ./activate
         git clone https://github.com/Chia-Network/clvm.git --branch=main --single-branch
@@ -126,7 +123,7 @@ jobs:
     - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed (windows)
       if: ${{ startsWith(matrix.os, 'windows') }}
       run: |
-        python -m venv venv
+        . .\venv\Scripts\Activate.ps1
         python -c 'import clvm'
         python -c 'import clvm; print(clvm.__file__)'
         python -c 'import clvm_rs; print(clvm_rs.__file__)'
