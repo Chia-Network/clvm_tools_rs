@@ -86,7 +86,8 @@ jobs:
       if: startsWith(matrix.os, 'windows')
       run: |
         python -m venv venv
-        . .\venv\Scripts\Activate.ps1
+        echo ". .\venv\Scripts\Activate.ps1" > activate.ps1
+        . ./activate
         maturin build --no-sdist -i python --release --strip
         # Find and install the newly built wheel
         python support/wheelname.py
@@ -106,7 +107,7 @@ jobs:
       run: |
         . ./activate
         python -m pip install pytest
-        python -m pip install blspy
+        python -m pip install blspy      
 
     - name: install clvm & clvm_tools
       run: |
@@ -121,17 +122,7 @@ jobs:
         # clvm tools is required to run the tests is clvm
         python -m pip install clvm_tools
 
-    - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed (windows)
-      if: ${{ startsWith(matrix.os, 'windows') }}
-      run: |
-        . .\venv\Scripts\Activate.ps1
-        python -c 'import clvm'
-        python -c 'import clvm; print(clvm.__file__)'
-        python -c 'import clvm_rs; print(clvm_rs.__file__)'
-        python -c 'import clvm_tools_rs; print(clvm_tools_rs.__file__)'
-        
-    - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed (unix-like)
-      if: ${{ !startsWith(matrix.os, 'windows') }}
+    - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed
       run: |
         . ./activate
         python -c 'import clvm'
