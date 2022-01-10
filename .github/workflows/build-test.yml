@@ -85,7 +85,7 @@ jobs:
     - name: Build Windows with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'windows')
       run: |
-        . ./activate
+        python -m venv venv
         . .\venv\Scripts\Activate.ps1
         ln -s venv\Scripts\Activate.ps1 activate
         maturin build --no-sdist -i python --release --strip
@@ -123,6 +123,15 @@ jobs:
         # clvm tools is required to run the tests is clvm
         python -m pip install clvm_tools
 
+      if: ${{ startsWith(matrix.os, 'windows') }}
+    - name:
+        python -m venv venv
+        python -c 'import clvm'
+        python -c 'import clvm; print(clvm.__file__)'
+        python -c 'import clvm_rs; print(clvm_rs.__file__)'
+        python -c 'import clvm_tools_rs; print(clvm_tools_rs.__file__)'
+        
+      if: ${{ !startsWith(matrix.os, 'windows') }}
     - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed
       run: |
         . ./activate
