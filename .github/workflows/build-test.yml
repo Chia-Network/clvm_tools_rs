@@ -85,16 +85,13 @@ jobs:
     - name: Build Windows with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'windows')
       run: |
-        python -m venv venv
+        . ./activate
         . .\venv\Scripts\Activate.ps1
         ln -s venv\Scripts\Activate.ps1 activate
         maturin build --no-sdist -i python --release --strip
-        # this does NOT work: pip install target/wheels/clvm_tools_rs-*.whl
         python support/wheelname.py
         . .\usewheel.ps1
         pip install $env:WHEEL_PATH
-        # maturin develop --release
-        # the line above also doesn't seem to work
 
     - name: Install clvm_tools_rs wheel
       if: ${{ !startsWith(matrix.os, 'windows') }}
