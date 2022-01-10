@@ -85,6 +85,7 @@ jobs:
     - name: Build Windows with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'windows')
       run: |
+        python -m venv venv
         . .\venv\Scripts\Activate.ps1
         maturin build --no-sdist -i python --release --strip
         # Find and install the newly built wheel
