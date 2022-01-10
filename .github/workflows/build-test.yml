@@ -132,8 +132,8 @@ jobs:
         python -c 'import clvm_rs; print(clvm_rs.__file__)'
         python -c 'import clvm_tools_rs; print(clvm_tools_rs.__file__)'
         
-      if: ${{ !startsWith(matrix.os, 'windows') }}
     - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed (unix-like)
+      if: ${{ !startsWith(matrix.os, 'windows') }}
       run: |
         . ./activate
         python -c 'import clvm'
