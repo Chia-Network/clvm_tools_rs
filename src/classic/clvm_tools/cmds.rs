@@ -54,7 +54,7 @@ use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp;
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::Srcloc;
-use crate::util::{ collapse, Number };
+use crate::util::{collapse, Number};
 
 pub struct PathOrCodeConv {}
 
@@ -305,29 +305,44 @@ pub fn hex_to_modern_sexp(
 #[derive(Clone, Debug)]
 struct PriorResult {
     reference: usize,
-    value: Rc<sexp::SExp>
+    value: Rc<sexp::SExp>,
 }
 
 fn format_arg_inputs(args: &Vec<PriorResult>) -> String {
-    let value_strings: Vec<String> = args.iter().map(|pr| { return pr.reference.to_string(); }).collect();
+    let value_strings: Vec<String> = args
+        .iter()
+        .map(|pr| {
+            return pr.reference.to_string();
+        })
+        .collect();
     return value_strings.join(", ");
 }
 
-fn get_arg_associations(associations: &HashMap<Number, PriorResult>, args: Rc<sexp::SExp>) -> Vec<PriorResult> {
+fn get_arg_associations(
+    associations: &HashMap<Number, PriorResult>,
+    args: Rc<sexp::SExp>,
+) -> Vec<PriorResult> {
     let mut arg_exp: Rc<sexp::SExp> = args;
     let mut result: Vec<PriorResult> = Vec::new();
     loop {
         match arg_exp.borrow() {
             sexp::SExp::Cons(_, arg, rest) => {
-                match arg.get_number().ok().as_ref().and_then(|n| associations.get(n)) {
+                match arg
+                    .get_number()
+                    .ok()
+                    .as_ref()
+                    .and_then(|n| associations.get(n))
+                {
                     Some(n) => {
                         result.push(n.clone());
-                    },
-                    _ => { }
+                    }
+                    _ => {}
                 }
                 arg_exp = rest.clone();
-            },
-            _ => { return result; }
+            }
+            _ => {
+                return result;
+            }
         }
     }
 }
@@ -664,11 +679,14 @@ pub fn cldb(args: &Vec<String>) {
                     to_print.insert("Row".to_string(), output.len().to_string());
                     match x.get_number().ok() {
                         Some(n) => {
-                            outputs_to_step.insert(n, PriorResult {
-                                reference: output.len(),
-                                value: x.clone()
-                            });
-                        },
+                            outputs_to_step.insert(
+                                n,
+                                PriorResult {
+                                    reference: output.len(),
+                                    value: x.clone(),
+                                },
+                            );
+                        }
                         _ => {}
                     }
                     in_expr = false;
@@ -697,7 +715,7 @@ pub fn cldb(args: &Vec<String>) {
                             let args = format_arg_inputs(&arg_associations);
                             to_print.insert("Argument-Refs".to_string(), args);
                         }
-                    },
+                    }
                     _ => {}
                 }
                 add_context(sexp.borrow(), c.borrow(), Some(a.clone()), &mut to_print);
