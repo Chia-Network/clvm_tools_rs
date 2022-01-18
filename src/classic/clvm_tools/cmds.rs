@@ -54,7 +54,7 @@ use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp;
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::Srcloc;
-use crate::util::collapse;
+use crate::util::{ collapse, Number };
 
 pub struct PathOrCodeConv {}
 
@@ -302,6 +302,36 @@ pub fn hex_to_modern_sexp(
     })
 }
 
+#[derive(Clone, Debug)]
+struct PriorResult {
+    reference: usize,
+    value: Rc<sexp::SExp>
+}
+
+fn format_arg_inputs(args: &Vec<PriorResult>) -> String {
+    let value_strings: Vec<String> = args.iter().map(|pr| { return pr.reference.to_string(); }).collect();
+    return value_strings.join(", ");
+}
+
+fn get_arg_associations(associations: &HashMap<Number, PriorResult>, args: Rc<sexp::SExp>) -> Vec<PriorResult> {
+    let mut arg_exp: Rc<sexp::SExp> = args;
+    let mut result: Vec<PriorResult> = Vec::new();
+    loop {
+        match arg_exp.borrow() {
+            sexp::SExp::Cons(_, arg, rest) => {
+                match arg.get_number().ok().as_ref().and_then(|n| associations.get(n)) {
+                    Some(n) => {
+                        result.push(n.clone());
+                    },
+                    _ => { }
+                }
+                arg_exp = rest.clone();
+            },
+            _ => { return result; }
+        }
+    }
+}
+
 pub fn cldb(args: &Vec<String>) {
     let tool_name = "cldb".to_string();
     let mut hex = false;
@@ -365,6 +395,7 @@ pub fn cldb(args: &Vec<String>) {
         &"".to_string(),
     ));
     let mut parsed_args_result: String = "".to_string();
+    let mut outputs_to_step = HashMap::<Number, PriorResult>::new();
 
     match parser.parse_args(&arg_vec) {
         Err(e) => {
@@ -630,6 +661,16 @@ pub fn cldb(args: &Vec<String>) {
                     let history_len = get_history_len(p.clone());
                     to_print.insert("Result-Location".to_string(), l.to_string());
                     to_print.insert("Value".to_string(), x.to_string());
+                    to_print.insert("Row".to_string(), output.len().to_string());
+                    match x.get_number().ok() {
+                        Some(n) => {
+                            outputs_to_step.insert(n, PriorResult {
+                                reference: output.len(),
+                                value: x.clone()
+                            });
+                        },
+                        _ => {}
+                    }
                     in_expr = false;
                     output.push(to_print.clone());
                     to_print = BTreeMap::new();
@@ -648,6 +689,17 @@ pub fn cldb(args: &Vec<String>) {
                 let history_len = get_history_len(p.clone());
                 to_print.insert("Operator-Location".to_string(), a.loc().to_string());
                 to_print.insert("Operator".to_string(), sexp.to_string());
+                match sexp.get_number().ok() {
+                    Some(v) => {
+                        if v == 9_u32.to_bigint().unwrap() {
+                            let arg_associations =
+                                get_arg_associations(&outputs_to_step, a.clone());
+                            let args = format_arg_inputs(&arg_associations);
+                            to_print.insert("Argument-Refs".to_string(), args);
+                        }
+                    },
+                    _ => {}
+                }
                 add_context(sexp.borrow(), c.borrow(), Some(a.clone()), &mut to_print);
                 add_function(input_file.clone(), sexp, &mut to_print);
                 in_expr = true;
