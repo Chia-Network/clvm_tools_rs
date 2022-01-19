@@ -28,6 +28,7 @@ use crate::classic::clvm::serialize::{sexp_from_stream, sexp_to_stream, SimpleCr
 use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
 use crate::classic::clvm::KEYWORD_FROM_ATOM;
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
+use crate::classic::clvm_tools::clvmc::detect_modern;
 use crate::classic::clvm_tools::debug::trace_pre_eval;
 use crate::classic::clvm_tools::debug::{trace_to_table, trace_to_text};
 use crate::classic::clvm_tools::ir::reader::read_ir;
@@ -825,48 +826,6 @@ fn write_sym_output(
             format!("failed to write {}", path)
         }).map(|_| ())
     }
-}
-
-fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> bool {
-    match proper_list(allocator, sexp, true) {
-        None => {
-            return false;
-        }
-        Some(l) => {
-            for elt in l.iter() {
-                if detect_modern(allocator, *elt) {
-                    return true;
-                }
-
-                match proper_list(allocator, *elt, true) {
-                    None => {
-                        continue;
-                    }
-                    Some(e) => {
-                        if e.len() != 2 {
-                            continue;
-                        }
-
-                        match (allocator.sexp(e[0]), allocator.sexp(e[1])) {
-                            (SExp::Atom(inc), SExp::Atom(name)) => {
-                                if allocator.buf(&inc) == "include".as_bytes().to_vec()
-                                    && allocator.buf(&name)
-                                        == "*standard-cl-21*".as_bytes().to_vec()
-                                {
-                                    return true;
-                                }
-                            }
-                            _ => {
-                                continue;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    return false;
 }
 
 pub fn launch_tool(
