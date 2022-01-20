@@ -229,9 +229,7 @@ fn path_from_args<'a>(
                 }
             }
         }
-        _ => {
-            Ok(new_args)
-        }
+        _ => Ok(new_args),
     }
 }
 
@@ -241,16 +239,14 @@ fn sub_args<'a>(
     new_args: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
     match allocator.sexp(sexp) {
-        SExp::Atom(_) => {
-            path_from_args(allocator, sexp, new_args)
-        }
+        SExp::Atom(_) => path_from_args(allocator, sexp, new_args),
         SExp::Pair(first_pre, rest) => {
             let mut first = sexp;
 
             match allocator.sexp(first_pre) {
-                SExp::Pair(_,_) => {
+                SExp::Pair(_, _) => {
                     first = sub_args(allocator, first_pre, new_args)?;
-                },
+                }
                 SExp::Atom(b) => {
                     let atom = allocator.buf(&b);
                     if atom.len() == 1 && atom[0] == 1 {
@@ -273,7 +269,7 @@ fn sub_args<'a>(
                     tail_list <- enlist(allocator, &res);
                     allocator.new_pair(first, tail_list)
                 },
-                None => { path_from_args(allocator, sexp, new_args) }
+                None => path_from_args(allocator, sexp, new_args),
             }
         }
     }
@@ -644,7 +640,7 @@ pub fn optimize_sexp_<'a>(
         OptimizerRunner::new("cons_q_a_optimizer", &cons_q_a_optimizer),
         OptimizerRunner::new(
             "var_change_optimizer_cons_eval",
-            &var_change_optimizer_cons_eval
+            &var_change_optimizer_cons_eval,
         ),
         OptimizerRunner::new("children_optimizer", &children_optimizer),
         OptimizerRunner::new("path_optimizer", &path_optimizer),
@@ -790,10 +786,10 @@ fn test_sub_args(src: String) -> String {
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths(&vec![".".to_string()]);
     match allocator.sexp(assembled) {
-        SExp::Pair(a,b) => {
+        SExp::Pair(a, b) => {
             let optimized = sub_args(&mut allocator, a, b).unwrap();
             return disassemble(&mut allocator, optimized);
-        },
+        }
         _ => {
             panic!("assembled a list got an atom");
         }
@@ -833,28 +829,19 @@ fn constant_optimizer_example() {
 #[test]
 fn test_sub_args_1() {
     let src = "(5 . 1)".to_string();
-    assert_eq!(
-        test_sub_args(src),
-        "(f (r 1))".to_string()
-    );
+    assert_eq!(test_sub_args(src), "(f (r 1))".to_string());
 }
 
 #[test]
 fn test_path_optimizer_3() {
     let src = "(sha256 (r 1))".to_string();
-    assert_eq!(
-        test_optimizer(src),
-        "(sha256 3)"
-    );
+    assert_eq!(test_optimizer(src), "(sha256 3)");
 }
 
 #[test]
 fn test_path_optimizer_5() {
     let src = "(sha256 (f (r 1)))".to_string();
-    assert_eq!(
-        test_optimizer(src),
-        "(sha256 5)"
-    );
+    assert_eq!(test_optimizer(src), "(sha256 5)");
 }
 
 #[test]
