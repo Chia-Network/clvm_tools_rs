@@ -104,3 +104,11 @@ fn brun_v_test() {
             (q . 3) [()] => 3"}
     );
 }
+
+#[test]
+fn brun_constant_test() {
+    assert_eq!(
+        do_basic_run(&vec!("run".to_string(), "(mod () (defconstant X 3) X)".to_string())).trim(),
+        "(q . 3)".to_string()
+    );
+}
