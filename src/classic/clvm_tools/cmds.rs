@@ -710,7 +710,7 @@ pub fn cldb(args: &Vec<String>) {
                 to_print.insert("Operator".to_string(), sexp.to_string());
                 match sexp.get_number().ok() {
                     Some(v) => {
-                        if v == 9_u32.to_bigint().unwrap() {
+                        if v == 11_u32.to_bigint().unwrap() {
                             let arg_associations =
                                 get_arg_associations(&outputs_to_step, a.clone());
                             let args = format_arg_inputs(&arg_associations);
