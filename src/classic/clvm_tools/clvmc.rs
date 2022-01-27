@@ -79,9 +79,9 @@ fn compile_clvm_text(
 
     if detect_modern(allocator, assembled_sexp) {
         let runner = Rc::new(DefaultProgramRunner::new());
-        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).
-            set_optimize(true).
-            set_search_paths(&search_paths);
+        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
+            .set_optimize(true)
+            .set_search_paths(&search_paths);
 
         let unopt_res = compile_file(allocator, runner.clone(), opts.clone(), &text);
         let res = unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)));
