@@ -134,7 +134,6 @@ pub fn compile_clvm(
                 Ok(output_path.to_string())
             }
         } else {
-            log::info(format!("skipping {}, compiled recently", input_path));
             Ok(output_path.to_string())
         }
     })

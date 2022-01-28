@@ -30,8 +30,6 @@ fn compile_clvm(
                 path_string = path_string + ".clvm";
             };
 
-        let _ = print!("input {:?} trying {}\n", input_path, path_string);
-
         clvmc::compile_clvm(
             &path_string,
             &output_path,
