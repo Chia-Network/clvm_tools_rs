@@ -52,6 +52,37 @@ use crate::util::{number_from_u8, u8_from_number};
  *         )
  */
 
+fn cons_bodyform(loc: Srcloc, left: Rc<BodyForm>, right: Rc<BodyForm>) -> BodyForm {
+    BodyForm::Call(
+        loc.clone(),
+        vec!(
+            Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), "c".as_bytes().to_vec()))), // Cons
+            left.clone(),
+            right.clone()
+        )
+    )
+}
+
+/*
+ * Produce a structure that mimics the expected environment if the current inline
+ * context had been a function.
+ */
+fn create_let_env_expression(args: Rc<SExp>) -> BodyForm {
+    match args.borrow() {
+        SExp::Cons(l, a, b) => {
+            cons_bodyform(
+                l.clone(),
+                Rc::new(create_let_env_expression(a.clone())),
+                Rc::new(create_let_env_expression(b.clone()))
+            )
+        },
+        _ => {
+            let cloned: &SExp = args.borrow();
+            BodyForm::Value(cloned.clone())
+        }
+    }
+}
+
 fn helper_atom(h: &HelperForm) -> SExp {
     SExp::Atom(h.loc(), h.name())
 }
@@ -826,6 +857,7 @@ fn generate_let_args(l: Srcloc, blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {
 
 fn hoist_body_let_binding(
     compiler: &PrimaryCodegen,
+    outer_context: Option<Rc<SExp>>,
     args: Rc<SExp>,
     body: Rc<BodyForm>,
 ) -> (Vec<HelperForm>, Rc<BodyForm>) {
@@ -841,19 +873,24 @@ fn hoist_body_let_binding(
                 body.clone(),
             );
             let mut let_args = generate_let_args(l.clone(), bindings.to_vec());
-            let pass_env = BodyForm::Call(
-                l.clone(),
-                vec![
-                    Rc::new(BodyForm::Value(SExp::Atom(
+            let pass_env =
+                outer_context.
+                map(|x| create_let_env_expression(x)).
+                unwrap_or_else(|| {
+                    BodyForm::Call(
                         l.clone(),
-                        "r".as_bytes().to_vec(),
-                    ))),
-                    Rc::new(BodyForm::Value(SExp::Atom(
-                        l.clone(),
-                        "@".as_bytes().to_vec(),
-                    ))),
-                ],
-            );
+                        vec![
+                            Rc::new(BodyForm::Value(SExp::Atom(
+                                l.clone(),
+                                "r".as_bytes().to_vec(),
+                            ))),
+                            Rc::new(BodyForm::Value(SExp::Atom(
+                                l.clone(),
+                                "@".as_bytes().to_vec(),
+                            ))),
+                        ],
+                    )
+                });
 
             let mut call_args = Vec::new();
             call_args.push(Rc::new(BodyForm::Value(SExp::Atom(l.clone(), defun_name))));
@@ -878,7 +915,8 @@ fn process_helper_let_bindings(
     while i < result.len() {
         match result[i].clone() {
             HelperForm::Defun(l, name, inline, args, body) => {
-                let helper_result = hoist_body_let_binding(compiler, args.clone(), body.clone());
+                let context = if (inline) { Some(args.clone()) } else { None };
+                let helper_result = hoist_body_let_binding(compiler, context, args.clone(), body.clone());
                 let hoisted_helpers = helper_result.0;
                 let hoisted_body = helper_result.1.clone();
 
@@ -909,7 +947,7 @@ fn start_codegen(opts: Rc<dyn CompilerOpts>, comp: CompileForm) -> PrimaryCodege
         Some(c) => c,
     };
 
-    let hoisted_bindings = hoist_body_let_binding(&use_compiler, comp.args.clone(), comp.exp);
+    let hoisted_bindings = hoist_body_let_binding(&use_compiler, None, comp.args.clone(), comp.exp);
     let mut new_helpers = hoisted_bindings.0;
     let expr = hoisted_bindings.1;
     new_helpers.append(&mut comp.helpers.clone());
