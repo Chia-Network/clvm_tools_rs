@@ -55,11 +55,14 @@ use crate::util::{number_from_u8, u8_from_number};
 fn cons_bodyform(loc: Srcloc, left: Rc<BodyForm>, right: Rc<BodyForm>) -> BodyForm {
     BodyForm::Call(
         loc.clone(),
-        vec!(
-            Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), "c".as_bytes().to_vec()))), // Cons
+        vec![
+            Rc::new(BodyForm::Value(SExp::Atom(
+                loc.clone(),
+                "c".as_bytes().to_vec(),
+            ))), // Cons
             left.clone(),
-            right.clone()
-        )
+            right.clone(),
+        ],
     )
 }
 
@@ -69,13 +72,11 @@ fn cons_bodyform(loc: Srcloc, left: Rc<BodyForm>, right: Rc<BodyForm>) -> BodyFo
  */
 fn create_let_env_expression(args: Rc<SExp>) -> BodyForm {
     match args.borrow() {
-        SExp::Cons(l, a, b) => {
-            cons_bodyform(
-                l.clone(),
-                Rc::new(create_let_env_expression(a.clone())),
-                Rc::new(create_let_env_expression(b.clone()))
-            )
-        },
+        SExp::Cons(l, a, b) => cons_bodyform(
+            l.clone(),
+            Rc::new(create_let_env_expression(a.clone())),
+            Rc::new(create_let_env_expression(b.clone())),
+        ),
         _ => {
             let cloned: &SExp = args.borrow();
             BodyForm::Value(cloned.clone())
@@ -873,10 +874,9 @@ fn hoist_body_let_binding(
                 body.clone(),
             );
             let mut let_args = generate_let_args(l.clone(), bindings.to_vec());
-            let pass_env =
-                outer_context.
-                map(|x| create_let_env_expression(x)).
-                unwrap_or_else(|| {
+            let pass_env = outer_context
+                .map(|x| create_let_env_expression(x))
+                .unwrap_or_else(|| {
                     BodyForm::Call(
                         l.clone(),
                         vec![
@@ -916,7 +916,8 @@ fn process_helper_let_bindings(
         match result[i].clone() {
             HelperForm::Defun(l, name, inline, args, body) => {
                 let context = if (inline) { Some(args.clone()) } else { None };
-                let helper_result = hoist_body_let_binding(compiler, context, args.clone(), body.clone());
+                let helper_result =
+                    hoist_body_let_binding(compiler, context, args.clone(), body.clone());
                 let hoisted_helpers = helper_result.0;
                 let hoisted_body = helper_result.1.clone();
 

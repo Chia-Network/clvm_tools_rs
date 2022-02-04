@@ -178,9 +178,11 @@ fn run_test_8() {
 #[test]
 fn run_inlines() {
     let result = run_string(
-        &"(mod (a) (defun-inline F (x) (+ x 1)) (defun-inline G (x) (* x 2)) (G (F a)))".to_string(),
+        &"(mod (a) (defun-inline F (x) (+ x 1)) (defun-inline G (x) (* x 2)) (G (F a)))"
+            .to_string(),
         &"(13)".to_string(),
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(result.to_string(), "28".to_string());
 }
 
