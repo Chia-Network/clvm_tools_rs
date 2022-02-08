@@ -314,13 +314,23 @@ fn run_test_intermediate_let_final() {
 }
 
 #[test]
-fn run_test_let_star() {
+fn run_test_let_star_2_deep() {
     let result = run_string(
         &"(mod (a) (let* ((x (+ a 1)) (y (+ x 1))) (+ x y)))".to_string(),
         &"(100)".to_string(),
     )
         .unwrap();
     assert_eq!(result.to_string(), "203".to_string());
+}
+
+#[test]
+fn run_test_let_star_3_deep() {
+    let result = run_string(
+        &"(mod (a) (let* ((x (+ a 1)) (y (+ x 1)) (z (* a y))) (+ x y z)))".to_string(),
+        &"(100)".to_string(),
+    )
+        .unwrap();
+    assert_eq!(result.to_string(), "10403".to_string());
 }
 
 #[test]

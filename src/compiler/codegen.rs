@@ -874,7 +874,6 @@ fn hoist_body_let_binding(
 ) -> (Vec<HelperForm>, Rc<BodyForm>) {
     match body.borrow() {
         BodyForm::Let(l, LetFormKind::Parallel, bindings, body) => {
-            println!("hoist_body_let_binding for {} with context {}", body.to_sexp().to_string(), outer_context.as_ref().map(|x| x.to_string()).unwrap_or_else(|| "None".to_string()));
             let defun_name = gensym("letbinding".as_bytes().to_vec());
             let generated_defun = generate_let_defun(
                 compiler,
@@ -909,8 +908,6 @@ fn hoist_body_let_binding(
             call_args.append(&mut let_args);
 
             let final_call = BodyForm::Call(l.clone(), call_args);
-            println!("generating call {}", final_call.to_sexp().to_string());
-            println!("to {}", generated_defun.to_sexp().to_string());
             (vec![generated_defun], Rc::new(final_call.clone()))
         }
         _ => (Vec::new(), body.clone()),

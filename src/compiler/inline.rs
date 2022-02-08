@@ -94,12 +94,10 @@ fn pick_value_from_arg_element(match_args: Rc<SExp>, provided: Rc<BodyForm>, app
                 _ => None
             };
 
-            println!("pick_value_from_arg_element args {} provided {} name {} result {}", match_args.to_string(), provided.to_sexp().to_string(), SExp::Atom(l.clone(), name.clone()).to_string(), result.as_ref().map(|x| x.to_sexp().to_string()).unwrap_or_else(|| "None".to_string()));
             result
         },
         SExp::Atom(l, a) => {
             if *a == name {
-                println!("pick_value_from_arg_element args {} provided {} name {}", match_args.to_string(), apply(provided.clone()).to_sexp().to_string(), SExp::Atom(l.clone(), name.clone()).to_string());
                 Some(apply(provided))
             } else {
                 None
@@ -143,8 +141,6 @@ fn replace_inline_body(
     expr: Rc<BodyForm>,
 ) -> Result<Rc<BodyForm>, CompileErr> {
     let arg_str_vec: Vec<String> = args.iter().map(|x| x.to_sexp().to_string()).collect();
-
-    println!("replace_inline_body {} function {} expr {} args {:?}", SExp::Atom(loc.clone(), inline.name.to_vec()).to_string(), inline.to_sexp().to_string(), expr.to_sexp().to_string(), arg_str_vec);
 
     match expr.borrow() {
         BodyForm::Let(l, _, bindings, body) => Err(CompileErr(
@@ -217,7 +213,7 @@ pub fn replace_in_inline(
     args: &Vec<Rc<BodyForm>>,
 ) -> Result<Rc<BodyForm>, CompileErr> {
     let arg_str_vec: Vec<String> = args.iter().map(|x| x.to_sexp().to_string()).collect();
-    let res = replace_inline_body(
+    replace_inline_body(
         allocator,
         runner,
         opts,
@@ -226,7 +222,5 @@ pub fn replace_in_inline(
         inline,
         args,
         inline.body.clone(),
-    )?;
-    println!("replace_in_inline (defun-inline {} {} {}) with args {:?} gives {}", SExp::Atom(loc.clone(), inline.name.clone()).to_string(), inline.args.to_string(), inline.to_sexp().to_string(), arg_str_vec, res.to_sexp().to_string());
-    Ok(res)
+    )
 }
