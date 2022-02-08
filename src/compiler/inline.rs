@@ -27,7 +27,7 @@ fn apply_fn(loc: Srcloc, name: String, expr: Rc<BodyForm>) -> Rc<BodyForm> {
         vec![
             Rc::new(BodyForm::Value(SExp::atom_from_string(
                 loc.clone(),
-                &"@".to_string(),
+                &name,
             ))),
             expr
         ],
@@ -88,15 +88,19 @@ fn pick_value_from_arg_element(match_args: Rc<SExp>, provided: Rc<BodyForm>, app
                 apply_fn(l.clone(), "r".to_string(), x.clone())
             }, name.clone());
 
-            match (matched_a, matched_b) {
+            let result = match (matched_a, matched_b) {
                 (Some(a), _) => Some(a),
                 (_, Some(b)) => Some(b),
                 _ => None
-            }
+            };
+
+            println!("pick_value_from_arg_element args {} provided {} name {} result {}", match_args.to_string(), provided.to_sexp().to_string(), SExp::Atom(l.clone(), name.clone()).to_string(), result.as_ref().map(|x| x.to_sexp().to_string()).unwrap_or_else(|| "None".to_string()));
+            result
         },
-        SExp::Atom(_, a) => {
+        SExp::Atom(l, a) => {
             if *a == name {
-                Some(provided)
+                println!("pick_value_from_arg_element args {} provided {} name {}", match_args.to_string(), apply(provided.clone()).to_sexp().to_string(), SExp::Atom(l.clone(), name.clone()).to_string());
+                Some(apply(provided))
             } else {
                 None
             }
