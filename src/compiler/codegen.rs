@@ -15,12 +15,12 @@ use crate::compiler::compiler::run_optimizer;
 use crate::compiler::comptypes::{
     cons_of_string_map, foldM, join_vecs_to_string, list_to_cons, mapM, with_heading, Binding,
     BodyForm, Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, DefunCall, HelperForm,
-    InlineFunction, PrimaryCodegen,
+    InlineFunction, PrimaryCodegen, LetFormKind
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::frontend::compile_bodyform;
 use crate::compiler::gensym::gensym;
-use crate::compiler::inline::replace_in_inline;
+use crate::compiler::inline::{replace_in_inline, synthesize_args};
 use crate::compiler::optimize::optimize_expr;
 use crate::compiler::prims::{primapply, primcons, primquote, prims};
 use crate::compiler::runtypes::RunFailure;
@@ -426,7 +426,7 @@ fn process_defun_call(
     ))
 }
 
-fn get_call_name(l: Srcloc, body: BodyForm) -> Result<Rc<SExp>, CompileErr> {
+pub fn get_call_name(l: Srcloc, body: BodyForm) -> Result<Rc<SExp>, CompileErr> {
     match &body {
         BodyForm::Value(SExp::Atom(l, name)) => {
             return Ok(Rc::new(SExp::Atom(l.clone(), name.clone())));
@@ -483,16 +483,25 @@ fn compile_call(
                 Rc::new(code),
             ),
 
-            Callable::CallInline(l, inline) => replace_in_inline(
-                allocator,
-                runner,
-                opts.clone(),
-                compiler,
-                l.clone(),
-                an.clone(),
-                &inline,
-                Some(&tl),
-            ),
+            Callable::CallInline(l, inline) => {
+                replace_in_inline(
+                    allocator,
+                    runner.clone(),
+                    opts.clone(),
+                    compiler,
+                    l.clone(),
+                    &inline,
+                    &tl,
+                ).and_then(|x| {
+                    generate_expr_code(
+                        allocator,
+                        runner.clone(),
+                        opts.clone(),
+                        compiler,
+                        x.clone(),
+                    )
+                })
+            },
 
             Callable::CallDefun(l, lookup) => {
                 generate_args_code(allocator, runner, opts.clone(), compiler, l.clone(), &tl)
@@ -585,7 +594,7 @@ pub fn generate_expr_code(
     expr: Rc<BodyForm>,
 ) -> Result<CompiledCode, CompileErr> {
     match expr.borrow() {
-        BodyForm::Let(l, bindings, expr) => {
+        BodyForm::Let(l, LetFormKind::Parallel, bindings, expr) => {
             /* Depends on a defun having been desugared from this let and the let
             expressing rewritten. */
             generate_expr_code(allocator, runner, opts, compiler, expr.clone())
@@ -736,6 +745,7 @@ fn codegen_(
                 Ok(compiler.add_inline(
                     name,
                     &InlineFunction {
+                        name: name.clone(),
                         args: args.clone(),
                         body: body.clone(),
                     },
@@ -863,7 +873,8 @@ fn hoist_body_let_binding(
     body: Rc<BodyForm>,
 ) -> (Vec<HelperForm>, Rc<BodyForm>) {
     match body.borrow() {
-        BodyForm::Let(l, bindings, body) => {
+        BodyForm::Let(l, LetFormKind::Parallel, bindings, body) => {
+            println!("hoist_body_let_binding for {} with context {}", body.to_sexp().to_string(), outer_context.as_ref().map(|x| x.to_string()).unwrap_or_else(|| "None".to_string()));
             let defun_name = gensym("letbinding".as_bytes().to_vec());
             let generated_defun = generate_let_defun(
                 compiler,
@@ -898,6 +909,8 @@ fn hoist_body_let_binding(
             call_args.append(&mut let_args);
 
             let final_call = BodyForm::Call(l.clone(), call_args);
+            println!("generating call {}", final_call.to_sexp().to_string());
+            println!("to {}", generated_defun.to_sexp().to_string());
             (vec![generated_defun], Rc::new(final_call.clone()))
         }
         _ => (Vec::new(), body.clone()),
@@ -916,8 +929,7 @@ fn process_helper_let_bindings(
         match result[i].clone() {
             HelperForm::Defun(l, name, inline, args, body) => {
                 let context = if (inline) { Some(args.clone()) } else { None };
-                let helper_result =
-                    hoist_body_let_binding(compiler, context, args.clone(), body.clone());
+                let helper_result = hoist_body_let_binding(compiler, context, args.clone(), body.clone());
                 let hoisted_helpers = helper_result.0;
                 let hoisted_body = helper_result.1.clone();
 
@@ -1008,14 +1020,11 @@ fn finalize_env_(
     c: &PrimaryCodegen,
     l: Srcloc,
     env: Rc<SExp>,
-) -> Result<SExp, CompileErr> {
+) -> Result<Rc<SExp>, CompileErr> {
     match env.borrow() {
         SExp::Atom(l, v) => {
             match c.defuns.get(v) {
-                Some(res) => {
-                    let res_code_copy: &SExp = res.code.borrow();
-                    Ok(res_code_copy.clone())
-                }
+                Some(res) => Ok(res.code.clone()),
                 None => {
                     match c.inlines.get(v) {
                         Some(res) => replace_in_inline(
@@ -1024,18 +1033,22 @@ fn finalize_env_(
                             opts.clone(),
                             c,
                             l.clone(),
-                            "*main*".as_bytes().to_vec(),
                             res,
-                            None,
+                            &synthesize_args(res.args.clone())
                         )
-                        .map(|x| {
-                            let borrowed_sexp: &SExp = x.1.borrow();
-                            borrowed_sexp.clone()
-                        }),
+                        .and_then(|x| {
+                            generate_expr_code(
+                                allocator,
+                                runner,
+                                opts,
+                                c,
+                                x.clone()
+                            )
+                        }).map(|x| x.1.clone()),
                         None => {
                             /* Parentfns are functions in progress in the parent */
                             if !c.parentfns.get(v).is_none() {
-                                Ok(SExp::Nil(l.clone()))
+                                Ok(Rc::new(SExp::Nil(l.clone())))
                             } else {
                                 Err(CompileErr(
                                     l.clone(),
@@ -1068,13 +1081,10 @@ fn finalize_env_(
                 l.clone(),
                 r.clone(),
             )
-            .map(|r| SExp::Cons(l.clone(), Rc::new(h.clone()), Rc::new(r.clone())))
+            .map(|r| Rc::new(SExp::Cons(l.clone(), h.clone(), r.clone())))
         }),
 
-        _ => {
-            let env_copy: &SExp = env.borrow();
-            Ok(env_copy.clone())
-        }
+        _ => Ok(env.clone())
     }
 }
 
@@ -1083,7 +1093,7 @@ fn finalize_env(
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     c: &PrimaryCodegen,
-) -> Result<SExp, CompileErr> {
+) -> Result<Rc<SExp>, CompileErr> {
     match c.env.borrow() {
         SExp::Cons(l, h, _) => finalize_env_(
             allocator,
@@ -1093,10 +1103,7 @@ fn finalize_env(
             l.clone(),
             h.clone(),
         ),
-        _ => {
-            let env_copy: &SExp = c.env.borrow();
-            Ok(env_copy.clone())
-        }
+        _ => Ok(c.env.clone())
     }
 }
 
@@ -1111,6 +1118,7 @@ fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileE
             HelperForm::Defun(_, name, true, args, body) => Ok(compiler.add_inline(
                 name,
                 &InlineFunction {
+                    name: name.clone(),
                     args: args.clone(),
                     body: body.clone(),
                 },
@@ -1157,7 +1165,7 @@ pub fn codegen(
                         Rc::new(primquote(code.0.clone(), code.1)),
                         Rc::new(primcons(
                             code.0.clone(),
-                            Rc::new(primquote(code.0.clone(), Rc::new(final_env))),
+                            Rc::new(primquote(code.0.clone(), final_env)),
                             Rc::new(SExp::Integer(code.0.clone(), bi_one())),
                         )),
                     );

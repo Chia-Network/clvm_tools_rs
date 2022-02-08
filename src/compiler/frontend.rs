@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::classic::clvm::__type_compatibility__::bi_one;
 
 use crate::compiler::comptypes::{
-    list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, ModAccum,
+    list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, ModAccum, LetFormKind,
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
@@ -33,7 +33,7 @@ fn collect_used_names_binding(body: &Binding) -> Vec<Vec<u8>> {
 
 fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
     match body {
-        BodyForm::Let(_, bindings, expr) => {
+        BodyForm::Let(_, _, bindings, expr) => {
             let mut result = Vec::new();
             for b in bindings {
                 let mut new_binding_names = collect_used_names_binding(b);
@@ -278,10 +278,17 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
 
                     match tail.proper_list() {
                         Some(v) => {
-                            if *atom_name == "let".as_bytes().to_vec() {
+                            if *atom_name == "let".as_bytes().to_vec() || *atom_name == "let*".as_bytes().to_vec() {
                                 if v.len() != 2 {
                                     return finish_err("let");
                                 }
+
+                                let kind =
+                                    if *atom_name == "let".as_bytes().to_vec() {
+                                        LetFormKind::Parallel
+                                    } else {
+                                        LetFormKind::Sequential
+                                    };
 
                                 let bindings = v[0].clone();
                                 let body = v[1].clone();
@@ -290,6 +297,7 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                                 let compiled_body = compile_bodyform(Rc::new(body.clone()))?;
                                 return Ok(BodyForm::Let(
                                     l.clone(),
+                                    kind,
                                     let_bindings,
                                     Rc::new(compiled_body),
                                 ));

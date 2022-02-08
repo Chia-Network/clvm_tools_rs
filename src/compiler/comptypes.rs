@@ -18,8 +18,19 @@ pub struct CompiledCode(pub Srcloc, pub Rc<SExp>);
 
 #[derive(Clone, Debug)]
 pub struct InlineFunction {
+    pub name: Vec<u8>,
     pub args: Rc<SExp>,
     pub body: Rc<BodyForm>,
+}
+
+impl InlineFunction {
+    pub fn to_sexp(&self) -> Rc<SExp> {
+        Rc::new(SExp::Cons(
+            self.body.loc(),
+            self.args.clone(),
+            self.body.to_sexp()
+        ))
+    }
 }
 
 pub enum Callable {
@@ -53,8 +64,14 @@ pub struct Binding {
 }
 
 #[derive(Clone, Debug)]
+pub enum LetFormKind {
+    Parallel,
+    Sequential
+}
+
+#[derive(Clone, Debug)]
 pub enum BodyForm {
-    Let(Srcloc, Vec<Rc<Binding>>, Rc<BodyForm>),
+    Let(Srcloc, LetFormKind, Vec<Rc<Binding>>, Rc<BodyForm>),
     Quoted(SExp),
     Value(SExp),
     Call(Srcloc, Vec<Rc<BodyForm>>),
@@ -240,7 +257,7 @@ impl HelperForm {
 impl BodyForm {
     pub fn loc(&self) -> Srcloc {
         match self {
-            BodyForm::Let(loc, _, _) => loc.clone(),
+            BodyForm::Let(loc, _, _, _) => loc.clone(),
             BodyForm::Quoted(a) => a.loc(),
             BodyForm::Call(loc, _) => loc.clone(),
             BodyForm::Value(a) => a.loc(),
@@ -249,14 +266,19 @@ impl BodyForm {
 
     pub fn to_sexp(&self) -> Rc<SExp> {
         match self {
-            BodyForm::Let(loc, bindings, body) => {
+            BodyForm::Let(loc, kind, bindings, body) => {
                 let translated_bindings: Vec<Rc<SExp>> =
                     bindings.iter().map(|x| x.to_sexp()).collect();
                 let bindings_cons = list_to_cons(loc.clone(), &translated_bindings);
                 let translated_body = body.to_sexp();
+                let marker =
+                    match kind {
+                        LetFormKind::Parallel => "let",
+                        LetFormKind::Sequential => "let*"
+                    };
                 Rc::new(SExp::Cons(
                     loc.clone(),
-                    Rc::new(SExp::atom_from_string(loc.clone(), &"let".to_string())),
+                    Rc::new(SExp::atom_from_string(loc.clone(), &marker.to_string())),
                     Rc::new(SExp::Cons(
                         loc.clone(),
                         Rc::new(bindings_cons),
