@@ -180,6 +180,8 @@ fn replace_inline_body(
             // determine whether an inline is the next level.
             match get_inline_callable(opts.clone(), compiler, l.clone(), call_args[0].clone())? {
                 Callable::CallInline(_, new_inline) => {
+                    let pass_on_args: Vec<Rc<BodyForm>> =
+                        new_args.iter().skip(1).map(|x| x.clone()).collect();
                     replace_in_inline(
                         allocator,
                         runner,
@@ -187,7 +189,7 @@ fn replace_inline_body(
                         compiler,
                         l.clone(),
                         &new_inline,
-                        &new_args
+                        &pass_on_args
                     )
                 },
                 Callable::CallMacro(_, macro_body) => {
