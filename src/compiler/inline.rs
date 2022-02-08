@@ -245,7 +245,5 @@ pub fn replace_in_inline(
         args,
         inline.body.clone(),
     )
-    .and_then(|x| {
-        generate_expr_code(allocator, runner, opts, compiler, x.clone())
-    })
+    .and_then(|x| generate_expr_code(allocator, runner, opts, compiler, x.clone()))
 }
