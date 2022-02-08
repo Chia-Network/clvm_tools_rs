@@ -6,7 +6,8 @@ use std::rc::Rc;
 use crate::classic::clvm::__type_compatibility__::bi_one;
 
 use crate::compiler::comptypes::{
-    list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, ModAccum, LetFormKind,
+    list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm,
+    LetFormKind, ModAccum,
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
@@ -278,17 +279,18 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
 
                     match tail.proper_list() {
                         Some(v) => {
-                            if *atom_name == "let".as_bytes().to_vec() || *atom_name == "let*".as_bytes().to_vec() {
+                            if *atom_name == "let".as_bytes().to_vec()
+                                || *atom_name == "let*".as_bytes().to_vec()
+                            {
                                 if v.len() != 2 {
                                     return finish_err("let");
                                 }
 
-                                let kind =
-                                    if *atom_name == "let".as_bytes().to_vec() {
-                                        LetFormKind::Parallel
-                                    } else {
-                                        LetFormKind::Sequential
-                                    };
+                                let kind = if *atom_name == "let".as_bytes().to_vec() {
+                                    LetFormKind::Parallel
+                                } else {
+                                    LetFormKind::Sequential
+                                };
 
                                 let bindings = v[0].clone();
                                 let body = v[1].clone();

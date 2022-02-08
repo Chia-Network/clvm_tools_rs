@@ -182,7 +182,7 @@ fn run_inlines() {
             .to_string(),
         &"(13)".to_string(),
     )
-        .unwrap();
+    .unwrap();
     assert_eq!(result.to_string(), "28".to_string());
 }
 
@@ -205,7 +205,8 @@ fn run_test_at_form() {
     let result = run_string(
         &"(mod (a b) (- (@ 11) (@ 5)))".to_string(),
         &"(51 107)".to_string(),
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(result.to_string(), "56".to_string());
 }
 
@@ -217,9 +218,11 @@ fn run_test_intermediate_let_1() {
                 (defun-inline letbinding_$_264 args args)
                 (letbinding_$_264 (r @) (+ a 1))
                 )
-        "}.to_string(),
+        "}
+        .to_string(),
         &"(100)".to_string(),
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(result.to_string(), "((100) 101)".to_string());
 }
 
@@ -232,9 +235,11 @@ fn run_test_intermediate_let_1_1() {
                 (defun letbinding_$_264 ((a) x) (letbinding_$_265 (c (c a ()) (c x ())) (+ x 1)))
                 (letbinding_$_264 (r @) (+ a 1))
                 )
-        "}.to_string(),
+        "}
+        .to_string(),
         &"(100)".to_string(),
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(result.to_string(), "(((100) 101) 102)".to_string());
 }
 
@@ -247,9 +252,11 @@ fn run_test_intermediate_let_1_2() {
                 (defun letbinding_$_264 ((a) x) (letbinding_$_265 (c (c a ()) (c x ())) (+ x 1)))
                 (letbinding_$_264 (r @) (+ a 1))
                 )
-        "}.to_string(),
+        "}
+        .to_string(),
         &"(100)".to_string(),
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(result.to_string(), "(((100) 101) 102)".to_string());
 }
 
@@ -262,9 +269,11 @@ fn run_test_intermediate_let_1_3() {
                 (defun letbinding_$_264 ((a) x) (letbinding_$_265 (c (c a ()) (c x ())) (+ x 1)))
                 (letbinding_$_264 (r @) (+ a 1))
                 )
-        "}.to_string(),
+        "}
+        .to_string(),
         &"(100)".to_string(),
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(result.to_string(), "(((100) 101) 102)".to_string());
 }
 
@@ -319,7 +328,7 @@ fn run_test_let_star_2_deep() {
         &"(mod (a) (let* ((x (+ a 1)) (y (+ x 1))) (+ x y)))".to_string(),
         &"(100)".to_string(),
     )
-        .unwrap();
+    .unwrap();
     assert_eq!(result.to_string(), "203".to_string());
 }
 
@@ -329,7 +338,7 @@ fn run_test_let_star_3_deep() {
         &"(mod (a) (let* ((x (+ a 1)) (y (+ x 1)) (z (* a y))) (+ x y z)))".to_string(),
         &"(100)".to_string(),
     )
-        .unwrap();
+    .unwrap();
     assert_eq!(result.to_string(), "10403".to_string());
 }
 

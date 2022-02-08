@@ -9,13 +9,10 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::codegen::{
-    generate_expr_code,
-    get_callable,
-    get_call_name,
-    process_macro_call
+    generate_expr_code, get_call_name, get_callable, process_macro_call,
 };
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompiledCode, CompilerOpts, InlineFunction, PrimaryCodegen, Callable
+    BodyForm, Callable, CompileErr, CompiledCode, CompilerOpts, InlineFunction, PrimaryCodegen,
 };
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -26,11 +23,8 @@ fn apply_fn(loc: Srcloc, name: String, expr: Rc<BodyForm>) -> Rc<BodyForm> {
     Rc::new(BodyForm::Call(
         loc.clone(),
         vec![
-            Rc::new(BodyForm::Value(SExp::atom_from_string(
-                loc.clone(),
-                &name,
-            ))),
-            expr
+            Rc::new(BodyForm::Value(SExp::atom_from_string(loc.clone(), &name))),
+            expr,
         ],
     ))
 }
@@ -39,7 +33,7 @@ fn at_form(loc: Srcloc, path: Number) -> Rc<BodyForm> {
     apply_fn(
         loc.clone(),
         "@".to_string(),
-        Rc::new(BodyForm::Value(SExp::Integer(loc.clone(), path.clone())))
+        Rc::new(BodyForm::Value(SExp::Integer(loc.clone(), path.clone()))),
     )
 }
 
@@ -68,35 +62,49 @@ fn enlist_remaining_args(loc: Srcloc, arg_choice: usize, args: &Vec<Rc<BodyForm>
         let i = args.len() - i_reverse - 1;
         result_body = BodyForm::Call(
             loc.clone(),
-            vec!(
-                Rc::new(BodyForm::Value(SExp::atom_from_string(loc.clone(), &"c".to_string()))),
+            vec![
+                Rc::new(BodyForm::Value(SExp::atom_from_string(
+                    loc.clone(),
+                    &"c".to_string(),
+                ))),
                 args[i].clone(),
-                Rc::new(result_body)
-            )
+                Rc::new(result_body),
+            ],
         );
     }
 
     Rc::new(result_body)
 }
 
-fn pick_value_from_arg_element(match_args: Rc<SExp>, provided: Rc<BodyForm>, apply: &dyn Fn(Rc<BodyForm>) -> Rc<BodyForm>, name: Vec<u8>) -> Option<Rc<BodyForm>> {
+fn pick_value_from_arg_element(
+    match_args: Rc<SExp>,
+    provided: Rc<BodyForm>,
+    apply: &dyn Fn(Rc<BodyForm>) -> Rc<BodyForm>,
+    name: Vec<u8>,
+) -> Option<Rc<BodyForm>> {
     match match_args.borrow() {
         SExp::Cons(l, a, b) => {
-            let matched_a = pick_value_from_arg_element(a.clone(), provided.clone(), &|x| {
-                apply_fn(l.clone(), "f".to_string(), apply(x.clone()))
-            }, name.clone());
-            let matched_b = pick_value_from_arg_element(b.clone(), provided.clone(), &|x| {
-                apply_fn(l.clone(), "r".to_string(), apply(x.clone()))
-            }, name.clone());
+            let matched_a = pick_value_from_arg_element(
+                a.clone(),
+                provided.clone(),
+                &|x| apply_fn(l.clone(), "f".to_string(), apply(x.clone())),
+                name.clone(),
+            );
+            let matched_b = pick_value_from_arg_element(
+                b.clone(),
+                provided.clone(),
+                &|x| apply_fn(l.clone(), "r".to_string(), apply(x.clone())),
+                name.clone(),
+            );
 
             let result = match (matched_a, matched_b) {
                 (Some(a), _) => Some(a),
                 (_, Some(b)) => Some(b),
-                _ => None
+                _ => None,
             };
 
             result
-        },
+        }
         SExp::Atom(l, a) => {
             if *a == name {
                 Some(apply(provided))
@@ -104,19 +112,34 @@ fn pick_value_from_arg_element(match_args: Rc<SExp>, provided: Rc<BodyForm>, app
                 None
             }
         }
-        _ => None
+        _ => None,
     }
 }
 
-fn arg_lookup(match_args: Rc<SExp>, arg_choice: usize, args: &Vec<Rc<BodyForm>>, name: Vec<u8>) -> Option<Rc<BodyForm>> {
+fn arg_lookup(
+    match_args: Rc<SExp>,
+    arg_choice: usize,
+    args: &Vec<Rc<BodyForm>>,
+    name: Vec<u8>,
+) -> Option<Rc<BodyForm>> {
     match match_args.borrow() {
         SExp::Cons(l, f, r) => {
-            match pick_value_from_arg_element(f.clone(), args[arg_choice].clone(), &|x| x.clone(), name.clone()) {
+            match pick_value_from_arg_element(
+                f.clone(),
+                args[arg_choice].clone(),
+                &|x| x.clone(),
+                name.clone(),
+            ) {
                 Some(x) => Some(x),
-                None => arg_lookup(r.clone(), arg_choice + 1, args, name.clone())
+                None => arg_lookup(r.clone(), arg_choice + 1, args, name.clone()),
             }
-        },
-        _ => pick_value_from_arg_element(match_args.clone(), enlist_remaining_args(match_args.loc(), arg_choice, args), &|x: Rc<BodyForm>| x.clone(), name)
+        }
+        _ => pick_value_from_arg_element(
+            match_args.clone(),
+            enlist_remaining_args(match_args.loc(), arg_choice, args),
+            &|x: Rc<BodyForm>| x.clone(),
+            name,
+        ),
     }
 }
 
@@ -124,7 +147,7 @@ fn get_inline_callable(
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
     loc: Srcloc,
-    list_head: Rc<BodyForm>
+    list_head: Rc<BodyForm>,
 ) -> Result<Callable, CompileErr> {
     let list_head_borrowed: &BodyForm = list_head.borrow();
     let name = get_call_name(loc.clone(), list_head_borrowed.clone())?;
@@ -154,17 +177,16 @@ fn replace_inline_body(
                 if i == 0 {
                     new_args.push(call_args[i].clone());
                 } else {
-                    let replaced =
-                        replace_inline_body(
-                            allocator,
-                            runner.clone(),
-                            opts.clone(),
-                            compiler,
-                            call_args[i].loc(),
-                            inline,
-                            &args.clone(),
-                            call_args[i].clone()
-                        )?;
+                    let replaced = replace_inline_body(
+                        allocator,
+                        runner.clone(),
+                        opts.clone(),
+                        compiler,
+                        call_args[i].loc(),
+                        inline,
+                        &args.clone(),
+                        call_args[i].clone(),
+                    )?;
                     new_args.push(replaced);
                 }
             }
@@ -187,20 +209,20 @@ fn replace_inline_body(
                         l.clone(),
                         &new_inline,
                         &pass_on_args,
-                        new_inline.body.clone()
+                        new_inline.body.clone(),
                     )
-                },
+                }
                 _ => {
                     let call = BodyForm::Call(l.clone(), new_args);
                     println!("passing on call: {}", call.to_sexp().to_string());
                     Ok(Rc::new(call))
                 }
             }
-        },
+        }
         BodyForm::Value(SExp::Atom(_, a)) => arg_lookup(inline.args.clone(), 0, args, a.clone())
             .map(|x| Ok(x.clone()))
             .unwrap_or_else(|| Ok(expr.clone())),
-        _ => Ok(expr.clone())
+        _ => Ok(expr.clone()),
     }
 }
 
@@ -223,14 +245,9 @@ pub fn replace_in_inline(
         inline,
         args,
         inline.body.clone(),
-    ).and_then(|x| {
+    )
+    .and_then(|x| {
         println!("generate expr code {}", x.to_sexp().to_string());
-        generate_expr_code(
-            allocator,
-            runner,
-            opts,
-            compiler,
-            x.clone()
-        )
+        generate_expr_code(allocator, runner, opts, compiler, x.clone())
     })
 }

@@ -28,7 +28,7 @@ impl InlineFunction {
         Rc::new(SExp::Cons(
             self.body.loc(),
             self.args.clone(),
-            self.body.to_sexp()
+            self.body.to_sexp(),
         ))
     }
 }
@@ -66,7 +66,7 @@ pub struct Binding {
 #[derive(Clone, Debug)]
 pub enum LetFormKind {
     Parallel,
-    Sequential
+    Sequential,
 }
 
 #[derive(Clone, Debug)]
@@ -271,11 +271,10 @@ impl BodyForm {
                     bindings.iter().map(|x| x.to_sexp()).collect();
                 let bindings_cons = list_to_cons(loc.clone(), &translated_bindings);
                 let translated_body = body.to_sexp();
-                let marker =
-                    match kind {
-                        LetFormKind::Parallel => "let",
-                        LetFormKind::Sequential => "let*"
-                    };
+                let marker = match kind {
+                    LetFormKind::Parallel => "let",
+                    LetFormKind::Sequential => "let*",
+                };
                 Rc::new(SExp::Cons(
                     loc.clone(),
                     Rc::new(SExp::atom_from_string(loc.clone(), &marker.to_string())),
