@@ -347,11 +347,6 @@ pub fn process_macro_call(
     build_swap_table_mut(&mut swap_table, &args_to_macro);
 
     let arg_strs: Vec<String> = args.iter().map(|x| x.to_sexp().to_string()).collect();
-    println!(
-        "process macro args {:?} code {}",
-        arg_strs,
-        code.to_string()
-    );
 
     run(
         allocator,
@@ -376,7 +371,6 @@ pub fn process_macro_call(
     })
     .and_then(|v| {
         let relabeled_expr = relabel(&mut swap_table, &v);
-        println!("macro outcome {}", relabeled_expr.to_string());
         compile_bodyform(Rc::new(relabeled_expr))
     })
     .and_then(|body| generate_expr_code(allocator, runner, opts, compiler, Rc::new(body)))

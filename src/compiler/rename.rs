@@ -216,7 +216,6 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
                 body,
                 bindings.len(),
             ));
-            println!("desugared let stack: {}", new_body.to_sexp().to_string());
             new_body
         }
 

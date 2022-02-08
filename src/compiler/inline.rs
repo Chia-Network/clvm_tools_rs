@@ -214,7 +214,6 @@ fn replace_inline_body(
                 }
                 _ => {
                     let call = BodyForm::Call(l.clone(), new_args);
-                    println!("passing on call: {}", call.to_sexp().to_string());
                     Ok(Rc::new(call))
                 }
             }
@@ -247,7 +246,6 @@ pub fn replace_in_inline(
         inline.body.clone(),
     )
     .and_then(|x| {
-        println!("generate expr code {}", x.to_sexp().to_string());
         generate_expr_code(allocator, runner, opts, compiler, x.clone())
     })
 }
