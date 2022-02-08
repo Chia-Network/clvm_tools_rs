@@ -334,6 +334,39 @@ fn run_test_let_star_3_deep() {
 }
 
 #[test]
+fn run_test_normal_with_macro_call() {
+    let result = run_string(
+        &"(mod (a) (defun test-value (a n) (if (- a n) 9999 1111)) (c (test-value a 3) (test-value a 2)))".to_string(),
+        &"(3)".to_string()
+    ).unwrap();
+    assert_eq!(result.to_string(), "(1111 . 9999)".to_string());
+}
+
+#[test]
+fn run_test_inline_with_macro_call() {
+    let result = run_string(
+        &"(mod (X) (defun-inline test-value (a n) (if (- a n) 9999 1111)) (c (test-value X 3) (test-value X 2)))".to_string(),
+        &"(3)".to_string()
+    ).unwrap();
+    assert_eq!(result.to_string(), "(1111 . 9999)".to_string());
+}
+
+/*
+ * - TODO: Ensure that a compileform name inlined and shadowed in a macro doesn't
+ *   disrupt macro execution.
+ *   ... i'll have to think about how to handle this.
+ * /
+#[test]
+fn run_test_inline_with_macro_call_tricky_naming() {
+    let result = run_string(
+        &"(mod (a) (defun-inline test-value (a n) (if (- a n) 9999 1111)) (c (test-value a 3) (test-value a 2)))".to_string(),
+        &"(3)".to_string()
+    ).unwrap();
+    assert_eq!(result.to_string(), "(1111 . 9999)".to_string());
+}
+ */
+
+#[test]
 fn run_test_9() {
     let result = run_string(
         &"(mod (a) (defun f (i) (let ((x (not i)) (y (* i 2))) (+ x y))) (f a))".to_string(),

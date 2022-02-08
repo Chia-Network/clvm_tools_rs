@@ -332,7 +332,7 @@ pub fn get_callable(
     }
 }
 
-fn process_macro_call(
+pub fn process_macro_call(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
@@ -345,6 +345,10 @@ fn process_macro_call(
     let mut swap_table = HashMap::new();
     let args_to_macro = list_to_cons(l.clone(), &converted_args);
     build_swap_table_mut(&mut swap_table, &args_to_macro);
+
+    let arg_strs: Vec<String> =
+        args.iter().map(|x| x.to_sexp().to_string()).collect();
+    println!("process macro args {:?} code {}", arg_strs, code.to_string());
 
     run(
         allocator,
@@ -369,6 +373,7 @@ fn process_macro_call(
     })
     .and_then(|v| {
         let relabeled_expr = relabel(&mut swap_table, &v);
+        println!("macro outcome {}", relabeled_expr.to_string());
         compile_bodyform(Rc::new(relabeled_expr))
     })
     .and_then(|body| generate_expr_code(allocator, runner, opts, compiler, Rc::new(body)))
@@ -492,15 +497,7 @@ fn compile_call(
                     l.clone(),
                     &inline,
                     &tl,
-                ).and_then(|x| {
-                    generate_expr_code(
-                        allocator,
-                        runner.clone(),
-                        opts.clone(),
-                        compiler,
-                        x.clone(),
-                    )
-                })
+                )
             },
 
             Callable::CallDefun(l, lookup) => {
@@ -1032,16 +1029,7 @@ fn finalize_env_(
                             l.clone(),
                             res,
                             &synthesize_args(res.args.clone())
-                        )
-                        .and_then(|x| {
-                            generate_expr_code(
-                                allocator,
-                                runner,
-                                opts,
-                                c,
-                                x.clone()
-                            )
-                        }).map(|x| x.1.clone()),
+                        ).map(|x| x.1.clone()),
                         None => {
                             /* Parentfns are functions in progress in the parent */
                             if !c.parentfns.get(v).is_none() {

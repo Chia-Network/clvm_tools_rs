@@ -11,7 +11,8 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::codegen::{
     generate_expr_code,
     get_callable,
-    get_call_name
+    get_call_name,
+    process_macro_call
 };
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompiledCode, CompilerOpts, InlineFunction, PrimaryCodegen, Callable
@@ -178,21 +179,21 @@ fn replace_inline_body(
                 Callable::CallInline(_, new_inline) => {
                     let pass_on_args: Vec<Rc<BodyForm>> =
                         new_args.iter().skip(1).map(|x| x.clone()).collect();
-                    replace_in_inline(
+                    replace_inline_body(
                         allocator,
                         runner,
                         opts.clone(),
                         compiler,
                         l.clone(),
                         &new_inline,
-                        &pass_on_args
+                        &pass_on_args,
+                        new_inline.body.clone()
                     )
                 },
-                Callable::CallMacro(_, macro_body) => {
-                    panic!("expand macro and reprocess");
-                },
                 _ => {
-                    Ok(Rc::new(BodyForm::Call(l.clone(), new_args)))
+                    let call = BodyForm::Call(l.clone(), new_args);
+                    println!("passing on call: {}", call.to_sexp().to_string());
+                    Ok(Rc::new(call))
                 }
             }
         },
@@ -211,16 +212,25 @@ pub fn replace_in_inline(
     loc: Srcloc,
     inline: &InlineFunction,
     args: &Vec<Rc<BodyForm>>,
-) -> Result<Rc<BodyForm>, CompileErr> {
+) -> Result<CompiledCode, CompileErr> {
     let arg_str_vec: Vec<String> = args.iter().map(|x| x.to_sexp().to_string()).collect();
     replace_inline_body(
         allocator,
-        runner,
-        opts,
+        runner.clone(),
+        opts.clone(),
         compiler,
         loc.clone(),
         inline,
         args,
         inline.body.clone(),
-    )
+    ).and_then(|x| {
+        println!("generate expr code {}", x.to_sexp().to_string());
+        generate_expr_code(
+            allocator,
+            runner,
+            opts,
+            compiler,
+            x.clone()
+        )
+    })
 }
