@@ -82,10 +82,10 @@ fn pick_value_from_arg_element(match_args: Rc<SExp>, provided: Rc<BodyForm>, app
     match match_args.borrow() {
         SExp::Cons(l, a, b) => {
             let matched_a = pick_value_from_arg_element(a.clone(), provided.clone(), &|x| {
-                apply_fn(l.clone(), "f".to_string(), x.clone())
+                apply_fn(l.clone(), "f".to_string(), apply(x.clone()))
             }, name.clone());
             let matched_b = pick_value_from_arg_element(b.clone(), provided.clone(), &|x| {
-                apply_fn(l.clone(), "r".to_string(), x.clone())
+                apply_fn(l.clone(), "r".to_string(), apply(x.clone()))
             }, name.clone());
 
             let result = match (matched_a, matched_b) {

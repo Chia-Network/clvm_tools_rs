@@ -304,13 +304,13 @@ fn run_test_intermediate_let_final() {
         &indoc! {"
             (mod (a)
                 (defun-inline letbinding_$_265 (((a) x_$_263) y) (+ x_$_263 y))
-                (defun-inline letbinding_$_264 ((a) x) (letbinding_$_265 (c (c a ()) (+ x 1)) (+ x 1)))
+                (defun-inline letbinding_$_264 ((a) x) (letbinding_$_265 (c (c a ()) (c x ())) (+ x 1)))
                 (letbinding_$_264 (r @) (+ a 1))
                 )
         "}.to_string(),
         &"(100)".to_string(),
     ).unwrap();
-    assert_eq!(result.to_string(), "202".to_string());
+    assert_eq!(result.to_string(), "203".to_string());
 }
 
 #[test]
@@ -320,7 +320,7 @@ fn run_test_let_star() {
         &"(100)".to_string(),
     )
         .unwrap();
-    assert_eq!(result.to_string(), "202".to_string());
+    assert_eq!(result.to_string(), "203".to_string());
 }
 
 #[test]
