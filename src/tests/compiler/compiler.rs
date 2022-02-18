@@ -441,3 +441,39 @@ fn inline_compile_test() {
     .unwrap();
     assert_eq!(result, "(2 (1 16 5 (1 . 1)) (4 (1) 1))".to_string());
 }
+
+#[test]
+fn cant_redefine_defconstant() {
+    let result = compile_string(
+        &"(mod (X) (include *standard-cl-21*) (defconstant A 3) (defconstant A 4) A)".to_string(),
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn cant_redefine_defun_with_defun() {
+    let inline_if_not_zero = |i, c| {
+        if i & c == 0 {
+            ""
+        } else {
+            "-inline"
+        }
+    };
+    for i in 0..4 {
+        let result = compile_string(&format!(
+            indoc! {"
+            (mod (A)
+              (include *standard-cl-21*)
+
+              (defun{} f (x) (+ x 1))
+              (defun{} f (y) (- y 1))
+
+              (f A)
+              )
+            "},
+            inline_if_not_zero(i, 2),
+            inline_if_not_zero(i, 1)
+        ));
+        assert!(result.is_err());
+    }
+}

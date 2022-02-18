@@ -667,6 +667,26 @@ fn combine_defun_env(old_env: Rc<SExp>, new_args: Rc<SExp>) -> Rc<SExp> {
     }
 }
 
+// Diverts to failure if a symbol is redefined.
+fn fail_if_present<T, R>(
+    loc: Srcloc,
+    map: &HashMap<Vec<u8>, T>,
+    name: &Vec<u8>,
+    result: R,
+) -> Result<R, CompileErr> {
+    if map.contains_key(name) {
+        Err(CompileErr(
+            loc.clone(),
+            format!(
+                "Cannot redefine {}",
+                SExp::Atom(loc.clone(), name.clone()).to_string()
+            ),
+        ))
+    } else {
+        Ok(result)
+    }
+}
+
 fn codegen_(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -705,6 +725,7 @@ fn codegen_(
                     format!("Error evaluating constant: {}", r.to_string()),
                 )
             })
+            .and_then(|res| fail_if_present(loc.clone(), &compiler.constants, &name, res))
             .map(|res| {
                 let quoted = primquote(loc.clone(), res);
                 compiler.add_constant(&name, Rc::new(quoted))
@@ -734,6 +755,8 @@ fn codegen_(
 
         HelperForm::Defun(loc, name, inline, args, body) => {
             if *inline {
+                // Note: this just replaces a dummy function inserted earlier.
+                // The real redefinition check is in dummy_functions.
                 Ok(compiler.add_inline(
                     name,
                     &InlineFunction {
@@ -787,6 +810,8 @@ fn codegen_(
                             Ok(Rc::new(code))
                         }
                     })
+                    .and_then(|code| fail_if_present(loc.clone(), &compiler.inlines, &name, code))
+                    .and_then(|code| fail_if_present(loc.clone(), &compiler.defuns, &name, code))
                     .map(|code| {
                         compiler.add_defun(
                             name,
@@ -1097,14 +1122,19 @@ fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileE
                 c_copy.parentfns.insert(name.clone());
                 return Ok(c_copy);
             }
-            HelperForm::Defun(_, name, true, args, body) => Ok(compiler.add_inline(
-                name,
-                &InlineFunction {
-                    name: name.clone(),
-                    args: args.clone(),
-                    body: body.clone(),
-                },
-            )),
+            HelperForm::Defun(loc, name, true, args, body) => Ok(compiler)
+                .and_then(|comp| fail_if_present(loc.clone(), &compiler.inlines, &name, comp))
+                .and_then(|comp| fail_if_present(loc.clone(), &compiler.defuns, &name, comp))
+                .map(|comp| {
+                    comp.add_inline(
+                        name,
+                        &InlineFunction {
+                            name: name.clone(),
+                            args: args.clone(),
+                            body: body.clone(),
+                        },
+                    )
+                }),
             _ => Ok(compiler.clone()),
         },
         compiler.clone(),
