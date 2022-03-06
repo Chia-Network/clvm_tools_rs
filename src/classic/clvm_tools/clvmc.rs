@@ -110,33 +110,31 @@ pub fn compile_clvm(
 ) -> Result<String, String> {
     let mut allocator = Allocator::new();
 
-    newer(input_path, output_path).and_then(|is_newer| {
-        if is_newer {
-            m! {
-                let _ = log::info(format!("clvmcc {} -o {}", input_path, output_path));
-                text <- fs::read_to_string(input_path).map_err(
-                    |x| format!("error reading {}: {:?}", input_path, x)
-                );
+    let compile =
+        newer(input_path, output_path).unwrap_or_else(|_| true);
 
-                result <- compile_clvm_text(&mut allocator, input_path.clone(), text, search_paths).map_err(
-                    |x| format!("error {} compiling {}", x.1, disassemble(&mut allocator, x.0))
-                );
-                let mut result_stream = Stream::new(None);
-                let _ = sexp_to_stream(&mut allocator, result, &mut result_stream);
+    if compile {
+        log::info(format!("clvmcc {} -o {}", input_path, output_path));
+        let text = fs::read_to_string(input_path).map_err(
+                |x| format!("error reading {}: {:?}", input_path, x)
+        )?;
 
-                f_ <- File::create(output_path).map_err(|x| {
-                    format!("Error writing {}: {:?}", input_path, x)
-                });
-                let mut f = f_;
-                _ <- f.write_all(&result_stream.get_value().hex().as_bytes()).map_err(
-                    |_| format!("failed to write to {}", output_path)
-                );
-                Ok(output_path.to_string())
-            }
-        } else {
-            Ok(output_path.to_string())
-        }
-    })
+        let result = compile_clvm_text(&mut allocator, input_path.clone(), text, search_paths).map_err(
+            |x| format!("error {} compiling {}", x.1, disassemble(&mut allocator, x.0))
+        )?;
+        let mut result_stream = Stream::new(None);
+        sexp_to_stream(&mut allocator, result, &mut result_stream);
+
+        let mut f = File::create(output_path).map_err(|x| {
+            format!("Error writing {}: {:?}", input_path, x)
+        })?;
+
+        let written = f.write_all(&result_stream.get_value().hex().as_bytes()).map_err(
+            |_| format!("failed to write to {}", output_path)
+        )?;
+    }
+
+    Ok(output_path.to_string())
 }
 
 // export function find_files(path: str = ""){
