@@ -26,6 +26,8 @@ use crate::compiler::comptypes::CompileErr;
 use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::runtypes::RunFailure;
 
+const ALWAYS_COMPILE: bool = true;
+
 pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> bool {
     match proper_list(allocator, sexp, true) {
         None => {
@@ -112,7 +114,7 @@ pub fn compile_clvm(
 
     let compile = newer(input_path, output_path).unwrap_or_else(|_| true);
 
-    if true || compile {
+    if ALWAYS_COMPILE || compile {
         log::info(format!("clvmcc {} -o {}", input_path, output_path));
         let text = fs::read_to_string(input_path)
             .map_err(|x| format!("error reading {}: {:?}", input_path, x))?;
