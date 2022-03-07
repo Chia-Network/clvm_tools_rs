@@ -62,6 +62,7 @@ jobs:
         . ./venv/bin/activate
         arch -arm64 git clone https://github.com/Chia-Network/clvm.git --branch=main --single-branch
         arch -arm64 python -m pip install ./clvm
+        arch -arm64 python -m pip install clvm_rs
 
         arch -arm64 git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
         arch -arm64 python -m pip install ./clvm_tools
