@@ -2,6 +2,7 @@ use std::cmp::min;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
 use std::rc::Rc;
 
 use tempfile::NamedTempFile;
@@ -134,7 +135,13 @@ pub fn compile_clvm(
         sexp_to_stream(&mut allocator, result, &mut result_stream);
 
         {
-            let mut temp_output_file = NamedTempFile::new().map_err(|e| {
+            let output_path_obj = Path::new(output_path);
+            let output_dir = output_path_obj
+                .parent()
+                .map(|p| Ok(p))
+                .unwrap_or_else(|| Err("could not get parent of output path"))?;
+
+            let mut temp_output_file = NamedTempFile::new_in(output_dir).map_err(|e| {
                 format!(
                     "error creating temporary compiler output for {}: {:?}",
                     input_path, e
@@ -145,18 +152,11 @@ pub fn compile_clvm(
                 .write_all(&result_stream.get_value().hex().as_bytes())
                 .map_err(|_| format!("failed to write to {:?}", temp_output_file.path()))?;
 
-            let first_stage_temp_output = format!("{}.overwrite", output_path);
-            temp_output_file.persist(first_stage_temp_output).map_err(|e| {
+            temp_output_file.persist(output_path.clone()).map_err(|e| {
                 format!(
                     "error persisting temporary compiler output {}: {:?}",
                     output_path, e
                 )
-            })?;
-
-            fs::rename(first_stage_temp_output, output_path).map_err(|e| {
-                format!(
-                    "error renaming first stage temp output to {} atomically: {:?}",
-                    output_path, e
             })?;
         }
     };
