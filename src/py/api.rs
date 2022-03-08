@@ -13,14 +13,16 @@ fn compile_clvm(
     let has_atom = input_path.hasattr("atom")?;
     let has_pair = input_path.hasattr("pair")?;
 
-    let real_input_path =
-        if has_atom {
-            input_path.getattr("atom").and_then(|x| x.str())
-        } else if has_pair {
-            input_path.getattr("pair").and_then(|x| x.get_item(0)).and_then(|x| x.str())
-        } else {
-            input_path.extract()
-        }?;
+    let real_input_path = if has_atom {
+        input_path.getattr("atom").and_then(|x| x.str())
+    } else if has_pair {
+        input_path
+            .getattr("pair")
+            .and_then(|x| x.get_item(0))
+            .and_then(|x| x.str())
+    } else {
+        input_path.extract()
+    }?;
 
     let mut path_string = real_input_path.to_string();
 
@@ -28,13 +30,8 @@ fn compile_clvm(
         path_string = path_string + ".clvm";
     };
 
-    let res = clvmc::compile_clvm(
-        &path_string,
-        &output_path,
-        &search_paths
-    ).map_err(|s| {
-        PyException::new_err(s)
-    });
+    let res = clvmc::compile_clvm(&path_string, &output_path, &search_paths)
+        .map_err(|s| PyException::new_err(s));
 
     println!("compile res {:?}", res);
 

@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -132,23 +133,40 @@ pub fn compile_clvm(
         let mut result_stream = Stream::new(None);
         sexp_to_stream(&mut allocator, result, &mut result_stream);
 
-        let mut temp_output_file = NamedTempFile::new().map_err(|e| {
-            format!(
-                "error creating temporary compiler output for {}: {:?}",
-                input_path, e
-            )
-        })?;
+        {
+            let mut temp_output_file = NamedTempFile::new().map_err(|e| {
+                format!(
+                    "error creating temporary compiler output for {}: {:?}",
+                    input_path, e
+                )
+            })?;
 
-        let written = temp_output_file
-            .write_all(&result_stream.get_value().hex().as_bytes())
-            .map_err(|_| format!("failed to write to {:?}", temp_output_file.path()))?;
+            let written = temp_output_file
+                .write_all(&result_stream.get_value().hex().as_bytes())
+                .map_err(|_| format!("failed to write to {:?}", temp_output_file.path()))?;
 
-        let _ = temp_output_file.persist(output_path).map_err(|e| {
+            let _ = temp_output_file.persist(output_path).map_err(|e| {
+                format!(
+                    "error persisting temporary compiler output {}: {:?}",
+                    output_path, e
+                )
+            });
+        }
+
+        // At this point we've written, persisted and closed the temporary file
+        // to the output file's path and it should be closed by now.  The file
+        // at output_path should exist and contain some data.
+        let output_path_content = fs::read_to_string(output_path).map_err(|e| {
             format!(
-                "error persisting temporary compiler output {}: {:?}",
+                "error rereading just-output content to file {}: {:?}",
                 output_path, e
             )
-        });
+        })?;
+        let output_content_test_write_len = min(output_path_content.len(), 32);
+        println!(
+            "hex output {}",
+            output_path_content[..output_content_test_write_len].to_string()
+        );
     };
 
     Ok(output_path.to_string())
