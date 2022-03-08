@@ -145,12 +145,19 @@ pub fn compile_clvm(
                 .write_all(&result_stream.get_value().hex().as_bytes())
                 .map_err(|_| format!("failed to write to {:?}", temp_output_file.path()))?;
 
-            let _ = temp_output_file.persist(output_path).map_err(|e| {
+            let first_stage_temp_output = format!("{}.overwrite", output_path);
+            temp_output_file.persist(first_stage_temp_output).map_err(|e| {
                 format!(
                     "error persisting temporary compiler output {}: {:?}",
                     output_path, e
                 )
-            });
+            })?;
+
+            fs::rename(first_stage_temp_output, output_path).map_err(|e| {
+                format!(
+                    "error renaming first stage temp output to {} atomically: {:?}",
+                    output_path, e
+            })?;
         }
     };
 
