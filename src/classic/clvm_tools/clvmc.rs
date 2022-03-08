@@ -149,7 +149,7 @@ pub fn compile_clvm(
                 output_path, e
             )
         });
-    }
+    };
 
     Ok(output_path.to_string())
 }
