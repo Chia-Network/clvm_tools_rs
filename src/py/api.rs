@@ -30,12 +30,8 @@ fn compile_clvm(
         path_string = path_string + ".clvm";
     };
 
-    let res = clvmc::compile_clvm(&path_string, &output_path, &search_paths)
-        .map_err(|s| PyException::new_err(s));
-
-    println!("compile res {:?}", res);
-
-    res
+    clvmc::compile_clvm(&path_string, &output_path, &search_paths)
+        .map_err(|s| PyException::new_err(s))
 }
 
 #[pymodule]

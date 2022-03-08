@@ -30,8 +30,6 @@ use crate::compiler::comptypes::CompileErr;
 use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::runtypes::RunFailure;
 
-const ALWAYS_COMPILE: bool = true;
-
 pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> bool {
     match proper_list(allocator, sexp, true) {
         None => {
@@ -118,7 +116,7 @@ pub fn compile_clvm(
 
     let compile = newer(input_path, output_path).unwrap_or_else(|_| true);
 
-    if ALWAYS_COMPILE || compile {
+    if compile {
         log::info(format!("clvmcc {} -o {}", input_path, output_path));
         let text = fs::read_to_string(input_path)
             .map_err(|x| format!("error reading {}: {:?}", input_path, x))?;
@@ -161,24 +159,7 @@ pub fn compile_clvm(
         }
     };
 
-    // At this point we've written, persisted and closed the temporary file
-    // to the output file's path and it should be closed by now.  The file
-    // at output_path should exist and contain some data.
-    let output_path_content = fs::read_to_string(output_path).map_err(|e| {
-        format!(
-            "error rereading just-output content to file {}: {:?}",
-            output_path, e
-        )
-    })?;
-
-    // Completely confirm that we have data at this point by triggering a later
-    // assertion in the python code if there was no output.  This is a very
-    // paranoid check but it is a bug involving concurrency.
-    if output_path_content.len() == 0 {
-        Ok(format!("{}: content zero length", output_path.to_string()))
-    } else {
-        Ok(output_path.to_string())
-    }
+    Ok(output_path.to_string())
 }
 
 // export function find_files(path: str = ""){
