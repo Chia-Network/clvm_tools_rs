@@ -14,6 +14,8 @@ extern crate do_notation;
 #[cfg(not(any(test, target_family = "wasm")))]
 extern crate pyo3;
 
+extern crate tempfile;
+
 mod util;
 
 pub mod classic;
