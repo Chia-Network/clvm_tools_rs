@@ -4,6 +4,12 @@ use pyo3::wrap_pyfunction;
 
 use crate::classic::clvm_tools::clvmc;
 
+// Thanks: https://www.reddit.com/r/rust/comments/bkkpkz/pkgversion_access_your_crates_version_number_as/
+#[pyfunction]
+fn get_version() -> PyResult<String> {
+    Ok(env!("CARGO_PKG_VERSION").to_string())
+}
+
 #[pyfunction(arg3 = "[]")]
 fn compile_clvm(
     input_path: &PyAny,
@@ -37,5 +43,6 @@ fn compile_clvm(
 #[pymodule]
 fn clvm_tools_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compile_clvm, m)?)?;
+    m.add_function(wrap_pyfunction!(get_version, m)?)?;
     Ok(())
 }
