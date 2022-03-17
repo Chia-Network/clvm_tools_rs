@@ -117,7 +117,6 @@ pub fn compile_clvm(
     let compile = newer(input_path, output_path).unwrap_or_else(|_| true);
 
     if compile {
-        log::info(format!("clvmcc {} -o {}", input_path, output_path));
         let text = fs::read_to_string(input_path)
             .map_err(|x| format!("error reading {}: {:?}", input_path, x))?;
 
