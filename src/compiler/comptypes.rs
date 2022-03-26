@@ -196,11 +196,11 @@ impl CompileForm {
 }
 
 impl HelperForm {
-    pub fn name(&self) -> Vec<u8> {
+    pub fn name(&self) -> &Vec<u8> {
         match self {
-            HelperForm::Defconstant(_, name, _) => name.clone(),
-            HelperForm::Defmacro(_, name, _, _) => name.clone(),
-            HelperForm::Defun(_, name, _, _, _) => name.clone(),
+            HelperForm::Defconstant(_, name, _) => name,
+            HelperForm::Defmacro(_, name, _, _) => name,
+            HelperForm::Defun(_, name, _, _, _) => name,
         }
     }
 

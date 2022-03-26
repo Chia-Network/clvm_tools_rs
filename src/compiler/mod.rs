@@ -3,6 +3,7 @@ mod codegen;
 pub mod compiler;
 pub mod comptypes;
 pub mod debug;
+pub mod evaluate;
 pub mod frontend;
 mod gensym;
 mod inline;

@@ -85,7 +85,7 @@ fn create_let_env_expression(args: Rc<SExp>) -> BodyForm {
 }
 
 fn helper_atom(h: &HelperForm) -> SExp {
-    SExp::Atom(h.loc(), h.name())
+    SExp::Atom(h.loc(), h.name().clone())
 }
 
 fn build_tree(l: Srcloc, s: usize, e: usize, helper_array: &Vec<HelperForm>) -> SExp {
@@ -104,7 +104,7 @@ fn compute_code_shape(l: Srcloc, helpers: &Vec<HelperForm>) -> SExp {
     if alen == 0 {
         SExp::Nil(l)
     } else if alen == 1 {
-        SExp::Atom(l, helpers[0].name())
+        SExp::Atom(l, helpers[0].name().clone())
     } else {
         build_tree(l, 0, alen, &helpers)
     }
@@ -209,7 +209,7 @@ fn codegen_to_sexp(opts: Rc<dyn CompilerOpts>, compiler: &PrimaryCodegen) -> SEx
     let to_process: Vec<Rc<SExp>> = compiler
         .to_process
         .iter()
-        .map(|h| Rc::new(SExp::Atom(l.clone(), h.name())))
+        .map(|h| Rc::new(SExp::Atom(l.clone(), h.name().clone())))
         .collect();
 
     with_heading(

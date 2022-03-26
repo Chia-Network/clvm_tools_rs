@@ -624,7 +624,7 @@ pub fn frontend(
     let mut helper_map = HashMap::new();
 
     let _ = for hpair in helper_list {
-        helper_map.insert(hpair.0, hpair.1.clone());
+        helper_map.insert(hpair.0.clone(), hpair.1.clone());
     };
 
     let helper_names =
@@ -632,7 +632,7 @@ pub fn frontend(
 
     let mut live_helpers = Vec::new();
     for h in our_mod.helpers {
-        if helper_names.contains(&h.name()) {
+        if helper_names.contains(h.name()) {
             live_helpers.push(h);
         }
     }

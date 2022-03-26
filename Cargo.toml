@@ -64,3 +64,8 @@ path = "src/classic/bins/brun.rs"
 [[bin]]
 name = "cldb"
 path = "src/classic/bins/cldb.rs"
+
+[[bin]]
+name = "shrink"
+path = "src/classic/bins/shrink.rs"
+
