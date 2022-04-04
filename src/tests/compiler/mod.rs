@@ -6,6 +6,7 @@ use crate::compiler::srcloc::Srcloc;
 
 mod clvm;
 mod compiler;
+mod evaluate;
 
 #[test]
 fn test_sexp_parse_print() {

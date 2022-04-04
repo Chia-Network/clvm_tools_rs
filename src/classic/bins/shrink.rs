@@ -6,7 +6,10 @@ use clvm_rs::allocator::Allocator;
 
 use clvm_tools_rs::compiler::comptypes::{CompilerOpts, CompileErr};
 use clvm_tools_rs::compiler::compiler::DefaultCompilerOpts;
-use clvm_tools_rs::compiler::evaluate::shrink_bodyform;
+use clvm_tools_rs::compiler::evaluate::{
+    build_reflex_captures,
+    shrink_bodyform
+};
 use clvm_tools_rs::compiler::frontend::frontend;
 use clvm_tools_rs::compiler::prims::prim_map;
 use clvm_tools_rs::compiler::sexp::parse_sexp;
@@ -29,14 +32,17 @@ fn main() {
     parse_sexp(loc.clone(), &args[1]).map_err(|e| {
         return CompileErr(e.0.clone(), e.1.clone());
     }).and_then(|parsed_program| {
-        return frontend(opts, parsed_program);
+        return frontend(opts.clone(), parsed_program);
     }).and_then(|program| {
+        let mut captures = HashMap::new();
         return shrink_bodyform(
+            opts.clone(),
             &mut allocator,
             runner,
             prims,
             &program.helpers,
-            &HashMap::new(),
+            program.args.clone(),
+            &captures,
             program.exp.clone()
         );
     }).map(|result| {
