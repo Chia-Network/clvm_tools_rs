@@ -7,8 +7,8 @@ use clvm_rs::allocator::Allocator;
 use clvm_tools_rs::compiler::comptypes::{CompilerOpts, CompileErr};
 use clvm_tools_rs::compiler::compiler::DefaultCompilerOpts;
 use clvm_tools_rs::compiler::evaluate::{
-    build_reflex_captures,
-    shrink_bodyform
+    Evaluator,
+    build_reflex_captures
 };
 use clvm_tools_rs::compiler::frontend::frontend;
 use clvm_tools_rs::compiler::prims::prim_map;
@@ -35,12 +35,14 @@ fn main() {
         return frontend(opts.clone(), parsed_program);
     }).and_then(|program| {
         let mut captures = HashMap::new();
-        return shrink_bodyform(
+        let e = Evaluator::new(
             opts.clone(),
+            runner.clone(),
+            prims.clone(),
+            program.helpers.clone(),
+        );
+        return e.shrink_bodyform(
             &mut allocator,
-            runner,
-            prims,
-            &program.helpers,
             program.args.clone(),
             &captures,
             program.exp.clone()

@@ -6,9 +6,7 @@ use clvm_rs::allocator::Allocator;
 
 use crate::compiler::comptypes::{CompilerOpts, CompileErr};
 use crate::compiler::compiler::DefaultCompilerOpts;
-use crate::compiler::evaluate::{
-    shrink_bodyform
-};
+use crate::compiler::evaluate::{Evaluator};
 use crate::compiler::frontend::{frontend, from_clvm};
 use crate::compiler::prims::prim_map;
 use crate::compiler::sexp::{SExp, parse_sexp};
@@ -28,12 +26,14 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
         return frontend(opts.clone(), parsed_program);
     }).and_then(|program| {
         let mut captures = HashMap::new();
-        return shrink_bodyform(
+        let e = Evaluator::new(
             opts.clone(),
-            &mut allocator,
             runner,
             prims,
-            &program.helpers,
+            program.helpers
+        );
+        return e.shrink_bodyform(
+            &mut allocator,
             program.args.clone(),
             &captures,
             program.exp.clone()
