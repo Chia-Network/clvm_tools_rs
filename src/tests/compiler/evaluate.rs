@@ -67,6 +67,14 @@ fn test_basic_expand_macro_2() {
     );
 }
 
+#[test]
+fn test_basic_expand_macro_3() {
+    assert_eq!(
+        shrink_expr_from_string("(mod (A) (list 1 A))".to_string()).unwrap(),
+        "(c (q . 1) (c A (q)))"
+    );
+}
+
 fn convert_clvm_to_chialisp(s: String) -> Result<Rc<SExp>, CompileErr> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
