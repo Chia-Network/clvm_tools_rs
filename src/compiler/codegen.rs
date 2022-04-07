@@ -346,7 +346,11 @@ pub fn process_macro_call(
     let args_to_macro = list_to_cons(l.clone(), &converted_args);
     build_swap_table_mut(&mut swap_table, &args_to_macro);
 
-    let arg_strs: Vec<String> = args.iter().map(|x| x.to_sexp().to_string()).collect();
+    let arg_strs: Vec<String> =
+        args.iter().map(|x| x.to_sexp().to_string()).collect();
+
+    println!("macro_code {}", code.to_string());
+    println!("args_to_macro {}", args_to_macro.to_string());
 
     run(
         allocator,
@@ -739,11 +743,15 @@ fn codegen_(
                 body.to_sexp(),
             ));
 
-            let updated_opts = opts.set_compiler(compiler.clone()).set_stdenv(false);
+            let updated_opts = opts
+                .set_compiler(compiler.clone())
+                .set_in_defun(false)
+                .set_stdenv(false);
 
             updated_opts
                 .compile_program(allocator, runner.clone(), macro_program)
                 .and_then(|code| {
+                    println!("macro {} -> {}", decode_string(name), code.to_string());
                     if opts.optimize() {
                         run_optimizer(allocator, runner, Rc::new(code))
                     } else {

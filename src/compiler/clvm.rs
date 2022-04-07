@@ -58,10 +58,13 @@ fn choose_path(
                 )
             }
 
-            _ => Err(RunFailure::RunErr(
-                l,
-                format!("bad path {} in {}", orig, all.to_string()),
-            )),
+            _ => {
+                panic!("bad path {} in {}", orig, all.to_string());
+                Err(RunFailure::RunErr(
+                    l,
+                    format!("bad path {} in {}", orig, all.to_string()),
+                ))
+            }
         }
     }
 }

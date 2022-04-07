@@ -16,7 +16,7 @@ use crate::compiler::comptypes::{
     HelperForm,
     LetFormKind
 };
-use crate::compiler::frontend::frontend;
+use crate::compiler::frontend::{from_clvm, frontend};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
@@ -257,28 +257,31 @@ fn dequote(l: Srcloc, exp: Rc<BodyForm>) -> Result<Rc<SExp>, CompileErr> {
     }
 }
 
-fn run_prim(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
-    prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
-    call_loc: Srcloc,
-    name: Vec<u8>,
-    prim: Rc<SExp>,
-    args: Rc<SExp>
-) -> Result<Rc<SExp>, RunFailure> {
-    run(
-        allocator,
-        runner,
-        prims,
-        prim,
-        args
-    )
-}
-
 fn show_env(env: &HashMap<Vec<u8>, Rc<BodyForm>>) {
     let loc = Srcloc::start(&"*env*".to_string());
     for kv in env.iter() {
         println!(" - {}: {}", SExp::Atom(loc.clone(), kv.0.clone()).to_string(), kv.1.to_sexp().to_string());
+    }
+}
+
+fn first_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
+    match lst.borrow() {
+        SExp::Cons(l,f,r) => Ok(f.clone()),
+        _ => Err(CompileErr(lst.loc(), format!("No first element of {}", lst.to_string())))
+    }
+}
+
+fn second_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
+    match lst.borrow() {
+        SExp::Cons(l,f,r) => first_of_alist(r.clone()),
+        _ => Err(CompileErr(lst.loc(), format!("No second element of {}", lst.to_string())))
+    }
+}
+
+fn third_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
+    match lst.borrow() {
+        SExp::Cons(l,f,r) => second_of_alist(r.clone()),
+        _ => Err(CompileErr(lst.loc(), format!("No third element of {}", lst.to_string())))
     }
 }
 
@@ -395,37 +398,57 @@ impl Evaluator {
 
                                 // Pass the SExp representation of the expressions into
                                 // the macro after forming an argument sexp and then
-                                for i in 0..arguments_to_convert.len() {
+                                let mut macro_args = Rc::new(SExp::Nil(l.clone()));
+                                for i_reverse in 0..arguments_to_convert.len() {
+                                    let i = arguments_to_convert.len() - i_reverse - 1;
                                     let arg_repr = arguments_to_convert[i].to_sexp();
-                                    let borrowed_arg: &SExp =
-                                        arg_repr.borrow();
-                                    arguments_to_convert[i] =
-                                        Rc::new(BodyForm::Quoted(borrowed_arg.clone()));
+                                    macro_args = Rc::new(SExp::Cons(
+                                        l.clone(),
+                                        arg_repr,
+                                        macro_args
+                                    ));
                                 }
-
-                                let argument_captures =
-                                    build_argument_captures(
-                                        call_loc,
-                                        &arguments_to_convert,
-                                        program.args.clone()
-                                    )?;
 
                                 let macro_expansion =
                                     self.expand_macro(
                                         allocator,
-                                        args.clone(),
-                                        &argument_captures,
-                                        program.clone()
+                                        l.clone(),
+                                        program.clone(),
+                                        macro_args
                                     )?;
 
                                 let input_sexp = dequote(call_loc.clone(), macro_expansion)?;
-                                println!("dequoted macro output: {}", input_sexp.to_string());
-                                frontend(self.opts.clone(), vec!(input_sexp)).and_then(|program| {
+                                println!("expanded macro to run {} with args {} env", input_sexp.to_string(), prog_args.to_string());
+                                show_env(&env);
+
+                                let frontend_macro_input = Rc::new(SExp::Cons(
+                                    l.clone(),
+                                    Rc::new(SExp::atom_from_string(
+                                        l.clone(),
+                                        &"mod".to_string()
+                                    )),
+                                    Rc::new(SExp::Cons(
+                                        l.clone(),
+                                        prog_args.clone(),
+                                        Rc::new(SExp::Cons(
+                                            l.clone(),
+                                            input_sexp,
+                                            Rc::new(SExp::Nil(l.clone()))
+                                        ))
+                                    ))
+                                ));
+
+                                println!("dequoted macro output (with present args): {}\nenv", frontend_macro_input.to_string());
+                                show_env(env);
+                                
+                                frontend(self.opts.clone(), vec!(frontend_macro_input)).and_then(|program| {
                                     println!("frontend read of macro: {}", program.to_sexp().to_string());
+                                    println!("prog_args {}\nenv", prog_args.to_string());
+                                    show_env(env);
                                     self.shrink_bodyform(
                                         allocator,
                                         prog_args.clone(),
-                                        &argument_captures,
+                                        &env,
                                         program.exp.clone()
                                     )
                                 })
@@ -467,16 +490,12 @@ impl Evaluator {
                                     parts.clone();
 
                                 if call_name == &"@".as_bytes().to_vec() {
-                                    return Err(CompileErr(call_loc.clone(), format!("can't yet simulate environment paths")));
+                                    Ok(Rc::new(BodyForm::Quoted(SExp::Cons(
+                                        l.clone(),
+                                        Rc::new(SExp::Nil(l.clone())),
+                                        prog_args
+                                    ))))
                                 } else if call_name == &"com".as_bytes().to_vec() {
-                                    // Com takes place in the current environment.
-                                    // We can only reduce com if all bindings are
-                                    // primitive.
-                                    println!("com {}", body.to_sexp().to_string());
-                                    let updated_opts = self.opts
-                                        .set_stdenv(false)
-                                        .set_in_defun(true);
-
                                     let mut end_of_list = Rc::new(SExp::Cons(
                                         l.clone(),
                                         arguments_to_convert[0].to_sexp(),
@@ -503,21 +522,12 @@ impl Evaluator {
                                         )),
                                     );
 
-                                    println!("compile program {}", use_body.to_string());
-                                    let com_result = updated_opts
-                                        .compile_program(
-                                            allocator,
-                                            self.runner.clone(),
-                                            Rc::new(use_body)
-                                        ).map(|code| {
-                                            Rc::new(BodyForm::Quoted(code))
-                                        })?;
-
-                                    println!("com_result = {}", com_result.to_sexp().to_string());
-                                    Ok(com_result)
+                                    let compiled = self.compile_code(allocator, true, Rc::new(use_body))?;
+                                    let compiled_borrowed: &SExp = compiled.borrow();
+                                    Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
                                 } else {
-                                    let pres = self.prims.get(call_name).map(|prim| {
-                                        println!("run primitive {}\nenv", body.to_sexp().to_string());
+                                    let pres = self.lookup_prim(call_loc.clone(), call_name).map(|prim| {
+                                        println!("run primitive {} {}\nenv", prim.to_string(), body.to_sexp().to_string());
                                         show_env(env);
                                         // Reduce all arguments.
                                         let mut converted_args =
@@ -546,17 +556,11 @@ impl Evaluator {
                                             );
                                         }
 
-                                        let reformed = BodyForm::Call(
-                                            call_loc.clone(),
-                                            target_vec.clone()
-                                        );
-                                        println!("all primitive: {} -> {}", reformed.to_sexp().to_string(), all_primitive);
+                                        println!("all primitive: op {} args {} -> {}", head_expr.to_sexp().to_string(), converted_args.to_string(), all_primitive);
 
                                         if all_primitive {
-                                            run_prim(
+                                            self.run_prim(
                                                 allocator,
-                                                self.runner.clone(),
-                                                self.prims.clone(),
                                                 call_loc.clone(),
                                                 call_name.clone(),
                                                 make_prim_call(
@@ -564,21 +568,15 @@ impl Evaluator {
                                                     prim.clone(),
                                                     Rc::new(converted_args)
                                                 ),
-                                                Rc::new(SExp::Nil(call_loc.clone()))
-                                            ).map_err(|e| {
-                                                match e {
-                                                    RunFailure::RunExn(l, s) => {
-                                                        CompileErr(call_loc.clone(), format!("exception: {}", s.to_string()))
-                                                    },
-                                                    RunFailure::RunErr(l, s) => {
-                                                        CompileErr(call_loc.clone(), s.clone())
-                                                    }
-                                                }
-                                            }).map(|res| {
-                                                let res_borrowed: &SExp = res.borrow();
-                                                Rc::new(BodyForm::Quoted(res_borrowed.clone()))
-                                            })
+                                                Rc::new(
+                                                    SExp::Nil(call_loc.clone())
+                                                )
+                                            )
                                         } else {
+                                            let reformed = BodyForm::Call(
+                                                call_loc.clone(),
+                                                target_vec.clone()
+                                            );
                                             Ok(Rc::new(reformed))
                                         }
                                     }).unwrap_or_else(|| {
@@ -613,35 +611,131 @@ impl Evaluator {
     fn expand_macro(
         &self,
         allocator: &mut Allocator, // Support random prims via clvm_rs
-        prog_args: Rc<SExp>,
-        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        program: Rc<CompileForm>
+        call_loc: Srcloc,
+        program: Rc<CompileForm>,
+        args: Rc<SExp>
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        let loc = Srcloc::start(&"*xxx".to_string());
         let mut new_helpers = Vec::new();
         let mut used_names = HashSet::new();
 
+
+        let mut end_of_list = Rc::new(SExp::Cons(
+            call_loc.clone(),
+            program.exp.to_sexp(),
+            Rc::new(SExp::Nil(call_loc.clone())),
+        ));
+
         for h in program.helpers.iter() {
-            used_names.insert(h.name());
             new_helpers.push(h.clone());
+            used_names.insert(h.name());
         }
+
         for h in self.helpers.iter() {
             if !used_names.contains(h.name()) {
                 new_helpers.push(h.clone());
             }
         }
-        let e = Evaluator::new(
-            self.opts.clone(),
-            self.runner.clone(),
-            self.prims.clone(),
-            new_helpers,
-        );
-        e.shrink_bodyform(
+
+        for h in new_helpers.iter() {
+            end_of_list = Rc::new(SExp::Cons(
+                call_loc.clone(),
+                h.to_sexp(),
+                end_of_list
+            ))
+        }
+
+        let use_body = Rc::new(SExp::Cons(
+            call_loc.clone(),
+            Rc::new(SExp::Atom(
+                call_loc.clone(), "mod".as_bytes().to_vec()
+            )),
+            Rc::new(SExp::Cons(
+                call_loc.clone(),
+                program.args.clone(),
+                end_of_list
+            )),
+        ));
+
+        let compiled = self.compile_code(allocator, false, use_body)?;
+        println!("compiled macro {} args {}", compiled.to_string(), args.to_string());
+        self.run_prim(
             allocator,
-            prog_args,
-            env,
-            program.exp.clone()
+            call_loc.clone(),
+            vec!(1),
+            compiled,
+            args
         )
     }
 
+    fn lookup_prim(&self, l: Srcloc, name: &Vec<u8>) -> Option<Rc<SExp>> {
+        match self.prims.get(name) {
+            Some(p) => Some(p.clone()),
+            None => {
+                if name.len() == 1 {
+                    Some(Rc::new(SExp::Atom(l, name.clone())))
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn run_prim(
+        &self,
+        allocator: &mut Allocator,
+        call_loc: Srcloc,
+        name: Vec<u8>,
+        prim: Rc<SExp>,
+        args: Rc<SExp>
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        run(
+            allocator,
+            self.runner.clone(),
+            self.prims.clone(),
+            prim,
+            args
+        ).map_err(|e| {
+            match e {
+                RunFailure::RunExn(l, s) => {
+                    CompileErr(
+                        call_loc.clone(),
+                        format!("exception: {}", s.to_string())
+                    )
+                },
+                RunFailure::RunErr(l, s) => {
+                    CompileErr(call_loc.clone(), s.clone())
+                }
+            }
+        }).map(|res| {
+            let res_borrowed: &SExp = res.borrow();
+            println!("prim result {}", res_borrowed.to_string());
+            Rc::new(BodyForm::Quoted(res_borrowed.clone()))
+        })
+    }
+
+    fn compile_code(
+        &self,
+        allocator: &mut Allocator,
+        in_defun: bool,
+        use_body: Rc<SExp>
+    ) -> Result<Rc<SExp>, CompileErr> {
+        // Com takes place in the current environment.
+        // We can only reduce com if all bindings are
+        // primitive.
+        println!("com {}", use_body.to_string());
+        let updated_opts = self.opts
+            .set_stdenv(false)
+            .set_in_defun(in_defun);
+
+        println!("compile program {}", use_body.to_string());
+        let com_result = updated_opts
+            .compile_program(
+                allocator,
+                self.runner.clone(),
+                use_body
+            )?;
+
+        println!("com_result = {}", com_result.to_string());
+        Ok(Rc::new(com_result))
+    }
 }
