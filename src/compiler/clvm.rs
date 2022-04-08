@@ -59,7 +59,6 @@ fn choose_path(
             }
 
             _ => {
-                panic!("bad path {} in {}", orig, all.to_string());
                 Err(RunFailure::RunErr(
                     l,
                     format!("bad path {} in {}", orig, all.to_string()),

@@ -349,9 +349,6 @@ pub fn process_macro_call(
     let arg_strs: Vec<String> =
         args.iter().map(|x| x.to_sexp().to_string()).collect();
 
-    println!("macro_code {}", code.to_string());
-    println!("args_to_macro {}", args_to_macro.to_string());
-
     run(
         allocator,
         runner.clone(),
@@ -751,7 +748,6 @@ fn codegen_(
             updated_opts
                 .compile_program(allocator, runner.clone(), macro_program)
                 .and_then(|code| {
-                    println!("macro {} -> {}", decode_string(name), code.to_string());
                     if opts.optimize() {
                         run_optimizer(allocator, runner, Rc::new(code))
                     } else {

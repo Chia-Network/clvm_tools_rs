@@ -93,3 +93,11 @@ fn test_simple_conversion_from_clvm_to_chialisp() {
     let converted = convert_clvm_to_chialisp("(+ (q . 3) 2)".to_string()).unwrap();
     assert_eq!(converted.to_string(), "(+ (q . 3) (@ 2))");
 }
+
+#[test]
+fn test_basic_expand_macro_4() {
+    assert_eq!(
+        shrink_expr_from_string("(mod () (defun torp (S A B) (if S (+ A B) (* A B))) (torp 0 2 3))".to_string()).unwrap(),
+        "(q . 6)"
+    );
+}

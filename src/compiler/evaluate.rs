@@ -285,6 +285,28 @@ fn third_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     }
 }
 
+fn synthesize_args(template: Rc<SExp>, env: &HashMap<Vec<u8>, Rc<BodyForm>>) -> Result<Rc<BodyForm>, CompileErr> {
+    match template.borrow() {
+        SExp::Atom(_, name) => {
+            env.get(name).map(|x| Ok(x.clone())).unwrap_or_else(|| {
+                Err(CompileErr(template.loc(), format!("Argument {} referenced but not in env", template.to_string())))
+            })
+        },
+        SExp::Cons(l, f, r) => {
+            Ok(Rc::new(BodyForm::Call(
+                l.clone(),
+                vec!(
+                    Rc::new(BodyForm::Value(SExp::atom_from_string(template.loc(), &"c".to_string()))),
+                    synthesize_args(f.clone(), env)?,
+                    synthesize_args(r.clone(), env)?
+                )
+            )))
+        },
+        SExp::Nil(l) => Ok(Rc::new(BodyForm::Quoted(SExp::Nil(l.clone())))),
+        _ => Err(CompileErr(template.loc(), format!("unknown argument template {}", template.to_string())))
+    }
+}
+
 impl Evaluator {
     pub fn new(
         opts: Rc<CompilerOpts>,
@@ -352,8 +374,16 @@ impl Evaluator {
             BodyForm::Quoted(sexp) => Ok(body.clone()),
             BodyForm::Value(SExp::Atom(l,name)) => {
                 if name == &"@".as_bytes().to_vec() {
-                    Ok(Rc::new(BodyForm::Quoted(SExp::Nil(l.clone()))))
-                    // XXX Err(CompileErr(l.clone(), format!("can't yet paste whole environment")))
+                    let literal_args = synthesize_args(
+                        prog_args.clone(),
+                        env
+                    )?;
+                    self.shrink_bodyform(
+                        allocator,
+                        prog_args.clone(),
+                        env,
+                        literal_args
+                    )
                 } else {
                     env.get(name).map(|x| {
                         self.shrink_bodyform(
@@ -482,6 +512,7 @@ impl Evaluator {
                                     parts.clone();
 
                                 if call_name == &"@".as_bytes().to_vec() {
+                                    // Synthesize the environment for this function
                                     Ok(Rc::new(BodyForm::Quoted(SExp::Cons(
                                         l.clone(),
                                         Rc::new(SExp::Nil(l.clone())),
@@ -514,7 +545,7 @@ impl Evaluator {
                                         )),
                                     );
 
-                                    let compiled = self.compile_code(allocator, true, Rc::new(use_body))?;
+                                    let compiled = self.compile_code(allocator, false, Rc::new(use_body))?;
                                     let compiled_borrowed: &SExp = compiled.borrow();
                                     Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
                                 } else {
