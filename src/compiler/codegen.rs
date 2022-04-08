@@ -1163,7 +1163,6 @@ pub fn codegen(
         compiler = codegen_(allocator, runner.clone(), opts.clone(), &compiler, &f)?;
     }
 
-    println!("codegen: {}", cmod.to_sexp().to_string());
     final_codegen(allocator, runner.clone(), opts.clone(), &compiler).and_then(|c| {
         let final_env = finalize_env(allocator, runner.clone(), opts.clone(), &c)?;
         match c.final_code {

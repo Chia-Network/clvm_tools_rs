@@ -363,7 +363,16 @@ impl Evaluator {
                             x.clone()
                         )
                     }).unwrap_or_else(|| {
-                        Ok(Rc::new(BodyForm::Value(SExp::Atom(l.clone(),name.clone()))))
+                        self.get_constant(name).map(|x| {
+                            self.shrink_bodyform(
+                                allocator,
+                                prog_args.clone(),
+                                env,
+                                x.clone()
+                            )
+                        }).unwrap_or_else(|| {
+                            Ok(Rc::new(BodyForm::Value(SExp::Atom(l.clone(),name.clone()))))
+                        })
                     })
                 }
             },
@@ -388,14 +397,6 @@ impl Evaluator {
                                 ))
                             },
                             Some(HelperForm::Defmacro(l, name, args, program)) => {
-                                println!("processing call {}\nhelpers", body.to_sexp().to_string());
-                                for h in self.helpers.iter() {
-                                    println!(" - {}", h.to_sexp().to_string());
-                                }
-
-                                println!("env");
-                                show_env(env);
-
                                 // Pass the SExp representation of the expressions into
                                 // the macro after forming an argument sexp and then
                                 let mut macro_args = Rc::new(SExp::Nil(l.clone()));
@@ -418,9 +419,6 @@ impl Evaluator {
                                     )?;
 
                                 let input_sexp = dequote(call_loc.clone(), macro_expansion)?;
-                                println!("expanded macro to run {} with args {} env", input_sexp.to_string(), prog_args.to_string());
-                                show_env(&env);
-
                                 let frontend_macro_input = Rc::new(SExp::Cons(
                                     l.clone(),
                                     Rc::new(SExp::atom_from_string(
@@ -438,13 +436,7 @@ impl Evaluator {
                                     ))
                                 ));
 
-                                println!("dequoted macro output (with present args): {}\nenv", frontend_macro_input.to_string());
-                                show_env(env);
-                                
                                 frontend(self.opts.clone(), vec!(frontend_macro_input)).and_then(|program| {
-                                    println!("frontend read of macro: {}", program.to_sexp().to_string());
-                                    println!("prog_args {}\nenv", prog_args.to_string());
-                                    show_env(env);
                                     self.shrink_bodyform(
                                         allocator,
                                         prog_args.clone(),
@@ -527,8 +519,6 @@ impl Evaluator {
                                     Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
                                 } else {
                                     let pres = self.lookup_prim(call_loc.clone(), call_name).map(|prim| {
-                                        println!("run primitive {} {}\nenv", prim.to_string(), body.to_sexp().to_string());
-                                        show_env(env);
                                         // Reduce all arguments.
                                         let mut converted_args =
                                             SExp::Nil(call_loc.clone());
@@ -555,8 +545,6 @@ impl Evaluator {
                                                 Rc::new(converted_args)
                                             );
                                         }
-
-                                        println!("all primitive: op {} args {} -> {}", head_expr.to_sexp().to_string(), converted_args.to_string(), all_primitive);
 
                                         if all_primitive {
                                             self.run_prim(
@@ -588,7 +576,6 @@ impl Evaluator {
                                             format!("Don't yet support this call type {} {:?}", body.to_sexp().to_string(), body)
                                         ))
                                     })?;
-                                    println!("do prim {} => {}", body.to_sexp().to_string(), pres.to_sexp().to_string());
                                     Ok(pres)
                                 }
                             }
@@ -657,7 +644,6 @@ impl Evaluator {
         ));
 
         let compiled = self.compile_code(allocator, false, use_body)?;
-        println!("compiled macro {} args {}", compiled.to_string(), args.to_string());
         self.run_prim(
             allocator,
             call_loc.clone(),
@@ -708,7 +694,6 @@ impl Evaluator {
             }
         }).map(|res| {
             let res_borrowed: &SExp = res.borrow();
-            println!("prim result {}", res_borrowed.to_string());
             Rc::new(BodyForm::Quoted(res_borrowed.clone()))
         })
     }
@@ -722,12 +707,10 @@ impl Evaluator {
         // Com takes place in the current environment.
         // We can only reduce com if all bindings are
         // primitive.
-        println!("com {}", use_body.to_string());
         let updated_opts = self.opts
             .set_stdenv(false)
             .set_in_defun(in_defun);
 
-        println!("compile program {}", use_body.to_string());
         let com_result = updated_opts
             .compile_program(
                 allocator,
@@ -735,7 +718,6 @@ impl Evaluator {
                 use_body
             )?;
 
-        println!("com_result = {}", com_result.to_string());
         Ok(Rc::new(com_result))
     }
 
@@ -750,5 +732,17 @@ impl Evaluator {
             }
         }
         self.helpers.push(h.clone());
+    }
+
+    fn get_constant(&self, name: &Vec<u8>) -> Option<Rc<BodyForm>> {
+        for h in self.helpers.iter() {
+            match h {
+                HelperForm::Defconstant(_, n, body) => {
+                    return Some(body.clone());
+                },
+                _ => { }
+            }
+        }
+        None
     }
 }
