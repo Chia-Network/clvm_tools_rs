@@ -69,3 +69,6 @@ path = "src/classic/bins/cldb.rs"
 name = "shrink"
 path = "src/classic/bins/shrink.rs"
 
+[[bin]]
+name = "repl"
+path = "src/classic/bins/repl.rs"

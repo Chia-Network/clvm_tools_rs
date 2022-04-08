@@ -264,14 +264,14 @@ fn show_env(env: &HashMap<Vec<u8>, Rc<BodyForm>>) {
     }
 }
 
-fn first_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
+pub fn first_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     match lst.borrow() {
         SExp::Cons(l,f,r) => Ok(f.clone()),
         _ => Err(CompileErr(lst.loc(), format!("No first element of {}", lst.to_string())))
     }
 }
 
-fn second_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
+pub fn second_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     match lst.borrow() {
         SExp::Cons(l,f,r) => first_of_alist(r.clone()),
         _ => Err(CompileErr(lst.loc(), format!("No second element of {}", lst.to_string())))
@@ -737,5 +737,18 @@ impl Evaluator {
 
         println!("com_result = {}", com_result.to_string());
         Ok(Rc::new(com_result))
+    }
+
+    pub fn add_helper(
+        &mut self,
+        h: &HelperForm,
+    ) {
+        for i in 0..self.helpers.len() {
+            if self.helpers[i].name() == h.name() {
+                self.helpers[i] = h.clone();
+                return;
+            }
+        }
+        self.helpers.push(h.clone());
     }
 }
