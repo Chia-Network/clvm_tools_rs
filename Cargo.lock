@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "clvm_tools_rs"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "bls12_381",
  "bytestream",
