@@ -4,16 +4,15 @@ use std::rc::Rc;
 
 use clvm_rs::allocator;
 use clvm_rs::allocator::{Allocator, NodePtr};
-use clvm_rs::reduction::EvalErr;
 
-use num_bigint::{Sign, ToBigInt};
+use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
-use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
+use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
+use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, u8_from_number, Number};
 

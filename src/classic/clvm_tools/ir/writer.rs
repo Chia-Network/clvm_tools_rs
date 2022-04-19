@@ -26,7 +26,7 @@ struct IROutputIterator {
 impl IROutputIterator {
     fn new(kw_translation: HashMap<String, Vec<u8>>, ir_sexp: Rc<IRRepr>) -> IROutputIterator {
         return IROutputIterator {
-            kw_translation: kw_translation,
+            kw_translation,
             state: vec![IROutputState::Start(ir_sexp)],
         };
     }

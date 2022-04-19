@@ -2,9 +2,7 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::compiler::comptypes::{
-    Binding, BodyForm, CompileErr, CompileForm, HelperForm, LetFormKind,
-};
+use crate::compiler::comptypes::{Binding, BodyForm, CompileForm, HelperForm, LetFormKind};
 use crate::compiler::gensym::gensym;
 use crate::compiler::sexp::{decode_string, SExp};
 

@@ -80,8 +80,8 @@ impl OpRouter {
         routes.insert(vec![1], Rc::new(OpQuote {}));
 
         return OpRouter {
-            routes: routes,
-            f_lookup: f_lookup,
+            routes,
+            f_lookup,
             strict: true,
         };
     }

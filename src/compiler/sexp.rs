@@ -3,7 +3,6 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::string::String;
 
-use num_bigint::ToBigInt;
 use num_traits::{zero, Num};
 
 use crate::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType};
@@ -434,17 +433,15 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
         SExpParseState::QuotedText(pl, term, t) => {
             if this_char == '\\' as u8 {
                 resume(SExpParseState::QuotedEscaped(pl.clone(), *term, t.to_vec()))
+            } else if this_char == *term {
+                emit(
+                    Rc::new(SExp::QuotedString(pl.ext(&loc), *term, t.to_vec())),
+                    SExpParseState::Empty,
+                )
             } else {
-                if this_char == *term {
-                    emit(
-                        Rc::new(SExp::QuotedString(pl.ext(&loc), *term, t.to_vec())),
-                        SExpParseState::Empty,
-                    )
-                } else {
-                    let mut tcopy = t.to_vec();
-                    tcopy.push(this_char);
-                    resume(SExpParseState::QuotedText(pl.clone(), *term, tcopy))
-                }
+                let mut tcopy = t.to_vec();
+                tcopy.push(this_char);
+                resume(SExpParseState::QuotedText(pl.clone(), *term, tcopy))
             }
         }
         SExpParseState::QuotedEscaped(pl, term, t) => {

@@ -171,7 +171,7 @@ impl ModAccum {
 
     pub fn new(loc: Srcloc) -> ModAccum {
         ModAccum {
-            loc: loc,
+            loc,
             helpers: Vec::new(),
             exp_form: None,
         }

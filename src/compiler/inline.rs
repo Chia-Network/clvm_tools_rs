@@ -1,6 +1,5 @@
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
@@ -8,16 +7,14 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::codegen::{
-    generate_expr_code, get_call_name, get_callable, process_macro_call,
-};
+use crate::compiler::codegen::{generate_expr_code, get_call_name, get_callable};
 use crate::compiler::comptypes::{
     BodyForm, Callable, CompileErr, CompiledCode, CompilerOpts, InlineFunction, PrimaryCodegen,
 };
-use crate::compiler::sexp::{decode_string, SExp};
+use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 
-use crate::util::{u8_from_number, Number};
+use crate::util::Number;
 
 fn apply_fn(loc: Srcloc, name: String, expr: Rc<BodyForm>) -> Rc<BodyForm> {
     Rc::new(BodyForm::Call(

@@ -170,12 +170,12 @@ impl ArgumentParser {
         if arg_name.len() == 1 && !is_optional(&arg_name[0]) {
             self.positional_args.push(Arg {
                 names: arg_name,
-                options: options,
+                options,
             });
         } else {
             self.optional_args.push(Arg {
                 names: arg_name,
-                options: options,
+                options,
             });
         }
     }

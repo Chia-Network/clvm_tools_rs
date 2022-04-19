@@ -271,24 +271,22 @@ pub fn consume_object(s: &mut IRReader) -> Result<IRRepr, String> {
         return Ok(IRRepr::Null);
     } else if b.at(0) == '(' as u8 {
         return consume_cons_body(s);
-    } else {
-        if b.at(0) == '\"' as u8 || b.at(0) == '\'' as u8 {
-            match consume_quoted(s, b.at(0) as char) {
-                Err(e) => {
-                    return Err(e);
-                }
-                Ok(v) => {
-                    return Ok(v);
-                }
+    } else if b.at(0) == '\"' as u8 || b.at(0) == '\'' as u8 {
+        match consume_quoted(s, b.at(0) as char) {
+            Err(e) => {
+                return Err(e);
             }
-        } else {
-            match consume_atom(s, &b) {
-                None => {
-                    return Err("empty stream".to_string());
-                }
-                Some(ir) => {
-                    return Ok(ir);
-                }
+            Ok(v) => {
+                return Ok(v);
+            }
+        }
+    } else {
+        match consume_atom(s, &b) {
+            None => {
+                return Err("empty stream".to_string());
+            }
+            Some(ir) => {
+                return Ok(ir);
             }
         }
     }

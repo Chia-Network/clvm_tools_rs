@@ -5,8 +5,7 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
-use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
+use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs};

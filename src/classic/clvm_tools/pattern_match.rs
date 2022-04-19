@@ -89,10 +89,10 @@ pub fn match_sexp<'a>(
                             );
                         }
                         if pat_left_bytes == SEXP_MATCH.to_vec() {
-                            if pat_right_bytes == SEXP_MATCH.to_vec() {
-                                if sexp_bytes == SEXP_MATCH.to_vec() {
-                                    return Some(HashMap::new());
-                                }
+                            if pat_right_bytes == SEXP_MATCH.to_vec()
+                                && sexp_bytes == SEXP_MATCH.to_vec()
+                            {
+                                return Some(HashMap::new());
                             }
 
                             return unify_bindings(
@@ -106,15 +106,15 @@ pub fn match_sexp<'a>(
                         return None;
                     }
                     SExp::Pair(sleft, sright) => {
-                        if pat_left_bytes == SEXP_MATCH.to_vec() {
-                            if pat_right_bytes != SEXP_MATCH.to_vec() {
-                                return unify_bindings(
-                                    allocator,
-                                    known_bindings,
-                                    &pat_right_bytes,
-                                    sexp,
-                                );
-                            }
+                        if pat_left_bytes == SEXP_MATCH.to_vec()
+                            && pat_right_bytes != SEXP_MATCH.to_vec()
+                        {
+                            return unify_bindings(
+                                allocator,
+                                known_bindings,
+                                &pat_right_bytes,
+                                sexp,
+                            );
                         }
 
                         return match_sexp(allocator, pleft, sleft, known_bindings).and_then(
