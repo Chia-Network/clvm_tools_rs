@@ -15,7 +15,6 @@ use crate::classic::clvm::{KEYWORD_FROM_ATOM, KEYWORD_TO_ATOM};
 
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble};
 use crate::classic::clvm_tools::ir::reader::read_ir;
-use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 use crate::classic::clvm_tools::stages::stage_2::defaults::DEFAULT_MACRO_LOOKUP;
 use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote};
@@ -107,7 +106,7 @@ fn com_qq(
     sexp: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
     if DIAG_OUTPUT {
-        print!("com_qq {} {}\n", ident, disassemble(allocator, sexp));
+        println!("com_qq {} {}", ident, disassemble(allocator, sexp));
     }
     return do_com_prog(allocator, 110, sexp, macro_lookup, symbol_table, runner).map(|x| x.1);
 }
@@ -271,8 +270,8 @@ pub fn lower_quote(allocator: &mut Allocator, prog: NodePtr) -> Result<NodePtr, 
     let res = lower_quote_(allocator, prog);
     if DIAG_OUTPUT {
         res.as_ref().map(|x| {
-            print!(
-                "LOWER_QUOTE {} TO {}\n",
+            println!(
+                "LOWER_QUOTE {} TO {}",
                 disassemble(allocator, prog),
                 disassemble(allocator, *x)
             );
@@ -630,8 +629,8 @@ pub fn do_com_prog(
     run_program: Rc<dyn TRunProgram>,
 ) -> Response {
     if DIAG_OUTPUT {
-        print!(
-            "START COMPILE {}: {} MACRO {} SYMBOLS {}\n",
+        println!(
+            "START COMPILE {}: {} MACRO {} SYMBOLS {}",
             from,
             disassemble(allocator, prog),
             disassemble(allocator, macro_lookup),
@@ -640,8 +639,8 @@ pub fn do_com_prog(
     }
     do_com_prog_(allocator, prog, macro_lookup, symbol_table, run_program).map(|x| {
         if DIAG_OUTPUT {
-            print!(
-                "DO_COM_PROG {}: {} MACRO {} SYMBOLS {} RESULT {}\n",
+            println!(
+                "DO_COM_PROG {}: {} MACRO {} SYMBOLS {} RESULT {}",
                 from,
                 disassemble(allocator, prog),
                 disassemble(allocator, macro_lookup),

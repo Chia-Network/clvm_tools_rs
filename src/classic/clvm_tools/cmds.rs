@@ -38,8 +38,6 @@ use crate::classic::clvm_tools::stages::stage_0::{
     DefaultProgramRunner, RunProgramOption, TRunProgram,
 };
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
-use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
-
 use crate::classic::platform::PathJoin;
 
 use crate::classic::platform::argparse::{
@@ -124,7 +122,7 @@ pub fn call_tool<'a>(
             args = a;
         }
         Err(e) => {
-            print!("{:?}\n", e);
+            println!("{:?}", e);
             return;
         }
     }
@@ -152,9 +150,9 @@ pub fn call_tool<'a>(
                         let sexp = conv_result.first().clone();
                         let text = conv_result.rest();
                         if args.contains_key(&"script_hash".to_string()) {
-                            print!("{}\n", sha256tree(allocator, sexp).hex());
+                            println!("{}", sha256tree(allocator, sexp).hex());
                         } else if text.len() > 0 {
-                            print!("{}\n", text);
+                            println!("{}", text);
                         }
                     }
                     Err(e) => {
@@ -350,8 +348,6 @@ fn get_arg_associations(
 
 pub fn cldb(args: &Vec<String>) {
     let tool_name = "cldb".to_string();
-    let mut hex = false;
-    let dpr;
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
         prog: format!("clvm_tools {}", tool_name),
@@ -415,7 +411,7 @@ pub fn cldb(args: &Vec<String>) {
 
     match parser.parse_args(&arg_vec) {
         Err(e) => {
-            print!("FAIL: {}\n", e);
+            println!("FAIL: {}", e);
             return;
         }
         Ok(pa) => {
@@ -432,7 +428,7 @@ pub fn cldb(args: &Vec<String>) {
     }
 
     match parsedArgs.get("env") {
-        Some(ArgumentValue::ArgString(f, s)) => {
+        Some(ArgumentValue::ArgString(_, s)) => {
             parsed_args_result = s.to_string();
         }
         _ => {}
@@ -449,12 +445,10 @@ pub fn cldb(args: &Vec<String>) {
                 }
             }
             let special_runner = run_program_for_search_paths(&bare_paths);
-            dpr = special_runner.clone();
             run_program = special_runner;
         }
         _ => {
             let ordinary_runner = run_program_for_search_paths(&Vec::new());
-            dpr = ordinary_runner.clone();
             run_program = ordinary_runner;
         }
     }
@@ -464,7 +458,7 @@ pub fn cldb(args: &Vec<String>) {
     let symbol_table = parsedArgs
         .get("symbol_table")
         .and_then(|jstring| match jstring {
-            ArgumentValue::ArgString(f, s) => {
+            ArgumentValue::ArgString(_, s) => {
                 let decoded_symbol_table: Option<HashMap<String, String>> =
                     serde_json::from_str(&s).ok();
                 decoded_symbol_table
@@ -497,14 +491,13 @@ pub fn cldb(args: &Vec<String>) {
 
     let res = match parsedArgs.get("hex") {
         Some(ArgumentValue::ArgBool(true)) => {
-            hex = true;
             hex_to_modern_sexp(
                 &mut allocator,
                 &symbol_table.unwrap_or_else(|| HashMap::new()),
                 prog_srcloc.clone(),
                 &input_program,
             )
-            .map_err(|e| CompileErr(prog_srcloc, "Failed to parse hex".to_string()))
+            .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string()))
         }
         _ => {
             if do_optimize {
@@ -524,7 +517,7 @@ pub fn cldb(args: &Vec<String>) {
             parse_error.insert("Error-Location".to_string(), c.0.to_string());
             parse_error.insert("Error".to_string(), c.1);
             output.push(parse_error.clone());
-            print!("{}\n", yamlette_string(output));
+            println!("{}", yamlette_string(output));
             return;
         }
     }
@@ -544,7 +537,7 @@ pub fn cldb(args: &Vec<String>) {
                     let mut parse_error = BTreeMap::new();
                     parse_error.insert("Error".to_string(), p.to_string());
                     output.push(parse_error.clone());
-                    print!("{}\n", yamlette_string(output));
+                    println!("{}", yamlette_string(output));
                     return;
                 }
             }
@@ -560,7 +553,7 @@ pub fn cldb(args: &Vec<String>) {
                 parse_error.insert("Error-Location".to_string(), c.0.to_string());
                 parse_error.insert("Error".to_string(), c.1);
                 output.push(parse_error.clone());
-                print!("{}\n", yamlette_string(output));
+                println!("{}", yamlette_string(output));
                 return;
             }
         },
@@ -594,9 +587,9 @@ pub fn cldb(args: &Vec<String>) {
                     None
                 } else {
                     let line_text = program_lines[use_line].to_string();
-                    if (use_col >= line_text.len()) {
+                    if use_col >= line_text.len() {
                         None
-                    } else if (end_col >= line_text.len()) {
+                    } else if end_col >= line_text.len() {
                         end_col = line_text.len();
                         Some(line_text[use_col..end_col].to_string())
                     } else {
@@ -612,7 +605,7 @@ pub fn cldb(args: &Vec<String>) {
          if_true: &dyn Fn(&mut BTreeMap<String, String>),
          if_false: &dyn Fn(&mut BTreeMap<String, String>)| {
             match s {
-                sexp::SExp::Integer(l, i) => {
+                sexp::SExp::Integer(_, i) => {
                     if *i == 2_i32.to_bigint().unwrap() {
                         if_true(collector);
                         return;
@@ -652,7 +645,7 @@ pub fn cldb(args: &Vec<String>) {
     let add_function = |input_file: Option<String>,
                         s: &sexp::SExp,
                         context_result: &mut BTreeMap<String, String>| {
-        whether_is_apply(s, context_result, &|context_result| {}, &|context_result| {
+        whether_is_apply(s, context_result, &|_context_result| {}, &|context_result| {
             match extract_text(&s.loc()) {
                 Some(name) => {
                     if Some(s.loc().file.to_string()) == input_file.clone() {
@@ -700,7 +693,7 @@ pub fn cldb(args: &Vec<String>) {
                 to_print.insert("Final-Location".to_string(), l.to_string());
                 to_print.insert("Final".to_string(), x.to_string());
                 output.push(to_print.clone());
-                print!("{}\n", yamlette_string(output));
+                println!("{}", yamlette_string(output));
                 return;
             }
             Ok(RunStep::Step(sexp, c, p)) => {}
@@ -728,17 +721,16 @@ pub fn cldb(args: &Vec<String>) {
                 to_print.insert("Throw-Location".to_string(), l.to_string());
                 to_print.insert("Throw".to_string(), s.to_string());
                 output.push(to_print.clone());
-                print!("{}\n", yamlette_string(output));
+                println!("{}", yamlette_string(output));
                 return;
             }
             Err(RunFailure::RunErr(l, s)) => {
                 to_print.insert("Failure-Location".to_string(), l.to_string());
                 to_print.insert("Failure".to_string(), s.to_string());
                 output.push(to_print.clone());
-                print!("{}\n", yamlette_string(output));
+                println!("{}", yamlette_string(output));
                 return;
             }
-            _ => {}
         }
 
         step = new_step.unwrap_or_else(|_| step);
@@ -1126,14 +1118,14 @@ pub fn launch_tool(
 
         match res {
             Ok(r) => {
-                print!("{}\n", r.to_string());
+                println!("{}", r.to_string());
 
                 let mut st = HashMap::new();
                 build_symbol_table_mut(&mut st, &r);
                 write_sym_output(&st, &"main.sym".to_string());
             }
             Err(c) => {
-                print!("{}: {}\n", c.0.to_string(), c.1);
+                println!("{}: {}", c.0.to_string(), c.1);
             }
         }
 
@@ -1291,7 +1283,7 @@ pub fn launch_tool(
                 } else {
                     Some(max_cost as u64)
                 },
-                pre_eval_f: pre_eval_f,
+                pre_eval_f,
                 strict: parsedArgs
                     .get("strict")
                     .map(|_| true)

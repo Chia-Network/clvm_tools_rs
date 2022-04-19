@@ -89,7 +89,7 @@ struct SExpToBytesIterator<'a> {
 impl<'a> SExpToBytesIterator<'a> {
     fn new(allocator: &'a mut Allocator, sexp: NodePtr) -> Self {
         return SExpToBytesIterator {
-            allocator: allocator,
+            allocator,
             state: vec![SExpToByteOp::Object(sexp)],
         };
     }

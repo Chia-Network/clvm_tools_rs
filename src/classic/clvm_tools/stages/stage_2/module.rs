@@ -291,41 +291,39 @@ fn parse_mod_sexp(
                 macros,
                 run_program.clone()
             )
+        } else if namespace.contains(&name) {
+            Err(EvalErr(declaration_sexp, format!("symbol \"{}\" redefined", Bytes::new(Some(BytesFromType::Raw(name))).decode())))
         } else {
-            if namespace.contains(&name) {
-                Err(EvalErr(declaration_sexp, format!("symbol \"{}\" redefined", Bytes::new(Some(BytesFromType::Raw(name))).decode())))
-            } else {
-                namespace.insert(name.to_vec());
+            namespace.insert(name.to_vec());
 
-                if op == "defmacro".as_bytes() {
-                    macros.push((name.to_vec(), declaration_sexp));
+            if op == "defmacro".as_bytes() {
+                macros.push((name.to_vec(), declaration_sexp));
+                Ok(())
+            } else if op == "defun".as_bytes() {
+                m! {
+                    declaration_sexp_r <- rest(allocator, declaration_sexp);
+                    declaration_sexp_rr <- rest(allocator, declaration_sexp_r);
+                    let _ = functions.insert(name, declaration_sexp_rr);
                     Ok(())
-                } else if op == "defun".as_bytes() {
-                    m! {
-                        declaration_sexp_r <- rest(allocator, declaration_sexp);
-                        declaration_sexp_rr <- rest(allocator, declaration_sexp_r);
-                        let _ = functions.insert(name, declaration_sexp_rr);
-                        Ok(())
-                    }
-                } else if op == "defun-inline".as_bytes() {
-                    m! {
-                        defined_macro <-
-                            defun_inline_to_macro(allocator, declaration_sexp);
-                        let _ = macros.push((name, defined_macro));
-                        Ok(())
-                    }
-                } else if op == "defconstant".as_bytes() {
-                    m! {
-                        r_of_declaration <- rest(allocator, declaration_sexp);
-                        rr_of_declaration <- rest(allocator, r_of_declaration);
-                        frr_of_declaration <- first(allocator, rr_of_declaration);
-                        quoted_decl <- quote(allocator, frr_of_declaration);
-                        let _ = constants.insert(name, quoted_decl);
-                        Ok(())
-                    }
-                } else {
-                    Err(EvalErr(declaration_sexp, "expected defun, defmacro, or defconstant".to_string()))
                 }
+            } else if op == "defun-inline".as_bytes() {
+                m! {
+                    defined_macro <-
+                        defun_inline_to_macro(allocator, declaration_sexp);
+                    let _ = macros.push((name, defined_macro));
+                    Ok(())
+                }
+            } else if op == "defconstant".as_bytes() {
+                m! {
+                    r_of_declaration <- rest(allocator, declaration_sexp);
+                    rr_of_declaration <- rest(allocator, r_of_declaration);
+                    frr_of_declaration <- first(allocator, rr_of_declaration);
+                    quoted_decl <- quote(allocator, frr_of_declaration);
+                    let _ = constants.insert(name, quoted_decl);
+                    Ok(())
+                }
+            } else {
+                Err(EvalErr(declaration_sexp, "expected defun, defmacro, or defconstant".to_string()))
             }
         }
     };
@@ -378,9 +376,9 @@ fn compile_mod_stage_1(
 
                     let _ = functions.insert(MAIN_NAME.as_bytes().to_vec(), main_list);
                     Ok(CollectionResult {
-                        functions: functions,
-                        constants: constants,
-                        macros: macros
+                        functions,
+                        constants,
+                        macros
                     })
                 };
             }

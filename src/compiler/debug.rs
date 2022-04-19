@@ -2,14 +2,14 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::classic::clvm::__type_compatibility__::{bi_zero, sha256, Bytes, BytesFromType};
+use crate::classic::clvm::__type_compatibility__::{sha256, Bytes, BytesFromType};
 
 use crate::compiler::sexp::SExp;
 use crate::util::u8_from_number;
 
 pub fn build_table_mut<X>(
     code_map: &mut HashMap<String, X>,
-    tx: &Fn(&SExp) -> X,
+    tx: &dyn Fn(&SExp) -> X,
     code: &SExp,
 ) -> Bytes {
     match code {

@@ -1,6 +1,4 @@
-use std::cmp::min;
 use std::fs;
-use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::rc::Rc;
@@ -20,7 +18,6 @@ use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProg
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 
 use crate::classic::platform::distutils::dep_util::newer;
-use crate::classic::platform::distutils::log;
 
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::compile_file;
@@ -145,7 +142,7 @@ pub fn compile_clvm(
                 )
             })?;
 
-            let written = temp_output_file
+            let _ = temp_output_file
                 .write_all(&result_stream.get_value().hex().as_bytes())
                 .map_err(|_| format!("failed to write to {:?}", temp_output_file.path()))?;
 

@@ -96,8 +96,8 @@ fn constant_optimizer<'a>(
     let sc_r = seems_constant(allocator, r);
     let nn_r = non_nil(allocator, r);
     if DIAG_OPTIMIZATIONS {
-        print!(
-            "COPT {} SC_R {} NN_R {}\n",
+        println!(
+            "COPT {} SC_R {} NN_R {}",
             disassemble(allocator, r),
             sc_r,
             nn_r
@@ -616,7 +616,7 @@ impl<'a> OptimizerRunner<'a> {
     ) -> Self {
         return OptimizerRunner {
             name: name.to_string(),
-            to_run: to_run,
+            to_run,
         };
     }
 }
@@ -677,8 +677,8 @@ pub fn optimize_sexp_<'a>(
                 }
 
                 if DEBUG_OPTIMIZATIONS {
-                    print!(
-                        "OPT-{:?}[{}] => {}\n",
+                    println!(
+                        "OPT-{:?}[{}] => {}",
                         name,
                         disassemble(allocator, start_r),
                         disassemble(allocator, r)
@@ -698,12 +698,12 @@ pub fn optimize_sexp<'a>(
     eval_f: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
     if DIAG_OPTIMIZATIONS {
-        print!("START OPTIMIZE {}\n", disassemble(allocator, r));
+        print!("START OPTIMIZE {}", disassemble(allocator, r));
     }
     optimize_sexp_(allocator, r, eval_f).map(|x| {
         if DIAG_OPTIMIZATIONS {
-            print!(
-                "OPTIMIZE_SEXP {} GIVING {}\n",
+            println!(
+                "OPTIMIZE_SEXP {} GIVING {}",
                 disassemble(allocator, r),
                 disassemble(allocator, x)
             );
