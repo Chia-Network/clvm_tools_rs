@@ -38,33 +38,26 @@ impl OperatorHandler for DoRead {
                 SExp::Atom(b) => {
                     let filename =
                         Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
-                    return fs::read_to_string(filename)
+                    fs::read_to_string(filename)
                         .map_err(|_| EvalErr(allocator.null(), "Failed to read file".to_string()))
                         .and_then(|content| {
-                            return read_ir(&content)
+                            read_ir(&content)
                                 .map_err(|e| EvalErr(allocator.null(), e))
                                 .and_then(|ir| {
-                                    return assemble_from_ir(allocator, Rc::new(ir)).map(
-                                        |ir_sexp| {
-                                            return Reduction(1, ir_sexp);
-                                        },
-                                    );
-                                });
-                        });
+                                    assemble_from_ir(allocator, Rc::new(ir))
+                                        .map(|ir_sexp| Reduction(1, ir_sexp))
+                                })
+                        })
                 }
-                _ => {
-                    return Err(EvalErr(
-                        allocator.null(),
-                        "filename is not an atom".to_string(),
-                    ));
-                }
-            },
-            _ => {
-                return Err(EvalErr(
+                _ => Err(EvalErr(
                     allocator.null(),
-                    "given a program that is an atom".to_string(),
-                ));
-            }
+                    "filename is not an atom".to_string(),
+                )),
+            },
+            _ => Err(EvalErr(
+                allocator.null(),
+                "given a program that is an atom".to_string(),
+            )),
         }
     }
 }
@@ -97,9 +90,7 @@ impl OperatorHandler for DoWrite {
                                     format!("failed to write {}", filename_bytes.decode()),
                                 );
                             })
-                            .map(|_| {
-                                return Reduction(1, allocator.null());
-                            });
+                            .map(|_| Reduction(1, allocator.null()));
                     }
                     _ => {}
                 },
@@ -108,7 +99,7 @@ impl OperatorHandler for DoWrite {
             _ => {}
         }
 
-        return Err(EvalErr(sexp, "failed to write data".to_string()));
+        Err(EvalErr(sexp, "failed to write data".to_string()))
     }
 }
 
@@ -145,9 +136,9 @@ impl OperatorHandler for GetFullPathForName {
                                     ))
                                 })
                                 .and_then(|p| {
-                                    return allocator.new_atom(p.as_bytes()).map(|res| {
-                                        return Reduction(1, res);
-                                    });
+                                    allocator
+                                        .new_atom(p.as_bytes())
+                                        .map(|res| Reduction(1, res))
                                 });
                         }
                     }
@@ -157,7 +148,7 @@ impl OperatorHandler for GetFullPathForName {
             _ => {}
         }
 
-        return Err(EvalErr(sexp, "can't open file".to_string()));
+        Err(EvalErr(sexp, "can't open file".to_string()))
     }
 }
 
@@ -194,12 +185,12 @@ impl OperatorHandler for RunProgramWithSearchPaths {
 
 impl RunProgramWithSearchPaths {
     fn new(search_paths: &Vec<String>) -> Self {
-        return RunProgramWithSearchPaths {
+        RunProgramWithSearchPaths {
             do_com_prog: RefCell::new(DoComProg::new()),
             do_opt_prog: RefCell::new(DoOptProg::new()),
             runner: RefCell::new(DefaultProgramRunner::new()),
             search_paths: search_paths.to_vec(),
-        };
+        }
     }
 
     fn setup(&self, myself: Rc<RunProgramWithSearchPaths>) {
@@ -216,26 +207,26 @@ impl RunProgramWithSearchPaths {
             runner.add_handler(&"opt".as_bytes().to_vec(), myself.clone());
             runner.add_handler(&"_set_symbol_table".as_bytes().to_vec(), myself.clone());
 
-            return runner.clone();
+            runner.clone()
         });
 
         self.do_com_prog.replace_with(|do_com_prog| {
             do_com_prog.set_runner(myself.clone());
-            return do_com_prog.clone();
+            do_com_prog.clone()
         });
 
         self.do_opt_prog.replace_with(|do_opt_prog| {
             do_opt_prog.set_runner(myself.clone());
-            return do_opt_prog.clone();
+            do_opt_prog.clone()
         });
     }
 
     pub fn showtable(&self) -> String {
-        return self.runner.borrow().router.showtable();
+        self.runner.borrow().router.showtable()
     }
 
     pub fn get_compiles(&self) -> HashMap<String, String> {
-        return self.do_com_prog.borrow().get_compiles();
+        self.do_com_prog.borrow().get_compiles()
     }
 }
 
@@ -257,5 +248,5 @@ impl TRunProgram for RunProgramWithSearchPaths {
 pub fn run_program_for_search_paths(search_paths: &Vec<String>) -> Rc<RunProgramWithSearchPaths> {
     let prog = Rc::new(RunProgramWithSearchPaths::new(&search_paths.to_vec()));
     prog.setup(prog.clone());
-    return prog;
+    prog
 }

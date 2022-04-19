@@ -24,7 +24,7 @@ impl Eq for SExp {}
 
 impl PartialEq for SExp {
     fn eq(&self, other: &Self) -> bool {
-        return self.equal_to(other);
+        self.equal_to(other)
     }
 }
 
@@ -102,7 +102,7 @@ fn is_dec(s: &Vec<u8>) -> bool {
         first = false;
     }
 
-    return dec && *s != vec!['-' as u8];
+    dec && *s != vec!['-' as u8]
 }
 
 fn matches_integral(s: &Vec<u8>) -> Integral {
@@ -117,7 +117,7 @@ fn matches_integral(s: &Vec<u8>) -> Integral {
 
 fn normalize_int(v: Vec<u8>, base: u32) -> Number {
     let s = Bytes::new(Some(BytesFromType::Raw(v))).decode();
-    return Number::from_str_radix(&s, base).unwrap();
+    Number::from_str_radix(&s, base).unwrap()
 }
 
 fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
@@ -139,7 +139,7 @@ pub fn enlist(l: Srcloc, v: Vec<Rc<SExp>>) -> SExp {
         let i = v.len() - i_reverse - 1;
         result = make_cons(v[i].clone(), Rc::new(result));
     }
-    return result;
+    result
 }
 
 fn emit(a: Rc<SExp>, p: SExpParseState) -> SExpParseResult {
@@ -192,7 +192,7 @@ fn printable(a: &Vec<u8>) -> bool {
         }
     }
 
-    return true;
+    true
 }
 
 impl SExp {
@@ -217,15 +217,15 @@ impl SExp {
     }
 
     pub fn atom_from_string(loc: Srcloc, s: &String) -> SExp {
-        return SExp::Atom(loc, s.as_bytes().to_vec());
+        SExp::Atom(loc, s.as_bytes().to_vec())
     }
 
     pub fn atom_from_vec(loc: Srcloc, s: &Vec<u8>) -> SExp {
-        return SExp::Atom(loc, s.to_vec());
+        SExp::Atom(loc, s.to_vec())
     }
 
     pub fn quoted_from_string(loc: Srcloc, s: &String) -> SExp {
-        return SExp::QuotedString(loc, '\"' as u8, s.as_bytes().to_vec());
+        SExp::QuotedString(loc, '\"' as u8, s.as_bytes().to_vec())
     }
 
     pub fn to_string(&self) -> String {
@@ -307,7 +307,7 @@ impl SExp {
     pub fn encode(&self) -> Vec<u8> {
         let mut v: Vec<u8> = Vec::new();
         self.encode_mut(&mut v);
-        return v;
+        v
     }
 
     pub fn to_bigint(&self) -> Option<Number> {

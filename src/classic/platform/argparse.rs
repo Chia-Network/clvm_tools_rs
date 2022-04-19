@@ -42,7 +42,7 @@ pub trait ArgumentValueConv {
 struct EmptyConversion {}
 impl ArgumentValueConv for EmptyConversion {
     fn convert(&self, s: &String) -> Result<ArgumentValue, String> {
-        return Ok(ArgumentValue::ArgString(None, s.to_string()));
+        Ok(ArgumentValue::ArgString(None, s.to_string()))
     }
 }
 
@@ -53,11 +53,11 @@ pub struct IntConversion {
 impl<'a> ArgumentValueConv for IntConversion {
     fn convert(&self, v: &String) -> Result<ArgumentValue, String> {
         match v.parse::<i64>() {
-            Ok(n) => return Ok(ArgumentValue::ArgInt(n)),
+            Ok(n) => Ok(ArgumentValue::ArgInt(n)),
             _ => {
                 let m: &dyn Fn() -> String = self.help_messager.borrow();
                 let usage = m();
-                return Err(format!("{}\n\nError: Invalid parameter: {}", usage, v));
+                Err(format!("{}\n\nError: Invalid parameter: {}", usage, v))
             }
         }
     }
@@ -65,7 +65,7 @@ impl<'a> ArgumentValueConv for IntConversion {
 
 impl IntConversion {
     pub fn new(f: Rc<dyn Fn() -> String>) -> Self {
-        return IntConversion { help_messager: f };
+        IntConversion { help_messager: f }
     }
 }
 
@@ -82,39 +82,39 @@ pub struct Argument {
 
 impl Argument {
     pub fn new() -> Self {
-        return Argument {
+        Argument {
             action: TArgOptionAction::Store,
             typeofarg: Rc::new(EmptyConversion {}),
             default: None,
             help: "".to_string(),
             nargs: None,
-        };
+        }
     }
 
     pub fn set_action(self, a: TArgOptionAction) -> Self {
         let mut s = self;
         s.action = a;
-        return s;
+        s
     }
     pub fn set_type(self, t: Rc<dyn ArgumentValueConv>) -> Self {
         let mut s = self;
         s.typeofarg = t;
-        return s;
+        s
     }
     pub fn set_default(self, v: ArgumentValue) -> Self {
         let mut s = self;
         s.default = Some(v);
-        return s;
+        s
     }
     pub fn set_help(self, h: String) -> Self {
         let mut s = self;
         s.help = h;
-        return s;
+        s
     }
     pub fn set_n_args(self, n: NArgsSpec) -> Self {
         let mut s = self;
         s.nargs = Some(n);
-        return s;
+        s
     }
 }
 
@@ -125,7 +125,7 @@ pub struct Arg {
 }
 
 pub fn is_optional(arg: &String) -> bool {
-    return arg.starts_with("-");
+    arg.starts_with("-")
 }
 
 #[derive(Debug)]
@@ -163,7 +163,7 @@ impl ArgumentParser {
             }
         }
 
-        return start;
+        start
     }
 
     pub fn add_argument(&mut self, arg_name: Vec<String>, options: Argument) {
@@ -448,7 +448,7 @@ impl ArgumentParser {
             _ => {}
         }
 
-        return Ok(params);
+        Ok(params)
     }
 
     pub fn compile_help_messages(&self) -> String {
@@ -464,7 +464,7 @@ impl ArgumentParser {
                 msg = msg.replace("%(prog)", &self.prog);
                 msg = msg.replace("%(default)", &default_value);
             }
-            return msg;
+            msg
         };
 
         let mut arg_conversions = vec![];
@@ -494,7 +494,7 @@ impl ArgumentParser {
             }
         }
 
-        return messages.join("\n");
+        messages.join("\n")
     }
 
     /**
@@ -524,10 +524,10 @@ impl ArgumentParser {
             for k in 0..self.optional_args.len() - 1 {
                 let index = index_of_match(
                     |n: &String| {
-                        return n.starts_with(&"-".to_string())
+                        n.starts_with(&"-".to_string())
                             && !n.starts_with(&"--".to_string())
                             && n != arg
-                            && arg.starts_with(n);
+                            && arg.starts_with(n)
                     },
                     &self.optional_args[k].names,
                 );
@@ -554,7 +554,7 @@ impl ArgumentParser {
             }
         }
 
-        return norm;
+        norm
     }
 
     pub fn get_optional_arg_name(&self, arg: &Arg) -> Result<String, String> {
@@ -577,7 +577,7 @@ impl ArgumentParser {
             let first_non_dash = skip_leading(&name, "-").replace("-", "_");
             return Ok(first_non_dash);
         }
-        return Err("Invalid argument name".to_string());
+        Err("Invalid argument name".to_string())
     }
 
     fn get_converter(
@@ -585,8 +585,8 @@ impl ArgumentParser {
         typeofarg: Option<Rc<dyn ArgumentValueConv>>,
     ) -> Rc<dyn ArgumentValueConv> {
         match typeofarg {
-            None => return Rc::new(EmptyConversion {}),
-            Some(ty) => return ty,
+            None => Rc::new(EmptyConversion {}),
+            Some(ty) => ty,
         }
     }
 }

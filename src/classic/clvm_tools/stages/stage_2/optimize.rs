@@ -79,7 +79,7 @@ pub fn seems_constant<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> bool {
             }
         }
     }
-    return true;
+    true
 }
 
 fn constant_optimizer<'a>(
@@ -124,23 +124,21 @@ fn constant_optimizer<'a>(
         };
     }
 
-    return Ok(r);
+    Ok(r)
 }
 
 pub fn is_args_call<'a>(allocator: &'a mut Allocator, r: NodePtr) -> bool {
     match allocator.sexp(r) {
         SExp::Atom(b) => {
             let buf = allocator.buf(&b);
-            return buf.len() == 1 && buf[0] == 1;
+            buf.len() == 1 && buf[0] == 1
         }
-        _ => {
-            return false;
-        }
+        _ => false,
     }
 }
 
 pub fn cons_q_a_optimizer_pattern<'a>(allocator: &'a mut Allocator) -> NodePtr {
-    return assemble(allocator, &"(a (q . (: . sexp)) (: . args))".to_string()).unwrap();
+    assemble(allocator, &"(a (q . (: . sexp)) (: . args))".to_string()).unwrap()
 }
 
 pub fn cons_q_a_optimizer<'a>(
@@ -173,7 +171,7 @@ pub fn cons_q_a_optimizer<'a>(
 }
 
 fn cons_pattern<'a>(allocator: &'a mut Allocator) -> NodePtr {
-    return assemble(allocator, &"(c (: . first) (: . rest)))".to_string()).unwrap();
+    assemble(allocator, &"(c (: . first) (: . rest)))".to_string()).unwrap()
 }
 
 fn cons_f<'a>(allocator: &'a mut Allocator, args: NodePtr) -> Result<NodePtr, EvalErr> {
@@ -276,7 +274,7 @@ fn sub_args<'a>(
 }
 
 fn var_change_optimizer_cons_eval_pattern<'a>(allocator: &'a mut Allocator) -> NodePtr {
-    return assemble(allocator, &"(a (q . (: . sexp)) (: . args))".to_string()).unwrap();
+    assemble(allocator, &"(a (q . (: . sexp)) (: . args))".to_string()).unwrap()
 }
 
 fn var_change_optimizer_cons_eval(
@@ -454,11 +452,11 @@ fn children_optimizer(
 }
 
 fn cons_optimizer_pattern_first<'a>(allocator: &'a mut Allocator) -> NodePtr {
-    return assemble(allocator, &"(f (c (: . first) (: . rest)))".to_string()).unwrap();
+    assemble(allocator, &"(f (c (: . first) (: . rest)))".to_string()).unwrap()
 }
 
 fn cons_optimizer_pattern_rest<'a>(allocator: &'a mut Allocator) -> NodePtr {
-    return assemble(allocator, &"(r (c (: . first) (: . rest)))".to_string()).unwrap();
+    assemble(allocator, &"(r (c (: . first) (: . rest)))".to_string()).unwrap()
 }
 
 fn cons_optimizer<'a>(
@@ -497,11 +495,11 @@ fn cons_optimizer<'a>(
 }
 
 fn first_atom_pattern<'a>(allocator: &'a mut Allocator) -> NodePtr {
-    return assemble(allocator, &"(f ($ . atom))".to_string()).unwrap();
+    assemble(allocator, &"(f ($ . atom))".to_string()).unwrap()
 }
 
 fn rest_atom_pattern<'a>(allocator: &'a mut Allocator) -> NodePtr {
-    return assemble(allocator, &"(r ($ . atom))".to_string()).unwrap();
+    assemble(allocator, &"(r ($ . atom))".to_string()).unwrap()
 }
 
 fn path_optimizer<'a>(
@@ -560,7 +558,7 @@ fn path_optimizer<'a>(
 }
 
 fn quote_pattern_1(allocator: &mut Allocator) -> NodePtr {
-    return assemble(allocator, &"(q . 0)".to_string()).unwrap();
+    assemble(allocator, &"(q . 0)".to_string()).unwrap()
 }
 
 fn quote_null_optimizer<'a>(
@@ -572,11 +570,11 @@ fn quote_null_optimizer<'a>(
 
     // This applies the transform `(q . 0)` => `0`
     let t1 = match_sexp(allocator, QUOTE_PATTERN_1, r, HashMap::new());
-    return Ok(t1.map(|_| allocator.null()).unwrap_or_else(|| r));
+    Ok(t1.map(|_| allocator.null()).unwrap_or_else(|| r))
 }
 
 fn apply_null_pattern_1(allocator: &mut Allocator) -> NodePtr {
-    return assemble(allocator, &"(a 0 . (: . rest))".to_string()).unwrap();
+    assemble(allocator, &"(a 0 . (: . rest))".to_string()).unwrap()
 }
 
 fn apply_null_optimizer<'a>(
@@ -588,7 +586,7 @@ fn apply_null_optimizer<'a>(
 
     // This applies the transform `(a 0 ARGS)` => `0`
     let t1 = match_sexp(allocator, APPLY_NULL_PATTERN_1, r, HashMap::new());
-    return Ok(t1.map(|_| allocator.null()).unwrap_or_else(|| r));
+    Ok(t1.map(|_| allocator.null()).unwrap_or_else(|| r))
 }
 
 struct OptimizerRunner<'a> {
@@ -603,7 +601,7 @@ impl<'a> OptimizerRunner<'a> {
         r: NodePtr,
         eval_f: Rc<dyn TRunProgram>,
     ) -> Result<NodePtr, EvalErr> {
-        return (self.to_run)(allocator, r, eval_f);
+        (self.to_run)(allocator, r, eval_f)
     }
 
     pub fn new(
@@ -614,10 +612,10 @@ impl<'a> OptimizerRunner<'a> {
             Rc<dyn TRunProgram>,
         ) -> Result<NodePtr, EvalErr>,
     ) -> Self {
-        return OptimizerRunner {
+        OptimizerRunner {
             name: name.to_string(),
             to_run,
-        };
+        }
     }
 }
 
@@ -714,9 +712,9 @@ pub fn optimize_sexp<'a>(
 
 impl DoOptProg {
     pub fn new() -> Self {
-        return DoOptProg {
+        DoOptProg {
             runner: Rc::new(DefaultProgramRunner::new()),
-        };
+        }
     }
 
     pub fn set_runner(&mut self, runner: Rc<dyn TRunProgram>) {
@@ -726,11 +724,11 @@ impl DoOptProg {
 
 impl OperatorHandler for DoOptProg {
     fn op(&self, allocator: &mut Allocator, _op: NodePtr, r: NodePtr, _max_cost: Cost) -> Response {
-        return m! {
+        m! {
             r_first <- first(allocator, r);
             optimize_sexp(allocator, r_first, self.runner.clone()).
                 map(|optimized| Reduction(1, optimized))
-        };
+        }
     }
 }
 
@@ -740,7 +738,7 @@ fn test_cons_q_a(src: String) -> String {
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths(&vec![".".to_string()]);
     let optimized = cons_q_a_optimizer(&mut allocator, assembled, runner.clone()).unwrap();
-    return disassemble(&mut allocator, optimized);
+    disassemble(&mut allocator, optimized)
 }
 
 fn test_var_change_optimizer_cons_eval(src: String) -> String {
@@ -750,7 +748,7 @@ fn test_var_change_optimizer_cons_eval(src: String) -> String {
     let runner = run_program_for_search_paths(&vec![".".to_string()]);
     let optimized =
         var_change_optimizer_cons_eval(&mut allocator, assembled, runner.clone()).unwrap();
-    return disassemble(&mut allocator, optimized);
+    disassemble(&mut allocator, optimized)
 }
 
 fn test_children_optimizer(src: String) -> String {
@@ -759,7 +757,7 @@ fn test_children_optimizer(src: String) -> String {
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths(&vec![".".to_string()]);
     let optimized = children_optimizer(&mut allocator, assembled, runner.clone()).unwrap();
-    return disassemble(&mut allocator, optimized);
+    disassemble(&mut allocator, optimized)
 }
 
 fn test_constant_optimizer(src: String) -> String {
@@ -768,7 +766,7 @@ fn test_constant_optimizer(src: String) -> String {
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths(&vec![".".to_string()]);
     let optimized = constant_optimizer(&mut allocator, assembled, 0, runner.clone()).unwrap();
-    return disassemble(&mut allocator, optimized);
+    disassemble(&mut allocator, optimized)
 }
 
 fn test_optimizer(src: String) -> String {
@@ -777,7 +775,7 @@ fn test_optimizer(src: String) -> String {
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths(&vec![".".to_string()]);
     let optimized = optimize_sexp(&mut allocator, assembled, runner.clone()).unwrap();
-    return disassemble(&mut allocator, optimized);
+    disassemble(&mut allocator, optimized)
 }
 
 fn test_sub_args(src: String) -> String {
@@ -788,7 +786,7 @@ fn test_sub_args(src: String) -> String {
     match allocator.sexp(assembled) {
         SExp::Pair(a, b) => {
             let optimized = sub_args(&mut allocator, a, b).unwrap();
-            return disassemble(&mut allocator, optimized);
+            disassemble(&mut allocator, optimized)
         }
         _ => {
             panic!("assembled a list got an atom");
@@ -875,11 +873,11 @@ fn constant_optimize_test_from_file(src: String) -> (String, String) {
     let mut out_path = testpath.clone();
     out_path.push(name_tgt);
 
-    return fs::read_to_string(in_path)
+    fs::read_to_string(in_path)
         .and_then(|input| {
-            return fs::read_to_string(out_path).map(|output| (input, output.trim().to_string()));
+            fs::read_to_string(out_path).map(|output| (input, output.trim().to_string()))
         })
-        .unwrap();
+        .unwrap()
 }
 
 #[test]

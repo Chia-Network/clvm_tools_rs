@@ -54,7 +54,7 @@ pub fn compose_paths(path_0_: &Number, path_1_: &Number) -> Number {
     }
 
     mask -= bi_one();
-    return path_1 | (path_0 & mask);
+    path_1 | (path_0 & mask)
 }
 
 pub struct NodePath {
@@ -72,34 +72,34 @@ impl NodePath {
                     let bytes_repr =
                         bigint_to_bytes(&index, Some(TConvertOption { signed: true })).unwrap();
                     let unsigned = bigint_from_bytes(&bytes_repr, None);
-                    return NodePath { index: unsigned };
+                    NodePath { index: unsigned }
                 } else {
-                    return NodePath {
+                    NodePath {
                         index: index.clone(),
-                    };
+                    }
                 }
             }
-            None => return NodePath { index: bi_one() },
+            None => NodePath { index: bi_one() },
         }
     }
 
     pub fn as_path(&self) -> Bytes {
-        return bigint_to_bytes(&self.index, None).unwrap();
+        bigint_to_bytes(&self.index, None).unwrap()
     }
 
     pub fn add(&self, other_node: NodePath) -> Self {
         let composedPath = compose_paths(&self.index, &other_node.index);
-        return NodePath::new(Some(composedPath));
+        NodePath::new(Some(composedPath))
     }
 
     pub fn first(&self) -> Self {
-        return NodePath::new(Some(self.index.clone() * 2_u32.to_bigint().unwrap()));
+        NodePath::new(Some(self.index.clone() * 2_u32.to_bigint().unwrap()))
     }
 
     pub fn rest(&self) -> Self {
-        return NodePath::new(Some(
+        NodePath::new(Some(
             (self.index.clone() * 2_u32.to_bigint().unwrap()) + bi_one(),
-        ));
+        ))
     }
 }
 

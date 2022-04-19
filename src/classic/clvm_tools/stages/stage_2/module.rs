@@ -15,9 +15,7 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::classic::clvm_tools::NodePath::NodePath;
 
 lazy_static! {
-    pub static ref MAIN_NAME: String = {
-        return "".to_string();
-    };
+    pub static ref MAIN_NAME: String = { "".to_string() };
 }
 
 struct CollectionResult {
@@ -29,16 +27,16 @@ struct CollectionResult {
 // export type TBuildTree = Bytes | Tuple<TBuildTree, TBuildTree> | [];
 fn build_tree(allocator: &mut Allocator, items: &Vec<Vec<u8>>) -> Result<NodePtr, EvalErr> {
     if items.len() == 0 {
-        return Ok(allocator.null());
+        Ok(allocator.null())
     } else if items.len() == 1 {
-        return allocator.new_atom(&items[0]);
+        allocator.new_atom(&items[0])
     } else {
-        return m! {
+        m! {
             let half_size = items.len() >> 1;
             left <- build_tree(allocator, &items[..half_size].to_vec());
             right <- build_tree(allocator, &items[half_size..].to_vec());
             allocator.new_pair(left, right)
-        };
+        }
     }
 }
 
@@ -48,14 +46,14 @@ fn build_tree_program(allocator: &mut Allocator, items: &Vec<NodePtr>) -> Result
     //  a binary tree of the items, suitable for casting to an s-expression.
     let size = items.len();
     if size == 0 {
-        return m! {
+        m! {
             list_of_nil <- enlist(allocator, &vec!(allocator.null()));
             quote(allocator, list_of_nil)
-        };
+        }
     } else if size == 1 {
-        return Ok(items[0]);
+        Ok(items[0])
     } else {
-        return m! {
+        m! {
             let half_size = items.len() >> 1;
             left <-
                 build_tree_program(allocator, &items[..half_size].to_vec());
@@ -64,7 +62,7 @@ fn build_tree_program(allocator: &mut Allocator, items: &Vec<NodePtr>) -> Result
 
             cons_atom <- allocator.new_atom(&vec!(4 as u8));
             enlist(allocator, &vec!(cons_atom, left, right))
-        };
+        }
     }
 }
 
@@ -148,7 +146,7 @@ fn build_used_constants_names(
     }
 
     used_name_list.sort();
-    return Ok(used_name_list);
+    Ok(used_name_list)
 }
 
 fn parse_include(
@@ -214,14 +212,14 @@ fn unquote_args(
                 };
             }
 
-            return Ok(code);
+            Ok(code)
         }
         SExp::Pair(c1, c2) => {
-            return m! {
+            m! {
                 unquoted_c2 <- unquote_args(allocator, c2, args);
                 unquoted_c1 <- unquote_args(allocator, c1, args);
                 allocator.new_pair(unquoted_c1, unquoted_c2)
-            };
+            }
         }
     }
 }
@@ -343,7 +341,7 @@ fn compile_mod_stage_1(
 
         // eslint-disable-next-line no-constant-condition
         match proper_list(allocator, args, true) {
-            None => { return Err(EvalErr(args, "miscompiled mod is not a proper list\n".to_string())); },
+            None => { Err(EvalErr(args, "miscompiled mod is not a proper list\n".to_string())) },
             Some(alist) => {
                 if alist.len() == 0 {
                     return Err(EvalErr(args, "miscompiled mod is 0 size\n".to_string()));
@@ -367,7 +365,7 @@ fn compile_mod_stage_1(
                 }
 
                 let uncompiled_main = alist[alist.len() - 1];
-                return m! {
+                m! {
                     main_list <-
                         enlist(
                             allocator,
@@ -380,10 +378,10 @@ fn compile_mod_stage_1(
                         constants,
                         macros
                     })
-                };
+                }
             }
         }
-    };
+    }
 }
 
 // export type TSymbolTable = Array<[SExp, Bytes]>;

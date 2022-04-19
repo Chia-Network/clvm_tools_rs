@@ -146,7 +146,7 @@ pub fn prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
     for p in prims() {
         out_map.insert(p.0, Rc::new(p.1));
     }
-    return Rc::new(out_map);
+    Rc::new(out_map)
 }
 
 pub fn primquote(l: Srcloc, a: Rc<SExp>) -> SExp {

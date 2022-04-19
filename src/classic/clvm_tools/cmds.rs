@@ -60,12 +60,8 @@ pub struct PathOrCodeConv {}
 impl ArgumentValueConv for PathOrCodeConv {
     fn convert(&self, arg: &String) -> Result<ArgumentValue, String> {
         match fs::read_to_string(arg) {
-            Ok(s) => {
-                return Ok(ArgumentValue::ArgString(Some(arg.to_string()), s));
-            }
-            Err(_) => {
-                return Ok(ArgumentValue::ArgString(None, arg.to_string()));
-            }
+            Ok(s) => Ok(ArgumentValue::ArgString(Some(arg.to_string()), s)),
+            Err(_) => Ok(ArgumentValue::ArgString(None, arg.to_string())),
         }
     }
 }
@@ -175,13 +171,9 @@ impl TConversion for OpcConversion {
         allocator: &'a mut Allocator,
         hex_text: &String,
     ) -> Result<Tuple<NodePtr, String>, String> {
-        return read_ir(hex_text)
-            .and_then(|ir_sexp| {
-                return assemble_from_ir(allocator, Rc::new(ir_sexp)).map_err(|e| e.1);
-            })
-            .map(|sexp| {
-                return t(sexp, sexp_as_bin(allocator, sexp).hex());
-            });
+        read_ir(hex_text)
+            .and_then(|ir_sexp| assemble_from_ir(allocator, Rc::new(ir_sexp)).map_err(|e| e.1))
+            .map(|sexp| t(sexp, sexp_as_bin(allocator, sexp).hex()))
     }
 }
 
@@ -197,12 +189,12 @@ impl TConversion for OpdConversion {
             hex_text.to_string(),
         )))));
 
-        return sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
+        sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
             .map_err(|e| e.1)
             .map(|sexp| {
                 let disassembled = disassemble(allocator, sexp.1);
-                return t(sexp.1, disassembled);
-            });
+                t(sexp.1, disassembled)
+            })
     }
 }
 
@@ -308,13 +300,8 @@ struct PriorResult {
 }
 
 fn format_arg_inputs(args: &Vec<PriorResult>) -> String {
-    let value_strings: Vec<String> = args
-        .iter()
-        .map(|pr| {
-            return pr.reference.to_string();
-        })
-        .collect();
-    return value_strings.join(", ");
+    let value_strings: Vec<String> = args.iter().map(|pr| pr.reference.to_string()).collect();
+    value_strings.join(", ")
 }
 
 fn get_arg_associations(
@@ -748,7 +735,7 @@ impl<T> RunLog<T> {
             let mut empty_log = Vec::new();
             swap(&mut empty_log, &mut *log);
             empty_log.push(new_log);
-            return empty_log;
+            empty_log
         });
     }
 
@@ -756,9 +743,9 @@ impl<T> RunLog<T> {
         let mut empty_log = Vec::new();
         self.log_entries.replace_with(|log| {
             swap(&mut empty_log, &mut *log);
-            return Vec::new();
+            Vec::new()
         });
-        return empty_log;
+        empty_log
     }
 }
 
@@ -781,7 +768,7 @@ fn calculate_cost_offset(
         .map(|x| x.0)
         .unwrap_or_else(|_| 0);
 
-    return 53 - cost as i64;
+    53 - cost as i64
 }
 
 fn fix_log(
@@ -1191,7 +1178,7 @@ pub fn launch_tool(
             .map(|t| {
                 t.map(|log_ent| {
                     let closure_clone = closure.clone();
-                    return (*closure_clone)(log_ent);
+                    (*closure_clone)(log_ent)
                 })
             })
         });
