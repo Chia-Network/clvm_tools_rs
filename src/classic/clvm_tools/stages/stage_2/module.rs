@@ -15,9 +15,7 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::classic::clvm_tools::NodePath::NodePath;
 
 lazy_static! {
-    pub static ref MAIN_NAME: String = {
-        "".to_string()
-    };
+    pub static ref MAIN_NAME: String = { "".to_string() };
 }
 
 struct CollectionResult {

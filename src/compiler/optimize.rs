@@ -105,12 +105,8 @@ pub fn optimize_expr(
                 BodyForm::Value(SExp::Integer(al, an)) => {
                     examine_call(al.clone(), &u8_from_number(an.clone()))
                 }
-                BodyForm::Value(SExp::QuotedString(al, _, an)) => {
-                    examine_call(al.clone(), an)
-                }
-                BodyForm::Value(SExp::Atom(al, an)) => {
-                    examine_call(al.clone(), an)
-                }
+                BodyForm::Value(SExp::QuotedString(al, _, an)) => examine_call(al.clone(), an),
+                BodyForm::Value(SExp::Atom(al, an)) => examine_call(al.clone(), an),
                 _ => None,
             }
         }

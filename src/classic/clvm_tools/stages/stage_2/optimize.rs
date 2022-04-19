@@ -133,9 +133,7 @@ pub fn is_args_call<'a>(allocator: &'a mut Allocator, r: NodePtr) -> bool {
             let buf = allocator.buf(&b);
             buf.len() == 1 && buf[0] == 1
         }
-        _ => {
-            false
-        }
+        _ => false,
     }
 }
 

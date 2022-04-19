@@ -79,7 +79,7 @@ impl NodePath {
                     }
                 }
             }
-            None => NodePath { index: bi_one() }
+            None => NodePath { index: bi_one() },
         }
     }
 

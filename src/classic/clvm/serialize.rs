@@ -111,9 +111,7 @@ impl<'a> Iterator for SExpToBytesIterator<'a> {
                             }
                             Some(b)
                         }
-                        Err(_) => {
-                            None
-                        }
+                        Err(_) => None,
                     }
                 }
                 SExp::Pair(f, r) => {
@@ -122,9 +120,7 @@ impl<'a> Iterator for SExpToBytesIterator<'a> {
                     Some(vec![CONS_BOX_MARKER as u8])
                 }
             },
-            SExpToByteOp::Blob(b) => {
-                Some(b)
-            }
+            SExpToByteOp::Blob(b) => Some(b),
         })
     }
 }
@@ -159,23 +155,18 @@ impl OpStackEntry for OpCons {
         _f: &mut Stream,
         to_sexp_f: Box<dyn TToSexpF<'a>>,
     ) -> Option<EvalErr> {
-        match val_stack.pop().and_then(|r| {
-            val_stack.pop().map(|l| {
-                (l, r)
-            })
-        }) {
-            None => {
-                None
-            }
+        match val_stack
+            .pop()
+            .and_then(|r| val_stack.pop().map(|l| (l, r)))
+        {
+            None => None,
             Some((l, r)) => {
                 match to_sexp_f.invoke(allocator, CastableType::TupleOf(Rc::new(l), Rc::new(r))) {
                     Ok(c) => {
                         val_stack.push(CastableType::CLVMObject(c.1));
                         None
                     }
-                    Err(e) => {
-                        Some(e)
-                    }
+                    Err(e) => Some(e),
                 }
             }
         }
@@ -211,9 +202,7 @@ impl OpStackEntry for OpReadSexp {
                 val_stack.push(CastableType::CLVMObject(v));
                 None
             }
-            Err(e) => {
-                Some(e)
-            }
+            Err(e) => Some(e),
         }
     }
 }
@@ -222,9 +211,7 @@ pub struct SimpleCreateCLVMObject {}
 
 impl<'a> TToSexpF<'a> for SimpleCreateCLVMObject {
     fn invoke(&self, allocator: &'a mut Allocator, v: CastableType) -> Response {
-        to_sexp_type(allocator, v).map(|sexp| {
-            Reduction(1, sexp)
-        })
+        to_sexp_type(allocator, v).map(|sexp| Reduction(1, sexp))
     }
 }
 

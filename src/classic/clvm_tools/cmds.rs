@@ -60,12 +60,8 @@ pub struct PathOrCodeConv {}
 impl ArgumentValueConv for PathOrCodeConv {
     fn convert(&self, arg: &String) -> Result<ArgumentValue, String> {
         match fs::read_to_string(arg) {
-            Ok(s) => {
-                Ok(ArgumentValue::ArgString(Some(arg.to_string()), s))
-            }
-            Err(_) => {
-                Ok(ArgumentValue::ArgString(None, arg.to_string()))
-            }
+            Ok(s) => Ok(ArgumentValue::ArgString(Some(arg.to_string()), s)),
+            Err(_) => Ok(ArgumentValue::ArgString(None, arg.to_string())),
         }
     }
 }
@@ -176,12 +172,8 @@ impl TConversion for OpcConversion {
         hex_text: &String,
     ) -> Result<Tuple<NodePtr, String>, String> {
         read_ir(hex_text)
-            .and_then(|ir_sexp| {
-                assemble_from_ir(allocator, Rc::new(ir_sexp)).map_err(|e| e.1)
-            })
-            .map(|sexp| {
-                t(sexp, sexp_as_bin(allocator, sexp).hex())
-            })
+            .and_then(|ir_sexp| assemble_from_ir(allocator, Rc::new(ir_sexp)).map_err(|e| e.1))
+            .map(|sexp| t(sexp, sexp_as_bin(allocator, sexp).hex()))
     }
 }
 
@@ -308,12 +300,7 @@ struct PriorResult {
 }
 
 fn format_arg_inputs(args: &Vec<PriorResult>) -> String {
-    let value_strings: Vec<String> = args
-        .iter()
-        .map(|pr| {
-            pr.reference.to_string()
-        })
-        .collect();
+    let value_strings: Vec<String> = args.iter().map(|pr| pr.reference.to_string()).collect();
     value_strings.join(", ")
 }
 

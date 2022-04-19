@@ -44,27 +44,20 @@ impl OperatorHandler for DoRead {
                             read_ir(&content)
                                 .map_err(|e| EvalErr(allocator.null(), e))
                                 .and_then(|ir| {
-                                    assemble_from_ir(allocator, Rc::new(ir)).map(
-                                        |ir_sexp| {
-                                            Reduction(1, ir_sexp)
-                                        },
-                                    )
+                                    assemble_from_ir(allocator, Rc::new(ir))
+                                        .map(|ir_sexp| Reduction(1, ir_sexp))
                                 })
                         })
                 }
-                _ => {
-                    Err(EvalErr(
-                        allocator.null(),
-                        "filename is not an atom".to_string(),
-                    ))
-                }
-            },
-            _ => {
-                Err(EvalErr(
+                _ => Err(EvalErr(
                     allocator.null(),
-                    "given a program that is an atom".to_string(),
-                ))
-            }
+                    "filename is not an atom".to_string(),
+                )),
+            },
+            _ => Err(EvalErr(
+                allocator.null(),
+                "given a program that is an atom".to_string(),
+            )),
         }
     }
 }
@@ -97,9 +90,7 @@ impl OperatorHandler for DoWrite {
                                     format!("failed to write {}", filename_bytes.decode()),
                                 );
                             })
-                            .map(|_| {
-                                Reduction(1, allocator.null())
-                            });
+                            .map(|_| Reduction(1, allocator.null()));
                     }
                     _ => {}
                 },
@@ -145,9 +136,9 @@ impl OperatorHandler for GetFullPathForName {
                                     ))
                                 })
                                 .and_then(|p| {
-                                    allocator.new_atom(p.as_bytes()).map(|res| {
-                                        Reduction(1, res)
-                                    })
+                                    allocator
+                                        .new_atom(p.as_bytes())
+                                        .map(|res| Reduction(1, res))
                                 });
                         }
                     }

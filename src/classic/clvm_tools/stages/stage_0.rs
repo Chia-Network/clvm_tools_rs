@@ -108,9 +108,7 @@ impl<'a> OperatorHandler for OpRouter {
             SExp::Atom(b) => {
                 let buf = &allocator.buf(&b).to_vec();
                 match self.routes.get(buf) {
-                    Some(handler) => {
-                        handler.op(allocator, op, sexp, max_cost)
-                    }
+                    Some(handler) => handler.op(allocator, op, sexp, max_cost),
                     _ => {
                         if buf.len() == 1 {
                             if let Some(f) = self.f_lookup[buf[0] as usize] {
@@ -125,9 +123,7 @@ impl<'a> OperatorHandler for OpRouter {
                     }
                 }
             }
-            _ => {
-                Err(EvalErr(op, "unknown pair operator".to_string()))
-            }
+            _ => Err(EvalErr(op, "unknown pair operator".to_string())),
         }
     }
 }

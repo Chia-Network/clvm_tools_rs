@@ -820,12 +820,10 @@ impl OperatorHandler for DoComProg {
                     x
                 })
             }
-            _ => {
-                Err(EvalErr(
-                    sexp,
-                    "Program is not a pair in do_com_prog".to_string(),
-                ))
-            }
+            _ => Err(EvalErr(
+                sexp,
+                "Program is not a pair in do_com_prog".to_string(),
+            )),
         }
     }
 }

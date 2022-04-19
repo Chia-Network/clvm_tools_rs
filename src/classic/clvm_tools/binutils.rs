@@ -29,18 +29,10 @@ pub fn assemble_from_ir<'a>(
     ir_sexp: Rc<IRRepr>,
 ) -> Result<NodePtr, EvalErr> {
     match ir_sexp.borrow() {
-        IRRepr::Null => {
-            Ok(allocator.null())
-        }
-        IRRepr::Quotes(b) => {
-            allocator.new_atom(b.data())
-        }
-        IRRepr::Int(b, _signed) => {
-            allocator.new_atom(b.data())
-        }
-        IRRepr::Hex(b) => {
-            allocator.new_atom(b.data())
-        }
+        IRRepr::Null => Ok(allocator.null()),
+        IRRepr::Quotes(b) => allocator.new_atom(b.data()),
+        IRRepr::Int(b, _signed) => allocator.new_atom(b.data()),
+        IRRepr::Hex(b) => allocator.new_atom(b.data()),
         IRRepr::Symbol(s) => {
             let mut s_real_name = s.clone();
             if s.starts_with("#") {
@@ -48,22 +40,16 @@ pub fn assemble_from_ir<'a>(
             }
 
             match KEYWORD_TO_ATOM().get(&s_real_name) {
-                Some(v) => {
-                    allocator.new_atom(v)
-                }
+                Some(v) => allocator.new_atom(v),
                 None => {
                     let v: Vec<u8> = s_real_name.as_bytes().to_vec();
                     allocator.new_atom(&v)
                 }
             }
         }
-        IRRepr::Cons(l, r) => {
-            assemble_from_ir(allocator, l.clone()).and_then(|l| {
-                assemble_from_ir(allocator, r.clone()).and_then(|r| {
-                    allocator.new_pair(l, r)
-                })
-            })
-        }
+        IRRepr::Cons(l, r) => assemble_from_ir(allocator, l.clone()).and_then(|l| {
+            assemble_from_ir(allocator, r.clone()).and_then(|r| allocator.new_pair(l, r))
+        }),
     }
 }
 

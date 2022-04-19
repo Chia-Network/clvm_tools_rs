@@ -163,9 +163,7 @@ fn qq_to_expression(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
 
             qq_to_expression_list(body.clone())
         }
-        _ => {
-            Ok(BodyForm::Quoted(body_copy.clone()))
-        }
+        _ => Ok(BodyForm::Quoted(body_copy.clone())),
     }
 }
 
@@ -219,9 +217,7 @@ fn make_let_bindings(body: Rc<SExp>) -> Result<Vec<Rc<Binding>>, CompileErr> {
         "Bad binding tail ".to_string() + &body.to_string(),
     ));
     match body.borrow() {
-        SExp::Nil(_) => {
-            Ok(vec![])
-        }
+        SExp::Nil(_) => Ok(vec![]),
         SExp::Cons(_, head, tl) => head
             .proper_list()
             .map(|x| match &x[..] {
@@ -320,18 +316,14 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                                 application()
                             }
                         }
-                        None => {
-                            finish_err("tail_proper")
-                        }
+                        None => finish_err("tail_proper"),
                     }
                 }
-                SExp::Integer(il, i) => {
-                    compile_bodyform(Rc::new(SExp::Cons(
-                        il.clone(),
-                        Rc::new(SExp::Atom(il.clone(), u8_from_number(i.clone()))),
-                        tail.clone(),
-                    )))
-                }
+                SExp::Integer(il, i) => compile_bodyform(Rc::new(SExp::Cons(
+                    il.clone(),
+                    Rc::new(SExp::Atom(il.clone(), u8_from_number(i.clone()))),
+                    tail.clone(),
+                ))),
                 SExp::QuotedString(_, _, _) => {
                     let body_copy: &SExp = body.borrow();
                     Ok(BodyForm::Value(body_copy.clone()))
@@ -340,9 +332,7 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                     let body_copy: &SExp = body.borrow();
                     Ok(BodyForm::Quoted(body_copy.clone()))
                 }
-                SExp::Cons(_, _, _) => {
-                    finish_err("bad cons")
-                }
+                SExp::Cons(_, _, _) => finish_err("bad cons"),
             }
         }
         _ => {
@@ -425,19 +415,15 @@ fn match_op_name_4(
                         Rc::new(enlist(l.clone(), tail_list)),
                     ))
                 }
-                _ => {
-                    Some((
-                        op_name.clone(),
-                        Vec::new(),
-                        Rc::new(SExp::Nil(l.clone())),
-                        Rc::new(SExp::Nil(l.clone())),
-                    ))
-                }
+                _ => Some((
+                    op_name.clone(),
+                    Vec::new(),
+                    Rc::new(SExp::Nil(l.clone())),
+                    Rc::new(SExp::Nil(l.clone())),
+                )),
             }
         }
-        _ => {
-            None
-        }
+        _ => None,
     }
 }
 
@@ -476,47 +462,32 @@ fn compile_mod_(
     content: Rc<SExp>,
 ) -> Result<ModAccum, CompileErr> {
     match content.borrow() {
-        SExp::Nil(l) => {
-            Err(CompileErr(
-                l.clone(),
-                "no expression at end of mod".to_string(),
-            ))
-        }
+        SExp::Nil(l) => Err(CompileErr(
+            l.clone(),
+            "no expression at end of mod".to_string(),
+        )),
         SExp::Cons(l, body, tail) => match tail.borrow() {
             SExp::Nil(_) => match mc.exp_form {
-                Some(_) => {
-                    Err(CompileErr(l.clone(), "too many expressions".to_string()))
-                }
-                _ => {
-                    Ok(mc.set_final(&CompileForm {
-                        loc: mc.loc.clone(),
-                        args: args.clone(),
-                        helpers: mc.helpers.clone(),
-                        exp: Rc::new(compile_bodyform(body.clone())?),
-                    }))
-                }
+                Some(_) => Err(CompileErr(l.clone(), "too many expressions".to_string())),
+                _ => Ok(mc.set_final(&CompileForm {
+                    loc: mc.loc.clone(),
+                    args: args.clone(),
+                    helpers: mc.helpers.clone(),
+                    exp: Rc::new(compile_bodyform(body.clone())?),
+                })),
             },
             _ => {
                 let helper = compile_helperform(opts.clone(), body.clone())?;
                 match helper {
-                    None => {
-                        Err(CompileErr(
-                            l.clone(),
-                            "only the last form can be an exprssion in mod".to_string(),
-                        ))
-                    }
+                    None => Err(CompileErr(
+                        l.clone(),
+                        "only the last form can be an exprssion in mod".to_string(),
+                    )),
                     Some(form) => match mc.exp_form {
                         None => {
-                            compile_mod_(
-                                &mc.add_helper(form),
-                                opts,
-                                args.clone(),
-                                tail.clone(),
-                            )
+                            compile_mod_(&mc.add_helper(form), opts, args.clone(), tail.clone())
                         }
-                        Some(_) => {
-                            Err(CompileErr(l.clone(), "too many expressions".to_string()))
-                        }
+                        Some(_) => Err(CompileErr(l.clone(), "too many expressions".to_string())),
                     },
                 }
             }

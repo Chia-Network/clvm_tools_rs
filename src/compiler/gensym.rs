@@ -2,9 +2,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 lazy_static! {
-    pub static ref argname_ctr: AtomicUsize = {
-        AtomicUsize::new(0)
-    };
+    pub static ref argname_ctr: AtomicUsize = { AtomicUsize::new(0) };
 }
 
 pub fn gensym(name: Vec<u8>) -> Vec<u8> {

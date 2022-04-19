@@ -35,16 +35,12 @@ pub fn build_table_mut<X>(
         SExp::QuotedString(l, _, a) => {
             build_table_mut(code_map, tx, &SExp::Atom(l.clone(), a.clone()))
         }
-        SExp::Integer(l, i) => {
-            build_table_mut(
-                code_map,
-                tx,
-                &SExp::Atom(l.clone(), u8_from_number(i.clone())),
-            )
-        }
-        SExp::Nil(l) => {
-            build_table_mut(code_map, tx, &SExp::Atom(l.clone(), Vec::new()))
-        }
+        SExp::Integer(l, i) => build_table_mut(
+            code_map,
+            tx,
+            &SExp::Atom(l.clone(), u8_from_number(i.clone())),
+        ),
+        SExp::Nil(l) => build_table_mut(code_map, tx, &SExp::Atom(l.clone(), Vec::new())),
     }
 }
 
@@ -71,9 +67,7 @@ fn relabel_inner_(
                 let new_b = relabel_inner_(code_map, swap_table, b.borrow());
                 SExp::Cons(l.clone(), Rc::new(new_a), Rc::new(new_b))
             }
-            _ => {
-                code.clone()
-            }
+            _ => code.clone(),
         })
 }
 

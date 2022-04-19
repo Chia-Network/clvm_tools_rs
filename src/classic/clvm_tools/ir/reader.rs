@@ -108,9 +108,7 @@ pub fn consume_quoted(s: &mut IRReader, q: char) -> Result<IRRepr, String> {
 }
 
 pub fn is_hex(chars: &Vec<u8>) -> bool {
-    chars.len() > 2
-        && chars[0] == '0' as u8
-        && (chars[1] == 'x' as u8 || chars[1] == 'X' as u8)
+    chars.len() > 2 && chars[0] == '0' as u8 && (chars[1] == 'x' as u8 || chars[1] == 'X' as u8)
 }
 
 pub fn is_dec(chars: &Vec<u8>) -> bool {
@@ -150,9 +148,7 @@ pub fn interpret_atom_value(chars: &Vec<u8>) -> IRRepr {
             .and_then(|s| s.parse::<Number>().ok())
             .and_then(|n| bigint_to_bytes(&n, Some(TConvertOption { signed: true })).ok())
         {
-            Some(n) => {
-                IRRepr::Int(n, true)
-            }
+            Some(n) => IRRepr::Int(n, true),
             None => {
                 let string_bytes = Bytes::new(Some(BytesFromType::Raw(chars.to_vec())));
                 IRRepr::Symbol(string_bytes.decode())
@@ -272,21 +268,13 @@ pub fn consume_object(s: &mut IRReader) -> Result<IRRepr, String> {
         consume_cons_body(s)
     } else if b.at(0) == '\"' as u8 || b.at(0) == '\'' as u8 {
         match consume_quoted(s, b.at(0) as char) {
-            Err(e) => {
-                Err(e)
-            }
-            Ok(v) => {
-                Ok(v)
-            }
+            Err(e) => Err(e),
+            Ok(v) => Ok(v),
         }
     } else {
         match consume_atom(s, &b) {
-            None => {
-                Err("empty stream".to_string())
-            }
-            Some(ir) => {
-                Ok(ir)
-            }
+            None => Err("empty stream".to_string()),
+            Some(ir) => Ok(ir),
         }
     }
 }

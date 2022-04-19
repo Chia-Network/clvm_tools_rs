@@ -371,13 +371,11 @@ pub struct Stream {
 impl Stream {
     pub fn new(b: Option<Bytes>) -> Self {
         match b {
-            None => {
-                Stream {
-                    seek: 0,
-                    length: 0,
-                    buffer: vec![],
-                }
-            }
+            None => Stream {
+                seek: 0,
+                length: 0,
+                buffer: vec![],
+            },
             Some(b) => {
                 let data = b.data().to_vec();
                 let stream = Stream {

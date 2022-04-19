@@ -118,28 +118,17 @@ pub fn match_sexp<'a>(
                         }
 
                         match_sexp(allocator, pleft, sleft, known_bindings).and_then(
-                            |new_bindings| {
-                                match_sexp(allocator, pright, sright, new_bindings)
-                            },
+                            |new_bindings| match_sexp(allocator, pright, sright, new_bindings),
                         )
                     }
                 }
             }
             _ => match allocator.sexp(sexp) {
-                SExp::Atom(_) => {
-                    None
-                }
-                SExp::Pair(sleft, sright) => {
-                    match_sexp(allocator, pleft, sleft, known_bindings).and_then(
-                        |new_bindings| {
-                            match_sexp(allocator, pright, sright, new_bindings)
-                        },
-                    )
-                }
+                SExp::Atom(_) => None,
+                SExp::Pair(sleft, sright) => match_sexp(allocator, pleft, sleft, known_bindings)
+                    .and_then(|new_bindings| match_sexp(allocator, pright, sright, new_bindings)),
             },
         },
-        (SExp::Atom(_), _) => {
-            None
-        }
+        (SExp::Atom(_), _) => None,
     }
 }
