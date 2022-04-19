@@ -13,8 +13,8 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::run_optimizer;
 use crate::compiler::comptypes::{
-    cons_of_string_map, foldM, join_vecs_to_string, list_to_cons, with_heading, Binding,
-    BodyForm, Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, DefunCall, HelperForm,
+    cons_of_string_map, foldM, join_vecs_to_string, list_to_cons, with_heading, Binding, BodyForm,
+    Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, DefunCall, HelperForm,
     InlineFunction, LetFormKind, PrimaryCodegen,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};

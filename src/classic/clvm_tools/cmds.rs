@@ -490,15 +490,13 @@ pub fn cldb(args: &Vec<String>) {
     };
 
     let res = match parsedArgs.get("hex") {
-        Some(ArgumentValue::ArgBool(true)) => {
-            hex_to_modern_sexp(
-                &mut allocator,
-                &symbol_table.unwrap_or_else(|| HashMap::new()),
-                prog_srcloc.clone(),
-                &input_program,
-            )
-            .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string()))
-        }
+        Some(ArgumentValue::ArgBool(true)) => hex_to_modern_sexp(
+            &mut allocator,
+            &symbol_table.unwrap_or_else(|| HashMap::new()),
+            prog_srcloc.clone(),
+            &input_program,
+        )
+        .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
         _ => {
             if do_optimize {
                 unopt_res.and_then(|x| run_optimizer(&mut allocator, runner.clone(), Rc::new(x)))
@@ -645,16 +643,19 @@ pub fn cldb(args: &Vec<String>) {
     let add_function = |input_file: Option<String>,
                         s: &sexp::SExp,
                         context_result: &mut BTreeMap<String, String>| {
-        whether_is_apply(s, context_result, &|_context_result| {}, &|context_result| {
-            match extract_text(&s.loc()) {
+        whether_is_apply(
+            s,
+            context_result,
+            &|_context_result| {},
+            &|context_result| match extract_text(&s.loc()) {
                 Some(name) => {
                     if Some(s.loc().file.to_string()) == input_file.clone() {
                         context_result.insert("Function".to_string(), name);
                     }
                 }
                 _ => {}
-            }
-        });
+            },
+        );
     };
 
     let mut step = start_step(program.clone(), args.clone());
