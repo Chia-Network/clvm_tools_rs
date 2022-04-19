@@ -78,7 +78,7 @@ impl Srcloc {
 }
 
 pub fn src_location_min(a: &Srcloc) -> (usize, usize) {
-    return (a.line, a.col);
+    (a.line, a.col)
 }
 
 pub fn src_location_max(a: &Srcloc) -> (usize, usize) {

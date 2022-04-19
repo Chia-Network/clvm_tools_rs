@@ -22,7 +22,7 @@ impl OperatorHandler for OpQuote {
         sexp: NodePtr,
         _max_cost: Cost,
     ) -> Response {
-        return Ok(Reduction(1, sexp));
+        Ok(Reduction(1, sexp))
     }
 }
 
@@ -79,11 +79,11 @@ impl OpRouter {
         let mut routes: HashMap<Vec<u8>, Rc<dyn OperatorHandler>> = HashMap::new();
         routes.insert(vec![1], Rc::new(OpQuote {}));
 
-        return OpRouter {
+        OpRouter {
             routes,
             f_lookup,
             strict: true,
-        };
+        }
     }
 
     pub fn add_handler(&mut self, op: &Vec<u8>, handler: Rc<dyn OperatorHandler>) {
@@ -92,7 +92,7 @@ impl OpRouter {
 
     pub fn showtable(&self) -> String {
         let keys: Vec<Vec<u8>> = self.routes.keys().map(|v| v.to_vec()).collect();
-        return format!("{:?}", keys);
+        format!("{:?}", keys)
     }
 }
 
@@ -109,7 +109,7 @@ impl<'a> OperatorHandler for OpRouter {
                 let buf = &allocator.buf(&b).to_vec();
                 match self.routes.get(buf) {
                     Some(handler) => {
-                        return handler.op(allocator, op, sexp, max_cost);
+                        handler.op(allocator, op, sexp, max_cost)
                     }
                     _ => {
                         if buf.len() == 1 {
@@ -118,7 +118,7 @@ impl<'a> OperatorHandler for OpRouter {
                             }
                         }
                         if self.strict {
-                            return Err(EvalErr(op, "unimplemented operator".to_string()));
+                            Err(EvalErr(op, "unimplemented operator".to_string()))
                         } else {
                             op_unknown(allocator, op, sexp, max_cost)
                         }
@@ -126,7 +126,7 @@ impl<'a> OperatorHandler for OpRouter {
                 }
             }
             _ => {
-                return Err(EvalErr(op, "unknown pair operator".to_string()));
+                Err(EvalErr(op, "unknown pair operator".to_string()))
             }
         }
     }
@@ -158,11 +158,11 @@ pub struct DefaultProgramRunner {
 
 impl DefaultProgramRunner {
     pub fn new() -> Self {
-        return DefaultProgramRunner {
+        DefaultProgramRunner {
             router: OpRouter::new(),
             apply_kw_vec: vec![2 as u8],
             quote_kw_vec: vec![1 as u8],
-        };
+        }
     }
 
     pub fn add_handler(&mut self, op: &Vec<u8>, handler: Rc<dyn OperatorHandler>) {

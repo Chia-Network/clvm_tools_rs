@@ -18,16 +18,16 @@ fn rename_in_qq(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SExp>
                 _ => {}
             }
 
-            return None;
+            None
         })
         .unwrap_or_else(|| match body.borrow() {
             SExp::Cons(l, x, y) => {
                 let l_renamed = rename_in_qq(namemap, x.clone());
                 let r_renamed = rename_in_qq(namemap, y.clone());
-                return Rc::new(SExp::Cons(l.clone(), l_renamed, r_renamed));
+                Rc::new(SExp::Cons(l.clone(), l_renamed, r_renamed))
             }
             _ => {
-                return body;
+                body
             }
         })
 }
@@ -37,10 +37,10 @@ fn rename_in_cons(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SEx
     match body.borrow() {
         SExp::Atom(l, name) => match namemap.get(name) {
             Some(v) => {
-                return Rc::new(SExp::Atom(l.clone(), v.to_vec()));
+                Rc::new(SExp::Atom(l.clone(), v.to_vec()))
             }
             None => {
-                return body;
+                body
             }
         },
         SExp::Cons(l, f, r) => {
@@ -57,7 +57,7 @@ fn rename_in_cons(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SEx
                             .proper_list()
                             .map(|x| match &x[..] {
                                 [v] => {
-                                    return Rc::new(SExp::Cons(
+                                    Rc::new(SExp::Cons(
                                         l.clone(),
                                         Rc::new(SExp::atom_from_string(
                                             la.clone(),
@@ -68,10 +68,10 @@ fn rename_in_cons(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SEx
                                             Rc::new(v.clone()),
                                             Rc::new(SExp::Nil(v.loc())),
                                         )),
-                                    ));
+                                    ))
                                 }
                                 _ => {
-                                    return body.clone();
+                                    body.clone()
                                 }
                             })
                             .unwrap_or_else(|| body.clone());
@@ -80,10 +80,10 @@ fn rename_in_cons(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SEx
                             .proper_list()
                             .map(|x| match &x[..] {
                                 [qqexpr] => {
-                                    return rename_in_qq(namemap, Rc::new(qqexpr.clone()));
+                                    rename_in_qq(namemap, Rc::new(qqexpr.clone()))
                                 }
                                 _ => {
-                                    return body.clone();
+                                    body.clone()
                                 }
                             })
                             .unwrap_or_else(|| body.clone());
@@ -92,14 +92,14 @@ fn rename_in_cons(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SEx
                 _ => {}
             }
 
-            return Rc::new(SExp::Cons(
+            Rc::new(SExp::Cons(
                 l.clone(),
                 rename_in_cons(namemap, f.clone()),
                 rename_in_cons(namemap, r.clone()),
-            ));
+            ))
         }
         _ => {
-            return body.clone();
+            body.clone()
         }
     }
 }
@@ -114,10 +114,10 @@ fn invent_new_names_sexp(body: Rc<SExp>) -> Vec<(Vec<u8>, Vec<u8>)> {
             let mut head_list = invent_new_names_sexp(head.clone());
             let mut tail_list = invent_new_names_sexp(tail.clone());
             head_list.append(&mut tail_list);
-            return head_list;
+            head_list
         }
         _ => {
-            return vec![];
+            vec![]
         }
     }
 }

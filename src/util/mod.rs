@@ -13,7 +13,7 @@ pub fn number_from_u8(v: &[u8]) -> Number {
 }
 
 pub fn u8_from_number(v: Number) -> Vec<u8> {
-    return v.to_signed_bytes_be();
+    v.to_signed_bytes_be()
 }
 
 pub fn index_of_match<F, T>(cb: F, haystack: &Vec<T>) -> i32
@@ -25,7 +25,7 @@ where
             return i as i32;
         }
     }
-    return -1;
+    -1
 }
 
 pub fn skip_leading(s: &String, dash: &str) -> String {

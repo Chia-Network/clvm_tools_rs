@@ -321,7 +321,7 @@ pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
 pub fn flatten_signed_int(v: Number) -> Number {
     let mut sign_digits = v.to_signed_bytes_le();
     sign_digits.push(0);
-    return Number::from_signed_bytes_le(&sign_digits);
+    Number::from_signed_bytes_le(&sign_digits)
 }
 
 pub fn run_step(

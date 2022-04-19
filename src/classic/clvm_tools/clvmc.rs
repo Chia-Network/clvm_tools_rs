@@ -66,7 +66,7 @@ pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> bool {
         }
     }
 
-    return false;
+    false
 }
 
 fn compile_clvm_text(

@@ -89,21 +89,21 @@ lazy_static! {
         for pair in kw_pairs {
             result.insert(vec![pair.v], pair.n.to_string());
         }
-        return result;
+        result
     };
     pub static ref KEYWORD_TO_ATOM_: HashMap<String, Vec<u8>> = {
         let mut result = HashMap::new();
         for pair in kw_pairs {
             result.insert(pair.n.to_string(), vec![pair.v]);
         }
-        return result;
+        result
     };
 }
 
 pub fn KEYWORD_FROM_ATOM() -> &'static HashMap<Vec<u8>, String> {
-    return &KEYWORD_FROM_ATOM_;
+    &KEYWORD_FROM_ATOM_
 }
 
 pub fn KEYWORD_TO_ATOM() -> &'static HashMap<String, Vec<u8>> {
-    return &KEYWORD_TO_ATOM_;
+    &KEYWORD_TO_ATOM_
 }

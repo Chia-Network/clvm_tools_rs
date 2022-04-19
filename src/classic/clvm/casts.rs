@@ -62,7 +62,7 @@ pub fn int_from_bytes<'a>(
     if signed && ((dv[0] & 0x80) != 0) {
         return Ok((unsigned64 - 1 << (b.length() * 8)) as u64);
     }
-    return Ok(unsigned64);
+    Ok(unsigned64)
 }
 
 pub fn bigint_from_bytes(b: &Bytes, option: Option<TConvertOption>) -> Number {
@@ -104,7 +104,7 @@ pub fn bigint_from_bytes(b: &Bytes, option: Option<TConvertOption>) -> Number {
     if signed && ((dv[0] & 0x80) != 0) {
         return unsigned - (bi_one() << (b.length() * 8));
     }
-    return unsigned;
+    unsigned
 }
 
 pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<Bytes, String> {
@@ -186,7 +186,7 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
         set_u8(&mut dv, pointer, setval as u8);
     }
 
-    return Ok(Bytes::new(Some(BytesFromType::Raw(dv))));
+    Ok(Bytes::new(Some(BytesFromType::Raw(dv))))
 }
 
 // /**
