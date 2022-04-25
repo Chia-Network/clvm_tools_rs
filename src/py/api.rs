@@ -2,7 +2,13 @@ use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 
+use std::collections::HashMap;
+use std::sync::mpsc::{Sender, Receiver};
+use std::sync::mpsc;
+use std::thread;
+
 use crate::classic::clvm_tools::clvmc;
+use crate::compiler::clvm::RunStep;
 
 // Thanks: https://www.reddit.com/r/rust/comments/bkkpkz/pkgversion_access_your_crates_version_number_as/
 #[pyfunction]
@@ -40,9 +46,30 @@ fn compile_clvm(
         .map_err(|s| PyException::new_err(s))
 }
 
+#[pyclass]
+struct PythonRunStep {
+    tx: Sender<()>,
+    rx: Sender<HashMap<String,String>>
+}
+
+/*
+#[pymethods]
+impl PythonRunStep {
+    fn step_name(&self) -> PyResult<PyString> {
+
+    }
+}
+
+#[pyfunction]
+fn start_clvm_program(hex: String) -> PyResult<PythonRunStep> {
+    
+}
+*/
+
 #[pymodule]
 fn clvm_tools_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compile_clvm, m)?)?;
     m.add_function(wrap_pyfunction!(get_version, m)?)?;
+    m.add_class::<PythonRunStep>()?;
     Ok(())
 }
