@@ -13,11 +13,10 @@ use std::time::SystemTime;
 
 use core::cmp::max;
 
-use clvm_rs::allocator::{Allocator, NodePtr, SExp};
+use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 use clvm_rs::run_program::PreEval;
 
-use num_bigint::ToBigInt;
 #[macro_use]
 use yamlette::yamlette;
 use yamlette::model::yaml::str::FORCE_QUOTES;
@@ -44,13 +43,12 @@ use crate::classic::platform::argparse::{
     TArgOptionAction, TArgumentParserProps,
 };
 
-use crate::compiler::cldb::{CldbRun, CldbRunEnv};
-use crate::compiler::clvm::{convert_from_clvm_rs, start_step};
+use crate::compiler::cldb::{CldbRun, CldbRunEnv, hex_to_modern_sexp};
+use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
 use crate::compiler::prims;
-use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp;
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::Srcloc;
@@ -254,52 +252,6 @@ pub fn brun(args: &Vec<String>) {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, &"brun".to_string(), 0);
     io::stdout().write_all(s.get_value().data());
-}
-
-pub fn hex_to_modern_sexp_inner(
-    allocator: &mut Allocator,
-    symbol_table: &HashMap<String, String>,
-    loc: Srcloc,
-    program: NodePtr,
-) -> Result<Rc<sexp::SExp>, EvalErr> {
-    let hash = sha256tree(allocator, program);
-    let hash_str = hash.hex();
-    let srcloc = symbol_table
-        .get(&hash_str)
-        .map(|f| Srcloc::start(f))
-        .unwrap_or_else(|| loc.clone());
-
-    match allocator.sexp(program) {
-        SExp::Pair(a, b) => Ok(Rc::new(sexp::SExp::Cons(
-            srcloc.clone(),
-            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc.clone(), a)?,
-            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc, b)?,
-        ))),
-        _ => convert_from_clvm_rs(allocator, srcloc, program).map_err(|_| {
-            EvalErr(
-                Allocator::null(allocator),
-                "clvm_rs allocator failed".to_string(),
-            )
-        }),
-    }
-}
-
-pub fn hex_to_modern_sexp(
-    allocator: &mut Allocator,
-    symbol_table: &HashMap<String, String>,
-    loc: Srcloc,
-    input_program: &String,
-) -> Result<Rc<sexp::SExp>, RunFailure> {
-    let input_serialized = Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
-
-    let mut stream = Stream::new(Some(input_serialized.clone()));
-    let sexp = sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
-        .map(|x| x.1)
-        .map_err(|_| RunFailure::RunErr(loc.clone(), "Bad conversion from hex".to_string()))?;
-
-    hex_to_modern_sexp_inner(allocator, symbol_table, loc.clone(), sexp).map_err(|_| {
-        RunFailure::RunErr(loc, "Failed to convert from classic to modern".to_string())
-    })
 }
 
 pub fn cldb(args: &Vec<String>) {
@@ -512,19 +464,14 @@ pub fn cldb(args: &Vec<String>) {
         },
     };
 
-    let mut prim_map_ = HashMap::new();
-
-    for p in prims::prims() {
-        prim_map_.insert(p.0.clone(), Rc::new(p.1.clone()));
+    let mut prim_map = HashMap::new();
+    for p in prims::prims().iter() {
+        prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
     }
-
-    let prim_map = Rc::new(prim_map_);
-
     let program_lines: Vec<String> = input_program.lines().map(|x| x.to_string()).collect();
-    let mut step = start_step(program.clone(), args.clone());
-
+    let step = start_step(program.clone(), args.clone());
     let cldbenv = CldbRunEnv::new(input_file, program_lines);
-    let mut cldbrun = CldbRun::new(runner, prim_map, Box::new(cldbenv), step);
+    let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
 
     loop {
         if cldbrun.is_ended() {

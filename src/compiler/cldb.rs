@@ -3,13 +3,19 @@ use std::collections::{ BTreeMap, HashMap };
 use std::mem::swap;
 use std::rc::Rc;
 
-use clvm_rs::allocator::Allocator;
+use clvm_rs::allocator;
+use clvm_rs::allocator::{Allocator, NodePtr};
+use clvm_rs::reduction::EvalErr;
 use num_bigint::ToBigInt;
 
+use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::{
     TRunProgram
 };
-use crate::compiler::clvm::{RunStep, run_step, get_history_len};
+use crate::classic::clvm::serialize::{SimpleCreateCLVMObject, sexp_from_stream};
+
+use crate::compiler::clvm::{RunStep, run_step, get_history_len, convert_from_clvm_rs};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
@@ -320,4 +326,50 @@ impl CldbEnvironment for CldbRunEnv {
             },
         );
     }
+}
+
+pub fn hex_to_modern_sexp_inner(
+    allocator: &mut Allocator,
+    symbol_table: &HashMap<String, String>,
+    loc: Srcloc,
+    program: NodePtr,
+) -> Result<Rc<SExp>, EvalErr> {
+    let hash = sha256tree(allocator, program);
+    let hash_str = hash.hex();
+    let srcloc = symbol_table
+        .get(&hash_str)
+        .map(|f| Srcloc::start(f))
+        .unwrap_or_else(|| loc.clone());
+
+    match allocator.sexp(program) {
+        allocator::SExp::Pair(a, b) => Ok(Rc::new(SExp::Cons(
+            srcloc.clone(),
+            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc.clone(), a)?,
+            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc, b)?,
+        ))),
+        _ => convert_from_clvm_rs(allocator, srcloc, program).map_err(|_| {
+            EvalErr(
+                Allocator::null(allocator),
+                "clvm_rs allocator failed".to_string(),
+            )
+        }),
+    }
+}
+
+pub fn hex_to_modern_sexp(
+    allocator: &mut Allocator,
+    symbol_table: &HashMap<String, String>,
+    loc: Srcloc,
+    input_program: &String,
+) -> Result<Rc<SExp>, RunFailure> {
+    let input_serialized = Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
+
+    let mut stream = Stream::new(Some(input_serialized.clone()));
+    let sexp = sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
+        .map(|x| x.1)
+        .map_err(|_| RunFailure::RunErr(loc.clone(), "Bad conversion from hex".to_string()))?;
+
+    hex_to_modern_sexp_inner(allocator, symbol_table, loc.clone(), sexp).map_err(|_| {
+        RunFailure::RunErr(loc, "Failed to convert from classic to modern".to_string())
+    })
 }
