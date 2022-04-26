@@ -36,7 +36,7 @@ lazy_static! {
         // added by optimize
         result.insert("com".as_bytes().to_vec());
         result.insert("opt".as_bytes().to_vec());
-        return result;
+        result
     };
 }
 
@@ -81,14 +81,14 @@ fn compile_bindings<'a>() -> HashMap<Vec<u8>, Closure<'a>> {
         bindings.insert(c.name.as_bytes().to_vec(), c);
     }
 
-    return bindings;
+    bindings
 }
 
 fn qq_atom() -> Vec<u8> {
-    return vec!['q' as u8, 'q' as u8];
+    vec!['q' as u8, 'q' as u8]
 }
 fn unquote_atom() -> Vec<u8> {
-    return "unquote".as_bytes().to_vec();
+    "unquote".as_bytes().to_vec()
 }
 
 #[derive(Clone)]
@@ -108,7 +108,7 @@ fn com_qq(
     if DIAG_OUTPUT {
         println!("com_qq {} {}", ident, disassemble(allocator, sexp));
     }
-    return do_com_prog(allocator, 110, sexp, macro_lookup, symbol_table, runner).map(|x| x.1);
+    do_com_prog(allocator, 110, sexp, macro_lookup, symbol_table, runner).map(|x| x.1)
 }
 
 pub fn compile_qq(
@@ -139,7 +139,7 @@ pub fn compile_qq(
     match allocator.sexp(sexp) {
         SExp::Atom(_) => {
             // (qq ATOM) => (q . ATOM)
-            return quote(allocator, sexp);
+            quote(allocator, sexp)
         }
         SExp::Pair(op, sexp_rest) => {
             match allocator.sexp(op) {
@@ -199,7 +199,7 @@ pub fn compile_macros(
     _run_program: Rc<dyn TRunProgram>,
     _level: usize,
 ) -> Result<NodePtr, EvalErr> {
-    return quote(allocator, macro_lookup);
+    quote(allocator, macro_lookup)
 }
 
 pub fn compile_symbols(
@@ -210,7 +210,7 @@ pub fn compile_symbols(
     _run_program: Rc<dyn TRunProgram>,
     _level: usize,
 ) -> Result<NodePtr, EvalErr> {
-    return quote(allocator, symbol_table);
+    quote(allocator, symbol_table)
 }
 
 // # Transform "quote" to "q" everywhere. Note that quote will not be compiled if behind qq.
@@ -263,7 +263,7 @@ fn lower_quote_(allocator: &mut Allocator, prog: NodePtr) -> Result<NodePtr, Eva
         SExp::Atom(_) => {}
     }
 
-    return Ok(prog);
+    Ok(prog)
 }
 
 pub fn lower_quote(allocator: &mut Allocator, prog: NodePtr) -> Result<NodePtr, EvalErr> {
@@ -380,7 +380,7 @@ fn get_macro_program(
         _ => {}
     }
 
-    return Ok(None);
+    Ok(None)
 }
 
 fn transform_program_atom(
@@ -421,7 +421,7 @@ fn transform_program_atom(
         }
     }
 
-    return quote(allocator, prog).map(|x| Reduction(1, x));
+    quote(allocator, prog).map(|x| Reduction(1, x))
 }
 
 fn compile_operator_atom(
@@ -464,7 +464,7 @@ fn compile_operator_atom(
         None => {}
     }
 
-    return Ok(None);
+    Ok(None)
 }
 
 enum SymbolResult {
@@ -514,7 +514,7 @@ fn find_symbol_match(
         _ => {}
     }
 
-    return Ok(None);
+    Ok(None)
 }
 
 fn compile_application(
@@ -564,7 +564,7 @@ fn compile_application(
                 r <- enlist(allocator, &compiled_args);
 
                 if PASS_THROUGH_OPERATORS.contains(opbuf) || (opbuf.len() > 0 && opbuf[0] == '_' as u8) {
-                    return Ok(r);
+                    Ok(r)
                 } else {
                     find_symbol_match(
                         allocator,
@@ -574,7 +574,7 @@ fn compile_application(
                     ).and_then(|x| match x {
                         Some(SymbolResult::Direct(v)) => { Ok(v) },
                         Some(SymbolResult::Matched(_symbol,value)) => {
-                            return match proper_list(allocator, rest, true) {
+                            match proper_list(allocator, rest, true) {
                                 Some(proglist) => {
                                     m! {
                                         apply_atom <- allocator.new_atom(&vec!(2));
@@ -609,7 +609,7 @@ fn compile_application(
                                     }
                                 },
                                 None => { error_result }
-                            };
+                            }
                         },
                         None => { error_result }
                     })
@@ -820,22 +820,20 @@ impl OperatorHandler for DoComProg {
                     x
                 })
             }
-            _ => {
-                return Err(EvalErr(
-                    sexp,
-                    "Program is not a pair in do_com_prog".to_string(),
-                ));
-            }
+            _ => Err(EvalErr(
+                sexp,
+                "Program is not a pair in do_com_prog".to_string(),
+            )),
         }
     }
 }
 
 impl DoComProg {
     pub fn new() -> Self {
-        return DoComProg {
+        DoComProg {
             compile_outcomes: RefCell::new(HashMap::new()),
             runner: Rc::new(DefaultProgramRunner::new()),
-        };
+        }
     }
 
     pub fn set_runner(&mut self, runner: Rc<dyn TRunProgram>) {
@@ -910,7 +908,7 @@ fn test_expand_macro(
         symbols_source,
     )
     .unwrap();
-    return disassemble(allocator, exp_res.1);
+    disassemble(allocator, exp_res.1)
 }
 
 fn test_inner_expansion(
@@ -923,7 +921,7 @@ fn test_inner_expansion(
     let prog_ir = read_ir(&prog_rest).unwrap();
     let prog_source = assemble_from_ir(allocator, Rc::new(prog_ir)).unwrap();
     let exp_res = brun(allocator, macro_source, prog_source).unwrap();
-    return disassemble(allocator, exp_res);
+    disassemble(allocator, exp_res)
 }
 
 fn test_do_com_prog(
@@ -940,7 +938,7 @@ fn test_do_com_prog(
     let sym_ir = read_ir(&symbol_table_src).unwrap();
     let symbol_table = assemble_from_ir(allocator, Rc::new(sym_ir)).unwrap();
     let result = do_com_prog(allocator, 849, program, macro_lookup, symbol_table, runner).unwrap();
-    return disassemble(allocator, result.1);
+    disassemble(allocator, result.1)
 }
 
 #[test]

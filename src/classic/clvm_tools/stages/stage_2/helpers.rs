@@ -11,9 +11,9 @@ lazy_static! {
 }
 
 pub fn quote<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> Result<NodePtr, EvalErr> {
-    return allocator
+    allocator
         .new_atom(&QUOTE_ATOM)
-        .and_then(|q| allocator.new_pair(q, sexp));
+        .and_then(|q| allocator.new_pair(q, sexp))
 }
 
 // In original python code, the name of this function is `eval`,

@@ -89,32 +89,32 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn set_search_paths(&self, dirs: &Vec<String>) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.include_dirs = dirs.clone();
-        return Rc::new(copy);
+        Rc::new(copy)
     }
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.in_defun = new_in_defun;
-        return Rc::new(copy);
+        Rc::new(copy)
     }
     fn set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.stdenv = new_stdenv;
-        return Rc::new(copy);
+        Rc::new(copy)
     }
     fn set_optimize(&self, optimize: bool) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.optimize = optimize;
-        return Rc::new(copy);
+        Rc::new(copy)
     }
     fn set_compiler(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.compiler = Some(new_compiler);
-        return Rc::new(copy);
+        Rc::new(copy)
     }
     fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.start_env = start_env;
-        return Rc::new(copy);
+        Rc::new(copy)
     }
 
     fn read_new_file(

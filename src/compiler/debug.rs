@@ -22,7 +22,7 @@ pub fn build_table_mut<X>(
                     .concat(&right),
             );
             code_map.insert(treehash.hex(), tx(code));
-            return treehash;
+            treehash
         }
         SExp::Atom(_, a) => {
             let treehash = sha256(
@@ -30,21 +30,17 @@ pub fn build_table_mut<X>(
                     .concat(&Bytes::new(Some(BytesFromType::Raw(a.clone())))),
             );
             code_map.insert(treehash.hex(), tx(code));
-            return treehash;
+            treehash
         }
         SExp::QuotedString(l, _, a) => {
-            return build_table_mut(code_map, tx, &SExp::Atom(l.clone(), a.clone()));
+            build_table_mut(code_map, tx, &SExp::Atom(l.clone(), a.clone()))
         }
-        SExp::Integer(l, i) => {
-            return build_table_mut(
-                code_map,
-                tx,
-                &SExp::Atom(l.clone(), u8_from_number(i.clone())),
-            );
-        }
-        SExp::Nil(l) => {
-            return build_table_mut(code_map, tx, &SExp::Atom(l.clone(), Vec::new()));
-        }
+        SExp::Integer(l, i) => build_table_mut(
+            code_map,
+            tx,
+            &SExp::Atom(l.clone(), u8_from_number(i.clone())),
+        ),
+        SExp::Nil(l) => build_table_mut(code_map, tx, &SExp::Atom(l.clone(), Vec::new())),
     }
 }
 
@@ -69,11 +65,9 @@ fn relabel_inner_(
             SExp::Cons(l, a, b) => {
                 let new_a = relabel_inner_(code_map, swap_table, a.borrow());
                 let new_b = relabel_inner_(code_map, swap_table, b.borrow());
-                return SExp::Cons(l.clone(), Rc::new(new_a), Rc::new(new_b));
+                SExp::Cons(l.clone(), Rc::new(new_a), Rc::new(new_b))
             }
-            _ => {
-                return code.clone();
-            }
+            _ => code.clone(),
         })
 }
 

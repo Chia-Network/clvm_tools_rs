@@ -103,14 +103,10 @@ pub fn optimize_expr(
 
             match forms[0].borrow() {
                 BodyForm::Value(SExp::Integer(al, an)) => {
-                    return examine_call(al.clone(), &u8_from_number(an.clone()));
+                    examine_call(al.clone(), &u8_from_number(an.clone()))
                 }
-                BodyForm::Value(SExp::QuotedString(al, _, an)) => {
-                    return examine_call(al.clone(), an);
-                }
-                BodyForm::Value(SExp::Atom(al, an)) => {
-                    return examine_call(al.clone(), an);
-                }
+                BodyForm::Value(SExp::QuotedString(al, _, an)) => examine_call(al.clone(), an),
+                BodyForm::Value(SExp::Atom(al, an)) => examine_call(al.clone(), an),
                 _ => None,
             }
         }

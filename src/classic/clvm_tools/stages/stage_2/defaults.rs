@@ -95,13 +95,13 @@ fn build_default_macro_lookup(
         let new_macro = eval_f.run_program(allocator, run, env, None).unwrap().1;
         default_macro_lookup = allocator.new_pair(new_macro, default_macro_lookup).unwrap();
     }
-    return default_macro_lookup;
+    default_macro_lookup
 }
 
 pub fn DEFAULT_MACRO_LOOKUP(allocator: &mut Allocator, runner: Rc<dyn TRunProgram>) -> NodePtr {
-    return build_default_macro_lookup(
+    build_default_macro_lookup(
         allocator,
         runner.clone(),
         &DEFAULT_MACROS_SRC().iter().map(|s| s.to_string()).collect(),
-    );
+    )
 }
