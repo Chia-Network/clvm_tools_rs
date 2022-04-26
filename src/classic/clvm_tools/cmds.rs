@@ -43,7 +43,7 @@ use crate::classic::platform::argparse::{
     TArgOptionAction, TArgumentParserProps,
 };
 
-use crate::compiler::cldb::{CldbRun, CldbRunEnv, hex_to_modern_sexp};
+use crate::compiler::cldb::{hex_to_modern_sexp, CldbRun, CldbRunEnv};
 use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
@@ -474,8 +474,8 @@ pub fn cldb(args: &Vec<String>) {
         match cldbrun.step(&mut allocator) {
             Some(result) => {
                 output.push(result);
-            },
-            _ => { }
+            }
+            _ => {}
         }
     }
 }

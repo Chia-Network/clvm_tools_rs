@@ -210,15 +210,9 @@ pub fn convert_from_clvm_rs(
                 // Ensure that atom values that don't evaluate equal to integers
                 // are represented faithfully as atoms.
                 if u8_from_number(integer.clone()) == atom_data {
-                    Ok(Rc::new(SExp::Integer(
-                        loc,
-                        integer
-                    )))
+                    Ok(Rc::new(SExp::Integer(loc, integer)))
                 } else {
-                    Ok(Rc::new(SExp::Atom(
-                        loc,
-                        atom_data.to_vec()
-                    )))
+                    Ok(Rc::new(SExp::Atom(loc, atom_data.to_vec())))
                 }
             }
         }

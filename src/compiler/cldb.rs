@@ -1,5 +1,5 @@
 use std::borrow::Borrow;
-use std::collections::{ BTreeMap, HashMap };
+use std::collections::{BTreeMap, HashMap};
 use std::mem::swap;
 use std::rc::Rc;
 
@@ -9,20 +9,18 @@ use clvm_rs::reduction::EvalErr;
 use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm_tools::sha256tree::sha256tree;
-use crate::classic::clvm_tools::stages::stage_0::{
-    TRunProgram
-};
-use crate::classic::clvm::serialize::{SimpleCreateCLVMObject, sexp_from_stream};
+use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::{RunStep, run_step, get_history_len, convert_from_clvm_rs};
+use crate::compiler::clvm::{convert_from_clvm_rs, get_history_len, run_step, RunStep};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::Number;
 
 #[derive(Clone, Debug)]
-pub struct PriorResult{
+pub struct PriorResult {
     reference: usize,
     value: Rc<SExp>,
 }
@@ -72,13 +70,9 @@ pub trait CldbEnvironment {
         s: &SExp,
         c: &SExp,
         args: Option<Rc<SExp>>,
-        context_result: &mut BTreeMap<String, String>
+        context_result: &mut BTreeMap<String, String>,
     );
-    fn add_function(
-        &self,
-        s: &SExp,
-        context_result: &mut BTreeMap<String, String>
-    );
+    fn add_function(&self, s: &SExp, context_result: &mut BTreeMap<String, String>);
 }
 
 pub struct CldbRun {
@@ -93,8 +87,7 @@ pub struct CldbRun {
     in_expr: bool,
     row: usize,
 
-    outputs_to_step: HashMap::<Number, PriorResult>
-
+    outputs_to_step: HashMap<Number, PriorResult>,
 }
 
 impl CldbRun {
@@ -113,31 +106,32 @@ impl CldbRun {
             to_print: BTreeMap::new(),
             in_expr: false,
             row: 0,
-            outputs_to_step: HashMap::<Number, PriorResult>::new()
+            outputs_to_step: HashMap::<Number, PriorResult>::new(),
         }
     }
 
-    pub fn is_ended(&self) -> bool { self.ended }
-    pub fn step(
-        &mut self,
-        allocator: &mut Allocator,
-    ) -> Option<BTreeMap<String, String>> {
+    pub fn is_ended(&self) -> bool {
+        self.ended
+    }
+    pub fn step(&mut self, allocator: &mut Allocator) -> Option<BTreeMap<String, String>> {
         let mut produce_result = false;
         let mut result = BTreeMap::new();
         let new_step = run_step(
             allocator,
             self.runner.clone(),
             self.prim_map.clone(),
-            &self.step
+            &self.step,
         );
 
         match &new_step {
             Ok(RunStep::OpResult(l, x, p)) => {
                 if self.in_expr {
                     let history_len = get_history_len(p.clone());
-                    self.to_print.insert("Result-Location".to_string(), l.to_string());
+                    self.to_print
+                        .insert("Result-Location".to_string(), l.to_string());
                     self.to_print.insert("Value".to_string(), x.to_string());
-                    self.to_print.insert("Row".to_string(), self.row.to_string());
+                    self.to_print
+                        .insert("Row".to_string(), self.row.to_string());
                     match x.get_number().ok() {
                         Some(n) => {
                             self.outputs_to_step.insert(
@@ -156,7 +150,8 @@ impl CldbRun {
                 }
             }
             Ok(RunStep::Done(l, x)) => {
-                self.to_print.insert("Final-Location".to_string(), l.to_string());
+                self.to_print
+                    .insert("Final-Location".to_string(), l.to_string());
                 self.to_print.insert("Final".to_string(), x.to_string());
 
                 self.ended = true;
@@ -166,8 +161,10 @@ impl CldbRun {
             Ok(RunStep::Step(sexp, c, p)) => {}
             Ok(RunStep::Op(sexp, c, a, None, p)) => {
                 let history_len = get_history_len(p.clone());
-                self.to_print.insert("Operator-Location".to_string(), a.loc().to_string());
-                self.to_print.insert("Operator".to_string(), sexp.to_string());
+                self.to_print
+                    .insert("Operator-Location".to_string(), a.loc().to_string());
+                self.to_print
+                    .insert("Operator".to_string(), sexp.to_string());
                 match sexp.get_number().ok() {
                     Some(v) => {
                         if v == 11_u32.to_bigint().unwrap() {
@@ -179,20 +176,27 @@ impl CldbRun {
                     }
                     _ => {}
                 }
-                self.env.add_context(sexp.borrow(), c.borrow(), Some(a.clone()), &mut self.to_print);
+                self.env.add_context(
+                    sexp.borrow(),
+                    c.borrow(),
+                    Some(a.clone()),
+                    &mut self.to_print,
+                );
                 self.env.add_function(sexp, &mut self.to_print);
                 self.in_expr = true;
             }
             Ok(RunStep::Op(sexp, c, a, Some(v), p)) => {}
             Err(RunFailure::RunExn(l, s)) => {
-                self.to_print.insert("Throw-Location".to_string(), l.to_string());
+                self.to_print
+                    .insert("Throw-Location".to_string(), l.to_string());
                 self.to_print.insert("Throw".to_string(), s.to_string());
 
                 swap(&mut self.to_print, &mut result);
                 produce_result = true;
             }
             Err(RunFailure::RunErr(l, s)) => {
-                self.to_print.insert("Failure-Location".to_string(), l.to_string());
+                self.to_print
+                    .insert("Failure-Location".to_string(), l.to_string());
                 self.to_print.insert("Failure".to_string(), s.to_string());
 
                 swap(&mut self.to_print, &mut result);
@@ -212,7 +216,7 @@ impl CldbRun {
 
 pub struct CldbRunEnv {
     input_file: Option<String>,
-    program_lines: Vec<String>
+    program_lines: Vec<String>,
 }
 
 impl CldbRunEnv {
@@ -223,10 +227,7 @@ impl CldbRunEnv {
         }
     }
 
-    fn extract_text(
-        &self,
-        l: &Srcloc
-    ) -> Option<String> {
+    fn extract_text(&self, l: &Srcloc) -> Option<String> {
         let use_line = if l.line < 1 { None } else { Some(l.line - 1) };
         let use_col = use_line.and_then(|_| if l.col < 1 { None } else { Some(l.col - 1) });
         let end_col = use_col.map(|c| l.until.map(|u| u.1 - 1).unwrap_or_else(|| c + 1));
@@ -262,7 +263,7 @@ impl CldbRunEnv {
         s: &SExp,
         collector: &mut BTreeMap<String, String>,
         if_true: &dyn Fn(&mut BTreeMap<String, String>),
-        if_false: &dyn Fn(&mut BTreeMap<String, String>)
+        if_false: &dyn Fn(&mut BTreeMap<String, String>),
     ) {
         match s {
             SExp::Integer(_, i) => {
@@ -284,7 +285,7 @@ impl CldbEnvironment for CldbRunEnv {
         s: &SExp,
         c: &SExp,
         args: Option<Rc<SExp>>,
-        context_result: &mut BTreeMap<String, String>
+        context_result: &mut BTreeMap<String, String>,
     ) {
         self.whether_is_apply(
             s,
@@ -307,11 +308,7 @@ impl CldbEnvironment for CldbRunEnv {
         );
     }
 
-    fn add_function(
-        &self,
-        s: &SExp,
-        context_result: &mut BTreeMap<String, String>
-    ) {
+    fn add_function(&self, s: &SExp, context_result: &mut BTreeMap<String, String>) {
         self.whether_is_apply(
             s,
             context_result,

@@ -1,20 +1,20 @@
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
-use pyo3::types::{ PyString, PyDict };
+use pyo3::types::{PyDict, PyString};
 use pyo3::wrap_pyfunction;
 
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
-use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc;
+use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::classic::clvm_tools::clvmc;
-use crate::compiler::cldb::{CldbRun, CldbRunEnv, hex_to_modern_sexp};
-use crate::compiler::clvm::{start_step};
+use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use crate::compiler::cldb::{hex_to_modern_sexp, CldbRun, CldbRunEnv};
+use crate::compiler::clvm::start_step;
 use crate::compiler::prims;
 use crate::compiler::srcloc::Srcloc;
 
@@ -61,7 +61,7 @@ struct PythonRunStep {
     ended: bool,
 
     tx: Sender<bool>,
-    rx: Receiver<(bool, Option<BTreeMap<String,String>>)>
+    rx: Receiver<(bool, Option<BTreeMap<String, String>>)>,
 }
 
 #[pymethods]
@@ -81,14 +81,15 @@ impl PythonRunStep {
         }
 
         // Let the runner know we want another step.
-        self.tx.send(false).map_err(|e| {
-            CldbError::new_err("error sending to service thread")
-        })?;
+        self.tx
+            .send(false)
+            .map_err(|e| CldbError::new_err("error sending to service thread"))?;
 
         // Receive the step result.
-        let res = self.rx.recv().map_err(|e| {
-            CldbError::new_err("error receiving from service thread")
-        })?;
+        let res = self
+            .rx
+            .recv()
+            .map_err(|e| CldbError::new_err("error receiving from service thread"))?;
 
         if res.0 {
             self.ended = true;
@@ -98,7 +99,7 @@ impl PythonRunStep {
         let dict_result = res.1.map(|m| {
             Python::with_gil(|py| {
                 let dict = PyDict::new(py);
-                for (k,v) in m.iter() {
+                for (k, v) in m.iter() {
                     let _ = dict.set_item(PyString::new(py, k), PyString::new(py, v));
                 }
                 dict.to_object(py)
@@ -112,7 +113,7 @@ impl PythonRunStep {
 fn start_clvm_program(
     hex_prog: String,
     hex_args: String,
-    symbol_table: Option<HashMap<String,String>>
+    symbol_table: Option<HashMap<String, String>>,
 ) -> PyResult<PythonRunStep> {
     let (command_tx, command_rx) = mpsc::channel();
     let (result_tx, result_rx) = mpsc::channel();
@@ -130,29 +131,31 @@ fn start_clvm_program(
             prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
         }
 
-        let program =
-            match hex_to_modern_sexp(
-                &mut allocator,
-                &symbol_table.unwrap_or_else(|| HashMap::new()),
-                prog_srcloc.clone(),
-                &hex_prog
-            ) {
-                Ok(v) => v,
-                Err(_) => { return; }
-            };
-        let args =
-            match hex_to_modern_sexp(
-                &mut allocator,
-                &HashMap::new(),
-                args_srcloc.clone(),
-                &hex_args
-            ) {
-                Ok(v) => v,
-                Err(_) => { return; }
-            };
+        let program = match hex_to_modern_sexp(
+            &mut allocator,
+            &symbol_table.unwrap_or_else(|| HashMap::new()),
+            prog_srcloc.clone(),
+            &hex_prog,
+        ) {
+            Ok(v) => v,
+            Err(_) => {
+                return;
+            }
+        };
+        let args = match hex_to_modern_sexp(
+            &mut allocator,
+            &HashMap::new(),
+            args_srcloc.clone(),
+            &hex_args,
+        ) {
+            Ok(v) => v,
+            Err(_) => {
+                return;
+            }
+        };
 
         let step = start_step(program.clone(), args.clone());
-        let cldbenv = CldbRunEnv::new(None, vec!());
+        let cldbenv = CldbRunEnv::new(None, vec![]);
         let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
         loop {
             match cmd_input.recv() {
@@ -165,10 +168,12 @@ fn start_clvm_program(
                     let result = cldbrun.step(&mut allocator);
                     let is_ended = cldbrun.is_ended();
                     match result_output.send((is_ended, result)) {
-                        Ok(_) => { }
-                        Err(_) => { return; }
+                        Ok(_) => {}
+                        Err(_) => {
+                            return;
+                        }
                     }
-                },
+                }
                 Err(_) => {
                     let _ = result_output.send((true, None));
                     return;
@@ -180,7 +185,7 @@ fn start_clvm_program(
     Ok(PythonRunStep {
         ended: false,
         tx: command_tx,
-        rx: result_rx
+        rx: result_rx,
     })
 }
 
