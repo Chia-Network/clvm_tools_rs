@@ -105,10 +105,10 @@ impl CldbRun {
         step: RunStep,
     ) -> Self {
         CldbRun {
-            runner: runner,
-            prim_map: prim_map,
-            env: env,
-            step: step,
+            runner,
+            prim_map,
+            env,
+            step,
             ended: false,
             to_print: BTreeMap::new(),
             in_expr: false,
@@ -218,8 +218,8 @@ pub struct CldbRunEnv {
 impl CldbRunEnv {
     pub fn new(input_file: Option<String>, program_lines: Vec<String>) -> Self {
         CldbRunEnv {
-            input_file: input_file,
-            program_lines: program_lines
+            input_file,
+            program_lines,
         }
     }
 
