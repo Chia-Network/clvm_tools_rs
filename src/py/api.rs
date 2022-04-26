@@ -99,7 +99,7 @@ impl PythonRunStep {
             Python::with_gil(|py| {
                 let dict = PyDict::new(py);
                 for (k,v) in m.iter() {
-                    dict.set_item(PyString::new(py, k), PyString::new(py, v));
+                    let _ = dict.set_item(PyString::new(py, k), PyString::new(py, v));
                 }
                 dict.to_object(py)
             })
@@ -111,7 +111,8 @@ impl PythonRunStep {
 #[pyfunction]
 fn start_clvm_program(
     hex_prog: String,
-    hex_args: String
+    hex_args: String,
+    symbol_table: Option<HashMap<String,String>>
 ) -> PyResult<PythonRunStep> {
     let (command_tx, command_rx) = mpsc::channel();
     let (result_tx, result_rx) = mpsc::channel();
@@ -124,7 +125,6 @@ fn start_clvm_program(
         let result_output = result_tx;
         let prog_srcloc = Srcloc::start(&"*program*".to_string());
         let args_srcloc = Srcloc::start(&"*args*".to_string());
-        let symbol_table = HashMap::new();
 
         for p in prims::prims().iter() {
             prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
@@ -133,7 +133,7 @@ fn start_clvm_program(
         let program =
             match hex_to_modern_sexp(
                 &mut allocator,
-                &symbol_table,
+                &symbol_table.unwrap_or_else(|| HashMap::new()),
                 prog_srcloc.clone(),
                 &hex_prog
             ) {
@@ -189,6 +189,7 @@ fn clvm_tools_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add("CldbError", py.get_type::<CldbError>())?;
     m.add_function(wrap_pyfunction!(compile_clvm, m)?)?;
     m.add_function(wrap_pyfunction!(get_version, m)?)?;
+    m.add_function(wrap_pyfunction!(start_clvm_program, m)?)?;
     m.add_class::<PythonRunStep>()?;
     Ok(())
 }
