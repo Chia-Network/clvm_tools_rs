@@ -206,7 +206,7 @@ pub fn convert_from_clvm_rs(
                 Ok(Rc::new(SExp::Nil(loc)))
             } else {
                 let atom_data = allocator.buf(&h);
-                let integer = number_from_u8(atom_data.clone());
+                let integer = number_from_u8(atom_data);
                 // Ensure that atom values that don't evaluate equal to integers
                 // are represented faithfully as atoms.
                 if u8_from_number(integer.clone()) == atom_data {
