@@ -6,8 +6,9 @@ use num_bigint::ToBigInt;
 use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use crate::classic::clvm_tools::sha256tree;
 
-use crate::compiler::clvm::parse_and_run;
+use crate::compiler::clvm::{parse_and_run, sha256tree, convert_to_clvm_rs};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -137,4 +138,33 @@ fn test_clvm_4() {
     let want = parse_sexp(loc, &"(30000 . 3392)".to_string()).unwrap();
 
     assert!(result.equal_to(want[0].borrow()));
+}
+
+#[test]
+fn modern_sha256tree_1() {
+    let mut allocator = Allocator::new();
+    let srcloc = Srcloc::start(&"*".to_string());
+    let modern_sha256 = sha256tree(Rc::new(SExp::Nil(srcloc)));
+    let null = allocator.null();
+    let old_sha256 = sha256tree::sha256tree(&mut allocator, null);
+    assert_eq!(&modern_sha256, old_sha256.data());
+}
+
+#[test]
+fn modern_sha256tree_2() {
+    let mut allocator = Allocator::new();
+    let srcloc = Srcloc::start(&"*".to_string());
+    let modern_sexp = Rc::new(SExp::Cons(
+        srcloc.clone(),
+        Rc::new(SExp::Atom(srcloc.clone(), vec!(9))),
+        Rc::new(SExp::Cons(
+            srcloc.clone(),
+            Rc::new(SExp::Integer(srcloc.clone(), 11_u32.to_bigint().unwrap())),
+            Rc::new(SExp::Nil(srcloc.clone()))
+        ))
+    ));
+    let modern_sha256 = sha256tree(modern_sexp.clone());
+    let old_sexp = convert_to_clvm_rs(&mut allocator, modern_sexp.clone()).unwrap();
+    let old_sha256 = sha256tree::sha256tree(&mut allocator, old_sexp);
+    assert_eq!(&modern_sha256, old_sha256.data());
 }
