@@ -643,3 +643,44 @@ pub fn sha256tree(s: Rc<SExp>) -> Vec<u8> {
         SExp::Atom(_,v) => sha256tree_from_atom(v.clone())
     }
 }
+
+fn path_to_function_inner(
+    program: Rc<SExp>,
+    hash: &Vec<u8>,
+    path_mask: Number,
+    current_path: Number,
+    ) -> Option<Number> {
+    match program.borrow() {
+        SExp::Cons(_,a,b) => {
+            let nextpath = path_mask.clone() * 2_i32.to_bigint().unwrap();
+            path_to_function_inner(
+                a.clone(),
+                hash,
+                nextpath.clone(),
+                current_path.clone()
+            ).map(|x| Some(x)).unwrap_or_else(|| {
+                path_to_function_inner(
+                    b.clone(),
+                    hash,
+                    nextpath.clone(),
+                    current_path.clone() + path_mask.clone()
+                ).map(|x| Some(x)).unwrap_or_else(|| {
+                    let current_hash = sha256tree(program.clone());
+                    if &current_hash == hash {
+                        Some(current_path)
+                    } else {
+                        None
+                    }
+                })
+            })
+        },
+        any => {
+            let current_hash = sha256tree(program.clone());
+            if &current_hash == hash {
+                Some(current_path)
+            } else {
+                None
+            }
+        }
+    }
+}
