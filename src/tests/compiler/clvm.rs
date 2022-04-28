@@ -1,3 +1,5 @@
+use rand::Rng;
+use rand::random;
 use std::borrow::Borrow;
 use std::rc::Rc;
 
@@ -5,10 +7,11 @@ use num_bigint::ToBigInt;
 
 use clvm_rs::allocator::Allocator;
 
+use crate::classic::clvm::__type_compatibility__::{ bi_one, bi_zero };
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::classic::clvm_tools::sha256tree;
 
-use crate::compiler::clvm::{parse_and_run, sha256tree, convert_to_clvm_rs};
+use crate::compiler::clvm::{parse_and_run, sha256tree, convert_to_clvm_rs, path_to_function};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -167,4 +170,49 @@ fn modern_sha256tree_2() {
     let old_sexp = convert_to_clvm_rs(&mut allocator, modern_sexp.clone()).unwrap();
     let old_sha256 = sha256tree::sha256tree(&mut allocator, old_sexp);
     assert_eq!(&modern_sha256, old_sha256.data());
+}
+
+#[test]
+fn test_hash_path() {
+    let loc = Srcloc::start(&"*".to_string());
+
+    for _ in 0..100 {
+        let mut wanted_expr: SExp = random();
+        // Since () naturally occurs at the end of a list, we can encounter it
+        // at the wrong time in many random sexps.
+        while wanted_expr.to_string() == "()" {
+            wanted_expr = random();
+        }
+        let wanted_hash = sha256tree(Rc::new(wanted_expr.clone()));
+        let mut wanted_path = bi_one();
+        let wanted_steps: usize = random();
+        let mut full_expr = wanted_expr.clone();
+
+        for _ in 0..wanted_steps % 5 {
+            let right_side = random();
+            wanted_path *= 2;
+            let mut new_expr: SExp = random();
+            while new_expr == wanted_expr {
+                new_expr = random();
+            }
+            full_expr =
+                if right_side {
+                    wanted_path += 1;
+                    SExp::Cons(
+                        loc.clone(),
+                        Rc::new(random()),
+                        Rc::new(full_expr)
+                    )
+                } else {
+                    SExp::Cons(
+                        loc.clone(),
+                        Rc::new(full_expr),
+                        Rc::new(random())
+                    )
+                };
+        }
+
+        let detected_path = path_to_function(Rc::new(full_expr.clone()), &wanted_hash).unwrap();
+        assert_eq!(detected_path, wanted_path);
+    }
 }

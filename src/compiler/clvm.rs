@@ -650,9 +650,9 @@ fn path_to_function_inner(
     path_mask: Number,
     current_path: Number,
     ) -> Option<Number> {
+    let nextpath = path_mask.clone() * 2_i32.to_bigint().unwrap();
     match program.borrow() {
         SExp::Cons(_,a,b) => {
-            let nextpath = path_mask.clone() * 2_i32.to_bigint().unwrap();
             path_to_function_inner(
                 a.clone(),
                 hash,
@@ -667,7 +667,7 @@ fn path_to_function_inner(
                 ).map(|x| Some(x)).unwrap_or_else(|| {
                     let current_hash = sha256tree(program.clone());
                     if &current_hash == hash {
-                        Some(current_path)
+                        Some(current_path + path_mask)
                     } else {
                         None
                     }
@@ -677,10 +677,22 @@ fn path_to_function_inner(
         any => {
             let current_hash = sha256tree(program.clone());
             if &current_hash == hash {
-                Some(current_path)
+                Some(current_path + path_mask)
             } else {
                 None
             }
         }
     }
+}
+
+pub fn path_to_function(
+    program: Rc<SExp>,
+    hash: &Vec<u8>,
+) -> Option<Number> {
+    path_to_function_inner(
+        program,
+        hash,
+        bi_one(),
+        bi_zero(),
+    )
 }
