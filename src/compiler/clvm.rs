@@ -749,9 +749,7 @@ pub fn extract_program_and_env(program: Rc<SExp>) -> Option<(Rc<SExp>, Rc<SExp>)
 
             match (is_apply(&lst[0]), lst[1].borrow(), lst[2].proper_list()) {
                 (true, real_program, Some(cexp)) => {
-                    if cexp.len() != 3 ||
-                        !is_cons(&cexp[0]) ||
-                        !is_whole_env(&cexp[2]) {
+                    if cexp.len() != 3 || !is_cons(&cexp[0]) || !is_whole_env(&cexp[2]) {
                         None
                     } else {
                         Some((Rc::new(real_program.clone()), Rc::new(cexp[1].clone())))
