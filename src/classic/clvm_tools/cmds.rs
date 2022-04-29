@@ -1,6 +1,5 @@
 use core::cell::RefCell;
 
-use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io;
@@ -14,11 +13,10 @@ use std::time::SystemTime;
 
 use core::cmp::max;
 
-use clvm_rs::allocator::{Allocator, NodePtr, SExp};
+use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 use clvm_rs::run_program::PreEval;
 
-use num_bigint::ToBigInt;
 #[macro_use]
 use yamlette::yamlette;
 use yamlette::model::yaml::str::FORCE_QUOTES;
@@ -44,16 +42,17 @@ use crate::classic::platform::argparse::{
     Argument, ArgumentParser, ArgumentValue, ArgumentValueConv, IntConversion, NArgsSpec,
     TArgOptionAction, TArgumentParserProps,
 };
-use crate::compiler::clvm::{convert_from_clvm_rs, get_history_len, run_step, start_step, RunStep};
+
+use crate::compiler::cldb::{hex_to_modern_sexp, CldbRun, CldbRunEnv};
+use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
 use crate::compiler::prims;
-use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp;
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::Srcloc;
-use crate::util::{collapse, Number};
+use crate::util::collapse;
 
 pub struct PathOrCodeConv {}
 
@@ -247,92 +246,6 @@ pub fn brun(args: &Vec<String>) {
     io::stdout().write_all(s.get_value().data());
 }
 
-pub fn hex_to_modern_sexp_inner(
-    allocator: &mut Allocator,
-    symbol_table: &HashMap<String, String>,
-    loc: Srcloc,
-    program: NodePtr,
-) -> Result<Rc<sexp::SExp>, EvalErr> {
-    let hash = sha256tree(allocator, program);
-    let hash_str = hash.hex();
-    let srcloc = symbol_table
-        .get(&hash_str)
-        .map(|f| Srcloc::start(f))
-        .unwrap_or_else(|| loc.clone());
-
-    match allocator.sexp(program) {
-        SExp::Pair(a, b) => Ok(Rc::new(sexp::SExp::Cons(
-            srcloc.clone(),
-            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc.clone(), a)?,
-            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc, b)?,
-        ))),
-        _ => convert_from_clvm_rs(allocator, srcloc, program).map_err(|_| {
-            EvalErr(
-                Allocator::null(allocator),
-                "clvm_rs allocator failed".to_string(),
-            )
-        }),
-    }
-}
-
-pub fn hex_to_modern_sexp(
-    allocator: &mut Allocator,
-    symbol_table: &HashMap<String, String>,
-    loc: Srcloc,
-    input_program: &String,
-) -> Result<Rc<sexp::SExp>, RunFailure> {
-    let input_serialized = Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
-
-    let mut stream = Stream::new(Some(input_serialized.clone()));
-    let sexp = sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
-        .map(|x| x.1)
-        .map_err(|_| RunFailure::RunErr(loc.clone(), "Bad conversion from hex".to_string()))?;
-
-    hex_to_modern_sexp_inner(allocator, symbol_table, loc.clone(), sexp).map_err(|_| {
-        RunFailure::RunErr(loc, "Failed to convert from classic to modern".to_string())
-    })
-}
-
-#[derive(Clone, Debug)]
-struct PriorResult {
-    reference: usize,
-    value: Rc<sexp::SExp>,
-}
-
-fn format_arg_inputs(args: &Vec<PriorResult>) -> String {
-    let value_strings: Vec<String> = args.iter().map(|pr| pr.reference.to_string()).collect();
-    value_strings.join(", ")
-}
-
-fn get_arg_associations(
-    associations: &HashMap<Number, PriorResult>,
-    args: Rc<sexp::SExp>,
-) -> Vec<PriorResult> {
-    let mut arg_exp: Rc<sexp::SExp> = args;
-    let mut result: Vec<PriorResult> = Vec::new();
-    loop {
-        match arg_exp.borrow() {
-            sexp::SExp::Cons(_, arg, rest) => {
-                match arg
-                    .get_number()
-                    .ok()
-                    .as_ref()
-                    .and_then(|n| associations.get(n))
-                {
-                    Some(n) => {
-                        result.push(n.clone());
-                    }
-                    _ => {}
-                }
-                arg_exp = rest.clone();
-            }
-            _ => {
-                return result;
-            }
-        }
-    }
-}
-
 pub fn cldb(args: &Vec<String>) {
     let tool_name = "cldb".to_string();
     let props = TArgumentParserProps {
@@ -394,7 +307,6 @@ pub fn cldb(args: &Vec<String>) {
         &"".to_string(),
     ));
     let mut parsed_args_result: String = "".to_string();
-    let mut outputs_to_step = HashMap::<Number, PriorResult>::new();
 
     match parser.parse_args(&arg_vec) {
         Err(e) => {
@@ -525,183 +437,27 @@ pub fn cldb(args: &Vec<String>) {
         },
     };
 
-    let mut prim_map_ = HashMap::new();
-
-    for p in prims::prims() {
-        prim_map_.insert(p.0.clone(), Rc::new(p.1.clone()));
+    let mut prim_map = HashMap::new();
+    for p in prims::prims().iter() {
+        prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
     }
-
-    let prim_map = Rc::new(prim_map_);
-
     let program_lines: Vec<String> = input_program.lines().map(|x| x.to_string()).collect();
-    let extract_text = |l: &Srcloc| {
-        let use_line = if l.line < 1 { None } else { Some(l.line - 1) };
-        let use_col = use_line.and_then(|_| if l.col < 1 { None } else { Some(l.col - 1) });
-        let end_col = use_col.map(|c| l.until.map(|u| u.1 - 1).unwrap_or_else(|| c + 1));
-        use_line
-            .and_then(|use_line| {
-                use_col.and_then(|use_col| {
-                    end_col.and_then(|end_col| Some((use_line, use_col, end_col)))
-                })
-            })
-            .and_then(|coords| {
-                let use_line = coords.0;
-                let mut use_col = coords.1;
-                let mut end_col = coords.2;
-
-                if use_line >= program_lines.len() {
-                    None
-                } else {
-                    let line_text = program_lines[use_line].to_string();
-                    if use_col >= line_text.len() {
-                        None
-                    } else if end_col >= line_text.len() {
-                        end_col = line_text.len();
-                        Some(line_text[use_col..end_col].to_string())
-                    } else {
-                        Some(line_text[use_col..end_col].to_string())
-                    }
-                }
-            })
-    };
-
-    let whether_is_apply =
-        |s: &sexp::SExp,
-         collector: &mut BTreeMap<String, String>,
-         if_true: &dyn Fn(&mut BTreeMap<String, String>),
-         if_false: &dyn Fn(&mut BTreeMap<String, String>)| {
-            match s {
-                sexp::SExp::Integer(_, i) => {
-                    if *i == 2_i32.to_bigint().unwrap() {
-                        if_true(collector);
-                        return;
-                    }
-                }
-                _ => {}
-            }
-
-            if_false(collector);
-        };
-
-    let add_context = |s: &sexp::SExp,
-                       c: &sexp::SExp,
-                       args: Option<Rc<sexp::SExp>>,
-                       context_result: &mut BTreeMap<String, String>| {
-        whether_is_apply(
-            s,
-            context_result,
-            &|context_result| match c {
-                sexp::SExp::Cons(_, a, b) => {
-                    context_result.insert("Env".to_string(), a.to_string());
-                    context_result.insert("Env-Args".to_string(), b.to_string());
-                }
-                _ => {
-                    context_result.insert("Function-Context".to_string(), c.to_string());
-                }
-            },
-            &|context_result| match &args {
-                Some(a) => {
-                    context_result.insert("Arguments".to_string(), a.to_string());
-                }
-                _ => {}
-            },
-        );
-    };
-
-    let add_function = |input_file: Option<String>,
-                        s: &sexp::SExp,
-                        context_result: &mut BTreeMap<String, String>| {
-        whether_is_apply(
-            s,
-            context_result,
-            &|_context_result| {},
-            &|context_result| match extract_text(&s.loc()) {
-                Some(name) => {
-                    if Some(s.loc().file.to_string()) == input_file.clone() {
-                        context_result.insert("Function".to_string(), name);
-                    }
-                }
-                _ => {}
-            },
-        );
-    };
-
-    let mut step = start_step(program.clone(), args.clone());
-    let mut in_expr = false;
-    let mut to_print: BTreeMap<String, String> = BTreeMap::new();
+    let step = start_step(program.clone(), args.clone());
+    let cldbenv = CldbRunEnv::new(input_file, program_lines);
+    let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
 
     loop {
-        let new_step = run_step(&mut allocator, runner.clone(), prim_map.clone(), &step);
-
-        match &new_step {
-            Ok(RunStep::OpResult(l, x, p)) => {
-                if in_expr {
-                    to_print.insert("Result-Location".to_string(), l.to_string());
-                    to_print.insert("Value".to_string(), x.to_string());
-                    to_print.insert("Row".to_string(), output.len().to_string());
-                    match x.get_number().ok() {
-                        Some(n) => {
-                            outputs_to_step.insert(
-                                n,
-                                PriorResult {
-                                    reference: output.len(),
-                                    value: x.clone(),
-                                },
-                            );
-                        }
-                        _ => {}
-                    }
-                    in_expr = false;
-                    output.push(to_print.clone());
-                    to_print = BTreeMap::new();
-                    in_expr = false;
-                }
-            }
-            Ok(RunStep::Done(l, x)) => {
-                to_print.insert("Final-Location".to_string(), l.to_string());
-                to_print.insert("Final".to_string(), x.to_string());
-                output.push(to_print.clone());
-                println!("{}", yamlette_string(output));
-                return;
-            }
-            Ok(RunStep::Step(sexp, c, p)) => {}
-            Ok(RunStep::Op(sexp, c, a, None, p)) => {
-                let history_len = get_history_len(p.clone());
-                to_print.insert("Operator-Location".to_string(), a.loc().to_string());
-                to_print.insert("Operator".to_string(), sexp.to_string());
-                match sexp.get_number().ok() {
-                    Some(v) => {
-                        if v == 11_u32.to_bigint().unwrap() {
-                            let arg_associations =
-                                get_arg_associations(&outputs_to_step, a.clone());
-                            let args = format_arg_inputs(&arg_associations);
-                            to_print.insert("Argument-Refs".to_string(), args);
-                        }
-                    }
-                    _ => {}
-                }
-                add_context(sexp.borrow(), c.borrow(), Some(a.clone()), &mut to_print);
-                add_function(input_file.clone(), sexp, &mut to_print);
-                in_expr = true;
-            }
-            Ok(RunStep::Op(sexp, c, a, Some(v), p)) => {}
-            Err(RunFailure::RunExn(l, s)) => {
-                to_print.insert("Throw-Location".to_string(), l.to_string());
-                to_print.insert("Throw".to_string(), s.to_string());
-                output.push(to_print.clone());
-                println!("{}", yamlette_string(output));
-                return;
-            }
-            Err(RunFailure::RunErr(l, s)) => {
-                to_print.insert("Failure-Location".to_string(), l.to_string());
-                to_print.insert("Failure".to_string(), s.to_string());
-                output.push(to_print.clone());
-                println!("{}", yamlette_string(output));
-                return;
-            }
+        if cldbrun.is_ended() {
+            println!("{}", yamlette_string(output));
+            return;
         }
 
-        step = new_step.unwrap_or_else(|_| step);
+        match cldbrun.step(&mut allocator) {
+            Some(result) => {
+                output.push(result);
+            }
+            _ => {}
+        }
     }
 }
 
