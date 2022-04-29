@@ -333,25 +333,6 @@ pub fn cldb(args: &Vec<String>) {
         _ => {}
     }
 
-    let run_program: Rc<dyn TRunProgram>;
-    match parsedArgs.get("include") {
-        Some(ArgumentValue::ArgArray(v)) => {
-            let mut bare_paths = Vec::with_capacity(v.len());
-            for p in v {
-                match p {
-                    ArgumentValue::ArgString(_, s) => bare_paths.push(s.to_string()),
-                    _ => {}
-                }
-            }
-            let special_runner = run_program_for_search_paths(&bare_paths);
-            run_program = special_runner;
-        }
-        _ => {
-            let ordinary_runner = run_program_for_search_paths(&Vec::new());
-            run_program = ordinary_runner;
-        }
-    }
-
     let mut allocator = Allocator::new();
 
     let symbol_table = parsedArgs
