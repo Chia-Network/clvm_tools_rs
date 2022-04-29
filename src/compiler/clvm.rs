@@ -696,3 +696,50 @@ pub fn path_to_function(
         bi_zero(),
     )
 }
+
+pub fn is_operator(op: u32, atom: &SExp) -> bool {
+    match atom.to_bigint() {
+        Some(n) => n == op.to_bigint().unwrap(),
+        None => false
+    }
+}
+
+pub fn is_whole_env(atom: &SExp) -> bool { is_operator(1, atom) }
+pub fn is_apply(atom: &SExp) -> bool { is_operator(2, atom) }
+pub fn is_cons(atom: &SExp) -> bool { is_operator(4, atom) }
+
+// Extracts the environment from a clvm program that contains one.
+// The usual form of a program to analyze is:
+// (2 main (4 env 1))
+pub fn extract_program_and_env(
+    program: Rc<SExp>,
+) -> Option<(Rc<SExp>, Rc<SExp>)> {
+    // Most programs have apply as a toplevel form.  If we don't then it's
+    // a form we don't understand.
+    match program.proper_list() {
+        Some(lst) => {
+            if lst.len() != 3 {
+                return None;
+            }
+
+            match (is_apply(&lst[0]), lst[1].borrow(), lst[2].proper_list()) {
+                (true, real_program, Some(cexp)) => {
+                    if cexp.len() != 3 {
+                        None
+                    } else if !is_cons(&cexp[0]) {
+                        None
+                    } else if !is_whole_env(&cexp[2]) {
+                        None
+                    } else {
+                        Some((
+                            Rc::new(real_program.clone()),
+                            Rc::new(cexp[1].clone())
+                        ))
+                    }
+                },
+                _ => None
+            }
+        },
+        _ => None
+    }
+}

@@ -1,4 +1,3 @@
-use rand::Rng;
 use rand::random;
 use std::borrow::Borrow;
 use std::rc::Rc;
@@ -7,13 +6,19 @@ use num_bigint::ToBigInt;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::{ bi_one, bi_zero };
+use crate::classic::clvm::__type_compatibility__::{ bi_one };
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::classic::clvm_tools::sha256tree;
 
-use crate::compiler::clvm::{parse_and_run, sha256tree, convert_to_clvm_rs, path_to_function};
+use crate::compiler::clvm::{
+    parse_and_run,
+    sha256tree,
+    convert_to_clvm_rs,
+    path_to_function,
+    extract_program_and_env
+};
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::{parse_sexp, SExp};
+use crate::compiler::sexp::{enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 fn test_compiler_clvm(to_run: &String, args: &String) -> Result<Rc<SExp>, RunFailure> {
@@ -215,4 +220,34 @@ fn test_hash_path() {
         let detected_path = path_to_function(Rc::new(full_expr.clone()), &wanted_hash).unwrap();
         assert_eq!(detected_path, wanted_path);
     }
+}
+
+#[test]
+fn test_extract_program_and_env() {
+    let loc = Srcloc::start(&"*".to_string());
+    let program = Rc::new(enlist(
+        loc.clone(),
+        vec![
+            Rc::new(SExp::Integer(loc.clone(), 2_u32.to_bigint().unwrap())),
+            Rc::new(SExp::Integer(loc.clone(), 99_u32.to_bigint().unwrap())),
+            Rc::new(enlist(
+                loc.clone(),
+                vec![
+                    Rc::new(SExp::Integer(
+                        loc.clone(), 4_u32.to_bigint().unwrap()
+                    )),
+                    Rc::new(SExp::Integer(
+                        loc.clone(), 101_u32.to_bigint().unwrap()
+                    )),
+                    Rc::new(SExp::Integer(
+                        loc.clone(), 1_u32.to_bigint().unwrap()
+                    ))
+                ]
+            ))
+        ]
+    ));
+
+    let ep = extract_program_and_env(program).unwrap();
+    assert_eq!(ep.0.to_string(), "99");
+    assert_eq!(ep.1.to_string(), "101");
 }
