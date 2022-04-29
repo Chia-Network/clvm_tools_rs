@@ -1,3 +1,6 @@
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
 use core::cell::RefCell;
 
 use std::borrow::Borrow;
@@ -705,7 +708,7 @@ pub fn cldb(args: &Vec<String>) {
     }
 }
 
-pub fn mock(args: &Vec<String>) {
+pub fn mock_run(args: &Vec<String>) -> String {
     let tool_name = "mock".to_string();
     let props = TArgumentParserProps {
         description: "Execute a clvm program, allowing functions to be mocked and optionally the main expression to be replaced.".to_string(),
@@ -744,6 +747,37 @@ pub fn mock(args: &Vec<String>) {
             .set_type(Rc::new(PathOrCodeConv {}))
             .set_help("clvm script environment, as clvm src, or hex".to_string()),
     );
+
+    let arg_vec = args[1..].to_vec();
+    let parsed_args: HashMap<String, ArgumentValue>;
+    match parser.parse_args(&arg_vec) {
+        Err(e) => {
+            return format!("error parsing arguments: {}", e.to_string());
+        },
+        Ok(v) => parsed_args = v
+    }
+
+    return "*boop*".to_string();
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn jsmock(args: Vec<JsValue>) -> JsValue {
+    let mut string_args = Vec::new();
+
+    for a in args.iter() {
+        if !a.is_string() {
+            return JsValue::from_str("a non-string was passed in");
+        }
+
+        string_args.push(a.as_string().unwrap());
+    }
+
+    return JsValue::from_str(&mock_run(&string_args));
+}
+
+pub fn mock(args: &Vec<String>) {
+    println!("{}", mock_run(args));
 }
 
 struct RunLog<T> {

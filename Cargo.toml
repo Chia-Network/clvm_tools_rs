@@ -67,3 +67,7 @@ path = "src/classic/bins/brun.rs"
 [[bin]]
 name = "cldb"
 path = "src/classic/bins/cldb.rs"
+
+[[bin]]
+name = "mock"
+path = "src/classic/bins/mock.rs"
