@@ -85,7 +85,7 @@ enum Integral {
 }
 
 fn is_hex(s: &Vec<u8>) -> bool {
-    s.len() >= 2 && s[0] == '0' as u8 && s[1] == 'x' as u8
+    s.len() >= 2 && s[0] == b'0' && s[1] == b'x'
 }
 
 fn is_dec(s: &Vec<u8>) -> bool {
@@ -93,16 +93,16 @@ fn is_dec(s: &Vec<u8>) -> bool {
     let mut dec = true;
 
     for ch in s {
-        if first && *ch == '-' as u8 {
+        if first && *ch == b'-' {
             // Nothing
-        } else if !(*ch >= '0' as u8 && *ch <= '9' as u8) {
+        } else if !(*ch >= b'0' && *ch <= b'9') {
             dec = false;
             break;
         }
         first = false;
     }
 
-    dec && *s != vec!['-' as u8]
+    dec && *s != vec![b'-']
 }
 
 fn matches_integral(s: &Vec<u8>) -> Integral {
@@ -122,7 +122,7 @@ fn normalize_int(v: Vec<u8>, base: u32) -> Number {
 
 fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
     let alen = v.len();
-    if alen > 1 && v[0] == '#' as u8 {
+    if alen > 1 && v[0] == b'#' {
         SExp::Atom(l, v[1..].to_vec())
     } else {
         match matches_integral(&v) {
@@ -161,10 +161,8 @@ fn escape_quote(q: u8, s: &Vec<u8>) -> String {
         .map(|ch| {
             if *ch == q as u8 {
                 res.push('\\');
-                res.push(*ch as char);
-            } else {
-                res.push(*ch as char);
             }
+            res.push(*ch as char);
         })
         .collect();
     res.into_iter().collect()
@@ -208,11 +206,11 @@ impl SExp {
 
     pub fn with_loc(&self, loc: Srcloc) -> SExp {
         match self {
-            SExp::Nil(_) => SExp::Nil(loc.clone()),
-            SExp::Cons(_, a, b) => SExp::Cons(loc.clone(), a.clone(), b.clone()),
-            SExp::Integer(_, i) => SExp::Integer(loc.clone(), i.clone()),
-            SExp::QuotedString(_, q, s) => SExp::QuotedString(loc.clone(), *q, s.clone()),
-            SExp::Atom(_, a) => SExp::Atom(loc.clone(), a.clone()),
+            SExp::Nil(_) => SExp::Nil(loc),
+            SExp::Cons(_, a, b) => SExp::Cons(loc, a.clone(), b.clone()),
+            SExp::Integer(_, i) => SExp::Integer(loc, i.clone()),
+            SExp::QuotedString(_, q, s) => SExp::QuotedString(loc, *q, s.clone()),
+            SExp::Atom(_, a) => SExp::Atom(loc, a.clone()),
         }
     }
 
@@ -225,7 +223,7 @@ impl SExp {
     }
 
     pub fn quoted_from_string(loc: Srcloc, s: &String) -> SExp {
-        SExp::QuotedString(loc, '\"' as u8, s.as_bytes().to_vec())
+        SExp::QuotedString(loc, b'\"', s.as_bytes().to_vec())
     }
 
     pub fn to_string(&self) -> String {
@@ -235,7 +233,7 @@ impl SExp {
             SExp::Integer(_, v) => v.to_string(),
             SExp::QuotedString(_, q, s) => format!("\"{}\"", escape_quote(*q, s)),
             SExp::Atom(l, a) => {
-                if a.len() == 0 {
+                if a.is_empty() {
                     "()".to_string()
                 } else if printable(a) {
                     decode_string(a)
@@ -250,9 +248,9 @@ impl SExp {
         let bizero: Number = zero();
         match self {
             SExp::Nil(_) => true,
-            SExp::QuotedString(_, _, v) => v.len() == 0,
+            SExp::QuotedString(_, _, v) => v.is_empty(),
             SExp::Integer(_, i) => *i == bizero,
-            SExp::Atom(_, a) => a.len() == 0,
+            SExp::Atom(_, a) => a.is_empty(),
             _ => false,
         }
     }
@@ -387,18 +385,18 @@ impl SExp {
 fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseResult {
     match p {
         SExpParseState::Empty => match this_char as char {
-            '(' => resume(SExpParseState::OpenList(loc.clone())),
+            '(' => resume(SExpParseState::OpenList(loc)),
             '\n' => resume(SExpParseState::Empty),
-            ';' => resume(SExpParseState::CommentText(loc.clone(), Vec::new())),
+            ';' => resume(SExpParseState::CommentText(loc, Vec::new())),
             ')' => error(loc, &"Too many close parens".to_string()),
             '"' => resume(SExpParseState::QuotedText(
-                loc.clone(),
-                '"' as u8,
+                loc,
+                b'"',
                 Vec::new(),
             )),
             '\'' => resume(SExpParseState::QuotedText(
-                loc.clone(),
-                '\'' as u8,
+                loc,
+                b'\'',
                 Vec::new(),
             )),
             ch => {
@@ -431,7 +429,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
             }
         }
         SExpParseState::QuotedText(pl, term, t) => {
-            if this_char == '\\' as u8 {
+            if this_char == b'\\' {
                 resume(SExpParseState::QuotedEscaped(pl.clone(), *term, t.to_vec()))
             } else if this_char == *term {
                 emit(
@@ -527,11 +525,11 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                 match list_copy.pop() {
                     Some(v) => {
                         let new_tail = make_cons(v, Rc::new(parsed_atom));
-                        if list_copy.len() == 0 {
+                        if list_copy.is_empty() {
                             emit(Rc::new(new_tail), SExpParseState::Empty)
                         } else {
                             list_copy.push(Rc::new(new_tail));
-                            let new_list = enlist(pl.ext(&l), list_copy);
+                            let new_list = enlist(pl.ext(l), list_copy);
                             emit(Rc::new(new_list), SExpParseState::Empty)
                         }
                     }
@@ -615,11 +613,11 @@ fn parse_sexp_inner(
                 SExpParseResult::PResume(np) => {
                     start = next_location;
                     p = np;
-                    n = n + 1;
+                    n += 1;
                 }
                 SExpParseResult::PEmit(o, np) => {
                     p = np;
-                    n = n + 1;
+                    n += 1;
                     res.push(o);
                 }
             }
