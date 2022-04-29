@@ -705,6 +705,47 @@ pub fn cldb(args: &Vec<String>) {
     }
 }
 
+pub fn mock(args: &Vec<String>) {
+    let tool_name = "mock".to_string();
+    let props = TArgumentParserProps {
+        description: "Execute a clvm program, allowing functions to be mocked and optionally the main expression to be replaced.".to_string(),
+        prog: format!("clvm_tools {}", tool_name),
+    };
+
+    let mut parser = ArgumentParser::new(Some(props));
+    parser.add_argument(
+        vec!["-x".to_string(), "--hex".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("parse input program and arguments from hex".to_string()),
+    );
+    parser.add_argument(
+        vec!["-y".to_string(), "--symbol-table".to_string()],
+        Argument::new()
+            .set_type(Rc::new(PathOrCodeConv {}))
+            .set_help("path to symbol file".to_string()),
+    );
+    parser.add_argument(
+        vec!["-m".to_string(), "--mock".to_string()],
+        Argument::new()
+            .set_type(Rc::new(PathOrCodeConv {}))
+            .set_help("path to mock functions".to_string()),
+    );
+    parser.add_argument(
+        vec!["path_or_code".to_string()],
+        Argument::new()
+            .set_type(Rc::new(PathOrCodeConv {}))
+            .set_help("filepath to clvm script, or a literal script".to_string()),
+    );
+    parser.add_argument(
+        vec!["env".to_string()],
+        Argument::new()
+            .set_n_args(NArgsSpec::Optional)
+            .set_type(Rc::new(PathOrCodeConv {}))
+            .set_help("clvm script environment, as clvm src, or hex".to_string()),
+    );
+}
+
 struct RunLog<T> {
     log_entries: RefCell<Vec<T>>,
 }

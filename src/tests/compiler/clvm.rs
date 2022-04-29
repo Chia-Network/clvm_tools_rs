@@ -198,15 +198,27 @@ fn test_hash_path() {
                 new_expr = random();
             }
             used_exprs.insert(new_expr.to_string());
-            full_expr = if right_side {
+            let new_expr = if right_side {
                 wanted_path += 1;
-                SExp::Cons(loc.clone(), Rc::new(new_expr), Rc::new(full_expr))
+                SExp::Cons(
+                    loc.clone(),
+                    Rc::new(new_expr),
+                    Rc::new(full_expr.clone())
+                )
             } else {
-                SExp::Cons(loc.clone(), Rc::new(full_expr), Rc::new(new_expr))
+                SExp::Cons(
+                    loc.clone(),
+                    Rc::new(full_expr.clone()),
+                    Rc::new(new_expr)
+                )
             };
+            if !used_exprs.contains(&new_expr.to_string()) {
+                full_expr = new_expr;
+            }
         }
 
         let detected_path = path_to_function(Rc::new(full_expr.clone()), &wanted_hash).unwrap();
+        println!("find {} in {}: want path {} got path {}", wanted_expr.to_string(), full_expr.to_string(), wanted_path, detected_path);
         assert_eq!(detected_path, wanted_path);
     }
 }
