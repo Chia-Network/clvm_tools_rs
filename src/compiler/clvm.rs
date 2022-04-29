@@ -207,10 +207,15 @@ pub fn convert_from_clvm_rs(
             if h.len() == 0 {
                 Ok(Rc::new(SExp::Nil(loc)))
             } else {
-                Ok(Rc::new(SExp::Integer(
-                    loc,
-                    number_from_u8(allocator.buf(&h)),
-                )))
+                let atom_data = allocator.buf(&h);
+                let integer = number_from_u8(atom_data);
+                // Ensure that atom values that don't evaluate equal to integers
+                // are represented faithfully as atoms.
+                if u8_from_number(integer.clone()) == atom_data {
+                    Ok(Rc::new(SExp::Integer(loc, integer)))
+                } else {
+                    Ok(Rc::new(SExp::Atom(loc, atom_data.to_vec())))
+                }
             }
         }
         allocator::SExp::Pair(a, b) => {

@@ -1,3 +1,4 @@
+pub mod cldb;
 pub mod clvm;
 mod codegen;
 pub mod compiler;
