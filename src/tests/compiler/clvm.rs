@@ -6,16 +6,12 @@ use num_bigint::ToBigInt;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::{ bi_one };
-use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::sha256tree;
+use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 
 use crate::compiler::clvm::{
-    parse_and_run,
-    sha256tree,
-    convert_to_clvm_rs,
-    path_to_function,
-    extract_program_and_env
+    convert_to_clvm_rs, extract_program_and_env, parse_and_run, path_to_function, sha256tree,
 };
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{enlist, parse_sexp, SExp};
@@ -164,12 +160,12 @@ fn modern_sha256tree_2() {
     let srcloc = Srcloc::start(&"*".to_string());
     let modern_sexp = Rc::new(SExp::Cons(
         srcloc.clone(),
-        Rc::new(SExp::Atom(srcloc.clone(), vec!(9))),
+        Rc::new(SExp::Atom(srcloc.clone(), vec![9])),
         Rc::new(SExp::Cons(
             srcloc.clone(),
             Rc::new(SExp::Integer(srcloc.clone(), 11_u32.to_bigint().unwrap())),
-            Rc::new(SExp::Nil(srcloc.clone()))
-        ))
+            Rc::new(SExp::Nil(srcloc.clone())),
+        )),
     ));
     let modern_sha256 = sha256tree(modern_sexp.clone());
     let old_sexp = convert_to_clvm_rs(&mut allocator, modern_sexp.clone()).unwrap();
@@ -200,21 +196,12 @@ fn test_hash_path() {
             while new_expr == wanted_expr {
                 new_expr = random();
             }
-            full_expr =
-                if right_side {
-                    wanted_path += 1;
-                    SExp::Cons(
-                        loc.clone(),
-                        Rc::new(random()),
-                        Rc::new(full_expr)
-                    )
-                } else {
-                    SExp::Cons(
-                        loc.clone(),
-                        Rc::new(full_expr),
-                        Rc::new(random())
-                    )
-                };
+            full_expr = if right_side {
+                wanted_path += 1;
+                SExp::Cons(loc.clone(), Rc::new(random()), Rc::new(full_expr))
+            } else {
+                SExp::Cons(loc.clone(), Rc::new(full_expr), Rc::new(random()))
+            };
         }
 
         let detected_path = path_to_function(Rc::new(full_expr.clone()), &wanted_hash).unwrap();
@@ -233,18 +220,12 @@ fn test_extract_program_and_env() {
             Rc::new(enlist(
                 loc.clone(),
                 vec![
-                    Rc::new(SExp::Integer(
-                        loc.clone(), 4_u32.to_bigint().unwrap()
-                    )),
-                    Rc::new(SExp::Integer(
-                        loc.clone(), 101_u32.to_bigint().unwrap()
-                    )),
-                    Rc::new(SExp::Integer(
-                        loc.clone(), 1_u32.to_bigint().unwrap()
-                    ))
-                ]
-            ))
-        ]
+                    Rc::new(SExp::Integer(loc.clone(), 4_u32.to_bigint().unwrap())),
+                    Rc::new(SExp::Integer(loc.clone(), 101_u32.to_bigint().unwrap())),
+                    Rc::new(SExp::Integer(loc.clone(), 1_u32.to_bigint().unwrap())),
+                ],
+            )),
+        ],
     ));
 
     let ep = extract_program_and_env(program).unwrap();

@@ -7,20 +7,13 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, bi_one};
-use crate::classic::clvm_tools::stages::stage_0::{
-    DefaultProgramRunner,
-    TRunProgram
-};
+use crate::classic::clvm::__type_compatibility__::{bi_one, Bytes, BytesFromType};
+use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
 use crate::compiler::clvm::{
-    choose_path,
-    convert_from_clvm_rs,
-    convert_to_clvm_rs,
-    extract_program_and_env,
-    path_to_function,
-    rewrite_in_program
+    choose_path, convert_from_clvm_rs, convert_to_clvm_rs, extract_program_and_env,
+    path_to_function, rewrite_in_program,
 };
 use crate::compiler::codegen::codegen;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
@@ -211,24 +204,24 @@ pub fn harden_mock_function(mfunc: Rc<SExp>, menv: Rc<SExp>) -> Rc<SExp> {
     // (a mfunc (c menv (r 1)))
     Rc::new(enlist(
         mfunc.loc(),
-        vec! [
+        vec![
             Rc::new(SExp::Integer(mfunc.loc(), 2_u32.to_bigint().unwrap())),
             mfunc.clone(),
             Rc::new(enlist(
                 mfunc.loc(),
-                vec! [
+                vec![
                     Rc::new(SExp::Integer(mfunc.loc(), 4_u32.to_bigint().unwrap())),
                     menv.clone(),
                     Rc::new(enlist(
                         mfunc.loc(),
-                        vec! [
+                        vec![
                             Rc::new(SExp::Integer(mfunc.loc(), 6_u32.to_bigint().unwrap())),
-                            Rc::new(SExp::Integer(mfunc.loc(), bi_one()))
-                        ]
-                    ))
-                ]
-            ))
-        ]
+                            Rc::new(SExp::Integer(mfunc.loc(), bi_one())),
+                        ],
+                    )),
+                ],
+            )),
+        ],
     ))
 }
 
@@ -252,13 +245,19 @@ pub fn mock_program(
 ) -> Result<Rc<SExp>, CompileErr> {
     let pres = extract_program_and_env(program.clone());
     if pres == None {
-        return Err(CompileErr(program.loc(), "program isn't an understandable clvm program or doesn't have an env".to_string()));
+        return Err(CompileErr(
+            program.loc(),
+            "program isn't an understandable clvm program or doesn't have an env".to_string(),
+        ));
     }
-    let (pprogram, mut penv) : (Rc<SExp>, Rc<SExp>) = pres.unwrap();
+    let (pprogram, mut penv): (Rc<SExp>, Rc<SExp>) = pres.unwrap();
 
     let mres = extract_program_and_env(mocks.clone());
     if mres == None {
-        return Err(CompileErr(mocks.loc(), "mocks isn't an understandable clvm program or doesn't have an env".to_string()));
+        return Err(CompileErr(
+            mocks.loc(),
+            "mocks isn't an understandable clvm program or doesn't have an env".to_string(),
+        ));
     }
     let (mprogram, menv) = mres.unwrap();
 
@@ -268,89 +267,83 @@ pub fn mock_program(
         let decoded_hash = Bytes::new(Some(BytesFromType::Hex(mv.clone())));
         let path_in_mock_env = path_to_function(menv.clone(), decoded_hash.data());
         match path_in_mock_env {
-            Some(p) => { known_mock_functions.insert(
-                mk.clone(),
-                p.clone()
-            ); },
-            None => { }
+            Some(p) => {
+                known_mock_functions.insert(mk.clone(), p.clone());
+            }
+            None => {}
         }
-    };
+    }
 
     for (pk, pv) in psymbols.iter() {
         let decoded_hash = Bytes::new(Some(BytesFromType::Hex(pv.clone())));
         let path_in_prog_env = path_to_function(penv.clone(), decoded_hash.data());
-        let fenv: Rc<SExp> =
-            known_mock_functions.get(pk).and_then(|mf| {
-                path_in_prog_env.map(|p| (mf,p))
-            }).and_then(|(mf,p)| {
+        let fenv: Rc<SExp> = known_mock_functions
+            .get(pk)
+            .and_then(|mf| path_in_prog_env.map(|p| (mf, p)))
+            .and_then(|(mf, p)| {
                 choose_path(
                     mprogram.loc(),
                     mf.clone(),
                     mf.clone(),
                     menv.clone(),
-                    menv.clone()
-                ).map(|mprog| {
-                    (mprog,p)
-                }).ok()
-            }).and_then(|(mprog,p)| {
-                rewrite_in_program(
-                    penv.clone(),
-                    p,
-                    harden_mock_function(mprog, menv.clone())
+                    menv.clone(),
                 )
-            }).unwrap_or_else(|| penv.clone());
+                .map(|mprog| (mprog, p))
+                .ok()
+            })
+            .and_then(|(mprog, p)| {
+                rewrite_in_program(penv.clone(), p, harden_mock_function(mprog, menv.clone()))
+            })
+            .unwrap_or_else(|| penv.clone());
         penv = fenv;
     }
 
-    let args = Rc::new(enlist(mprogram.loc(), vec![
-        Rc::new(SExp::Integer(mprogram.loc(), 4_u32.to_bigint().unwrap())),
-        program.clone(),
-        Rc::new(SExp::Integer(mprogram.loc(), bi_one()))
-    ]));
+    let args = Rc::new(enlist(
+        mprogram.loc(),
+        vec![
+            Rc::new(SExp::Integer(mprogram.loc(), 4_u32.to_bigint().unwrap())),
+            program.clone(),
+            Rc::new(SExp::Integer(mprogram.loc(), bi_one())),
+        ],
+    ));
 
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
-    let opts = DefaultCompilerOpts::new(&mprogram.loc().file)
-        .set_start_env(Some(penv.clone()));
-    let final_main =
-        match to_run {
-            Some(r) => {
-                Ok(r).and_then(|trp| {
-                    compile_file(
-                        &mut allocator,
-                        runner,
-                        opts,
-                        &trp
-                    )
-                }).map(|cr| {
-                    Rc::new(SExp::Cons(
-                        mprogram.loc(),
-                        Rc::new(SExp::Integer(mprogram.loc(), bi_one())),
-                        Rc::new(cr)
-                    ))
-                })
-            },
-            _ => Ok(Rc::new(SExp::Integer(mprogram.loc(), 10_u32.to_bigint().unwrap())))
-        }?;
+    let opts = DefaultCompilerOpts::new(&mprogram.loc().file).set_start_env(Some(penv.clone()));
+    let final_main = match to_run {
+        Some(r) => Ok(r)
+            .and_then(|trp| compile_file(&mut allocator, runner, opts, &trp))
+            .map(|cr| {
+                Rc::new(SExp::Cons(
+                    mprogram.loc(),
+                    Rc::new(SExp::Integer(mprogram.loc(), bi_one())),
+                    Rc::new(cr),
+                ))
+            }),
+        _ => Ok(Rc::new(SExp::Integer(
+            mprogram.loc(),
+            10_u32.to_bigint().unwrap(),
+        ))),
+    }?;
     Ok(Rc::new(enlist(
         mprogram.loc(),
-        vec! [
+        vec![
             Rc::new(SExp::Integer(mprogram.loc(), 2_u32.to_bigint().unwrap())),
             final_main,
             Rc::new(enlist(
                 mprogram.loc(),
-                vec! [
+                vec![
                     Rc::new(SExp::Integer(mprogram.loc(), 4_u32.to_bigint().unwrap())),
                     penv,
                     Rc::new(enlist(
                         mprogram.loc(),
-                        vec! [
+                        vec![
                             Rc::new(SExp::Integer(mprogram.loc(), 6_u32.to_bigint().unwrap())),
-                            args
-                        ]
-                    ))
-                ]
-            ))
-        ]
+                            args,
+                        ],
+                    )),
+                ],
+            )),
+        ],
     )))
 }

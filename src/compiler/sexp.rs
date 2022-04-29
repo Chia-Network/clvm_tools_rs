@@ -13,7 +13,7 @@ use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes, TConvertOp
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, u8_from_number, Number};
 
-const MAX_DEPTH : u8 = 2;
+const MAX_DEPTH: u8 = 2;
 
 // Compiler view of SExp
 #[derive(Clone, Debug)]
