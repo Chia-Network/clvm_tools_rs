@@ -389,16 +389,8 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
             '\n' => resume(SExpParseState::Empty),
             ';' => resume(SExpParseState::CommentText(loc, Vec::new())),
             ')' => error(loc, &"Too many close parens".to_string()),
-            '"' => resume(SExpParseState::QuotedText(
-                loc,
-                b'"',
-                Vec::new(),
-            )),
-            '\'' => resume(SExpParseState::QuotedText(
-                loc,
-                b'\'',
-                Vec::new(),
-            )),
+            '"' => resume(SExpParseState::QuotedText(loc, b'"', Vec::new())),
+            '\'' => resume(SExpParseState::QuotedText(loc, b'\'', Vec::new())),
             ch => {
                 if char::is_whitespace(ch) {
                     resume(SExpParseState::Empty)

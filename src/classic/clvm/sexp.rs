@@ -30,10 +30,7 @@ pub enum SexpStackOp {
     OpPrepend(usize),
 }
 
-pub fn to_sexp_type(
-    allocator: &mut Allocator,
-    value: CastableType,
-) -> Result<NodePtr, EvalErr> {
+pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<NodePtr, EvalErr> {
     let mut stack = vec![Rc::new(value)];
     let mut ops: Vec<SexpStackOp> = vec![SexpStackOp::OpConvert];
 
@@ -375,11 +372,7 @@ pub fn atom(allocator: &mut Allocator, sexp: NodePtr) -> Result<AtomBuf, EvalErr
     }
 }
 
-pub fn proper_list(
-    allocator: &mut Allocator,
-    sexp: NodePtr,
-    store: bool,
-) -> Option<Vec<NodePtr>> {
+pub fn proper_list(allocator: &mut Allocator, sexp: NodePtr, store: bool) -> Option<Vec<NodePtr>> {
     let mut args = vec![];
     let mut args_sexp = sexp;
     loop {

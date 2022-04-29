@@ -56,10 +56,7 @@ fn cons_bodyform(loc: Srcloc, left: Rc<BodyForm>, right: Rc<BodyForm>) -> BodyFo
     BodyForm::Call(
         loc.clone(),
         vec![
-            Rc::new(BodyForm::Value(SExp::Atom(
-                loc,
-                "c".as_bytes().to_vec(),
-            ))), // Cons
+            Rc::new(BodyForm::Value(SExp::Atom(loc, "c".as_bytes().to_vec()))), // Cons
             left,
             right,
         ],
