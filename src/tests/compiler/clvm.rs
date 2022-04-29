@@ -1,5 +1,6 @@
 use rand::random;
 use std::borrow::Borrow;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use num_bigint::ToBigInt;
@@ -179,11 +180,11 @@ fn test_hash_path() {
 
     for _ in 0..100 {
         let mut wanted_expr: SExp = random();
-        // Since () naturally occurs at the end of a list, we can encounter it
-        // at the wrong time in many random sexps.
+        let mut used_exprs = HashSet::new();
         while wanted_expr.to_string() == "()" {
             wanted_expr = random();
         }
+        used_exprs.insert(wanted_expr.to_string());
         let wanted_hash = sha256tree(Rc::new(wanted_expr.clone()));
         let mut wanted_path = bi_one();
         let wanted_steps: usize = random();
@@ -193,14 +194,15 @@ fn test_hash_path() {
             let right_side = random();
             wanted_path *= 2;
             let mut new_expr: SExp = random();
-            while new_expr == wanted_expr {
+            while used_exprs.contains(&new_expr.to_string()) {
                 new_expr = random();
             }
+            used_exprs.insert(new_expr.to_string());
             full_expr = if right_side {
                 wanted_path += 1;
-                SExp::Cons(loc.clone(), Rc::new(random()), Rc::new(full_expr))
+                SExp::Cons(loc.clone(), Rc::new(new_expr), Rc::new(full_expr))
             } else {
-                SExp::Cons(loc.clone(), Rc::new(full_expr), Rc::new(random()))
+                SExp::Cons(loc.clone(), Rc::new(full_expr), Rc::new(new_expr))
             };
         }
 
