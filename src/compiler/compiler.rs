@@ -211,7 +211,7 @@ pub fn harden_mock_function(mfunc: Rc<SExp>, menv: Rc<SExp>) -> Rc<SExp> {
                 mfunc.loc(),
                 vec![
                     Rc::new(SExp::Integer(mfunc.loc(), 4_u32.to_bigint().unwrap())),
-                    menv.clone(),
+                    menv,
                     Rc::new(enlist(
                         mfunc.loc(),
                         vec![
@@ -265,12 +265,8 @@ pub fn mock_program(
 
     for (mk, mv) in msymbols.iter() {
         let decoded_hash = Bytes::new(Some(BytesFromType::Hex(mv.clone())));
-        let path_in_mock_env = path_to_function(menv.clone(), decoded_hash.data());
-        match path_in_mock_env {
-            Some(p) => {
-                known_mock_functions.insert(mk.clone(), p.clone());
-            }
-            None => {}
+        if let Some(p) = path_to_function(menv.clone(), decoded_hash.data()) {
+            known_mock_functions.insert(mk.clone(), p.clone());
         }
     }
 
@@ -302,7 +298,7 @@ pub fn mock_program(
         mprogram.loc(),
         vec![
             Rc::new(SExp::Integer(mprogram.loc(), 4_u32.to_bigint().unwrap())),
-            program.clone(),
+            program,
             Rc::new(SExp::Integer(mprogram.loc(), bi_one())),
         ],
     ));
