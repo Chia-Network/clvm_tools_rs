@@ -37,7 +37,7 @@ pub enum RunStep {
     Step(Rc<SExp>, Rc<SExp>, Rc<RunStep>),
 }
 
-fn choose_path(
+pub fn choose_path(
     l: Srcloc,
     orig: Number,
     p: Number,
@@ -695,6 +695,41 @@ pub fn path_to_function(
         bi_one(),
         bi_zero(),
     )
+}
+
+pub fn rewrite_in_program(
+    program: Rc<SExp>,
+    path: Number,
+    new_exp: Rc<SExp>,
+) -> Option<Rc<SExp>> {
+    if path == bi_zero() {
+        return None;
+    }
+
+    if path == bi_one() {
+        return Some(new_exp);
+    }
+
+    match program.borrow() {
+        SExp::Cons(l,a,b) => {
+            if path.clone() & bi_one() == bi_zero() {
+                // Left traversal
+                rewrite_in_program(
+                    a.clone(),
+                    path.clone() / 2_u32.to_bigint().unwrap(),
+                    new_exp
+                )
+            } else {
+                // Left traversal
+                rewrite_in_program(
+                    b.clone(),
+                    path.clone() / 2_u32.to_bigint().unwrap(),
+                    new_exp
+                )
+            }
+        },
+        _ => None
+    }
 }
 
 pub fn is_operator(op: u32, atom: &SExp) -> bool {
