@@ -130,7 +130,9 @@ jobs:
         python -c 'import clvm_rs; print(clvm_rs.__file__)'
         python -c 'import clvm_tools_rs; print(clvm_tools_rs.__file__)'
 
+        
     - name: Compile for wasm
+      if: startsWith(matrix.os, 'ubuntu')
       run: |
         cargo build --no-default-features --target wasm32-unknown-unknown
 
