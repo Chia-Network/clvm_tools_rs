@@ -53,6 +53,7 @@ jobs:
             . ./activate && \
             pip install maturin && \
             CC=gcc maturin build --no-sdist --release --strip --manylinux 2014 \
+              --cargo-extra-args="--all-features" \
           '
 
     - name: Upload artifacts
