@@ -255,7 +255,7 @@ fn read_modern_program_code_or_hex(
     symbol_table: &HashMap<String, String>,
     do_optimize: bool,
     hex: Option<ArgumentValue>,
-    path_or_code: Option<ArgumentValue>
+    path_or_code: Option<ArgumentValue>,
 ) -> Result<Rc<sexp::SExp>, CompileErr> {
     let mut input_file = "*program*".to_string();
     let mut prog_srcloc = Srcloc::start(&input_file);
@@ -266,11 +266,11 @@ fn read_modern_program_code_or_hex(
         Some(ArgumentValue::ArgString(file, path_or_code)) => {
             match file {
                 Some(f) => input_file = f.clone(),
-                _ => { }
+                _ => {}
             }
             prog_srcloc = Srcloc::start(&input_file);
             input_program = path_or_code.to_string();
-        },
+        }
         _ => {
             let eloc = Srcloc::start(&"*args*".to_string());
             return Err(CompileErr(eloc, "no program read".to_string()));
@@ -284,19 +284,12 @@ fn read_modern_program_code_or_hex(
             prog_srcloc.clone(),
             &input_program,
         )
-            .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
+        .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
         _ => {
             let opts = DefaultCompilerOpts::new(&input_file).set_no_eliminate(true);
-            let unopt_res = compile_file(
-                allocator,
-                runner.clone(),
-                opts,
-                &input_program
-            );
+            let unopt_res = compile_file(allocator, runner.clone(), opts, &input_program);
             if do_optimize {
-                unopt_res.and_then(|x| {
-                    run_optimizer(allocator, runner.clone(), Rc::new(x))
-                })
+                unopt_res.and_then(|x| run_optimizer(allocator, runner.clone(), Rc::new(x)))
             } else {
                 unopt_res.map(|x| Rc::new(x))
             }
@@ -440,7 +433,7 @@ pub fn cldb(args: &Vec<String>) {
         &symbol_table.unwrap_or_else(|| HashMap::new()),
         do_optimize,
         parsedArgs.get("hex").map(|x| x.clone()),
-        parsedArgs.get("path_or_code").map(|x| x.clone())
+        parsedArgs.get("path_or_code").map(|x| x.clone()),
     );
 
     match res {
@@ -562,8 +555,8 @@ pub fn mock_run(args: &Vec<String>) -> String {
     match parser.parse_args(&arg_vec) {
         Err(e) => {
             return format!("error parsing arguments: {}", e.to_string());
-        },
-        Ok(v) => parsed_args = v
+        }
+        Ok(v) => parsed_args = v,
     }
 
     let mut allocator = Allocator::new();
@@ -574,14 +567,15 @@ pub fn mock_run(args: &Vec<String>) -> String {
         &symbol_table,
         true,
         parsed_args.get("hex").map(|x| x.clone()),
-        parsed_args.get("path_or_code").map(|x| x.clone())
+        parsed_args.get("path_or_code").map(|x| x.clone()),
     );
 
-    let program =
-        match program_res {
-            Ok(p) => p,
-            _ => { return format!("error reading program"); }
-        };
+    let program = match program_res {
+        Ok(p) => p,
+        _ => {
+            return format!("error reading program");
+        }
+    };
 
     build_symbol_table_mut(&mut symbol_table, program.borrow());
 

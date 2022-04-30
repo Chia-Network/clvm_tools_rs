@@ -56,12 +56,10 @@ fn compile_test_1() {
 
 #[test]
 fn compile_test_no_elim_same() {
-    let result1 = compile_string(
-        &"(mod (A) (defun F (X) (+ X 1)) (F A))".to_string()
-    ).unwrap();
-    let result2 = compile_string(
-        &"(mod (A) (defun F (X) (+ X 1)) (defun G (X) (- X 1)) (F A))".to_string()
-    ).unwrap();
+    let result1 = compile_string(&"(mod (A) (defun F (X) (+ X 1)) (F A))".to_string()).unwrap();
+    let result2 =
+        compile_string(&"(mod (A) (defun F (X) (+ X 1)) (defun G (X) (- X 1)) (F A))".to_string())
+            .unwrap();
     assert_eq!(result1, result2);
 }
 
@@ -70,12 +68,14 @@ fn compile_test_elim_diff() {
     let opts = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string())).set_no_eliminate(true);
     let result1 = compile_string_opts(
         opts.clone(),
-        &"(mod (A) (defun F (X) (+ X 1)) (F A))".to_string()
-    ).unwrap();
+        &"(mod (A) (defun F (X) (+ X 1)) (F A))".to_string(),
+    )
+    .unwrap();
     let result2 = compile_string_opts(
         opts.clone(),
-        &"(mod (A) (defun F (X) (+ X 1)) (defun G (X) (- X 1)) (F A))".to_string()
-    ).unwrap();
+        &"(mod (A) (defun F (X) (+ X 1)) (defun G (X) (- X 1)) (F A))".to_string(),
+    )
+    .unwrap();
     assert_ne!(result1, result2);
 }
 

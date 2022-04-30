@@ -194,7 +194,9 @@ fn test_hash_path() {
             let right_side = random();
             wanted_path *= 2;
             let mut new_expr: SExp = random();
-            while used_exprs.contains(&new_expr.to_string()) || path_to_function(Rc::new(new_expr.clone()), &wanted_hash) != None {
+            while used_exprs.contains(&new_expr.to_string())
+                || path_to_function(Rc::new(new_expr.clone()), &wanted_hash) != None
+            {
                 new_expr = random();
             }
             used_exprs.insert(new_expr.to_string());
