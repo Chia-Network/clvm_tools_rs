@@ -8,7 +8,7 @@ use clvm_rs::allocator::{Allocator, NodePtr};
 use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{
-    bi_one, bi_zero, sha256, Bytes, BytesFromType, Stream,
+    bi_one, bi_zero, sha256, Bytes, BytesFromType,
 };
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 

@@ -31,6 +31,7 @@ pub struct DefaultCompilerOpts {
     pub in_defun: bool,
     pub stdenv: bool,
     pub optimize: bool,
+    pub no_eliminate: bool,
     pub start_env: Option<Rc<SExp>>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
 }
@@ -85,6 +86,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn optimize(&self) -> bool {
         self.optimize
     }
+    fn no_eliminate(&self) -> bool {
+        self.no_eliminate
+    }
     fn start_env(&self) -> Option<Rc<SExp>> {
         self.start_env.clone()
     }
@@ -110,6 +114,11 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn set_optimize(&self, optimize: bool) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.optimize = optimize;
+        Rc::new(copy)
+    }
+    fn set_no_eliminate(&self, ne: bool) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.no_eliminate = ne;
         Rc::new(copy)
     }
     fn set_compiler(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
@@ -192,6 +201,7 @@ impl DefaultCompilerOpts {
             in_defun: false,
             stdenv: true,
             optimize: false,
+            no_eliminate: false,
             start_env: None,
             prim_map: Rc::new(prim_map),
         }
