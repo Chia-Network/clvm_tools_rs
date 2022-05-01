@@ -43,7 +43,7 @@ use crate::classic::platform::argparse::{
     TArgOptionAction, TArgumentParserProps,
 };
 
-use crate::compiler::cldb::{hex_to_modern_sexp, CldbRun, CldbRunEnv};
+use crate::compiler::cldb::{hex_to_modern_sexp, CldbRun, CldbRunEnv, CldbNoOverride};
 use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
@@ -359,9 +359,10 @@ pub fn cldb(args: &Vec<String>) {
         .unwrap_or_else(|| "*command*".to_string());
     let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_optimize(do_optimize);
 
-    let unopt_res = compile_file(&mut allocator, runner.clone(), opts.clone(), &input_program);
+    let mut use_symbol_table = symbol_table.unwrap_or_else(|| HashMap::new());
+    let unopt_res = compile_file(&mut allocator, runner.clone(), opts.clone(), &input_program, &mut use_symbol_table);
 
-    let mut program = Rc::new(sexp::SExp::Nil(Srcloc::start(&"*nil*".to_string())));
+    let program;
     let mut output = Vec::new();
     let yamlette_string = |to_print: Vec<BTreeMap<String, String>>| match yamlette!(write; [[( # FORCE_QUOTES => to_print )]])
     {
@@ -372,7 +373,7 @@ pub fn cldb(args: &Vec<String>) {
     let res = match parsedArgs.get("hex") {
         Some(ArgumentValue::ArgBool(true)) => hex_to_modern_sexp(
             &mut allocator,
-            &symbol_table.unwrap_or_else(|| HashMap::new()),
+            &use_symbol_table,
             prog_srcloc.clone(),
             &input_program,
         )
@@ -443,7 +444,7 @@ pub fn cldb(args: &Vec<String>) {
     }
     let program_lines: Vec<String> = input_program.lines().map(|x| x.to_string()).collect();
     let step = start_step(program.clone(), args.clone());
-    let cldbenv = CldbRunEnv::new(input_file, program_lines);
+    let cldbenv = CldbRunEnv::new(input_file, program_lines, Box::new(CldbNoOverride::new_symbols(use_symbol_table)));
     let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
 
     loop {
@@ -832,8 +833,9 @@ pub fn launch_tool(
         let runner = Rc::new(DefaultProgramRunner::new());
         let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_optimize(do_optimize);
+        let mut symbol_table = HashMap::new();
 
-        let unopt_res = compile_file(&mut allocator, runner.clone(), opts.clone(), &input_program);
+        let unopt_res = compile_file(&mut allocator, runner.clone(), opts.clone(), &input_program, &mut symbol_table);
         let res = if do_optimize {
             unopt_res.and_then(|x| run_optimizer(&mut allocator, runner, Rc::new(x)))
         } else {
@@ -844,9 +846,8 @@ pub fn launch_tool(
             Ok(r) => {
                 println!("{}", r.to_string());
 
-                let mut st = HashMap::new();
-                build_symbol_table_mut(&mut st, &r);
-                write_sym_output(&st, &"main.sym".to_string());
+                build_symbol_table_mut(&mut symbol_table, &r);
+                write_sym_output(&symbol_table, &"main.sym".to_string());
             }
             Err(c) => {
                 println!("{}: {}", c.0.to_string(), c.1);

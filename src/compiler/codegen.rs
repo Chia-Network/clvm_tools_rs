@@ -553,8 +553,9 @@ fn compile_call(
                         )),
                     );
 
+                    let mut unused_symbol_table = HashMap::new();
                     updated_opts
-                        .compile_program(allocator, runner, Rc::new(use_body))
+                        .compile_program(allocator, runner, Rc::new(use_body), &mut unused_symbol_table)
                         .map(|code| {
                             CompiledCode(l.clone(), Rc::new(primquote(l.clone(), Rc::new(code))))
                         })
@@ -707,8 +708,9 @@ fn codegen_(
                 )),
             );
             let updated_opts = opts.set_compiler(compiler.clone());
+            let mut unused_symbol_table = HashMap::new();
             let code =
-                updated_opts.compile_program(allocator, runner.clone(), Rc::new(expand_program))?;
+                updated_opts.compile_program(allocator, runner.clone(), Rc::new(expand_program), &mut unused_symbol_table)?;
             run(
                 allocator,
                 runner,
@@ -737,9 +739,10 @@ fn codegen_(
             ));
 
             let updated_opts = opts.set_compiler(compiler.clone()).set_stdenv(false);
+            let mut unused_symbol_table = HashMap::new();
 
             updated_opts
-                .compile_program(allocator, runner.clone(), macro_program)
+                .compile_program(allocator, runner.clone(), macro_program, &mut unused_symbol_table)
                 .and_then(|code| {
                     if opts.optimize() {
                         run_optimizer(allocator, runner, Rc::new(code))
@@ -798,8 +801,9 @@ fn codegen_(
                     )),
                 );
 
+                let mut unused_symbol_table = HashMap::new();
                 updated_opts
-                    .compile_program(allocator, runner.clone(), Rc::new(tocompile))
+                    .compile_program(allocator, runner.clone(), Rc::new(tocompile), &mut unused_symbol_table)
                     .and_then(|code| {
                         if opts.optimize() {
                             run_optimizer(allocator, runner, Rc::new(code))
@@ -845,6 +849,7 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
         to_process: Vec::new(),
         final_expr: Rc::new(BodyForm::Quoted(nil.clone())),
         final_code: None,
+        function_symbols: HashMap::new()
     }
 }
 
@@ -1144,6 +1149,7 @@ pub fn codegen(
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     cmod: &CompileForm,
+    symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     let mut compiler = dummy_functions(&start_codegen(opts.clone(), cmod.clone()))?;
 
@@ -1151,6 +1157,8 @@ pub fn codegen(
     for f in to_process {
         compiler = codegen_(allocator, runner.clone(), opts.clone(), &compiler, &f)?;
     }
+
+    *symbol_table = compiler.function_symbols.clone();
 
     final_codegen(allocator, runner.clone(), opts.clone(), &compiler).and_then(|c| {
         let final_env = finalize_env(allocator, runner.clone(), opts.clone(), &c)?;

@@ -7,7 +7,7 @@ use clvm_rs::allocator::{Allocator, NodePtr};
 
 use num_bigint::ToBigInt;
 
-use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
+use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, sha256, Bytes, BytesFromType};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::prims;
@@ -28,6 +28,17 @@ pub enum RunStep {
         Rc<RunStep>,
     ),
     Step(Rc<SExp>, Rc<SExp>, Rc<RunStep>),
+}
+
+impl RunStep {
+    pub fn parent(&self) -> Option<Rc<RunStep>> {
+        match self {
+            RunStep::Done(_, _) => None,
+            RunStep::OpResult(_, _, p) => Some(p.clone()),
+            RunStep::Op(_, _, _, _, p) => Some(p.clone()),
+            RunStep::Step(_, _, p) => Some(p.clone())
+        }
+    }
 }
 
 fn choose_path(
@@ -613,5 +624,35 @@ pub fn parse_and_run(
             code[0].clone(),
             args[0].clone(),
         )
+    }
+}
+
+fn sha256tree_from_atom(v: Vec<u8>) -> Vec<u8> {
+    sha256(
+        Bytes::new(Some(BytesFromType::Raw(vec![1])))
+            .concat(&Bytes::new(Some(BytesFromType::Raw(v)))),
+    )
+    .data()
+    .clone()
+}
+
+// sha256tree for modern style SExp
+pub fn sha256tree(s: Rc<SExp>) -> Vec<u8> {
+    match s.borrow() {
+        SExp::Cons(l, a, b) => {
+            let t1 = sha256tree(a.clone());
+            let t2 = sha256tree(b.clone());
+            sha256(
+                Bytes::new(Some(BytesFromType::Raw(vec![2])))
+                    .concat(&Bytes::new(Some(BytesFromType::Raw(t1))))
+                    .concat(&Bytes::new(Some(BytesFromType::Raw(t2)))),
+            )
+            .data()
+            .clone()
+        }
+        SExp::Nil(_) => sha256tree_from_atom(vec![]),
+        SExp::Integer(_, i) => sha256tree_from_atom(u8_from_number(i.clone())),
+        SExp::QuotedString(_, _, v) => sha256tree_from_atom(v.clone()),
+        SExp::Atom(_, v) => sha256tree_from_atom(v.clone()),
     }
 }

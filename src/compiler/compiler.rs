@@ -34,11 +34,12 @@ pub fn compile_file(
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     content: &String,
+    symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     let pre_forms =
         parse_sexp(Srcloc::start(&opts.filename()), content).map_err(|e| CompileErr(e.0, e.1))?;
 
-    frontend(opts.clone(), pre_forms).and_then(|g| codegen(allocator, runner, opts.clone(), &g))
+    frontend(opts.clone(), pre_forms).and_then(|g| codegen(allocator, runner, opts.clone(), &g, symbol_table))
 }
 
 pub fn run_optimizer(
@@ -165,9 +166,10 @@ impl CompilerOpts for DefaultCompilerOpts {
         allocator: &mut Allocator,
         runner: Rc<dyn TRunProgram>,
         sexp: Rc<SExp>,
+        symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
-        frontend(me.clone(), vec![sexp]).and_then(|g| codegen(allocator, runner, me.clone(), &g))
+        frontend(me.clone(), vec![sexp]).and_then(|g| codegen(allocator, runner, me.clone(), &g, symbol_table))
     }
 }
 

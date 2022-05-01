@@ -21,7 +21,9 @@ pub fn build_table_mut<X>(
                     .concat(&left)
                     .concat(&right),
             );
-            code_map.insert(treehash.hex(), tx(code));
+            if !code_map.contains_key(&treehash.hex()) {
+                code_map.insert(treehash.hex(), tx(code));
+            }
             treehash
         }
         SExp::Atom(_, a) => {

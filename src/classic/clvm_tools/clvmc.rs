@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -74,6 +75,7 @@ fn compile_clvm_text(
     use_filename: String,
     text: String,
     search_paths: &Vec<String>,
+    symbol_table: &mut HashMap<String, String>,
 ) -> Result<NodePtr, EvalErr> {
     let ir_src = read_ir(&text).map_err(|s| EvalErr(allocator.null(), s))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
@@ -84,7 +86,7 @@ fn compile_clvm_text(
             .set_optimize(true)
             .set_search_paths(&search_paths);
 
-        let unopt_res = compile_file(allocator, runner.clone(), opts.clone(), &text);
+        let unopt_res = compile_file(allocator, runner.clone(), opts.clone(), &text, symbol_table);
         let res = unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)));
 
         res.and_then(|x| {
@@ -112,12 +114,13 @@ pub fn compile_clvm(
     let mut allocator = Allocator::new();
 
     let compile = newer(input_path, output_path).unwrap_or_else(|_| true);
+    let mut symbol_table = HashMap::new();
 
     if compile {
         let text = fs::read_to_string(input_path)
             .map_err(|x| format!("error reading {}: {:?}", input_path, x))?;
 
-        let result = compile_clvm_text(&mut allocator, input_path.clone(), text, search_paths)
+        let result = compile_clvm_text(&mut allocator, input_path.clone(), text, search_paths, &mut symbol_table)
             .map_err(|x| {
                 format!(
                     "error {} compiling {}",

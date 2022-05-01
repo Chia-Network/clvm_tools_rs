@@ -13,7 +13,7 @@ use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm_tools::clvmc;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
-use crate::compiler::cldb::{hex_to_modern_sexp, CldbRun, CldbRunEnv};
+use crate::compiler::cldb::{hex_to_modern_sexp, CldbRun, CldbRunEnv, CldbNoOverride};
 use crate::compiler::clvm::start_step;
 use crate::compiler::prims;
 use crate::compiler::srcloc::Srcloc;
@@ -131,9 +131,10 @@ fn start_clvm_program(
             prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
         }
 
+        let use_symbol_table = symbol_table.unwrap_or_else(|| HashMap::new());
         let program = match hex_to_modern_sexp(
             &mut allocator,
-            &symbol_table.unwrap_or_else(|| HashMap::new()),
+            &use_symbol_table,
             prog_srcloc.clone(),
             &hex_prog,
         ) {
@@ -155,7 +156,7 @@ fn start_clvm_program(
         };
 
         let step = start_step(program.clone(), args.clone());
-        let cldbenv = CldbRunEnv::new(None, vec![]);
+        let cldbenv = CldbRunEnv::new(None, vec![], Box::new(CldbNoOverride::new_symbols(use_symbol_table)));
         let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
         loop {
             match cmd_input.recv() {

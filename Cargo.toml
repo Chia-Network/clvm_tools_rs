@@ -47,9 +47,10 @@ extension-module = ["pyo3"]
 default = ["extension-module"]
 
 [target.'cfg(target_family="wasm")'.dependencies]
-wasm-bindgen = "0.2.75"
+wasm-bindgen = "0.2.78"
 wasm-bindgen-test = "0.3.25"
 getrandom = { version = "0.2", features = ["js"] }
+js-sys = "0.3.57"
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 pyo3 = { version = "0.14.2", features = ["abi3-py37", "extension-module"], optional = true }
