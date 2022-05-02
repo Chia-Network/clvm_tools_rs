@@ -8,7 +8,7 @@ use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 use num_bigint::ToBigInt;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream, bi_one};
+use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
@@ -213,6 +213,7 @@ impl CldbRun {
                 self.to_print.insert("Throw".to_string(), s.to_string());
 
                 swap(&mut self.to_print, &mut result);
+                self.ended = true;
                 produce_result = true;
             }
             Err(RunFailure::RunErr(l, s)) => {
@@ -221,6 +222,7 @@ impl CldbRun {
                 self.to_print.insert("Failure".to_string(), s.to_string());
 
                 swap(&mut self.to_print, &mut result);
+                self.ended = true;
                 produce_result = true;
             }
         }
@@ -291,14 +293,9 @@ impl CldbOverrideBespokeCode {
         self.symbol_table.get(&fun_hash_str).
             and_then(|funname| self.overrides.get(funname)).map(|override_fn| {
                 override_fn.get_override(args.clone()).map(|new_exp| {
-                    RunStep::Op(
-                        Rc::new(SExp::Integer(
-                            sexp.loc(),
-                            bi_one()
-                        )),
-                        c.clone(),
+                    RunStep::OpResult(
+                        sexp.loc(),
                         new_exp.clone(),
-                        None,
                         p.clone()
                     )
                 })

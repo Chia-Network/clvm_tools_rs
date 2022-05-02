@@ -3,6 +3,7 @@
   "dependencies": {
     "browserify": "^17.0.0",
     "clvm_tools_rs": "file:../pkg",
+    "jest": "^28.0.3",
     "rollup": "^2.70.2",
     "webpack": "^5.72.0",
     "webpack-cli": "^4.9.2"

@@ -29,7 +29,10 @@ use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 use crate::wasm::jsval::{
     btreemap_to_object,
+    get_property,
     js_object_from_sexp,
+    js_pair,
+    object_to_value,
     sexp_from_js_object
 };
 
@@ -96,13 +99,13 @@ fn with_runner<F,V>(this_id: i32, f: F) -> Option<V>
     result
 }
 
-fn create_clvm_runner_err(error: String) -> String {
-    let mut err_hash = HashMap::new();
-    err_hash.insert("error".to_string(), error);
-    serde_json::to_string(&err_hash).unwrap()
+fn create_clvm_runner_err(error: String) -> JsValue {
+    let array = js_sys::Array::new();
+    array.set(0, js_pair(JsValue::from_str("error"), JsValue::from_str(&error)));
+    return object_to_value(&js_sys::Object::from_entries(&array).unwrap());
 }
 
-fn create_clvm_runner_run_failure(err: &RunFailure) -> String {
+fn create_clvm_runner_run_failure(err: &RunFailure) -> JsValue {
     match err {
         RunFailure::RunErr(l,e) => {
             return create_clvm_runner_err(format!("{}: Error {}", l.to_string(), e));
@@ -116,6 +119,9 @@ fn create_clvm_runner_run_failure(err: &RunFailure) -> String {
 struct JsBespokeOverride { fun: js_sys::Function }
 
 impl CldbSingleBespokeOverride for JsBespokeOverride {
+    // We've been called so compose a javascript-compatible value to pass out
+    // based on the env.
+    // When the user returns, try to convert the result back to sexp.
     fn get_override(&self, env: Rc<SExp>) -> Result<Rc<SExp>, RunFailure> {
         let args = js_sys::Array::new();
         args.set(0, js_object_from_sexp(env.clone()));
@@ -135,33 +141,41 @@ impl CldbSingleBespokeOverride for JsBespokeOverride {
  * return a runner object.
  */
 #[wasm_bindgen]
-pub fn create_clvm_runner(hex_prog: String, hex_args: String, symbols: js_sys::Object, overrides: js_sys::Object) -> String {
+pub fn create_clvm_runner(hex_prog: String, args_js: JsValue, symbols: js_sys::Object, overrides: js_sys::Object) -> JsValue {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
-    let prog_srcloc = Srcloc::start(&"*program*".to_string());
     let args_srcloc = Srcloc::start(&"*args*".to_string());
+    let prog_srcloc = Srcloc::start(&"*program*".to_string());
     let mut prim_map = HashMap::new();
     let mut symbol_table = HashMap::new();
     let mut override_funs: HashMap<String, Box<dyn CldbSingleBespokeOverride>> = HashMap::new();
 
-    for ent in js_sys::Object::entries(&symbols).values() {
-        let pair = js_sys::Array::from(&ent.unwrap());
-        let key = pair.at(0);
-        let val = pair.at(1);
-        match (key.as_string(), val.as_string()) {
-            (Some(k), Some(v)) => { symbol_table.insert(k.clone(), v.clone()); },
-            _ => { }
-        }
+    let args =
+        match sexp_from_js_object(args_srcloc.clone(), &args_js) {
+            Some(v) => v,
+            None => {
+                return create_clvm_runner_run_failure(
+                    &RunFailure::RunErr(
+                        args_srcloc.clone(),
+                        "failed to convert args to sexp".to_string()
+                    )
+                );
+            }
+        };
+
+    for ent in js_sys::Object::keys(&symbols).values() {
+        let key = ent.unwrap().as_string().unwrap();
+        let val = get_property(&symbols, &key).unwrap().as_string().unwrap();
+        symbol_table.insert(key, val);
     }
 
-    for ent in js_sys::Object::entries(&overrides).values() {
-        let pair = js_sys::Array::from(&ent.unwrap());
-        let key = pair.at(0);
-        let val = pair.at(1);
-        match (key.as_string(), js_sys::Function::try_from(&val)) {
-            (Some(k), Some(f)) => {
+    for ent in js_sys::Object::keys(&overrides).values() {
+        let key = ent.unwrap().as_string().unwrap();
+        let val = get_property(&overrides, &key).unwrap();
+        match js_sys::Function::try_from(&val) {
+            Some(f) => {
                 override_funs.insert(
-                    k.clone(),
+                    key,
                     Box::new(JsBespokeOverride { fun: f.clone() })
                 );
             },
@@ -182,15 +196,6 @@ pub fn create_clvm_runner(hex_prog: String, hex_args: String, symbols: js_sys::O
         Ok(v) => v,
         Err(e) => { return create_clvm_runner_run_failure(&e); }
     };
-    let args = match hex_to_modern_sexp(
-        &mut allocator,
-        &HashMap::new(),
-        args_srcloc.clone(),
-        &hex_args,
-    ) {
-        Ok(v) => v,
-        Err(e) => { return create_clvm_runner_run_failure(&e); }
-    };
 
     let runner_override: Box<dyn CldbRunnable> =
         Box::new(CldbOverrideBespokeCode::new(symbol_table.clone(), override_funs));
@@ -207,7 +212,7 @@ pub fn create_clvm_runner(hex_prog: String, hex_args: String, symbols: js_sys::O
         cldbrun
     });
 
-    return this_id.to_string();
+    return JsValue::from(this_id);
 }
 
 #[wasm_bindgen]

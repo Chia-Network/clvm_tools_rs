@@ -1,10 +1,13 @@
-use js_sys::{Object, Array};
+use js_sys;
+use js_sys::{Object, Array, BigInt};
+use num_bigint::ToBigInt;
 use std::borrow::Borrow;
 use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
+use crate::util::Number;
 
 use wasm_bindgen::prelude::*;
 
@@ -122,45 +125,58 @@ fn location(o: &Object) -> Option<Srcloc> {
 }
 
 pub fn sexp_from_js_object(sstart: Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
-    Object::try_from(v).map(|o| {
-        let loc = get_property(o, "location").and_then(|o| Object::try_from(&o).map(|o| o.clone())).and_then(|o| location(&o)).
-            unwrap_or_else(|| sstart.clone());
-        get_property(o, "pair").and_then(|p| {
-            let pa = Array::from(&p);
-            sexp_from_js_object(sstart.clone(), &pa.get(0)).map(|a| (pa,a))
-        }).and_then(|(pa,a)| {
-            sexp_from_js_object(sstart.clone(), &pa.get(1)).
-                map(|b| Rc::new(SExp::Cons(
-                    loc,
-                    a,
-                    b
-                )))
+    if v.is_bigint() {
+        BigInt::new(v).ok().and_then(|v| {
+            v.to_string(10).ok()
+        }).and_then(|v| {
+            v.as_string()
+        }).and_then(|v| {
+            v.parse::<Number>().ok()
+        }).map(|x| {
+            Rc::new(SExp::Integer(sstart.clone(), x))
         })
-    }).unwrap_or_else(|| {
-        if Array::is_array(v) {
-            let a = Array::from(v);
-            let mut result_value =
-                Rc::new(SExp::Nil(Srcloc::start(&"*js*".to_string())));
-            for i_rev in 0..a.length() {
-                let i = a.length() - i_rev - 1;
-                match sexp_from_js_object(sstart.clone(), &a.get(i)) {
-                    Some(nv) => {
-                        result_value = Rc::new(SExp::Cons(
-                            nv.loc(),
-                            nv,
-                            result_value
-                        ));
-                    },
-                    _ => { }
-                }
+    } else if Array::is_array(v) {
+        let a = Array::from(v);
+        let mut result_value =
+            Rc::new(SExp::Nil(Srcloc::start(&"*js*".to_string())));
+        for i_rev in 0..a.length() {
+            let i = a.length() - i_rev - 1;
+            match sexp_from_js_object(sstart.clone(), &a.get(i)) {
+                Some(nv) => {
+                    result_value = Rc::new(SExp::Cons(
+                        nv.loc(),
+                        nv,
+                        result_value
+                    ));
+                },
+                _ => { }
             }
-            Some(result_value)
-        } else {
-            v.as_string().map(|s| {
-                Rc::new(SExp::Atom(sstart.clone(), s.as_bytes().to_vec()))
-            })
         }
-    })
+        Some(result_value)
+    } else {
+        Object::try_from(v).map(|o| {
+            let loc = get_property(o, "location").and_then(|o| Object::try_from(&o).map(|o| o.clone())).and_then(|o| location(&o)).
+                unwrap_or_else(|| sstart.clone());
+            get_property(o, "pair").and_then(|p| {
+                let pa = Array::from(&p);
+                sexp_from_js_object(sstart.clone(), &pa.get(0)).map(|a| (pa,a))
+            }).and_then(|(pa,a)| {
+                sexp_from_js_object(sstart.clone(), &pa.get(1)).
+                    map(|b| Rc::new(SExp::Cons(
+                        loc,
+                        a,
+                        b
+                    )))
+            })
+        }).unwrap_or_else(|| {
+            v.as_string().map(|s| {
+                Some(Rc::new(SExp::Atom(sstart.clone(), s.as_bytes().to_vec())))
+            }).unwrap_or_else(|| {
+                let n = js_sys::Number::new(&v);
+                Some(Rc::new(SExp::Integer(sstart.clone(), (n.value_of() as i64).to_bigint().unwrap())))
+            })
+        })
+    }
 }
 
 pub fn btreemap_to_object<'a>(iter: impl Iterator<Item = (&'a String, &'a String)>) -> JsValue {
