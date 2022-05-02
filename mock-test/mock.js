@@ -39,4 +39,6 @@ let value = run_program(fact_hex, [5], fact_sym, {
         return 99;
     }
 });
-console.log(value);
+if (value !== 11880) {
+    throw new Error("Didn't wind up with 99 as the factorial base case");
+}
