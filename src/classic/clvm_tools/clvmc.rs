@@ -72,17 +72,17 @@ pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> bool {
 
 fn compile_clvm_text(
     allocator: &mut Allocator,
-    use_filename: String,
-    text: String,
     search_paths: &Vec<String>,
     symbol_table: &mut HashMap<String, String>,
+    text: &String,
+    input_path: &String
 ) -> Result<NodePtr, EvalErr> {
     let ir_src = read_ir(&text).map_err(|s| EvalErr(allocator.null(), s))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
 
     if detect_modern(allocator, assembled_sexp) {
         let runner = Rc::new(DefaultProgramRunner::new());
-        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
+        let opts = Rc::new(DefaultCompilerOpts::new(&input_path))
             .set_optimize(true)
             .set_search_paths(&search_paths);
 
@@ -106,6 +106,31 @@ fn compile_clvm_text(
     }
 }
 
+pub fn compile_clvm_inner(
+    allocator: &mut Allocator,
+    search_paths: &Vec<String>,
+    symbol_table: &mut HashMap<String, String>,
+    filename: &String,
+    text: &String,
+    result_stream: &mut Stream,
+) -> Result<(), String> {
+    let result = compile_clvm_text(
+        allocator,
+        search_paths,
+        symbol_table,
+        text,
+        filename,
+    ).map_err(|x| {
+            format!(
+                "error {} compiling {}",
+                x.1,
+                disassemble(allocator, x.0)
+            )
+        })?;
+    sexp_to_stream(allocator, result, result_stream);
+    Ok(())
+}
+
 pub fn compile_clvm(
     input_path: &String,
     output_path: &String,
@@ -115,21 +140,20 @@ pub fn compile_clvm(
 
     let compile = newer(input_path, output_path).unwrap_or_else(|_| true);
     let mut symbol_table = HashMap::new();
+    let mut result_stream = Stream::new(None);
 
     if compile {
         let text = fs::read_to_string(input_path)
             .map_err(|x| format!("error reading {}: {:?}", input_path, x))?;
 
-        let result = compile_clvm_text(&mut allocator, input_path.clone(), text, search_paths, &mut symbol_table)
-            .map_err(|x| {
-                format!(
-                    "error {} compiling {}",
-                    x.1,
-                    disassemble(&mut allocator, x.0)
-                )
-            })?;
-        let mut result_stream = Stream::new(None);
-        sexp_to_stream(&mut allocator, result, &mut result_stream);
+        let _ = compile_clvm_inner(
+            &mut allocator,
+            search_paths,
+            &mut symbol_table,
+            input_path,
+            &text,
+            &mut result_stream
+        )?;
 
         {
             let output_path_obj = Path::new(output_path);

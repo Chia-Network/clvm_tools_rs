@@ -2,6 +2,7 @@ use js_sys;
 use js_sys::{Object, Array, BigInt};
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
@@ -189,4 +190,16 @@ pub fn btreemap_to_object<'a>(iter: impl Iterator<Item = (&'a String, &'a String
         entries.set(entries.length(), pair_ref.clone());
     }
     object_to_value(&Object::from_entries(&entries).as_ref().unwrap())
+}
+
+pub fn read_string_to_string_map(symbols: &js_sys::Object) -> Result<HashMap<String, String>, String> {
+    let mut result = HashMap::new();
+    for ent in js_sys::Object::keys(&symbols).values() {
+        let key = ent.unwrap().as_string().unwrap();
+        match get_property(&symbols, &key).unwrap().as_string() {
+            Some(val) => { result.insert(key, val); },
+            _ => { return Err(format!("key {} wasn't string", key)); }
+        }
+    }
+    Ok(result)
 }
