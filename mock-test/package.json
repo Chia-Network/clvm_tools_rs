@@ -1,6 +1,7 @@
 {
   "name": "clvm_tools_rs_mock_test",
   "dependencies": {
+    "binascii": "^0.0.2",
     "browserify": "^17.0.0",
     "clvm_tools_rs": "file:../pkg",
     "jest": "^28.0.3",

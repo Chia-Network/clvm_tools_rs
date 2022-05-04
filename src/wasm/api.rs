@@ -345,8 +345,7 @@ fn find_function_hash(
 pub fn compose_run_function(
     hex_prog: String,
     symbol_table_js: &js_sys::Object,
-    function_name: String,
-    args: JsValue
+    function_name: String
 ) -> JsValue {
     let mut allocator = Allocator::new();
     let loc = Srcloc::start(&"*js*".to_string());
@@ -379,16 +378,6 @@ pub fn compose_run_function(
         Ok(v) => v,
         Err(e) => { return create_clvm_runner_run_failure(&e); }
     };
-    let clvm_args_val =
-        match sexp_from_js_object(program.loc(), &args) {
-            Some(s) => s,
-            _ => {
-                return create_clvm_compile_failure(&CompileErr(
-                    loc.clone(),
-                    "javascript passed in a value that can't be converted to sexp".to_string()
-                ));
-            }
-        };
     let main_env =
         match extract_program_and_env(program.clone()) {
             Some(em) => em,
@@ -401,7 +390,7 @@ pub fn compose_run_function(
         };
     let hash_bytes = Bytes::new(Some(BytesFromType::Hex(function_hash.clone())));
     let function_path = match path_to_function(
-        program.clone(),
+        main_env.1.clone(),
         &hash_bytes.data().clone()
     ) {
         Some(p) => p,
@@ -416,7 +405,7 @@ pub fn compose_run_function(
         }
     };
 
-    let new_program = rewrite_in_program(function_path, main_env.1, clvm_args_val);
+    let new_program = rewrite_in_program(function_path, main_env.1);
     let mut result_stream = Stream::new(None);
     let clvm_rs_value =
         match convert_to_clvm_rs(&mut allocator, new_program) {

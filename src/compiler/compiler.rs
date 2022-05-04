@@ -242,48 +242,51 @@ pub fn path_to_function(program: Rc<SExp>, hash: &Vec<u8>) -> Option<Number> {
     path_to_function_inner(program, hash, bi_one(), bi_zero())
 }
 
-// compose (a (* (q . 2) path) (c env args))
-pub fn rewrite_in_program(
-    path: Number,
-    env: Rc<SExp>,
-    args: Rc<SExp>
-) -> Rc<SExp> {
+fn op2(op: u32, code: Rc<SExp>, env: Rc<SExp>) -> Rc<SExp> {
     Rc::new(SExp::Cons(
-        env.loc(),
-        Rc::new(SExp::Integer(env.loc(), 2_u32.to_bigint().unwrap())),
+        code.loc(),
+        Rc::new(SExp::Integer(env.loc(), op.to_bigint().unwrap())),
         Rc::new(SExp::Cons(
-            env.loc(),
-            Rc::new(SExp::Integer(
-                env.loc(),
-                path * 2_u32.to_bigint().unwrap()
-            )),
+            code.loc(),
+            code.clone(),
             Rc::new(SExp::Cons(
                 env.loc(),
-                Rc::new(SExp::Cons(
-                    env.loc(),
-                    Rc::new(SExp::Integer(env.loc(), 4_u32.to_bigint().unwrap())),
-                    Rc::new(SExp::Cons(
-                        env.loc(),
-                        Rc::new(SExp::Cons(
-                            env.loc(),
-                            Rc::new(SExp::Integer(env.loc(), bi_one())),
-                            env.clone()
-                        )),
-                        Rc::new(SExp::Cons(
-                            args.loc(),
-                            Rc::new(SExp::Cons(
-                                args.loc(),
-                                Rc::new(SExp::Integer(args.loc(), bi_one())),
-                                args.clone()
-                            )),
-                            Rc::new(SExp::Nil(args.loc()))
-                        ))
-                    ))
-                )),
-                Rc::new(SExp::Nil(env.loc()))
+                env.clone(),
+                Rc::new(SExp::Nil(code.loc()))
             ))
         ))
     ))
+}
+
+fn quoted(env: Rc<SExp>) -> Rc<SExp> {
+    Rc::new(SExp::Cons(
+        env.loc(),
+        Rc::new(SExp::Integer(env.loc(), bi_one())),
+        env.clone()
+    ))
+}
+
+fn apply(code: Rc<SExp>, env: Rc<SExp>) -> Rc<SExp> {
+    op2(2, code, env)
+}
+
+fn cons(f: Rc<SExp>, r: Rc<SExp>) -> Rc<SExp> {
+    op2(4, f, r)
+}
+
+// compose (a (a path env) (c env 1))
+pub fn rewrite_in_program(
+    path: Number,
+    env: Rc<SExp>
+) -> Rc<SExp> {
+    apply(
+        apply(
+            // Env comes quoted, so divide by 2
+            quoted(Rc::new(SExp::Integer(env.loc(), path / 2))),
+            env.clone()
+        ),
+        cons(env.clone(), Rc::new(SExp::Integer(env.loc(), bi_one())))
+    )
 }
 
 pub fn is_operator(op: u32, atom: &SExp) -> bool {
