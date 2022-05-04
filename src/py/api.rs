@@ -76,6 +76,40 @@ struct PythonRunStep {
     rx: Receiver<(bool, Option<BTreeMap<String, String>>)>,
 }
 
+fn runstep(myself: &mut PythonRunStep) -> PyResult<Option<PyObject>> {
+    if myself.ended {
+        return Ok(None);
+    }
+
+    // Let the runner know we want another step.
+    myself.tx
+        .send(false)
+        .map_err(|e| CldbError::new_err("error sending to service thread"))?;
+
+    // Receive the step result.
+    let res =
+        myself
+        .rx
+        .recv()
+        .map_err(|e| CldbError::new_err("error receiving from service thread"))
+        ?;
+    if res.0 {
+        myself.ended = true;
+    }
+
+    // Return a dict if one was returned.
+    let dict_result = res.1.map(|m| {
+        Python::with_gil(|py| {
+            let dict = PyDict::new(py);
+            for (k, v) in m.iter() {
+                let _ = dict.set_item(PyString::new(py, k), PyString::new(py, v));
+            }
+            dict.to_object(py)
+        })
+    });
+    Ok(dict_result)
+}
+
 #[pymethods]
 impl PythonRunStep {
     fn is_ended(&self) -> PyResult<bool> {
@@ -87,37 +121,8 @@ impl PythonRunStep {
         let _ = self.tx.send(true);
     }
 
-    fn step(&mut self) -> PyResult<Option<PyObject>> {
-        if self.ended {
-            return Ok(None);
-        }
-
-        // Let the runner know we want another step.
-        self.tx
-            .send(false)
-            .map_err(|e| CldbError::new_err("error sending to service thread"))?;
-
-        // Receive the step result.
-        let res = self
-            .rx
-            .recv()
-            .map_err(|e| CldbError::new_err("error receiving from service thread"))?;
-
-        if res.0 {
-            self.ended = true;
-        }
-
-        // Return a dict if one was returned.
-        let dict_result = res.1.map(|m| {
-            Python::with_gil(|py| {
-                let dict = PyDict::new(py);
-                for (k, v) in m.iter() {
-                    let _ = dict.set_item(PyString::new(py, k), PyString::new(py, v));
-                }
-                dict.to_object(py)
-            })
-        });
-        Ok(dict_result)
+    fn step(&mut self, py: Python) -> PyResult<Option<PyObject>> {
+        py.allow_threads(|| runstep(self))
     }
 }
 
@@ -132,8 +137,9 @@ impl CldbSinglePythonOverride {
 impl CldbSingleBespokeOverride for CldbSinglePythonOverride {
     fn get_override(&self, env: Rc<SExp>) -> Result<Rc<SExp>, RunFailure> {
         Python::with_gil(|py| {
+            let arg_value = clvm_value_to_python(py, env.clone());
             let res = self.pycode.call1(py, PyTuple::new(
-                py, &vec![clvm_value_to_python(py, env.clone())]
+                py, &vec![arg_value]
             )).map_err(|e| {
                 RunFailure::RunErr(env.loc(), format!("{}", e))
             })?;
