@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
+use crate::classic::clvm::__type_compatibility__::bi_one;
+
 use crate::compiler::comptypes::{
     list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm,
     LetFormKind, ModAccum,
