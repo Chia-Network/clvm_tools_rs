@@ -36,7 +36,8 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
             &mut allocator,
             program.args.clone(),
             &captures,
-            program.exp.clone()
+            program.exp.clone(),
+            false
         );
     }).map(|result| {
         result.to_sexp().to_string()

@@ -167,7 +167,8 @@ fn main() {
                                     &mut allocator,
                                     program.args.clone(),
                                     &captures,
-                                    program.exp.clone()
+                                    program.exp.clone(),
+                                    false
                                 );
                             })
                         }

@@ -45,7 +45,8 @@ fn main() {
             &mut allocator,
             program.args.clone(),
             &captures,
-            program.exp.clone()
+            program.exp.clone(),
+            false
         );
     }).map(|result| {
         println!("shrunk: {}", result.to_sexp().to_string());
