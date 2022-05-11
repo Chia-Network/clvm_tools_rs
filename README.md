@@ -40,6 +40,12 @@ The directory structure is expected to be:
                      including a `(include *standard-cl-21*)`
                      form in your toplevel `mod` form.
 
+Mac M1
+===
+
+Use ```cargo build --no-default-features``` due to differences in how mac m1 and
+other platforms handle python extensions.
+
 Use with chia-blockchain
 ===
 

@@ -1,6 +1,5 @@
 use core::cell::RefCell;
 
-use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io;
@@ -14,11 +13,10 @@ use std::time::SystemTime;
 
 use core::cmp::max;
 
-use clvm_rs::allocator::{Allocator, NodePtr, SExp};
+use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 use clvm_rs::run_program::PreEval;
 
-use num_bigint::ToBigInt;
 #[macro_use]
 use yamlette::yamlette;
 use yamlette::model::yaml::str::FORCE_QUOTES;
@@ -38,36 +36,31 @@ use crate::classic::clvm_tools::stages::stage_0::{
     DefaultProgramRunner, RunProgramOption, TRunProgram,
 };
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
-use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
-
 use crate::classic::platform::PathJoin;
 
 use crate::classic::platform::argparse::{
     Argument, ArgumentParser, ArgumentValue, ArgumentValueConv, IntConversion, NArgsSpec,
     TArgOptionAction, TArgumentParserProps,
 };
-use crate::compiler::clvm::{convert_from_clvm_rs, get_history_len, run_step, start_step, RunStep};
+
+use crate::compiler::cldb::{hex_to_modern_sexp, CldbRun, CldbRunEnv};
+use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
 use crate::compiler::prims;
-use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp;
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::Srcloc;
-use crate::util::{collapse, Number};
+use crate::util::collapse;
 
 pub struct PathOrCodeConv {}
 
 impl ArgumentValueConv for PathOrCodeConv {
     fn convert(&self, arg: &String) -> Result<ArgumentValue, String> {
         match fs::read_to_string(arg) {
-            Ok(s) => {
-                return Ok(ArgumentValue::ArgString(Some(arg.to_string()), s));
-            }
-            Err(_) => {
-                return Ok(ArgumentValue::ArgString(None, arg.to_string()));
-            }
+            Ok(s) => Ok(ArgumentValue::ArgString(Some(arg.to_string()), s)),
+            Err(_) => Ok(ArgumentValue::ArgString(None, arg.to_string())),
         }
     }
 }
@@ -124,7 +117,7 @@ pub fn call_tool<'a>(
             args = a;
         }
         Err(e) => {
-            print!("{:?}\n", e);
+            println!("{:?}", e);
             return;
         }
     }
@@ -152,9 +145,9 @@ pub fn call_tool<'a>(
                         let sexp = conv_result.first().clone();
                         let text = conv_result.rest();
                         if args.contains_key(&"script_hash".to_string()) {
-                            print!("{}\n", sha256tree(allocator, sexp).hex());
+                            println!("{}", sha256tree(allocator, sexp).hex());
                         } else if text.len() > 0 {
-                            print!("{}\n", text);
+                            println!("{}", text);
                         }
                     }
                     Err(e) => {
@@ -177,13 +170,9 @@ impl TConversion for OpcConversion {
         allocator: &'a mut Allocator,
         hex_text: &String,
     ) -> Result<Tuple<NodePtr, String>, String> {
-        return read_ir(hex_text)
-            .and_then(|ir_sexp| {
-                return assemble_from_ir(allocator, Rc::new(ir_sexp)).map_err(|e| e.1);
-            })
-            .map(|sexp| {
-                return t(sexp, sexp_as_bin(allocator, sexp).hex());
-            });
+        read_ir(hex_text)
+            .and_then(|ir_sexp| assemble_from_ir(allocator, Rc::new(ir_sexp)).map_err(|e| e.1))
+            .map(|sexp| t(sexp, sexp_as_bin(allocator, sexp).hex()))
     }
 }
 
@@ -199,12 +188,12 @@ impl TConversion for OpdConversion {
             hex_text.to_string(),
         )))));
 
-        return sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
+        sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
             .map_err(|e| e.1)
             .map(|sexp| {
                 let disassembled = disassemble(allocator, sexp.1);
-                return t(sexp.1, disassembled);
-            });
+                t(sexp.1, disassembled)
+            })
     }
 }
 
@@ -257,101 +246,8 @@ pub fn brun(args: &Vec<String>) {
     io::stdout().write_all(s.get_value().data());
 }
 
-pub fn hex_to_modern_sexp_inner(
-    allocator: &mut Allocator,
-    symbol_table: &HashMap<String, String>,
-    loc: Srcloc,
-    program: NodePtr,
-) -> Result<Rc<sexp::SExp>, EvalErr> {
-    let hash = sha256tree(allocator, program);
-    let hash_str = hash.hex();
-    let srcloc = symbol_table
-        .get(&hash_str)
-        .map(|f| Srcloc::start(f))
-        .unwrap_or_else(|| loc.clone());
-
-    match allocator.sexp(program) {
-        SExp::Pair(a, b) => Ok(Rc::new(sexp::SExp::Cons(
-            srcloc.clone(),
-            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc.clone(), a)?,
-            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc, b)?,
-        ))),
-        _ => convert_from_clvm_rs(allocator, srcloc, program).map_err(|_| {
-            EvalErr(
-                Allocator::null(allocator),
-                "clvm_rs allocator failed".to_string(),
-            )
-        }),
-    }
-}
-
-pub fn hex_to_modern_sexp(
-    allocator: &mut Allocator,
-    symbol_table: &HashMap<String, String>,
-    loc: Srcloc,
-    input_program: &String,
-) -> Result<Rc<sexp::SExp>, RunFailure> {
-    let input_serialized = Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
-
-    let mut stream = Stream::new(Some(input_serialized.clone()));
-    let sexp = sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
-        .map(|x| x.1)
-        .map_err(|_| RunFailure::RunErr(loc.clone(), "Bad conversion from hex".to_string()))?;
-
-    hex_to_modern_sexp_inner(allocator, symbol_table, loc.clone(), sexp).map_err(|_| {
-        RunFailure::RunErr(loc, "Failed to convert from classic to modern".to_string())
-    })
-}
-
-#[derive(Clone, Debug)]
-struct PriorResult {
-    reference: usize,
-    value: Rc<sexp::SExp>,
-}
-
-fn format_arg_inputs(args: &Vec<PriorResult>) -> String {
-    let value_strings: Vec<String> = args
-        .iter()
-        .map(|pr| {
-            return pr.reference.to_string();
-        })
-        .collect();
-    return value_strings.join(", ");
-}
-
-fn get_arg_associations(
-    associations: &HashMap<Number, PriorResult>,
-    args: Rc<sexp::SExp>,
-) -> Vec<PriorResult> {
-    let mut arg_exp: Rc<sexp::SExp> = args;
-    let mut result: Vec<PriorResult> = Vec::new();
-    loop {
-        match arg_exp.borrow() {
-            sexp::SExp::Cons(_, arg, rest) => {
-                match arg
-                    .get_number()
-                    .ok()
-                    .as_ref()
-                    .and_then(|n| associations.get(n))
-                {
-                    Some(n) => {
-                        result.push(n.clone());
-                    }
-                    _ => {}
-                }
-                arg_exp = rest.clone();
-            }
-            _ => {
-                return result;
-            }
-        }
-    }
-}
-
 pub fn cldb(args: &Vec<String>) {
     let tool_name = "cldb".to_string();
-    let mut hex = false;
-    let dpr;
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
         prog: format!("clvm_tools {}", tool_name),
@@ -411,11 +307,10 @@ pub fn cldb(args: &Vec<String>) {
         &"".to_string(),
     ));
     let mut parsed_args_result: String = "".to_string();
-    let mut outputs_to_step = HashMap::<Number, PriorResult>::new();
 
     match parser.parse_args(&arg_vec) {
         Err(e) => {
-            print!("FAIL: {}\n", e);
+            println!("FAIL: {}", e);
             return;
         }
         Ok(pa) => {
@@ -432,31 +327,10 @@ pub fn cldb(args: &Vec<String>) {
     }
 
     match parsedArgs.get("env") {
-        Some(ArgumentValue::ArgString(f, s)) => {
+        Some(ArgumentValue::ArgString(_, s)) => {
             parsed_args_result = s.to_string();
         }
         _ => {}
-    }
-
-    let run_program: Rc<dyn TRunProgram>;
-    match parsedArgs.get("include") {
-        Some(ArgumentValue::ArgArray(v)) => {
-            let mut bare_paths = Vec::with_capacity(v.len());
-            for p in v {
-                match p {
-                    ArgumentValue::ArgString(_, s) => bare_paths.push(s.to_string()),
-                    _ => {}
-                }
-            }
-            let special_runner = run_program_for_search_paths(&bare_paths);
-            dpr = special_runner.clone();
-            run_program = special_runner;
-        }
-        _ => {
-            let ordinary_runner = run_program_for_search_paths(&Vec::new());
-            dpr = ordinary_runner.clone();
-            run_program = ordinary_runner;
-        }
     }
 
     let mut allocator = Allocator::new();
@@ -464,7 +338,7 @@ pub fn cldb(args: &Vec<String>) {
     let symbol_table = parsedArgs
         .get("symbol_table")
         .and_then(|jstring| match jstring {
-            ArgumentValue::ArgString(f, s) => {
+            ArgumentValue::ArgString(_, s) => {
                 let decoded_symbol_table: Option<HashMap<String, String>> =
                     serde_json::from_str(&s).ok();
                 decoded_symbol_table
@@ -496,16 +370,13 @@ pub fn cldb(args: &Vec<String>) {
     };
 
     let res = match parsedArgs.get("hex") {
-        Some(ArgumentValue::ArgBool(true)) => {
-            hex = true;
-            hex_to_modern_sexp(
-                &mut allocator,
-                &symbol_table.unwrap_or_else(|| HashMap::new()),
-                prog_srcloc.clone(),
-                &input_program,
-            )
-            .map_err(|e| CompileErr(prog_srcloc, "Failed to parse hex".to_string()))
-        }
+        Some(ArgumentValue::ArgBool(true)) => hex_to_modern_sexp(
+            &mut allocator,
+            &symbol_table.unwrap_or_else(|| HashMap::new()),
+            prog_srcloc.clone(),
+            &input_program,
+        )
+        .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
         _ => {
             if do_optimize {
                 unopt_res.and_then(|x| run_optimizer(&mut allocator, runner.clone(), Rc::new(x)))
@@ -524,7 +395,7 @@ pub fn cldb(args: &Vec<String>) {
             parse_error.insert("Error-Location".to_string(), c.0.to_string());
             parse_error.insert("Error".to_string(), c.1);
             output.push(parse_error.clone());
-            print!("{}\n", yamlette_string(output));
+            println!("{}", yamlette_string(output));
             return;
         }
     }
@@ -544,7 +415,7 @@ pub fn cldb(args: &Vec<String>) {
                     let mut parse_error = BTreeMap::new();
                     parse_error.insert("Error".to_string(), p.to_string());
                     output.push(parse_error.clone());
-                    print!("{}\n", yamlette_string(output));
+                    println!("{}", yamlette_string(output));
                     return;
                 }
             }
@@ -560,188 +431,33 @@ pub fn cldb(args: &Vec<String>) {
                 parse_error.insert("Error-Location".to_string(), c.0.to_string());
                 parse_error.insert("Error".to_string(), c.1);
                 output.push(parse_error.clone());
-                print!("{}\n", yamlette_string(output));
+                println!("{}", yamlette_string(output));
                 return;
             }
         },
     };
 
-    let mut prim_map_ = HashMap::new();
-
-    for p in prims::prims() {
-        prim_map_.insert(p.0.clone(), Rc::new(p.1.clone()));
+    let mut prim_map = HashMap::new();
+    for p in prims::prims().iter() {
+        prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
     }
-
-    let prim_map = Rc::new(prim_map_);
-
     let program_lines: Vec<String> = input_program.lines().map(|x| x.to_string()).collect();
-    let extract_text = |l: &Srcloc| {
-        let use_line = if l.line < 1 { None } else { Some(l.line - 1) };
-        let use_col = use_line.and_then(|_| if l.col < 1 { None } else { Some(l.col - 1) });
-        let end_col = use_col.map(|c| l.until.map(|u| u.1 - 1).unwrap_or_else(|| c + 1));
-        use_line
-            .and_then(|use_line| {
-                use_col.and_then(|use_col| {
-                    end_col.and_then(|end_col| Some((use_line, use_col, end_col)))
-                })
-            })
-            .and_then(|coords| {
-                let use_line = coords.0;
-                let mut use_col = coords.1;
-                let mut end_col = coords.2;
-
-                if use_line >= program_lines.len() {
-                    None
-                } else {
-                    let line_text = program_lines[use_line].to_string();
-                    if (use_col >= line_text.len()) {
-                        None
-                    } else if (end_col >= line_text.len()) {
-                        end_col = line_text.len();
-                        Some(line_text[use_col..end_col].to_string())
-                    } else {
-                        Some(line_text[use_col..end_col].to_string())
-                    }
-                }
-            })
-    };
-
-    let whether_is_apply =
-        |s: &sexp::SExp,
-         collector: &mut BTreeMap<String, String>,
-         if_true: &dyn Fn(&mut BTreeMap<String, String>),
-         if_false: &dyn Fn(&mut BTreeMap<String, String>)| {
-            match s {
-                sexp::SExp::Integer(l, i) => {
-                    if *i == 2_i32.to_bigint().unwrap() {
-                        if_true(collector);
-                        return;
-                    }
-                }
-                _ => {}
-            }
-
-            if_false(collector);
-        };
-
-    let add_context = |s: &sexp::SExp,
-                       c: &sexp::SExp,
-                       args: Option<Rc<sexp::SExp>>,
-                       context_result: &mut BTreeMap<String, String>| {
-        whether_is_apply(
-            s,
-            context_result,
-            &|context_result| match c {
-                sexp::SExp::Cons(_, a, b) => {
-                    context_result.insert("Env".to_string(), a.to_string());
-                    context_result.insert("Env-Args".to_string(), b.to_string());
-                }
-                _ => {
-                    context_result.insert("Function-Context".to_string(), c.to_string());
-                }
-            },
-            &|context_result| match &args {
-                Some(a) => {
-                    context_result.insert("Arguments".to_string(), a.to_string());
-                }
-                _ => {}
-            },
-        );
-    };
-
-    let add_function = |input_file: Option<String>,
-                        s: &sexp::SExp,
-                        context_result: &mut BTreeMap<String, String>| {
-        whether_is_apply(s, context_result, &|context_result| {}, &|context_result| {
-            match extract_text(&s.loc()) {
-                Some(name) => {
-                    if Some(s.loc().file.to_string()) == input_file.clone() {
-                        context_result.insert("Function".to_string(), name);
-                    }
-                }
-                _ => {}
-            }
-        });
-    };
-
-    let mut step = start_step(program.clone(), args.clone());
-    let mut in_expr = false;
-    let mut to_print: BTreeMap<String, String> = BTreeMap::new();
+    let step = start_step(program.clone(), args.clone());
+    let cldbenv = CldbRunEnv::new(input_file, program_lines);
+    let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
 
     loop {
-        let new_step = run_step(&mut allocator, runner.clone(), prim_map.clone(), &step);
+        if cldbrun.is_ended() {
+            println!("{}", yamlette_string(output));
+            return;
+        }
 
-        match &new_step {
-            Ok(RunStep::OpResult(l, x, p)) => {
-                if in_expr {
-                    let history_len = get_history_len(p.clone());
-                    to_print.insert("Result-Location".to_string(), l.to_string());
-                    to_print.insert("Value".to_string(), x.to_string());
-                    to_print.insert("Row".to_string(), output.len().to_string());
-                    match x.get_number().ok() {
-                        Some(n) => {
-                            outputs_to_step.insert(
-                                n,
-                                PriorResult {
-                                    reference: output.len(),
-                                    value: x.clone(),
-                                },
-                            );
-                        }
-                        _ => {}
-                    }
-                    in_expr = false;
-                    output.push(to_print.clone());
-                    to_print = BTreeMap::new();
-                    in_expr = false;
-                }
-            }
-            Ok(RunStep::Done(l, x)) => {
-                to_print.insert("Final-Location".to_string(), l.to_string());
-                to_print.insert("Final".to_string(), x.to_string());
-                output.push(to_print.clone());
-                print!("{}\n", yamlette_string(output));
-                return;
-            }
-            Ok(RunStep::Step(sexp, c, p)) => {}
-            Ok(RunStep::Op(sexp, c, a, None, p)) => {
-                let history_len = get_history_len(p.clone());
-                to_print.insert("Operator-Location".to_string(), a.loc().to_string());
-                to_print.insert("Operator".to_string(), sexp.to_string());
-                match sexp.get_number().ok() {
-                    Some(v) => {
-                        if v == 11_u32.to_bigint().unwrap() {
-                            let arg_associations =
-                                get_arg_associations(&outputs_to_step, a.clone());
-                            let args = format_arg_inputs(&arg_associations);
-                            to_print.insert("Argument-Refs".to_string(), args);
-                        }
-                    }
-                    _ => {}
-                }
-                add_context(sexp.borrow(), c.borrow(), Some(a.clone()), &mut to_print);
-                add_function(input_file.clone(), sexp, &mut to_print);
-                in_expr = true;
-            }
-            Ok(RunStep::Op(sexp, c, a, Some(v), p)) => {}
-            Err(RunFailure::RunExn(l, s)) => {
-                to_print.insert("Throw-Location".to_string(), l.to_string());
-                to_print.insert("Throw".to_string(), s.to_string());
-                output.push(to_print.clone());
-                print!("{}\n", yamlette_string(output));
-                return;
-            }
-            Err(RunFailure::RunErr(l, s)) => {
-                to_print.insert("Failure-Location".to_string(), l.to_string());
-                to_print.insert("Failure".to_string(), s.to_string());
-                output.push(to_print.clone());
-                print!("{}\n", yamlette_string(output));
-                return;
+        match cldbrun.step(&mut allocator) {
+            Some(result) => {
+                output.push(result);
             }
             _ => {}
         }
-
-        step = new_step.unwrap_or_else(|_| step);
     }
 }
 
@@ -755,7 +471,7 @@ impl<T> RunLog<T> {
             let mut empty_log = Vec::new();
             swap(&mut empty_log, &mut *log);
             empty_log.push(new_log);
-            return empty_log;
+            empty_log
         });
     }
 
@@ -763,9 +479,9 @@ impl<T> RunLog<T> {
         let mut empty_log = Vec::new();
         self.log_entries.replace_with(|log| {
             swap(&mut empty_log, &mut *log);
-            return Vec::new();
+            Vec::new()
         });
-        return empty_log;
+        empty_log
     }
 }
 
@@ -788,7 +504,7 @@ fn calculate_cost_offset(
         .map(|x| x.0)
         .unwrap_or_else(|_| 0);
 
-    return 53 - cost as i64;
+    53 - cost as i64
 }
 
 fn fix_log(
@@ -1126,14 +842,14 @@ pub fn launch_tool(
 
         match res {
             Ok(r) => {
-                print!("{}\n", r.to_string());
+                println!("{}", r.to_string());
 
                 let mut st = HashMap::new();
                 build_symbol_table_mut(&mut st, &r);
                 write_sym_output(&st, &"main.sym".to_string());
             }
             Err(c) => {
-                print!("{}: {}\n", c.0.to_string(), c.1);
+                println!("{}: {}", c.0.to_string(), c.1);
             }
         }
 
@@ -1198,7 +914,7 @@ pub fn launch_tool(
             .map(|t| {
                 t.map(|log_ent| {
                     let closure_clone = closure.clone();
-                    return (*closure_clone)(log_ent);
+                    (*closure_clone)(log_ent)
                 })
             })
         });
@@ -1291,7 +1007,7 @@ pub fn launch_tool(
                 } else {
                     Some(max_cost as u64)
                 },
-                pre_eval_f: pre_eval_f,
+                pre_eval_f,
                 strict: parsedArgs
                     .get("strict")
                     .map(|_| true)

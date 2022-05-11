@@ -13,8 +13,7 @@ pub struct IRReader {
 // XXX Allows us to track line and column later if desired.
 impl IRReader {
     fn read(&mut self, n: usize) -> Bytes {
-        let res = self.stream.read(n);
-        return res;
+        self.stream.read(n)
     }
 
     fn backup(&mut self, n: usize) {
@@ -27,20 +26,20 @@ impl IRReader {
     }
 
     pub fn read_expr(&mut self) -> Result<IRRepr, String> {
-        return consume_object(self);
+        consume_object(self)
     }
 
     pub fn new(s: Stream) -> Self {
-        return IRReader { stream: s };
+        IRReader { stream: s }
     }
 }
 
 pub fn is_eol(chval: u8) -> bool {
-    return chval == '\r' as u8 || chval == '\n' as u8;
+    chval == '\r' as u8 || chval == '\n' as u8
 }
 
 pub fn is_space(chval: u8) -> bool {
-    return chval == ' ' as u8 || chval == '\t' as u8 || is_eol(chval);
+    chval == ' ' as u8 || chval == '\t' as u8 || is_eol(chval)
 }
 
 pub fn consume_whitespace(s: &mut IRReader) {
@@ -63,7 +62,7 @@ pub fn consume_whitespace(s: &mut IRReader) {
             }
         }
 
-        if ch == ';' as u8 {
+        if ch == b';' {
             in_comment = true;
             continue;
         }
@@ -105,13 +104,11 @@ pub fn consume_quoted(s: &mut IRReader, q: char) -> Result<IRRepr, String> {
         }
     }
 
-    return Ok(IRRepr::Quotes(Bytes::new(Some(BytesFromType::Raw(qchars)))));
+    Ok(IRRepr::Quotes(Bytes::new(Some(BytesFromType::Raw(qchars)))))
 }
 
 pub fn is_hex(chars: &Vec<u8>) -> bool {
-    return chars.len() > 2
-        && chars[0] == '0' as u8
-        && (chars[1] == 'x' as u8 || chars[1] == 'X' as u8);
+    chars.len() > 2 && chars[0] == '0' as u8 && (chars[1] == 'x' as u8 || chars[1] == 'X' as u8)
 }
 
 pub fn is_dec(chars: &Vec<u8>) -> bool {
@@ -129,12 +126,12 @@ pub fn is_dec(chars: &Vec<u8>) -> bool {
         }
     }
 
-    return true;
+    true
 }
 
 pub fn interpret_atom_value(chars: &Vec<u8>) -> IRRepr {
     if chars.len() == 0 {
-        return IRRepr::Null;
+        IRRepr::Null
     } else if is_hex(chars) {
         let mut string_bytes = if chars.len() % 2 > 0 {
             Bytes::new(Some(BytesFromType::Raw(vec!['0' as u8])))
@@ -144,19 +141,17 @@ pub fn interpret_atom_value(chars: &Vec<u8>) -> IRRepr {
         string_bytes =
             string_bytes.concat(&Bytes::new(Some(BytesFromType::Raw(chars[2..].to_vec()))));
 
-        return IRRepr::Hex(Bytes::new(Some(BytesFromType::Hex(string_bytes.decode()))));
+        IRRepr::Hex(Bytes::new(Some(BytesFromType::Hex(string_bytes.decode()))))
     } else {
         match String::from_utf8(chars.to_vec())
             .ok()
             .and_then(|s| s.parse::<Number>().ok())
             .and_then(|n| bigint_to_bytes(&n, Some(TConvertOption { signed: true })).ok())
         {
-            Some(n) => {
-                return IRRepr::Int(n, true);
-            }
+            Some(n) => IRRepr::Int(n, true),
             None => {
                 let string_bytes = Bytes::new(Some(BytesFromType::Raw(chars.to_vec())));
-                return IRRepr::Symbol(string_bytes.decode());
+                IRRepr::Symbol(string_bytes.decode())
             }
         }
     }
@@ -191,7 +186,7 @@ fn enlist_ir(vec: &mut Vec<IRRepr>, tail: IRRepr) -> IRRepr {
         swap(&mut vec[i], &mut next_head);
         result = IRRepr::Cons(Rc::new(next_head), Rc::new(result));
     }
-    return result;
+    result
 }
 
 pub fn consume_cons_body(s: &mut IRReader) -> Result<IRRepr, String> {
@@ -268,28 +263,18 @@ pub fn consume_object(s: &mut IRReader) -> Result<IRRepr, String> {
     let b = s.read(1);
 
     if b.length() == 0 {
-        return Ok(IRRepr::Null);
+        Ok(IRRepr::Null)
     } else if b.at(0) == '(' as u8 {
-        return consume_cons_body(s);
+        consume_cons_body(s)
+    } else if b.at(0) == '\"' as u8 || b.at(0) == '\'' as u8 {
+        match consume_quoted(s, b.at(0) as char) {
+            Err(e) => Err(e),
+            Ok(v) => Ok(v),
+        }
     } else {
-        if b.at(0) == '\"' as u8 || b.at(0) == '\'' as u8 {
-            match consume_quoted(s, b.at(0) as char) {
-                Err(e) => {
-                    return Err(e);
-                }
-                Ok(v) => {
-                    return Ok(v);
-                }
-            }
-        } else {
-            match consume_atom(s, &b) {
-                None => {
-                    return Err("empty stream".to_string());
-                }
-                Some(ir) => {
-                    return Ok(ir);
-                }
-            }
+        match consume_atom(s, &b) {
+            None => Err("empty stream".to_string()),
+            Some(ir) => Ok(ir),
         }
     }
 }
@@ -298,5 +283,5 @@ pub fn read_ir(s: &String) -> Result<IRRepr, String> {
     let bytes_of_string = Bytes::new(Some(BytesFromType::Raw(s.as_bytes().to_vec())));
     let stream = Stream::new(Some(bytes_of_string));
     let mut reader = IRReader::new(stream);
-    return reader.read_expr();
+    reader.read_expr()
 }

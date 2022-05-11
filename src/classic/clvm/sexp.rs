@@ -30,10 +30,7 @@ pub enum SexpStackOp {
     OpPrepend(usize),
 }
 
-pub fn to_sexp_type<'a>(
-    allocator: &'a mut Allocator,
-    value: CastableType,
-) -> Result<NodePtr, EvalErr> {
+pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<NodePtr, EvalErr> {
     let mut stack = vec![Rc::new(value)];
     let mut ops: Vec<SexpStackOp> = vec![SexpStackOp::OpConvert];
 
@@ -224,7 +221,7 @@ pub fn to_sexp_type<'a>(
     return match stack.pop() {
         None => Err(EvalErr(allocator.null(), "stack empty".to_string())),
         Some(top) => match top.borrow() {
-            CastableType::CLVMObject(o) => Ok(o.clone()),
+            CastableType::CLVMObject(o) => Ok(*o),
             _ => Err(EvalErr(
                 allocator.null(),
                 format!("unimplemented {:?}", stack[0]),
@@ -233,17 +230,17 @@ pub fn to_sexp_type<'a>(
     };
 }
 
-pub fn sexp_as_bin<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> Bytes {
+pub fn sexp_as_bin(allocator: &mut Allocator, sexp: NodePtr) -> Bytes {
     let mut f = Stream::new(None);
     sexp_to_stream(allocator, sexp, &mut f);
-    return f.get_value();
+    f.get_value()
 }
 
-pub fn bool_sexp<'a>(allocator: &'a mut Allocator, b: bool) -> NodePtr {
+pub fn bool_sexp(allocator: &mut Allocator, b: bool) -> NodePtr {
     if b {
-        return allocator.one();
+        allocator.one()
     } else {
-        return allocator.null();
+        allocator.null()
     }
 }
 
@@ -347,55 +344,35 @@ pub fn bool_sexp<'a>(allocator: &'a mut Allocator, b: bool) -> NodePtr {
 //   ;
 // }
 
-pub fn non_nil<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> bool {
+pub fn non_nil(allocator: &mut Allocator, sexp: NodePtr) -> bool {
     match allocator.sexp(sexp) {
-        SExp::Pair(_, _) => {
-            return true;
-        }
-        SExp::Atom(b) => {
-            return allocator.buf(&b).len() > 0;
-        }
+        SExp::Pair(_, _) => true,
+        SExp::Atom(b) => allocator.buf(&b).len() > 0,
     }
 }
 
-pub fn first<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> Result<NodePtr, EvalErr> {
+pub fn first(allocator: &mut Allocator, sexp: NodePtr) -> Result<NodePtr, EvalErr> {
     match allocator.sexp(sexp) {
-        SExp::Pair(f, _) => {
-            return Ok(f);
-        }
-        _ => {
-            return Err(EvalErr(sexp, "first of non-cons".to_string()));
-        }
+        SExp::Pair(f, _) => Ok(f),
+        _ => Err(EvalErr(sexp, "first of non-cons".to_string())),
     }
 }
 
-pub fn rest<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> Result<NodePtr, EvalErr> {
+pub fn rest(allocator: &mut Allocator, sexp: NodePtr) -> Result<NodePtr, EvalErr> {
     match allocator.sexp(sexp) {
-        SExp::Pair(_, r) => {
-            return Ok(r);
-        }
-        _ => {
-            return Err(EvalErr(sexp, "rest of non-cons".to_string()));
-        }
+        SExp::Pair(_, r) => Ok(r),
+        _ => Err(EvalErr(sexp, "rest of non-cons".to_string())),
     }
 }
 
-pub fn atom<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> Result<AtomBuf, EvalErr> {
+pub fn atom(allocator: &mut Allocator, sexp: NodePtr) -> Result<AtomBuf, EvalErr> {
     match allocator.sexp(sexp) {
-        SExp::Atom(abuf) => {
-            return Ok(abuf);
-        }
-        _ => {
-            return Err(EvalErr(sexp, "not an atom".to_string()));
-        }
+        SExp::Atom(abuf) => Ok(abuf),
+        _ => Err(EvalErr(sexp, "not an atom".to_string())),
     }
 }
 
-pub fn proper_list<'a>(
-    allocator: &'a mut Allocator,
-    sexp: NodePtr,
-    store: bool,
-) -> Option<Vec<NodePtr>> {
+pub fn proper_list(allocator: &mut Allocator, sexp: NodePtr, store: bool) -> Option<Vec<NodePtr>> {
     let mut args = vec![];
     let mut args_sexp = sexp;
     loop {
@@ -429,7 +406,7 @@ pub fn enlist<'a>(allocator: &'a mut Allocator, vec: &Vec<NodePtr>) -> Result<No
             }
         }
     }
-    return Ok(built);
+    Ok(built)
 }
 
 pub fn mapM<T>(

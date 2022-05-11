@@ -8,13 +8,13 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::{bi_one, Bytes, BytesFromType};
+use crate::classic::clvm::__type_compatibility__::bi_one;
 
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::run_optimizer;
 use crate::compiler::comptypes::{
-    cons_of_string_map, foldM, join_vecs_to_string, list_to_cons, mapM, with_heading, Binding,
-    BodyForm, Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, DefunCall, HelperForm,
+    cons_of_string_map, foldM, join_vecs_to_string, list_to_cons, with_heading, Binding, BodyForm,
+    Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, DefunCall, HelperForm,
     InlineFunction, LetFormKind, PrimaryCodegen,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
@@ -22,11 +22,11 @@ use crate::compiler::frontend::compile_bodyform;
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
 use crate::compiler::optimize::optimize_expr;
-use crate::compiler::prims::{primapply, primcons, primquote, prims};
+use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::{decode_string, enlist, SExp};
+use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::util::{number_from_u8, u8_from_number};
+use crate::util::u8_from_number;
 
 /* As in the python code, produce a pair whose (thanks richard)
  *
@@ -56,12 +56,9 @@ fn cons_bodyform(loc: Srcloc, left: Rc<BodyForm>, right: Rc<BodyForm>) -> BodyFo
     BodyForm::Call(
         loc.clone(),
         vec![
-            Rc::new(BodyForm::Value(SExp::Atom(
-                loc.clone(),
-                "c".as_bytes().to_vec(),
-            ))), // Cons
-            left.clone(),
-            right.clone(),
+            Rc::new(BodyForm::Value(SExp::Atom(loc, "c".as_bytes().to_vec()))), // Cons
+            left,
+            right,
         ],
     )
 }
@@ -821,7 +818,7 @@ fn codegen_(
                             name,
                             DefunCall {
                                 required_env: args.clone(),
-                                code: code,
+                                code,
                             },
                         )
                     })
@@ -946,7 +943,7 @@ fn process_helper_let_bindings(
     while i < result.len() {
         match result[i].clone() {
             HelperForm::Defun(l, name, inline, args, body) => {
-                let context = if (inline) { Some(args.clone()) } else { None };
+                let context = if inline { Some(args.clone()) } else { None };
                 let helper_result =
                     hoist_body_let_binding(compiler, context, args.clone(), body.clone());
                 let hoisted_helpers = helper_result.0;
@@ -970,7 +967,7 @@ fn process_helper_let_bindings(
         }
     }
 
-    return result;
+    result
 }
 
 fn start_codegen(opts: Rc<dyn CompilerOpts>, comp: CompileForm) -> PrimaryCodegen {
@@ -1124,7 +1121,7 @@ fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileE
             HelperForm::Defun(_, name, false, _, _) => {
                 let mut c_copy = compiler.clone();
                 c_copy.parentfns.insert(name.clone());
-                return Ok(c_copy);
+                Ok(c_copy)
             }
             HelperForm::Defun(loc, name, true, args, body) => Ok(compiler)
                 .and_then(|comp| fail_if_present(loc.clone(), &compiler.inlines, &name, comp))

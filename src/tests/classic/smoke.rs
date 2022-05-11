@@ -198,6 +198,15 @@ fn basic_opc() {
 }
 
 #[test]
+fn opc_ten_million() {
+    let mut allocator = Allocator::new();
+    let result = OpcConversion {}
+        .invoke(&mut allocator, &"10000000".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "8400989680");
+}
+
+#[test]
 fn basic_opc_lil() {
     let mut allocator = Allocator::new();
     let result = OpcConversion {}

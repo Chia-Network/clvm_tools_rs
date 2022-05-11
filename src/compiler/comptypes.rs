@@ -53,7 +53,7 @@ pub fn list_to_cons(l: Srcloc, list: &Vec<Rc<SExp>>) -> SExp {
         result = SExp::Cons(list[i].loc(), list[i].clone(), Rc::new(result));
     }
 
-    return result;
+    result
 }
 
 #[derive(Clone, Debug)]
@@ -171,7 +171,7 @@ impl ModAccum {
 
     pub fn new(loc: Srcloc) -> ModAccum {
         ModAccum {
-            loc: loc,
+            loc,
             helpers: Vec::new(),
             exp_form: None,
         }
@@ -180,7 +180,7 @@ impl ModAccum {
 
 impl CompileForm {
     pub fn loc(&self) -> Srcloc {
-        return self.loc.clone();
+        self.loc.clone()
     }
 
     pub fn to_sexp(&self) -> Rc<SExp> {
@@ -323,7 +323,7 @@ impl Binding {
 
 impl CompiledCode {
     pub fn loc(&self) -> Srcloc {
-        return self.0.clone();
+        self.0.clone()
     }
 }
 
@@ -331,31 +331,31 @@ impl PrimaryCodegen {
     pub fn add_constant(&self, name: &Vec<u8>, value: Rc<SExp>) -> Self {
         let mut codegen_copy = self.clone();
         codegen_copy.constants.insert(name.clone(), value);
-        return codegen_copy;
+        codegen_copy
     }
 
     pub fn add_macro(&self, name: &Vec<u8>, value: Rc<SExp>) -> Self {
         let mut codegen_copy = self.clone();
         codegen_copy.macros.insert(name.clone(), value);
-        return codegen_copy;
+        codegen_copy
     }
 
     pub fn add_inline(&self, name: &Vec<u8>, value: &InlineFunction) -> Self {
         let mut codegen_copy = self.clone();
         codegen_copy.inlines.insert(name.clone(), value.clone());
-        return codegen_copy;
+        codegen_copy
     }
 
     pub fn add_defun(&self, name: &Vec<u8>, value: DefunCall) -> Self {
         let mut codegen_copy = self.clone();
         codegen_copy.defuns.insert(name.clone(), value);
-        return codegen_copy;
+        codegen_copy
     }
 
     pub fn set_env(&self, env: Rc<SExp>) -> Self {
         let mut codegen_copy = self.clone();
         codegen_copy.env = env.clone();
-        return codegen_copy;
+        codegen_copy
     }
 }
 
@@ -400,7 +400,7 @@ pub fn mapM<T, U, E>(f: &dyn Fn(&T) -> Result<U, E>, list: &Vec<T>) -> Result<Ve
         let val = f(e)?;
         result.push(val);
     }
-    return Ok(result);
+    Ok(result)
 }
 
 pub fn foldM<R, T, E>(f: &dyn Fn(&R, &T) -> Result<R, E>, start: R, list: &Vec<T>) -> Result<R, E> {
@@ -408,7 +408,7 @@ pub fn foldM<R, T, E>(f: &dyn Fn(&R, &T) -> Result<R, E>, start: R, list: &Vec<T
     for elt in list.iter() {
         res = f(&res, elt)?;
     }
-    return Ok(res);
+    Ok(res)
 }
 
 pub fn join_vecs_to_string(sep: Vec<u8>, vecs: &Vec<Vec<u8>>) -> String {
@@ -423,5 +423,5 @@ pub fn join_vecs_to_string(sep: Vec<u8>, vecs: &Vec<Vec<u8>>) -> String {
         }
     }
 
-    return decode_string(&s);
+    decode_string(&s)
 }

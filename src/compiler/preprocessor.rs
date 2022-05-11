@@ -70,7 +70,7 @@ fn process_pp_form(
                 }
             }
 
-            return Ok(None);
+            Ok(None)
         })
         .unwrap_or_else(|| Ok(None))?;
 
@@ -117,11 +117,11 @@ fn inject_std_macros(body: Rc<SExp>) -> SExp {
             let mut v_clone: Vec<Rc<SExp>> = v.iter().map(|x| Rc::new(x.clone())).collect();
             let include_copy: &SExp = include_form.borrow();
             v_clone.insert(0, Rc::new(include_copy.clone()));
-            return enlist(body.loc(), v_clone);
+            enlist(body.loc(), v_clone)
         }
         _ => {
             let body_clone: &SExp = body.borrow();
-            return body_clone.clone();
+            body_clone.clone()
         }
     }
 }

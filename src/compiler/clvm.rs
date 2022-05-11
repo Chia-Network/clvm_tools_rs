@@ -4,16 +4,15 @@ use std::rc::Rc;
 
 use clvm_rs::allocator;
 use clvm_rs::allocator::{Allocator, NodePtr};
-use clvm_rs::reduction::EvalErr;
 
-use num_bigint::{Sign, ToBigInt};
+use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
-use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
+use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
+use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, u8_from_number, Number};
 
@@ -208,10 +207,15 @@ pub fn convert_from_clvm_rs(
             if h.len() == 0 {
                 Ok(Rc::new(SExp::Nil(loc)))
             } else {
-                Ok(Rc::new(SExp::Integer(
-                    loc,
-                    number_from_u8(allocator.buf(&h)),
-                )))
+                let atom_data = allocator.buf(&h);
+                let integer = number_from_u8(atom_data);
+                // Ensure that atom values that don't evaluate equal to integers
+                // are represented faithfully as atoms.
+                if u8_from_number(integer.clone()) == atom_data {
+                    Ok(Rc::new(SExp::Integer(loc, integer)))
+                } else {
+                    Ok(Rc::new(SExp::Atom(loc, atom_data.to_vec())))
+                }
             }
         }
         allocator::SExp::Pair(a, b) => {
@@ -324,7 +328,7 @@ pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
 pub fn flatten_signed_int(v: Number) -> Number {
     let mut sign_digits = v.to_signed_bytes_le();
     sign_digits.push(0);
-    return Number::from_signed_bytes_le(&sign_digits);
+    Number::from_signed_bytes_le(&sign_digits)
 }
 
 pub fn run_step(

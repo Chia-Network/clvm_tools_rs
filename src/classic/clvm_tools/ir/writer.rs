@@ -25,10 +25,10 @@ struct IROutputIterator {
 
 impl IROutputIterator {
     fn new(kw_translation: HashMap<String, Vec<u8>>, ir_sexp: Rc<IRRepr>) -> IROutputIterator {
-        return IROutputIterator {
-            kw_translation: kw_translation,
+        IROutputIterator {
+            kw_translation,
             state: vec![IROutputState::Start(ir_sexp)],
-        };
+        }
     }
 }
 
@@ -115,5 +115,5 @@ pub fn write_ir_to_stream(ir_sexp: Rc<IRRepr>, f: &mut Stream) {
 pub fn write_ir(ir_sexp: Rc<IRRepr>) -> String {
     let mut s = Stream::new(None);
     write_ir_to_stream(ir_sexp, &mut s);
-    return s.get_value().decode();
+    s.get_value().decode()
 }

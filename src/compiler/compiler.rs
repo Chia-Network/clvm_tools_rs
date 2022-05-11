@@ -5,8 +5,7 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
-use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
+use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs};
@@ -90,32 +89,32 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn set_search_paths(&self, dirs: &Vec<String>) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.include_dirs = dirs.clone();
-        return Rc::new(copy);
+        Rc::new(copy)
     }
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.in_defun = new_in_defun;
-        return Rc::new(copy);
+        Rc::new(copy)
     }
     fn set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.stdenv = new_stdenv;
-        return Rc::new(copy);
+        Rc::new(copy)
     }
     fn set_optimize(&self, optimize: bool) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.optimize = optimize;
-        return Rc::new(copy);
+        Rc::new(copy)
     }
     fn set_compiler(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.compiler = Some(new_compiler);
-        return Rc::new(copy);
+        Rc::new(copy)
     }
     fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.start_env = start_env;
-        return Rc::new(copy);
+        Rc::new(copy)
     }
 
     fn read_new_file(

@@ -15,7 +15,7 @@ use sha2::Sha256;
 use crate::util::Number;
 
 pub fn to_hexstr(r: &Vec<u8>) -> String {
-    return hex::encode(r);
+    hex::encode(r)
 }
 
 pub fn char_to_string(ch: char) -> String {
@@ -80,7 +80,7 @@ pub fn PyBytes_Repr(r: &Vec<u8>, dquoted: bool) -> String {
 
     s += char_to_string(quote).as_str();
 
-    return s;
+    s
 }
 
 pub enum BytesFromType {
@@ -138,15 +138,15 @@ impl Bytes {
     }
 
     pub fn length(&self) -> usize {
-        return self._b.len();
+        self._b.len()
     }
 
     pub fn at(&self, i: usize) -> u8 {
-        return self._b[i];
+        self._b[i]
     }
 
     pub fn raw(&self) -> Vec<u8> {
-        return self._b.clone();
+        self._b.clone()
     }
 
     pub fn repeat(&self, n: usize) -> Bytes {
@@ -156,7 +156,7 @@ impl Bytes {
         for i in 0..capacity - 1 {
             ret[i] = self._b[i % set_size];
         }
-        return Bytes::new(Some(BytesFromType::Raw(ret)));
+        Bytes::new(Some(BytesFromType::Raw(ret)))
     }
 
     pub fn concat(&self, b: &Bytes) -> Bytes {
@@ -165,7 +165,7 @@ impl Bytes {
         let mut concat_bin = Vec::<u8>::with_capacity(this_bin.len() + that_bin.len());
         concat_bin.append(&mut this_bin);
         concat_bin.append(&mut that_bin);
-        return Bytes::new(Some(BytesFromType::Raw(concat_bin)));
+        Bytes::new(Some(BytesFromType::Raw(concat_bin)))
     }
 
     pub fn slice(&self, start: usize, length: Option<usize>) -> Self {
@@ -183,35 +183,35 @@ impl Bytes {
         for i in start..start + len - 1 {
             ui8_clone.push(self._b[i]);
         }
-        return Bytes::new(Some(BytesFromType::Raw(ui8_clone)));
+        Bytes::new(Some(BytesFromType::Raw(ui8_clone)))
     }
 
     pub fn subarray(&self, start: usize, length: Option<usize>) -> Self {
-        return self.slice(start, length);
+        self.slice(start, length)
     }
 
     pub fn data(&self) -> &Vec<u8> {
-        return &self._b;
+        &self._b
     }
 
     pub fn clone(&self) -> Self {
-        return Bytes::new(Some(BytesFromType::Raw(self._b.clone())));
+        Bytes::new(Some(BytesFromType::Raw(self._b.clone())))
     }
 
     pub fn to_string(&self) -> String {
-        return PyBytes_Repr(&self._b, false);
+        PyBytes_Repr(&self._b, false)
     }
 
     pub fn to_formal_string(&self) -> String {
-        return PyBytes_Repr(&self._b, true);
+        PyBytes_Repr(&self._b, true)
     }
 
     pub fn hex(&self) -> String {
-        return to_hexstr(&self._b);
+        to_hexstr(&self._b)
     }
 
     pub fn decode(&self) -> String {
-        return vec_to_string(&self._b);
+        vec_to_string(&self._b)
     }
 
     pub fn startswith(&self, b: &Bytes) -> bool {
@@ -220,7 +220,7 @@ impl Bytes {
                 return false;
             }
         }
-        return true;
+        true
     }
 
     pub fn endswith(&self, b: &Bytes) -> bool {
@@ -230,7 +230,7 @@ impl Bytes {
                 return false;
             }
         }
-        return true;
+        true
     }
 
     pub fn equal_to(&self, b: &Bytes) -> bool {
@@ -245,7 +245,7 @@ impl Bytes {
                 }
             }
         }
-        return true;
+        true
     }
 
     /**
@@ -271,7 +271,7 @@ impl Bytes {
         } else if slen < other.length() {
             return Ordering::Greater;
         }
-        return Ordering::Equal;
+        Ordering::Equal
     }
 }
 
@@ -279,7 +279,7 @@ pub fn sha256(value: Bytes) -> Bytes {
     let hashed = Sha256::digest(&value.data()[..]);
     let hashed_iter = hashed.into_iter();
     let newvec: Vec<u8> = hashed_iter.collect();
-    return Bytes::new(Some(BytesFromType::Raw(newvec)));
+    Bytes::new(Some(BytesFromType::Raw(newvec)))
 }
 
 pub fn list<E, I>(vals: I) -> Vec<E>
@@ -287,7 +287,7 @@ where
     I: Iterator<Item = E>,
     E: Clone,
 {
-    return vals.map(|v| v.clone()).collect();
+    vals.map(|v| v.clone()).collect()
 }
 
 pub trait PythonStr {
@@ -298,7 +298,7 @@ pub fn str<T>(thing: T) -> String
 where
     T: PythonStr,
 {
-    return thing.py_str();
+    thing.py_str()
 }
 
 pub trait PythonRepr {
@@ -309,7 +309,7 @@ pub fn repr<T>(thing: T) -> String
 where
     T: PythonRepr,
 {
-    return thing.py_repr();
+    thing.py_repr()
 }
 
 #[derive(Debug)]
@@ -319,15 +319,15 @@ pub enum Tuple<T1, T2> {
 
 impl<T1, T2> Tuple<T1, T2> {
     pub fn first(&self) -> &T1 {
-        return match self {
+        match self {
             Tuple::Tuple(f, _) => f,
-        };
+        }
     }
 
     pub fn rest(&self) -> &T2 {
-        return match self {
+        match self {
             Tuple::Tuple(_, r) => r,
-        };
+        }
     }
 
     pub fn to_string(&self) -> String
@@ -344,7 +344,7 @@ impl<T1, T2> Tuple<T1, T2> {
 }
 
 pub fn t<T1, T2>(v1: T1, v2: T2) -> Tuple<T1, T2> {
-    return Tuple::Tuple(v1, v2);
+    Tuple::Tuple(v1, v2)
 }
 
 impl<T1, T2> PythonStr for Tuple<T1, T2>
@@ -353,7 +353,7 @@ where
     T2: PythonStr,
 {
     fn py_str(&self) -> String {
-        return self.to_string();
+        self.to_string()
     }
 }
 
@@ -371,13 +371,11 @@ pub struct Stream {
 impl Stream {
     pub fn new(b: Option<Bytes>) -> Self {
         match b {
-            None => {
-                return Stream {
-                    seek: 0,
-                    length: 0,
-                    buffer: vec![],
-                };
-            }
+            None => Stream {
+                seek: 0,
+                length: 0,
+                buffer: vec![],
+            },
             Some(b) => {
                 let data = b.data().to_vec();
                 let stream = Stream {
@@ -386,13 +384,13 @@ impl Stream {
                     buffer: data,
                 };
 
-                return stream;
+                stream
             }
         }
     }
 
     pub fn get_seek(&self) -> usize {
-        return self.seek;
+        self.seek
     }
 
     pub fn set_seek(&mut self, value: i64) {
@@ -406,7 +404,7 @@ impl Stream {
     }
 
     pub fn get_length(&self) -> usize {
-        return self.length;
+        self.length
     }
 
     fn re_allocate(&mut self, size: Option<usize>) {
@@ -447,11 +445,11 @@ impl Stream {
 
         self.length = new_length;
         self.seek += b.length(); // Don't move this line prior to `this._length = newLength`!
-        return b.length();
+        b.length()
     }
 
     pub fn write_string(&mut self, s: String) -> usize {
-        return self.write(Bytes::new(Some(BytesFromType::Raw(s.as_bytes().to_vec()))));
+        self.write(Bytes::new(Some(BytesFromType::Raw(s.as_bytes().to_vec()))))
     }
 
     pub fn read(&mut self, size: usize) -> Bytes {
@@ -470,19 +468,19 @@ impl Stream {
             u8.push(self.buffer[self.seek + i]);
         }
         self.seek += size;
-        return Bytes::new(Some(BytesFromType::Raw(u8)));
+        Bytes::new(Some(BytesFromType::Raw(u8)))
     }
 
     pub fn get_value(&self) -> Bytes {
-        return Bytes::new(Some(BytesFromType::Raw(self.buffer.clone())));
+        Bytes::new(Some(BytesFromType::Raw(self.buffer.clone())))
     }
 }
 
 pub fn bi_zero() -> Number {
-    return Zero::zero();
+    Zero::zero()
 }
 pub fn bi_one() -> Number {
-    return One::one();
+    One::one()
 }
 
 pub fn get_u32(v: &Vec<u8>, n: usize) -> u32 {
@@ -490,7 +488,7 @@ pub fn get_u32(v: &Vec<u8>, n: usize) -> u32 {
     let p2 = v[n + 1] as u32;
     let p3 = v[n + 2] as u32;
     let p4 = v[n + 3] as u32;
-    return p1 | (p2 << 8) | (p3 << 16) | (p4 << 24);
+    p1 | (p2 << 8) | (p3 << 16) | (p4 << 24)
 }
 
 pub fn set_u8(vec: &mut Vec<u8>, n: usize, v: u8) {
@@ -498,8 +496,8 @@ pub fn set_u8(vec: &mut Vec<u8>, n: usize, v: u8) {
 }
 
 pub fn set_u32(vec: &mut Vec<u8>, n: usize, v: u32) {
-    vec[n] = (v & 0xff) as u8;
-    vec[n + 1] = ((v >> 8) & 0xff) as u8;
-    vec[n + 2] = ((v >> 16) & 0xff) as u8;
-    vec[n + 3] = ((v >> 24) & 0xff) as u8;
+    vec[n] = ((v >> 24) & 0xff) as u8;
+    vec[n + 1] = ((v >> 16) & 0xff) as u8;
+    vec[n + 2] = ((v >> 8) & 0xff) as u8;
+    vec[n + 3] = (v & 0xff) as u8;
 }
