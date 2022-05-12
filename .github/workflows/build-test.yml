@@ -51,7 +51,7 @@ jobs:
         python -m venv venv
         ln -s venv/bin/activate
         . ./activate
-        maturin build --no-sdist -i python --release --strip
+        CC=gcc maturin build -i python --release --strip --manylinux 2010
 
     - name: Build Linux in manylinux2010 with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'ubuntu')
