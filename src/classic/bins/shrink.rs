@@ -20,7 +20,6 @@ use clvm_tools_rs::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 fn main() {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
-    let prims = prim_map();
     let opts = Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -38,7 +37,6 @@ fn main() {
         let e = Evaluator::new(
             opts.clone(),
             runner.clone(),
-            prims.clone(),
             program.helpers.clone(),
         );
         return e.shrink_bodyform(

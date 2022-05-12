@@ -1,7 +1,9 @@
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
+use num_bigint::ToBigInt;
 
 use clvm_rs::allocator::Allocator;
 
@@ -10,12 +12,15 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs};
 use crate::compiler::codegen::codegen;
-use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen, HelperForm, BodyForm, CompileForm};
+use crate::compiler::evaluate::Evaluator;
 use crate::compiler::frontend::frontend;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+
+use crate::util::Number;
 
 #[derive(Clone, Debug)]
 pub struct DefaultCompilerOpts {
@@ -29,6 +34,116 @@ pub struct DefaultCompilerOpts {
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
 }
 
+fn at_path(path_mask: Number, loc: Srcloc) -> Rc<BodyForm> {
+    Rc::new(BodyForm::Call(
+        loc.clone(),
+        vec!(
+            Rc::new(BodyForm::Value(SExp::atom_from_string(loc.clone(), &"@".to_string()))),
+            Rc::new(BodyForm::Quoted(SExp::Integer(loc.clone(), path_mask.clone())))
+        )
+    ))
+}
+
+fn next_path_mask(path_mask: Number) -> Number {
+    path_mask * 2_u32.to_bigint().unwrap()
+}
+
+fn make_simple_argbindings(
+    argbindings: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+    path_mask: Number,
+    current_path: Number,
+    prog_args: Rc<SExp>
+) {
+    match prog_args.borrow() {
+        SExp::Cons(_,a,b) => {
+            make_simple_argbindings(
+                argbindings,
+                next_path_mask(path_mask.clone()),
+                current_path.clone(),
+                a.clone()
+            );
+            make_simple_argbindings(
+                argbindings,
+                next_path_mask(path_mask.clone()),
+                current_path.clone() | path_mask.clone(),
+                b.clone()
+            );
+        },
+        SExp::Atom(l,n) => {
+            let borrowed_prog_args: &SExp = prog_args.borrow();
+            // Alternatively, by path
+            // at_path(current_path.clone() | path_mask.clone(), l.clone())
+            argbindings.insert(
+                n.clone(),
+                Rc::new(BodyForm::Value(borrowed_prog_args.clone()))
+            );
+        },
+        _ => { }
+    }
+}
+
+fn compile_pre_forms(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    pre_forms: Vec<Rc<SExp>>
+) -> Result<SExp, CompileErr> {
+    let g = frontend(opts.clone(), pre_forms)?;
+    /*
+    println!("helpers {}", g.helpers.len());
+    let evaluator = Evaluator::new(
+        opts.clone(),
+        runner.clone(),
+        g.helpers.clone()
+    );
+    let mut optimized_helpers: Vec<HelperForm> = Vec::new();
+    println!("frontend form {}", g.to_sexp().to_string());
+    for h in g.helpers.iter() {
+        match h {
+            HelperForm::Defun(loc, name, inline, args, body) => {
+                let body_rc = evaluator.shrink_bodyform(
+                    allocator,
+                    args.clone(),
+                    &HashMap::new(),
+                    body.clone(),
+                    true
+                )?;
+                let new_helper = HelperForm::Defun(
+                    loc.clone(),
+                    name.clone(),
+                    *inline,
+                    args.clone(),
+                    body_rc.clone()
+                );
+                println!("optimized helper {} -> {}", h.to_sexp().to_string(), new_helper.to_sexp().to_string());
+                optimized_helpers.push(new_helper);
+            },
+            obj => { optimized_helpers.push(obj.clone()); }
+        }
+    }
+    let new_evaluator = Evaluator::new(
+        opts.clone(),
+        runner.clone(),
+        optimized_helpers.clone()
+    );
+    let shrunk = new_evaluator.shrink_bodyform(
+        allocator,
+        g.args.clone(),
+        &HashMap::new(),
+        g.exp.clone(),
+        true
+    )?;
+    */
+    let compileform = CompileForm {
+        loc: g.loc.clone(),
+        args: g.args.clone(),
+        helpers: g.helpers.clone(), // optimized_helpers.clone(),
+        exp: g.exp.clone()
+    };
+    println!("compile_file {}", compileform.to_sexp().to_string());
+    codegen(allocator, runner, opts.clone(), &compileform)
+}
+
 pub fn compile_file(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -38,7 +153,7 @@ pub fn compile_file(
     let pre_forms =
         parse_sexp(Srcloc::start(&opts.filename()), content).map_err(|e| CompileErr(e.0, e.1))?;
 
-    frontend(opts.clone(), pre_forms).and_then(|g| codegen(allocator, runner, opts.clone(), &g))
+    compile_pre_forms(allocator, runner, opts, pre_forms)
 }
 
 pub fn run_optimizer(
@@ -167,7 +282,7 @@ impl CompilerOpts for DefaultCompilerOpts {
         sexp: Rc<SExp>,
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
-        frontend(me.clone(), vec![sexp]).and_then(|g| codegen(allocator, runner, me.clone(), &g))
+        compile_pre_forms(allocator, runner, me, vec!(sexp.clone()))
     }
 }
 

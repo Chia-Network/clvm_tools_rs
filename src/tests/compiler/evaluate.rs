@@ -17,7 +17,6 @@ use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
-    let prims = prim_map();
     let opts = Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));
     let loc = Srcloc::start(&"*program*".to_string());
     parse_sexp(loc.clone(), &s).map_err(|e| {
@@ -29,7 +28,6 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
         let e = Evaluator::new(
             opts.clone(),
             runner,
-            prims,
             program.helpers
         );
         return e.shrink_bodyform(

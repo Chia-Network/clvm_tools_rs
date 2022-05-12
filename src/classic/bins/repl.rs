@@ -76,7 +76,6 @@ fn count_depth(s: &String) -> i32 {
 fn main() {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
-    let prims = prim_map();
     let opts = Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));
     let loc = Srcloc::start(&"*program*".to_string());
     let stdin = io::stdin();
@@ -106,7 +105,6 @@ fn main() {
     let mut e = Evaluator::new(
         opts.clone(),
         runner.clone(),
-        prims.clone(),
         start_program_fe.helpers.clone(),
     );
 

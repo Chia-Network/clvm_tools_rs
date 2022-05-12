@@ -311,13 +311,12 @@ impl Evaluator {
     pub fn new(
         opts: Rc<CompilerOpts>,
         runner: Rc<dyn TRunProgram>,
-        prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
         helpers: Vec<HelperForm>,
     ) -> Self {
         Evaluator {
-            opts: opts,
+            opts: opts.clone(),
             runner: runner,
-            prims: prims,
+            prims: opts.prim_map(),
             helpers: helpers,
         }
     }
@@ -331,6 +330,9 @@ impl Evaluator {
         body: Rc<BodyForm>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
+        println!("shrink_bodyform args {} body {}", prog_args.to_string(), body.to_sexp().to_string());
+        show_env(&env);
+        println!("-- env");
         match body.borrow() {
             BodyForm::Let(l, LetFormKind::Parallel, bindings, body) => {
                 let updated_bindings = update_parallel_bindings(env, bindings);
@@ -483,7 +485,7 @@ impl Evaluator {
                                     )
                                 })
                             },
-                            Some(HelperForm::Defun(l, name, inline, args, body)) => {
+                            Some(HelperForm::Defun(l, name, inline, args, fun_body)) => {
                                 if !inline && only_inline {
                                     return Ok(body.clone());
                                 }
@@ -512,11 +514,14 @@ impl Evaluator {
                                     );
                                 }
 
+                                println!("shrink function: helpers {} args {} body {}", self.helpers.len(), prog_args.to_string(), fun_body.to_sexp().to_string());
+                                show_env(&argument_captures);
+                                println!("-- env");
                                 self.shrink_bodyform(
                                     allocator,
                                     args.clone(),
                                     &argument_captures,
-                                    body,
+                                    fun_body,
                                     only_inline
                                 )
                             },
@@ -539,6 +544,7 @@ impl Evaluator {
                                         Rc::new(SExp::Nil(l.clone()))
                                     ));
 
+                                    println!("com - helpers = {}", self.helpers.len());
                                     for h in self.helpers.iter() {
                                         end_of_list = Rc::new(SExp::Cons(
                                             l.clone(),
@@ -559,7 +565,9 @@ impl Evaluator {
                                         )),
                                     );
 
+                                    println!("compile_code {}", use_body.to_string());
                                     let compiled = self.compile_code(allocator, false, Rc::new(use_body))?;
+                                    println!("compiled {}", compiled.to_string());
                                     let compiled_borrowed: &SExp = compiled.borrow();
                                     Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
                                 } else {
@@ -689,6 +697,7 @@ impl Evaluator {
             )),
         ));
 
+        println!("compile macro body {}", use_body.to_string());
         let compiled = self.compile_code(allocator, false, use_body)?;
         self.run_prim(
             allocator,
