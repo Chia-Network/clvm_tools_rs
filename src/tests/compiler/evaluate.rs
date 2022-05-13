@@ -100,3 +100,11 @@ fn test_basic_expand_macro_4() {
         "(q . 6)"
     );
 }
+
+#[test]
+fn test_expand_with_recursive_1() {
+    assert_eq!(
+        shrink_expr_from_string("(mod () (defun factorial (input_$_11) (if (= input_$_11 1) 1 (* (factorial (- input_$_11 1)) input_$_11))) (factorial 3))".to_string()).unwrap(),
+        "(q . 6)"
+    );
+}

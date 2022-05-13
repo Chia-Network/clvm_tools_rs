@@ -86,7 +86,7 @@ fn compile_pre_forms(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
-    pre_forms: Vec<Rc<SExp>>
+    pre_forms: Vec<Rc<SExp>>,
 ) -> Result<SExp, CompileErr> {
     let g = frontend(opts.clone(), pre_forms)?;
     /*
@@ -141,6 +141,10 @@ fn compile_pre_forms(
         exp: g.exp.clone()
     };
     println!("compile_file {}", compileform.to_sexp().to_string());
+    match opts.compiler() {
+        None => { println!("no compiler given, in_defun {}", opts.in_defun()); },
+        Some(c) => { println!("compiler with {} macros {} functions", c.macros.len(), c.defuns.len()); }
+    }
     codegen(allocator, runner, opts.clone(), &compileform)
 }
 

@@ -309,7 +309,7 @@ fn synthesize_args(template: Rc<SExp>, env: &HashMap<Vec<u8>, Rc<BodyForm>>) -> 
 
 impl Evaluator {
     pub fn new(
-        opts: Rc<CompilerOpts>,
+        opts: Rc<dyn CompilerOpts>,
         runner: Rc<dyn TRunProgram>,
         helpers: Vec<HelperForm>,
     ) -> Self {
