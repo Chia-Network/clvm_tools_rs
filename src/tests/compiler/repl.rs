@@ -34,3 +34,41 @@ fn test_basic_repl_constant() {
         "(q . 51)"
     );
 }
+
+#[test]
+fn test_basic_recursion() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun fact-base (VALUE) VALUE)",
+            "(defun factorial (VALUE) (if (= VALUE 1) (fact-base VALUE) (* VALUE (factorial (- VALUE 1)))))",
+            "(factorial 5)"
+        ]).unwrap().unwrap(),
+        "(q . 120)"
+    );
+}
+
+#[test]
+fn test_pw_coin() {
+    let startvec = vec![
+        "(defconstant CREATE_COIN 51)",
+        "(defun check-password (password)",
+        "  (let ((password-hash (sha256 password))",
+        "        (real-hash 0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824))",
+        "    (= password-hash real-hash)",
+        "    )",
+        "  )"
+    ];
+    let mut yesvec = startvec.clone();
+    yesvec.push("(check-password \"hello\")");
+    let mut novec = startvec.clone();
+    novec.push("(check-password \"hithere\")");
+
+    assert_eq!(
+        test_repl_outcome(yesvec).unwrap().unwrap(),
+        "(q . 1)"
+    );
+    assert_eq!(
+        test_repl_outcome(novec).unwrap().unwrap(),
+        "(q)"
+    );
+}
