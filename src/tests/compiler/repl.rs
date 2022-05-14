@@ -72,3 +72,82 @@ fn test_pw_coin() {
         "(q)"
     );
 }
+
+#[test]
+fn test_toplevel_macros_1() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defconstant COND 1)",
+            "(if COND 1 0)"
+        ]).unwrap().unwrap(),
+        "(q . 1)"
+    );
+}
+
+#[test]
+fn test_toplevel_macros_2() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(list 1 2 3)"
+        ]).unwrap().unwrap(),
+        "(q 1 2 3)"
+    );
+}
+
+#[test]
+fn test_last_of_pwcoin_1() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defconstant CREATE_COIN 51)",
+            "(defun check-password (password)",
+            "  (let ((password-hash (sha256 password))",
+            "        (real-hash 0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824))",
+            "    (= password-hash real-hash)",
+            "    )",
+            "  )",
+            "(defun doit (password new_puzhash amount)",
+            "  (if (check-password password)",
+            "    (list (list CREATE_COIN new_puzhash amount))",
+            "    (x)",
+            "    )",
+            "  )",
+            "(doit \"hello\" 0xdeadbeef 1)"
+        ]).unwrap().unwrap(),
+        "(q (51 3735928559 1))"
+    );
+}
+
+#[test]
+fn test_defconstant_2() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defconstant A 1)",
+            "(defconstant B 2)",
+            "B"
+        ]).unwrap().unwrap(),
+        "(q . 2)"
+    );
+}
+
+#[test]
+fn test_last_of_pwcoin_2() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defconstant CREATE_COIN 51)",
+            "(defun check-password (password)",
+            "  (let ((password-hash (sha256 password))",
+            "        (real-hash 0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824))",
+            "    (= password-hash real-hash)",
+            "    )",
+            "  )",
+            "(defconstant password \"hello\")",
+            "(defconstant new_puzhash 0xdeadbeef)",
+            "(defconstant amount 1)",
+            "(if (check-password password)",
+            "  (list (list CREATE_COIN new_puzhash amount))",
+            "  (x)",
+            "  )"
+        ]).unwrap().unwrap(),
+        "(q (51 3735928559 1))"
+    );
+}

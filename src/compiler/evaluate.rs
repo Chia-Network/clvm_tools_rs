@@ -763,7 +763,7 @@ impl Evaluator {
         // We can only reduce com if all bindings are
         // primitive.
         let updated_opts = self.opts
-            .set_stdenv(false)
+            .set_stdenv(!in_defun)
             .set_in_defun(in_defun);
 
         let com_result = updated_opts
@@ -793,7 +793,9 @@ impl Evaluator {
         for h in self.helpers.iter() {
             match h {
                 HelperForm::Defconstant(_, n, body) => {
-                    return Some(body.clone());
+                    if n == name {
+                        return Some(body.clone());
+                    }
                 },
                 _ => { }
             }
