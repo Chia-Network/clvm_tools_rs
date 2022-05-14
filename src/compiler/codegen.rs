@@ -556,7 +556,6 @@ fn compile_call(
                         )),
                     );
 
-                    println!("compile on behalf of 'com' form");
                     updated_opts
                         .compile_program(allocator, runner, Rc::new(use_body))
                         .map(|code| {
@@ -697,7 +696,6 @@ fn codegen_(
 ) -> Result<PrimaryCodegen, CompileErr> {
     match h {
         HelperForm::Defun(loc, name, inline, args, body) => {
-            println!("compiling defun with {} defuns {} macros env {}", compiler.defuns.len(), compiler.macros.len(), compiler.env.to_string());
             if *inline {
                 // Note: this just replaces a dummy function inserted earlier.
                 // The real redefinition check is in dummy_functions.
@@ -715,7 +713,6 @@ fn codegen_(
                     .set_in_defun(true)
                     .set_stdenv(false)
                     .set_start_env(Some(combine_defun_env(compiler.env.clone(), args.clone())));
-                println!("compiler macros {:?} funs {:?}", updated_opts.compiler().map(|c| c.macros.len()), updated_opts.compiler().map(|c| c.defuns.len()));
 
                 let opt = if opts.optimize() {
                     // Run optimizer on frontend style forms.
@@ -746,7 +743,6 @@ fn codegen_(
                     )),
                 );
 
-                println!("compile on behalf of function body");
                 updated_opts
                     .compile_program(allocator, runner.clone(), Rc::new(tocompile))
                     .and_then(|code| {
@@ -963,7 +959,6 @@ fn start_codegen(allocator: &mut Allocator, runner: Rc<dyn TRunProgram>, opts: R
                         })?
                 },
                 HelperForm::Defmacro(loc, name, args, body) => {
-                    println!("process macro {}", h.to_sexp().to_string());
                     let macro_program = Rc::new(SExp::Cons(
                         loc.clone(),
                         Rc::new(SExp::Atom(loc.clone(), "mod".as_bytes().to_vec())),
@@ -1168,7 +1163,6 @@ pub fn codegen(
     let to_process = compiler.to_process.clone();
 
     for f in to_process {
-        println!("process function {} with env {}", f.to_sexp().to_string(), compiler.env.to_string());
         compiler = codegen_(allocator, runner.clone(), opts.clone(), &compiler, &f)?;
     }
 

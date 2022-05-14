@@ -94,62 +94,12 @@ fn compile_pre_forms(
     pre_forms: Vec<Rc<SExp>>,
 ) -> Result<SExp, CompileErr> {
     let g = frontend(opts.clone(), pre_forms)?;
-    /*
-    println!("helpers {}", g.helpers.len());
-    let evaluator = Evaluator::new(
-        opts.clone(),
-        runner.clone(),
-        g.helpers.clone()
-    );
-    let mut optimized_helpers: Vec<HelperForm> = Vec::new();
-    println!("frontend form {}", g.to_sexp().to_string());
-    for h in g.helpers.iter() {
-        match h {
-            HelperForm::Defun(loc, name, inline, args, body) => {
-                let body_rc = evaluator.shrink_bodyform(
-                    allocator,
-                    args.clone(),
-                    &HashMap::new(),
-                    body.clone(),
-                    true
-                )?;
-                let new_helper = HelperForm::Defun(
-                    loc.clone(),
-                    name.clone(),
-                    *inline,
-                    args.clone(),
-                    body_rc.clone()
-                );
-                println!("optimized helper {} -> {}", h.to_sexp().to_string(), new_helper.to_sexp().to_string());
-                optimized_helpers.push(new_helper);
-            },
-            obj => { optimized_helpers.push(obj.clone()); }
-        }
-    }
-    let new_evaluator = Evaluator::new(
-        opts.clone(),
-        runner.clone(),
-        optimized_helpers.clone()
-    );
-    let shrunk = new_evaluator.shrink_bodyform(
-        allocator,
-        g.args.clone(),
-        &HashMap::new(),
-        g.exp.clone(),
-        true
-    )?;
-    */
     let compileform = CompileForm {
         loc: g.loc.clone(),
         args: g.args.clone(),
-        helpers: g.helpers.clone(), // optimized_helpers.clone(),
+        helpers: g.helpers.clone(),
         exp: g.exp.clone()
     };
-    println!("compile_file {}", compileform.to_sexp().to_string());
-    match opts.compiler() {
-        None => { println!("no compiler given, in_defun {}", opts.in_defun()); },
-        Some(c) => { println!("compiler with {} macros {} functions", c.macros.len(), c.defuns.len()); }
-    }
     codegen(allocator, runner, opts.clone(), &compileform)
 }
 
