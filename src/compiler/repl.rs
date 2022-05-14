@@ -167,10 +167,10 @@ impl Repl {
             if parsed_program.is_empty() {
                 return Ok(None);
             }
-            let fa = first_of_alist(parsed_program[0].clone())?;
-            let is_helper = self.toplevel_forms.contains(
+            let fa = first_of_alist(parsed_program[0].clone());
+            let is_helper = fa.map(|fa| self.toplevel_forms.contains(
                 &fa.to_string()
-            );
+            )).unwrap_or_else(|_| false);
 
             if is_helper {
                 let prog0 = parsed_program[0].clone();
@@ -195,7 +195,7 @@ impl Repl {
                         &HashMap::new(),
                         program.exp.clone(),
                         false
-                    );
+                        );
                 }).map(|x| Some(x))
             }
         })

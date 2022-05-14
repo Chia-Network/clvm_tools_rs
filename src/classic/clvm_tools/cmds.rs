@@ -361,7 +361,7 @@ pub fn cldb(args: &Vec<String>) {
 
     let unopt_res = compile_file(&mut allocator, runner.clone(), opts.clone(), &input_program);
 
-    let mut program = Rc::new(sexp::SExp::Nil(Srcloc::start(&"*nil*".to_string())));
+    let program;
     let mut output = Vec::new();
     let yamlette_string = |to_print: Vec<BTreeMap<String, String>>| match yamlette!(write; [[( # FORCE_QUOTES => to_print )]])
     {

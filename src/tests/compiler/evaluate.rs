@@ -1,10 +1,9 @@
 use std::collections::HashMap;
-use std::env;
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::compiler::comptypes::{CompilerOpts, CompileErr};
+use crate::compiler::comptypes::CompileErr;
 use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::evaluate::{Evaluator};
 use crate::compiler::frontend::{frontend, from_clvm};
