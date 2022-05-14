@@ -16,7 +16,7 @@ use crate::compiler::comptypes::{
     HelperForm,
     LetFormKind
 };
-use crate::compiler::frontend::{from_clvm, frontend};
+use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
@@ -30,7 +30,7 @@ pub enum ArgInputs {
 }
 
 pub struct Evaluator {
-    opts: Rc<CompilerOpts>,
+    opts: Rc<dyn CompilerOpts>,
     runner: Rc<dyn TRunProgram>,
     prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     helpers: Vec<HelperForm>,
@@ -422,7 +422,7 @@ impl Evaluator {
                 }
 
                 let head_expr = parts[0].clone();
-                let mut arguments_to_convert: Vec<Rc<BodyForm>> =
+                let arguments_to_convert: Vec<Rc<BodyForm>> =
                     parts.iter().skip(1).map(|x| x.clone()).collect();
 
                 match head_expr.borrow() {
@@ -490,7 +490,7 @@ impl Evaluator {
                                     return Ok(body.clone());
                                 }
 
-                                let mut argument_captures_untranslated =
+                                let argument_captures_untranslated =
                                     build_argument_captures(
                                         call_loc,
                                         &arguments_to_convert, args.clone()

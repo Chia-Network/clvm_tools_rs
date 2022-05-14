@@ -239,7 +239,7 @@ impl CldbRunEnv {
             })
             .and_then(|coords| {
                 let use_line = coords.0;
-                let mut use_col = coords.1;
+                let use_col = coords.1;
                 let mut end_col = coords.2;
 
                 if use_line >= self.program_lines.len() {

@@ -12,8 +12,13 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs};
 use crate::compiler::codegen::codegen;
-use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen, HelperForm, BodyForm, CompileForm};
-use crate::compiler::evaluate::Evaluator;
+use crate::compiler::comptypes::{
+    CompileErr,
+    CompilerOpts,
+    PrimaryCodegen,
+    BodyForm,
+    CompileForm
+};
 use crate::compiler::frontend::frontend;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;

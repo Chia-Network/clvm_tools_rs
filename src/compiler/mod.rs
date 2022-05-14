@@ -12,6 +12,7 @@ mod optimize;
 pub mod preprocessor;
 pub mod prims;
 pub mod rename;
+pub mod repl;
 pub mod runtypes;
 pub mod sexp;
 pub mod srcloc;
