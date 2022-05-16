@@ -3,8 +3,9 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::compiler::comptypes::CompileErr;
+use crate::compiler::compiler::compile_file;
 use crate::compiler::compiler::DefaultCompilerOpts;
+use crate::compiler::comptypes::{CompilerOpts, CompileErr};
 use crate::compiler::evaluate::{Evaluator};
 use crate::compiler::frontend::{frontend, from_clvm};
 use crate::compiler::prims::prim_map;
@@ -23,7 +24,6 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
     }).and_then(|parsed_program| {
         return frontend(opts.clone(), parsed_program);
     }).and_then(|program| {
-        let mut captures = HashMap::new();
         let e = Evaluator::new(
             opts.clone(),
             runner,
@@ -32,7 +32,7 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
         return e.shrink_bodyform(
             &mut allocator,
             program.args.clone(),
-            &captures,
+            &HashMap::new(),
             program.exp.clone(),
             false
         );
@@ -74,7 +74,6 @@ fn test_basic_expand_macro_3() {
 }
 
 fn convert_clvm_to_chialisp(s: String) -> Result<Rc<SExp>, CompileErr> {
-    let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
     let prims = prim_map();
     let opts = Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));
@@ -105,5 +104,21 @@ fn test_expand_with_recursive_1() {
     assert_eq!(
         shrink_expr_from_string("(mod () (defun factorial (input_$_11) (if (= input_$_11 1) 1 (* (factorial (- input_$_11 1)) input_$_11))) (factorial 3))".to_string()).unwrap(),
         "(q . 6)"
+    );
+}
+
+fn compile_with_fe_opt(s: String) -> Result<String, CompileErr> {
+    let mut allocator = Allocator::new();
+    let runner = Rc::new(DefaultProgramRunner::new());
+    let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));
+    opts = opts.set_frontend_opt(true);
+    compile_file(&mut allocator, runner, opts, &s).map(|r| r.to_string())
+}
+
+#[test]
+fn test_simple_fe_opt_compile_1() {
+    assert_eq!(
+        compile_with_fe_opt("(mod () 99)".to_string()).unwrap(),
+        "(2 (1 1 . 99) (4 (1) 1))".to_string()
     );
 }

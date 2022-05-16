@@ -789,6 +789,7 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
         parentfns: HashSet::new(),
         env: Rc::new(SExp::Cons(l.clone(), nil_rc.clone(), nil_rc.clone())),
         to_process: Vec::new(),
+        orig_help: Vec::new(),
         final_expr: Rc::new(BodyForm::Quoted(nil.clone())),
         final_code: None,
     }
@@ -1005,7 +1006,8 @@ fn start_codegen(allocator: &mut Allocator, runner: Rc<dyn TRunProgram>, opts: R
         )),
     };
 
-    use_compiler.to_process = let_helpers_with_expr;
+    use_compiler.to_process = let_helpers_with_expr.clone();
+    use_compiler.orig_help = let_helpers_with_expr.clone();
     use_compiler.final_expr = expr.clone();
 
     Ok(use_compiler)

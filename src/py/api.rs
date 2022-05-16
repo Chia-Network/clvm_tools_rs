@@ -83,13 +83,13 @@ impl PythonRunStep {
         // Let the runner know we want another step.
         self.tx
             .send(false)
-            .map_err(|e| CldbError::new_err("error sending to service thread"))?;
+            .map_err(|e| CldbError::new_err(format!("error sending to service thread: {:?}", e)))?;
 
         // Receive the step result.
         let res = self
             .rx
             .recv()
-            .map_err(|e| CldbError::new_err("error receiving from service thread"))?;
+            .map_err(|e| CldbError::new_err(format!("error receiving from service thread: {:?}", e)))?;
 
         if res.0 {
             self.ended = true;

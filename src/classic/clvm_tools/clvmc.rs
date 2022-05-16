@@ -1,4 +1,5 @@
 use std::fs;
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 use std::rc::Rc;
@@ -27,46 +28,50 @@ use crate::compiler::comptypes::CompileErr;
 use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::runtypes::RunFailure;
 
-pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> bool {
-    match proper_list(allocator, sexp, true) {
-        None => {
-            return false;
-        }
-        Some(l) => {
-            for elt in l.iter() {
-                if detect_modern(allocator, *elt) {
-                    return true;
-                }
-
-                match proper_list(allocator, *elt, true) {
-                    None => {
-                        continue;
-                    }
-                    Some(e) => {
-                        if e.len() != 2 {
-                            continue;
-                        }
-
-                        match (allocator.sexp(e[0]), allocator.sexp(e[1])) {
-                            (SExp::Atom(inc), SExp::Atom(name)) => {
-                                if allocator.buf(&inc) == "include".as_bytes().to_vec()
-                                    && allocator.buf(&name)
-                                        == "*standard-cl-21*".as_bytes().to_vec()
-                                {
-                                    return true;
-                                }
-                            }
-                            _ => {
-                                continue;
-                            }
-                        }
-                    }
-                }
+fn include_dialect(allocator: &mut Allocator, dialects: &HashMap<Vec<u8>, i32>, e: &Vec<NodePtr>) -> Option<i32> {
+    if let (SExp::Atom(inc), SExp::Atom(name)) =
+        (allocator.sexp(e[0]), allocator.sexp(e[1]))
+    {
+        if allocator.buf(&inc) == "include".as_bytes().to_vec() {
+            if let Some(dialect) = dialects.get(allocator.buf(&name)) {
+                return Some(*dialect);
             }
         }
     }
 
-    false
+    None
+}
+
+pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> Option<i32> {
+    let mut dialects = HashMap::new();
+    dialects.insert("*standard-cl-21*".as_bytes().to_vec(), 21);
+    dialects.insert("*standard-cl-22*".as_bytes().to_vec(), 22);
+
+    proper_list(allocator, sexp, true).and_then(|l| {
+        for elt in l.iter() {
+            if let Some(dialect) = detect_modern(allocator, *elt) {
+                return Some(dialect);
+            }
+
+            match proper_list(allocator, *elt, true) {
+                None => {
+                    continue;
+                }
+
+                Some(e) => {
+                    if e.len() != 2 {
+                        continue;
+                    }
+
+                    if let Some(dialect) = include_dialect(allocator, &dialects, &e) {
+                        return Some(dialect);
+                    }
+                }
+            }
+        }
+
+        None
+    })
 }
 
 fn compile_clvm_text(
@@ -78,10 +83,11 @@ fn compile_clvm_text(
     let ir_src = read_ir(&text).map_err(|s| EvalErr(allocator.null(), s))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
 
-    if detect_modern(allocator, assembled_sexp) {
+    if let Some(dialect) = detect_modern(allocator, assembled_sexp) {
         let runner = Rc::new(DefaultProgramRunner::new());
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
             .set_optimize(true)
+            .set_frontend_opt(dialect > 21)
             .set_search_paths(&search_paths);
 
         let unopt_res = compile_file(allocator, runner.clone(), opts.clone(), &text);

@@ -1,5 +1,5 @@
 use std::borrow::Borrow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -17,8 +17,10 @@ use crate::compiler::comptypes::{
     CompilerOpts,
     PrimaryCodegen,
     BodyForm,
-    CompileForm
+    CompileForm,
+    HelperForm
 };
+use crate::compiler::evaluate::Evaluator;
 use crate::compiler::frontend::frontend;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
@@ -35,8 +37,11 @@ pub struct DefaultCompilerOpts {
     pub in_defun: bool,
     pub stdenv: bool,
     pub optimize: bool,
+    pub frontend_opt: bool,
     pub start_env: Option<Rc<SExp>>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+
+    known_dialects: Rc<HashMap<String, String>>
 }
 
 fn at_path(path_mask: Number, loc: Srcloc) -> Rc<BodyForm> {
@@ -87,6 +92,77 @@ fn make_simple_argbindings(
     }
 }
 
+fn fe_opt(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    compileform: CompileForm
+) -> Result<CompileForm, CompileErr> {
+    let mut compiler_helpers = compileform.helpers.clone();
+    let mut used_names = HashSet::new();
+
+    if !opts.in_defun() {
+        for c in compileform.helpers.iter() {
+            used_names.insert(c.name().clone());
+        }
+
+        for helper in (opts.compiler().map(|c| c.orig_help.clone()).unwrap_or_else(|| Vec::new())).iter() {
+            if !used_names.contains(helper.name()) {
+                compiler_helpers.push(helper.clone());
+            }
+        }
+    }
+
+    let evaluator = Evaluator::new(
+        opts.clone(),
+        runner.clone(),
+        compiler_helpers.clone()
+    );
+    let mut optimized_helpers: Vec<HelperForm> = Vec::new();
+    for h in compiler_helpers.iter() {
+        match h {
+            HelperForm::Defun(loc, name, inline, args, body) => {
+                let body_rc = evaluator.shrink_bodyform(
+                    allocator,
+                    Rc::new(SExp::Nil(compileform.args.loc())),
+                    &HashMap::new(),
+                    body.clone(),
+                    true
+                )?;
+                let new_helper = HelperForm::Defun(
+                    loc.clone(),
+                    name.clone(),
+                    *inline,
+                    args.clone(),
+                    body_rc.clone()
+                );
+                optimized_helpers.push(new_helper);
+            },
+            obj => { optimized_helpers.push(obj.clone()); }
+        }
+    }
+    let new_evaluator = Evaluator::new(
+        opts.clone(),
+        runner.clone(),
+        optimized_helpers.clone()
+    );
+
+    let shrunk = new_evaluator.shrink_bodyform(
+        allocator,
+        Rc::new(SExp::Nil(compileform.args.loc())),
+        &HashMap::new(),
+        compileform.exp.clone(),
+        true
+    )?;
+
+    Ok(CompileForm {
+        loc: compileform.loc.clone(),
+        args: compileform.args.clone(),
+        helpers: optimized_helpers.clone(),
+        exp: shrunk
+    })
+}
+
 fn compile_pre_forms(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -94,12 +170,17 @@ fn compile_pre_forms(
     pre_forms: Vec<Rc<SExp>>,
 ) -> Result<SExp, CompileErr> {
     let g = frontend(opts.clone(), pre_forms)?;
-    let compileform = CompileForm {
-        loc: g.loc.clone(),
-        args: g.args.clone(),
-        helpers: g.helpers.clone(),
-        exp: g.exp.clone()
-    };
+    let compileform =
+        if opts.frontend_opt() {
+            fe_opt(allocator, runner.clone(), opts.clone(), g)?
+        } else {
+            CompileForm {
+                loc: g.loc.clone(),
+                args: g.args.clone(),
+                helpers: g.helpers.clone(), // optimized_helpers.clone(),
+                exp: g.exp.clone()
+            }
+        };
     codegen(allocator, runner, opts.clone(), &compileform)
 }
 
@@ -153,6 +234,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn optimize(&self) -> bool {
         self.optimize
     }
+    fn frontend_opt(&self) -> bool {
+        self.frontend_opt
+    }
     fn start_env(&self) -> Option<Rc<SExp>> {
         self.start_env.clone()
     }
@@ -178,6 +262,11 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn set_optimize(&self, optimize: bool) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.optimize = optimize;
+        Rc::new(copy)
+    }
+    fn set_frontend_opt(&self, optimize: bool) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.frontend_opt = optimize;
         Rc::new(copy)
     }
     fn set_compiler(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
@@ -210,10 +299,7 @@ impl CompilerOpts for DefaultCompilerOpts {
                     )
             )"};
             return Ok((filename, macros.to_string()));
-        } else if filename == "*standard-cl-21*" {
-            let content = indoc! {"(
-                (defconstant *chialisp-version* 21)
-            )"};
+        } else if let Some(content) = self.known_dialects.get(&filename) {
             return Ok((filename, content.to_string()));
         }
 
@@ -253,6 +339,14 @@ impl DefaultCompilerOpts {
             prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
         }
 
+        let mut known_dialects: HashMap<String, String> = HashMap::new();
+        known_dialects.insert("*standard-cl-21*".to_string(), indoc!{"(
+           (defconstant *chialisp-version* 21)
+        )"}.to_string());
+        known_dialects.insert("*standard-cl-22*".to_string(), indoc!{"(
+           (defconstant *chialisp-version* 22)
+        )"}.to_string());
+
         DefaultCompilerOpts {
             include_dirs: vec![".".to_string()],
             filename: filename.clone(),
@@ -260,8 +354,10 @@ impl DefaultCompilerOpts {
             in_defun: false,
             stdenv: true,
             optimize: false,
+            frontend_opt: false,
             start_env: None,
             prim_map: Rc::new(prim_map),
+            known_dialects: Rc::new(known_dialects)
         }
     }
 }

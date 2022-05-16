@@ -59,7 +59,7 @@ fn update_parallel_bindings(
 // Tell whether the bodyform is a simple primitive.
 pub fn is_primitive(expr: &BodyForm) -> bool {
     match expr {
-        BodyForm::Quoted(x) => true,
+        BodyForm::Quoted(_) => true,
         BodyForm::Value(SExp::Nil(_)) => true,
         BodyForm::Value(SExp::Integer(_,_)) => true,
         BodyForm::Value(SExp::QuotedString(_,_,_)) => true,
@@ -94,8 +94,6 @@ fn get_bodyform_from_arginput(l: &Srcloc, arginput: &ArgInputs) -> Rc<BodyForm> 
     match arginput {
         ArgInputs::Whole(bf) => bf.clone(),
         ArgInputs::Pair(a,b) => {
-            let a_borrowed: &ArgInputs = a.borrow();
-            let b_borrowed: &ArgInputs = b.borrow();
             let bfa = get_bodyform_from_arginput(l, a);
             let bfb = get_bodyform_from_arginput(l, b);
             Rc::new(make_operator2(
@@ -120,18 +118,16 @@ fn create_argument_captures(
     function_arg_spec: Rc<SExp>
 ) -> Result<(), CompileErr> {
     match (formed_arguments, function_arg_spec.borrow()) {
-        (_, SExp::Nil(l)) => {
+        (_, SExp::Nil(_)) => {
             Ok(())
         },
         (ArgInputs::Whole(bf), SExp::Cons(l,f,r)) => {
             match bf.borrow() {
-                BodyForm::Quoted(SExp::Cons(la,fa,ra)) => {
+                BodyForm::Quoted(SExp::Cons(_,fa,ra)) => {
                     // Argument destructuring splits a quoted sexp that can itself
                     // be destructured.
                     let fa_borrowed: &SExp = fa.borrow();
                     let ra_borrowed: &SExp = ra.borrow();
-                    let f_borrowed: &SExp = f.borrow();
-                    let r_borrowed: &SExp = r.borrow();
                     create_argument_captures(
                         argument_captures,
                         &ArgInputs::Whole(Rc::new(BodyForm::Quoted(fa_borrowed.clone()))),
@@ -172,10 +168,7 @@ fn create_argument_captures(
                 }
             }
         },
-        (ArgInputs::Pair(af,ar), SExp::Cons(l,f,r)) => {
-            let af_body = get_bodyform_from_arginput(l, af);
-            let ar_body = get_bodyform_from_arginput(l, ar);
-
+        (ArgInputs::Pair(af,ar), SExp::Cons(_,f,r)) => {
             create_argument_captures(
                 argument_captures,
                 af,
@@ -187,11 +180,11 @@ fn create_argument_captures(
                 r.clone()
             )
         },
-        (ArgInputs::Whole(x), SExp::Atom(l,name)) => {
+        (ArgInputs::Whole(x), SExp::Atom(_,name)) => {
             argument_captures.insert(name.clone(), x.clone());
             Ok(())
         },
-        (ArgInputs::Pair(af,ar), SExp::Atom(l,name)) => {
+        (ArgInputs::Pair(_,_), SExp::Atom(l,name)) => {
             argument_captures.insert(name.clone(), get_bodyform_from_arginput(l, formed_arguments));
             Ok(())
         },
@@ -266,21 +259,21 @@ fn show_env(env: &HashMap<Vec<u8>, Rc<BodyForm>>) {
 
 pub fn first_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     match lst.borrow() {
-        SExp::Cons(l,f,r) => Ok(f.clone()),
+        SExp::Cons(_,f,_) => Ok(f.clone()),
         _ => Err(CompileErr(lst.loc(), format!("No first element of {}", lst.to_string())))
     }
 }
 
 pub fn second_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     match lst.borrow() {
-        SExp::Cons(l,f,r) => first_of_alist(r.clone()),
+        SExp::Cons(_,_,r) => first_of_alist(r.clone()),
         _ => Err(CompileErr(lst.loc(), format!("No second element of {}", lst.to_string())))
     }
 }
 
 fn third_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     match lst.borrow() {
-        SExp::Cons(l,f,r) => second_of_alist(r.clone()),
+        SExp::Cons(_,_,r) => second_of_alist(r.clone()),
         _ => Err(CompileErr(lst.loc(), format!("No third element of {}", lst.to_string())))
     }
 }
@@ -321,6 +314,278 @@ impl Evaluator {
         }
     }
 
+    fn invoke_macro_expansion(
+        &self,
+        allocator: &mut Allocator,
+        l: Srcloc,
+        call_loc: Srcloc,
+        program: Rc<CompileForm>,
+        prog_args: Rc<SExp>,
+        arguments_to_convert: &Vec<Rc<BodyForm>>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        // Pass the SExp representation of the expressions into
+        // the macro after forming an argument sexp and then
+        let mut macro_args = Rc::new(SExp::Nil(l.clone()));
+        for i_reverse in 0..arguments_to_convert.len() {
+            let i = arguments_to_convert.len() - i_reverse - 1;
+            let arg_repr = arguments_to_convert[i].to_sexp();
+            macro_args = Rc::new(SExp::Cons(
+                l.clone(),
+                arg_repr,
+                macro_args
+            ));
+        }
+
+        let macro_expansion =
+            self.expand_macro(
+                allocator,
+                l.clone(),
+                program.clone(),
+                macro_args
+            )?;
+
+        let input_sexp = dequote(call_loc.clone(), macro_expansion)?;
+        let frontend_macro_input = Rc::new(SExp::Cons(
+            l.clone(),
+            Rc::new(SExp::atom_from_string(
+                l.clone(),
+                &"mod".to_string()
+            )),
+            Rc::new(SExp::Cons(
+                l.clone(),
+                prog_args.clone(),
+                Rc::new(SExp::Cons(
+                    l.clone(),
+                    input_sexp,
+                    Rc::new(SExp::Nil(l.clone()))
+                ))
+            ))
+        ));
+
+        frontend(self.opts.clone(), vec!(frontend_macro_input)).and_then(|program| {
+            self.shrink_bodyform(
+                allocator,
+                prog_args.clone(),
+                env,
+                program.exp.clone(),
+                false
+            )
+        })
+    }
+
+    fn invoke_primitive(
+        &self,
+        allocator: &mut Allocator,
+        l: Srcloc,
+        call_name: &Vec<u8>,
+        parts: &Vec<Rc<BodyForm>>,
+        body: Rc<BodyForm>,
+        prog_args: Rc<SExp>,
+        arguments_to_convert: &Vec<Rc<BodyForm>>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        only_inline: bool
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        let mut all_primitive = true;
+        let mut target_vec: Vec<Rc<BodyForm>> =
+            parts.clone();
+
+        if call_name == &"@".as_bytes().to_vec() {
+            // Synthesize the environment for this function
+            Ok(Rc::new(BodyForm::Quoted(SExp::Cons(
+                l.clone(),
+                Rc::new(SExp::Nil(l.clone())),
+                prog_args
+            ))))
+        } else if call_name == &"com".as_bytes().to_vec() {
+            let mut end_of_list = Rc::new(SExp::Cons(
+                l.clone(),
+                arguments_to_convert[0].to_sexp(),
+                Rc::new(SExp::Nil(l.clone()))
+            ));
+
+            for h in self.helpers.iter() {
+                end_of_list = Rc::new(SExp::Cons(
+                    l.clone(),
+                    h.to_sexp(),
+                    end_of_list
+                ))
+            }
+
+            let use_body = SExp::Cons(
+                l.clone(),
+                Rc::new(SExp::Atom(
+                    l.clone(), "mod".as_bytes().to_vec()
+                )),
+                Rc::new(SExp::Cons(
+                    l.clone(),
+                    prog_args.clone(),
+                    end_of_list
+                )),
+            );
+
+            let compiled = self.compile_code(allocator, false, Rc::new(use_body))?;
+            let compiled_borrowed: &SExp = compiled.borrow();
+            Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
+        } else {
+            let pres = self.lookup_prim(l.clone(), call_name).map(|prim| {
+                // Reduce all arguments.
+                let mut converted_args =
+                    SExp::Nil(l.clone());
+
+                for i_reverse in 0..arguments_to_convert.len() {
+                    let i =
+                        arguments_to_convert.len() - i_reverse - 1;
+                    let shrunk = self.shrink_bodyform(
+                        allocator,
+                        prog_args.clone(),
+                        env,
+                        arguments_to_convert[i].clone(),
+                        only_inline
+                    )?;
+
+                    target_vec[i+1] = shrunk.clone();
+
+                    if !arg_inputs_primitive(Rc::new(ArgInputs::Whole(shrunk.clone()))) {
+                        all_primitive = false;
+                    }
+
+                    converted_args = SExp::Cons(
+                        l.clone(),
+                        shrunk.to_sexp(),
+                        Rc::new(converted_args)
+                    );
+                }
+
+                if all_primitive {
+                    match self.run_prim(
+                        allocator,
+                        l.clone(),
+                        make_prim_call(
+                            l.clone(),
+                            prim.clone(),
+                            Rc::new(converted_args)
+                        ),
+                        Rc::new(
+                            SExp::Nil(l.clone())
+                        )
+                    ) {
+                        Ok(res) => Ok(res),
+                        Err(e) => {
+                            if only_inline {
+                                Ok(Rc::new(BodyForm::Call(
+                                    l.clone(),
+                                    target_vec.clone()
+                                )))
+                            } else {
+                                Err(e)
+                            }
+                        }
+                    }
+                } else {
+                    let reformed = BodyForm::Call(
+                        l.clone(),
+                        target_vec.clone()
+                    );
+                    Ok(Rc::new(reformed))
+                }
+            }).unwrap_or_else(|| {
+                // Build SExp arguments for external call or
+                // return the unevaluated chunk with minimized
+                // arguments.
+                Err(CompileErr(
+                    l.clone(),
+                    format!("Don't yet support this call type {} {:?}", body.to_sexp().to_string(), body)
+                ))
+            })?;
+            Ok(pres)
+        }
+    }
+
+    fn handle_invoke(
+        &self,
+        allocator: &mut Allocator,
+        l: Srcloc,
+        call_loc: Srcloc,
+        call_name: &Vec<u8>,
+        head_expr: Rc<BodyForm>,
+        parts: &Vec<Rc<BodyForm>>,
+        body: Rc<BodyForm>,
+        prog_args: Rc<SExp>,
+        arguments_to_convert: &Vec<Rc<BodyForm>>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        only_inline: bool
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        let helper = select_helper(&self.helpers, call_name);
+        match helper {
+            Some(HelperForm::Defconstant(_, _, _)) => {
+                Err(CompileErr(
+                    call_loc.clone(),
+                    format!("Can't call constant {}", head_expr.to_sexp().to_string())
+                ))
+            },
+            Some(HelperForm::Defmacro(l, name, args, program)) => {
+                self.invoke_macro_expansion(
+                    allocator,
+                    l.clone(),
+                    call_loc.clone(),
+                    program,
+                    prog_args.clone(),
+                    arguments_to_convert,
+                    env
+                )
+            },
+            Some(HelperForm::Defun(_, _, inline, args, fun_body)) => {
+                if !inline && only_inline {
+                    return Ok(body.clone());
+                }
+
+                let argument_captures_untranslated =
+                    build_argument_captures(
+                        &call_loc,
+                        &arguments_to_convert, args.clone()
+                    )?;
+
+                let mut argument_captures = HashMap::new();
+                // Do this to protect against misalignment
+                // between argument vec and destructuring.
+                for kv in argument_captures_untranslated.iter() {
+                    let shrunk = self.shrink_bodyform(
+                        allocator,
+                        prog_args.clone(),
+                        env,
+                        kv.1.clone(),
+                        only_inline
+                    )?;
+
+                    argument_captures.insert(
+                        kv.0.clone(),
+                        shrunk.clone()
+                    );
+                }
+
+                self.shrink_bodyform(
+                    allocator,
+                    args.clone(),
+                    &argument_captures,
+                    fun_body,
+                    only_inline
+                )
+            },
+            None => self.invoke_primitive(
+                allocator,
+                l.clone(),
+                call_name,
+                parts,
+                body,
+                prog_args,
+                arguments_to_convert,
+                env,
+                only_inline
+            )
+        }
+    }
+
     // A frontend language evaluator and minifier
     pub fn shrink_bodyform(
         &self,
@@ -331,7 +596,7 @@ impl Evaluator {
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         match body.borrow() {
-            BodyForm::Let(l, LetFormKind::Parallel, bindings, body) => {
+            BodyForm::Let(_, LetFormKind::Parallel, bindings, body) => {
                 let updated_bindings = update_parallel_bindings(env, bindings);
                 self.shrink_bodyform(
                     allocator,
@@ -374,7 +639,7 @@ impl Evaluator {
                     )
                 }
             },
-            BodyForm::Quoted(sexp) => Ok(body.clone()),
+            BodyForm::Quoted(_) => Ok(body.clone()),
             BodyForm::Value(SExp::Atom(l,name)) => {
                 if name == &"@".as_bytes().to_vec() {
                     let literal_args = synthesize_args(
@@ -424,207 +689,19 @@ impl Evaluator {
 
                 match head_expr.borrow() {
                     BodyForm::Value(SExp::Atom(call_loc, call_name)) => {
-                        let helper = select_helper(&self.helpers, call_name);
-                        match helper {
-                            Some(HelperForm::Defconstant(l, _, _)) => {
-                                Err(CompileErr(
-                                    call_loc.clone(),
-                                    format!("Can't call constant {}", head_expr.to_sexp().to_string())
-                                ))
-                            },
-                            Some(HelperForm::Defmacro(l, name, args, program)) => {
-                                // Pass the SExp representation of the expressions into
-                                // the macro after forming an argument sexp and then
-                                let mut macro_args = Rc::new(SExp::Nil(l.clone()));
-                                for i_reverse in 0..arguments_to_convert.len() {
-                                    let i = arguments_to_convert.len() - i_reverse - 1;
-                                    let arg_repr = arguments_to_convert[i].to_sexp();
-                                    macro_args = Rc::new(SExp::Cons(
-                                        l.clone(),
-                                        arg_repr,
-                                        macro_args
-                                    ));
-                                }
-
-                                let macro_expansion =
-                                    self.expand_macro(
-                                        allocator,
-                                        l.clone(),
-                                        program.clone(),
-                                        macro_args
-                                    )?;
-
-                                let input_sexp = dequote(call_loc.clone(), macro_expansion)?;
-                                let frontend_macro_input = Rc::new(SExp::Cons(
-                                    l.clone(),
-                                    Rc::new(SExp::atom_from_string(
-                                        l.clone(),
-                                        &"mod".to_string()
-                                    )),
-                                    Rc::new(SExp::Cons(
-                                        l.clone(),
-                                        prog_args.clone(),
-                                        Rc::new(SExp::Cons(
-                                            l.clone(),
-                                            input_sexp,
-                                            Rc::new(SExp::Nil(l.clone()))
-                                        ))
-                                    ))
-                                ));
-
-                                frontend(self.opts.clone(), vec!(frontend_macro_input)).and_then(|program| {
-                                    self.shrink_bodyform(
-                                        allocator,
-                                        prog_args.clone(),
-                                        &env,
-                                        program.exp.clone(),
-                                        false
-                                    )
-                                })
-                            },
-                            Some(HelperForm::Defun(l, name, inline, args, fun_body)) => {
-                                if !inline && only_inline {
-                                    return Ok(body.clone());
-                                }
-
-                                let argument_captures_untranslated =
-                                    build_argument_captures(
-                                        call_loc,
-                                        &arguments_to_convert, args.clone()
-                                    )?;
-
-                                let mut argument_captures = HashMap::new();
-                                // Do this to protect against misalignment
-                                // between argument vec and destructuring.
-                                for kv in argument_captures_untranslated.iter() {
-                                    let shrunk = self.shrink_bodyform(
-                                        allocator,
-                                        prog_args.clone(),
-                                        env,
-                                        kv.1.clone(),
-                                        only_inline
-                                    )?;
-
-                                    argument_captures.insert(
-                                        kv.0.clone(),
-                                        shrunk.clone()
-                                    );
-                                }
-
-                                self.shrink_bodyform(
-                                    allocator,
-                                    args.clone(),
-                                    &argument_captures,
-                                    fun_body,
-                                    only_inline
-                                )
-                            },
-                            None => {
-                                let mut all_primitive = true;
-                                let mut target_vec: Vec<Rc<BodyForm>> =
-                                    parts.clone();
-
-                                if call_name == &"@".as_bytes().to_vec() {
-                                    // Synthesize the environment for this function
-                                    Ok(Rc::new(BodyForm::Quoted(SExp::Cons(
-                                        l.clone(),
-                                        Rc::new(SExp::Nil(l.clone())),
-                                        prog_args
-                                    ))))
-                                } else if call_name == &"com".as_bytes().to_vec() {
-                                    let mut end_of_list = Rc::new(SExp::Cons(
-                                        l.clone(),
-                                        arguments_to_convert[0].to_sexp(),
-                                        Rc::new(SExp::Nil(l.clone()))
-                                    ));
-
-                                    for h in self.helpers.iter() {
-                                        end_of_list = Rc::new(SExp::Cons(
-                                            l.clone(),
-                                            h.to_sexp(),
-                                            end_of_list
-                                        ))
-                                    }
-
-                                    let use_body = SExp::Cons(
-                                        l.clone(),
-                                        Rc::new(SExp::Atom(
-                                            l.clone(), "mod".as_bytes().to_vec()
-                                        )),
-                                        Rc::new(SExp::Cons(
-                                            l.clone(),
-                                            prog_args.clone(),
-                                            end_of_list
-                                        )),
-                                    );
-
-                                    let compiled = self.compile_code(allocator, false, Rc::new(use_body))?;
-                                    let compiled_borrowed: &SExp = compiled.borrow();
-                                    Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
-                                } else {
-                                    let pres = self.lookup_prim(call_loc.clone(), call_name).map(|prim| {
-                                        // Reduce all arguments.
-                                        let mut converted_args =
-                                            SExp::Nil(call_loc.clone());
-
-                                        for i_reverse in 0..arguments_to_convert.len() {
-                                            let i =
-                                                arguments_to_convert.len() - i_reverse - 1;
-                                            let shrunk = self.shrink_bodyform(
-                                                allocator,
-                                                prog_args.clone(),
-                                                env,
-                                                arguments_to_convert[i].clone(),
-                                                only_inline
-                                            )?;
-
-                                            target_vec[i+1] = shrunk.clone();
-
-                                            if !arg_inputs_primitive(Rc::new(ArgInputs::Whole(shrunk.clone()))) {
-                                                all_primitive = false;
-                                            }
-
-                                            converted_args = SExp::Cons(
-                                                call_loc.clone(),
-                                                shrunk.to_sexp(),
-                                                Rc::new(converted_args)
-                                            );
-                                        }
-
-                                        if all_primitive {
-                                            self.run_prim(
-                                                allocator,
-                                                call_loc.clone(),
-                                                call_name.clone(),
-                                                make_prim_call(
-                                                    call_loc.clone(),
-                                                    prim.clone(),
-                                                    Rc::new(converted_args)
-                                                ),
-                                                Rc::new(
-                                                    SExp::Nil(call_loc.clone())
-                                                )
-                                            )
-                                        } else {
-                                            let reformed = BodyForm::Call(
-                                                call_loc.clone(),
-                                                target_vec.clone()
-                                            );
-                                            Ok(Rc::new(reformed))
-                                        }
-                                    }).unwrap_or_else(|| {
-                                        // Build SExp arguments for external call or
-                                        // return the unevaluated chunk with minimized
-                                        // arguments.
-                                        Err(CompileErr(
-                                            call_loc.clone(),
-                                            format!("Don't yet support this call type {} {:?}", body.to_sexp().to_string(), body)
-                                        ))
-                                    })?;
-                                    Ok(pres)
-                                }
-                            }
-                        }
+                        self.handle_invoke(
+                            allocator,
+                            l.clone(),
+                            call_loc.clone(),
+                            call_name,
+                            head_expr.clone(),
+                            &parts,
+                            body.clone(),
+                            prog_args,
+                            &arguments_to_convert,
+                            env,
+                            only_inline
+                        )
                     },
                     _ => {
                         Err(CompileErr(
@@ -692,7 +769,6 @@ impl Evaluator {
         self.run_prim(
             allocator,
             call_loc.clone(),
-            vec!(1),
             compiled,
             args
         )
@@ -715,7 +791,6 @@ impl Evaluator {
         &self,
         allocator: &mut Allocator,
         call_loc: Srcloc,
-        name: Vec<u8>,
         prim: Rc<SExp>,
         args: Rc<SExp>
     ) -> Result<Rc<BodyForm>, CompileErr> {
@@ -727,13 +802,13 @@ impl Evaluator {
             args
         ).map_err(|e| {
             match e {
-                RunFailure::RunExn(l, s) => {
+                RunFailure::RunExn(_, s) => {
                     CompileErr(
                         call_loc.clone(),
                         format!("exception: {}", s.to_string())
                     )
                 },
-                RunFailure::RunErr(l, s) => {
+                RunFailure::RunErr(_, s) => {
                     CompileErr(call_loc.clone(), s.clone())
                 }
             }
