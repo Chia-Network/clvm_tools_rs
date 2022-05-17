@@ -2,6 +2,7 @@ use js_sys;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem::swap;
+use std::ops::DerefMut;
 use std::rc::Rc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -19,9 +20,10 @@ use crate::compiler::cldb::{
     CldbSingleBespokeOverride,
 };
 use crate::compiler::clvm::{convert_to_clvm_rs, start_step};
-use crate::compiler::compiler::{extract_program_and_env, path_to_function, rewrite_in_program};
+use crate::compiler::compiler::{DefaultCompilerOpts, extract_program_and_env, path_to_function, rewrite_in_program};
 use crate::compiler::comptypes::CompileErr;
 use crate::compiler::prims;
+use crate::compiler::repl::Repl;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
@@ -41,6 +43,13 @@ struct JsRunStep {
     cldbrun: CldbRun,
 }
 
+struct JsRepl {
+    allocator: RefCell<Allocator>,
+    runner: Rc<dyn TRunProgram>,
+    prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    repl: RefCell<Repl>
+}
+
 thread_local! {
     static NEXT_ID: AtomicUsize = {
         return AtomicUsize::new(0);
@@ -48,6 +57,13 @@ thread_local! {
     static RUNNERS: RefCell<HashMap<i32, JsRunStep>> = {
         return RefCell::new(HashMap::new());
     };
+    static REPLS: RefCell<HashMap<i32, JsRepl>> = {
+        return RefCell::new(HashMap::new());
+    };
+}
+
+fn get_next_id() -> i32 {
+    NEXT_ID.with(|n| n.fetch_add(1, Ordering::SeqCst) as i32)
 }
 
 fn insert_runner(this_id: i32, runner: JsRunStep) {
@@ -228,7 +244,7 @@ pub fn create_clvm_runner(
     let cldbenv = CldbRunEnv::new(None, vec![], runner_override);
     let cldbrun = CldbRun::new(runner.clone(), prim_map_rc.clone(), Box::new(cldbenv), step);
 
-    let this_id = NEXT_ID.with(|n| n.fetch_add(1, Ordering::SeqCst) as i32);
+    let this_id = get_next_id();
     insert_runner(
         this_id,
         JsRunStep {
@@ -391,4 +407,65 @@ pub fn compose_run_function(
     };
     sexp_to_stream(&mut allocator, clvm_rs_value, &mut result_stream);
     JsValue::from_str(&result_stream.get_value().hex())
+}
+
+// Create a repl session
+#[wasm_bindgen]
+pub fn create_repl() -> i32 {
+    let allocator = Allocator::new();
+    let opts = Rc::new(DefaultCompilerOpts::new(&"*repl*".to_string()));
+    let runner = Rc::new(DefaultProgramRunner::new());
+    let repl = Repl::new(opts, runner.clone());
+    let new_id = get_next_id();
+    let mut prim_map = HashMap::new();
+
+    for p in prims::prims().iter() {
+        prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
+    }
+
+    REPLS.with(|repls| {
+        repls.replace_with(|repls| {
+            let mut work_repls = HashMap::new();
+            swap(&mut work_repls, repls);
+            work_repls.insert(new_id, JsRepl {
+                allocator: RefCell::new(allocator),
+                runner,
+                prim_map: Rc::new(prim_map),
+                repl: RefCell::new(repl)
+            });
+            work_repls
+        })
+    });
+
+    new_id
+}
+
+#[wasm_bindgen]
+pub fn destroy_repl(repl_id: i32) {
+    REPLS.with(|repls| {
+        repls.replace_with(|repls| {
+            let mut work_repls = HashMap::new();
+            swap(&mut work_repls, repls);
+            work_repls.remove(&repl_id);
+            work_repls
+        })
+    });
+}
+
+#[wasm_bindgen]
+pub fn repl_run_string(repl_id: i32, input: String) -> JsValue {
+    REPLS.with(|repls| {
+        let repls = repls.borrow();
+        if let Some(repl_container) = repls.get(&repl_id) {
+            let mut a_borrowed = repl_container.allocator.borrow_mut();
+            let a = a_borrowed.deref_mut();
+            let mut r_borrowed = repl_container.repl.borrow_mut();
+            let r = r_borrowed.deref_mut();
+            r.process_line(a, input)
+        } else {
+            Err(CompileErr(Srcloc::start(&"*repl*".to_string()), "no such repl".to_string()))
+        }
+    }).map(|v| v.map(|v| js_object_from_sexp(v.to_sexp()))).unwrap_or_else(|e| {
+        Some(create_clvm_runner_err(format!("{}: {}", e.0.to_string(), e.1)))
+    }).unwrap_or_else(|| JsValue::null())
 }
