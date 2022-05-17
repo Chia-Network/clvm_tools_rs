@@ -43,7 +43,7 @@ use crate::classic::platform::argparse::{
     TArgOptionAction, TArgumentParserProps,
 };
 
-use crate::compiler::cldb::{hex_to_modern_sexp, CldbRun, CldbRunEnv, CldbNoOverride};
+use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
 use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
@@ -360,7 +360,13 @@ pub fn cldb(args: &Vec<String>) {
     let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_optimize(do_optimize);
 
     let mut use_symbol_table = symbol_table.unwrap_or_else(|| HashMap::new());
-    let unopt_res = compile_file(&mut allocator, runner.clone(), opts.clone(), &input_program, &mut use_symbol_table);
+    let unopt_res = compile_file(
+        &mut allocator,
+        runner.clone(),
+        opts.clone(),
+        &input_program,
+        &mut use_symbol_table,
+    );
 
     let program;
     let mut output = Vec::new();
@@ -444,7 +450,11 @@ pub fn cldb(args: &Vec<String>) {
     }
     let program_lines: Vec<String> = input_program.lines().map(|x| x.to_string()).collect();
     let step = start_step(program.clone(), args.clone());
-    let cldbenv = CldbRunEnv::new(input_file, program_lines, Box::new(CldbNoOverride::new_symbols(use_symbol_table)));
+    let cldbenv = CldbRunEnv::new(
+        input_file,
+        program_lines,
+        Box::new(CldbNoOverride::new_symbols(use_symbol_table)),
+    );
     let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
 
     loop {
@@ -835,7 +845,13 @@ pub fn launch_tool(
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_optimize(do_optimize);
         let mut symbol_table = HashMap::new();
 
-        let unopt_res = compile_file(&mut allocator, runner.clone(), opts.clone(), &input_program, &mut symbol_table);
+        let unopt_res = compile_file(
+            &mut allocator,
+            runner.clone(),
+            opts.clone(),
+            &input_program,
+            &mut symbol_table,
+        );
         let res = if do_optimize {
             unopt_res.and_then(|x| run_optimizer(&mut allocator, runner, Rc::new(x)))
         } else {

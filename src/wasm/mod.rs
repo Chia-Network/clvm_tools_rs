@@ -1,2 +1,2 @@
-mod jsval;
 pub mod api;
+mod jsval;

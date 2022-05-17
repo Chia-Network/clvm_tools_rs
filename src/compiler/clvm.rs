@@ -36,7 +36,7 @@ impl RunStep {
             RunStep::Done(_, _) => None,
             RunStep::OpResult(_, _, p) => Some(p.clone()),
             RunStep::Op(_, _, _, _, p) => Some(p.clone()),
-            RunStep::Step(_, _, p) => Some(p.clone())
+            RunStep::Step(_, _, p) => Some(p.clone()),
         }
     }
 }

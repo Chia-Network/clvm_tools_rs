@@ -129,18 +129,15 @@ impl CldbRun {
     pub fn step(&mut self, allocator: &mut Allocator) -> Option<BTreeMap<String, String>> {
         let mut produce_result = false;
         let mut result = BTreeMap::new();
-        let new_step =
-            match self.env.get_override(&self.step) {
-                Some(v) => v,
-                _ => {
-                    run_step(
-                        allocator,
-                        self.runner.clone(),
-                        self.prim_map.clone(),
-                        &self.step,
-                    )
-                }
-            };
+        let new_step = match self.env.get_override(&self.step) {
+            Some(v) => v,
+            _ => run_step(
+                allocator,
+                self.runner.clone(),
+                self.prim_map.clone(),
+                &self.step,
+            ),
+        };
 
         // Allow overrides by consumers.
 
@@ -239,16 +236,20 @@ impl CldbRun {
 }
 
 pub struct CldbNoOverride {
-    symbol_table: HashMap<String, String>
+    symbol_table: HashMap<String, String>,
 }
 
 impl CldbRunnable for CldbNoOverride {
-    fn replace_step(&self, step: &RunStep) -> Option<Result<RunStep, RunFailure>> { None }
+    fn replace_step(&self, step: &RunStep) -> Option<Result<RunStep, RunFailure>> {
+        None
+    }
 }
 
 impl CldbNoOverride {
     pub fn new() -> Self {
-        CldbNoOverride { symbol_table: HashMap::new() }
+        CldbNoOverride {
+            symbol_table: HashMap::new(),
+        }
     }
 
     pub fn new_symbols(symbol_table: HashMap<String, String>) -> Self {
@@ -264,17 +265,17 @@ pub trait CldbSingleBespokeOverride {
 
 pub struct CldbOverrideBespokeCode {
     symbol_table: HashMap<String, String>,
-    overrides: HashMap<String, Box<dyn CldbSingleBespokeOverride>>
+    overrides: HashMap<String, Box<dyn CldbSingleBespokeOverride>>,
 }
 
 impl CldbOverrideBespokeCode {
     pub fn new(
         symbol_table: HashMap<String, String>,
-        overrides: HashMap<String, Box<dyn CldbSingleBespokeOverride>>
+        overrides: HashMap<String, Box<dyn CldbSingleBespokeOverride>>,
     ) -> Self {
         CldbOverrideBespokeCode {
             symbol_table: symbol_table,
-            overrides: overrides
+            overrides: overrides,
         }
     }
 
@@ -284,21 +285,18 @@ impl CldbOverrideBespokeCode {
         c: Rc<SExp>,
         f: Rc<SExp>,
         args: Rc<SExp>,
-        p: Rc<RunStep>
+        p: Rc<RunStep>,
     ) -> Option<Result<RunStep, RunFailure>> {
         let fun_hash = clvm::sha256tree(f.clone());
-        let fun_hash_str =
-            Bytes::new(Some(BytesFromType::Raw(fun_hash))).hex();
+        let fun_hash_str = Bytes::new(Some(BytesFromType::Raw(fun_hash))).hex();
 
-        self.symbol_table.get(&fun_hash_str).
-            and_then(|funname| self.overrides.get(funname)).map(|override_fn| {
-                override_fn.get_override(args.clone()).map(|new_exp| {
-                    RunStep::OpResult(
-                        sexp.loc(),
-                        new_exp.clone(),
-                        p.clone()
-                    )
-                })
+        self.symbol_table
+            .get(&fun_hash_str)
+            .and_then(|funname| self.overrides.get(funname))
+            .map(|override_fn| {
+                override_fn
+                    .get_override(args.clone())
+                    .map(|new_exp| RunStep::OpResult(sexp.loc(), new_exp.clone(), p.clone()))
             })
     }
 }
@@ -306,30 +304,26 @@ impl CldbOverrideBespokeCode {
 impl CldbRunnable for CldbOverrideBespokeCode {
     fn replace_step(&self, step: &RunStep) -> Option<Result<RunStep, RunFailure>> {
         match step {
-            RunStep::Op(sexp, c, a, None, p) => {
-                match sexp.borrow() {
-                    SExp::Integer(_, i) => {
-                        if *i == 2_u32.to_bigint().unwrap() {
-                            match a.borrow() {
-                                SExp::Cons(_, f, args) => {
-                                    self.find_function_and_override_if_needed(
-                                        sexp.clone(),
-                                        c.clone(),
-                                        f.clone(),
-                                        args.clone(),
-                                        p.clone()
-                                    )
-                                },
-                                _ => None
-                            }
-                        } else {
-                            None
+            RunStep::Op(sexp, c, a, None, p) => match sexp.borrow() {
+                SExp::Integer(_, i) => {
+                    if *i == 2_u32.to_bigint().unwrap() {
+                        match a.borrow() {
+                            SExp::Cons(_, f, args) => self.find_function_and_override_if_needed(
+                                sexp.clone(),
+                                c.clone(),
+                                f.clone(),
+                                args.clone(),
+                                p.clone(),
+                            ),
+                            _ => None,
                         }
-                    },
-                    _ => None
+                    } else {
+                        None
+                    }
                 }
+                _ => None,
             },
-            _ => None
+            _ => None,
         }
     }
 }
@@ -341,11 +335,15 @@ pub struct CldbRunEnv {
 }
 
 impl CldbRunEnv {
-    pub fn new(input_file: Option<String>, program_lines: Vec<String>, runnable: Box<dyn CldbRunnable>) -> Self {
+    pub fn new(
+        input_file: Option<String>,
+        program_lines: Vec<String>,
+        runnable: Box<dyn CldbRunnable>,
+    ) -> Self {
         CldbRunEnv {
             input_file,
             program_lines,
-            overrides: runnable
+            overrides: runnable,
         }
     }
 

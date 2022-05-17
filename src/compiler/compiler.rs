@@ -1,9 +1,9 @@
+use num_bigint::ToBigInt;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
-use num_bigint::ToBigInt;
 
 use clvm_rs::allocator::Allocator;
 
@@ -43,7 +43,8 @@ pub fn compile_file(
     let pre_forms =
         parse_sexp(Srcloc::start(&opts.filename()), content).map_err(|e| CompileErr(e.0, e.1))?;
 
-    frontend(opts.clone(), pre_forms).and_then(|g| codegen(allocator, runner, opts.clone(), &g, symbol_table))
+    frontend(opts.clone(), pre_forms)
+        .and_then(|g| codegen(allocator, runner, opts.clone(), &g, symbol_table))
 }
 
 pub fn run_optimizer(
@@ -173,7 +174,8 @@ impl CompilerOpts for DefaultCompilerOpts {
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
-        frontend(me.clone(), vec![sexp]).and_then(|g| codegen(allocator, runner, me.clone(), &g, symbol_table))
+        frontend(me.clone(), vec![sexp])
+            .and_then(|g| codegen(allocator, runner, me.clone(), &g, symbol_table))
     }
 }
 
@@ -252,9 +254,9 @@ fn op2(op: u32, code: Rc<SExp>, env: Rc<SExp>) -> Rc<SExp> {
             Rc::new(SExp::Cons(
                 env.loc(),
                 env.clone(),
-                Rc::new(SExp::Nil(code.loc()))
-            ))
-        ))
+                Rc::new(SExp::Nil(code.loc())),
+            )),
+        )),
     ))
 }
 
@@ -262,7 +264,7 @@ fn quoted(env: Rc<SExp>) -> Rc<SExp> {
     Rc::new(SExp::Cons(
         env.loc(),
         Rc::new(SExp::Integer(env.loc(), bi_one())),
-        env.clone()
+        env.clone(),
     ))
 }
 
@@ -275,17 +277,14 @@ fn cons(f: Rc<SExp>, r: Rc<SExp>) -> Rc<SExp> {
 }
 
 // compose (a (a path env) (c env 1))
-pub fn rewrite_in_program(
-    path: Number,
-    env: Rc<SExp>
-) -> Rc<SExp> {
+pub fn rewrite_in_program(path: Number, env: Rc<SExp>) -> Rc<SExp> {
     apply(
         apply(
             // Env comes quoted, so divide by 2
             quoted(Rc::new(SExp::Integer(env.loc(), path / 2))),
-            env.clone()
+            env.clone(),
         ),
-        cons(env.clone(), Rc::new(SExp::Integer(env.loc(), bi_one())))
+        cons(env.clone(), Rc::new(SExp::Integer(env.loc(), bi_one()))),
     )
 }
 

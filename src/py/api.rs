@@ -13,11 +13,7 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm_tools::clvmc;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::cldb::{
-    hex_to_modern_sexp,
-    CldbRun,
-    CldbRunEnv,
-    CldbOverrideBespokeCode,
-    CldbSingleBespokeOverride
+    hex_to_modern_sexp, CldbOverrideBespokeCode, CldbRun, CldbRunEnv, CldbSingleBespokeOverride,
 };
 use crate::compiler::clvm::start_step;
 use crate::compiler::prims;
@@ -25,10 +21,7 @@ use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 
-use crate::py::pyval::{
-    python_value_to_clvm,
-    clvm_value_to_python
-};
+use crate::py::pyval::{clvm_value_to_python, python_value_to_clvm};
 
 create_exception!(mymodule, CldbError, PyException);
 
@@ -82,17 +75,16 @@ fn runstep(myself: &mut PythonRunStep) -> PyResult<Option<PyObject>> {
     }
 
     // Let the runner know we want another step.
-    myself.tx
+    myself
+        .tx
         .send(false)
         .map_err(|e| CldbError::new_err("error sending to service thread"))?;
 
     // Receive the step result.
-    let res =
-        myself
+    let res = myself
         .rx
         .recv()
-        .map_err(|e| CldbError::new_err("error receiving from service thread"))
-        ?;
+        .map_err(|e| CldbError::new_err("error receiving from service thread"))?;
     if res.0 {
         myself.ended = true;
     }
@@ -127,33 +119,36 @@ impl PythonRunStep {
 }
 
 struct CldbSinglePythonOverride {
-    pycode: Py<PyAny>
+    pycode: Py<PyAny>,
 }
 
 impl CldbSinglePythonOverride {
-    fn new(pycode: &Py<PyAny>) -> Self { CldbSinglePythonOverride { pycode: pycode.clone() } }
+    fn new(pycode: &Py<PyAny>) -> Self {
+        CldbSinglePythonOverride {
+            pycode: pycode.clone(),
+        }
+    }
 }
 
 impl CldbSingleBespokeOverride for CldbSinglePythonOverride {
     fn get_override(&self, env: Rc<SExp>) -> Result<Rc<SExp>, RunFailure> {
         Python::with_gil(|py| {
             let arg_value = clvm_value_to_python(py, env.clone());
-            let res = self.pycode.call1(py, PyTuple::new(
-                py, &vec![arg_value]
-            )).map_err(|e| {
-                RunFailure::RunErr(env.loc(), format!("{}", e))
-            })?;
+            let res = self
+                .pycode
+                .call1(py, PyTuple::new(py, &vec![arg_value]))
+                .map_err(|e| RunFailure::RunErr(env.loc(), format!("{}", e)))?;
             python_value_to_clvm(py, res)
         })
     }
 }
 
-#[pyfunction(arg4="None")]
+#[pyfunction(arg4 = "None")]
 fn start_clvm_program(
     hex_prog: String,
     hex_args: String,
     symbol_table: Option<HashMap<String, String>>,
-    overrides: Option<HashMap<String, Py<PyAny>>>
+    overrides: Option<HashMap<String, Py<PyAny>>>,
 ) -> PyResult<PythonRunStep> {
     let (command_tx, command_rx) = mpsc::channel();
     let (result_tx, result_rx) = mpsc::channel();
@@ -195,23 +190,18 @@ fn start_clvm_program(
             }
         };
 
-        let mut overrides_table: HashMap<String, Box<dyn CldbSingleBespokeOverride>> = HashMap::new();
+        let mut overrides_table: HashMap<String, Box<dyn CldbSingleBespokeOverride>> =
+            HashMap::new();
         match overrides {
             Some(t) => {
-                for (k,v) in t.iter() {
-                    let override_fun_callable =
-                        CldbSinglePythonOverride::new(v);
-                    overrides_table.insert(
-                        k.clone(),
-                        Box::new(override_fun_callable)
-                    );
+                for (k, v) in t.iter() {
+                    let override_fun_callable = CldbSinglePythonOverride::new(v);
+                    overrides_table.insert(k.clone(), Box::new(override_fun_callable));
                 }
-            },
+            }
             _ => {}
         }
-        let override_runnable = CldbOverrideBespokeCode::new(
-            use_symbol_table, overrides_table
-        );
+        let override_runnable = CldbOverrideBespokeCode::new(use_symbol_table, overrides_table);
 
         let step = start_step(program.clone(), args.clone());
         let cldbenv = CldbRunEnv::new(None, vec![], Box::new(override_runnable));

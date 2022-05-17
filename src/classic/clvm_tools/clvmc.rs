@@ -75,7 +75,7 @@ fn compile_clvm_text(
     search_paths: &Vec<String>,
     symbol_table: &mut HashMap<String, String>,
     text: &String,
-    input_path: &String
+    input_path: &String,
 ) -> Result<NodePtr, EvalErr> {
     let ir_src = read_ir(&text).map_err(|s| EvalErr(allocator.null(), s))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
@@ -114,19 +114,8 @@ pub fn compile_clvm_inner(
     text: &String,
     result_stream: &mut Stream,
 ) -> Result<(), String> {
-    let result = compile_clvm_text(
-        allocator,
-        search_paths,
-        symbol_table,
-        text,
-        filename,
-    ).map_err(|x| {
-            format!(
-                "error {} compiling {}",
-                x.1,
-                disassemble(allocator, x.0)
-            )
-        })?;
+    let result = compile_clvm_text(allocator, search_paths, symbol_table, text, filename)
+        .map_err(|x| format!("error {} compiling {}", x.1, disassemble(allocator, x.0)))?;
     sexp_to_stream(allocator, result, result_stream);
     Ok(())
 }
@@ -152,7 +141,7 @@ pub fn compile_clvm(
             &mut symbol_table,
             input_path,
             &text,
-            &mut result_stream
+            &mut result_stream,
         )?;
 
         {
