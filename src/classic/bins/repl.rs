@@ -23,15 +23,18 @@ fn main() {
         match l {
             Err(_) => break,
             Ok(line) => {
-                let _ = repl.process_line(&mut allocator, line).map(|result| {
-                    if let Some(result) = result {
-                        print!("{}\n>>> ", result.to_sexp().to_string());
-                    } else {
-                        print!("... ");
-                    }
-                }).map_err(|e| {
-                    print!("failed: {:?}\n>>> ", e);
-                });
+                let _ = repl
+                    .process_line(&mut allocator, line)
+                    .map(|result| {
+                        if let Some(result) = result {
+                            print!("{}\n>>> ", result.to_sexp().to_string());
+                        } else {
+                            print!("... ");
+                        }
+                    })
+                    .map_err(|e| {
+                        print!("failed: {:?}\n>>> ", e);
+                    });
             }
         }
         io::stdout().flush().unwrap();

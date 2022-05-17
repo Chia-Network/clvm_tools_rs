@@ -619,21 +619,17 @@ fn is_quote_op(sexp: Rc<SExp>) -> bool {
     match sexp.borrow() {
         SExp::Atom(_, name) => name.len() == 1 && name[0] as char == 'q',
         SExp::Integer(_, v) => v == &bi_one(),
-        _ => false
+        _ => false,
     }
 }
 
 fn from_clvm_args(args: Rc<SExp>) -> Rc<SExp> {
     match args.borrow() {
-        SExp::Cons(l,arg,rest) => {
+        SExp::Cons(l, arg, rest) => {
             let new_arg = from_clvm(arg.clone());
             let new_rest = from_clvm_args(rest.clone());
-            Rc::new(SExp::Cons(
-                l.clone(),
-                new_arg,
-                new_rest
-            ))
-        },
+            Rc::new(SExp::Cons(l.clone(), new_arg, new_rest))
+        }
         _ => {
             // Treat tail of proper application list as expression.
             from_clvm(args.clone())
@@ -649,24 +645,18 @@ fn from_clvm_args(args: Rc<SExp>) -> Rc<SExp> {
 // being called via 'a' and use that information.
 // Bare numbers in operator position are only prims.
 // Bare numbers in argument position are references, rewrite as (@ ..)
-pub fn from_clvm(
-    sexp: Rc<SExp>
-) -> Rc<SExp> {
+pub fn from_clvm(sexp: Rc<SExp>) -> Rc<SExp> {
     match sexp.borrow() {
-        SExp::Atom(l,name) => {
+        SExp::Atom(l, name) => {
             // An atom encountered as an expression is treated as a path.
-            from_clvm(
-                Rc::new(SExp::Integer(l.clone(), sexp.to_bigint().unwrap()))
-            )
-        },
-        SExp::QuotedString(l,_,v) => {
+            from_clvm(Rc::new(SExp::Integer(l.clone(), sexp.to_bigint().unwrap())))
+        }
+        SExp::QuotedString(l, _, v) => {
             // A string is treated as a number.
             // An atom encountered as an expression is treated as a path.
-            from_clvm(
-                Rc::new(SExp::Integer(l.clone(), sexp.to_bigint().unwrap()))
-            )
+            from_clvm(Rc::new(SExp::Integer(l.clone(), sexp.to_bigint().unwrap())))
         }
-        SExp::Integer(l,n) => {
+        SExp::Integer(l, n) => {
             // A number is treated as a reference in expression position.
             // Results in (@ n).
             Rc::new(SExp::Cons(
@@ -675,29 +665,25 @@ pub fn from_clvm(
                 Rc::new(SExp::Cons(
                     l.clone(),
                     sexp.clone(),
-                    Rc::new(SExp::Nil(l.clone()))
-                ))
+                    Rc::new(SExp::Nil(l.clone())),
+                )),
             ))
-        },
+        }
         SExp::Nil(l) => {
             // Nil represents nil in both systems.
             sexp.clone()
-        },
-        SExp::Cons(l,op,args) => {
+        }
+        SExp::Cons(l, op, args) => {
             // This expression represents applying some primitive.
             if is_quote_op(op.clone()) {
                 Rc::new(SExp::Cons(
                     l.clone(),
                     Rc::new(SExp::atom_from_string(l.clone(), &"q".to_string())),
-                    args.clone()
+                    args.clone(),
                 ))
             } else {
                 let new_args = from_clvm_args(args.clone());
-                Rc::new(SExp::Cons(
-                    l.clone(),
-                    op.clone(),
-                    new_args
-                ))
+                Rc::new(SExp::Cons(l.clone(), op.clone(), new_args))
             }
         }
     }

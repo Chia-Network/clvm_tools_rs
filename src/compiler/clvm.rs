@@ -7,13 +7,7 @@ use clvm_rs::allocator::{Allocator, NodePtr};
 
 use num_bigint::ToBigInt;
 
-use crate::classic::clvm::__type_compatibility__::{
-    Bytes,
-    BytesFromType,
-    bi_one,
-    bi_zero,
-    sha256
-};
+use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, sha256, Bytes, BytesFromType};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::prims;
@@ -74,12 +68,10 @@ fn choose_path(
                 )
             }
 
-            _ => {
-                Err(RunFailure::RunErr(
-                    l,
-                    format!("bad path {} in {}", orig, all.to_string()),
-                ))
-            }
+            _ => Err(RunFailure::RunErr(
+                l,
+                format!("bad path {} in {}", orig, all.to_string()),
+            )),
         }
     }
 }

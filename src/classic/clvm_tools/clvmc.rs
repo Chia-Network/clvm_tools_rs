@@ -28,10 +28,12 @@ use crate::compiler::comptypes::CompileErr;
 use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::runtypes::RunFailure;
 
-fn include_dialect(allocator: &mut Allocator, dialects: &HashMap<Vec<u8>, i32>, e: &Vec<NodePtr>) -> Option<i32> {
-    if let (SExp::Atom(inc), SExp::Atom(name)) =
-        (allocator.sexp(e[0]), allocator.sexp(e[1]))
-    {
+fn include_dialect(
+    allocator: &mut Allocator,
+    dialects: &HashMap<Vec<u8>, i32>,
+    e: &Vec<NodePtr>,
+) -> Option<i32> {
+    if let (SExp::Atom(inc), SExp::Atom(name)) = (allocator.sexp(e[0]), allocator.sexp(e[1])) {
         if allocator.buf(&inc) == "include".as_bytes().to_vec() {
             if let Some(dialect) = dialects.get(allocator.buf(&name)) {
                 return Some(*dialect);
