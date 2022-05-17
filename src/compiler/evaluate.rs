@@ -835,7 +835,8 @@ impl Evaluator {
             .compile_program(
                 allocator,
                 self.runner.clone(),
-                use_body
+                use_body,
+                &mut HashMap::new()
             )?;
 
         Ok(Rc::new(com_result))

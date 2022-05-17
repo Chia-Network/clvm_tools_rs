@@ -16,18 +16,18 @@ fn compile_string(content: &String) -> Result<String, CompileErr> {
     let runner = Rc::new(DefaultProgramRunner::new());
     let opts = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
 
-    compile_file(&mut allocator, runner, opts, &content).map(|x| x.to_string())
+    compile_file(&mut allocator, runner, opts, &content, &mut HashMap::new()).map(|x| x.to_string())
 }
 
 fn run_string_maybe_opt(content: &String, args: &String, fe_opt: bool) -> Result<Rc<SExp>, CompileErr> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
-    let srcloc = Srcloc::start(&"*test*".to_string());
     let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
+    let srcloc = Srcloc::start(&"*test*".to_string());
     opts = opts.set_frontend_opt(fe_opt);
     let sexp_args = parse_sexp(srcloc.clone(), &args).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
 
-    compile_file(&mut allocator, runner.clone(), opts, &content).and_then(|x| {
+    compile_file(&mut allocator, runner.clone(), opts, &content, &mut HashMap::new()).and_then(|x| {
         run(
             &mut allocator,
             runner,
@@ -35,10 +35,10 @@ fn run_string_maybe_opt(content: &String, args: &String, fe_opt: bool) -> Result
             Rc::new(x),
             sexp_args,
         )
-        .map_err(|e| match e {
-            RunFailure::RunErr(l, s) => CompileErr(l, s),
-            RunFailure::RunExn(l, s) => CompileErr(l, s.to_string()),
-        })
+            .map_err(|e| match e {
+                RunFailure::RunErr(l, s) => CompileErr(l, s),
+                RunFailure::RunExn(l, s) => CompileErr(l, s.to_string()),
+            })
     })
 }
 
