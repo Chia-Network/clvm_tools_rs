@@ -1,6 +1,3 @@
-use rand::distributions::Standard;
-use rand::prelude::Distribution;
-use rand::Rng;
 use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -12,8 +9,6 @@ use crate::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType
 use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes, TConvertOption};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, u8_from_number, Number};
-
-const MAX_DEPTH: u8 = 2;
 
 // Compiler view of SExp
 #[derive(Clone, Debug)]
@@ -385,34 +380,6 @@ impl SExp {
             )),
         }
     }
-
-    pub fn random_atom<R: Rng + ?Sized>(rng: &mut R) -> SExp {
-        let mut bytevec: Vec<u8> = Vec::new();
-        let mut len = 0;
-        loop {
-            let mut n: u8 = rng.gen();
-            n %= 40;
-            len += 1;
-            if n < 26 && len < 6 {
-                bytevec.push(n + 97); // lowercase a
-            } else {
-                break;
-            }
-        }
-        SExp::Atom(Srcloc::start(&"*rng*".to_string()), bytevec)
-    }
-
-    fn random_sexp<R: Rng + ?Sized>(rng: &mut R, depth: u8) -> SExp {
-        let selection = rng.gen_range(0..=1);
-
-        if selection == 0 || depth >= MAX_DEPTH {
-            SExp::random_atom(rng)
-        } else {
-            let a: SExp = SExp::random_sexp(rng, depth + 1);
-            let b: SExp = SExp::random_sexp(rng, depth + 1);
-            SExp::Cons(Srcloc::start(&"*rng*".to_string()), Rc::new(a), Rc::new(b))
-        }
-    }
 }
 
 fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseResult {
@@ -652,11 +619,4 @@ fn parse_sexp_inner(
 
 pub fn parse_sexp(start: Srcloc, input: &String) -> Result<Vec<Rc<SExp>>, (Srcloc, String)> {
     parse_sexp_inner(start, SExpParseState::Empty, 0, &input.as_bytes().to_vec())
-}
-
-// Thanks: https://stackoverflow.com/questions/48490049/how-do-i-choose-a-random-value-from-an-enum
-impl Distribution<SExp> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SExp {
-        SExp::random_sexp(rng, 0)
-    }
 }
