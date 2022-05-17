@@ -829,9 +829,7 @@ pub fn launch_tool(
     }
 
     // In testing: short circuit for modern compilation.
-    if let Some(dialect) = input_sexp
-        .and_then(|i| detect_modern(&mut allocator, i))
-    {
+    if let Some(dialect) = input_sexp.and_then(|i| detect_modern(&mut allocator, i)) {
         let do_optimize = parsedArgs
             .get("optimize")
             .map(|x| match x {
@@ -841,7 +839,9 @@ pub fn launch_tool(
             .unwrap_or_else(|| false);
         let runner = Rc::new(DefaultProgramRunner::new());
         let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
-        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_optimize(do_optimize).set_frontend_opt(dialect > 21);
+        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
+            .set_optimize(do_optimize)
+            .set_frontend_opt(dialect > 21);
         let mut symbol_table = HashMap::new();
 
         let unopt_res = compile_file(

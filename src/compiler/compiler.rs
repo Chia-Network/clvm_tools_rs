@@ -1,9 +1,9 @@
+use num_bigint::ToBigInt;
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
-use num_bigint::ToBigInt;
 
 use clvm_rs::allocator::Allocator;
 
@@ -14,12 +14,7 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::codegen;
 use crate::compiler::comptypes::{
-    CompileErr,
-    CompilerOpts,
-    PrimaryCodegen,
-    BodyForm,
-    CompileForm,
-    HelperForm
+    BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen,
 };
 use crate::compiler::evaluate::Evaluator;
 use crate::compiler::frontend::frontend;
@@ -41,16 +36,22 @@ pub struct DefaultCompilerOpts {
     pub start_env: Option<Rc<SExp>>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
 
-    known_dialects: Rc<HashMap<String, String>>
+    known_dialects: Rc<HashMap<String, String>>,
 }
 
 fn at_path(path_mask: Number, loc: Srcloc) -> Rc<BodyForm> {
     Rc::new(BodyForm::Call(
         loc.clone(),
-        vec!(
-            Rc::new(BodyForm::Value(SExp::atom_from_string(loc.clone(), &"@".to_string()))),
-            Rc::new(BodyForm::Quoted(SExp::Integer(loc.clone(), path_mask.clone())))
-        )
+        vec![
+            Rc::new(BodyForm::Value(SExp::atom_from_string(
+                loc.clone(),
+                &"@".to_string(),
+            ))),
+            Rc::new(BodyForm::Quoted(SExp::Integer(
+                loc.clone(),
+                path_mask.clone(),
+            ))),
+        ],
     ))
 }
 
@@ -62,33 +63,33 @@ fn make_simple_argbindings(
     argbindings: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
     path_mask: Number,
     current_path: Number,
-    prog_args: Rc<SExp>
+    prog_args: Rc<SExp>,
 ) {
     match prog_args.borrow() {
-        SExp::Cons(_,a,b) => {
+        SExp::Cons(_, a, b) => {
             make_simple_argbindings(
                 argbindings,
                 next_path_mask(path_mask.clone()),
                 current_path.clone(),
-                a.clone()
+                a.clone(),
             );
             make_simple_argbindings(
                 argbindings,
                 next_path_mask(path_mask.clone()),
                 current_path.clone() | path_mask.clone(),
-                b.clone()
+                b.clone(),
             );
-        },
-        SExp::Atom(l,n) => {
+        }
+        SExp::Atom(l, n) => {
             let borrowed_prog_args: &SExp = prog_args.borrow();
             // Alternatively, by path
             // at_path(current_path.clone() | path_mask.clone(), l.clone())
             argbindings.insert(
                 n.clone(),
-                Rc::new(BodyForm::Value(borrowed_prog_args.clone()))
+                Rc::new(BodyForm::Value(borrowed_prog_args.clone())),
             );
-        },
-        _ => { }
+        }
+        _ => {}
     }
 }
 
@@ -96,7 +97,7 @@ fn fe_opt(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
-    compileform: CompileForm
+    compileform: CompileForm,
 ) -> Result<CompileForm, CompileErr> {
     let mut compiler_helpers = compileform.helpers.clone();
     let mut used_names = HashSet::new();
@@ -106,18 +107,19 @@ fn fe_opt(
             used_names.insert(c.name().clone());
         }
 
-        for helper in (opts.compiler().map(|c| c.orig_help.clone()).unwrap_or_else(|| Vec::new())).iter() {
+        for helper in (opts
+            .compiler()
+            .map(|c| c.orig_help.clone())
+            .unwrap_or_else(|| Vec::new()))
+        .iter()
+        {
             if !used_names.contains(helper.name()) {
                 compiler_helpers.push(helper.clone());
             }
         }
     }
 
-    let evaluator = Evaluator::new(
-        opts.clone(),
-        runner.clone(),
-        compiler_helpers.clone()
-    );
+    let evaluator = Evaluator::new(opts.clone(), runner.clone(), compiler_helpers.clone());
     let mut optimized_helpers: Vec<HelperForm> = Vec::new();
     for h in compiler_helpers.iter() {
         match h {
@@ -127,39 +129,37 @@ fn fe_opt(
                     Rc::new(SExp::Nil(compileform.args.loc())),
                     &HashMap::new(),
                     body.clone(),
-                    true
+                    true,
                 )?;
                 let new_helper = HelperForm::Defun(
                     loc.clone(),
                     name.clone(),
                     *inline,
                     args.clone(),
-                    body_rc.clone()
+                    body_rc.clone(),
                 );
                 optimized_helpers.push(new_helper);
-            },
-            obj => { optimized_helpers.push(obj.clone()); }
+            }
+            obj => {
+                optimized_helpers.push(obj.clone());
+            }
         }
     }
-    let new_evaluator = Evaluator::new(
-        opts.clone(),
-        runner.clone(),
-        optimized_helpers.clone()
-    );
+    let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.clone());
 
     let shrunk = new_evaluator.shrink_bodyform(
         allocator,
         Rc::new(SExp::Nil(compileform.args.loc())),
         &HashMap::new(),
         compileform.exp.clone(),
-        true
+        true,
     )?;
 
     Ok(CompileForm {
         loc: compileform.loc.clone(),
         args: compileform.args.clone(),
         helpers: optimized_helpers.clone(),
-        exp: shrunk
+        exp: shrunk,
     })
 }
 
@@ -170,18 +170,23 @@ fn compile_pre_forms(
     pre_forms: Vec<Rc<SExp>>,
 ) -> Result<SExp, CompileErr> {
     let g = frontend(opts.clone(), pre_forms)?;
-    let compileform =
-        if opts.frontend_opt() {
-            fe_opt(allocator, runner.clone(), opts.clone(), g)?
-        } else {
-            CompileForm {
-                loc: g.loc.clone(),
-                args: g.args.clone(),
-                helpers: g.helpers.clone(), // optimized_helpers.clone(),
-                exp: g.exp.clone()
-            }
-        };
-    codegen(allocator, runner, opts.clone(), &compileform, &mut HashMap::new())
+    let compileform = if opts.frontend_opt() {
+        fe_opt(allocator, runner.clone(), opts.clone(), g)?
+    } else {
+        CompileForm {
+            loc: g.loc.clone(),
+            args: g.args.clone(),
+            helpers: g.helpers.clone(), // optimized_helpers.clone(),
+            exp: g.exp.clone(),
+        }
+    };
+    codegen(
+        allocator,
+        runner,
+        opts.clone(),
+        &compileform,
+        &mut HashMap::new(),
+    )
 }
 
 pub fn compile_file(
@@ -329,7 +334,7 @@ impl CompilerOpts for DefaultCompilerOpts {
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
-        compile_pre_forms(allocator, runner, me, vec!(sexp.clone()))
+        compile_pre_forms(allocator, runner, me, vec![sexp.clone()])
     }
 }
 
@@ -342,12 +347,20 @@ impl DefaultCompilerOpts {
         }
 
         let mut known_dialects: HashMap<String, String> = HashMap::new();
-        known_dialects.insert("*standard-cl-21*".to_string(), indoc!{"(
+        known_dialects.insert(
+            "*standard-cl-21*".to_string(),
+            indoc! {"(
            (defconstant *chialisp-version* 21)
-        )"}.to_string());
-        known_dialects.insert("*standard-cl-22*".to_string(), indoc!{"(
+        )"}
+            .to_string(),
+        );
+        known_dialects.insert(
+            "*standard-cl-22*".to_string(),
+            indoc! {"(
            (defconstant *chialisp-version* 22)
-        )"}.to_string());
+        )"}
+            .to_string(),
+        );
 
         DefaultCompilerOpts {
             include_dirs: vec![".".to_string()],
@@ -359,7 +372,7 @@ impl DefaultCompilerOpts {
             frontend_opt: false,
             start_env: None,
             prim_map: Rc::new(prim_map),
-            known_dialects: Rc::new(known_dialects)
+            known_dialects: Rc::new(known_dialects),
         }
     }
 }

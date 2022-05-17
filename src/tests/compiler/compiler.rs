@@ -6,7 +6,7 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
-use crate::compiler::comptypes::{CompilerOpts, CompileErr};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -19,7 +19,11 @@ fn compile_string(content: &String) -> Result<String, CompileErr> {
     compile_file(&mut allocator, runner, opts, &content, &mut HashMap::new()).map(|x| x.to_string())
 }
 
-fn run_string_maybe_opt(content: &String, args: &String, fe_opt: bool) -> Result<Rc<SExp>, CompileErr> {
+fn run_string_maybe_opt(
+    content: &String,
+    args: &String,
+    fe_opt: bool,
+) -> Result<Rc<SExp>, CompileErr> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
     let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
@@ -27,7 +31,14 @@ fn run_string_maybe_opt(content: &String, args: &String, fe_opt: bool) -> Result
     opts = opts.set_frontend_opt(fe_opt);
     let sexp_args = parse_sexp(srcloc.clone(), &args).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
 
-    compile_file(&mut allocator, runner.clone(), opts, &content, &mut HashMap::new()).and_then(|x| {
+    compile_file(
+        &mut allocator,
+        runner.clone(),
+        opts,
+        &content,
+        &mut HashMap::new(),
+    )
+    .and_then(|x| {
         run(
             &mut allocator,
             runner,
@@ -35,10 +46,10 @@ fn run_string_maybe_opt(content: &String, args: &String, fe_opt: bool) -> Result
             Rc::new(x),
             sexp_args,
         )
-            .map_err(|e| match e {
-                RunFailure::RunErr(l, s) => CompileErr(l, s),
-                RunFailure::RunExn(l, s) => CompileErr(l, s.to_string()),
-            })
+        .map_err(|e| match e {
+            RunFailure::RunErr(l, s) => CompileErr(l, s),
+            RunFailure::RunExn(l, s) => CompileErr(l, s.to_string()),
+        })
     })
 }
 
@@ -109,9 +120,9 @@ fn run_test_1_maybe_opt(opt: bool) {
     let result = run_string_maybe_opt(
         &"(mod () (defun f (a b) (+ (* a a) b)) (f 3 1))".to_string(),
         &"()".to_string(),
-        opt
+        opt,
     )
-        .unwrap();
+    .unwrap();
     assert_eq!(result.to_string(), "10".to_string());
 }
 
@@ -129,9 +140,9 @@ fn run_test_2_maybe_opt(opt: bool) {
     let result = run_string_maybe_opt(
         &"(mod (c) (defun f (a b) (+ (* a a) b)) (f 3 c))".to_string(),
         &"(4)".to_string(),
-        opt
+        opt,
     )
-        .unwrap();
+    .unwrap();
     assert_eq!(result.to_string(), "13".to_string());
 }
 
@@ -186,7 +197,8 @@ fn run_test_4_opt() {
 }
 
 fn run_test_5_maybe_opt(opt: bool) {
-    let result = run_string_maybe_opt(&"(mod (a) (list 1 2))".to_string(), &"()".to_string(), opt).unwrap();
+    let result =
+        run_string_maybe_opt(&"(mod (a) (list 1 2))".to_string(), &"()".to_string(), opt).unwrap();
     assert_eq!(result.to_string(), "(1 2)".to_string());
 }
 
@@ -247,8 +259,9 @@ fn run_test_8_maybe_opt(opt: bool) {
     let result = run_string_maybe_opt(
         &"(mod (a b) (let ((x (+ a 1)) (y (+ b 1))) (+ x y)))".to_string(),
         &"(5 8)".to_string(),
-        opt
-    ).unwrap();
+        opt,
+    )
+    .unwrap();
     assert_eq!(result.to_string(), "15".to_string());
 }
 
@@ -466,8 +479,9 @@ fn run_test_9_maybe_opt(opt: bool) {
     let result = run_string_maybe_opt(
         &"(mod (a) (defun f (i) (let ((x (not i)) (y (* i 2))) (+ x y))) (f a))".to_string(),
         &"(0)".to_string(),
-        opt
-    ).unwrap();
+        opt,
+    )
+    .unwrap();
     assert_eq!(result.to_string(), "1".to_string());
 }
 
@@ -485,8 +499,9 @@ fn run_test_10_maybe_opt(opt: bool) {
     let result = run_string_maybe_opt(
         &"(mod (a) (defun f (i) (let ((x (not i)) (y (* i 2))) (+ x y))) (f a))".to_string(),
         &"(3)".to_string(),
-        opt
-    ).unwrap();
+        opt,
+    )
+    .unwrap();
     assert_eq!(result.to_string(), "6".to_string());
 }
 
