@@ -7,7 +7,7 @@ use clvm_rs::allocator::{Allocator, NodePtr};
 
 use num_bigint::ToBigInt;
 
-use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
+use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, sha256, Bytes, BytesFromType};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::prims;
@@ -30,7 +30,7 @@ pub enum RunStep {
     Step(Rc<SExp>, Rc<SExp>, Rc<RunStep>),
 }
 
-fn choose_path(
+pub fn choose_path(
     l: Srcloc,
     orig: Number,
     p: Number,
@@ -615,5 +615,154 @@ pub fn parse_and_run(
             code[0].clone(),
             args[0].clone(),
         )
+    }
+}
+
+fn sha256tree_from_atom(v: Vec<u8>) -> Vec<u8> {
+    sha256(
+        Bytes::new(Some(BytesFromType::Raw(vec![1])))
+            .concat(&Bytes::new(Some(BytesFromType::Raw(v)))),
+    )
+    .data()
+    .clone()
+}
+
+// sha256tree for modern style SExp
+pub fn sha256tree(s: Rc<SExp>) -> Vec<u8> {
+    match s.borrow() {
+        SExp::Cons(l, a, b) => {
+            let t1 = sha256tree(a.clone());
+            let t2 = sha256tree(b.clone());
+            sha256(
+                Bytes::new(Some(BytesFromType::Raw(vec![2])))
+                    .concat(&Bytes::new(Some(BytesFromType::Raw(t1))))
+                    .concat(&Bytes::new(Some(BytesFromType::Raw(t2)))),
+            )
+            .data()
+            .clone()
+        }
+        SExp::Nil(_) => sha256tree_from_atom(vec![]),
+        SExp::Integer(_, i) => sha256tree_from_atom(u8_from_number(i.clone())),
+        SExp::QuotedString(_, _, v) => sha256tree_from_atom(v.clone()),
+        SExp::Atom(_, v) => sha256tree_from_atom(v.clone()),
+    }
+}
+
+fn path_to_function_inner(
+    program: Rc<SExp>,
+    hash: &Vec<u8>,
+    path_mask: Number,
+    current_path: Number,
+) -> Option<Number> {
+    let nextpath = path_mask.clone() * 2_i32.to_bigint().unwrap();
+    match program.borrow() {
+        SExp::Cons(_, a, b) => {
+            path_to_function_inner(a.clone(), hash, nextpath.clone(), current_path.clone())
+                .map(|x| Some(x))
+                .unwrap_or_else(|| {
+                    path_to_function_inner(
+                        b.clone(),
+                        hash,
+                        nextpath.clone(),
+                        current_path.clone() + path_mask.clone(),
+                    )
+                    .map(|x| Some(x))
+                    .unwrap_or_else(|| {
+                        let current_hash = sha256tree(program.clone());
+                        if &current_hash == hash {
+                            Some(current_path + path_mask)
+                        } else {
+                            None
+                        }
+                    })
+                })
+        }
+        any => {
+            let current_hash = sha256tree(program.clone());
+            if &current_hash == hash {
+                Some(current_path + path_mask)
+            } else {
+                None
+            }
+        }
+    }
+}
+
+pub fn path_to_function(program: Rc<SExp>, hash: &Vec<u8>) -> Option<Number> {
+    path_to_function_inner(program, hash, bi_one(), bi_zero())
+}
+
+pub fn rewrite_in_program(program: Rc<SExp>, path: Number, new_exp: Rc<SExp>) -> Option<Rc<SExp>> {
+    if path == bi_zero() {
+        return None;
+    }
+
+    if path == bi_one() {
+        return Some(new_exp);
+    }
+
+    match program.borrow() {
+        SExp::Cons(l, a, b) => {
+            if path.clone() & bi_one() == bi_zero() {
+                // Left traversal
+                rewrite_in_program(
+                    a.clone(),
+                    path.clone() / 2_u32.to_bigint().unwrap(),
+                    new_exp,
+                )
+            } else {
+                // Left traversal
+                rewrite_in_program(
+                    b.clone(),
+                    path.clone() / 2_u32.to_bigint().unwrap(),
+                    new_exp,
+                )
+            }
+        }
+        _ => None,
+    }
+}
+
+pub fn is_operator(op: u32, atom: &SExp) -> bool {
+    match atom.to_bigint() {
+        Some(n) => n == op.to_bigint().unwrap(),
+        None => false,
+    }
+}
+
+pub fn is_whole_env(atom: &SExp) -> bool {
+    is_operator(1, atom)
+}
+pub fn is_apply(atom: &SExp) -> bool {
+    is_operator(2, atom)
+}
+pub fn is_cons(atom: &SExp) -> bool {
+    is_operator(4, atom)
+}
+
+// Extracts the environment from a clvm program that contains one.
+// The usual form of a program to analyze is:
+// (2 main (4 env 1))
+pub fn extract_program_and_env(program: Rc<SExp>) -> Option<(Rc<SExp>, Rc<SExp>)> {
+    // Most programs have apply as a toplevel form.  If we don't then it's
+    // a form we don't understand.
+    match program.proper_list() {
+        Some(lst) => {
+            if lst.len() != 3 {
+                return None;
+            }
+
+            match (is_apply(&lst[0]), lst[1].borrow(), lst[2].proper_list()) {
+                (true, real_program, Some(cexp)) => {
+                    if cexp.len() != 3 || !is_cons(&cexp[0]) || !is_whole_env(&cexp[2]) {
+                        None
+                    } else {
+                        Some((Rc::new(real_program.clone()), Rc::new(cexp[1].clone())))
+                    }
+                }
+                _ => None,
+            }
+        }
+        _ => None,
     }
 }

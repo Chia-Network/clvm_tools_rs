@@ -120,6 +120,7 @@ pub trait CompilerOpts {
     fn stdenv(&self) -> bool;
     fn optimize(&self) -> bool;
     fn frontend_opt(&self) -> bool;
+    fn no_eliminate(&self) -> bool;
     fn start_env(&self) -> Option<Rc<SExp>>;
     fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>>;
 
@@ -128,6 +129,7 @@ pub trait CompilerOpts {
     fn set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts>;
     fn set_optimize(&self, opt: bool) -> Rc<dyn CompilerOpts>;
     fn set_frontend_opt(&self, opt: bool) -> Rc<dyn CompilerOpts>;
+    fn set_no_eliminate(&self, ne: bool) -> Rc<dyn CompilerOpts>;
     fn set_compiler(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts>;
     fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts>;
 
