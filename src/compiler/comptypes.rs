@@ -4,10 +4,11 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
+use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
+use crate::compiler::clvm::sha256tree;
 use crate::compiler::sexp::{decode_string, SExp};
-
 use crate::compiler::srcloc::Srcloc;
 
 #[derive(Clone, Debug)]
@@ -110,6 +111,7 @@ pub struct PrimaryCodegen {
     pub to_process: Vec<HelperForm>,
     pub final_expr: Rc<BodyForm>,
     pub final_code: Option<CompiledCode>,
+    pub function_symbols: HashMap<String, String>,
 }
 
 pub trait CompilerOpts {
@@ -138,6 +140,7 @@ pub trait CompilerOpts {
         allocator: &mut Allocator,
         runner: Rc<dyn TRunProgram>,
         sexp: Rc<SExp>,
+        symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr>;
 }
 
@@ -348,7 +351,11 @@ impl PrimaryCodegen {
 
     pub fn add_defun(&self, name: &Vec<u8>, value: DefunCall) -> Self {
         let mut codegen_copy = self.clone();
-        codegen_copy.defuns.insert(name.clone(), value);
+        codegen_copy.defuns.insert(name.clone(), value.clone());
+        let hash = sha256tree(value.code.clone());
+        let hash_str = Bytes::new(Some(BytesFromType::Raw(hash))).hex();
+        let name = Bytes::new(Some(BytesFromType::Raw(name.clone()))).decode();
+        codegen_copy.function_symbols.insert(hash_str, name);
         codegen_copy
     }
 

@@ -13,7 +13,8 @@ use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::{convert_from_clvm_rs, get_history_len, run_step, RunStep};
+use crate::compiler::clvm;
+use crate::compiler::clvm::{convert_from_clvm_rs, run_step, RunStep};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
@@ -64,6 +65,10 @@ fn get_arg_associations(
     }
 }
 
+pub trait CldbRunnable {
+    fn replace_step(&self, step: &RunStep) -> Option<Result<RunStep, RunFailure>>;
+}
+
 pub trait CldbEnvironment {
     fn add_context(
         &self,
@@ -73,6 +78,7 @@ pub trait CldbEnvironment {
         context_result: &mut BTreeMap<String, String>,
     );
     fn add_function(&self, s: &SExp, context_result: &mut BTreeMap<String, String>);
+    fn get_override(&self, s: &RunStep) -> Option<Result<RunStep, RunFailure>>;
 }
 
 pub struct CldbRun {
@@ -83,6 +89,7 @@ pub struct CldbRun {
     step: RunStep,
 
     ended: bool,
+    final_result: Option<Rc<SExp>>,
     to_print: BTreeMap<String, String>,
     in_expr: bool,
     row: usize,
@@ -103,6 +110,7 @@ impl CldbRun {
             env,
             step,
             ended: false,
+            final_result: None,
             to_print: BTreeMap::new(),
             in_expr: false,
             row: 0,
@@ -113,20 +121,29 @@ impl CldbRun {
     pub fn is_ended(&self) -> bool {
         self.ended
     }
+
+    pub fn final_result(&self) -> Option<Rc<SExp>> {
+        self.final_result.clone()
+    }
+
     pub fn step(&mut self, allocator: &mut Allocator) -> Option<BTreeMap<String, String>> {
         let mut produce_result = false;
         let mut result = BTreeMap::new();
-        let new_step = run_step(
-            allocator,
-            self.runner.clone(),
-            self.prim_map.clone(),
-            &self.step,
-        );
+        let new_step = match self.env.get_override(&self.step) {
+            Some(v) => v,
+            _ => run_step(
+                allocator,
+                self.runner.clone(),
+                self.prim_map.clone(),
+                &self.step,
+            ),
+        };
+
+        // Allow overrides by consumers.
 
         match &new_step {
             Ok(RunStep::OpResult(l, x, p)) => {
                 if self.in_expr {
-                    let history_len = get_history_len(p.clone());
                     self.to_print
                         .insert("Result-Location".to_string(), l.to_string());
                     self.to_print.insert("Value".to_string(), x.to_string());
@@ -155,12 +172,12 @@ impl CldbRun {
                 self.to_print.insert("Final".to_string(), x.to_string());
 
                 self.ended = true;
+                self.final_result = Some(x.clone());
                 swap(&mut self.to_print, &mut result);
                 produce_result = true;
             }
             Ok(RunStep::Step(sexp, c, p)) => {}
             Ok(RunStep::Op(sexp, c, a, None, p)) => {
-                let history_len = get_history_len(p.clone());
                 self.to_print
                     .insert("Operator-Location".to_string(), a.loc().to_string());
                 self.to_print
@@ -168,6 +185,7 @@ impl CldbRun {
                 match sexp.get_number().ok() {
                     Some(v) => {
                         if v == 11_u32.to_bigint().unwrap() {
+                            // Build source tree for hashes.
                             let arg_associations =
                                 get_arg_associations(&self.outputs_to_step, a.clone());
                             let args = format_arg_inputs(&arg_associations);
@@ -192,6 +210,7 @@ impl CldbRun {
                 self.to_print.insert("Throw".to_string(), s.to_string());
 
                 swap(&mut self.to_print, &mut result);
+                self.ended = true;
                 produce_result = true;
             }
             Err(RunFailure::RunErr(l, s)) => {
@@ -200,11 +219,13 @@ impl CldbRun {
                 self.to_print.insert("Failure".to_string(), s.to_string());
 
                 swap(&mut self.to_print, &mut result);
+                self.ended = true;
                 produce_result = true;
             }
         }
 
         self.step = new_step.unwrap_or_else(|_| self.step.clone());
+
         if produce_result {
             self.row += 1;
             Some(result)
@@ -214,16 +235,115 @@ impl CldbRun {
     }
 }
 
+pub struct CldbNoOverride {
+    symbol_table: HashMap<String, String>,
+}
+
+impl CldbRunnable for CldbNoOverride {
+    fn replace_step(&self, step: &RunStep) -> Option<Result<RunStep, RunFailure>> {
+        None
+    }
+}
+
+impl CldbNoOverride {
+    pub fn new() -> Self {
+        CldbNoOverride {
+            symbol_table: HashMap::new(),
+        }
+    }
+
+    pub fn new_symbols(symbol_table: HashMap<String, String>) -> Self {
+        CldbNoOverride { symbol_table }
+    }
+}
+
+// Allow the caller to examine environment and return an expression that
+// will be quoted.
+pub trait CldbSingleBespokeOverride {
+    fn get_override(&self, env: Rc<SExp>) -> Result<Rc<SExp>, RunFailure>;
+}
+
+pub struct CldbOverrideBespokeCode {
+    symbol_table: HashMap<String, String>,
+    overrides: HashMap<String, Box<dyn CldbSingleBespokeOverride>>,
+}
+
+impl CldbOverrideBespokeCode {
+    pub fn new(
+        symbol_table: HashMap<String, String>,
+        overrides: HashMap<String, Box<dyn CldbSingleBespokeOverride>>,
+    ) -> Self {
+        CldbOverrideBespokeCode {
+            symbol_table: symbol_table,
+            overrides: overrides,
+        }
+    }
+
+    fn find_function_and_override_if_needed(
+        &self,
+        sexp: Rc<SExp>,
+        c: Rc<SExp>,
+        f: Rc<SExp>,
+        args: Rc<SExp>,
+        p: Rc<RunStep>,
+    ) -> Option<Result<RunStep, RunFailure>> {
+        let fun_hash = clvm::sha256tree(f.clone());
+        let fun_hash_str = Bytes::new(Some(BytesFromType::Raw(fun_hash))).hex();
+
+        self.symbol_table
+            .get(&fun_hash_str)
+            .and_then(|funname| self.overrides.get(funname))
+            .map(|override_fn| {
+                override_fn
+                    .get_override(args.clone())
+                    .map(|new_exp| RunStep::OpResult(sexp.loc(), new_exp.clone(), p.clone()))
+            })
+    }
+}
+
+impl CldbRunnable for CldbOverrideBespokeCode {
+    fn replace_step(&self, step: &RunStep) -> Option<Result<RunStep, RunFailure>> {
+        match step {
+            RunStep::Op(sexp, c, a, None, p) => match sexp.borrow() {
+                SExp::Integer(_, i) => {
+                    if *i == 2_u32.to_bigint().unwrap() {
+                        match a.borrow() {
+                            SExp::Cons(_, f, args) => self.find_function_and_override_if_needed(
+                                sexp.clone(),
+                                c.clone(),
+                                f.clone(),
+                                args.clone(),
+                                p.clone(),
+                            ),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+}
+
 pub struct CldbRunEnv {
     input_file: Option<String>,
     program_lines: Vec<String>,
+    overrides: Box<dyn CldbRunnable>,
 }
 
 impl CldbRunEnv {
-    pub fn new(input_file: Option<String>, program_lines: Vec<String>) -> Self {
+    pub fn new(
+        input_file: Option<String>,
+        program_lines: Vec<String>,
+        runnable: Box<dyn CldbRunnable>,
+    ) -> Self {
         CldbRunEnv {
             input_file,
             program_lines,
+            overrides: runnable,
         }
     }
 
@@ -239,7 +359,7 @@ impl CldbRunEnv {
             })
             .and_then(|coords| {
                 let use_line = coords.0;
-                let mut use_col = coords.1;
+                let use_col = coords.1;
                 let mut end_col = coords.2;
 
                 if use_line >= self.program_lines.len() {
@@ -322,6 +442,10 @@ impl CldbEnvironment for CldbRunEnv {
                 _ => {}
             },
         );
+    }
+
+    fn get_override(&self, s: &RunStep) -> Option<Result<RunStep, RunFailure>> {
+        self.overrides.replace_step(s)
     }
 }
 

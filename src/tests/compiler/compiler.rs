@@ -16,7 +16,7 @@ fn compile_string(content: &String) -> Result<String, CompileErr> {
     let runner = Rc::new(DefaultProgramRunner::new());
     let opts = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
 
-    compile_file(&mut allocator, runner, opts, &content).map(|x| x.to_string())
+    compile_file(&mut allocator, runner, opts, &content, &mut HashMap::new()).map(|x| x.to_string())
 }
 
 fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
@@ -26,7 +26,14 @@ fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
     let opts = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let sexp_args = parse_sexp(srcloc.clone(), &args).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
 
-    compile_file(&mut allocator, runner.clone(), opts, &content).and_then(|x| {
+    compile_file(
+        &mut allocator,
+        runner.clone(),
+        opts,
+        &content,
+        &mut HashMap::new(),
+    )
+    .and_then(|x| {
         run(
             &mut allocator,
             runner,
