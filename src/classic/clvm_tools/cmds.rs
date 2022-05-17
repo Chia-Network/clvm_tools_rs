@@ -1,9 +1,5 @@
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-
 use core::cell::RefCell;
 
-use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io;
@@ -250,53 +246,6 @@ pub fn brun(args: &Vec<String>) {
     io::stdout().write_all(s.get_value().data());
 }
 
-fn read_modern_program_code_or_hex(
-    allocator: &mut Allocator,
-    symbol_table: &HashMap<String, String>,
-    do_optimize: bool,
-    hex: Option<ArgumentValue>,
-    path_or_code: Option<ArgumentValue>,
-) -> Result<Rc<sexp::SExp>, CompileErr> {
-    let mut input_file = "*program*".to_string();
-    let mut prog_srcloc = Srcloc::start(&input_file);
-    let mut input_program = "()".to_string();
-    let runner = Rc::new(DefaultProgramRunner::new());
-
-    match path_or_code {
-        Some(ArgumentValue::ArgString(file, path_or_code)) => {
-            match file {
-                Some(f) => input_file = f.clone(),
-                _ => {}
-            }
-            prog_srcloc = Srcloc::start(&input_file);
-            input_program = path_or_code.to_string();
-        }
-        _ => {
-            let eloc = Srcloc::start(&"*args*".to_string());
-            return Err(CompileErr(eloc, "no program read".to_string()));
-        }
-    };
-
-    match hex {
-        Some(ArgumentValue::ArgBool(true)) => hex_to_modern_sexp(
-            allocator,
-            &symbol_table,
-            prog_srcloc.clone(),
-            &input_program,
-        )
-        .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
-        _ => {
-            let opts = DefaultCompilerOpts::new(&input_file).set_no_eliminate(true);
-            let unopt_res = compile_file(allocator, runner.clone(), opts, &input_program);
-            if do_optimize {
-                unopt_res.and_then(|x| run_optimizer(allocator, runner.clone(), Rc::new(x)))
-            } else {
-                unopt_res.map(|x| Rc::new(x))
-            }
-        }
-    }
-}
-
 pub fn cldb(args: &Vec<String>) {
     let tool_name = "cldb".to_string();
     let props = TArgumentParserProps {
@@ -408,14 +357,6 @@ pub fn cldb(args: &Vec<String>) {
     let use_filename = input_file
         .clone()
         .unwrap_or_else(|| "*command*".to_string());
-    let do_optimize = parsedArgs
-        .get("optimize")
-        .map(|x| match x {
-            ArgumentValue::ArgBool(true) => true,
-            _ => false,
-        })
-        .unwrap_or_else(|| false);
-
     let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_optimize(do_optimize);
 
     let unopt_res = compile_file(&mut allocator, runner.clone(), opts.clone(), &input_program);
@@ -428,13 +369,22 @@ pub fn cldb(args: &Vec<String>) {
         Err(e) => format!("error producing yaml: {:?}", e),
     };
 
-    let res = read_modern_program_code_or_hex(
-        &mut allocator,
-        &symbol_table.unwrap_or_else(|| HashMap::new()),
-        do_optimize,
-        parsedArgs.get("hex").map(|x| x.clone()),
-        parsedArgs.get("path_or_code").map(|x| x.clone()),
-    );
+    let res = match parsedArgs.get("hex") {
+        Some(ArgumentValue::ArgBool(true)) => hex_to_modern_sexp(
+            &mut allocator,
+            &symbol_table.unwrap_or_else(|| HashMap::new()),
+            prog_srcloc.clone(),
+            &input_program,
+        )
+        .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
+        _ => {
+            if do_optimize {
+                unopt_res.and_then(|x| run_optimizer(&mut allocator, runner.clone(), Rc::new(x)))
+            } else {
+                unopt_res.map(|x| Rc::new(x))
+            }
+        }
+    };
 
     match res {
         Ok(r) => {
@@ -509,97 +459,6 @@ pub fn cldb(args: &Vec<String>) {
             _ => {}
         }
     }
-}
-pub fn mock_run(args: &Vec<String>) -> String {
-    let tool_name = "mock".to_string();
-    let props = TArgumentParserProps {
-        description: "Execute a clvm program, allowing functions to be mocked and optionally the main expression to be replaced.".to_string(),
-        prog: format!("clvm_tools {}", tool_name),
-    };
-
-    let mut parser = ArgumentParser::new(Some(props));
-    parser.add_argument(
-        vec!["-x".to_string(), "--hex".to_string()],
-        Argument::new()
-            .set_action(TArgOptionAction::StoreTrue)
-            .set_help("parse input program and arguments from hex".to_string()),
-    );
-    parser.add_argument(
-        vec!["-y".to_string(), "--symbol-table".to_string()],
-        Argument::new()
-            .set_type(Rc::new(PathOrCodeConv {}))
-            .set_help("path to symbol file".to_string()),
-    );
-    parser.add_argument(
-        vec!["-m".to_string(), "--mock".to_string()],
-        Argument::new()
-            .set_type(Rc::new(PathOrCodeConv {}))
-            .set_help("path to mock functions".to_string()),
-    );
-    parser.add_argument(
-        vec!["path_or_code".to_string()],
-        Argument::new()
-            .set_type(Rc::new(PathOrCodeConv {}))
-            .set_help("filepath to clvm script, or a literal script".to_string()),
-    );
-    parser.add_argument(
-        vec!["env".to_string()],
-        Argument::new()
-            .set_n_args(NArgsSpec::Optional)
-            .set_type(Rc::new(PathOrCodeConv {}))
-            .set_help("clvm script environment, as clvm src, or hex".to_string()),
-    );
-
-    let arg_vec = args[1..].to_vec();
-    let parsed_args: HashMap<String, ArgumentValue>;
-    match parser.parse_args(&arg_vec) {
-        Err(e) => {
-            return format!("error parsing arguments: {}", e.to_string());
-        }
-        Ok(v) => parsed_args = v,
-    }
-
-    let mut allocator = Allocator::new();
-    let mut symbol_table = HashMap::new();
-
-    let program_res = read_modern_program_code_or_hex(
-        &mut allocator,
-        &symbol_table,
-        true,
-        parsed_args.get("hex").map(|x| x.clone()),
-        parsed_args.get("path_or_code").map(|x| x.clone()),
-    );
-
-    let program = match program_res {
-        Ok(p) => p,
-        _ => {
-            return format!("error reading program");
-        }
-    };
-
-    build_symbol_table_mut(&mut symbol_table, program.borrow());
-
-    return program.to_string();
-}
-
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
-pub fn jsmock(args: Vec<JsValue>) -> JsValue {
-    let mut string_args = Vec::new();
-
-    for a in args.iter() {
-        if !a.is_string() {
-            return JsValue::from_str("a non-string was passed in");
-        }
-
-        string_args.push(a.as_string().unwrap());
-    }
-
-    return JsValue::from_str(&mock_run(&string_args));
-}
-
-pub fn mock(args: &Vec<String>) {
-    println!("{}", mock_run(args));
 }
 
 struct RunLog<T> {
@@ -818,13 +677,6 @@ pub fn launch_tool(
         Some(ArgumentValue::ArgBool(_b)) => &empty_map,
         _ => KEYWORD_FROM_ATOM(),
     };
-    let do_optimize = parsedArgs
-        .get("optimize")
-        .map(|x| match x {
-            ArgumentValue::ArgBool(true) => true,
-            _ => false,
-        })
-        .unwrap_or_else(|| false);
 
     let dpr;
     let run_program: Rc<dyn TRunProgram>;
@@ -969,6 +821,13 @@ pub fn launch_tool(
     if let Some(dialect) = input_sexp
         .and_then(|i| detect_modern(&mut allocator, i))
     {
+        let do_optimize = parsedArgs
+            .get("optimize")
+            .map(|x| match x {
+                ArgumentValue::ArgBool(true) => true,
+                _ => false,
+            })
+            .unwrap_or_else(|| false);
         let runner = Rc::new(DefaultProgramRunner::new());
         let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_optimize(do_optimize).set_frontend_opt(dialect > 21);

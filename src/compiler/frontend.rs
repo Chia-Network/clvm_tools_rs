@@ -602,7 +602,7 @@ pub fn frontend(
 
     let mut live_helpers = Vec::new();
     for h in our_mod.helpers {
-        if opts.no_eliminate() || helper_names.contains(h.name()) {
+        if helper_names.contains(h.name()) {
             live_helpers.push(h);
         }
     }
