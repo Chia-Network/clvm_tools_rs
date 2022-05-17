@@ -6,21 +6,17 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
-use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::comptypes::CompileErr;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
-fn compile_string_opts(opts: Rc<CompilerOpts>, content: &String) -> Result<String, CompileErr> {
+fn compile_string(content: &String) -> Result<String, CompileErr> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
+    let opts = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
 
     compile_file(&mut allocator, runner, opts, &content).map(|x| x.to_string())
-}
-
-fn compile_string(content: &String) -> Result<String, CompileErr> {
-    let opts = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
-    compile_string_opts(opts, content)
 }
 
 fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
@@ -52,31 +48,6 @@ fn compile_test_1() {
     )
     .unwrap();
     assert_eq!(result, "(2 (1 16 (1 . 1) (1 . 3)) (4 (1) 1))".to_string());
-}
-
-#[test]
-fn compile_test_no_elim_same() {
-    let result1 = compile_string(&"(mod (A) (defun F (X) (+ X 1)) (F A))".to_string()).unwrap();
-    let result2 =
-        compile_string(&"(mod (A) (defun F (X) (+ X 1)) (defun G (X) (- X 1)) (F A))".to_string())
-            .unwrap();
-    assert_eq!(result1, result2);
-}
-
-#[test]
-fn compile_test_elim_diff() {
-    let opts = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string())).set_no_eliminate(true);
-    let result1 = compile_string_opts(
-        opts.clone(),
-        &"(mod (A) (defun F (X) (+ X 1)) (F A))".to_string(),
-    )
-    .unwrap();
-    let result2 = compile_string_opts(
-        opts.clone(),
-        &"(mod (A) (defun F (X) (+ X 1)) (defun G (X) (- X 1)) (F A))".to_string(),
-    )
-    .unwrap();
-    assert_ne!(result1, result2);
 }
 
 #[test]
