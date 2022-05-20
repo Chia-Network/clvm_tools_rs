@@ -38,8 +38,6 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 struct JsRunStep {
     allocator: Allocator,
-    runner: Rc<dyn TRunProgram>,
-    prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     cldbrun: CldbRun,
 }
 
@@ -249,8 +247,6 @@ pub fn create_clvm_runner(
         this_id,
         JsRunStep {
             allocator,
-            runner,
-            prim_map: prim_map_rc,
             cldbrun,
         },
     );
@@ -468,4 +464,12 @@ pub fn repl_run_string(repl_id: i32, input: String) -> JsValue {
     }).map(|v| v.map(|v| js_object_from_sexp(v.to_sexp()))).unwrap_or_else(|e| {
         Some(create_clvm_runner_err(format!("{}: {}", e.0.to_string(), e.1)))
     }).unwrap_or_else(|| JsValue::null())
+}
+
+#[wasm_bindgen]
+pub fn sexp_to_string(v: &JsValue) -> JsValue {
+    let loc = Srcloc::start(&"*val*".to_string());
+    sexp_from_js_object(loc, v).map(|s| JsValue::from_str(&s.to_string())).unwrap_or_else(|| {
+        create_clvm_runner_err("unable to convert to value".to_string())
+    })
 }
