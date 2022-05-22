@@ -1,3 +1,5 @@
+#![feature(try_trait_v2)]
+
 #[macro_use]
 extern crate lazy_static;
 

@@ -128,7 +128,7 @@ fn fe_opt(
                     &HashMap::new(),
                     body.clone(),
                     true
-                )?;
+                ).end()?;
                 let new_helper = HelperForm::Defun(
                     loc.clone(),
                     name.clone(),
@@ -153,7 +153,7 @@ fn fe_opt(
         &HashMap::new(),
         compileform.exp.clone(),
         true
-    )?;
+    ).end()?;
 
     Ok(CompileForm {
         loc: compileform.loc.clone(),

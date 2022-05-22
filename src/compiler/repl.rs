@@ -189,13 +189,13 @@ impl Repl {
                     self.opts.clone(),
                     parsed_program
                 ).and_then(|program| {
-                    return self.evaluator.shrink_bodyform(
+                    self.evaluator.shrink_bodyform(
                         allocator,
                         program.args.clone(),
                         &HashMap::new(),
                         program.exp.clone(),
                         false
-                        );
+                    ).end()
                 }).map(|x| Some(x))
             }
         })

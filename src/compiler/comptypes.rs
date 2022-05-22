@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ops::{ControlFlow, FromResidual, Try};
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
@@ -145,6 +146,108 @@ pub trait CompilerOpts {
         sexp: Rc<SExp>,
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr>;
+}
+
+/* A type indicating whether a result is final, but allowing monad-style chaining */
+#[derive(Clone, Debug, PartialEq)]
+pub enum EvalResult<T,E> {
+    Continuable(T),
+    Final(T),
+    Err(E)
+}
+
+impl<T,E> EvalResult<T,E> {
+    pub fn map<R,F>(self, f: F) -> EvalResult<R,E> where F : FnOnce(T) -> R {
+        match self {
+            EvalResult::Continuable(t) => EvalResult::Continuable(f(t)),
+            EvalResult::Final(t) => EvalResult::Final(f(t)),
+            EvalResult::Err(e) => EvalResult::Err(e)
+        }
+    }
+
+    pub fn and_then<R,F>(self, f: F) -> EvalResult<R,E> where F : FnOnce(T) -> EvalResult<R,E> {
+        match self {
+            EvalResult::Continuable(t) => f(t),
+            EvalResult::Final(t) => f(t),
+            EvalResult::Err(e) => EvalResult::Err(e)
+        }
+    }
+
+    pub fn more<F>(self, f: F) -> EvalResult<T,E> where F : FnOnce(T) -> EvalResult<T,E> {
+        match self {
+            EvalResult::Continuable(t) => f(t),
+            EvalResult::Final(t) => EvalResult::Final(t),
+            EvalResult::Err(e) => EvalResult::Err(e)
+        }
+    }
+
+    pub fn end(self) -> Result<T,E> {
+        match self {
+            EvalResult::Continuable(t) => Ok(t),
+            EvalResult::Final(t) => Ok(t),
+            EvalResult::Err(e) => Err(e)
+        }
+    }
+
+    pub fn finish(self) -> EvalResult<T,E> {
+        match self {
+            EvalResult::Continuable(t) => EvalResult::Final(t),
+            x => x
+        }
+    }
+
+    pub fn from_result(r: Result<T,E>) -> Self {
+        match r {
+            Result::Ok(r) => EvalResult::Continuable(r),
+            Result::Err(e) => EvalResult::Err(e)
+        }
+    }
+
+    pub fn map_err<F,G>(self, f: F) -> EvalResult<T,G> where F: FnOnce(E) -> G {
+        match self {
+            EvalResult::Continuable(t) => EvalResult::Continuable(t),
+            EvalResult::Final(t) => EvalResult::Final(t),
+            EvalResult::Err(e) => EvalResult::Err(f(e))
+        }
+    }
+
+    pub fn unwrap_or_else<F>(self, f: F) -> T where F: FnOnce(E) -> T {
+        match self {
+            EvalResult::Continuable(t) => t,
+            EvalResult::Final(t) => t,
+            EvalResult::Err(e) => f(e)
+        }
+    }
+
+    pub fn and_err<F,G>(self, f: F) -> EvalResult<T,G> where F: FnOnce(E) -> EvalResult<T,G> {
+        match self {
+            EvalResult::Continuable(t) => EvalResult::Continuable(t),
+            EvalResult::Final(t) => EvalResult::Final(t),
+            EvalResult::Err(e) => f(e)
+        }
+    }
+}
+
+impl<T,E> FromResidual for EvalResult<T,E> {
+    fn from_residual(r: E) -> EvalResult<T,E> {
+        EvalResult::Err(r)
+    }
+}
+
+impl<T,E> Try for EvalResult<T,E> {
+    type Output = T;
+    type Residual = E;
+    
+    fn from_output(output: T) -> Self {
+        EvalResult::Continuable(output)
+    }
+    fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
+        match self {
+            EvalResult::Continuable(t) => ControlFlow::Continue(t),
+            EvalResult::Final(t) => ControlFlow::Continue(t),
+            EvalResult::Err(e) => ControlFlow::Break(e)
+        }
+    }
 }
 
 /* Frontend uses this to accumulate frontend forms */

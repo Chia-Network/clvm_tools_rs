@@ -35,7 +35,7 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
             &HashMap::new(),
             program.exp.clone(),
             false
-        );
+        ).end();
     }).map(|result| {
         result.to_sexp().to_string()
     })

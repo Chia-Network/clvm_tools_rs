@@ -40,7 +40,7 @@ fn main() {
             &HashMap::new(),
             program.exp.clone(),
             false
-        );
+        ).end();
     }).map(|result| {
         println!("shrunk: {}", result.to_sexp().to_string());
     }).map_err(|e| {
