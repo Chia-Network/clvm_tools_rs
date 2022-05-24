@@ -148,8 +148,7 @@ jobs:
     - name: Run wasm tests
       if: startsWith(matrix.os, 'ubuntu')
       run: |
-        apt-get install nodejs
-        cd mock-test && make && node ./build/runmock.js
+        cd mock-test && make && ../resources/tests/linux-install-node.sh ./build/runmock.js
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
