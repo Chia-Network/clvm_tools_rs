@@ -7,10 +7,9 @@ use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::CompileErr;
 use crate::compiler::repl::Repl;
 
-fn test_repl_outcome<S>(
-    inputs: Vec<S>
-) -> Result<Option<String>, CompileErr> where
-    S: ToString
+fn test_repl_outcome<S>(inputs: Vec<S>) -> Result<Option<String>, CompileErr>
+where
+    S: ToString,
 {
     let mut allocator = Allocator::new();
     let mut res = Ok(None);
@@ -19,9 +18,7 @@ fn test_repl_outcome<S>(
     let mut repl = Repl::new(opts, runner);
 
     for i in inputs.iter() {
-        res = res.and_then(|_| {
-            repl.process_line(&mut allocator, i.to_string())
-        });
+        res = res.and_then(|_| repl.process_line(&mut allocator, i.to_string()));
     }
 
     res.map(|r| r.map(|r| r.to_sexp().to_string()))
@@ -30,7 +27,9 @@ fn test_repl_outcome<S>(
 #[test]
 fn test_basic_repl_constant() {
     assert_eq!(
-        test_repl_outcome(vec![ "(defconstant CREATE_COIN 51)", "51" ]).unwrap().unwrap(),
+        test_repl_outcome(vec!["(defconstant CREATE_COIN 51)", "51"])
+            .unwrap()
+            .unwrap(),
         "(q . 51)"
     );
 }
@@ -56,30 +55,23 @@ fn test_pw_coin() {
         "        (real-hash 0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824))",
         "    (= password-hash real-hash)",
         "    )",
-        "  )"
+        "  )",
     ];
     let mut yesvec = startvec.clone();
     yesvec.push("(check-password \"hello\")");
     let mut novec = startvec.clone();
     novec.push("(check-password \"hithere\")");
 
-    assert_eq!(
-        test_repl_outcome(yesvec).unwrap().unwrap(),
-        "(q . 1)"
-    );
-    assert_eq!(
-        test_repl_outcome(novec).unwrap().unwrap(),
-        "(q)"
-    );
+    assert_eq!(test_repl_outcome(yesvec).unwrap().unwrap(), "(q . 1)");
+    assert_eq!(test_repl_outcome(novec).unwrap().unwrap(), "(q)");
 }
 
 #[test]
 fn test_toplevel_macros_1() {
     assert_eq!(
-        test_repl_outcome(vec![
-            "(defconstant COND 1)",
-            "(if COND 1 0)"
-        ]).unwrap().unwrap(),
+        test_repl_outcome(vec!["(defconstant COND 1)", "(if COND 1 0)"])
+            .unwrap()
+            .unwrap(),
         "(q . 1)"
     );
 }
@@ -87,9 +79,7 @@ fn test_toplevel_macros_1() {
 #[test]
 fn test_toplevel_macros_2() {
     assert_eq!(
-        test_repl_outcome(vec![
-            "(list 1 2 3)"
-        ]).unwrap().unwrap(),
+        test_repl_outcome(vec!["(list 1 2 3)"]).unwrap().unwrap(),
         "(q 1 2 3)"
     );
 }
@@ -120,11 +110,9 @@ fn test_last_of_pwcoin_1() {
 #[test]
 fn test_defconstant_2() {
     assert_eq!(
-        test_repl_outcome(vec![
-            "(defconstant A 1)",
-            "(defconstant B 2)",
-            "B"
-        ]).unwrap().unwrap(),
+        test_repl_outcome(vec!["(defconstant A 1)", "(defconstant B 2)", "B"])
+            .unwrap()
+            .unwrap(),
         "(q . 2)"
     );
 }

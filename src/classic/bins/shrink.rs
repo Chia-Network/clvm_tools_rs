@@ -4,8 +4,8 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
-use clvm_tools_rs::compiler::comptypes::CompileErr;
 use clvm_tools_rs::compiler::compiler::DefaultCompilerOpts;
+use clvm_tools_rs::compiler::comptypes::CompileErr;
 use clvm_tools_rs::compiler::evaluate::Evaluator;
 use clvm_tools_rs::compiler::frontend::frontend;
 use clvm_tools_rs::compiler::sexp::parse_sexp;
@@ -24,26 +24,29 @@ fn main() {
     }
 
     let loc = Srcloc::start(&"*program*".to_string());
-    let _ = parse_sexp(loc.clone(), &args[1]).map_err(|e| {
-        return CompileErr(e.0.clone(), e.1.clone());
-    }).and_then(|parsed_program| {
-        return frontend(opts.clone(), parsed_program);
-    }).and_then(|program| {
-        let e = Evaluator::new(
-            opts.clone(),
-            runner.clone(),
-            program.helpers.clone(),
-        );
-        return e.shrink_bodyform(
-            &mut allocator,
-            program.args.clone(),
-            &HashMap::new(),
-            program.exp.clone(),
-            false
-        ).end();
-    }).map(|result| {
-        println!("shrunk: {}", result.to_sexp().to_string());
-    }).map_err(|e| {
-        println!("failed: {:?}", e);
-    });
+    let _ = parse_sexp(loc.clone(), &args[1])
+        .map_err(|e| {
+            return CompileErr(e.0.clone(), e.1.clone());
+        })
+        .and_then(|parsed_program| {
+            return frontend(opts.clone(), parsed_program);
+        })
+        .and_then(|program| {
+            let e = Evaluator::new(opts.clone(), runner.clone(), program.helpers.clone());
+            return e
+                .shrink_bodyform(
+                    &mut allocator,
+                    program.args.clone(),
+                    &HashMap::new(),
+                    program.exp.clone(),
+                    false,
+                )
+                .end();
+        })
+        .map(|result| {
+            println!("shrunk: {}", result.to_sexp().to_string());
+        })
+        .map_err(|e| {
+            println!("failed: {:?}", e);
+        });
 }
