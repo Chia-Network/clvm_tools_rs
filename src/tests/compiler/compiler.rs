@@ -597,3 +597,37 @@ fn cant_redefine_defun_with_defun() {
         assert!(result.is_err());
     }
 }
+
+fn test_collatz_maybe_opt(opt: bool) {
+    let result = run_string_maybe_opt(
+        &indoc! {"
+            (mod (A)
+             (include *standard-cl-22*)
+             (defun-inline odd (X) (logand X 1))
+             (defun collatz (N X)
+              (if (= X 1)
+               N
+               (let ((incN (+ N 1)))
+                (if (odd X)
+                 (collatz incN (+ 1 (* 3 X)))
+                 (collatz incN (/ X 2))
+                )
+               )
+              )
+             )
+             (collatz 0 A)
+            )
+        "}.to_string(),
+        &"(4)".to_string(),
+        opt
+    ).unwrap();
+    assert_eq!(result.to_string(), "(q . 2)");
+}
+
+fn test_collatz() {
+    test_collatz_maybe_opt(false);
+}
+
+fn test_collatz_opt() {
+    test_collatz_maybe_opt(true);
+}
