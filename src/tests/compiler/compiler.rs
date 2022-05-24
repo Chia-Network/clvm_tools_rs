@@ -229,7 +229,7 @@ fn run_test_6() {
 
 #[test]
 fn run_test_6_opt() {
-    // run_test_6_maybe_opt(true);
+    run_test_6_maybe_opt(true);
 }
 
 fn run_test_7_maybe_opt(opt: bool) {
