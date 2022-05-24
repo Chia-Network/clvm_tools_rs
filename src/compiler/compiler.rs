@@ -168,6 +168,7 @@ fn compile_pre_forms(
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     pre_forms: Vec<Rc<SExp>>,
+    symbol_table: &mut HashMap<String, String>
 ) -> Result<SExp, CompileErr> {
     let g = frontend(opts.clone(), pre_forms)?;
     let compileform = if opts.frontend_opt() {
@@ -185,7 +186,7 @@ fn compile_pre_forms(
         runner,
         opts.clone(),
         &compileform,
-        &mut HashMap::new(),
+        symbol_table
     )
 }
 
@@ -199,7 +200,7 @@ pub fn compile_file(
     let pre_forms =
         parse_sexp(Srcloc::start(&opts.filename()), content).map_err(|e| CompileErr(e.0, e.1))?;
 
-    compile_pre_forms(allocator, runner, opts, pre_forms)
+    compile_pre_forms(allocator, runner, opts, pre_forms, symbol_table)
 }
 
 pub fn run_optimizer(
@@ -334,7 +335,7 @@ impl CompilerOpts for DefaultCompilerOpts {
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
-        compile_pre_forms(allocator, runner, me, vec![sexp.clone()])
+        compile_pre_forms(allocator, runner, me, vec![sexp.clone()], symbol_table)
     }
 }
 
