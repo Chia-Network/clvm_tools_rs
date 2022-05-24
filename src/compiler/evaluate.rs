@@ -477,7 +477,6 @@ impl Evaluator {
                     // Build SExp arguments for external call or
                     // return the unevaluated chunk with minimized
                     // arguments.
-                    panic!("foo");
                     Err(CompileErr(
                         l.clone(),
                         format!(
