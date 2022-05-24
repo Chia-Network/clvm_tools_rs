@@ -20,7 +20,9 @@ use crate::compiler::cldb::{
     CldbSingleBespokeOverride,
 };
 use crate::compiler::clvm::{convert_to_clvm_rs, start_step};
-use crate::compiler::compiler::{DefaultCompilerOpts, extract_program_and_env, path_to_function, rewrite_in_program};
+use crate::compiler::compiler::{
+    extract_program_and_env, path_to_function, rewrite_in_program, DefaultCompilerOpts,
+};
 use crate::compiler::comptypes::CompileErr;
 use crate::compiler::prims;
 use crate::compiler::repl::Repl;
@@ -45,7 +47,7 @@ struct JsRepl {
     allocator: RefCell<Allocator>,
     runner: Rc<dyn TRunProgram>,
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
-    repl: RefCell<Repl>
+    repl: RefCell<Repl>,
 }
 
 thread_local! {
@@ -243,13 +245,7 @@ pub fn create_clvm_runner(
     let cldbrun = CldbRun::new(runner.clone(), prim_map_rc.clone(), Box::new(cldbenv), step);
 
     let this_id = get_next_id();
-    insert_runner(
-        this_id,
-        JsRunStep {
-            allocator,
-            cldbrun,
-        },
-    );
+    insert_runner(this_id, JsRunStep { allocator, cldbrun });
 
     return JsValue::from(this_id);
 }
@@ -423,12 +419,15 @@ pub fn create_repl() -> i32 {
         repls.replace_with(|repls| {
             let mut work_repls = HashMap::new();
             swap(&mut work_repls, repls);
-            work_repls.insert(new_id, JsRepl {
-                allocator: RefCell::new(allocator),
-                runner,
-                prim_map: Rc::new(prim_map),
-                repl: RefCell::new(repl)
-            });
+            work_repls.insert(
+                new_id,
+                JsRepl {
+                    allocator: RefCell::new(allocator),
+                    runner,
+                    prim_map: Rc::new(prim_map),
+                    repl: RefCell::new(repl),
+                },
+            );
             work_repls
         })
     });
@@ -450,26 +449,37 @@ pub fn destroy_repl(repl_id: i32) {
 
 #[wasm_bindgen]
 pub fn repl_run_string(repl_id: i32, input: String) -> JsValue {
-    REPLS.with(|repls| {
-        let repls = repls.borrow();
-        if let Some(repl_container) = repls.get(&repl_id) {
-            let mut a_borrowed = repl_container.allocator.borrow_mut();
-            let a = a_borrowed.deref_mut();
-            let mut r_borrowed = repl_container.repl.borrow_mut();
-            let r = r_borrowed.deref_mut();
-            r.process_line(a, input)
-        } else {
-            Err(CompileErr(Srcloc::start(&"*repl*".to_string()), "no such repl".to_string()))
-        }
-    }).map(|v| v.map(|v| js_object_from_sexp(v.to_sexp()))).unwrap_or_else(|e| {
-        Some(create_clvm_runner_err(format!("{}: {}", e.0.to_string(), e.1)))
-    }).unwrap_or_else(|| JsValue::null())
+    REPLS
+        .with(|repls| {
+            let repls = repls.borrow();
+            if let Some(repl_container) = repls.get(&repl_id) {
+                let mut a_borrowed = repl_container.allocator.borrow_mut();
+                let a = a_borrowed.deref_mut();
+                let mut r_borrowed = repl_container.repl.borrow_mut();
+                let r = r_borrowed.deref_mut();
+                r.process_line(a, input)
+            } else {
+                Err(CompileErr(
+                    Srcloc::start(&"*repl*".to_string()),
+                    "no such repl".to_string(),
+                ))
+            }
+        })
+        .map(|v| v.map(|v| js_object_from_sexp(v.to_sexp())))
+        .unwrap_or_else(|e| {
+            Some(create_clvm_runner_err(format!(
+                "{}: {}",
+                e.0.to_string(),
+                e.1
+            )))
+        })
+        .unwrap_or_else(|| JsValue::null())
 }
 
 #[wasm_bindgen]
 pub fn sexp_to_string(v: &JsValue) -> JsValue {
     let loc = Srcloc::start(&"*val*".to_string());
-    sexp_from_js_object(loc, v).map(|s| JsValue::from_str(&s.to_string())).unwrap_or_else(|| {
-        create_clvm_runner_err("unable to convert to value".to_string())
-    })
+    sexp_from_js_object(loc, v)
+        .map(|s| JsValue::from_str(&s.to_string()))
+        .unwrap_or_else(|| create_clvm_runner_err("unable to convert to value".to_string()))
 }
