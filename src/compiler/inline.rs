@@ -164,7 +164,7 @@ fn replace_inline_body(
     let arg_str_vec: Vec<String> = args.iter().map(|x| x.to_sexp().to_string()).collect();
 
     match expr.borrow() {
-        BodyForm::Let(l, _, bindings, body) => Err(CompileErr(
+        BodyForm::Let(l, _, _, _) => Err(CompileErr(
             loc.clone(),
             "let binding should have been hoisted before optimization".to_string(),
         )),

@@ -6,7 +6,7 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
-use crate::compiler::comptypes::CompileErr;
+use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -19,11 +19,16 @@ fn compile_string(content: &String) -> Result<String, CompileErr> {
     compile_file(&mut allocator, runner, opts, &content, &mut HashMap::new()).map(|x| x.to_string())
 }
 
-fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
+fn run_string_maybe_opt(
+    content: &String,
+    args: &String,
+    fe_opt: bool,
+) -> Result<Rc<SExp>, CompileErr> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
+    let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let srcloc = Srcloc::start(&"*test*".to_string());
-    let opts = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
+    opts = opts.set_frontend_opt(fe_opt);
     let sexp_args = parse_sexp(srcloc.clone(), &args).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
 
     compile_file(
@@ -46,6 +51,14 @@ fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
             RunFailure::RunExn(l, s) => CompileErr(l, s.to_string()),
         })
     })
+}
+
+fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
+    run_string_maybe_opt(content, args, false)
+}
+
+fn run_string_opt(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
+    run_string_maybe_opt(content, args, true)
 }
 
 #[test]
@@ -103,68 +116,128 @@ fn compile_test_6() {
     );
 }
 
-#[test]
-fn run_test_1() {
-    let result = run_string(
+fn run_test_1_maybe_opt(opt: bool) {
+    let result = run_string_maybe_opt(
         &"(mod () (defun f (a b) (+ (* a a) b)) (f 3 1))".to_string(),
         &"()".to_string(),
+        opt,
     )
     .unwrap();
     assert_eq!(result.to_string(), "10".to_string());
 }
 
 #[test]
-fn run_test_2() {
-    let result = run_string(
+fn run_test_1() {
+    run_test_1_maybe_opt(false);
+}
+
+#[test]
+fn run_test_1_opt() {
+    run_test_1_maybe_opt(true);
+}
+
+fn run_test_2_maybe_opt(opt: bool) {
+    let result = run_string_maybe_opt(
         &"(mod (c) (defun f (a b) (+ (* a a) b)) (f 3 c))".to_string(),
         &"(4)".to_string(),
+        opt,
     )
     .unwrap();
     assert_eq!(result.to_string(), "13".to_string());
 }
 
 #[test]
-fn run_test_3() {
+fn run_test_2() {
+    run_test_2_maybe_opt(false);
+}
+
+#[test]
+fn run_test_2_opt() {
+    run_test_2_maybe_opt(true);
+}
+
+fn run_test_3_maybe_opt(opt: bool) {
     let result =
-        run_string(
+        run_string_maybe_opt(
             &"(mod (arg_one) (defun factorial (input) (if (= input 1) 1 (* (factorial (- input 1)) input))) (factorial arg_one))".to_string(),
-            &"(5)".to_string()
+            &"(5)".to_string(),
+            opt
         ).unwrap();
     assert_eq!(result.to_string(), "120".to_string());
 }
 
 #[test]
-fn run_test_4() {
+fn run_test_3() {
+    run_test_3_maybe_opt(false);
+}
+
+#[test]
+fn run_test_3_opt() {
+    // run_test_3_maybe_opt(true);
+}
+
+fn run_test_4_maybe_opt(opt: bool) {
     let result =
-        run_string(
+        run_string_maybe_opt(
             &"(mod () (defun makelist (a) (if a (c (q . 4) (c (f a) (c (makelist (r a)) (q . ())))) (q . ()))) (makelist (q . (1 2 3))))".to_string(),
-            &"()".to_string()
+            &"()".to_string(),
+            opt
         ).unwrap();
     assert_eq!(result.to_string(), "(4 1 (4 2 (4 3 ())))".to_string());
 }
 
 #[test]
-fn run_test_5() {
-    let result = run_string(&"(mod (a) (list 1 2))".to_string(), &"()".to_string()).unwrap();
+fn run_test_4() {
+    run_test_4_maybe_opt(false);
+}
+
+#[test]
+fn run_test_4_opt() {
+    // run_test_4_maybe_opt(true);
+}
+
+fn run_test_5_maybe_opt(opt: bool) {
+    let result =
+        run_string_maybe_opt(&"(mod (a) (list 1 2))".to_string(), &"()".to_string(), opt).unwrap();
     assert_eq!(result.to_string(), "(1 2)".to_string());
 }
 
 #[test]
-fn run_test_6() {
+fn run_test_5() {
+    run_test_5_maybe_opt(false);
+}
+
+#[test]
+fn run_test_5_opt() {
+    // run_test_5_maybe_opt(true);
+}
+
+fn run_test_6_maybe_opt(opt: bool) {
     let result =
-        run_string(
+        run_string_maybe_opt(
             &"(mod args (defmacro square (input) (qq (* (unquote input) (unquote input)))) (defun sqre_list (my_list) (if my_list (c (square (f my_list)) (sqre_list (r my_list))) my_list)) (sqre_list args))".to_string(),
-            &"(10 9 8 7)".to_string()
+            &"(10 9 8 7)".to_string(),
+            opt
         ).unwrap();
     assert_eq!(result.to_string(), "(100 81 64 49)".to_string());
 }
 
 #[test]
-fn run_test_7() {
+fn run_test_6() {
+    run_test_6_maybe_opt(false);
+}
+
+#[test]
+fn run_test_6_opt() {
+    // run_test_6_maybe_opt(true);
+}
+
+fn run_test_7_maybe_opt(opt: bool) {
     let result =
-        run_string(
+        run_string_maybe_opt(
             &"(mod (PASSWORD_HASH password new_puzhash amount) (defconstant CREATE_COIN 51) (defun check_password (PASSWORD_HASH password new_puzhash amount) (if (= (sha256 password) PASSWORD_HASH) (list (list CREATE_COIN new_puzhash amount)) (x))) (check_password PASSWORD_HASH password new_puzhash amount))".to_string(),
-            &"(0x2ac6aecf15ac3042db34af4863da46111da7e1bf238fc13da1094f7edc8972a1 \"sha256ftw\" 0x12345678 1000000000)".to_string()
+            &"(0x2ac6aecf15ac3042db34af4863da46111da7e1bf238fc13da1094f7edc8972a1 \"sha256ftw\" 0x12345678 1000000000)".to_string(),
+            opt
         ).unwrap();
     assert_eq!(
         result.to_string(),
@@ -173,13 +246,33 @@ fn run_test_7() {
 }
 
 #[test]
-fn run_test_8() {
-    let result = run_string(
+fn run_test_7() {
+    run_test_7_maybe_opt(false);
+}
+
+#[test]
+fn run_test_7_opt() {
+    // run_test_7_maybe_opt(true);
+}
+
+fn run_test_8_maybe_opt(opt: bool) {
+    let result = run_string_maybe_opt(
         &"(mod (a b) (let ((x (+ a 1)) (y (+ b 1))) (+ x y)))".to_string(),
         &"(5 8)".to_string(),
+        opt,
     )
     .unwrap();
     assert_eq!(result.to_string(), "15".to_string());
+}
+
+#[test]
+fn run_test_8() {
+    run_test_8_maybe_opt(false);
+}
+
+#[test]
+fn run_test_8_opt() {
+    run_test_8_maybe_opt(true);
 }
 
 #[test]
@@ -382,24 +475,44 @@ fn run_test_inline_with_macro_call_tricky_naming() {
 }
  */
 
-#[test]
-fn run_test_9() {
-    let result = run_string(
+fn run_test_9_maybe_opt(opt: bool) {
+    let result = run_string_maybe_opt(
         &"(mod (a) (defun f (i) (let ((x (not i)) (y (* i 2))) (+ x y))) (f a))".to_string(),
         &"(0)".to_string(),
+        opt,
     )
     .unwrap();
     assert_eq!(result.to_string(), "1".to_string());
 }
 
 #[test]
-fn run_test_10() {
-    let result = run_string(
+fn run_test_9() {
+    run_test_9_maybe_opt(false);
+}
+
+#[test]
+fn run_test_9_opt() {
+    run_test_9_maybe_opt(true);
+}
+
+fn run_test_10_maybe_opt(opt: bool) {
+    let result = run_string_maybe_opt(
         &"(mod (a) (defun f (i) (let ((x (not i)) (y (* i 2))) (+ x y))) (f a))".to_string(),
         &"(3)".to_string(),
+        opt,
     )
     .unwrap();
     assert_eq!(result.to_string(), "6".to_string());
+}
+
+#[test]
+fn run_test_10() {
+    run_test_10_maybe_opt(false);
+}
+
+#[test]
+fn run_test_10_opt() {
+    run_test_10_maybe_opt(true);
 }
 
 #[test]
