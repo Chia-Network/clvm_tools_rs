@@ -173,7 +173,7 @@ fn run_test_3() {
 
 #[test]
 fn run_test_3_opt() {
-    // run_test_3_maybe_opt(true);
+    run_test_3_maybe_opt(true);
 }
 
 fn run_test_4_maybe_opt(opt: bool) {
