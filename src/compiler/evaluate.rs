@@ -357,6 +357,7 @@ impl Evaluator {
             self.expand_macro(allocator, l.clone(), program.clone(), macro_args)?;
 
         let input_sexp = dequote(call_loc.clone(), macro_expansion)?;
+
         let frontend_macro_input = Rc::new(SExp::Cons(
             l.clone(),
             Rc::new(SExp::atom_from_string(l.clone(), &"mod".to_string())),
@@ -476,6 +477,7 @@ impl Evaluator {
                     // Build SExp arguments for external call or
                     // return the unevaluated chunk with minimized
                     // arguments.
+                    panic!("foo");
                     Err(CompileErr(
                         l.clone(),
                         format!(

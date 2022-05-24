@@ -209,7 +209,7 @@ fn run_test_5() {
 
 #[test]
 fn run_test_5_opt() {
-    // run_test_5_maybe_opt(true);
+    run_test_5_maybe_opt(true);
 }
 
 fn run_test_6_maybe_opt(opt: bool) {
@@ -252,7 +252,7 @@ fn run_test_7() {
 
 #[test]
 fn run_test_7_opt() {
-    // run_test_7_maybe_opt(true);
+    run_test_7_maybe_opt(true);
 }
 
 fn run_test_8_maybe_opt(opt: bool) {
