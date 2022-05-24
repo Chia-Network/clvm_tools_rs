@@ -149,6 +149,7 @@ jobs:
       if: startsWith(matrix.os, 'ubuntu')
       run: |
         rustup target add wasm32-unknown-unknown
+        cargo install wasm-bindgen-cli --version 0.2.80
         cd mock-test && make && ../resources/tests/linux-install-node.sh ./build/runmock.js
 
     - name: Upload artifacts
