@@ -168,7 +168,7 @@ fn compile_pre_forms(
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     pre_forms: Vec<Rc<SExp>>,
-    symbol_table: &mut HashMap<String, String>
+    symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     let g = frontend(opts.clone(), pre_forms)?;
     let compileform = if opts.frontend_opt() {
@@ -181,13 +181,7 @@ fn compile_pre_forms(
             exp: g.exp.clone(),
         }
     };
-    codegen(
-        allocator,
-        runner,
-        opts.clone(),
-        &compileform,
-        symbol_table
-    )
+    codegen(allocator, runner, opts.clone(), &compileform, symbol_table)
 }
 
 pub fn compile_file(
