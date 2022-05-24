@@ -16,7 +16,7 @@ use crate::compiler::codegen::codegen;
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen,
 };
-use crate::compiler::evaluate::{Evaluator, build_reflex_captures};
+use crate::compiler::evaluate::{build_reflex_captures, Evaluator};
 use crate::compiler::frontend::frontend;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
@@ -126,13 +126,8 @@ fn fe_opt(
             HelperForm::Defun(loc, name, inline, args, body) => {
                 let mut env = HashMap::new();
                 build_reflex_captures(&mut env, args.clone());
-                let body_rc = evaluator.shrink_bodyform(
-                    allocator,
-                    args.clone(),
-                    &env,
-                    body.clone(),
-                    true,
-                )?;
+                let body_rc =
+                    evaluator.shrink_bodyform(allocator, args.clone(), &env, body.clone(), true)?;
                 let new_helper = HelperForm::Defun(
                     loc.clone(),
                     name.clone(),

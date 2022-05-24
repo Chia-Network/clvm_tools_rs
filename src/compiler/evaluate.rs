@@ -315,8 +315,8 @@ fn synthesize_args(
 
 fn reflex_capture(name: &Vec<u8>, capture: Rc<BodyForm>) -> bool {
     match capture.borrow() {
-        BodyForm::Value(SExp::Atom(_,n)) => n == name,
-        _ => false
+        BodyForm::Value(SExp::Atom(_, n)) => n == name,
+        _ => false,
     }
 }
 
@@ -551,19 +551,17 @@ impl Evaluator {
                     only_inline,
                 )
             }
-            None => {
-                self.invoke_primitive(
-                    allocator,
-                    l.clone(),
-                    call_name,
-                    parts,
-                    body,
-                    prog_args,
-                    arguments_to_convert,
-                    env,
+            None => self.invoke_primitive(
+                allocator,
+                l.clone(),
+                call_name,
+                parts,
+                body,
+                prog_args,
+                arguments_to_convert,
+                env,
                 only_inline,
-                )
-            }
+            ),
         }
     }
 
@@ -789,10 +787,11 @@ impl Evaluator {
         // Com takes place in the current environment.
         // We can only reduce com if all bindings are
         // primitive.
-        let updated_opts = self.opts.
-            set_stdenv(!in_defun).
-            set_in_defun(in_defun).
-            set_frontend_opt(false);
+        let updated_opts = self
+            .opts
+            .set_stdenv(!in_defun)
+            .set_in_defun(in_defun)
+            .set_frontend_opt(false);
 
         let com_result = updated_opts.compile_program(
             allocator,
