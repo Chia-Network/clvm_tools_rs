@@ -142,10 +142,8 @@ jobs:
         cd clvm
         python -m py.test tests
 
-    - name: Run tests from clvm_tools_rs
-      run: |
-        cd clvm_tools_rs
-        cargo test
+    - name: Run tests
+      run: cargo test
 
     - name: Run wasm tests
       if: startsWith(matrix.os, 'ubuntu')
