@@ -617,10 +617,12 @@ fn test_collatz_maybe_opt(opt: bool) {
              )
              (collatz 0 A)
             )
-        "}.to_string(),
+        "}
+        .to_string(),
         &"(4)".to_string(),
-        opt
-    ).unwrap();
+        opt,
+    )
+    .unwrap();
     assert_eq!(result.to_string(), "(q . 2)");
 }
 

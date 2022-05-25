@@ -157,7 +157,9 @@ fn test_collatz() {
             "    )",
             "  )",
             "(collatz 0 3)"
-        ]).unwrap().unwrap(),
+        ])
+        .unwrap()
+        .unwrap(),
         "(q . 7)"
     );
 }
