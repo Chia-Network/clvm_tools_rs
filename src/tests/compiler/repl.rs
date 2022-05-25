@@ -139,3 +139,27 @@ fn test_last_of_pwcoin_2() {
         "(q (51 3735928559 1))"
     );
 }
+
+#[test]
+fn test_collatz() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun-inline odd (X) (logand X 1))",
+            "(defun collatz (N X)",
+            "  (if (= X 1)",
+            "    N",
+            "    (let ((incN (+ N 1)))",
+            "      (if (odd X)",
+            "        (collatz incN (+ 1 (* 3 X)))",
+            "        (collatz incN (/ X 2))",
+            "        )",
+            "      )",
+            "    )",
+            "  )",
+            "(collatz 0 3)"
+        ])
+        .unwrap()
+        .unwrap(),
+        "(q . 7)"
+    );
+}

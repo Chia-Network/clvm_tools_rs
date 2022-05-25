@@ -313,6 +313,13 @@ fn synthesize_args(
     }
 }
 
+fn reflex_capture(name: &Vec<u8>, capture: Rc<BodyForm>) -> bool {
+    match capture.borrow() {
+        BodyForm::Value(SExp::Atom(_, n)) => n == name,
+        _ => false,
+    }
+}
+
 impl Evaluator {
     pub fn new(
         opts: Rc<dyn CompilerOpts>,
@@ -350,6 +357,7 @@ impl Evaluator {
             self.expand_macro(allocator, l.clone(), program.clone(), macro_args)?;
 
         let input_sexp = dequote(call_loc.clone(), macro_expansion)?;
+
         let frontend_macro_input = Rc::new(SExp::Cons(
             l.clone(),
             Rc::new(SExp::atom_from_string(l.clone(), &"mod".to_string())),
@@ -620,13 +628,17 @@ impl Evaluator {
                 } else {
                     env.get(name)
                         .map(|x| {
-                            self.shrink_bodyform(
-                                allocator,
-                                prog_args.clone(),
-                                env,
-                                x.clone(),
-                                only_inline,
-                            )
+                            if reflex_capture(name, x.clone()) {
+                                Ok(x.clone())
+                            } else {
+                                self.shrink_bodyform(
+                                    allocator,
+                                    prog_args.clone(),
+                                    env,
+                                    x.clone(),
+                                    only_inline,
+                                )
+                            }
                         })
                         .unwrap_or_else(|| {
                             self.get_constant(name)
@@ -774,7 +786,11 @@ impl Evaluator {
         // Com takes place in the current environment.
         // We can only reduce com if all bindings are
         // primitive.
-        let updated_opts = self.opts.set_stdenv(!in_defun).set_in_defun(in_defun);
+        let updated_opts = self
+            .opts
+            .set_stdenv(!in_defun)
+            .set_in_defun(in_defun)
+            .set_frontend_opt(false);
 
         let com_result = updated_opts.compile_program(
             allocator,

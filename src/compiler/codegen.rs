@@ -987,7 +987,8 @@ fn start_codegen(
                 let updated_opts = opts
                     .set_compiler(use_compiler.clone())
                     .set_in_defun(false)
-                    .set_stdenv(false);
+                    .set_stdenv(false)
+                    .set_frontend_opt(false);
 
                 updated_opts
                     .compile_program(
