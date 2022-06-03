@@ -243,7 +243,7 @@ pub fn build_reflex_captures(captures: &mut HashMap<Vec<u8>, Rc<BodyForm>>, args
             if let Some((capture, substructure)) = is_at_capture(a.clone(), b.clone()) {
                 captures.insert(
                     capture.clone(),
-                    Rc::new(BodyForm::Value(SExp::Atom(l.clone(), capture.clone())))
+                    Rc::new(BodyForm::Value(SExp::Atom(l.clone(), capture.clone()))),
                 );
                 build_reflex_captures(captures, substructure);
             } else {
@@ -340,7 +340,7 @@ fn synthesize_args(
                     ],
                 )))
             }
-        },
+        }
         SExp::Nil(l) => Ok(Rc::new(BodyForm::Quoted(SExp::Nil(l.clone())))),
         _ => Err(CompileErr(
             template.loc(),
