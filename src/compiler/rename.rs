@@ -190,7 +190,7 @@ pub fn desugar_sequential_let_bindings(
 
 fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
     match b.borrow() {
-        BodyForm::Let(l, LetFormKind::Sequential, bindings, body) => {
+        BodyForm::Let(_l, LetFormKind::Sequential, bindings, body) => {
             // Renaming a sequential let is exactly as if the bindings were
             // nested in separate parallel lets.
             let new_body = rename_args_bodyform(&desugar_sequential_let_bindings(

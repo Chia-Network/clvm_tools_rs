@@ -783,7 +783,7 @@ pub fn launch_tool(
             let mut parsed_args_result = "()".to_string();
 
             match parsedArgs.get("env") {
-                Some(ArgumentValue::ArgString(f, s)) => {
+                Some(ArgumentValue::ArgString(_f, s)) => {
                     parsed_args_result = s.to_string();
                 }
                 _ => {}

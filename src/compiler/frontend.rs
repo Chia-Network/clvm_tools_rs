@@ -330,7 +330,7 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                     let body_copy: &SExp = body.borrow();
                     Ok(BodyForm::Value(body_copy.clone()))
                 }
-                SExp::Nil(l) => {
+                SExp::Nil(_l) => {
                     let body_copy: &SExp = body.borrow();
                     Ok(BodyForm::Quoted(body_copy.clone()))
                 }
@@ -357,7 +357,7 @@ fn compile_defun(
 ) -> Result<HelperForm, CompileErr> {
     let mut take_form = body.clone();
     match body.borrow() {
-        SExp::Cons(_, f, r) => {
+        SExp::Cons(_, f, _r) => {
             take_form = f.clone();
         }
         _ => {}
@@ -647,16 +647,16 @@ fn from_clvm_args(args: Rc<SExp>) -> Rc<SExp> {
 // Bare numbers in argument position are references, rewrite as (@ ..)
 pub fn from_clvm(sexp: Rc<SExp>) -> Rc<SExp> {
     match sexp.borrow() {
-        SExp::Atom(l, name) => {
+        SExp::Atom(l, _name) => {
             // An atom encountered as an expression is treated as a path.
             from_clvm(Rc::new(SExp::Integer(l.clone(), sexp.to_bigint().unwrap())))
         }
-        SExp::QuotedString(l, _, v) => {
+        SExp::QuotedString(l, _, _v) => {
             // A string is treated as a number.
             // An atom encountered as an expression is treated as a path.
             from_clvm(Rc::new(SExp::Integer(l.clone(), sexp.to_bigint().unwrap())))
         }
-        SExp::Integer(l, n) => {
+        SExp::Integer(l, _n) => {
             // A number is treated as a reference in expression position.
             // Results in (@ n).
             Rc::new(SExp::Cons(
@@ -669,7 +669,7 @@ pub fn from_clvm(sexp: Rc<SExp>) -> Rc<SExp> {
                 )),
             ))
         }
-        SExp::Nil(l) => {
+        SExp::Nil(_l) => {
             // Nil represents nil in both systems.
             sexp.clone()
         }
