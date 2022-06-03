@@ -185,12 +185,14 @@ pub fn convert_to_clvm_rs(
             if *i == bi_zero() {
                 Ok(allocator.null())
             } else {
-                allocator.new_atom(&u8_from_number(i.clone())).map_err(|_e| {
-                    RunFailure::RunErr(
-                        head.loc(),
-                        format!("failed to alloc integer {}", head.to_string()),
-                    )
-                })
+                allocator
+                    .new_atom(&u8_from_number(i.clone()))
+                    .map_err(|_e| {
+                        RunFailure::RunErr(
+                            head.loc(),
+                            format!("failed to alloc integer {}", head.to_string()),
+                        )
+                    })
             }
         }
         SExp::Cons(_, a, b) => convert_to_clvm_rs(allocator, a.clone()).and_then(|head| {
@@ -329,7 +331,9 @@ pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
         (RunStep::Done(_l, _x), RunStep::Op(_head, _context, _args, None, parent)) => {
             combine(a, parent.borrow())
         }
-        (RunStep::Done(_l, _x), RunStep::Step(_sexp, _context, parent)) => combine(a, parent.borrow()),
+        (RunStep::Done(_l, _x), RunStep::Step(_sexp, _context, parent)) => {
+            combine(a, parent.borrow())
+        }
         _ => a.clone(),
     }
 }

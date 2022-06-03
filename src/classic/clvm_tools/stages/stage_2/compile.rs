@@ -125,11 +125,12 @@ pub fn compile_qq(
      * (qq (a . B)) => (c (qq a) (qq B))
      */
 
-    let sexp =
-        match first(allocator, args) {
-            Err(e) => { return Err(e); },
-            Ok(x) => x
-        };
+    let sexp = match first(allocator, args) {
+        Err(e) => {
+            return Err(e);
+        }
+        Ok(x) => x,
+    };
 
     match allocator.sexp(sexp) {
         SExp::Atom(_) => {

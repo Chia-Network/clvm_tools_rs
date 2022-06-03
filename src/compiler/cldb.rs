@@ -275,7 +275,7 @@ impl CldbOverrideBespokeCode {
     ) -> Self {
         CldbOverrideBespokeCode {
             symbol_table,
-            overrides
+            overrides,
         }
     }
 

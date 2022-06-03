@@ -330,7 +330,7 @@ impl Evaluator {
             opts: opts.clone(),
             runner,
             prims: opts.prim_map(),
-            helpers
+            helpers,
         }
     }
 
