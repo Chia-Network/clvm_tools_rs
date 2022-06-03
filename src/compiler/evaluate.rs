@@ -231,6 +231,30 @@ fn make_prim_call(l: Srcloc, prim: Rc<SExp>, args: Rc<SExp>) -> Rc<SExp> {
     Rc::new(SExp::Cons(l.clone(), prim, args))
 }
 
+pub fn build_reflex_captures(captures: &mut HashMap<Vec<u8>, Rc<BodyForm>>, args: Rc<SExp>) {
+    match args.borrow() {
+        SExp::Atom(l, name) => {
+            captures.insert(
+                name.clone(),
+                Rc::new(BodyForm::Value(SExp::Atom(l.clone(), name.clone()))),
+            );
+        }
+        SExp::Cons(l, a, b) => {
+            if let Some((capture, substructure)) = is_at_capture(a.clone(), b.clone()) {
+                captures.insert(
+                    capture.clone(),
+                    Rc::new(BodyForm::Value(SExp::Atom(l.clone(), capture.clone())))
+                );
+                build_reflex_captures(captures, substructure);
+            } else {
+                build_reflex_captures(captures, a.clone());
+                build_reflex_captures(captures, b.clone());
+            }
+        }
+        _ => {}
+    }
+}
+
 fn dequote(l: Srcloc, exp: Rc<BodyForm>) -> Result<Rc<SExp>, CompileErr> {
     match exp.borrow() {
         BodyForm::Quoted(v) => Ok(Rc::new(v.clone())),

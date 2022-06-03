@@ -681,7 +681,8 @@ fn test_at_destructure_5() {
     .unwrap();
 
     assert_eq!(result.to_string(), "4".to_string());
-=======
+}
+
 fn test_collatz_maybe_opt(opt: bool) {
     let result = run_string_maybe_opt(
         &indoc! {"

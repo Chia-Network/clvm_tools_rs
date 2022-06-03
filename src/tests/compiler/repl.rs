@@ -150,9 +150,11 @@ fn test_repl_supports_at_capture() {
         .unwrap()
         .unwrap(),
         "(q 10 2 3)"
-  }
-  
-  fn test_collatz() {
+    );
+}
+
+#[test]
+fn test_collatz() {
     assert_eq!(
         test_repl_outcome(vec![
             "(defun-inline odd (X) (logand X 1))",
