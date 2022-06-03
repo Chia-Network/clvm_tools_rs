@@ -150,5 +150,27 @@ fn test_repl_supports_at_capture() {
         .unwrap()
         .unwrap(),
         "(q 10 2 3)"
+  }
+  
+  fn test_collatz() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun-inline odd (X) (logand X 1))",
+            "(defun collatz (N X)",
+            "  (if (= X 1)",
+            "    N",
+            "    (let ((incN (+ N 1)))",
+            "      (if (odd X)",
+            "        (collatz incN (+ 1 (* 3 X)))",
+            "        (collatz incN (/ X 2))",
+            "        )",
+            "      )",
+            "    )",
+            "  )",
+            "(collatz 0 3)"
+        ])
+        .unwrap()
+        .unwrap(),
+        "(q . 7)"
     );
 }
