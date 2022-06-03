@@ -384,6 +384,29 @@ fn compile_mod_stage_1(
     }
 }
 
+// If this is an at capture of the form
+// (@ name substructure)
+// then return name and substructure.
+fn is_at_capture(
+    allocator: &mut Allocator,
+    tree_first: NodePtr,
+    tree_rest: NodePtr,
+) -> Option<(NodePtr, NodePtr)> {
+    match (
+        allocator.sexp(tree_first),
+        proper_list(allocator, tree_rest, true),
+    ) {
+        (SExp::Atom(a), Some(spec)) => {
+            if allocator.buf(&a) == vec!['@' as u8] && spec.len() == 2 {
+                return Some((spec[0], spec[1]));
+            }
+        }
+        _ => {}
+    }
+
+    None
+}
+
 // export type TSymbolTable = Array<[SExp, Bytes]>;
 
 fn symbol_table_for_tree(
@@ -400,31 +423,35 @@ fn symbol_table_for_tree(
             return Ok(vec![(tree, root_node.as_path().data().to_vec())]);
         }
         SExp::Pair(_, _) => {
-            return m! {
-                let left_bytes = NodePath::new(None).first();
-                let right_bytes = NodePath::new(None).rest();
+            let left_bytes = NodePath::new(None).first();
+            let right_bytes = NodePath::new(None).rest();
 
-                tree_first <- first(allocator, tree);
-                tree_rest <- rest(allocator, tree);
+            let tree_first = first(allocator, tree)?;
+            let tree_rest = rest(allocator, tree)?;
 
-                left <-
-                    symbol_table_for_tree(
-                        allocator,
-                        tree_first,
-                        &root_node.add(left_bytes)
-                    );
-                right <-
-                    symbol_table_for_tree(
-                        allocator,
-                        tree_rest,
-                        &root_node.add(right_bytes)
-                    );
+            // Allow haskell-like @ capture for destructuring.
+            // If we encounter a form like (@ name substructure) then
+            // treat it as though name captures the current path but
+            // we also continue evaluating at the current position.
+            let mut result_fin = Vec::new();
+            if let Some((capture, destructure)) = is_at_capture(allocator, tree_first, tree_rest) {
+                // Push the given name here.
+                result_fin.push((capture, root_node.as_path().data().to_vec()));
 
-                let mut left_fin = left.to_vec();
-                let mut right_fin = right.to_vec();
-                let _ = left_fin.append(&mut right_fin);
-                Ok(left_fin)
-            };
+                let mut substructure = symbol_table_for_tree(allocator, destructure, root_node)?;
+
+                result_fin.append(&mut substructure);
+            } else {
+                let mut left =
+                    symbol_table_for_tree(allocator, tree_first, &root_node.add(left_bytes))?;
+                let mut right =
+                    symbol_table_for_tree(allocator, tree_rest, &root_node.add(right_bytes))?;
+
+                result_fin.append(&mut left);
+                result_fin.append(&mut right);
+            }
+
+            Ok(result_fin)
         }
     }
 }

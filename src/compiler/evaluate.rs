@@ -7,6 +7,7 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::run;
+use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LetFormKind,
 };
@@ -110,8 +111,12 @@ fn create_argument_captures(
     match (formed_arguments, function_arg_spec.borrow()) {
         (_, SExp::Nil(_)) => Ok(()),
         (ArgInputs::Whole(bf), SExp::Cons(l, f, r)) => {
-            match bf.borrow() {
-                BodyForm::Quoted(SExp::Cons(_, fa, ra)) => {
+            match (is_at_capture(f.clone(), r.clone()), bf.borrow()) {
+                (Some((capture, substructure)), BodyForm::Quoted(SExp::Cons(_, _, _))) => {
+                    argument_captures.insert(capture.clone(), bf.clone());
+                    create_argument_captures(argument_captures, formed_arguments, substructure)
+                }
+                (None, BodyForm::Quoted(SExp::Cons(_, fa, ra))) => {
                     // Argument destructuring splits a quoted sexp that can itself
                     // be destructured.
                     let fa_borrowed: &SExp = fa.borrow();
@@ -127,7 +132,11 @@ fn create_argument_captures(
                         r.clone(),
                     )
                 }
-                bf => {
+                (Some((capture, substructure)), bf) => {
+                    argument_captures.insert(capture.clone(), Rc::new(bf.clone()));
+                    create_argument_captures(argument_captures, formed_arguments, substructure)
+                }
+                (None, bf) => {
                     // Argument destructuring splits a value that couldn't
                     // previously be reduced.  We'll punt it back unreduced by
                     // specifying how the right part is reached.
@@ -152,9 +161,22 @@ fn create_argument_captures(
                 }
             }
         }
-        (ArgInputs::Pair(af, ar), SExp::Cons(_, f, r)) => {
-            create_argument_captures(argument_captures, af, f.clone())?;
-            create_argument_captures(argument_captures, ar, r.clone())
+        (ArgInputs::Pair(af, ar), SExp::Cons(l, f, r)) => {
+            if let Some((capture, substructure)) = is_at_capture(f.clone(), r.clone()) {
+                let bfa = get_bodyform_from_arginput(l, af);
+                let bfb = get_bodyform_from_arginput(l, ar);
+                let fused_arguments =
+                    Rc::new(make_operator2(l, "c".to_string(), bfa.clone(), bfb.clone()));
+                argument_captures.insert(capture.clone(), fused_arguments);
+                create_argument_captures(
+                    argument_captures,
+                    formed_arguments.clone(),
+                    substructure.clone(),
+                )
+            } else {
+                create_argument_captures(argument_captures, af, f.clone())?;
+                create_argument_captures(argument_captures, ar, r.clone())
+            }
         }
         (ArgInputs::Whole(x), SExp::Atom(_, name)) => {
             argument_captures.insert(name.clone(), x.clone());
@@ -207,22 +229,6 @@ fn build_argument_captures(
 
 fn make_prim_call(l: Srcloc, prim: Rc<SExp>, args: Rc<SExp>) -> Rc<SExp> {
     Rc::new(SExp::Cons(l.clone(), prim, args))
-}
-
-pub fn build_reflex_captures(captures: &mut HashMap<Vec<u8>, Rc<BodyForm>>, args: Rc<SExp>) {
-    match args.borrow() {
-        SExp::Atom(l, name) => {
-            captures.insert(
-                name.clone(),
-                Rc::new(BodyForm::Value(SExp::Atom(l.clone(), name.clone()))),
-            );
-        }
-        SExp::Cons(_, a, b) => {
-            build_reflex_captures(captures, a.clone());
-            build_reflex_captures(captures, b.clone());
-        }
-        _ => {}
-    }
 }
 
 fn dequote(l: Srcloc, exp: Rc<BodyForm>) -> Result<Rc<SExp>, CompileErr> {
@@ -294,17 +300,23 @@ fn synthesize_args(
                 ),
             ))
         }),
-        SExp::Cons(l, f, r) => Ok(Rc::new(BodyForm::Call(
-            l.clone(),
-            vec![
-                Rc::new(BodyForm::Value(SExp::atom_from_string(
-                    template.loc(),
-                    &"c".to_string(),
-                ))),
-                synthesize_args(f.clone(), env)?,
-                synthesize_args(r.clone(), env)?,
-            ],
-        ))),
+        SExp::Cons(l, f, r) => {
+            if let Some((capture, substructure)) = is_at_capture(f.clone(), r.clone()) {
+                synthesize_args(Rc::new(SExp::Atom(l.clone(), capture.clone())), env)
+            } else {
+                Ok(Rc::new(BodyForm::Call(
+                    l.clone(),
+                    vec![
+                        Rc::new(BodyForm::Value(SExp::atom_from_string(
+                            template.loc(),
+                            &"c".to_string(),
+                        ))),
+                        synthesize_args(f.clone(), env)?,
+                        synthesize_args(r.clone(), env)?,
+                    ],
+                )))
+            }
+        },
         SExp::Nil(l) => Ok(Rc::new(BodyForm::Quoted(SExp::Nil(l.clone())))),
         _ => Err(CompileErr(
             template.loc(),
@@ -502,7 +514,7 @@ impl Evaluator {
                 call_loc.clone(),
                 format!("Can't call constant {}", head_expr.to_sexp().to_string()),
             )),
-            Some(HelperForm::Defmacro(l, name, args, program)) => self.invoke_macro_expansion(
+            Some(HelperForm::Defmacro(l, _name, _args, program)) => self.invoke_macro_expansion(
                 allocator,
                 l.clone(),
                 call_loc.clone(),

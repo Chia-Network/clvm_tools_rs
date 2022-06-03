@@ -116,3 +116,63 @@ fn brun_constant_test() {
         "(q . 3)".to_string()
     );
 }
+
+#[test]
+fn at_capture_destructure_1() {
+    assert_eq!(
+        do_basic_run(&vec!(
+            "run".to_string(),
+            "(mod (A (@ Z (B C)) D) A)".to_string()
+        ))
+        .trim(),
+        "2"
+    );
+}
+
+#[test]
+fn at_capture_destructure_2() {
+    assert_eq!(
+        do_basic_run(&vec!(
+            "run".to_string(),
+            "(mod (A (@ Z (B C)) D) Z)".to_string()
+        ))
+        .trim(),
+        "5"
+    );
+}
+
+#[test]
+fn at_capture_destructure_3() {
+    assert_eq!(
+        do_basic_run(&vec!(
+            "run".to_string(),
+            "(mod (A (@ Z (B C)) D) B)".to_string()
+        ))
+        .trim(),
+        "9"
+    );
+}
+
+#[test]
+fn at_capture_destructure_4() {
+    assert_eq!(
+        do_basic_run(&vec!(
+            "run".to_string(),
+            "(mod (A (@ Z (B C)) D) C)".to_string()
+        ))
+        .trim(),
+        "21"
+    );
+}
+
+#[test]
+fn at_capture_destructure_5() {
+    assert_eq!(
+        do_basic_run(&vec!(
+            "run".to_string(),
+            "(mod (A (@ Z (B C)) D) D)".to_string()
+        ))
+        .trim(),
+        "11"
+    );
+}

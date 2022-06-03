@@ -139,3 +139,16 @@ fn test_last_of_pwcoin_2() {
         "(q (51 3735928559 1))"
     );
 }
+
+#[test]
+fn test_repl_supports_at_capture() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun F (A (@ Z (B C)) D) (c (+ A B C D) Z))",
+            "(F 1 (q 2 3) 4)",
+        ])
+        .unwrap()
+        .unwrap(),
+        "(q 10 2 3)"
+    );
+}
