@@ -589,7 +589,7 @@ pub fn generate_expr_code(
     expr: Rc<BodyForm>,
 ) -> Result<CompiledCode, CompileErr> {
     match expr.borrow() {
-        BodyForm::Let(l, LetFormKind::Parallel, bindings, expr) => {
+        BodyForm::Let(_l, LetFormKind::Parallel, _bindings, expr) => {
             /* Depends on a defun having been desugared from this let and the let
             expressing rewritten. */
             generate_expr_code(allocator, runner, opts, compiler, expr.clone())
@@ -806,7 +806,7 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
 }
 
 fn generate_let_defun(
-    compiler: &PrimaryCodegen,
+    _compiler: &PrimaryCodegen,
     l: Srcloc,
     name: &Vec<u8>,
     args: Rc<SExp>,
@@ -833,7 +833,7 @@ fn generate_let_defun(
     )
 }
 
-fn generate_let_args(l: Srcloc, blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {
+fn generate_let_args(_l: Srcloc, blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {
     blist.iter().map(|b| b.body.clone()).collect()
 }
 
@@ -889,7 +889,6 @@ fn process_helper_let_bindings(
     compiler: &PrimaryCodegen,
     helpers: &Vec<HelperForm>,
 ) -> Vec<HelperForm> {
-    let mut subcompiler = compiler.clone();
     let mut result = helpers.clone();
     let mut i = 0;
 
@@ -910,9 +909,6 @@ fn process_helper_let_bindings(
                 for j in 0..hoisted_helpers.len() {
                     result.insert(i + j, hoisted_helpers[j].clone());
                 }
-
-                subcompiler =
-                    compiler.set_env(combine_defun_env(compiler.env.clone(), args.clone()));
             }
             _ => {
                 i += 1;
@@ -977,7 +973,7 @@ fn start_codegen(
                     use_compiler.add_constant(&name, Rc::new(quoted))
                 })?
             }
-            HelperForm::Defmacro(loc, name, args, body) => {
+            HelperForm::Defmacro(loc, name, _args, body) => {
                 let macro_program = Rc::new(SExp::Cons(
                     loc.clone(),
                     Rc::new(SExp::Atom(loc.clone(), "mod".as_bytes().to_vec())),
@@ -1069,7 +1065,7 @@ fn finalize_env_(
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     c: &PrimaryCodegen,
-    l: Srcloc,
+    _l: Srcloc,
     env: Rc<SExp>,
 ) -> Result<Rc<SExp>, CompileErr> {
     match env.borrow() {

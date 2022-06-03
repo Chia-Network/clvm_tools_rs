@@ -102,7 +102,7 @@ fn pick_value_from_arg_element(
 
             result
         }
-        SExp::Atom(l, a) => {
+        SExp::Atom(_l, a) => {
             if *a == name {
                 Some(apply(provided))
             } else {
@@ -120,7 +120,7 @@ fn arg_lookup(
     name: Vec<u8>,
 ) -> Option<Rc<BodyForm>> {
     match match_args.borrow() {
-        SExp::Cons(l, f, r) => {
+        SExp::Cons(_l, f, r) => {
             match pick_value_from_arg_element(
                 f.clone(),
                 args[arg_choice].clone(),
@@ -164,7 +164,7 @@ fn replace_inline_body(
     let arg_str_vec: Vec<String> = args.iter().map(|x| x.to_sexp().to_string()).collect();
 
     match expr.borrow() {
-        BodyForm::Let(l, _, _, _) => Err(CompileErr(
+        BodyForm::Let(_l, _, _, _) => Err(CompileErr(
             loc.clone(),
             "let binding should have been hoisted before optimization".to_string(),
         )),

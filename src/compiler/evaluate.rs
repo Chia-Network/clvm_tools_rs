@@ -328,9 +328,9 @@ impl Evaluator {
     ) -> Self {
         Evaluator {
             opts: opts.clone(),
-            runner: runner,
+            runner,
             prims: opts.prim_map(),
-            helpers: helpers,
+            helpers
         }
     }
 
@@ -510,7 +510,7 @@ impl Evaluator {
                 call_loc.clone(),
                 format!("Can't call constant {}", head_expr.to_sexp().to_string()),
             )),
-            Some(HelperForm::Defmacro(l, name, args, program)) => self.invoke_macro_expansion(
+            Some(HelperForm::Defmacro(l, _name, _args, program)) => self.invoke_macro_expansion(
                 allocator,
                 l.clone(),
                 call_loc.clone(),

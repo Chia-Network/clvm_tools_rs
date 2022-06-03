@@ -231,7 +231,7 @@ impl HelperForm {
                     body.to_sexp(),
                 ],
             )),
-            HelperForm::Defmacro(loc, name, args, body) => Rc::new(SExp::Cons(
+            HelperForm::Defmacro(loc, name, _args, body) => Rc::new(SExp::Cons(
                 loc.clone(),
                 Rc::new(SExp::atom_from_string(loc.clone(), &"defmacro".to_string())),
                 Rc::new(SExp::Cons(

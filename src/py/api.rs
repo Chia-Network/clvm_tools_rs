@@ -78,13 +78,13 @@ fn runstep(myself: &mut PythonRunStep) -> PyResult<Option<PyObject>> {
     myself
         .tx
         .send(false)
-        .map_err(|e| CldbError::new_err("error sending to service thread"))?;
+        .map_err(|_e| CldbError::new_err("error sending to service thread"))?;
 
     // Receive the step result.
     let res = myself
         .rx
         .recv()
-        .map_err(|e| CldbError::new_err("error receiving from service thread"))?;
+        .map_err(|_e| CldbError::new_err("error receiving from service thread"))?;
     if res.0 {
         myself.ended = true;
     }
