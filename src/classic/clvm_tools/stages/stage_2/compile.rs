@@ -85,7 +85,7 @@ fn compile_bindings<'a>() -> HashMap<Vec<u8>, Closure<'a>> {
 }
 
 fn qq_atom() -> Vec<u8> {
-    vec!['q' as u8, 'q' as u8]
+    vec![b'q', b'q']
 }
 fn unquote_atom() -> Vec<u8> {
     "unquote".as_bytes().to_vec()
@@ -125,16 +125,12 @@ pub fn compile_qq(
      * (qq (a . B)) => (c (qq a) (qq B))
      */
 
-    let sexp;
-
-    match first(allocator, args) {
+    let sexp = match first(allocator, args) {
         Err(e) => {
             return Err(e);
         }
-        Ok(x) => {
-            sexp = x;
-        }
-    }
+        Ok(x) => x,
+    };
 
     match allocator.sexp(sexp) {
         SExp::Atom(_) => {
@@ -146,7 +142,7 @@ pub fn compile_qq(
                 SExp::Atom(opbuf) => {
                     if allocator.buf(&opbuf).to_vec() == qq_atom() {
                         return m! {
-                            cons_atom <- allocator.new_atom(&vec!(4));
+                            cons_atom <- allocator.new_atom(&[4]);
                             subexp <-
                                 compile_qq(allocator, sexp_rest, macro_lookup, symbol_table, runner.clone(), level+1);
                             quoted_null <- quote(allocator, allocator.null());
@@ -164,7 +160,7 @@ pub fn compile_qq(
                         }
                         return m! {
                             // (qq (a . B)) => (c (qq a) (qq B))
-                            cons_atom <- allocator.new_atom(&vec!(4));
+                            cons_atom <- allocator.new_atom(&[4]);
                             subexp <-
                                 compile_qq(allocator, sexp_rest, macro_lookup, symbol_table, runner.clone(), level-1);
                             quoted_null <- quote(allocator, allocator.null());
@@ -179,7 +175,7 @@ pub fn compile_qq(
 
             // (qq (a . B)) => (c (qq a) (qq B))
             return m! {
-                cons_atom <- allocator.new_atom(&vec!(4));
+                cons_atom <- allocator.new_atom(&[4]);
                 qq <- allocator.new_atom(&qq_atom());
                 qq_l <- enlist(allocator, &vec!(qq, op));
                 qq_r <- enlist(allocator, &vec!(qq, sexp_rest));
@@ -220,31 +216,25 @@ fn lower_quote_(allocator: &mut Allocator, prog: NodePtr) -> Result<NodePtr, Eva
         return Ok(prog);
     }
 
-    match proper_list(allocator, prog, true) {
-        Some(qlist) => {
-            if qlist.len() == 0 {
-                return Ok(prog);
-            }
+    if let Some(qlist) = proper_list(allocator, prog, true) {
+        if qlist.len() == 0 {
+            return Ok(prog);
+        }
 
-            match allocator.sexp(qlist[0]) {
-                SExp::Atom(q) => {
-                    if allocator.buf(&q).to_vec() == "quote".as_bytes().to_vec() {
-                        if qlist.len() != 2 {
-                            // quoted list should be 2: "(quote arg)"
-                            return Err(EvalErr(prog, format!("Compilation error while compiling [{}]. quote takes exactly one argument.", disassemble(allocator, prog))));
-                        }
-
-                        // Note: quote should have exactly one arg, so the length of
-                        return m! {
-                            lowered <- lower_quote(allocator, qlist[1]);
-                            quote(allocator, lowered)
-                        };
-                    }
+        if let SExp::Atom(q) = allocator.sexp(qlist[0]) {
+            if allocator.buf(&q).to_vec() == "quote".as_bytes().to_vec() {
+                if qlist.len() != 2 {
+                    // quoted list should be 2: "(quote arg)"
+                    return Err(EvalErr(prog, format!("Compilation error while compiling [{}]. quote takes exactly one argument.", disassemble(allocator, prog))));
                 }
-                _ => {}
+
+                // Note: quote should have exactly one arg, so the length of
+                return m! {
+                    lowered <- lower_quote(allocator, qlist[1]);
+                    quote(allocator, lowered)
+                };
             }
         }
-        _ => {}
     }
 
     // XXX Note that this recognizes potentially unintended
@@ -252,15 +242,12 @@ fn lower_quote_(allocator: &mut Allocator, prog: NodePtr) -> Result<NodePtr, Eva
     // code.  It is corrected in the new compiler but left
     // here in case this bug is exploited.
     // Like a good neighbor, UB is there☺
-    match allocator.sexp(prog) {
-        SExp::Pair(f, r) => {
-            return m! {
-                first <- lower_quote(allocator, f);
-                rest <- lower_quote(allocator, r);
-                allocator.new_pair(first, rest)
-            };
-        }
-        SExp::Atom(_) => {}
+    if let SExp::Pair(f, r) = allocator.sexp(prog) {
+        return m! {
+            first <- lower_quote(allocator, f);
+            rest <- lower_quote(allocator, r);
+            allocator.new_pair(first, rest)
+        };
     }
 
     Ok(prog)

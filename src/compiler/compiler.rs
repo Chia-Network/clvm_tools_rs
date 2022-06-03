@@ -80,7 +80,7 @@ fn make_simple_argbindings(
                 b.clone(),
             );
         }
-        SExp::Atom(l, n) => {
+        SExp::Atom(_l, n) => {
             let borrowed_prog_args: &SExp = prog_args.borrow();
             // Alternatively, by path
             // at_path(current_path.clone() | path_mask.clone(), l.clone())
@@ -305,7 +305,7 @@ impl CompilerOpts for DefaultCompilerOpts {
             let mut p = PathBuf::from(dir);
             p.push(filename.clone());
             match fs::read_to_string(p) {
-                Err(e) => {
+                Err(_e) => {
                     continue;
                 }
                 Ok(content) => {
@@ -398,7 +398,7 @@ fn path_to_function_inner(
                     })
                 })
         }
-        any => {
+        _ => {
             let current_hash = sha256tree(program.clone());
             if &current_hash == hash {
                 Some(current_path + path_mask)

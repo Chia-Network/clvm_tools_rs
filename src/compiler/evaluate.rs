@@ -364,9 +364,9 @@ impl Evaluator {
     ) -> Self {
         Evaluator {
             opts: opts.clone(),
-            runner: runner,
+            runner,
             prims: opts.prim_map(),
-            helpers: helpers,
+            helpers,
         }
     }
 

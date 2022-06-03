@@ -80,7 +80,7 @@ fn translate_head(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
-    l: Srcloc,
+    _l: Srcloc,
     sexp: Rc<SExp>,
     context: Rc<SExp>,
 ) -> Result<Rc<SExp>, RunFailure> {
@@ -112,8 +112,8 @@ fn translate_head(
             None => Ok(sexp.clone()),
             Some(v) => Ok(Rc::new(v.with_loc(l.clone()))),
         },
-        SExp::Cons(l, a, nil) => match nil.borrow() {
-            SExp::Nil(l1) => run(allocator, runner, prim_map, sexp.clone(), context.clone()),
+        SExp::Cons(_l, _a, nil) => match nil.borrow() {
+            SExp::Nil(_l1) => run(allocator, runner, prim_map, sexp.clone(), context.clone()),
             _ => Err(RunFailure::RunErr(
                 sexp.loc(),
                 format!("Unexpected head form in clvm {}", sexp.to_string()),
@@ -123,9 +123,9 @@ fn translate_head(
 }
 
 fn eval_args(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
-    prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    _allocator: &mut Allocator,
+    _runner: Rc<dyn TRunProgram>,
+    _prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     head: Rc<SExp>,
     sexp_: Rc<SExp>,
     context_: Rc<SExp>,
@@ -136,7 +136,7 @@ fn eval_args(
 
     loop {
         match sexp.borrow() {
-            SExp::Nil(l) => {
+            SExp::Nil(_l) => {
                 return Ok(RunStep::Op(
                     head,
                     context_.clone(),
@@ -145,7 +145,7 @@ fn eval_args(
                     parent.clone(),
                 ));
             }
-            SExp::Cons(l, a, b) => {
+            SExp::Cons(_l, a, b) => {
                 eval_list.push(a.clone());
                 sexp = b.clone();
             }
@@ -169,13 +169,13 @@ pub fn convert_to_clvm_rs(
 ) -> Result<NodePtr, RunFailure> {
     match head.borrow() {
         SExp::Nil(_) => Ok(allocator.null()),
-        SExp::Atom(l, x) => allocator.new_atom(x).map_err(|e| {
+        SExp::Atom(_l, x) => allocator.new_atom(x).map_err(|_e| {
             RunFailure::RunErr(
                 head.loc(),
                 format!("failed to alloc atom {}", head.to_string()),
             )
         }),
-        SExp::QuotedString(_, _, x) => allocator.new_atom(x).map_err(|e| {
+        SExp::QuotedString(_, _, x) => allocator.new_atom(x).map_err(|_e| {
             RunFailure::RunErr(
                 head.loc(),
                 format!("failed to alloc string {}", head.to_string()),
@@ -185,17 +185,19 @@ pub fn convert_to_clvm_rs(
             if *i == bi_zero() {
                 Ok(allocator.null())
             } else {
-                allocator.new_atom(&u8_from_number(i.clone())).map_err(|e| {
-                    RunFailure::RunErr(
-                        head.loc(),
-                        format!("failed to alloc integer {}", head.to_string()),
-                    )
-                })
+                allocator
+                    .new_atom(&u8_from_number(i.clone()))
+                    .map_err(|_e| {
+                        RunFailure::RunErr(
+                            head.loc(),
+                            format!("failed to alloc integer {}", head.to_string()),
+                        )
+                    })
             }
         }
         SExp::Cons(_, a, b) => convert_to_clvm_rs(allocator, a.clone()).and_then(|head| {
             convert_to_clvm_rs(allocator, b.clone()).and_then(|tail| {
-                allocator.new_pair(head, tail).map_err(|e| {
+                allocator.new_pair(head, tail).map_err(|_e| {
                     RunFailure::RunErr(
                         a.loc(),
                         format!("failed to alloc cons {}", head.to_string()),
@@ -326,10 +328,12 @@ pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
                 parent.clone(),
             )
         }
-        (RunStep::Done(l, x), RunStep::Op(head, context, args, None, parent)) => {
+        (RunStep::Done(_l, _x), RunStep::Op(_head, _context, _args, None, parent)) => {
             combine(a, parent.borrow())
         }
-        (RunStep::Done(l, x), RunStep::Step(sexp, context, parent)) => combine(a, parent.borrow()),
+        (RunStep::Done(_l, _x), RunStep::Step(_sexp, _context, parent)) => {
+            combine(a, parent.borrow())
+        }
         _ => a.clone(),
     }
 }
@@ -353,7 +357,7 @@ pub fn run_step(
             let parent: &RunStep = p.borrow();
             return Ok(combine(&RunStep::Done(l.clone(), x.clone()), parent));
         }
-        RunStep::Done(l, x) => {}
+        RunStep::Done(_l, _x) => {}
         RunStep::Step(sexp, context, parent) => {
             match sexp.borrow() {
                 SExp::Integer(l, v) => {
@@ -448,7 +452,7 @@ pub fn run_step(
                 }
             }
         }
-        RunStep::Op(head, context, tail, None, parent) => {
+        RunStep::Op(head, _context, tail, None, parent) => {
             let aval = atom_value(head.clone())?;
             let apply_atom = 2_i32.to_bigint().unwrap();
             let if_atom = 3_i32.to_bigint().unwrap();
@@ -639,7 +643,7 @@ fn sha256tree_from_atom(v: Vec<u8>) -> Vec<u8> {
 // sha256tree for modern style SExp
 pub fn sha256tree(s: Rc<SExp>) -> Vec<u8> {
     match s.borrow() {
-        SExp::Cons(l, a, b) => {
+        SExp::Cons(_l, a, b) => {
             let t1 = sha256tree(a.clone());
             let t2 = sha256tree(b.clone());
             sha256(

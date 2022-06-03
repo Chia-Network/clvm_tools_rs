@@ -46,11 +46,11 @@ pub fn optimize_expr(
                 .map(|calltype| match calltype {
                     // A macro invocation emits a bodyform, which we
                     // run back through the frontend and check.
-                    Callable::CallMacro(l, _) => None,
+                    Callable::CallMacro(_l, _) => None,
                     // A function is constant if its body is a constant
                     // expression or all its arguments are constant and
                     // its body doesn't include an environment reference.
-                    Callable::CallDefun(l, target) => None,
+                    Callable::CallDefun(_l, _target) => None,
                     // A primcall is constant if its arguments are constant
                     Callable::CallPrim(l, _) => {
                         let mut constant = true;

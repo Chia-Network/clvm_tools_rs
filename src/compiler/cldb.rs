@@ -142,7 +142,7 @@ impl CldbRun {
         // Allow overrides by consumers.
 
         match &new_step {
-            Ok(RunStep::OpResult(l, x, p)) => {
+            Ok(RunStep::OpResult(l, x, _p)) => {
                 if self.in_expr {
                     self.to_print
                         .insert("Result-Location".to_string(), l.to_string());
@@ -176,8 +176,8 @@ impl CldbRun {
                 swap(&mut self.to_print, &mut result);
                 produce_result = true;
             }
-            Ok(RunStep::Step(sexp, c, p)) => {}
-            Ok(RunStep::Op(sexp, c, a, None, p)) => {
+            Ok(RunStep::Step(_sexp, _c, _p)) => {}
+            Ok(RunStep::Op(sexp, c, a, None, _p)) => {
                 self.to_print
                     .insert("Operator-Location".to_string(), a.loc().to_string());
                 self.to_print
@@ -203,7 +203,7 @@ impl CldbRun {
                 self.env.add_function(sexp, &mut self.to_print);
                 self.in_expr = true;
             }
-            Ok(RunStep::Op(sexp, c, a, Some(v), p)) => {}
+            Ok(RunStep::Op(_sexp, _c, _a, Some(_v), _p)) => {}
             Err(RunFailure::RunExn(l, s)) => {
                 self.to_print
                     .insert("Throw-Location".to_string(), l.to_string());
@@ -240,7 +240,7 @@ pub struct CldbNoOverride {
 }
 
 impl CldbRunnable for CldbNoOverride {
-    fn replace_step(&self, step: &RunStep) -> Option<Result<RunStep, RunFailure>> {
+    fn replace_step(&self, _step: &RunStep) -> Option<Result<RunStep, RunFailure>> {
         None
     }
 }
@@ -274,15 +274,15 @@ impl CldbOverrideBespokeCode {
         overrides: HashMap<String, Box<dyn CldbSingleBespokeOverride>>,
     ) -> Self {
         CldbOverrideBespokeCode {
-            symbol_table: symbol_table,
-            overrides: overrides,
+            symbol_table,
+            overrides,
         }
     }
 
     fn find_function_and_override_if_needed(
         &self,
         sexp: Rc<SExp>,
-        c: Rc<SExp>,
+        _c: Rc<SExp>,
         f: Rc<SExp>,
         args: Rc<SExp>,
         p: Rc<RunStep>,
