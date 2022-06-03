@@ -38,7 +38,7 @@ fn select_helper(bindings: &Vec<HelperForm>, name: &Vec<u8>) -> Option<HelperFor
         }
     }
 
-    return None;
+    None
 }
 
 fn update_parallel_bindings(
@@ -168,11 +168,7 @@ fn create_argument_captures(
                 let fused_arguments =
                     Rc::new(make_operator2(l, "c".to_string(), bfa.clone(), bfb.clone()));
                 argument_captures.insert(capture.clone(), fused_arguments);
-                create_argument_captures(
-                    argument_captures,
-                    formed_arguments.clone(),
-                    substructure.clone(),
-                )
+                create_argument_captures(argument_captures, formed_arguments, substructure)
             } else {
                 create_argument_captures(argument_captures, af, f.clone())?;
                 create_argument_captures(argument_captures, ar, r.clone())
@@ -223,7 +219,7 @@ fn build_argument_captures(
     }
 
     let mut argument_captures = HashMap::new();
-    create_argument_captures(&mut argument_captures, &formed_arguments, args.clone())?;
+    create_argument_captures(&mut argument_captures, &formed_arguments, args)?;
     Ok(argument_captures)
 }
 
@@ -325,7 +321,7 @@ fn synthesize_args(
             ))
         }),
         SExp::Cons(l, f, r) => {
-            if let Some((capture, substructure)) = is_at_capture(f.clone(), r.clone()) {
+            if let Some((capture, _substructure)) = is_at_capture(f.clone(), r.clone()) {
                 synthesize_args(Rc::new(SExp::Atom(l.clone(), capture.clone())), env)
             } else {
                 Ok(Rc::new(BodyForm::Call(
@@ -850,13 +846,10 @@ impl Evaluator {
 
     fn get_constant(&self, name: &Vec<u8>) -> Option<Rc<BodyForm>> {
         for h in self.helpers.iter() {
-            match h {
-                HelperForm::Defconstant(_, n, body) => {
-                    if n == name {
-                        return Some(body.clone());
-                    }
+            if let HelperForm::Defconstant(_, n, body) = h {
+                if n == name {
+                    return Some(body.clone());
                 }
-                _ => {}
             }
         }
         None
