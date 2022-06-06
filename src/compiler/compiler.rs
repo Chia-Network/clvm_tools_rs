@@ -500,3 +500,21 @@ pub fn extract_program_and_env(program: Rc<SExp>) -> Option<(Rc<SExp>, Rc<SExp>)
         _ => None,
     }
 }
+
+pub fn is_at_capture(head: Rc<SExp>, rest: Rc<SExp>) -> Option<(Vec<u8>, Rc<SExp>)> {
+    rest.proper_list().and_then(|l| {
+        if l.len() != 2 {
+            return None;
+        }
+        match (head.borrow(), l[0].borrow()) {
+            (SExp::Atom(_, a), SExp::Atom(_, cap)) => {
+                if a == &vec!['@' as u8] {
+                    return Some((cap.clone(), Rc::new(l[1].clone())));
+                }
+            }
+            _ => {}
+        }
+
+        None
+    })
+}

@@ -141,6 +141,19 @@ fn test_last_of_pwcoin_2() {
 }
 
 #[test]
+fn test_repl_supports_at_capture() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun F (A (@ Z (B C)) D) (c (+ A B C D) Z))",
+            "(F 1 (q 2 3) 4)",
+        ])
+        .unwrap()
+        .unwrap(),
+        "(q 10 2 3)"
+    );
+}
+
+#[test]
 fn test_collatz() {
     assert_eq!(
         test_repl_outcome(vec![

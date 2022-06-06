@@ -11,7 +11,7 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::bi_one;
 
 use crate::compiler::clvm::run;
-use crate::compiler::compiler::run_optimizer;
+use crate::compiler::compiler::{is_at_capture, run_optimizer};
 use crate::compiler::comptypes::{
     cons_of_string_map, foldM, join_vecs_to_string, list_to_cons, with_heading, Binding, BodyForm,
     Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, DefunCall, HelperForm,
@@ -150,11 +150,19 @@ fn create_name_lookup_(
             }
         }
         SExp::Cons(l, head, rest) => {
-            match create_name_lookup_(l.clone(), name, env.clone(), head.clone()) {
-                Err(_) => {
-                    create_name_lookup_(l.clone(), name, env, rest.clone()).map(|v| 2 * v + 1)
+            if let Some((capture, substructure)) = is_at_capture(head.clone(), rest.clone()) {
+                println!("*capture {:?} *name {:?}", capture, name);
+                if *capture == *name {
+                    Ok(1_u64)
+                } else {
+                    create_name_lookup_(l.clone(), name, env.clone(), substructure.clone())
                 }
-                Ok(v) => Ok(2 * v),
+            } else {
+                create_name_lookup_(l.clone(), name, env.clone(), head.clone())
+                    .map(|v| Ok(2 * v))
+                    .unwrap_or_else(|_| {
+                        create_name_lookup_(l.clone(), name, env, rest.clone()).map(|v| 2 * v + 1)
+                    })
             }
         }
         _ => Err(CompileErr(
