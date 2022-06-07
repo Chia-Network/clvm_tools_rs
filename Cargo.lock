@@ -101,9 +101,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "clvm_rust"
+name = "clvm_rs"
 version = "0.1.14"
-source = "git+https://github.com/prozacchiwawa/clvm_rs?branch=20211029-try-config#b9f9c3345243ab1d5968fd16f4a3599d0ec43699"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86480f3549a86dc471e311b87ac1ec8240bce89a7db0f2f9acfb106e7da7a11f"
 dependencies = [
  "bls12_381",
  "hex",
@@ -122,7 +123,7 @@ version = "0.1.11"
 dependencies = [
  "bls12_381",
  "bytestream",
- "clvm_rust",
+ "clvm_rs",
  "derivative",
  "do-notation",
  "encoding8",
