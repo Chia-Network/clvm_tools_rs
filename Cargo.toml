@@ -22,11 +22,11 @@ serde_json = "1.0"
 sha2 = "0.9.5"
 yamlette = "0.0.8"
 tempfile = "3.3.0"
-clvm_rs = "0.1.14"
+clvm_rust = "0.1.14"
 
 [patch.crates-io]
 skimmer = { git = "https://github.com/dnsl48/skimmer", rev = "ca914ef624ecf39a75ed7afef10e7838fffe9127" }
-clvm_rs = { git = "https://github.com/prozacchiwawa/clvm_rs", rev = "b9f9c3345243ab1d5968fd16f4a3599d0ec43699" }
+clvm_rust = { git = "https://github.com/prozacchiwawa/clvm_rs", rev = "b9f9c3345243ab1d5968fd16f4a3599d0ec43699" }
 
 [target.x86_64-apple-darwin]
 rustflags = [
