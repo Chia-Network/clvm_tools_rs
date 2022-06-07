@@ -22,7 +22,7 @@ serde_json = "1.0"
 sha2 = "0.9.5"
 yamlette = "0.0.8"
 tempfile = "3.3.0"
-clvm_rs = "0.1.2"
+clvm_rs = { version = "=0.1.13", default-features = false, features = [] }
 
 [patch.crates-io]
 skimmer = { git = "https://github.com/dnsl48/skimmer", rev = "ca914ef624ecf39a75ed7afef10e7838fffe9127" }
@@ -42,9 +42,9 @@ extension-module = ["pyo3"]
 default = ["extension-module"]
 
 [target.'cfg(target_family="wasm")'.dependencies]
-wasm-bindgen = "0.2.80"
+wasm-bindgen = "0.2.75"
 wasm-bindgen-test = "0.3.25"
-js-sys = "0.3.57"
+js-sys = "0.3.52"
 getrandom = { version = "0.2", features = ["js"] }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
