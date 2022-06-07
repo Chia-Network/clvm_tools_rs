@@ -1017,7 +1017,6 @@ pub fn launch_tool(
             run_script,
             input_sexp.unwrap(),
             Some(RunProgramOption {
-                operator_lookup: None,
                 max_cost: if max_cost == 0 {
                     None
                 } else {
