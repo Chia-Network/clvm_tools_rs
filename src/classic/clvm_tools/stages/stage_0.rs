@@ -10,7 +10,7 @@ use clvm_rs::run_program::{run_program, PreEval};
 pub struct RunProgramOption {
     pub max_cost: Option<Cost>,
     pub pre_eval_f: Option<PreEval>,
-    pub strict: bool
+    pub strict: bool,
 }
 
 pub trait TRunProgram {
@@ -23,13 +23,11 @@ pub trait TRunProgram {
     ) -> Response;
 }
 
-pub struct DefaultProgramRunner {
-}
+pub struct DefaultProgramRunner {}
 
 impl DefaultProgramRunner {
     pub fn new() -> Self {
-        DefaultProgramRunner {
-        }
+        DefaultProgramRunner {}
     }
 }
 
@@ -41,12 +39,14 @@ impl TRunProgram for DefaultProgramRunner {
         args: NodePtr,
         option: Option<RunProgramOption>,
     ) -> Response {
-        let max_cost =
-            option.as_ref().and_then(|o| o.max_cost).unwrap_or_else(|| 0);
+        let max_cost = option
+            .as_ref()
+            .and_then(|o| o.max_cost)
+            .unwrap_or_else(|| 0);
 
         run_program(
             allocator,
-            &ChiaDialect::new(NO_NEG_DIV|NO_UNKNOWN_OPS),
+            &ChiaDialect::new(NO_NEG_DIV | NO_UNKNOWN_OPS),
             program,
             args,
             max_cost,

@@ -743,7 +743,11 @@ fn dequote(allocator: &mut Allocator, prog: NodePtr) -> NodePtr {
     }
 }
 
-pub fn do_com_prog_for_dialect(runner: Rc<dyn TRunProgram>, allocator: &mut Allocator, sexp: NodePtr) -> Response {
+pub fn do_com_prog_for_dialect(
+    runner: Rc<dyn TRunProgram>,
+    allocator: &mut Allocator,
+    sexp: NodePtr,
+) -> Response {
     match allocator.sexp(sexp) {
         SExp::Pair(prog, extras) => {
             let mut symbol_table = allocator.null();
@@ -778,15 +782,15 @@ pub fn do_com_prog_for_dialect(runner: Rc<dyn TRunProgram>, allocator: &mut Allo
                 symbol_table,
                 runner.clone(),
             )
-                .map(|x| {
-                    // XXX Enable extra info in sym file.
-                    // self.compile_outcomes.replace_with(|co| {
-                    //     let key = sha256tree(allocator, x.1).hex();
-                    //     co.insert(key, sexp_dis);
-                    //     co.clone()
-                    // });
-                    x
-                })
+            .map(|x| {
+                // XXX Enable extra info in sym file.
+                // self.compile_outcomes.replace_with(|co| {
+                //     let key = sha256tree(allocator, x.1).hex();
+                //     co.insert(key, sexp_dis);
+                //     co.clone()
+                // });
+                x
+            })
         }
         _ => Err(EvalErr(
             sexp,

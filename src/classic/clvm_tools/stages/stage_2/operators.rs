@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
-use clvm_rs::cost::Cost;
 use clvm_rs::chia_dialect::{ChiaDialect, NO_NEG_DIV, NO_UNKNOWN_OPS};
+use clvm_rs::cost::Cost;
 use clvm_rs::dialect::Dialect;
 use clvm_rs::reduction::{EvalErr, Reduction, Response};
 use clvm_rs::run_program::run_program;
@@ -20,7 +20,7 @@ use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble_to_ir_w
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::ir::writer::write_ir_to_stream;
 use crate::classic::clvm_tools::stages::stage_0::{
-    DefaultProgramRunner, RunProgramOption, TRunProgram
+    DefaultProgramRunner, RunProgramOption, TRunProgram,
 };
 use crate::classic::clvm_tools::stages::stage_2::compile::do_com_prog_for_dialect;
 use crate::classic::clvm_tools::stages::stage_2::optimize::do_optimize;
@@ -31,12 +31,12 @@ pub struct CompilerOperators {
     search_paths: Vec<String>,
     compile_outcomes: RefCell<HashMap<String, String>>,
     dialect: RefCell<Rc<dyn Dialect>>,
-    runner: RefCell<Rc<dyn TRunProgram>>
+    runner: RefCell<Rc<dyn TRunProgram>>,
 }
 
 impl CompilerOperators {
     pub fn new(search_paths: Vec<String>) -> Self {
-        let base_dialect = Rc::new(ChiaDialect::new(NO_NEG_DIV|NO_UNKNOWN_OPS));
+        let base_dialect = Rc::new(ChiaDialect::new(NO_NEG_DIV | NO_UNKNOWN_OPS));
         let base_runner = Rc::new(DefaultProgramRunner::new());
         CompilerOperators {
             base_dialect: base_dialect.clone(),
@@ -44,7 +44,7 @@ impl CompilerOperators {
             search_paths,
             compile_outcomes: RefCell::new(HashMap::new()),
             dialect: RefCell::new(base_dialect),
-            runner: RefCell::new(base_runner)
+            runner: RefCell::new(base_runner),
         }
     }
 
@@ -178,11 +178,11 @@ impl CompilerOperators {
                                     let hash_text = Bytes::new(Some(BytesFromType::Raw(
                                         allocator.buf(&hash).to_vec(),
                                     )))
-                                        .decode();
+                                    .decode();
                                     let name_text = Bytes::new(Some(BytesFromType::Raw(
                                         allocator.buf(&name).to_vec(),
                                     )))
-                                        .decode();
+                                    .decode();
 
                                     self.compile_outcomes.replace_with(|co| {
                                         let mut result = co.clone();
@@ -205,8 +205,12 @@ impl CompilerOperators {
 }
 
 impl Dialect for CompilerOperators {
-    fn quote_kw(&self) -> &[u8] { &[1] }
-    fn apply_kw(&self) -> &[u8] { &[2] }
+    fn quote_kw(&self) -> &[u8] {
+        &[1]
+    }
+    fn apply_kw(&self) -> &[u8] {
+        &[2]
+    }
 
     fn op(
         &self,
@@ -233,8 +237,8 @@ impl Dialect for CompilerOperators {
                 } else {
                     self.base_dialect.op(allocator, op, sexp, max_cost)
                 }
-            },
-            _ => self.base_dialect.op(allocator, op, sexp, max_cost)
+            }
+            _ => self.base_dialect.op(allocator, op, sexp, max_cost),
         }
     }
 }
@@ -253,8 +257,10 @@ impl TRunProgram for CompilerOperators {
         args: NodePtr,
         option: Option<RunProgramOption>,
     ) -> Response {
-        let mut max_cost =
-            option.as_ref().and_then(|o| o.max_cost).unwrap_or_else(|| 0);
+        let mut max_cost = option
+            .as_ref()
+            .and_then(|o| o.max_cost)
+            .unwrap_or_else(|| 0);
         run_program(
             allocator,
             self,
