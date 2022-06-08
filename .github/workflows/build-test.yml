@@ -92,7 +92,7 @@ jobs:
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
       run: |
         # Grab chia-blockchain
-        git checkout https://github.com/Chia-Network/chia-blockchain
+        git clone https://github.com/Chia-Network/chia-blockchain
         (cd chia-blockchain && python -m pip install -e .)
 
         # Build and install clvm_tools_rs
