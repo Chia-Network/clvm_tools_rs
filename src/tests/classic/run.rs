@@ -184,7 +184,7 @@ fn at_capture_inline_1() {
             "run".to_string(),
             "(mod () (defun-inline F (@ pt (X Y)) X) (F 97 98))".to_string()
         ))
-            .trim(),
+        .trim(),
         "(q . 97)"
     );
 }
@@ -196,7 +196,7 @@ fn at_capture_inline_2() {
             "run".to_string(),
             "(mod () (defun-inline F (@ pt (X Y)) Y) (F 97 98))".to_string()
         ))
-            .trim(),
+        .trim(),
         "(q . 98)"
     );
 }
@@ -208,7 +208,7 @@ fn at_capture_inline_3() {
             "run".to_string(),
             "(mod () (defun-inline F (@ pt (X Y)) pt) (F (+ 117 1) (+ 98 1)))".to_string()
         ))
-            .trim(),
+        .trim(),
         "(q 118 99)"
     );
 }
@@ -232,7 +232,7 @@ fn inline_destructure_1() {
             "run".to_string(),
             "(mod () (defun-inline F ((A . B)) (+ A B)) (F (c 3 7)))".to_string()
         ))
-            .trim(),
+        .trim(),
         "(q . 10)"
     );
 }

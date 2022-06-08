@@ -7,7 +7,7 @@ use num_bigint::ToBigInt;
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, bi_one, bi_zero};
+use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, Bytes, BytesFromType};
 use crate::classic::clvm::sexp::{enlist, first, flatten, foldM, mapM, non_nil, proper_list, rest};
 use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::debug::build_symbol_dump;
@@ -19,8 +19,8 @@ use crate::classic::clvm_tools::NodePath::NodePath;
 use crate::compiler::gensym::gensym;
 use crate::util::Number;
 
-use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::binutils::assemble_from_ir;
+use crate::classic::clvm_tools::ir::reader::read_ir;
 
 lazy_static! {
     pub static ref MAIN_NAME: String = "".to_string();
@@ -203,17 +203,13 @@ fn parse_include(
 fn wrap_path_selection(
     allocator: &mut Allocator,
     path: Number,
-    operators: &mut Vec<bool>
+    operators: &mut Vec<bool>,
 ) -> Result<(), EvalErr> {
     if path <= bi_one() {
         Ok(())
     } else {
         operators.push(path.clone() % 2_u32.to_bigint().unwrap() == bi_one());
-        wrap_path_selection(
-            allocator,
-            path / 2_u32.to_bigint().unwrap(),
-            operators
-        )
+        wrap_path_selection(allocator, path / 2_u32.to_bigint().unwrap(), operators)
     }
 }
 
@@ -223,10 +219,10 @@ fn formulate_path_selections_for_destructuring_arg(
     arg_path: Number,
     arg_depth: Number,
     referenced_from: Option<NodePtr>,
-    selections: &mut HashMap<Vec<u8>, NodePtr>
+    selections: &mut HashMap<Vec<u8>, NodePtr>,
 ) -> Result<NodePtr, EvalErr> {
     match allocator.sexp(arg_sexp) {
-        SExp::Pair(a,b) => {
+        SExp::Pair(a, b) => {
             let next_depth = arg_depth.clone() * 2_u32.to_bigint().unwrap();
             if let Some((capture, substructure)) = is_at_capture(allocator, a, b) {
                 if let SExp::Atom(cbuf) = allocator.sexp(capture) {
@@ -236,8 +232,12 @@ fn formulate_path_selections_for_destructuring_arg(
                         } else {
                             let mut operator_stack = Vec::new();
                             let unquote_atom = allocator.new_atom("unquote".as_bytes())?;
-                            let mut qtail = enlist(allocator, &vec!(unquote_atom, capture))?;
-                            wrap_path_selection(allocator, arg_path.clone() + arg_depth.clone(), &mut operator_stack)?;
+                            let mut qtail = enlist(allocator, &vec![unquote_atom, capture])?;
+                            wrap_path_selection(
+                                allocator,
+                                arg_path.clone() + arg_depth.clone(),
+                                &mut operator_stack,
+                            )?;
                             for o in operator_stack.iter() {
                                 let head_op = if *o { vec![6] } else { vec![5] };
                                 let head_atom = allocator.new_atom(&head_op)?;
@@ -254,7 +254,7 @@ fn formulate_path_selections_for_destructuring_arg(
                         new_arg_path,
                         new_arg_depth,
                         Some(tail),
-                        selections
+                        selections,
                     );
                     return Ok(arg_sexp);
                 }
@@ -267,7 +267,7 @@ fn formulate_path_selections_for_destructuring_arg(
                     arg_path.clone(),
                     next_depth.clone(),
                     referenced_from.clone(),
-                    selections
+                    selections,
                 )?;
                 let r = formulate_path_selections_for_destructuring_arg(
                     allocator,
@@ -275,9 +275,9 @@ fn formulate_path_selections_for_destructuring_arg(
                     arg_depth.clone() + arg_path,
                     next_depth,
                     referenced_from,
-                    selections
+                    selections,
                 )?;
-                allocator.new_pair(f,r)
+                allocator.new_pair(f, r)
             } else {
                 let ref_name = gensym("destructuring_capture".as_bytes().to_vec());
                 let at_atom = allocator.new_atom("@".as_bytes())?;
@@ -289,17 +289,21 @@ fn formulate_path_selections_for_destructuring_arg(
                     bi_zero(),
                     bi_one(),
                     None,
-                    selections
+                    selections,
                 )
             }
-        },
+        }
         SExp::Atom(b) => {
             let buf = allocator.buf(&b).to_vec();
             if buf.len() > 0 {
                 if let Some(capture) = referenced_from {
                     let mut operator_stack = Vec::new();
                     let mut tail = capture;
-                    wrap_path_selection(allocator, arg_path.clone() + arg_depth.clone(), &mut operator_stack)?;
+                    wrap_path_selection(
+                        allocator,
+                        arg_path.clone() + arg_depth.clone(),
+                        &mut operator_stack,
+                    )?;
                     for o in operator_stack.iter() {
                         let head_op = if *o { vec![6] } else { vec![5] };
                         let head_atom = allocator.new_atom(&head_op)?;
@@ -319,7 +323,7 @@ fn formulate_path_selections_for_destructuring(
     args_sexp: NodePtr,
     selections: &mut HashMap<Vec<u8>, NodePtr>,
 ) -> Result<NodePtr, EvalErr> {
-    if let SExp::Pair(a,b) = allocator.sexp(args_sexp) {
+    if let SExp::Pair(a, b) = allocator.sexp(args_sexp) {
         if let Some((capture, substructure)) = is_at_capture(allocator, a, b) {
             if let SExp::Atom(cbuf) = allocator.sexp(capture) {
                 let q_atom = allocator.new_atom(&vec![1])?;
@@ -335,18 +339,21 @@ fn formulate_path_selections_for_destructuring(
                     bi_zero(),
                     bi_one(),
                     Some(tail),
-                    selections
+                    selections,
                 )?;
                 return enlist(allocator, &vec![a, capture, newsub]);
             }
         }
         let f = formulate_path_selections_for_destructuring_arg(
-            allocator, a, bi_zero(), bi_one(), None, selections
+            allocator,
+            a,
+            bi_zero(),
+            bi_one(),
+            None,
+            selections,
         )?;
-        let r = formulate_path_selections_for_destructuring(
-            allocator, b, selections
-        )?;
-        allocator.new_pair(f,r)
+        let r = formulate_path_selections_for_destructuring(allocator, b, selections)?;
+        allocator.new_pair(f, r)
     } else {
         Ok(args_sexp)
     }
@@ -356,7 +363,7 @@ fn unquote_args(
     allocator: &mut Allocator,
     code: NodePtr,
     args: &Vec<Vec<u8>>,
-    matches: &HashMap<Vec<u8>, NodePtr>
+    matches: &HashMap<Vec<u8>, NodePtr>,
 ) -> Result<NodePtr, EvalErr> {
     match allocator.sexp(code) {
         SExp::Atom(code_buf) => {
@@ -374,7 +381,7 @@ fn unquote_args(
                 }
 
                 let unquote_atom = allocator.new_atom("unquote".as_bytes())?;
-                return enlist(allocator, &vec!(unquote_atom, code));
+                return enlist(allocator, &vec![unquote_atom, code]);
             }
 
             Ok(code)
@@ -392,12 +399,9 @@ fn unquote_args(
 // If true, these arguments represent a destructuring of some kind.
 // In the case of inlines in classic chialisp, we must adjust how arguments
 // are passed down to the macro body that gets created for the inline function.
-fn is_inline_destructure(
-    allocator: &mut Allocator,
-    args_sexp: NodePtr
-) -> bool {
-    if let SExp::Pair(a,b) = allocator.sexp(args_sexp) {
-        if let SExp::Pair(_,_) = allocator.sexp(a) {
+fn is_inline_destructure(allocator: &mut Allocator, args_sexp: NodePtr) -> bool {
+    if let SExp::Pair(a, b) = allocator.sexp(args_sexp) {
+        if let SExp::Pair(_, _) = allocator.sexp(a) {
             return true;
         }
 
@@ -427,28 +431,32 @@ fn defun_inline_to_macro(
         // generate the arguments.  These overlap when the argument list is
         // a single level proper list, but not otherwise.
         use_args = formulate_path_selections_for_destructuring(
-            allocator, d3_first, &mut destructure_matches
+            allocator,
+            d3_first,
+            &mut destructure_matches,
         )?;
     }
 
-    let mut r_vec = vec!(defmacro_atom, d2_first, use_args);
+    let mut r_vec = vec![defmacro_atom, d2_first, use_args];
     let code_rest = rest(allocator, d3)?;
     let code = first(allocator, code_rest)?;
 
     let mut arg_atom_list = Vec::new();
     let _ = flatten(allocator, use_args, &mut arg_atom_list);
-    let arg_name_list = arg_atom_list.iter().map(|x| {
-        match allocator.sexp(*x) {
+    let arg_name_list = arg_atom_list
+        .iter()
+        .map(|x| match allocator.sexp(*x) {
             SExp::Atom(a) => Some(allocator.buf(&a)),
-            _ => None
-        }
-    }).flatten().filter(|x| x.len() > 0).
-        map(|v| v.to_vec()).
-        collect::<Vec<Vec<u8>>>();
+            _ => None,
+        })
+        .flatten()
+        .filter(|x| x.len() > 0)
+        .map(|v| v.to_vec())
+        .collect::<Vec<Vec<u8>>>();
 
     let unquoted_code = unquote_args(allocator, code, &arg_name_list, &destructure_matches)?;
     let qq_atom = allocator.new_atom("qq".as_bytes())?;
-    let qq_list = enlist(allocator, &vec!(qq_atom, unquoted_code))?;
+    let qq_list = enlist(allocator, &vec![qq_atom, unquoted_code])?;
     r_vec.push(qq_list);
     let res = enlist(allocator, &r_vec)?;
     Ok(res)

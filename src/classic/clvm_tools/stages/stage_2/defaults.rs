@@ -89,7 +89,7 @@ fn DEFAULT_MACROS_SRC() -> Vec<&'static str> {
                                1)
                         1))
                 2))
-        "}
+        "},
     ];
 }
 
