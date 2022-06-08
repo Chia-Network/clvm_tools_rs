@@ -6,7 +6,7 @@ pub mod comptypes;
 pub mod debug;
 pub mod evaluate;
 pub mod frontend;
-mod gensym;
+pub mod gensym;
 mod inline;
 mod optimize;
 pub mod preprocessor;
