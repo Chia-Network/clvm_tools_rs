@@ -224,3 +224,15 @@ fn at_capture_inline_4() {
         "(q (115 99 77) (99 77))"
     );
 }
+
+#[test]
+fn inline_destructure_1() {
+    assert_eq!(
+        do_basic_run(&vec!(
+            "run".to_string(),
+            "(mod () (defun-inline F ((A . B)) (+ A B)) (F (c 3 7)))".to_string()
+        ))
+            .trim(),
+        "(q . 10)"
+    );
+}

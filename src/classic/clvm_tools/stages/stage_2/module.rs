@@ -225,7 +225,6 @@ fn formulate_path_selections_for_destructuring_arg(
     referenced_from: Option<NodePtr>,
     selections: &mut HashMap<Vec<u8>, NodePtr>
 ) -> Result<NodePtr, EvalErr> {
-    println!("formulate_path_selections_for_destructuring_arg path {} args {}", arg_path.to_string(), disassemble(allocator, arg_sexp));
     match allocator.sexp(arg_sexp) {
         SExp::Pair(a,b) => {
             let next_depth = arg_depth.clone() * 2_u32.to_bigint().unwrap();
@@ -235,7 +234,6 @@ fn formulate_path_selections_for_destructuring_arg(
                         if let Some(prev_ref) = referenced_from {
                             (arg_path, arg_depth, prev_ref)
                         } else {
-                            println!("got capture {:?}", cbuf);
                             let mut operator_stack = Vec::new();
                             let unquote_atom = allocator.new_atom("unquote".as_bytes())?;
                             let mut qtail = enlist(allocator, &vec!(unquote_atom, capture))?;
@@ -263,7 +261,6 @@ fn formulate_path_selections_for_destructuring_arg(
             }
 
             if let Some(n) = referenced_from {
-                println!("destructure pair with reference");
                 let f = formulate_path_selections_for_destructuring_arg(
                     allocator,
                     a,
@@ -283,16 +280,15 @@ fn formulate_path_selections_for_destructuring_arg(
                 allocator.new_pair(f,r)
             } else {
                 let ref_name = gensym("destructuring_capture".as_bytes().to_vec());
-                println!("not at capture, using {:?} as a fake capture", ref_name);
                 let at_atom = allocator.new_atom("@".as_bytes())?;
                 let name_atom = allocator.new_atom(&ref_name)?;
                 let new_arg_list = enlist(allocator, &vec![at_atom, name_atom, arg_sexp])?;
                 formulate_path_selections_for_destructuring_arg(
                     allocator,
                     new_arg_list,
-                    arg_path,
-                    next_depth,
-                    Some(name_atom),
+                    bi_zero(),
+                    bi_one(),
+                    None,
                     selections
                 )
             }
@@ -301,7 +297,6 @@ fn formulate_path_selections_for_destructuring_arg(
             let buf = allocator.buf(&b).to_vec();
             if buf.len() > 0 {
                 if let Some(capture) = referenced_from {
-                    println!("atom with capture");
                     let mut operator_stack = Vec::new();
                     let mut tail = capture;
                     wrap_path_selection(allocator, arg_path.clone() + arg_depth.clone(), &mut operator_stack)?;
@@ -314,7 +309,6 @@ fn formulate_path_selections_for_destructuring_arg(
                     return Ok(arg_sexp);
                 }
             }
-            println!("atom no capture");
             Ok(arg_sexp)
         }
     }
@@ -373,11 +367,9 @@ fn unquote_args(
                 .map(|v| v.clone())
                 .collect::<Vec<Vec<u8>>>();
             if matching_args.len() > 0 {
-                println!("have argument {:?}", matching_args[0]);
                 if let Some(argval) = matches.get(&matching_args[0]) {
                     // New case: if we've been given an alternate way of computing
                     // the argument, use it here.
-                    println!("atom {:?} replaced with {}", matching_args[0], disassemble(allocator, *argval));
                     return Ok(*argval);
                 }
 
@@ -437,9 +429,6 @@ fn defun_inline_to_macro(
         use_args = formulate_path_selections_for_destructuring(
             allocator, d3_first, &mut destructure_matches
         )?;
-        println!("destructure matches: {:?}, synthesized args {}", destructure_matches, disassemble(allocator, use_args));
-    } else {
-        println!("inline function wasn't destructuring");
     }
 
     let mut r_vec = vec!(defmacro_atom, d2_first, use_args);
@@ -462,7 +451,6 @@ fn defun_inline_to_macro(
     let qq_list = enlist(allocator, &vec!(qq_atom, unquoted_code))?;
     r_vec.push(qq_list);
     let res = enlist(allocator, &r_vec)?;
-    println!("inline function became {}", disassemble(allocator, res));
     Ok(res)
 }
 
