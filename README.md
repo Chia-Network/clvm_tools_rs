@@ -25,6 +25,8 @@ these command line tools from clvm_tools in their equivalents in this repository
  - run
  
  - brun
+
+ - repl
  
 argparse was ported to javascript and I believe I have faithfully reproduced it
 as it is used in cmds, so command line parsing should work similarly in all three
