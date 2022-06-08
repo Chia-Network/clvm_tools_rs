@@ -2,25 +2,20 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use num_bigint::ToBigInt;
-
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, Bytes, BytesFromType};
+use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm::sexp::{enlist, first, flatten, foldM, mapM, non_nil, proper_list, rest};
-use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::debug::build_symbol_dump;
 use crate::classic::clvm_tools::stages::assemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::helpers::{evaluate, quote};
+use crate::classic::clvm_tools::stages::stage_2::inline::{
+    formulate_path_selections_for_destructuring, is_at_capture, is_inline_destructure,
+};
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::classic::clvm_tools::NodePath::NodePath;
-use crate::compiler::gensym::gensym;
-use crate::util::Number;
-
-use crate::classic::clvm_tools::binutils::assemble_from_ir;
-use crate::classic::clvm_tools::ir::reader::read_ir;
 
 lazy_static! {
     pub static ref MAIN_NAME: String = "".to_string();
@@ -200,165 +195,6 @@ fn parse_include(
     };
 }
 
-fn wrap_path_selection(
-    allocator: &mut Allocator,
-    path: Number,
-    operators: &mut Vec<bool>,
-) -> Result<(), EvalErr> {
-    if path <= bi_one() {
-        Ok(())
-    } else {
-        operators.push(path.clone() % 2_u32.to_bigint().unwrap() == bi_one());
-        wrap_path_selection(allocator, path / 2_u32.to_bigint().unwrap(), operators)
-    }
-}
-
-fn formulate_path_selections_for_destructuring_arg(
-    allocator: &mut Allocator,
-    arg_sexp: NodePtr,
-    arg_path: Number,
-    arg_depth: Number,
-    referenced_from: Option<NodePtr>,
-    selections: &mut HashMap<Vec<u8>, NodePtr>,
-) -> Result<NodePtr, EvalErr> {
-    match allocator.sexp(arg_sexp) {
-        SExp::Pair(a, b) => {
-            let next_depth = arg_depth.clone() * 2_u32.to_bigint().unwrap();
-            if let Some((capture, substructure)) = is_at_capture(allocator, a, b) {
-                if let SExp::Atom(cbuf) = allocator.sexp(capture) {
-                    let (new_arg_path, new_arg_depth, tail) =
-                        if let Some(prev_ref) = referenced_from {
-                            (arg_path, arg_depth, prev_ref)
-                        } else {
-                            let mut operator_stack = Vec::new();
-                            let unquote_atom = allocator.new_atom("unquote".as_bytes())?;
-                            let mut qtail = enlist(allocator, &vec![unquote_atom, capture])?;
-                            wrap_path_selection(
-                                allocator,
-                                arg_path.clone() + arg_depth.clone(),
-                                &mut operator_stack,
-                            )?;
-                            for o in operator_stack.iter() {
-                                let head_op = if *o { vec![6] } else { vec![5] };
-                                let head_atom = allocator.new_atom(&head_op)?;
-                                qtail = enlist(allocator, &vec![head_atom, qtail])?;
-                            }
-                            (bi_zero(), bi_one(), qtail)
-                        };
-
-                    selections.insert(allocator.buf(&cbuf).to_vec(), tail);
-
-                    formulate_path_selections_for_destructuring_arg(
-                        allocator,
-                        substructure,
-                        new_arg_path,
-                        new_arg_depth,
-                        Some(tail),
-                        selections,
-                    );
-                    return Ok(arg_sexp);
-                }
-            }
-
-            if let Some(n) = referenced_from {
-                let f = formulate_path_selections_for_destructuring_arg(
-                    allocator,
-                    a,
-                    arg_path.clone(),
-                    next_depth.clone(),
-                    referenced_from.clone(),
-                    selections,
-                )?;
-                let r = formulate_path_selections_for_destructuring_arg(
-                    allocator,
-                    b,
-                    arg_depth.clone() + arg_path,
-                    next_depth,
-                    referenced_from,
-                    selections,
-                )?;
-                allocator.new_pair(f, r)
-            } else {
-                let ref_name = gensym("destructuring_capture".as_bytes().to_vec());
-                let at_atom = allocator.new_atom("@".as_bytes())?;
-                let name_atom = allocator.new_atom(&ref_name)?;
-                let new_arg_list = enlist(allocator, &vec![at_atom, name_atom, arg_sexp])?;
-                formulate_path_selections_for_destructuring_arg(
-                    allocator,
-                    new_arg_list,
-                    bi_zero(),
-                    bi_one(),
-                    None,
-                    selections,
-                )
-            }
-        }
-        SExp::Atom(b) => {
-            let buf = allocator.buf(&b).to_vec();
-            if buf.len() > 0 {
-                if let Some(capture) = referenced_from {
-                    let mut operator_stack = Vec::new();
-                    let mut tail = capture;
-                    wrap_path_selection(
-                        allocator,
-                        arg_path.clone() + arg_depth.clone(),
-                        &mut operator_stack,
-                    )?;
-                    for o in operator_stack.iter() {
-                        let head_op = if *o { vec![6] } else { vec![5] };
-                        let head_atom = allocator.new_atom(&head_op)?;
-                        tail = enlist(allocator, &vec![head_atom, tail])?;
-                    }
-                    selections.insert(buf, tail);
-                    return Ok(arg_sexp);
-                }
-            }
-            Ok(arg_sexp)
-        }
-    }
-}
-
-fn formulate_path_selections_for_destructuring(
-    allocator: &mut Allocator,
-    args_sexp: NodePtr,
-    selections: &mut HashMap<Vec<u8>, NodePtr>,
-) -> Result<NodePtr, EvalErr> {
-    if let SExp::Pair(a, b) = allocator.sexp(args_sexp) {
-        if let Some((capture, substructure)) = is_at_capture(allocator, a, b) {
-            if let SExp::Atom(cbuf) = allocator.sexp(capture) {
-                let q_atom = allocator.new_atom(&vec![1])?;
-                let unquote_atom = allocator.new_atom("unquote".as_bytes())?;
-                let quoted_arg_list = enlist(allocator, &vec![unquote_atom, capture])?;
-                let chia_enlist_atom = allocator.new_atom("__chia__enlist".as_bytes())?;
-                let tail = enlist(allocator, &vec![chia_enlist_atom, quoted_arg_list])?;
-                let buf = allocator.buf(&cbuf);
-                selections.insert(buf.to_vec(), tail);
-                let newsub = formulate_path_selections_for_destructuring_arg(
-                    allocator,
-                    substructure,
-                    bi_zero(),
-                    bi_one(),
-                    Some(tail),
-                    selections,
-                )?;
-                return enlist(allocator, &vec![a, capture, newsub]);
-            }
-        }
-        let f = formulate_path_selections_for_destructuring_arg(
-            allocator,
-            a,
-            bi_zero(),
-            bi_one(),
-            None,
-            selections,
-        )?;
-        let r = formulate_path_selections_for_destructuring(allocator, b, selections)?;
-        allocator.new_pair(f, r)
-    } else {
-        Ok(args_sexp)
-    }
-}
-
 fn unquote_args(
     allocator: &mut Allocator,
     code: NodePtr,
@@ -394,21 +230,6 @@ fn unquote_args(
             }
         }
     }
-}
-
-// If true, these arguments represent a destructuring of some kind.
-// In the case of inlines in classic chialisp, we must adjust how arguments
-// are passed down to the macro body that gets created for the inline function.
-fn is_inline_destructure(allocator: &mut Allocator, args_sexp: NodePtr) -> bool {
-    if let SExp::Pair(a, b) = allocator.sexp(args_sexp) {
-        if let SExp::Pair(_, _) = allocator.sexp(a) {
-            return true;
-        }
-
-        return is_inline_destructure(allocator, b);
-    }
-
-    false
 }
 
 fn defun_inline_to_macro(
@@ -589,29 +410,6 @@ fn compile_mod_stage_1(
             }
         }
     }
-}
-
-// If this is an at capture of the form
-// (@ name substructure)
-// then return name and substructure.
-fn is_at_capture(
-    allocator: &mut Allocator,
-    tree_first: NodePtr,
-    tree_rest: NodePtr,
-) -> Option<(NodePtr, NodePtr)> {
-    match (
-        allocator.sexp(tree_first),
-        proper_list(allocator, tree_rest, true),
-    ) {
-        (SExp::Atom(a), Some(spec)) => {
-            if allocator.buf(&a) == vec!['@' as u8] && spec.len() == 2 {
-                return Some((spec[0], spec[1]));
-            }
-        }
-        _ => {}
-    }
-
-    None
 }
 
 // export type TSymbolTable = Array<[SExp, Bytes]>;

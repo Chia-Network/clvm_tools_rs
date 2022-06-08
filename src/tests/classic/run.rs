@@ -236,3 +236,15 @@ fn inline_destructure_1() {
         "(q . 10)"
     );
 }
+
+#[test]
+fn test_forms_of_destructuring_allowed_by_classic_1() {
+    assert_eq!(
+        do_basic_run(&vec![
+            "run".to_string(),
+            "(mod (A) (defun-inline foo (X Y . Z) (i X Y . Z)) (foo A 2 3))".to_string()
+        ])
+        .trim(),
+        "(i 2 (q . 2) (q . 3))"
+    );
+}
