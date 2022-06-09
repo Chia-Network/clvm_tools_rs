@@ -1,7 +1,6 @@
 import os
 import subprocess
 import traceback
-from chia.wallet.puzzles.load_clvm import load_clvm
 
 recompile_list = [
     'block_program_zero.clvm',
