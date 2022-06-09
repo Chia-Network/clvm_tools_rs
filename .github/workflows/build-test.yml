@@ -99,7 +99,7 @@ jobs:
         maturin build --no-sdist -i python --release --strip
         python support/wheelname.py
         # Check recompiles
-        cp support/recompile_check chia-blockchain
+        cp support/recompile_check.py chia-blockchain
         (cd chia-blockchain && python recompile_check.py)
         # Ran successfully, remove
         rm -rf chia-blockchain
