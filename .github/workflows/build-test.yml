@@ -143,6 +143,9 @@ jobs:
         # Grab chia-blockchain
         git clone https://github.com/Chia-Network/chia-blockchain
 
+        echo "installing clvm_rs via pip"
+        pip install clvm_rs
+
         # Check recompiles
         cp support/recompile_check.py chia-blockchain
         (cd chia-blockchain && python recompile_check.py)
