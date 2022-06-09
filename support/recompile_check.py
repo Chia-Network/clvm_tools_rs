@@ -1,4 +1,5 @@
 import os
+import subprocess
 import traceback
 from chia.wallet.puzzles.load_clvm import load_clvm
 
@@ -50,7 +51,8 @@ for fname in recompile_list:
     hexdata = open(hexfile).read().strip()
     os.unlink(hexfile)
     try:
-        recompile = str(load_clvm(fname)).strip()
+        compiled = subprocess.check_output(['../target/release/run', '-i', 'chia/wallet/puzzles/', f'chia/wallet/puzzles/{fname}']).strip()
+        recompile = subprocess.check_output(['../target/release/opc', compiled]).decode('utf8').strip()
     except:
         print(f'compiling {fname}')
         traceback.print_exc()
