@@ -141,7 +141,7 @@ jobs:
       run: |
         . ./activate
         # Build cmd line tools
-        cargo build --no-default-features --release
+        PYO3_PYTHON=`which python` cargo build --no-default-features --release
 
         # Grab chia-blockchain
         git clone https://github.com/Chia-Network/chia-blockchain
