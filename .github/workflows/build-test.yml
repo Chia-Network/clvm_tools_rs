@@ -91,6 +91,7 @@ jobs:
     - name: Verify recompilation of old sources match
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
       run: |
+        . ./activate
         # Grab chia-blockchain
         git clone https://github.com/Chia-Network/chia-blockchain
         (cd chia-blockchain && python -m pip install -e .)
