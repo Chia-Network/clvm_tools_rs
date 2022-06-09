@@ -136,6 +136,23 @@ jobs:
         python -c 'import clvm_rs; print(clvm_rs.__file__)'
         python -c 'import clvm_tools_rs; print(clvm_tools_rs.__file__)'
 
+    - name: Verify recompilation of old sources match
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      run: |
+        . ./activate
+        # Build cmd line tools
+        PYO3_PYTHON=`which python` cargo build --no-default-features --release
+
+        # Grab chia-blockchain
+        git clone https://github.com/Chia-Network/chia-blockchain
+
+        # Check recompiles
+        cp support/recompile_check.py chia-blockchain
+        (cd chia-blockchain && python recompile_check.py)
+
+        # Ran successfully, remove
+        rm -rf chia-blockchain
+
     - name: Run tests from clvm
       run: |
         . ./activate

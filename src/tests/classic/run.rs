@@ -176,3 +176,75 @@ fn at_capture_destructure_5() {
         "11"
     );
 }
+
+#[test]
+fn at_capture_inline_1() {
+    assert_eq!(
+        do_basic_run(&vec!(
+            "run".to_string(),
+            "(mod () (defun-inline F (@ pt (X Y)) X) (F 97 98))".to_string()
+        ))
+        .trim(),
+        "(q . 97)"
+    );
+}
+
+#[test]
+fn at_capture_inline_2() {
+    assert_eq!(
+        do_basic_run(&vec!(
+            "run".to_string(),
+            "(mod () (defun-inline F (@ pt (X Y)) Y) (F 97 98))".to_string()
+        ))
+        .trim(),
+        "(q . 98)"
+    );
+}
+
+#[test]
+fn at_capture_inline_3() {
+    assert_eq!(
+        do_basic_run(&vec!(
+            "run".to_string(),
+            "(mod () (defun-inline F (@ pt (X Y)) pt) (F (+ 117 1) (+ 98 1)))".to_string()
+        ))
+        .trim(),
+        "(q 118 99)"
+    );
+}
+
+#[test]
+fn at_capture_inline_4() {
+    assert_eq!(
+        do_basic_run(&vec!(
+            "run".to_string(),
+            "(mod () (defun-inline F (A (@ pt (X Y))) (list (list A X Y) pt)) (F 115 (list 99 77)))".to_string()
+        ))
+            .trim(),
+        "(q (115 99 77) (99 77))"
+    );
+}
+
+#[test]
+fn inline_destructure_1() {
+    assert_eq!(
+        do_basic_run(&vec!(
+            "run".to_string(),
+            "(mod () (defun-inline F ((A . B)) (+ A B)) (F (c 3 7)))".to_string()
+        ))
+        .trim(),
+        "(q . 10)"
+    );
+}
+
+#[test]
+fn test_forms_of_destructuring_allowed_by_classic_1() {
+    assert_eq!(
+        do_basic_run(&vec![
+            "run".to_string(),
+            "(mod (A) (defun-inline foo (X Y . Z) (i X Y . Z)) (foo A 2 3))".to_string()
+        ])
+        .trim(),
+        "(i 2 (q . 2) (q . 3))"
+    );
+}
