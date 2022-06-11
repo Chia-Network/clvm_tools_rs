@@ -536,31 +536,35 @@ impl Evaluator {
         let macro_expansion =
             self.expand_macro(allocator, l.clone(), program.clone(), macro_args)?;
 
-        let input_sexp = dequote(call_loc.clone(), macro_expansion)?;
-
-        let frontend_macro_input = Rc::new(SExp::Cons(
-            l.clone(),
-            Rc::new(SExp::atom_from_string(l.clone(), &"mod".to_string())),
-            Rc::new(SExp::Cons(
+        if let Ok(input) = dequote(call_loc.clone(), macro_expansion.clone()) {
+            let frontend_macro_input = Rc::new(SExp::Cons(
                 l.clone(),
-                prog_args.clone(),
+                Rc::new(SExp::atom_from_string(l.clone(), &"mod".to_string())),
                 Rc::new(SExp::Cons(
                     l.clone(),
-                    input_sexp,
-                    Rc::new(SExp::Nil(l.clone())),
+                    prog_args.clone(),
+                    Rc::new(SExp::Cons(
+                        l.clone(),
+                        input,
+                        Rc::new(SExp::Nil(l.clone())),
+                    )),
                 )),
-            )),
-        ));
+            ));
 
-        frontend(self.opts.clone(), vec![frontend_macro_input]).and_then(|program| {
-            self.shrink_bodyform(
-                allocator,
-                prog_args.clone(),
-                env,
-                program.exp.clone(),
-                false,
-            )
-        })
+            frontend(self.opts.clone(), vec![frontend_macro_input]).and_then(|program| {
+                self.shrink_bodyform(
+                    allocator,
+                    prog_args.clone(),
+                    env,
+                    program.exp.clone(),
+                    false,
+                )
+            })
+        } else {
+            promote_program_to_bodyform(macro_expansion.to_sexp(), Rc::new(BodyForm::Value(SExp::Atom(macro_expansion.loc(), vec![b'@'])))).and_then(|program| {
+                self.chase_apply(allocator, program)
+            })
+        }
     }
 
     fn invoke_primitive(
