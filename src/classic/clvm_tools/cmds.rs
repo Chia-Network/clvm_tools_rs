@@ -27,8 +27,9 @@ use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
 use crate::classic::clvm::KEYWORD_FROM_ATOM;
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
 use crate::classic::clvm_tools::clvmc::detect_modern;
-use crate::classic::clvm_tools::debug::trace_pre_eval;
-use crate::classic::clvm_tools::debug::{trace_to_table, trace_to_text};
+use crate::classic::clvm_tools::debug::{
+    check_unused, trace_pre_eval, trace_to_table, trace_to_text
+};
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages;
@@ -237,13 +238,13 @@ impl ArgumentValueConv for StageImport {
 pub fn run(args: &Vec<String>) {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, &"run".to_string(), 2);
-    io::stdout().write_all(s.get_value().data());
+    io::stdout().write_all(s.get_value().data()).expect("stdout");
 }
 
 pub fn brun(args: &Vec<String>) {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, &"brun".to_string(), 0);
-    io::stdout().write_all(s.get_value().data());
+    io::stdout().write_all(s.get_value().data()).expect("stdout");
 }
 
 pub fn cldb(args: &Vec<String>) {
@@ -669,6 +670,15 @@ pub fn launch_tool(
             .set_help("run optimizer".to_string()),
     );
 
+    if tool_name == "run" {
+        parser.add_argument(
+            vec!["--check-unused-args".to_string()],
+            Argument::new()
+                .set_action(TArgOptionAction::StoreTrue)
+                .set_help("check for unused uncurried parameters (by convention lower case)".to_string())
+        );
+    }
+
     let arg_vec = args[1..].to_vec();
     let parsedArgs: HashMap<String, ArgumentValue>;
 
@@ -828,8 +838,39 @@ pub fn launch_tool(
         _ => {}
     }
 
+    // Add unused check.
+    let do_check_unused = parsedArgs.get("check_unused_args").
+        map(|a| match a {
+            ArgumentValue::ArgBool(true) => true,
+            _ => false
+        }).unwrap_or_else(|| false);
+
+    let dialect = input_sexp.and_then(|i| detect_modern(&mut allocator, i));
+    let mut stderr_output = |s| {
+        if let Some(_) = dialect {
+            eprintln!("{}", s);
+        } else {
+            stdout.write_string(s);
+        }
+    };
+
+    if do_check_unused {
+        let use_filename = input_file.as_ref().map(|x| x.clone()).unwrap_or_else(|| "*command*".to_string());
+        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename));
+        match check_unused(opts, &input_program) {
+            Ok((success, output)) => {
+                stderr_output(output);
+                if !success { return; }
+            },
+            Err(e) => {
+                stderr_output(format!("{}: {}\n", e.0.to_string(), e.1));
+                return;
+            }
+        }
+    }
+
     // In testing: short circuit for modern compilation.
-    if let Some(dialect) = input_sexp.and_then(|i| detect_modern(&mut allocator, i)) {
+    if let Some(dialect) = dialect {
         let do_optimize = parsedArgs
             .get("optimize")
             .map(|x| match x {
@@ -859,13 +900,13 @@ pub fn launch_tool(
 
         match res {
             Ok(r) => {
-                println!("{}", r.to_string());
+                stdout.write_string(format!("{}\n", r.to_string()));
 
                 build_symbol_table_mut(&mut symbol_table, &r);
-                write_sym_output(&symbol_table, &"main.sym".to_string());
+                write_sym_output(&symbol_table, &"main.sym".to_string()).expect("writing symbols");
             }
             Err(c) => {
-                println!("{}: {}", c.0.to_string(), c.1);
+                stdout.write_string(format!("{}: {}\n", c.0.to_string(), c.1));
             }
         }
 

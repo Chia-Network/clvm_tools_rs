@@ -2,8 +2,14 @@ use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+use num_bigint::ToBigInt;
+
 use clvm_rs::allocator::Allocator;
 
+use crate::classic::clvm::__type_compatibility__::{
+    bi_one,
+    bi_zero
+};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::run;
@@ -15,6 +21,7 @@ use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
+use crate::util::{Number, number_from_u8, u8_from_number};
 
 // Frontend evaluator based on my fuzzer representation and direct interpreter of
 // that.
@@ -251,7 +258,7 @@ pub fn build_reflex_captures(captures: &mut HashMap<Vec<u8>, Rc<BodyForm>>, args
     }
 }
 
-fn dequote(l: Srcloc, exp: Rc<BodyForm>) -> Result<Rc<SExp>, CompileErr> {
+pub fn dequote(l: Srcloc, exp: Rc<BodyForm>) -> Result<Rc<SExp>, CompileErr> {
     match exp.borrow() {
         BodyForm::Quoted(v) => Ok(Rc::new(v.clone())),
         _ => Err(CompileErr(
@@ -350,6 +357,147 @@ fn reflex_capture(name: &Vec<u8>, capture: Rc<BodyForm>) -> bool {
         BodyForm::Value(SExp::Atom(_, n)) => n == name,
         _ => false,
     }
+}
+
+fn is_apply_atom(head: Rc<SExp>) -> bool {
+    match head.borrow() {
+        SExp::Atom(_,a) => {
+            if a.is_empty() { return false; }
+            return a[0] == b'a' || a[0] == 2;
+        },
+        SExp::Integer(_,i) => {
+            return i.clone() == 2_u32.to_bigint().unwrap();
+        },
+        _ => { }
+    }
+
+    false
+}
+
+
+fn is_quote_atom(h: Rc<SExp>) -> bool {
+    match h.borrow() {
+        SExp::Atom(_,v) => {
+            v.len() == 1 && (v[0] == 1 || v[0] == b'q')
+        },
+        SExp::Integer(_,v) => {
+            *v == bi_one()
+        },
+        _ => false
+    }
+}
+
+fn is_cons_atom(h: Rc<SExp>) -> bool {
+    match h.borrow() {
+        SExp::Atom(_,v) => {
+        v.len() == 1 && (v[0] == 4 || v[0] == b'c')
+        },
+        SExp::Integer(_,v) => {
+            *v == 4_u32.to_bigint().unwrap()
+        },
+        _ => { false }
+    }
+}
+
+fn match_cons(args: Rc<BodyForm>) -> Option<(Rc<BodyForm>, Rc<BodyForm>)> {
+    if let BodyForm::Call(_,v) = args.borrow() {
+        if v.len() < 3 { return None; }
+        let have_cons_atom = is_cons_atom(v[0].to_sexp());
+        if have_cons_atom {
+            return Some((v[1].clone(), v[2].clone()));
+        }
+    }
+
+    None
+}
+
+fn promote_args_to_bodyform(head: Rc<SExp>, arg: Rc<SExp>, whole_args: Rc<BodyForm>) -> Result<Vec<Rc<BodyForm>>, CompileErr> {
+    if let Some(v) = arg.proper_list() {
+        let head_borrowed: &SExp = head.borrow();
+        let mut result = vec![Rc::new(BodyForm::Value(head_borrowed.clone()))];
+        for a in v.iter() {
+            result.push(promote_program_to_bodyform(Rc::new(a.clone()), whole_args.clone())?);
+        }
+        return Ok(result);
+    }
+
+    Err(CompileErr(arg.loc(), "improper argument list for primitive".to_string()))
+}
+
+fn path_into_arg(path_: Number, args_program: Rc<BodyForm>) -> Rc<BodyForm> {
+    let mut path = path_;
+    let mut op_list = Vec::new();
+    let two = 2_i32.to_bigint().unwrap();
+    while path != bi_one() {
+        op_list.push(path.clone() % two.clone() == bi_one());
+        path = path.clone() / two.clone();
+    }
+
+    let mut result_form = args_program.clone();
+    for op in op_list.iter() {
+        if let Some((head,tail)) = match_cons(result_form.clone()) {
+            if *op {
+                result_form = tail.clone();
+            } else {
+                result_form = head.clone();
+            }
+        } else {
+            let apply_op = if *op { 6 } else { 5 };
+            result_form = Rc::new(BodyForm::Call(args_program.loc(), vec![
+                Rc::new(BodyForm::Value(SExp::Atom(args_program.loc(), vec![apply_op]))),
+                result_form
+            ]));
+        }
+    }
+    result_form
+}
+
+fn choose_from_env_by_path(path: Number, args_program: Rc<BodyForm>) -> Rc<BodyForm> {
+    if path == bi_zero() {
+        return Rc::new(BodyForm::Quoted(SExp::Nil(args_program.loc())));
+    }
+
+    if path == bi_one() {
+        return args_program;
+    }
+
+    // Return apply path whole_args
+    path_into_arg(path, args_program)
+}
+
+fn promote_program_to_bodyform(program: Rc<SExp>, env: Rc<BodyForm>) -> Result<Rc<BodyForm>, CompileErr> {
+    let res =
+    match program.borrow() {
+        SExp::Cons(_,h,t) => {
+            if is_quote_atom(h.clone()) {
+                let t_borrowed: &SExp = t.borrow();
+                return Ok(Rc::new(BodyForm::Quoted(t_borrowed.clone())));
+            }
+
+            // Process tails to change bare numbers to (@ n)
+            let args = promote_args_to_bodyform(h.clone(), t.clone(), env.clone())?;
+            Ok(Rc::new(BodyForm::Call(program.loc(), args)))
+        },
+        SExp::Integer(_,n) => { // A program that is an atom refers to a position
+            // in the environment.
+            Ok(choose_from_env_by_path(n.clone(), env.clone()))
+        },
+        SExp::QuotedString(_,_,v) => {
+            // Treated as integer path.
+            let integer = number_from_u8(v);
+            Ok(choose_from_env_by_path(integer, env.clone()))
+        },
+        SExp::Atom(_,v) => {
+            // Treated as integer path.
+            let integer = number_from_u8(v);
+            Ok(choose_from_env_by_path(integer, env.clone()))
+        },
+        _ => {
+            let borrowed_program: &SExp = program.borrow();
+            Ok(Rc::new(BodyForm::Quoted(borrowed_program.clone())))
+        }
+    }?;
+    Ok(res)
 }
 
 impl Evaluator {
@@ -522,6 +670,35 @@ impl Evaluator {
         }
     }
 
+    fn chase_apply(
+        &self,
+        allocator: &mut Allocator,
+        body: Rc<BodyForm>
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        let bindings = HashMap::new();
+        if let BodyForm::Call(l, vec) = body.borrow() {
+            if is_apply_atom(vec[0].to_sexp()) {
+                if let Ok(run_program) = dequote(l.clone(), vec[1].clone()) {
+                    let program = promote_program_to_bodyform(
+                        run_program,
+                        vec[2].clone()
+                    )?;
+                    let apply_result = self.shrink_bodyform(
+                        allocator,
+                        Rc::new(SExp::Nil(body.loc())),
+                        &bindings,
+                        program,
+                        false
+                    )?;
+                    return self.chase_apply(allocator, apply_result);
+                }
+            }
+        }
+
+        Ok(body)
+    }
+
+
     fn handle_invoke(
         &self,
         allocator: &mut Allocator,
@@ -538,10 +715,6 @@ impl Evaluator {
     ) -> Result<Rc<BodyForm>, CompileErr> {
         let helper = select_helper(&self.helpers, call_name);
         match helper {
-            Some(HelperForm::Defconstant(_, _, _)) => Err(CompileErr(
-                call_loc.clone(),
-                format!("Can't call constant {}", head_expr.to_sexp().to_string()),
-            )),
             Some(HelperForm::Defmacro(l, _name, _args, program)) => self.invoke_macro_expansion(
                 allocator,
                 l.clone(),
@@ -582,7 +755,7 @@ impl Evaluator {
                     only_inline,
                 )
             }
-            None => self.invoke_primitive(
+            _ => self.invoke_primitive(
                 allocator,
                 l.clone(),
                 call_name,
@@ -592,7 +765,9 @@ impl Evaluator {
                 arguments_to_convert,
                 env,
                 only_inline,
-            ),
+            ).and_then(|res| {
+                self.chase_apply(allocator, res)
+            }),
         }
     }
 
@@ -708,6 +883,19 @@ impl Evaluator {
                         l.clone(),
                         call_loc.clone(),
                         call_name,
+                        head_expr.clone(),
+                        &parts,
+                        body.clone(),
+                        prog_args,
+                        &arguments_to_convert,
+                        env,
+                        only_inline,
+                    ),
+                    BodyForm::Value(SExp::Integer(call_loc, call_int)) => self.handle_invoke(
+                        allocator,
+                        l.clone(),
+                        call_loc.clone(),
+                        &u8_from_number(call_int.clone()),
                         head_expr.clone(),
                         &parts,
                         body.clone(),

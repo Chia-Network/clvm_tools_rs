@@ -16,3 +16,4 @@ pub mod repl;
 pub mod runtypes;
 pub mod sexp;
 pub mod srcloc;
+pub mod usecheck;
