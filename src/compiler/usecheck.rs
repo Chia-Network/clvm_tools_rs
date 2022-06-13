@@ -86,13 +86,16 @@ pub fn check_parameters_used_compileform(
     let runner = Rc::new(DefaultProgramRunner::new());
     let mut replacement_to_original = HashMap::new();
     let base_name = Bytes::new(Some(BytesFromType::Raw(sha256tree(program.to_sexp())))).hex().as_bytes().to_vec();
-    let e = Evaluator::new(opts.clone(), runner.clone(), program.helpers.clone());
+    let e = Evaluator::new(opts.clone(), runner.clone(), program.helpers.clone()).
+        mash_conditions();
+
     produce_env_captures(
         &mut env,
         &mut replacement_to_original,
         base_name,
         program.args.clone()
     );
+
     let result = e.shrink_bodyform(
         &mut allocator,
         program.args.clone(),
@@ -100,6 +103,7 @@ pub fn check_parameters_used_compileform(
         program.exp.clone(),
         false
     )?;
+    println!("shrunk to {}", result.to_sexp().to_string());
 
     remove_present_atoms(
         &mut replacement_to_original,

@@ -12,7 +12,7 @@ use crate::classic::clvm::__type_compatibility__::{
 };
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::run;
+use crate::compiler::clvm::{sha256tree, run};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LetFormKind,
@@ -36,6 +36,8 @@ pub struct Evaluator {
     runner: Rc<dyn TRunProgram>,
     prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     helpers: Vec<HelperForm>,
+    mash_conditions: bool,
+    ignore_exn: bool
 }
 
 fn select_helper(bindings: &Vec<HelperForm>, name: &Vec<u8>) -> Option<HelperForm> {
@@ -359,44 +361,32 @@ fn reflex_capture(name: &Vec<u8>, capture: Rc<BodyForm>) -> bool {
     }
 }
 
-fn is_apply_atom(head: Rc<SExp>) -> bool {
-    match head.borrow() {
-        SExp::Atom(_,a) => {
-            if a.is_empty() { return false; }
-            return a[0] == b'a' || a[0] == 2;
-        },
-        SExp::Integer(_,i) => {
-            return i.clone() == 2_u32.to_bigint().unwrap();
-        },
-        _ => { }
-    }
-
-    false
-}
-
-
-fn is_quote_atom(h: Rc<SExp>) -> bool {
+fn match_atom_to_prim(name: Vec<u8>, p: u8, h: Rc<SExp>) -> bool {
     match h.borrow() {
         SExp::Atom(_,v) => {
-            v.len() == 1 && (v[0] == 1 || v[0] == b'q')
+            v == &name || (v.len() == 1 && v[0] == p)
         },
         SExp::Integer(_,v) => {
-            *v == bi_one()
+            *v == p.to_bigint().unwrap()
         },
         _ => false
     }
 }
 
+fn is_quote_atom(h: Rc<SExp>) -> bool {
+    match_atom_to_prim(vec![b'q'], 1, h)
+}
+
+fn is_apply_atom(h: Rc<SExp>) -> bool {
+    match_atom_to_prim(vec![b'a'], 2, h)
+}
+
+fn is_i_atom(h: Rc<SExp>) -> bool {
+    match_atom_to_prim(vec![b'i'], 3, h)
+}
+
 fn is_cons_atom(h: Rc<SExp>) -> bool {
-    match h.borrow() {
-        SExp::Atom(_,v) => {
-        v.len() == 1 && (v[0] == 4 || v[0] == b'c')
-        },
-        SExp::Integer(_,v) => {
-            *v == 4_u32.to_bigint().unwrap()
-        },
-        _ => { false }
-    }
+    match_atom_to_prim(vec![b'c'], 4, h)
 }
 
 fn match_cons(args: Rc<BodyForm>) -> Option<(Rc<BodyForm>, Rc<BodyForm>)> {
@@ -424,10 +414,18 @@ fn promote_args_to_bodyform(head: Rc<SExp>, arg: Rc<SExp>, whole_args: Rc<BodyFo
     Err(CompileErr(arg.loc(), "improper argument list for primitive".to_string()))
 }
 
-fn path_into_arg(path_: Number, args_program: Rc<BodyForm>) -> Rc<BodyForm> {
+fn choose_from_env_by_path(
+    path_: Number,
+    args_program: Rc<BodyForm>
+) -> Rc<BodyForm> {
     let mut path = path_;
     let mut op_list = Vec::new();
     let two = 2_i32.to_bigint().unwrap();
+
+    if path == bi_zero() {
+        return Rc::new(BodyForm::Quoted(SExp::Nil(args_program.loc())));
+    }
+
     while path != bi_one() {
         op_list.push(path.clone() % two.clone() == bi_one());
         path = path.clone() / two.clone();
@@ -450,19 +448,6 @@ fn path_into_arg(path_: Number, args_program: Rc<BodyForm>) -> Rc<BodyForm> {
         }
     }
     result_form
-}
-
-fn choose_from_env_by_path(path: Number, args_program: Rc<BodyForm>) -> Rc<BodyForm> {
-    if path == bi_zero() {
-        return Rc::new(BodyForm::Quoted(SExp::Nil(args_program.loc())));
-    }
-
-    if path == bi_one() {
-        return args_program;
-    }
-
-    // Return apply path whole_args
-    path_into_arg(path, args_program)
 }
 
 fn promote_program_to_bodyform(program: Rc<SExp>, env: Rc<BodyForm>) -> Result<Rc<BodyForm>, CompileErr> {
@@ -500,6 +485,51 @@ fn promote_program_to_bodyform(program: Rc<SExp>, env: Rc<BodyForm>) -> Result<R
     Ok(res)
 }
 
+fn match_i_op(
+    candidate: Rc<BodyForm>
+) -> Option<(Rc<BodyForm>, Rc<BodyForm>, Rc<BodyForm>)> {
+    if let BodyForm::Call(l, cvec) = candidate.borrow() {
+        if cvec.len() != 4 { return None; }
+        if let BodyForm::Value(atom) = cvec[0].borrow() {
+            if is_i_atom(Rc::new(atom.clone())) {
+                return Some((cvec[1].clone(), cvec[2].clone(), cvec[3].clone()));
+            }
+        }
+    }
+
+    None
+}
+
+fn fake_body_of_env(
+    l: Srcloc,
+    env: &HashMap<Vec<u8>, Rc<BodyForm>>
+) -> Rc<BodyForm> {
+    let mut composed = Rc::new(BodyForm::Quoted(SExp::Nil(l.clone())));
+    let mut sorted_env: Vec<Vec<u8>> = env.iter().map(|nv| {
+        nv.0.clone()
+    }).collect();
+    sorted_env.sort();
+    for nv in sorted_env.iter() {
+        if let Some(v) = env.get(nv) {
+            let entry = Rc::new(BodyForm::Call(v.loc(), vec![
+                Rc::new(BodyForm::Value(SExp::Atom(v.loc(), nv.clone()))),
+                v.clone()
+            ]));
+            composed = Rc::new(BodyForm::Call(l.clone(), vec![entry, composed]));
+        }
+    }
+    composed
+}
+
+fn compute_hash_of_apply(
+    body: Rc<BodyForm>,
+    env: Rc<BodyForm>
+) -> Vec<u8> {
+    let mut composed =
+        Rc::new(BodyForm::Call(body.loc(), vec![body.clone(), env.clone()]));
+    sha256tree(composed.to_sexp())
+}
+
 impl Evaluator {
     pub fn new(
         opts: Rc<dyn CompilerOpts>,
@@ -511,18 +541,32 @@ impl Evaluator {
             runner,
             prims: opts.prim_map(),
             helpers,
+            mash_conditions: false,
+            ignore_exn: false
+        }
+    }
+
+    pub fn mash_conditions(&self) -> Self {
+        Evaluator {
+            opts: self.opts.clone(),
+            runner: self.runner.clone(),
+            prims: self.prims.clone(),
+            helpers: self.helpers.clone(),
+            mash_conditions: true,
+            ignore_exn: true
         }
     }
 
     fn invoke_macro_expansion(
         &self,
         allocator: &mut Allocator,
+        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
         l: Srcloc,
         call_loc: Srcloc,
         program: Rc<CompileForm>,
         prog_args: Rc<SExp>,
         arguments_to_convert: &Vec<Rc<BodyForm>>,
-        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>
     ) -> Result<Rc<BodyForm>, CompileErr> {
         // Pass the SExp representation of the expressions into
         // the macro after forming an argument sexp and then
@@ -552,8 +596,9 @@ impl Evaluator {
             ));
 
             frontend(self.opts.clone(), vec![frontend_macro_input]).and_then(|program| {
-                self.shrink_bodyform(
+                self.shrink_bodyform_visited(
                     allocator,
+                    visited,
                     prog_args.clone(),
                     env,
                     program.exp.clone(),
@@ -561,15 +606,14 @@ impl Evaluator {
                 )
             })
         } else {
-            promote_program_to_bodyform(macro_expansion.to_sexp(), Rc::new(BodyForm::Value(SExp::Atom(macro_expansion.loc(), vec![b'@'])))).and_then(|program| {
-                self.chase_apply(allocator, program)
-            })
+            promote_program_to_bodyform(macro_expansion.to_sexp(), Rc::new(BodyForm::Value(SExp::Atom(macro_expansion.loc(), vec![b'@']))))
         }
     }
 
     fn invoke_primitive(
         &self,
         allocator: &mut Allocator,
+        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
         l: Srcloc,
         call_name: &Vec<u8>,
         parts: &Vec<Rc<BodyForm>>,
@@ -618,8 +662,9 @@ impl Evaluator {
 
                     for i_reverse in 0..arguments_to_convert.len() {
                         let i = arguments_to_convert.len() - i_reverse - 1;
-                        let shrunk = self.shrink_bodyform(
+                        let shrunk = self.shrink_bodyform_visited(
                             allocator,
+                            visited,
                             prog_args.clone(),
                             env,
                             arguments_to_convert[i].clone(),
@@ -645,7 +690,7 @@ impl Evaluator {
                         ) {
                             Ok(res) => Ok(res),
                             Err(e) => {
-                                if only_inline {
+                                if only_inline || self.ignore_exn {
                                     Ok(Rc::new(BodyForm::Call(l.clone(), target_vec.clone())))
                                 } else {
                                     Err(e)
@@ -654,7 +699,7 @@ impl Evaluator {
                         }
                     } else {
                         let reformed = BodyForm::Call(l.clone(), target_vec.clone());
-                        Ok(Rc::new(reformed))
+                        self.chase_apply(allocator, visited, Rc::new(reformed))
                     }
                 })
                 .unwrap_or_else(|| {
@@ -674,27 +719,125 @@ impl Evaluator {
         }
     }
 
+    fn continue_apply(
+        &self,
+        allocator: &mut Allocator,
+        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        env: Rc<BodyForm>,
+        run_program: Rc<SExp>,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        let bindings = HashMap::new();
+        let program = promote_program_to_bodyform(
+            run_program.clone(),
+            env
+        )?;
+        let apply_result = self.shrink_bodyform_visited(
+            allocator,
+            visited,
+            Rc::new(SExp::Nil(run_program.loc())),
+            &bindings,
+            program,
+            false
+        )?;
+        self.chase_apply(allocator, visited, apply_result)
+    }
+
+    fn do_mash_condition(
+        &self,
+        allocator: &mut Allocator,
+        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        maybe_condition: Rc<BodyForm>,
+        env: Rc<BodyForm>
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        // The inner part could be an 'i' which we know passes on
+        // one of the two conditional arguments.  This was an apply so
+        // we can distribute over the conditional arguments.
+        if let Some((cond, iftrue, iffalse)) = match_i_op(maybe_condition.clone()) {
+            let apply_head = Rc::new(BodyForm::Value(SExp::Atom(iftrue.loc(), vec![2])));
+            let iftrue_ticket = sha256tree(iftrue.to_sexp());
+            let iffalse_ticket = sha256tree(iffalse.to_sexp());
+
+            let previously_iftrue = visited.get(&iftrue_ticket).map(|x| x.clone());
+            let previously_iffalse = visited.get(&iffalse_ticket).map(|x| x.clone());
+
+            visited.insert(iftrue_ticket.clone(), iftrue.clone());
+            visited.insert(iffalse_ticket.clone(), iffalse.clone());
+
+            let surrogate_apply_true =
+                if let Some(iftrue_result) = previously_iftrue {
+                    Ok(iftrue_result.clone())
+                } else {
+                    self.chase_apply(
+                        allocator,
+                        visited,
+                        Rc::new(BodyForm::Call(iftrue.loc(), vec![
+                            apply_head.clone(),
+                            iftrue.clone(),
+                            env.clone()
+                        ]))
+                    )
+                };
+
+            let surrogate_apply_false =
+                if let Some(iffalse_result) = previously_iffalse {
+                    Ok(iffalse_result.clone())
+                } else {
+                    self.chase_apply(
+                        allocator,
+                        visited,
+                        Rc::new(BodyForm::Call(iffalse.loc(), vec![
+                            apply_head,
+                            iffalse.clone(),
+                            env.clone()
+                        ]))
+                    )
+                };
+
+            visited.remove(&iftrue_ticket);
+            visited.remove(&iffalse_ticket);
+
+            // Reproduce
+            // (a (i cond surrogate_apply_true surrogate_apply_false))
+            let i_head = Rc::new(BodyForm::Value(
+                SExp::Atom(
+                    maybe_condition.loc(),
+                    vec![b'i']
+                )
+            ));
+            return Ok(Rc::new(BodyForm::Call(maybe_condition.loc(), vec![
+                i_head,
+                cond.clone(),
+                surrogate_apply_true?,
+                surrogate_apply_false?
+            ])));
+        }
+
+        Err(CompileErr(maybe_condition.loc(), "not i op".to_string()))
+    }
+
     fn chase_apply(
         &self,
         allocator: &mut Allocator,
+        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
         body: Rc<BodyForm>
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        let bindings = HashMap::new();
         if let BodyForm::Call(l, vec) = body.borrow() {
             if is_apply_atom(vec[0].to_sexp()) {
                 if let Ok(run_program) = dequote(l.clone(), vec[1].clone()) {
-                    let program = promote_program_to_bodyform(
-                        run_program,
-                        vec[2].clone()
-                    )?;
-                    let apply_result = self.shrink_bodyform(
+                    return self.continue_apply(
+                        allocator, visited, vec[2].clone(), run_program
+                    );
+                }
+
+                if self.mash_conditions {
+                    if let Ok(mashed) = self.do_mash_condition(
                         allocator,
-                        Rc::new(SExp::Nil(body.loc())),
-                        &bindings,
-                        program,
-                        false
-                    )?;
-                    return self.chase_apply(allocator, apply_result);
+                        visited,
+                        vec[1].clone(),
+                        vec[2].clone()
+                    ) {
+                        return Ok(mashed);
+                    }
                 }
             }
         }
@@ -702,10 +845,10 @@ impl Evaluator {
         Ok(body)
     }
 
-
     fn handle_invoke(
         &self,
         allocator: &mut Allocator,
+        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
         l: Srcloc,
         call_loc: Srcloc,
         call_name: &Vec<u8>,
@@ -721,6 +864,7 @@ impl Evaluator {
         match helper {
             Some(HelperForm::Defmacro(l, _name, _args, program)) => self.invoke_macro_expansion(
                 allocator,
+                visited,
                 l.clone(),
                 call_loc.clone(),
                 program,
@@ -740,8 +884,9 @@ impl Evaluator {
                 // Do this to protect against misalignment
                 // between argument vec and destructuring.
                 for kv in argument_captures_untranslated.iter() {
-                    let shrunk = self.shrink_bodyform(
+                    let shrunk = self.shrink_bodyform_visited(
                         allocator,
+                        visited,
                         prog_args.clone(),
                         env,
                         kv.1.clone(),
@@ -751,8 +896,9 @@ impl Evaluator {
                     argument_captures.insert(kv.0.clone(), shrunk.clone());
                 }
 
-                self.shrink_bodyform(
+                self.shrink_bodyform_visited(
                     allocator,
+                    visited,
                     args.clone(),
                     &argument_captures,
                     fun_body,
@@ -761,6 +907,7 @@ impl Evaluator {
             }
             _ => self.invoke_primitive(
                 allocator,
+                visited,
                 l.clone(),
                 call_name,
                 parts,
@@ -770,15 +917,16 @@ impl Evaluator {
                 env,
                 only_inline,
             ).and_then(|res| {
-                self.chase_apply(allocator, res)
+                self.chase_apply(allocator, visited, res)
             }),
         }
     }
 
     // A frontend language evaluator and minifier
-    pub fn shrink_bodyform(
+    pub fn shrink_bodyform_visited_(
         &self,
         allocator: &mut Allocator, // Support random prims via clvm_rs
+        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
         prog_args: Rc<SExp>,
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         body: Rc<BodyForm>,
@@ -787,8 +935,9 @@ impl Evaluator {
         match body.borrow() {
             BodyForm::Let(_, LetFormKind::Parallel, bindings, body) => {
                 let updated_bindings = update_parallel_bindings(env, bindings);
-                self.shrink_bodyform(
+                self.shrink_bodyform_visited(
                     allocator,
+                    visited,
                     prog_args.clone(),
                     &updated_bindings,
                     body.clone(),
@@ -797,8 +946,9 @@ impl Evaluator {
             }
             BodyForm::Let(l, LetFormKind::Sequential, bindings, body) => {
                 if bindings.len() == 0 {
-                    self.shrink_bodyform(
+                    self.shrink_bodyform_visited(
                         allocator,
+                        visited,
                         prog_args.clone(),
                         env,
                         body.clone(),
@@ -811,8 +961,9 @@ impl Evaluator {
                         bindings.iter().skip(1).map(|x| x.clone()).collect();
 
                     let updated_bindings = update_parallel_bindings(env, &first_binding_as_list);
-                    self.shrink_bodyform(
+                    self.shrink_bodyform_visited(
                         allocator,
+                        visited,
                         prog_args.clone(),
                         &updated_bindings,
                         Rc::new(BodyForm::Let(
@@ -829,8 +980,9 @@ impl Evaluator {
             BodyForm::Value(SExp::Atom(l, name)) => {
                 if name == &"@".as_bytes().to_vec() {
                     let literal_args = synthesize_args(prog_args.clone(), env)?;
-                    self.shrink_bodyform(
+                    self.shrink_bodyform_visited(
                         allocator,
+                        visited,
                         prog_args.clone(),
                         env,
                         literal_args,
@@ -842,8 +994,9 @@ impl Evaluator {
                             if reflex_capture(name, x.clone()) {
                                 Ok(x.clone())
                             } else {
-                                self.shrink_bodyform(
+                                self.shrink_bodyform_visited(
                                     allocator,
+                                    visited,
                                     prog_args.clone(),
                                     env,
                                     x.clone(),
@@ -854,8 +1007,9 @@ impl Evaluator {
                         .unwrap_or_else(|| {
                             self.get_constant(name)
                                 .map(|x| {
-                                    self.shrink_bodyform(
+                                    self.shrink_bodyform_visited(
                                         allocator,
+                                        visited,
                                         prog_args.clone(),
                                         env,
                                         x.clone(),
@@ -884,6 +1038,7 @@ impl Evaluator {
                 match head_expr.borrow() {
                     BodyForm::Value(SExp::Atom(call_loc, call_name)) => self.handle_invoke(
                         allocator,
+                        visited,
                         l.clone(),
                         call_loc.clone(),
                         call_name,
@@ -897,6 +1052,7 @@ impl Evaluator {
                     ),
                     BodyForm::Value(SExp::Integer(call_loc, call_int)) => self.handle_invoke(
                         allocator,
+                        visited,
                         l.clone(),
                         call_loc.clone(),
                         &u8_from_number(call_int.clone()),
@@ -915,6 +1071,53 @@ impl Evaluator {
                 }
             }
         }
+    }
+
+    pub fn shrink_bodyform(
+        &self,
+        allocator: &mut Allocator, // Support random prims via clvm_rs
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        body: Rc<BodyForm>,
+        only_inline: bool
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        self.shrink_bodyform_visited(
+            allocator, // Support random prims via clvm_rs
+            &mut HashMap::new(),
+            prog_args,
+            env,
+            body,
+            only_inline
+        )
+    }
+
+    pub fn shrink_bodyform_visited(
+        &self,
+        allocator: &mut Allocator, // Support random prims via clvm_rs
+        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        body: Rc<BodyForm>,
+        only_inline: bool,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        let hash_of_apply =
+            compute_hash_of_apply(body.clone(), fake_body_of_env(body.loc(), env));
+        if let Some(res) = visited.get(&hash_of_apply) {
+            return Ok(res.clone());
+        }
+
+        let res = self.shrink_bodyform_visited_(
+            allocator, // Support random prims via clvm_rs
+            visited,
+            prog_args,
+            env,
+            body,
+            only_inline
+        )?;
+
+        visited.insert(hash_of_apply, res.clone());
+
+        Ok(res)
     }
 
     fn expand_macro(
