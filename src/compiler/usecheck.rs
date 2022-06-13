@@ -103,7 +103,6 @@ pub fn check_parameters_used_compileform(
         program.exp.clone(),
         false
     )?;
-    println!("shrunk to {}", result.to_sexp().to_string());
 
     remove_present_atoms(
         &mut replacement_to_original,
