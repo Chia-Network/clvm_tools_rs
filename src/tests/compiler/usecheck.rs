@@ -135,3 +135,11 @@ fn check_unused_fun_rec_4() {
         vec!["a".to_string()]
     );
 }
+
+#[test]
+fn check_unused_fun_let_1() {
+    assert_eq!(
+        check_argument_use("(mod (a) (include *standard-cl-21*) (defun F (x) (let ((s (sha256 x))) 3)) (F a))".to_string()),
+        vec!["a".to_string()]
+    );
+}
