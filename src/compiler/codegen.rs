@@ -290,13 +290,17 @@ fn codegen_to_sexp(opts: Rc<dyn CompilerOpts>, compiler: &PrimaryCodegen) -> SEx
 fn get_prim(
     loc: Srcloc,
     prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
-    name: &Vec<u8>
+    name: &Vec<u8>,
 ) -> Option<Rc<SExp>> {
-    if let Some(p) = prims.get(name) { return Some(p.clone()); }
+    if let Some(p) = prims.get(name) {
+        return Some(p.clone());
+    }
     let myatom = SExp::Atom(loc, name.clone());
     for kv in prims.iter() {
         let val_borrowed: &SExp = kv.1.borrow();
-        if val_borrowed == &myatom { return Some(Rc::new(myatom)); }
+        if val_borrowed == &myatom {
+            return Some(Rc::new(myatom));
+        }
     }
     return None;
 }

@@ -4,17 +4,17 @@ use std::rc::Rc;
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::{Stream, Bytes, BytesFromType};
+use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 use crate::classic::clvm::serialize::sexp_to_stream;
 use crate::classic::clvm::sexp::{enlist, mapM, proper_list, rest};
 
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::comptypes::{CompilerOpts, CompileErr};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::frontend::frontend;
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::frontend::frontend;
 use crate::compiler::usecheck::check_parameters_used_compileform;
 
 // export const PRELUDE = `<html>
@@ -266,15 +266,18 @@ pub fn check_unused(
     input_program: &String,
 ) -> Result<(bool, String), CompileErr> {
     let mut output: Stream = Stream::new(None);
-    let pre_forms =
-        parse_sexp(Srcloc::start(&opts.filename()), input_program).map_err(|e| CompileErr(e.0, e.1))?;
+    let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), input_program)
+        .map_err(|e| CompileErr(e.0, e.1))?;
     let g = frontend(opts.clone(), pre_forms)?;
     let unused = check_parameters_used_compileform(opts, Rc::new(g))?;
 
     if !unused.is_empty() {
         output.write_string(format!("unused arguments detected at the mod level (lower case arguments are considered uncurried by convention)\n"));
         for s in unused.iter() {
-            output.write_string(format!(" - {}\n", Bytes::new(Some(BytesFromType::Raw(s.clone()))).decode()));
+            output.write_string(format!(
+                " - {}\n",
+                Bytes::new(Some(BytesFromType::Raw(s.clone()))).decode()
+            ));
         }
         Ok((false, output.get_value().decode()))
     } else {

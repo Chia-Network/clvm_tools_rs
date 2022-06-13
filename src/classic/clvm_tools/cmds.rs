@@ -28,7 +28,7 @@ use crate::classic::clvm::KEYWORD_FROM_ATOM;
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
 use crate::classic::clvm_tools::clvmc::detect_modern;
 use crate::classic::clvm_tools::debug::{
-    check_unused, trace_pre_eval, trace_to_table, trace_to_text
+    check_unused, trace_pre_eval, trace_to_table, trace_to_text,
 };
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
@@ -238,13 +238,17 @@ impl ArgumentValueConv for StageImport {
 pub fn run(args: &Vec<String>) {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, &"run".to_string(), 2);
-    io::stdout().write_all(s.get_value().data()).expect("stdout");
+    io::stdout()
+        .write_all(s.get_value().data())
+        .expect("stdout");
 }
 
 pub fn brun(args: &Vec<String>) {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, &"brun".to_string(), 0);
-    io::stdout().write_all(s.get_value().data()).expect("stdout");
+    io::stdout()
+        .write_all(s.get_value().data())
+        .expect("stdout");
 }
 
 pub fn cldb(args: &Vec<String>) {
@@ -675,7 +679,9 @@ pub fn launch_tool(
             vec!["--check-unused-args".to_string()],
             Argument::new()
                 .set_action(TArgOptionAction::StoreTrue)
-                .set_help("check for unused uncurried parameters (by convention lower case)".to_string())
+                .set_help(
+                    "check for unused uncurried parameters (by convention lower case)".to_string(),
+                ),
         );
     }
 
@@ -839,11 +845,13 @@ pub fn launch_tool(
     }
 
     // Add unused check.
-    let do_check_unused = parsedArgs.get("check_unused_args").
-        map(|a| match a {
+    let do_check_unused = parsedArgs
+        .get("check_unused_args")
+        .map(|a| match a {
             ArgumentValue::ArgBool(true) => true,
-            _ => false
-        }).unwrap_or_else(|| false);
+            _ => false,
+        })
+        .unwrap_or_else(|| false);
 
     let dialect = input_sexp.and_then(|i| detect_modern(&mut allocator, i));
     let mut stderr_output = |s| {
@@ -855,13 +863,18 @@ pub fn launch_tool(
     };
 
     if do_check_unused {
-        let use_filename = input_file.as_ref().map(|x| x.clone()).unwrap_or_else(|| "*command*".to_string());
+        let use_filename = input_file
+            .as_ref()
+            .map(|x| x.clone())
+            .unwrap_or_else(|| "*command*".to_string());
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename));
         match check_unused(opts, &input_program) {
             Ok((success, output)) => {
                 stderr_output(output);
-                if !success { return; }
-            },
+                if !success {
+                    return;
+                }
+            }
             Err(e) => {
                 stderr_output(format!("{}: {}\n", e.0.to_string(), e.1));
                 return;
