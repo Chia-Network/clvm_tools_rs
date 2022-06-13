@@ -274,6 +274,7 @@ pub fn dequote(l: Srcloc, exp: Rc<BodyForm>) -> Result<Rc<SExp>, CompileErr> {
     }
 }
 
+/*
 fn show_env(env: &HashMap<Vec<u8>, Rc<BodyForm>>) {
     let loc = Srcloc::start(&"*env*".to_string());
     for kv in env.iter() {
@@ -284,6 +285,7 @@ fn show_env(env: &HashMap<Vec<u8>, Rc<BodyForm>>) {
         );
     }
 }
+*/
 
 pub fn first_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     match lst.borrow() {
@@ -301,16 +303,6 @@ pub fn second_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
         _ => Err(CompileErr(
             lst.loc(),
             format!("No second element of {}", lst.to_string()),
-        )),
-    }
-}
-
-fn third_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
-    match lst.borrow() {
-        SExp::Cons(_, _, r) => second_of_alist(r.clone()),
-        _ => Err(CompileErr(
-            lst.loc(),
-            format!("No third element of {}", lst.to_string()),
         )),
     }
 }
@@ -488,7 +480,7 @@ fn promote_program_to_bodyform(program: Rc<SExp>, env: Rc<BodyForm>) -> Result<R
 fn match_i_op(
     candidate: Rc<BodyForm>
 ) -> Option<(Rc<BodyForm>, Rc<BodyForm>, Rc<BodyForm>)> {
-    if let BodyForm::Call(l, cvec) = candidate.borrow() {
+    if let BodyForm::Call(_, cvec) = candidate.borrow() {
         if cvec.len() != 4 { return None; }
         if let BodyForm::Value(atom) = cvec[0].borrow() {
             if is_i_atom(Rc::new(atom.clone())) {
@@ -525,7 +517,7 @@ fn compute_hash_of_apply(
     body: Rc<BodyForm>,
     env: Rc<BodyForm>
 ) -> Vec<u8> {
-    let mut composed =
+    let composed =
         Rc::new(BodyForm::Call(body.loc(), vec![body.clone(), env.clone()]));
     sha256tree(composed.to_sexp())
 }
@@ -852,7 +844,7 @@ impl Evaluator {
         l: Srcloc,
         call_loc: Srcloc,
         call_name: &Vec<u8>,
-        head_expr: Rc<BodyForm>,
+        _head_expr: Rc<BodyForm>,
         parts: &Vec<Rc<BodyForm>>,
         body: Rc<BodyForm>,
         prog_args: Rc<SExp>,

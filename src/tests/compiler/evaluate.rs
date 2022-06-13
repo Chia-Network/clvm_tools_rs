@@ -8,7 +8,6 @@ use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::evaluate::Evaluator;
 use crate::compiler::frontend::{from_clvm, frontend};
-use crate::compiler::prims::prim_map;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
@@ -72,9 +71,6 @@ fn test_basic_expand_macro_3() {
 }
 
 fn convert_clvm_to_chialisp(s: String) -> Result<Rc<SExp>, CompileErr> {
-    let runner = Rc::new(DefaultProgramRunner::new());
-    let prims = prim_map();
-    let opts = Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));
     let loc = Srcloc::start(&"*program*".to_string());
     parse_sexp(loc.clone(), &s)
         .map_err(|e| {

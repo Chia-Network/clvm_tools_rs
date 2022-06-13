@@ -1,9 +1,6 @@
 use std::rc::Rc;
 
-use clvm_rust::allocator::Allocator;
-
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
-use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::frontend::frontend;
@@ -12,8 +9,6 @@ use crate::compiler::srcloc::Srcloc;
 use crate::compiler::usecheck::check_parameters_used_compileform;
 
 fn check_argument_use(input_program: String) -> Vec<String> {
-    let mut allocator = Allocator::new();
-    let runner = Rc::new(DefaultProgramRunner::new());
     let opts: Rc<dyn CompilerOpts> =
         Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let pre_forms =
