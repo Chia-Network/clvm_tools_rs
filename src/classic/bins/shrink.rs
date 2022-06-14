@@ -1,3 +1,5 @@
+extern crate clvmr as clvm_rs;
+
 use std::collections::HashMap;
 use std::env;
 use std::rc::Rc;

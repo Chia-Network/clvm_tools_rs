@@ -151,7 +151,6 @@ fn create_name_lookup_(
         }
         SExp::Cons(l, head, rest) => {
             if let Some((capture, substructure)) = is_at_capture(head.clone(), rest.clone()) {
-                println!("*capture {:?} *name {:?}", capture, name);
                 if *capture == *name {
                     Ok(1_u64)
                 } else {

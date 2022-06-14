@@ -56,9 +56,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.9.1"
+version = "3.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4a45a46ab1f2412e53d3a0ade76ffad2025804294569aae387231a0cd6e0899"
+checksum = "37ccbd214614c6783386c1af30caf03192f17891059cecc394b4fb119e363de3"
 
 [[package]]
 name = "byteorder"
@@ -95,29 +95,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "clvm"
-version = "0.1.20"
-source = "git+https://github.com/prozacchiwawa/clvm_rs?rev=f3f3a5a4f5bc3eaf86416519b7d6945b4c1b0859#f3f3a5a4f5bc3eaf86416519b7d6945b4c1b0859"
-dependencies = [
- "bls12_381",
- "hex",
- "lazy_static",
- "num-bigint 0.4.0",
- "num-integer",
- "num-traits",
- "pyo3 0.15.1",
- "sha2",
- "wasm-bindgen",
- "wasm-bindgen-test",
-]
-
-[[package]]
 name = "clvm_tools_rs"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "bls12_381",
  "bytestream",
- "clvm",
+ "clvmr",
  "derivative",
  "do-notation",
  "encoding8",
@@ -129,7 +112,7 @@ dependencies = [
  "num 0.4.0",
  "num-bigint 0.4.0",
  "num-traits",
- "pyo3 0.14.2",
+ "pyo3",
  "pyo3-build-config 0.15.2",
  "serde_json",
  "sha2",
@@ -138,6 +121,20 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-test",
  "yamlette",
+]
+
+[[package]]
+name = "clvmr"
+version = "0.1.20"
+source = "git+https://github.com/Chia-Network/clvm_rs?rev=519e7d8bbc490aa9e60514f844f9ccd7af6d8dd2#519e7d8bbc490aa9e60514f844f9ccd7af6d8dd2"
+dependencies = [
+ "bls12_381",
+ "hex",
+ "lazy_static",
+ "num-bigint 0.4.0",
+ "num-integer",
+ "num-traits",
+ "sha2",
 ]
 
 [[package]]
@@ -239,14 +236,14 @@ dependencies = [
 
 [[package]]
 name = "getrandom"
-version = "0.2.6"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9be70c98951c83b8d2f8f60d7065fa6d5146873094452a1008da8c2f1e4205ad"
+checksum = "4eb1a864a501629691edf6c15a593b7a51eebaa1e8468e9ddc623de7c9b58ec6"
 dependencies = [
  "cfg-if",
  "js-sys",
  "libc",
- "wasi",
+ "wasi 0.11.0+wasi-snapshot-preview1",
  "wasm-bindgen",
 ]
 
@@ -477,9 +474,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.10.0"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87f3e037eac156d1775da914196f0f37741a274155e34a0b7e427c35d2a2ecb9"
+checksum = "7709cef83f0c1f58f666e746a08b21e0085f7440fa6a29cc194d68aac97a4225"
 
 [[package]]
 name = "opaque-debug"
@@ -557,9 +554,9 @@ dependencies = [
 
 [[package]]
 name = "pyo3"
-version = "0.14.2"
+version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af205762ba65eec9f27a2fa1a57a40644e8e3368784b8c8b2f2de48f6e8ddd96"
+checksum = "35100f9347670a566a67aa623369293703322bb9db77d99d7df7313b575ae0c8"
 dependencies = [
  "cfg-if",
  "indoc 0.3.6",
@@ -567,23 +564,7 @@ dependencies = [
  "parking_lot",
  "paste",
  "pyo3-build-config 0.14.5",
- "pyo3-macros 0.14.2",
- "unindent",
-]
-
-[[package]]
-name = "pyo3"
-version = "0.15.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7cf01dbf1c05af0a14c7779ed6f3aa9deac9c3419606ac9de537a2d649005720"
-dependencies = [
- "cfg-if",
- "indoc 0.3.6",
- "libc",
- "parking_lot",
- "paste",
- "pyo3-build-config 0.15.2",
- "pyo3-macros 0.15.1",
+ "pyo3-macros",
  "unindent",
 ]
 
@@ -607,46 +588,23 @@ dependencies = [
 
 [[package]]
 name = "pyo3-macros"
-version = "0.14.2"
+version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd31b36bccfd902c78804bd96c28ea93eac6fa0ca311f9d21ef2230b6665b29a"
+checksum = "fc0bc5215d704824dfddddc03f93cb572e1155c68b6761c37005e1c288808ea8"
 dependencies = [
- "pyo3-macros-backend 0.14.2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "pyo3-macros"
-version = "0.15.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67701eb32b1f9a9722b4bc54b548ff9d7ebfded011c12daece7b9063be1fd755"
-dependencies = [
- "pyo3-macros-backend 0.15.1",
+ "pyo3-macros-backend",
  "quote",
  "syn",
 ]
 
 [[package]]
 name = "pyo3-macros-backend"
-version = "0.14.2"
+version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c21c59ba36db9c823e931c662766b0dd01a030b1d96585b67d8857a96a56b972"
+checksum = "71623fc593224afaab918aa3afcaf86ed2f43d34f6afde7f3922608f253240df"
 dependencies = [
  "proc-macro2",
  "pyo3-build-config 0.14.5",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "pyo3-macros-backend"
-version = "0.15.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f44f09e825ee49a105f2c7b23ebee50886a9aee0746f4dd5a704138a64b0218a"
-dependencies = [
- "proc-macro2",
- "pyo3-build-config 0.15.2",
  "quote",
  "syn",
 ]
@@ -757,9 +715,9 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "syn"
-version = "1.0.95"
+version = "1.0.96"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbaf6116ab8924f39d52792136fb74fd60a80194cf1b1c6ffa6453eef1c3f942"
+checksum = "0748dd251e24453cb8717f0354206b91557e4ec8703673a4b30208f2abaf1ebf"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -788,11 +746,12 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.1.43"
+version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca8a50ef2360fbd1eeb0ecd46795a87a19024eb4b53c5dc916ca1fd95fe62438"
+checksum = "6db9e6914ab8b1ae1c260a4ae7a49b6c5611b40328a735b21862567685e73255"
 dependencies = [
  "libc",
+ "wasi 0.10.0+wasi-snapshot-preview1",
  "winapi",
 ]
 
@@ -804,9 +763,9 @@ checksum = "dcf81ac59edc17cc8697ff311e8f5ef2d99fcbd9817b34cec66f90b6c3dfd987"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d22af068fba1eb5edcb4aea19d382b2a3deb4c8f9d475c589b6ada9e0fd493ee"
+checksum = "5bd2fe26506023ed7b5e1e315add59d6f584c621d037f9368fea9cfb988f368c"
 
 [[package]]
 name = "unicode-segmentation"
@@ -828,9 +787,15 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
 name = "wasi"
-version = "0.10.2+wasi-snapshot-preview1"
+version = "0.10.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd6fbd9a79829dd1ad0cc20627bf1ed606756a7f77edff7b66b7064f9cb327c6"
+checksum = "1a143597ca7c7793eff794def352d41792a93c481eb1042423ff7ff72ba2c31f"
+
+[[package]]
+name = "wasi"
+version = "0.11.0+wasi-snapshot-preview1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 
 [[package]]
 name = "wasm-bindgen"
