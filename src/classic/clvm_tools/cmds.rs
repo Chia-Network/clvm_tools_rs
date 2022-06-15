@@ -117,7 +117,7 @@ pub fn call_tool<'a>(
             args = a;
         }
         Err(e) => {
-            println!("{:?}", e);
+            println!("{}", e);
             return;
         }
     }
