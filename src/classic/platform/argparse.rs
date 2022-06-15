@@ -145,8 +145,14 @@ pub struct ArgumentParser {
 impl ArgumentParser {
     pub fn new(props: Option<TArgumentParserProps>) -> ArgumentParser {
         let mut start = ArgumentParser {
-            prog: props.as_ref().map(|x| x.prog.clone()).unwrap_or_else(|| "prog".to_string()),
-            desc: props.as_ref().map(|x| x.description.clone()).unwrap_or_else(|| "".to_string()),
+            prog: props
+                .as_ref()
+                .map(|x| x.prog.clone())
+                .unwrap_or_else(|| "prog".to_string()),
+            desc: props
+                .as_ref()
+                .map(|x| x.description.clone())
+                .unwrap_or_else(|| "".to_string()),
             positional_args: vec![],
             optional_args: vec![],
         };
