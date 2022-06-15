@@ -32,16 +32,14 @@ fn produce_env_captures(
             produce_env_captures(envmap, envlist, base_name, b.clone());
         }
         SExp::Atom(l, a) => {
-            if consider_as_uncurried(a) {
-                let mut new_name = a.clone();
-                new_name.append(&mut "_$_".as_bytes().to_vec());
-                new_name.append(&mut base_name.clone());
-                envmap.insert(
-                    a.clone(),
-                    Rc::new(BodyForm::Value(SExp::Atom(l.clone(), new_name.clone()))),
-                );
-                envlist.insert(new_name, a.clone());
-            }
+            let mut new_name = a.clone();
+            new_name.append(&mut "_$_".as_bytes().to_vec());
+            new_name.append(&mut base_name.clone());
+            envmap.insert(
+                a.clone(),
+                Rc::new(BodyForm::Value(SExp::Atom(l.clone(), new_name.clone()))),
+            );
+            envlist.insert(new_name, a.clone());
         }
         _ => {}
     }
@@ -100,7 +98,9 @@ pub fn check_parameters_used_compileform(
 
     let mut result_set = HashSet::new();
     for kv in replacement_to_original.iter() {
-        result_set.insert(kv.1.clone());
+        if consider_as_uncurried(kv.0) {
+            result_set.insert(kv.1.clone());
+        }
     }
     Ok(result_set)
 }

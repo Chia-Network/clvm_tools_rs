@@ -454,7 +454,7 @@ fn promote_program_to_bodyform(
     program: Rc<SExp>,
     env: Rc<BodyForm>,
 ) -> Result<Rc<BodyForm>, CompileErr> {
-    let res = match program.borrow() {
+    match program.borrow() {
         SExp::Cons(_, h, t) => {
             if is_quote_atom(h.clone()) {
                 let t_borrowed: &SExp = t.borrow();
@@ -484,8 +484,7 @@ fn promote_program_to_bodyform(
             let borrowed_program: &SExp = program.borrow();
             Ok(Rc::new(BodyForm::Quoted(borrowed_program.clone())))
         }
-    }?;
-    Ok(res)
+    }
 }
 
 fn match_i_op(candidate: Rc<BodyForm>) -> Option<(Rc<BodyForm>, Rc<BodyForm>, Rc<BodyForm>)> {
@@ -525,6 +524,32 @@ fn fake_body_of_env(l: Srcloc, env: &HashMap<Vec<u8>, Rc<BodyForm>>) -> Rc<BodyF
 fn compute_hash_of_apply(body: Rc<BodyForm>, env: Rc<BodyForm>) -> Vec<u8> {
     let composed = Rc::new(BodyForm::Call(body.loc(), vec![body.clone(), env.clone()]));
     sha256tree(composed.to_sexp())
+}
+
+fn flatten_expression_to_names_inner(collection: &mut HashSet<Vec<u8>>, expr: Rc<SExp>) {
+    match expr.borrow() {
+        SExp::Cons(_,a,b) => {
+            flatten_expression_to_names_inner(collection, a.clone());
+            flatten_expression_to_names_inner(collection, b.clone());
+        },
+        SExp::Atom(_,a) => {
+            collection.insert(a.clone());
+        },
+        _ => { }
+    }
+}
+
+fn flatten_expression_to_names(expr: Rc<SExp>) -> Rc<BodyForm> {
+    let mut collection = HashSet::new();
+    flatten_expression_to_names_inner(&mut collection, expr.clone());
+    let mut transformed = Vec::new();
+    for a in collection.iter() {
+        transformed.push(a.clone());
+    }
+    transformed.sort();
+    let mut call_vec: Vec<Rc<BodyForm>> = transformed.iter().map(|x| Rc::new(BodyForm::Value(SExp::Atom(expr.loc(), x.clone())))).collect();
+    call_vec.insert(0, Rc::new(BodyForm::Value(SExp::Atom(expr.loc(), vec![b'+']))));
+    Rc::new(BodyForm::Call(expr.loc(), call_vec))
 }
 
 impl Evaluator {
@@ -749,60 +774,53 @@ impl Evaluator {
         // one of the two conditional arguments.  This was an apply so
         // we can distribute over the conditional arguments.
         if let Some((cond, iftrue, iffalse)) = match_i_op(maybe_condition.clone()) {
+            let x_head = Rc::new(BodyForm::Value(SExp::Atom(cond.loc(), vec![b'x'])));
             let apply_head = Rc::new(BodyForm::Value(SExp::Atom(iftrue.loc(), vec![2])));
-            let iftrue_ticket = sha256tree(iftrue.to_sexp());
-            let iffalse_ticket = sha256tree(iffalse.to_sexp());
+            let where_from = cond.loc().to_string();
+            let where_from_vec = where_from.as_bytes().to_vec();
 
-            let previously_iftrue = visited.get(&iftrue_ticket).map(|x| x.clone());
-            let previously_iffalse = visited.get(&iffalse_ticket).map(|x| x.clone());
+            if let Some(present) = visited.get(&where_from_vec) {
+                return Ok(present.clone());
+            }
 
-            visited.insert(iftrue_ticket.clone(), iftrue.clone());
-            visited.insert(iffalse_ticket.clone(), iffalse.clone());
+            visited.insert(where_from_vec.clone(), Rc::new(BodyForm::Call(maybe_condition.loc(), vec![
+                x_head.clone(),
+                cond.clone()
+            ])));
 
-            let surrogate_apply_true = if let Some(iftrue_result) = previously_iftrue {
-                Ok(iftrue_result.clone())
-            } else {
-                self.chase_apply(
-                    allocator,
-                    visited,
-                    Rc::new(BodyForm::Call(
-                        iftrue.loc(),
-                        vec![apply_head.clone(), iftrue.clone(), env.clone()],
-                    )),
-                )
-            };
+            let surrogate_apply_true = self.chase_apply(
+                allocator,
+                visited,
+                Rc::new(BodyForm::Call(
+                    iftrue.loc(),
+                    vec![apply_head.clone(), iftrue.clone(), env.clone()],
+                )),
+            );
 
-            let surrogate_apply_false = if let Some(iffalse_result) = previously_iffalse {
-                Ok(iffalse_result.clone())
-            } else {
-                self.chase_apply(
-                    allocator,
-                    visited,
-                    Rc::new(BodyForm::Call(
-                        iffalse.loc(),
-                        vec![apply_head, iffalse.clone(), env.clone()],
-                    )),
-                )
-            };
+            let surrogate_apply_false = self.chase_apply(
+                allocator,
+                visited,
+                Rc::new(BodyForm::Call(
+                    iffalse.loc(),
+                    vec![apply_head, iffalse.clone(), env.clone()],
+                )),
+            );
 
-            visited.remove(&iftrue_ticket);
-            visited.remove(&iffalse_ticket);
-
-            // Reproduce
+            // Reproduce the equivalent hull over the used values of
             // (a (i cond surrogate_apply_true surrogate_apply_false))
-            let i_head = Rc::new(BodyForm::Value(SExp::Atom(
-                maybe_condition.loc(),
-                vec![b'i'],
-            )));
-            return Ok(Rc::new(BodyForm::Call(
+            // Flatten and short circuit any farther evaluation since we just
+            // want the argument names passed through from the environment.
+            let res = Rc::new(BodyForm::Call(
                 maybe_condition.loc(),
                 vec![
-                    i_head,
-                    cond.clone(),
-                    surrogate_apply_true?,
-                    surrogate_apply_false?,
-                ],
-            )));
+                    x_head,
+                    flatten_expression_to_names(cond.to_sexp()),
+                    flatten_expression_to_names(surrogate_apply_true?.to_sexp()),
+                    flatten_expression_to_names(surrogate_apply_false?.to_sexp())
+                ]
+            ));
+
+            return Ok(res);
         }
 
         Err(CompileErr(maybe_condition.loc(), "not i op".to_string()))
@@ -911,7 +929,7 @@ impl Evaluator {
     }
 
     // A frontend language evaluator and minifier
-    pub fn shrink_bodyform_visited_(
+    pub fn shrink_bodyform_visited(
         &self,
         allocator: &mut Allocator, // Support random prims via clvm_rs
         visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
@@ -1077,34 +1095,6 @@ impl Evaluator {
             body,
             only_inline,
         )
-    }
-
-    pub fn shrink_bodyform_visited(
-        &self,
-        allocator: &mut Allocator, // Support random prims via clvm_rs
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
-        prog_args: Rc<SExp>,
-        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        body: Rc<BodyForm>,
-        only_inline: bool,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
-        let hash_of_apply = compute_hash_of_apply(body.clone(), fake_body_of_env(body.loc(), env));
-        if let Some(res) = visited.get(&hash_of_apply) {
-            return Ok(res.clone());
-        }
-
-        let res = self.shrink_bodyform_visited_(
-            allocator, // Support random prims via clvm_rs
-            visited,
-            prog_args,
-            env,
-            body,
-            only_inline,
-        )?;
-
-        visited.insert(hash_of_apply, res.clone());
-
-        Ok(res)
     }
 
     fn expand_macro(

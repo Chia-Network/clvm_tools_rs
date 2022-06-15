@@ -707,6 +707,7 @@ pub fn launch_tool(
 
     let dpr;
     let run_program: Rc<dyn TRunProgram>;
+    let mut search_paths = Vec::new();
     match parsedArgs.get("include") {
         Some(ArgumentValue::ArgArray(v)) => {
             let mut bare_paths = Vec::with_capacity(v.len());
@@ -717,6 +718,7 @@ pub fn launch_tool(
                 }
             }
             let special_runner = run_program_for_search_paths(&bare_paths);
+            search_paths = bare_paths;
             dpr = special_runner.clone();
             run_program = special_runner;
         }
@@ -867,7 +869,8 @@ pub fn launch_tool(
             .as_ref()
             .map(|x| x.clone())
             .unwrap_or_else(|| "*command*".to_string());
-        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename));
+        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).
+            set_search_paths(&search_paths);
         match check_unused(opts, &input_program) {
             Ok((success, output)) => {
                 stderr_output(output);
@@ -895,6 +898,7 @@ pub fn launch_tool(
         let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
             .set_optimize(do_optimize)
+            .set_search_paths(&search_paths)
             .set_frontend_opt(dialect > 21);
         let mut symbol_table = HashMap::new();
 
