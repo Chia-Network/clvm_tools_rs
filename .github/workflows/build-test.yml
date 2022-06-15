@@ -144,14 +144,12 @@ jobs:
         PYO3_PYTHON=`which python` cargo build --no-default-features --release
 
         # Grab chia-blockchain
+        rm -rf chia-blockchain
         git clone https://github.com/Chia-Network/chia-blockchain
 
         # Check recompiles
         cp support/recompile_check.py chia-blockchain
         (cd chia-blockchain && python recompile_check.py)
-
-        # Ran successfully, remove
-        rm -rf chia-blockchain
 
     - name: Run tests from clvm
       run: |
