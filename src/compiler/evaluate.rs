@@ -528,14 +528,14 @@ fn compute_hash_of_apply(body: Rc<BodyForm>, env: Rc<BodyForm>) -> Vec<u8> {
 
 fn flatten_expression_to_names_inner(collection: &mut HashSet<Vec<u8>>, expr: Rc<SExp>) {
     match expr.borrow() {
-        SExp::Cons(_,a,b) => {
+        SExp::Cons(_, a, b) => {
             flatten_expression_to_names_inner(collection, a.clone());
             flatten_expression_to_names_inner(collection, b.clone());
-        },
-        SExp::Atom(_,a) => {
+        }
+        SExp::Atom(_, a) => {
             collection.insert(a.clone());
-        },
-        _ => { }
+        }
+        _ => {}
     }
 }
 
@@ -547,8 +547,14 @@ fn flatten_expression_to_names(expr: Rc<SExp>) -> Rc<BodyForm> {
         transformed.push(a.clone());
     }
     transformed.sort();
-    let mut call_vec: Vec<Rc<BodyForm>> = transformed.iter().map(|x| Rc::new(BodyForm::Value(SExp::Atom(expr.loc(), x.clone())))).collect();
-    call_vec.insert(0, Rc::new(BodyForm::Value(SExp::Atom(expr.loc(), vec![b'+']))));
+    let mut call_vec: Vec<Rc<BodyForm>> = transformed
+        .iter()
+        .map(|x| Rc::new(BodyForm::Value(SExp::Atom(expr.loc(), x.clone()))))
+        .collect();
+    call_vec.insert(
+        0,
+        Rc::new(BodyForm::Value(SExp::Atom(expr.loc(), vec![b'+']))),
+    );
     Rc::new(BodyForm::Call(expr.loc(), call_vec))
 }
 
@@ -783,10 +789,13 @@ impl Evaluator {
                 return Ok(present.clone());
             }
 
-            visited.insert(where_from_vec.clone(), Rc::new(BodyForm::Call(maybe_condition.loc(), vec![
-                x_head.clone(),
-                cond.clone()
-            ])));
+            visited.insert(
+                where_from_vec.clone(),
+                Rc::new(BodyForm::Call(
+                    maybe_condition.loc(),
+                    vec![x_head.clone(), cond.clone()],
+                )),
+            );
 
             let surrogate_apply_true = self.chase_apply(
                 allocator,
@@ -816,8 +825,8 @@ impl Evaluator {
                     x_head,
                     flatten_expression_to_names(cond.to_sexp()),
                     flatten_expression_to_names(surrogate_apply_true?.to_sexp()),
-                    flatten_expression_to_names(surrogate_apply_false?.to_sexp())
-                ]
+                    flatten_expression_to_names(surrogate_apply_false?.to_sexp()),
+                ],
             ));
 
             return Ok(res);

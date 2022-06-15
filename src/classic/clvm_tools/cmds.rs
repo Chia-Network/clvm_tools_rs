@@ -869,8 +869,7 @@ pub fn launch_tool(
             .as_ref()
             .map(|x| x.clone())
             .unwrap_or_else(|| "*command*".to_string());
-        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).
-            set_search_paths(&search_paths);
+        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_search_paths(&search_paths);
         match check_unused(opts, &input_program) {
             Ok((success, output)) => {
                 stderr_output(output);

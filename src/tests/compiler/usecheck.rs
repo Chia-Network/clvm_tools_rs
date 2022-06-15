@@ -149,32 +149,28 @@ fn check_unused_fun_let_1() {
 
 #[test]
 fn verify_use_check_with_singleton_top_layer_fails_when_we_comment_out_all_uses_of_lineage_proof() {
-    let res = do_basic_run(
-        &vec![
-            "run".to_string(),
-            "-i".to_string(),
-            "resources/tests".to_string(),
-            "-i".to_string(),
-            "resources/tests/usecheck-fail".to_string(),
-            "--check-unused-args".to_string(),
-            "resources/tests/singleton_top_layer.clvm".to_string()
-        ]
-    );
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "-i".to_string(),
+        "resources/tests/usecheck-fail".to_string(),
+        "--check-unused-args".to_string(),
+        "resources/tests/singleton_top_layer.clvm".to_string(),
+    ]);
     assert_eq!(res, "unused arguments detected at the mod level (lower case arguments are considered uncurried by convention)\n - lineage_proof\n");
 }
 
 #[test]
 fn verify_use_check_with_singleton_top_layer_works() {
-    let res = do_basic_run(
-        &vec![
-            "run".to_string(),
-            "-i".to_string(),
-            "resources/tests".to_string(),
-            "-i".to_string(),
-            "resources/tests/usecheck-work".to_string(),
-            "--check-unused-args".to_string(),
-            "resources/tests/singleton_top_layer.clvm".to_string()
-        ]
-    );
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "-i".to_string(),
+        "resources/tests/usecheck-work".to_string(),
+        "--check-unused-args".to_string(),
+        "resources/tests/singleton_top_layer.clvm".to_string(),
+    ]);
     assert!(res.len() > 0 && res.as_bytes()[0] == b'(');
 }
