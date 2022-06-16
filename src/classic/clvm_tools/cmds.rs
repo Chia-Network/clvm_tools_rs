@@ -859,13 +859,13 @@ pub fn launch_tool(
 
         match res {
             Ok(r) => {
-                println!("{}", r.to_string());
+                stdout.write_string(r.to_string());
 
                 build_symbol_table_mut(&mut symbol_table, &r);
                 write_sym_output(&symbol_table, &"main.sym".to_string());
             }
             Err(c) => {
-                println!("{}: {}", c.0.to_string(), c.1);
+                stdout.write_string(format!("{}: {}", c.0.to_string(), c.1));
             }
         }
 
