@@ -90,6 +90,9 @@ fn DEFAULT_MACROS_SRC() -> Vec<&'static str> {
                         1))
                 2))
         "},
+        indoc! {"
+        (defmacro bls_g1_add ARGS (c (q . point_add) ARGS))
+        "},
     ];
 }
 

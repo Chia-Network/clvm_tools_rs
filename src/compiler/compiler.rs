@@ -295,7 +295,8 @@ impl CompilerOpts for DefaultCompilerOpts {
                                        ()))
                             (compile-list ARGS)
                     )
-            )"};
+            )
+            (defmacro bls_g1_add ARGS (c (q . point_add) ARGS))"};
             return Ok((filename, macros.to_string()));
         } else if let Some(content) = self.known_dialects.get(&filename) {
             return Ok((filename, content.to_string()));

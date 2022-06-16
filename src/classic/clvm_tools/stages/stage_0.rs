@@ -67,6 +67,14 @@ impl OpRouter {
             (33, "op_any"),
             (34, "op_all"),
             (36, "op_softfork"),
+            (37, "bls_g1_subtract"),
+            (38, "bls_g1_multiply"),
+            (39, "bls_g1_negate"),
+            (40, "bls_g2_add"),
+            (41, "bls_g2_subtract"),
+            (42, "bls_g2_multiply"),
+            (43, "bls_g2_negate"),
+            (44, "pow"),
         ]
         .iter()
         {

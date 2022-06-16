@@ -81,6 +81,38 @@ const kw_pairs: [KwAtomPair; 32] = [
         v: 0x24,
         n: "softfork",
     },
+    KwAtomPair {
+        v: 0x25,
+        n: "bls_g1_subtract",
+    },
+    KwAtomPair {
+        v: 0x26,
+        n: "bls_g1_multiply",
+    },
+    KwAtomPair {
+        v: 0x27,
+        n: "bls_g1_negate",
+    },
+    KwAtomPair {
+        v: 0x28,
+        n: "bls_g2_add",
+    },
+    KwAtomPair {
+        v: 0x29,
+        n: "bls_g2_subtract",
+    },
+    KwAtomPair {
+        v: 0x2a,
+        n: "bls_g2_multiply",
+    },
+    KwAtomPair {
+        v: 0x2b,
+        n: "bls_g2_negate",
+    },
+    KwAtomPair {
+        v: 0x2c,
+        n: "pow",
+    },
 ];
 
 lazy_static! {

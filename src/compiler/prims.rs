@@ -138,6 +138,38 @@ pub fn prims() -> Vec<(Vec<u8>, SExp)> {
             "softfork".as_bytes().to_vec(),
             SExp::Integer(primloc.clone(), 36_u32.to_bigint().unwrap()),
         ),
+        (
+            "bls_g1_subtract".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 37_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_g1_multiply".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 38_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_g1_negate".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 39_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_g2_add".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 40_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_g2_subtract".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 41_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_g2_multiply".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 42_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_g2_negate".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 43_u32.to_bigint().unwrap()),
+        ),
+        (
+            "pow".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 44_u32.to_bigint().unwrap()),
+        ),
     ]
 }
 
