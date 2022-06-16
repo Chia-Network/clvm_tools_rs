@@ -21,7 +21,6 @@ recompile_list = [
     'nft_metadata_updater_updateable.clvm',
     'nft_ownership_layer.clvm',
     'nft_ownership_transfer_program_one_way_claim_with_royalties.clvm',
-    'nft_ownership_transfer_program_one_way_claim_with_royalties_new.clvm',
     'nft_state_layer.clvm',
     'p2_conditions.clvm',
     'p2_delegated_conditions.clvm',
