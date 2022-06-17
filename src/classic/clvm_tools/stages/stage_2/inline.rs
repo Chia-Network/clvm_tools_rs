@@ -1,5 +1,5 @@
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
-use crate::classic::clvm::sexp::{enlist, first, flatten, foldM, mapM, non_nil, proper_list, rest};
+use crate::classic::clvm::sexp::{enlist, proper_list};
 use crate::compiler::gensym::gensym;
 use crate::util::Number;
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};

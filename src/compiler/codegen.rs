@@ -287,6 +287,24 @@ fn codegen_to_sexp(opts: Rc<dyn CompilerOpts>, compiler: &PrimaryCodegen) -> SEx
     )
 }
 
+fn get_prim(
+    loc: Srcloc,
+    prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    name: &Vec<u8>,
+) -> Option<Rc<SExp>> {
+    if let Some(p) = prims.get(name) {
+        return Some(p.clone());
+    }
+    let myatom = SExp::Atom(loc, name.clone());
+    for kv in prims.iter() {
+        let val_borrowed: &SExp = kv.1.borrow();
+        if val_borrowed == &myatom {
+            return Some(Rc::new(myatom));
+        }
+    }
+    return None;
+}
+
 pub fn get_callable(
     _opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
@@ -298,7 +316,7 @@ pub fn get_callable(
             let macro_def = compiler.macros.get(name);
             let inline = compiler.inlines.get(name);
             let defun = create_name_lookup(compiler, l.clone(), name);
-            let prim = compiler.prims.get(name);
+            let prim = get_prim(l.clone(), compiler.prims.clone(), name);
             let atom_is_com = *name == "com".as_bytes().to_vec();
             let atom_is_at = *name == "@".as_bytes().to_vec();
             match (macro_def, inline, defun, prim, atom_is_com, atom_is_at) {
