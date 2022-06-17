@@ -53,6 +53,23 @@ pub fn assemble_from_ir<'a>(
     }
 }
 
+fn has_oversized_sign_extension(atom: &Bytes) -> bool {
+    if atom.length() < 3 {
+        return false;
+    }
+
+    let data = atom.data();
+    if data[0] == 0 {
+        // 0x0080 -> 128
+        return data[1] & 0x80 == 0x80;
+    } else if data[0] == 0xff {
+        // 0xff00 -> -256
+        return data[1] & 0x80 == 0;
+    }
+
+    true
+}
+
 pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
     if atom.length() == 0 {
         return IRRepr::Null;
@@ -66,7 +83,6 @@ pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
             }
             _ => {}
         }
-        // Determine whether the bytes identity an integer in canonical form.
     } else {
         if allow_keyword {
             match KEYWORD_FROM_ATOM().get(atom.data()) {
@@ -77,7 +93,9 @@ pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
             }
         }
 
-        if atom.length() == 1 || (atom.length() > 1 && atom.data()[0] != 0) {
+        // Determine whether the bytes identity an integer in canonical form.
+        // It's not canonical if there is oversized sign extension.
+        if !has_oversized_sign_extension(atom) {
             return IRRepr::Int(atom.clone(), true);
         }
     }

@@ -10,7 +10,9 @@ use std::thread;
 
 use clvm_rs::allocator::Allocator;
 
+use crate::classic::clvm::__type_compatibility__::Stream;
 use crate::classic::clvm_tools::clvmc;
+use crate::classic::clvm_tools::cmds;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::cldb::{
     hex_to_modern_sexp, CldbOverrideBespokeCode, CldbRun, CldbRunEnv, CldbSingleBespokeOverride,
@@ -238,12 +240,20 @@ fn start_clvm_program(
     })
 }
 
+#[pyfunction(arg3 = 2)]
+fn launch_tool(tool_name: String, args: Vec<String>, default_stage: u32) -> Vec<u8> {
+    let mut stdout = Stream::new(None);
+    cmds::launch_tool(&mut stdout, &args, &tool_name, default_stage);
+    return stdout.get_value().data().clone();
+}
+
 #[pymodule]
 fn clvm_tools_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add("CldbError", py.get_type::<CldbError>())?;
     m.add_function(wrap_pyfunction!(compile_clvm, m)?)?;
     m.add_function(wrap_pyfunction!(get_version, m)?)?;
     m.add_function(wrap_pyfunction!(start_clvm_program, m)?)?;
+    m.add_function(wrap_pyfunction!(launch_tool, m)?)?;
     m.add_class::<PythonRunStep>()?;
     Ok(())
 }

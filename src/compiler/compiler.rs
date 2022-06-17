@@ -295,7 +295,9 @@ impl CompilerOpts for DefaultCompilerOpts {
                                        ()))
                             (compile-list ARGS)
                     )
-            )"};
+            (defun-inline / (A B) (f (divmod A B)))
+            )
+            "};
             return Ok((filename, macros.to_string()));
         } else if let Some(content) = self.known_dialects.get(&filename) {
             return Ok((filename, content.to_string()));

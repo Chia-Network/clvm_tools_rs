@@ -568,6 +568,13 @@ pub fn launch_tool(
 
     let mut parser = ArgumentParser::new(Some(props));
     parser.add_argument(
+        vec!["-s".to_string(), "--stage".to_string()],
+        Argument::new()
+            .set_type(Rc::new(StageImport {}))
+            .set_help("stage number to include".to_string())
+            .set_default(ArgumentValue::ArgInt(default_stage as i64)),
+    );
+    parser.add_argument(
         vec!["--strict".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
@@ -578,13 +585,6 @@ pub fn launch_tool(
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
             .set_help("Read program and environment as hexadecimal bytecode".to_string()),
-    );
-    parser.add_argument(
-        vec!["-s".to_string(), "--stage".to_string()],
-        Argument::new()
-            .set_type(Rc::new(StageImport {}))
-            .set_help("stage number to include".to_string())
-            .set_default(ArgumentValue::ArgInt(default_stage as i64)),
     );
     parser.add_argument(
         vec!["-v".to_string(), "--verbose".to_string()],
@@ -859,13 +859,13 @@ pub fn launch_tool(
 
         match res {
             Ok(r) => {
-                println!("{}", r.to_string());
+                stdout.write_string(r.to_string());
 
                 build_symbol_table_mut(&mut symbol_table, &r);
                 write_sym_output(&symbol_table, &"main.sym".to_string());
             }
             Err(c) => {
-                println!("{}: {}", c.0.to_string(), c.1);
+                stdout.write_string(format!("{}: {}", c.0.to_string(), c.1));
             }
         }
 

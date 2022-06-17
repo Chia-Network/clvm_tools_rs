@@ -90,6 +90,13 @@ fn DEFAULT_MACROS_SRC() -> Vec<&'static str> {
                         1))
                 2))
         "},
+        /*
+         / operator at the clvm layer is becoming deprecated and
+        will be implemented using divmod.
+         */
+        indoc! {"
+        (defmacro / (A B) (qq (f (divmod (unquote A) (unquote B)))))
+        "},
     ];
 }
 
