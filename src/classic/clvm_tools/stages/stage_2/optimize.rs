@@ -7,7 +7,6 @@ use num_bigint::ToBigInt;
 
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::cost::Cost;
-use clvm_rs::operator_handler::OperatorHandler;
 use clvm_rs::reduction::{EvalErr, Reduction, Response};
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
@@ -18,7 +17,7 @@ use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble};
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::pattern_match::match_sexp;
 use crate::classic::clvm_tools::stages::assemble;
-use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
+use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::helpers::quote;
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::clvm_tools::NodePath::NodePath;
@@ -710,25 +709,11 @@ pub fn optimize_sexp<'a>(
     })
 }
 
-impl DoOptProg {
-    pub fn new() -> Self {
-        DoOptProg {
-            runner: Rc::new(DefaultProgramRunner::new()),
-        }
-    }
-
-    pub fn set_runner(&mut self, runner: Rc<dyn TRunProgram>) {
-        self.runner = runner;
-    }
-}
-
-impl OperatorHandler for DoOptProg {
-    fn op(&self, allocator: &mut Allocator, _op: NodePtr, r: NodePtr, _max_cost: Cost) -> Response {
-        m! {
-            r_first <- first(allocator, r);
-            optimize_sexp(allocator, r_first, self.runner.clone()).
-                map(|optimized| Reduction(1, optimized))
-        }
+pub fn do_optimize(runner: Rc<dyn TRunProgram>, allocator: &mut Allocator, r: NodePtr) -> Response {
+    m! {
+        r_first <- first(allocator, r);
+        optimize_sexp(allocator, r_first, runner.clone()).
+            map(|optimized| Reduction(1, optimized))
     }
 }
 

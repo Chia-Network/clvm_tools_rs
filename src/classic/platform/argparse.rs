@@ -128,7 +128,7 @@ pub fn is_optional(arg: &String) -> bool {
     arg.starts_with("-")
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TArgumentParserProps {
     pub description: String,
     pub prog: String,
@@ -145,8 +145,14 @@ pub struct ArgumentParser {
 impl ArgumentParser {
     pub fn new(props: Option<TArgumentParserProps>) -> ArgumentParser {
         let mut start = ArgumentParser {
-            prog: "prog".to_string(),
-            desc: "".to_string(),
+            prog: props
+                .as_ref()
+                .map(|x| x.prog.clone())
+                .unwrap_or_else(|| "prog".to_string()),
+            desc: props
+                .as_ref()
+                .map(|x| x.description.clone())
+                .unwrap_or_else(|| "".to_string()),
             positional_args: vec![],
             optional_args: vec![],
         };
@@ -222,7 +228,7 @@ impl ArgumentParser {
                 }
 
                 let optional_arg_idx = index_of_match(
-                    |a: &Arg| index_of_match(|a: &String| a == arg, &a.names) >= 0,
+                    |a: &Arg| index_of_match(|a: &String| arg.starts_with(a), &a.names) >= 0,
                     &self.optional_args,
                 );
 
@@ -516,7 +522,7 @@ impl ArgumentParser {
             let mut optional_arg_without_space_found = false;
 
             // Only short form args like '-x' are targets.
-            if arg.starts_with("-") && !arg.starts_with("--") {
+            if arg.starts_with("--") {
                 norm.push(arg.to_string());
                 continue;
             }

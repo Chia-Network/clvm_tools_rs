@@ -1,4 +1,4 @@
-extern crate clvm_rust as clvm_rs;
+extern crate clvmr as clvm_rs;
 
 use std::io::{self, BufRead, Write};
 
