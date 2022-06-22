@@ -125,8 +125,9 @@ dependencies = [
 
 [[package]]
 name = "clvmr"
-version = "0.1.20"
-source = "git+https://github.com/Chia-Network/clvm_rs?rev=519e7d8bbc490aa9e60514f844f9ccd7af6d8dd2#519e7d8bbc490aa9e60514f844f9ccd7af6d8dd2"
+version = "0.1.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39ca2623b5f3aec50a9130d203a8bf93fe203ba180d00517cef29250e99b2620"
 dependencies = [
  "bls12_381",
  "hex",
