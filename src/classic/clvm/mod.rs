@@ -12,7 +12,7 @@ struct KwAtomPair {
     n: &'static str,
 }
 
-const kw_pairs: [KwAtomPair; 32] = [
+const kw_pairs: [KwAtomPair; 45] = [
     KwAtomPair { v: 0x01, n: "q" },
     KwAtomPair { v: 0x02, n: "a" },
     KwAtomPair { v: 0x03, n: "i" },
@@ -111,6 +111,26 @@ const kw_pairs: [KwAtomPair; 32] = [
     },
     KwAtomPair {
         v: 0x2c,
+        n: "bls_gt_add",
+    },
+    KwAtomPair {
+        v: 0x2d,
+        n: "bls_gt_subtract",
+    },
+    KwAtomPair {
+        v: 0x2e,
+        n: "bls_gt_multiply",
+    },
+    KwAtomPair {
+        v: 0x2f,
+        n: "bls_gt_negate",
+    },
+    KwAtomPair {
+        v: 0x30,
+        n: "bls_pairing",
+    },
+    KwAtomPair {
+        v: 0x33,
         n: "pow",
     },
 ];

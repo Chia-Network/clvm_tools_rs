@@ -30,11 +30,12 @@ serde_json = "1.0"
 sha2 = "0.9.5"
 yamlette = "0.0.8"
 tempfile = "3.3.0"
-clvm_rust = "0.1.14"
+clvmr = "0.1.20"
 
 [patch.crates-io]
 skimmer = { git = "https://github.com/dnsl48/skimmer", rev = "ca914ef624ecf39a75ed7afef10e7838fffe9127" }
-clvm_rust = { git = "https://github.com/prozacchiwawa/clvm_rs", rev = "b9f9c3345243ab1d5968fd16f4a3599d0ec43699" }
+clvmr = { git = "https://github.com/cameroncooper/clvm_rs", rev = "dd8b872ce9a77296b4f97bd80c5a5f8fdd672f85" }
+bls12_381 = { version = "0.7.0", git = "https://github.com/cameroncooper/bls12_381", rev = "a789b4da7fccb4815f865b30a30218c1ceea2d4e" }
 
 [target.x86_64-apple-darwin]
 rustflags = [
@@ -51,9 +52,9 @@ extension-module = ["pyo3"]
 default = ["extension-module"]
 
 [target.'cfg(target_family="wasm")'.dependencies]
-wasm-bindgen = "0.2.80"
+wasm-bindgen = "0.2.75"
 wasm-bindgen-test = "0.3.25"
-js-sys = "0.3.57"
+js-sys = "0.3.52"
 getrandom = { version = "0.2", features = ["js"] }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
