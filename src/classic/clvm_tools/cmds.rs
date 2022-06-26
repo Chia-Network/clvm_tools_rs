@@ -258,6 +258,7 @@ pub fn cldb(args: &Vec<String>) {
         prog: format!("clvm_tools {}", tool_name),
     };
 
+    let mut search_paths = Vec::new();
     let mut parser = ArgumentParser::new(Some(props));
     parser.add_argument(
         vec!["-i".to_string(), "--include".to_string()],
@@ -323,6 +324,15 @@ pub fn cldb(args: &Vec<String>) {
         }
     }
 
+    if let Some(ArgumentValue::ArgArray(v)) = parsedArgs.get("include") {
+        for p in v {
+            match p {
+                ArgumentValue::ArgString(_, s) => search_paths.push(s.to_string()),
+                _ => {}
+            }
+        }
+    }
+
     match parsedArgs.get("path_or_code") {
         Some(ArgumentValue::ArgString(file, path_or_code)) => {
             input_file = file.clone();
@@ -362,7 +372,9 @@ pub fn cldb(args: &Vec<String>) {
     let use_filename = input_file
         .clone()
         .unwrap_or_else(|| "*command*".to_string());
-    let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_optimize(do_optimize);
+    let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
+        .set_optimize(do_optimize)
+        .set_search_paths(&search_paths);
 
     let mut use_symbol_table = symbol_table.unwrap_or_else(|| HashMap::new());
     let unopt_res = compile_file(
