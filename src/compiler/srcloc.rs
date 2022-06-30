@@ -112,3 +112,7 @@ pub fn combine_src_location(a: &Srcloc, b: &Srcloc) -> Srcloc {
         add_onto(b, a)
     }
 }
+
+trait HasLoc {
+    fn loc(&self) -> Srcloc;
+}
