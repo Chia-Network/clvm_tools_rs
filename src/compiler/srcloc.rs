@@ -113,6 +113,6 @@ pub fn combine_src_location(a: &Srcloc, b: &Srcloc) -> Srcloc {
     }
 }
 
-trait HasLoc {
+pub trait HasLoc {
     fn loc(&self) -> Srcloc;
 }
