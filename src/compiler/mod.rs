@@ -18,3 +18,4 @@ pub mod sexp;
 pub mod types;
 pub mod srcloc;
 pub mod usecheck;
+pub mod typecheck;

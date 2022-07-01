@@ -89,3 +89,7 @@ path = "src/classic/bins/shrink.rs"
 [[bin]]
 name = "repl"
 path = "src/classic/bins/repl.rs"
+
+[[bin]]
+name = "typetest"
+path = "src/classic/bins/typetest.rs"

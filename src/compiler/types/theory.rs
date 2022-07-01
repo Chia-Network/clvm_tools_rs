@@ -5,7 +5,7 @@ use std::borrow::Borrow;
 use std::rc::Rc;
 
 use crate::compiler::comptypes::CompileErr;
-use crate::compiler::srcloc::{HasLoc, Srcloc};
+use crate::compiler::srcloc::HasLoc;
 use crate::compiler::types::ast::{
     Context,
     ContextElim,
@@ -17,13 +17,17 @@ use crate::compiler::types::ast::{
 use crate::compiler::types::astfuns::{
     free_tvars,
     monotype,
-    typeSubst
+    tforalls,
+    typeSubst,
+    typeSubsts
 };
 use crate::compiler::types::context::{HasElem};
 use crate::compiler::types::namegen::{fresh_var, fresh_tvar};
 use crate::compiler::types::context::{subst};
 
-trait TypeTheory {
+const ORIGINAL: bool = false;
+
+pub trait TypeTheory {
     fn subtype(&self, typ1: &Polytype, typ2: &Polytype) -> Result<Box<Self>, CompileErr>;
     fn instantiate_l(&self, alpha: &TypeVar, a: &Polytype) -> Result<Box<Self>, CompileErr>;
     fn instantiate_r(&self, a: &Polytype, alpha: &TypeVar) -> Result<Box<Self>, CompileErr>;
@@ -36,6 +40,7 @@ impl TypeTheory for Context {
     // | Algorithmic subtyping:
     //   subtype Γ A B = Δ <=> Γ |- A <: B -| Δ
     fn subtype(&self, typ1: &Polytype, typ2: &Polytype) -> Result<Box<Self>, CompileErr> {
+        println!("subtype {:?} {:?}", typ1, typ2);
         let _ = self.checkwftype(typ1)?;
         let _ = self.checkwftype(typ2)?;
         match (typ1, typ2) {
@@ -44,20 +49,26 @@ impl TypeTheory for Context {
                     return Ok(Box::new(self.clone()));
                 }
             },
-            (Type::TUnit, Type::TUnit) => { return Ok(Box::new(self.clone())); },
+            (Type::TUnit(_), Type::TUnit(_)) => { return Ok(Box::new(self.clone())); },
+            (Type::TAtom(_), Type::TAtom(_)) => { return Ok(Box::new(self.clone())); },
             (Type::TExists(alpha), Type::TExists(alphaprime)) => {
                 if alpha == alphaprime && self.existentials().elem(alpha) {
                     return Ok(Box::new(self.clone()));
                 }
             },
+
             (Type::TFun(a1,a2), Type::TFun(b1,b2)) => {
                 let theta = self.subtype(b1,a1)?;
                 return theta.subtype(&theta.apply(a2), &theta.apply(b2));
             },
 
+            (Type::TPair(a1,a2), Type::TPair(b1,b2)) => {
+                todo!("subtype pairs")
+            },
+
             // <:forallR
             (a, Type::TForall(alpha,b)) => {
-                let alphaprime = fresh_tvar();
+                let alphaprime = fresh_tvar(typ2.loc());
                 return self.snoc(
                     ContextElim::CForall(alphaprime.clone())
                 ).subtype(
@@ -68,7 +79,7 @@ impl TypeTheory for Context {
 
             // <:forallL
             (Type::TForall(alpha,a), b) => {
-                let alphaprime = fresh_tvar();
+                let alphaprime = fresh_tvar(typ1.loc());
                 return self.appends(
                     vec![
                         ContextElim::CMarker(alphaprime.clone()),
@@ -125,8 +136,8 @@ impl TypeTheory for Context {
                     },
                     // InstLArr
                     Type::TFun(a1, a2) => {
-                        let alpha1 = fresh_tvar();
-                        let alpha2 = fresh_tvar();
+                        let alpha1 = fresh_tvar(a1.loc());
+                        let alpha2 = fresh_tvar(a2.loc());
                         let rcontext = Context::new(vec![
                             ContextElim::CExists(alpha2.clone()),
                             ContextElim::CExists(alpha1.clone()),
@@ -144,7 +155,7 @@ impl TypeTheory for Context {
                     },
                     // InstLAIIR
                     Type::TForall(beta, b) => {
-                        let betaprime = fresh_tvar();
+                        let betaprime = fresh_tvar(beta.loc());
                         return (self.appends(vec![
                             ContextElim::CForall(betaprime.clone())
                         ])).instantiate_l(
@@ -186,8 +197,8 @@ impl TypeTheory for Context {
                         }
                     },
                     Type::TFun(a1, a2) => {
-                        let alpha1 = fresh_tvar();
-                        let alpha2 = fresh_tvar();
+                        let alpha1 = fresh_tvar(a1.loc());
+                        let alpha2 = fresh_tvar(a2.loc());
                         let rcontext = Context::new(vec![
                             ContextElim::CExists(alpha2.clone()),
                             ContextElim::CExists(alpha1.clone()),
@@ -201,7 +212,7 @@ impl TypeTheory for Context {
                         );
                     },
                     Type::TForall(beta, b) => {
-                        let betaprime = fresh_tvar();
+                        let betaprime = fresh_tvar(beta.loc());
                         return (self.appends(vec![
                             ContextElim::CMarker(betaprime.clone()),
                             ContextElim::CExists(betaprime.clone()),
@@ -226,10 +237,10 @@ impl TypeTheory for Context {
         let _ = self.checkwftype(typ)?;
         match (expr, typ) {
             // 1I
-            (Expr::EUnit, Type::TUnit) => Ok(Box::new(self.clone())),
+            (Expr::EUnit(_), Type::TUnit(_)) => Ok(Box::new(self.clone())),
             // ForallI
             (e, Type::TForall(alpha, a)) => {
-                let alphaprime = fresh_tvar();
+                let alphaprime = fresh_tvar(typ.loc());
                 return self.snoc(ContextElim::CForall(alphaprime.clone())).
                     typecheck(
                         e,
@@ -238,7 +249,7 @@ impl TypeTheory for Context {
             },
             // ->I
             (Expr::EAbs(x,e), Type::TFun(a,b)) => {
-                let xprime = fresh_var();
+                let xprime = fresh_var(expr.loc());
                 let a_borrowed: &Polytype = a.borrow();
                 let b_borrowed: &Polytype = b.borrow();
                 let e_borrowed: &Expr = e.borrow();
@@ -278,21 +289,74 @@ impl TypeTheory for Context {
             },
 
             // 1I=>
-            Expr::EUnit => { return Ok((Type::TUnit, Box::new(self.clone()))); },
+            Expr::EUnit(l) => { return Ok((Type::TUnit(l.clone()), Box::new(self.clone()))); },
+
+            Expr::ELit(l,_) => { return Ok((Type::TAtom(l.clone()), Box::new(self.clone()))); },
 
             // ->I=> Original rule
             Expr::EAbs(x,e) => {
-                let xprime = fresh_var();
-                let alpha = fresh_tvar();
-                let beta = fresh_tvar();
+                let xprime = fresh_var(x.loc());
+                let alpha = fresh_tvar(x.loc());
+                let beta = fresh_tvar(e.loc());
                 let e_borrowed: &Expr = e.borrow();
-                let delta = self.appends(vec![
-                    ContextElim::CExists(alpha.clone()),
-                    ContextElim::CExists(beta.clone()),
-                    ContextElim::CVar(xprime.clone(),Type::TExists(alpha.clone()))
-                ]).typecheck(&subst(&Expr::EVar(xprime.clone()),x.clone(),e_borrowed), &Type::TExists(beta.clone())).map(|d| d.dropMarker(ContextElim::CVar(xprime.clone(), Type::TExists(alpha.clone()))))?;
-                return Ok((Type::TFun(Rc::new(Type::TExists(alpha.clone())), Rc::new(Type::TExists(beta.clone()))), Box::new(delta)));
-            }
+                let subst_res = subst(
+                    &Expr::EVar(xprime.clone()),
+                    x.clone(),
+                    e_borrowed
+                );
+                if ORIGINAL {
+                    let delta = self.appends(vec![
+                        ContextElim::CExists(alpha.clone()),
+                        ContextElim::CExists(beta.clone()),
+                        ContextElim::CVar(xprime.clone(),Type::TExists(alpha.clone()))
+                    ]).typecheck(
+                        &subst_res,
+                        &Type::TExists(beta.clone())
+                    ).map(|d| {
+                        d.dropMarker(
+                            ContextElim::CVar(
+                                xprime.clone(),
+                                Type::TExists(alpha.clone())
+                            )
+                        )
+                    })?;
+
+                    return Ok((
+                        Type::TFun(
+                            Rc::new(Type::TExists(alpha.clone())),
+                            Rc::new(Type::TExists(beta.clone()))
+                        ),
+                        Box::new(delta)
+                    ));
+                } else {
+                    println!("subst {:?}", subst_res);
+                    // Full inference (commented in original)
+                    let (delta, deltaprime) = self.appends(vec![
+                        ContextElim::CMarker(alpha.clone()),
+                        ContextElim::CExists(alpha.clone()),
+                        ContextElim::CExists(beta.clone()),
+                        ContextElim::CVar(xprime.clone(),Type::TExists(alpha.clone()))
+                    ]).typecheck(
+                        &subst_res,
+                        &Type::TExists(beta.clone())
+                    ).map(|d| {
+                        d.breakMarker(ContextElim::CMarker(alpha.clone()))
+                    })?;
+
+                    println!("after break: delta {:?}", delta);
+                    println!("after break: deltaprime {:?}", deltaprime);
+
+                    let tau = deltaprime.apply(&Type::TFun(Rc::new(Type::TExists(alpha.clone())), Rc::new(Type::TExists(beta.clone()))));
+                    let evars = deltaprime.unsolved();
+                    let uvars: Vec<(Polytype, TypeVar)> = evars.iter().map(|e| (Type::TVar(e.clone()), fresh_tvar(x.loc()))).collect();
+                    let uvar_names = uvars.iter().map(|(_,v)| v.clone()).collect();
+                    return Ok((
+                        tforalls(uvar_names, typeSubsts(uvars, tau)),
+                        Box::new(delta)
+                    ));
+                }
+            },
+
             // ->E
             Expr::EApp(e1,e2) => {
                 let (a, theta) = self.typesynth(e1)?;
@@ -307,7 +371,7 @@ impl TypeTheory for Context {
             // ForallApp
             Type::TForall(alpha,a) => {
                 // Do alpha conversion to avoid clashes
-                let alphaprime = fresh_tvar();
+                let alphaprime = fresh_tvar(typ.loc());
                 return self.snoc(
                     ContextElim::CExists(alphaprime.clone())
                 ).typeapplysynth(
@@ -322,8 +386,8 @@ impl TypeTheory for Context {
 
             // alpha^App
             Type::TExists(alpha) => {
-                let alpha1 = fresh_tvar();
-                let alpha2 = fresh_tvar();
+                let alpha1 = fresh_tvar(typ.loc());
+                let alpha2 = fresh_tvar(typ.loc());
                 let rcontext = Context::new(vec![
                     ContextElim::CExists(alpha2.clone()),
                     ContextElim::CExists(alpha1.clone()),

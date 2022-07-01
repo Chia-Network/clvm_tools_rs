@@ -4,9 +4,8 @@
 use std::borrow::Borrow;
 use std::rc::Rc;
 
-use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::{Srcloc, HasLoc};
-use crate::compiler::comptypes::{CompileErr, HelperForm, BodyForm};
+use crate::compiler::comptypes::CompileErr;
 
 use crate::compiler::types::ast::{
     CONTEXT_INCOMPLETE,
@@ -32,7 +31,9 @@ pub fn subst(eprime: &Expr, x: Var, expr: &Expr) -> Expr {
             }
         },
 
-        Expr::EUnit => Expr::EUnit,
+        Expr::EUnit(l) => Expr::EUnit(l.clone()),
+
+        Expr::ELit(l,n) => Expr::ELit(l.clone(),n.clone()),
 
         Expr::EAbs(xprime, e) => {
             if *xprime == x {
@@ -145,8 +146,12 @@ impl Context {
     pub fn typewf<const A: usize>(&self, typ: &Type<A>) -> bool {
         match typ {
             Type::TVar(alpha) => self.foralls().elem(&alpha),
-            Type::TUnit => true,
+            Type::TUnit(_) => true,
+            Type::TAny(_) => true,
+            Type::TAtom(_) => true,
+            Type::TNullable(t) => self.typewf(t.clone().borrow()),
             Type::TFun(a,b) => self.typewf(a.clone().borrow()) && self.typewf(b.clone().borrow()),
+            Type::TPair(a,b) => self.typewf(a.clone().borrow()) && self.typewf(b.clone().borrow()),
             Type::TForall(alpha,a) => self.snoc(ContextElim::CForall(alpha.clone())).typewf(a),
             Type::TExists(alpha) => self.existentials().elem(alpha)
         }
@@ -166,7 +171,7 @@ impl Context {
             return self.checkwf(a.loc());
         }
 
-        Err(CompileErr(a.loc(), format!("Malformed type: {:?}", self)))
+        Err(CompileErr(a.loc(), format!("Malformed type: {:?} in {:?}", a, self)))
     }
 
     pub fn find_solved(&self, v: &TypeVar) -> Option<Monotype> {
@@ -218,13 +223,17 @@ impl Context {
 
     pub fn apply(&self, typ: &Polytype) -> Polytype {
         match typ {
-            Type::TUnit => Type::TUnit,
+            Type::TUnit(l) => Type::TUnit(l.clone()),
+            Type::TAny(l) => Type::TAny(l.clone()),
+            Type::TAtom(l) => Type::TAtom(l.clone()),
             Type::TVar(v) => Type::TVar(v.clone()),
             Type::TForall(v,t) => Type::TForall(v.clone(),t.clone()),
             Type::TExists(v) => self.find_solved(v).map(|v| {
                 self.apply(&polytype(&v))
             }).unwrap_or_else(|| Type::TExists(v.clone())),
-            Type::TFun(t1,t2) => Type::TFun(Rc::new(self.apply(t1)), Rc::new(self.apply(t2)))
+            Type::TNullable(t) => Type::TNullable(Rc::new(self.apply(t))),
+            Type::TFun(t1,t2) => Type::TFun(Rc::new(self.apply(t1)), Rc::new(self.apply(t2))),
+            Type::TPair(t1,t2) => Type::TPair(Rc::new(self.apply(t1)), Rc::new(self.apply(t2)))
         }
     }
 

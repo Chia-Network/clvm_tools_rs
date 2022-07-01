@@ -5,17 +5,9 @@ use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use crate::compiler::sexp::SExp;
-use crate::compiler::srcloc::{Srcloc, HasLoc};
-use crate::compiler::comptypes::{CompileErr, HelperForm, BodyForm};
-
 use crate::compiler::types::ast::{TYPE_POLY, Monotype, Polytype, TypeVar, Type};
 
-fn tunit<const A: usize>() -> Type<A> { Type::TUnit }
-fn tvar<const A: usize>(s: String) -> Type<A> { Type::TVar(TypeVar(s)) }
-fn exists<const A: usize>(s: String) -> Type<A> { Type::TExists(TypeVar(s)) }
-
-fn tforalls(types: Vec<TypeVar>, pt_: Polytype) -> Polytype {
+pub fn tforalls(types: Vec<TypeVar>, pt_: Polytype) -> Polytype {
     let mut pt = pt_;
     for t in types.iter().rev() {
         pt = Type::TForall(t.clone(),Rc::new(pt.clone()));
@@ -25,34 +17,48 @@ fn tforalls(types: Vec<TypeVar>, pt_: Polytype) -> Polytype {
 
 pub fn monotype<const A: usize>(typ: &Type<A>) -> Option<Monotype> {
     match typ {
-        Type::TUnit => Some(Type::TUnit),
+        Type::TUnit(l) => Some(Type::TUnit(l.clone())),
+        Type::TAny(l) => Some(Type::TAny(l.clone())),
+        Type::TAtom(l) => Some(Type::TAtom(l.clone())),
         Type::TVar(v) => Some(Type::TVar(v.clone())),
         Type::TForall(_,_) => None,
         Type::TExists(v) => Some(Type::TExists(v.clone())),
-        Type::TFun(t1,t2) => {
-            monotype(t2.borrow()).and_then(|t2m| {
-                monotype(t1).map(|t1m| {
-                    Type::TFun(Rc::new(t1m.clone()),Rc::new(t2m.clone()))
-                })
+        Type::TNullable(t) => monotype(t.borrow()).map(|tm| {
+            Type::TNullable(Rc::new(tm.clone()))
+        }),
+        Type::TFun(t1,t2) => monotype(t2.borrow()).and_then(|t2m| {
+            monotype(t1).map(|t1m| {
+                Type::TFun(Rc::new(t1m.clone()),Rc::new(t2m.clone()))
             })
-        }
+        }),
+        Type::TPair(a,b) => monotype(a.borrow()).and_then(|am| {
+            monotype(b).map(|bm| {
+                Type::TPair(Rc::new(am.clone()),Rc::new(bm.clone()))
+            })
+        })
     }
 }
 
 pub fn polytype<const A: usize>(typ: &Type<A>) -> Polytype {
     match typ {
-        Type::TUnit => Type::TUnit,
+        Type::TUnit(l) => Type::TUnit(l.clone()),
+        Type::TAny(l) => Type::TAny(l.clone()),
+        Type::TAtom(l) => Type::TAtom(l.clone()),
         Type::TVar(v) => Type::TVar(v.clone()),
         Type::TForall(v,t) => Type::TForall(v.clone(),t.clone()),
         Type::TExists(v) => Type::TExists(v.clone()),
-        Type::TFun(t1,t2) => Type::TFun(Rc::new(polytype(t1)),Rc::new(polytype(t2)))
+        Type::TNullable(t) => Type::TNullable(Rc::new(polytype(t))),
+        Type::TFun(t1,t2) => Type::TFun(Rc::new(polytype(t1)),Rc::new(polytype(t2))),
+        Type::TPair(t1,t2) => Type::TPair(Rc::new(polytype(t1)),Rc::new(polytype(t2)))
     }
 }
 
 pub fn free_tvars<const A: usize>(typ: &Type<A>) -> HashSet<TypeVar> {
     let mut res = HashSet::new();
     match typ {
-        Type::TUnit => res,
+        Type::TUnit(_) => res,
+        Type::TAny(_) => res,
+        Type::TAtom(_) => res,
         Type::TVar(v) => {
             res.insert(v.clone());
             res
@@ -66,7 +72,14 @@ pub fn free_tvars<const A: usize>(typ: &Type<A>) -> HashSet<TypeVar> {
             res.insert(v.clone());
             res
         },
+        Type::TNullable(t) => {
+            res = free_tvars(t.borrow());
+            res
+        },
         Type::TFun(t1,t2) => {
+            free_tvars(t1).union(&free_tvars(t2.borrow())).map(|x| x.clone()).collect()
+        },
+        Type::TPair(t1,t2) => {
             free_tvars(t1).union(&free_tvars(t2.borrow())).map(|x| x.clone()).collect()
         }
     }
@@ -74,7 +87,9 @@ pub fn free_tvars<const A: usize>(typ: &Type<A>) -> HashSet<TypeVar> {
 
 pub fn typeSubst<const A: usize>(tprime: &Type<A>, v: &TypeVar, typ: &Type<A>) -> Type<A> {
     match typ {
-        Type::TUnit => Type::TUnit,
+        Type::TUnit(l) => Type::TUnit(l.clone()),
+        Type::TAny(l) => Type::TAny(l.clone()),
+        Type::TAtom(l) => Type::TAtom(l.clone()),
         Type::TVar(vprime) => {
             if *vprime == *v {
                 tprime.clone()
@@ -97,8 +112,15 @@ pub fn typeSubst<const A: usize>(tprime: &Type<A>, v: &TypeVar, typ: &Type<A>) -
                 Type::TExists(vprime.clone())
             }
         },
+        Type::TNullable(t) => {
+            let t_borrowed: &Type<A> = t.borrow();
+            Type::TNullable(Rc::new(typeSubst(tprime, v, t_borrowed)))
+        },
         Type::TFun(t1,t2) => {
             Type::TFun(Rc::new(typeSubst(tprime,v,t1)), Rc::new(typeSubst(tprime,v,t2)))
+        },
+        Type::TPair(t1,t2) => {
+            Type::TPair(Rc::new(typeSubst(tprime,v,t1)), Rc::new(typeSubst(tprime,v,t2)))
         }
     }
 }

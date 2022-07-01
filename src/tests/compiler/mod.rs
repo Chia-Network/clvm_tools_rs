@@ -8,6 +8,7 @@ mod clvm;
 mod compiler;
 mod evaluate;
 mod repl;
+mod types;
 mod usecheck;
 
 #[test]
