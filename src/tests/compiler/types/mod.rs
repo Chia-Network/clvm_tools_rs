@@ -125,3 +125,12 @@ fn test_lambda_type_with_constant_result() {
         true
     );
 }
+
+#[test]
+fn test_lambda_type_with_constant_unit_output() {
+    check_expression_against_type(
+        "(lambda x ())",
+        "((exists t0) -> Unit)",
+        true
+    );
+}
