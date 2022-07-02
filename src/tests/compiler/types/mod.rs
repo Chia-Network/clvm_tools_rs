@@ -134,3 +134,12 @@ fn test_lambda_type_with_constant_unit_output() {
         true
     );
 }
+
+#[test]
+fn test_lambda_type_with_constant_unit_output_as_nullable() {
+    check_expression_against_type(
+        "((lambda x ()) : (forall t (t -> (Nullable Atom))))",
+        "(forall t (t -> (Nullable Atom)))",
+        false
+    );
+}
