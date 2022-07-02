@@ -714,7 +714,7 @@ fn test_collatz_maybe_opt(opt: bool) {
         &"(4)".to_string(),
         opt,
     )
-        .unwrap();
+    .unwrap();
     assert_eq!(result.to_string(), "2");
 }
 
@@ -751,8 +751,8 @@ fn fancy_nested_let_bindings_should_work() {
         "}
         .to_string(),
         &"(1 2 3 100 99)".to_string(),
-        false
+        false,
     )
-        .unwrap();
+    .unwrap();
     assert_eq!(result.to_string(), "8");
 }
