@@ -714,14 +714,45 @@ fn test_collatz_maybe_opt(opt: bool) {
         &"(4)".to_string(),
         opt,
     )
-    .unwrap();
-    assert_eq!(result.to_string(), "(q . 2)");
+        .unwrap();
+    assert_eq!(result.to_string(), "2");
 }
 
+#[test]
 fn test_collatz() {
     test_collatz_maybe_opt(false);
 }
 
-fn test_collatz_opt() {
-    test_collatz_maybe_opt(true);
+#[test]
+fn fancy_nested_let_bindings_should_work() {
+    let result = run_string_maybe_opt(
+        &indoc! {"
+    (mod X
+     (include *standard-cl-21*)
+     (defun do-something (solutions se)
+        (if solutions
+             (let (
+                    (R (f solutions))
+                    (S (- se 99))
+                  )
+                (if (= (f solutions) 99)
+                    S
+                    (let ((something-else (+ se R)))
+                        (do-something (r solutions) something-else)
+                    )
+                )
+             )
+             100
+        )
+    )
+
+    (do-something X 1)
+    )
+        "}
+        .to_string(),
+        &"(1 2 3 100 99)".to_string(),
+        false
+    )
+        .unwrap();
+    assert_eq!(result.to_string(), "8");
 }

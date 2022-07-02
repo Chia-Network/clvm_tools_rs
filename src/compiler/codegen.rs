@@ -905,7 +905,24 @@ fn hoist_body_let_binding(
 
             let final_call = BodyForm::Call(l.clone(), call_args);
             (vec![generated_defun], Rc::new(final_call.clone()))
-        }
+        },
+        BodyForm::Call(l, list) => {
+            let mut vres = Vec::new();
+            let mut new_call_list = Vec::new();
+            new_call_list.push(list[0].clone());
+            for i in list.iter().skip(1) {
+                let (new_helper, new_arg) =
+                    hoist_body_let_binding(
+                        compiler,
+                        outer_context.clone(),
+                        args.clone(),
+                        i.clone()
+                    );
+                new_call_list.push(new_arg);
+                vres.append(&mut new_helper.clone());
+            }
+            (vres, Rc::new(BodyForm::Call(l.clone(), new_call_list)))
+        },
         _ => (Vec::new(), body.clone()),
     }
 }
