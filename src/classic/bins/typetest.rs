@@ -6,7 +6,6 @@ use clvm_tools_rs::compiler::comptypes::CompileErr;
 use clvm_tools_rs::compiler::sexp::parse_sexp;
 use clvm_tools_rs::compiler::srcloc::Srcloc;
 use clvm_tools_rs::compiler::typecheck::{parse_expr_sexp, standard_type_context};
-use clvm_tools_rs::compiler::types::ast::{TYPE_POLY, Context, Type};
 use clvm_tools_rs::compiler::types::theory::TypeTheory;
 
 fn main() {

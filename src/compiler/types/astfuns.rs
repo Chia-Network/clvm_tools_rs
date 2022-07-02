@@ -85,7 +85,7 @@ pub fn free_tvars<const A: usize>(typ: &Type<A>) -> HashSet<TypeVar> {
     }
 }
 
-pub fn typeSubst<const A: usize>(tprime: &Type<A>, v: &TypeVar, typ: &Type<A>) -> Type<A> {
+pub fn type_subst<const A: usize>(tprime: &Type<A>, v: &TypeVar, typ: &Type<A>) -> Type<A> {
     match typ {
         Type::TUnit(l) => Type::TUnit(l.clone()),
         Type::TAny(l) => Type::TAny(l.clone()),
@@ -102,7 +102,7 @@ pub fn typeSubst<const A: usize>(tprime: &Type<A>, v: &TypeVar, typ: &Type<A>) -
                 Type::TForall(vprime.clone(), t.clone())
             } else {
                 let t_borrowed: &Type<TYPE_POLY> = t.borrow();
-                Type::TForall(vprime.clone(), Rc::new(typeSubst(&polytype(tprime), v, t_borrowed)))
+                Type::TForall(vprime.clone(), Rc::new(type_subst(&polytype(tprime), v, t_borrowed)))
             }
         },
         Type::TExists(vprime) => {
@@ -114,21 +114,21 @@ pub fn typeSubst<const A: usize>(tprime: &Type<A>, v: &TypeVar, typ: &Type<A>) -
         },
         Type::TNullable(t) => {
             let t_borrowed: &Type<A> = t.borrow();
-            Type::TNullable(Rc::new(typeSubst(tprime, v, t_borrowed)))
+            Type::TNullable(Rc::new(type_subst(tprime, v, t_borrowed)))
         },
         Type::TFun(t1,t2) => {
-            Type::TFun(Rc::new(typeSubst(tprime,v,t1)), Rc::new(typeSubst(tprime,v,t2)))
+            Type::TFun(Rc::new(type_subst(tprime,v,t1)), Rc::new(type_subst(tprime,v,t2)))
         },
         Type::TPair(t1,t2) => {
-            Type::TPair(Rc::new(typeSubst(tprime,v,t1)), Rc::new(typeSubst(tprime,v,t2)))
+            Type::TPair(Rc::new(type_subst(tprime,v,t1)), Rc::new(type_subst(tprime,v,t2)))
         }
     }
 }
 
-pub fn typeSubsts<const A: usize>(substs: Vec<(Type<A>, TypeVar)>, t_: Type<A>) -> Type<A> {
+pub fn type_substs<const A: usize>(substs: Vec<(Type<A>, TypeVar)>, t_: Type<A>) -> Type<A> {
     let mut t = t_;
     for type_tv in substs.iter().rev() {
-        t = typeSubst(&type_tv.0, &type_tv.1, &t.clone());
+        t = type_subst(&type_tv.0, &type_tv.1, &t.clone());
     }
     t
 }

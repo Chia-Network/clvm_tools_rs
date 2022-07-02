@@ -123,7 +123,6 @@ pub fn parse_type_sexp<const A: usize>(
             // Function type
             // (x -> y)
             // (x -> . rest)
-
             if let SExp::Atom(l,a) = a.borrow() {
                 if a == &"exists".as_bytes().to_vec() {
                     return parse_type_exists(b.clone());
@@ -183,6 +182,9 @@ pub fn parse_expr_sexp(expr: Rc<SExp>) -> Result<Expr, CompileErr> {
             // (called-fun arg arg ...) -> EApp
             // (x : T) -> EAnno
             // (lambda arg ...) -> EAbs
+            // (some x)
+            // there is no none:
+            // we want Γ |- () <== (forall x (nullable x))
             if let Some(lst) = expr.proper_list() {
                 if lst.len() == 3 {
                     if let SExp::Atom(loc,name) = &lst[0] {
@@ -196,6 +198,29 @@ pub fn parse_expr_sexp(expr: Rc<SExp>) -> Result<Expr, CompileErr> {
                             return parse_expr_anno(&lst);
                         }
                     }
+                }
+
+                if lst.len() == 2 {
+                    if let SExp::Atom(loc,name) = &lst[0] {
+                        if &"some".as_bytes().to_vec() == name {
+                            let inner_exp = parse_expr_sexp(Rc::new(lst[1].clone()))?;
+                            return Ok(Expr::ESome(Rc::new(inner_exp)));
+                        }
+                    }
+                }
+
+                // I may change this to model all functions as unary, but
+                // it serves here.
+                if lst.len() > 1 {
+                    let mut res = parse_expr_sexp(Rc::new(lst[lst.len()-1].clone()))?;
+                    for e in lst.iter().rev().skip(1) {
+                        let new_expr = parse_expr_sexp(Rc::new(e.clone()))?;
+                        res = Expr::EApp(Rc::new(new_expr), Rc::new(res));
+                    }
+                    return Ok(res);
+                } else if lst.len() > 0 {
+                    // Just pretend (foo) is (foo ())
+                    return Ok(Expr::EApp(Rc::new(parse_expr_sexp(Rc::new(lst[0].clone()))?), Rc::new(Expr::EUnit(l.clone()))));
                 }
             }
         },

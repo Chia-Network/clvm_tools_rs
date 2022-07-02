@@ -45,6 +45,8 @@ pub fn subst(eprime: &Expr, x: Var, expr: &Expr) -> Expr {
 
         Expr::EApp(e1, e2) => Expr::EApp(Rc::new(subst(eprime, x.clone(), e1)), Rc::new(subst(eprime, x.clone(), e2))),
 
+        Expr::ESome(e) => Expr::ESome(Rc::new(subst(eprime, x.clone(), e))),
+
         Expr::EAnno(e, t) => Expr::EAnno(Rc::new(subst(eprime, x.clone(), e)), t.clone())
     }
 }
@@ -199,7 +201,7 @@ impl Context {
     }
 
     pub fn solve(&self, alpha: &TypeVar, tau: &Monotype) -> Option<Context> {
-        let (gamma_l, gamma_r) = self.breakMarker(ContextElim::CExists(alpha.clone()));
+        let (gamma_l, gamma_r) = self.break_marker(ContextElim::CExists(alpha.clone()));
         let mut gammaprime = gamma_l.0.clone();
         let mut gamma_r_copy = gamma_r.0.clone();
         gammaprime.push(ContextElim::CExistsSolved(alpha.clone(), tau.clone()));
@@ -212,7 +214,7 @@ impl Context {
     }
 
     pub fn insert_at(&self, c: ContextElim<CONTEXT_INCOMPLETE>, theta: Context) -> Context {
-        let (gamma_l, gamma_r) = self.breakMarker(c);
+        let (gamma_l, gamma_r) = self.break_marker(c);
         let mut result_list = gamma_l.0.clone();
         let mut theta_copy = theta.0.clone();
         let mut gamma_r_copy = gamma_r.0.clone();
@@ -238,7 +240,7 @@ impl Context {
     }
 
     pub fn ordered(&self, alpha: &TypeVar, beta: &TypeVar) -> bool {
-        let gamma_l = self.dropMarker(ContextElim::CExists(beta.clone()));
+        let gamma_l = self.drop_marker(ContextElim::CExists(beta.clone()));
         gamma_l.existentials().elem(alpha)
     }
 }
