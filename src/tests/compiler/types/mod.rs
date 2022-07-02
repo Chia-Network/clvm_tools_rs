@@ -143,3 +143,12 @@ fn test_lambda_type_with_constant_unit_output_as_nullable() {
         false
     );
 }
+
+#[test]
+fn test_lambda_identity_type_with_annotation() {
+    check_expression_against_type(
+        "((lambda x x) : (forall t (t -> t)))",
+        "(forall t (t -> t))",
+        false
+    );
+}
