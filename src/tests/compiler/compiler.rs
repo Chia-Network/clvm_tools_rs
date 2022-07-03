@@ -756,3 +756,40 @@ fn fancy_nested_let_bindings_should_work() {
     .unwrap();
     assert_eq!(result.to_string(), "8");
 }
+
+#[test]
+fn let_as_argument() {
+    let result = run_string_maybe_opt(
+        &indoc! {"
+    (mod (X)
+     (include *standard-cl-21*)
+     (defun twice (x) (* x 2))
+     (defun plus (x y) (+ x y))
+     (plus (let ((t (twice X))) t) 3))
+        "}
+        .to_string(),
+        &"(5)".to_string(),
+        false,
+    )
+        .unwrap();
+    assert_eq!(result.to_string(), "13");
+}
+
+#[test]
+fn recursive_let_complicated_arguments() {
+    let result = run_string_maybe_opt(
+        &indoc! {"
+    (mod (X Y)
+     (include *standard-cl-21*)
+     (defun G (A (@ pt (X Y))) (+ A X Y))
+     (defun F (@ pt (X Y)) (let ((X1 (+ X 1)) (Y1 (+ Y 3))) (G X1 (let ((p (list X1 Y1))) p))))
+     (F X Y)
+     )
+        "}
+        .to_string(),
+        &"(7 13)".to_string(),
+        false,
+    )
+        .unwrap();
+    assert_eq!(result.to_string(), "32");
+}
