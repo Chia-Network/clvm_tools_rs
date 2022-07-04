@@ -28,7 +28,9 @@ fn run_string_maybe_opt(
     let runner = Rc::new(DefaultProgramRunner::new());
     let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let srcloc = Srcloc::start(&"*test*".to_string());
-    opts = opts.set_frontend_opt(fe_opt);
+    opts = opts.
+        set_frontend_opt(fe_opt).
+        set_search_paths(&vec!["resources/tests".to_string()]);
     let sexp_args = parse_sexp(srcloc.clone(), &args).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
 
     compile_file(
@@ -726,11 +728,118 @@ fn test_collatz() {
 #[test]
 fn read_of_hex_constant_in_modern_chialisp() {
     let result = run_string(
-        &indoc! {"(sha256 (q . 1) (q . 0xf22ada22a0ed015000ea157013ee62dc6ce337a649ec01054fc62ed6caac7eaf))"}
+        &indoc! {"(mod () (include *standard-cl-21*) (sha256 (q . 1) (q . 0xf22ada22a0ed015000ea157013ee62dc6ce337a649ec01054fc62ed6caac7eaf)))"}
         .to_string(),
         &"()".to_string(),
     )
         .unwrap();
 
     assert_eq!(result.to_string(), "36364122602940516403027890844760998025315693007634105146514094828976803085567".to_string());
+}
+
+#[test]
+fn hash_handling_test_2() {
+    let result = run_string(
+        &indoc! {"(mod () (include *standard-cl-21*) (sha256 (q . 1) (q . 1)))"}
+        .to_string(),
+        &"()".to_string()
+    )
+        .unwrap();
+
+    assert_eq!(result.to_string(), "-44412188149083219915772186748035909266791016930429887947443501395007119841358");
+}
+
+#[test]
+fn hash_handling_test_3() {
+    let result = run_string(
+        &indoc! {"(mod () (include *standard-cl-21*) (sha256 1 0))"}
+        .to_string(),
+        &"()".to_string()
+    )
+        .unwrap();
+
+    assert_eq!(result.to_string(), "34356466678672179216206944866734405838331831190171667647615530531663699592602");
+}
+
+#[test]
+fn sebastian_hash_test_1() {
+    let result = run_string(
+        &indoc! {"
+(mod (MOD_HASH TOKEN_A_AMOUNT TOKEN_B_AMOUNT K token_a_delta token_b_delta)
+    (include \"condition_codes.clvm\")
+    (include \"curry-and-treehash.clinc\")
+    (include *standard-cl-21*)
+
+    (defun sha256tree1 (TREE)
+        (if (l TREE)
+            (sha256 2 (sha256tree1 (f TREE)) (sha256tree1 (r TREE)))
+            (sha256 1 TREE)
+        )
+    )
+    (defun return-new-coin (mod_hash new_token_a_amount new_token_b_amount K)
+        (list (list mod_hash (sha256tree1 mod_hash))
+            (list
+                CREATE_COIN
+               (puzzle-hash-of-curried-function
+                    mod_hash (sha256tree1 mod_hash)
+                )
+                1
+            )
+        )
+    )
+
+    (let (
+         (new_token_a_amount (+ TOKEN_A_AMOUNT token_a_delta))
+         (new_token_b_amount (+ TOKEN_B_AMOUNT token_b_delta))
+        )
+        (if (all (= K (* new_token_a_amount new_token_b_amount)) (> new_token_a_amount 0) (> new_token_b_amount 0) )
+            (return-new-coin MOD_HASH new_token_a_amount new_token_b_amount K)
+            (x new_token_a_amount new_token_b_amount)
+        )
+    ))"}
+        .to_string(),
+        &"(0xf22ada22a0ed015000ea157013ee62dc6ce337a649ec01054fc62ed6caac7eaf 10000 200 2000000 -2000 50)".to_string()
+    )
+        .unwrap();
+
+    assert_eq!(result.to_string(), "((0xf22ada22a0ed015000ea157013ee62dc6ce337a649ec01054fc62ed6caac7eaf 36364122602940516403027890844760998025315693007634105146514094828976803085567) (51 -54330418644829767769717664495663952010367061369724157609947295940464695774007 1))");
+}
+
+#[test]
+fn sebastian_hash_test_2() {
+    let result = run_string(
+        &indoc! {"
+(mod (MOD_HASH TOKEN_A_AMOUNT TOKEN_B_AMOUNT K token_a_delta token_b_delta)
+    (include \"condition_codes.clvm\")
+    (include \"curry-and-treehash.clinc\")
+
+    (defun sha256tree1 (TREE)
+        (if (l TREE)
+            (sha256 2 (sha256tree1 (f TREE)) (sha256tree1 (r TREE)))
+            (sha256 1 TREE)
+        )
+    )
+    (defun return-new-coin (mod_hash new_token_a_amount new_token_b_amount K)
+        (list (list mod_hash (sha256tree1 mod_hash))
+            (list
+                CREATE_COIN
+               (puzzle-hash-of-curried-function
+                    mod_hash (sha256tree1 mod_hash)
+                )
+                1
+            )
+        )
+    )
+
+        (if (all (= K (* (+ TOKEN_A_AMOUNT token_a_delta) (+ TOKEN_B_AMOUNT token_b_delta))) (> (+ TOKEN_A_AMOUNT token_a_delta) 0) (> (+ TOKEN_B_AMOUNT token_b_delta) 0) )
+            (return-new-coin MOD_HASH (+ TOKEN_A_AMOUNT token_a_delta) (+ TOKEN_B_AMOUNT token_b_delta) K)
+            (x (+ TOKEN_A_AMOUNT token_a_delta) (+ TOKEN_B_AMOUNT token_b_delta))
+        )
+    )"}
+        .to_string(),
+        &"(0xf22ada22a0ed015000ea157013ee62dc6ce337a649ec01054fc62ed6caac7eaf 10000 200 2000000 -2000 50)".to_string()
+    )
+        .unwrap();
+
+    assert_eq!(result.to_string(), "((0xf22ada22a0ed015000ea157013ee62dc6ce337a649ec01054fc62ed6caac7eaf 36364122602940516403027890844760998025315693007634105146514094828976803085567) (51 -54330418644829767769717664495663952010367061369724157609947295940464695774007 1))");
 }

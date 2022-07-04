@@ -8,6 +8,7 @@ use num_traits::{zero, Num};
 
 use crate::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType};
 use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes, TConvertOption};
+use crate::compiler::prims::prims;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, u8_from_number, Number};
 
@@ -134,11 +135,27 @@ fn from_hex(l: Srcloc, v: &Vec<u8>) -> SExp {
 fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
     let alen = v.len();
     if alen > 1 && v[0] == b'#' {
+        // Search prims for appropriate primitive
+        let want_name = v[1..].to_vec();
+        for p in prims() {
+            if want_name == p.0 {
+                return p.1.clone();
+            }
+        }
+
+        // Fallback (probably)
         SExp::Atom(l, v[1..].to_vec())
     } else {
         match matches_integral(&v) {
             Integral::Hex => from_hex(l, &v),
-            Integral::Decimal => SExp::Integer(l, normalize_int(v, 10)),
+            Integral::Decimal => {
+                let intval = normalize_int(v, 10);
+                if intval == bi_zero() {
+                    SExp::Nil(l)
+                } else {
+                    SExp::Integer(l, intval)
+                }
+            },
             Integral::NotIntegral => SExp::Atom(l, v),
         }
     }
