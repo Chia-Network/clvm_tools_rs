@@ -103,7 +103,7 @@ fn test_last_of_pwcoin_1() {
             "  )",
             "(doit \"hello\" 0xdeadbeef 1)"
         ]).unwrap().unwrap(),
-        "(q (51 3735928559 1))"
+        "(q (51 0xdeadbeef 1))"
     );
 }
 
@@ -136,7 +136,7 @@ fn test_last_of_pwcoin_2() {
             "  (x)",
             "  )"
         ]).unwrap().unwrap(),
-        "(q (51 3735928559 1))"
+        "(q (51 0xdeadbeef 1))"
     );
 }
 

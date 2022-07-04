@@ -3,6 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::string::String;
 
+use binascii::{hex2bin, bin2hex};
 use num_traits::{zero, Num};
 
 use crate::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType};
@@ -120,13 +121,23 @@ fn normalize_int(v: Vec<u8>, base: u32) -> Number {
     Number::from_str_radix(&s, base).unwrap()
 }
 
+// Hex values are _not_ numbers, they're byte strings expressed in hexadecimal
+// while they correspond numerically, integral constants are byte-padded to the
+// left to retain their sign and hex constants are considered unsigned so _not_
+// padded.
+fn from_hex(l: Srcloc, v: &Vec<u8>) -> SExp {
+    let mut result = vec![0; (v.len() - 2) / 2];
+    hex2bin(&v[2..], &mut result).expect("should convert from hex");
+    SExp::QuotedString(l, b'"', result)
+}
+
 fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
     let alen = v.len();
     if alen > 1 && v[0] == b'#' {
         SExp::Atom(l, v[1..].to_vec())
     } else {
         match matches_integral(&v) {
-            Integral::Hex => SExp::Integer(l, normalize_int(v[2..].to_vec(), 16)),
+            Integral::Hex => from_hex(l, &v),
             Integral::Decimal => SExp::Integer(l, normalize_int(v, 10)),
             Integral::NotIntegral => SExp::Atom(l, v),
         }
@@ -231,7 +242,16 @@ impl SExp {
             SExp::Nil(_) => "()".to_string(),
             SExp::Cons(_, a, b) => format!("({})", list_no_parens(a, b)),
             SExp::Integer(_, v) => v.to_string(),
-            SExp::QuotedString(_, q, s) => format!("\"{}\"", escape_quote(*q, s)),
+            SExp::QuotedString(_, q, s) => {
+                if printable(s) {
+                    format!("\"{}\"", escape_quote(*q, s))
+                } else {
+                    let vlen = s.len() * 2;
+                    let mut outbuf = vec![0; vlen];
+                    bin2hex(s, &mut outbuf).expect("should be able to convert unprintable string to hex");
+                    format!("0x{}", std::str::from_utf8(&outbuf).expect("only hex digits expected"))
+                }
+            },
             SExp::Atom(l, a) => {
                 if a.is_empty() {
                     "()".to_string()

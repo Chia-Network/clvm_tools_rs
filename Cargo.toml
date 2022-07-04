@@ -31,6 +31,7 @@ sha2 = "0.9.5"
 yamlette = "0.0.8"
 tempfile = "3.3.0"
 clvmr = "0.1.21"
+binascii = "0.1.4"
 
 [patch.crates-io]
 skimmer = { git = "https://github.com/dnsl48/skimmer", rev = "ca914ef624ecf39a75ed7afef10e7838fffe9127" }

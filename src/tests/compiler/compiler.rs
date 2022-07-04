@@ -248,7 +248,7 @@ fn run_test_7_maybe_opt(opt: bool) {
         ).unwrap();
     assert_eq!(
         result.to_string(),
-        "((51 305419896 1000000000))".to_string()
+        "((51 0x12345678 1000000000))".to_string()
     );
 }
 
@@ -547,7 +547,7 @@ fn test_defconstant() {
 
     assert_eq!(
         result.to_string(),
-        "((51 43124150325653191095732712509762329830013206679743532022320461771503765780085 2))"
+        "((51 0x5f5767744f91c1c326d927a63d9b34fa7035c10e3eb838c44e3afe127c1b7675 2))"
             .to_string()
     );
 }
@@ -685,7 +685,7 @@ fn test_at_destructure_5() {
         .to_string(),
         &"(1 (2 3) 4)".to_string(),
     )
-    .unwrap();
+        .unwrap();
 
     assert_eq!(result.to_string(), "4".to_string());
 }
@@ -715,13 +715,22 @@ fn test_collatz_maybe_opt(opt: bool) {
         opt,
     )
     .unwrap();
-    assert_eq!(result.to_string(), "(q . 2)");
+    assert_eq!(result.to_string(), "2");
 }
 
+#[test]
 fn test_collatz() {
     test_collatz_maybe_opt(false);
 }
 
-fn test_collatz_opt() {
-    test_collatz_maybe_opt(true);
+#[test]
+fn read_of_hex_constant_in_modern_chialisp() {
+    let result = run_string(
+        &indoc! {"(sha256 (q . 1) (q . 0xf22ada22a0ed015000ea157013ee62dc6ce337a649ec01054fc62ed6caac7eaf))"}
+        .to_string(),
+        &"()".to_string(),
+    )
+        .unwrap();
+
+    assert_eq!(result.to_string(), "36364122602940516403027890844760998025315693007634105146514094828976803085567".to_string());
 }
