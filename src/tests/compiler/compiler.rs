@@ -793,3 +793,47 @@ fn recursive_let_complicated_arguments() {
         .unwrap();
     assert_eq!(result.to_string(), "32");
 }
+
+#[test]
+fn test_let_structure_access_1() {
+    let result = run_string_maybe_opt(
+        &indoc! {"
+    (mod (X Y)
+      (include *standard-cl-21*)
+      (let ((a 1)
+            (b 2))
+        (let ((A (+ a 1))
+               (XX (+ X 1))
+               (C (+ b b)))
+         (if Y
+            (let ((D (+ C 1))
+                  (E (+ XX Y)))
+              (c D E)
+              )
+            (let ((D XX)
+                  (E (+ XX Y)))
+              (c D E)
+              )
+          )
+         )
+       )
+      )
+        "}
+        .to_string(),
+        &"(7 13)".to_string(),
+        false,
+    )
+        .unwrap();
+    // a = 1
+    // b = 2
+    // A = 2
+    // XX = X + 1
+    // C = 2 + 2
+    // if Y
+    //   D = 5
+    //   E = X + Y + 1
+    // else
+    //   D = X + 1
+    //   E = X + Y + 1
+    assert_eq!(result.to_string(), "(5 . 21)");
+}
