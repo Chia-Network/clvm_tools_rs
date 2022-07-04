@@ -881,3 +881,21 @@ fn test_let_structure_access_2() {
     //   E = X + Y + 1
     assert_eq!(result.to_string(), "(5 . 21)");
 }
+
+#[test]
+fn test_let_inline_1() {
+    let result = run_string_maybe_opt(
+        &indoc! {"
+    (mod (G)
+      (include *standard-cl-21*)
+      (defun-inline F (X) (let ((Y (* X 2))) (+ Y 1)))
+      (F G)
+      )
+        "}
+        .to_string(),
+        &"(5)".to_string(),
+        false,
+    )
+        .unwrap();
+    assert_eq!(result.to_string(), "11");
+}
