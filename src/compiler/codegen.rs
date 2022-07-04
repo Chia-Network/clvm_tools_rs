@@ -870,6 +870,41 @@ fn hoist_body_let_binding(
 ) -> (Vec<HelperForm>, Rc<BodyForm>) {
     println!("hoist {}", body.to_sexp().to_string());
     match body.borrow() {
+        BodyForm::Let(l, LetFormKind::Sequential, bindings, body) => {
+            if bindings.is_empty() {
+                return (vec![], body.clone())
+            }
+
+            // If we're here, we're in the middle of hoisting.
+            // Simply slice one binding and do it again.
+            let new_sub_expr =
+                if bindings.len() == 1 {
+                    // There is one binding, so we just need to put body below
+                    body.clone()
+                } else {
+                    // Slice other bindings
+                    let sub_bindings =
+                        bindings.iter().skip(1).map(|x| x.clone()).collect();
+                    Rc::new(BodyForm::Let(
+                        l.clone(),
+                        LetFormKind::Sequential,
+                        sub_bindings,
+                        body.clone()
+                    ))
+                };
+
+            hoist_body_let_binding(
+                compiler,
+                outer_context.clone(),
+                args.clone(),
+                Rc::new(BodyForm::Let(
+                    l.clone(),
+                    LetFormKind::Parallel,
+                    vec![bindings[0].clone()],
+                    new_sub_expr
+                ))
+            )
+        },
         BodyForm::Let(l, LetFormKind::Parallel, bindings, body) => {
             let mut out_defuns = Vec::new();
             let defun_name = gensym("letbinding".as_bytes().to_vec());
