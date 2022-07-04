@@ -28,9 +28,9 @@ fn run_string_maybe_opt(
     let runner = Rc::new(DefaultProgramRunner::new());
     let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let srcloc = Srcloc::start(&"*test*".to_string());
-    opts = opts.
-        set_frontend_opt(fe_opt).
-        set_search_paths(&vec!["resources/tests".to_string()]);
+    opts = opts
+        .set_frontend_opt(fe_opt)
+        .set_search_paths(&vec!["resources/tests".to_string()]);
     let sexp_args = parse_sexp(srcloc.clone(), &args).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
 
     compile_file(
@@ -549,8 +549,7 @@ fn test_defconstant() {
 
     assert_eq!(
         result.to_string(),
-        "((51 0x5f5767744f91c1c326d927a63d9b34fa7035c10e3eb838c44e3afe127c1b7675 2))"
-            .to_string()
+        "((51 0x5f5767744f91c1c326d927a63d9b34fa7035c10e3eb838c44e3afe127c1b7675 2))".to_string()
     );
 }
 
@@ -687,7 +686,7 @@ fn test_at_destructure_5() {
         .to_string(),
         &"(1 (2 3) 4)".to_string(),
     )
-        .unwrap();
+    .unwrap();
 
     assert_eq!(result.to_string(), "4".to_string());
 }
@@ -734,31 +733,38 @@ fn read_of_hex_constant_in_modern_chialisp() {
     )
         .unwrap();
 
-    assert_eq!(result.to_string(), "36364122602940516403027890844760998025315693007634105146514094828976803085567".to_string());
+    assert_eq!(
+        result.to_string(),
+        "36364122602940516403027890844760998025315693007634105146514094828976803085567".to_string()
+    );
 }
 
 #[test]
 fn hash_handling_test_2() {
     let result = run_string(
-        &indoc! {"(mod () (include *standard-cl-21*) (sha256 (q . 1) (q . 1)))"}
-        .to_string(),
-        &"()".to_string()
+        &indoc! {"(mod () (include *standard-cl-21*) (sha256 (q . 1) (q . 1)))"}.to_string(),
+        &"()".to_string(),
     )
-        .unwrap();
+    .unwrap();
 
-    assert_eq!(result.to_string(), "-44412188149083219915772186748035909266791016930429887947443501395007119841358");
+    assert_eq!(
+        result.to_string(),
+        "-44412188149083219915772186748035909266791016930429887947443501395007119841358"
+    );
 }
 
 #[test]
 fn hash_handling_test_3() {
     let result = run_string(
-        &indoc! {"(mod () (include *standard-cl-21*) (sha256 1 0))"}
-        .to_string(),
-        &"()".to_string()
+        &indoc! {"(mod () (include *standard-cl-21*) (sha256 1 0))"}.to_string(),
+        &"()".to_string(),
     )
-        .unwrap();
+    .unwrap();
 
-    assert_eq!(result.to_string(), "34356466678672179216206944866734405838331831190171667647615530531663699592602");
+    assert_eq!(
+        result.to_string(),
+        "34356466678672179216206944866734405838331831190171667647615530531663699592602"
+    );
 }
 
 #[test]

@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::string::String;
 
-use binascii::{hex2bin, bin2hex};
+use binascii::{bin2hex, hex2bin};
 use num_traits::{zero, Num};
 
 use crate::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType};
@@ -155,7 +155,7 @@ fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
                 } else {
                     SExp::Integer(l, intval)
                 }
-            },
+            }
             Integral::NotIntegral => SExp::Atom(l, v),
         }
     }
@@ -265,10 +265,14 @@ impl SExp {
                 } else {
                     let vlen = s.len() * 2;
                     let mut outbuf = vec![0; vlen];
-                    bin2hex(s, &mut outbuf).expect("should be able to convert unprintable string to hex");
-                    format!("0x{}", std::str::from_utf8(&outbuf).expect("only hex digits expected"))
+                    bin2hex(s, &mut outbuf)
+                        .expect("should be able to convert unprintable string to hex");
+                    format!(
+                        "0x{}",
+                        std::str::from_utf8(&outbuf).expect("only hex digits expected")
+                    )
                 }
-            },
+            }
             SExp::Atom(l, a) => {
                 if a.is_empty() {
                     "()".to_string()
