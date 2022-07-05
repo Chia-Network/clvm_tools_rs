@@ -725,6 +725,183 @@ fn test_collatz() {
 }
 
 #[test]
+fn fancy_nested_let_bindings_should_work() {
+    let result = run_string_maybe_opt(
+        &indoc! {"
+    (mod X
+     (include *standard-cl-21*)
+     (defun do-something (solutions se)
+        (if solutions
+             (let (
+                    (R (f solutions))
+                    (S (- se 99))
+                  )
+                (if (= (f solutions) 99)
+                    S
+                    (let ((something-else (+ se R)))
+                        (do-something (r solutions) something-else)
+                    )
+                )
+             )
+             100
+        )
+    )
+
+    (do-something X 1)
+    )
+        "}
+        .to_string(),
+        &"(1 2 3 100 99)".to_string(),
+        false,
+    )
+    .unwrap();
+    assert_eq!(result.to_string(), "8");
+}
+
+#[test]
+fn let_as_argument() {
+    let result = run_string_maybe_opt(
+        &indoc! {"
+    (mod (X)
+     (include *standard-cl-21*)
+     (defun twice (x) (* x 2))
+     (defun plus (x y) (+ x y))
+     (plus (let ((t (twice X))) t) 3))
+        "}
+        .to_string(),
+        &"(5)".to_string(),
+        false,
+    )
+    .unwrap();
+    assert_eq!(result.to_string(), "13");
+}
+
+#[test]
+fn recursive_let_complicated_arguments() {
+    let result = run_string_maybe_opt(
+        &indoc! {"
+    (mod (X Y)
+     (include *standard-cl-21*)
+     (defun G (A (@ pt (X Y))) (+ A X Y))
+     (defun F (@ pt (X Y)) (let ((X1 (+ X 1)) (Y1 (+ Y 3))) (G X1 (let ((p (list X1 Y1))) p))))
+     (F X Y)
+     )
+        "}
+        .to_string(),
+        &"(7 13)".to_string(),
+        false,
+    )
+    .unwrap();
+    assert_eq!(result.to_string(), "32");
+}
+
+#[test]
+fn test_let_structure_access_1() {
+    let result = run_string_maybe_opt(
+        &indoc! {"
+    (mod (X Y)
+      (include *standard-cl-21*)
+      (let ((a 1)
+            (b 2))
+        (let ((A (+ a 1))
+               (XX (+ X 1))
+               (C (+ b b)))
+         (if Y
+            (let ((D (+ C 1))
+                  (E (+ XX Y)))
+              (c D E)
+              )
+            (let ((D XX)
+                  (E (+ XX Y)))
+              (c D E)
+              )
+          )
+         )
+       )
+      )
+        "}
+        .to_string(),
+        &"(7 13)".to_string(),
+        false,
+    )
+    .unwrap();
+    // a = 1
+    // b = 2
+    // A = 2
+    // XX = X + 1
+    // C = 2 + 2
+    // if Y
+    //   D = 5
+    //   E = X + Y + 1
+    // else
+    //   D = X + 1
+    //   E = X + Y + 1
+    assert_eq!(result.to_string(), "(5 . 21)");
+}
+
+#[test]
+fn test_let_structure_access_2() {
+    let result = run_string_maybe_opt(
+        &indoc! {"
+    (mod (X Y)
+      (include *standard-cl-21*)
+      (let ((a 1)
+            (b 2))
+        (let* ((A (+ a 1))
+               (XX (+ X 1))
+               (C (+ A b)))
+         (if Y
+            (let ((D (+ C 1))
+                  (E (+ XX Y)))
+              (c D E)
+              )
+            (let ((D XX)
+                  (E (+ XX Y)))
+              (c D E)
+              )
+          )
+         )
+       )
+      )
+        "}
+        .to_string(),
+        &"(7 13)".to_string(),
+        false,
+    )
+    .unwrap();
+    // a = 1
+    // b = 2
+    // A = 2
+    // XX = X + 1
+    // C = 2 + 2
+    // if Y
+    //   D = 5
+    //   E = X + Y + 1
+    // else
+    //   D = X + 1
+    //   E = X + Y + 1
+    assert_eq!(result.to_string(), "(5 . 21)");
+}
+
+#[test]
+fn test_let_inline_1() {
+    let result = run_string_maybe_opt(
+        &indoc! {"
+    (mod (G)
+      (include *standard-cl-21*)
+      (defun-inline F (X) (let ((Y (* X 2))) (+ Y 1)))
+      (F G)
+      )
+        "}
+        .to_string(),
+        &"(5)".to_string(),
+        false,
+    )
+    .unwrap();
+    assert_eq!(result.to_string(), "11");
+}
+
+#[test]
 fn read_of_hex_constant_in_modern_chialisp() {
     let result = run_string(
         &indoc! {"(mod () (include *standard-cl-21*) (sha256 (q . 1) (q . 0xf22ada22a0ed015000ea157013ee62dc6ce337a649ec01054fc62ed6caac7eaf)))"}
