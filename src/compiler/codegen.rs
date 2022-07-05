@@ -868,7 +868,6 @@ fn hoist_body_let_binding(
     args: Rc<SExp>,
     body: Rc<BodyForm>,
 ) -> (Vec<HelperForm>, Rc<BodyForm>) {
-    println!("hoist {}", body.to_sexp().to_string());
     match body.borrow() {
         BodyForm::Let(l, LetFormKind::Sequential, bindings, body) => {
             if bindings.is_empty() {
