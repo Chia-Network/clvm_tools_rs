@@ -872,26 +872,24 @@ fn hoist_body_let_binding(
     match body.borrow() {
         BodyForm::Let(l, LetFormKind::Sequential, bindings, body) => {
             if bindings.is_empty() {
-                return (vec![], body.clone())
+                return (vec![], body.clone());
             }
 
             // If we're here, we're in the middle of hoisting.
             // Simply slice one binding and do it again.
-            let new_sub_expr =
-                if bindings.len() == 1 {
-                    // There is one binding, so we just need to put body below
-                    body.clone()
-                } else {
-                    // Slice other bindings
-                    let sub_bindings =
-                        bindings.iter().skip(1).map(|x| x.clone()).collect();
-                    Rc::new(BodyForm::Let(
-                        l.clone(),
-                        LetFormKind::Sequential,
-                        sub_bindings,
-                        body.clone()
-                    ))
-                };
+            let new_sub_expr = if bindings.len() == 1 {
+                // There is one binding, so we just need to put body below
+                body.clone()
+            } else {
+                // Slice other bindings
+                let sub_bindings = bindings.iter().skip(1).map(|x| x.clone()).collect();
+                Rc::new(BodyForm::Let(
+                    l.clone(),
+                    LetFormKind::Sequential,
+                    sub_bindings,
+                    body.clone(),
+                ))
+            };
 
             hoist_body_let_binding(
                 compiler,
@@ -901,10 +899,10 @@ fn hoist_body_let_binding(
                     l.clone(),
                     LetFormKind::Parallel,
                     vec![bindings[0].clone()],
-                    new_sub_expr
-                ))
+                    new_sub_expr,
+                )),
             )
-        },
+        }
         BodyForm::Let(l, LetFormKind::Parallel, bindings, body) => {
             let mut out_defuns = Vec::new();
             let defun_name = gensym("letbinding".as_bytes().to_vec());
@@ -915,13 +913,13 @@ fn hoist_body_let_binding(
                     compiler,
                     outer_context.clone(),
                     args.clone(),
-                    b.body.clone()
+                    b.body.clone(),
                 );
                 out_defuns.append(&mut new_helpers);
                 revised_bindings.push(Rc::new(Binding {
                     loc: b.loc.clone(),
                     name: b.name.clone(),
-                    body: new_binding
+                    body: new_binding,
                 }));
             }
 
@@ -961,7 +959,7 @@ fn hoist_body_let_binding(
 
             let final_call = BodyForm::Call(l.clone(), call_args);
             (out_defuns, Rc::new(final_call.clone()))
-        },
+        }
         BodyForm::Call(l, list) => {
             let mut vres = Vec::new();
             let mut new_call_list = Vec::new();

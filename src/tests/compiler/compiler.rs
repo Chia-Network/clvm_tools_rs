@@ -772,7 +772,7 @@ fn let_as_argument() {
         &"(5)".to_string(),
         false,
     )
-        .unwrap();
+    .unwrap();
     assert_eq!(result.to_string(), "13");
 }
 
@@ -791,7 +791,7 @@ fn recursive_let_complicated_arguments() {
         &"(7 13)".to_string(),
         false,
     )
-        .unwrap();
+    .unwrap();
     assert_eq!(result.to_string(), "32");
 }
 
@@ -824,7 +824,7 @@ fn test_let_structure_access_1() {
         &"(7 13)".to_string(),
         false,
     )
-        .unwrap();
+    .unwrap();
     // a = 1
     // b = 2
     // A = 2
@@ -868,7 +868,7 @@ fn test_let_structure_access_2() {
         &"(7 13)".to_string(),
         false,
     )
-        .unwrap();
+    .unwrap();
     // a = 1
     // b = 2
     // A = 2
@@ -897,7 +897,7 @@ fn test_let_inline_1() {
         &"(5)".to_string(),
         false,
     )
-        .unwrap();
+    .unwrap();
     assert_eq!(result.to_string(), "11");
 }
 
