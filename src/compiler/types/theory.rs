@@ -3,6 +3,7 @@
 
 use std::borrow::Borrow;
 use std::rc::Rc;
+use log::debug;
 
 use crate::compiler::comptypes::CompileErr;
 use crate::compiler::srcloc::HasLoc;
@@ -23,7 +24,8 @@ use crate::compiler::types::astfuns::{
 };
 use crate::compiler::types::context::{HasElem};
 use crate::compiler::types::namegen::{fresh_var, fresh_tvar};
-use crate::compiler::types::context::{subst};
+use crate::compiler::types::context::subst;
+use crate::compiler::typecheck::TheoryToSExp;
 
 const ORIGINAL: bool = false;
 
@@ -42,7 +44,7 @@ impl TypeTheory for Context {
     //
     // Given some morphism Delta on Gamma, B element Delta checks as A in Gamma
     fn subtype(&self, typ1: &Polytype, typ2: &Polytype) -> Result<Box<Self>, CompileErr> {
-        println!("subtype {:?} {:?}", typ1, typ2);
+        debug!("subtype {:?} {:?}", typ1, typ2);
         let _ = self.checkwftype(typ1)?;
         let _ = self.checkwftype(typ2)?;
         match (typ1, typ2) {
@@ -279,6 +281,7 @@ impl TypeTheory for Context {
     // | Type synthesising:
     //   typesynth Γ e = (A, Δ) <=> Γ |- e => A -| Δ
     fn typesynth(&self, expr: &Expr) -> Result<(Polytype, Box<Self>), CompileErr> {
+        debug!("typesynth {}", expr.to_sexp().to_string());
         let _ = self.checkwf(expr.loc());
         match expr {
             // Var
@@ -337,7 +340,7 @@ impl TypeTheory for Context {
                         Box::new(delta)
                     ));
                 } else {
-                    println!("subst {:?}", subst_res);
+                    debug!("subst {:?}", subst_res);
                     // Full inference (commented in original)
                     let (delta, deltaprime) = self.appends(vec![
                         ContextElim::CMarker(alpha.clone()),
@@ -351,8 +354,8 @@ impl TypeTheory for Context {
                         d.break_marker(ContextElim::CMarker(alpha.clone()))
                     })?;
 
-                    println!("after break: delta {:?}", delta);
-                    println!("after break: deltaprime {:?}", deltaprime);
+                    debug!("after break: delta {:?}", delta);
+                    debug!("after break: deltaprime {:?}", deltaprime);
 
                     let tau = deltaprime.apply(&Type::TFun(Rc::new(Type::TExists(alpha.clone())), Rc::new(Type::TExists(beta.clone()))));
                     let evars = deltaprime.unsolved();

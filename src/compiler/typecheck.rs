@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use crate::compiler::comptypes::CompileErr;
 use crate::compiler::sexp::SExp;
-use crate::compiler::srcloc::Srcloc;
+use crate::compiler::srcloc::{Srcloc, HasLoc};
 use crate::compiler::types::ast::{
     Context,
     ContextElim,
@@ -13,6 +13,173 @@ use crate::compiler::types::ast::{
     TypeVar,
     Var
 };
+
+pub trait TheoryToSExp {
+    fn to_sexp(&self) -> SExp;
+}
+
+impl<const A: usize> TheoryToSExp for Type<A> {
+    fn to_sexp(&self) -> SExp {
+        match self {
+            Type::TUnit(l) => SExp::Nil(l.clone()),
+            Type::TAny(l) => SExp::Atom(l.clone(), "Any".as_bytes().to_vec()),
+            Type::TAtom(l) => SExp::Atom(l.clone(), "Atom".as_bytes().to_vec()),
+            Type::TVar(v) => SExp::Atom(v.loc(), v.0.as_bytes().to_vec()),
+            Type::TExists(v) => {
+                SExp::Cons(
+                    v.loc(),
+                    Rc::new(SExp::Atom(
+                        v.loc(),
+                        "exists".as_bytes().to_vec()
+                    )),
+                    Rc::new(SExp::Cons(
+                        v.loc(),
+                        Rc::new(SExp::Atom(
+                            v.loc(),
+                            v.0.as_bytes().to_vec()
+                        )),
+                        Rc::new(SExp::Nil(v.loc()))
+                    ))
+                )
+            },
+            Type::TForall(v, t) => {
+            SExp::Cons(
+                v.loc(),
+                Rc::new(SExp::Atom(
+                    v.loc(),
+                    "forall".as_bytes().to_vec()
+                )),
+                Rc::new(SExp::Cons(
+                    v.loc(),
+                    Rc::new(SExp::Atom(
+                        v.loc(),
+                        v.0.as_bytes().to_vec()
+                    )),
+                    Rc::new(SExp::Cons(
+                        v.loc(),
+                        Rc::new(t.to_sexp()),
+                        Rc::new(SExp::Nil(v.loc()))
+                    ))
+                ))
+            )
+            },
+            Type::TFun(t1, t2) => {
+                SExp::Cons(
+                    t1.loc(),
+                    Rc::new(t1.to_sexp()),
+                    Rc::new(SExp::Cons(
+                        t1.loc(),
+                        Rc::new(SExp::Atom(
+                            t1.loc(),
+                            "->".as_bytes().to_vec()
+                        )),
+                        Rc::new(SExp::Cons(
+                            t2.loc(),
+                            Rc::new(t2.to_sexp()),
+                            Rc::new(SExp::Nil(t2.loc()))
+                        ))
+                    ))
+                )
+            },
+            Type::TNullable(t1) => {
+                SExp::Cons(
+                    t1.loc(),
+                    Rc::new(SExp::Atom(
+                        t1.loc(),
+                        "Nullable".as_bytes().to_vec()
+                    )),
+                    Rc::new(SExp::Cons(
+                        t1.loc(),
+                        Rc::new(t1.to_sexp()),
+                        Rc::new(SExp::Nil(t1.loc()))
+                    ))
+                )
+            },
+            Type::TPair(t1,t2) => {
+                SExp::Cons(
+                    t1.loc(),
+                    Rc::new(SExp::Atom(
+                        t1.loc(),
+                        "Pair".as_bytes().to_vec()
+                    )),
+                    Rc::new(SExp::Cons(
+                        t1.loc(),
+                        Rc::new(t1.to_sexp()),
+                        Rc::new(SExp::Cons(
+                            t2.loc(),
+                            Rc::new(t2.to_sexp()),
+                            Rc::new(SExp::Nil(t2.loc()))
+                        ))
+                    ))
+                )
+            }
+        }
+    }
+}
+
+impl TheoryToSExp for Expr {
+    fn to_sexp(&self) -> SExp {
+        match self {
+            Expr::EVar(v) => SExp::Atom(v.loc(), v.0.as_bytes().to_vec()),
+            Expr::EUnit(l) => SExp::Nil(l.clone()),
+            Expr::EAbs(v,e) => {
+                SExp::Cons(
+                    v.loc(),
+                    Rc::new(SExp::Atom(v.loc(), "lambda".as_bytes().to_vec())),
+                    Rc::new(SExp::Cons(
+                        v.loc(),
+                        Rc::new(SExp::Atom(v.loc(), v.0.as_bytes().to_vec())),
+                        Rc::new(SExp::Cons(
+                            e.loc(),
+                            Rc::new(e.to_sexp()),
+                            Rc::new(SExp::Nil(e.loc()))
+                        ))
+                    ))
+                )
+            },
+            Expr::EApp(e1,e2) => {
+                SExp::Cons(
+                    e1.loc(),
+                    Rc::new(e1.to_sexp()),
+                    Rc::new(SExp::Cons(
+                        e2.loc(),
+                        Rc::new(e2.to_sexp()),
+                        Rc::new(SExp::Nil(e2.loc()))
+                    ))
+                )
+            },
+            Expr::EAnno(e,t) => {
+                SExp::Cons(
+                    e.loc(),
+                    Rc::new(e.to_sexp()),
+                    Rc::new(SExp::Cons(
+                        t.loc(),
+                        Rc::new(SExp::Atom(t.loc(), ":".as_bytes().to_vec())),
+                        Rc::new(SExp::Cons(
+                            t.loc(),
+                            Rc::new(t.to_sexp()),
+                            Rc::new(SExp::Nil(t.loc()))
+                        ))
+                    ))
+                )
+            },
+            Expr::ELit(l,n) => {
+                SExp::Integer(l.clone(), n.clone())
+            },
+            Expr::ESome(e) => {
+                SExp::Cons(
+                    e.loc(),
+                    Rc::new(SExp::Atom(e.loc(), "some".as_bytes().to_vec())),
+                    Rc::new(SExp::Cons(
+                        e.loc(),
+                        Rc::new(e.to_sexp()),
+                        Rc::new(SExp::Nil(e.loc()))
+                    ))
+                )
+            }
+        }
+    }
+}
 
 fn parse_type_var(atom: Rc<SExp>) -> Result<TypeVar, CompileErr> {
     match atom.borrow() {

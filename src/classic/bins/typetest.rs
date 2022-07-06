@@ -15,6 +15,8 @@ fn main() {
         return;
     }
 
+    env_logger::init();
+
     let loc = Srcloc::start(&"*program*".to_string());
     let _ = parse_sexp(loc.clone(), &args[1])
         .map_err(|e| {
