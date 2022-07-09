@@ -18,6 +18,12 @@ pub trait TheoryToSExp {
     fn to_sexp(&self) -> SExp;
 }
 
+impl TheoryToSExp for TypeVar {
+    fn to_sexp(&self) -> SExp {
+        SExp::Atom(self.loc(), self.0.as_bytes().to_vec())
+    }
+}
+
 impl<const A: usize> TheoryToSExp for Type<A> {
     fn to_sexp(&self) -> SExp {
         match self {

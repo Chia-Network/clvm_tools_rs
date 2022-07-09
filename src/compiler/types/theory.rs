@@ -44,34 +44,51 @@ impl TypeTheory for Context {
     //
     // Given some morphism Delta on Gamma, B element Delta checks as A in Gamma
     fn subtype(&self, typ1: &Polytype, typ2: &Polytype) -> Result<Box<Self>, CompileErr> {
-        debug!("subtype {:?} {:?}", typ1, typ2);
+        let double_exists = |alpha: &TypeVar, alphaprime: &TypeVar| {
+            debug!("exists {} and exists {}\nexists\n", alpha.to_sexp().to_string(), alphaprime.to_sexp().to_string());
+            let exi = self.existentials();
+            for i in exi.iter() {
+                debug!("- {}", i.to_sexp().to_string());
+            }
+            if alpha == alphaprime && exi.elem(alpha) {
+                Some(Box::new(self.clone()))
+            } else {
+                None
+            }
+        };
+
         let _ = self.checkwftype(typ1)?;
         let _ = self.checkwftype(typ2)?;
+        debug!("subtype {:?} {:?}", typ1, typ2);
         match (typ1, typ2) {
             (Type::TVar(alpha), Type::TVar(alphaprime)) => {
+                debug!("case 1");
                 if alpha == alphaprime {
                     return Ok(Box::new(self.clone()));
                 }
             },
-            (Type::TUnit(_), Type::TUnit(_)) => { return Ok(Box::new(self.clone())); },
-            (Type::TAtom(_), Type::TAtom(_)) => { return Ok(Box::new(self.clone())); },
-            (Type::TExists(alpha), Type::TExists(alphaprime)) => {
-                if alpha == alphaprime && self.existentials().elem(alpha) {
-                    return Ok(Box::new(self.clone()));
-                }
+            (Type::TUnit(_), Type::TUnit(_)) => {
+                debug!("case 2");
+                return Ok(Box::new(self.clone()));
             },
-
+            (Type::TAtom(_), Type::TAtom(_)) => {
+                debug!("case 3");
+                return Ok(Box::new(self.clone()));
+            },
             (Type::TFun(a1,a2), Type::TFun(b1,b2)) => {
+                debug!("case 5");
                 let theta = self.subtype(b1,a1)?;
                 return theta.subtype(&theta.apply(a2), &theta.apply(b2));
             },
 
             (Type::TPair(a1,a2), Type::TPair(b1,b2)) => {
+                debug!("case 6");
                 todo!("subtype pairs")
             },
 
             // <:forallR
             (a, Type::TForall(alpha,b)) => {
+                debug!("case 7");
                 let alphaprime = fresh_tvar(typ2.loc());
                 return self.snoc(
                     ContextElim::CForall(alphaprime.clone())
@@ -83,6 +100,7 @@ impl TypeTheory for Context {
 
             // <:forallL
             (Type::TForall(alpha,a), b) => {
+                debug!("case 8");
                 let alphaprime = fresh_tvar(typ1.loc());
                 return self.appends(
                     vec![
@@ -101,7 +119,20 @@ impl TypeTheory for Context {
 
             // <:instantiateL
             (Type::TExists(alpha), a) => {
-                if self.existentials().elem(alpha) &&
+                debug!("9. {} vs {}\nexistentials\n", alpha.to_sexp().to_string(), a.to_sexp().to_string());
+
+                // Original code: Type.hs line 29 uses a guard
+                if let Type::TExists(alphaprime) = a {
+                    if let Some(r) = double_exists(alpha, alphaprime) {
+                        return Ok(r);
+                    }
+                }
+
+                let exi = self.existentials();
+                for i in exi.iter() {
+                    debug!("- {}", i.to_sexp().to_string());
+                }
+                if exi.elem(alpha) &&
                     !free_tvars(a).contains(alpha) {
                     return self.instantiate_l(alpha, a);
                 }
@@ -109,13 +140,28 @@ impl TypeTheory for Context {
 
             // <:instantiateR
             (a, Type::TExists(alpha)) => {
-                if self.existentials().elem(alpha) &&
+                debug!("10. {} vs {}\nexistentials\n", alpha.to_sexp().to_string(), a.to_sexp().to_string());
+
+                // Original code: Type.hs line 29 uses a guard
+                if let Type::TExists(alphasub) = a {
+                    if let Some(r) = double_exists(alphasub, alpha) {
+                        return Ok(r);
+                    }
+                }
+
+                let exi = self.existentials();
+                for i in exi.iter() {
+                    debug!("- {}", i.to_sexp().to_string());
+                }
+                if exi.elem(alpha) &&
                     !free_tvars(a).contains(alpha) {
                     return self.instantiate_r(a, alpha);
                 }
-            },
+            }
 
-            _ => { }
+            _ => {
+                debug!("subtype, didn't match");
+            }
         }
 
         Err(CompileErr(typ1.loc(), format!("subtype, don't know what to do with: {:?} {:?} in context {:?}", typ1, typ2, self)))
