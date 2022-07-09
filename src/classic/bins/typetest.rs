@@ -5,7 +5,11 @@ use std::env;
 use clvm_tools_rs::compiler::comptypes::CompileErr;
 use clvm_tools_rs::compiler::sexp::parse_sexp;
 use clvm_tools_rs::compiler::srcloc::Srcloc;
-use clvm_tools_rs::compiler::typecheck::{parse_expr_sexp, standard_type_context};
+use clvm_tools_rs::compiler::typecheck::{
+    TheoryToSExp,
+    parse_expr_sexp,
+    standard_type_context
+};
 use clvm_tools_rs::compiler::types::theory::TypeTheory;
 
 fn main() {
@@ -26,11 +30,11 @@ fn main() {
             parse_expr_sexp(parsed_program[0].clone())
         })
         .and_then(|result| {
-            println!("parsed: {:?}", result);
+            println!("parsed: {:?}", result.to_sexp().to_string());
             standard_type_context().typesynth(&result)
         })
         .map(|(ty, ctx)| {
-            println!("typed: {:?}", ty);
+            println!("typed: {}", ty.to_sexp().to_string());
             println!("context: {:?}", ctx);
         })
         .map_err(|e| {
