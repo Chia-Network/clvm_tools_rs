@@ -27,10 +27,10 @@ jobs:
       with:
         fetch-depth: 0
 
-    - uses: actions/setup-python@v2
+    - uses: chia-network/actions/setup-python@main
       name: Install Python ${{ matrix.python }}
       with:
-        python-version: ${{ format('{0}.0-alpha - {0}.X', matrix.python) }}
+        python-version: ${{ matrix.python }}
 
     - name: Update pip
       run: |
