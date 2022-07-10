@@ -11,9 +11,9 @@ use crate::compiler::types::ast::{
     Context,
     ContextElim,
     Expr,
+    Polytype,
     TypeVar,
-    Type,
-    Polytype
+    Type
 };
 use crate::compiler::types::astfuns::{
     free_tvars,
@@ -59,7 +59,7 @@ impl TypeTheory for Context {
 
         let _ = self.checkwftype(typ1)?;
         let _ = self.checkwftype(typ2)?;
-        debug!("subtype {:?} {:?}", typ1, typ2);
+        debug!("subtype {} {}", typ1.to_sexp().to_string(), typ2.to_sexp().to_string());
         match (typ1, typ2) {
             (Type::TVar(alpha), Type::TVar(alphaprime)) => {
                 debug!("case 1");
@@ -79,6 +79,11 @@ impl TypeTheory for Context {
                 debug!("case 5");
                 let theta = self.subtype(b1,a1)?;
                 return theta.subtype(&theta.apply(a2), &theta.apply(b2));
+            },
+
+            (Type::TNullable(a), Type::TNullable(b)) => {
+                debug!("case nullable");
+                return self.subtype(a,b);
             },
 
             (Type::TPair(a1,a2), Type::TPair(b1,b2)) => {
@@ -121,6 +126,11 @@ impl TypeTheory for Context {
             (Type::TExists(alpha), a) => {
                 debug!("9. {} vs {}\nexistentials\n", alpha.to_sexp().to_string(), a.to_sexp().to_string());
 
+                let exi = self.existentials();
+                for i in exi.iter() {
+                    debug!("- {}", i.to_sexp().to_string());
+                }
+
                 // Original code: Type.hs line 29 uses a guard
                 if let Type::TExists(alphaprime) = a {
                     if let Some(r) = double_exists(alpha, alphaprime) {
@@ -128,10 +138,6 @@ impl TypeTheory for Context {
                     }
                 }
 
-                let exi = self.existentials();
-                for i in exi.iter() {
-                    debug!("- {}", i.to_sexp().to_string());
-                }
                 if exi.elem(alpha) &&
                     !free_tvars(a).contains(alpha) {
                     return self.instantiate_l(alpha, a);
@@ -142,6 +148,10 @@ impl TypeTheory for Context {
             (a, Type::TExists(alpha)) => {
                 debug!("10. {} vs {}\nexistentials\n", alpha.to_sexp().to_string(), a.to_sexp().to_string());
 
+                let exi = self.existentials();
+                for i in exi.iter() {
+                    debug!("- {}", i.to_sexp().to_string());
+                }
                 // Original code: Type.hs line 29 uses a guard
                 if let Type::TExists(alphasub) = a {
                     if let Some(r) = double_exists(alphasub, alpha) {
@@ -149,10 +159,16 @@ impl TypeTheory for Context {
                     }
                 }
 
-                let exi = self.existentials();
-                for i in exi.iter() {
-                    debug!("- {}", i.to_sexp().to_string());
+                debug!("fallthrough: {} left {}", alpha.to_sexp().to_string(), a.to_sexp().to_string());
+                if let Type::TNullable(aprime) = a {
+                    if let Type::TVar(avar) = aprime.borrow() {
+                        return Ok(Box::new(self.snoc(ContextElim::CExistsSolved(
+                            alpha.clone(),
+                            Type::TNullable(Rc::new(Type::TVar(avar.clone())))
+                        ))));
+                    }
                 }
+
                 if exi.elem(alpha) &&
                     !free_tvars(a).contains(alpha) {
                     return self.instantiate_r(a, alpha);
@@ -235,13 +251,36 @@ impl TypeTheory for Context {
             Some(gammaprime) => { return Ok(Box::new(gammaprime)); },
             None => {
                 // InstRReach
+                debug!("match {}", a.to_sexp().to_string());
                 match a {
+                    Type::TNullable(a1) => {
+                        match monotype(a) {
+                            Some(mta) => {
+                                return Ok(Box::new(self.snoc(
+                                    ContextElim::CForall(alpha.clone())
+                                ).snoc(
+                                    ContextElim::CExistsSolved(alpha.clone(), mta)
+                                )));
+                            },
+                            _ => {
+                                todo!("no monotype: {}", a.to_sexp().to_string())
+                            }
+                        }
+                    },
                     Type::TExists(beta) => {
+                        debug!("texists {}", beta.to_sexp().to_string());
                         if self.ordered(alpha, beta) {
                             match self.solve(beta, &Type::TExists(alpha.clone())) {
                                 Some(res) => { return Ok(Box::new(res)); },
                                 None => {
-                                    return Err(CompileErr(alpha.loc(), format!("no solution in instantiate_r: {:?} {:?} with context {:?}", a, alpha, self)));
+                                    return Err(CompileErr(alpha.loc(), format!("no solution in instantiate_r: {} {} with context {:?}", a.to_sexp().to_string(), alpha.to_sexp().to_string(), self)));
+                                }
+                            }
+                        } else {
+                            match self.solve(alpha, &Type::TExists(beta.clone())) {
+                                Some(res) => { return Ok(Box::new(res)); },
+                                None => {
+                                    return Err(CompileErr(beta.loc(), format!("no solution in instantiate_r: {} {} with context {:?}", a.to_sexp().to_string(), alpha.to_sexp().to_string(), self)));
                                 }
                             }
                         }
@@ -301,6 +340,12 @@ impl TypeTheory for Context {
             (Expr::EUnit(_), Type::TNullable(_)) => Ok(Box::new(self.clone())),
             (Expr::ESome(e), Type::TNullable(x)) => {
                 self.typecheck(&e, &x)
+            },
+
+            (Expr::ECons(e1,e2), Type::TPair(t1,t2)) => {
+                self.typecheck(&e1, &t1).and_then(|c| {
+                    c.typecheck(&e2, &t2)
+                })
             },
 
             // ->I
@@ -415,9 +460,18 @@ impl TypeTheory for Context {
             },
 
             Expr::ESome(e) => {
-                self.typesynth(e).map(|(r,res)| {
-                    (Type::TNullable(Rc::new(r)), res)
+                self.typesynth(e).map(|(tau,delta)| {
+                    (
+                        Type::TNullable(Rc::new(tau)),
+                        delta
+                    )
                 })
+            },
+
+            Expr::ECons(e1,e2) => {
+                let (a, theta) = self.typesynth(e1)?;
+                let (b, res) = theta.typesynth(e2)?;
+                Ok((Type::TPair(Rc::new(a), Rc::new(b)), res))
             },
 
             // ->E

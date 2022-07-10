@@ -173,3 +173,32 @@ fn test_lambda_identity_no_annotation() {
         true
     );
 }
+
+#[test]
+fn test_lambda_nullable_annotation() {
+    check_expression_against_type(
+        "((lambda x (some x)) : (forall t (t -> (Nullable t))))",
+        "(forall t (t -> (Nullable t)))",
+        false,
+    );
+}
+
+#[test]
+fn test_lambda_nullable_const_no_annotation() {
+    check_expression_against_type(
+        "(lambda x (some 1))",
+        "((exists t0) -> (Nullable Atom))",
+        true
+    );
+}
+
+/*
+#[test]
+fn test_lambda_nullable_no_annotation() {
+    check_expression_against_type(
+        "(lambda x (some x))",
+        "((exists t0) -> (Nullable (exists t0)))",
+        true
+    );
+}
+*/

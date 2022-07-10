@@ -47,7 +47,8 @@ pub fn subst(eprime: &Expr, x: Var, expr: &Expr) -> Expr {
 
         Expr::ESome(e) => Expr::ESome(Rc::new(subst(eprime, x.clone(), e))),
 
-        Expr::EAnno(e, t) => Expr::EAnno(Rc::new(subst(eprime, x.clone(), e)), t.clone())
+        Expr::EAnno(e, t) => Expr::EAnno(Rc::new(subst(eprime, x.clone(), e)), t.clone()),
+        Expr::ECons(e1, e2) => Expr::ECons(Rc::new(subst(eprime, x.clone(), e1)), Rc::new(subst(eprime, x.clone(), e2)))
     }
 }
 

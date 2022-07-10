@@ -182,6 +182,21 @@ impl TheoryToSExp for Expr {
                         Rc::new(SExp::Nil(e.loc()))
                     ))
                 )
+            },
+            Expr::ECons(e1,e2) => {
+                SExp::Cons(
+                    e1.loc(),
+                    Rc::new(SExp::Atom(e1.loc(), "cons".as_bytes().to_vec())),
+                    Rc::new(SExp::Cons(
+                        e1.loc(),
+                        Rc::new(e1.to_sexp()),
+                        Rc::new(SExp::Cons(
+                            e2.loc(),
+                            Rc::new(e2.to_sexp()),
+                            Rc::new(SExp::Nil(e2.loc()))
+                        ))
+                    ))
+                )
             }
         }
     }
@@ -363,6 +378,12 @@ pub fn parse_expr_sexp(expr: Rc<SExp>) -> Result<Expr, CompileErr> {
                     if let SExp::Atom(loc,name) = &lst[0] {
                         if &"lambda".as_bytes().to_vec() == name {
                             return parse_expr_lambda(&lst);
+                        }
+
+                        if &"cons".as_bytes().to_vec() == name {
+                            let e1 = parse_expr_sexp(Rc::new(lst[1].clone()))?;
+                            let e2 = parse_expr_sexp(Rc::new(lst[2].clone()))?;
+                            return Ok(Expr::ECons(Rc::new(e1), Rc::new(e2)));
                         }
                     }
 
