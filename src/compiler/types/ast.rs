@@ -1,6 +1,7 @@
 // Based on MIT licensed code from
 // https://github.com/kwanghoon/bidi
 // Pseudo AST for typing
+use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use crate::compiler::srcloc::{HasLoc, Srcloc};
@@ -168,6 +169,21 @@ impl<const K: usize> HasLoc for ContextElim<K> {
     }
 }
 
+pub trait ExtractContext<const A: usize> {
+    fn extract(self) -> GContext<A>;
+}
+
+impl <const A: usize> ExtractContext<A> for GContext<A> {
+    fn extract(self) -> GContext<A> { self }
+}
+
+impl <const A: usize> ExtractContext<A> for Box<GContext<A>> {
+    fn extract(self) -> GContext<A> {
+        let borrowed: &GContext<A> = self.borrow();
+        borrowed.clone()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct GContext<const A: usize>(pub Vec<ContextElim<A>>);
 type CompleteContext = GContext<CONTEXT_COMPLETE>;
@@ -191,7 +207,7 @@ impl<const A: usize> GContext<A> {
         GContext(elems)
     }
 
-    pub fn drop_marker(&self, m: ContextElim<A>) -> GContext<A> {
+    pub fn drop_context(&self, m: ContextElim<A>) -> GContext<A> {
         self.0.iter().position(|e| *e == m).map(|idx| {
             GContext(self.0[idx+1..].iter().map(|x| x.clone()).collect())
         }).unwrap_or_else(|| {
@@ -199,15 +215,58 @@ impl<const A: usize> GContext<A> {
         })
     }
 
-    pub fn break_marker(&self, m: ContextElim<A>) -> (GContext<A>, GContext<A>) {
+    pub fn inspect_context(
+        &self,
+        m: ContextElim<A>
+    ) -> (GContext<A>, GContext<A>) {
         self.0.iter().position(|e| *e == m).map(|idx| {
             ( GContext(self.0[idx+1..].iter().map(|x| x.clone()).collect())
-            , GContext(self.0[..idx].iter().map(|x| x.clone()).collect())
+              , GContext(self.0[..idx].iter().map(|x| x.clone()).collect())
             )
         }).unwrap_or_else(|| {
             ( GContext(self.0.clone())
-            , GContext(Vec::new())
+              , GContext(Vec::new())
             )
         })
+    }
+
+    pub fn drop_marker<E,X,F>(
+        &self,
+        m: ContextElim<A>,
+        f: F
+    ) -> Result<GContext<A>, E>
+    where
+        F: FnOnce(GContext<A>) -> Result<X, E>,
+        X: ExtractContext<A>
+    {
+        let marked = self.snoc(m.clone());
+        let res: GContext<A> = f(marked).map(|x| x.extract())?;
+        Ok(res.0.iter().position(|e| *e == m).map(|idx| {
+            GContext(res.0[idx+1..].iter().map(|x| x.clone()).collect())
+        }).unwrap_or_else(|| {
+            GContext(Vec::new())
+        }))
+    }
+
+    pub fn break_marker<E,X,F>(
+        &self,
+        m: ContextElim<A>,
+        f: F
+    ) -> Result<(GContext<A>, GContext<A>), E>
+        where
+        F: FnOnce(GContext<A>) -> Result<X, E>,
+        X: ExtractContext<A>
+    {
+        let marked = self.appends(vec![m.clone()]);
+        let res: GContext<A> = f(marked).map(|x| x.extract())?;
+        Ok(res.0.iter().position(|e| *e == m).map(|idx| {
+            ( GContext(res.0[idx+1..].iter().map(|x| x.clone()).collect())
+              , GContext(res.0[..idx].iter().map(|x| x.clone()).collect())
+            )
+        }).unwrap_or_else(|| {
+            ( GContext(res.0.clone())
+              , GContext(Vec::new())
+            )
+        }))
     }
 }

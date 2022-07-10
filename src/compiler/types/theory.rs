@@ -95,31 +95,40 @@ impl TypeTheory for Context {
             (a, Type::TForall(alpha,b)) => {
                 debug!("case 7");
                 let alphaprime = fresh_tvar(typ2.loc());
-                return self.snoc(
-                    ContextElim::CForall(alphaprime.clone())
-                ).subtype(
-                    a,
-                    &type_subst(&Type::TVar(alphaprime.clone()), &alpha.clone(), b)
-                ).map(|d| Box::new(d.drop_marker(ContextElim::CForall(alphaprime.clone()))));
+                return self.drop_marker(
+                    ContextElim::CForall(alphaprime.clone()),
+                    |gamma| {
+                        gamma.subtype(
+                            a,
+                            &type_subst(
+                                &Type::TVar(alphaprime.clone()),
+                                &alpha.clone(),
+                                b
+                            )
+                        )
+                    }
+                ).map(|x| Box::new(x))
             },
 
             // <:forallL
             (Type::TForall(alpha,a), b) => {
                 debug!("case 8");
                 let alphaprime = fresh_tvar(typ1.loc());
-                return self.appends(
-                    vec![
-                        ContextElim::CMarker(alphaprime.clone()),
-                        ContextElim::CExists(alphaprime.clone())
-                    ]
-                ).subtype(
-                    &type_subst(
-                        &Type::TExists(alphaprime.clone()),
-                        &alpha.clone(),
-                        a.borrow()
-                    ),
-                    &b.clone()
-                ).map(|d| Box::new(d.drop_marker(ContextElim::CForall(alphaprime.clone()))));
+                return self.drop_marker(
+                    ContextElim::CMarker(alphaprime.clone()),
+                    |gamma| {
+                        gamma.appends(
+                            vec![ContextElim::CExists(alphaprime.clone())]
+                        ).subtype(
+                            &type_subst(
+                                &Type::TExists(alphaprime.clone()),
+                                &alpha.clone(),
+                                a.borrow()
+                            ),
+                            &b.clone()
+                        )
+                    }
+                ).map(|x| Box::new(x))
             },
 
             // <:instantiateL
@@ -222,16 +231,19 @@ impl TypeTheory for Context {
                     // InstLAIIR
                     Type::TForall(beta, b) => {
                         let betaprime = fresh_tvar(beta.loc());
-                        return (self.appends(vec![
-                            ContextElim::CForall(betaprime.clone())
-                        ])).instantiate_l(
-                            alpha,
-                            &type_subst(
-                                &Type::TVar(betaprime.clone()),
-                                &beta.clone(),
-                                b.borrow()
-                            )
-                        ).map(|d| Box::new(d.drop_marker(ContextElim::CForall(betaprime.clone()))));
+                        return self.drop_marker(
+                            ContextElim::CForall(betaprime.clone()),
+                            |gamma| {
+                                gamma.instantiate_l(
+                                    alpha,
+                                    &type_subst(
+                                        &Type::TVar(betaprime.clone()),
+                                        &beta.clone(),
+                                        b.borrow()
+                                    )
+                                )
+                            }
+                        ).map(|x| Box::new(x));
                     },
 
                     _ => { }
@@ -302,15 +314,19 @@ impl TypeTheory for Context {
                     },
                     Type::TForall(beta, b) => {
                         let betaprime = fresh_tvar(beta.loc());
-                        return (self.appends(vec![
+                        return self.drop_marker(
                             ContextElim::CMarker(betaprime.clone()),
-                            ContextElim::CExists(betaprime.clone()),
-                        ])).instantiate_r(
-                            &type_subst(
-                                &Type::TExists(betaprime.clone()), &beta.clone(), b
-                            ),
-                            alpha
-                        ).map(|d| Box::new(d.drop_marker(ContextElim::CMarker(betaprime))));
+                            |gamma| {
+                                self.appends(vec![
+                                    ContextElim::CExists(betaprime.clone())
+                                ]).instantiate_r(
+                                    &type_subst(
+                                        &Type::TExists(betaprime.clone()), &beta.clone(), b
+                                    ),
+                                    alpha
+                                )
+                            }
+                        ).map(|x| Box::new(x));
                     },
                     _ => { }
                 }
@@ -330,11 +346,19 @@ impl TypeTheory for Context {
             // ForallI
             (e, Type::TForall(alpha, a)) => {
                 let alphaprime = fresh_tvar(typ.loc());
-                return self.snoc(ContextElim::CForall(alphaprime.clone())).
-                    typecheck(
-                        e,
-                        &type_subst(&Type::TVar(alphaprime.clone()), &alpha.clone(), a)
-                    ).map(|d| Box::new(d.drop_marker(ContextElim::CForall(alphaprime.clone()))));
+                return self.drop_marker(
+                    ContextElim::CForall(alphaprime.clone()),
+                    |gamma| {
+                        gamma.typecheck(
+                            e,
+                            &type_subst(
+                                &Type::TVar(alphaprime.clone()),
+                                &alpha.clone(),
+                                a
+                            )
+                        )
+                    }
+                ).map(|x| Box::new(x));
             },
 
             (Expr::EUnit(_), Type::TNullable(_)) => Ok(Box::new(self.clone())),
@@ -354,12 +378,15 @@ impl TypeTheory for Context {
                 let a_borrowed: &Polytype = a.borrow();
                 let b_borrowed: &Polytype = b.borrow();
                 let e_borrowed: &Expr = e.borrow();
-                return self.snoc(
-                    ContextElim::CVar(xprime.clone(),a_borrowed.clone())
-                ).typecheck(
-                    &subst(&Expr::EVar(xprime.clone()), x.clone(), e_borrowed),
-                    b_borrowed
-                ).map(|d| Box::new(d.drop_marker(ContextElim::CVar(xprime.clone(), a_borrowed.clone()))));
+                self.drop_marker(
+                    ContextElim::CVar(xprime.clone(),a_borrowed.clone()),
+                    |gamma| {
+                        gamma.typecheck(
+                            &subst(&Expr::EVar(xprime.clone()), x.clone(), e_borrowed),
+                            b_borrowed
+                        )
+                    }
+                ).map(|x| Box::new(x))
             },
             // Sub
             (e, b) => {
@@ -409,19 +436,19 @@ impl TypeTheory for Context {
                 if ORIGINAL {
                     let delta = self.appends(vec![
                         ContextElim::CExists(alpha.clone()),
-                        ContextElim::CExists(beta.clone()),
-                        ContextElim::CVar(xprime.clone(),Type::TExists(alpha.clone()))
-                    ]).typecheck(
-                        &subst_res,
-                        &Type::TExists(beta.clone())
-                    ).map(|d| {
-                        d.drop_marker(
-                            ContextElim::CVar(
-                                xprime.clone(),
-                                Type::TExists(alpha.clone())
+                        ContextElim::CExists(beta.clone())
+                    ]).drop_marker(
+                        ContextElim::CVar(
+                            xprime.clone(),
+                            Type::TExists(alpha.clone())
+                        ),
+                        |gamma| {
+                            gamma.typecheck(
+                                &subst_res,
+                                &Type::TExists(beta.clone())
                             )
-                        )
-                    })?;
+                        }
+                    )?;
 
                     return Ok((
                         Type::TFun(
@@ -433,16 +460,16 @@ impl TypeTheory for Context {
                 } else {
                     debug!("subst {:?}", subst_res);
                     // Full inference (commented in original)
-                    let (delta, deltaprime) = self.appends(vec![
-                        ContextElim::CMarker(alpha.clone()),
-                        ContextElim::CExists(alpha.clone()),
-                        ContextElim::CExists(beta.clone()),
-                        ContextElim::CVar(xprime.clone(),Type::TExists(alpha.clone()))
-                    ]).typecheck(
-                        &subst_res,
-                        &Type::TExists(beta.clone())
-                    ).map(|d| {
-                        d.break_marker(ContextElim::CMarker(alpha.clone()))
+                    let (delta, deltaprime) = self.break_marker(
+                        ContextElim::CMarker(alpha.clone()), |gamma| {
+                        gamma.appends(vec![
+                            ContextElim::CExists(alpha.clone()),
+                            ContextElim::CExists(beta.clone()),
+                            ContextElim::CVar(xprime.clone(),Type::TExists(alpha.clone()))
+                        ]).typecheck(
+                            &subst_res,
+                            &Type::TExists(beta.clone())
+                        )
                     })?;
 
                     debug!("after break: delta {:?}", delta);
