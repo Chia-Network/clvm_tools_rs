@@ -3,10 +3,11 @@
 
 use std::borrow::Borrow;
 use std::rc::Rc;
+use log::debug;
 
 use crate::compiler::srcloc::{Srcloc, HasLoc};
 use crate::compiler::comptypes::CompileErr;
-
+use crate::compiler::typecheck::TheoryToSExp;
 use crate::compiler::types::ast::{
     CONTEXT_INCOMPLETE,
     Context,
@@ -224,20 +225,29 @@ impl Context {
         Context::new(result_list)
     }
 
-    pub fn apply(&self, typ: &Polytype) -> Polytype {
+    pub fn apply_(&self, typ: &Polytype) -> Polytype {
         match typ {
             Type::TUnit(l) => Type::TUnit(l.clone()),
             Type::TAny(l) => Type::TAny(l.clone()),
             Type::TAtom(l) => Type::TAtom(l.clone()),
             Type::TVar(v) => Type::TVar(v.clone()),
             Type::TForall(v,t) => Type::TForall(v.clone(),t.clone()),
-            Type::TExists(v) => self.find_solved(v).map(|v| {
-                self.apply(&polytype(&v))
-            }).unwrap_or_else(|| Type::TExists(v.clone())),
+            Type::TExists(v) => {
+                debug!("apply texists {}: context is {}", v.to_sexp().to_string(), self.to_sexp().to_string());
+                self.find_solved(v).map(|v| {
+                    self.apply(&polytype(&v))
+                }).unwrap_or_else(|| Type::TExists(v.clone()))
+            },
             Type::TNullable(t) => Type::TNullable(Rc::new(self.apply(t))),
             Type::TFun(t1,t2) => Type::TFun(Rc::new(self.apply(t1)), Rc::new(self.apply(t2))),
             Type::TPair(t1,t2) => Type::TPair(Rc::new(self.apply(t1)), Rc::new(self.apply(t2)))
         }
+    }
+
+    pub fn apply(&self, typ: &Polytype) -> Polytype {
+        let res = self.apply_(typ);
+        debug!("apply {} in {} => {}", typ.to_sexp().to_string(), self.to_sexp().to_string(), res.to_sexp().to_string());
+        res
     }
 
     pub fn ordered(&self, alpha: &TypeVar, beta: &TypeVar) -> bool {

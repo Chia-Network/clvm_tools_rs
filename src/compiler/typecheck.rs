@@ -2,12 +2,13 @@ use std::borrow::Borrow;
 use std::rc::Rc;
 
 use crate::compiler::comptypes::CompileErr;
-use crate::compiler::sexp::SExp;
+use crate::compiler::sexp::{SExp, enlist};
 use crate::compiler::srcloc::{Srcloc, HasLoc};
 use crate::compiler::types::ast::{
     Context,
     ContextElim,
     Expr,
+    GContext,
     TYPE_MONO,
     Type,
     TypeVar,
@@ -19,6 +20,12 @@ pub trait TheoryToSExp {
 }
 
 impl TheoryToSExp for TypeVar {
+    fn to_sexp(&self) -> SExp {
+        SExp::Atom(self.loc(), self.0.as_bytes().to_vec())
+    }
+}
+
+impl TheoryToSExp for Var {
     fn to_sexp(&self) -> SExp {
         SExp::Atom(self.loc(), self.0.as_bytes().to_vec())
     }
@@ -199,6 +206,73 @@ impl TheoryToSExp for Expr {
                 )
             }
         }
+    }
+}
+
+impl<const A: usize> TheoryToSExp for ContextElim<A> {
+    fn to_sexp(&self) -> SExp {
+        match self {
+            ContextElim::CForall(tv) => SExp::Cons(
+                tv.loc(),
+                Rc::new(SExp::Atom(tv.loc(), "cforall".as_bytes().to_vec())),
+                Rc::new(SExp::Cons(
+                    tv.loc(),
+                    Rc::new(tv.to_sexp()),
+                    Rc::new(SExp::Nil(tv.loc()))
+                ))
+            ),
+            ContextElim::CVar(v, typ) => SExp::Cons(
+                v.loc(),
+                Rc::new(SExp::Atom(v.loc(), "cvar".as_bytes().to_vec())),
+                Rc::new(SExp::Cons(
+                    v.loc(),
+                    Rc::new(v.to_sexp()),
+                    Rc::new(SExp::Cons(
+                        typ.loc(),
+                        Rc::new(typ.to_sexp()),
+                        Rc::new(SExp::Nil(v.loc()))
+                    ))
+                ))
+            ),
+            ContextElim::CExists(tv) => SExp::Cons(
+                tv.loc(),
+                Rc::new(SExp::Atom(tv.loc(), "cexists".as_bytes().to_vec())),
+                Rc::new(SExp::Cons(
+                    tv.loc(),
+                    Rc::new(tv.to_sexp()),
+                    Rc::new(SExp::Nil(tv.loc()))
+                ))
+            ),
+            ContextElim::CExistsSolved(t,m) => SExp::Cons(
+                t.loc(),
+                Rc::new(SExp::Atom(t.loc(), "csolved".as_bytes().to_vec())),
+                Rc::new(SExp::Cons(
+                    t.loc(),
+                    Rc::new(t.to_sexp()),
+                    Rc::new(SExp::Cons(
+                        m.loc(),
+                        Rc::new(m.to_sexp()),
+                        Rc::new(SExp::Nil(m.loc()))
+                    ))
+                ))
+            ),
+            ContextElim::CMarker(m) => SExp::Cons(
+                m.loc(),
+                Rc::new(SExp::Atom(m.loc(), "cmarker".as_bytes().to_vec())),
+                Rc::new(SExp::Cons(
+                    m.loc(),
+                    Rc::new(m.to_sexp()),
+                    Rc::new(SExp::Nil(m.loc()))
+                ))
+            )
+        }
+    }
+}
+
+impl<const A: usize> TheoryToSExp for GContext<A> {
+    fn to_sexp(&self) -> SExp {
+        let thloc = Srcloc::start(&"*gcontext*".to_string());
+        enlist(thloc, self.0.iter().map(|x| Rc::new(x.to_sexp())).collect())
     }
 }
 

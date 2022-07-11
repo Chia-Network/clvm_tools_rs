@@ -30,12 +30,12 @@ fn main() {
             parse_expr_sexp(parsed_program[0].clone())
         })
         .and_then(|result| {
-            println!("parsed: {:?}", result.to_sexp().to_string());
+            println!("parsed: {}", result.to_sexp().to_string());
             standard_type_context().typesynth(&result)
         })
         .map(|(ty, ctx)| {
             println!("typed: {}", ty.to_sexp().to_string());
-            println!("context: {:?}", ctx);
+            println!("context: {}", ctx.to_sexp().to_string());
         })
         .map_err(|e| {
             println!("failed: {:?}", e);

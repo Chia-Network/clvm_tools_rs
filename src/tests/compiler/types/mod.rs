@@ -202,3 +202,21 @@ fn test_lambda_nullable_no_annotation() {
     );
 }
 */
+
+#[test]
+fn test_lambda_nullable_apply() {
+    check_expression_against_type(
+        "((lambda x (some x)) 1)",
+        "(Nullable Atom)",
+        false
+    );
+}
+
+#[test]
+fn test_lambda_pair_apply() {
+    check_expression_against_type(
+        "((lambda x (cons x ())) 1)",
+        "(Pair Atom ())",
+        false
+    );
+}
