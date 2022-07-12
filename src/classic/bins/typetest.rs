@@ -34,7 +34,7 @@ fn main() {
             standard_type_context().typesynth(&result)
         })
         .map(|(ty, ctx)| {
-            println!("typed: {}", ty.to_sexp().to_string());
+            println!("typed: {}", ctx.reify(&ty).to_sexp().to_string());
             println!("context: {}", ctx.to_sexp().to_string());
         })
         .map_err(|e| {

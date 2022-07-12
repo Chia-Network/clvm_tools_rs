@@ -37,6 +37,7 @@ pub trait TypeTheory {
     fn typecheck(&self, expr: &Expr, typ: &Polytype) -> Result<Box<Self>, CompileErr>;
     fn typesynth(&self, expr: &Expr) -> Result<(Polytype, Box<Self>), CompileErr>;
     fn typeapplysynth(&self, typ: &Polytype, e: &Expr) -> Result<(Polytype, Box<Self>), CompileErr>;
+    fn reify(&self, typ: &Polytype) -> Polytype;
 }
 
 impl Context {
@@ -439,37 +440,40 @@ impl Context {
                     e_borrowed
                 );
 
-                debug!("subst {}", subst_res.to_sexp().to_string());
-                // Full inference (commented in original)
-                let (delta, deltaprime) = self.break_marker(
-                    ContextElim::CMarker(alpha.clone()), |gamma| {
-                        gamma.appends(vec![
-                            ContextElim::CExists(alpha.clone()),
-                            ContextElim::CExists(beta.clone()),
-                            ContextElim::CVar(xprime.clone(),Type::TExists(alpha.clone()))
-                        ]).typecheck(
+                let (delta, deltaprime) = self.appends(vec![
+                    ContextElim::CExists(alpha.clone()),
+                    ContextElim::CExists(beta.clone()),
+                    ContextElim::CVar(
+                        xprime.clone(),
+                        Type::TExists(alpha.clone())
+                    )
+                    ]).break_marker(
+                    ContextElim::CMarker(alpha.clone()),
+                    |gamma| {
+                        gamma.typecheck(
                             &subst_res,
                             &Type::TExists(beta.clone())
                         )
                     })?;
 
-                debug!("after break: delta {}", delta.to_sexp().to_string());
-                debug!("after break: deltaprime {}", deltaprime.to_sexp().to_string());
+                debug!("delta  {}", delta.to_sexp().to_string());
+                debug!("delta' {}", deltaprime.to_sexp().to_string());
 
-                let tau = deltaprime.apply(&Type::TFun(Rc::new(Type::TExists(alpha.clone())), Rc::new(Type::TExists(beta.clone()))));
-                debug!("tau {}", tau.to_sexp().to_string());
-                let evars = deltaprime.unsolved();
-                debug!("evars {:?}", evars);
-                let uvars: Vec<(Polytype, TypeVar)> = evars.iter().map(|e| (Type::TVar(e.clone()), fresh_tvar(x.loc()))).collect();
-                debug!("uvars {:?}", uvars);
-                let uvar_names = uvars.iter().map(|(_,v)| v.clone()).collect();
-                debug!("uvar_names {:?}", uvar_names);
-                let foralls = tforalls(uvar_names, type_substs(uvars, tau));
-                debug!("foralls {:?}", foralls);
-                return Ok((
-                    foralls,
-                    Box::new(delta)
+                let tau = deltaprime.apply(&Type::TFun(
+                    Rc::new(Type::TExists(alpha.clone())),
+                    Rc::new(Type::TExists(beta.clone()))
                 ));
+
+                debug!("tau   {}", tau.to_sexp().to_string());
+
+                let evars = deltaprime.unsolved();
+                debug!("unsolved:");
+                let uvars: Vec<(Polytype, TypeVar)> = evars.iter().map(|e| (Type::TVar(e.clone()), fresh_tvar(x.loc()))).collect();
+                for e in uvars.iter() {
+                    debug!(" - {} = {}", e.1.to_sexp().to_string(), e.0.to_sexp().to_string());
+                }
+                let tfa = tforalls(evars, type_substs(uvars, tau));
+                Ok((tfa, Box::new(delta)))
             },
 
             Expr::ESome(e) => {
@@ -651,6 +655,34 @@ impl TypeTheory for Context {
             Err(err) => { debug!("typeapplysynth {} {} in {} => {:?}", typ.to_sexp().to_string(), e.to_sexp().to_string(), self.to_sexp().to_string(), err); }
         }
         res
+    }
+
+    // Perform all available substitutions
+    fn reify(&self, typ: &Polytype) -> Polytype {
+        match &typ {
+            Type::TExists(tv) => {
+                self.find_solved(tv).as_ref().map(|x| polytype(x)).unwrap_or_else(|| typ.clone())
+            },
+            Type::TForall(tv,ty) => {
+                Type::TForall(tv.clone(), Rc::new(self.reify(ty)))
+            },
+            Type::TFun(a,b) => {
+                Type::TFun(
+                    Rc::new(self.reify(a)),
+                    Rc::new(self.reify(b))
+                )
+            },
+            Type::TNullable(t) => Type::TNullable(Rc::new(self.reify(t))),
+            Type::TPair(a,b) => {
+                Type::TPair(
+                    Rc::new(self.reify(a)),
+                    Rc::new(self.reify(b))
+                )
+            },
+
+            _ => typ.clone()
+
+        }
     }
 }
 

@@ -5,11 +5,12 @@ use std::rc::Rc;
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::{HasLoc, Srcloc};
 use crate::compiler::typecheck::{
+    TheoryToSExp,
     parse_expr_sexp,
     parse_type_sexp,
     standard_type_context
 };
-use crate::compiler::types::ast::{TypeVar, Type};
+use crate::compiler::types::ast::{TypeVar, Type, Polytype};
 use crate::compiler::types::theory::{TypeTheory};
 
 fn resolve_test_var(held: &mut HashMap<TypeVar, TypeVar>, n: &mut usize, v: &TypeVar) -> TypeVar {
@@ -64,18 +65,18 @@ fn check_expression_against_type(
     let esexp = parse_sexp(eloc, &e.to_string()).unwrap();
     let tsexp = parse_sexp(tloc, &t.to_string()).unwrap();
     let eid = parse_expr_sexp(esexp[0].clone()).unwrap();
-    let expected = parse_type_sexp(tsexp[0].clone()).unwrap();
+    let expected: Polytype = parse_type_sexp(tsexp[0].clone()).unwrap();
     let (polytype, context) =
         standard_type_context().typesynth(&eid).expect("should type check");
     let mut fcount: usize = 0;
     let mut held = HashMap::new();
     let usetype =
         if flatten {
-            flatten_exists(&polytype, &mut held, &mut fcount)
+            flatten_exists(&context.reify(&polytype), &mut held, &mut fcount)
         } else {
             polytype
         };
-    assert_eq!(expected, usetype);
+    assert_eq!(expected.to_sexp().to_string(), usetype.to_sexp().to_string());
 }
 
 fn check_expression_type_fails(e: &str) {
@@ -133,7 +134,7 @@ fn test_nullable_atom() {
 fn test_lambda_type_with_constant_result() {
     check_expression_against_type(
         "(lambda x (some 1))",
-        "((exists t0) -> (Nullable Atom))",
+        "(forall t0 ((exists t0) -> (Nullable Atom)))",
         true
     );
 }
@@ -142,7 +143,7 @@ fn test_lambda_type_with_constant_result() {
 fn test_lambda_type_with_constant_unit_output() {
     check_expression_against_type(
         "(lambda x ())",
-        "((exists t0) -> Unit)",
+        "(forall t0 ((exists t0) -> ()))",
         true
     );
 }
@@ -169,7 +170,7 @@ fn test_lambda_identity_type_with_annotation() {
 fn test_lambda_identity_no_annotation() {
     check_expression_against_type(
         "(lambda x x)",
-        "(forall t0 ((exists t1) -> (exists t1)))",
+        "((exists t0) -> (exists t0))",
         true
     );
 }
@@ -187,12 +188,11 @@ fn test_lambda_nullable_annotation() {
 fn test_lambda_nullable_const_no_annotation() {
     check_expression_against_type(
         "(lambda x (some 1))",
-        "((exists t0) -> (Nullable Atom))",
+        "(forall t0 ((exists t0) -> (Nullable Atom)))",
         true
     );
 }
 
-/*
 #[test]
 fn test_lambda_nullable_no_annotation() {
     check_expression_against_type(
@@ -201,7 +201,6 @@ fn test_lambda_nullable_no_annotation() {
         true
     );
 }
-*/
 
 #[test]
 fn test_lambda_nullable_apply() {

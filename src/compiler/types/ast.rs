@@ -260,12 +260,12 @@ impl<const A: usize> GContext<A> {
         let marked = self.appends(vec![m.clone()]);
         let res: GContext<A> = f(marked).map(|x| x.extract())?;
         Ok(res.0.iter().position(|e| *e == m).map(|idx| {
-            ( GContext(res.0[idx+1..].iter().map(|x| x.clone()).collect())
-              , GContext(res.0[..idx].iter().map(|x| x.clone()).collect())
+            ( GContext(res.0[..idx].iter().map(|x| x.clone()).collect())
+            , GContext(res.0[idx+1..].iter().map(|x| x.clone()).collect())
             )
         }).unwrap_or_else(|| {
-            ( GContext(res.0.clone())
-              , GContext(Vec::new())
+            ( GContext(Vec::new())
+            , GContext(res.0.clone())
             )
         }))
     }
