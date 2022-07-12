@@ -86,7 +86,8 @@ impl Context {
 
             (Type::TPair(a1,a2), Type::TPair(b1,b2)) => {
                 debug!("case 6");
-                todo!("subtype pairs")
+                let theta = self.subtype(a1,b1)?;
+                return theta.subtype(a2,b2);
             },
 
             // <:forallR

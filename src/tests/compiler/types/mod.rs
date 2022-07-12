@@ -74,7 +74,7 @@ fn check_expression_against_type(
         if flatten {
             flatten_exists(&context.reify(&polytype), &mut held, &mut fcount)
         } else {
-            polytype
+            context.reify(&polytype)
         };
     assert_eq!(expected.to_sexp().to_string(), usetype.to_sexp().to_string());
 }
@@ -216,6 +216,24 @@ fn test_lambda_pair_apply() {
     check_expression_against_type(
         "((lambda x (cons x ())) 1)",
         "(Pair Atom ())",
+        false
+    );
+}
+
+#[test]
+fn test_first_of_pair() {
+    check_expression_against_type(
+        "(f (cons 1 ()))",
+        "Atom",
+        false
+    );
+}
+
+#[test]
+fn test_rest_of_pair() {
+    check_expression_against_type(
+        "(r (cons 1 ()))",
+        "()",
         false
     );
 }

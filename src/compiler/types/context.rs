@@ -167,7 +167,7 @@ impl Context {
         }
 
 
-        Err(CompileErr(loc, format!("Malformed context: {:?}", self)))
+        Err(CompileErr(loc, format!("Malformed context: {}", self.to_sexp().to_string())))
     }
 
     pub fn checkwftype(&self, a: &Polytype) -> Result<(), CompileErr> {
@@ -175,7 +175,7 @@ impl Context {
             return self.checkwf(a.loc());
         }
 
-        Err(CompileErr(a.loc(), format!("Malformed type: {:?} in {:?}", a, self)))
+        Err(CompileErr(a.loc(), format!("Malformed type: {} in {}", a.to_sexp().to_string(), self.to_sexp().to_string())))
     }
 
     pub fn find_solved(&self, v: &TypeVar) -> Option<Monotype> {
