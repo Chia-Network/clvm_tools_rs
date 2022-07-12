@@ -108,6 +108,7 @@ pub enum Type<const T: usize> {
     TFun(Rc<Type<T>>,Rc<Type<T>>),
     TNullable(Rc<Type<T>>),
     TPair(Rc<Type<T>>,Rc<Type<T>>),
+    TExec(Rc<Type<T>>)
 }
 
 impl<const T: usize> PartialEq for Type<T> {
@@ -122,6 +123,7 @@ impl<const T: usize> PartialEq for Type<T> {
             (Type::TFun(ta1,tb1), Type::TFun(ta2,tb2)) => ta1 == ta2 && tb1 == tb2,
             (Type::TNullable(t1), Type::TNullable(t2)) => t1 == t2,
             (Type::TPair(f1,r1), Type::TPair(f2,r2)) => f1 == f2 && r1 == r2,
+            (Type::TExec(a1), Type::TExec(a2)) => a1 == a2,
             _ => false
         }
     }
@@ -141,6 +143,7 @@ impl<const T: usize> HasLoc for Type<T> {
             Type::TFun(t1, t2) => t1.loc().ext(&t2.loc()),
             Type::TNullable(t) => t.loc(),
             Type::TPair(f,r) => f.loc().ext(&r.loc()),
+            Type::TExec(t1) => t1.loc()
         }
     }
 }
@@ -228,24 +231,6 @@ impl<const A: usize> GContext<A> {
               , GContext(Vec::new())
             )
         })
-    }
-
-    pub fn drop_marker<E,X,F>(
-        &self,
-        m: ContextElim<A>,
-        f: F
-    ) -> Result<GContext<A>, E>
-    where
-        F: FnOnce(GContext<A>) -> Result<X, E>,
-        X: ExtractContext<A>
-    {
-        let marked = self.snoc(m.clone());
-        let res: GContext<A> = f(marked).map(|x| x.extract())?;
-        Ok(res.0.iter().position(|e| *e == m).map(|idx| {
-            GContext(res.0[idx+1..].iter().map(|x| x.clone()).collect())
-        }).unwrap_or_else(|| {
-            GContext(Vec::new())
-        }))
     }
 
     pub fn break_marker<E,X,F>(

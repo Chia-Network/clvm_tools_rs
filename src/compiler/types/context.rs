@@ -13,6 +13,8 @@ use crate::compiler::types::ast::{
     Context,
     ContextElim,
     Expr,
+    ExtractContext,
+    GContext,
     Monotype,
     Polytype,
     TypeVar,
@@ -127,7 +129,7 @@ impl Context {
 
     // Well-formedness of contexts
     // wf Gamma <=> Gamma ctx
-    pub fn wf(&self) -> bool {
+    pub fn wf_(&self) -> bool {
         if self.0.is_empty() {
             return true;
         }
@@ -147,6 +149,12 @@ impl Context {
         }
     }
 
+    pub fn wf(&self) -> bool {
+        let well = self.wf_();
+        debug!("wf {} => {}", self.to_sexp().to_string(), well);
+        well
+    }
+
     pub fn typewf<const A: usize>(&self, typ: &Type<A>) -> bool {
         match typ {
             Type::TVar(alpha) => self.foralls().elem(&alpha),
@@ -154,10 +162,11 @@ impl Context {
             Type::TAny(_) => true,
             Type::TAtom(_) => true,
             Type::TNullable(t) => self.typewf(t.clone().borrow()),
+            Type::TExec(t) => self.typewf(t.clone().borrow()),
             Type::TFun(a,b) => self.typewf(a.clone().borrow()) && self.typewf(b.clone().borrow()),
             Type::TPair(a,b) => self.typewf(a.clone().borrow()) && self.typewf(b.clone().borrow()),
             Type::TForall(alpha,a) => self.snoc(ContextElim::CForall(alpha.clone())).typewf(a),
-            Type::TExists(alpha) => self.existentials().elem(alpha)
+            Type::TExists(alpha) => self.existentials().elem(alpha),
         }
     }
 
@@ -239,6 +248,7 @@ impl Context {
                 }).unwrap_or_else(|| Type::TExists(v.clone()))
             },
             Type::TNullable(t) => Type::TNullable(Rc::new(self.apply(t))),
+            Type::TExec(t) => Type::TExec(Rc::new(self.apply(t))),
             Type::TFun(t1,t2) => Type::TFun(Rc::new(self.apply(t1)), Rc::new(self.apply(t2))),
             Type::TPair(t1,t2) => Type::TPair(Rc::new(self.apply(t1)), Rc::new(self.apply(t2)))
         }
@@ -253,5 +263,41 @@ impl Context {
     pub fn ordered(&self, alpha: &TypeVar, beta: &TypeVar) -> bool {
         let gamma_l = self.drop_context(ContextElim::CExists(beta.clone()));
         gamma_l.existentials().elem(alpha)
+    }
+}
+
+impl GContext<CONTEXT_INCOMPLETE> {
+    pub fn appends_wf(&self, v: Vec<ContextElim<CONTEXT_INCOMPLETE>>) -> GContext<CONTEXT_INCOMPLETE> {
+        let gamma = self.appends(v);
+        if !gamma.wf() {
+            panic!("not well formed");
+        }
+        gamma
+    }
+
+    pub fn snoc_wf(&self, c: ContextElim<CONTEXT_INCOMPLETE>) -> GContext<CONTEXT_INCOMPLETE> {
+        let gamma = self.snoc(c);
+        if !gamma.wf() {
+            panic!("not well formed");
+        }
+        gamma
+    }
+
+    pub fn drop_marker<E,X,F>(
+        &self,
+        m: ContextElim<CONTEXT_INCOMPLETE>,
+        f: F
+    ) -> Result<GContext<CONTEXT_INCOMPLETE>, E>
+    where
+        F: FnOnce(GContext<CONTEXT_INCOMPLETE>) -> Result<X, E>,
+        X: ExtractContext<CONTEXT_INCOMPLETE>
+    {
+        let marked = self.snoc_wf(m.clone());
+        let res: GContext<CONTEXT_INCOMPLETE> = f(marked).map(|x| x.extract())?;
+        Ok(res.0.iter().position(|e| *e == m).map(|idx| {
+            GContext(res.0[idx+1..].iter().map(|x| x.clone()).collect())
+        }).unwrap_or_else(|| {
+            GContext(Vec::new())
+        }))
     }
 }

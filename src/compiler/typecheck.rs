@@ -109,6 +109,20 @@ impl<const A: usize> TheoryToSExp for Type<A> {
                     ))
                 )
             },
+            Type::TExec(t1) => {
+                SExp::Cons(
+                    t1.loc(),
+                    Rc::new(SExp::Atom(
+                        t1.loc(),
+                        "Exec".as_bytes().to_vec()
+                    )),
+                    Rc::new(SExp::Cons(
+                        t1.loc(),
+                        Rc::new(t1.to_sexp()),
+                        Rc::new(SExp::Nil(t1.loc()))
+                    ))
+                )
+            },
             Type::TPair(t1,t2) => {
                 SExp::Cons(
                     t1.loc(),
@@ -308,24 +322,33 @@ fn parse_type_forall<const A: usize>(rest: Rc<SExp>) -> Result<Type<A>, CompileE
     Err(CompileErr(rest.loc(), format!("bad forall tail: {}", rest.to_string())))
 }
 
-fn parse_type_pair<const A: usize>(rest: Rc<SExp>) -> Result<Type<A>, CompileErr> {
+fn parse_type_pair<const A: usize, F>(
+    f: F,
+    rest: Rc<SExp>
+) -> Result<Type<A>, CompileErr>
+where
+    F: FnOnce(Rc<Type<A>>, Rc<Type<A>>) -> Type<A>
+{
     if let SExp::Cons(l,a,rest) = rest.borrow() {
         let parsed_a = parse_type_sexp(a.clone())?;
         if let SExp::Cons(l,b,rest) = rest.borrow() {
             let parsed_b = parse_type_sexp(b.clone())?;
-            return Ok(Type::TPair(Rc::new(parsed_a), Rc::new(parsed_b)));
+            return Ok(f(Rc::new(parsed_a), Rc::new(parsed_b)));
         }
     }
 
-    Err(CompileErr(rest.loc(), format!("bad Pair tail: {}", rest.to_string())))
+    Err(CompileErr(rest.loc(), format!("bad product tail: {}", rest.to_string())))
 }
 
-fn parse_type_nullable<const A: usize>(rest: Rc<SExp>) -> Result<Type<A>, CompileErr> {
+fn parse_type_single<const A: usize, F>(f: F, rest: Rc<SExp>) -> Result<Type<A>, CompileErr>
+where
+    F: FnOnce(Rc<Type<A>>) -> Type<A>
+{
     if let SExp::Cons(l,a,b) = rest.borrow() {
-        return Ok(Type::TNullable(Rc::new(parse_type_sexp(a.clone())?)));
+        return Ok(f(Rc::new(parse_type_sexp(a.clone())?)));
     }
 
-    Err(CompileErr(rest.loc(), format!("bad Nullable tail: {}", rest.to_string())))
+    Err(CompileErr(rest.loc(), format!("bad wrapper tail: {}", rest.to_string())))
 }
 
 // Even elements are types, odd elements are "->"
@@ -392,9 +415,11 @@ pub fn parse_type_sexp<const A: usize>(
                 } else if a == &"forall".as_bytes().to_vec() {
                     return parse_type_forall(b.clone());
                 } else if a == &"Pair".as_bytes().to_vec() {
-                    return parse_type_pair(b.clone());
+                    return parse_type_pair(|a,b| Type::TPair(a,b), b.clone());
                 } else if a == &"Nullable".as_bytes().to_vec() {
-                    return parse_type_nullable(b.clone());
+                    return parse_type_single(|a| Type::TNullable(a), b.clone());
+                } else if a == &"Exec".as_bytes().to_vec() {
+                    return parse_type_single(|a| Type::TExec(a), b.clone());
                 }
             }
 
@@ -512,8 +537,6 @@ pub fn standard_type_context() -> Context {
     let unit_tv = TypeVar("Unit".to_string(), loc.clone());
     let any_tv = TypeVar("Any".to_string(), loc.clone());
     let atom_tv = TypeVar("Atom".to_string(), loc.clone());
-    let first_tv = TypeVar("First".to_string(), loc.clone());
-    let rest_tv = TypeVar("Rest".to_string(), loc.clone());
     let f0 = TypeVar("f0".to_string(), loc.clone());
     let r0 = TypeVar("r0".to_string(), loc.clone());
 
@@ -546,14 +569,25 @@ pub fn standard_type_context() -> Context {
             ))
         ))
     );
+    // (a (Exec X)) => X
+    // so
+    // ((a (Exec (x -> y))) x)
+    let apply: Type<TYPE_MONO> = Type::TForall(
+        f0.clone(),
+        Rc::new(Type::TFun(
+            Rc::new(Type::TExec(
+                Rc::new(Type::TVar(f0.clone()))
+            )),
+            Rc::new(Type::TVar(f0.clone()))
+        ))
+    );
 
     Context::new(vec![
         ContextElim::CExistsSolved(unit_tv, unit),
         ContextElim::CExistsSolved(any_tv, any),
         ContextElim::CExistsSolved(atom_tv, atom),
-        ContextElim::CExistsSolved(first_tv, first.clone()),
-        ContextElim::CExistsSolved(rest_tv, rest.clone()),
         ContextElim::CVar(Var("f".to_string(), loc.clone()), polytype(&first)),
-        ContextElim::CVar(Var("r".to_string(), loc.clone()), polytype(&rest))
+        ContextElim::CVar(Var("r".to_string(), loc.clone()), polytype(&rest)),
+        ContextElim::CVar(Var("a".to_string(), loc.clone()), polytype(&apply))
     ])
 }

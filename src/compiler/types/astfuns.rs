@@ -26,6 +26,9 @@ pub fn monotype<const A: usize>(typ: &Type<A>) -> Option<Monotype> {
         Type::TNullable(t) => monotype(t.borrow()).map(|tm| {
             Type::TNullable(Rc::new(tm.clone()))
         }),
+        Type::TExec(t) => monotype(t.borrow()).map(|tm| {
+            Type::TExec(Rc::new(tm.clone()))
+        }),
         Type::TFun(t1,t2) => monotype(t2.borrow()).and_then(|t2m| {
             monotype(t1).map(|t1m| {
                 Type::TFun(Rc::new(t1m.clone()),Rc::new(t2m.clone()))
@@ -48,6 +51,7 @@ pub fn polytype<const A: usize>(typ: &Type<A>) -> Polytype {
         Type::TForall(v,t) => Type::TForall(v.clone(),t.clone()),
         Type::TExists(v) => Type::TExists(v.clone()),
         Type::TNullable(t) => Type::TNullable(Rc::new(polytype(t))),
+        Type::TExec(t) => Type::TExec(Rc::new(polytype(t))),
         Type::TFun(t1,t2) => Type::TFun(Rc::new(polytype(t1)),Rc::new(polytype(t2))),
         Type::TPair(t1,t2) => Type::TPair(Rc::new(polytype(t1)),Rc::new(polytype(t2)))
     }
@@ -73,8 +77,10 @@ pub fn free_tvars<const A: usize>(typ: &Type<A>) -> HashSet<TypeVar> {
             res
         },
         Type::TNullable(t) => {
-            res = free_tvars(t.borrow());
-            res
+            free_tvars(t.borrow())
+        },
+        Type::TExec(t) => {
+            free_tvars(t.borrow())
         },
         Type::TFun(t1,t2) => {
             free_tvars(t1).union(&free_tvars(t2.borrow())).map(|x| x.clone()).collect()
@@ -115,6 +121,10 @@ pub fn type_subst<const A: usize>(tprime: &Type<A>, v: &TypeVar, typ: &Type<A>) 
         Type::TNullable(t) => {
             let t_borrowed: &Type<A> = t.borrow();
             Type::TNullable(Rc::new(type_subst(tprime, v, t_borrowed)))
+        },
+        Type::TExec(t) => {
+            let t_borrowed: &Type<A> = t.borrow();
+            Type::TExec(Rc::new(type_subst(tprime,v,t_borrowed)))
         },
         Type::TFun(t1,t2) => {
             Type::TFun(Rc::new(type_subst(tprime,v,t1)), Rc::new(type_subst(tprime,v,t2)))

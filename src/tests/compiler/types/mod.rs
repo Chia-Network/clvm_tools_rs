@@ -46,6 +46,9 @@ fn flatten_exists<const A: usize>(t: &Type<A>, held: &mut HashMap<TypeVar, TypeV
         Type::TNullable(t) => {
             Type::TNullable(Rc::new(flatten_exists(t.borrow(), held, n)))
         },
+        Type::TExec(t) => {
+            Type::TExec(Rc::new(flatten_exists(t.borrow(), held, n)))
+        },
         Type::TPair(t1,t2) => {
             Type::TPair(
                 Rc::new(flatten_exists(t1.borrow(), held, n)),
@@ -234,6 +237,15 @@ fn test_rest_of_pair() {
     check_expression_against_type(
         "(r (cons 1 ()))",
         "()",
+        false
+    );
+}
+
+#[test]
+fn test_type_exec_with_anno() {
+    check_expression_against_type(
+        "((lambda x ((a x) 1)) : ((Exec (Atom -> Atom)) -> Atom))",
+        "((Exec (Atom -> Atom)) -> Atom)",
         false
     );
 }
