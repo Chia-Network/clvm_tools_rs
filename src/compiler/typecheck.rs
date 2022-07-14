@@ -204,21 +204,6 @@ impl TheoryToSExp for Expr {
                         Rc::new(SExp::Nil(e.loc()))
                     ))
                 )
-            },
-            Expr::ECons(e1,e2) => {
-                SExp::Cons(
-                    e1.loc(),
-                    Rc::new(SExp::Atom(e1.loc(), "cons".as_bytes().to_vec())),
-                    Rc::new(SExp::Cons(
-                        e1.loc(),
-                        Rc::new(e1.to_sexp()),
-                        Rc::new(SExp::Cons(
-                            e2.loc(),
-                            Rc::new(e2.to_sexp()),
-                            Rc::new(SExp::Nil(e2.loc()))
-                        ))
-                    ))
-                )
             }
         }
     }
@@ -483,7 +468,13 @@ pub fn parse_expr_sexp(expr: Rc<SExp>) -> Result<Expr, CompileErr> {
                         if &"cons".as_bytes().to_vec() == name {
                             let e1 = parse_expr_sexp(Rc::new(lst[1].clone()))?;
                             let e2 = parse_expr_sexp(Rc::new(lst[2].clone()))?;
-                            return Ok(Expr::ECons(Rc::new(e1), Rc::new(e2)));
+                            return Ok(Expr::EApp(
+                                Rc::new(Expr::EApp(
+                                    Rc::new(Expr::EVar(Var("c".to_string(), l.clone()))),
+                                    Rc::new(e1)
+                                )),
+                                Rc::new(e2)
+                            ));
                         }
                     }
 
@@ -537,12 +528,29 @@ pub fn standard_type_context() -> Context {
     let unit_tv = TypeVar("Unit".to_string(), loc.clone());
     let any_tv = TypeVar("Any".to_string(), loc.clone());
     let atom_tv = TypeVar("Atom".to_string(), loc.clone());
+    let list_tv = TypeVar("List".to_string(), loc.clone());
     let f0 = TypeVar("f0".to_string(), loc.clone());
     let r0 = TypeVar("r0".to_string(), loc.clone());
 
     let unit: Type<TYPE_MONO> = Type::TUnit(loc.clone());
     let any: Type<TYPE_MONO> = Type::TAny(loc.clone());
     let atom: Type<TYPE_MONO> = Type::TAtom(loc.clone());
+    let cons: Type<TYPE_MONO> = Type::TForall(
+        f0.clone(),
+        Rc::new(Type::TFun(
+            Rc::new(Type::TVar(f0.clone())),
+            Rc::new(Type::TForall(
+                r0.clone(),
+                Rc::new(Type::TFun(
+                    Rc::new(Type::TVar(r0.clone())),
+                    Rc::new(Type::TPair(
+                        Rc::new(Type::TVar(f0.clone())),
+                        Rc::new(Type::TVar(r0.clone()))
+                    ))
+                ))
+            ))
+        ))
+    );
     let first: Type<TYPE_MONO> = Type::TForall(
         f0.clone(),
         Rc::new(Type::TForall(
@@ -553,13 +561,13 @@ pub fn standard_type_context() -> Context {
                     Rc::new(Type::TVar(r0.clone()))
                 )),
                 Rc::new(Type::TVar(f0.clone()))
-            ))
+            )),
         ))
     );
     let rest: Type<TYPE_MONO> = Type::TForall(
-        f0.clone(),
+        r0.clone(),
         Rc::new(Type::TForall(
-            r0.clone(),
+            f0.clone(),
             Rc::new(Type::TFun(
                 Rc::new(Type::TPair(
                     Rc::new(Type::TVar(f0.clone())),
@@ -582,12 +590,22 @@ pub fn standard_type_context() -> Context {
         ))
     );
 
+    let list: Type<TYPE_MONO> = Type::TForall(
+        f0.clone(),
+        Rc::new(Type::TPair(
+            Rc::new(Type::TVar(f0.clone())),
+            Rc::new(Type::TNullable(Rc::new(Type::TVar(list_tv.clone()))))
+        ))
+    );
+
     Context::new(vec![
-        ContextElim::CExistsSolved(unit_tv, unit),
-        ContextElim::CExistsSolved(any_tv, any),
-        ContextElim::CExistsSolved(atom_tv, atom),
+//        ContextElim::CExistsSolved(list_tv, list),
+        ContextElim::CVar(Var("c".to_string(), loc.clone()), polytype(&cons)),
         ContextElim::CVar(Var("f".to_string(), loc.clone()), polytype(&first)),
         ContextElim::CVar(Var("r".to_string(), loc.clone()), polytype(&rest)),
-        ContextElim::CVar(Var("a".to_string(), loc.clone()), polytype(&apply))
+        ContextElim::CVar(Var("a".to_string(), loc.clone()), polytype(&apply)),
+        ContextElim::CExistsSolved(unit_tv, unit),
+        ContextElim::CExistsSolved(any_tv, any),
+        ContextElim::CExistsSolved(atom_tv, atom)
     ])
 }

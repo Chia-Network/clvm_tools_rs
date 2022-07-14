@@ -97,8 +97,8 @@ impl Context {
 
             // <:forallR
             (a, Type::TForall(alpha,b)) => {
-                debug!("case 7");
                 let alphaprime = fresh_tvar(typ2.loc());
+                debug!("case 7 a' = {}", alphaprime.to_sexp().to_string());
                 return self.drop_marker(
                     ContextElim::CForall(alphaprime.clone()),
                     |gamma| {
@@ -111,7 +111,7 @@ impl Context {
                             )
                         )
                     }
-                ).map(|x| Box::new(x))
+                ).map(|x| Box::new(x));
             },
 
             // <:forallL
@@ -133,7 +133,7 @@ impl Context {
                             &b.clone()
                         )
                     }
-                ).map(|x| Box::new(x))
+                ).map(|x| Box::new(x));
             },
 
             // <:instantiateL
@@ -209,7 +209,7 @@ impl Context {
             }
         }
 
-        Err(CompileErr(typ1.loc(), format!("subtype, don't know what to do with: {:?} {:?} in context {:?}", typ1, typ2, self)))
+        Err(CompileErr(typ1.loc(), format!("subtype, don't know what to do with: {} {} in context {}", typ1.to_sexp().to_string(), typ2.to_sexp().to_string(), self.to_sexp().to_string())))
     }
 
     // | Algorithmic instantiation (left):
@@ -424,12 +424,6 @@ impl Context {
                 self.typecheck(&e, &x)
             },
 
-            (Expr::ECons(e1,e2), Type::TPair(t1,t2)) => {
-                self.typecheck(&e1, &t1).and_then(|c| {
-                    c.typecheck(&e2, &t2)
-                })
-            },
-
             // ->I
             (Expr::EAbs(x,e), Type::TFun(a,b)) => {
                 let xprime = fresh_var(expr.loc());
@@ -534,12 +528,6 @@ impl Context {
                         delta
                     )
                 })
-            },
-
-            Expr::ECons(e1,e2) => {
-                let (a, theta) = self.typesynth(e1)?;
-                let (b, res) = theta.typesynth(e2)?;
-                Ok((Type::TPair(Rc::new(a), Rc::new(b)), res))
             },
 
             // ->E
