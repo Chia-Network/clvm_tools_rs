@@ -193,17 +193,6 @@ impl TheoryToSExp for Expr {
             },
             Expr::ELit(l,n) => {
                 SExp::Integer(l.clone(), n.clone())
-            },
-            Expr::ESome(e) => {
-                SExp::Cons(
-                    e.loc(),
-                    Rc::new(SExp::Atom(e.loc(), "some".as_bytes().to_vec())),
-                    Rc::new(SExp::Cons(
-                        e.loc(),
-                        Rc::new(e.to_sexp()),
-                        Rc::new(SExp::Nil(e.loc()))
-                    ))
-                )
             }
         }
     }
@@ -489,7 +478,10 @@ pub fn parse_expr_sexp(expr: Rc<SExp>) -> Result<Expr, CompileErr> {
                     if let SExp::Atom(loc,name) = &lst[0] {
                         if &"some".as_bytes().to_vec() == name {
                             let inner_exp = parse_expr_sexp(Rc::new(lst[1].clone()))?;
-                            return Ok(Expr::ESome(Rc::new(inner_exp)));
+                            return Ok(Expr::EApp(
+                                Rc::new(Expr::EVar(Var("some".to_string(), l.clone()))),
+                                Rc::new(inner_exp)
+                            ));
                         }
                     }
                 }
@@ -589,6 +581,13 @@ pub fn standard_type_context() -> Context {
             Rc::new(Type::TVar(f0.clone()))
         ))
     );
+    let some: Type<TYPE_MONO> = Type::TForall(
+        f0.clone(),
+        Rc::new(Type::TFun(
+            Rc::new(Type::TVar(f0.clone())),
+            Rc::new(Type::TNullable(Rc::new(Type::TVar(f0.clone()))))
+        ))
+    );
 
     let list: Type<TYPE_MONO> = Type::TForall(
         f0.clone(),
@@ -601,6 +600,7 @@ pub fn standard_type_context() -> Context {
     Context::new(vec![
 //        ContextElim::CExistsSolved(list_tv, list),
         ContextElim::CVar(Var("c".to_string(), loc.clone()), polytype(&cons)),
+        ContextElim::CVar(Var("some".to_string(), loc.clone()), polytype(&some)),
         ContextElim::CVar(Var("f".to_string(), loc.clone()), polytype(&first)),
         ContextElim::CVar(Var("r".to_string(), loc.clone()), polytype(&rest)),
         ContextElim::CVar(Var("a".to_string(), loc.clone()), polytype(&apply)),

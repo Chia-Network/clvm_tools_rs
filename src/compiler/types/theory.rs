@@ -420,9 +420,6 @@ impl Context {
             },
 
             (Expr::EUnit(_), Type::TNullable(_)) => Ok(Box::new(self.clone())),
-            (Expr::ESome(e), Type::TNullable(x)) => {
-                self.typecheck(&e, &x)
-            },
 
             // ->I
             (Expr::EAbs(x,e), Type::TFun(a,b)) => {
@@ -519,15 +516,6 @@ impl Context {
                 }
                 let tfa = tforalls(evars, type_substs(uvars, tau));
                 Ok((tfa, Box::new(delta)))
-            },
-
-            Expr::ESome(e) => {
-                self.typesynth(e).map(|(tau,delta)| {
-                    (
-                        Type::TNullable(Rc::new(tau)),
-                        delta
-                    )
-                })
             },
 
             // ->E

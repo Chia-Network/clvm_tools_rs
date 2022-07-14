@@ -60,8 +60,7 @@ pub enum Expr {
     EAbs(Var,Rc<Expr>),
     EApp(Rc<Expr>,Rc<Expr>),
     EAnno(Rc<Expr>,Polytype),
-    ELit(Srcloc,Number),
-    ESome(Rc<Expr>)
+    ELit(Srcloc,Number)
 }
 
 impl PartialEq for Expr {
@@ -72,7 +71,6 @@ impl PartialEq for Expr {
             (Expr::EAbs(v1,x1), Expr::EAbs(v2,x2)) => v1 == v2 && x1 == x2,
             (Expr::EApp(ea1,eb1), Expr::EApp(ea2, eb2)) => ea1 == ea2 && eb1 == eb2,
             (Expr::EAnno(x1,t1), Expr::EAnno(x2,t2)) => x1 == x2 && t1 == t2,
-            (Expr::ESome(e1), Expr::ESome(e2)) => e1 == e2,
             _ => false
         }
     }
@@ -88,8 +86,7 @@ impl HasLoc for Expr {
             Expr::EAbs(v,e) => e.loc(),
             Expr::EApp(e1,e2) => e1.loc().ext(&e2.loc()),
             Expr::EAnno(e,t) => e.loc().ext(&t.loc()),
-            Expr::ELit(l,_) => l.clone(),
-            Expr::ESome(e) => e.loc()
+            Expr::ELit(l,_) => l.clone()
         }
     }
 }

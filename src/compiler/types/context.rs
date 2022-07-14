@@ -48,8 +48,6 @@ pub fn subst(eprime: &Expr, x: Var, expr: &Expr) -> Expr {
 
         Expr::EApp(e1, e2) => Expr::EApp(Rc::new(subst(eprime, x.clone(), e1)), Rc::new(subst(eprime, x.clone(), e2))),
 
-        Expr::ESome(e) => Expr::ESome(Rc::new(subst(eprime, x.clone(), e))),
-
         Expr::EAnno(e, t) => Expr::EAnno(Rc::new(subst(eprime, x.clone(), e)), t.clone())
     }
 }
