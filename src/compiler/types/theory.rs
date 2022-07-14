@@ -147,7 +147,7 @@ impl Context {
 
                 if let Type::TNullable(aprime) = a {
                     if let Type::TVar(avar) = aprime.borrow() {
-                        return Ok(Box::new(self.snoc(ContextElim::CExistsSolved(
+                        return Ok(Box::new(self.snoc_wf(ContextElim::CExistsSolved(
                             alpha.clone(),
                             Type::TNullable(Rc::new(Type::TVar(avar.clone())))
                         ))));
@@ -156,7 +156,7 @@ impl Context {
 
                 if let Type::TExec(aprime) = a {
                     if let Type::TVar(avar) = aprime.borrow() {
-                        return Ok(Box::new(self.snoc(ContextElim::CExistsSolved(
+                        return Ok(Box::new(self.snoc_wf(ContextElim::CExistsSolved(
                             alpha.clone(),
                             Type::TExec(Rc::new(Type::TVar(avar.clone())))
                         ))));
@@ -181,7 +181,7 @@ impl Context {
 
                 if let Type::TNullable(aprime) = a {
                     if let Type::TVar(avar) = aprime.borrow() {
-                        return Ok(Box::new(self.snoc(ContextElim::CExistsSolved(
+                        return Ok(Box::new(self.snoc_wf(ContextElim::CExistsSolved(
                             alpha.clone(),
                             Type::TNullable(Rc::new(Type::TVar(avar.clone())))
                         ))));
@@ -190,7 +190,7 @@ impl Context {
 
                 if let Type::TExec(aprime) = a {
                     if let Type::TVar(avar) = aprime.borrow() {
-                        return Ok(Box::new(self.snoc(ContextElim::CExistsSolved(
+                        return Ok(Box::new(self.snoc_wf(ContextElim::CExistsSolved(
                             alpha.clone(),
                             Type::TExec(Rc::new(Type::TVar(avar.clone())))
                         ))));
