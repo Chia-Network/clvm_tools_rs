@@ -133,6 +133,7 @@ impl Context {
 
         let c = self.0[0].clone();
         let cs = self.0.iter().skip(1).map(|x| x.clone()).collect();
+        // Do not use new_wf here... we're already checking well-formedness
         let gamma = Context::new(cs);
 
         match c {
@@ -210,12 +211,12 @@ impl Context {
 
     pub fn solve(&self, alpha: &TypeVar, tau: &Monotype) -> Option<Context> {
         let (gamma_l, gamma_r) = self.inspect_context(&ContextElim::CExists(alpha.clone()));
-        let mut gammaprime = gamma_l.0.clone();
-        let mut gamma_r_copy = gamma_r.0.clone();
-        gammaprime.push(ContextElim::CExistsSolved(alpha.clone(), tau.clone()));
-        gammaprime.append(&mut gamma_r_copy);
         if gamma_l.typewf(&tau) {
-            Some(Context::new(gammaprime))
+            let mut gammaprime = gamma_l.0.clone();
+            let mut gamma_r_copy = gamma_r.0.clone();
+            gammaprime.push(ContextElim::CExistsSolved(alpha.clone(), tau.clone()));
+            gammaprime.append(&mut gamma_r_copy);
+            Some(Context::new_wf(gammaprime))
         } else {
             None
         }
@@ -228,7 +229,7 @@ impl Context {
         let mut gamma_r_copy = gamma_r.0.clone();
         result_list.append(&mut theta_copy);
         result_list.append(&mut gamma_r_copy);
-        Context::new(result_list)
+        Context::new_wf(result_list)
     }
 
     pub fn apply_(&self, typ: &Polytype) -> Polytype {
@@ -278,6 +279,14 @@ impl GContext<CONTEXT_INCOMPLETE> {
             panic!("not well formed");
         }
         gamma
+    }
+
+    pub fn new_wf(elems: Vec<ContextElim<CONTEXT_INCOMPLETE>>) -> GContext<CONTEXT_INCOMPLETE> {
+        let ctx = GContext(elems);
+                if !ctx.wf() {
+            panic!("not well formed {}", ctx.to_sexp().to_string());
+        }
+        ctx
     }
 
     pub fn drop_marker<E,X,F>(

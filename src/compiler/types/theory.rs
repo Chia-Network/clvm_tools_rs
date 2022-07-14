@@ -233,7 +233,7 @@ impl Context {
                     Type::TFun(a1, a2) => {
                         let alpha1 = fresh_tvar(a1.loc());
                         let alpha2 = fresh_tvar(a2.loc());
-                        let rcontext = Context::new(vec![
+                        let rcontext = Context::new_wf(vec![
                             ContextElim::CExists(alpha2.clone()),
                             ContextElim::CExists(alpha1.clone()),
                             ContextElim::CExistsSolved(
@@ -268,7 +268,7 @@ impl Context {
 
                     Type::TExec(t) => {
                         let alpha1 = fresh_tvar(t.loc());
-                        let rcontext = Context::new(vec![
+                        let rcontext = Context::new_wf(vec![
                             ContextElim::CExists(alpha1.clone()),
                             ContextElim::CExistsSolved(
                                 alpha.clone(),
@@ -358,7 +358,7 @@ impl Context {
                     Type::TFun(a1, a2) => {
                         let alpha1 = fresh_tvar(a1.loc());
                         let alpha2 = fresh_tvar(a2.loc());
-                        let rcontext = Context::new(vec![
+                        let rcontext = Context::new_wf(vec![
                             ContextElim::CExists(alpha2.clone()),
                             ContextElim::CExists(alpha1.clone()),
                             ContextElim::CExistsSolved(alpha.clone(), Type::TFun(Rc::new(Type::TExists(alpha1.clone())), Rc::new(Type::TVar(alpha2.clone()))))
@@ -560,7 +560,7 @@ impl Context {
             Type::TExists(alpha) => {
                 let alpha1 = fresh_tvar(typ.loc());
                 let alpha2 = fresh_tvar(typ.loc());
-                let rcontext = Context::new(vec![
+                let rcontext = Context::new_wf(vec![
                     ContextElim::CExists(alpha2.clone()),
                     ContextElim::CExists(alpha1.clone()),
                     ContextElim::CExistsSolved(
@@ -726,7 +726,7 @@ impl TypeTheory for Context {
 }
 
 pub fn typesynth_closed(e: &Expr) -> Result<(Polytype, Context), CompileErr> {
-    let (a, gamma) = Context::new(vec![]).typesynth(e)?;
+    let (a, gamma) = Context::new_wf(vec![]).typesynth(e)?;
     Ok((gamma.apply(&a), *gamma))
 }
 
