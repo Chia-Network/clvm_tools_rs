@@ -162,7 +162,7 @@ impl Context {
             Type::TExec(t) => self.typewf(t.clone().borrow()),
             Type::TFun(a,b) => self.typewf(a.clone().borrow()) && self.typewf(b.clone().borrow()),
             Type::TPair(a,b) => self.typewf(a.clone().borrow()) && self.typewf(b.clone().borrow()),
-            Type::TForall(alpha,a) => self.snoc(ContextElim::CForall(alpha.clone())).typewf(a),
+            Type::TForall(alpha,a) => self.snoc_wf(ContextElim::CForall(alpha.clone())).typewf(a),
             Type::TExists(alpha) => self.existentials().elem(alpha),
         }
     }

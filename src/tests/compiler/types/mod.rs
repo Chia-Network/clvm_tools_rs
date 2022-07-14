@@ -249,3 +249,14 @@ fn test_type_exec_with_anno() {
         false
     );
 }
+
+/*
+#[test]
+fn test_nullable_unit_subtype_annotation() {
+    check_expression_against_type(
+        "((r (cons 1 ())) : (Nullable Atom))",
+        "(Nullable Atom)",
+        false
+    );
+}
+*/

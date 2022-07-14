@@ -544,7 +544,7 @@ impl Context {
             Type::TForall(alpha,a) => {
                 // Do alpha conversion to avoid clashes
                 let alphaprime = fresh_tvar(typ.loc());
-                return self.snoc(
+                return self.snoc_wf(
                     ContextElim::CExists(alphaprime.clone())
                 ).typeapplysynth(
                     &type_subst(
