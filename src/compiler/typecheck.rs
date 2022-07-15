@@ -606,6 +606,21 @@ pub fn standard_type_context() -> Context {
             )),
         ))
     );
+    let fprime: Type<TYPE_MONO> = Type::TForall(
+        f0.clone(),
+        Rc::new(Type::TForall(
+            r0.clone(),
+            Rc::new(Type::TFun(
+                Rc::new(Type::TExec(
+                    Rc::new(Type::TPair(
+                        Rc::new(Type::TVar(f0.clone())),
+                        Rc::new(Type::TVar(r0.clone()))
+                    )),
+                )),
+                Rc::new(Type::TVar(f0.clone()))
+            ))
+        ))
+    );
     let rest: Type<TYPE_MONO> = Type::TForall(
         r0.clone(),
         Rc::new(Type::TForall(
@@ -616,6 +631,46 @@ pub fn standard_type_context() -> Context {
                     Rc::new(Type::TVar(r0.clone()))
                 )),
                 Rc::new(Type::TVar(r0.clone()))
+            ))
+        ))
+    );
+    let rprime: Type<TYPE_MONO> = Type::TForall(
+        r0.clone(),
+        Rc::new(Type::TForall(
+            f0.clone(),
+            Rc::new(Type::TFun(
+                Rc::new(Type::TExec(
+                    Rc::new(Type::TPair(
+                        Rc::new(Type::TVar(f0.clone())),
+                        Rc::new(Type::TVar(r0.clone()))
+                    ))
+                )),
+                Rc::new(Type::TVar(r0.clone()))
+            ))
+        ))
+    );
+    let plus: Type<TYPE_MONO> = Type::TFun(
+        Rc::new(Type::TApp(
+            Rc::new(Type::TAtom(atom_tv.loc())),
+            Rc::new(Type::TVar(list_tv.clone()))
+        )),
+        Rc::new(Type::TAtom(atom_tv.loc()))
+    );
+    let bless: Type<TYPE_MONO> = Type::TForall(
+        f0.clone(),
+        Rc::new(Type::TFun(
+            Rc::new(Type::TVar(f0.clone())),
+            Rc::new(Type::TForall(
+                r0.clone(),
+                Rc::new(Type::TFun(
+                    Rc::new(Type::TVar(r0.clone())),
+                    Rc::new(Type::TExec(
+                        Rc::new(Type::TPair(
+                            Rc::new(Type::TVar(f0.clone())),
+                            Rc::new(Type::TVar(r0.clone()))
+                        ))
+                    ))
+                ))
             ))
         ))
     );
@@ -659,6 +714,10 @@ pub fn standard_type_context() -> Context {
         ContextElim::CVar(Var("f".to_string(), loc.clone()), polytype(&first)),
         ContextElim::CVar(Var("r".to_string(), loc.clone()), polytype(&rest)),
         ContextElim::CVar(Var("a".to_string(), loc.clone()), polytype(&apply)),
+        ContextElim::CVar(Var("f^".to_string(), loc.clone()), polytype(&fprime)),
+        ContextElim::CVar(Var("r^".to_string(), loc.clone()), polytype(&rprime)),
+        ContextElim::CVar(Var("+^".to_string(), loc.clone()), polytype(&plus)),
+        ContextElim::CVar(Var("bless".to_string(), loc.clone()), polytype(&bless)),
         ContextElim::CExistsSolved(list_tv, list),
         ContextElim::CExistsSolved(unit_tv, unit),
         ContextElim::CExistsSolved(any_tv, any),

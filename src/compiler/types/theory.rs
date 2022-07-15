@@ -66,6 +66,9 @@ impl Context {
                     return Ok(Box::new(self.clone()));
                 }
             },
+            (x, Type::TAny(_)) => {
+                return Ok(Box::new(self.clone()));
+            },
             (Type::TUnit(_), Type::TUnit(_)) => {
                 debug!("case 2");
                 return Ok(Box::new(self.clone()));
