@@ -4,7 +4,9 @@
 use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::rc::Rc;
+use log::debug;
 
+use crate::compiler::typecheck::TheoryToSExp;
 use crate::compiler::types::ast::{TYPE_POLY, Monotype, Polytype, TypeVar, Type};
 
 pub fn tforalls(types: Vec<TypeVar>, pt_: Polytype) -> Polytype {
@@ -38,6 +40,14 @@ pub fn monotype<const A: usize>(typ: &Type<A>) -> Option<Monotype> {
             monotype(b).map(|bm| {
                 Type::TPair(Rc::new(am.clone()),Rc::new(bm.clone()))
             })
+        }),
+        Type::TAbs(v,t) => monotype(t.borrow()).map(|tm| {
+            Type::TAbs(v.clone(), Rc::new(tm))
+        }),
+        Type::TApp(a,b) => monotype(a.borrow()).and_then(|am| {
+            monotype(b).map(|bm| {
+                Type::TApp(Rc::new(am), Rc::new(bm))
+            })
         })
     }
 }
@@ -53,7 +63,9 @@ pub fn polytype<const A: usize>(typ: &Type<A>) -> Polytype {
         Type::TNullable(t) => Type::TNullable(Rc::new(polytype(t))),
         Type::TExec(t) => Type::TExec(Rc::new(polytype(t))),
         Type::TFun(t1,t2) => Type::TFun(Rc::new(polytype(t1)),Rc::new(polytype(t2))),
-        Type::TPair(t1,t2) => Type::TPair(Rc::new(polytype(t1)),Rc::new(polytype(t2)))
+        Type::TPair(t1,t2) => Type::TPair(Rc::new(polytype(t1)),Rc::new(polytype(t2))),
+        Type::TAbs(v,t) => Type::TAbs(v.clone(), Rc::new(polytype(t))),
+        Type::TApp(t1,t2) => Type::TApp(Rc::new(polytype(t1)),Rc::new(polytype(t2)))
     }
 }
 
@@ -86,6 +98,14 @@ pub fn free_tvars<const A: usize>(typ: &Type<A>) -> HashSet<TypeVar> {
             free_tvars(t1).union(&free_tvars(t2.borrow())).map(|x| x.clone()).collect()
         },
         Type::TPair(t1,t2) => {
+            free_tvars(t1).union(&free_tvars(t2.borrow())).map(|x| x.clone()).collect()
+        },
+        Type::TAbs(v,t) => {
+            let mut res = free_tvars(t.borrow());
+            res.remove(v);
+            res
+        },
+        Type::TApp(t1,t2) => {
             free_tvars(t1).union(&free_tvars(t2.borrow())).map(|x| x.clone()).collect()
         }
     }
@@ -131,6 +151,12 @@ pub fn type_subst<const A: usize>(tprime: &Type<A>, v: &TypeVar, typ: &Type<A>) 
         },
         Type::TPair(t1,t2) => {
             Type::TPair(Rc::new(type_subst(tprime,v,t1)), Rc::new(type_subst(tprime,v,t2)))
+        },
+        Type::TAbs(v,t) => {
+            Type::TAbs(v.clone(), Rc::new(type_subst(tprime,v,t)))
+        },
+        Type::TApp(t1,t2) => {
+            Type::TApp(Rc::new(type_subst(tprime,v,t1)), Rc::new(type_subst(tprime,v,t2)))
         }
     }
 }
@@ -141,6 +167,69 @@ pub fn type_substs<const A: usize>(substs: Vec<(Type<A>, TypeVar)>, t_: Type<A>)
         t = type_subst(&type_tv.0, &type_tv.1, &t.clone());
     }
     t
+}
+
+pub fn unrecurse<const A: usize>(target: &TypeVar, applied_type: &Type<A>, applied_to: &Type<A>, in_definition: &Type<A>) -> Option<Type<A>> {
+    match in_definition {
+        Type::TApp(ta,tb) => {
+            let ta_borrowed: &Type<A> = ta.borrow();
+            let tb_borrowed: &Type<A> = tb.borrow();
+            let tamatch = ta_borrowed == applied_type;
+            let tbmatch = tb_borrowed == applied_to;
+            debug!("got tapp {} matches {} {}", in_definition.to_sexp().to_string(), tamatch, tbmatch);
+            if tamatch && tbmatch {
+                let tv = Type::TExists(target.clone());
+                debug!("returning var ref {}", tv.to_sexp().to_string());
+                Some(tv)
+            } else {
+                unrecurse(target, applied_type, applied_to, ta.borrow()).and_then(|replaced_in_a| {
+                    unrecurse(target, applied_type, applied_to, tb.borrow()).map(|replaced_in_b| {
+                        Type::TApp(Rc::new(replaced_in_a), Rc::new(replaced_in_b))
+                    })
+                })
+            }
+        },
+        Type::TForall(v,t) => {
+            unrecurse(
+                target,
+                &polytype(applied_type),
+                &polytype(applied_to),
+                &polytype(t)
+            ).map(|replaced| {
+                Type::TForall(v.clone(), Rc::new(replaced))
+            })
+        },
+        Type::TAbs(v,t) => {
+            unrecurse(target, applied_type, applied_to, t.borrow()).map(|replaced| {
+                Type::TAbs(v.clone(), Rc::new(replaced))
+            })
+        },
+        Type::TNullable(t) => {
+            unrecurse(target, applied_type, applied_to, t.borrow()).map(|replaced| {
+                Type::TNullable(Rc::new(replaced))
+            })
+        },
+        Type::TPair(ta,tb) => {
+            unrecurse(target, applied_type, applied_to, ta.borrow()).and_then(|replaced_in_a| {
+                unrecurse(target, applied_type, applied_to, tb.borrow()).map(|replaced_in_b| {
+                    Type::TPair(Rc::new(replaced_in_a), Rc::new(replaced_in_b))
+                })
+            })
+        },
+        Type::TExec(t) => {
+            unrecurse(target, applied_type, applied_to, t.borrow()).map(|replaced| {
+                Type::TExec(Rc::new(replaced))
+            })
+        },
+        Type::TFun(ta,tb) => {
+            unrecurse(target, applied_type, applied_to, ta.borrow()).and_then(|replaced_in_a| {
+                unrecurse(target, applied_type, applied_to, tb.borrow()).map(|replaced_in_b| {
+                    Type::TFun(Rc::new(replaced_in_a), Rc::new(replaced_in_b))
+                })
+            })
+        },
+        _ => Some(in_definition.clone())
+    }
 }
 
 // Monoid, Semigroup

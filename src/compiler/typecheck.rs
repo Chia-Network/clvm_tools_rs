@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::rc::Rc;
+use log::debug;
 
 use crate::compiler::comptypes::CompileErr;
 use crate::compiler::sexp::{SExp, enlist};
@@ -138,6 +139,32 @@ impl<const A: usize> TheoryToSExp for Type<A> {
                             Rc::new(t2.to_sexp()),
                             Rc::new(SExp::Nil(t2.loc()))
                         ))
+                    ))
+                )
+            },
+            Type::TAbs(v,t) => {
+                SExp::Cons(
+                    v.loc(),
+                    Rc::new(v.to_sexp()),
+                    Rc::new(SExp::Cons(
+                        v.loc(),
+                        Rc::new(SExp::Atom(v.loc(), "~>".as_bytes().to_vec())),
+                        Rc::new(SExp::Cons(
+                            t.loc(),
+                            Rc::new(t.to_sexp()),
+                            Rc::new(SExp::Nil(t.loc()))
+                        ))
+                    ))
+                )
+            },
+            Type::TApp(t1,t2) => {
+                SExp::Cons(
+                    t1.loc(),
+                    Rc::new(t1.to_sexp()),
+                    Rc::new(SExp::Cons(
+                        t2.loc(),
+                        Rc::new(t2.to_sexp()),
+                        Rc::new(SExp::Nil(t2.loc()))
                     ))
                 )
             }
@@ -325,25 +352,41 @@ where
     Err(CompileErr(rest.loc(), format!("bad wrapper tail: {}", rest.to_string())))
 }
 
-// Even elements are types, odd elements are "->"
+fn parse_type_app<const A: usize>(offs: usize, full: Rc<SExp>, elist: Vec<SExp>) -> Result<Type<A>, CompileErr> {
+    if offs == elist.len() - 1 {
+        parse_type_sexp(Rc::new(elist[offs].clone()))
+    } else {
+        let first = parse_type_sexp(Rc::new(elist[offs].clone()))?;
+        let rest = parse_type_app(offs + 1, full, elist)?;
+        Ok(Type::TApp(Rc::new(first), Rc::new(rest)))
+    }
+}
+
+// Even elements are types, odd elements are "->" or "~>"
 fn parse_type_fun<const A: usize>(full: Rc<SExp>, elist: Vec<SExp>) -> Result<Type<A>, CompileErr> {
     let mut result = parse_type_sexp(Rc::new(elist[elist.len()-1].clone()))?;
     let mut use_type = false;
 
-    for i_rev in 0..elist.len() - 1 {
-        let i = elist.len() - i_rev - 2;
-        if use_type {
-            let ty = parse_type_sexp(Rc::new(elist[i].clone()))?;
-            result = Type::TFun(Rc::new(ty), Rc::new(result));
-        } else {
-            if let SExp::Atom(l,a) = &elist[i] {
-                if &"->".as_bytes().to_vec() != a {
-                    return Err(CompileErr(l.clone(), format!("bad arrow in {}", full.to_string())));
+    if elist[1].to_string() == "~>" {
+        let tv = parse_type_var(Rc::new(elist[0].clone()))?;
+        let ty = parse_type_sexp(Rc::new(elist[2].clone()))?;
+        result = Type::TAbs(tv, Rc::new(ty));
+    } else if elist[1].to_string() == "->" {
+        for i_rev in 0..elist.len() - 1 {
+            let i = elist.len() - i_rev - 2;
+            if use_type {
+                let ty = parse_type_sexp(Rc::new(elist[i].clone()))?;
+                result = Type::TFun(Rc::new(ty), Rc::new(result));
+            } else {
+                if let SExp::Atom(l,a) = &elist[i] {
+                    if &"->".as_bytes().to_vec() != a {
+                        return Err(CompileErr(l.clone(), format!("bad arrow in {}", full.to_string())));
+                    }
                 }
             }
-        }
 
-        use_type = !use_type;
+            use_type = !use_type;
+        }
     }
 
     Ok(result)
@@ -383,6 +426,7 @@ pub fn parse_type_sexp<const A: usize>(
             // Function type
             // (x -> y)
             // (x -> . rest)
+            // (v ~> t)
             if let SExp::Atom(l,a) = a.borrow() {
                 if a == &"exists".as_bytes().to_vec() {
                     return parse_type_exists(b.clone());
@@ -398,6 +442,12 @@ pub fn parse_type_sexp<const A: usize>(
             }
 
             if let Some(lst) = expr.proper_list() {
+                if lst.len() == 2 {
+                    let ta = parse_type_app(0, expr.clone(), lst)?;
+                    debug!("type_app {}", ta.to_sexp().to_string());
+                    return Ok(ta);
+                }
+
                 if lst.len() % 2 == 1 && lst.len() > 2 {
                     return parse_type_fun(expr.clone(), lst);
                 }
@@ -589,11 +639,16 @@ pub fn standard_type_context() -> Context {
         ))
     );
 
-    let list: Type<TYPE_MONO> = Type::TForall(
+    let list: Type<TYPE_MONO> = Type::TAbs(
         f0.clone(),
-        Rc::new(Type::TPair(
-            Rc::new(Type::TVar(f0.clone())),
-            Rc::new(Type::TNullable(Rc::new(Type::TVar(list_tv.clone()))))
+        Rc::new(Type::TNullable(
+            Rc::new(Type::TPair(
+                Rc::new(Type::TVar(f0.clone())),
+                Rc::new(Type::TApp(
+                    Rc::new(Type::TVar(f0.clone())),
+                    Rc::new(Type::TVar(list_tv.clone()))
+                ))
+            ))
         ))
     );
 
@@ -604,6 +659,7 @@ pub fn standard_type_context() -> Context {
         ContextElim::CVar(Var("f".to_string(), loc.clone()), polytype(&first)),
         ContextElim::CVar(Var("r".to_string(), loc.clone()), polytype(&rest)),
         ContextElim::CVar(Var("a".to_string(), loc.clone()), polytype(&apply)),
+        ContextElim::CExistsSolved(list_tv, list),
         ContextElim::CExistsSolved(unit_tv, unit),
         ContextElim::CExistsSolved(any_tv, any),
         ContextElim::CExistsSolved(atom_tv, atom)

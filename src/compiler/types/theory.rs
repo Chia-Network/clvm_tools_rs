@@ -12,6 +12,7 @@ use crate::compiler::types::ast::{
     ContextElim,
     Expr,
     Polytype,
+    TYPE_POLY,
     TypeVar,
     Type
 };
@@ -134,6 +135,16 @@ impl Context {
                         )
                     }
                 ).map(|x| Box::new(x));
+            },
+
+            (a, Type::TApp(t1,t2)) => {
+                if let Some((t,ctx)) = self.newtype::<TYPE_POLY>(
+                    t1.borrow(),
+                    t2.borrow()
+                ) {
+                    debug!("new context {}", ctx.to_sexp().to_string());
+                    return ctx.subtype(a, &t);
+                }
             },
 
             // <:instantiateL

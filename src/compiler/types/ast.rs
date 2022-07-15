@@ -102,7 +102,9 @@ pub enum Type<const T: usize> {
     TFun(Rc<Type<T>>,Rc<Type<T>>),
     TNullable(Rc<Type<T>>),
     TPair(Rc<Type<T>>,Rc<Type<T>>),
-    TExec(Rc<Type<T>>)
+    TExec(Rc<Type<T>>),
+    TApp(Rc<Type<T>>,Rc<Type<T>>),
+    TAbs(TypeVar, Rc<Type<T>>)
 }
 
 impl<const T: usize> PartialEq for Type<T> {
@@ -137,7 +139,9 @@ impl<const T: usize> HasLoc for Type<T> {
             Type::TFun(t1, t2) => t1.loc().ext(&t2.loc()),
             Type::TNullable(t) => t.loc(),
             Type::TPair(f,r) => f.loc().ext(&r.loc()),
-            Type::TExec(t1) => t1.loc()
+            Type::TExec(t1) => t1.loc(),
+            Type::TAbs(v,t) => v.loc().ext(&t.loc()),
+            Type::TApp(t1, t2) => t1.loc().ext(&t2.loc())
         }
     }
 }

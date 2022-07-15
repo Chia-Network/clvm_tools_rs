@@ -54,6 +54,15 @@ fn flatten_exists<const A: usize>(t: &Type<A>, held: &mut HashMap<TypeVar, TypeV
                 Rc::new(flatten_exists(t1.borrow(), held, n)),
                 Rc::new(flatten_exists(t2.borrow(), held, n))
             )
+        },
+        Type::TAbs(v,t) => {
+            Type::TAbs(v.clone(), Rc::new(flatten_exists(t.borrow(), held, n)))
+        },
+        Type::TApp(t1,t2) => {
+            Type::TApp(
+                Rc::new(flatten_exists(t1.borrow(), held, n)),
+                Rc::new(flatten_exists(t2.borrow(), held, n))
+            )
         }
     }
 }
@@ -249,14 +258,3 @@ fn test_type_exec_with_anno() {
         false
     );
 }
-
-/*
-#[test]
-fn test_nullable_unit_subtype_annotation() {
-    check_expression_against_type(
-        "((r (cons 1 ())) : (Nullable Atom))",
-        "(Nullable Atom)",
-        false
-    );
-}
-*/

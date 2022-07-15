@@ -21,7 +21,8 @@ use crate::compiler::types::ast::{
     Type,
     Var
 };
-use crate::compiler::types::astfuns::{polytype};
+use crate::compiler::types::astfuns::{monotype, polytype, type_subst, unrecurse};
+use crate::compiler::types::namegen::fresh_tvar;
 
 // | subst e' x e = [e'/x]e
 pub fn subst(eprime: &Expr, x: Var, expr: &Expr) -> Expr {
@@ -153,18 +154,81 @@ impl Context {
         well
     }
 
+    pub fn newtype<const A: usize>(
+        &self,
+        t1: &Polytype,
+        t2: &Polytype
+    ) -> Option<(Type<A>, Context)> {
+        match t2.borrow() {
+            Type::TVar(v) => {
+                if let Some(solved) = self.find_solved(v) {
+                    return match solved {
+                        Type::TAbs(v,t) => {
+                            let tpoly = polytype(t.borrow());
+                            let new_tvar = fresh_tvar(v.loc());
+                            let finished_type_rec = type_subst(t1.borrow(), &v, tpoly.borrow());
+                            return unrecurse(
+                                &new_tvar,
+                                &t1,
+                                &t2,
+                                &finished_type_rec
+                            ).and_then(|finished_type| {
+                                debug!("<{}> {} = {} in {} giving {}", new_tvar.to_sexp().to_string(), v.to_sexp().to_string(), t1.to_sexp().to_string(), t2.to_sexp().to_string(), finished_type.to_sexp().to_string());
+                                monotype(&finished_type)
+                            }).map(|tmono| {
+                                debug!("got monotype {}", tmono.to_sexp().to_string());
+                                let new_ctx = self.appends_wf(vec![
+                                    ContextElim::CExistsSolved(
+                                        new_tvar.clone(),
+                                        tmono
+                                    ),
+                                    ContextElim::CForall(new_tvar.clone())
+                                ]);
+
+                                (Type::TExists(new_tvar), new_ctx)
+                            });
+                        },
+                        _ => { None }
+                    };
+                }
+            },
+            _ => { }
+        }
+
+        None
+    }
+
     pub fn typewf<const A: usize>(&self, typ: &Type<A>) -> bool {
+        debug!("typewf {} in {}", typ.to_sexp().to_string(), self.to_sexp().to_string());
         match typ {
             Type::TVar(alpha) => self.foralls().elem(&alpha),
             Type::TUnit(_) => true,
             Type::TAny(_) => true,
             Type::TAtom(_) => true,
-            Type::TNullable(t) => self.typewf(t.clone().borrow()),
-            Type::TExec(t) => self.typewf(t.clone().borrow()),
-            Type::TFun(a,b) => self.typewf(a.clone().borrow()) && self.typewf(b.clone().borrow()),
-            Type::TPair(a,b) => self.typewf(a.clone().borrow()) && self.typewf(b.clone().borrow()),
+            Type::TNullable(t) => self.typewf(t.borrow()),
+            Type::TExec(t) => self.typewf(t.borrow()),
+            Type::TFun(a,b) => self.typewf(a.borrow()) && self.typewf(b.borrow()),
+            Type::TPair(a,b) => self.typewf(a.borrow()) && self.typewf(b.borrow()),
             Type::TForall(alpha,a) => self.snoc_wf(ContextElim::CForall(alpha.clone())).typewf(a),
             Type::TExists(alpha) => self.existentials().elem(alpha),
+            Type::TAbs(v,t) => self.typewf(t.borrow()),
+            Type::TApp(t1,t2) => {
+                if !self.typewf(t1.borrow()) {
+                    return false;
+                }
+
+                debug!("tapp {} {}", t1.to_sexp().to_string(), t2.to_sexp().to_string());
+                let t1poly = polytype(t1.borrow());
+                let t2poly = polytype(t2.borrow());
+                if let Some((nt, ctx)) = self.newtype::<A>(
+                    &t1poly,
+                    &t2poly
+                ) {
+                    ctx.typewf(&nt)
+                } else {
+                    false
+                }
+            }
         }
     }
 
@@ -248,7 +312,9 @@ impl Context {
             Type::TNullable(t) => Type::TNullable(Rc::new(self.apply(t))),
             Type::TExec(t) => Type::TExec(Rc::new(self.apply(t))),
             Type::TFun(t1,t2) => Type::TFun(Rc::new(self.apply(t1)), Rc::new(self.apply(t2))),
-            Type::TPair(t1,t2) => Type::TPair(Rc::new(self.apply(t1)), Rc::new(self.apply(t2)))
+            Type::TPair(t1,t2) => Type::TPair(Rc::new(self.apply(t1)), Rc::new(self.apply(t2))),
+            Type::TAbs(v,t) => Type::TAbs(v.clone(), Rc::new(self.apply(t))),
+            Type::TApp(t1,t2) => Type::TApp(Rc::new(self.apply(t1)), Rc::new(self.apply(t2)))
         }
     }
 
