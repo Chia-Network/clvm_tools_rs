@@ -176,10 +176,8 @@ pub fn unrecurse<const A: usize>(target: &TypeVar, applied_type: &Type<A>, appli
             let tb_borrowed: &Type<A> = tb.borrow();
             let tamatch = ta_borrowed == applied_type;
             let tbmatch = tb_borrowed == applied_to;
-            debug!("got tapp {} matches {} {}", in_definition.to_sexp().to_string(), tamatch, tbmatch);
             if tamatch && tbmatch {
                 let tv = Type::TExists(target.clone());
-                debug!("returning var ref {}", tv.to_sexp().to_string());
                 Some(tv)
             } else {
                 unrecurse(target, applied_type, applied_to, ta.borrow()).and_then(|replaced_in_a| {

@@ -708,7 +708,6 @@ pub fn standard_type_context() -> Context {
     );
 
     Context::new(vec![
-//        ContextElim::CExistsSolved(list_tv, list),
         ContextElim::CVar(Var("c".to_string(), loc.clone()), polytype(&cons)),
         ContextElim::CVar(Var("some".to_string(), loc.clone()), polytype(&some)),
         ContextElim::CVar(Var("f".to_string(), loc.clone()), polytype(&first)),

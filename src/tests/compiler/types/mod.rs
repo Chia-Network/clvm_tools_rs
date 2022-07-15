@@ -146,7 +146,7 @@ fn test_nullable_atom() {
 fn test_lambda_type_with_constant_result() {
     check_expression_against_type(
         "(lambda x (some 1))",
-        "(forall t0 ((exists t0) -> (Nullable Atom)))",
+        "((exists t0) -> (Nullable Atom))",
         true
     );
 }
@@ -155,7 +155,7 @@ fn test_lambda_type_with_constant_result() {
 fn test_lambda_type_with_constant_unit_output() {
     check_expression_against_type(
         "(lambda x ())",
-        "(forall t0 ((exists t0) -> ()))",
+        "((exists t0) -> ())",
         true
     );
 }
@@ -200,7 +200,7 @@ fn test_lambda_nullable_annotation() {
 fn test_lambda_nullable_const_no_annotation() {
     check_expression_against_type(
         "(lambda x (some 1))",
-        "(forall t0 ((exists t0) -> (Nullable Atom)))",
+        "((exists t0) -> (Nullable Atom))",
         true
     );
 }

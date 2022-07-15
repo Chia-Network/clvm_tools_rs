@@ -2,7 +2,9 @@
 // https://github.com/kwanghoon/bidi
 
 use std::borrow::Borrow;
+use std::iter;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use log::debug;
 
 use crate::compiler::comptypes::CompileErr;
@@ -29,7 +31,26 @@ use crate::compiler::types::namegen::{fresh_var, fresh_tvar};
 use crate::compiler::types::context::subst;
 use crate::compiler::typecheck::TheoryToSExp;
 
-const ORIGINAL: bool = false;
+lazy_static! {
+    pub static ref indent_level: AtomicUsize = AtomicUsize::new(0);
+}
+
+const ORIGINAL: bool = true;
+
+fn indented<F,R>(f: F) -> R
+where
+    F : FnOnce() -> R
+{
+    indent_level.fetch_add(1, Ordering::SeqCst);
+    let res = f();
+    indent_level.fetch_add(usize::MAX, Ordering::SeqCst);
+    res
+}
+
+fn I() -> String {
+    let count = indent_level.fetch_add(0, Ordering::SeqCst);
+    iter::repeat(' ').take(count*3).collect()
+}
 
 pub trait TypeTheory {
     fn subtype(&self, typ1: &Polytype, typ2: &Polytype) -> Result<Box<Self>, CompileErr>;
@@ -58,7 +79,6 @@ impl Context {
 
         let _ = self.checkwftype(typ1)?;
         let _ = self.checkwftype(typ2)?;
-        debug!("subtype {} {}", typ1.to_sexp().to_string(), typ2.to_sexp().to_string());
         match (typ1, typ2) {
             (Type::TVar(alpha), Type::TVar(alphaprime)) => {
                 debug!("case 1");
@@ -74,7 +94,6 @@ impl Context {
                 return Ok(Box::new(self.clone()));
             },
             (Type::TAtom(_), Type::TAtom(_)) => {
-                debug!("case 3");
                 return Ok(Box::new(self.clone()));
             },
             (Type::TFun(a1,a2), Type::TFun(b1,b2)) => {
@@ -122,13 +141,12 @@ impl Context {
             (Type::TForall(alpha,a), b) => {
                 debug!("case 8");
                 let alphaprime = fresh_tvar(typ1.loc());
-                let marker = fresh_tvar(typ1.loc());
-                return self.appends_wf(vec![
-                    ContextElim::CExists(alphaprime.clone())
-                ]).drop_marker(
-                    ContextElim::CMarker(marker.clone()),
+                return self.drop_marker(
+                    ContextElim::CMarker(alphaprime.clone()),
                     |gamma| {
-                        gamma.subtype(
+                        gamma.appends_wf(vec![
+                            ContextElim::CExists(alphaprime.clone())
+                        ]).subtype(
                             &type_subst(
                                 &Type::TExists(alphaprime.clone()),
                                 &alpha.clone(),
@@ -283,11 +301,11 @@ impl Context {
                     Type::TExec(t) => {
                         let alpha1 = fresh_tvar(t.loc());
                         let rcontext = Context::new_wf(vec![
-                            ContextElim::CExists(alpha1.clone()),
                             ContextElim::CExistsSolved(
                                 alpha.clone(),
                                 Type::TExec(Rc::new(Type::TExists(alpha1.clone())))
-                            )
+                            ),
+                            ContextElim::CExists(alpha1.clone())
                         ]);
                         return self.insert_at(ContextElim::CExists(alpha.clone()), rcontext).
                             instantiate_r(t, alpha);
@@ -405,7 +423,7 @@ impl Context {
             }
         }
 
-        Err(CompileErr(alpha.loc(), format!("The impossible happened! instantiate_r: {:?} {:?} {:?}", self, a, alpha)))
+        Err(CompileErr(alpha.loc(), format!("The impossible happened! instantiate_r: {} {} {}", self.to_sexp().to_string(), a.to_sexp().to_string(), alpha.to_sexp().to_string())))
     }
 
     // | Type checking:
@@ -418,16 +436,17 @@ impl Context {
             // ForallI
             (e, Type::TForall(alpha, a)) => {
                 let alphaprime = fresh_tvar(typ.loc());
+                let subst_res = type_subst(
+                    &Type::TVar(alphaprime.clone()),
+                    &alpha.clone(),
+                    a
+                );
                 return self.drop_marker(
                     ContextElim::CForall(alphaprime.clone()),
                     |gamma| {
                         gamma.typecheck(
                             e,
-                            &type_subst(
-                                &Type::TVar(alphaprime.clone()),
-                                &alpha.clone(),
-                                a
-                            )
+                            &subst_res
                         )
                     }
                 ).map(|x| Box::new(x));
@@ -441,11 +460,17 @@ impl Context {
                 let a_borrowed: &Polytype = a.borrow();
                 let b_borrowed: &Polytype = b.borrow();
                 let e_borrowed: &Expr = e.borrow();
+                let subst_res = subst(
+                    &Expr::EVar(xprime.clone()),
+                    x.clone(),
+                    e_borrowed
+                );
+
                 self.drop_marker(
                     ContextElim::CVar(xprime.clone(),a_borrowed.clone()),
                     |gamma| {
                         gamma.typecheck(
-                            &subst(&Expr::EVar(xprime.clone()), x.clone(), e_borrowed),
+                            &subst_res,
                             b_borrowed
                         )
                     }
@@ -486,50 +511,74 @@ impl Context {
 
             // ->I=> Original rule
             Expr::EAbs(x,e) => {
-                let xprime = fresh_var(x.loc());
-                let alpha = fresh_tvar(x.loc());
-                let beta = fresh_tvar(e.loc());
-                let e_borrowed: &Expr = e.borrow();
-                let subst_res = subst(
-                    &Expr::EVar(xprime.clone()),
-                    x.clone(),
-                    e_borrowed
-                );
+                if ORIGINAL {
+                    let xprime = fresh_var(x.loc());
+                    let alpha = fresh_tvar(x.loc());
+                    let beta = fresh_tvar(x.loc());
+                    let e_borrowed: &Expr = e.borrow();
 
-                let (delta, deltaprime) = self.appends_wf(vec![
-                    ContextElim::CExists(alpha.clone()),
-                    ContextElim::CExists(beta.clone()),
-                    ContextElim::CVar(
-                        xprime.clone(),
-                        Type::TExists(alpha.clone())
-                    )
-                    ]).break_marker(
-                    ContextElim::CMarker(alpha.clone()),
-                    |gamma| {
-                        gamma.typecheck(
-                            &subst_res,
-                            &Type::TExists(beta.clone())
+                    let subst_res = subst(
+                        &Expr::EVar(xprime.clone()),
+                        x.clone(),
+                        e_borrowed
+                    );
+
+                    self.appends_wf(vec![
+                        ContextElim::CExists(beta.clone()),
+                        ContextElim::CExists(alpha.clone())
+                    ]).drop_marker(
+                        ContextElim::CVar(xprime.clone(), Type::TExists(alpha.clone())),
+                        |gamma| {
+                            gamma.typecheck(&subst_res, &Type::TExists(beta.clone()))
+                        }).map(|delta| {
+                            (Type::TFun(Rc::new(Type::TExists(alpha)), Rc::new(Type::TExists(beta))), Box::new(delta))
+                        })
+                } else {
+                    let xprime = fresh_var(x.loc());
+                    let alpha = fresh_tvar(x.loc());
+                    let beta = fresh_tvar(e.loc());
+                    let e_borrowed: &Expr = e.borrow();
+                    let subst_res = subst(
+                        &Expr::EVar(xprime.clone()),
+                        x.clone(),
+                        e_borrowed
+                    );
+
+                    let (delta, deltaprime) = self.appends_wf(vec![
+                        ContextElim::CExists(alpha.clone()),
+                        ContextElim::CExists(beta.clone()),
+                        ContextElim::CVar(
+                            xprime.clone(),
+                            Type::TExists(alpha.clone())
                         )
-                    })?;
+                    ]).break_marker(
+                        ContextElim::CMarker(alpha.clone()),
+                        |gamma| {
+                            gamma.typecheck(
+                                &subst_res,
+                                &Type::TExists(beta.clone())
+                            )
+                        })?;
 
-                debug!("delta  {}", delta.to_sexp().to_string());
-                debug!("delta' {}", deltaprime.to_sexp().to_string());
+                    debug!("delta  {}", delta.to_sexp().to_string());
+                    debug!("delta' {}", deltaprime.to_sexp().to_string());
 
-                let tau = deltaprime.apply(&Type::TFun(
-                    Rc::new(Type::TExists(alpha.clone())),
-                    Rc::new(Type::TExists(beta.clone()))
-                ));
+                    let tau = deltaprime.apply(&Type::TFun(
+                        Rc::new(Type::TExists(alpha.clone())),
+                        Rc::new(Type::TExists(beta.clone()))
+                    ));
 
-                debug!("tau   {}", tau.to_sexp().to_string());
+                    debug!("tau   {}", tau.to_sexp().to_string());
 
-                let evars = deltaprime.unsolved();
-                debug!("unsolved:");
-                let uvars: Vec<(Polytype, TypeVar)> = evars.iter().map(|e| (Type::TVar(e.clone()), fresh_tvar(x.loc()))).collect();
-                for e in uvars.iter() {
-                    debug!(" - {} = {}", e.1.to_sexp().to_string(), e.0.to_sexp().to_string());
+                    let evars = deltaprime.unsolved();
+                    debug!("unsolved:");
+                    let uvars: Vec<(Polytype, TypeVar)> = evars.iter().map(|e| (Type::TVar(e.clone()), fresh_tvar(x.loc()))).collect();
+                    for e in uvars.iter() {
+                        debug!(" - {} = {}", e.1.to_sexp().to_string(), e.0.to_sexp().to_string());
+                    }
+                    let tfa = tforalls(evars, type_substs(uvars, tau));
+                    Ok((tfa, Box::new(delta)))
                 }
-                let tfa = tforalls(evars, type_substs(uvars, tau));
-                Ok((tfa, Box::new(delta)))
             },
 
             // ->E
@@ -656,58 +705,76 @@ impl Context {
 
 impl TypeTheory for Context {
     fn subtype(&self, typ1: &Polytype, typ2: &Polytype) -> Result<Box<Self>, CompileErr> {
-        let res = self.subtype_(typ1, typ2);
-        match &res {
-            Ok(v) => { debug!("subtype {} {} in {} => {}", typ1.to_sexp().to_string(), typ2.to_sexp().to_string(), self.to_sexp().to_string(), v.to_sexp().to_string()); },
-            Err(e) => { debug!("subtype {} {} in {} => {:?}", typ1.to_sexp().to_string(), typ2.to_sexp().to_string(), self.to_sexp().to_string(), e); }
-        }
-        res
+        indented(|| {
+            debug!("{}subtype {} {}", I(), typ1.to_sexp().to_string(), typ2.to_sexp().to_string());
+            let res = self.subtype_(typ1, typ2);
+            match &res {
+                Ok(v) => { debug!("{}subtype => {}", I(), /*self.to_sexp().to_string(),*/ v.to_sexp().to_string()); },
+                Err(e) => { debug!("{}subtype {} {} in {} => {:?}", I(), typ1.to_sexp().to_string(), typ2.to_sexp().to_string(), self.to_sexp().to_string(), e); }
+            }
+            res
+        })
     }
 
     fn instantiate_l(&self, alpha: &TypeVar, a: &Polytype) -> Result<Box<Self>, CompileErr> {
-        let res = self.instantiate_l_(alpha, a);
-        match &res {
-            Ok(v) => { debug!("instantiate_l {} {} in {} => {}", alpha.to_sexp().to_string(), a.to_sexp().to_string(), self.to_sexp().to_string(), v.to_sexp().to_string()); },
-            Err(e) => { debug!("instantiate_l {} {} in {} => {:?}", alpha.to_sexp().to_string(), a.to_sexp().to_string(), self.to_sexp().to_string(), e); }
-        }
-        res
+        indented(|| {
+            debug!("{}instantiate_l {} {}", I(), alpha.to_sexp().to_string(), a.to_sexp().to_string());
+            let res = self.instantiate_l_(alpha, a);
+            match &res {
+                Ok(v) => { debug!("{}instantiate_l {} {} => {}", I(), alpha.to_sexp().to_string(), a.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ v.to_sexp().to_string()); },
+                Err(e) => { debug!("{}instantiate_l {} {} in {} => {:?}", I(), alpha.to_sexp().to_string(), a.to_sexp().to_string(), self.to_sexp().to_string(), e); }
+            }
+            res
+        })
     }
 
 
     fn instantiate_r(&self, a: &Polytype, alpha: &TypeVar) -> Result<Box<Self>, CompileErr> {
-        let res = self.instantiate_r_(a, alpha);
-        match &res {
-            Ok(v) => { debug!("instantiate_r {} {} in {} => {}", a.to_sexp().to_string(), alpha.to_sexp().to_string(), self.to_sexp().to_string(), v.to_sexp().to_string()); },
-            Err(e) => { debug!("instantiate_r {} {} in {} => {:?}", a.to_sexp().to_string(), alpha.to_sexp().to_string(), self.to_sexp().to_string(), e); }
-        }
-        res
+        indented(|| {
+            debug!("{}instantiate_r {} {}", I(), a.to_sexp().to_string(), alpha.to_sexp().to_string());
+            let res = self.instantiate_r_(a, alpha);
+            match &res {
+                Ok(v) => { debug!("{}instantiate_r {} {} => {}", I(), a.to_sexp().to_string(), alpha.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ v.to_sexp().to_string()); },
+                Err(e) => { debug!("{}instantiate_r {} {} in {} => {:?}", I(), a.to_sexp().to_string(), alpha.to_sexp().to_string(), self.to_sexp().to_string(), e); }
+            }
+            res
+        })
     }
 
     fn typecheck(&self, expr: &Expr, typ: &Polytype) -> Result<Box<Self>, CompileErr> {
-        let res = self.typecheck_(expr, typ);
-        match &res {
-            Ok(v) => { debug!("typecheck {} {} in {} => {}", expr.to_sexp().to_string(), typ.to_sexp().to_string(), self.to_sexp().to_string(), v.to_sexp().to_string()); },
-            Err(e) => { debug!("typecheck {} {} in {} => {:?}", expr.to_sexp().to_string(), typ.to_sexp().to_string(), self.to_sexp().to_string(), e); }
-        }
-        res
+        indented(|| {
+            debug!("{}typecheck {} {}", I(), expr.to_sexp().to_string(), typ.to_sexp().to_string());
+            let res = self.typecheck_(expr, typ);
+            match &res {
+                Ok(v) => { debug!("{}typecheck {} {} => {}", I(), expr.to_sexp().to_string(), typ.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ v.to_sexp().to_string()); },
+                Err(e) => { debug!("{}typecheck {} {} in {} => {:?}", I(), expr.to_sexp().to_string(), typ.to_sexp().to_string(), self.to_sexp().to_string(), e); }
+            }
+            res
+        })
     }
 
     fn typesynth(&self, expr: &Expr) -> Result<(Polytype, Box<Self>), CompileErr> {
-        let res = self.typesynth_(expr);
-        match &res {
-            Ok((t,v)) => { debug!("typesynth {} in {} => ({} {})", expr.to_sexp().to_string(), self.to_sexp().to_string(), t.to_sexp().to_string(), v.to_sexp().to_string()); },
-            Err(e) => { debug!("typesynth {} in {} => {:?}", expr.to_sexp().to_string(), self.to_sexp().to_string(), e); },
-        }
-        res
+        indented(|| {
+            debug!("{}typesynth {} in {}", I(), expr.to_sexp().to_string(), self.to_sexp().to_string());
+            let res = self.typesynth_(expr);
+            match &res {
+                Ok((t,v)) => { debug!("{}typesynth {} => ({} {})", I(), expr.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ t.to_sexp().to_string(), v.to_sexp().to_string()); },
+                Err(e) => { debug!("{}typesynth {} in {} => {:?}", I(), expr.to_sexp().to_string(), self.to_sexp().to_string(), e); },
+            }
+            res
+        })
     }
 
     fn typeapplysynth(&self, typ: &Polytype, e: &Expr) -> Result<(Polytype, Box<Self>), CompileErr> {
-        let res = self.typeapplysynth_(typ, e);
-        match &res {
-            Ok((t,v)) => { debug!("typeapplysynth {} {} in {} => ({} {})", typ.to_sexp().to_string(), e.to_sexp().to_string(), self.to_sexp().to_string(), t.to_sexp().to_string(), v.to_sexp().to_string()); },
-            Err(err) => { debug!("typeapplysynth {} {} in {} => {:?}", typ.to_sexp().to_string(), e.to_sexp().to_string(), self.to_sexp().to_string(), err); }
-        }
-        res
+        indented(|| {
+            debug!("{}typeapplysynth {} {} in {}", I(), typ.to_sexp().to_string(), e.to_sexp().to_string(), self.to_sexp().to_string());
+            let res = self.typeapplysynth_(typ, e);
+            match &res {
+                Ok((t,v)) => { debug!("{}typeapplysynth {} {} => ({} {})", I(), typ.to_sexp().to_string(), e.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ t.to_sexp().to_string(), v.to_sexp().to_string()); },
+                Err(err) => { debug!("{}typeapplysynth {} {} in {} => {:?}", I(), typ.to_sexp().to_string(), e.to_sexp().to_string(), self.to_sexp().to_string(), err); }
+            }
+            res
+        })
     }
 
     // Perform all available substitutions

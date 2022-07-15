@@ -221,12 +221,12 @@ impl<const A: usize> GContext<A> {
         m: &ContextElim<A>
     ) -> (GContext<A>, GContext<A>) {
         self.0.iter().position(|e| e == m).map(|idx| {
-            ( GContext(self.0[idx+1..].iter().map(|x| x.clone()).collect())
-              , GContext(self.0[..idx].iter().map(|x| x.clone()).collect())
+            ( GContext(self.0[..idx].iter().map(|x| x.clone()).collect())
+            , GContext(self.0[idx+1..].iter().map(|x| x.clone()).collect())
             )
         }).unwrap_or_else(|| {
-            ( GContext(self.0.clone())
-              , GContext(Vec::new())
+            ( GContext(Vec::new())
+            , GContext(self.0.clone())
             )
         })
     }

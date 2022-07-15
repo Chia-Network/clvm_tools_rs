@@ -150,7 +150,6 @@ impl Context {
 
     pub fn wf(&self) -> bool {
         let well = self.wf_();
-        debug!("wf {} => {}", self.to_sexp().to_string(), well);
         well
     }
 
@@ -173,10 +172,8 @@ impl Context {
                                 &t2,
                                 &finished_type_rec
                             ).and_then(|finished_type| {
-                                debug!("<{}> {} = {} in {} giving {}", new_tvar.to_sexp().to_string(), v.to_sexp().to_string(), t1.to_sexp().to_string(), t2.to_sexp().to_string(), finished_type.to_sexp().to_string());
                                 monotype(&finished_type)
                             }).map(|tmono| {
-                                debug!("got monotype {}", tmono.to_sexp().to_string());
                                 let new_ctx = self.appends_wf(vec![
                                     ContextElim::CExistsSolved(
                                         new_tvar.clone(),
@@ -199,7 +196,6 @@ impl Context {
     }
 
     pub fn typewf<const A: usize>(&self, typ: &Type<A>) -> bool {
-        debug!("typewf {} in {}", typ.to_sexp().to_string(), self.to_sexp().to_string());
         match typ {
             Type::TVar(alpha) => self.foralls().elem(&alpha),
             Type::TUnit(_) => true,
@@ -217,7 +213,6 @@ impl Context {
                     return false;
                 }
 
-                debug!("tapp {} {}", t1.to_sexp().to_string(), t2.to_sexp().to_string());
                 let t1poly = polytype(t1.borrow());
                 let t2poly = polytype(t2.borrow());
                 if let Some((nt, ctx)) = self.newtype::<A>(
@@ -280,7 +275,7 @@ impl Context {
             let mut gamma_r_copy = gamma_r.0.clone();
             gammaprime.push(ContextElim::CExistsSolved(alpha.clone(), tau.clone()));
             gammaprime.append(&mut gamma_r_copy);
-            Some(Context::new_wf(gammaprime))
+            Some(Context::new(gammaprime))
         } else {
             None
         }
@@ -293,7 +288,10 @@ impl Context {
         let mut gamma_r_copy = gamma_r.0.clone();
         result_list.append(&mut theta_copy);
         result_list.append(&mut gamma_r_copy);
-        Context::new_wf(result_list)
+        let gamma = Context::new_wf(result_list);
+        debug!("insert_at {} with {} in {} => {}", c.to_sexp().to_string(), theta.to_sexp().to_string(), self.to_sexp().to_string(), gamma.to_sexp().to_string());
+        gamma
+
     }
 
     pub fn apply_(&self, typ: &Polytype) -> Polytype {
@@ -304,7 +302,6 @@ impl Context {
             Type::TVar(v) => Type::TVar(v.clone()),
             Type::TForall(v,t) => Type::TForall(v.clone(),t.clone()),
             Type::TExists(v) => {
-                debug!("apply texists {}: context is {}", v.to_sexp().to_string(), self.to_sexp().to_string());
                 self.find_solved(v).map(|v| {
                     self.apply(&polytype(&v))
                 }).unwrap_or_else(|| Type::TExists(v.clone()))
@@ -320,7 +317,7 @@ impl Context {
 
     pub fn apply(&self, typ: &Polytype) -> Polytype {
         let res = self.apply_(typ);
-        debug!("apply {} in {} => {}", typ.to_sexp().to_string(), self.to_sexp().to_string(), res.to_sexp().to_string());
+        // debug!("apply {} in {} => {}", typ.to_sexp().to_string(), self.to_sexp().to_string(), res.to_sexp().to_string());
         res
     }
 
@@ -334,7 +331,7 @@ impl GContext<CONTEXT_INCOMPLETE> {
     pub fn appends_wf(&self, v: Vec<ContextElim<CONTEXT_INCOMPLETE>>) -> GContext<CONTEXT_INCOMPLETE> {
         let gamma = self.appends(v);
         if !gamma.wf() {
-            panic!("not well formed");
+            panic!("not well formed {}", gamma.to_sexp().to_string());
         }
         gamma
     }
@@ -342,7 +339,7 @@ impl GContext<CONTEXT_INCOMPLETE> {
     pub fn snoc_wf(&self, c: ContextElim<CONTEXT_INCOMPLETE>) -> GContext<CONTEXT_INCOMPLETE> {
         let gamma = self.snoc(c);
         if !gamma.wf() {
-            panic!("not well formed");
+            panic!("not well formed {}", gamma.to_sexp().to_string());
         }
         gamma
     }
