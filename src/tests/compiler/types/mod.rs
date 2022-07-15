@@ -258,3 +258,21 @@ fn test_type_exec_with_anno() {
         false
     );
 }
+
+#[test]
+fn test_list_unit_with_anno() {
+    check_expression_against_type(
+        "(() : (Atom List))",
+        "(Atom List)",
+        false
+    );
+}
+
+#[test]
+fn test_list_content_with_anno() {
+    check_expression_against_type(
+        "((cons 1 (cons 2 (cons 3 ()))) : (Atom List))",
+        "(Atom List)",
+        false
+    );
+}
