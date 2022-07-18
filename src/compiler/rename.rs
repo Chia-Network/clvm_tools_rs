@@ -255,10 +255,12 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
 
 fn rename_in_helperform(namemap: &HashMap<Vec<u8>, Vec<u8>>, h: &HelperForm) -> HelperForm {
     match h {
-        HelperForm::Defconstant(l, n, body) => HelperForm::Defconstant(
+        HelperForm::Deftype(_, _, _, _) => h.clone(),
+        HelperForm::Defconstant(l, n, body, ty) => HelperForm::Defconstant(
             l.clone(),
             n.to_vec(),
             Rc::new(rename_in_bodyform(&namemap, body.clone())),
+            ty.clone()
         ),
         HelperForm::Defmacro(l, n, arg, body) => HelperForm::Defmacro(
             l.clone(),
@@ -266,20 +268,22 @@ fn rename_in_helperform(namemap: &HashMap<Vec<u8>, Vec<u8>>, h: &HelperForm) -> 
             arg.clone(),
             Rc::new(rename_in_compileform(&namemap, body.clone())),
         ),
-        HelperForm::Defun(l, n, inline, arg, body) => HelperForm::Defun(
+        HelperForm::Defun(l, n, inline, arg, body, ty) => HelperForm::Defun(
             l.clone(),
             n.to_vec(),
             *inline,
             arg.clone(),
             Rc::new(rename_in_bodyform(&namemap, body.clone())),
+            ty.clone()
         ),
     }
 }
 
 fn rename_args_helperform(h: &HelperForm) -> HelperForm {
     match h {
-        HelperForm::Defconstant(l, n, body) => {
-            HelperForm::Defconstant(l.clone(), n.clone(), Rc::new(rename_args_bodyform(body)))
+        HelperForm::Deftype(_, _, _, _) => h.clone(),
+        HelperForm::Defconstant(l, n, body, ty) => {
+            HelperForm::Defconstant(l.clone(), n.clone(), Rc::new(rename_args_bodyform(body)), ty.clone())
         }
         HelperForm::Defmacro(l, n, arg, body) => {
             let mut new_names: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
@@ -302,7 +306,7 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
                 )),
             )
         }
-        HelperForm::Defun(l, n, inline, arg, body) => {
+        HelperForm::Defun(l, n, inline, arg, body, ty) => {
             let new_names = invent_new_names_sexp(arg.clone());
             let mut local_namemap = HashMap::new();
             for x in new_names.iter() {
@@ -319,6 +323,7 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
                     &local_namemap,
                     Rc::new(local_renamed_body),
                 )),
+                ty.clone()
             )
         }
     }

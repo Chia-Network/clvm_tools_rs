@@ -123,7 +123,7 @@ fn fe_opt(
     let mut optimized_helpers: Vec<HelperForm> = Vec::new();
     for h in compiler_helpers.iter() {
         match h {
-            HelperForm::Defun(loc, name, inline, args, body) => {
+            HelperForm::Defun(loc, name, inline, args, body, ty) => {
                 let mut env = HashMap::new();
                 build_reflex_captures(&mut env, args.clone());
                 let body_rc =
@@ -134,6 +134,7 @@ fn fe_opt(
                     *inline,
                     args.clone(),
                     body_rc.clone(),
+                    ty.clone()
                 );
                 optimized_helpers.push(new_helper);
             }

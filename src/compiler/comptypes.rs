@@ -10,6 +10,8 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::clvm::sha256tree;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::types::ast::{Polytype, TypeVar};
+use crate::util::Number;
 
 #[derive(Clone, Debug)]
 pub struct CompileErr(pub Srcloc, pub String);
@@ -79,10 +81,24 @@ pub enum BodyForm {
 }
 
 #[derive(Clone, Debug)]
+pub struct StructMember {
+    name: Vec<u8>,
+    path: Number,
+    ty: Polytype
+}
+
+#[derive(Clone, Debug)]
+pub enum ChiaType {
+    Alias(Polytype),
+    Struct(Vec<StructMember>)
+}
+
+#[derive(Clone, Debug)]
 pub enum HelperForm {
-    Defconstant(Srcloc, Vec<u8>, Rc<BodyForm>),
+    Deftype(Srcloc, Vec<u8>, Vec<TypeVar>, Option<ChiaType>),
+    Defconstant(Srcloc, Vec<u8>, Rc<BodyForm>, Option<Polytype>),
     Defmacro(Srcloc, Vec<u8>, Rc<SExp>, Rc<CompileForm>),
-    Defun(Srcloc, Vec<u8>, bool, Rc<SExp>, Rc<BodyForm>),
+    Defun(Srcloc, Vec<u8>, bool, Rc<SExp>, Rc<BodyForm>, Option<Polytype>),
 }
 
 #[derive(Clone, Debug)]
@@ -204,23 +220,28 @@ impl CompileForm {
 impl HelperForm {
     pub fn name(&self) -> &Vec<u8> {
         match self {
-            HelperForm::Defconstant(_, name, _) => name,
+            HelperForm::Deftype(_, name, _, _) => name,
+            HelperForm::Defconstant(_, name, _, _) => name,
             HelperForm::Defmacro(_, name, _, _) => name,
-            HelperForm::Defun(_, name, _, _, _) => name,
+            HelperForm::Defun(_, name, _, _, _, _) => name,
         }
     }
 
     pub fn loc(&self) -> Srcloc {
         match self {
-            HelperForm::Defconstant(l, _, _) => l.clone(),
+            HelperForm::Deftype(l, _, _, _) => l.clone(),
+            HelperForm::Defconstant(l, _, _, _) => l.clone(),
             HelperForm::Defmacro(l, _, _, _) => l.clone(),
-            HelperForm::Defun(l, _, _, _, _) => l.clone(),
+            HelperForm::Defun(l, _, _, _, _, _) => l.clone(),
         }
     }
 
     pub fn to_sexp(&self) -> Rc<SExp> {
         match self {
-            HelperForm::Defconstant(loc, name, body) => Rc::new(list_to_cons(
+            HelperForm::Deftype(loc, name, args, ty) => {
+                todo!()
+            },
+            HelperForm::Defconstant(loc, name, body, ty) => Rc::new(list_to_cons(
                 loc.clone(),
                 &vec![
                     Rc::new(SExp::atom_from_string(
@@ -240,7 +261,7 @@ impl HelperForm {
                     body.to_sexp(),
                 )),
             )),
-            HelperForm::Defun(loc, name, inline, arg, body) => {
+            HelperForm::Defun(loc, name, inline, arg, body, _) => {
                 let di_string = "defun-inline".to_string();
                 let d_string = "defun".to_string();
                 Rc::new(list_to_cons(

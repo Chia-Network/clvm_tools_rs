@@ -7,9 +7,9 @@ use crate::compiler::srcloc::{HasLoc, Srcloc};
 use crate::compiler::typecheck::{
     TheoryToSExp,
     parse_expr_sexp,
-    parse_type_sexp,
-    standard_type_context
+    parse_type_sexp
 };
+use crate::compiler::typechia::standard_type_context;
 use crate::compiler::types::ast::{TypeVar, Type, Polytype};
 use crate::compiler::types::theory::{TypeTheory};
 
@@ -27,9 +27,9 @@ fn resolve_test_var(held: &mut HashMap<TypeVar, TypeVar>, n: &mut usize, v: &Typ
 
 fn flatten_exists<const A: usize>(t: &Type<A>, held: &mut HashMap<TypeVar, TypeVar>, n: &mut usize) -> Type<A> {
     match t {
-        Type::TUnit(l) => Type::TUnit(l.clone()),
-        Type::TAny(l) => Type::TAny(l.clone()),
-        Type::TAtom(l) => Type::TAtom(l.clone()),
+        Type::TUnit(_) => t.clone(),
+        Type::TAny(_) => t.clone(),
+        Type::TAtom(_,_) => t.clone(),
         Type::TVar(v) => Type::TVar(v.clone()),
         Type::TExists(v) => {
             Type::TExists(resolve_test_var(held, n, v))

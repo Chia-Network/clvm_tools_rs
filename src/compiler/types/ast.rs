@@ -99,7 +99,7 @@ impl HasLoc for Expr {
 pub enum Type<const T: usize> {
     TUnit(Srcloc),
     TAny(Srcloc),
-    TAtom(Srcloc),
+    TAtom(Srcloc, Option<usize>),
     TVar(TypeVar),
     TExists(TypeVar),
     TForall(TypeVar, Rc<Type<TYPE_POLY>>),
@@ -116,7 +116,7 @@ impl<const T: usize> PartialEq for Type<T> {
         match (self, other) {
             (Type::TUnit(_), Type::TUnit(_)) => true,
             (Type::TAny(_), Type::TAny(_)) => true,
-            (Type::TAtom(_), Type::TAtom(_)) => true,
+            (Type::TAtom(_,m), Type::TAtom(_,n)) => m == n,
             (Type::TVar(v1), Type::TVar(v2)) => v1 == v2,
             (Type::TExists(v1), Type::TExists(v2)) => v1 == v2,
             (Type::TForall(v1,t1), Type::TForall(v2,t2)) => v1 == v2 && t1 == t2,
@@ -136,7 +136,7 @@ impl<const T: usize> HasLoc for Type<T> {
         match self {
             Type::TUnit(l) => l.clone(),
             Type::TAny(l) => l.clone(),
-            Type::TAtom(l) => l.clone(),
+            Type::TAtom(l,_) => l.clone(),
             Type::TVar(v) => v.loc(),
             Type::TExists(v) => v.loc(),
             Type::TForall(v, t) => v.loc().ext(&t.loc()),

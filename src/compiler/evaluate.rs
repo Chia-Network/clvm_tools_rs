@@ -887,7 +887,7 @@ impl Evaluator {
                 arguments_to_convert,
                 env,
             ),
-            Some(HelperForm::Defun(_, _, inline, args, fun_body)) => {
+            Some(HelperForm::Defun(_, _, inline, args, fun_body, _)) => {
                 if !inline && only_inline {
                     return Ok(body.clone());
                 }
@@ -1227,7 +1227,7 @@ impl Evaluator {
 
     fn get_constant(&self, name: &Vec<u8>) -> Option<Rc<BodyForm>> {
         for h in self.helpers.iter() {
-            if let HelperForm::Defconstant(_, n, body) = h {
+            if let HelperForm::Defconstant(_, n, body, _) = h {
                 if n == name {
                     return Some(body.clone());
                 }

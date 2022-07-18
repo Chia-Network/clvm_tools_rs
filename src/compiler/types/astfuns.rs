@@ -4,9 +4,7 @@
 use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::rc::Rc;
-use log::debug;
 
-use crate::compiler::typecheck::TheoryToSExp;
 use crate::compiler::types::ast::{TYPE_POLY, Monotype, Polytype, TypeVar, Type};
 
 pub fn tforalls(types: Vec<TypeVar>, pt_: Polytype) -> Polytype {
@@ -21,7 +19,7 @@ pub fn monotype<const A: usize>(typ: &Type<A>) -> Option<Monotype> {
     match typ {
         Type::TUnit(l) => Some(Type::TUnit(l.clone())),
         Type::TAny(l) => Some(Type::TAny(l.clone())),
-        Type::TAtom(l) => Some(Type::TAtom(l.clone())),
+        Type::TAtom(l,m) => Some(Type::TAtom(l.clone(),m.clone())),
         Type::TVar(v) => Some(Type::TVar(v.clone())),
         Type::TForall(_,_) => None,
         Type::TExists(v) => Some(Type::TExists(v.clone())),
@@ -56,7 +54,7 @@ pub fn polytype<const A: usize>(typ: &Type<A>) -> Polytype {
     match typ {
         Type::TUnit(l) => Type::TUnit(l.clone()),
         Type::TAny(l) => Type::TAny(l.clone()),
-        Type::TAtom(l) => Type::TAtom(l.clone()),
+        Type::TAtom(l,m) => Type::TAtom(l.clone(),m.clone()),
         Type::TVar(v) => Type::TVar(v.clone()),
         Type::TForall(v,t) => Type::TForall(v.clone(),t.clone()),
         Type::TExists(v) => Type::TExists(v.clone()),
@@ -74,7 +72,7 @@ pub fn free_tvars<const A: usize>(typ: &Type<A>) -> HashSet<TypeVar> {
     match typ {
         Type::TUnit(_) => res,
         Type::TAny(_) => res,
-        Type::TAtom(_) => res,
+        Type::TAtom(_,_) => res,
         Type::TVar(v) => {
             res.insert(v.clone());
             res
@@ -113,9 +111,9 @@ pub fn free_tvars<const A: usize>(typ: &Type<A>) -> HashSet<TypeVar> {
 
 pub fn type_subst<const A: usize>(tprime: &Type<A>, v: &TypeVar, typ: &Type<A>) -> Type<A> {
     match typ {
-        Type::TUnit(l) => Type::TUnit(l.clone()),
-        Type::TAny(l) => Type::TAny(l.clone()),
-        Type::TAtom(l) => Type::TAtom(l.clone()),
+        Type::TUnit(l) => typ.clone(),
+        Type::TAny(l) => typ.clone(),
+        Type::TAtom(l,m) => typ.clone(),
         Type::TVar(vprime) => {
             if *vprime == *v {
                 tprime.clone()

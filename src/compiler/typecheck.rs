@@ -1,21 +1,19 @@
 use std::borrow::Borrow;
 use std::rc::Rc;
 use log::debug;
+use num_bigint::ToBigInt;
 
 use crate::compiler::comptypes::CompileErr;
 use crate::compiler::sexp::{SExp, enlist};
 use crate::compiler::srcloc::{Srcloc, HasLoc};
 use crate::compiler::types::ast::{
-    Context,
     ContextElim,
     Expr,
     GContext,
-    TYPE_MONO,
     Type,
     TypeVar,
     Var
 };
-use crate::compiler::types::astfuns::polytype;
 
 pub trait TheoryToSExp {
     fn to_sexp(&self) -> SExp;
@@ -38,7 +36,16 @@ impl<const A: usize> TheoryToSExp for Type<A> {
         match self {
             Type::TUnit(l) => SExp::Nil(l.clone()),
             Type::TAny(l) => SExp::Atom(l.clone(), "Any".as_bytes().to_vec()),
-            Type::TAtom(l) => SExp::Atom(l.clone(), "Atom".as_bytes().to_vec()),
+            Type::TAtom(l,None) => SExp::Atom(l.clone(), "Atom".as_bytes().to_vec()),
+            Type::TAtom(l,Some(s)) => SExp::Cons(
+                l.clone(),
+                Rc::new(SExp::Atom(l.clone(), "Atom".as_bytes().to_vec())),
+                Rc::new(SExp::Cons(
+                    l.clone(),
+                    Rc::new(SExp::Integer(l.clone(), s.to_bigint().unwrap())),
+                    Rc::new(SExp::Nil(l.clone()))
+                ))
+            ),
             Type::TVar(v) => SExp::Atom(v.loc(), v.0.as_bytes().to_vec()),
             Type::TExists(v) => {
                 SExp::Cons(
@@ -404,7 +411,7 @@ pub fn parse_type_sexp<const A: usize>(
             } else if a == &"Any".as_bytes().to_vec() {
                 return Ok(Type::TAny(l.clone()));
             } else if a == &"Atom".as_bytes().to_vec() {
-                return Ok(Type::TAtom(l.clone()));
+                return Ok(Type::TAtom(l.clone(), None));
             } else {
                 return Ok(Type::TVar(parse_type_var(expr.clone())?));
             }
@@ -561,165 +568,4 @@ pub fn parse_expr_sexp(expr: Rc<SExp>) -> Result<Expr, CompileErr> {
     }
 
     Err(CompileErr(expr.loc(), format!("bad expr {}", expr.to_string())))
-}
-
-pub fn standard_type_context() -> Context {
-    let loc = Srcloc::start(&"*type-prelude*".to_string());
-
-    // Basic sorts
-    let unit_tv = TypeVar("Unit".to_string(), loc.clone());
-    let any_tv = TypeVar("Any".to_string(), loc.clone());
-    let atom_tv = TypeVar("Atom".to_string(), loc.clone());
-    let list_tv = TypeVar("List".to_string(), loc.clone());
-    let f0 = TypeVar("f0".to_string(), loc.clone());
-    let r0 = TypeVar("r0".to_string(), loc.clone());
-
-    let unit: Type<TYPE_MONO> = Type::TUnit(loc.clone());
-    let any: Type<TYPE_MONO> = Type::TAny(loc.clone());
-    let atom: Type<TYPE_MONO> = Type::TAtom(loc.clone());
-    let cons: Type<TYPE_MONO> = Type::TForall(
-        f0.clone(),
-        Rc::new(Type::TFun(
-            Rc::new(Type::TVar(f0.clone())),
-            Rc::new(Type::TForall(
-                r0.clone(),
-                Rc::new(Type::TFun(
-                    Rc::new(Type::TVar(r0.clone())),
-                    Rc::new(Type::TPair(
-                        Rc::new(Type::TVar(f0.clone())),
-                        Rc::new(Type::TVar(r0.clone()))
-                    ))
-                ))
-            ))
-        ))
-    );
-    let first: Type<TYPE_MONO> = Type::TForall(
-        f0.clone(),
-        Rc::new(Type::TForall(
-            r0.clone(),
-            Rc::new(Type::TFun(
-                Rc::new(Type::TPair(
-                    Rc::new(Type::TVar(f0.clone())),
-                    Rc::new(Type::TVar(r0.clone()))
-                )),
-                Rc::new(Type::TVar(f0.clone()))
-            )),
-        ))
-    );
-    let fprime: Type<TYPE_MONO> = Type::TForall(
-        f0.clone(),
-        Rc::new(Type::TForall(
-            r0.clone(),
-            Rc::new(Type::TFun(
-                Rc::new(Type::TExec(
-                    Rc::new(Type::TPair(
-                        Rc::new(Type::TVar(f0.clone())),
-                        Rc::new(Type::TVar(r0.clone()))
-                    )),
-                )),
-                Rc::new(Type::TVar(f0.clone()))
-            ))
-        ))
-    );
-    let rest: Type<TYPE_MONO> = Type::TForall(
-        r0.clone(),
-        Rc::new(Type::TForall(
-            f0.clone(),
-            Rc::new(Type::TFun(
-                Rc::new(Type::TPair(
-                    Rc::new(Type::TVar(f0.clone())),
-                    Rc::new(Type::TVar(r0.clone()))
-                )),
-                Rc::new(Type::TVar(r0.clone()))
-            ))
-        ))
-    );
-    let rprime: Type<TYPE_MONO> = Type::TForall(
-        r0.clone(),
-        Rc::new(Type::TForall(
-            f0.clone(),
-            Rc::new(Type::TFun(
-                Rc::new(Type::TExec(
-                    Rc::new(Type::TPair(
-                        Rc::new(Type::TVar(f0.clone())),
-                        Rc::new(Type::TVar(r0.clone()))
-                    ))
-                )),
-                Rc::new(Type::TVar(r0.clone()))
-            ))
-        ))
-    );
-    let plus: Type<TYPE_MONO> = Type::TFun(
-        Rc::new(Type::TApp(
-            Rc::new(Type::TAtom(atom_tv.loc())),
-            Rc::new(Type::TVar(list_tv.clone()))
-        )),
-        Rc::new(Type::TAtom(atom_tv.loc()))
-    );
-    let bless: Type<TYPE_MONO> = Type::TForall(
-        f0.clone(),
-        Rc::new(Type::TFun(
-            Rc::new(Type::TVar(f0.clone())),
-            Rc::new(Type::TForall(
-                r0.clone(),
-                Rc::new(Type::TFun(
-                    Rc::new(Type::TVar(r0.clone())),
-                    Rc::new(Type::TExec(
-                        Rc::new(Type::TPair(
-                            Rc::new(Type::TVar(f0.clone())),
-                            Rc::new(Type::TVar(r0.clone()))
-                        ))
-                    ))
-                ))
-            ))
-        ))
-    );
-    // (a (Exec X)) => X
-    // so
-    // ((a (Exec (x -> y))) x)
-    let apply: Type<TYPE_MONO> = Type::TForall(
-        f0.clone(),
-        Rc::new(Type::TFun(
-            Rc::new(Type::TExec(
-                Rc::new(Type::TVar(f0.clone()))
-            )),
-            Rc::new(Type::TVar(f0.clone()))
-        ))
-    );
-    let some: Type<TYPE_MONO> = Type::TForall(
-        f0.clone(),
-        Rc::new(Type::TFun(
-            Rc::new(Type::TVar(f0.clone())),
-            Rc::new(Type::TNullable(Rc::new(Type::TVar(f0.clone()))))
-        ))
-    );
-
-    let list: Type<TYPE_MONO> = Type::TAbs(
-        f0.clone(),
-        Rc::new(Type::TNullable(
-            Rc::new(Type::TPair(
-                Rc::new(Type::TVar(f0.clone())),
-                Rc::new(Type::TApp(
-                    Rc::new(Type::TVar(f0.clone())),
-                    Rc::new(Type::TVar(list_tv.clone()))
-                ))
-            ))
-        ))
-    );
-
-    Context::new(vec![
-        ContextElim::CVar(Var("c".to_string(), loc.clone()), polytype(&cons)),
-        ContextElim::CVar(Var("some".to_string(), loc.clone()), polytype(&some)),
-        ContextElim::CVar(Var("f".to_string(), loc.clone()), polytype(&first)),
-        ContextElim::CVar(Var("r".to_string(), loc.clone()), polytype(&rest)),
-        ContextElim::CVar(Var("a".to_string(), loc.clone()), polytype(&apply)),
-        ContextElim::CVar(Var("f^".to_string(), loc.clone()), polytype(&fprime)),
-        ContextElim::CVar(Var("r^".to_string(), loc.clone()), polytype(&rprime)),
-        ContextElim::CVar(Var("+^".to_string(), loc.clone()), polytype(&plus)),
-        ContextElim::CVar(Var("bless".to_string(), loc.clone()), polytype(&bless)),
-        ContextElim::CExistsSolved(list_tv, list),
-        ContextElim::CExistsSolved(unit_tv, unit),
-        ContextElim::CExistsSolved(any_tv, any),
-        ContextElim::CExistsSolved(atom_tv, atom)
-    ])
 }

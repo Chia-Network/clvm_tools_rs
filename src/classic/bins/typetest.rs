@@ -8,9 +8,9 @@ use clvm_tools_rs::compiler::srcloc::Srcloc;
 use clvm_tools_rs::compiler::typecheck::{
     TheoryToSExp,
     parse_expr_sexp,
-    parse_type_sexp,
-    standard_type_context
+    parse_type_sexp
 };
+use clvm_tools_rs::compiler::typechia::standard_type_context;
 use clvm_tools_rs::compiler::types::ast::{ContextElim, Var};
 use clvm_tools_rs::compiler::types::theory::TypeTheory;
 

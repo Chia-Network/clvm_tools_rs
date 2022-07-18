@@ -723,7 +723,7 @@ fn codegen_(
     h: &HelperForm,
 ) -> Result<PrimaryCodegen, CompileErr> {
     match h {
-        HelperForm::Defun(loc, name, inline, args, body) => {
+        HelperForm::Defun(loc, name, inline, args, body, _) => {
             if *inline {
                 // Note: this just replaces a dummy function inserted earlier.
                 // The real redefinition check is in dummy_functions.
@@ -805,7 +805,7 @@ fn codegen_(
 
 fn is_defun(b: &HelperForm) -> bool {
     match b {
-        HelperForm::Defun(_, _, false, _, _) => true,
+        HelperForm::Defun(_, _, false, _, _, _) => true,
         _ => false,
     }
 }
@@ -855,6 +855,7 @@ fn generate_let_defun(
         true,
         Rc::new(inner_function_args),
         body,
+        None
     )
 }
 
@@ -919,7 +920,7 @@ fn process_helper_let_bindings(
 
     while i < result.len() {
         match result[i].clone() {
-            HelperForm::Defun(l, name, inline, args, body) => {
+            HelperForm::Defun(l, name, inline, args, body, ty) => {
                 let context = if inline { Some(args.clone()) } else { None };
                 let helper_result =
                     hoist_body_let_binding(compiler, context, args.clone(), body.clone());
@@ -927,7 +928,7 @@ fn process_helper_let_bindings(
                 let hoisted_body = helper_result.1.clone();
 
                 result[i] =
-                    HelperForm::Defun(l.clone(), name.clone(), inline, args.clone(), hoisted_body);
+                    HelperForm::Defun(l.clone(), name.clone(), inline, args.clone(), hoisted_body, ty.clone());
 
                 i += 1;
 
@@ -958,7 +959,7 @@ fn start_codegen(
     // Start compiler with all macros and constants
     for h in comp.helpers.iter() {
         use_compiler = match h.borrow() {
-            HelperForm::Defconstant(loc, name, body) => {
+            HelperForm::Defconstant(loc, name, body, _) => {
                 let expand_program = SExp::Cons(
                     loc.clone(),
                     Rc::new(SExp::Atom(loc.clone(), "mod".as_bytes().to_vec())),
@@ -1174,12 +1175,12 @@ fn finalize_env(
 fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileErr> {
     foldM(
         &|compiler: &PrimaryCodegen, form: &HelperForm| match form {
-            HelperForm::Defun(_, name, false, _, _) => {
+            HelperForm::Defun(_, name, false, _, _, _) => {
                 let mut c_copy = compiler.clone();
                 c_copy.parentfns.insert(name.clone());
                 Ok(c_copy)
             }
-            HelperForm::Defun(loc, name, true, args, body) => Ok(compiler)
+            HelperForm::Defun(loc, name, true, args, body, _) => Ok(compiler)
                 .and_then(|comp| fail_if_present(loc.clone(), &compiler.inlines, &name, comp))
                 .and_then(|comp| fail_if_present(loc.clone(), &compiler.defuns, &name, comp))
                 .map(|comp| {

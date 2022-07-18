@@ -201,7 +201,7 @@ impl Context {
             Type::TVar(alpha) => self.foralls().elem(&alpha),
             Type::TUnit(_) => true,
             Type::TAny(_) => true,
-            Type::TAtom(_) => true,
+            Type::TAtom(_,_) => true,
             Type::TNullable(t) => self.typewf(t.borrow()),
             Type::TExec(t) => self.typewf(t.borrow()),
             Type::TFun(a,b) => self.typewf(a.borrow()) && self.typewf(b.borrow()),
@@ -299,10 +299,10 @@ impl Context {
 
     pub fn apply_(&self, typ: &Polytype) -> Polytype {
         match typ {
-            Type::TUnit(l) => Type::TUnit(l.clone()),
-            Type::TAny(l) => Type::TAny(l.clone()),
-            Type::TAtom(l) => Type::TAtom(l.clone()),
-            Type::TVar(v) => Type::TVar(v.clone()),
+            Type::TUnit(l) => typ.clone(),
+            Type::TAny(l) => typ.clone(),
+            Type::TAtom(_,_) => typ.clone(),
+            Type::TVar(v) => typ.clone(),
             Type::TForall(v,t) => Type::TForall(v.clone(),t.clone()),
             Type::TExists(v) => {
                 self.find_solved(v).map(|v| {

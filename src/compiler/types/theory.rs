@@ -96,9 +96,15 @@ impl Context {
                 debug!("case 2");
                 return Ok(Box::new(self.clone()));
             },
-            (Type::TAtom(_), Type::TAtom(_)) => {
+            (Type::TAtom(_,_), Type::TAtom(_,None)) => {
                 debug!("case Atom");
                 return Ok(Box::new(self.clone()));
+            },
+            (Type::TAtom(_,x), Type::TAtom(_,y)) => {
+                debug!("case Atom with sizes");
+                if x == y {
+                    return Ok(Box::new(self.clone()));
+                }
             },
             (Type::TFun(a1,a2), Type::TFun(b1,b2)) => {
                 debug!("case 5");
@@ -514,7 +520,7 @@ impl Context {
             // 1I=>
             Expr::EUnit(l) => { return Ok((Type::TUnit(l.clone()), Box::new(self.clone()))); },
 
-            Expr::ELit(l,_) => { return Ok((Type::TAtom(l.clone()), Box::new(self.clone()))); },
+            Expr::ELit(l,_) => { return Ok((Type::TAtom(l.clone(),None), Box::new(self.clone()))); },
 
             // ->I=> Original rule
             Expr::EAbs(x,e) => {

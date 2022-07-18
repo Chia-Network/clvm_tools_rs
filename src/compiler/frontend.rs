@@ -69,9 +69,16 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
 
 fn collect_used_names_helperform(body: &HelperForm) -> Vec<Vec<u8>> {
     match body {
-        HelperForm::Defconstant(_, _, value) => collect_used_names_bodyform(value),
-        HelperForm::Defmacro(_, _, _, body) => collect_used_names_compileform(body),
-        HelperForm::Defun(_, _, _, _, body) => collect_used_names_bodyform(body),
+        HelperForm::Deftype(_, _, _, _) => Vec::new(),
+        HelperForm::Defconstant(_, _, value, _) => {
+            collect_used_names_bodyform(value)
+        },
+        HelperForm::Defmacro(_, _, _, body) => {
+            collect_used_names_compileform(body)
+        },
+        HelperForm::Defun(_, _, _, _, body, _) => {
+            collect_used_names_bodyform(body)
+        },
     }
 }
 
@@ -345,7 +352,7 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
 }
 
 fn compile_defconstant(l: Srcloc, name: Vec<u8>, body: Rc<SExp>) -> Result<HelperForm, CompileErr> {
-    compile_bodyform(body).map(|bf| HelperForm::Defconstant(l, name.to_vec(), Rc::new(bf)))
+    compile_bodyform(body).map(|bf| HelperForm::Defconstant(l, name.to_vec(), Rc::new(bf), None))
 }
 
 fn compile_defun(
@@ -363,7 +370,7 @@ fn compile_defun(
         _ => {}
     }
     compile_bodyform(take_form)
-        .map(|bf| HelperForm::Defun(l, name, inline, args.clone(), Rc::new(bf)))
+        .map(|bf| HelperForm::Defun(l, name, inline, args.clone(), Rc::new(bf), None))
 }
 
 fn compile_defmacro(
