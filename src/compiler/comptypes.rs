@@ -107,6 +107,7 @@ pub struct CompileForm {
     pub args: Rc<SExp>,
     pub helpers: Vec<HelperForm>,
     pub exp: Rc<BodyForm>,
+    pub ty: Option<Polytype>
 }
 
 #[derive(Clone, Debug)]

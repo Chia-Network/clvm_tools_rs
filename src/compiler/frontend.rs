@@ -483,6 +483,7 @@ fn compile_mod_(
                     args: args.clone(),
                     helpers: mc.helpers.clone(),
                     exp: Rc::new(compile_bodyform(body.clone())?),
+                    ty: None
                 })),
             },
             _ => {
@@ -619,6 +620,7 @@ pub fn frontend(
         args: our_mod.args.clone(),
         helpers: live_helpers,
         exp: our_mod.exp.clone(),
+        ty: None
     })
 }
 

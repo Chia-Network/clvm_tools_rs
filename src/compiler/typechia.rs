@@ -1,10 +1,23 @@
 use std::rc::Rc;
 
-use crate::compiler::comptypes::{CompileErr, CompileForm};
+use crate::compiler::comptypes::{
+    BodyForm,
+    ChiaType,
+    CompileErr,
+    CompileForm,
+    HelperForm
+};
+use crate::compiler::sexp::{
+    SExp,
+    decode_string
+};
 use crate::compiler::srcloc::{Srcloc, HasLoc};
 use crate::compiler::types::ast::{
     Context,
     ContextElim,
+    Expr,
+    Monotype,
+    Polytype,
     TYPE_MONO,
     Type,
     TypeVar,
@@ -180,11 +193,119 @@ pub fn standard_type_context() -> Context {
     ])
 }
 
+fn type_of_defun(l: Srcloc, ty: &Option<Polytype>) -> Polytype {
+    if let Some(ty) = ty {
+        ty.clone()
+    } else {
+        Type::TFun(
+            Rc::new(Type::TAny(l.clone())),
+            Rc::new(Type::TAny(l.clone()))
+        )
+    }
+}
+
+fn context_from_args_and_type(
+    context_: &Context,
+    args: Rc<SExp>,
+    argty: &Polytype
+) -> Context {
+    todo!()
+}
+
+fn chialisp_to_expr(
+    args: Rc<SExp>,
+    body: Rc<BodyForm>
+) -> Expr {
+    todo!()
+}
+
+fn typecheck_chialisp_body_with_context(
+    context_: &Context,
+    expr: &Expr
+) -> Result<(), CompileErr> {
+    todo!()
+}
+
+fn chia_to_type(ty: &ChiaType) -> Monotype {
+    todo!()
+}
+
 // Given a compileform, typecheck
 impl Context {
     pub fn typecheck_chialisp_program(
         &self, comp: CompileForm
     ) -> Result<(), CompileErr> {
-        Ok(())
+        let mut context = self.clone();
+
+        // Extract type definitions
+        for h in comp.helpers.iter() {
+            if let HelperForm::Deftype(l, name, args, ty) = &h {
+                let tname = decode_string(name);
+                if let Some(ty) = ty {
+                    let use_type = chia_to_type(ty);
+                    context = context.snoc_wf(ContextElim::CExistsSolved(
+                        TypeVar(tname, l.clone()), use_type
+                    ));
+                } else {
+                    // An abstract type declaration.
+                    context = context.snoc_wf(
+                        ContextElim::CForall(TypeVar(tname, l.clone()))
+                    );
+                }
+            }
+        }
+
+        // Extract constants
+        for h in comp.helpers.iter() {
+            if let HelperForm::Defconstant(l, name, body, ty) = &h {
+                let tname = decode_string(name);
+                if let Some(ty) = ty {
+                    context = context.snoc_wf(ContextElim::CVar(
+                        Var(tname, l.clone()),
+                        ty.clone()
+                    ));
+                } else {
+                    context = context.snoc_wf(ContextElim::CVar(
+                        Var(tname, l.clone()),
+                        Type::TAny(l.clone())
+                    ));
+                }
+            }
+        }
+
+        // Extract functions
+        for h in comp.helpers.iter() {
+            if let HelperForm::Defun(l, name, _, args, body, ty) = &h {
+                let tname = decode_string(name);
+                let ty = type_of_defun(l.clone(), ty);
+                context = context.snoc_wf(
+                    ContextElim::CVar(Var(tname, l.clone()), ty)
+                );
+            }
+        }
+
+        // Typecheck helper functions
+        for h in comp.helpers.iter() {
+            if let HelperForm::Defun(l, name, _, args, body, ty) = &h {
+                let ty = type_of_defun(l.clone(), ty);
+                let context_with_args = context_from_args_and_type(
+                    &context, args.clone(), &ty
+                );
+                typecheck_chialisp_body_with_context(
+                    &context_with_args,
+                    &chialisp_to_expr(args.clone(), body.clone())
+                )?;
+            }
+        }
+
+        // Typecheck main expression
+        let ty = type_of_defun(comp.exp.loc(), &comp.ty);
+        let context_with_args = context_from_args_and_type(
+            &context, comp.args.clone(), &ty
+        );
+        typecheck_chialisp_body_with_context(
+            &context_with_args,
+            &chialisp_to_expr(comp.args.clone(), comp.exp.clone())
+        )
     }
 }

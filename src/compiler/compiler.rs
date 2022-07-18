@@ -158,6 +158,7 @@ fn fe_opt(
         args: compileform.args.clone(),
         helpers: optimized_helpers.clone(),
         exp: shrunk,
+        ty: None
     })
 }
 
@@ -177,6 +178,7 @@ fn compile_pre_forms(
             args: g.args.clone(),
             helpers: g.helpers.clone(), // optimized_helpers.clone(),
             exp: g.exp.clone(),
+            ty: None
         }
     };
     codegen(allocator, runner, opts.clone(), &compileform, symbol_table)
