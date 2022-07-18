@@ -4,7 +4,11 @@
 use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+
+use log::debug;
+
 use crate::compiler::srcloc::{HasLoc, Srcloc};
+use crate::compiler::typecheck::TheoryToSExp;
 use crate::util::Number;
 
 pub const CONTEXT_COMPLETE: usize = 0;
@@ -198,10 +202,10 @@ impl<const A: usize> GContext<A> {
     }
 
     pub fn appends(&self, elems_: Vec<ContextElim<A>>) -> GContext<A> {
-        let mut newvec = self.0.clone();
         let mut elems = elems_;
-        newvec.append(&mut elems);
-        GContext(newvec)
+        let mut scopy = self.0.clone();
+        elems.append(&mut scopy);
+        GContext(elems)
     }
 
     pub fn new(elems: Vec<ContextElim<A>>) -> GContext<A> {
@@ -212,7 +216,7 @@ impl<const A: usize> GContext<A> {
         self.0.iter().position(|e| *e == m).map(|idx| {
             GContext(self.0[idx+1..].iter().map(|x| x.clone()).collect())
         }).unwrap_or_else(|| {
-            GContext(Vec::new())
+            GContext(self.0.clone())
         })
     }
 
@@ -221,8 +225,8 @@ impl<const A: usize> GContext<A> {
         m: &ContextElim<A>
     ) -> (GContext<A>, GContext<A>) {
         self.0.iter().position(|e| e == m).map(|idx| {
-            ( GContext(self.0[..idx].iter().map(|x| x.clone()).collect())
-            , GContext(self.0[idx+1..].iter().map(|x| x.clone()).collect())
+            ( GContext(self.0[idx+1..].iter().map(|x| x.clone()).collect())
+            , GContext(self.0[..idx].iter().map(|x| x.clone()).collect())
             )
         }).unwrap_or_else(|| {
             ( GContext(Vec::new())
@@ -243,12 +247,15 @@ impl<const A: usize> GContext<A> {
         let marked = self.appends(vec![m.clone()]);
         let res: GContext<A> = f(marked).map(|x| x.extract())?;
         Ok(res.0.iter().position(|e| *e == m).map(|idx| {
-            ( GContext(res.0[..idx].iter().map(|x| x.clone()).collect())
-            , GContext(res.0[idx+1..].iter().map(|x| x.clone()).collect())
-            )
+            let res =
+                ( GContext(res.0[..idx].iter().map(|x| x.clone()).collect())
+                , GContext(res.0[idx+1..].iter().map(|x| x.clone()).collect())
+                );
+            debug!("break_marker {} {} from {}", m.to_sexp().to_string(), res.0.to_sexp().to_string(), res.1.to_sexp().to_string());
+            res
         }).unwrap_or_else(|| {
-            ( GContext(Vec::new())
-            , GContext(res.0.clone())
+            ( GContext(res.0.clone())
+            , GContext(Vec::new())
             )
         }))
     }

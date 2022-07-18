@@ -68,12 +68,14 @@ impl Context {
     //
     // Given some morphism Delta on Gamma, B element Delta checks as A in Gamma
     fn subtype_(&self, typ1: &Polytype, typ2: &Polytype) -> Result<Box<Self>, CompileErr> {
-        let double_exists = |alpha: &TypeVar, alphaprime: &TypeVar| {
+        let texists_guard = |a: &Polytype, alpha: &TypeVar| {
             let exi = self.existentials();
-            if alpha == alphaprime && exi.elem(alpha) {
-                Some(Box::new(self.clone()))
-            } else {
+            if exi.elem(alpha) && !free_tvars(a).contains(alpha) {
+                debug!("texists_guard: None");
                 None
+            } else {
+                debug!("texists_guard: {}", self.to_sexp().to_string());
+                Some(Box::new(self.clone()))
             }
         };
 
@@ -87,6 +89,7 @@ impl Context {
                 }
             },
             (x, Type::TAny(_)) => {
+                debug!("case Any");
                 return Ok(Box::new(self.clone()));
             },
             (Type::TUnit(_), Type::TUnit(_)) => {
@@ -94,6 +97,7 @@ impl Context {
                 return Ok(Box::new(self.clone()));
             },
             (Type::TAtom(_), Type::TAtom(_)) => {
+                debug!("case Atom");
                 return Ok(Box::new(self.clone()));
             },
             (Type::TFun(a1,a2), Type::TFun(b1,b2)) => {
@@ -121,19 +125,15 @@ impl Context {
             // <:forallR
             (a, Type::TForall(alpha,b)) => {
                 let alphaprime = fresh_tvar(typ2.loc());
+                let subst_res = type_subst(
+                    &Type::TVar(alphaprime.clone()),
+                    &alpha.clone(),
+                    b
+                );
                 debug!("case 7 a' = {}", alphaprime.to_sexp().to_string());
                 return self.drop_marker(
                     ContextElim::CForall(alphaprime.clone()),
-                    |gamma| {
-                        gamma.subtype(
-                            a,
-                            &type_subst(
-                                &Type::TVar(alphaprime.clone()),
-                                &alpha.clone(),
-                                b
-                            )
-                        )
-                    }
+                    |gamma| gamma.subtype(a, &subst_res)
                 ).map(|x| Box::new(x));
             },
 
@@ -141,24 +141,23 @@ impl Context {
             (Type::TForall(alpha,a), b) => {
                 debug!("case 8");
                 let alphaprime = fresh_tvar(typ1.loc());
+                let subst_res = type_subst(
+                    &Type::TExists(alphaprime.clone()),
+                    &alpha.clone(),
+                    a.borrow()
+                );
                 return self.drop_marker(
                     ContextElim::CMarker(alphaprime.clone()),
                     |gamma| {
                         gamma.appends_wf(vec![
                             ContextElim::CExists(alphaprime.clone())
-                        ]).subtype(
-                            &type_subst(
-                                &Type::TExists(alphaprime.clone()),
-                                &alpha.clone(),
-                                a.borrow()
-                            ),
-                            &b.clone()
-                        )
+                        ]).subtype(&subst_res, &b.clone())
                     }
                 ).map(|x| Box::new(x));
             },
 
             (a, Type::TApp(t1,t2)) => {
+                debug!("case TApp");
                 if let Some((t,ctx)) = self.newtype::<TYPE_POLY>(
                     t1.borrow(),
                     t2.borrow()
@@ -170,11 +169,10 @@ impl Context {
 
             // <:instantiateL
             (Type::TExists(alpha), a) => {
+                debug!("TExists instantiateL");
                 // Original code: Type.hs line 29 uses a guard
-                if let Type::TExists(alphaprime) = a {
-                    if let Some(r) = double_exists(alpha, alphaprime) {
-                        return Ok(r);
-                    }
+                if let Some(r) = texists_guard(a, alpha) {
+                    return Err(CompileErr(a.loc(), "instantiateL TExists".to_string()));
                 }
 
                 if let Type::TNullable(aprime) = a {
@@ -205,19 +203,9 @@ impl Context {
             // <:instantiateR
             (a, Type::TExists(alpha)) => {
                 // Original code: Type.hs line 29 uses a guard
-                if let Type::TExists(alphasub) = a {
-                    if let Some(r) = double_exists(alphasub, alpha) {
-                        return Ok(r);
-                    }
-                }
-
-                if let Type::TNullable(aprime) = a {
-                    if let Type::TVar(avar) = aprime.borrow() {
-                        return Ok(Box::new(self.snoc_wf(ContextElim::CExistsSolved(
-                            alpha.clone(),
-                            Type::TNullable(Rc::new(Type::TVar(avar.clone())))
-                        ))));
-                    }
+                debug!("right hand TExists {} {}", a.to_sexp().to_string(), alpha.to_sexp().to_string());
+                if let Some(r) = texists_guard(a, alpha) {
+                    return Ok(r);
                 }
 
                 if let Type::TExec(aprime) = a {
@@ -252,17 +240,43 @@ impl Context {
         match monotype(a).and_then(|mta| self.solve(alpha, &mta)) {
             Some(gammaprime) => { return Ok(Box::new(gammaprime)); },
             None => {
+                debug!("L match {}", a.to_sexp().to_string());
                 match a {
                     // InstLReach
                     Type::TExists(beta) => {
                         if self.ordered(alpha,beta) {
-                            return self.solve(beta, &Type::TExists(alpha.clone())).map(|x| Ok(x.clone())).unwrap_or_else(|| Err(CompileErr(alpha.loc(), format!("no solution in instantiate_l for {:?} {:?} in context {:?}", alpha, a, self)))).map(|x| Box::new(x));
+                            debug!("InstLReach AB");
+                            return self.solve(
+                                beta,
+                                &Type::TExists(alpha.clone())).
+                                map(|x| Ok(Box::new(x.clone()))).
+                                unwrap_or_else(
+                                    || Err(
+                                        CompileErr(
+                                            alpha.loc(),
+                                            format!("no solution in instantiate_l for {} {} in context {}", alpha.to_sexp().to_string(), a.to_sexp().to_string(), self.to_sexp().to_string())
+                                        )
+                                    )
+                                );
                         } else {
-                            return self.solve(alpha, &Type::TExists(beta.clone())).map(|x| Ok(x.clone())).unwrap_or_else(|| Err(CompileErr(alpha.loc(), format!("no solution in instantiate_l for {:?} {:?} in context {:?}", a, alpha, self)))).map(|x| Box::new(x));
+                            debug!("InstLReach BA");
+                            return self.solve(
+                                alpha,
+                                &Type::TExists(beta.clone())).
+                                map(|x| Ok(Box::new(x.clone()))).
+                                unwrap_or_else(
+                                    || Err(
+                                        CompileErr(
+                                            alpha.loc(),
+                                            format!("no solution in instantiate_l for {} {} in context {}", a.to_sexp().to_string(), alpha.to_sexp().to_string(), self.to_sexp().to_string())
+                                        )
+                                    )
+                                );
                         }
                     },
                     // InstLArr
                     Type::TFun(a1, a2) => {
+                        debug!("InstLArr");
                         let alpha1 = fresh_tvar(a1.loc());
                         let alpha2 = fresh_tvar(a2.loc());
                         let rcontext = Context::new_wf(vec![
@@ -282,30 +296,33 @@ impl Context {
                     },
                     // InstLAIIR
                     Type::TForall(beta, b) => {
+                        debug!("InstLArrR");
                         let betaprime = fresh_tvar(beta.loc());
+                        let subst_res = type_subst(
+                            &Type::TVar(betaprime.clone()),
+                            &beta.clone(),
+                            b.borrow()
+                        );
                         return self.drop_marker(
                             ContextElim::CForall(betaprime.clone()),
                             |gamma| {
                                 gamma.instantiate_l(
                                     alpha,
-                                    &type_subst(
-                                        &Type::TVar(betaprime.clone()),
-                                        &beta.clone(),
-                                        b.borrow()
-                                    )
+                                    &subst_res
                                 )
                             }
                         ).map(|x| Box::new(x));
                     },
 
                     Type::TExec(t) => {
+                        debug!("instL TExec");
                         let alpha1 = fresh_tvar(t.loc());
                         let rcontext = Context::new_wf(vec![
+                            ContextElim::CExists(alpha1.clone()),
                             ContextElim::CExistsSolved(
                                 alpha.clone(),
                                 Type::TExec(Rc::new(Type::TExists(alpha1.clone())))
-                            ),
-                            ContextElim::CExists(alpha1.clone())
+                            )
                         ]);
                         return self.insert_at(ContextElim::CExists(alpha.clone()), rcontext).
                             instantiate_r(t, alpha);
@@ -324,103 +341,93 @@ impl Context {
     fn instantiate_r_(&self, a: &Polytype, alpha: &TypeVar) -> Result<Box<Self>, CompileErr> {
         let _ = self.checkwftype(a);
         let _ = self.checkwftype(&Type::TExists(alpha.clone()));
-        match monotype(a).and_then(|mta| self.solve(alpha,&mta)) {
-            Some(gammaprime) => { return Ok(Box::new(gammaprime)); },
-            None => {
-                // InstRReach
-                debug!("match {}", a.to_sexp().to_string());
-                match a {
-                    Type::TNullable(a1) => {
-                        match monotype(a) {
-                            Some(mta) => {
-                                return Ok(Box::new(self.appends_wf(vec![
-                                    ContextElim::CForall(alpha.clone()),
-                                    ContextElim::CExistsSolved(alpha.clone(), mta)
-                                ])));
-                            },
-                            _ => {
-                                todo!("no monotype: {}", a.to_sexp().to_string())
-                            }
-                        }
-                    },
-                    Type::TExec(a1) => {
-                        match monotype(a) {
-                            Some(mta) => {
-                                return Ok(Box::new(self.appends_wf(vec![
-                                    ContextElim::CForall(alpha.clone()),
-                                    ContextElim::CExistsSolved(alpha.clone(), mta)
-                                ])));
-                            },
-                            _ => {
-                                todo!("no monotype: {}", a.to_sexp().to_string())
-                            }
-                        }
-                    },
-                    Type::TPair(a1,a2) => {
-                        match monotype(a) {
-                            Some(mta) => {
-                                return Ok(Box::new(self.appends_wf(vec![
-                                    ContextElim::CForall(alpha.clone()),
-                                    ContextElim::CExistsSolved(alpha.clone(), mta)
-                                ])));
-                            },
-                            _ => {
-                                todo!("no monotype: {}", a.to_sexp().to_string())
-                            }
-                        }
-                    },
-                    Type::TExists(beta) => {
-                        debug!("texists {}", beta.to_sexp().to_string());
-                        if self.ordered(alpha, beta) {
-                            match self.solve(beta, &Type::TExists(alpha.clone())) {
-                                Some(res) => { return Ok(Box::new(res)); },
-                                None => {
-                                    return Err(CompileErr(alpha.loc(), format!("no solution in instantiate_r: {} {} with context {:?}", a.to_sexp().to_string(), alpha.to_sexp().to_string(), self)));
-                                }
-                            }
-                        } else {
-                            match self.solve(alpha, &Type::TExists(beta.clone())) {
-                                Some(res) => { return Ok(Box::new(res)); },
-                                None => {
-                                    return Err(CompileErr(beta.loc(), format!("no solution in instantiate_r: {} {} with context {:?}", a.to_sexp().to_string(), alpha.to_sexp().to_string(), self)));
-                                }
-                            }
-                        }
-                    },
-                    Type::TFun(a1, a2) => {
-                        let alpha1 = fresh_tvar(a1.loc());
-                        let alpha2 = fresh_tvar(a2.loc());
-                        let rcontext = Context::new_wf(vec![
-                            ContextElim::CExists(alpha2.clone()),
-                            ContextElim::CExists(alpha1.clone()),
-                            ContextElim::CExistsSolved(alpha.clone(), Type::TFun(Rc::new(Type::TExists(alpha1.clone())), Rc::new(Type::TVar(alpha2.clone()))))
-                        ]);
-                        let theta = (self.insert_at(
-                            ContextElim::CExists(alpha.clone()), rcontext
-                        )).instantiate_l(&alpha1, a1.borrow())?;
-                        return theta.instantiate_r(
-                            &theta.apply(a2.borrow()), &alpha2
-                        );
-                    },
-                    Type::TForall(beta, b) => {
-                        let betaprime = fresh_tvar(beta.loc());
-                        return self.drop_marker(
-                            ContextElim::CMarker(betaprime.clone()),
-                            |gamma| {
-                                self.appends_wf(vec![
-                                    ContextElim::CExists(betaprime.clone())
-                                ]).instantiate_r(
-                                    &type_subst(
-                                        &Type::TExists(betaprime.clone()), &beta.clone(), b
-                                    ),
-                                    alpha
-                                )
-                            }
-                        ).map(|x| Box::new(x));
-                    },
-                    _ => { }
-                }
+        if let Some(gammaprime) =
+            monotype(a).and_then(|mta| self.solve(alpha,&mta)) {
+                debug!("just gamma'");
+                return Ok(Box::new(gammaprime));
             }
+
+        // InstRReach
+        debug!("match {:?}", a);
+        match a {
+            Type::TExec(a1) => {
+                debug!("case 2");
+                match monotype(a) {
+                    Some(mta) => {
+                        return Ok(Box::new(self.appends_wf(vec![
+                            ContextElim::CForall(alpha.clone()),
+                            ContextElim::CExistsSolved(alpha.clone(), mta)
+                        ])));
+                    },
+                    _ => {
+                        todo!("no monotype: {}", a.to_sexp().to_string())
+                    }
+                }
+            },
+            Type::TPair(a1,a2) => {
+                debug!("case 3");
+                match monotype(a) {
+                    Some(mta) => {
+                        return Ok(Box::new(self.appends_wf(vec![
+                            ContextElim::CForall(alpha.clone()),
+                            ContextElim::CExistsSolved(alpha.clone(), mta)
+                        ])));
+                    },
+                    _ => {
+                        todo!("no monotype: {}", a.to_sexp().to_string())
+                    }
+                }
+            },
+            Type::TExists(beta) => {
+                debug!("texists {}", beta.to_sexp().to_string());
+                if self.ordered(alpha, beta) {
+                    match self.solve(beta, &Type::TExists(alpha.clone())) {
+                        Some(res) => { return Ok(Box::new(res)); },
+                        None => {
+                            return Err(CompileErr(alpha.loc(), format!("no solution in instantiate_r: {} {} with context {:?}", a.to_sexp().to_string(), alpha.to_sexp().to_string(), self)));
+                        }
+                    }
+                } else {
+                    match self.solve(alpha, &Type::TExists(beta.clone())) {
+                        Some(res) => { return Ok(Box::new(res)); },
+                        None => {
+                            return Err(CompileErr(beta.loc(), format!("no solution in instantiate_r: {} {} with context {:?}", a.to_sexp().to_string(), alpha.to_sexp().to_string(), self)));
+                        }
+                    }
+                }
+            },
+            Type::TFun(a1, a2) => {
+                debug!("case 4");
+                let alpha1 = fresh_tvar(a1.loc());
+                let alpha2 = fresh_tvar(a2.loc());
+                let rcontext = Context::new_wf(vec![
+                    ContextElim::CExists(alpha2.clone()),
+                    ContextElim::CExists(alpha1.clone()),
+                    ContextElim::CExistsSolved(alpha.clone(), Type::TFun(Rc::new(Type::TExists(alpha1.clone())), Rc::new(Type::TVar(alpha2.clone()))))
+                ]);
+                let theta = (self.insert_at(
+                    ContextElim::CExists(alpha.clone()), rcontext
+                )).instantiate_l(&alpha1, a1.borrow())?;
+                return theta.instantiate_r(
+                    &theta.apply(a2.borrow()), &alpha2
+                );
+            },
+            Type::TForall(beta, b) => {
+                debug!("case 5");
+                let betaprime = fresh_tvar(beta.loc());
+                let subst_res = type_subst(
+                    &Type::TExists(betaprime.clone()), &beta.clone(), b
+                );
+                return self.drop_marker(
+                    ContextElim::CMarker(betaprime.clone()),
+                    |gamma| {
+                        self.appends_wf(vec![
+                            ContextElim::CExists(betaprime.clone())
+                        ]).instantiate_r(&subst_res, alpha)
+                    }
+                ).map(|x| Box::new(x));
+            },
+            _ => { }
         }
 
         Err(CompileErr(alpha.loc(), format!("The impossible happened! instantiate_r: {} {} {}", self.to_sexp().to_string(), a.to_sexp().to_string(), alpha.to_sexp().to_string())))
@@ -435,6 +442,7 @@ impl Context {
             (Expr::EUnit(_), Type::TUnit(_)) => Ok(Box::new(self.clone())),
             // ForallI
             (e, Type::TForall(alpha, a)) => {
+                debug!("tforall");
                 let alphaprime = fresh_tvar(typ.loc());
                 let subst_res = type_subst(
                     &Type::TVar(alphaprime.clone()),
@@ -443,12 +451,7 @@ impl Context {
                 );
                 return self.drop_marker(
                     ContextElim::CForall(alphaprime.clone()),
-                    |gamma| {
-                        gamma.typecheck(
-                            e,
-                            &subst_res
-                        )
-                    }
+                    |gamma| gamma.typecheck(e, &subst_res)
                 ).map(|x| Box::new(x));
             },
 
@@ -456,6 +459,7 @@ impl Context {
 
             // ->I
             (Expr::EAbs(x,e), Type::TFun(a,b)) => {
+                debug!("eabs tfun");
                 let xprime = fresh_var(expr.loc());
                 let a_borrowed: &Polytype = a.borrow();
                 let b_borrowed: &Polytype = b.borrow();
@@ -478,7 +482,10 @@ impl Context {
             },
             // Sub
             (e, b) => {
+                debug!("// Sub");
                 let (a, theta) = self.typesynth(e)?;
+                debug!("typesynth {} = {}", e.to_sexp().to_string(), a.to_sexp().to_string());
+                debug!("typesynth result context {}", theta.to_sexp().to_string());
                 return theta.subtype(&theta.apply(&a), &theta.apply(b));
             }
         }
@@ -523,14 +530,17 @@ impl Context {
                         e_borrowed
                     );
 
+                    debug!("eabs {} {}", x.to_sexp().to_string(), e.to_sexp().to_string());
                     self.appends_wf(vec![
                         ContextElim::CExists(beta.clone()),
                         ContextElim::CExists(alpha.clone())
                     ]).drop_marker(
                         ContextElim::CVar(xprime.clone(), Type::TExists(alpha.clone())),
                         |gamma| {
+                            debug!("gamma is {}", gamma.to_sexp().to_string());
                             gamma.typecheck(&subst_res, &Type::TExists(beta.clone()))
                         }).map(|delta| {
+                            debug!("delta is {}", delta.to_sexp().to_string());
                             (Type::TFun(Rc::new(Type::TExists(alpha)), Rc::new(Type::TExists(beta))), Box::new(delta))
                         })
                 } else {
@@ -545,12 +555,12 @@ impl Context {
                     );
 
                     let (delta, deltaprime) = self.appends_wf(vec![
-                        ContextElim::CExists(alpha.clone()),
-                        ContextElim::CExists(beta.clone()),
                         ContextElim::CVar(
                             xprime.clone(),
                             Type::TExists(alpha.clone())
-                        )
+                        ),
+                        ContextElim::CExists(alpha.clone()),
+                        ContextElim::CExists(beta.clone()),
                     ]).break_marker(
                         ContextElim::CMarker(alpha.clone()),
                         |gamma| {
@@ -718,7 +728,7 @@ impl TypeTheory for Context {
 
     fn instantiate_l(&self, alpha: &TypeVar, a: &Polytype) -> Result<Box<Self>, CompileErr> {
         indented(|| {
-            debug!("{}instantiate_l {} {}", I(), alpha.to_sexp().to_string(), a.to_sexp().to_string());
+            debug!("{}instantiate_l {} {} in {}", I(), alpha.to_sexp().to_string(), a.to_sexp().to_string(), self.to_sexp().to_string());
             let res = self.instantiate_l_(alpha, a);
             match &res {
                 Ok(v) => { debug!("{}instantiate_l {} {} => {}", I(), alpha.to_sexp().to_string(), a.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ v.to_sexp().to_string()); },
@@ -731,7 +741,7 @@ impl TypeTheory for Context {
 
     fn instantiate_r(&self, a: &Polytype, alpha: &TypeVar) -> Result<Box<Self>, CompileErr> {
         indented(|| {
-            debug!("{}instantiate_r {} {}", I(), a.to_sexp().to_string(), alpha.to_sexp().to_string());
+            debug!("{}instantiate_r {} {} in {}", I(), a.to_sexp().to_string(), alpha.to_sexp().to_string(), self.to_sexp().to_string());
             let res = self.instantiate_r_(a, alpha);
             match &res {
                 Ok(v) => { debug!("{}instantiate_r {} {} => {}", I(), a.to_sexp().to_string(), alpha.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ v.to_sexp().to_string()); },

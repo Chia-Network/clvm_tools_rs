@@ -174,12 +174,13 @@ impl Context {
                             ).and_then(|finished_type| {
                                 monotype(&finished_type)
                             }).map(|tmono| {
+                                debug!("tabls unrecurse");
                                 let new_ctx = self.appends_wf(vec![
+                                    ContextElim::CForall(new_tvar.clone()),
                                     ContextElim::CExistsSolved(
                                         new_tvar.clone(),
                                         tmono
-                                    ),
-                                    ContextElim::CForall(new_tvar.clone())
+                                    )
                                 ]);
 
                                 (Type::TExists(new_tvar), new_ctx)
@@ -269,12 +270,14 @@ impl Context {
     }
 
     pub fn solve(&self, alpha: &TypeVar, tau: &Monotype) -> Option<Context> {
+        debug!("solve {} in {}", alpha.to_sexp().to_string(), self.to_sexp().to_string());
         let (gamma_l, gamma_r) = self.inspect_context(&ContextElim::CExists(alpha.clone()));
+        debug!("solve {} {} in {} || {}", alpha.to_sexp().to_string(), tau.to_sexp().to_string(), gamma_l.to_sexp().to_string(), gamma_r.to_sexp().to_string());
         if gamma_l.typewf(&tau) {
-            let mut gammaprime = gamma_l.0.clone();
-            let mut gamma_r_copy = gamma_r.0.clone();
+            let mut gammaprime = gamma_r.0.clone();
+            let mut gamma_l_copy = gamma_l.0.clone();
             gammaprime.push(ContextElim::CExistsSolved(alpha.clone(), tau.clone()));
-            gammaprime.append(&mut gamma_r_copy);
+            gammaprime.append(&mut gamma_l_copy);
             Some(Context::new(gammaprime))
         } else {
             None
@@ -288,9 +291,9 @@ impl Context {
         let mut gamma_r_copy = gamma_r.0.clone();
         result_list.append(&mut theta_copy);
         result_list.append(&mut gamma_r_copy);
-        let gamma = Context::new_wf(result_list);
-        debug!("insert_at {} with {} in {} => {}", c.to_sexp().to_string(), theta.to_sexp().to_string(), self.to_sexp().to_string(), gamma.to_sexp().to_string());
-        gamma
+        let res = Context::new_wf(result_list);
+        debug!("insert_at {}", res.to_sexp().to_string());
+        res
 
     }
 
@@ -363,9 +366,13 @@ impl GContext<CONTEXT_INCOMPLETE> {
     {
         let marked = self.snoc_wf(m.clone());
         let res: GContext<CONTEXT_INCOMPLETE> = f(marked).map(|x| x.extract())?;
+        debug!("drop_marker, got back {}", res.to_sexp().to_string());
         Ok(res.0.iter().position(|e| *e == m).map(|idx| {
-            GContext(res.0[idx+1..].iter().map(|x| x.clone()).collect())
+            let out = GContext(res.0[idx+1..].iter().map(|x| x.clone()).collect());
+            debug!("drop_marker, index {} D {} K {}", idx, GContext(res.0[..idx].iter().map(|x| x.clone()).collect()).to_sexp().to_string(), out.to_sexp().to_string());
+            out
         }).unwrap_or_else(|| {
+            debug!("drop_marker; not found: {}", m.to_sexp().to_string());
             GContext(Vec::new())
         }))
     }
