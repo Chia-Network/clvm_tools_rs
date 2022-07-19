@@ -1,14 +1,23 @@
 use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
-use crate::compiler::sexp::SExp;
-use crate::compiler::srcloc::Srcloc;
+use crate::compiler::compiler::DefaultCompilerOpts;
+use crate::compiler::comptypes::{
+    CompileErr
+};
+use crate::compiler::frontend::frontend;
+use crate::compiler::sexp::{
+    SExp,
+    parse_sexp
+};
+use crate::compiler::srcloc::{HasLoc, Srcloc};
 use crate::compiler::typecheck::TheoryToSExp;
 use crate::compiler::typechia::{
     context_from_args_and_type,
     standard_type_context
 };
 use crate::compiler::types::ast::{
+    Polytype,
     Type,
     TypeVar
 };
@@ -143,4 +152,32 @@ fn test_chialisp_context_from_args_and_type_single_arg_with_pair_type() {
         "Atom",
         false
     );
+}
+
+fn test_chialisp_program_typecheck(s: &str) -> Result<Polytype, CompileErr> {
+    let testname = "*test*".to_string();
+    let loc = Srcloc::start(&testname);
+    let context = standard_type_context();
+    let opts = DefaultCompilerOpts::new(&testname);
+    let pre_forms = parse_sexp(loc.clone(), &s.to_string()).
+        map_err(|e| CompileErr(e.0, e.1))?;
+    let compileform = frontend(Rc::new(opts), pre_forms)?;
+    let _ = println!("compileform ty {:?}", compileform.ty);
+    context.typecheck_chialisp_program(&compileform)
+}
+
+#[test]
+fn test_chialisp_program_returning_unit_no_anno() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod () ())"
+    ).expect("should type check");
+    assert_eq!(ty, Type::TAny(ty.loc()));
+}
+
+#[test]
+fn test_chialisp_program_returning_unit_annotation() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod () : (Unit -> Unit) ())"
+    ).expect("should type check");
+    assert_eq!(ty, Type::TUnit(ty.loc()));
 }

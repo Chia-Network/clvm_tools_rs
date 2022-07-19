@@ -13,6 +13,11 @@ use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
 use crate::compiler::sexp::{enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::typecheck::{
+    TheoryToSExp,
+    parse_type_sexp
+};
+use crate::compiler::types::ast::Polytype;
 use crate::util::u8_from_number;
 
 fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
@@ -361,6 +366,7 @@ fn compile_defun(
     name: Vec<u8>,
     args: Rc<SExp>,
     body: Rc<SExp>,
+    ty: Option<Polytype>
 ) -> Result<HelperForm, CompileErr> {
     let mut take_form = body.clone();
     match body.borrow() {
@@ -370,7 +376,7 @@ fn compile_defun(
         _ => {}
     }
     compile_bodyform(take_form)
-        .map(|bf| HelperForm::Defun(l, name, inline, args.clone(), Rc::new(bf), None))
+        .map(|bf| HelperForm::Defun(l, name, inline, args.clone(), Rc::new(bf), ty))
 }
 
 fn compile_defmacro(
@@ -390,10 +396,18 @@ fn compile_defmacro(
         .map(|p| HelperForm::Defmacro(l, name, args.clone(), Rc::new(p)))
 }
 
+struct ParseBodyformMatch {
+    op_name: Vec<u8>,
+    name: Vec<u8>,
+    args: Rc<SExp>,
+    body: Rc<SExp>,
+    ty: Option<Rc<SExp>>
+}
+
 fn match_op_name_4(
     body: Rc<SExp>,
     pl: &Vec<SExp>,
-) -> Option<(Vec<u8>, Vec<u8>, Rc<SExp>, Rc<SExp>)> {
+) -> Option<ParseBodyformMatch> {
     let l = body.loc();
 
     if pl.len() < 1 {
@@ -403,33 +417,45 @@ fn match_op_name_4(
     match &pl[0] {
         SExp::Atom(_, op_name) => {
             if pl.len() < 3 {
-                return Some((
-                    op_name.clone(),
-                    Vec::new(),
-                    Rc::new(SExp::Nil(l.clone())),
-                    Rc::new(SExp::Nil(l.clone())),
-                ));
+                return Some(ParseBodyformMatch {
+                    op_name: op_name.clone(),
+                    name: Vec::new(),
+                    args: Rc::new(SExp::Nil(l.clone())),
+                    body: Rc::new(SExp::Nil(l.clone())),
+                    ty: None
+                });
             }
 
             match &pl[1] {
                 SExp::Atom(_, name) => {
+                    let mut tail_idx = 3;
                     let mut tail_list = Vec::new();
-                    for elt in pl.iter().skip(3) {
+                    let mut type_anno = None;
+                    if let SExp::Atom(_, colon) = &pl[2] {
+                        if *colon == vec![b':'] {
+                            // Type annotation
+                            tail_idx += 2;
+                            type_anno = Some(Rc::new(pl[3].clone()));
+                        }
+                    }
+                    for elt in pl.iter().skip(tail_idx) {
                         tail_list.push(Rc::new(elt.clone()));
                     }
-                    Some((
-                        op_name.clone(),
-                        name.clone(),
-                        Rc::new(pl[2].clone()),
-                        Rc::new(enlist(l.clone(), tail_list)),
-                    ))
+                    Some(ParseBodyformMatch {
+                        op_name: op_name.clone(),
+                        name: name.clone(),
+                        args: Rc::new(pl[2].clone()),
+                        body: Rc::new(enlist(l.clone(), tail_list)),
+                        ty: type_anno
+                    })
                 }
-                _ => Some((
-                    op_name.clone(),
-                    Vec::new(),
-                    Rc::new(SExp::Nil(l.clone())),
-                    Rc::new(SExp::Nil(l.clone())),
-                )),
+                _ => Some(ParseBodyformMatch {
+                    op_name: op_name.clone(),
+                    name: Vec::new(),
+                    args: Rc::new(SExp::Nil(l.clone())),
+                    body: Rc::new(SExp::Nil(l.clone())),
+                    ty: None
+                }),
             }
         }
         _ => None,
@@ -444,18 +470,28 @@ fn compile_helperform(
     let plist = body.proper_list();
 
     match plist.and_then(|pl| match_op_name_4(body.clone(), &pl)) {
-        Some((op_name, name, args, body)) => {
-            if *op_name == "defconstant".as_bytes().to_vec() {
-                return compile_defconstant(l, name.to_vec(), args.clone()).map(|x| Some(x));
-            } else if *op_name == "defmacro".as_bytes().to_vec() {
-                return compile_defmacro(opts, l, name.to_vec(), args.clone(), body.clone())
+        Some(res) => {
+            let inline = res.op_name == "defun-inline".as_bytes().to_vec();
+            if res.op_name == "defconstant".as_bytes().to_vec() {
+                return compile_defconstant(l, res.name.to_vec(), res.args.clone()).map(|x| Some(x));
+            } else if res.op_name == "defmacro".as_bytes().to_vec() {
+                return compile_defmacro(opts, l, res.name.to_vec(), res.args.clone(), res.body.clone())
                     .map(|x| Some(x));
-            } else if *op_name == "defun".as_bytes().to_vec() {
-                return compile_defun(l, false, name.to_vec(), args.clone(), body.clone())
-                    .map(|x| Some(x));
-            } else if *op_name == "defun-inline".as_bytes().to_vec() {
-                return compile_defun(l, true, name.to_vec(), args.clone(), body.clone())
-                    .map(|x| Some(x));
+            } else if res.op_name == "defun".as_bytes().to_vec() || inline {
+                let parsed_type =
+                    if let Some(ty) = res.ty {
+                        Some(parse_type_sexp(ty)?)
+                    } else {
+                        None
+                    };
+                return compile_defun(
+                    l,
+                    inline,
+                    res.name.to_vec(),
+                    res.args.clone(),
+                    res.body.clone(),
+                    parsed_type
+                ).map(|x| Some(x));
             }
         }
         _ => {}
@@ -469,6 +505,7 @@ fn compile_mod_(
     opts: Rc<dyn CompilerOpts>,
     args: Rc<SExp>,
     content: Rc<SExp>,
+    ty: Option<Polytype>
 ) -> Result<ModAccum, CompileErr> {
     match content.borrow() {
         SExp::Nil(l) => Err(CompileErr(
@@ -483,7 +520,7 @@ fn compile_mod_(
                     args: args.clone(),
                     helpers: mc.helpers.clone(),
                     exp: Rc::new(compile_bodyform(body.clone())?),
-                    ty: None
+                    ty: ty
                 })),
             },
             _ => {
@@ -495,7 +532,7 @@ fn compile_mod_(
                     )),
                     Some(form) => match mc.exp_form {
                         None => {
-                            compile_mod_(&mc.add_helper(form), opts, args.clone(), tail.clone())
+                            compile_mod_(&mc.add_helper(form), opts, args.clone(), tail.clone(), ty)
                         }
                         Some(_) => Err(CompileErr(l.clone(), "too many expressions".to_string())),
                     },
@@ -505,7 +542,7 @@ fn compile_mod_(
         _ => Err(CompileErr(
             content.loc(),
             format!("inappropriate sexp {}", content.to_string()),
-        )),
+        ))
     }
 }
 
@@ -553,7 +590,18 @@ fn frontend_start(
 
                         if *mod_atom == "mod".as_bytes().to_vec() {
                             let args = Rc::new(x[1].clone());
-                            let body_vec = x.iter().skip(2).map(|s| Rc::new(s.clone())).collect();
+                            let mut skip_idx = 2;
+                            let mut ty: Option<Polytype> = None;
+
+                            if let SExp::Atom(_,colon) = &x[2] {
+                                if *colon == vec![b':'] && x.len() > 3 {
+                                    let use_ty = parse_type_sexp(Rc::new(x[3].clone()))?;
+                                    ty = Some(use_ty);
+                                    skip_idx += 2;
+                                }
+                            }
+
+                            let body_vec = x.iter().skip(skip_idx).map(|s| Rc::new(s.clone())).collect();
                             let body = Rc::new(enlist(pre_forms[0].loc(), body_vec));
 
                             let ls = preprocess(opts.clone(), body.clone())?;
@@ -562,6 +610,7 @@ fn frontend_start(
                                 opts.clone(),
                                 args.clone(),
                                 Rc::new(list_to_cons(l, &ls)),
+                                ty
                             );
                         }
                     }
@@ -620,7 +669,7 @@ pub fn frontend(
         args: our_mod.args.clone(),
         helpers: live_helpers,
         exp: our_mod.exp.clone(),
-        ty: None
+        ty: our_mod.ty.clone()
     })
 }
 

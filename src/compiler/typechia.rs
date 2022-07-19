@@ -30,6 +30,7 @@ use crate::compiler::types::ast::{
     Var
 };
 use crate::compiler::types::astfuns::polytype;
+use crate::compiler::types::theory::TypeTheory;
 use crate::util::Number;
 
 //
@@ -283,14 +284,18 @@ fn chialisp_to_expr(
     args: Rc<SExp>,
     body: Rc<BodyForm>
 ) -> Expr {
-    todo!()
+    match body.borrow() {
+        BodyForm::Quoted(SExp::Nil(l)) => { Expr::EUnit(l.clone()) },
+        BodyForm::Value(SExp::Nil(l)) => { Expr::EUnit(l.clone()) },
+        _ => todo!("not sure how to handle {:?} yet", body)
+    }
 }
 
 fn typecheck_chialisp_body_with_context(
     context_: &Context,
     expr: &Expr
-) -> Result<(), CompileErr> {
-    todo!()
+) -> Result<Polytype, CompileErr> {
+    context_.typesynth(&expr).map(|(res,_)| res)
 }
 
 fn chia_to_type(ty: &ChiaType) -> Monotype {
@@ -300,8 +305,8 @@ fn chia_to_type(ty: &ChiaType) -> Monotype {
 // Given a compileform, typecheck
 impl Context {
     pub fn typecheck_chialisp_program(
-        &self, comp: CompileForm
-    ) -> Result<(), CompileErr> {
+        &self, comp: &CompileForm
+    ) -> Result<Polytype, CompileErr> {
         let mut context = self.clone();
 
         // Extract type definitions
@@ -355,38 +360,51 @@ impl Context {
         for h in comp.helpers.iter() {
             if let HelperForm::Defun(l, name, _, args, body, ty) = &h {
                 let ty = type_of_defun(l.clone(), ty);
-                let context_with_args =
+                let (context_with_args, result_ty) =
                     if let Type::TFun(a,r) = ty {
+                        let r_borrowed: &Polytype = r.borrow();
                         context_from_args_and_type(
                             &context,
                             args.clone(),
                             a.borrow(),
                             bi_zero(),
                             bi_one()
-                        )
+                        ).map(|ctx| (ctx, r_borrowed.clone()))?
                     } else {
                         Err(CompileErr(h.loc(), format!("Type of a defun must be a function type in {}", decode_string(name))))?
                     };
 
                 typecheck_chialisp_body_with_context(
-                    &context_with_args?,
-                    &chialisp_to_expr(args.clone(), body.clone())
+                    &context_with_args,
+                    &Expr::EAnno(
+                        Rc::new(chialisp_to_expr(args.clone(), body.clone())),
+                        result_ty
+                    )
                 )?;
             }
         }
 
         // Typecheck main expression
         let ty = type_of_defun(comp.exp.loc(), &comp.ty);
-        let context_with_args = context_from_args_and_type(
-            &context,
-            comp.args.clone(),
-            &ty,
-            bi_zero(),
-            bi_one()
-        )?;
+        let (context_with_args, result_ty) =
+            if let Type::TFun(ty,r) = ty {
+                let r_borrowed: &Polytype = r.borrow();
+                context_from_args_and_type(
+                    &context,
+                    comp.args.clone(),
+                    &ty,
+                    bi_zero(),
+                    bi_one()
+                ).map(|ctx| (ctx, r_borrowed.clone()))?
+            } else {
+                Err(CompileErr(comp.exp.loc(), format!("Type of a chialisp module must be a function type")))?
+            };
         typecheck_chialisp_body_with_context(
             &context_with_args,
-            &chialisp_to_expr(comp.args.clone(), comp.exp.clone())
+            &Expr::EAnno(
+                Rc::new(chialisp_to_expr(comp.args.clone(), comp.exp.clone())),
+                result_ty
+            )
         )
     }
 }
