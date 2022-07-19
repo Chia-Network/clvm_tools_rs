@@ -131,11 +131,11 @@ pub fn compile_clvm(
     input_path: &String,
     output_path: &String,
     search_paths: &Vec<String>,
+    symbol_table: &mut HashMap<String, String>
 ) -> Result<String, String> {
     let mut allocator = Allocator::new();
 
     let compile = newer(input_path, output_path).unwrap_or_else(|_| true);
-    let mut symbol_table = HashMap::new();
     let mut result_stream = Stream::new(None);
 
     if compile {
@@ -145,7 +145,7 @@ pub fn compile_clvm(
         let _ = compile_clvm_inner(
             &mut allocator,
             search_paths,
-            &mut symbol_table,
+            symbol_table,
             input_path,
             &text,
             &mut result_stream,
