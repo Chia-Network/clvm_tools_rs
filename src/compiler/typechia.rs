@@ -1,5 +1,7 @@
+use std::borrow::Borrow;
 use std::rc::Rc;
 
+use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     BodyForm,
     ChiaType,
@@ -12,6 +14,7 @@ use crate::compiler::sexp::{
     decode_string
 };
 use crate::compiler::srcloc::{Srcloc, HasLoc};
+use crate::compiler::typecheck::TheoryToSExp;
 use crate::compiler::types::ast::{
     Context,
     ContextElim,
@@ -204,12 +207,54 @@ fn type_of_defun(l: Srcloc, ty: &Option<Polytype>) -> Polytype {
     }
 }
 
-fn context_from_args_and_type(
-    context_: &Context,
+pub fn context_from_args_and_type(
+    context: &Context,
     args: Rc<SExp>,
     argty: &Polytype
-) -> Context {
-    todo!()
+) -> Result<Context, CompileErr> {
+    match (args.borrow(), argty) {
+        (SExp::Nil(_), Type::TAny(_)) => Ok(context.clone()),
+        (SExp::Nil(_), Type::TUnit(_)) => Ok(context.clone()),
+        (SExp::Nil(l), _) => {
+            Err(CompileErr(l.clone(), format!("function has empty argument list but type {}", argty.to_sexp().to_string())))
+        },
+        (SExp::Atom(l,a), ty) => {
+            Ok(context.snoc_wf(
+                ContextElim::CVar(
+                    Var(decode_string(a), l.clone()),
+                    argty.clone()
+                )
+            ))
+        },
+        (SExp::Cons(l,_,_), Type::TUnit(_)) => {
+            Err(CompileErr(l.clone(), format!("function has an argument list but specifies empty arguments")))
+        },
+        (SExp::Cons(_,f,r), Type::TAny(_)) => {
+            if let Some((_,_)) = is_at_capture(f.clone(), r.clone()) {
+                todo!()
+            } else {
+                let cf = context_from_args_and_type(
+                    context,
+                    f.clone(),
+                    argty
+                )?;
+                context_from_args_and_type(&cf, r.clone(), argty)
+            }
+        },
+        (SExp::Cons(l,f,r), Type::TPair(a,b)) => {
+            if let Some((_,_)) = is_at_capture(f.clone(), r.clone()) {
+                todo!()
+            } else {
+                let cf = context_from_args_and_type(
+                    context,
+                    f.clone(),
+                    a.borrow()
+                )?;
+                context_from_args_and_type(&cf, r.clone(), b.borrow())
+            }
+        },
+        _ => todo!()
+    }
 }
 
 fn chialisp_to_expr(
@@ -288,11 +333,17 @@ impl Context {
         for h in comp.helpers.iter() {
             if let HelperForm::Defun(l, name, _, args, body, ty) = &h {
                 let ty = type_of_defun(l.clone(), ty);
-                let context_with_args = context_from_args_and_type(
-                    &context, args.clone(), &ty
-                );
+                let context_with_args =
+                    if let Type::TFun(a,r) = ty {
+                        context_from_args_and_type(
+                            &context, args.clone(), a.borrow()
+                        )
+                    } else {
+                        Err(CompileErr(h.loc(), format!("Type of a defun must be a function type in {}", decode_string(name))))?
+                    };
+
                 typecheck_chialisp_body_with_context(
-                    &context_with_args,
+                    &context_with_args?,
                     &chialisp_to_expr(args.clone(), body.clone())
                 )?;
             }
@@ -302,7 +353,7 @@ impl Context {
         let ty = type_of_defun(comp.exp.loc(), &comp.ty);
         let context_with_args = context_from_args_and_type(
             &context, comp.args.clone(), &ty
-        );
+        )?;
         typecheck_chialisp_body_with_context(
             &context_with_args,
             &chialisp_to_expr(comp.args.clone(), comp.exp.clone())
