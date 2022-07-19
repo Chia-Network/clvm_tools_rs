@@ -51,9 +51,9 @@ jobs:
             /opt/python/cp38-cp38/bin/python -m venv venv && \
             if [ ! -f "activate" ]; then ln -s venv/bin/activate; fi && \
             . ./activate && \
-            pip install maturin && \
+            pip install maturin==0.12.20 && \
             CC=gcc maturin build --release --strip --manylinux 2014 \
-                -E extension-module \
+             --no-sdist --cargo-extra-args=--all-features \
           '
 
     - name: Upload artifacts
