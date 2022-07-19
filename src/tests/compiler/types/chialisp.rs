@@ -181,3 +181,11 @@ fn test_chialisp_program_returning_unit_annotation() {
     ).expect("should type check");
     assert_eq!(ty, Type::TUnit(ty.loc()));
 }
+
+#[test]
+fn test_chialisp_program_returning_one_atom_annotation() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod (X) : ((Pair Atom Unit) -> Atom) X)"
+    ).expect("should type check");
+    assert_eq!(ty, Type::TAtom(ty.loc(), None));
+}

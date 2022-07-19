@@ -287,6 +287,9 @@ fn chialisp_to_expr(
     match body.borrow() {
         BodyForm::Quoted(SExp::Nil(l)) => { Expr::EUnit(l.clone()) },
         BodyForm::Value(SExp::Nil(l)) => { Expr::EUnit(l.clone()) },
+        BodyForm::Value(SExp::Atom(l,n)) => {
+            Expr::EVar(Var(decode_string(n), l.clone()))
+        },
         _ => todo!("not sure how to handle {:?} yet", body)
     }
 }
