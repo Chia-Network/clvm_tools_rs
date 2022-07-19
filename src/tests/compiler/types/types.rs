@@ -25,7 +25,7 @@ fn resolve_test_var(held: &mut HashMap<TypeVar, TypeVar>, n: &mut usize, v: &Typ
     }
 }
 
-fn flatten_exists<const A: usize>(t: &Type<A>, held: &mut HashMap<TypeVar, TypeVar>, n: &mut usize) -> Type<A> {
+pub fn flatten_exists<const A: usize>(t: &Type<A>, held: &mut HashMap<TypeVar, TypeVar>, n: &mut usize) -> Type<A> {
     match t {
         Type::TUnit(_) => t.clone(),
         Type::TAny(_) => t.clone(),

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
@@ -21,8 +22,10 @@ use crate::compiler::types::ast::{
     Type,
     TypeVar
 };
+use crate::compiler::types::theory::TypeTheory;
 use crate::tests::compiler::types::types::{
-    check_expression_against_type_with_context
+    check_expression_against_type_with_context,
+    flatten_exists
 };
 
 #[test]
@@ -154,7 +157,7 @@ fn test_chialisp_context_from_args_and_type_single_arg_with_pair_type() {
     );
 }
 
-fn test_chialisp_program_typecheck(s: &str) -> Result<Polytype, CompileErr> {
+fn test_chialisp_program_typecheck(s: &str, flatten: bool) -> Result<Polytype, CompileErr> {
     let testname = "*test*".to_string();
     let loc = Srcloc::start(&testname);
     let context = standard_type_context();
@@ -162,14 +165,22 @@ fn test_chialisp_program_typecheck(s: &str) -> Result<Polytype, CompileErr> {
     let pre_forms = parse_sexp(loc.clone(), &s.to_string()).
         map_err(|e| CompileErr(e.0, e.1))?;
     let compileform = frontend(Rc::new(opts), pre_forms)?;
-    let _ = println!("compileform ty {:?}", compileform.ty);
-    context.typecheck_chialisp_program(&compileform)
+    println!("compileform ty {:?}", compileform.ty);
+    let mut fcount: usize = 0;
+    let mut held = HashMap::new();
+    let target_type = context.typecheck_chialisp_program(&compileform)?;
+    if flatten {
+        Ok(flatten_exists(&context.reify(&target_type), &mut held, &mut fcount))
+    } else {
+        Ok(context.reify(&target_type))
+    }
 }
 
 #[test]
 fn test_chialisp_program_returning_unit_no_anno() {
     let ty = test_chialisp_program_typecheck(
-        "(mod () ())"
+        "(mod () ())",
+        false
     ).expect("should type check");
     assert_eq!(ty, Type::TAny(ty.loc()));
 }
@@ -177,7 +188,8 @@ fn test_chialisp_program_returning_unit_no_anno() {
 #[test]
 fn test_chialisp_program_returning_unit_annotation() {
     let ty = test_chialisp_program_typecheck(
-        "(mod () : (Unit -> Unit) ())"
+        "(mod () : (Unit -> Unit) ())",
+        false
     ).expect("should type check");
     assert_eq!(ty, Type::TUnit(ty.loc()));
 }
@@ -185,7 +197,23 @@ fn test_chialisp_program_returning_unit_annotation() {
 #[test]
 fn test_chialisp_program_returning_one_atom_annotation() {
     let ty = test_chialisp_program_typecheck(
-        "(mod (X) : ((Pair Atom Unit) -> Atom) X)"
+        "(mod (X) : ((Pair Atom Unit) -> Atom) X)",
+        false
     ).expect("should type check");
     assert_eq!(ty, Type::TAtom(ty.loc(), None));
+}
+
+#[test]
+fn test_chialisp_program_doing_cons() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod (X) : (forall t0 ((Pair t0 Unit) -> (Pair t0 Unit))) (c X ()))",
+        true
+    ).expect("should type check");
+    assert_eq!(
+        ty,
+        Type::TPair(
+            Rc::new(Type::TVar(TypeVar("t0".to_string(), ty.loc()))),
+            Rc::new(Type::TUnit(ty.loc()))
+        )
+    );
 }

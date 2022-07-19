@@ -70,6 +70,25 @@ pub fn standard_type_context() -> Context {
             ))
         ))
     );
+    let c_prim: Type<TYPE_MONO> = Type::TForall(
+        f0.clone(),
+        Rc::new(Type::TForall(
+            r0.clone(),
+            Rc::new(Type::TFun(
+                Rc::new(Type::TPair(
+                    Rc::new(Type::TVar(f0.clone())),
+                    Rc::new(Type::TPair(
+                        Rc::new(Type::TVar(r0.clone())),
+                        Rc::new(Type::TUnit(f0.loc()))
+                    ))
+                )),
+                Rc::new(Type::TPair(
+                    Rc::new(Type::TVar(f0.clone())),
+                    Rc::new(Type::TVar(r0.clone()))
+                ))
+            ))
+        ))
+    );
     let first: Type<TYPE_MONO> = Type::TForall(
         f0.clone(),
         Rc::new(Type::TForall(
@@ -185,7 +204,8 @@ pub fn standard_type_context() -> Context {
     );
 
     Context::new(vec![
-        ContextElim::CVar(Var("c".to_string(), loc.clone()), polytype(&cons)),
+        ContextElim::CVar(Var("c^".to_string(), loc.clone()), polytype(&cons)),
+        ContextElim::CVar(Var("c".to_string(), loc.clone()), polytype(&c_prim)),
         ContextElim::CVar(Var("some".to_string(), loc.clone()), polytype(&some)),
         ContextElim::CVar(Var("f".to_string(), loc.clone()), polytype(&first)),
         ContextElim::CVar(Var("r".to_string(), loc.clone()), polytype(&rest)),
@@ -281,7 +301,6 @@ pub fn context_from_args_and_type(
 }
 
 fn chialisp_to_expr(
-    args: Rc<SExp>,
     body: Rc<BodyForm>
 ) -> Expr {
     match body.borrow() {
@@ -289,6 +308,24 @@ fn chialisp_to_expr(
         BodyForm::Value(SExp::Nil(l)) => { Expr::EUnit(l.clone()) },
         BodyForm::Value(SExp::Atom(l,n)) => {
             Expr::EVar(Var(decode_string(n), l.clone()))
+        },
+        BodyForm::Call(l,lst) => {
+            let mut arg_expr = Expr::EUnit(l.clone());
+            for i_rev in 0..lst.len() - 1 {
+                let i = lst.len() - i_rev - 1;
+                let new_expr = chialisp_to_expr(lst[i].clone());
+                arg_expr = Expr::EApp(
+                    Rc::new(Expr::EApp(
+                        Rc::new(Expr::EVar(Var("c^".to_string(), l.clone()))),
+                        Rc::new(new_expr)
+                    )),
+                    Rc::new(arg_expr)
+                );
+            }
+            Expr::EApp(
+                Rc::new(chialisp_to_expr(lst[0].clone())),
+                Rc::new(arg_expr)
+            )
         },
         _ => todo!("not sure how to handle {:?} yet", body)
     }
@@ -303,6 +340,34 @@ fn typecheck_chialisp_body_with_context(
 
 fn chia_to_type(ty: &ChiaType) -> Monotype {
     todo!()
+}
+
+fn handle_function_type(
+    context: &Context,
+    loc: Srcloc,
+    args: Rc<SExp>,
+    ty: &Polytype
+) -> Result<(Context, Polytype), CompileErr> {
+    match ty {
+        Type::TFun(a,r) => {
+            let r_borrowed: &Polytype = r.borrow();
+            context_from_args_and_type(
+                &context,
+                args.clone(),
+                a.borrow(),
+                bi_zero(),
+                bi_one()
+            ).map(|ctx| (ctx, r_borrowed.clone()))
+        },
+        Type::TForall(t,f) => {
+            let inner_ctx = context.snoc_wf(ContextElim::CForall(t.clone()));
+            let f_borrowed: &Polytype = f.borrow();
+            handle_function_type(&inner_ctx, loc, args, f_borrowed)
+        },
+        _ => {
+            Err(CompileErr(loc, "Type of a defun must be a function type".to_string()))
+        }
+    }
 }
 
 // Given a compileform, typecheck
@@ -364,23 +429,11 @@ impl Context {
             if let HelperForm::Defun(l, name, _, args, body, ty) = &h {
                 let ty = type_of_defun(l.clone(), ty);
                 let (context_with_args, result_ty) =
-                    if let Type::TFun(a,r) = ty {
-                        let r_borrowed: &Polytype = r.borrow();
-                        context_from_args_and_type(
-                            &context,
-                            args.clone(),
-                            a.borrow(),
-                            bi_zero(),
-                            bi_one()
-                        ).map(|ctx| (ctx, r_borrowed.clone()))?
-                    } else {
-                        Err(CompileErr(h.loc(), format!("Type of a defun must be a function type in {}", decode_string(name))))?
-                    };
-
+                    handle_function_type(&context, h.loc(), args.clone(), &ty)?;
                 typecheck_chialisp_body_with_context(
                     &context_with_args,
                     &Expr::EAnno(
-                        Rc::new(chialisp_to_expr(args.clone(), body.clone())),
+                        Rc::new(chialisp_to_expr(body.clone())),
                         result_ty
                     )
                 )?;
@@ -390,22 +443,16 @@ impl Context {
         // Typecheck main expression
         let ty = type_of_defun(comp.exp.loc(), &comp.ty);
         let (context_with_args, result_ty) =
-            if let Type::TFun(ty,r) = ty {
-                let r_borrowed: &Polytype = r.borrow();
-                context_from_args_and_type(
-                    &context,
-                    comp.args.clone(),
-                    &ty,
-                    bi_zero(),
-                    bi_one()
-                ).map(|ctx| (ctx, r_borrowed.clone()))?
-            } else {
-                Err(CompileErr(comp.exp.loc(), format!("Type of a chialisp module must be a function type")))?
-            };
+            handle_function_type(
+                &context,
+                comp.exp.loc(),
+                comp.args.clone(),
+                &ty
+            )?;
         typecheck_chialisp_body_with_context(
             &context_with_args,
             &Expr::EAnno(
-                Rc::new(chialisp_to_expr(comp.args.clone(), comp.exp.clone())),
+                Rc::new(chialisp_to_expr(comp.exp.clone())),
                 result_ty
             )
         )

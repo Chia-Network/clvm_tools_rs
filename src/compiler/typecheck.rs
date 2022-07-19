@@ -516,7 +516,7 @@ pub fn parse_expr_sexp(expr: Rc<SExp>) -> Result<Expr, CompileErr> {
                             let e2 = parse_expr_sexp(Rc::new(lst[2].clone()))?;
                             return Ok(Expr::EApp(
                                 Rc::new(Expr::EApp(
-                                    Rc::new(Expr::EVar(Var("c".to_string(), l.clone()))),
+                                    Rc::new(Expr::EVar(Var("c^".to_string(), l.clone()))),
                                     Rc::new(e1)
                                 )),
                                 Rc::new(e2)
