@@ -229,3 +229,57 @@ fn test_chialisp_program_doing_plus() {
         Type::TAtom(ty.loc(), None)
     );
 }
+
+#[test]
+fn test_chialisp_defun_sha256() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"
+(mod (X) : ((Pair Atom Unit) -> (Atom 32))
+  (defun F (X) : ((Pair Atom Unit) -> (Atom 32))
+    (sha256 1 X)
+    )
+
+  (F X)
+  )"
+        },
+        true
+    ).expect("should type check");
+    assert_eq!(
+        ty,
+        Type::TAtom(ty.loc(), Some(32))
+    );
+}
+
+#[test]
+fn test_chialisp_defun_sha256_bad() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"
+(mod (X) : ((Pair Atom Unit) -> (Atom 32))
+  (defun F (X) : ((Pair (Atom 32) Unit) -> (Atom 32))
+    (sha256 1 X)
+    )
+
+  (F X)
+  )"
+        },
+        false
+    );
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn test_chialisp_defun_sha256_good() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"
+(mod (X) : ((Pair (Atom 32) Unit) -> (Atom 32))
+  (defun F (X) : ((Pair (Atom 32) Unit) -> (Atom 32))
+    (sha256 1 X)
+    )
+
+  (F X)
+  )"
+        },
+        false
+    );
+    assert_eq!(ty.is_err(), false);
+}

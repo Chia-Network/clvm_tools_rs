@@ -31,7 +31,7 @@ use crate::compiler::types::ast::{
 };
 use crate::compiler::types::astfuns::polytype;
 use crate::compiler::types::theory::TypeTheory;
-use crate::util::Number;
+use crate::util::{Number, u8_from_number};
 
 //
 // Standard chia type environment.
@@ -320,6 +320,9 @@ fn chialisp_to_expr(
     match body.borrow() {
         BodyForm::Quoted(SExp::Nil(l)) => { Expr::EUnit(l.clone()) },
         BodyForm::Value(SExp::Nil(l)) => { Expr::EUnit(l.clone()) },
+        BodyForm::Value(SExp::Integer(l,i)) => {
+            let v = u8_from_number(i.clone());
+            Expr::ELit(l.clone(), v.len().to_bigint().unwrap()) },
         BodyForm::Value(SExp::Atom(l,n)) => {
             Expr::EVar(Var(decode_string(n), l.clone()))
         },

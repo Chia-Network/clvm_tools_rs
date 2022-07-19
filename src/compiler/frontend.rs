@@ -431,11 +431,13 @@ fn match_op_name_4(
                     let mut tail_idx = 3;
                     let mut tail_list = Vec::new();
                     let mut type_anno = None;
-                    if let SExp::Atom(_, colon) = &pl[2] {
-                        if *colon == vec![b':'] {
-                            // Type annotation
-                            tail_idx += 2;
-                            type_anno = Some(Rc::new(pl[3].clone()));
+                    if pl.len() > 3 {
+                        if let SExp::Atom(_, colon) = &pl[3] {
+                            if *colon == vec![b':'] {
+                                // Type annotation
+                                tail_idx += 2;
+                                type_anno = Some(Rc::new(pl[4].clone()));
+                            }
                         }
                     }
                     for elt in pl.iter().skip(tail_idx) {
