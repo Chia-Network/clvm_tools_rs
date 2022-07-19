@@ -217,3 +217,15 @@ fn test_chialisp_program_doing_cons() {
         )
     );
 }
+
+#[test]
+fn test_chialisp_program_doing_plus() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod (X Y) : ((Pair Atom (Pair Atom Unit)) -> Atom) (+ X Y))",
+        true
+    ).expect("should type check");
+    assert_eq!(
+        ty,
+        Type::TAtom(ty.loc(), None)
+    );
+}

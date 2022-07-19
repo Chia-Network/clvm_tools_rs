@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 use std::rc::Rc;
 use log::debug;
-use num_bigint::ToBigInt;
+use num_bigint::{Sign, ToBigInt};
 
 use crate::compiler::comptypes::CompileErr;
 use crate::compiler::sexp::{SExp, enlist};
@@ -439,6 +439,21 @@ pub fn parse_type_sexp<const A: usize>(
                     return parse_type_exists(b.clone());
                 } else if a == &"forall".as_bytes().to_vec() {
                     return parse_type_forall(b.clone());
+                } else if a == &"Atom".as_bytes().to_vec() {
+                    if let SExp::Cons(_,f,_) = b.borrow() {
+                        if let SExp::Integer(li,i) = f.borrow() {
+                            let (s, digs) = i.to_u32_digits();
+                            let bytes =
+                                if s == Sign::Minus {
+                                    return Err(CompileErr(li.clone(), "can't have negative sized atom".to_string()));
+                                } else if digs.len() == 0 {
+                                    0
+                                } else {
+                                    digs[0]
+                                };
+                            return Ok(Type::TAtom(l.clone(), Some(bytes as usize)));
+                        }
+                    }
                 } else if a == &"Pair".as_bytes().to_vec() {
                     return parse_type_pair(|a,b| Type::TPair(a,b), b.clone());
                 } else if a == &"Nullable".as_bytes().to_vec() {

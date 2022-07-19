@@ -291,3 +291,12 @@ fn test_list_content_with_anno() {
         false
     );
 }
+
+#[test]
+fn test_sized_atom() {
+    check_expression_against_type(
+        "(sha256 (cons 3 ()))",
+        "(Atom 32)",
+        false
+    );
+}

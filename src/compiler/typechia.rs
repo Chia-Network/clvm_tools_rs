@@ -70,25 +70,6 @@ pub fn standard_type_context() -> Context {
             ))
         ))
     );
-    let c_prim: Type<TYPE_MONO> = Type::TForall(
-        f0.clone(),
-        Rc::new(Type::TForall(
-            r0.clone(),
-            Rc::new(Type::TFun(
-                Rc::new(Type::TPair(
-                    Rc::new(Type::TVar(f0.clone())),
-                    Rc::new(Type::TPair(
-                        Rc::new(Type::TVar(r0.clone())),
-                        Rc::new(Type::TUnit(f0.loc()))
-                    ))
-                )),
-                Rc::new(Type::TPair(
-                    Rc::new(Type::TVar(f0.clone())),
-                    Rc::new(Type::TVar(r0.clone()))
-                ))
-            ))
-        ))
-    );
     let first: Type<TYPE_MONO> = Type::TForall(
         f0.clone(),
         Rc::new(Type::TForall(
@@ -145,13 +126,6 @@ pub fn standard_type_context() -> Context {
             ))
         ))
     );
-    let plus: Type<TYPE_MONO> = Type::TFun(
-        Rc::new(Type::TApp(
-            Rc::new(Type::TAtom(atom_tv.loc(), None)),
-            Rc::new(Type::TVar(list_tv.clone()))
-        )),
-        Rc::new(Type::TAtom(atom_tv.loc(), None))
-    );
     let bless: Type<TYPE_MONO> = Type::TForall(
         f0.clone(),
         Rc::new(Type::TFun(
@@ -203,17 +177,57 @@ pub fn standard_type_context() -> Context {
         ))
     );
 
+    // Primitive definitions
+    let c_prim: Type<TYPE_MONO> = Type::TForall(
+        f0.clone(),
+        Rc::new(Type::TForall(
+            r0.clone(),
+            Rc::new(Type::TFun(
+                Rc::new(Type::TPair(
+                    Rc::new(Type::TVar(f0.clone())),
+                    Rc::new(Type::TPair(
+                        Rc::new(Type::TVar(r0.clone())),
+                        Rc::new(Type::TUnit(f0.loc()))
+                    ))
+                )),
+                Rc::new(Type::TPair(
+                    Rc::new(Type::TVar(f0.clone())),
+                    Rc::new(Type::TVar(r0.clone()))
+                ))
+            ))
+        ))
+    );
+    let plus_prim: Type<TYPE_MONO> = Type::TFun(
+        Rc::new(Type::TApp(
+            Rc::new(Type::TAtom(atom_tv.loc(), None)),
+            Rc::new(Type::TVar(list_tv.clone()))
+        )),
+        Rc::new(Type::TAtom(atom_tv.loc(), None))
+    );
+    let sha256_prim: Type<TYPE_MONO> = Type::TFun(
+        Rc::new(Type::TApp(
+            Rc::new(Type::TAtom(atom_tv.loc(), None)),
+            Rc::new(Type::TVar(list_tv.clone()))
+        )),
+        Rc::new(Type::TAtom(atom_tv.loc(), Some(32)))
+    );
+
     Context::new(vec![
         ContextElim::CVar(Var("c^".to_string(), loc.clone()), polytype(&cons)),
-        ContextElim::CVar(Var("c".to_string(), loc.clone()), polytype(&c_prim)),
         ContextElim::CVar(Var("some".to_string(), loc.clone()), polytype(&some)),
         ContextElim::CVar(Var("f".to_string(), loc.clone()), polytype(&first)),
         ContextElim::CVar(Var("r".to_string(), loc.clone()), polytype(&rest)),
         ContextElim::CVar(Var("a".to_string(), loc.clone()), polytype(&apply)),
         ContextElim::CVar(Var("f^".to_string(), loc.clone()), polytype(&fprime)),
         ContextElim::CVar(Var("r^".to_string(), loc.clone()), polytype(&rprime)),
-        ContextElim::CVar(Var("+^".to_string(), loc.clone()), polytype(&plus)),
         ContextElim::CVar(Var("bless".to_string(), loc.clone()), polytype(&bless)),
+
+        // clvm primitives
+        ContextElim::CVar(Var("c".to_string(), loc.clone()), polytype(&c_prim)),
+        ContextElim::CVar(Var("+".to_string(), loc.clone()), polytype(&plus_prim)),
+        ContextElim::CVar(Var("sha256".to_string(), loc.clone()), polytype(&sha256_prim)),
+
+        // Builtin types
         ContextElim::CExistsSolved(list_tv, list),
         ContextElim::CExistsSolved(unit_tv, unit),
         ContextElim::CExistsSolved(any_tv, any),
