@@ -38,7 +38,7 @@ fn compile_clvm(
     input_path: &PyAny,
     output_path: String,
     search_paths: Vec<String>,
-    export_symbols: Option<bool>
+    export_symbols: Option<bool>,
 ) -> PyResult<PyObject> {
     let has_atom = input_path.hasattr("atom")?;
     let has_pair = input_path.hasattr("pair")?;
@@ -61,12 +61,7 @@ fn compile_clvm(
     };
 
     let mut symbols = HashMap::new();
-    let compiled = clvmc::compile_clvm(
-        &path_string,
-        &output_path,
-        &search_paths,
-        &mut symbols
-    )
+    let compiled = clvmc::compile_clvm(&path_string, &output_path, &search_paths, &mut symbols)
         .map_err(|s| PyException::new_err(s))?;
 
     Python::with_gil(|py| {

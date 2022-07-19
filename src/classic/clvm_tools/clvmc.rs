@@ -131,7 +131,7 @@ pub fn compile_clvm(
     input_path: &String,
     output_path: &String,
     search_paths: &Vec<String>,
-    symbol_table: &mut HashMap<String, String>
+    symbol_table: &mut HashMap<String, String>,
 ) -> Result<String, String> {
     let mut allocator = Allocator::new();
 
