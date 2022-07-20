@@ -94,6 +94,12 @@ pub enum ChiaType {
 }
 
 #[derive(Clone, Debug)]
+pub enum TypeAnnoKind {
+    Colon(Polytype),
+    Arrow(Polytype)
+}
+
+#[derive(Clone, Debug)]
 pub enum HelperForm {
     Deftype(Srcloc, Vec<u8>, Vec<TypeVar>, Option<ChiaType>),
     Defconstant(Srcloc, Vec<u8>, Rc<BodyForm>, Option<Polytype>),

@@ -283,3 +283,12 @@ fn test_chialisp_defun_sha256_good() {
     );
     assert_eq!(ty.is_err(), false);
 }
+
+#[test]
+fn test_chialisp_with_arg_type_smoke_test() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod ((X : Atom)) -> Atom (+ X 1))",
+        false
+    ).expect("should typecheck");
+    assert_eq!(ty, Type::TAtom(ty.loc(), None));
+}

@@ -6,18 +6,29 @@ use std::rc::Rc;
 use crate::classic::clvm::__type_compatibility__::bi_one;
 
 use crate::compiler::comptypes::{
-    list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm,
-    LetFormKind, ModAccum,
+    Binding,
+    BodyForm,
+    CompileErr,
+    CompileForm,
+    CompilerOpts,
+    HelperForm,
+    LetFormKind,
+    ModAccum,
+    TypeAnnoKind,
+    list_to_cons,
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
 use crate::compiler::sexp::{enlist, SExp};
-use crate::compiler::srcloc::Srcloc;
+use crate::compiler::srcloc::{HasLoc, Srcloc};
 use crate::compiler::typecheck::{
-    TheoryToSExp,
     parse_type_sexp
 };
-use crate::compiler::types::ast::Polytype;
+use crate::compiler::types::ast::{
+    Polytype,
+    Type,
+    TypeVar
+};
 use crate::util::u8_from_number;
 
 fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
@@ -396,12 +407,17 @@ fn compile_defmacro(
         .map(|p| HelperForm::Defmacro(l, name, args.clone(), Rc::new(p)))
 }
 
+enum TypeKind {
+    Arrow,
+    Colon
+}
+
 struct ParseBodyformMatch {
     op_name: Vec<u8>,
     name: Vec<u8>,
     args: Rc<SExp>,
     body: Rc<SExp>,
-    ty: Option<Rc<SExp>>
+    ty: Option<(TypeKind, Rc<SExp>)>
 }
 
 fn match_op_name_4(
@@ -436,7 +452,11 @@ fn match_op_name_4(
                             if *colon == vec![b':'] {
                                 // Type annotation
                                 tail_idx += 2;
-                                type_anno = Some(Rc::new(pl[4].clone()));
+                                type_anno = Some((TypeKind::Colon, Rc::new(pl[4].clone())));
+                            } else if *colon == vec![b'-',b'>'] {
+                                // Type annotation
+                                tail_idx += 2;
+                                type_anno = Some((TypeKind::Arrow, Rc::new(pl[4].clone())));
                             }
                         }
                     }
@@ -464,6 +484,166 @@ fn match_op_name_4(
     }
 }
 
+fn extract_type_variables_from_forall_stack(
+    tvars: &mut Vec<TypeVar>,
+    t: &Polytype
+) -> Polytype {
+    if let Type::TForall(v,t1) = t {
+        tvars.push(v.clone());
+        extract_type_variables_from_forall_stack(tvars, t1.borrow())
+    } else {
+        t.clone()
+    }
+}
+
+struct ArgTypeResult {
+    stripped_args: Rc<SExp>,
+    individual_types: HashMap<Vec<u8>, Polytype>,
+    whole_args: Polytype
+}
+
+fn recover_arg_type_inner(
+    individual_types: &mut HashMap<Vec<u8>, Polytype>,
+    args: Rc<SExp>,
+    have_anno: bool
+) -> Result<(bool, Rc<SExp>, Polytype), CompileErr> {
+    match args.borrow() {
+        SExp::Nil(l) => Ok((have_anno, args.clone(), Type::TUnit(l.clone()))),
+        SExp::Atom(l,n) => {
+            individual_types.insert(n.clone(), Type::TAny(l.clone()));
+            Ok((false, args.clone(), Type::TAny(l.clone())))
+        },
+        SExp::Cons(l,a,b) => {
+            // There are a few cases:
+            // (normal destructuring)
+            // (@ name sub)
+            // (@ name sub : ty)
+            // (X : ty)
+            // We want to catch the final case and pass through its unannotated
+            // counterpart.
+            if let Some(lst) = args.proper_list() {
+                // Dive in
+                if lst.len() == 5 {
+                    if let (SExp::Atom(l,n), SExp::Atom(l2,n2)) =
+                        (&lst[0], &lst[3]) {
+                            if n == &vec![b'@'] && n2 == &vec![b':'] {
+                                // At capture with annotation
+                                todo!()
+                            };
+                        };
+                } else if lst.len() == 3 {
+                    if let SExp::Atom(l1,n1) = &lst[1] {
+                        if n1 == &vec![b':'] {
+                            // Name with annotation
+                            let ty = parse_type_sexp(Rc::new(lst[2].clone()))?;
+                            return Ok((true, Rc::new(lst[0].clone()), ty));
+                        };
+                    };
+                }
+            }
+
+            let (got_ty_a, stripped_a, ty_a) = recover_arg_type_inner(
+                individual_types,
+                a.clone(),
+                have_anno
+            )?;
+            let (got_ty_b, stripped_b, ty_b) = recover_arg_type_inner(
+                individual_types,
+                b.clone(),
+                have_anno
+            )?;
+            Ok((got_ty_a || got_ty_b,
+                Rc::new(SExp::Cons(
+                    l.clone(),
+                    stripped_a,
+                    stripped_b
+                )),
+                Type::TPair(Rc::new(ty_a), Rc::new(ty_b))
+            ))
+        },
+        _ => Err(CompileErr(args.loc(), "unrecognized argument form".to_string()))
+    }
+}
+
+fn recover_arg_type(args: Rc<SExp>) -> Result<Option<ArgTypeResult>, CompileErr> {
+    let mut individual_types = HashMap::new();
+    let (got_any, stripped, ty) = recover_arg_type_inner(
+        &mut individual_types,
+        args.clone(),
+        false
+    )?;
+    if got_any {
+        Ok(Some(ArgTypeResult {
+            stripped_args: stripped,
+            individual_types: individual_types,
+            whole_args: ty
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+// Returns None if result_ty is None and there are no type signatures recovered
+// from the args.
+//
+// If the function's type signature is given with a TForall, the type variables
+// given will be in scope for the arguments.
+// If type arguments are given, the function's type signature must not be given
+// as a function type (since all functions are arity-1 in chialisp).  The final
+// result type will be enriched to include the argument types.
+fn augment_fun_type_with_args(
+    args: Rc<SExp>,
+    result_ty: Option<TypeAnnoKind>
+) -> Result<(Rc<SExp>, Option<Polytype>), CompileErr> {
+    if let Some(atr) = recover_arg_type(args.clone())? {
+        let mut tvars = Vec::new();
+
+        let actual_result_ty =
+            if let Some(TypeAnnoKind::Arrow(rty)) = result_ty {
+                extract_type_variables_from_forall_stack(&mut tvars, &rty)
+            } else if let Some(TypeAnnoKind::Colon(rty)) = result_ty {
+                let want_rty = extract_type_variables_from_forall_stack(
+                    &mut tvars,
+                    &rty
+                );
+                // If it's a function type, we have to give it as "args"
+                if let Type::TFun(t1,t2) = want_rty {
+                    let t1_borrowed: &Polytype = t1.borrow();
+                    if t1_borrowed != &Type::TVar(TypeVar("args".to_string(), t1.loc())) {
+                        return Err(CompileErr(t1.loc(), "When arguments are annotated, if the full function type is given, it must be given as (args -> ...).  The 'args' type variable will contain the type implied by the individual argument annotations.".to_string()));
+                    }
+
+                    let t2_borrowed: &Polytype = t2.borrow();
+                    t2_borrowed.clone()
+                } else {
+                    want_rty
+                }
+            } else {
+                Type::TAny(args.loc())
+            };
+
+        Ok((atr.stripped_args.clone(), Some(actual_result_ty)))
+    } else {
+        // No arg types were given.  If a type was given for the result (non-fun)
+        // use Any -> Any
+        // else use the whole thing.
+        Ok(result_ty.map(|rty| {
+            match rty {
+                TypeAnnoKind::Colon(t) => (args.clone(), Some(t.clone())),
+                TypeAnnoKind::Arrow(t) => (
+                    args.clone(),
+                    Some(Type::TFun(
+                        Rc::new(Type::TAny(args.loc())),
+                        Rc::new(t.clone())
+                    ))
+                )
+            }
+        }).unwrap_or_else(|| {
+            (args.clone(), None)
+        }))
+    }
+}
+
 fn compile_helperform(
     opts: Rc<dyn CompilerOpts>,
     body: Rc<SExp>,
@@ -480,17 +660,24 @@ fn compile_helperform(
                 return compile_defmacro(opts, l, res.name.to_vec(), res.args.clone(), res.body.clone())
                     .map(|x| Some(x));
             } else if res.op_name == "defun".as_bytes().to_vec() || inline {
-                let parsed_type =
-                    if let Some(ty) = res.ty {
-                        Some(parse_type_sexp(ty)?)
+                let use_type_anno =
+                    if let Some((k,ty)) = res.ty {
+                        match k {
+                            TypeKind::Arrow => Some(TypeAnnoKind::Arrow(parse_type_sexp(ty)?)),
+                            TypeKind::Colon => Some(TypeAnnoKind::Colon(parse_type_sexp(ty)?)),
+                        }
                     } else {
                         None
                     };
+
+                let (stripped_args, parsed_type) =
+                    augment_fun_type_with_args(res.args.clone(), use_type_anno)?;
+
                 return compile_defun(
                     l,
                     inline,
                     res.name.to_vec(),
-                    res.args.clone(),
+                    stripped_args,
                     res.body.clone(),
                     parsed_type
                 ).map(|x| Some(x));
@@ -507,8 +694,11 @@ fn compile_mod_(
     opts: Rc<dyn CompilerOpts>,
     args: Rc<SExp>,
     content: Rc<SExp>,
-    ty: Option<Polytype>
+    ty: Option<TypeAnnoKind>
 ) -> Result<ModAccum, CompileErr> {
+    let (stripped_args, parsed_type) =
+        augment_fun_type_with_args(args.clone(), ty.clone())?;
+
     match content.borrow() {
         SExp::Nil(l) => Err(CompileErr(
             l.clone(),
@@ -519,10 +709,10 @@ fn compile_mod_(
                 Some(_) => Err(CompileErr(l.clone(), "too many expressions".to_string())),
                 _ => Ok(mc.set_final(&CompileForm {
                     loc: mc.loc.clone(),
-                    args: args.clone(),
+                    args: stripped_args.clone(),
                     helpers: mc.helpers.clone(),
                     exp: Rc::new(compile_bodyform(body.clone())?),
-                    ty: ty
+                    ty: parsed_type
                 })),
             },
             _ => {
@@ -534,7 +724,7 @@ fn compile_mod_(
                     )),
                     Some(form) => match mc.exp_form {
                         None => {
-                            compile_mod_(&mc.add_helper(form), opts, args.clone(), tail.clone(), ty)
+                            compile_mod_(&mc.add_helper(form), opts, stripped_args.clone(), tail.clone(), ty)
                         }
                         Some(_) => Err(CompileErr(l.clone(), "too many expressions".to_string())),
                     },
@@ -593,12 +783,16 @@ fn frontend_start(
                         if *mod_atom == "mod".as_bytes().to_vec() {
                             let args = Rc::new(x[1].clone());
                             let mut skip_idx = 2;
-                            let mut ty: Option<Polytype> = None;
+                            let mut ty: Option<TypeAnnoKind> = None;
 
                             if let SExp::Atom(_,colon) = &x[2] {
                                 if *colon == vec![b':'] && x.len() > 3 {
                                     let use_ty = parse_type_sexp(Rc::new(x[3].clone()))?;
-                                    ty = Some(use_ty);
+                                    ty = Some(TypeAnnoKind::Colon(use_ty));
+                                    skip_idx += 2;
+                                } else if *colon == vec![b'-',b'>'] && x.len() > 3 {
+                                    let use_ty = parse_type_sexp(Rc::new(x[3].clone()))?;
+                                    ty = Some(TypeAnnoKind::Arrow(use_ty));
                                     skip_idx += 2;
                                 }
                             }
