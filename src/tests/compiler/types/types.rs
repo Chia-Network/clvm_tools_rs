@@ -250,7 +250,7 @@ fn test_lambda_pair_apply() {
 #[test]
 fn test_first_of_pair() {
     check_expression_against_type(
-        "(f (cons 1 ()))",
+        "(f^ (cons 1 ()))",
         "Atom",
         false
     );
@@ -259,7 +259,7 @@ fn test_first_of_pair() {
 #[test]
 fn test_rest_of_pair() {
     check_expression_against_type(
-        "(r (cons 1 ()))",
+        "(r^ (cons 1 ()))",
         "()",
         false
     );

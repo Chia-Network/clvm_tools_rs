@@ -292,3 +292,22 @@ fn test_chialisp_with_arg_type_smoke_test() {
     ).expect("should typecheck");
     assert_eq!(ty, Type::TAtom(ty.loc(), None));
 }
+
+#[test]
+fn test_chialisp_with_arg_type_first_should_not_check() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod ((X : Atom)) -> Atom (f X))",
+        false
+    );
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn test_chialisp_with_arg_type_first_should_check() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod ((X : (Pair Atom Unit))) -> Atom (f X))",
+        false
+    );
+    println!("ty {:?}", ty);
+    assert_eq!(ty.is_err(), false);
+}

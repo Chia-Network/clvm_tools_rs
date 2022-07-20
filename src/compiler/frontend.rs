@@ -30,6 +30,7 @@ use crate::compiler::types::ast::{
     TypeVar
 };
 use crate::util::u8_from_number;
+use crate::compiler::typecheck::TheoryToSExp;
 
 fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
     match body.borrow() {
@@ -536,6 +537,7 @@ fn recover_arg_type_inner(
                         if n1 == &vec![b':'] {
                             // Name with annotation
                             let ty = parse_type_sexp(Rc::new(lst[2].clone()))?;
+                            println!("parsed arg type {} : {}", lst[0].to_string(), ty.to_sexp().to_string());
                             return Ok((true, Rc::new(lst[0].clone()), ty));
                         };
                     };
@@ -552,6 +554,15 @@ fn recover_arg_type_inner(
                 b.clone(),
                 have_anno
             )?;
+            println!(
+                "returning arg types for pair ({} {} {}) ({} {} {})",
+                got_ty_a,
+                stripped_a.to_string(),
+                ty_a.to_sexp().to_string(),
+                got_ty_b,
+                stripped_b.to_string(),
+                ty_b.to_sexp().to_string()
+            );
             Ok((got_ty_a || got_ty_b,
                 Rc::new(SExp::Cons(
                     l.clone(),
@@ -580,6 +591,30 @@ fn recover_arg_type(args: Rc<SExp>) -> Result<Option<ArgTypeResult>, CompileErr>
         }))
     } else {
         Ok(None)
+    }
+}
+
+// Given type recovered argument type and a candidate return type (possibly with
+// a forall stack), construct the user's expected function type. If no arg types
+// were given, the arg type is Any. If the bottom of the stack is a function
+// type, its left hand type is replaced with the given arg type or Any. If it
+// isn't a function type, it's promoted to be a function taking the given arg
+// type or Any.
+fn promote_with_arg_type(argty: &Polytype, funty: &Polytype) -> Polytype {
+    println!("promote_with_arg_type {} {}", argty.to_sexp().to_string(), funty.to_sexp().to_string());
+    match funty {
+        Type::TForall(v,t) => {
+            Type::TForall(
+                v.clone(),
+                Rc::new(promote_with_arg_type(argty, t.borrow()))
+            )
+        },
+        Type::TFun(t1,t2) => {
+            Type::TFun(Rc::new(argty.clone()), t2.clone())
+        },
+        _ => {
+            Type::TFun(Rc::new(argty.clone()), Rc::new(funty.clone()))
+        }
     }
 }
 
@@ -622,7 +657,7 @@ fn augment_fun_type_with_args(
                 Type::TAny(args.loc())
             };
 
-        Ok((atr.stripped_args.clone(), Some(actual_result_ty)))
+        Ok((atr.stripped_args.clone(), Some(promote_with_arg_type(&atr.whole_args, &actual_result_ty))))
     } else {
         // No arg types were given.  If a type was given for the result (non-fun)
         // use Any -> Any
@@ -694,11 +729,8 @@ fn compile_mod_(
     opts: Rc<dyn CompilerOpts>,
     args: Rc<SExp>,
     content: Rc<SExp>,
-    ty: Option<TypeAnnoKind>
+    ty: Option<Polytype>
 ) -> Result<ModAccum, CompileErr> {
-    let (stripped_args, parsed_type) =
-        augment_fun_type_with_args(args.clone(), ty.clone())?;
-
     match content.borrow() {
         SExp::Nil(l) => Err(CompileErr(
             l.clone(),
@@ -709,10 +741,10 @@ fn compile_mod_(
                 Some(_) => Err(CompileErr(l.clone(), "too many expressions".to_string())),
                 _ => Ok(mc.set_final(&CompileForm {
                     loc: mc.loc.clone(),
-                    args: stripped_args.clone(),
+                    args: args.clone(),
                     helpers: mc.helpers.clone(),
                     exp: Rc::new(compile_bodyform(body.clone())?),
-                    ty: parsed_type
+                    ty: ty
                 })),
             },
             _ => {
@@ -724,7 +756,7 @@ fn compile_mod_(
                     )),
                     Some(form) => match mc.exp_form {
                         None => {
-                            compile_mod_(&mc.add_helper(form), opts, stripped_args.clone(), tail.clone(), ty)
+                            compile_mod_(&mc.add_helper(form), opts, args.clone(), tail.clone(), ty)
                         }
                         Some(_) => Err(CompileErr(l.clone(), "too many expressions".to_string())),
                     },
@@ -796,6 +828,8 @@ fn frontend_start(
                                     skip_idx += 2;
                                 }
                             }
+                            let (stripped_args, parsed_type) =
+                                augment_fun_type_with_args(args.clone(), ty)?;
 
                             let body_vec = x.iter().skip(skip_idx).map(|s| Rc::new(s.clone())).collect();
                             let body = Rc::new(enlist(pre_forms[0].loc(), body_vec));
@@ -804,9 +838,9 @@ fn frontend_start(
                             return compile_mod_(
                                 &ModAccum::new(l.clone()),
                                 opts.clone(),
-                                args.clone(),
+                                stripped_args,
                                 Rc::new(list_to_cons(l, &ls)),
-                                ty
+                                parsed_type
                             );
                         }
                     }
