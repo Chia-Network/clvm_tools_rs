@@ -311,3 +311,23 @@ fn test_chialisp_with_arg_type_first_should_check() {
     println!("ty {:?}", ty);
     assert_eq!(ty.is_err(), false);
 }
+
+#[test]
+fn test_chialisp_with_arg_type_doesnt_check_not_atom32() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod ((X : (Pair Atom Unit))) -> (Atom 32) (+ 1 X))",
+        false
+    );
+    println!("ty {:?}", ty);
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn test_chialisp_with_arg_type_doesnt_checks_atom32() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod ((X : (Pair Atom Unit))) -> (Atom 32) (sha256 1 X))",
+        false
+    );
+    println!("ty {:?}", ty);
+    assert_eq!(ty.is_err(), false);
+}
