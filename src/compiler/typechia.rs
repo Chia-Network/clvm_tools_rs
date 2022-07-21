@@ -1,10 +1,18 @@
 use std::borrow::Borrow;
+use std::collections::{HashSet};
 use std::rc::Rc;
 
 use num_bigint::ToBigInt;
 
+use clvmr::allocator::Allocator;
+
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
-use crate::compiler::compiler::is_at_capture;
+use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+
+use crate::compiler::compiler::{
+    DefaultCompilerOpts,
+    is_at_capture
+};
 use crate::compiler::comptypes::{
     BodyForm,
     ChiaType,
@@ -12,6 +20,12 @@ use crate::compiler::comptypes::{
     CompileForm,
     HelperForm
 };
+use crate::compiler::evaluate::{
+    Evaluator,
+    build_argument_captures,
+    dequote
+};
+use crate::compiler::frontend::frontend;
 use crate::compiler::sexp::{
     SExp,
     decode_string
@@ -29,6 +43,7 @@ use crate::compiler::types::ast::{
     TypeVar,
     Var
 };
+use crate::compiler::types::namegen::fresh_var;
 use crate::compiler::types::astfuns::polytype;
 use crate::compiler::types::theory::TypeTheory;
 use crate::util::{Number, u8_from_number};
@@ -176,8 +191,60 @@ pub fn standard_type_context() -> Context {
             ))
         ))
     );
+    let com: Type<TYPE_MONO> = Type::TForall(
+        r0.clone(),
+        Rc::new(Type::TFun(
+            Rc::new(Type::TFun(
+                Rc::new(Type::TAny(f0.loc())),
+                Rc::new(Type::TVar(r0.clone()))
+            )),
+            Rc::new(Type::TExec(
+                Rc::new(Type::TFun(
+                    Rc::new(Type::TAny(f0.loc())),
+                    Rc::new(Type::TVar(r0.clone()))
+                ))
+            ))
+        ))
+    );
 
     // Primitive definitions
+    let a_prim: Type<TYPE_MONO> = Type::TForall(
+        f0.clone(),
+        Rc::new(Type::TForall(
+            r0.clone(),
+            Rc::new(Type::TFun(
+                Rc::new(Type::TPair(
+                    Rc::new(Type::TExec(
+                        Rc::new(Type::TFun(
+                            Rc::new(Type::TVar(f0.clone())),
+                            Rc::new(Type::TVar(r0.clone()))
+                        ))
+                    )),
+                    Rc::new(Type::TPair(
+                        Rc::new(Type::TVar(f0.clone())),
+                        Rc::new(Type::TUnit(f0.loc()))
+                    ))
+                )),
+                Rc::new(Type::TVar(r0.clone()))
+            ))
+        ))
+    );
+    let i_prim: Type<TYPE_MONO> = Type::TForall(
+        f0.clone(),
+        Rc::new(Type::TFun(
+            Rc::new(Type::TPair(
+                Rc::new(Type::TAny(f0.loc())),
+                Rc::new(Type::TPair(
+                    Rc::new(Type::TVar(f0.clone())),
+                    Rc::new(Type::TPair(
+                        Rc::new(Type::TVar(f0.clone())),
+                        Rc::new(Type::TUnit(f0.loc()))
+                    ))
+                ))
+            )),
+            Rc::new(Type::TVar(f0.clone()))
+        ))
+    );
     let c_prim: Type<TYPE_MONO> = Type::TForall(
         f0.clone(),
         Rc::new(Type::TForall(
@@ -249,12 +316,16 @@ pub fn standard_type_context() -> Context {
         ContextElim::CVar(Var("some".to_string(), loc.clone()), polytype(&some)),
         ContextElim::CVar(Var("f^".to_string(), loc.clone()), polytype(&first)),
         ContextElim::CVar(Var("r^".to_string(), loc.clone()), polytype(&rest)),
-        ContextElim::CVar(Var("a".to_string(), loc.clone()), polytype(&apply)),
-        ContextElim::CVar(Var("f^".to_string(), loc.clone()), polytype(&fprime)),
-        ContextElim::CVar(Var("r^".to_string(), loc.clone()), polytype(&rprime)),
+        ContextElim::CVar(Var("a^".to_string(), loc.clone()), polytype(&apply)),
+        ContextElim::CVar(Var("com^".to_string(), loc.clone()), polytype(&com)),
+        ContextElim::CVar(Var("f!".to_string(), loc.clone()), polytype(&fprime)),
+        ContextElim::CVar(Var("r!".to_string(), loc.clone()), polytype(&rprime)),
         ContextElim::CVar(Var("bless".to_string(), loc.clone()), polytype(&bless)),
+        ContextElim::CVar(Var("@".to_string(), loc.clone()), Type::TAny(f0.loc())),
 
         // clvm primitives
+        ContextElim::CVar(Var("a".to_string(), loc.clone()), polytype(&a_prim)),
+        ContextElim::CVar(Var("i".to_string(), loc.clone()), polytype(&i_prim)),
         ContextElim::CVar(Var("c".to_string(), loc.clone()), polytype(&c_prim)),
         ContextElim::CVar(Var("f".to_string(), loc.clone()), polytype(&f_prim)),
         ContextElim::CVar(Var("r".to_string(), loc.clone()), polytype(&r_prim)),
@@ -348,23 +419,171 @@ pub fn context_from_args_and_type(
     }
 }
 
+fn make_offsides_protection(set: &mut HashSet<Vec<u8>>, args: Rc<SExp>) {
+    match args.borrow() {
+        SExp::Atom(_,n) => { set.insert(n.clone()); },
+        SExp::Cons(_,a,b) => {
+            make_offsides_protection(set, a.clone());
+            make_offsides_protection(set, b.clone());
+        },
+        _ => { }
+    }
+}
+
+fn enquote_offsides_expressions_tail(
+    protected_atoms: &HashSet<Vec<u8>>,
+    input: Rc<SExp>
+) -> Rc<SExp> {
+    match input.borrow() {
+        SExp::Cons(l,a,b) => {
+            let first = enquote_offsides_expressions(protected_atoms, a.clone());
+            let rest = enquote_offsides_expressions_tail(protected_atoms, b.clone());
+            Rc::new(SExp::Cons(
+                l.clone(),
+                first,
+                rest
+            ))
+        },
+        _ => enquote_offsides_expressions(protected_atoms, input)
+    }
+}
+
+// Fixup output from a macro to ensure that it can be shrunk to real chialisp
+// code.  This is distinct from 'clvm' code in that we'll enquote anything output
+// that is used "as" chialisp code.  This includes any unguarded atoms in the
+// output.
+//
+// A subsequent layer will handle "com" specially, turning it into
+// (com X) -> (com^ (lambda x X))
+fn enquote_offsides_expressions(
+    protected_atoms: &HashSet<Vec<u8>>,
+    input: Rc<SExp>
+) -> Rc<SExp> {
+    match input.borrow() {
+        SExp::Atom(l,n) => {
+            if protected_atoms.contains(n) {
+                Rc::new(SExp::Cons(
+                    l.clone(),
+                    Rc::new(SExp::Atom(l.clone(),vec![b'q'])),
+                    input.clone()
+                ))
+            } else {
+                input.clone()
+            }
+        },
+        SExp::Cons(l,a,b) => {
+            let new_b = enquote_offsides_expressions_tail(
+                protected_atoms, b.clone()
+            );
+            Rc::new(SExp::Cons(
+                l.clone(),
+                a.clone(),
+                new_b
+            ))
+        },
+        _ => { input.clone() }
+    }
+}
+
+fn handle_macro(
+    program: &CompileForm,
+    form_args: Rc<SExp>,
+    args: Rc<SExp>,
+    form: Rc<CompileForm>,
+    loc: Srcloc,
+    provided_args: &Vec<Rc<BodyForm>>
+) -> Result<Expr, CompileErr> {
+    // It is a macro, we need to interpret it in our way:
+    // We'll compile and run the code itself on a
+    // representation of the argument list and return the
+    // result.  We'll interpret the result in the following
+    // but we'll treat com as com^ whose type will be
+    // (forall s (forall t (t -> (Exec (s -> t)))))
+    // Given an 'a' operator:
+    // (forall s
+    //   (forall t
+    //     ((Pair (Exec (s -> t)) (Pair s ())) -> t)
+    //     )
+    //    )
+    // And given a well typed 'i' operator:
+    // (forall t ((Pair Any (Pair t (Pair t ()))) -> t))
+    // We should be able to type things that come our way
+    let call_args: Vec<Rc<BodyForm>> =
+        provided_args.iter().skip(1).map(|x| x.clone()).collect();
+    let opts = Rc::new(DefaultCompilerOpts::new(&loc.file.to_string()));
+    let runner = Rc::new(DefaultProgramRunner::new());
+    let ev = Evaluator::new(
+        opts.clone(),
+        runner,
+        program.helpers.clone()
+    );
+    let mut allocator = Allocator::new();
+    let arg_env = build_argument_captures(
+        &loc,
+        &call_args,
+        form.args.clone()
+    )?;
+    let result = ev.shrink_bodyform(
+        &mut allocator,
+        Rc::new(SExp::Nil(loc.clone())),
+        &arg_env,
+        form.exp.clone(),
+        false
+    )?;
+    let mut offsides = HashSet::new();
+    make_offsides_protection(&mut offsides, form_args.clone());
+    let parsed_macro_output = frontend(opts.clone(), vec![enquote_offsides_expressions(&offsides, result.to_sexp())])?;
+    let exp_result = ev.shrink_bodyform(
+        &mut allocator,
+        Rc::new(SExp::Nil(loc.clone())),
+        &arg_env,
+        parsed_macro_output.exp.clone(),
+        false
+    )?;
+    match dequote(loc.clone(), exp_result) {
+        Ok(dequoted) => {
+            let last_reparse = frontend(opts, vec![dequoted])?;
+            let final_res = chialisp_to_expr(
+                program,
+                form_args,
+                last_reparse.exp.clone()
+            )?;
+            Ok(final_res)
+        },
+        Err(_) => {
+            // Give up: we can't do better than Any
+            Ok(Expr::EAnno(
+                Rc::new(Expr::EUnit(loc.clone())),
+                Type::TAny(loc.clone())
+            ))
+        }
+    }
+}
+
 fn chialisp_to_expr(
+    program: &CompileForm,
+    form_args: Rc<SExp>,
     body: Rc<BodyForm>
-) -> Expr {
+) -> Result<Expr, CompileErr> {
     match body.borrow() {
-        BodyForm::Quoted(SExp::Nil(l)) => { Expr::EUnit(l.clone()) },
-        BodyForm::Value(SExp::Nil(l)) => { Expr::EUnit(l.clone()) },
+        BodyForm::Quoted(SExp::Nil(l)) => { Ok(Expr::EUnit(l.clone())) },
+        BodyForm::Quoted(SExp::Integer(l,i)) => {
+            let v = u8_from_number(i.clone());
+            Ok(Expr::ELit(l.clone(), v.len().to_bigint().unwrap()))
+        },
+        BodyForm::Value(SExp::Nil(l)) => { Ok(Expr::EUnit(l.clone())) },
         BodyForm::Value(SExp::Integer(l,i)) => {
             let v = u8_from_number(i.clone());
-            Expr::ELit(l.clone(), v.len().to_bigint().unwrap()) },
+            Ok(Expr::ELit(l.clone(), v.len().to_bigint().unwrap()))
+        },
         BodyForm::Value(SExp::Atom(l,n)) => {
-            Expr::EVar(Var(decode_string(n), l.clone()))
+            Ok(Expr::EVar(Var(decode_string(n), l.clone())))
         },
         BodyForm::Call(l,lst) => {
             let mut arg_expr = Expr::EUnit(l.clone());
             for i_rev in 0..lst.len() - 1 {
                 let i = lst.len() - i_rev - 1;
-                let new_expr = chialisp_to_expr(lst[i].clone());
+                let new_expr = chialisp_to_expr(program, form_args.clone(), lst[i].clone())?;
                 arg_expr = Expr::EApp(
                     Rc::new(Expr::EApp(
                         Rc::new(Expr::EVar(Var("c^".to_string(), l.clone()))),
@@ -373,10 +592,41 @@ fn chialisp_to_expr(
                     Rc::new(arg_expr)
                 );
             }
-            Expr::EApp(
-                Rc::new(chialisp_to_expr(lst[0].clone())),
+            if let BodyForm::Value(SExp::Atom(l1,n1)) = &lst[0].borrow() {
+                // Find out if it's a macro
+                for h in program.helpers.iter() {
+                    if let HelperForm::Defmacro(l, name, args, form) = &h {
+                        if name == n1 {
+                            return handle_macro(
+                                program,
+                                form_args.clone(),
+                                args.clone(),
+                                form.clone(),
+                                body.loc(),
+                                &lst
+                            );
+                        }
+                    }
+                }
+
+                if n1 == &vec![b'c',b'o',b'm'] {
+                    // Handle com
+                    // Rewrite (com X) as (com^ (lambda x X))
+                    let inner = chialisp_to_expr(program, form_args.clone(), lst[1].clone())?;
+                    let var = fresh_var(l.clone());
+                    return Ok(Expr::EApp(
+                        Rc::new(Expr::EVar(Var("com^".to_string(), l.clone()))),
+                        Rc::new(Expr::EAbs(var, Rc::new(inner)))
+                    ));
+                }
+            }
+
+            // Just treat it as an expression...  If it's a function we defined,
+            // then it's in the environment.
+            Ok(Expr::EApp(
+                Rc::new(chialisp_to_expr(program, form_args.clone(), lst[0].clone())?),
                 Rc::new(arg_expr)
-            )
+            ))
         },
         _ => todo!("not sure how to handle {:?} yet", body)
     }
@@ -484,7 +734,7 @@ impl Context {
                 typecheck_chialisp_body_with_context(
                     &context_with_args,
                     &Expr::EAnno(
-                        Rc::new(chialisp_to_expr(body.clone())),
+                        Rc::new(chialisp_to_expr(comp, args.clone(), body.clone())?),
                         result_ty
                     )
                 )?;
@@ -500,10 +750,11 @@ impl Context {
                 comp.args.clone(),
                 &ty
             )?;
+        let clexpr = chialisp_to_expr(comp, comp.args.clone(), comp.exp.clone())?;
         typecheck_chialisp_body_with_context(
             &context_with_args,
             &Expr::EAnno(
-                Rc::new(chialisp_to_expr(comp.exp.clone())),
+                Rc::new(clexpr),
                 result_ty
             )
         )

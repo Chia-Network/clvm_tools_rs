@@ -268,7 +268,7 @@ fn test_rest_of_pair() {
 #[test]
 fn test_type_exec_with_anno() {
     check_expression_against_type(
-        "((lambda x ((a x) 1)) : ((Exec (Atom -> Atom)) -> Atom))",
+        "((lambda x ((a^ x) 1)) : ((Exec (Atom -> Atom)) -> Atom))",
         "((Exec (Atom -> Atom)) -> Atom)",
         false
     );
