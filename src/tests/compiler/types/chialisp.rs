@@ -331,3 +331,56 @@ fn test_chialisp_with_arg_type_doesnt_checks_atom32() {
     println!("ty {:?}", ty);
     assert_eq!(ty.is_err(), false);
 }
+
+#[test]
+fn test_chialisp_function_returning_any_is_ok_as_atom32() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"(mod () -> (Atom 32)
+           (defun F () (sha256 1 1 1 1 1 1 1 1))
+           (F)
+           )"},
+        false
+    );
+    println!("ty {:?}", ty);
+    assert_eq!(ty.is_err(), false);
+}
+
+#[test]
+fn test_chialisp_function_returning_atom_isnt_ok_as_atom32() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"(mod () -> (Atom 32)
+           (defun F () -> Atom (sha256 1 1 1 1 1 1 1 1))
+           (F)
+           )"},
+        false
+    );
+    println!("ty {:?}", ty);
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn test_chialisp_function_checks_result_type() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"(mod () -> (Atom 32)
+           (defun F () -> Atom (+ 1 1 1 1 1 1 1 1))
+           (F)
+           )"},
+        false
+    );
+    println!("ty {:?}", ty);
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn test_chialisp_function_returning_atom_is_ok_as_atom32() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"(mod () -> (Atom 32)
+           (defun F () -> (Atom 32) (sha256 1 1 1 1 1 1 1 1))
+           (F)
+           )"},
+        false
+    );
+    println!("ty {:?}", ty);
+    assert_eq!(ty.is_err(), false);
+}
+

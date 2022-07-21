@@ -88,8 +88,12 @@ impl Context {
                     return Ok(Box::new(self.clone()));
                 }
             },
+            // All types check as any
             (x, Type::TAny(_)) => {
-                debug!("case Any");
+                return Ok(Box::new(self.clone()));
+            },
+            // Any checks as any type
+            (Type::TAny(_), x) => {
                 return Ok(Box::new(self.clone()));
             },
             (Type::TUnit(_), Type::TUnit(_)) => {
@@ -771,7 +775,7 @@ impl TypeTheory for Context {
 
     fn typesynth(&self, expr: &Expr) -> Result<(Polytype, Box<Self>), CompileErr> {
         indented(|| {
-            println!("{}typesynth {} in {}", I(), expr.to_sexp().to_string(), self.to_sexp().to_string());
+            debug!("{}typesynth {} in {}", I(), expr.to_sexp().to_string(), self.to_sexp().to_string());
             let res = self.typesynth_(expr);
             match &res {
                 Ok((t,v)) => { debug!("{}typesynth {} => ({} {})", I(), expr.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ t.to_sexp().to_string(), v.to_sexp().to_string()); },
