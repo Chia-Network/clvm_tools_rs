@@ -194,6 +194,14 @@ pub struct GContext<const A: usize>(pub Vec<ContextElim<A>>);
 type CompleteContext = GContext<CONTEXT_COMPLETE>;
 pub type Context = GContext<CONTEXT_INCOMPLETE>;
 
+fn instantiates_tvar<const A: usize>(m: &TypeVar, c: &ContextElim<A>) -> bool {
+    match c {
+        ContextElim::CExists(v) => v == m,
+        ContextElim::CExistsSolved(v,_) => v == m,
+        _ => false
+    }
+}
+
 impl<const A: usize> GContext<A> {
     pub fn snoc(&self, elem: ContextElim<A>) -> GContext<A> {
         let mut newvec = self.0.clone();
@@ -222,15 +230,15 @@ impl<const A: usize> GContext<A> {
 
     pub fn inspect_context(
         &self,
-        m: &ContextElim<A>
+        m: &TypeVar
     ) -> (GContext<A>, GContext<A>) {
-        self.0.iter().position(|e| e == m).map(|idx| {
+        self.0.iter().position(|e| instantiates_tvar(m, e)).map(|idx| {
             ( GContext(self.0[idx+1..].iter().map(|x| x.clone()).collect())
             , GContext(self.0[..idx].iter().map(|x| x.clone()).collect())
             )
         }).unwrap_or_else(|| {
-            ( GContext(Vec::new())
-            , GContext(self.0.clone())
+            ( GContext(self.0.clone())
+            , GContext(Vec::new())
             )
         })
     }
@@ -254,8 +262,8 @@ impl<const A: usize> GContext<A> {
             debug!("break_marker {} {} from {}", m.to_sexp().to_string(), res.0.to_sexp().to_string(), res.1.to_sexp().to_string());
             res
         }).unwrap_or_else(|| {
-            ( GContext(res.0.clone())
-            , GContext(Vec::new())
+            ( GContext(Vec::new())
+            , GContext(res.0.clone())
             )
         }))
     }

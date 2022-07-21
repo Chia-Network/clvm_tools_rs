@@ -393,3 +393,58 @@ fn test_if_smoke() {
     ).expect("should check");
     assert_eq!(ty, Type::TAtom(ty.loc(), None));
 }
+
+#[test]
+fn test_if_not_right_type() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod (X) -> (Atom 32) (if X 2 3))",
+        true
+    );
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn test_conflicting_types() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"
+(mod () -> Atom
+  (defun G () -> (Pair Atom Unit) (c 1 ()))
+  (G)
+  )
+        "},
+        true
+    );
+    println!("ty: {:?}", ty);
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn test_if_conflicting_types() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"
+(mod () -> Atom
+  (defun F () -> Atom 1)
+  (defun G () -> (Pair Atom Unit) (c 1 ()))
+  (if 1 (F) (G))
+  )
+        "},
+        true
+    );
+    println!("ty: {:?}", ty);
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn test_if_not_conflicting_types() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"
+(mod () -> Any
+  (defun F () -> Atom 1)
+  (defun G () -> (Pair Atom Unit) (c 1 ()))
+  (if 1 (F) (G))
+  )
+        "},
+        true
+    );
+    assert_eq!(ty.is_err(), false);
+}

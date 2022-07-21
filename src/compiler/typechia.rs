@@ -71,10 +71,10 @@ pub fn standard_type_context() -> Context {
     let atom: Type<TYPE_MONO> = Type::TAtom(loc.clone(), None);
     let cons: Type<TYPE_MONO> = Type::TForall(
         f0.clone(),
-        Rc::new(Type::TFun(
-            Rc::new(Type::TVar(f0.clone())),
-            Rc::new(Type::TForall(
-                r0.clone(),
+        Rc::new(Type::TForall(
+            r0.clone(),
+            Rc::new(Type::TFun(
+                Rc::new(Type::TVar(f0.clone())),
                 Rc::new(Type::TFun(
                     Rc::new(Type::TVar(r0.clone())),
                     Rc::new(Type::TPair(
@@ -509,7 +509,11 @@ fn handle_macro(
     // (forall t ((Pair Any (Pair t (Pair t ()))) -> t))
     // We should be able to type things that come our way
     let call_args: Vec<Rc<BodyForm>> =
-        provided_args.iter().skip(1).map(|x| x.clone()).collect();
+        provided_args.iter().skip(1).map(|x| {
+            let literal = x.to_sexp();
+            let literal_borrowed: &SExp = literal.borrow();
+            Rc::new(BodyForm::Quoted(literal_borrowed.clone()))
+        }).collect();
     let opts = Rc::new(DefaultCompilerOpts::new(&loc.file.to_string()));
     let runner = Rc::new(DefaultProgramRunner::new());
     let ev = Evaluator::new(
@@ -528,10 +532,11 @@ fn handle_macro(
         Rc::new(SExp::Nil(loc.clone())),
         &arg_env,
         form.exp.clone(),
-        false
+        true
     )?;
+    println!("result (stage 1) {} args {:?}", result.to_sexp().to_string(), call_args);
     let mut offsides = HashSet::new();
-    make_offsides_protection(&mut offsides, form_args.clone());
+    // make_offsides_protection(&mut offsides, form_args.clone());
     let parsed_macro_output = frontend(opts.clone(), vec![enquote_offsides_expressions(&offsides, result.to_sexp())])?;
     let exp_result = ev.shrink_bodyform(
         &mut allocator,
@@ -542,6 +547,7 @@ fn handle_macro(
     )?;
     match dequote(loc.clone(), exp_result) {
         Ok(dequoted) => {
+            println!("dequoted {}", dequoted.to_string());
             let last_reparse = frontend(opts, vec![dequoted])?;
             let final_res = chialisp_to_expr(
                 program,
@@ -636,7 +642,9 @@ fn typecheck_chialisp_body_with_context(
     context_: &Context,
     expr: &Expr
 ) -> Result<Polytype, CompileErr> {
-    context_.typesynth(&expr).map(|(res,_)| res)
+    let res = context_.typesynth(&expr).map(|(res,_)| res)?;
+    println!("typesynth result {}", res.to_sexp().to_string());
+    Ok(res)
 }
 
 fn chia_to_type(ty: &ChiaType) -> Monotype {
@@ -751,6 +759,7 @@ impl Context {
                 &ty
             )?;
         let clexpr = chialisp_to_expr(comp, comp.args.clone(), comp.exp.clone())?;
+        println!("clexpr {}", clexpr.to_sexp().to_string());
         typecheck_chialisp_body_with_context(
             &context_with_args,
             &Expr::EAnno(

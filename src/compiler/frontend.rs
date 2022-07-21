@@ -537,7 +537,6 @@ fn recover_arg_type_inner(
                         if n1 == &vec![b':'] {
                             // Name with annotation
                             let ty = parse_type_sexp(Rc::new(lst[2].clone()))?;
-                            println!("parsed arg type {} : {}", lst[0].to_string(), ty.to_sexp().to_string());
                             return Ok((true, Rc::new(lst[0].clone()), ty));
                         };
                     };
@@ -554,15 +553,6 @@ fn recover_arg_type_inner(
                 b.clone(),
                 have_anno
             )?;
-            println!(
-                "returning arg types for pair ({} {} {}) ({} {} {})",
-                got_ty_a,
-                stripped_a.to_string(),
-                ty_a.to_sexp().to_string(),
-                got_ty_b,
-                stripped_b.to_string(),
-                ty_b.to_sexp().to_string()
-            );
             Ok((got_ty_a || got_ty_b,
                 Rc::new(SExp::Cons(
                     l.clone(),
@@ -601,7 +591,6 @@ fn recover_arg_type(args: Rc<SExp>) -> Result<Option<ArgTypeResult>, CompileErr>
 // isn't a function type, it's promoted to be a function taking the given arg
 // type or Any.
 fn promote_with_arg_type(argty: &Polytype, funty: &Polytype) -> Polytype {
-    println!("promote_with_arg_type {} {}", argty.to_sexp().to_string(), funty.to_sexp().to_string());
     match funty {
         Type::TForall(v,t) => {
             Type::TForall(

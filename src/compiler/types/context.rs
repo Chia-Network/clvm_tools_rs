@@ -269,22 +269,7 @@ impl Context {
         None
     }
 
-    pub fn solve(&self, alpha: &TypeVar, tau: &Monotype) -> Option<Context> {
-        debug!("solve {} in {}", alpha.to_sexp().to_string(), self.to_sexp().to_string());
-        let (gamma_l, gamma_r) = self.inspect_context(&ContextElim::CExists(alpha.clone()));
-        debug!("solve {} {} in {} || {}", alpha.to_sexp().to_string(), tau.to_sexp().to_string(), gamma_l.to_sexp().to_string(), gamma_r.to_sexp().to_string());
-        if gamma_l.typewf(&tau) {
-            let mut gammaprime = gamma_r.0.clone();
-            let mut gamma_l_copy = gamma_l.0.clone();
-            gammaprime.push(ContextElim::CExistsSolved(alpha.clone(), tau.clone()));
-            gammaprime.append(&mut gamma_l_copy);
-            Some(Context::new(gammaprime))
-        } else {
-            None
-        }
-    }
-
-    pub fn insert_at(&self, c: ContextElim<CONTEXT_INCOMPLETE>, theta: Context) -> Context {
+    pub fn insert_at(&self, c: &TypeVar, theta: Context) -> Context {
         let (gamma_l, gamma_r) = self.inspect_context(&c);
         let mut result_list = gamma_l.0.clone();
         let mut theta_copy = theta.0.clone();
@@ -294,7 +279,6 @@ impl Context {
         let res = Context::new_wf(result_list);
         debug!("insert_at {}", res.to_sexp().to_string());
         res
-
     }
 
     pub fn apply_(&self, typ: &Polytype) -> Polytype {
