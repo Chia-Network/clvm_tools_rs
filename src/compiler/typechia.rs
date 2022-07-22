@@ -647,10 +647,6 @@ fn typecheck_chialisp_body_with_context(
     Ok(res)
 }
 
-fn chia_to_type(ty: &ChiaType) -> Monotype {
-    todo!()
-}
-
 fn handle_function_type(
     context: &Context,
     loc: Srcloc,
@@ -684,22 +680,21 @@ impl Context {
     pub fn typecheck_chialisp_program(
         &self, comp: &CompileForm
     ) -> Result<Polytype, CompileErr> {
+        println!("typecheck_chialisp_program");
         let mut context = self.clone();
 
         // Extract type definitions
         for h in comp.helpers.iter() {
+            println!("helper {:?}", h);
             if let HelperForm::Deftype(l, name, args, ty) = &h {
                 let tname = decode_string(name);
-                if let Some(ty) = ty {
-                    let use_type = chia_to_type(ty);
-                    context = context.snoc_wf(ContextElim::CExistsSolved(
-                        TypeVar(tname, l.clone()), use_type
-                    ));
-                } else {
-                    // An abstract type declaration.
-                    context = context.snoc_wf(
-                        ContextElim::CForall(TypeVar(tname, l.clone()))
-                    );
+                match ty {
+                    None => { // Abstract
+                        context = context.appends_wf(vec![
+                            ContextElim::CForall(TypeVar(tname.clone(),l.clone())),
+                        ]);
+                    },
+                    _ => todo!()
                 }
             }
         }
@@ -750,6 +745,7 @@ impl Context {
         }
 
         // Typecheck main expression
+        println!("main expr ctx {}", context.to_sexp().to_string());
         let ty = type_of_defun(comp.exp.loc(), &comp.ty);
         let (context_with_args, result_ty) =
             handle_function_type(

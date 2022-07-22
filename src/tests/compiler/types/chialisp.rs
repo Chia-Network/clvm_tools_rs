@@ -448,3 +448,17 @@ fn test_if_not_conflicting_types() {
     );
     assert_eq!(ty.is_err(), false);
 }
+
+#[test]
+fn test_basic_abstract_type_decl() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"
+(mod ((X : Mystery)) -> Mystery
+   (deftype Mystery)
+   X
+   )
+        "},
+        true
+    ).expect("should typecheck");
+    assert_eq!(ty, Type::TVar(TypeVar("Mystery".to_string(), ty.loc())));
+}

@@ -89,8 +89,7 @@ pub struct StructMember {
 
 #[derive(Clone, Debug)]
 pub enum ChiaType {
-    Alias(Polytype),
-    Struct(Vec<StructMember>)
+    Abstract(Srcloc, Vec<u8>)
 }
 
 #[derive(Clone, Debug)]
@@ -101,7 +100,7 @@ pub enum TypeAnnoKind {
 
 #[derive(Clone, Debug)]
 pub enum HelperForm {
-    Deftype(Srcloc, Vec<u8>, Vec<TypeVar>, Option<ChiaType>),
+    Deftype(Srcloc, Vec<u8>, Vec<TypeVar>, Option<Polytype>),
     Defconstant(Srcloc, Vec<u8>, Rc<BodyForm>, Option<Polytype>),
     Defmacro(Srcloc, Vec<u8>, Rc<SExp>, Rc<CompileForm>),
     Defun(Srcloc, Vec<u8>, bool, Rc<SExp>, Rc<BodyForm>, Option<Polytype>),
@@ -171,7 +170,7 @@ pub trait CompilerOpts {
 }
 
 /* Frontend uses this to accumulate frontend forms */
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ModAccum {
     pub loc: Srcloc,
     pub helpers: Vec<HelperForm>,

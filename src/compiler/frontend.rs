@@ -8,6 +8,7 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::comptypes::{
     Binding,
     BodyForm,
+    ChiaType,
     CompileErr,
     CompileForm,
     CompilerOpts,
@@ -19,7 +20,7 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
-use crate::compiler::sexp::{enlist, SExp};
+use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::{HasLoc, Srcloc};
 use crate::compiler::typecheck::{
     parse_type_sexp
@@ -418,6 +419,7 @@ struct ParseBodyformMatch {
     name: Vec<u8>,
     args: Rc<SExp>,
     body: Rc<SExp>,
+    orig: Vec<SExp>,
     ty: Option<(TypeKind, Rc<SExp>)>
 }
 
@@ -439,6 +441,7 @@ fn match_op_name_4(
                     name: Vec::new(),
                     args: Rc::new(SExp::Nil(l.clone())),
                     body: Rc::new(SExp::Nil(l.clone())),
+                    orig: pl.clone(),
                     ty: None
                 });
             }
@@ -469,6 +472,7 @@ fn match_op_name_4(
                         name: name.clone(),
                         args: Rc::new(pl[2].clone()),
                         body: Rc::new(enlist(l.clone(), tail_list)),
+                        orig: pl.clone(),
                         ty: type_anno
                     })
                 }
@@ -477,6 +481,7 @@ fn match_op_name_4(
                     name: Vec::new(),
                     args: Rc::new(SExp::Nil(l.clone())),
                     body: Rc::new(SExp::Nil(l.clone())),
+                    orig: pl.clone(),
                     ty: None
                 }),
             }
@@ -668,10 +673,35 @@ fn augment_fun_type_with_args(
     }
 }
 
+fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
+    match ty {
+        ChiaType::Abstract(_,_) => vec![],
+        _ => todo!()
+    }
+}
+
+fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
+    // (deftype name args... (def))
+    if let SExp::Atom(l,n) = &v[1] {
+        // Name
+        if v.len() == 2 {
+            // An abstract type
+            return Ok(ChiaType::Abstract(v[1].loc(), n.clone()))
+        }
+
+        let vars: Vec<SExp> = v.iter().skip(2).take(v.len()-3).map(|a| a.clone()).collect();
+        let expr = v[v.len()-1].clone();
+
+        todo!()
+    }
+
+    Err(CompileErr(v[0].loc(), "Don't know how to interpret as type definition".to_string()))
+}
+
 fn compile_helperform(
     opts: Rc<dyn CompilerOpts>,
     body: Rc<SExp>,
-) -> Result<Option<HelperForm>, CompileErr> {
+) -> Result<Option<Vec<HelperForm>>, CompileErr> {
     let l = body.loc();
     let plist = body.proper_list();
 
@@ -679,10 +709,10 @@ fn compile_helperform(
         Some(res) => {
             let inline = res.op_name == "defun-inline".as_bytes().to_vec();
             if res.op_name == "defconstant".as_bytes().to_vec() {
-                return compile_defconstant(l, res.name.to_vec(), res.args.clone()).map(|x| Some(x));
+                return compile_defconstant(l, res.name.to_vec(), res.args.clone()).map(|x| Some(vec![x]));
             } else if res.op_name == "defmacro".as_bytes().to_vec() {
                 return compile_defmacro(opts, l, res.name.to_vec(), res.args.clone(), res.body.clone())
-                    .map(|x| Some(x));
+                    .map(|x| Some(vec![x]));
             } else if res.op_name == "defun".as_bytes().to_vec() || inline {
                 let use_type_anno =
                     if let Some((k,ty)) = res.ty {
@@ -704,9 +734,21 @@ fn compile_helperform(
                     stripped_args,
                     res.body.clone(),
                     parsed_type
-                ).map(|x| Some(x));
+                ).map(|x| Some(vec![x]));
+            } else if res.op_name == "deftype".as_bytes().to_vec() {
+                let parsed_chia = parse_chia_type(res.orig)?;
+                let mut helpers = generate_type_helpers(&parsed_chia);
+                let new_form =
+                    match parsed_chia {
+                        ChiaType::Abstract(l,n) => {
+                            HelperForm::Deftype(l.clone(), n.clone(), vec![], None)
+                        },
+                        _ => todo!()
+                    };
+                helpers.insert(0, new_form);
+                return Ok(Some(helpers));
             }
-        }
+        },
         _ => {}
     }
 
@@ -714,12 +756,13 @@ fn compile_helperform(
 }
 
 fn compile_mod_(
-    mc: &ModAccum,
+    mc_: &ModAccum,
     opts: Rc<dyn CompilerOpts>,
     args: Rc<SExp>,
     content: Rc<SExp>,
     ty: Option<Polytype>
 ) -> Result<ModAccum, CompileErr> {
+    let mut mc: ModAccum = mc_.clone();
     match content.borrow() {
         SExp::Nil(l) => Err(CompileErr(
             l.clone(),
@@ -737,19 +780,18 @@ fn compile_mod_(
                 })),
             },
             _ => {
-                let helper = compile_helperform(opts.clone(), body.clone())?;
-                match helper {
-                    None => Err(CompileErr(
+                if let Some(helpers) = compile_helperform(opts.clone(), body.clone())? {
+                    for form in helpers.iter() {
+                        mc = mc.add_helper(form.clone());
+                    }
+                } else {
+                    return Err(CompileErr(
                         l.clone(),
                         "only the last form can be an exprssion in mod".to_string(),
-                    )),
-                    Some(form) => match mc.exp_form {
-                        None => {
-                            compile_mod_(&mc.add_helper(form), opts, args.clone(), tail.clone(), ty)
-                        }
-                        Some(_) => Err(CompileErr(l.clone(), "too many expressions".to_string())),
-                    },
+                    ));
                 }
+
+                compile_mod_(&mc, opts, args.clone(), tail.clone(), ty)
             }
         },
         _ => Err(CompileErr(
@@ -878,7 +920,9 @@ pub fn frontend(
 
     let mut live_helpers = Vec::new();
     for h in our_mod.helpers {
-        if helper_names.contains(h.name()) {
+        if let HelperForm::Deftype(_,_,_,_) = h {
+            live_helpers.push(h);
+        } else if helper_names.contains(h.name()) {
             live_helpers.push(h);
         }
     }
