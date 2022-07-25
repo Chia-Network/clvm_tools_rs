@@ -179,6 +179,16 @@ pub fn standard_type_context() -> Context {
         )),
         Rc::new(Type::TAny(f0.loc()))
     );
+    let consany: Type<TYPE_MONO> = Type::TFun(
+        Rc::new(Type::TPair(
+            Rc::new(Type::TAny(f0.loc())),
+            Rc::new(Type::TPair(
+                Rc::new(Type::TAny(f0.loc())),
+                Rc::new(Type::TUnit(f0.loc()))
+            ))
+        )),
+        Rc::new(Type::TAny(f0.loc()))
+    );
     let some: Type<TYPE_MONO> = Type::TForall(
         f0.clone(),
         Rc::new(Type::TFun(
@@ -326,6 +336,7 @@ pub fn standard_type_context() -> Context {
         ContextElim::CVar(Var("r^".to_string(), loc.clone()), polytype(&rest)),
         ContextElim::CVar(Var("a^".to_string(), loc.clone()), polytype(&apply)),
         ContextElim::CVar(Var("a*".to_string(), loc.clone()), polytype(&applyany)),
+        ContextElim::CVar(Var("c*".to_string(), loc.clone()), polytype(&consany)),
         ContextElim::CVar(Var("com^".to_string(), loc.clone()), polytype(&com)),
         ContextElim::CVar(Var("f!".to_string(), loc.clone()), polytype(&fprime)),
         ContextElim::CVar(Var("r!".to_string(), loc.clone()), polytype(&rprime)),
@@ -441,72 +452,6 @@ pub fn context_from_args_and_type(
     }
 }
 
-fn make_offsides_protection(set: &mut HashSet<Vec<u8>>, args: Rc<SExp>) {
-    match args.borrow() {
-        SExp::Atom(_,n) => { set.insert(n.clone()); },
-        SExp::Cons(_,a,b) => {
-            make_offsides_protection(set, a.clone());
-            make_offsides_protection(set, b.clone());
-        },
-        _ => { }
-    }
-}
-
-fn enquote_offsides_expressions_tail(
-    protected_atoms: &HashSet<Vec<u8>>,
-    input: Rc<SExp>
-) -> Rc<SExp> {
-    match input.borrow() {
-        SExp::Cons(l,a,b) => {
-            let first = enquote_offsides_expressions(protected_atoms, a.clone());
-            let rest = enquote_offsides_expressions_tail(protected_atoms, b.clone());
-            Rc::new(SExp::Cons(
-                l.clone(),
-                first,
-                rest
-            ))
-        },
-        _ => enquote_offsides_expressions(protected_atoms, input)
-    }
-}
-
-// Fixup output from a macro to ensure that it can be shrunk to real chialisp
-// code.  This is distinct from 'clvm' code in that we'll enquote anything output
-// that is used "as" chialisp code.  This includes any unguarded atoms in the
-// output.
-//
-// A subsequent layer will handle "com" specially, turning it into
-// (com X) -> (com^ (lambda x X))
-fn enquote_offsides_expressions(
-    protected_atoms: &HashSet<Vec<u8>>,
-    input: Rc<SExp>
-) -> Rc<SExp> {
-    match input.borrow() {
-        SExp::Atom(l,n) => {
-            if protected_atoms.contains(n) {
-                Rc::new(SExp::Cons(
-                    l.clone(),
-                    Rc::new(SExp::Atom(l.clone(),vec![b'q'])),
-                    input.clone()
-                ))
-            } else {
-                input.clone()
-            }
-        },
-        SExp::Cons(l,a,b) => {
-            let new_b = enquote_offsides_expressions_tail(
-                protected_atoms, b.clone()
-            );
-            Rc::new(SExp::Cons(
-                l.clone(),
-                a.clone(),
-                new_b
-            ))
-        },
-        _ => { input.clone() }
-    }
-}
-
 fn handle_macro(
     program: &CompileForm,
     form_args: Rc<SExp>,
@@ -556,9 +501,7 @@ fn handle_macro(
         form.exp.clone(),
         true
     )?;
-    let mut offsides = HashSet::new();
-    // make_offsides_protection(&mut offsides, form_args.clone());
-    let parsed_macro_output = frontend(opts.clone(), vec![enquote_offsides_expressions(&offsides, result.to_sexp())])?;
+    let parsed_macro_output = frontend(opts.clone(), vec![result.to_sexp()])?;
     let exp_result = ev.shrink_bodyform(
         &mut allocator,
         Rc::new(SExp::Nil(loc.clone())),

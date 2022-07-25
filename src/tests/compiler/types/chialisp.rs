@@ -489,7 +489,7 @@ fn test_struct_decl_easy() {
         indoc!{"
 (mod ((X : Struct)) -> (Atom 32)
    (deftype Struct ((A . (B : (Atom 32))) C))
-   (get_B X)
+   (get_Struct_B X)
    )
         "},
         true
@@ -503,7 +503,36 @@ fn test_struct_decl_easy_fail() {
         indoc!{"
 (mod ((X : Struct)) -> (Atom 32)
    (deftype Struct (((A : Atom) . (B : (Atom 32))) C))
-   (get_A X)
+   (get_Struct_A X)
+   )
+        "},
+        true
+    );
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn test_struct_construction() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"
+(mod ((A : Atom) (B : (Atom 32))) -> Struct
+   (deftype Struct (((A : Atom) . (B : (Atom 32))) C))
+   (new_Struct A B ())
+   )
+        "},
+        true
+    ).expect("should typecheck");
+    assert_eq!(ty, Type::TVar(TypeVar("Struct".to_string(), ty.loc())));
+}
+
+#[test] // Struct2 isn't compatible with Struct1
+fn test_wrong_struct_construction() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"
+(mod ((A : Atom) (B : (Atom 32))) -> Struct1
+   (deftype Struct1 (((A : Atom) . (B : (Atom 32))) C))
+   (deftype Struct2 (((A : Atom) . (B : Atom)) C))
+   (new_Struct2 A B ())
    )
         "},
         true

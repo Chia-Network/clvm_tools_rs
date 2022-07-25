@@ -89,9 +89,19 @@ pub struct StructMember {
 }
 
 #[derive(Clone, Debug)]
+pub struct StructDef {
+    pub loc: Srcloc,
+    pub name: Vec<u8>,
+    pub vars: Vec<TypeVar>,
+    pub members: Vec<StructMember>,
+    pub proto: Rc<SExp>,
+    pub ty: Polytype
+}
+
+#[derive(Clone, Debug)]
 pub enum ChiaType {
     Abstract(Srcloc, Vec<u8>),
-    Struct(Srcloc, Vec<u8>, Vec<TypeVar>, Vec<StructMember>, Polytype)
+    Struct(StructDef)
 }
 
 #[derive(Clone, Debug)]

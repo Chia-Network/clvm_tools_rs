@@ -17,6 +17,7 @@ use crate::compiler::comptypes::{
     HelperForm,
     LetFormKind,
     ModAccum,
+    StructDef,
     StructMember,
     TypeAnnoKind,
     list_to_cons,
@@ -508,6 +509,7 @@ fn extract_type_variables_from_forall_stack(
 
 struct ArgTypeResult {
     stripped_args: Rc<SExp>,
+    arg_names: Vec<Vec<u8>>,
     individual_types: HashMap<Vec<u8>, Polytype>,
     individual_paths: HashMap<Vec<u8>, Number>,
     individual_locs: HashMap<Vec<u8>, Srcloc>,
@@ -515,6 +517,7 @@ struct ArgTypeResult {
 }
 
 fn recover_arg_type_inner(
+    arg_names: &mut Vec<Vec<u8>>,
     individual_types: &mut HashMap<Vec<u8>, Polytype>,
     individual_paths: &mut HashMap<Vec<u8>, Number>,
     individual_locs: &mut HashMap<Vec<u8>, Srcloc>,
@@ -526,6 +529,7 @@ fn recover_arg_type_inner(
     match args.borrow() {
         SExp::Nil(l) => Ok((have_anno, args.clone(), Type::TUnit(l.clone()))),
         SExp::Atom(l,n) => {
+            arg_names.push(n.clone());
             individual_types.insert(n.clone(), Type::TAny(l.clone()));
             individual_paths.insert(n.clone(), depth.clone() + path.clone());
             individual_locs.insert(n.clone(), l.clone());
@@ -555,6 +559,7 @@ fn recover_arg_type_inner(
                         if n1 == &vec![b':'] {
                             // Name with annotation
                             let ty = parse_type_sexp(Rc::new(lst[2].clone()))?;
+                            arg_names.push(n0.clone());
                             individual_types.insert(n0.clone(), ty.clone());
                             individual_paths.insert(n0.clone(), depth.clone() + path.clone());
                             individual_locs.insert(n0.clone(), l0.clone());
@@ -565,6 +570,7 @@ fn recover_arg_type_inner(
             }
 
             let (got_ty_a, stripped_a, ty_a) = recover_arg_type_inner(
+                arg_names,
                 individual_types,
                 individual_paths,
                 individual_locs,
@@ -574,6 +580,7 @@ fn recover_arg_type_inner(
                 have_anno
             )?;
             let (got_ty_b, stripped_b, ty_b) = recover_arg_type_inner(
+                arg_names,
                 individual_types,
                 individual_paths,
                 individual_locs,
@@ -596,10 +603,12 @@ fn recover_arg_type_inner(
 }
 
 fn recover_arg_type(args: Rc<SExp>, always: bool) -> Result<Option<ArgTypeResult>, CompileErr> {
+    let mut arg_names = Vec::new();
     let mut individual_types = HashMap::new();
     let mut individual_paths = HashMap::new();
     let mut individual_locs = HashMap::new();
     let (got_any, stripped, ty) = recover_arg_type_inner(
+        &mut arg_names,
         &mut individual_types,
         &mut individual_paths,
         &mut individual_locs,
@@ -610,6 +619,7 @@ fn recover_arg_type(args: Rc<SExp>, always: bool) -> Result<Option<ArgTypeResult
     )?;
     if got_any || always {
         Ok(Some(ArgTypeResult {
+            arg_names: arg_names,
             stripped_args: stripped,
             individual_types: individual_types,
             individual_paths: individual_paths,
@@ -705,47 +715,117 @@ fn augment_fun_type_with_args(
     }
 }
 
+fn create_constructor_code(sdef: &StructDef, proto: Rc<SExp>) -> BodyForm {
+    match proto.borrow() {
+        SExp::Atom(l,n) => {
+            BodyForm::Value(SExp::Atom(l.clone(), n.clone()))
+        },
+        SExp::Cons(l,a,b) => {
+            BodyForm::Call(
+                l.clone(),
+                vec![
+                    Rc::new(BodyForm::Value(SExp::Atom(l.clone(), vec![b'c',b'*']))),
+                    Rc::new(create_constructor_code(sdef, a.clone())),
+                    Rc::new(create_constructor_code(sdef, b.clone()))
+                ]
+            )
+        },
+        _ => {
+            BodyForm::Quoted(SExp::Nil(sdef.loc.clone()))
+        }
+    }
+}
+
+fn create_constructor(sdef: &StructDef) -> HelperForm {
+    let mut access_name = "new_".as_bytes().to_vec();
+    access_name.append(&mut sdef.name.clone());
+
+    // Iterate through the arguments in reverse to build up a linear argument
+    // list.
+    // Build up the type list in the same way.
+    let mut arguments = SExp::Nil(sdef.loc.clone());
+    let mut argtype = Type::TUnit(sdef.loc.clone());
+
+    for i_reverse in 0..sdef.members.len() {
+        let i = sdef.members.len() - i_reverse - 1;
+        let m: &StructMember = &sdef.members[i];
+        argtype = Type::TPair(
+            Rc::new(m.ty.clone()),
+            Rc::new(argtype)
+        );
+        arguments = SExp::Cons(
+            m.loc.clone(),
+            Rc::new(SExp::Atom(m.loc.clone(), m.name.clone())),
+            Rc::new(arguments)
+        );
+    }
+
+    let construction = create_constructor_code(sdef, sdef.proto.clone());
+
+    HelperForm::Defun(
+        sdef.loc.clone(),
+        access_name,
+        true,
+        Rc::new(arguments),
+        Rc::new(construction),
+        Some(Type::TFun(
+            Rc::new(argtype),
+            Rc::new(Type::TVar(
+                TypeVar(decode_string(&sdef.name), sdef.loc.clone())
+            ))
+        ))
+    )
+}
+
 fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
     match ty {
         ChiaType::Abstract(_,_) => vec![],
-        ChiaType::Struct(loc,name,vars,members,_) => {
+        ChiaType::Struct(sdef) => {
             // Construct ((S : <type>))
             let struct_argument = Rc::new(SExp::Cons(
-                loc.clone(),
-                Rc::new(SExp::Atom(loc.clone(), vec![b'S'])),
-                Rc::new(SExp::Nil(loc.clone()))
+                sdef.loc.clone(),
+                Rc::new(SExp::Atom(sdef.loc.clone(), vec![b'S'])),
+                Rc::new(SExp::Nil(sdef.loc.clone()))
             ));
-            members.iter().map(|m| {
-                let mut access_name = "get_".as_bytes().to_vec();
-                access_name.append(&mut m.name.clone());
-                HelperForm::Defun(
-                    m.loc.clone(),
-                    access_name,
-                    true,
-                    struct_argument.clone(),
-                    Rc::new(BodyForm::Call(m.loc.clone(), vec![
-                        Rc::new(BodyForm::Value(SExp::Atom(
-                            m.loc.clone(),
-                            vec![b'a', b'*']
-                        ))),
-                        Rc::new(BodyForm::Quoted(SExp::Integer(
-                            m.loc.clone(),
-                            m.path.clone()
-                        ))),
-                        Rc::new(BodyForm::Value(SExp::Atom(
-                            m.loc.clone(),
-                            vec![b'S']
-                        )))
-                    ])),
-                    Some(Type::TFun(
-                        Rc::new(Type::TPair(
-                            Rc::new(Type::TVar(TypeVar(decode_string(name), m.loc.clone()))),
-                            Rc::new(Type::TUnit(m.loc.clone()))
-                        )),
-                        Rc::new(m.ty.clone())
-                    ))
-                )
-            }).collect()
+            let mut out_members: Vec<HelperForm> =
+                sdef.members.iter().map(|m| {
+                    let mut access_name = "get_".as_bytes().to_vec();
+                    access_name.append(&mut sdef.name.clone());
+                    access_name.push(b'_');
+                    access_name.append(&mut m.name.clone());
+                    HelperForm::Defun(
+                        m.loc.clone(),
+                        access_name,
+                        true,
+                        struct_argument.clone(),
+                        Rc::new(BodyForm::Call(m.loc.clone(), vec![
+                            Rc::new(BodyForm::Value(SExp::Atom(
+                                m.loc.clone(),
+                                vec![b'a', b'*']
+                            ))),
+                            Rc::new(BodyForm::Quoted(SExp::Integer(
+                                m.loc.clone(),
+                                m.path.clone()
+                            ))),
+                            Rc::new(BodyForm::Value(SExp::Atom(
+                                m.loc.clone(),
+                                vec![b'S']
+                            )))
+                        ])),
+                        Some(Type::TFun(
+                            Rc::new(Type::TPair(
+                                Rc::new(Type::TVar(TypeVar(decode_string(&sdef.name), m.loc.clone()))),
+                                Rc::new(Type::TUnit(m.loc.clone()))
+                            )),
+                            Rc::new(m.ty.clone())
+                        ))
+                    )
+                }).collect();
+
+            let ctor = create_constructor(&sdef);
+            println!("ctor {}", ctor.to_sexp().to_string());
+            out_members.push(ctor);
+            out_members
         }
     }
 }
@@ -770,7 +850,11 @@ fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
 
         let type_of_body = recover_arg_type(expr.clone(), true)?.unwrap();
         let mut member_vec = Vec::new();
-        for (k,v) in type_of_body.individual_paths.iter() {
+        for k in type_of_body.arg_names.iter() {
+            let arg_path = type_of_body.individual_paths.get(k).map(|l| l.clone()).
+                unwrap_or_else(|| {
+                    bi_one()
+                });
             let arg_loc = type_of_body.individual_locs.get(k).map(|l| l.clone()).
                 unwrap_or_else(|| {
                     l.clone()
@@ -782,11 +866,18 @@ fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
             member_vec.push(StructMember {
                 loc: arg_loc,
                 name: k.clone(),
-                path: v.clone(),
+                path: arg_path,
                 ty: arg_type
             });
         }
-        return Ok(ChiaType::Struct(l.clone(), n.clone(), var_vec, member_vec, type_of_body.whole_args));
+        return Ok(ChiaType::Struct(StructDef {
+            loc: l.clone(),
+            name: n.clone(),
+            vars: var_vec,
+            members: member_vec,
+            proto: type_of_body.stripped_args,
+            ty: type_of_body.whole_args
+        }));
     }
 
     Err(CompileErr(v[0].loc(), "Don't know how to interpret as type definition".to_string()))
@@ -837,8 +928,8 @@ fn compile_helperform(
                         ChiaType::Abstract(l,n) => {
                             HelperForm::Deftype(l.clone(), n.clone(), vec![], None)
                         },
-                        ChiaType::Struct(loc,name,vars,members,ty) => {
-                            HelperForm::Deftype(loc.clone(), name.clone(), vars.clone(), Some(ty.clone()))
+                        ChiaType::Struct(sdef) => {
+                            HelperForm::Deftype(sdef.loc.clone(), sdef.name.clone(), sdef.vars.clone(), Some(sdef.ty.clone()))
                         }
                     };
                 helpers.insert(0, new_form);
