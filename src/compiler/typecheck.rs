@@ -299,7 +299,7 @@ impl<const A: usize> TheoryToSExp for GContext<A> {
     }
 }
 
-fn parse_type_var(atom: Rc<SExp>) -> Result<TypeVar, CompileErr> {
+pub fn parse_type_var(atom: Rc<SExp>) -> Result<TypeVar, CompileErr> {
     match atom.borrow() {
         SExp::Atom(l,a) => {
             Ok(TypeVar(std::str::from_utf8(&a).unwrap().to_string(), l.clone()))

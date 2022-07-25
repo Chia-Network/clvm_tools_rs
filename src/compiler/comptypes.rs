@@ -82,14 +82,16 @@ pub enum BodyForm {
 
 #[derive(Clone, Debug)]
 pub struct StructMember {
-    name: Vec<u8>,
-    path: Number,
-    ty: Polytype
+    pub loc: Srcloc,
+    pub name: Vec<u8>,
+    pub path: Number,
+    pub ty: Polytype
 }
 
 #[derive(Clone, Debug)]
 pub enum ChiaType {
-    Abstract(Srcloc, Vec<u8>)
+    Abstract(Srcloc, Vec<u8>),
+    Struct(Srcloc, Vec<u8>, Vec<TypeVar>, Vec<StructMember>, Polytype)
 }
 
 #[derive(Clone, Debug)]

@@ -15,7 +15,6 @@ use crate::compiler::compiler::{
 };
 use crate::compiler::comptypes::{
     BodyForm,
-    ChiaType,
     CompileErr,
     CompileForm,
     HelperForm
@@ -36,7 +35,6 @@ use crate::compiler::types::ast::{
     Context,
     ContextElim,
     Expr,
-    Monotype,
     Polytype,
     TYPE_MONO,
     Type,
@@ -44,7 +42,7 @@ use crate::compiler::types::ast::{
     Var
 };
 use crate::compiler::types::namegen::fresh_var;
-use crate::compiler::types::astfuns::polytype;
+use crate::compiler::types::astfuns::{monotype, polytype};
 use crate::compiler::types::theory::TypeTheory;
 use crate::util::{Number, u8_from_number};
 
@@ -170,6 +168,16 @@ pub fn standard_type_context() -> Context {
             )),
             Rc::new(Type::TVar(f0.clone()))
         ))
+    );
+    let applyany: Type<TYPE_MONO> = Type::TFun(
+        Rc::new(Type::TPair(
+            Rc::new(Type::TAny(f0.loc())),
+            Rc::new(Type::TPair(
+                Rc::new(Type::TAny(f0.loc())),
+                Rc::new(Type::TUnit(f0.loc()))
+            ))
+        )),
+        Rc::new(Type::TAny(f0.loc()))
     );
     let some: Type<TYPE_MONO> = Type::TForall(
         f0.clone(),
@@ -317,6 +325,7 @@ pub fn standard_type_context() -> Context {
         ContextElim::CVar(Var("f^".to_string(), loc.clone()), polytype(&first)),
         ContextElim::CVar(Var("r^".to_string(), loc.clone()), polytype(&rest)),
         ContextElim::CVar(Var("a^".to_string(), loc.clone()), polytype(&apply)),
+        ContextElim::CVar(Var("a*".to_string(), loc.clone()), polytype(&applyany)),
         ContextElim::CVar(Var("com^".to_string(), loc.clone()), polytype(&com)),
         ContextElim::CVar(Var("f!".to_string(), loc.clone()), polytype(&fprime)),
         ContextElim::CVar(Var("r!".to_string(), loc.clone()), polytype(&rprime)),
@@ -352,6 +361,7 @@ fn type_of_defun(l: Srcloc, ty: &Option<Polytype>) -> Polytype {
 }
 
 pub fn context_from_args_and_type(
+    structs: &HashSet<String>,
     context: &Context,
     args: Rc<SExp>,
     argty: &Polytype,
@@ -363,6 +373,14 @@ pub fn context_from_args_and_type(
         (SExp::Nil(_), Type::TUnit(_)) => Ok(context.clone()),
         (SExp::Nil(l), _) => {
             Err(CompileErr(l.clone(), format!("function has empty argument list but type {}", argty.to_sexp().to_string())))
+        },
+        (SExp::Atom(l,a), Type::TVar(TypeVar(v,vl))) => {
+            Ok(context.snoc_wf(
+                ContextElim::CVar(
+                    Var(decode_string(a), l.clone()),
+                    Type::TVar(TypeVar(v.clone(),vl.clone()))
+                )
+            ))
         },
         (SExp::Atom(l,a), ty) => {
             Ok(context.snoc_wf(
@@ -380,6 +398,7 @@ pub fn context_from_args_and_type(
                 todo!()
             } else {
                 let cf = context_from_args_and_type(
+                    structs,
                     context,
                     f.clone(),
                     argty,
@@ -387,6 +406,7 @@ pub fn context_from_args_and_type(
                     path_bit.clone() * 2_u32.to_bigint().unwrap()
                 )?;
                 context_from_args_and_type(
+                    structs,
                     &cf,
                     r.clone(),
                     argty,
@@ -400,6 +420,7 @@ pub fn context_from_args_and_type(
                 todo!()
             } else {
                 let cf = context_from_args_and_type(
+                    structs,
                     context,
                     f.clone(),
                     a.borrow(),
@@ -407,6 +428,7 @@ pub fn context_from_args_and_type(
                     bi_one()
                 )?;
                 context_from_args_and_type(
+                    structs,
                     &cf,
                     r.clone(),
                     b.borrow(),
@@ -534,7 +556,6 @@ fn handle_macro(
         form.exp.clone(),
         true
     )?;
-    println!("result (stage 1) {} args {:?}", result.to_sexp().to_string(), call_args);
     let mut offsides = HashSet::new();
     // make_offsides_protection(&mut offsides, form_args.clone());
     let parsed_macro_output = frontend(opts.clone(), vec![enquote_offsides_expressions(&offsides, result.to_sexp())])?;
@@ -547,7 +568,6 @@ fn handle_macro(
     )?;
     match dequote(loc.clone(), exp_result) {
         Ok(dequoted) => {
-            println!("dequoted {}", dequoted.to_string());
             let last_reparse = frontend(opts, vec![dequoted])?;
             let final_res = chialisp_to_expr(
                 program,
@@ -643,11 +663,11 @@ fn typecheck_chialisp_body_with_context(
     expr: &Expr
 ) -> Result<Polytype, CompileErr> {
     let res = context_.typesynth(&expr).map(|(res,_)| res)?;
-    println!("typesynth result {}", res.to_sexp().to_string());
     Ok(res)
 }
 
 fn handle_function_type(
+    structs: &HashSet<String>,
     context: &Context,
     loc: Srcloc,
     args: Rc<SExp>,
@@ -657,6 +677,7 @@ fn handle_function_type(
         Type::TFun(a,r) => {
             let r_borrowed: &Polytype = r.borrow();
             context_from_args_and_type(
+                &structs,
                 &context,
                 args.clone(),
                 a.borrow(),
@@ -667,7 +688,7 @@ fn handle_function_type(
         Type::TForall(t,f) => {
             let inner_ctx = context.snoc_wf(ContextElim::CForall(t.clone()));
             let f_borrowed: &Polytype = f.borrow();
-            handle_function_type(&inner_ctx, loc, args, f_borrowed)
+            handle_function_type(&structs, &inner_ctx, loc, args, f_borrowed)
         },
         _ => {
             Err(CompileErr(loc, "Type of a defun must be a function type".to_string()))
@@ -680,21 +701,25 @@ impl Context {
     pub fn typecheck_chialisp_program(
         &self, comp: &CompileForm
     ) -> Result<Polytype, CompileErr> {
-        println!("typecheck_chialisp_program");
         let mut context = self.clone();
+        let mut structs = HashSet::new();
 
         // Extract type definitions
         for h in comp.helpers.iter() {
-            println!("helper {:?}", h);
             if let HelperForm::Deftype(l, name, args, ty) = &h {
                 let tname = decode_string(name);
                 match ty {
                     None => { // Abstract
                         context = context.appends_wf(vec![
-                            ContextElim::CForall(TypeVar(tname.clone(),l.clone())),
+                            ContextElim::CForall(TypeVar(tname.clone(),l.clone()))
                         ]);
                     },
-                    _ => todo!()
+                    Some(t) => { // Struct
+                        structs.insert(tname.clone());
+                        context = context.appends_wf(vec![
+                            ContextElim::CForall(TypeVar(tname.clone(),l.clone()))
+                        ]);
+                    }
                 }
             }
         }
@@ -733,7 +758,13 @@ impl Context {
             if let HelperForm::Defun(l, name, _, args, body, ty) = &h {
                 let ty = type_of_defun(l.clone(), ty);
                 let (context_with_args, result_ty) =
-                    handle_function_type(&context, h.loc(), args.clone(), &ty)?;
+                    handle_function_type(
+                        &structs,
+                        &context,
+                        h.loc(),
+                        args.clone(),
+                        &ty
+                    )?;
                 typecheck_chialisp_body_with_context(
                     &context_with_args,
                     &Expr::EAnno(
@@ -745,17 +776,16 @@ impl Context {
         }
 
         // Typecheck main expression
-        println!("main expr ctx {}", context.to_sexp().to_string());
         let ty = type_of_defun(comp.exp.loc(), &comp.ty);
         let (context_with_args, result_ty) =
             handle_function_type(
+                &structs,
                 &context,
                 comp.exp.loc(),
                 comp.args.clone(),
                 &ty
             )?;
         let clexpr = chialisp_to_expr(comp, comp.args.clone(), comp.exp.clone())?;
-        println!("clexpr {}", clexpr.to_sexp().to_string());
         typecheck_chialisp_body_with_context(
             &context_with_args,
             &Expr::EAnno(

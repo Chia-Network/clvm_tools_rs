@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use crate::classic::clvm::__type_compatibility__::bi_one;
+use num_bigint::ToBigInt;
+
+use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 
 use crate::compiler::comptypes::{
     Binding,
@@ -15,6 +17,7 @@ use crate::compiler::comptypes::{
     HelperForm,
     LetFormKind,
     ModAccum,
+    StructMember,
     TypeAnnoKind,
     list_to_cons,
 };
@@ -23,15 +26,16 @@ use crate::compiler::rename::rename_children_compileform;
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::{HasLoc, Srcloc};
 use crate::compiler::typecheck::{
-    parse_type_sexp
+    TheoryToSExp,
+    parse_type_sexp,
+    parse_type_var
 };
 use crate::compiler::types::ast::{
     Polytype,
     Type,
     TypeVar
 };
-use crate::util::u8_from_number;
-use crate::compiler::typecheck::TheoryToSExp;
+use crate::util::{Number, u8_from_number};
 
 fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
     match body.borrow() {
@@ -505,11 +509,17 @@ fn extract_type_variables_from_forall_stack(
 struct ArgTypeResult {
     stripped_args: Rc<SExp>,
     individual_types: HashMap<Vec<u8>, Polytype>,
+    individual_paths: HashMap<Vec<u8>, Number>,
+    individual_locs: HashMap<Vec<u8>, Srcloc>,
     whole_args: Polytype
 }
 
 fn recover_arg_type_inner(
     individual_types: &mut HashMap<Vec<u8>, Polytype>,
+    individual_paths: &mut HashMap<Vec<u8>, Number>,
+    individual_locs: &mut HashMap<Vec<u8>, Srcloc>,
+    depth: Number,
+    path: Number,
     args: Rc<SExp>,
     have_anno: bool
 ) -> Result<(bool, Rc<SExp>, Polytype), CompileErr> {
@@ -517,6 +527,8 @@ fn recover_arg_type_inner(
         SExp::Nil(l) => Ok((have_anno, args.clone(), Type::TUnit(l.clone()))),
         SExp::Atom(l,n) => {
             individual_types.insert(n.clone(), Type::TAny(l.clone()));
+            individual_paths.insert(n.clone(), depth.clone() + path.clone());
+            individual_locs.insert(n.clone(), l.clone());
             Ok((false, args.clone(), Type::TAny(l.clone())))
         },
         SExp::Cons(l,a,b) => {
@@ -527,6 +539,7 @@ fn recover_arg_type_inner(
             // (X : ty)
             // We want to catch the final case and pass through its unannotated
             // counterpart.
+            let next_depth = depth.clone() * 2_u32.to_bigint().unwrap();
             if let Some(lst) = args.proper_list() {
                 // Dive in
                 if lst.len() == 5 {
@@ -538,10 +551,13 @@ fn recover_arg_type_inner(
                             };
                         };
                 } else if lst.len() == 3 {
-                    if let SExp::Atom(l1,n1) = &lst[1] {
+                    if let (SExp::Atom(l0,n0), SExp::Atom(l1,n1)) = (&lst[0], &lst[1]) {
                         if n1 == &vec![b':'] {
                             // Name with annotation
                             let ty = parse_type_sexp(Rc::new(lst[2].clone()))?;
+                            individual_types.insert(n0.clone(), ty.clone());
+                            individual_paths.insert(n0.clone(), depth.clone() + path.clone());
+                            individual_locs.insert(n0.clone(), l0.clone());
                             return Ok((true, Rc::new(lst[0].clone()), ty));
                         };
                     };
@@ -550,11 +566,19 @@ fn recover_arg_type_inner(
 
             let (got_ty_a, stripped_a, ty_a) = recover_arg_type_inner(
                 individual_types,
+                individual_paths,
+                individual_locs,
+                next_depth.clone(),
+                path.clone(),
                 a.clone(),
                 have_anno
             )?;
             let (got_ty_b, stripped_b, ty_b) = recover_arg_type_inner(
                 individual_types,
+                individual_paths,
+                individual_locs,
+                next_depth.clone(),
+                path + depth,
                 b.clone(),
                 have_anno
             )?;
@@ -571,17 +595,25 @@ fn recover_arg_type_inner(
     }
 }
 
-fn recover_arg_type(args: Rc<SExp>) -> Result<Option<ArgTypeResult>, CompileErr> {
+fn recover_arg_type(args: Rc<SExp>, always: bool) -> Result<Option<ArgTypeResult>, CompileErr> {
     let mut individual_types = HashMap::new();
+    let mut individual_paths = HashMap::new();
+    let mut individual_locs = HashMap::new();
     let (got_any, stripped, ty) = recover_arg_type_inner(
         &mut individual_types,
+        &mut individual_paths,
+        &mut individual_locs,
+        bi_one(),
+        bi_zero(),
         args.clone(),
         false
     )?;
-    if got_any {
+    if got_any || always {
         Ok(Some(ArgTypeResult {
             stripped_args: stripped,
             individual_types: individual_types,
+            individual_paths: individual_paths,
+            individual_locs: individual_locs,
             whole_args: ty
         }))
     } else {
@@ -624,7 +656,7 @@ fn augment_fun_type_with_args(
     args: Rc<SExp>,
     result_ty: Option<TypeAnnoKind>
 ) -> Result<(Rc<SExp>, Option<Polytype>), CompileErr> {
-    if let Some(atr) = recover_arg_type(args.clone())? {
+    if let Some(atr) = recover_arg_type(args.clone(), false)? {
         let mut tvars = Vec::new();
 
         let actual_result_ty =
@@ -676,7 +708,45 @@ fn augment_fun_type_with_args(
 fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
     match ty {
         ChiaType::Abstract(_,_) => vec![],
-        _ => todo!()
+        ChiaType::Struct(loc,name,vars,members,_) => {
+            // Construct ((S : <type>))
+            let struct_argument = Rc::new(SExp::Cons(
+                loc.clone(),
+                Rc::new(SExp::Atom(loc.clone(), vec![b'S'])),
+                Rc::new(SExp::Nil(loc.clone()))
+            ));
+            members.iter().map(|m| {
+                let mut access_name = "get_".as_bytes().to_vec();
+                access_name.append(&mut m.name.clone());
+                HelperForm::Defun(
+                    m.loc.clone(),
+                    access_name,
+                    true,
+                    struct_argument.clone(),
+                    Rc::new(BodyForm::Call(m.loc.clone(), vec![
+                        Rc::new(BodyForm::Value(SExp::Atom(
+                            m.loc.clone(),
+                            vec![b'a', b'*']
+                        ))),
+                        Rc::new(BodyForm::Quoted(SExp::Integer(
+                            m.loc.clone(),
+                            m.path.clone()
+                        ))),
+                        Rc::new(BodyForm::Value(SExp::Atom(
+                            m.loc.clone(),
+                            vec![b'S']
+                        )))
+                    ])),
+                    Some(Type::TFun(
+                        Rc::new(Type::TPair(
+                            Rc::new(Type::TVar(TypeVar(decode_string(name), m.loc.clone()))),
+                            Rc::new(Type::TUnit(m.loc.clone()))
+                        )),
+                        Rc::new(m.ty.clone())
+                    ))
+                )
+            }).collect()
+        }
     }
 }
 
@@ -689,10 +759,34 @@ fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
             return Ok(ChiaType::Abstract(v[1].loc(), n.clone()))
         }
 
-        let vars: Vec<SExp> = v.iter().skip(2).take(v.len()-3).map(|a| a.clone()).collect();
-        let expr = v[v.len()-1].clone();
+        let vars: Vec<SExp> =
+            v.iter().skip(2).take(v.len()-3).map(|a| a.clone()).collect();
+        let expr = Rc::new(v[v.len()-1].clone());
 
-        todo!()
+        let mut var_vec = Vec::new();
+        for var in vars.iter() {
+            var_vec.push(parse_type_var(Rc::new(var.clone()))?);
+        }
+
+        let type_of_body = recover_arg_type(expr.clone(), true)?.unwrap();
+        let mut member_vec = Vec::new();
+        for (k,v) in type_of_body.individual_paths.iter() {
+            let arg_loc = type_of_body.individual_locs.get(k).map(|l| l.clone()).
+                unwrap_or_else(|| {
+                    l.clone()
+                });
+            let arg_type = type_of_body.individual_types.get(k).map(|l| l.clone()).
+                unwrap_or_else(|| {
+                    Type::TAny(arg_loc.clone())
+                });
+            member_vec.push(StructMember {
+                loc: arg_loc,
+                name: k.clone(),
+                path: v.clone(),
+                ty: arg_type
+            });
+        }
+        return Ok(ChiaType::Struct(l.clone(), n.clone(), var_vec, member_vec, type_of_body.whole_args));
     }
 
     Err(CompileErr(v[0].loc(), "Don't know how to interpret as type definition".to_string()))
@@ -743,7 +837,9 @@ fn compile_helperform(
                         ChiaType::Abstract(l,n) => {
                             HelperForm::Deftype(l.clone(), n.clone(), vec![], None)
                         },
-                        _ => todo!()
+                        ChiaType::Struct(loc,name,vars,members,ty) => {
+                            HelperForm::Deftype(loc.clone(), name.clone(), vars.clone(), Some(ty.clone()))
+                        }
                     };
                 helpers.insert(0, new_form);
                 return Ok(Some(helpers));

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
@@ -32,6 +32,7 @@ use crate::tests::compiler::types::types::{
 fn test_chialisp_context_from_args_and_type_empty() {
     let loc = Srcloc::start(&"*test*".to_string());
     let context = context_from_args_and_type(
+        &HashSet::new(),
         &standard_type_context(),
         Rc::new(SExp::Nil(loc.clone())),
         &Type::TAny(loc.clone()),
@@ -50,6 +51,7 @@ fn test_chialisp_context_from_args_and_type_empty() {
 fn test_chialisp_context_from_args_and_type_single_atom_any() {
     let loc = Srcloc::start(&"*test*".to_string());
     let context = context_from_args_and_type(
+        &HashSet::new(),
         &standard_type_context(),
         Rc::new(SExp::atom_from_string(loc.clone(), &"X".to_string())),
         &Type::TAny(loc.clone()),
@@ -68,6 +70,7 @@ fn test_chialisp_context_from_args_and_type_single_atom_any() {
 fn test_chialisp_context_from_args_and_type_single_arg_any() {
     let loc = Srcloc::start(&"*test*".to_string());
     let context = context_from_args_and_type(
+        &HashSet::new(),
         &standard_type_context(),
         Rc::new(SExp::Cons(
             loc.clone(),
@@ -90,6 +93,7 @@ fn test_chialisp_context_from_args_and_type_single_arg_any() {
 fn test_chialisp_context_from_args_and_type_single_arg_any_pair() {
     let loc = Srcloc::start(&"*test*".to_string());
     let context = context_from_args_and_type(
+        &HashSet::new(),
         &standard_type_context(),
         Rc::new(SExp::Cons(
             loc.clone(),
@@ -113,6 +117,7 @@ fn test_chialisp_context_from_args_and_type_single_arg_any_pair() {
 fn test_chialisp_context_from_args_and_type_arg_with_list_type() {
     let loc = Srcloc::start(&"*test*".to_string());
     let context = context_from_args_and_type(
+        &HashSet::new(),
         &standard_type_context(),
         Rc::new(SExp::atom_from_string(loc.clone(), &"X".to_string())),
         &Type::TApp(
@@ -135,6 +140,7 @@ fn test_chialisp_context_from_args_and_type_arg_with_list_type() {
 fn test_chialisp_context_from_args_and_type_single_arg_with_pair_type() {
     let loc = Srcloc::start(&"*test*".to_string());
     let context = context_from_args_and_type(
+        &HashSet::new(),
         &standard_type_context(),
         Rc::new(SExp::Cons(
             loc.clone(),
@@ -461,4 +467,32 @@ fn test_basic_abstract_type_decl() {
         true
     ).expect("should typecheck");
     assert_eq!(ty, Type::TVar(TypeVar("Mystery".to_string(), ty.loc())));
+}
+
+#[test]
+fn test_abstract_type_decl_synthesizes() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"
+(mod ((X : Mystery)) -> Atom
+   (deftype Mystery)
+   X
+   )
+        "},
+        true
+    );
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn test_struct_decl_easy() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"
+(mod ((X : Struct)) -> (Atom 32)
+   (deftype Struct ((A . (B : (Atom 32))) C))
+   (get_B X)
+   )
+        "},
+        true
+    ).expect("should type check");
+    assert_eq!(ty, Type::TAtom(ty.loc(), Some(32)));
 }
