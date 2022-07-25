@@ -496,3 +496,17 @@ fn test_struct_decl_easy() {
     ).expect("should type check");
     assert_eq!(ty, Type::TAtom(ty.loc(), Some(32)));
 }
+
+#[test]
+fn test_struct_decl_easy_fail() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"
+(mod ((X : Struct)) -> (Atom 32)
+   (deftype Struct (((A : Atom) . (B : (Atom 32))) C))
+   (get_A X)
+   )
+        "},
+        true
+    );
+    assert_eq!(ty.is_err(), true);
+}
