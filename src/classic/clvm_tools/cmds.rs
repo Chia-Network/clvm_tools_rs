@@ -49,10 +49,15 @@ use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
+use crate::compiler::frontend::frontend;
 use crate::compiler::prims;
 use crate::compiler::sexp;
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::types::ast::Context;
+use crate::compiler::types::theory::TypeTheory;
+use crate::compiler::typecheck;
+use crate::compiler::typechia::standard_type_context;
 use crate::compiler::untype::untype_code;
 use crate::util::collapse;
 
@@ -686,6 +691,12 @@ pub fn launch_tool(
             .set_action(TArgOptionAction::StoreTrue)
             .set_help("run optimizer".to_string()),
     );
+    parser.add_argument(
+        vec!["--typecheck".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("type check".to_string()),
+    );
 
     if tool_name == "run" {
         parser.add_argument(
@@ -752,6 +763,10 @@ pub fn launch_tool(
     let mut time_read_hex = SystemTime::now();
     let mut time_assemble = SystemTime::now();
     let time_parse_input;
+    let typecheck = match parsedArgs.get("typecheck") {
+        Some(_) => true,
+        _ => false
+    };
 
     let mut input_program = "()".to_string();
     let mut input_args = "()".to_string();
@@ -814,6 +829,7 @@ pub fn launch_tool(
             let use_filename = input_file
                 .clone()
                 .unwrap_or_else(|| "*command*".to_string());
+
             let untyped_sexp_err = untype_code(
                 &mut allocator,
                 Srcloc::start(&use_filename),
@@ -892,20 +908,39 @@ pub fn launch_tool(
         }
     };
 
-    if do_check_unused {
+    if do_check_unused || typecheck {
         let use_filename = input_file
             .as_ref()
             .map(|x| x.clone())
             .unwrap_or_else(|| "*command*".to_string());
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_search_paths(&search_paths);
-        match check_unused(opts, &input_program) {
-            Ok((success, output)) => {
-                stderr_output(output);
-                if !success {
+        if do_check_unused {
+            match check_unused(opts.clone(), &input_program) {
+                Ok((success, output)) => {
+                    stderr_output(output);
+                    if !success {
+                        return;
+                    }
+                }
+                Err(e) => {
+                    stderr_output(format!("{}: {}\n", e.0.to_string(), e.1));
                     return;
                 }
             }
-            Err(e) => {
+        }
+
+        if typecheck {
+            let loc = Srcloc::start(&use_filename);
+            if let Err(e) = parse_sexp(loc.clone(), &input_program).
+                map_err(|e| CompileErr(e.0.clone(), e.1.clone())).
+                and_then(|pre_forms| {
+                    let context = standard_type_context();
+                    let compileform = frontend(opts.clone(), pre_forms)?;
+                    let mut fcount: usize = 0;
+                    let target_type = context.typecheck_chialisp_program(&compileform)?;
+                    Ok(context.reify(&target_type))
+                })
+            {
                 stderr_output(format!("{}: {}\n", e.0.to_string(), e.1));
                 return;
             }
