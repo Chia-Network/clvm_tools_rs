@@ -97,7 +97,7 @@ impl Context {
         debug!("solve {} {} in {} || {}", alpha.to_sexp().to_string(), new_tau.to_sexp().to_string(), gamma_l.to_sexp().to_string(), gamma_r.to_sexp().to_string());
         if gamma_l.typewf(&tau) {
             let mut gammaprime: Vec<ContextElim<CONTEXT_INCOMPLETE>> = gamma_r.0.clone();
-            let mut gamma_l_copy: Vec<ContextElim<CONTEXT_INCOMPLETE>> = gamma_l.0.clone();
+            let gamma_l_copy: Vec<ContextElim<CONTEXT_INCOMPLETE>> = gamma_l.0.clone();
             gammaprime.push(ContextElim::CExistsSolved(alpha.clone(), new_tau.clone()));
             gammaprime.append(&mut gamma_l_copy.clone());
             let ctx = Context::new_wf(gammaprime.clone());

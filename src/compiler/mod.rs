@@ -17,6 +17,7 @@ pub mod runtypes;
 pub mod sexp;
 pub mod types;
 pub mod srcloc;
+pub mod untype;
 pub mod usecheck;
 pub mod typecheck;
 pub mod typechia;

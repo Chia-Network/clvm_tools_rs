@@ -53,6 +53,7 @@ use crate::compiler::prims;
 use crate::compiler::sexp;
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::untype::untype_code;
 use crate::util::collapse;
 
 pub struct PathOrCodeConv {}
@@ -810,6 +811,20 @@ pub fn launch_tool(
             }
 
             let assembled_sexp = assemble_from_ir(&mut allocator, Rc::new(src_sexp)).unwrap();
+            let use_filename = input_file
+                .clone()
+                .unwrap_or_else(|| "*command*".to_string());
+            let untyped_sexp_err = untype_code(
+                &mut allocator,
+                Srcloc::start(&use_filename),
+                assembled_sexp
+            );
+            if let Err(e) = untyped_sexp_err {
+                stdout.write_string(format!("{}: failed to strip type annotations", e.1));
+                return;
+            }
+            let untyped_sexp = untyped_sexp_err.unwrap();
+
             let mut parsed_args_result = "()".to_string();
 
             match parsedArgs.get("env") {
@@ -824,7 +839,7 @@ pub fn launch_tool(
             time_assemble = SystemTime::now();
 
             input_sexp = allocator
-                .new_pair(assembled_sexp, env)
+                .new_pair(untyped_sexp, env)
                 .map(|x| Some(x))
                 .unwrap();
         }

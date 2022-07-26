@@ -27,6 +27,8 @@ use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::CompileErr;
 use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::runtypes::RunFailure;
+use crate::compiler::srcloc::Srcloc;
+use crate::compiler::untype::untype_code;
 
 fn include_dialect(
     allocator: &mut Allocator,
@@ -85,8 +87,13 @@ fn compile_clvm_text(
 ) -> Result<NodePtr, EvalErr> {
     let ir_src = read_ir(&text).map_err(|s| EvalErr(allocator.null(), s))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
+    let untyped_sexp = untype_code(
+        allocator,
+        Srcloc::start(&input_path),
+        assembled_sexp
+    )?;
 
-    if let Some(dialect) = detect_modern(allocator, assembled_sexp) {
+    if let Some(dialect) = detect_modern(allocator, untyped_sexp) {
         let runner = Rc::new(DefaultProgramRunner::new());
         let opts = Rc::new(DefaultCompilerOpts::new(&input_path))
             .set_optimize(true)
@@ -105,7 +112,7 @@ fn compile_clvm_text(
         .map_err(|s| EvalErr(allocator.null(), s.1))
     } else {
         let compile_invoke_code = run(allocator);
-        let input_sexp = allocator.new_pair(assembled_sexp, allocator.null())?;
+        let input_sexp = allocator.new_pair(untyped_sexp, allocator.null())?;
         let run_program = run_program_for_search_paths(search_paths);
         let run_program_output =
             run_program.run_program(allocator, compile_invoke_code, input_sexp, None)?;

@@ -10,6 +10,7 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::clvm::sha256tree;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::typecheck::TheoryToSExp;
 use crate::compiler::types::ast::{Polytype, TypeVar};
 use crate::util::Number;
 
@@ -257,7 +258,26 @@ impl HelperForm {
     pub fn to_sexp(&self) -> Rc<SExp> {
         match self {
             HelperForm::Deftype(loc, name, args, ty) => {
-                todo!()
+                let mut result_vec = Vec::new();
+
+                result_vec.push(Rc::new(SExp::atom_from_string(
+                        loc.clone(),
+                    &"deftype".to_string()
+                )));
+                result_vec.push(Rc::new(SExp::Atom(loc.clone(), name.clone())));
+
+                for a in args.iter() {
+                    result_vec.push(Rc::new(a.to_sexp()));
+                }
+
+                if let Some(ty) = ty {
+                    result_vec.push(Rc::new(ty.to_sexp()));
+                }
+
+                Rc::new(list_to_cons(
+                    loc.clone(),
+                    &result_vec
+                ))
             },
             HelperForm::Defconstant(loc, name, body, ty) => Rc::new(list_to_cons(
                 loc.clone(),

@@ -438,7 +438,7 @@ fn match_op_name_4(
         return None;
     }
 
-    match &pl[0] {
+    match &pl[0].atomize() {
         SExp::Atom(_, op_name) => {
             if pl.len() < 3 {
                 return Some(ParseBodyformMatch {
@@ -451,7 +451,7 @@ fn match_op_name_4(
                 });
             }
 
-            match &pl[1] {
+            match &pl[1].atomize() {
                 SExp::Atom(_, name) => {
                     let mut tail_idx = 3;
                     let mut tail_list = Vec::new();
@@ -507,13 +507,13 @@ fn extract_type_variables_from_forall_stack(
     }
 }
 
-struct ArgTypeResult {
-    stripped_args: Rc<SExp>,
-    arg_names: Vec<Vec<u8>>,
-    individual_types: HashMap<Vec<u8>, Polytype>,
-    individual_paths: HashMap<Vec<u8>, Number>,
-    individual_locs: HashMap<Vec<u8>, Srcloc>,
-    whole_args: Polytype
+pub struct ArgTypeResult {
+    pub stripped_args: Rc<SExp>,
+    pub arg_names: Vec<Vec<u8>>,
+    pub individual_types: HashMap<Vec<u8>, Polytype>,
+    pub individual_paths: HashMap<Vec<u8>, Number>,
+    pub individual_locs: HashMap<Vec<u8>, Srcloc>,
+    pub whole_args: Polytype
 }
 
 fn recover_arg_type_inner(
@@ -526,7 +526,7 @@ fn recover_arg_type_inner(
     args: Rc<SExp>,
     have_anno: bool
 ) -> Result<(bool, Rc<SExp>, Polytype), CompileErr> {
-    match args.borrow() {
+    match &args.atomize() {
         SExp::Nil(l) => Ok((have_anno, args.clone(), Type::TUnit(l.clone()))),
         SExp::Atom(l,n) => {
             arg_names.push(n.clone());
@@ -548,14 +548,14 @@ fn recover_arg_type_inner(
                 // Dive in
                 if lst.len() == 5 {
                     if let (SExp::Atom(l,n), SExp::Atom(l2,n2)) =
-                        (&lst[0], &lst[3]) {
+                        (&lst[0].atomize(), &lst[3].atomize()) {
                             if n == &vec![b'@'] && n2 == &vec![b':'] {
                                 // At capture with annotation
                                 todo!()
                             };
                         };
                 } else if lst.len() == 3 {
-                    if let (SExp::Atom(l0,n0), SExp::Atom(l1,n1)) = (&lst[0], &lst[1]) {
+                    if let (SExp::Atom(l0,n0), SExp::Atom(l1,n1)) = (&lst[0].atomize(), &lst[1].atomize()) {
                         if n1 == &vec![b':'] {
                             // Name with annotation
                             let ty = parse_type_sexp(Rc::new(lst[2].clone()))?;
@@ -602,7 +602,7 @@ fn recover_arg_type_inner(
     }
 }
 
-fn recover_arg_type(args: Rc<SExp>, always: bool) -> Result<Option<ArgTypeResult>, CompileErr> {
+pub fn recover_arg_type(args: Rc<SExp>, always: bool) -> Result<Option<ArgTypeResult>, CompileErr> {
     let mut arg_names = Vec::new();
     let mut individual_types = HashMap::new();
     let mut individual_paths = HashMap::new();
@@ -777,7 +777,7 @@ fn create_constructor(sdef: &StructDef) -> HelperForm {
     )
 }
 
-fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
+pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
     match ty {
         ChiaType::Abstract(_,_) => vec![],
         ChiaType::Struct(sdef) => {
@@ -823,7 +823,6 @@ fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
                 }).collect();
 
             let ctor = create_constructor(&sdef);
-            println!("ctor {}", ctor.to_sexp().to_string());
             out_members.push(ctor);
             out_members
         }
@@ -832,7 +831,7 @@ fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
 
 fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
     // (deftype name args... (def))
-    if let SExp::Atom(l,n) = &v[1] {
+    if let SExp::Atom(l,n) = &v[1].atomize() {
         // Name
         if v.len() == 2 {
             // An abstract type
@@ -883,10 +882,15 @@ fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
     Err(CompileErr(v[0].loc(), "Don't know how to interpret as type definition".to_string()))
 }
 
-fn compile_helperform(
+pub struct HelperFormResult {
+    pub chia_type: Option<ChiaType>,
+    pub new_helpers: Vec<HelperForm>
+}
+
+pub fn compile_helperform(
     opts: Rc<dyn CompilerOpts>,
     body: Rc<SExp>,
-) -> Result<Option<Vec<HelperForm>>, CompileErr> {
+) -> Result<Option<HelperFormResult>, CompileErr> {
     let l = body.loc();
     let plist = body.proper_list();
 
@@ -894,10 +898,17 @@ fn compile_helperform(
         Some(res) => {
             let inline = res.op_name == "defun-inline".as_bytes().to_vec();
             if res.op_name == "defconstant".as_bytes().to_vec() {
-                return compile_defconstant(l, res.name.to_vec(), res.args.clone()).map(|x| Some(vec![x]));
+                let definition = compile_defconstant(l, res.name.to_vec(), res.args.clone())?;
+                return Ok(Some(HelperFormResult {
+                    chia_type: None,
+                    new_helpers: vec![definition]
+                }));
             } else if res.op_name == "defmacro".as_bytes().to_vec() {
-                return compile_defmacro(opts, l, res.name.to_vec(), res.args.clone(), res.body.clone())
-                    .map(|x| Some(vec![x]));
+                let definition = compile_defmacro(opts, l, res.name.to_vec(), res.args.clone(), res.body.clone())?;
+                return Ok(Some(HelperFormResult {
+                    chia_type: None,
+                    new_helpers: vec![definition]
+                }));
             } else if res.op_name == "defun".as_bytes().to_vec() || inline {
                 let use_type_anno =
                     if let Some((k,ty)) = res.ty {
@@ -912,19 +923,23 @@ fn compile_helperform(
                 let (stripped_args, parsed_type) =
                     augment_fun_type_with_args(res.args.clone(), use_type_anno)?;
 
-                return compile_defun(
+                let definition = compile_defun(
                     l,
                     inline,
                     res.name.to_vec(),
                     stripped_args,
                     res.body.clone(),
                     parsed_type
-                ).map(|x| Some(vec![x]));
+                )?;
+                return Ok(Some(HelperFormResult {
+                    chia_type: None,
+                    new_helpers: vec![definition]
+                }));
             } else if res.op_name == "deftype".as_bytes().to_vec() {
                 let parsed_chia = parse_chia_type(res.orig)?;
                 let mut helpers = generate_type_helpers(&parsed_chia);
                 let new_form =
-                    match parsed_chia {
+                    match &parsed_chia {
                         ChiaType::Abstract(l,n) => {
                             HelperForm::Deftype(l.clone(), n.clone(), vec![], None)
                         },
@@ -933,7 +948,10 @@ fn compile_helperform(
                         }
                     };
                 helpers.insert(0, new_form);
-                return Ok(Some(helpers));
+                return Ok(Some(HelperFormResult {
+                    chia_type: Some(parsed_chia.clone()),
+                    new_helpers: helpers
+                }));
             }
         },
         _ => {}
@@ -968,7 +986,7 @@ fn compile_mod_(
             },
             _ => {
                 if let Some(helpers) = compile_helperform(opts.clone(), body.clone())? {
-                    for form in helpers.iter() {
+                    for form in helpers.new_helpers.iter() {
                         mc = mc.add_helper(form.clone());
                     }
                 } else {
@@ -1031,17 +1049,17 @@ fn frontend_start(
                         }
 
                         if *mod_atom == "mod".as_bytes().to_vec() {
-                            let args = Rc::new(x[1].clone());
+                            let args = Rc::new(x[1].atomize());
                             let mut skip_idx = 2;
                             let mut ty: Option<TypeAnnoKind> = None;
 
-                            if let SExp::Atom(_,colon) = &x[2] {
+                            if let SExp::Atom(_,colon) = &x[2].atomize() {
                                 if *colon == vec![b':'] && x.len() > 3 {
-                                    let use_ty = parse_type_sexp(Rc::new(x[3].clone()))?;
+                                    let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
                                     ty = Some(TypeAnnoKind::Colon(use_ty));
                                     skip_idx += 2;
                                 } else if *colon == vec![b'-',b'>'] && x.len() > 3 {
-                                    let use_ty = parse_type_sexp(Rc::new(x[3].clone()))?;
+                                    let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
                                     ty = Some(TypeAnnoKind::Arrow(use_ty));
                                     skip_idx += 2;
                                 }

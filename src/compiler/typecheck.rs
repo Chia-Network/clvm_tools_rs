@@ -300,7 +300,7 @@ impl<const A: usize> TheoryToSExp for GContext<A> {
 }
 
 pub fn parse_type_var(atom: Rc<SExp>) -> Result<TypeVar, CompileErr> {
-    match atom.borrow() {
+    match atom.atomize() {
         SExp::Atom(l,a) => {
             Ok(TypeVar(std::str::from_utf8(&a).unwrap().to_string(), l.clone()))
         },
@@ -402,7 +402,7 @@ fn parse_type_fun<const A: usize>(full: Rc<SExp>, elist: Vec<SExp>) -> Result<Ty
 pub fn parse_type_sexp<const A: usize>(
     expr: Rc<SExp>
 ) -> Result<Type<A>, CompileErr> {
-    match expr.borrow() {
+    match &expr.atomize() {
         SExp::Atom(l,a) => {
             if a.len() == 0 {
                 return Ok(Type::TUnit(l.clone()));
@@ -434,7 +434,7 @@ pub fn parse_type_sexp<const A: usize>(
             // (x -> y)
             // (x -> . rest)
             // (v ~> t)
-            if let SExp::Atom(l,a) = a.borrow() {
+            if let SExp::Atom(l,a) = &a.atomize() {
                 if a == &"exists".as_bytes().to_vec() {
                     return parse_type_exists(b.clone());
                 } else if a == &"forall".as_bytes().to_vec() {

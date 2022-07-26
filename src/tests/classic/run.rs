@@ -256,3 +256,44 @@ fn test_forms_of_destructuring_allowed_by_classic_1() {
         "(i 2 (q . 2) (q . 3))"
     );
 }
+
+#[test]
+fn test_type_strip_1() {
+    assert_eq!(
+        do_basic_run(&vec![
+            "run".to_string(),
+            "(mod ((A : Atom)) (defun-inline foo (X Y . Z) (i X Y . Z)) (foo A 2 3))".to_string()
+        ])
+        .trim(),
+        "(i 2 (q . 2) (q . 3))"
+    );
+}
+
+#[test]
+fn test_type_strip_2() {
+    assert_eq!(
+        do_basic_run(&vec![
+            "run".to_string(),
+            "(mod (A) -> Atom (defun-inline foo (X Y . Z) (i X Y . Z)) (foo A 2 3))".to_string()
+        ])
+            .trim(),
+        "(i 2 (q . 2) (q . 3))"
+    );
+}
+
+#[test]
+fn test_type_def_1() {
+    assert_eq!(
+        do_basic_run(&vec![
+            "run".to_string(),
+            indoc!{
+"(mod (A) -> Atom
+   (deftype Struct ((A : Atom) . (B : (Atom 32))))
+   (defun-inline foo (X) (new_Struct X 3))
+   (get_Struct_A (foo A))
+   )"}.to_string()
+        ])
+            .trim(),
+        "(i 2 (q . 2) (q . 3))"
+    );
+}

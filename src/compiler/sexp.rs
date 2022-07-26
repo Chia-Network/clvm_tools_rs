@@ -324,6 +324,14 @@ impl SExp {
         }
     }
 
+    pub fn atomize(&self) -> SExp {
+        if let SExp::Integer(l,i) = self {
+            SExp::Atom(l.clone(), u8_from_number(i.clone()))
+        } else {
+            self.clone()
+        }
+    }
+
     pub fn equal_to(&self, other: &SExp) -> bool {
         if self.nilp() && other.nilp() {
             true
@@ -334,7 +342,7 @@ impl SExp {
                 (SExp::Cons(_, r, s), SExp::Cons(_, t, u)) => r.equal_to(t) && s.equal_to(u),
                 (SExp::Cons(_, _, _), _) => false,
                 (_, SExp::Cons(_, _, _)) => false,
-                (SExp::Integer(l, a), b) => SExp::Atom(l.clone(), u8_from_number(a.clone())) == *b,
+                (SExp::Integer(l, a), b) => self.atomize() == *b,
                 (SExp::QuotedString(l, _, a), b) => SExp::Atom(l.clone(), a.clone()) == *b,
                 (SExp::Nil(l), b) => SExp::Atom(l.clone(), Vec::new()) == *b,
                 (SExp::Atom(_, _), SExp::Integer(_, _)) => other == self,
