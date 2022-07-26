@@ -314,6 +314,50 @@ pub fn standard_type_context() -> Context {
             ))
         ))
     );
+    let l_prim: Type<TYPE_MONO> = Type::TFun(
+        Rc::new(Type::TPair(
+            Rc::new(Type::TAny(f0.loc())),
+            Rc::new(Type::TUnit(f0.loc()))
+        )),
+        Rc::new(Type::TAtom(f0.loc(), None))
+    );
+    let x_prim: Type<TYPE_MONO> = Type::TFun(
+        Rc::new(Type::TAny(f0.loc())),
+        Rc::new(Type::TAny(f0.loc()))
+    );
+    let eq_prim: Type<TYPE_MONO> = Type::TFun(
+        Rc::new(Type::TPair(
+            Rc::new(Type::TAtom(f0.loc(), None)),
+            Rc::new(Type::TPair(
+                Rc::new(Type::TAtom(f0.loc(), None)),
+                Rc::new(Type::TUnit(f0.loc()))
+            ))
+        )),
+        Rc::new(Type::TAtom(f0.loc(), None))
+    );
+    let sub_prim: Type<TYPE_MONO> = Type::TFun(
+        Rc::new(Type::TPair(
+            Rc::new(Type::TAtom(f0.loc(), None)),
+            Rc::new(Type::TPair(
+                Rc::new(Type::TAtom(f0.loc(), None)),
+                Rc::new(Type::TUnit(f0.loc()))
+            ))
+        )),
+        Rc::new(Type::TAtom(f0.loc(), None))
+    );
+    let substr_prim: Type<TYPE_MONO> = Type::TFun(
+        Rc::new(Type::TPair(
+            Rc::new(Type::TAtom(f0.loc(), None)),
+            Rc::new(Type::TPair(
+                Rc::new(Type::TAtom(f0.loc(), None)),
+                Rc::new(Type::TPair(
+                    Rc::new(Type::TAtom(f0.loc(), None)),
+                    Rc::new(Type::TUnit(f0.loc()))
+                ))
+            ))
+        )),
+        Rc::new(Type::TAtom(f0.loc(), None))
+    );
     let plus_prim: Type<TYPE_MONO> = Type::TFun(
         Rc::new(Type::TApp(
             Rc::new(Type::TAtom(atom_tv.loc(), None)),
@@ -321,12 +365,36 @@ pub fn standard_type_context() -> Context {
         )),
         Rc::new(Type::TAtom(atom_tv.loc(), None))
     );
+    let divmod_prim: Type<TYPE_MONO> = Type::TFun(
+        Rc::new(Type::TPair(
+            Rc::new(Type::TAtom(f0.loc(), None)),
+            Rc::new(Type::TPair(
+                Rc::new(Type::TAtom(f0.loc(), None)),
+                Rc::new(Type::TUnit(f0.loc()))
+            ))
+        )),
+        Rc::new(Type::TPair(
+            Rc::new(Type::TAtom(f0.loc(), None)),
+            Rc::new(Type::TAtom(f0.loc(), None))
+        ))
+    );
+    let strlen_prim: Type<TYPE_MONO> = Type::TFun(
+        Rc::new(Type::TPair(
+            Rc::new(Type::TAtom(f0.loc(), None)),
+            Rc::new(Type::TUnit(f0.loc()))
+        )),
+        Rc::new(Type::TAtom(f0.loc(), None))
+    );
     let sha256_prim: Type<TYPE_MONO> = Type::TFun(
         Rc::new(Type::TApp(
             Rc::new(Type::TAtom(atom_tv.loc(), None)),
             Rc::new(Type::TVar(list_tv.clone()))
         )),
         Rc::new(Type::TAtom(atom_tv.loc(), Some(32)))
+    );
+    let softfork_prim: Type<TYPE_MONO> = Type::TFun(
+        Rc::new(Type::TAny(f0.loc())),
+        Rc::new(Type::TUnit(f0.loc()))
     );
 
     Context::new(vec![
@@ -349,8 +417,32 @@ pub fn standard_type_context() -> Context {
         ContextElim::CVar(Var("c".to_string(), loc.clone()), polytype(&c_prim)),
         ContextElim::CVar(Var("f".to_string(), loc.clone()), polytype(&f_prim)),
         ContextElim::CVar(Var("r".to_string(), loc.clone()), polytype(&r_prim)),
-        ContextElim::CVar(Var("+".to_string(), loc.clone()), polytype(&plus_prim)),
+        ContextElim::CVar(Var("l".to_string(), loc.clone()), polytype(&l_prim)),
+        ContextElim::CVar(Var("x".to_string(), loc.clone()), polytype(&x_prim)),
+        ContextElim::CVar(Var("=".to_string(), loc.clone()), polytype(&eq_prim)),
+        ContextElim::CVar(Var(">s".to_string(), loc.clone()), polytype(&sub_prim)),
         ContextElim::CVar(Var("sha256".to_string(), loc.clone()), polytype(&sha256_prim)),
+        ContextElim::CVar(Var("substr".to_string(), loc.clone()), polytype(&substr_prim)),
+        ContextElim::CVar(Var("strlen".to_string(), loc.clone()), polytype(&strlen_prim)),
+        ContextElim::CVar(Var("concat".to_string(), loc.clone()), polytype(&plus_prim)),
+        ContextElim::CVar(Var("+".to_string(), loc.clone()), polytype(&plus_prim)),
+        ContextElim::CVar(Var("-".to_string(), loc.clone()), polytype(&sub_prim)),
+        ContextElim::CVar(Var("*".to_string(), loc.clone()), polytype(&plus_prim)),
+        ContextElim::CVar(Var("/".to_string(), loc.clone()), polytype(&sub_prim)),
+        ContextElim::CVar(Var("divmod".to_string(), loc.clone()), polytype(&divmod_prim)),
+        ContextElim::CVar(Var(">".to_string(), loc.clone()), polytype(&sub_prim)),
+        ContextElim::CVar(Var("ash".to_string(), loc.clone()), polytype(&sub_prim)),
+        ContextElim::CVar(Var("lsh".to_string(), loc.clone()), polytype(&sub_prim)),
+        ContextElim::CVar(Var("logand".to_string(), loc.clone()), polytype(&plus_prim)),
+        ContextElim::CVar(Var("logior".to_string(), loc.clone()), polytype(&plus_prim)),
+        ContextElim::CVar(Var("logxor".to_string(), loc.clone()), polytype(&sub_prim)),
+        ContextElim::CVar(Var("lognot".to_string(), loc.clone()), polytype(&strlen_prim)),
+        ContextElim::CVar(Var("point_add".to_string(), loc.clone()), polytype(&plus_prim)),
+        ContextElim::CVar(Var("pubkey_for_exp".to_string(), loc.clone()), polytype(&strlen_prim)),
+        ContextElim::CVar(Var("not".to_string(), loc.clone()), polytype(&strlen_prim)),
+        ContextElim::CVar(Var("any".to_string(), loc.clone()), polytype(&plus_prim)),
+        ContextElim::CVar(Var("all".to_string(), loc.clone()), polytype(&plus_prim)),
+        ContextElim::CVar(Var("softfork".to_string(), loc.clone()), polytype(&softfork_prim)),
 
         // Builtin types
         ContextElim::CExistsSolved(list_tv, list),
