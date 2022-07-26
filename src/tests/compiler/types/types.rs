@@ -89,7 +89,6 @@ pub fn check_expression_against_type_with_context(
         } else {
             context.reify(&polytype)
         };
-    println!("usetype {}", usetype.to_sexp().to_string());
     assert_eq!(expected.to_sexp().to_string(), usetype.to_sexp().to_string());
 }
 

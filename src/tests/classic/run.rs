@@ -294,6 +294,6 @@ fn test_type_def_1() {
    )"}.to_string()
         ])
             .trim(),
-        "(i 2 (q . 2) (q . 3))"
+        "(a (q . 2) (c 2 (q . 3)))"
     );
 }

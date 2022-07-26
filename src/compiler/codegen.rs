@@ -870,17 +870,70 @@ fn hoist_body_let_binding(
     body: Rc<BodyForm>,
 ) -> (Vec<HelperForm>, Rc<BodyForm>) {
     match body.borrow() {
+        BodyForm::Let(l, LetFormKind::Sequential, bindings, body) => {
+            if bindings.is_empty() {
+                return (vec![], body.clone());
+            }
+
+            // If we're here, we're in the middle of hoisting.
+            // Simply slice one binding and do it again.
+            let new_sub_expr = if bindings.len() == 1 {
+                // There is one binding, so we just need to put body below
+                body.clone()
+            } else {
+                // Slice other bindings
+                let sub_bindings = bindings.iter().skip(1).map(|x| x.clone()).collect();
+                Rc::new(BodyForm::Let(
+                    l.clone(),
+                    LetFormKind::Sequential,
+                    sub_bindings,
+                    body.clone(),
+                ))
+            };
+
+            hoist_body_let_binding(
+                compiler,
+                outer_context.clone(),
+                args.clone(),
+                Rc::new(BodyForm::Let(
+                    l.clone(),
+                    LetFormKind::Parallel,
+                    vec![bindings[0].clone()],
+                    new_sub_expr,
+                )),
+            )
+        }
         BodyForm::Let(l, LetFormKind::Parallel, bindings, body) => {
+            let mut out_defuns = Vec::new();
             let defun_name = gensym("letbinding".as_bytes().to_vec());
+
+            let mut revised_bindings = Vec::new();
+            for b in bindings.iter() {
+                let (mut new_helpers, new_binding) = hoist_body_let_binding(
+                    compiler,
+                    outer_context.clone(),
+                    args.clone(),
+                    b.body.clone(),
+                );
+                out_defuns.append(&mut new_helpers);
+                revised_bindings.push(Rc::new(Binding {
+                    loc: b.loc.clone(),
+                    name: b.name.clone(),
+                    body: new_binding,
+                }));
+            }
+
             let generated_defun = generate_let_defun(
                 compiler,
                 l.clone(),
                 &defun_name,
                 args.clone(),
-                bindings.to_vec(),
+                revised_bindings.to_vec(),
                 body.clone(),
             );
-            let mut let_args = generate_let_args(l.clone(), bindings.to_vec());
+            out_defuns.push(generated_defun);
+
+            let mut let_args = generate_let_args(l.clone(), revised_bindings.to_vec());
             let pass_env = outer_context
                 .map(|x| create_let_env_expression(x))
                 .unwrap_or_else(|| {
@@ -905,7 +958,23 @@ fn hoist_body_let_binding(
             call_args.append(&mut let_args);
 
             let final_call = BodyForm::Call(l.clone(), call_args);
-            (vec![generated_defun], Rc::new(final_call.clone()))
+            (out_defuns, Rc::new(final_call.clone()))
+        }
+        BodyForm::Call(l, list) => {
+            let mut vres = Vec::new();
+            let mut new_call_list = Vec::new();
+            new_call_list.push(list[0].clone());
+            for i in list.iter().skip(1) {
+                let (new_helper, new_arg) = hoist_body_let_binding(
+                    compiler,
+                    outer_context.clone(),
+                    args.clone(),
+                    i.clone(),
+                );
+                new_call_list.push(new_arg);
+                vres.append(&mut new_helper.clone());
+            }
+            (vres, Rc::new(BodyForm::Call(l.clone(), new_call_list)))
         }
         _ => (Vec::new(), body.clone()),
     }

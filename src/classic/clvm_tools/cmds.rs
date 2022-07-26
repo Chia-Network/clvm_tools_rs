@@ -824,6 +824,7 @@ pub fn launch_tool(
                 return;
             }
             let untyped_sexp = untyped_sexp_err.unwrap();
+            let disassembled = disassemble(&mut allocator, untyped_sexp);
 
             let mut parsed_args_result = "()".to_string();
 

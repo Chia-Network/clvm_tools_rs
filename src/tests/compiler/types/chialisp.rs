@@ -104,7 +104,6 @@ fn test_chialisp_context_from_args_and_type_single_arg_any_pair() {
         bi_zero(),
         bi_one()
     ).expect("should synthesize a context");
-    println!("context {}", context.to_sexp().to_string());
     check_expression_against_type_with_context(
         &context,
         "X",
@@ -127,7 +126,6 @@ fn test_chialisp_context_from_args_and_type_arg_with_list_type() {
         bi_zero(),
         bi_one()
     ).expect("should synthesize a context");
-    println!("context {}", context.to_sexp().to_string());
     check_expression_against_type_with_context(
         &context,
         "X",
@@ -154,7 +152,6 @@ fn test_chialisp_context_from_args_and_type_single_arg_with_pair_type() {
         bi_zero(),
         bi_one()
     ).expect("should synthesize a context");
-    println!("context {}", context.to_sexp().to_string());
     check_expression_against_type_with_context(
         &context,
         "X",
@@ -171,7 +168,6 @@ fn test_chialisp_program_typecheck(s: &str, flatten: bool) -> Result<Polytype, C
     let pre_forms = parse_sexp(loc.clone(), &s.to_string()).
         map_err(|e| CompileErr(e.0, e.1))?;
     let compileform = frontend(Rc::new(opts), pre_forms)?;
-    println!("compileform ty {:?}", compileform.ty);
     let mut fcount: usize = 0;
     let mut held = HashMap::new();
     let target_type = context.typecheck_chialisp_program(&compileform)?;
@@ -314,7 +310,6 @@ fn test_chialisp_with_arg_type_first_should_check() {
         "(mod ((X : (Pair Atom Unit))) -> Atom (f X))",
         false
     );
-    println!("ty {:?}", ty);
     assert_eq!(ty.is_err(), false);
 }
 
@@ -324,7 +319,6 @@ fn test_chialisp_with_arg_type_doesnt_check_not_atom32() {
         "(mod ((X : (Pair Atom Unit))) -> (Atom 32) (+ 1 X))",
         false
     );
-    println!("ty {:?}", ty);
     assert_eq!(ty.is_err(), true);
 }
 
@@ -334,7 +328,6 @@ fn test_chialisp_with_arg_type_doesnt_checks_atom32() {
         "(mod ((X : (Pair Atom Unit))) -> (Atom 32) (sha256 1 X))",
         false
     );
-    println!("ty {:?}", ty);
     assert_eq!(ty.is_err(), false);
 }
 
@@ -347,7 +340,6 @@ fn test_chialisp_function_returning_any_is_ok_as_atom32() {
            )"},
         false
     );
-    println!("ty {:?}", ty);
     assert_eq!(ty.is_err(), false);
 }
 
@@ -360,7 +352,6 @@ fn test_chialisp_function_returning_atom_isnt_ok_as_atom32() {
            )"},
         false
     );
-    println!("ty {:?}", ty);
     assert_eq!(ty.is_err(), true);
 }
 
@@ -373,7 +364,6 @@ fn test_chialisp_function_checks_result_type() {
            )"},
         false
     );
-    println!("ty {:?}", ty);
     assert_eq!(ty.is_err(), true);
 }
 
@@ -387,7 +377,6 @@ fn test_chialisp_function_returning_atom_is_ok_as_atom32() {
   )"},
         false
     );
-    println!("ty {:?}", ty);
     assert_eq!(ty.is_err(), false);
 }
 
@@ -420,7 +409,6 @@ fn test_conflicting_types() {
         "},
         true
     );
-    println!("ty: {:?}", ty);
     assert_eq!(ty.is_err(), true);
 }
 
@@ -436,7 +424,6 @@ fn test_if_conflicting_types() {
         "},
         true
     );
-    println!("ty: {:?}", ty);
     assert_eq!(ty.is_err(), true);
 }
 

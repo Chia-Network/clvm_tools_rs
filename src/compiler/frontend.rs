@@ -716,7 +716,7 @@ fn augment_fun_type_with_args(
 }
 
 fn create_constructor_code(sdef: &StructDef, proto: Rc<SExp>) -> BodyForm {
-    match proto.borrow() {
+    match proto.atomize() {
         SExp::Atom(l,n) => {
             BodyForm::Value(SExp::Atom(l.clone(), n.clone()))
         },
