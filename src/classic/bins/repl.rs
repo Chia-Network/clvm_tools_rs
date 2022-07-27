@@ -1,8 +1,9 @@
 extern crate clvmr as clvm_rs;
 
 use std::io::{self, BufRead, Write};
-
 use std::rc::Rc;
+
+use env_logger;
 
 use clvm_rs::allocator::Allocator;
 
@@ -12,6 +13,8 @@ use clvm_tools_rs::compiler::repl::Repl;
 use clvm_tools_rs::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 
 fn main() {
+    env_logger::init();
+
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
     let opts = Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));

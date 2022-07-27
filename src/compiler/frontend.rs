@@ -744,7 +744,7 @@ pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
                 Rc::new(SExp::Atom(sdef.loc.clone(), vec![b'S'])),
                 Rc::new(SExp::Nil(sdef.loc.clone())),
             ));
-            let mut out_members: Vec<HelperForm> = sdef
+            let mut members: Vec<HelperForm> = sdef
                 .members
                 .iter()
                 .map(|m| {
@@ -790,14 +790,14 @@ pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
                                 Rc::new(BodyForm::Value(SExp::Atom(m.loc.clone(), vec![b'S']))),
                             ],
                         )),
-                        Some(funty),
+                         Some(funty),
                     )
                 })
                 .collect();
 
             let ctor = create_constructor(&sdef);
-            out_members.push(ctor);
-            out_members
+            members.push(ctor);
+            members
         }
     }
 }

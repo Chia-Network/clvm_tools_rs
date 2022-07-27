@@ -258,6 +258,8 @@ pub fn brun(args: &Vec<String>) {
 }
 
 pub fn cldb(args: &Vec<String>) {
+    env_logger::init();
+
     let tool_name = "cldb".to_string();
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
