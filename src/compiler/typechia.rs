@@ -2,6 +2,8 @@ use std::borrow::Borrow;
 use std::collections::{HashSet};
 use std::rc::Rc;
 
+use log::debug;
+
 use num_bigint::ToBigInt;
 
 use clvmr::allocator::Allocator;
@@ -750,10 +752,24 @@ impl Context {
                         ]);
                     },
                     Some(t) => { // Struct
+                        debug!("struct, basic type {}", t.to_sexp().to_string());
                         structs.insert(tname.clone());
-                        context = context.appends_wf(vec![
-                            ContextElim::CForall(TypeVar(tname.clone(),l.clone()))
-                        ]);
+                        if args.len() > 0 {
+                            let mut result_ty = t.clone();
+                            for a in args.iter().rev() {
+                                result_ty = Type::TAbs(a.clone(), Rc::new(result_ty));
+                            }
+                            context = context.appends_wf(vec![
+                                ContextElim::CExistsSolved(
+                                    TypeVar(tname.clone(),l.clone()),
+                                    monotype(&result_ty).unwrap()
+                                )
+                            ]);
+                        } else {
+                            context = context.appends_wf(vec![
+                                ContextElim::CForall(TypeVar(tname.clone(),l.clone()))
+                            ]);
+                        }
                     }
                 }
             }

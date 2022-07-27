@@ -3,7 +3,8 @@
 
 use std::borrow::Borrow;
 use std::rc::Rc;
-use log::debug;
+use log::{debug, log_enabled};
+use log::Level::Debug;
 
 use crate::compiler::srcloc::{Srcloc, HasLoc};
 use crate::compiler::comptypes::CompileErr;
@@ -317,24 +318,30 @@ impl Context {
 impl GContext<CONTEXT_INCOMPLETE> {
     pub fn appends_wf(&self, v: Vec<ContextElim<CONTEXT_INCOMPLETE>>) -> GContext<CONTEXT_INCOMPLETE> {
         let gamma = self.appends(v);
-        if !gamma.wf() {
-            panic!("not well formed {}", gamma.to_sexp().to_string());
+        if log_enabled!(Debug) {
+            if !gamma.wf() {
+                panic!("not well formed {}", gamma.to_sexp().to_string());
+            }
         }
         gamma
     }
 
     pub fn snoc_wf(&self, c: ContextElim<CONTEXT_INCOMPLETE>) -> GContext<CONTEXT_INCOMPLETE> {
         let gamma = self.snoc(c);
-        if !gamma.wf() {
-            panic!("not well formed {}", gamma.to_sexp().to_string());
+        if log_enabled!(Debug) {
+            if !gamma.wf() {
+                panic!("not well formed {}", gamma.to_sexp().to_string());
+            }
         }
         gamma
     }
 
     pub fn new_wf(elems: Vec<ContextElim<CONTEXT_INCOMPLETE>>) -> GContext<CONTEXT_INCOMPLETE> {
         let ctx = GContext(elems);
-                if !ctx.wf() {
-            panic!("not well formed {}", ctx.to_sexp().to_string());
+        if log_enabled!(Debug) {
+            if !ctx.wf() {
+                panic!("not well formed {}", ctx.to_sexp().to_string());
+            }
         }
         ctx
     }

@@ -526,3 +526,15 @@ fn test_wrong_struct_construction() {
     );
     assert_eq!(ty.is_err(), true);
 }
+
+#[test]
+fn test_struct_construction_with_var() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod () -> (Atom S) (deftype S a (A : a)) (new_S 1))",
+        true
+    ).expect("should typecheck");
+    assert_eq!(ty, Type::TApp(
+        Rc::new(Type::TAtom(ty.loc(), None)),
+        Rc::new(Type::TVar(TypeVar("S".to_string(), ty.loc())))
+    ));
+}

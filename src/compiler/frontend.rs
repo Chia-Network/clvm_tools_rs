@@ -746,9 +746,7 @@ fn create_constructor(sdef: &StructDef) -> HelperForm {
     let mut arguments = SExp::Nil(sdef.loc.clone());
     let mut argtype = Type::TUnit(sdef.loc.clone());
 
-    for i_reverse in 0..sdef.members.len() {
-        let i = sdef.members.len() - i_reverse - 1;
-        let m: &StructMember = &sdef.members[i];
+    for m in sdef.members.iter().rev() {
         argtype = Type::TPair(
             Rc::new(m.ty.clone()),
             Rc::new(argtype)
@@ -761,6 +759,22 @@ fn create_constructor(sdef: &StructDef) -> HelperForm {
     }
 
     let construction = create_constructor_code(sdef, sdef.proto.clone());
+    let mut target_ty = Type::TVar(
+        TypeVar(decode_string(&sdef.name), sdef.loc.clone())
+    );
+
+    for a in sdef.vars.iter().rev() {
+        target_ty = Type::TApp(Rc::new(Type::TVar(a.clone())), Rc::new(target_ty));
+    }
+
+    let mut funty = Type::TFun(
+        Rc::new(argtype),
+        Rc::new(target_ty)
+    );
+
+    for a in sdef.vars.iter().rev() {
+        funty = Type::TForall(a.clone(), Rc::new(funty));
+    }
 
     HelperForm::Defun(
         sdef.loc.clone(),
@@ -768,12 +782,7 @@ fn create_constructor(sdef: &StructDef) -> HelperForm {
         true,
         Rc::new(arguments),
         Rc::new(construction),
-        Some(Type::TFun(
-            Rc::new(argtype),
-            Rc::new(Type::TVar(
-                TypeVar(decode_string(&sdef.name), sdef.loc.clone())
-            ))
-        ))
+        Some(funty)
     )
 }
 

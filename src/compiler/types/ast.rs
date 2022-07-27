@@ -124,6 +124,8 @@ impl<const T: usize> PartialEq for Type<T> {
             (Type::TNullable(t1), Type::TNullable(t2)) => t1 == t2,
             (Type::TPair(f1,r1), Type::TPair(f2,r2)) => f1 == f2 && r1 == r2,
             (Type::TExec(a1), Type::TExec(a2)) => a1 == a2,
+            (Type::TAbs(v1,a1), Type::TAbs(v2,a2)) => v1 == v2 && a1 == a2,
+            (Type::TApp(a1,b1), Type::TApp(a2,b2)) => a1 == a2 && b1 == b2,
             _ => false
         }
     }
