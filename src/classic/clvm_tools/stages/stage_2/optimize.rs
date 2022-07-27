@@ -238,7 +238,7 @@ fn sub_args<'a>(
     match allocator.sexp(sexp) {
         SExp::Atom(_) => path_from_args(allocator, sexp, new_args),
         SExp::Pair(first_pre, rest) => {
-            let mut first = sexp;
+            let first;
 
             match allocator.sexp(first_pre) {
                 SExp::Pair(_, _) => {
@@ -761,7 +761,6 @@ fn test_sub_args(src: String) -> String {
     let mut allocator = Allocator::new();
     let input_ir = read_ir(&src).unwrap();
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
-    let runner = run_program_for_search_paths(&vec![".".to_string()]);
     match allocator.sexp(assembled) {
         SExp::Pair(a, b) => {
             let optimized = sub_args(&mut allocator, a, b).unwrap();

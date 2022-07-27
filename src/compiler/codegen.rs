@@ -368,8 +368,6 @@ pub fn process_macro_call(
     let args_to_macro = list_to_cons(l.clone(), &converted_args);
     build_swap_table_mut(&mut swap_table, &args_to_macro);
 
-    let arg_strs: Vec<String> = args.iter().map(|x| x.to_sexp().to_string()).collect();
-
     run(
         allocator,
         runner.clone(),

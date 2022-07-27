@@ -383,7 +383,7 @@ impl SExp {
                 (SExp::Cons(_, r, s), SExp::Cons(_, t, u)) => r.equal_to(t) && s.equal_to(u),
                 (SExp::Cons(_, _, _), _) => false,
                 (_, SExp::Cons(_, _, _)) => false,
-                (SExp::Integer(l, a), b) => self.atomize() == *b,
+                (SExp::Integer(_, _), b) => self.atomize() == *b,
                 (SExp::QuotedString(l, _, a), b) => SExp::Atom(l.clone(), a.clone()) == *b,
                 (SExp::Nil(l), b) => SExp::Atom(l.clone(), Vec::new()) == *b,
                 (SExp::Atom(_, _), SExp::Integer(_, _)) => other == self,

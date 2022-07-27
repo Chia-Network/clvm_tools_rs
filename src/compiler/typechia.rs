@@ -171,26 +171,6 @@ pub fn standard_type_context() -> Context {
             Rc::new(Type::TVar(f0.clone()))
         ))
     );
-    let applyany: Type<TYPE_MONO> = Type::TFun(
-        Rc::new(Type::TPair(
-            Rc::new(Type::TAny(f0.loc())),
-            Rc::new(Type::TPair(
-                Rc::new(Type::TAny(f0.loc())),
-                Rc::new(Type::TUnit(f0.loc()))
-            ))
-        )),
-        Rc::new(Type::TAny(f0.loc()))
-    );
-    let consany: Type<TYPE_MONO> = Type::TFun(
-        Rc::new(Type::TPair(
-            Rc::new(Type::TAny(f0.loc())),
-            Rc::new(Type::TPair(
-                Rc::new(Type::TAny(f0.loc())),
-                Rc::new(Type::TUnit(f0.loc()))
-            ))
-        )),
-        Rc::new(Type::TAny(f0.loc()))
-    );
     let some: Type<TYPE_MONO> = Type::TForall(
         f0.clone(),
         Rc::new(Type::TFun(
@@ -485,7 +465,7 @@ pub fn context_from_args_and_type(
                 )
             ))
         },
-        (SExp::Atom(l,a), ty) => {
+        (SExp::Atom(l,a), _ty) => {
             Ok(context.snoc_wf(
                 ContextElim::CVar(
                     Var(decode_string(a), l.clone()),
@@ -498,7 +478,7 @@ pub fn context_from_args_and_type(
         },
         (SExp::Cons(l,f,r), Type::TAny(_)) => {
             if let Some((_,_)) = is_at_capture(f.clone(), r.clone()) {
-                if let SExp::Cons(l,sub,_) = r.borrow() {
+                if let SExp::Cons(_,sub,_) = r.borrow() {
                     let sub_context = context_from_args_and_type(
                         structs,
                         &context,
@@ -539,7 +519,7 @@ pub fn context_from_args_and_type(
         },
         (SExp::Cons(l,f,r), Type::TPair(a,b)) => {
             if let Some((_,_)) = is_at_capture(f.clone(), r.clone()) {
-                if let SExp::Cons(l,sub,_) = r.borrow() {
+                if let SExp::Cons(_,sub,_) = r.borrow() {
                     let sub_context = context_from_args_and_type(
                         structs,
                         &context,
@@ -585,7 +565,7 @@ pub fn context_from_args_and_type(
 fn handle_macro(
     program: &CompileForm,
     form_args: Rc<SExp>,
-    args: Rc<SExp>,
+    _args: Rc<SExp>,
     form: Rc<CompileForm>,
     loc: Srcloc,
     provided_args: &Vec<Rc<BodyForm>>
@@ -692,7 +672,7 @@ fn chialisp_to_expr(
         BodyForm::Value(SExp::Atom(l,n)) => {
             Ok(Expr::EVar(Var(decode_string(n), l.clone())))
         },
-        BodyForm::Let(l,k,bindings,letbody) => {
+        BodyForm::Let(l,_kind,_bindings,_letbody) => {
             // Inline via the evaluator
             let mut allocator = Allocator::new();
             let opts = Rc::new(DefaultCompilerOpts::new(l.file.borrow()));
@@ -728,10 +708,10 @@ fn chialisp_to_expr(
                     Rc::new(arg_expr)
                 );
             }
-            if let BodyForm::Value(SExp::Atom(l1,n1)) = &lst[0].borrow() {
+            if let BodyForm::Value(SExp::Atom(_,n1)) = &lst[0].borrow() {
                 // Find out if it's a macro
                 for h in program.helpers.iter() {
-                    if let HelperForm::Defmacro(l, name, args, form) = &h {
+                    if let HelperForm::Defmacro(_, name, args, form) = &h {
                         if name == n1 {
                             return handle_macro(
                                 program,
@@ -850,7 +830,7 @@ impl Context {
 
         // Extract constants
         for h in comp.helpers.iter() {
-            if let HelperForm::Defconstant(l, name, body, ty) = &h {
+            if let HelperForm::Defconstant(l, name, _body, ty) = &h {
                 let tname = decode_string(name);
                 if let Some(ty) = ty {
                     context = context.snoc_wf(ContextElim::CVar(
@@ -868,7 +848,7 @@ impl Context {
 
         // Extract functions
         for h in comp.helpers.iter() {
-            if let HelperForm::Defun(l, name, _, args, body, ty) = &h {
+            if let HelperForm::Defun(l, name, _, _args, _body, ty) = &h {
                 let tname = decode_string(name);
                 let ty = type_of_defun(l.clone(), ty);
                 context = context.snoc_wf(
@@ -879,7 +859,7 @@ impl Context {
 
         // Typecheck helper functions
         for h in comp.helpers.iter() {
-            if let HelperForm::Defun(l, name, _, args, body, ty) = &h {
+            if let HelperForm::Defun(l, _name, _, args, body, ty) = &h {
                 let ty = type_of_defun(l.clone(), ty);
                 let (context_with_args, result_ty) =
                     handle_function_type(

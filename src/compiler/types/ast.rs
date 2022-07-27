@@ -87,7 +87,7 @@ impl HasLoc for Expr {
         match self {
             Expr::EVar(v) => v.loc(),
             Expr::EUnit(l) => l.clone(),
-            Expr::EAbs(v,e) => e.loc(),
+            Expr::EAbs(_,e) => e.loc(),
             Expr::EApp(e1,e2) => e1.loc().ext(&e2.loc()),
             Expr::EAnno(e,t) => e.loc().ext(&t.loc()),
             Expr::ELit(l,_) => l.clone()

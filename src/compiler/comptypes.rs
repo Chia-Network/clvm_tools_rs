@@ -279,7 +279,7 @@ impl HelperForm {
                     &result_vec
                 ))
             },
-            HelperForm::Defconstant(loc, name, body, ty) => Rc::new(list_to_cons(
+            HelperForm::Defconstant(loc, name, body, _ty) => Rc::new(list_to_cons(
                 loc.clone(),
                 &vec![
                     Rc::new(SExp::atom_from_string(

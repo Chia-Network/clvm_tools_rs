@@ -3,8 +3,6 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use num_bigint::ToBigInt;
-use log::debug;
-
 use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};

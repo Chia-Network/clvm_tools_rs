@@ -209,7 +209,7 @@ impl Context {
             Type::TPair(a,b) => self.typewf(a.borrow()) && self.typewf(b.borrow()),
             Type::TForall(alpha,a) => self.snoc_wf(ContextElim::CForall(alpha.clone())).typewf(a),
             Type::TExists(alpha) => self.existentials().elem(alpha),
-            Type::TAbs(v,t) => self.typewf(t.borrow()),
+            Type::TAbs(_,t) => self.typewf(t.borrow()),
             Type::TApp(t1,t2) => {
                 if !self.typewf(t1.borrow()) {
                     return false;
@@ -284,10 +284,10 @@ impl Context {
 
     pub fn apply_(&self, typ: &Polytype) -> Polytype {
         match typ {
-            Type::TUnit(l) => typ.clone(),
-            Type::TAny(l) => typ.clone(),
+            Type::TUnit(_) => typ.clone(),
+            Type::TAny(_) => typ.clone(),
             Type::TAtom(_,_) => typ.clone(),
-            Type::TVar(v) => typ.clone(),
+            Type::TVar(_) => typ.clone(),
             Type::TForall(v,t) => Type::TForall(v.clone(),t.clone()),
             Type::TExists(v) => {
                 self.find_solved(v).map(|v| {

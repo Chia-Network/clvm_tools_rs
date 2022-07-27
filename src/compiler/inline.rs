@@ -161,8 +161,6 @@ fn replace_inline_body(
     args: &Vec<Rc<BodyForm>>,
     expr: Rc<BodyForm>,
 ) -> Result<Rc<BodyForm>, CompileErr> {
-    let arg_str_vec: Vec<String> = args.iter().map(|x| x.to_sexp().to_string()).collect();
-
     match expr.borrow() {
         BodyForm::Let(_l, _, _, _) => Err(CompileErr(
             loc.clone(),
@@ -231,7 +229,6 @@ pub fn replace_in_inline(
     inline: &InlineFunction,
     args: &Vec<Rc<BodyForm>>,
 ) -> Result<CompiledCode, CompileErr> {
-    let arg_str_vec: Vec<String> = args.iter().map(|x| x.to_sexp().to_string()).collect();
     replace_inline_body(
         allocator,
         runner.clone(),

@@ -54,9 +54,7 @@ use crate::compiler::prims;
 use crate::compiler::sexp;
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::types::ast::Context;
 use crate::compiler::types::theory::TypeTheory;
-use crate::compiler::typecheck;
 use crate::compiler::typechia::standard_type_context;
 use crate::compiler::untype::untype_code;
 use crate::util::collapse;
@@ -842,8 +840,6 @@ pub fn launch_tool(
                 return;
             }
             let untyped_sexp = untyped_sexp_err.unwrap();
-            let disassembled = disassemble(&mut allocator, untyped_sexp);
-
             let mut parsed_args_result = "()".to_string();
 
             match parsedArgs.get("env") {
@@ -938,7 +934,6 @@ pub fn launch_tool(
                 and_then(|pre_forms| {
                     let context = standard_type_context();
                     let compileform = frontend(opts.clone(), pre_forms)?;
-                    let mut fcount: usize = 0;
                     let target_type = context.typecheck_chialisp_program(&compileform)?;
                     Ok(context.reify(&target_type))
                 })

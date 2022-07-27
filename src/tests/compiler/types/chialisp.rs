@@ -12,7 +12,6 @@ use crate::compiler::sexp::{
     parse_sexp
 };
 use crate::compiler::srcloc::{HasLoc, Srcloc};
-use crate::compiler::typecheck::TheoryToSExp;
 use crate::compiler::typechia::{
     context_from_args_and_type,
     standard_type_context

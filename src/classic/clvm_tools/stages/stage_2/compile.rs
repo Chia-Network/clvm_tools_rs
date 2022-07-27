@@ -726,23 +726,6 @@ fn do_com_prog_(
     };
 }
 
-fn dequote(allocator: &mut Allocator, prog: NodePtr) -> NodePtr {
-    match allocator.sexp(prog) {
-        SExp::Atom(_) => prog,
-        SExp::Pair(l, r) => match allocator.sexp(l) {
-            SExp::Atom(b) => {
-                let v = allocator.buf(&b).to_vec();
-                if v == "opt".as_bytes().to_vec() {
-                    r
-                } else {
-                    prog
-                }
-            }
-            _ => prog,
-        },
-    }
-}
-
 pub fn do_com_prog_for_dialect(
     runner: Rc<dyn TRunProgram>,
     allocator: &mut Allocator,

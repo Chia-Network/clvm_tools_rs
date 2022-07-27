@@ -27,7 +27,6 @@ use crate::compiler::rename::rename_children_compileform;
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::{HasLoc, Srcloc};
 use crate::compiler::typecheck::{
-    TheoryToSExp,
     parse_type_sexp,
     parse_type_var
 };
@@ -547,7 +546,7 @@ fn recover_arg_type_inner(
             if let Some(lst) = args.proper_list() {
                 // Dive in
                 if lst.len() == 5 {
-                    if let (SExp::Atom(l,n), SExp::Atom(l2,n2)) =
+                    if let (SExp::Atom(l,n), SExp::Atom(_l2,n2)) =
                         (&lst[0].atomize(), &lst[3].atomize()) {
                             if n == &vec![b'@'] && n2 == &vec![b':'] {
                                 // At capture with annotation
@@ -555,7 +554,7 @@ fn recover_arg_type_inner(
                             };
                         };
                 } else if lst.len() == 3 {
-                    if let (SExp::Atom(l0,n0), SExp::Atom(l1,n1)) = (&lst[0].atomize(), &lst[1].atomize()) {
+                    if let (SExp::Atom(l0,n0), SExp::Atom(_l1,n1)) = (&lst[0].atomize(), &lst[1].atomize()) {
                         if n1 == &vec![b':'] {
                             // Name with annotation
                             let ty = parse_type_sexp(Rc::new(lst[2].clone()))?;
@@ -645,7 +644,7 @@ fn promote_with_arg_type(argty: &Polytype, funty: &Polytype) -> Polytype {
                 Rc::new(promote_with_arg_type(argty, t.borrow()))
             )
         },
-        Type::TFun(t1,t2) => {
+        Type::TFun(_t1,t2) => {
             Type::TFun(Rc::new(argty.clone()), t2.clone())
         },
         _ => {
@@ -969,7 +968,7 @@ pub fn compile_helperform(
                             HelperForm::Deftype(l.clone(), n.clone(), vec![], None)
                         },
                         ChiaType::Struct(sdef) => {
-                            if let SExp::Atom(l,n) = sdef.proto.borrow() {
+                            if let SExp::Atom(_,_) = sdef.proto.borrow() {
                                 return Err(CompileErr(sdef.loc.clone(), format!("A struct with a single element acting as an alias is currently a hazard.  This will be fixed in the future.")));
                             }
                             HelperForm::Deftype(sdef.loc.clone(), sdef.name.clone(), sdef.vars.clone(), Some(sdef.ty.clone()))

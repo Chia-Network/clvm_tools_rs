@@ -111,9 +111,9 @@ pub fn free_tvars<const A: usize>(typ: &Type<A>) -> HashSet<TypeVar> {
 
 pub fn type_subst<const A: usize>(tprime: &Type<A>, v: &TypeVar, typ: &Type<A>) -> Type<A> {
     match typ {
-        Type::TUnit(l) => typ.clone(),
-        Type::TAny(l) => typ.clone(),
-        Type::TAtom(l,m) => typ.clone(),
+        Type::TUnit(_) => typ.clone(),
+        Type::TAny(_) => typ.clone(),
+        Type::TAtom(_,_) => typ.clone(),
         Type::TVar(vprime) => {
             if *vprime == *v {
                 tprime.clone()

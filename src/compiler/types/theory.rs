@@ -36,7 +36,7 @@ use crate::compiler::types::context::subst;
 use crate::compiler::typecheck::TheoryToSExp;
 
 lazy_static! {
-    pub static ref indent_level: AtomicUsize = AtomicUsize::new(0);
+    pub static ref INDENT_LEVEL: AtomicUsize = AtomicUsize::new(0);
 }
 
 const ORIGINAL: bool = true;
@@ -45,14 +45,14 @@ fn indented<F,R>(f: F) -> R
 where
     F : FnOnce() -> R
 {
-    indent_level.fetch_add(1, Ordering::SeqCst);
+    INDENT_LEVEL.fetch_add(1, Ordering::SeqCst);
     let res = f();
-    indent_level.fetch_add(usize::MAX, Ordering::SeqCst);
+    INDENT_LEVEL.fetch_add(usize::MAX, Ordering::SeqCst);
     res
 }
 
-fn I() -> String {
-    let count = indent_level.fetch_add(0, Ordering::SeqCst);
+fn i() -> String {
+    let count = INDENT_LEVEL.fetch_add(0, Ordering::SeqCst);
     iter::repeat(' ').take(count*3).collect()
 }
 
@@ -71,18 +71,18 @@ impl Context {
         if let Some(old) = self.find_solved(alpha) {
             debug!("combine {} and {} to increase information", old.to_sexp().to_string(), tau.to_sexp().to_string());
             match (&old, tau) {
-                (Type::TNullable(a), Type::TNullable(b)) => {
+                (Type::TNullable(_), Type::TNullable(b)) => {
                     Ok(Type::TNullable(Rc::new(
                         self.increase_specificity(alpha, b.borrow())?
                     )))
                 },
-                (Type::TNullable(a), b) => {
+                (Type::TNullable(_), _) => {
                     Ok(old.clone())
                 },
-                (a, Type::TNullable(b)) => {
+                (_, Type::TNullable(_)) => {
                     Ok(tau.clone())
                 },
-                (a,b) => Ok(tau.clone())
+                (_,_) => Ok(tau.clone())
             }
         } else {
             Ok(tau.clone())
@@ -129,11 +129,11 @@ impl Context {
                 }
             },
             // All types check as any
-            (x, Type::TAny(_)) => {
+            (_, Type::TAny(_)) => {
                 return Ok(Box::new(self.clone()));
             },
             // Any checks as any type
-            (Type::TAny(_), x) => {
+            (Type::TAny(_), _) => {
                 return Ok(Box::new(self.clone()));
             },
             (Type::TUnit(_), Type::TUnit(_)) => {
@@ -438,7 +438,7 @@ impl Context {
                     }
                 }
             },
-            Type::TPair(a1,a2) => {
+            Type::TPair(_,_) => {
                 debug!("case 3");
                 match monotype(a) {
                     Some(mta) => {
@@ -448,7 +448,7 @@ impl Context {
                         ])));
                     },
                     _ => {
-                        return Err(CompileErr(a.loc(), format!("no monotype: {}", a1.to_sexp().to_string())));
+                        return Err(CompileErr(a.loc(), format!("no monotype: {}", a.to_sexp().to_string())));
                     }
                 }
             },
@@ -496,7 +496,7 @@ impl Context {
                     ContextElim::CMarker(betaprime.clone()),
                     |gamma| {
                         debug!("instantate_r from drop_marker");
-                        self.appends_wf(vec![
+                        gamma.appends_wf(vec![
                             ContextElim::CExists(betaprime.clone())
                         ]).instantiate_r(&subst_res, alpha)
                     }
@@ -793,11 +793,11 @@ impl Context {
 impl TypeTheory for Context {
     fn subtype(&self, typ1: &Polytype, typ2: &Polytype) -> Result<Box<Self>, CompileErr> {
         indented(|| {
-            debug!("{}subtype {} {}", I(), typ1.to_sexp().to_string(), typ2.to_sexp().to_string());
+            debug!("{}subtype {} {}", i(), typ1.to_sexp().to_string(), typ2.to_sexp().to_string());
             let res = self.subtype_(typ1, typ2);
             match &res {
-                Ok(v) => { debug!("{}subtype => {}", I(), /*self.to_sexp().to_string(),*/ v.to_sexp().to_string()); },
-                Err(e) => { debug!("{}subtype {} {} in {} => {:?}", I(), typ1.to_sexp().to_string(), typ2.to_sexp().to_string(), self.to_sexp().to_string(), e); }
+                Ok(v) => { debug!("{}subtype => {}", i(), /*self.to_sexp().to_string(),*/ v.to_sexp().to_string()); },
+                Err(e) => { debug!("{}subtype {} {} in {} => {:?}", i(), typ1.to_sexp().to_string(), typ2.to_sexp().to_string(), self.to_sexp().to_string(), e); }
             }
             res
         })
@@ -805,11 +805,11 @@ impl TypeTheory for Context {
 
     fn instantiate_l(&self, alpha: &TypeVar, a: &Polytype) -> Result<Box<Self>, CompileErr> {
         indented(|| {
-            debug!("{}instantiate_l {} {} in {}", I(), alpha.to_sexp().to_string(), a.to_sexp().to_string(), self.to_sexp().to_string());
+            debug!("{}instantiate_l {} {} in {}", i(), alpha.to_sexp().to_string(), a.to_sexp().to_string(), self.to_sexp().to_string());
             let res = self.instantiate_l_(alpha, a);
             match &res {
-                Ok(v) => { debug!("{}instantiate_l {} {} => {}", I(), alpha.to_sexp().to_string(), a.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ v.to_sexp().to_string()); },
-                Err(e) => { debug!("{}instantiate_l {} {} in {} => {:?}", I(), alpha.to_sexp().to_string(), a.to_sexp().to_string(), self.to_sexp().to_string(), e); }
+                Ok(v) => { debug!("{}instantiate_l {} {} => {}", i(), alpha.to_sexp().to_string(), a.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ v.to_sexp().to_string()); },
+                Err(e) => { debug!("{}instantiate_l {} {} in {} => {:?}", i(), alpha.to_sexp().to_string(), a.to_sexp().to_string(), self.to_sexp().to_string(), e); }
             }
             res
         })
@@ -818,11 +818,11 @@ impl TypeTheory for Context {
 
     fn instantiate_r(&self, a: &Polytype, alpha: &TypeVar) -> Result<Box<Self>, CompileErr> {
         indented(|| {
-            debug!("{}instantiate_r {} {} in {}", I(), a.to_sexp().to_string(), alpha.to_sexp().to_string(), self.to_sexp().to_string());
+            debug!("{}instantiate_r {} {} in {}", i(), a.to_sexp().to_string(), alpha.to_sexp().to_string(), self.to_sexp().to_string());
             let res = self.instantiate_r_(a, alpha);
             match &res {
-                Ok(v) => { debug!("{}instantiate_r {} {} => {}", I(), a.to_sexp().to_string(), alpha.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ v.to_sexp().to_string()); },
-                Err(e) => { debug!("{}instantiate_r {} {} in {} => {:?}", I(), a.to_sexp().to_string(), alpha.to_sexp().to_string(), self.to_sexp().to_string(), e); }
+                Ok(v) => { debug!("{}instantiate_r {} {} => {}", i(), a.to_sexp().to_string(), alpha.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ v.to_sexp().to_string()); },
+                Err(e) => { debug!("{}instantiate_r {} {} in {} => {:?}", i(), a.to_sexp().to_string(), alpha.to_sexp().to_string(), self.to_sexp().to_string(), e); }
             }
             res
         })
@@ -830,11 +830,11 @@ impl TypeTheory for Context {
 
     fn typecheck(&self, expr: &Expr, typ: &Polytype) -> Result<Box<Self>, CompileErr> {
         indented(|| {
-            debug!("{}typecheck {} {}", I(), expr.to_sexp().to_string(), typ.to_sexp().to_string());
+            debug!("{}typecheck {} {}", i(), expr.to_sexp().to_string(), typ.to_sexp().to_string());
             let res = self.typecheck_(expr, typ);
             match &res {
-                Ok(v) => { debug!("{}typecheck {} {} => {}", I(), expr.to_sexp().to_string(), typ.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ v.to_sexp().to_string()); },
-                Err(e) => { debug!("{}typecheck {} {} in {} => {:?}", I(), expr.to_sexp().to_string(), typ.to_sexp().to_string(), self.to_sexp().to_string(), e); }
+                Ok(v) => { debug!("{}typecheck {} {} => {}", i(), expr.to_sexp().to_string(), typ.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ v.to_sexp().to_string()); },
+                Err(e) => { debug!("{}typecheck {} {} in {} => {:?}", i(), expr.to_sexp().to_string(), typ.to_sexp().to_string(), self.to_sexp().to_string(), e); }
             }
             res
         })
@@ -842,11 +842,11 @@ impl TypeTheory for Context {
 
     fn typesynth(&self, expr: &Expr) -> Result<(Polytype, Box<Self>), CompileErr> {
         indented(|| {
-            debug!("{}typesynth {} in {}", I(), expr.to_sexp().to_string(), self.to_sexp().to_string());
+            debug!("{}typesynth {} in {}", i(), expr.to_sexp().to_string(), self.to_sexp().to_string());
             let res = self.typesynth_(expr);
             match &res {
-                Ok((t,v)) => { debug!("{}typesynth {} => ({} {})", I(), expr.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ t.to_sexp().to_string(), v.to_sexp().to_string()); },
-                Err(e) => { debug!("{}typesynth {} in {} => {:?}", I(), expr.to_sexp().to_string(), self.to_sexp().to_string(), e); },
+                Ok((t,v)) => { debug!("{}typesynth {} => ({} {})", i(), expr.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ t.to_sexp().to_string(), v.to_sexp().to_string()); },
+                Err(e) => { debug!("{}typesynth {} in {} => {:?}", i(), expr.to_sexp().to_string(), self.to_sexp().to_string(), e); },
             }
             res
         })
@@ -854,11 +854,11 @@ impl TypeTheory for Context {
 
     fn typeapplysynth(&self, typ: &Polytype, e: &Expr) -> Result<(Polytype, Box<Self>), CompileErr> {
         indented(|| {
-            debug!("{}typeapplysynth {} {} in {}", I(), typ.to_sexp().to_string(), e.to_sexp().to_string(), self.to_sexp().to_string());
+            debug!("{}typeapplysynth {} {} in {}", i(), typ.to_sexp().to_string(), e.to_sexp().to_string(), self.to_sexp().to_string());
             let res = self.typeapplysynth_(typ, e);
             match &res {
-                Ok((t,v)) => { debug!("{}typeapplysynth {} {} => ({} {})", I(), typ.to_sexp().to_string(), e.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ t.to_sexp().to_string(), v.to_sexp().to_string()); },
-                Err(err) => { debug!("{}typeapplysynth {} {} in {} => {:?}", I(), typ.to_sexp().to_string(), e.to_sexp().to_string(), self.to_sexp().to_string(), err); }
+                Ok((t,v)) => { debug!("{}typeapplysynth {} {} => ({} {})", i(), typ.to_sexp().to_string(), e.to_sexp().to_string(), /*self.to_sexp().to_string(),*/ t.to_sexp().to_string(), v.to_sexp().to_string()); },
+                Err(err) => { debug!("{}typeapplysynth {} {} in {} => {:?}", i(), typ.to_sexp().to_string(), e.to_sexp().to_string(), self.to_sexp().to_string(), err); }
             }
             res
         })

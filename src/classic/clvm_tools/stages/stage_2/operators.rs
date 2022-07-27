@@ -48,11 +48,6 @@ impl CompilerOperators {
         }
     }
 
-    fn drop(&self) {
-        self.runner.replace(self.base_runner.clone());
-        self.dialect.replace(self.base_dialect.clone());
-    }
-
     fn set_runner(&self, runner: Rc<dyn TRunProgram>) {
         self.runner.replace(runner);
     }
@@ -257,7 +252,7 @@ impl TRunProgram for CompilerOperators {
         args: NodePtr,
         option: Option<RunProgramOption>,
     ) -> Response {
-        let mut max_cost = option
+        let max_cost = option
             .as_ref()
             .and_then(|o| o.max_cost)
             .unwrap_or_else(|| 0);

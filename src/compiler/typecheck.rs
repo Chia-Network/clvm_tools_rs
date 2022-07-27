@@ -310,7 +310,7 @@ pub fn parse_type_var(atom: Rc<SExp>) -> Result<TypeVar, CompileErr> {
 
 fn parse_type_exists<const A: usize>(rest: Rc<SExp>) -> Result<Type<A>, CompileErr> {
     match rest.borrow() {
-        SExp::Cons(l,a,b) => {
+        SExp::Cons(_,a,_) => {
             let tv = parse_type_var(a.clone())?;
             Ok(Type::TExists(tv))
         },
@@ -319,9 +319,9 @@ fn parse_type_exists<const A: usize>(rest: Rc<SExp>) -> Result<Type<A>, CompileE
 }
 
 fn parse_type_forall<const A: usize>(rest: Rc<SExp>) -> Result<Type<A>, CompileErr> {
-    if let SExp::Cons(l,a,b) = rest.borrow() {
+    if let SExp::Cons(_,a,b) = rest.borrow() {
         let tv = parse_type_var(a.clone())?;
-        if let SExp::Cons(l2,ty,_) = b.borrow() {
+        if let SExp::Cons(_,ty,_) = b.borrow() {
             let parsed_ty = parse_type_sexp(ty.clone())?;
             return Ok(Type::TForall(tv, Rc::new(parsed_ty)));
         }
@@ -337,9 +337,9 @@ fn parse_type_pair<const A: usize, F>(
 where
     F: FnOnce(Rc<Type<A>>, Rc<Type<A>>) -> Type<A>
 {
-    if let SExp::Cons(l,a,rest) = rest.borrow() {
+    if let SExp::Cons(_,a,rest) = rest.borrow() {
         let parsed_a = parse_type_sexp(a.clone())?;
-        if let SExp::Cons(l,b,rest) = rest.borrow() {
+        if let SExp::Cons(_,b,_rest) = rest.borrow() {
             let parsed_b = parse_type_sexp(b.clone())?;
             return Ok(f(Rc::new(parsed_a), Rc::new(parsed_b)));
         }
@@ -352,7 +352,7 @@ fn parse_type_single<const A: usize, F>(f: F, rest: Rc<SExp>) -> Result<Type<A>,
 where
     F: FnOnce(Rc<Type<A>>) -> Type<A>
 {
-    if let SExp::Cons(l,a,b) = rest.borrow() {
+    if let SExp::Cons(_,a,_) = rest.borrow() {
         return Ok(f(Rc::new(parse_type_sexp(a.clone())?)));
     }
 
@@ -421,7 +421,7 @@ pub fn parse_type_sexp<const A: usize>(
             return Ok(Type::TUnit(l.clone()));
         },
 
-        SExp::Cons(l,a,b) => {
+        SExp::Cons(_,a,b) => {
             // Some kind of larger type form:
             //
             // Declarations
@@ -512,7 +512,7 @@ pub fn parse_expr_sexp(expr: Rc<SExp>) -> Result<Expr, CompileErr> {
                 return Ok(Expr::EVar(parse_evar(expr.borrow())?));
             }
         },
-        SExp::Cons(l,a,_) => {
+        SExp::Cons(l,_,_) => {
             // (called-fun arg arg ...) -> EApp
             // (x : T) -> EAnno
             // (lambda arg ...) -> EAbs
@@ -521,7 +521,7 @@ pub fn parse_expr_sexp(expr: Rc<SExp>) -> Result<Expr, CompileErr> {
             // we want Γ |- () <== (forall x (nullable x))
             if let Some(lst) = expr.proper_list() {
                 if lst.len() == 3 {
-                    if let SExp::Atom(loc,name) = &lst[0] {
+                    if let SExp::Atom(_,name) = &lst[0] {
                         if &"lambda".as_bytes().to_vec() == name {
                             return parse_expr_lambda(&lst);
                         }
@@ -539,7 +539,7 @@ pub fn parse_expr_sexp(expr: Rc<SExp>) -> Result<Expr, CompileErr> {
                         }
                     }
 
-                    if let SExp::Atom(loc,name) = &lst[1] {
+                    if let SExp::Atom(_,name) = &lst[1] {
                         if name.len() == 1 && name[0] == b':' {
                             return parse_expr_anno(&lst);
                         }
@@ -547,7 +547,7 @@ pub fn parse_expr_sexp(expr: Rc<SExp>) -> Result<Expr, CompileErr> {
                 }
 
                 if lst.len() == 2 {
-                    if let SExp::Atom(loc,name) = &lst[0] {
+                    if let SExp::Atom(_,name) = &lst[0] {
                         if &"some".as_bytes().to_vec() == name {
                             let inner_exp = parse_expr_sexp(Rc::new(lst[1].clone()))?;
                             return Ok(Expr::EApp(
