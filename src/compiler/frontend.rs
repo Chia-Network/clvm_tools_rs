@@ -802,6 +802,28 @@ pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
                     access_name.append(&mut sdef.name.clone());
                     access_name.push(b'_');
                     access_name.append(&mut m.name.clone());
+
+                    let mut argty = Type::TVar(TypeVar(decode_string(&sdef.name), m.loc.clone()));
+
+                    for a in sdef.vars.iter().rev() {
+                        argty = Type::TApp(
+                            Rc::new(Type::TVar(a.clone())),
+                            Rc::new(argty)
+                        );
+                    }
+
+                    let mut funty = Type::TFun(
+                        Rc::new(Type::TPair(
+                            Rc::new(argty),
+                            Rc::new(Type::TUnit(m.loc.clone()))
+                        )),
+                        Rc::new(m.ty.clone())
+                    );
+
+                    for a in sdef.vars.iter().rev() {
+                        funty = Type::TForall(a.clone(), Rc::new(funty));
+                    }
+
                     HelperForm::Defun(
                         m.loc.clone(),
                         access_name,
@@ -821,13 +843,7 @@ pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
                                 vec![b'S']
                             )))
                         ])),
-                        Some(Type::TFun(
-                            Rc::new(Type::TPair(
-                                Rc::new(Type::TVar(TypeVar(decode_string(&sdef.name), m.loc.clone()))),
-                                Rc::new(Type::TUnit(m.loc.clone()))
-                            )),
-                            Rc::new(m.ty.clone())
-                        ))
+                        Some(funty)
                     )
                 }).collect();
 

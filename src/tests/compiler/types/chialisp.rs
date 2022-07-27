@@ -538,3 +538,12 @@ fn test_struct_construction_with_var() {
         Rc::new(Type::TVar(TypeVar("S".to_string(), ty.loc())))
     ));
 }
+
+#[test]
+fn test_struct_construction_with_var_member() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod () -> (Atom 32) (deftype S a (A : a)) (defun hash_S (S) (sha256 (get_S_A S))) (hash_S (new_S 1)))",
+        true
+    ).expect("should typecheck");
+    assert_eq!(ty, Type::TAtom(ty.loc(), Some(32)));
+}
