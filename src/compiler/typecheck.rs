@@ -367,9 +367,7 @@ fn parse_type_fun<const A: usize>(full: Rc<SExp>, elist: Vec<SExp>) -> Result<Ty
 pub fn parse_type_sexp<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, CompileErr> {
     match &expr.atomize() {
         SExp::Atom(l, a) => {
-            if a.len() == 0 {
-                return Ok(Type::TUnit(l.clone()));
-            } else if a == &"Unit".as_bytes().to_vec() {
+            if a.len() == 0 || a == &"Unit".as_bytes().to_vec() {
                 return Ok(Type::TUnit(l.clone()));
             } else if a == &"Any".as_bytes().to_vec() {
                 return Ok(Type::TAny(l.clone()));
