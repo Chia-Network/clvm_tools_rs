@@ -551,7 +551,7 @@ fn recover_arg_type_inner(
                         (&lst[0].atomize(), &lst[3].atomize()) {
                             if n == &vec![b'@'] && n2 == &vec![b':'] {
                                 // At capture with annotation
-                                todo!()
+                                return Err(CompileErr(l.clone(), "An at-capture with a type alias is currently unsupported.  A struct can be used instead.".to_string()));
                             };
                         };
                 } else if lst.len() == 3 {
@@ -969,6 +969,9 @@ pub fn compile_helperform(
                             HelperForm::Deftype(l.clone(), n.clone(), vec![], None)
                         },
                         ChiaType::Struct(sdef) => {
+                            if let SExp::Atom(l,n) = sdef.proto.borrow() {
+                                return Err(CompileErr(sdef.loc.clone(), format!("A struct with a single element acting as an alias is currently a hazard.  This will be fixed in the future.")));
+                            }
                             HelperForm::Deftype(sdef.loc.clone(), sdef.name.clone(), sdef.vars.clone(), Some(sdef.ty.clone()))
                         }
                     };

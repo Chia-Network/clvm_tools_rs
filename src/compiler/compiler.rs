@@ -299,6 +299,8 @@ impl CompilerOpts for DefaultCompilerOpts {
                             (compile-list ARGS)
                     )
             (defun-inline / (A B) (f (divmod A B)))
+            (defun-inline c* (A B) (c A B))
+            (defun-inline a* (A B) (a A B))
             (defun-inline coerce (X) : (Any -> Any) X)
             (defun-inline explode (X) : (forall a ((Exec a) -> a)) X)
             (defun-inline bless (X) : (forall a ((Pair a Unit) -> (Exec a))) (coerce X))

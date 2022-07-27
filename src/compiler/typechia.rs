@@ -1,5 +1,5 @@
 use std::borrow::Borrow;
-use std::collections::{HashSet};
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use log::debug;
@@ -405,8 +405,6 @@ pub fn standard_type_context() -> Context {
         ContextElim::CVar(Var("f^".to_string(), loc.clone()), polytype(&first)),
         ContextElim::CVar(Var("r^".to_string(), loc.clone()), polytype(&rest)),
         ContextElim::CVar(Var("a^".to_string(), loc.clone()), polytype(&apply)),
-        ContextElim::CVar(Var("a*".to_string(), loc.clone()), polytype(&applyany)),
-        ContextElim::CVar(Var("c*".to_string(), loc.clone()), polytype(&consany)),
         ContextElim::CVar(Var("com^".to_string(), loc.clone()), polytype(&com)),
         ContextElim::CVar(Var("f!".to_string(), loc.clone()), polytype(&fprime)),
         ContextElim::CVar(Var("r!".to_string(), loc.clone()), polytype(&rprime)),
@@ -498,9 +496,28 @@ pub fn context_from_args_and_type(
         (SExp::Cons(l,_,_), Type::TUnit(_)) => {
             Err(CompileErr(l.clone(), format!("function has an argument list but specifies empty arguments")))
         },
-        (SExp::Cons(_,f,r), Type::TAny(_)) => {
+        (SExp::Cons(l,f,r), Type::TAny(_)) => {
             if let Some((_,_)) = is_at_capture(f.clone(), r.clone()) {
-                todo!()
+                if let SExp::Cons(l,sub,_) = r.borrow() {
+                    let sub_context = context_from_args_and_type(
+                        structs,
+                        &context,
+                        sub.clone(),
+                        &argty,
+                        path.clone(),
+                        path_bit.clone()
+                    )?;
+                    context_from_args_and_type(
+                        structs,
+                        &sub_context,
+                        f.clone(),
+                        &argty,
+                        path,
+                        path_bit
+                    )
+                } else {
+                    return Err(CompileErr(l.clone(), "Bad at-tail".to_string()));
+                }
             } else {
                 let cf = context_from_args_and_type(
                     structs,
@@ -634,6 +651,20 @@ fn chialisp_to_expr(
             let v = u8_from_number(i.clone());
             Ok(Expr::ELit(l.clone(), v.len().to_bigint().unwrap()))
         },
+        BodyForm::Quoted(SExp::QuotedString(l,_,v)) => {
+            Ok(Expr::ELit(l.clone(), v.len().to_bigint().unwrap()))
+        },
+        BodyForm::Quoted(SExp::Cons(l,a,b)) => {
+            let a_borrowed: &SExp = a.borrow();
+            let b_borrowed: &SExp = b.borrow();
+            Ok(Expr::EApp(
+                Rc::new(Expr::EApp(
+                    Rc::new(Expr::EVar(Var("c^".to_string(), l.clone()))),
+                    Rc::new(chialisp_to_expr(program, form_args.clone(), Rc::new(BodyForm::Quoted(a_borrowed.clone())))?)
+                )),
+                Rc::new(chialisp_to_expr(program, form_args.clone(), Rc::new(BodyForm::Quoted(b_borrowed.clone())))?)
+            ))
+        },
         BodyForm::Value(SExp::Nil(l)) => { Ok(Expr::EUnit(l.clone())) },
         BodyForm::Value(SExp::Integer(l,i)) => {
             let v = u8_from_number(i.clone());
@@ -641,6 +672,29 @@ fn chialisp_to_expr(
         },
         BodyForm::Value(SExp::Atom(l,n)) => {
             Ok(Expr::EVar(Var(decode_string(n), l.clone())))
+        },
+        BodyForm::Let(l,k,bindings,letbody) => {
+            // Inline via the evaluator
+            let mut allocator = Allocator::new();
+            let opts = Rc::new(DefaultCompilerOpts::new(l.file.borrow()));
+            let runner = Rc::new(DefaultProgramRunner::new());
+            let evaluator = Evaluator::new(
+                opts,
+                runner,
+                program.helpers.clone()
+            ).disable_calls();
+            let beta_reduced = evaluator.shrink_bodyform(
+                &mut allocator,
+                Rc::new(SExp::Nil(l.clone())),
+                &HashMap::new(),
+                body.clone(),
+                false
+            )?;
+            chialisp_to_expr(
+                program,
+                form_args,
+                beta_reduced
+            )
         },
         BodyForm::Call(l,lst) => {
             let mut arg_expr = Expr::EUnit(l.clone());

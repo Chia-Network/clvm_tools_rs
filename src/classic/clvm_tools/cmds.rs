@@ -242,6 +242,8 @@ impl ArgumentValueConv for StageImport {
 }
 
 pub fn run(args: &Vec<String>) {
+    env_logger::init();
+
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, &"run".to_string(), 2);
     io::stdout()

@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use num_bigint::ToBigInt;
+use log::debug;
 
 use clvm_rs::allocator::Allocator;
 
@@ -35,6 +36,7 @@ pub struct Evaluator {
     helpers: Vec<HelperForm>,
     mash_conditions: bool,
     ignore_exn: bool,
+    disable_calls: bool
 }
 
 fn select_helper(bindings: &Vec<HelperForm>, name: &Vec<u8>) -> Option<HelperForm> {
@@ -571,6 +573,19 @@ impl Evaluator {
             helpers,
             mash_conditions: false,
             ignore_exn: false,
+            disable_calls: false
+        }
+    }
+
+    pub fn disable_calls(&self) -> Self {
+        Evaluator {
+            opts: self.opts.clone(),
+            runner: self.runner.clone(),
+            prims: self.prims.clone(),
+            helpers: self.helpers.clone(),
+            mash_conditions: false,
+            ignore_exn: true,
+            disable_calls: true
         }
     }
 
@@ -582,6 +597,7 @@ impl Evaluator {
             helpers: self.helpers.clone(),
             mash_conditions: true,
             ignore_exn: true,
+            disable_calls: false
         }
     }
 
@@ -867,7 +883,7 @@ impl Evaluator {
         l: Srcloc,
         call_loc: Srcloc,
         call_name: &Vec<u8>,
-        _head_expr: Rc<BodyForm>,
+        head_expr: Rc<BodyForm>,
         parts: &Vec<Rc<BodyForm>>,
         body: Rc<BodyForm>,
         prog_args: Rc<SExp>,
@@ -890,6 +906,21 @@ impl Evaluator {
             Some(HelperForm::Defun(_, _, inline, args, fun_body, _)) => {
                 if !inline && only_inline {
                     return Ok(body.clone());
+                }
+
+                if self.disable_calls {
+                    let mut call_vec = vec![head_expr];
+                    for a in arguments_to_convert.iter() {
+                        call_vec.push(self.shrink_bodyform_visited(
+                            allocator,
+                            visited,
+                            prog_args.clone(),
+                            env,
+                            a.clone(),
+                            only_inline
+                        )?);
+                    }
+                    return Ok(Rc::new(BodyForm::Call(l.clone(), call_vec)));
                 }
 
                 let argument_captures_untranslated =
@@ -1046,6 +1077,8 @@ impl Evaluator {
                     return Err(CompileErr(l.clone(), format!("Impossible empty call list")));
                 }
 
+                // Allow us to punt all calls to functions, which preserved type
+                // signatures for type checking.
                 let head_expr = parts[0].clone();
                 let arguments_to_convert: Vec<Rc<BodyForm>> =
                     parts.iter().skip(1).map(|x| x.clone()).collect();

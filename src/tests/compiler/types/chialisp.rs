@@ -530,7 +530,7 @@ fn test_wrong_struct_construction() {
 #[test]
 fn test_struct_construction_with_var() {
     let ty = test_chialisp_program_typecheck(
-        "(mod () -> (Atom S) (deftype S a (A : a)) (new_S 1))",
+        "(mod () -> (Atom S) (deftype S a ((A : a))) (new_S 1))",
         true
     ).expect("should typecheck");
     assert_eq!(ty, Type::TApp(
@@ -542,7 +542,7 @@ fn test_struct_construction_with_var() {
 #[test]
 fn test_struct_construction_with_var_member() {
     let ty = test_chialisp_program_typecheck(
-        "(mod () -> (Atom 32) (deftype S a (A : a)) (defun hash_S (S) (sha256 (get_S_A S))) (hash_S (new_S 1)))",
+        "(mod () -> (Atom 32) (deftype S a ((A : a))) (defun hash_S (S) (sha256 (get_S_A S))) (hash_S (new_S 1)))",
         true
     ).expect("should typecheck");
     assert_eq!(ty, Type::TAtom(ty.loc(), Some(32)));
@@ -551,7 +551,7 @@ fn test_struct_construction_with_var_member() {
 #[test]
 fn test_coerce() {
     let ty = test_chialisp_program_typecheck(
-        "(mod () -> (Atom 32) (deftype S a (A : a)) (defun hash_S (S) (+ (get_S_A S))) (coerce (hash_S (new_S 1))))",
+        "(mod () -> (Atom 32) (deftype S a ((A : a))) (defun hash_S (S) (+ (get_S_A S))) (coerce (hash_S (new_S 1))))",
         true
     ).expect("should typecheck");
     assert_eq!(ty, Type::TAtom(ty.loc(), Some(32)));
@@ -560,8 +560,31 @@ fn test_coerce() {
 #[test]
 fn test_bless() {
     let ty = test_chialisp_program_typecheck(
-        "(mod () -> (Exec (Atom 32)) (deftype S a (A : a)) (defun hash_S (S) (sha256 (get_S_A S))) (bless (hash_S (new_S 1))))",
+        "(mod () -> (Exec (Atom 32)) (deftype S a ((A : a))) (defun hash_S (S) (sha256 (get_S_A S))) (bless (hash_S (new_S 1))))",
         true
     ).expect("should typecheck");
     assert_eq!(ty, Type::TExec(Rc::new(Type::TAtom(ty.loc(), Some(32)))));
+}
+
+#[test]
+fn test_simple_type() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod () -> Hash (deftype Hash ((A : (Atom 32)))) (new_Hash (sha256 1)))",
+        true
+    ).expect("should typecheck");
+    assert_eq!(ty, Type::TVar(TypeVar("Hash".to_string(), ty.loc())));
+}
+
+#[test]
+fn test_let_type_1() {
+    let ty = test_chialisp_program_typecheck(
+        indoc!{"
+(mod () -> Hash
+  (include *standard-cl-21*)
+  (deftype Hash ((A : (Atom 32))))
+  (let ((h (sha256 1)))
+    (new_Hash h)
+    )
+  )"}, true).expect("should typecheck");
+    assert_eq!(ty, Type::TVar(TypeVar("Hash".to_string(), ty.loc())));
 }

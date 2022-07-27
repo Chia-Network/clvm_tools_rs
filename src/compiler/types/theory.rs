@@ -7,6 +7,8 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use log::debug;
 
+use num_traits::ToPrimitive;
+
 use crate::compiler::comptypes::CompileErr;
 use crate::compiler::srcloc::HasLoc;
 use crate::compiler::types::ast::{
@@ -456,7 +458,7 @@ impl Context {
                     match self.solve(beta, &Type::TExists(alpha.clone()))? {
                         Some(res) => { return Ok(Box::new(res)); },
                         None => {
-                            return Err(CompileErr(alpha.loc(), format!("no solution in instantiate_r: {} {} with context {:?}", a.to_sexp().to_string(), alpha.to_sexp().to_string(), self)));
+                            return Err(CompileErr(alpha.loc(), format!("no solution in instantiate_r: {} {} with context {}", a.to_sexp().to_string(), alpha.to_sexp().to_string(), self.to_sexp().to_string())));
                         }
                     }
                 } else {
@@ -574,7 +576,7 @@ impl Context {
                 return self.find_var_type(x).map(|ty| {
                     Ok((ty, Box::new(self.clone())))
                 }).unwrap_or_else(|| {
-                    Err(CompileErr(expr.loc(), format!("typesynth: not in scope {:?} in context {:?}", expr, self)))
+                    Err(CompileErr(expr.loc(), format!("typesynth: not in scope {} in context {}", expr.to_sexp().to_string(), self.to_sexp().to_string())))
                 });
             },
 
@@ -587,8 +589,11 @@ impl Context {
             // 1I=>
             Expr::EUnit(l) => { return Ok((Type::TUnit(l.clone()), Box::new(self.clone()))); },
 
-            Expr::ELit(l,_) => { return Ok((Type::TAtom(l.clone(),None), Box::new(self.clone()))); },
-
+            Expr::ELit(l,n) => {
+                let atom_size =
+                    if n.to_usize().unwrap() == 32 { Some(32) } else { None };
+                return Ok((Type::TAtom(l.clone(),atom_size), Box::new(self.clone())));
+            },
             // ->I=> Original rule
             Expr::EAbs(x,e) => {
                 if ORIGINAL {
