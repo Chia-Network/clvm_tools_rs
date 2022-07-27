@@ -538,7 +538,7 @@ fn test_let_type_1() {
   )"},
         true,
     )
-        .expect("should typecheck");
+    .expect("should typecheck");
     assert_eq!(ty, Type::TVar(TypeVar("Hash".to_string(), ty.loc())));
 }
 
@@ -552,6 +552,6 @@ fn test_head_of_list() {
   )"},
         true,
     )
-        .expect("should typecheck");
+    .expect("should typecheck");
     assert_eq!(ty, Type::TAtom(ty.loc(), Some(32)));
 }
