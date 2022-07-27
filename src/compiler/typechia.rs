@@ -539,7 +539,26 @@ pub fn context_from_args_and_type(
         },
         (SExp::Cons(l,f,r), Type::TPair(a,b)) => {
             if let Some((_,_)) = is_at_capture(f.clone(), r.clone()) {
-                todo!()
+                if let SExp::Cons(l,sub,_) = r.borrow() {
+                    let sub_context = context_from_args_and_type(
+                        structs,
+                        &context,
+                        sub.clone(),
+                        &argty,
+                        path.clone(),
+                        path_bit.clone()
+                    )?;
+                    context_from_args_and_type(
+                        structs,
+                        &sub_context,
+                        f.clone(),
+                        &argty,
+                        path,
+                        path_bit
+                    )
+                } else {
+                    return Err(CompileErr(l.clone(), "Bad at-tail".to_string()));
+                }
             } else {
                 let cf = context_from_args_and_type(
                     structs,
@@ -559,7 +578,7 @@ pub fn context_from_args_and_type(
                 )
             }
         },
-        _ => todo!("unhandled case {} vs {}", args.to_string(), argty.to_sexp().to_string())
+        _ => Err(CompileErr(args.loc(), format!("unhandled case {} vs {}", args.to_string(), argty.to_sexp().to_string())))
     }
 }
 
@@ -745,7 +764,7 @@ fn chialisp_to_expr(
                 Rc::new(arg_expr)
             ))
         },
-        _ => todo!("not sure how to handle {:?} yet", body)
+        _ => Err(CompileErr(body.loc(), format!("not sure how to handle {:?} yet", body)))
     }
 }
 

@@ -420,7 +420,7 @@ impl Context {
                         ])));
                     },
                     _ => {
-                        todo!("no monotype: {}", a1.to_sexp().to_string())
+                        return Err(CompileErr(a.loc(), format!("no monotype: {}", a1.to_sexp().to_string())));
                     }
                 }
             },
@@ -434,7 +434,7 @@ impl Context {
                         ])));
                     },
                     _ => {
-                        todo!("no monotype: {}", a.to_sexp().to_string())
+                        return Err(CompileErr(a.loc(), format!("no monotype: {}", a1.to_sexp().to_string())));
                     }
                 }
             },
@@ -448,7 +448,7 @@ impl Context {
                         ])));
                     },
                     _ => {
-                        todo!("no monotype: {}", a.to_sexp().to_string())
+                        return Err(CompileErr(a.loc(), format!("no monotype: {}", a1.to_sexp().to_string())));
                     }
                 }
             },
