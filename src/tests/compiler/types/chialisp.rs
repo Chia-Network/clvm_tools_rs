@@ -538,6 +538,20 @@ fn test_let_type_1() {
   )"},
         true,
     )
-    .expect("should typecheck");
+        .expect("should typecheck");
     assert_eq!(ty, Type::TVar(TypeVar("Hash".to_string(), ty.loc())));
+}
+
+#[test]
+fn test_head_of_list() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod ((X : (Atom List))) -> (Atom 32)
+  (defun F ((P : (Atom 32)) (X : (Atom List))) -> (Atom 32) (if X (F (sha256 P (f X)) (r X)) P))
+  (F (sha256 1) X)
+  )"},
+        true,
+    )
+        .expect("should typecheck");
+    assert_eq!(ty, Type::TAtom(ty.loc(), Some(32)));
 }

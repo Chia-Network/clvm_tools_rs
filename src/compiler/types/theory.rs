@@ -214,6 +214,14 @@ impl Context {
                 }
             }
 
+            (Type::TApp(t1, t2), a) => {
+                debug!("case reflected TApp");
+                if let Some((t, ctx)) = self.newtype::<TYPE_POLY>(t1.borrow(), t2.borrow()) {
+                    debug!("new context {}", ctx.to_sexp().to_string());
+                    return ctx.subtype(&t, a);
+                }
+            }
+
             // <:instantiateL
             (Type::TExists(alpha), a) => {
                 debug!("TExists instantiateL");
