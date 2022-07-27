@@ -547,3 +547,21 @@ fn test_struct_construction_with_var_member() {
     ).expect("should typecheck");
     assert_eq!(ty, Type::TAtom(ty.loc(), Some(32)));
 }
+
+#[test]
+fn test_coerce() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod () -> (Atom 32) (deftype S a (A : a)) (defun hash_S (S) (+ (get_S_A S))) (coerce (hash_S (new_S 1))))",
+        true
+    ).expect("should typecheck");
+    assert_eq!(ty, Type::TAtom(ty.loc(), Some(32)));
+}
+
+#[test]
+fn test_bless() {
+    let ty = test_chialisp_program_typecheck(
+        "(mod () -> (Exec (Atom 32)) (deftype S a (A : a)) (defun hash_S (S) (sha256 (get_S_A S))) (bless (hash_S (new_S 1))))",
+        true
+    ).expect("should typecheck");
+    assert_eq!(ty, Type::TExec(Rc::new(Type::TAtom(ty.loc(), Some(32)))));
+}

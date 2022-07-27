@@ -299,6 +299,11 @@ impl CompilerOpts for DefaultCompilerOpts {
                             (compile-list ARGS)
                     )
             (defun-inline / (A B) (f (divmod A B)))
+            (defun-inline coerce (X) : (Any -> Any) X)
+            (defun-inline explode (X) : (forall a ((Exec a) -> a)) X)
+            (defun-inline bless (X) : (forall a ((Pair a Unit) -> (Exec a))) (coerce X))
+            (defun-inline lift (X V) : (forall a (forall b ((Pair (Exec a) (Pair b Unit)) -> (Exec (Pair a b))))) (coerce X))
+            (defun-inline unlift (X) : (forall a (forall b ((Pair (Exec (Pair a b)) Unit) -> (Exec b)))) (coerce X))
             )
             "};
             return Ok((filename, macros.to_string()));
