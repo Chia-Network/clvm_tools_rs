@@ -1,2 +1,2 @@
-pub mod types;
 mod chialisp;
+pub mod types;

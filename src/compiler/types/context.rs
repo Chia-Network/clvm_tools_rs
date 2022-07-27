@@ -1,26 +1,17 @@
 // Based on MIT licensed code from
 // https://github.com/kwanghoon/bidi
 
+use log::Level::Debug;
+use log::{debug, log_enabled};
 use std::borrow::Borrow;
 use std::rc::Rc;
-use log::{debug, log_enabled};
-use log::Level::Debug;
 
-use crate::compiler::srcloc::{Srcloc, HasLoc};
 use crate::compiler::comptypes::CompileErr;
+use crate::compiler::srcloc::{HasLoc, Srcloc};
 use crate::compiler::typecheck::TheoryToSExp;
 use crate::compiler::types::ast::{
+    Context, ContextElim, Expr, ExtractContext, GContext, Monotype, Polytype, Type, TypeVar, Var,
     CONTEXT_INCOMPLETE,
-    Context,
-    ContextElim,
-    Expr,
-    ExtractContext,
-    GContext,
-    Monotype,
-    Polytype,
-    TypeVar,
-    Type,
-    Var
 };
 use crate::compiler::types::astfuns::{monotype, polytype, type_subst, unrecurse};
 use crate::compiler::types::namegen::fresh_tvar;
@@ -34,11 +25,11 @@ pub fn subst(eprime: &Expr, x: Var, expr: &Expr) -> Expr {
             } else {
                 return Expr::EVar(xprime.clone());
             }
-        },
+        }
 
         Expr::EUnit(l) => Expr::EUnit(l.clone()),
 
-        Expr::ELit(l,n) => Expr::ELit(l.clone(),n.clone()),
+        Expr::ELit(l, n) => Expr::ELit(l.clone(), n.clone()),
 
         Expr::EAbs(xprime, e) => {
             if *xprime == x {
@@ -46,19 +37,22 @@ pub fn subst(eprime: &Expr, x: Var, expr: &Expr) -> Expr {
             } else {
                 return Expr::EAbs(xprime.clone(), Rc::new(subst(eprime, x.clone(), e)));
             }
-        },
+        }
 
-        Expr::EApp(e1, e2) => Expr::EApp(Rc::new(subst(eprime, x.clone(), e1)), Rc::new(subst(eprime, x.clone(), e2))),
+        Expr::EApp(e1, e2) => Expr::EApp(
+            Rc::new(subst(eprime, x.clone(), e1)),
+            Rc::new(subst(eprime, x.clone(), e2)),
+        ),
 
-        Expr::EAnno(e, t) => Expr::EAnno(Rc::new(subst(eprime, x.clone(), e)), t.clone())
+        Expr::EAnno(e, t) => Expr::EAnno(Rc::new(subst(eprime, x.clone(), e)), t.clone()),
     }
 }
 
 fn existentials_aux<const K: usize>(ce: &ContextElim<K>) -> Option<&TypeVar> {
     match ce {
         ContextElim::CExists(alpha) => Some(alpha),
-        ContextElim::CExistsSolved(alpha,_) => Some(alpha),
-        _ => None
+        ContextElim::CExistsSolved(alpha, _) => Some(alpha),
+        _ => None,
     }
 }
 
@@ -99,7 +93,7 @@ impl Context {
     pub fn vars(&self) -> Vec<Var> {
         let mut res = Vec::new();
         for gamma_elem in self.0.iter() {
-            if let ContextElim::CVar(x,_) = gamma_elem {
+            if let ContextElim::CVar(x, _) = gamma_elem {
                 res.push(x.clone());
             }
         }
@@ -140,12 +134,14 @@ impl Context {
 
         match c {
             ContextElim::CForall(alpha) => !gamma.foralls().elem(&alpha),
-            ContextElim::CVar(x,a) => !gamma.vars().elem(&x) && gamma.typewf(&a),
+            ContextElim::CVar(x, a) => !gamma.vars().elem(&x) && gamma.typewf(&a),
             ContextElim::CExists(alpha) => !gamma.existentials().elem(&alpha),
-            ContextElim::CExistsSolved(alpha,tau) => !gamma.existentials().elem(&alpha) &&
-                gamma.typewf(&tau),
-            ContextElim::CMarker(alpha) => !gamma.markers().elem(&alpha) &&
-                !gamma.existentials().elem(&alpha)
+            ContextElim::CExistsSolved(alpha, tau) => {
+                !gamma.existentials().elem(&alpha) && gamma.typewf(&tau)
+            }
+            ContextElim::CMarker(alpha) => {
+                !gamma.markers().elem(&alpha) && !gamma.existentials().elem(&alpha)
+            }
         }
     }
 
@@ -157,41 +153,33 @@ impl Context {
     pub fn newtype<const A: usize>(
         &self,
         t1: &Polytype,
-        t2: &Polytype
+        t2: &Polytype,
     ) -> Option<(Type<A>, Context)> {
         match t2.borrow() {
             Type::TVar(v) => {
                 if let Some(solved) = self.find_solved(v) {
                     return match solved {
-                        Type::TAbs(v,t) => {
+                        Type::TAbs(v, t) => {
                             let tpoly = polytype(t.borrow());
                             let new_tvar = fresh_tvar(v.loc());
                             let finished_type_rec = type_subst(t1.borrow(), &v, tpoly.borrow());
-                            return unrecurse(
-                                &new_tvar,
-                                &t1,
-                                &t2,
-                                &finished_type_rec
-                            ).and_then(|finished_type| {
-                                monotype(&finished_type)
-                            }).map(|tmono| {
-                                debug!("tabls unrecurse");
-                                let new_ctx = self.appends_wf(vec![
-                                    ContextElim::CForall(new_tvar.clone()),
-                                    ContextElim::CExistsSolved(
-                                        new_tvar.clone(),
-                                        tmono
-                                    )
-                                ]);
+                            return unrecurse(&new_tvar, &t1, &t2, &finished_type_rec)
+                                .and_then(|finished_type| monotype(&finished_type))
+                                .map(|tmono| {
+                                    debug!("tabls unrecurse");
+                                    let new_ctx = self.appends_wf(vec![
+                                        ContextElim::CForall(new_tvar.clone()),
+                                        ContextElim::CExistsSolved(new_tvar.clone(), tmono),
+                                    ]);
 
-                                (Type::TExists(new_tvar), new_ctx)
-                            });
-                        },
-                        _ => { None }
+                                    (Type::TExists(new_tvar), new_ctx)
+                                });
+                        }
+                        _ => None,
                     };
                 }
-            },
-            _ => { }
+            }
+            _ => {}
         }
 
         None
@@ -202,25 +190,22 @@ impl Context {
             Type::TVar(alpha) => self.foralls().elem(&alpha),
             Type::TUnit(_) => true,
             Type::TAny(_) => true,
-            Type::TAtom(_,_) => true,
+            Type::TAtom(_, _) => true,
             Type::TNullable(t) => self.typewf(t.borrow()),
             Type::TExec(t) => self.typewf(t.borrow()),
-            Type::TFun(a,b) => self.typewf(a.borrow()) && self.typewf(b.borrow()),
-            Type::TPair(a,b) => self.typewf(a.borrow()) && self.typewf(b.borrow()),
-            Type::TForall(alpha,a) => self.snoc_wf(ContextElim::CForall(alpha.clone())).typewf(a),
+            Type::TFun(a, b) => self.typewf(a.borrow()) && self.typewf(b.borrow()),
+            Type::TPair(a, b) => self.typewf(a.borrow()) && self.typewf(b.borrow()),
+            Type::TForall(alpha, a) => self.snoc_wf(ContextElim::CForall(alpha.clone())).typewf(a),
             Type::TExists(alpha) => self.existentials().elem(alpha),
-            Type::TAbs(_,t) => self.typewf(t.borrow()),
-            Type::TApp(t1,t2) => {
+            Type::TAbs(_, t) => self.typewf(t.borrow()),
+            Type::TApp(t1, t2) => {
                 if !self.typewf(t1.borrow()) {
                     return false;
                 }
 
                 let t1poly = polytype(t1.borrow());
                 let t2poly = polytype(t2.borrow());
-                if let Some((nt, ctx)) = self.newtype::<A>(
-                    &t1poly,
-                    &t2poly
-                ) {
+                if let Some((nt, ctx)) = self.newtype::<A>(&t1poly, &t2poly) {
                     ctx.typewf(&nt)
                 } else {
                     false
@@ -234,8 +219,10 @@ impl Context {
             return Ok(());
         }
 
-
-        Err(CompileErr(loc, format!("Malformed context: {}", self.to_sexp().to_string())))
+        Err(CompileErr(
+            loc,
+            format!("Malformed context: {}", self.to_sexp().to_string()),
+        ))
     }
 
     pub fn checkwftype(&self, a: &Polytype) -> Result<(), CompileErr> {
@@ -243,12 +230,19 @@ impl Context {
             return self.checkwf(a.loc());
         }
 
-        Err(CompileErr(a.loc(), format!("Malformed type: {} in {}", a.to_sexp().to_string(), self.to_sexp().to_string())))
+        Err(CompileErr(
+            a.loc(),
+            format!(
+                "Malformed type: {} in {}",
+                a.to_sexp().to_string(),
+                self.to_sexp().to_string()
+            ),
+        ))
     }
 
     pub fn find_solved(&self, v: &TypeVar) -> Option<Monotype> {
         for t in self.0.iter() {
-            if let ContextElim::CExistsSolved(vprime,t) = t {
+            if let ContextElim::CExistsSolved(vprime, t) = t {
                 if v == vprime {
                     return Some(t.clone());
                 }
@@ -260,7 +254,7 @@ impl Context {
 
     pub fn find_var_type(&self, v: &Var) -> Option<Polytype> {
         for t in self.0.iter() {
-            if let ContextElim::CVar(vprime,t) = t {
+            if let ContextElim::CVar(vprime, t) = t {
                 if v == vprime {
                     return Some(t.clone());
                 }
@@ -286,20 +280,19 @@ impl Context {
         match typ {
             Type::TUnit(_) => typ.clone(),
             Type::TAny(_) => typ.clone(),
-            Type::TAtom(_,_) => typ.clone(),
+            Type::TAtom(_, _) => typ.clone(),
             Type::TVar(_) => typ.clone(),
-            Type::TForall(v,t) => Type::TForall(v.clone(),t.clone()),
-            Type::TExists(v) => {
-                self.find_solved(v).map(|v| {
-                    self.apply(&polytype(&v))
-                }).unwrap_or_else(|| Type::TExists(v.clone()))
-            },
+            Type::TForall(v, t) => Type::TForall(v.clone(), t.clone()),
+            Type::TExists(v) => self
+                .find_solved(v)
+                .map(|v| self.apply(&polytype(&v)))
+                .unwrap_or_else(|| Type::TExists(v.clone())),
             Type::TNullable(t) => Type::TNullable(Rc::new(self.apply(t))),
             Type::TExec(t) => Type::TExec(Rc::new(self.apply(t))),
-            Type::TFun(t1,t2) => Type::TFun(Rc::new(self.apply(t1)), Rc::new(self.apply(t2))),
-            Type::TPair(t1,t2) => Type::TPair(Rc::new(self.apply(t1)), Rc::new(self.apply(t2))),
-            Type::TAbs(v,t) => Type::TAbs(v.clone(), Rc::new(self.apply(t))),
-            Type::TApp(t1,t2) => Type::TApp(Rc::new(self.apply(t1)), Rc::new(self.apply(t2)))
+            Type::TFun(t1, t2) => Type::TFun(Rc::new(self.apply(t1)), Rc::new(self.apply(t2))),
+            Type::TPair(t1, t2) => Type::TPair(Rc::new(self.apply(t1)), Rc::new(self.apply(t2))),
+            Type::TAbs(v, t) => Type::TAbs(v.clone(), Rc::new(self.apply(t))),
+            Type::TApp(t1, t2) => Type::TApp(Rc::new(self.apply(t1)), Rc::new(self.apply(t2))),
         }
     }
 
@@ -316,7 +309,10 @@ impl Context {
 }
 
 impl GContext<CONTEXT_INCOMPLETE> {
-    pub fn appends_wf(&self, v: Vec<ContextElim<CONTEXT_INCOMPLETE>>) -> GContext<CONTEXT_INCOMPLETE> {
+    pub fn appends_wf(
+        &self,
+        v: Vec<ContextElim<CONTEXT_INCOMPLETE>>,
+    ) -> GContext<CONTEXT_INCOMPLETE> {
         let gamma = self.appends(v);
         if log_enabled!(Debug) {
             if !gamma.wf() {
@@ -346,25 +342,37 @@ impl GContext<CONTEXT_INCOMPLETE> {
         ctx
     }
 
-    pub fn drop_marker<E,X,F>(
+    pub fn drop_marker<E, X, F>(
         &self,
         m: ContextElim<CONTEXT_INCOMPLETE>,
-        f: F
+        f: F,
     ) -> Result<GContext<CONTEXT_INCOMPLETE>, E>
     where
         F: FnOnce(GContext<CONTEXT_INCOMPLETE>) -> Result<X, E>,
-        X: ExtractContext<CONTEXT_INCOMPLETE>
+        X: ExtractContext<CONTEXT_INCOMPLETE>,
     {
         let marked = self.snoc_wf(m.clone());
         let res: GContext<CONTEXT_INCOMPLETE> = f(marked).map(|x| x.extract())?;
         debug!("drop_marker, got back {}", res.to_sexp().to_string());
-        Ok(res.0.iter().position(|e| *e == m).map(|idx| {
-            let out = GContext(res.0[idx+1..].iter().map(|x| x.clone()).collect());
-            debug!("drop_marker, index {} D {} K {}", idx, GContext(res.0[..idx].iter().map(|x| x.clone()).collect()).to_sexp().to_string(), out.to_sexp().to_string());
-            out
-        }).unwrap_or_else(|| {
-            debug!("drop_marker; not found: {}", m.to_sexp().to_string());
-            GContext(Vec::new())
-        }))
+        Ok(res
+            .0
+            .iter()
+            .position(|e| *e == m)
+            .map(|idx| {
+                let out = GContext(res.0[idx + 1..].iter().map(|x| x.clone()).collect());
+                debug!(
+                    "drop_marker, index {} D {} K {}",
+                    idx,
+                    GContext(res.0[..idx].iter().map(|x| x.clone()).collect())
+                        .to_sexp()
+                        .to_string(),
+                    out.to_sexp().to_string()
+                );
+                out
+            })
+            .unwrap_or_else(|| {
+                debug!("drop_marker; not found: {}", m.to_sexp().to_string());
+                GContext(Vec::new())
+            }))
     }
 }

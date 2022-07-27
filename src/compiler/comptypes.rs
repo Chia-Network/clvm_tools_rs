@@ -86,7 +86,7 @@ pub struct StructMember {
     pub loc: Srcloc,
     pub name: Vec<u8>,
     pub path: Number,
-    pub ty: Polytype
+    pub ty: Polytype,
 }
 
 #[derive(Clone, Debug)]
@@ -96,19 +96,19 @@ pub struct StructDef {
     pub vars: Vec<TypeVar>,
     pub members: Vec<StructMember>,
     pub proto: Rc<SExp>,
-    pub ty: Polytype
+    pub ty: Polytype,
 }
 
 #[derive(Clone, Debug)]
 pub enum ChiaType {
     Abstract(Srcloc, Vec<u8>),
-    Struct(StructDef)
+    Struct(StructDef),
 }
 
 #[derive(Clone, Debug)]
 pub enum TypeAnnoKind {
     Colon(Polytype),
-    Arrow(Polytype)
+    Arrow(Polytype),
 }
 
 #[derive(Clone, Debug)]
@@ -116,7 +116,14 @@ pub enum HelperForm {
     Deftype(Srcloc, Vec<u8>, Vec<TypeVar>, Option<Polytype>),
     Defconstant(Srcloc, Vec<u8>, Rc<BodyForm>, Option<Polytype>),
     Defmacro(Srcloc, Vec<u8>, Rc<SExp>, Rc<CompileForm>),
-    Defun(Srcloc, Vec<u8>, bool, Rc<SExp>, Rc<BodyForm>, Option<Polytype>),
+    Defun(
+        Srcloc,
+        Vec<u8>,
+        bool,
+        Rc<SExp>,
+        Rc<BodyForm>,
+        Option<Polytype>,
+    ),
 }
 
 #[derive(Clone, Debug)]
@@ -125,7 +132,7 @@ pub struct CompileForm {
     pub args: Rc<SExp>,
     pub helpers: Vec<HelperForm>,
     pub exp: Rc<BodyForm>,
-    pub ty: Option<Polytype>
+    pub ty: Option<Polytype>,
 }
 
 #[derive(Clone, Debug)]
@@ -261,8 +268,8 @@ impl HelperForm {
                 let mut result_vec = Vec::new();
 
                 result_vec.push(Rc::new(SExp::atom_from_string(
-                        loc.clone(),
-                    &"deftype".to_string()
+                    loc.clone(),
+                    &"deftype".to_string(),
                 )));
                 result_vec.push(Rc::new(SExp::Atom(loc.clone(), name.clone())));
 
@@ -274,11 +281,8 @@ impl HelperForm {
                     result_vec.push(Rc::new(ty.to_sexp()));
                 }
 
-                Rc::new(list_to_cons(
-                    loc.clone(),
-                    &result_vec
-                ))
-            },
+                Rc::new(list_to_cons(loc.clone(), &result_vec))
+            }
             HelperForm::Defconstant(loc, name, body, _ty) => Rc::new(list_to_cons(
                 loc.clone(),
                 &vec![

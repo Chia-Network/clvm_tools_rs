@@ -3,7 +3,9 @@ use crate::compiler::srcloc::Srcloc;
 use crate::compiler::types::ast::{TypeVar, Var};
 
 pub fn fresh_name(seq: &Vec<u8>) -> String {
-    std::str::from_utf8(&gensym(seq.to_vec())).expect("failed to make fresh var").to_string()
+    std::str::from_utf8(&gensym(seq.to_vec()))
+        .expect("failed to make fresh var")
+        .to_string()
 }
 
 pub fn fresh_var(l: Srcloc) -> Var {

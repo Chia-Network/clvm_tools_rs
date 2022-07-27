@@ -853,7 +853,7 @@ fn generate_let_defun(
         true,
         Rc::new(inner_function_args),
         body,
-        None
+        None,
     )
 }
 
@@ -994,8 +994,14 @@ fn process_helper_let_bindings(
                 let hoisted_helpers = helper_result.0;
                 let hoisted_body = helper_result.1.clone();
 
-                result[i] =
-                    HelperForm::Defun(l.clone(), name.clone(), inline, args.clone(), hoisted_body, ty.clone());
+                result[i] = HelperForm::Defun(
+                    l.clone(),
+                    name.clone(),
+                    inline,
+                    args.clone(),
+                    hoisted_body,
+                    ty.clone(),
+                );
 
                 i += 1;
 

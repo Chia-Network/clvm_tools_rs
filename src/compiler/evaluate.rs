@@ -2,8 +2,8 @@ use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use num_bigint::ToBigInt;
 use clvm_rs::allocator::Allocator;
+use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
@@ -34,7 +34,7 @@ pub struct Evaluator {
     helpers: Vec<HelperForm>,
     mash_conditions: bool,
     ignore_exn: bool,
-    disable_calls: bool
+    disable_calls: bool,
 }
 
 fn select_helper(bindings: &Vec<HelperForm>, name: &Vec<u8>) -> Option<HelperForm> {
@@ -571,7 +571,7 @@ impl Evaluator {
             helpers,
             mash_conditions: false,
             ignore_exn: false,
-            disable_calls: false
+            disable_calls: false,
         }
     }
 
@@ -583,7 +583,7 @@ impl Evaluator {
             helpers: self.helpers.clone(),
             mash_conditions: false,
             ignore_exn: true,
-            disable_calls: true
+            disable_calls: true,
         }
     }
 
@@ -595,7 +595,7 @@ impl Evaluator {
             helpers: self.helpers.clone(),
             mash_conditions: true,
             ignore_exn: true,
-            disable_calls: false
+            disable_calls: false,
         }
     }
 
@@ -915,7 +915,7 @@ impl Evaluator {
                             prog_args.clone(),
                             env,
                             a.clone(),
-                            only_inline
+                            only_inline,
                         )?);
                     }
                     return Ok(Rc::new(BodyForm::Call(l.clone(), call_vec)));

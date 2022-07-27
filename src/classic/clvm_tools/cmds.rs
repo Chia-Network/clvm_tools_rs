@@ -54,8 +54,8 @@ use crate::compiler::prims;
 use crate::compiler::sexp;
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::types::theory::TypeTheory;
 use crate::compiler::typechia::standard_type_context;
+use crate::compiler::types::theory::TypeTheory;
 use crate::compiler::untype::untype_code;
 use crate::util::collapse;
 
@@ -765,7 +765,7 @@ pub fn launch_tool(
     let time_parse_input;
     let typecheck = match parsedArgs.get("typecheck") {
         Some(_) => true,
-        _ => false
+        _ => false,
     };
 
     let mut input_program = "()".to_string();
@@ -830,11 +830,8 @@ pub fn launch_tool(
                 .clone()
                 .unwrap_or_else(|| "*command*".to_string());
 
-            let untyped_sexp_err = untype_code(
-                &mut allocator,
-                Srcloc::start(&use_filename),
-                assembled_sexp
-            );
+            let untyped_sexp_err =
+                untype_code(&mut allocator, Srcloc::start(&use_filename), assembled_sexp);
             if let Err(e) = untyped_sexp_err {
                 stdout.write_string(format!("{}: failed to strip type annotations", e.1));
                 return;
@@ -929,9 +926,9 @@ pub fn launch_tool(
 
         if typecheck {
             let loc = Srcloc::start(&use_filename);
-            if let Err(e) = parse_sexp(loc.clone(), &input_program).
-                map_err(|e| CompileErr(e.0.clone(), e.1.clone())).
-                and_then(|pre_forms| {
+            if let Err(e) = parse_sexp(loc.clone(), &input_program)
+                .map_err(|e| CompileErr(e.0.clone(), e.1.clone()))
+                .and_then(|pre_forms| {
                     let context = standard_type_context();
                     let compileform = frontend(opts.clone(), pre_forms)?;
                     let target_type = context.typecheck_chialisp_program(&compileform)?;
