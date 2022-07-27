@@ -948,7 +948,7 @@ impl Evaluator {
                     fun_body,
                     only_inline,
                 )
-            },
+            }
             _ => self
                 .invoke_primitive(
                     allocator,

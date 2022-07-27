@@ -84,7 +84,15 @@ impl Repl {
         let loc = Srcloc::start(&opts.filename());
         let mut toplevel_forms = HashSet::new();
 
-        for w in vec!["defun", "defun-inline", "defconstant", "defmacro", "deftype"].iter() {
+        for w in vec![
+            "defun",
+            "defun-inline",
+            "defconstant",
+            "defmacro",
+            "deftype",
+        ]
+        .iter()
+        {
             toplevel_forms.insert(w.to_string());
         }
 
@@ -189,7 +197,9 @@ impl Repl {
                     .map(|fa| self.toplevel_forms.contains(&fa.to_string()))
                     .unwrap_or_else(|_| false);
 
-                if let Some(hresult) = compile_helperform(self.opts.clone(), parsed_program[0].clone())? {
+                if let Some(hresult) =
+                    compile_helperform(self.opts.clone(), parsed_program[0].clone())?
+                {
                     for h in hresult.new_helpers.iter() {
                         self.evaluator.add_helper(h);
                     }

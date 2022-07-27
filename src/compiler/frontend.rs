@@ -790,7 +790,7 @@ pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
                                 Rc::new(BodyForm::Value(SExp::Atom(m.loc.clone(), vec![b'S']))),
                             ],
                         )),
-                         Some(funty),
+                        Some(funty),
                     )
                 })
                 .collect();
