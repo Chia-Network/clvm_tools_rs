@@ -262,10 +262,8 @@ fn test_chialisp_with_arg_type_first_should_check() {
 
 #[test]
 fn test_chialisp_with_arg_type_doesnt_check_not_atom32() {
-    let ty = test_chialisp_program_typecheck(
-        "(mod ((X : (Pair Atom Unit))) -> Atom32 (+ 1 X))",
-        false,
-    );
+    let ty =
+        test_chialisp_program_typecheck("(mod ((X : (Pair Atom Unit))) -> Atom32 (+ 1 X))", false);
     assert_eq!(ty.is_err(), true);
 }
 

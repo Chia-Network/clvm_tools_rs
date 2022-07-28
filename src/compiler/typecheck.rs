@@ -33,7 +33,7 @@ impl<const A: usize> TheoryToSExp for Type<A> {
             Type::TAtom(l, Some(s)) => {
                 let atom_intro = format!("Atom{}", s).as_bytes().to_vec();
                 SExp::Atom(l.clone(), atom_intro)
-            },
+            }
             Type::TVar(v) => SExp::Atom(v.loc(), v.0.as_bytes().to_vec()),
             Type::TExists(v) => SExp::Cons(
                 v.loc(),

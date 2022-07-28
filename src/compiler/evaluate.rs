@@ -631,8 +631,12 @@ impl Evaluator {
             macro_args = Rc::new(SExp::Cons(l.clone(), arg_repr, macro_args));
         }
 
-        let macro_expansion =
-            self.enable_calls_for_macro().expand_macro(allocator, l.clone(), program.clone(), macro_args)?;
+        let macro_expansion = self.enable_calls_for_macro().expand_macro(
+            allocator,
+            l.clone(),
+            program.clone(),
+            macro_args,
+        )?;
 
         if let Ok(input) = dequote(call_loc.clone(), macro_expansion.clone()) {
             let frontend_macro_input = Rc::new(SExp::Cons(

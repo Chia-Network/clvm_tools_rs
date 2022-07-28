@@ -352,7 +352,6 @@ pub fn standard_type_context() -> Context {
         ContextElim::CVar(Var("r!".to_string(), loc.clone()), polytype(&rprime)),
         ContextElim::CVar(Var("bless".to_string(), loc.clone()), polytype(&bless)),
         ContextElim::CVar(Var("@".to_string(), loc.clone()), Type::TAny(f0.loc())),
-
         // clvm primitives
         ContextElim::CVar(Var("a".to_string(), loc.clone()), polytype(&a_prim)),
         ContextElim::CVar(Var("i".to_string(), loc.clone()), polytype(&i_prim)),
