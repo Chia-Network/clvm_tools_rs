@@ -172,7 +172,7 @@ pub fn compile_clvm(
 
         // Make the contents appear atomically so that other test processes
         // won't mistake an empty file for intended output.
-        let mut temp_output_file = NamedTempFile::new_in(output_dir.clone()).map_err(|e| {
+        let mut temp_output_file = NamedTempFile::new_in(output_dir).map_err(|e| {
             format!(
                 "error creating temporary compiler output for {}: {:?}",
                 input_path, e
