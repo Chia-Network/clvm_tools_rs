@@ -30,15 +30,10 @@ impl<const A: usize> TheoryToSExp for Type<A> {
             Type::TUnit(l) => SExp::Nil(l.clone()),
             Type::TAny(l) => SExp::Atom(l.clone(), "Any".as_bytes().to_vec()),
             Type::TAtom(l, None) => SExp::Atom(l.clone(), "Atom".as_bytes().to_vec()),
-            Type::TAtom(l, Some(s)) => SExp::Cons(
-                l.clone(),
-                Rc::new(SExp::Atom(l.clone(), "Atom".as_bytes().to_vec())),
-                Rc::new(SExp::Cons(
-                    l.clone(),
-                    Rc::new(SExp::Integer(l.clone(), s.to_bigint().unwrap())),
-                    Rc::new(SExp::Nil(l.clone())),
-                )),
-            ),
+            Type::TAtom(l, Some(s)) => {
+                let atom_intro = format!("Atom{}", s).as_bytes().to_vec();
+                SExp::Atom(l.clone(), atom_intro)
+            },
             Type::TVar(v) => SExp::Atom(v.loc(), v.0.as_bytes().to_vec()),
             Type::TExists(v) => SExp::Cons(
                 v.loc(),
@@ -373,6 +368,8 @@ pub fn parse_type_sexp<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, Compil
                 return Ok(Type::TAny(l.clone()));
             } else if a == &"Atom".as_bytes().to_vec() {
                 return Ok(Type::TAtom(l.clone(), None));
+            } else if a == &"Atom32".as_bytes().to_vec() {
+                return Ok(Type::TAtom(l.clone(), Some(32)));
             } else {
                 return Ok(Type::TVar(parse_type_var(expr.clone())?));
             }
@@ -400,23 +397,6 @@ pub fn parse_type_sexp<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, Compil
                     return parse_type_exists(b.clone());
                 } else if a == &"forall".as_bytes().to_vec() {
                     return parse_type_forall(b.clone());
-                } else if a == &"Atom".as_bytes().to_vec() {
-                    if let SExp::Cons(_, f, _) = b.borrow() {
-                        if let SExp::Integer(li, i) = f.borrow() {
-                            let (s, digs) = i.to_u32_digits();
-                            let bytes = if s == Sign::Minus {
-                                return Err(CompileErr(
-                                    li.clone(),
-                                    "can't have negative sized atom".to_string(),
-                                ));
-                            } else if digs.len() == 0 {
-                                0
-                            } else {
-                                digs[0]
-                            };
-                            return Ok(Type::TAtom(l.clone(), Some(bytes as usize)));
-                        }
-                    }
                 } else if a == &"Pair".as_bytes().to_vec() {
                     return parse_type_pair(|a, b| Type::TPair(a, b), b.clone());
                 } else if a == &"Nullable".as_bytes().to_vec() {

@@ -587,6 +587,18 @@ impl Evaluator {
         }
     }
 
+    pub fn enable_calls_for_macro(&self) -> Self {
+        Evaluator {
+            opts: self.opts.clone(),
+            runner: self.runner.clone(),
+            prims: self.prims.clone(),
+            helpers: self.helpers.clone(),
+            mash_conditions: false,
+            ignore_exn: true,
+            disable_calls: false,
+        }
+    }
+
     pub fn mash_conditions(&self) -> Self {
         Evaluator {
             opts: self.opts.clone(),
@@ -620,7 +632,7 @@ impl Evaluator {
         }
 
         let macro_expansion =
-            self.expand_macro(allocator, l.clone(), program.clone(), macro_args)?;
+            self.enable_calls_for_macro().expand_macro(allocator, l.clone(), program.clone(), macro_args)?;
 
         if let Ok(input) = dequote(call_loc.clone(), macro_expansion.clone()) {
             let frontend_macro_input = Rc::new(SExp::Cons(

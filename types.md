@@ -142,4 +142,127 @@ Not every detail is known at this point, because engagement with users and ongoi
 shaping of the ergonimics of typing in chialisp will be required.  The goal of
 this stage of this is to provide a system that is maximally capable and that is
 properly connected to chialisp so that it can evolve into something chialisp
-authors can use with comfort to increase productivity.
+authors can use with comfort to increase productivity and safety.
+
+# Everything
+
+There are several builtin types in chialisp:
+
+- Unit -- Type representing expressions that only have the () value
+
+- Atom -- Type representing a number, string or byte sequence, type distinct from () by convention
+
+- (Atom {n}) -- An Atom with a specific length.  Atom {n} can become Atom but Atom cannot become (Atom {n})
+  because we don't know what the length was.
+
+- (Nullable x) -- Allows values of () as well as x.
+
+- (Pair a b) -- Represents the result of (c a b) for any a and b.
+
+- (Exec a) -- An 'abstract' container which doesn't necessarily reflect its contents.
+  Exec is used to hold the function type of the code given to the a operator, but can do more.
+
+- Any -- Type representing the whole range of values representable by clvm.
+
+# Primitive rules
+
+- Any unifies with any other type either as a subtype or vice versa, so anything
+  typed as Any is completely permissive just as in untyped chialisp.
+
+- Nullable x is the sum of x and Unit
+
+    (mod (X) -> (Nullable Atom) (if X 3 ())) ;; typechecks
+
+- (Atom n) checks as Atom, but not vice versa
+
+    (mod () -> (Atom 32) (+ 1 2)) ;; does not typecheck
+    (mod () -> (Atom 32) (sha256 1 2)) ;; typechecks
+
+- the 'a' operator has a kind of unusual signature:
+
+    (forall f0 (forall r0 ((Pair (Exec (f0 -> r0)) (Pair f0 ())) -> r0)))
+    ;; Given an argument of type f0 and a result type of type r0,
+    ;; Given an application of a with a pair structure (c exec (c arg ())) like (a exec arg)
+    ;; This expression typechecks if arg is the same type as the argument type of the function
+    ;; Exec is holding, and synthesizes the type given by the result type of the function
+    ;; held by Exec.
+    
+Code meant to be 'run' should use the Exec type:
+
+    (mod ((runnable : (Exec (Pair Atom (Pair Atom Unit)))) (X : Atom) (Y : Atom)) -> Atom (a runnable (list X Y))) ;; typechecks
+    ;; CODE=(a 2 (c 5 (c 11 ())))
+    ;; brun "${CODE}" '((16 2 5) 3 19)' -> 22
+
+Concieved of this way, we can ensure that code run through clvm apply takes on the
+advertised type of the code given to it.
+
+# Aggregate types
+
+You can define your own abstract and concrete types:
+
+    (deftype Mystery)
+    
+just injects the existence of Mystery into the type system.  It's up to you to write
+functions that produce and consume it using other type operators.
+    
+    (deftype MyStruct ((FirstName : Atom) (LastName : Atom)))
+
+defines the type MyStruct as well as 3 functions
+
+    (defun-inline new_MyStruct ((fn : Atom) (ln : Atom)) -> MyStruct fn ln)
+    (defun-inline get_MyStruct_FirstName ((s : MyStruct)) -> Atom)
+    (defun-inline get_MyStruct_LastName ((s : MyStruct)) -> Atom)
+    
+Structs can have type variables
+
+     (deftype Group num ((Add : (Exec ((Pair num (Pair num Unit)) -> num))) (Default : (Exec (Unit -> num)))))
+     
+This struct defines a kind of object that can produce a default value and do addition on values.  The type of num becomes
+a type variable in the definitions of the functions acting on Group
+
+
+
+# Function signatures
+
+There are two ways to 
+
+# Type level operators
+
+(x -> y) - names a function type
+
+In chialisp, all functions are "unary" (meaning that they cannot be partially
+applied as functions.  You can 'curry' functions with the function that sets
+them up to be functions with fewer arguments, typed like this:
+
+    (curry-argument (F A) : 
+        (forall a 
+        (forall b 
+        (forall c 
+          ((Pair (Exec ((Pair a b) -> c)) (Pair a Unit)) -> ;; Given arguments exec and arg
+           (Exec (b -> c))) )))                             ;; return executable code that has
+                                                            ;; one fewer argument
+
+(forall a type) - introduces a type variable to use in type:
+
+    (forall a ((Pair a Unit) -> (a List)))
+    
+as in
+
+    (defun F (X) : (forall a ((Pair a Unit)) -> (a List)) (list X))
+
+This is the type of a function which claims that calling it like
+
+    (F 3)
+
+Results in
+
+    (3) ;; An (Atom List)
+    
+We can call it with other kinds of objects:
+
+    (deftype S ((X : Atom)))
+    (F (new_S 2))
+    
+Resulting in an (S List)
+
+forall can nest, so you can use type variables where needed.

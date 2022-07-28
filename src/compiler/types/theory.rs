@@ -161,6 +161,10 @@ impl Context {
                 return self.subtype(a, b);
             }
 
+            (Type::TUnit(_), Type::TNullable(b)) => {
+                return Ok(Box::new(self.clone()));
+            }
+
             (a, Type::TNullable(b)) => {
                 return self.subtype(a, b);
             }
