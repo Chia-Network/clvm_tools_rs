@@ -5,7 +5,7 @@ use std::env;
 use std::mem::swap;
 use std::rc::Rc;
 
-use clvm_rs::allocator::Allocator;
+use clvmr::allocator::Allocator;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts};

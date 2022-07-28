@@ -5,7 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use clvm_rs::allocator::Allocator;
+use clvmr::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;

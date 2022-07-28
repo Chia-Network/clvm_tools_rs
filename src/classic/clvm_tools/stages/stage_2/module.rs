@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use clvm_rs::allocator::{Allocator, NodePtr, SExp};
-use clvm_rs::reduction::EvalErr;
+use clvmr::allocator::{Allocator, NodePtr, SExp};
+use clvmr::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm::sexp::{enlist, first, flatten, foldM, mapM, non_nil, proper_list, rest};

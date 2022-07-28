@@ -9,7 +9,7 @@ use std::sync::atomic::Ordering;
 
 use wasm_bindgen::prelude::*;
 
-use clvm_rs::allocator::Allocator;
+use clvmr::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 use crate::classic::clvm::serialize::sexp_to_stream;

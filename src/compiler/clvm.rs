@@ -2,8 +2,8 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use clvm_rs::allocator;
-use clvm_rs::allocator::{Allocator, NodePtr};
+use clvmr::allocator;
+use clvmr::allocator::{Allocator, NodePtr};
 
 use num_bigint::ToBigInt;
 

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use clvm_rs::allocator::Allocator;
+use clvmr::allocator::Allocator;
 
 use crate::compiler::compiler::compile_file;
 use crate::compiler::compiler::DefaultCompilerOpts;

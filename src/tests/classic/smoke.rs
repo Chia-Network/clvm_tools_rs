@@ -2,8 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use clvm_rs::allocator::{Allocator, NodePtr, SExp};
-use clvm_rs::reduction::EvalErr;
+use clvmr::allocator::{Allocator, NodePtr, SExp};
+use clvmr::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{t, Stream};
 use crate::classic::clvm_tools::cmds::{launch_tool, OpcConversion, OpdConversion, TConversion};

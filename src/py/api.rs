@@ -8,7 +8,7 @@ use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 
-use clvm_rs::allocator::Allocator;
+use clvmr::allocator::Allocator;
 
 use crate::classic::clvm_tools::clvmc;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;

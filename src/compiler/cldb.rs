@@ -3,9 +3,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::mem::swap;
 use std::rc::Rc;
 
-use clvm_rs::allocator;
-use clvm_rs::allocator::{Allocator, NodePtr};
-use clvm_rs::reduction::EvalErr;
+use clvmr::allocator;
+use clvmr::allocator::{Allocator, NodePtr};
+use clvmr::reduction::EvalErr;
 use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};

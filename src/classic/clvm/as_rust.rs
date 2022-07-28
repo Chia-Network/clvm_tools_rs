@@ -1,5 +1,5 @@
-use clvm_rs::allocator::Allocator;
-use clvm_rs::reduction::Response;
+use clvmr::allocator::Allocator;
+use clvmr::reduction::Response;
 
 use crate::classic::clvm::sexp::CastableType;
 

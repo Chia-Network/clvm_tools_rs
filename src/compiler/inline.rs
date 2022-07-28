@@ -2,7 +2,7 @@ use num_bigint::ToBigInt;
 use std::borrow::Borrow;
 use std::rc::Rc;
 
-use clvm_rs::allocator::Allocator;
+use clvmr::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;

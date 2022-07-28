@@ -1,8 +1,8 @@
 use num::pow;
 use num_bigint::ToBigInt;
 
-use clvm_rs::allocator::Allocator;
-use clvm_rs::reduction::EvalErr;
+use clvmr::allocator::Allocator;
+use clvmr::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{
     bi_one, bi_zero, get_u32, set_u32, set_u8, Bytes, BytesFromType,

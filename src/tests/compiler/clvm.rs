@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use num_bigint::ToBigInt;
 
-use clvm_rs::allocator::Allocator;
+use clvmr::allocator::Allocator;
 
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 

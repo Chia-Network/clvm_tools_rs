@@ -2,8 +2,8 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm::sexp::{enlist, first, flatten, foldM, mapM, non_nil, proper_list, rest};
 use crate::compiler::gensym::gensym;
 use crate::util::Number;
-use clvm_rs::allocator::{Allocator, NodePtr, SExp};
-use clvm_rs::reduction::EvalErr;
+use clvmr::allocator::{Allocator, NodePtr, SExp};
+use clvmr::reduction::EvalErr;
 use num_bigint::ToBigInt;
 use std::collections::HashMap;
 
