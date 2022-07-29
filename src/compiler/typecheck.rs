@@ -326,13 +326,16 @@ fn parse_type_app<const A: usize>(
             Type::TApp(Rc::new(apply_to.clone()), Rc::new(next)),
             offs + 1,
             full,
-            elist
+            elist,
         )
     }
 }
 
 // Even elements are types, odd elements are "->" or "~>"
-fn parse_type_fun<const A: usize>(full: Rc<SExp>, elist: &Vec<SExp>) -> Result<Type<A>, CompileErr> {
+fn parse_type_fun<const A: usize>(
+    full: Rc<SExp>,
+    elist: &Vec<SExp>,
+) -> Result<Type<A>, CompileErr> {
     let mut result = parse_type_sexp(Rc::new(elist[elist.len() - 1].clone()))?;
     let mut use_type = false;
 
@@ -368,18 +371,17 @@ fn parse_type_fun<const A: usize>(full: Rc<SExp>, elist: &Vec<SExp>) -> Result<T
 
 pub fn parse_fixedlist<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, CompileErr> {
     match &expr.atomize() {
-        SExp::Cons(l,a,b) => {
+        SExp::Cons(l, a, b) => {
             let rest = parse_fixedlist(b.clone())?;
             let first = parse_type_sexp(a.clone())?;
             Ok(Type::TPair(Rc::new(first), Rc::new(rest)))
-        },
-        SExp::Atom(l,a) => {
-            parse_type_sexp(expr)
-        },
-        SExp::Nil(l) => {
-            Ok(Type::TUnit(l.clone()))
-        },
-        _ => Err(CompileErr(expr.loc(), format!("Don't know how to handle type named {}", expr.to_string())))
+        }
+        SExp::Atom(l, a) => parse_type_sexp(expr),
+        SExp::Nil(l) => Ok(Type::TUnit(l.clone())),
+        _ => Err(CompileErr(
+            expr.loc(),
+            format!("Don't know how to handle type named {}", expr.to_string()),
+        )),
     }
 }
 
@@ -434,8 +436,9 @@ pub fn parse_type_sexp<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, Compil
 
             if let Some(lst) = expr.proper_list() {
                 if lst.len() > 1 {
-                    return parse_type_fun(expr.clone(), &lst).map(|x| Ok(x)).
-                        unwrap_or_else(|_| {
+                    return parse_type_fun(expr.clone(), &lst)
+                        .map(|x| Ok(x))
+                        .unwrap_or_else(|_| {
                             let apply_name = parse_type_var(Rc::new(lst[0].clone()))?;
                             parse_type_app(Type::TVar(apply_name), 1, expr.clone(), &lst)
                         });

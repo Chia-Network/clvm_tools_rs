@@ -208,16 +208,24 @@ impl Context {
             Type::TForall(alpha, a) => self.snoc_wf(ContextElim::CForall(alpha.clone())).typewf(a),
             Type::TExists(alpha) => self.existentials().elem(alpha),
             Type::TAbs(s, t) => {
-                debug!("typef {} {}?", s.to_sexp().to_string(), t.to_sexp().to_string());
+                debug!(
+                    "typef {} {}?",
+                    s.to_sexp().to_string(),
+                    t.to_sexp().to_string()
+                );
                 self.typewf(t.borrow())
-            },
+            }
             Type::TApp(t1, t2) => {
                 debug!("check well formed {}", t1.to_sexp().to_string());
                 if !self.typewf(t1.borrow()) {
                     return false;
                 }
 
-                debug!("check_newtype {} {}", t1.to_sexp().to_string(), t2.to_sexp().to_string());
+                debug!(
+                    "check_newtype {} {}",
+                    t1.to_sexp().to_string(),
+                    t2.to_sexp().to_string()
+                );
                 let t1poly = polytype(t1.borrow());
                 let t2poly = polytype(t2.borrow());
                 if let Some((nt, ctx)) = self.newtype::<A>(&t1poly, &t2poly) {

@@ -91,7 +91,7 @@ fn test_chialisp_context_from_args_and_type_arg_with_list_type() {
         Rc::new(SExp::atom_from_string(loc.clone(), &"X".to_string())),
         &Type::TApp(
             Rc::new(Type::TVar(TypeVar("List".to_string(), loc.clone()))),
-            Rc::new(Type::TAtom(loc.clone(), None))
+            Rc::new(Type::TAtom(loc.clone(), None)),
         ),
         bi_zero(),
         bi_one(),
@@ -563,12 +563,15 @@ fn test_fixedlist() {
   )"},
         true,
     )
-        .expect("should typecheck");
-    assert_eq!(ty, Type::TPair(
-        Rc::new(Type::TAtom(ty.loc(), Some(32))),
-        Rc::new(Type::TPair(
-            Rc::new(Type::TAtom(ty.loc(), None)),
-            Rc::new(Type::TUnit(ty.loc()))
-        ))
-    ));
+    .expect("should typecheck");
+    assert_eq!(
+        ty,
+        Type::TPair(
+            Rc::new(Type::TAtom(ty.loc(), Some(32))),
+            Rc::new(Type::TPair(
+                Rc::new(Type::TAtom(ty.loc(), None)),
+                Rc::new(Type::TUnit(ty.loc()))
+            ))
+        )
+    );
 }
