@@ -147,6 +147,8 @@ roles in allowing basic typing to work as one might think of it:
     (Pair a b) -> The result of (c a b)
     
     structs -> more on this later
+    
+    Any -> A type which fits all other types and allows all other types.
 
     (List x) -> (Nullable (Pair x (List x))), which allows you
     to talk about chialisp lists that contain all things of one
@@ -430,3 +432,9 @@ We can write the type of the curry function:
         )
       (a (curry-1 code 2) (list 3))
       )
+
+Which introduces the 'coerce' function.  You can use it to promise that things
+turn out like you say.  The chialisp type system can't analyze chialisp code
+(and doesn't know what's in the argument to the program beyond what you promise).
+You can write functions that are type sound, but do specific things using coerce
+whose type is (Any -> Any).
