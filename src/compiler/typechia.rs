@@ -240,9 +240,9 @@ pub fn standard_type_context() -> Context {
                     )))),
                     Rc::new(Type::TUnit(f0.loc())),
                 )),
-                Rc::new(Type::TVar(f0.clone()))
-            ))
-        ))
+                Rc::new(Type::TVar(f0.clone())),
+            )),
+        )),
     );
     let r_prim: Type<TYPE_MONO> = Type::TForall(
         f0.clone(),
@@ -252,7 +252,7 @@ pub fn standard_type_context() -> Context {
                 Rc::new(Type::TPair(
                     Rc::new(Type::TNullable(Rc::new(Type::TPair(
                         Rc::new(Type::TVar(f0.clone())),
-                        Rc::new(Type::TVar(r0.clone()))
+                        Rc::new(Type::TVar(r0.clone())),
                     )))),
                     Rc::new(Type::TUnit(f0.loc())),
                 )),

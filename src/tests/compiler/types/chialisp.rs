@@ -563,7 +563,7 @@ fn test_fixedlist() {
   )"},
         true,
     )
-        .expect("should typecheck");
+    .expect("should typecheck");
     assert_eq!(
         ty,
         Type::TPair(
@@ -589,8 +589,5 @@ fn test_curry1() {
         true,
     )
         .expect("should typecheck");
-    assert_eq!(
-        ty,
-        Type::TAtom(ty.loc(), None)
-    );
+    assert_eq!(ty, Type::TAtom(ty.loc(), None));
 }
