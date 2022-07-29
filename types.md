@@ -430,7 +430,7 @@ We can write the type of the curry function:
       )
 
 Which introduces the 'coerce' function.  You can use it to promise that things
-turn out like you say.  The chialisp type system can't analyze chialisp code
+turn out like you say.  The chialisp type system can't analyze clvm code
 (and doesn't know what's in the argument to the program beyond what you promise).
 You can write functions that are type sound, but do specific things using coerce
 whose type is (Any -> Any).
