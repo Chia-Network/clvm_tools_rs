@@ -345,7 +345,7 @@ And the result of this macro is the compiled code for whatever S does.
 So let's see what kind of thing it is:
 
     (mod () -> Unit
-      (defmacro simply (S) (com S))
+      (defmacro simply (S) (qq (com (unquote S))))
       (simply (list 1 2 3))
       )
 
