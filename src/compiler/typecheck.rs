@@ -313,21 +313,26 @@ where
 }
 
 fn parse_type_app<const A: usize>(
+    apply_to: Type<A>,
     offs: usize,
     full: Rc<SExp>,
-    elist: Vec<SExp>,
+    elist: &Vec<SExp>,
 ) -> Result<Type<A>, CompileErr> {
-    if offs == elist.len() - 1 {
-        parse_type_sexp(Rc::new(elist[offs].clone()))
+    if offs >= elist.len() {
+        Ok(apply_to)
     } else {
-        let first = parse_type_sexp(Rc::new(elist[offs].clone()))?;
-        let rest = parse_type_app(offs + 1, full, elist)?;
-        Ok(Type::TApp(Rc::new(first), Rc::new(rest)))
+        let next = parse_type_sexp(Rc::new(elist[offs].clone()))?;
+        parse_type_app(
+            Type::TApp(Rc::new(apply_to.clone()), Rc::new(next)),
+            offs + 1,
+            full,
+            elist
+        )
     }
 }
 
 // Even elements are types, odd elements are "->" or "~>"
-fn parse_type_fun<const A: usize>(full: Rc<SExp>, elist: Vec<SExp>) -> Result<Type<A>, CompileErr> {
+fn parse_type_fun<const A: usize>(full: Rc<SExp>, elist: &Vec<SExp>) -> Result<Type<A>, CompileErr> {
     let mut result = parse_type_sexp(Rc::new(elist[elist.len() - 1].clone()))?;
     let mut use_type = false;
 
@@ -354,9 +359,28 @@ fn parse_type_fun<const A: usize>(full: Rc<SExp>, elist: Vec<SExp>) -> Result<Ty
 
             use_type = !use_type;
         }
+    } else {
+        return Err(CompileErr(full.loc(), "Not arrow in fun".to_string()));
     }
 
     Ok(result)
+}
+
+pub fn parse_fixedlist<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, CompileErr> {
+    match &expr.atomize() {
+        SExp::Cons(l,a,b) => {
+            let rest = parse_fixedlist(b.clone())?;
+            let first = parse_type_sexp(a.clone())?;
+            Ok(Type::TPair(Rc::new(first), Rc::new(rest)))
+        },
+        SExp::Atom(l,a) => {
+            parse_type_sexp(expr)
+        },
+        SExp::Nil(l) => {
+            Ok(Type::TUnit(l.clone()))
+        },
+        _ => Err(CompileErr(expr.loc(), format!("Don't know how to handle type named {}", expr.to_string())))
+    }
 }
 
 pub fn parse_type_sexp<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, CompileErr> {
@@ -403,18 +427,18 @@ pub fn parse_type_sexp<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, Compil
                     return parse_type_single(|a| Type::TNullable(a), b.clone());
                 } else if a == &"Exec".as_bytes().to_vec() {
                     return parse_type_single(|a| Type::TExec(a), b.clone());
+                } else if a == &"FixedList".as_bytes().to_vec() {
+                    return parse_fixedlist(b.clone());
                 }
             }
 
             if let Some(lst) = expr.proper_list() {
-                if lst.len() == 2 {
-                    let ta = parse_type_app(0, expr.clone(), lst)?;
-                    debug!("type_app {}", ta.to_sexp().to_string());
-                    return Ok(ta);
-                }
-
-                if lst.len() % 2 == 1 && lst.len() > 2 {
-                    return parse_type_fun(expr.clone(), lst);
+                if lst.len() > 1 {
+                    return parse_type_fun(expr.clone(), &lst).map(|x| Ok(x)).
+                        unwrap_or_else(|_| {
+                            let apply_name = parse_type_var(Rc::new(lst[0].clone()))?;
+                            parse_type_app(Type::TVar(apply_name), 1, expr.clone(), &lst)
+                        });
                 }
             }
         }

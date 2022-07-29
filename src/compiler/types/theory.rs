@@ -758,6 +758,7 @@ impl Context {
             None
         };
 
+        debug!("do match");
         match typ {
             // ForallApp
             Type::TForall(alpha, a) => {

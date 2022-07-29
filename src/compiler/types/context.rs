@@ -80,6 +80,16 @@ impl Context {
         res
     }
 
+    pub fn solved(&self) -> Vec<TypeVar> {
+        let mut res = Vec::new();
+        for gamma_elem in self.0.iter() {
+            if let ContextElim::CExistsSolved(alpha, _) = gamma_elem {
+                res.push(alpha.clone());
+            }
+        }
+        res
+    }
+
     pub fn unsolved(&self) -> Vec<TypeVar> {
         let mut res = Vec::new();
         for gamma_elem in self.0.iter() {
@@ -155,15 +165,15 @@ impl Context {
         t1: &Polytype,
         t2: &Polytype,
     ) -> Option<(Type<A>, Context)> {
-        match t2.borrow() {
+        match t1.borrow() {
             Type::TVar(v) => {
                 if let Some(solved) = self.find_solved(v) {
                     return match solved {
                         Type::TAbs(v, t) => {
                             let tpoly = polytype(t.borrow());
                             let new_tvar = fresh_tvar(v.loc());
-                            let finished_type_rec = type_subst(t1.borrow(), &v, tpoly.borrow());
-                            return unrecurse(&new_tvar, &t1, &t2, &finished_type_rec)
+                            let finished_type_rec = type_subst(t2.borrow(), &v, tpoly.borrow());
+                            return unrecurse(&new_tvar, &t2, &t1, &finished_type_rec)
                                 .and_then(|finished_type| monotype(&finished_type))
                                 .map(|tmono| {
                                     debug!("tabls unrecurse");
@@ -187,7 +197,7 @@ impl Context {
 
     pub fn typewf<const A: usize>(&self, typ: &Type<A>) -> bool {
         match typ {
-            Type::TVar(alpha) => self.foralls().elem(&alpha),
+            Type::TVar(alpha) => self.foralls().elem(&alpha) || self.solved().elem(&alpha),
             Type::TUnit(_) => true,
             Type::TAny(_) => true,
             Type::TAtom(_, _) => true,
@@ -197,12 +207,17 @@ impl Context {
             Type::TPair(a, b) => self.typewf(a.borrow()) && self.typewf(b.borrow()),
             Type::TForall(alpha, a) => self.snoc_wf(ContextElim::CForall(alpha.clone())).typewf(a),
             Type::TExists(alpha) => self.existentials().elem(alpha),
-            Type::TAbs(_, t) => self.typewf(t.borrow()),
+            Type::TAbs(s, t) => {
+                debug!("typef {} {}?", s.to_sexp().to_string(), t.to_sexp().to_string());
+                self.typewf(t.borrow())
+            },
             Type::TApp(t1, t2) => {
+                debug!("check well formed {}", t1.to_sexp().to_string());
                 if !self.typewf(t1.borrow()) {
                     return false;
                 }
 
+                debug!("check_newtype {} {}", t1.to_sexp().to_string(), t2.to_sexp().to_string());
                 let t1poly = polytype(t1.borrow());
                 let t2poly = polytype(t2.borrow());
                 if let Some((nt, ctx)) = self.newtype::<A>(&t1poly, &t2poly) {

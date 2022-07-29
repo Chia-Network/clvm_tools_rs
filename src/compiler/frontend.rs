@@ -715,7 +715,7 @@ fn create_constructor(sdef: &StructDef) -> HelperForm {
     let mut target_ty = Type::TVar(TypeVar(decode_string(&sdef.name), sdef.loc.clone()));
 
     for a in sdef.vars.iter().rev() {
-        target_ty = Type::TApp(Rc::new(Type::TVar(a.clone())), Rc::new(target_ty));
+        target_ty = Type::TApp(Rc::new(target_ty), Rc::new(Type::TVar(a.clone())));
     }
 
     let mut funty = Type::TFun(Rc::new(argtype), Rc::new(target_ty));
@@ -756,7 +756,7 @@ pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
                     let mut argty = Type::TVar(TypeVar(decode_string(&sdef.name), m.loc.clone()));
 
                     for a in sdef.vars.iter().rev() {
-                        argty = Type::TApp(Rc::new(Type::TVar(a.clone())), Rc::new(argty));
+                        argty = Type::TApp(Rc::new(argty), Rc::new(Type::TVar(a.clone())));
                     }
 
                     let mut funty = Type::TFun(

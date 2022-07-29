@@ -90,14 +90,14 @@ fn test_chialisp_context_from_args_and_type_arg_with_list_type() {
         &standard_type_context(),
         Rc::new(SExp::atom_from_string(loc.clone(), &"X".to_string())),
         &Type::TApp(
-            Rc::new(Type::TAtom(loc.clone(), None)),
             Rc::new(Type::TVar(TypeVar("List".to_string(), loc.clone()))),
+            Rc::new(Type::TAtom(loc.clone(), None))
         ),
         bi_zero(),
         bi_one(),
     )
     .expect("should synthesize a context");
-    check_expression_against_type_with_context(&context, "X", "(Atom List)", false);
+    check_expression_against_type_with_context(&context, "X", "(List Atom)", false);
 }
 
 #[test]
@@ -473,15 +473,15 @@ fn test_wrong_struct_construction() {
 #[test]
 fn test_struct_construction_with_var() {
     let ty = test_chialisp_program_typecheck(
-        "(mod () -> (Atom S) (deftype S a ((A : a))) (new_S 1))",
+        "(mod () -> (S Atom) (deftype S a ((A : a))) (new_S 1))",
         true,
     )
     .expect("should typecheck");
     assert_eq!(
         ty,
         Type::TApp(
-            Rc::new(Type::TAtom(ty.loc(), None)),
-            Rc::new(Type::TVar(TypeVar("S".to_string(), ty.loc())))
+            Rc::new(Type::TVar(TypeVar("S".to_string(), ty.loc()))),
+            Rc::new(Type::TAtom(ty.loc(), None))
         )
     );
 }
@@ -544,12 +544,31 @@ fn test_let_type_1() {
 fn test_head_of_list() {
     let ty = test_chialisp_program_typecheck(
         indoc! {"
-(mod ((X : (Atom List))) -> Atom32
-  (defun F ((P : Atom32) (X : (Atom List))) -> Atom32 (if X (F (sha256 P (f X)) (r X)) P))
+(mod ((X : (List Atom))) -> Atom32
+  (defun F ((P : Atom32) (X : (List Atom))) -> Atom32 (if X (F (sha256 P (f X)) (r X)) P))
   (F (sha256 1) X)
   )"},
         true,
     )
     .expect("should typecheck");
     assert_eq!(ty, Type::TAtom(ty.loc(), Some(32)));
+}
+
+#[test]
+fn test_fixedlist() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod (X Y Z) : ((FixedList Atom Atom32 Atom) -> (FixedList Atom32 Atom))
+  (list Y Z)
+  )"},
+        true,
+    )
+        .expect("should typecheck");
+    assert_eq!(ty, Type::TPair(
+        Rc::new(Type::TAtom(ty.loc(), Some(32))),
+        Rc::new(Type::TPair(
+            Rc::new(Type::TAtom(ty.loc(), None)),
+            Rc::new(Type::TUnit(ty.loc()))
+        ))
+    ));
 }

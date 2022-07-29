@@ -154,8 +154,8 @@ pub fn standard_type_context() -> Context {
         Rc::new(Type::TNullable(Rc::new(Type::TPair(
             Rc::new(Type::TVar(f0.clone())),
             Rc::new(Type::TApp(
-                Rc::new(Type::TVar(f0.clone())),
                 Rc::new(Type::TVar(list_tv.clone())),
+                Rc::new(Type::TVar(f0.clone()))
             )),
         )))),
     );
@@ -304,8 +304,8 @@ pub fn standard_type_context() -> Context {
     );
     let plus_prim: Type<TYPE_MONO> = Type::TFun(
         Rc::new(Type::TApp(
-            Rc::new(Type::TAtom(atom_tv.loc(), None)),
             Rc::new(Type::TVar(list_tv.clone())),
+            Rc::new(Type::TAtom(atom_tv.loc(), None))
         )),
         Rc::new(Type::TAtom(atom_tv.loc(), None)),
     );
@@ -331,8 +331,8 @@ pub fn standard_type_context() -> Context {
     );
     let sha256_prim: Type<TYPE_MONO> = Type::TFun(
         Rc::new(Type::TApp(
-            Rc::new(Type::TAtom(atom_tv.loc(), None)),
             Rc::new(Type::TVar(list_tv.clone())),
+            Rc::new(Type::TAtom(atom_tv.loc(), None))
         )),
         Rc::new(Type::TAtom(atom_tv.loc(), Some(32))),
     );
@@ -584,7 +584,10 @@ fn handle_macro(
         .collect();
     let opts = Rc::new(DefaultCompilerOpts::new(&loc.file.to_string()));
     let runner = Rc::new(DefaultProgramRunner::new());
-    let ev = Evaluator::new(opts.clone(), runner, program.helpers.clone());
+    let mut ev = Evaluator::new(opts.clone(), runner, program.helpers.clone());
+    for h in form.helpers.iter() {
+        ev.add_helper(h);
+    }
     let mut allocator = Allocator::new();
     let arg_env = build_argument_captures(&loc, &call_args, form.args.clone())?;
     let result = ev.shrink_bodyform(
