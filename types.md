@@ -263,10 +263,6 @@ Something to note here is that there are type variables in this type system.
 Most of the time end users won't need to use them directly, but they can be used
 to make data structures and abstractions for many purposes.
 
-My intention wasn't that there'd be a completely coherent type system and set of
-operators that address all use cases right away, so there are operators that let
-one cheat for the greater good:
-
 So let's look at what we can do with types we define ourselves:
 
 Let's try the repl:
