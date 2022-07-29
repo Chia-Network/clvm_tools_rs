@@ -233,7 +233,7 @@ Note that the actual argument structure is typed:
     (Pair Any (Pair Any (Pair Any Unit)))
 
 Now I can explain the type of the clvm f operator; i cheated.  The type level
-definition of the f and r operators are:
+definition of the f operator (r is similar) are:
 
     (forall f0
       (forall r0 
