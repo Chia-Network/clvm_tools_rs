@@ -563,7 +563,7 @@ fn test_fixedlist() {
   )"},
         true,
     )
-    .expect("should typecheck");
+        .expect("should typecheck");
     assert_eq!(
         ty,
         Type::TPair(
@@ -573,5 +573,24 @@ fn test_fixedlist() {
                 Rc::new(Type::TUnit(ty.loc()))
             ))
         )
+    );
+}
+
+#[test]
+fn test_curry1() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod ((code : (Exec ((FixedList Atom Atom) -> Atom)))) -> Atom
+  (defun curry-1 (code arg) : (forall a (forall b (forall c ((FixedList (Exec ((Pair a b) -> c)) a) -> (Exec (b -> c))))))
+    (coerce (list 2 (c 1 code) (list 4 (c 1 arg) 1)))
+    )
+  (a (curry-1 code 2) (list 3))
+  )"},
+        true,
+    )
+        .expect("should typecheck");
+    assert_eq!(
+        ty,
+        Type::TAtom(ty.loc(), None)
     );
 }

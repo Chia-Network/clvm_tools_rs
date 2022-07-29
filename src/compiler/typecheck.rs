@@ -339,18 +339,18 @@ fn parse_type_fun<const A: usize>(
     let mut result = parse_type_sexp(Rc::new(elist[elist.len() - 1].clone()))?;
     let mut use_type = false;
 
-    if elist[1].to_string() == "~>" {
+    if elist[1].atomize().to_string() == "~>" {
         let tv = parse_type_var(Rc::new(elist[0].clone()))?;
         let ty = parse_type_sexp(Rc::new(elist[2].clone()))?;
         result = Type::TAbs(tv, Rc::new(ty));
-    } else if elist[1].to_string() == "->" {
+    } else if elist[1].atomize().to_string() == "->" {
         for i_rev in 0..elist.len() - 1 {
             let i = elist.len() - i_rev - 2;
             if use_type {
                 let ty = parse_type_sexp(Rc::new(elist[i].clone()))?;
                 result = Type::TFun(Rc::new(ty), Rc::new(result));
             } else {
-                if let SExp::Atom(l, a) = &elist[i] {
+                if let SExp::Atom(l, a) = &elist[i].atomize() {
                     if &"->".as_bytes().to_vec() != a {
                         return Err(CompileErr(
                             l.clone(),

@@ -1,268 +1,432 @@
-# Types in Chialisp
+# Tutorial for typed chialisp
 
-Types in chialisp will add a fairly modest subset of the type system described
-in and based on an implementation of the algorithms described in these papers:
+## Where is it
 
-## Sound and Complete Bidirectional Typechecking for Higher-Rank Polymorphism with Existentials and Indexed Types
-- JANA DUNFIELD, Queen’s University, Canada
-- NEELAKANTAN R. KRISHNASWAMI, University of Cambridge, United Kingdom
+Currently in branch 20220629-typed-language in https://github.com/Chia-Network/clvm_tools_rs
+Build with cargo
 
-## Complete and Easy Bidirectional Typechecking for Higher-Rank Polymorphism
-- Jana Dunfield
-- Neelakantan R. Krishnaswami
+## How to use
 
-## Chialisp's history
+Type annotations are optional.  Here's a simple chialisp program:
 
-Chialisp is unusual in the space of functional languages due to its history and
-attempts to adhere closely to the structure of low level clvm.  Classic clvm is
-unityped (having a single Atom|Pair type) and did not provide any kind of language
-level wrapping for function values.  In addition, due to lisp-style argument blob
-destructuring, many functions cannot fit neatly into a specific arity with each
-argument in a separate arrow.  Combining all the various historical uses in
-chialisp with its freewheeling nature led to idiomatic choices that, despite
-everything, fit the model state of the art type theory when viewed through the
-right lens.
+    (mod (X)
+      (defun F (P X) (if X (F (sha256 P (f X)) (r X)) P))
+      (F (sha256 1) X)
+      )
+      
+(testx.cl)
 
-Necessary goals for adding types to chialisp are to allow as much code to fly
-under the radar of the type scheme as possible so to not disrupt much higher
-cadence and higher stakes work going on above.  Like a welder working suspended
-from belts below the L as trains go by above (and like the first iterations of
-typescript), chialisp's type system should be able to be completely stripped out,
-should be able to be ignored as only suggestions and should be able to avoid
-putting more burdens than those specifically asked on typed code.
+You can run it, or type check with
 
-## Reasons for adding types to chialisp
-
-The final reason chialisp is getting a type system is beacuse of momentum gained
-after the audit report, but several people were thinking about it before that.
-My expectation from the past year of experience is that uptake of typing in
-chialisp will take place extremely gradually, probably too gradually to be
-tolerable for traditional project management or tracking to tolerate.  It will
-probably first be used as a diagnostic and forensic tool and debugging aid and
-escape into use in real contract slowly as the feedback loop between chialisp
-and authors of chialisp code reach an equlibrium on the ergonomics of both the
-syntactic elements and type system as a whole.
-
-A few things that will likely provide early benefit are synthesis of helper
-functions for accessing members of fixed structures, helpers surrounding "Nullable"
-objects and basic internal checking of arithmetic operators and their inputs and
-outputs which can be taken ad-hoc if desired.
-
-## Details
-
-Chialisp's type system will evolve as users provide feedback and request ergonomic
-changes, but the foundation is likely to remain very close to this:
-
-### Primitive Types
-
-- Functions: defuns in chialisp all have arity-1 since partial application at the
-type level isn't necesarily meaningful and some types would be inexpressible
-anyway.  Choosing arity-1 for all chialisp functions makes typing variable argument
-lists (as in +, *, logand etc operators) easy:
-
-    (+ : ((Atom List) -> Atom))
-
-As such, functions cannot appear in argument lists or normal values such as pairs.
-We provide an abstraction wrapper that allows us to talk about code that can be
-run by the 'a' operator (consider this hypothetical addition function):
-
-    (Exec ((Pair Atom (Pair Atom Unit)) -> Atom))
-
-We can properly type a curry function that operates on this executable code:
-
-    ((Pair (Exec ((Pair a b) -> x)) a) -> (Exec (b -> x)))
-
-So it is possible to use this to let to chialisp do the vast majority of what's
-expected now under a sound typing model.
-
-- Any -- When nothing is typed in chialisp, all functions appear as 
-
-- Unit, Atom {n} -- The unit type and an atom type with optional length.
-
-- Pair x y -- A pair type that is the 
-
-- Nullable x -- Without changing the representation, makes () a legal value and
-requires use of some operator for extraction.  Since () is a kind of atom,
-Nullable Atom should degrade properly to Atom for use in conditions and arithmetic.
-Macros will be provided that serve the use of pattern matching in more commmon
-functional languages in order to make Nullable practical.
-
-- Exec x -- A simple "holder" for abstract values that prevents destructuring by
-normal operators.  We can use it for various purposes.
-
-Exec with a function type can represent executable clvm code and be used by the
-'a' operator and currying functions to preserve the "executable-ness" in type
-space.
-
-Exec with a pair type can represent user data structures to the type system under
-the hood.  My expectation is that Exec and Pair will be teamed up with unique
-type variables to control what structures are treated as unique from each other
-and which ones work with structural subtyping.  In the future, a sum type will
-use this facility as well, allowing user code to have proven-exhaustive pattern
-matches like in ocaml, haskell, rust etc.
-
-## User types
-
-The user will be able to define type aliases:
-
-    ;; A requested feature is separating Atoms from hash-sized atoms
-    ;; (Atom n) degrades to Atom but not vice versa.
-    (deftype Hash (Atom 32))
-
-    ;; The list type is defined a bit like this
-    (deftype List x (Nullable (Pair x (x List))))
-
-    ;; A HAMT is a data structure that can simulate a mutable array
-    ;; in languages that don't have mutability.
-    (deftype Tree x ((left : (Nullable (x Tree))) . (right : (Nullable (x Tree)))))
+    run --typecheck testx.cl
     
-    ;; An abstract object.
-    (deftype HiddenState)
+If the typecheck succeeds, it outputs the program.
 
-These will emit accessor functions that are correctly typed for the user to use
-in accessing their structs.
+Let's say we want to guarantee that the program returns a hash-like atom.
 
-Escape hatches are provided that will be useful in library code when operating
-directly on the underlying data of typed objects is desired.  This allows libraries
-implementing any kind of data structure to provide a well type facade to user code
-while not burdeing the implementation.
+    (mod (X) -> Atom32
+      (defun F (P X) (if X (F (sha256 P (f X)) (r X)) P))
+      (F (sha256 1) X)
+      )
 
-    ;; ('a -> 'b)
-    (coerce x)
-    ;; (Exec 'a -> 'a)
-    (explode x)
-    ;; ('a -> Exec 'a)
-    (bless x)
-    ;; ((Pair (Exec b) a) -> (Exec (Pair a b)))
-    (lift x v)
-    ;; ((Exec (Pair a b)) -> (Exec b))
-    (unlift x)
+Adding -> and a type after the arguments in a function or mod is one way to
+add a type annotation.
 
-Not every detail is known at this point, because engagement with users and ongoing
-shaping of the ergonimics of typing in chialisp will be required.  The goal of
-this stage of this is to provide a system that is maximally capable and that is
-properly connected to chialisp so that it can evolve into something chialisp
-authors can use with comfort to increase productivity and safety.
+You can run typecheck to see that this doesn't complain.
+By default, functions in chialisp are maximally permissive, taking and
+returning the Any type.  This is equivalent.
 
-# Everything
+    (mod (X) -> Atom32
+      (defun F (P X) : (Any -> Any) (if X (F (sha256 P (f X)) (r X)) P))
+      (F (sha256 1) X)
+      )
 
-There are several builtin types in chialisp:
+You can specify the whole type of a chialisp function by following the arguments
+with a : and a function type (type -> type).  Note that in chialisp, the only
+real punctuation is ( and ), so you must separate type punctuation with spaces.
 
-- Unit -- Type representing expressions that only have the () value
+This typechecks, because Any is able to fit any time, just like when there's no
+type checking at all.
 
-- Atom -- Type representing a number, string or byte sequence, type distinct from () by convention
+You can try something that won't type check:
 
-- (Atom {n}) -- An Atom with a specific length.  Atom {n} can become Atom but Atom cannot become (Atom {n})
-  because we don't know what the length was.
+    (mod (X) -> Atom32
+      (defun F (P X) : (Any -> Atom) (if X (F (sha256 P (f X)) (r X)) P))
+      (F (sha256 1) X)
+      )
 
-- (Nullable x) -- Allows values of () as well as x.
+The failed type check messages are evolving, but it will say something like:
 
-- (Pair a b) -- Represents the result of (c a b) for any a and b.
-
-- (Exec a) -- An 'abstract' container which doesn't necessarily reflect its contents.
-  Exec is used to hold the function type of the code given to the a operator, but can do more.
-
-- Any -- Type representing the whole range of values representable by clvm.
-
-# Primitive rules
-
-- Any unifies with any other type either as a subtype or vice versa, so anything
-  typed as Any is completely permissive just as in untyped chialisp.
-
-- Nullable x is the sum of x and Unit
-
-    (mod (X) -> (Nullable Atom) (if X 3 ())) ;; typechecks
-
-- (Atom n) checks as Atom, but not vice versa
-
-    (mod () -> (Atom 32) (+ 1 2)) ;; does not typecheck
-    (mod () -> (Atom 32) (sha256 1 2)) ;; typechecks
-
-- the 'a' operator has a kind of unusual signature:
-
-    (forall f0 (forall r0 ((Pair (Exec (f0 -> r0)) (Pair f0 ())) -> r0)))
-    ;; Given an argument of type f0 and a result type of type r0,
-    ;; Given an application of a with a pair structure (c exec (c arg ())) like (a exec arg)
-    ;; This expression typechecks if arg is the same type as the argument type of the function
-    ;; Exec is holding, and synthesizes the type given by the result type of the function
-    ;; held by Exec.
+    subtype, don't know what to do with: Atom Atom32
     
-Code meant to be 'run' should use the Exec type:
+Pointing to testx3.cl(2):28-testx3.cl(2):32
 
-    (mod ((runnable : (Exec (Pair Atom (Pair Atom Unit)))) (X : Atom) (Y : Atom)) -> Atom (a runnable (list X Y))) ;; typechecks
-    ;; CODE=(a 2 (c 5 (c 11 ())))
-    ;; brun "${CODE}" '((16 2 5) 3 19)' -> 22
+    (mod (X) -> Atom32
+      (defun F (P X) : (Any -> Atom) (if X (F (sha256 P (f X)) (r X)) P))
+                               ^^^^
+      (F (sha256 1) X)
+      )
 
-Concieved of this way, we can ensure that code run through clvm apply takes on the
-advertised type of the code given to it.
+What it's trying to convey (and will improve with better error messages) is that
+Atom is not a subtype of Atom32 (which is the result of the function as a whole).
+We've detected an error of a kind; the program is supposed to return a hash-like
+Atom, called Atom32 but it's declared to return just an Atom, which is the number,
+string and byte array type in chialisp.
 
-# Aggregate types
+We can fix this by giving it a more specific result:
 
-You can define your own abstract and concrete types:
+     (mod (X) -> Atom32
+       (defun F (P X) : (Any -> Atom32) (if X (F (sha256 P (f X)) (r X)) P))
+       (F (sha256 1) X)
+       )
 
-    (deftype Mystery)
+Ok but how does this help?  Let's try tightening it up by specifing the type of
+P.  To specify a parameter type in a function definition or struct definition,
+put it in a list with a : and a type.
+
+    (mod (X) -> Atom32
+      (defun F ((P : Atom) X) -> Atom32 (if X (F (sha256 P (f X)) (r X)) P))
+      (F (sha256 1) X)
+      )
+
+     testx5.cl(2):18-testx5.cl(2):22: subtype, don't know what to do with: Atom Atom32
+
+Because it returns either its own result or P, if the type of P can't unify with
+that type (here Atom32), then it doesn't typecheck.
+
+Let's try a different failure:
+
+    (mod (X) -> Atom32
+      (defun F ((P : Atom32) X) -> Atom32 (if X (F (* P (f X)) (r X)) P))
+      (F (sha256 1) X)
+      )
+
+And after fixing that, we can try giving F the wrong type of argument in the
+body of the module:
+
+    (mod (X) -> Atom32
+      (defun F ((P : Atom32) X) -> Atom32 (if X (F (sha256 P (f X)) (r X)) P))
+      (F 1 X)
+      )
+
+It fails:
+
+    ./testx7.cl(3):6: subtype, don't know what to do with: Atom Atom32
     
-just injects the existence of Mystery into the type system.  It's up to you to write
-functions that produce and consume it using other type operators.
+Here:
+
+    (mod (X) -> Atom32
+      (defun F ((P : Atom32) X) -> Atom32 (if X (F (sha256 P (f X)) (r X)) P))
+      (F 1 X)
+         ^
+      )
+
+We've tried to make gradual typing as gradual as possible, but also provide
+decent power.
+
+That having been said, here's the same thing with types fully specified:
+
+    (mod ((X : (List Atom))) -> Atom32
+      (defun F ((P : Atom32) (X : (List Atom))) -> Atom32 (if X (F (sha256 P (f X)) (r X)) P))
+      (F (sha256 1) X)
+      )
+
+This makes the code more rigid in some ways, but may help diagnose bugs that
+are difficult to see visually.  You get to define the type environment of your
+programs for the most part, the builtins are all things that serve specific
+roles in allowing basic typing to work as one might think of it:
+
+    Unit -> The type of () expressions in chialisp.
+
+    Atom -> The type of numbers and strings in chialisp.
+
+    Atom32 -> The type of atoms that are hash-sized when we're certain.
+
+    (Nullable x) -> Any type X or Unit
+
+    (Pair a b) -> The result of (c a b)
     
-    (deftype MyStruct ((FirstName : Atom) (LastName : Atom)))
+    structs -> more on this later
 
-defines the type MyStruct as well as 3 functions
+    (List x) -> (Nullable (Pair x (List x))), which allows you
+    to talk about chialisp lists that contain all things of one
+    type.
 
-    (defun-inline new_MyStruct ((fn : Atom) (ln : Atom)) -> MyStruct fn ln)
-    (defun-inline get_MyStruct_FirstName ((s : MyStruct)) -> Atom)
-    (defun-inline get_MyStruct_LastName ((s : MyStruct)) -> Atom)
+    (FixedList a b ... z) -> Pairs containing things of type a, b, ...
+    in their left hand and a follower in the right, like this:
     
-Structs can have type variables
+    (mod () -> (FixedList Atom Unit Atom32)
+      (list 1 () (sha256 1))
+      )
 
-     (deftype Group num ((Add : (Exec ((Pair num (Pair num Unit)) -> num))) (Default : (Exec (Unit -> num)))))
-     
-This struct defines a kind of object that can produce a default value and do addition on values.  The type of num becomes
-a type variable in the definitions of the functions acting on Group
+Underneath, the type given by (FixedList Atom Unit Atom32) is
 
-
-
-# Function signatures
-
-There are two ways to 
-
-# Type level operators
-
-(x -> y) - names a function type
-
-In chialisp, all functions are "unary" (meaning that they cannot be partially
-applied as functions.  You can 'curry' functions with the function that sets
-them up to be functions with fewer arguments, typed like this:
-
-    (curry-argument (F A) : 
-        (forall a 
-        (forall b 
-        (forall c 
-          ((Pair (Exec ((Pair a b) -> c)) (Pair a Unit)) -> ;; Given arguments exec and arg
-           (Exec (b -> c))) )))                             ;; return executable code that has
-                                                            ;; one fewer argument
-
-(forall a type) - introduces a type variable to use in type:
-
-    (forall a ((Pair a Unit) -> (a List)))
+    (Pair Atom (Pair Unit (Pair Atom32 Unit)))
     
-as in
-
-    (defun F (X) : (forall a ((Pair a Unit)) -> (a List)) (list X))
-
-This is the type of a function which claims that calling it like
-
-    (F 3)
-
-Results in
-
-    (3) ;; An (Atom List)
+You can see this in what list evaluates to (here I'm using the repl to
+partially evaluate the list macro's output by using variables I haven't
+defined yet).
     
-We can call it with other kinds of objects:
+    $ ./target/debug/repl 
+    >>> (list x y z)
+    (c x (c y (c z (q))))
+        
+There is one other type that is more complicated, which I'll talk about later.
 
-    (deftype S ((X : Atom)))
-    (F (new_S 2))
+What else can we do?
+
+We can keep f and r from working on things we know are Atoms.
+
+    (mod () (f 1))
+
+    testfa.cl(1):12: subtype, don't know what to do with: Atom (Pair (exists tvar_$_23) (exists tvar_$_24))
     
-Resulting in an (S List)
+There are type variables here (exists tvar_$_23) and (exists tvar_$_24) because
+the type system hasn't determined what might have been intended at the step it's
+at in type checking.  In this case there'd be no way to know.
 
-forall can nest, so you can use type variables where needed.
+But we can do this:
+
+    (mod () (f (list 1 2 3)))
+
+Note that since list is a macro returning a definite result, the first element
+is definitely a pair.
+
+What about this:
+
+    (mod () (defun F () -> (List Atom) (list 1 2 3)) (f (F)))
+
+Yes, but how?  Doesn't List x = (Nullable (Pair x (List x))) ?
+
+I will talk about that in detail in a while, but for now, I defined f and r
+with a complicated type so they don't take away any expected uses.  In the
+future, there'll be tighter, safer ways to work on lists that distinguish
+empty lists.
+
+Let's talk about the types of functions.  In this type system, function types are
+like anything else, but chialisp has rules most functional languages don't, so
+what i came up with is:
+
+- All functions in chialisp are unary (they logically take one argument).
+
+- They all provide one return value (which can be in the form of a complex type).
+
+- Code you can run in apply (a operator) is something else that I'll talk about
+later on.
+
+So we model the type of a chialisp function in the actual way it's called in
+clvm code, with an environment that has bindings:
+
+    (mod (X Y Z) (if X Z Y))
+
+We call it like this:
+
+    ./target/debug/cldb '(mod (X Y Z) (if X Z Y))' '(0 2 3)'
+    ...
+    - 'Final': '2'
+      'Final-Location': '*command*(1):22'
+
+Note that the actual argument structure is typed:
+
+    (Pair Any (Pair Any (Pair Any Unit)))
+
+Now I can explain the type of the clvm f operator; i cheated.  The type level
+definition of the f and r operators are:
+
+    (forall f0
+      (forall r0 
+        ((Pair (Nullable (Pair f0 r0)) ()) -> f0)
+        )
+      )
+
+There is a wrapping pair for the argument type, because all clvm operators
+take arguments as pairs.  If it was a defun, we'd give it this way:
+
+    (defun fdef (L) : (forall f (forall r ((FixedList (Nullable (Pair f r))) -> f))) (f L))
+
+As in:
+
+    (mod ()
+      (defun fdef (L) : (forall f (forall r ((FixedList (Nullable (Pair f r))) -> f))) (f L))
+      (defun F () -> (List Atom) (list 1 2 3))
+      (fdef (F))
+      )
+
+It's complicated, but we can write functions that pass on types from their
+arguments using type variables.  You declare your own type variables using
+forall.  There are complicated ways to use type variables for type erasure
+but they are beyond the scope of this document and untested atm.
+
+Something to note here is that there are type variables in this type system.
+Most of the time end users won't need to use them directly, but they can be used
+to make data structures and abstractions for many purposes.
+
+My intention wasn't that there'd be a completely coherent type system and set of
+operators that address all use cases right away, so there are operators that let
+one cheat for the greater good:
+
+So let's look at what we can do with types we define ourselves:
+
+Let's try the repl:
+
+    $ ./target/debug/repl 
+    >>> (deftype Counter ((count : Atom)))
+    (q)
+    >>> (defun bump_ctr (c) (new_Counter (+ (get_Counter_count c) 1)))
+    (q)
+    >>> (bump_ctr (bump_ctr (new_Counter 1)))
+    (q 3)
+
+So that gives us a way to make data structures with constructors and accessors.
+What else can we do?
+
+    (mod ((V : Atom)) -> Counter
+      (deftype Counter ((count : Atom)))
+      (list V)
+      )
+
+Leads to
+
+    typect1.cl(3):9-typect1.cl(9):30: subtype, don't know what to do with: (Pair Atom ()) Counter
+
+So a struct isn't just its representation, it's its own type.
+
+    (mod ((V : Atom)) -> Counter
+      (deftype Counter ((count : Atom)))
+      (new_Counter V)
+      )
+
+This is better.
+
+Structs can have arguments that allow you to do more with them:
+
+    (mod ((V : Atom)) -> Atom
+      (deftype A ((thing : Atom)))
+      (deftype Counter x ((count : Atom) (obj : x)))
+      (get_A_thing (get_Counter_obj (new_Counter V (new_A 3))))
+      )
+
+Of course you can use them together:
+
+    (mod ((V : Atom)) -> (FixedList Atom Atom32)
+      (deftype A ((thing : Atom)))
+      (deftype B ((hash : Atom32)))
+      (deftype Counter x ((count : Atom) (obj : x)))
+      (list
+        (get_A_thing (get_Counter_obj (new_Counter V (new_A 3))))
+        (get_B_hash (get_Counter_obj (new_Counter V (new_B (sha256 4)))))
+        )
+      )
+
+## About the apply operator and abstract types
+
+chialisp is unusual in functional languages (more like lisp, but not exactly) in
+that function references with closures are not first class values.  There are
+complex historical reasons for this that are outside the scope of this tutorial.
+As such, chialisp has an operator for running compiled clvm code.  It's like
+when languages have a general FFI call operation that takes a pointer or an
+array of actual code for the CPU the program is running on.  In the same way,
+chialisp can take code that promises to do a specific thing or create its own
+and using the ffi call operation, run it and produce the result.
+
+chialisp also traditionally uses macros for some features, especially 'if', and
+because of the way it was structured in its history, passes code out of the macro
+wrapped in a special form called 'com' which causes the code to be compiled in
+the context the code is returned to.
+
+It looks like this:
+
+    (defmacro clvm-of (S) (qq (com (unquote S))))
+    
+And the result of this macro is the compiled code for whatever S does.
+
+So let's see what kind of thing it is:
+
+    (mod () -> Unit
+      (defmacro simply (S) (com S))
+      (simply (list 1 2 3))
+      )
+
+Something many programmers do (i participated in a study of the way people write
+typed functional programs https://twitter.com/jplubin/status/1354134079822647301
+which cited others) is to propose the wrong type for something so the compiler
+will show you what its idea is:
+
+    *type-prelude*(1):1-*type-prelude*(9):30: subtype, don't know what to do with: (Exec (Any -> (Pair Atom (Pair Atom (Pair Atom ()))))) ()
+    
+Hmm so the type of the compiled code is (in this case)
+
+    (Exec (Any -> (FixedList Atom Atom Atom)))
+    
+We don't track the type of the current environment (it's a bit out of scope of
+what most people do, so we treat it as Any).  There's a function type in there
+returning (FixedList Atom Atom Atom) corresponding to the (list 1 2 3) we gave
+this code.
+
+What is Exec?
+
+    (Exec x) <- An abstract type we can use for various purposes.
+    
+So we can look at the type of 'a'
+
+    (forall f0
+      (forall r0 
+        ((FixedList (Exec (f0 -> r0)) f0) -> r0)
+        )
+      )
+      
+'a' takes this 'Exec' enriched type, a wrapping of function f0 -> r0, and
+given a pair of that and the function's argument type f0, yields the function's
+result type r0.  We can say this because the type system solves these type
+variables based on information it has.
+
+So let's use 'a'
+
+    (mod () -> Unit
+      (defmacro simply (S) (qq (com (unquote S))))
+      (a (simply (list 1 2 3)) ())
+      )
+
+We get:
+
+    typem1.cl(3):20-typem1.cl(9):30: subtype, don't know what to do with: (FixedList Atom Atom Atom) ()
+    
+The error starts at the '1' and gets wacky due to the end location being in
+a different source file in the standard macros (in list).  I need to fix that
+:-).  The important thing is we know that 'a' passed through the type of the
+code given by com.  We can write the type and it's fine.
+
+    (mod () -> (List Atom) ;; or (FixedList Atom Atom Atom)
+      (defmacro simply (S) (qq (com (unquote S))))
+      (a (simply (list 1 2 3)) ())
+      )
+
+When given code from the outside, you can properly describe what it does at the
+type level:
+
+    (mod ((code : (Exec ((FixedList Atom Atom) -> Atom)))) -> Atom
+      (+ 1 (a code (list 2 3)))
+      )
+
+And we can run it:
+
+    $ ./target/debug/cldb testm2.cl '((+ 2 5))'
+    ...
+    - 'Final': '6'
+      'Final-Location': 'typem2.cl(2):4'
+
+And like this:
+
+    $ ./target/debug/cldb testm2.cl '((* 2 5))'
+    ...
+    - 'Final': '7'
+      'Final-Location': 'typem2.cl(2):4'
+
+We can write the type of the curry function:
+
+    (mod ((code : (Exec ((FixedList Atom Atom) -> Atom)))) -> Atom
+      (defun curry-1 (code arg) : (forall a (forall b (forall c ((FixedList (Exec ((Pair a b) -> c)) a) -> (Exec (b -> c))))))
+        (coerce (list 2 (c 1 code) (list 4 (c 1 arg) 1)))
+        )
+      (a (curry-1 code 2) (list 3))
+      )
