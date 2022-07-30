@@ -5,7 +5,6 @@ import traceback
 recompile_list = [
     'block_program_zero.clvm',
     'calculate_synthetic_public_key.clvm',
-    'cat.clvm',
     'chialisp_deserialisation.clvm',
     'decompress_coin_spend_entry.clvm',
     'decompress_coin_spend_entry_with_prefix.clvm',
