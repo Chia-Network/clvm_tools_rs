@@ -867,6 +867,7 @@ fn tut_example_16() {
     assert_eq!(ty.is_err(), false);
 }
 
+#[test]
 fn tut_example_17() {
     let ty = test_chialisp_program_typecheck(
         indoc! {"
