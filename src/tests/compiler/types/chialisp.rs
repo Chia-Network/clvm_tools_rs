@@ -1,6 +1,6 @@
+use num_bigint::ToBigInt;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::compiler::DefaultCompilerOpts;
@@ -511,7 +511,13 @@ fn test_bless() {
         "(mod () -> (Exec Atom32) (deftype S a ((A : a))) (defun hash_S (S) (sha256 (get_S_A S))) (bless (hash_S (new_S 1))))",
         true
     ).expect("should typecheck");
-    assert_eq!(ty, Type::TExec(Rc::new(Type::TAtom(ty.loc(), Some(32_u32.to_bigint().unwrap())))));
+    assert_eq!(
+        ty,
+        Type::TExec(Rc::new(Type::TAtom(
+            ty.loc(),
+            Some(32_u32.to_bigint().unwrap())
+        )))
+    );
 }
 
 #[test]
@@ -551,7 +557,7 @@ fn test_head_of_list() {
   )"},
         true,
     )
-        .expect("should typecheck");
+    .expect("should typecheck");
     assert_eq!(ty, Type::TAtom(ty.loc(), Some(32_u32.to_bigint().unwrap())));
 }
 
@@ -621,8 +627,15 @@ fn test_struct_is_own_type() {
     )
 "},
         true,
-    ).expect("should typecheck");
-    assert_eq!(ty, Type::TApp(Rc::new(Type::TVar(TypeVar("Counter".to_string(), ty.loc()))), Rc::new(Type::TVar(TypeVar("B".to_string(), ty.loc())))));
+    )
+    .expect("should typecheck");
+    assert_eq!(
+        ty,
+        Type::TApp(
+            Rc::new(Type::TVar(TypeVar("Counter".to_string(), ty.loc()))),
+            Rc::new(Type::TVar(TypeVar("B".to_string(), ty.loc())))
+        )
+    );
 }
 
 #[test]

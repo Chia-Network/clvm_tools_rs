@@ -58,7 +58,7 @@ impl Context {
     fn increase_type_specificity(
         &self,
         old: &Monotype,
-        tau: &Monotype
+        tau: &Monotype,
     ) -> Result<Monotype, CompileErr> {
         debug!(
             "combine {} and {} to increase information",
@@ -71,47 +71,41 @@ impl Context {
                 Ok(Type::TNullable(Rc::new(
                     self.increase_type_specificity(a.borrow(), b.borrow())?,
                 )))
-            },
-            (Type::TNullable(nt), _) => {
-                Ok(Type::TNullable(Rc::new(
-                    self.increase_type_specificity(nt.borrow(), tau)?
-                )))
-            },
-            (_, Type::TNullable(nt)) => {
-                Ok(Type::TNullable(Rc::new(
-                    self.increase_type_specificity(old, nt.borrow())?
-                )))
-            },
+            }
+            (Type::TNullable(nt), _) => Ok(Type::TNullable(Rc::new(
+                self.increase_type_specificity(nt.borrow(), tau)?,
+            ))),
+            (_, Type::TNullable(nt)) => Ok(Type::TNullable(Rc::new(
+                self.increase_type_specificity(old, nt.borrow())?,
+            ))),
             (_, Type::TExists(_)) => {
                 let r1 = self.reify(&polytype(&old));
                 let r2 = self.reify(&polytype(tau));
                 self.subtype(&polytype(&r2), &polytype(&r1))?;
                 Ok(old.clone())
-            },
+            }
             (Type::TExists(_), _) => {
                 let r1 = self.reify(&polytype(&old));
                 let r2 = self.reify(&polytype(tau));
                 self.subtype(&polytype(&r2), &polytype(&r1))?;
                 Ok(tau.clone())
-            },
+            }
             (Type::TUnit(_), _) => Ok(Type::TNullable(Rc::new(tau.clone()))),
             (_, Type::TUnit(_)) => Ok(Type::TNullable(Rc::new(old.clone()))),
-            (Type::TExec(a), Type::TExec(b)) => {
-                Ok(Type::TExec(Rc::new(self.increase_type_specificity(a.borrow(), b.borrow())?)))
-            },
-            (Type::TPair(a1,b1), Type::TPair(a2,b2)) => {
-                Ok(Type::TPair(
-                    Rc::new(self.increase_type_specificity(a1.borrow(), a2.borrow())?),
-                    Rc::new(self.increase_type_specificity(b1.borrow(), b2.borrow())?)
-                ))
-            },
-            (Type::TFun(a1,b1), Type::TFun(a2,b2)) => {
+            (Type::TExec(a), Type::TExec(b)) => Ok(Type::TExec(Rc::new(
+                self.increase_type_specificity(a.borrow(), b.borrow())?,
+            ))),
+            (Type::TPair(a1, b1), Type::TPair(a2, b2)) => Ok(Type::TPair(
+                Rc::new(self.increase_type_specificity(a1.borrow(), a2.borrow())?),
+                Rc::new(self.increase_type_specificity(b1.borrow(), b2.borrow())?),
+            )),
+            (Type::TFun(a1, b1), Type::TFun(a2, b2)) => {
                 Ok(Type::TFun(
                     // contravariant order
                     Rc::new(self.increase_type_specificity(a2.borrow(), a1.borrow())?),
-                    Rc::new(self.increase_type_specificity(b1.borrow(), b2.borrow())?)
+                    Rc::new(self.increase_type_specificity(b1.borrow(), b2.borrow())?),
                 ))
-            },
+            }
             (_, _) => {
                 let r1 = self.reify(&polytype(&old));
                 let r2 = self.reify(&polytype(tau));
@@ -151,10 +145,14 @@ impl Context {
             gamma_l.to_sexp().to_string(),
             gamma_r.to_sexp().to_string()
         );
-        let fa : ContextElim<CONTEXT_INCOMPLETE> =
-            ContextElim::CForall(alpha.clone());
+        let fa: ContextElim<CONTEXT_INCOMPLETE> = ContextElim::CForall(alpha.clone());
         if gamma_l.typewf(&tau) {
-            let mut gammaprime: Vec<ContextElim<CONTEXT_INCOMPLETE>> = gamma_r.0.iter().filter(|x| *x != &fa).map(|x| x.clone()).collect();
+            let mut gammaprime: Vec<ContextElim<CONTEXT_INCOMPLETE>> = gamma_r
+                .0
+                .iter()
+                .filter(|x| *x != &fa)
+                .map(|x| x.clone())
+                .collect();
             let gamma_l_copy: Vec<ContextElim<CONTEXT_INCOMPLETE>> = gamma_l.0.clone();
             gammaprime.push(ContextElim::CExistsSolved(alpha.clone(), new_tau.clone()));
             gammaprime.append(&mut gamma_l_copy.clone());
@@ -522,17 +520,21 @@ impl Context {
                 debug!("case 3");
                 let alpha1 = fresh_tvar(a1.loc());
                 let alpha2 = fresh_tvar(a2.loc());
-                match monotype(a1).and_then(|mta| monotype(a2).map(|mtb| (mta,mtb))) {
+                match monotype(a1).and_then(|mta| monotype(a2).map(|mtb| (mta, mtb))) {
                     Some((mta, mtb)) => {
                         return Ok(Box::new(self.appends_wf(vec![
                             ContextElim::CExistsSolved(alpha1.clone(), mta),
-                            ContextElim::CExistsSolved(alpha2.clone(), mtb)
+                            ContextElim::CExistsSolved(alpha2.clone(), mtb),
                         ])));
                     }
                     _ => {
                         return Err(CompileErr(
                             a.loc(),
-                            format!("no monotype: {} or {}", a1.to_sexp().to_string(), a2.to_sexp().to_string()),
+                            format!(
+                                "no monotype: {} or {}",
+                                a1.to_sexp().to_string(),
+                                a2.to_sexp().to_string()
+                            ),
                         ));
                     }
                 }

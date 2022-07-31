@@ -797,14 +797,13 @@ impl Context {
                 for a in args.iter().rev() {
                     result_ty = Type::TAbs(a.clone(), Rc::new(result_ty));
                 }
-                let exists_solved = ContextElim::CExistsSolved(
-                    TypeVar(tname.clone(), l.clone()),
-                    result_ty
+                let exists_solved =
+                    ContextElim::CExistsSolved(TypeVar(tname.clone(), l.clone()), result_ty);
+                debug!(
+                    "struct exists_solved {}",
+                    exists_solved.to_sexp().to_string()
                 );
-                debug!("struct exists_solved {}", exists_solved.to_sexp().to_string());
-                context = context.appends_wf(vec![
-                    exists_solved
-                ]);
+                context = context.appends_wf(vec![exists_solved]);
             }
         }
 

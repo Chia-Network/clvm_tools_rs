@@ -964,7 +964,7 @@ trait ModCompileForms {
         opts: Rc<dyn CompilerOpts>,
         args: Rc<SExp>,
         body: Rc<SExp>,
-        ty: Option<Polytype>
+        ty: Option<Polytype>,
     ) -> Result<ModAccum, CompileErr>;
 
     fn compile_mod_helper(
@@ -972,7 +972,7 @@ trait ModCompileForms {
         opts: Rc<dyn CompilerOpts>,
         args: Rc<SExp>,
         body: Rc<SExp>,
-        ty: Option<Polytype>
+        ty: Option<Polytype>,
     ) -> Result<ModAccum, CompileErr>;
 }
 
@@ -1086,20 +1086,20 @@ fn frontend_start(
 
                             let ls = preprocess(opts.clone(), body.clone())?;
                             let mut ma = ModAccum::new(l.clone());
-                            for form in ls.iter().take(ls.len()-1) {
+                            for form in ls.iter().take(ls.len() - 1) {
                                 ma = ma.compile_mod_helper(
                                     opts.clone(),
                                     stripped_args.clone(),
                                     form.clone(),
-                                    parsed_type.clone()
+                                    parsed_type.clone(),
                                 )?;
                             }
 
                             return ma.compile_mod_body(
                                 opts.clone(),
                                 stripped_args,
-                                ls[ls.len()-1].clone(),
-                                parsed_type
+                                ls[ls.len() - 1].clone(),
+                                parsed_type,
                             );
                         }
                     }
