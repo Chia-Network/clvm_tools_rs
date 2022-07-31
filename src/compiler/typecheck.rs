@@ -1,5 +1,4 @@
-use log::debug;
-use num_bigint::{Sign, ToBigInt};
+use num_bigint::ToBigInt;
 use std::borrow::Borrow;
 use std::rc::Rc;
 
@@ -371,12 +370,12 @@ fn parse_type_fun<const A: usize>(
 
 pub fn parse_fixedlist<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, CompileErr> {
     match &expr.atomize() {
-        SExp::Cons(l, a, b) => {
+        SExp::Cons(_l, a, b) => {
             let rest = parse_fixedlist(b.clone())?;
             let first = parse_type_sexp(a.clone())?;
             Ok(Type::TPair(Rc::new(first), Rc::new(rest)))
         }
-        SExp::Atom(l, a) => parse_type_sexp(expr),
+        SExp::Atom(_l, _a) => parse_type_sexp(expr),
         SExp::Nil(l) => Ok(Type::TUnit(l.clone())),
         _ => Err(CompileErr(
             expr.loc(),
@@ -395,7 +394,7 @@ pub fn parse_type_sexp<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, Compil
             } else if a == &"Atom".as_bytes().to_vec() {
                 return Ok(Type::TAtom(l.clone(), None));
             } else if a == &"Atom32".as_bytes().to_vec() {
-                return Ok(Type::TAtom(l.clone(), Some(32)));
+                return Ok(Type::TAtom(l.clone(), 32_u32.to_bigint()));
             } else {
                 return Ok(Type::TVar(parse_type_var(expr.clone())?));
             }
@@ -418,7 +417,7 @@ pub fn parse_type_sexp<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, Compil
             // (x -> y)
             // (x -> . rest)
             // (v ~> t)
-            if let SExp::Atom(l, a) = &a.atomize() {
+            if let SExp::Atom(_l, a) = &a.atomize() {
                 if a == &"exists".as_bytes().to_vec() {
                     return parse_type_exists(b.clone());
                 } else if a == &"forall".as_bytes().to_vec() {

@@ -21,10 +21,10 @@ use crate::compiler::typecheck::TheoryToSExp;
 use crate::compiler::types::ast::{
     Context, ContextElim, Expr, Polytype, Type, TypeVar, Var, TYPE_MONO,
 };
-use crate::compiler::types::astfuns::{monotype, polytype};
+use crate::compiler::types::astfuns::polytype;
 use crate::compiler::types::namegen::fresh_var;
 use crate::compiler::types::theory::TypeTheory;
-use crate::util::{u8_from_number, Number};
+use crate::util::{number_from_u8, u8_from_number, Number};
 
 //
 // Standard chia type environment.
@@ -334,7 +334,7 @@ pub fn standard_type_context() -> Context {
             Rc::new(Type::TVar(list_tv.clone())),
             Rc::new(Type::TAtom(atom_tv.loc(), None)),
         )),
-        Rc::new(Type::TAtom(atom_tv.loc(), Some(32))),
+        Rc::new(Type::TAtom(atom_tv.loc(), 32_u32.to_bigint())),
     );
     let softfork_prim: Type<TYPE_MONO> = Type::TFun(
         Rc::new(Type::TAny(f0.loc())),
@@ -783,37 +783,28 @@ impl Context {
 
         // Extract type definitions
         for h in comp.helpers.iter() {
-            if let HelperForm::Deftype(l, name, args, ty) = &h {
+            if let HelperForm::Deftype(l, name, args, _ty) = &h {
                 let tname = decode_string(name);
-                match ty {
-                    None => {
-                        // Abstract
-                        context = context.appends_wf(vec![ContextElim::CForall(TypeVar(
-                            tname.clone(),
-                            l.clone(),
-                        ))]);
-                    }
-                    Some(t) => {
-                        // Struct
-                        debug!("struct, basic type {}", t.to_sexp().to_string());
-                        structs.insert(tname.clone());
-                        if args.len() > 0 {
-                            let mut result_ty = t.clone();
-                            for a in args.iter().rev() {
-                                result_ty = Type::TAbs(a.clone(), Rc::new(result_ty));
-                            }
-                            context = context.appends_wf(vec![ContextElim::CExistsSolved(
-                                TypeVar(tname.clone(), l.clone()),
-                                monotype(&result_ty).unwrap(),
-                            )]);
-                        } else {
-                            context = context.appends_wf(vec![ContextElim::CForall(TypeVar(
-                                tname.clone(),
-                                l.clone(),
-                            ))]);
-                        }
-                    }
+                let n_encoding = number_from_u8(&format!("struct {}", tname).as_bytes());
+                // Struct
+                structs.insert(tname.clone());
+                // Ensure that we build up a unique type involving all variables so we won't try to solve it to some specific type
+                let mut result_ty = Type::TAtom(h.loc(), Some(n_encoding));
+                for a in args.iter().rev() {
+                    result_ty = Type::TPair(Rc::new(Type::TVar(a.clone())), Rc::new(result_ty));
                 }
+                result_ty = Type::TExec(Rc::new(result_ty));
+                for a in args.iter().rev() {
+                    result_ty = Type::TAbs(a.clone(), Rc::new(result_ty));
+                }
+                let exists_solved = ContextElim::CExistsSolved(
+                    TypeVar(tname.clone(), l.clone()),
+                    result_ty
+                );
+                debug!("struct exists_solved {}", exists_solved.to_sexp().to_string());
+                context = context.appends_wf(vec![
+                    exists_solved
+                ]);
             }
         }
 

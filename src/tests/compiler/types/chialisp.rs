@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::compiler::DefaultCompilerOpts;
@@ -204,7 +205,7 @@ fn test_chialisp_defun_sha256() {
         true,
     )
     .expect("should type check");
-    assert_eq!(ty, Type::TAtom(ty.loc(), Some(32)));
+    assert_eq!(ty, Type::TAtom(ty.loc(), Some(32_u32.to_bigint().unwrap())));
 }
 
 #[test]
@@ -273,7 +274,7 @@ fn test_chialisp_with_arg_type_doesnt_checks_atom32() {
         "(mod ((X : (Pair Atom Unit))) -> Atom32 (sha256 1 X))",
         false,
     );
-    assert_eq!(ty.is_err(), false);
+    assert_eq!(ty.is_err(), true);
 }
 
 #[test]
@@ -372,8 +373,8 @@ fn test_if_not_conflicting_types() {
     let ty = test_chialisp_program_typecheck(
         indoc! {"
 (mod () -> Any
-  (defun F () -> Atom 1)
-  (defun G () -> (Pair Atom Unit) (c 1 ()))
+  (defun F () -> (Nullable (Pair Atom Unit)) ())
+  (defun G () -> (Nullable (Pair Atom Unit)) (c 1 ()))
   (if 1 (F) (G))
   )
         "},
@@ -423,7 +424,7 @@ fn test_struct_decl_easy() {
         true,
     )
     .expect("should type check");
-    assert_eq!(ty, Type::TAtom(ty.loc(), Some(32)));
+    assert_eq!(ty, Type::TAtom(ty.loc(), Some(32_u32.to_bigint().unwrap())));
 }
 
 #[test]
@@ -492,7 +493,7 @@ fn test_struct_construction_with_var_member() {
         "(mod () -> Atom32 (deftype S a ((A : a))) (defun hash_S (S) (sha256 (get_S_A S))) (hash_S (new_S 1)))",
         true
     ).expect("should typecheck");
-    assert_eq!(ty, Type::TAtom(ty.loc(), Some(32)));
+    assert_eq!(ty, Type::TAtom(ty.loc(), Some(32_u32.to_bigint().unwrap())));
 }
 
 #[test]
@@ -501,7 +502,7 @@ fn test_coerce() {
         "(mod () -> Atom32 (deftype S a ((A : a))) (defun hash_S (S) (+ (get_S_A S))) (coerce (hash_S (new_S 1))))",
         true
     ).expect("should typecheck");
-    assert_eq!(ty, Type::TAtom(ty.loc(), Some(32)));
+    assert_eq!(ty, Type::TAtom(ty.loc(), Some(32_u32.to_bigint().unwrap())));
 }
 
 #[test]
@@ -510,7 +511,7 @@ fn test_bless() {
         "(mod () -> (Exec Atom32) (deftype S a ((A : a))) (defun hash_S (S) (sha256 (get_S_A S))) (bless (hash_S (new_S 1))))",
         true
     ).expect("should typecheck");
-    assert_eq!(ty, Type::TExec(Rc::new(Type::TAtom(ty.loc(), Some(32)))));
+    assert_eq!(ty, Type::TExec(Rc::new(Type::TAtom(ty.loc(), Some(32_u32.to_bigint().unwrap())))));
 }
 
 #[test]
@@ -550,8 +551,8 @@ fn test_head_of_list() {
   )"},
         true,
     )
-    .expect("should typecheck");
-    assert_eq!(ty, Type::TAtom(ty.loc(), Some(32)));
+        .expect("should typecheck");
+    assert_eq!(ty, Type::TAtom(ty.loc(), Some(32_u32.to_bigint().unwrap())));
 }
 
 #[test]
@@ -567,7 +568,7 @@ fn test_fixedlist() {
     assert_eq!(
         ty,
         Type::TPair(
-            Rc::new(Type::TAtom(ty.loc(), Some(32))),
+            Rc::new(Type::TAtom(ty.loc(), Some(32_u32.to_bigint().unwrap()))),
             Rc::new(Type::TPair(
                 Rc::new(Type::TAtom(ty.loc(), None)),
                 Rc::new(Type::TUnit(ty.loc()))
@@ -590,4 +591,279 @@ fn test_curry1() {
     )
         .expect("should typecheck");
     assert_eq!(ty, Type::TAtom(ty.loc(), None));
+}
+
+#[test]
+fn test_struct_is_not_random_pair() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod ((V : Atom)) -> (FixedList Atom (FixedList Atom32))
+  (deftype A ((thing : Atom)))
+  (deftype B ((hash : Atom32)))
+  (deftype Counter x ((count : Atom) (obj : x)))
+  (new_Counter V (new_B (sha256 3)))
+  )
+"},
+        true,
+    );
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn test_struct_is_own_type() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod ((V : Atom)) -> (Counter B)
+     (deftype A ((thing : Atom)))
+     (deftype B ((hash : Atom32)))
+     (deftype Counter x ((count : Atom) (obj : x)))
+     (new_Counter V (new_B (sha256 3)))
+    )
+"},
+        true,
+    ).expect("should typecheck");
+    assert_eq!(ty, Type::TApp(Rc::new(Type::TVar(TypeVar("Counter".to_string(), ty.loc()))), Rc::new(Type::TVar(TypeVar("B".to_string(), ty.loc())))));
+}
+
+#[test]
+fn test_struct_is_not_other_struct_type() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod ((V : Atom)) -> (Counter B)
+     (deftype A ((thing : Atom)))
+     (deftype B ((hash : Atom32)))
+     (deftype Counter x ((count : Atom) (obj : x)))
+     (new_Counter V (new_A 3))
+    )
+"},
+        true,
+    );
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn tut_example_1() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod (X)
+      (defun F (P X) (if X (F (sha256 P (f X)) (r X)) P))
+      (F (sha256 1) X)
+      )"},
+        true,
+    );
+    assert_eq!(ty.is_err(), false);
+}
+
+#[test]
+fn tut_example_2() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod (X) -> Atom32
+      (defun F (P X) (if X (F (sha256 P (f X)) (r X)) P))
+      (F (sha256 1) X)
+      )"},
+        true,
+    );
+    assert_eq!(ty.is_err(), false);
+}
+
+#[test]
+fn tut_example_3() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod (X) -> Atom32
+     (defun F (P X) : (Any -> Any) (if X (F (sha256 P (f X)) (r X)) P))
+     (F (sha256 1) X)
+    )"},
+        true,
+    );
+    assert_eq!(ty.is_err(), false);
+}
+
+#[test]
+fn tut_example_4() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod (X) -> Atom32
+     (defun F (P X) : (Any -> Atom) (if X (F (sha256 P (f X)) (r X)) P))
+     (F (sha256 1) X)
+    )"},
+        true,
+    );
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn tut_example_5() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod (X) -> Atom32
+     (defun F (P X) : (Any -> Atom32) (if X (F (sha256 P (f X)) (r X)) P))
+     (F (sha256 1) X)
+    )"},
+        true,
+    );
+    assert_eq!(ty.is_err(), false);
+}
+
+#[test]
+fn tut_example_6() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod (X) -> Atom32
+     (defun F ((P : Atom) X) -> Atom32 (if X (F (sha256 P (f X)) (r X)) P))
+     (F (sha256 1) X)
+    )"},
+        true,
+    );
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn tut_example_7() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod (X) -> Atom32
+     (defun F ((P : Atom32) X) -> Atom32 (if X (F (* P (f X)) (r X)) P))
+     (F (sha256 1) X)
+    )"},
+        true,
+    );
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn tut_example_8() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod (X) -> Atom32
+     (defun F ((P : Atom32) X) -> Atom32 (if X (F (sha256 P (f X)) (r X)) P))
+     (F 1 X)
+    )"},
+        true,
+    );
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn tut_example_9() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod ((X : (List Atom))) -> Atom32
+     (defun F ((P : Atom32) (X : (List Atom))) -> Atom32 (if X (F (sha256 P (f X)) (r X)) P))
+     (F (sha256 1) X)
+    )"},
+        true,
+    );
+    assert_eq!(ty.is_err(), false);
+}
+
+#[test]
+fn tut_example_10() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod ((V : Atom)) -> Counter
+     (deftype Counter ((count : Atom)))
+     (list V)
+    )"},
+        true,
+    );
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn tut_example_11() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod ((V : Atom)) -> Counter
+     (deftype Counter ((count : Atom)))
+     (new_Counter V)
+    )"},
+        true,
+    );
+    assert_eq!(ty.is_err(), false);
+}
+
+#[test]
+fn tut_example_12() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod ((V : Atom)) -> Atom
+     (deftype A ((thing : Atom)))
+     (deftype Counter x ((count : Atom) (obj : x)))
+     (get_A_thing (get_Counter_obj (new_Counter V (new_A 3))))
+    )"},
+        true,
+    );
+    assert_eq!(ty.is_err(), false);
+}
+
+#[test]
+fn tut_example_13() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod ((V : Atom)) -> (FixedList Atom Atom32)
+ (deftype A ((thing : Atom)))
+ (deftype B ((hash : Atom32)))
+ (deftype Counter x ((count : Atom) (obj : x)))
+ (list
+  (get_A_thing (get_Counter_obj (new_Counter V (new_A 3))))
+  (get_B_hash (get_Counter_obj (new_Counter V (new_B (sha256 4)))))
+ )
+)"},
+        true,
+    );
+    assert_eq!(ty.is_err(), false);
+}
+
+#[test]
+fn tut_example_14() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod () -> Unit
+ (defmacro simply (S) (qq (com (unquote S))))
+ (simply (list 1 2 3))
+)"},
+        true,
+    );
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn tut_example_15() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod () -> Unit
+ (defmacro simply (S) (qq (com (unquote S))))
+ (a (simply (list 1 2 3)) ())
+)"},
+        true,
+    );
+    assert_eq!(ty.is_err(), true);
+}
+
+#[test]
+fn tut_example_16() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod ((code : (Exec ((FixedList Atom Atom) -> Atom)))) -> Atom
+ (+ 1 (a code (list 2 3)))
+)"},
+        true,
+    );
+    assert_eq!(ty.is_err(), false);
+}
+
+fn tut_example_17() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+(mod ((code : (Exec ((FixedList Atom Atom) -> Atom)))) -> Atom
+ (defun curry-1 (code arg) : (forall a (forall b (forall c ((FixedList (Exec ((Pair a b) -> c)) a) -> (Exec (b -> c))))))
+  (coerce (list 2 (c 1 code) (list 4 (c 1 arg) 1)))
+ )
+ (a (curry-1 code 2) (list 3))
+)"},
+        true,
+    );
+    assert_eq!(ty.is_err(), false);
 }

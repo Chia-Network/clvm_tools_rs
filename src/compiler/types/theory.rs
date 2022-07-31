@@ -7,7 +7,7 @@ use std::iter;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use num_traits::ToPrimitive;
+use num_bigint::ToBigInt;
 
 use crate::compiler::comptypes::CompileErr;
 use crate::compiler::srcloc::HasLoc;
@@ -55,25 +55,79 @@ pub trait TypeTheory {
 }
 
 impl Context {
+    fn increase_type_specificity(
+        &self,
+        old: &Monotype,
+        tau: &Monotype
+    ) -> Result<Monotype, CompileErr> {
+        debug!(
+            "combine {} and {} to increase information",
+            old.to_sexp().to_string(),
+            tau.to_sexp().to_string()
+        );
+        match (&old, tau) {
+            (Type::TNullable(a), Type::TNullable(b)) => {
+                debug!("check nullable nullable");
+                Ok(Type::TNullable(Rc::new(
+                    self.increase_type_specificity(a.borrow(), b.borrow())?,
+                )))
+            },
+            (Type::TNullable(nt), _) => {
+                Ok(Type::TNullable(Rc::new(
+                    self.increase_type_specificity(nt.borrow(), tau)?
+                )))
+            },
+            (_, Type::TNullable(nt)) => {
+                Ok(Type::TNullable(Rc::new(
+                    self.increase_type_specificity(old, nt.borrow())?
+                )))
+            },
+            (_, Type::TExists(_)) => {
+                let r1 = self.reify(&polytype(&old));
+                let r2 = self.reify(&polytype(tau));
+                self.subtype(&polytype(&r2), &polytype(&r1))?;
+                Ok(old.clone())
+            },
+            (Type::TExists(_), _) => {
+                let r1 = self.reify(&polytype(&old));
+                let r2 = self.reify(&polytype(tau));
+                self.subtype(&polytype(&r2), &polytype(&r1))?;
+                Ok(tau.clone())
+            },
+            (Type::TUnit(_), _) => Ok(Type::TNullable(Rc::new(tau.clone()))),
+            (_, Type::TUnit(_)) => Ok(Type::TNullable(Rc::new(old.clone()))),
+            (Type::TExec(a), Type::TExec(b)) => {
+                Ok(Type::TExec(Rc::new(self.increase_type_specificity(a.borrow(), b.borrow())?)))
+            },
+            (Type::TPair(a1,b1), Type::TPair(a2,b2)) => {
+                Ok(Type::TPair(
+                    Rc::new(self.increase_type_specificity(a1.borrow(), a2.borrow())?),
+                    Rc::new(self.increase_type_specificity(b1.borrow(), b2.borrow())?)
+                ))
+            },
+            (Type::TFun(a1,b1), Type::TFun(a2,b2)) => {
+                Ok(Type::TFun(
+                    // contravariant order
+                    Rc::new(self.increase_type_specificity(a2.borrow(), a1.borrow())?),
+                    Rc::new(self.increase_type_specificity(b1.borrow(), b2.borrow())?)
+                ))
+            },
+            (_, _) => {
+                let r1 = self.reify(&polytype(&old));
+                let r2 = self.reify(&polytype(tau));
+                self.subtype(&polytype(&r2), &polytype(&r1))?;
+                Ok(tau.clone())
+            }
+        }
+    }
+
     fn increase_specificity(
         &self,
         alpha: &TypeVar,
         tau: &Monotype,
     ) -> Result<Monotype, CompileErr> {
         if let Some(old) = self.find_solved(alpha) {
-            debug!(
-                "combine {} and {} to increase information",
-                old.to_sexp().to_string(),
-                tau.to_sexp().to_string()
-            );
-            match (&old, tau) {
-                (Type::TNullable(_), Type::TNullable(b)) => Ok(Type::TNullable(Rc::new(
-                    self.increase_specificity(alpha, b.borrow())?,
-                ))),
-                (Type::TNullable(_), _) => Ok(old.clone()),
-                (_, Type::TNullable(_)) => Ok(tau.clone()),
-                (_, _) => Ok(tau.clone()),
-            }
+            self.increase_type_specificity(&old, tau)
         } else {
             Ok(tau.clone())
         }
@@ -97,8 +151,10 @@ impl Context {
             gamma_l.to_sexp().to_string(),
             gamma_r.to_sexp().to_string()
         );
+        let fa : ContextElim<CONTEXT_INCOMPLETE> =
+            ContextElim::CForall(alpha.clone());
         if gamma_l.typewf(&tau) {
-            let mut gammaprime: Vec<ContextElim<CONTEXT_INCOMPLETE>> = gamma_r.0.clone();
+            let mut gammaprime: Vec<ContextElim<CONTEXT_INCOMPLETE>> = gamma_r.0.iter().filter(|x| *x != &fa).map(|x| x.clone()).collect();
             let gamma_l_copy: Vec<ContextElim<CONTEXT_INCOMPLETE>> = gamma_l.0.clone();
             gammaprime.push(ContextElim::CExistsSolved(alpha.clone(), new_tau.clone()));
             gammaprime.append(&mut gamma_l_copy.clone());
@@ -161,7 +217,7 @@ impl Context {
                 return self.subtype(a, b);
             }
 
-            (Type::TUnit(_), Type::TNullable(b)) => {
+            (Type::TUnit(_), Type::TNullable(_)) => {
                 return Ok(Box::new(self.clone()));
             }
 
@@ -447,7 +503,7 @@ impl Context {
             }
             Type::TExec(a1) => {
                 debug!("case 2");
-                match monotype(a) {
+                match monotype(a1) {
                     Some(mta) => {
                         return Ok(Box::new(self.appends_wf(vec![
                             ContextElim::CForall(alpha.clone()),
@@ -462,19 +518,21 @@ impl Context {
                     }
                 }
             }
-            Type::TPair(_, _) => {
+            Type::TPair(a1, a2) => {
                 debug!("case 3");
-                match monotype(a) {
-                    Some(mta) => {
+                let alpha1 = fresh_tvar(a1.loc());
+                let alpha2 = fresh_tvar(a2.loc());
+                match monotype(a1).and_then(|mta| monotype(a2).map(|mtb| (mta,mtb))) {
+                    Some((mta, mtb)) => {
                         return Ok(Box::new(self.appends_wf(vec![
-                            ContextElim::CForall(alpha.clone()),
-                            ContextElim::CExistsSolved(alpha.clone(), mta),
+                            ContextElim::CExistsSolved(alpha1.clone(), mta),
+                            ContextElim::CExistsSolved(alpha2.clone(), mtb)
                         ])));
                     }
                     _ => {
                         return Err(CompileErr(
                             a.loc(),
-                            format!("no monotype: {}", a.to_sexp().to_string()),
+                            format!("no monotype: {} or {}", a1.to_sexp().to_string(), a2.to_sexp().to_string()),
                         ));
                     }
                 }
@@ -603,13 +661,13 @@ impl Context {
             (e, b) => {
                 debug!("// Sub");
                 let (a, theta) = self.typesynth(e)?;
+                let aprime = theta.reify(&a);
                 debug!(
                     "typesynth {} = {}",
                     e.to_sexp().to_string(),
-                    a.to_sexp().to_string()
+                    aprime.to_sexp().to_string()
                 );
-                debug!("typesynth result context {}", theta.to_sexp().to_string());
-                return theta.subtype(&theta.apply(&a), &theta.apply(b));
+                return theta.subtype(&theta.apply(&aprime), &theta.apply(b));
             }
         }
     }
@@ -648,8 +706,8 @@ impl Context {
             }
 
             Expr::ELit(l, n) => {
-                let atom_size = if n.to_usize().unwrap() == 32 {
-                    Some(32)
+                let atom_size = if n == &32_u32.to_bigint().unwrap() {
+                    Some(n.clone())
                 } else {
                     None
                 };
@@ -1064,13 +1122,13 @@ impl TypeTheory for Context {
             Type::TExists(tv) => self
                 .find_solved(tv)
                 .as_ref()
-                .map(|x| polytype(x))
+                .map(|x| self.reify(&polytype(x)))
                 .unwrap_or_else(|| typ.clone()),
             Type::TForall(tv, ty) => Type::TForall(tv.clone(), Rc::new(self.reify(ty))),
             Type::TFun(a, b) => Type::TFun(Rc::new(self.reify(a)), Rc::new(self.reify(b))),
             Type::TNullable(t) => Type::TNullable(Rc::new(self.reify(t))),
             Type::TPair(a, b) => Type::TPair(Rc::new(self.reify(a)), Rc::new(self.reify(b))),
-
+            Type::TApp(a, b) => Type::TApp(Rc::new(self.reify(a)), Rc::new(self.reify(b))),
             _ => typ.clone(),
         }
     }

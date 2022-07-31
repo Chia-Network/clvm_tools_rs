@@ -111,7 +111,7 @@ impl HasLoc for Expr {
 pub enum Type<const T: usize> {
     TUnit(Srcloc),
     TAny(Srcloc),
-    TAtom(Srcloc, Option<usize>),
+    TAtom(Srcloc, Option<Number>),
     TVar(TypeVar),
     TExists(TypeVar),
     TForall(TypeVar, Rc<Type<TYPE_POLY>>),

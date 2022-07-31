@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
+use log::debug;
+
 use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
@@ -926,6 +928,7 @@ pub fn compile_helperform(
             } else if res.op_name == "deftype".as_bytes().to_vec() {
                 let parsed_chia = parse_chia_type(res.orig)?;
                 let mut helpers = generate_type_helpers(&parsed_chia);
+                debug!("parsed_chia {:?}", parsed_chia);
                 let new_form = match &parsed_chia {
                     ChiaType::Abstract(l, n) => {
                         HelperForm::Deftype(l.clone(), n.clone(), vec![], None)
@@ -955,49 +958,61 @@ pub fn compile_helperform(
     Ok(None)
 }
 
-fn compile_mod_(
-    mc_: &ModAccum,
-    opts: Rc<dyn CompilerOpts>,
-    args: Rc<SExp>,
-    content: Rc<SExp>,
-    ty: Option<Polytype>,
-) -> Result<ModAccum, CompileErr> {
-    let mut mc: ModAccum = mc_.clone();
-    match content.borrow() {
-        SExp::Nil(l) => Err(CompileErr(
-            l.clone(),
-            "no expression at end of mod".to_string(),
-        )),
-        SExp::Cons(l, body, tail) => match tail.borrow() {
-            SExp::Nil(_) => match mc.exp_form {
-                Some(_) => Err(CompileErr(l.clone(), "too many expressions".to_string())),
-                _ => Ok(mc.set_final(&CompileForm {
-                    loc: mc.loc.clone(),
-                    args: args.clone(),
-                    helpers: mc.helpers.clone(),
-                    exp: Rc::new(compile_bodyform(body.clone())?),
-                    ty: ty,
-                })),
-            },
-            _ => {
-                if let Some(helpers) = compile_helperform(opts.clone(), body.clone())? {
-                    for form in helpers.new_helpers.iter() {
-                        mc = mc.add_helper(form.clone());
-                    }
-                } else {
-                    return Err(CompileErr(
-                        l.clone(),
-                        "only the last form can be an exprssion in mod".to_string(),
-                    ));
-                }
+trait ModCompileForms {
+    fn compile_mod_body(
+        &self,
+        opts: Rc<dyn CompilerOpts>,
+        args: Rc<SExp>,
+        body: Rc<SExp>,
+        ty: Option<Polytype>
+    ) -> Result<ModAccum, CompileErr>;
 
-                compile_mod_(&mc, opts, args.clone(), tail.clone(), ty)
+    fn compile_mod_helper(
+        &self,
+        opts: Rc<dyn CompilerOpts>,
+        args: Rc<SExp>,
+        body: Rc<SExp>,
+        ty: Option<Polytype>
+    ) -> Result<ModAccum, CompileErr>;
+}
+
+impl ModCompileForms for ModAccum {
+    fn compile_mod_body(
+        &self,
+        _opts: Rc<dyn CompilerOpts>,
+        args: Rc<SExp>,
+        body: Rc<SExp>,
+        ty: Option<Polytype>,
+    ) -> Result<ModAccum, CompileErr> {
+        Ok(self.set_final(&CompileForm {
+            loc: self.loc.clone(),
+            args: args.clone(),
+            helpers: self.helpers.clone(),
+            exp: Rc::new(compile_bodyform(body.clone())?),
+            ty: ty,
+        }))
+    }
+
+    fn compile_mod_helper(
+        &self,
+        opts: Rc<dyn CompilerOpts>,
+        _args: Rc<SExp>,
+        body: Rc<SExp>,
+        _ty: Option<Polytype>,
+    ) -> Result<ModAccum, CompileErr> {
+        let mut mc = self.clone();
+        if let Some(helpers) = compile_helperform(opts.clone(), body.clone())? {
+            for form in helpers.new_helpers.iter() {
+                debug!("process helper {}", decode_string(form.name()));
+                mc = mc.add_helper(form.clone());
             }
-        },
-        _ => Err(CompileErr(
-            content.loc(),
-            format!("inappropriate sexp {}", content.to_string()),
-        )),
+            Ok(mc)
+        } else {
+            Err(CompileErr(
+                body.loc(),
+                "only the last form can be an exprssion in mod".to_string(),
+            ))
+        }
     }
 }
 
@@ -1070,12 +1085,21 @@ fn frontend_start(
                             let body = Rc::new(enlist(pre_forms[0].loc(), body_vec));
 
                             let ls = preprocess(opts.clone(), body.clone())?;
-                            return compile_mod_(
-                                &ModAccum::new(l.clone()),
+                            let mut ma = ModAccum::new(l.clone());
+                            for form in ls.iter().take(ls.len()-1) {
+                                ma = ma.compile_mod_helper(
+                                    opts.clone(),
+                                    stripped_args.clone(),
+                                    form.clone(),
+                                    parsed_type.clone()
+                                )?;
+                            }
+
+                            return ma.compile_mod_body(
                                 opts.clone(),
                                 stripped_args,
-                                Rc::new(list_to_cons(l, &ls)),
-                                parsed_type,
+                                ls[ls.len()-1].clone(),
+                                parsed_type
                             );
                         }
                     }

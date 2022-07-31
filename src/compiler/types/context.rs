@@ -179,7 +179,7 @@ impl Context {
                                     debug!("tabls unrecurse");
                                     let new_ctx = self.appends_wf(vec![
                                         ContextElim::CForall(new_tvar.clone()),
-                                        ContextElim::CExistsSolved(new_tvar.clone(), tmono),
+                                        ContextElim::CExistsSolved(new_tvar.clone(), tmono)
                                     ]);
 
                                     (Type::TExists(new_tvar), new_ctx)
@@ -209,11 +209,15 @@ impl Context {
             Type::TExists(alpha) => self.existentials().elem(alpha),
             Type::TAbs(s, t) => {
                 debug!(
-                    "typef {} {}?",
+                    "typewf {} {}?",
                     s.to_sexp().to_string(),
                     t.to_sexp().to_string()
                 );
-                self.typewf(t.borrow())
+                let checktype: Type<A> = Type::TForall(
+                    s.clone(),
+                    Rc::new(polytype(t.borrow()))
+                );
+                self.typewf(&checktype)
             }
             Type::TApp(t1, t2) => {
                 debug!("check well formed {}", t1.to_sexp().to_string());

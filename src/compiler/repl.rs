@@ -5,15 +5,13 @@ use std::env;
 use std::mem::swap;
 use std::rc::Rc;
 
-use log::debug;
-
 use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
-use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, HelperForm};
-use crate::compiler::evaluate::{first_of_alist, second_of_alist, Evaluator};
+use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts};
+use crate::compiler::evaluate::{first_of_alist, Evaluator};
 use crate::compiler::frontend::{compile_helperform, frontend};
-use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
+use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 pub struct Repl {
@@ -193,10 +191,6 @@ impl Repl {
                     return Ok(None);
                 }
                 let fa = first_of_alist(parsed_program[0].clone());
-                let is_helper = fa
-                    .map(|fa| self.toplevel_forms.contains(&fa.to_string()))
-                    .unwrap_or_else(|_| false);
-
                 if let Some(hresult) =
                     compile_helperform(self.opts.clone(), parsed_program[0].clone())?
                 {
