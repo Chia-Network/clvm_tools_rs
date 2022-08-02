@@ -1111,7 +1111,7 @@ pub fn launch_tool(
             };
 
             let _ = match parsedArgs.get("time") {
-                Some(ArgumentValue::ArgInt(_t)) => {
+                Some(ArgumentValue::ArgBool(true)) => {
                     match parsedArgs.get("hex") {
                         Some(_) => {
                             stdout.write_string(format!(
