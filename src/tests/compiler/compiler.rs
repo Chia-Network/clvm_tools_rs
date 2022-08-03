@@ -1026,3 +1026,32 @@ fn sebastian_hash_test_2() {
 
     assert_eq!(result.to_string(), "((0xf22ada22a0ed015000ea157013ee62dc6ce337a649ec01054fc62ed6caac7eaf 36364122602940516403027890844760998025315693007634105146514094828976803085567) (51 -54330418644829767769717664495663952010367061369724157609947295940464695774007 1))");
 }
+
+#[test]
+fn test_modern_inline_at_capture() {
+    let result = run_string(
+        &indoc! {"
+(mod (Z)
+  (include *standard-cl-21*)
+  (defun-inline check_lineage_proof
+    (
+      THIS_MOD_HASH
+      TYPES
+      (@ lineage_proof (foo bar))
+      conditions
+    )
+    (if TYPES
+        (x lineage_proof)
+        conditions
+    )
+  )
+
+  (check_lineage_proof 1 2 Z 4)
+  )"}
+        .to_string(),
+        &"(99)".to_string(),
+    )
+    .unwrap_err();
+
+    assert_eq!(result.1, "clvm raise in (8 5) (() 99)");
+}
