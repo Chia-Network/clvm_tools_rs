@@ -1055,3 +1055,49 @@ fn test_modern_inline_at_capture() {
 
     assert_eq!(result.1, "clvm raise in (8 5) (() 99)");
 }
+
+#[test]
+fn test_modern_inline_at_capture_2() {
+    let result = run_string(
+        &indoc! {"
+(mod (X Y)
+    (include *standard-cl-21*)
+    (defun-inline arg-1-destructured ((@ C (D E)) A)
+        (sha256 E A D)
+        )
+    (arg-1-destructured X Y)
+    )
+        "}
+        .to_string(),
+        &"((99 100) 101)".to_string(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        result.to_string(),
+        "-11166166494024160256328081294675294491115196456815954757128710683979774819855"
+    );
+}
+
+#[test]
+fn test_modern_inline_at_capture_3() {
+    let result = run_string(
+        &indoc! {"
+(mod (X Y)
+    (include *standard-cl-21*)
+    (defun-inline arg-1-destructured (A (@ C (D E)))
+        (sha256 E A (f C))
+        )
+    (arg-1-destructured Y X)
+    )
+        "}
+        .to_string(),
+        &"((99 100) 101)".to_string(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        result.to_string(),
+        "-11166166494024160256328081294675294491115196456815954757128710683979774819855"
+    );
+}
