@@ -33,12 +33,13 @@ fn get_version() -> PyResult<String> {
     Ok(env!("CARGO_PKG_VERSION").to_string())
 }
 
-#[pyfunction(arg3 = "[]")]
+#[pyfunction(arg3 = "[]", arg4 = "None")]
 fn compile_clvm(
     input_path: &PyAny,
     output_path: String,
     search_paths: Vec<String>,
-) -> PyResult<String> {
+    export_symbols: Option<bool>,
+) -> PyResult<PyObject> {
     let has_atom = input_path.hasattr("atom")?;
     let has_pair = input_path.hasattr("pair")?;
 
@@ -59,8 +60,20 @@ fn compile_clvm(
         path_string = path_string + ".clvm";
     };
 
-    clvmc::compile_clvm(&path_string, &output_path, &search_paths)
-        .map_err(|s| PyException::new_err(s))
+    let mut symbols = HashMap::new();
+    let compiled = clvmc::compile_clvm(&path_string, &output_path, &search_paths, &mut symbols)
+        .map_err(|s| PyException::new_err(s))?;
+
+    Python::with_gil(|py| {
+        if export_symbols == Some(true) {
+            let mut result_dict = HashMap::new();
+            result_dict.insert("output".to_string(), compiled.into_py(py));
+            result_dict.insert("symbols".to_string(), symbols.into_py(py));
+            Ok(result_dict.into_py(py))
+        } else {
+            Ok(compiled.into_py(py))
+        }
+    })
 }
 
 #[pyclass]
