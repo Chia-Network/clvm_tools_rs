@@ -1197,7 +1197,10 @@ pub fn launch_tool(
     let log_updates = log_updates.lock().unwrap().finish();
     fix_log(&mut allocator, &mut log_content, &log_updates);
 
-    let only_exn = parsedArgs.get("only_exn").map(|_| true).unwrap_or_else(|| false);
+    let only_exn = parsedArgs
+        .get("only_exn")
+        .map(|_| true)
+        .unwrap_or_else(|| false);
 
     if emit_symbol_output {
         stdout.write_string(format!("\n"));
