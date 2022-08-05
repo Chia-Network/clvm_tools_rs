@@ -173,6 +173,7 @@ fn table_trace(
 fn display_trace(
     allocator: &mut Allocator,
     stdout: &mut Stream,
+    only_exn: bool,
     trace: &Vec<NodePtr>,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
     symbol_table: Option<HashMap<String, String>>,
@@ -190,7 +191,8 @@ fn display_trace(
         let item_vec = proper_list(allocator, *item, true).unwrap();
         let form = item_vec[0];
         let env = item_vec[1];
-        let rv = if item_vec.len() > 2 {
+        let not_exn = item_vec.len() > 2;
+        let rv = if not_exn {
             disassemble_f(allocator, item_vec[2])
         } else {
             "(didn't finish)".to_string()
@@ -200,13 +202,18 @@ fn display_trace(
         let symbol = symbol_table
             .as_ref()
             .and_then(|st| st.get(&h).map(|x| x.to_string()));
-        display_fun(allocator, stdout, disassemble_f, form, symbol, env, &rv);
+
+        let display = !only_exn || !not_exn;
+        if display {
+            display_fun(allocator, stdout, disassemble_f, form, symbol, env, &rv);
+        }
     }
 }
 
 pub fn trace_to_text(
     allocator: &mut Allocator,
     stdout: &mut Stream,
+    only_exn: bool,
     trace: &Vec<NodePtr>,
     symbol_table: Option<HashMap<String, String>>,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
@@ -214,6 +221,7 @@ pub fn trace_to_text(
     display_trace(
         allocator,
         stdout,
+        only_exn,
         trace,
         disassemble_f,
         symbol_table,
@@ -224,6 +232,7 @@ pub fn trace_to_text(
 pub fn trace_to_table(
     allocator: &mut Allocator,
     stdout: &mut Stream,
+    only_exn: bool,
     trace: &Vec<NodePtr>,
     symbol_table: Option<HashMap<String, String>>,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
@@ -231,6 +240,7 @@ pub fn trace_to_table(
     display_trace(
         allocator,
         stdout,
+        only_exn,
         trace,
         disassemble_f,
         symbol_table,
