@@ -251,13 +251,16 @@ pub fn brun(args: &Vec<String>) {
 }
 
 fn to_yaml(entries: &Vec<BTreeMap<String, String>>) -> Yaml {
-    let result_array: Vec<Yaml> = entries.iter().map(|tm| {
-        let mut h = LinkedHashMap::new();
-        for (k,v) in tm.iter() {
-            h.insert(Yaml::String(k.clone()), Yaml::String(v.clone()));
-        }
-        Yaml::Hash(h)
-    }).collect();
+    let result_array: Vec<Yaml> = entries
+        .iter()
+        .map(|tm| {
+            let mut h = LinkedHashMap::new();
+            for (k, v) in tm.iter() {
+                h.insert(Yaml::String(k.clone()), Yaml::String(v.clone()));
+            }
+            Yaml::Hash(h)
+        })
+        .collect();
     Yaml::Array(result_array)
 }
 
