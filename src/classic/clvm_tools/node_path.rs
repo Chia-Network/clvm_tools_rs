@@ -74,9 +74,7 @@ impl NodePath {
                     let unsigned = bigint_from_bytes(&bytes_repr, None);
                     NodePath { index: unsigned }
                 } else {
-                    NodePath {
-                        index,
-                    }
+                    NodePath { index }
                 }
             }
             None => NodePath { index: bi_one() },
