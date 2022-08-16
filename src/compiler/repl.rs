@@ -35,19 +35,13 @@ fn program_with_helper(names: Vec<Rc<SExp>>, parsed_program: Rc<SExp>) -> Rc<SEx
 
     body = Rc::new(SExp::Cons(
         parsed_program.loc(),
-        Rc::new(SExp::atom_from_string(
-            parsed_program.loc(),
-            "x"
-        )),
+        Rc::new(SExp::atom_from_string(parsed_program.loc(), "x")),
         body,
     ));
 
     Rc::new(SExp::Cons(
         parsed_program.loc(),
-        Rc::new(SExp::atom_from_string(
-            parsed_program.loc(),
-            "mod",
-        )),
+        Rc::new(SExp::atom_from_string(parsed_program.loc(), "mod")),
         Rc::new(SExp::Cons(
             parsed_program.loc(),
             Rc::new(SExp::Nil(parsed_program.loc())),
@@ -93,16 +87,10 @@ impl Repl {
             ],
             Rc::new(SExp::Cons(
                 loc.clone(),
-                Rc::new(SExp::atom_from_string(
-                    loc.clone(),
-                    "defconstant",
-                )),
+                Rc::new(SExp::atom_from_string(loc.clone(), "defconstant")),
                 Rc::new(SExp::Cons(
                     loc.clone(),
-                    Rc::new(SExp::atom_from_string(
-                        loc.clone(),
-                        "$interpreter-version",
-                    )),
+                    Rc::new(SExp::atom_from_string(loc.clone(), "$interpreter-version")),
                     Rc::new(SExp::Cons(
                         loc.clone(),
                         Rc::new(SExp::atom_from_string(
@@ -115,11 +103,7 @@ impl Repl {
             )),
         );
         let start_program_fe = frontend(opts.clone(), vec![starter_empty_program]).unwrap();
-        let evaluator = Evaluator::new(
-            opts.clone(),
-            runner.clone(),
-            start_program_fe.helpers,
-        );
+        let evaluator = Evaluator::new(opts.clone(), runner.clone(), start_program_fe.helpers);
 
         Repl {
             depth: 0,
@@ -148,9 +132,7 @@ impl Repl {
                 .map(|_v| {
                     panic!("too many parens but parsed anyway");
                 })
-                .map_err(|e| {
-                    CompileErr(e.0.clone(), e.1)
-                });
+                .map_err(|e| CompileErr(e.0.clone(), e.1));
             self.input_exp = "".to_string();
             self.depth = 0;
             return result;
@@ -164,9 +146,7 @@ impl Repl {
         self.input_exp = "".to_string();
 
         parse_sexp(self.loc.clone(), &input_taken)
-            .map_err(|e| {
-                CompileErr(e.0.clone(), e.1)
-            })
+            .map_err(|e| CompileErr(e.0.clone(), e.1))
             .and_then(|parsed_program| {
                 if parsed_program.is_empty() {
                     return Ok(None);
