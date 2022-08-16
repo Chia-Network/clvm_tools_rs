@@ -15,16 +15,13 @@ pub fn is_at_capture(
     tree_first: NodePtr,
     tree_rest: NodePtr,
 ) -> Option<(NodePtr, NodePtr)> {
-    match (
+    if let (SExp::Atom(a), Some(spec)) = (
         allocator.sexp(tree_first),
         proper_list(allocator, tree_rest, true),
     ) {
-        (SExp::Atom(a), Some(spec)) => {
-            if allocator.buf(&a) == vec!['@' as u8] && spec.len() == 2 {
-                return Some((spec[0], spec[1]));
-            }
+        if allocator.buf(&a) == vec![b'@'] && spec.len() == 2 {
+            return Some((spec[0], spec[1]));
         }
-        _ => {}
     }
 
     None
@@ -103,7 +100,7 @@ fn formulate_path_selections_for_destructuring_arg(
                             let capture_code = wrap_in_unquote(allocator, capture)?;
                             let qtail = wrap_path_selection(
                                 allocator,
-                                arg_path.clone() + arg_depth.clone(),
+                                arg_path + arg_depth,
                                 capture_code,
                             )?;
                             (bi_zero(), bi_one(), qtail)
@@ -123,19 +120,19 @@ fn formulate_path_selections_for_destructuring_arg(
                 }
             }
 
-            if let Some(_) = referenced_from {
+            if referenced_from.is_some() {
                 let f = formulate_path_selections_for_destructuring_arg(
                     allocator,
                     a,
                     arg_path.clone(),
                     next_depth.clone(),
-                    referenced_from.clone(),
+                    referenced_from,
                     selections,
                 )?;
                 let r = formulate_path_selections_for_destructuring_arg(
                     allocator,
                     b,
-                    arg_depth.clone() + arg_path,
+                    arg_depth + arg_path,
                     next_depth,
                     referenced_from,
                     selections,
@@ -158,11 +155,11 @@ fn formulate_path_selections_for_destructuring_arg(
         }
         SExp::Atom(b) => {
             let buf = allocator.buf(&b).to_vec();
-            if buf.len() > 0 {
+            if !buf.is_empty() {
                 if let Some(capture) = referenced_from {
                     let tail = wrap_path_selection(
                         allocator,
-                        arg_path.clone() + arg_depth.clone(),
+                        arg_path + arg_depth,
                         capture,
                     )?;
                     selections.insert(buf, tail);
