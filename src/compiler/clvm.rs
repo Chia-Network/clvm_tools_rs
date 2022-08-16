@@ -95,7 +95,7 @@ fn translate_head(
             prim_map,
             l.clone(),
             Rc::new(SExp::Atom(l.clone(), v.clone())),
-            context
+            context,
         ),
         SExp::Atom(l, v) => match prim_map.get(v) {
             None => translate_head(
@@ -104,7 +104,7 @@ fn translate_head(
                 prim_map,
                 l.clone(),
                 Rc::new(SExp::Integer(l.clone(), number_from_u8(v))),
-                context
+                context,
             ),
             Some(v) => Ok(Rc::new(v.with_loc(l.clone()))),
         },
@@ -142,7 +142,7 @@ fn eval_args(
                     context_,
                     sexp.clone(),
                     Some(eval_list),
-                    parent
+                    parent,
                 ));
             }
             SExp::Cons(_l, a, b) => {
@@ -152,11 +152,7 @@ fn eval_args(
             _ => {
                 return Err(RunFailure::RunErr(
                     sexp.loc(),
-                    format!(
-                        "bad argument list {} {}",
-                        sexp_,
-                        context_
-                    ),
+                    format!("bad argument list {} {}", sexp_, context_),
                 ));
             }
         }
@@ -169,17 +165,11 @@ pub fn convert_to_clvm_rs(
 ) -> Result<NodePtr, RunFailure> {
     match head.borrow() {
         SExp::Nil(_) => Ok(allocator.null()),
-        SExp::Atom(_l, x) => allocator.new_atom(x).map_err(|_e| {
-            RunFailure::RunErr(
-                head.loc(),
-                format!("failed to alloc atom {}", head),
-            )
-        }),
+        SExp::Atom(_l, x) => allocator
+            .new_atom(x)
+            .map_err(|_e| RunFailure::RunErr(head.loc(), format!("failed to alloc atom {}", head))),
         SExp::QuotedString(_, _, x) => allocator.new_atom(x).map_err(|_e| {
-            RunFailure::RunErr(
-                head.loc(),
-                format!("failed to alloc string {}", head),
-            )
+            RunFailure::RunErr(head.loc(), format!("failed to alloc string {}", head))
         }),
         SExp::Integer(_, i) => {
             if *i == bi_zero() {
@@ -188,20 +178,14 @@ pub fn convert_to_clvm_rs(
                 allocator
                     .new_atom(&u8_from_number(i.clone()))
                     .map_err(|_e| {
-                        RunFailure::RunErr(
-                            head.loc(),
-                            format!("failed to alloc integer {}", head),
-                        )
+                        RunFailure::RunErr(head.loc(), format!("failed to alloc integer {}", head))
                     })
             }
         }
         SExp::Cons(_, a, b) => convert_to_clvm_rs(allocator, a.clone()).and_then(|head| {
             convert_to_clvm_rs(allocator, b.clone()).and_then(|tail| {
                 allocator.new_pair(head, tail).map_err(|_e| {
-                    RunFailure::RunErr(
-                        a.loc(),
-                        format!("failed to alloc cons {}", head),
-                    )
+                    RunFailure::RunErr(a.loc(), format!("failed to alloc cons {}", head))
                 })
             })
         }),
@@ -278,12 +262,7 @@ fn apply_op(
         .map_err(|e| {
             RunFailure::RunErr(
                 head.loc(),
-                format!(
-                    "{} in {} {}",
-                    e.1,
-                    application,
-                    wrapped_args
-                ),
+                format!("{} in {} {}", e.1, application, wrapped_args),
             )
         })
         .and_then(|v| convert_from_clvm_rs(allocator, head.loc(), v.1))

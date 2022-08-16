@@ -191,11 +191,7 @@ fn create_name_lookup(
         })
 }
 
-fn get_prim(
-    loc: Srcloc,
-    prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
-    name: &[u8],
-) -> Option<Rc<SExp>> {
+fn get_prim(loc: Srcloc, prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>, name: &[u8]) -> Option<Rc<SExp>> {
     if let Some(p) = prims.get(name) {
         return Some(p.clone());
     }
@@ -247,10 +243,7 @@ pub fn get_callable(
                 )),
             }
         }
-        SExp::Integer(_, v) => Ok(Callable::CallPrim(
-            l.clone(),
-            SExp::Integer(l, v.clone()),
-        )),
+        SExp::Integer(_, v) => Ok(Callable::CallPrim(l.clone(), SExp::Integer(l, v.clone()))),
         _ => Err(CompileErr(
             atom.loc(),
             format!("can't call object {}", atom),
@@ -280,18 +273,8 @@ pub fn process_macro_call(
         Rc::new(args_to_macro),
     )
     .map_err(|e| match e {
-        RunFailure::RunExn(ml, x) => CompileErr(
-            l,
-            format!("macro aborted at {} with {}", ml, x),
-        ),
-        RunFailure::RunErr(rl, e) => CompileErr(
-            l,
-            format!(
-                "error executing macro: {} {}",
-                rl,
-                e
-            ),
-        ),
+        RunFailure::RunExn(ml, x) => CompileErr(l, format!("macro aborted at {} with {}", ml, x)),
+        RunFailure::RunErr(rl, e) => CompileErr(l, format!("error executing macro: {} {}", rl, e)),
     })
     .and_then(|v| {
         let relabeled_expr = relabel(&swap_table, &v);
@@ -607,10 +590,7 @@ fn fail_if_present<T, R>(
     if map.contains_key(name) {
         Err(CompileErr(
             loc.clone(),
-            format!(
-                "Cannot redefine {}",
-                SExp::Atom(loc, name.to_owned())
-            ),
+            format!("Cannot redefine {}", SExp::Atom(loc, name.to_owned())),
         ))
     } else {
         Ok(result)
@@ -748,13 +728,7 @@ fn generate_let_defun(
         Rc::new(list_to_cons(l.clone(), &new_arguments)),
     );
 
-    HelperForm::Defun(
-        l,
-        name.to_owned(),
-        true,
-        Rc::new(inner_function_args),
-        body,
-    )
+    HelperForm::Defun(l, name.to_owned(), true, Rc::new(inner_function_args), body)
 }
 
 fn generate_let_args(_l: Srcloc, blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {
@@ -852,7 +826,7 @@ fn hoist_body_let_binding(
 
             let mut call_args = vec![
                 Rc::new(BodyForm::Value(SExp::Atom(l.clone(), defun_name))),
-                Rc::new(pass_env)
+                Rc::new(pass_env),
             ];
             call_args.append(&mut let_args);
 
@@ -954,12 +928,7 @@ fn start_codegen(
                     Rc::new(code),
                     Rc::new(SExp::Nil(loc.clone())),
                 )
-                .map_err(|r| {
-                    CompileErr(
-                        loc.clone(),
-                        format!("Error evaluating constant: {}", r),
-                    )
-                })
+                .map_err(|r| CompileErr(loc.clone(), format!("Error evaluating constant: {}", r)))
                 .and_then(|res| fail_if_present(loc.clone(), &use_compiler.constants, name, res))
                 .map(|res| {
                     let quoted = primquote(loc.clone(), res);
