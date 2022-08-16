@@ -120,9 +120,5 @@ fn build_default_macro_lookup(
 
 pub fn default_macro_lookup(allocator: &mut Allocator, runner: Rc<dyn TRunProgram>) -> NodePtr {
     let macro_srcs: Vec<String> = default_macros_src().iter().map(|s| s.to_string()).collect();
-    build_default_macro_lookup(
-        allocator,
-        runner.clone(),
-        &macro_srcs
-    )
+    build_default_macro_lookup(allocator, runner.clone(), &macro_srcs)
 }

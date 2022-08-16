@@ -504,21 +504,17 @@ fn compile_application(
 
     match proper_list(allocator, rest, true) {
         Some(prog_args) => {
-            let mut new_args =
-                map_m(
+            let mut new_args = map_m(allocator, &mut prog_args.iter(), &|allocator, arg| {
+                do_com_prog(
                     allocator,
-                    &mut prog_args.iter(),
-                    &|allocator, arg| {
-                        do_com_prog(
-                            allocator,
-                            544,
-                            *arg,
-                            macro_lookup,
-                            symbol_table,
-                            run_program.clone()
-                        ).map(|x| x.1)
-                    }
-                )?;
+                    544,
+                    *arg,
+                    macro_lookup,
+                    symbol_table,
+                    run_program.clone(),
+                )
+                .map(|x| x.1)
+            })?;
 
             let _ = compiled_args.append(&mut new_args);
             let r = enlist(allocator, &compiled_args)?;
@@ -744,14 +740,14 @@ pub fn do_com_prog_for_dialect(
                 runner.clone(),
             )
             //.map(|x| {
-                // XXX Enable extra info in sym file.
-                // self.compile_outcomes.replace_with(|co| {
-                //     let key = sha256tree(allocator, x.1).hex();
-                //     co.insert(key, sexp_dis);
-                //     co.clone()
-                // });
-                // - or -
-                // x
+            // XXX Enable extra info in sym file.
+            // self.compile_outcomes.replace_with(|co| {
+            //     let key = sha256tree(allocator, x.1).hex();
+            //     co.insert(key, sexp_dis);
+            //     co.clone()
+            // });
+            // - or -
+            // x
             //})
         }
         _ => Err(EvalErr(
