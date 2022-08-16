@@ -98,11 +98,8 @@ fn formulate_path_selections_for_destructuring_arg(
                             (arg_path, arg_depth, prev_ref)
                         } else {
                             let capture_code = wrap_in_unquote(allocator, capture)?;
-                            let qtail = wrap_path_selection(
-                                allocator,
-                                arg_path + arg_depth,
-                                capture_code,
-                            )?;
+                            let qtail =
+                                wrap_path_selection(allocator, arg_path + arg_depth, capture_code)?;
                             (bi_zero(), bi_one(), qtail)
                         };
 
@@ -157,11 +154,7 @@ fn formulate_path_selections_for_destructuring_arg(
             let buf = allocator.buf(&b).to_vec();
             if !buf.is_empty() {
                 if let Some(capture) = referenced_from {
-                    let tail = wrap_path_selection(
-                        allocator,
-                        arg_path + arg_depth,
-                        capture,
-                    )?;
+                    let tail = wrap_path_selection(allocator, arg_path + arg_depth, capture)?;
                     selections.insert(buf, tail);
                     return Ok(arg_sexp);
                 }
