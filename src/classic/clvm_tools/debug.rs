@@ -100,7 +100,7 @@ pub fn build_symbol_dump(
                 );
 
                 let sha256 = sha256tree(allocator, run_result.1).hex();
-                sha_atom <- allocator.new_atom(&sha256.as_bytes().to_vec());
+                sha_atom <- allocator.new_atom(sha256.as_bytes());
                 name_atom <- allocator.new_atom(&kv.0.clone());
                 allocator.new_pair(sha_atom, name_atom)
             }
@@ -117,14 +117,14 @@ fn text_trace(
     form: NodePtr,
     symbol: Option<String>,
     env_: NodePtr,
-    result: &String,
+    result: &str,
 ) {
     let symbol_val;
     let mut env = env_;
     match symbol {
         Some(sym) => {
             env = rest(allocator, env).unwrap_or_else(|_| allocator.null());
-            let symbol_atom = allocator.new_atom(&sym.as_bytes().to_vec()).unwrap();
+            let symbol_atom = allocator.new_atom(sym.as_bytes()).unwrap();
             let symbol_list = allocator.new_pair(symbol_atom, env).unwrap();
             symbol_val = disassemble_f(allocator, symbol_list);
         }
@@ -147,7 +147,7 @@ fn table_trace(
     form: NodePtr,
     _symbol: Option<String>,
     env: NodePtr,
-    result: &String,
+    result: &str,
 ) {
     let (sexp, args) = match allocator.sexp(form) {
         SExp::Pair(sexp, args) => (sexp, args),
@@ -167,24 +167,26 @@ fn table_trace(
     stdout.write_string(format!("bexp: {}\n", sexp_stream.get_value().hex()));
     stdout.write_string(format!("barg: {}\n", args_stream.get_value().hex()));
     stdout.write_string(format!("benv: {}\n", benv_stream.get_value().hex()));
-    stdout.write_string(format!("--\n"));
+    stdout.write_string("--\n".to_string());
 }
+
+type DisplayTraceFun = dyn Fn(
+    &mut Allocator,
+    &mut Stream,
+    &dyn Fn(&mut Allocator, NodePtr) -> String,
+    NodePtr,
+    Option<String>,
+    NodePtr,
+    &str,
+);
 
 fn display_trace(
     allocator: &mut Allocator,
     stdout: &mut Stream,
-    trace: &Vec<NodePtr>,
+    trace: &[NodePtr],
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
     symbol_table: Option<HashMap<String, String>>,
-    display_fun: &dyn Fn(
-        &mut Allocator,
-        &mut Stream,
-        &dyn Fn(&mut Allocator, NodePtr) -> String,
-        NodePtr,
-        Option<String>,
-        NodePtr,
-        &String,
-    ),
+    display_fun: &DisplayTraceFun,
 ) {
     for item in trace {
         let item_vec = proper_list(allocator, *item, true).unwrap();
@@ -207,7 +209,7 @@ fn display_trace(
 pub fn trace_to_text(
     allocator: &mut Allocator,
     stdout: &mut Stream,
-    trace: &Vec<NodePtr>,
+    trace: &[NodePtr],
     symbol_table: Option<HashMap<String, String>>,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
 ) {
@@ -224,7 +226,7 @@ pub fn trace_to_text(
 pub fn trace_to_table(
     allocator: &mut Allocator,
     stdout: &mut Stream,
-    trace: &Vec<NodePtr>,
+    trace: &[NodePtr],
     symbol_table: Option<HashMap<String, String>>,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
 ) {
@@ -250,7 +252,7 @@ pub fn trace_pre_eval(
         .as_ref()
         .and_then(|symbol_table| symbol_table.get(&h.hex()).map(|x| x.to_string()));
 
-    if recognized.is_none() && !symbol_table.is_none() {
+    if recognized.is_none() && symbol_table.is_some() {
         Ok(None)
     } else {
         m! {
@@ -263,7 +265,7 @@ pub fn trace_pre_eval(
 
 pub fn check_unused(
     opts: Rc<dyn CompilerOpts>,
-    input_program: &String,
+    input_program: &str,
 ) -> Result<(bool, String), CompileErr> {
     let mut output: Stream = Stream::new(None);
     let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), input_program)
@@ -272,7 +274,7 @@ pub fn check_unused(
     let unused = check_parameters_used_compileform(opts, Rc::new(g))?;
 
     if !unused.is_empty() {
-        output.write_string(format!("unused arguments detected at the mod level (lower case arguments are considered uncurried by convention)\n"));
+        output.write_string("unused arguments detected at the mod level (lower case arguments are considered uncurried by convention)\n".to_string());
         for s in unused.iter() {
             output.write_string(format!(
                 " - {}\n",

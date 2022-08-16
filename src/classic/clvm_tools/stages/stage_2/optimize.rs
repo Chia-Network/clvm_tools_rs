@@ -130,7 +130,7 @@ pub fn is_args_call(allocator: &mut Allocator, r: NodePtr) -> bool {
 }
 
 pub fn cons_q_a_optimizer_pattern(allocator: &mut Allocator) -> NodePtr {
-    assemble(allocator, &"(a (q . (: . sexp)) (: . args))".to_string()).unwrap()
+    assemble(allocator, "(a (q . (: . sexp)) (: . args))").unwrap()
 }
 
 pub fn cons_q_a_optimizer(
@@ -163,7 +163,7 @@ pub fn cons_q_a_optimizer(
 }
 
 fn cons_pattern(allocator: &mut Allocator) -> NodePtr {
-    assemble(allocator, &"(c (: . first) (: . rest)))".to_string()).unwrap()
+    assemble(allocator, "(c (: . first) (: . rest)))").unwrap()
 }
 
 fn cons_f(allocator: &mut Allocator, args: NodePtr) -> Result<NodePtr, EvalErr> {
@@ -264,7 +264,7 @@ pub fn sub_args(
 }
 
 fn var_change_optimizer_cons_eval_pattern(allocator: &mut Allocator) -> NodePtr {
-    assemble(allocator, &"(a (q . (: . sexp)) (: . args))".to_string()).unwrap()
+    assemble(allocator, "(a (q . (: . sexp)) (: . args))").unwrap()
 }
 
 pub fn var_change_optimizer_cons_eval(
@@ -437,11 +437,11 @@ pub fn children_optimizer(
 }
 
 fn cons_optimizer_pattern_first(allocator: &mut Allocator) -> NodePtr {
-    assemble(allocator, &"(f (c (: . first) (: . rest)))".to_string()).unwrap()
+    assemble(allocator, "(f (c (: . first) (: . rest)))").unwrap()
 }
 
 fn cons_optimizer_pattern_rest(allocator: &mut Allocator) -> NodePtr {
-    assemble(allocator, &"(r (c (: . first) (: . rest)))".to_string()).unwrap()
+    assemble(allocator, "(r (c (: . first) (: . rest)))").unwrap()
 }
 
 fn cons_optimizer(
@@ -480,11 +480,11 @@ fn cons_optimizer(
 }
 
 fn first_atom_pattern(allocator: &mut Allocator) -> NodePtr {
-    assemble(allocator, &"(f ($ . atom))".to_string()).unwrap()
+    assemble(allocator, "(f ($ . atom))").unwrap()
 }
 
 fn rest_atom_pattern(allocator: &mut Allocator) -> NodePtr {
-    assemble(allocator, &"(r ($ . atom))".to_string()).unwrap()
+    assemble(allocator, "(r ($ . atom))").unwrap()
 }
 
 fn path_optimizer(
@@ -543,7 +543,7 @@ fn path_optimizer(
 }
 
 fn quote_pattern_1(allocator: &mut Allocator) -> NodePtr {
-    assemble(allocator, &"(q . 0)".to_string()).unwrap()
+    assemble(allocator, "(q . 0)").unwrap()
 }
 
 fn quote_null_optimizer(
@@ -559,7 +559,7 @@ fn quote_null_optimizer(
 }
 
 fn apply_null_pattern_1(allocator: &mut Allocator) -> NodePtr {
-    assemble(allocator, &"(a 0 . (: . rest))".to_string()).unwrap()
+    assemble(allocator, "(a 0 . (: . rest))").unwrap()
 }
 
 fn apply_null_optimizer(

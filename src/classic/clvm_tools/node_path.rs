@@ -75,7 +75,7 @@ impl NodePath {
                     NodePath { index: unsigned }
                 } else {
                     NodePath {
-                        index: index.clone(),
+                        index,
                     }
                 }
             }
