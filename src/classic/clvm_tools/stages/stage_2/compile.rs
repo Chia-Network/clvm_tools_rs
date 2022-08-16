@@ -34,6 +34,7 @@ lazy_static! {
 
 struct Closure<'a> {
     name: String,
+    #[allow(clippy::type_complexity)]
     to_run: &'a dyn Fn(
         &mut Allocator,
         NodePtr,
@@ -124,39 +125,36 @@ pub fn compile_qq(
             quote(allocator, sexp)
         }
         SExp::Pair(op, sexp_rest) => {
-            match allocator.sexp(op) {
-                SExp::Atom(opbuf) => {
-                    if allocator.buf(&opbuf).to_vec() == qq_atom() {
+            if let SExp::Atom(opbuf) = allocator.sexp(op) {
+                if allocator.buf(&opbuf).to_vec() == qq_atom() {
+                    return m! {
+                        cons_atom <- allocator.new_atom(&[4]);
+                        subexp <-
+                            compile_qq(allocator, sexp_rest, macro_lookup, symbol_table, runner.clone(), level+1);
+                        quoted_null <- quote(allocator, allocator.null());
+                        consed <- enlist(allocator, &vec!(cons_atom, subexp, quoted_null));
+                        run_list <- enlist(allocator, &vec!(cons_atom, op, consed));
+                        com_qq(allocator, "qq sexp pair".to_string(), macro_lookup, symbol_table, runner, run_list)
+                    };
+                } else if allocator.buf(&opbuf).to_vec() == unquote_atom() {
+                    if level == 1 {
+                        // (qq (unquote X)) => X
                         return m! {
-                            cons_atom <- allocator.new_atom(&[4]);
-                            subexp <-
-                                compile_qq(allocator, sexp_rest, macro_lookup, symbol_table, runner.clone(), level+1);
-                            quoted_null <- quote(allocator, allocator.null());
-                            consed <- enlist(allocator, &vec!(cons_atom, subexp, quoted_null));
-                            run_list <- enlist(allocator, &vec!(cons_atom, op, consed));
-                            com_qq(allocator, "qq sexp pair".to_string(), macro_lookup, symbol_table, runner, run_list)
-                        };
-                    } else if allocator.buf(&opbuf).to_vec() == unquote_atom() {
-                        if level == 1 {
-                            // (qq (unquote X)) => X
-                            return m! {
-                                sexp_rf <- first(allocator, sexp_rest);
-                                com_qq(allocator, "level 1".to_string(), macro_lookup, symbol_table, runner, sexp_rf)
-                            };
-                        }
-                        return m! {
-                            // (qq (a . B)) => (c (qq a) (qq B))
-                            cons_atom <- allocator.new_atom(&[4]);
-                            subexp <-
-                                compile_qq(allocator, sexp_rest, macro_lookup, symbol_table, runner.clone(), level-1);
-                            quoted_null <- quote(allocator, allocator.null());
-                            consed_subexp <- enlist(allocator, &vec!(cons_atom, subexp, quoted_null));
-                            run_list <- enlist(allocator, &vec!(cons_atom, op, consed_subexp));
-                            com_qq(allocator, "qq pair general".to_string(), macro_lookup, symbol_table, runner, run_list)
+                            sexp_rf <- first(allocator, sexp_rest);
+                            com_qq(allocator, "level 1".to_string(), macro_lookup, symbol_table, runner, sexp_rf)
                         };
                     }
+                    return m! {
+                        // (qq (a . B)) => (c (qq a) (qq B))
+                        cons_atom <- allocator.new_atom(&[4]);
+                        subexp <-
+                            compile_qq(allocator, sexp_rest, macro_lookup, symbol_table, runner.clone(), level-1);
+                        quoted_null <- quote(allocator, allocator.null());
+                        consed_subexp <- enlist(allocator, &vec!(cons_atom, subexp, quoted_null));
+                        run_list <- enlist(allocator, &vec!(cons_atom, op, consed_subexp));
+                        com_qq(allocator, "qq pair general".to_string(), macro_lookup, symbol_table, runner, run_list)
+                    };
                 }
-                _ => {}
             }
 
             // (qq (a . B)) => (c (qq a) (qq B))
@@ -203,7 +201,7 @@ fn lower_quote_(allocator: &mut Allocator, prog: NodePtr) -> Result<NodePtr, Eva
     }
 
     if let Some(qlist) = proper_list(allocator, prog, true) {
-        if qlist.len() == 0 {
+        if qlist.is_empty() {
             return Ok(prog);
         }
 
@@ -319,39 +317,36 @@ pub fn try_expand_macro_for_atom(
 
 fn get_macro_program(
     allocator: &mut Allocator,
-    operator: &Vec<u8>,
+    operator: &[u8],
     macro_lookup: NodePtr,
 ) -> Result<Option<NodePtr>, EvalErr> {
-    match proper_list(allocator, macro_lookup, true) {
-        Some(mlist) => {
-            for macro_pair in mlist {
-                match proper_list(allocator, macro_pair, true) {
-                    None => {}
-                    Some(mp_list) => {
-                        if mp_list.len() == 0 {
-                            continue;
-                        }
-                        let value = if mp_list.len() > 1 {
-                            mp_list[1]
-                        } else {
-                            allocator.null()
-                        };
+    if let Some(mlist) = proper_list(allocator, macro_lookup, true) {
+        for macro_pair in mlist {
+            match proper_list(allocator, macro_pair, true) {
+                None => {}
+                Some(mp_list) => {
+                    if mp_list.is_empty() {
+                        continue;
+                    }
+                    let value = if mp_list.len() > 1 {
+                        mp_list[1]
+                    } else {
+                        allocator.null()
+                    };
 
-                        match allocator.sexp(mp_list[0]) {
-                            SExp::Atom(macro_name) => {
-                                if allocator.buf(&macro_name).to_vec() == *operator {
-                                    return Ok(Some(value));
-                                }
+                    match allocator.sexp(mp_list[0]) {
+                        SExp::Atom(macro_name) => {
+                            if allocator.buf(&macro_name).to_vec() == *operator {
+                                return Ok(Some(value));
                             }
-                            SExp::Pair(_, _) => {
-                                continue;
-                            }
+                        }
+                        SExp::Pair(_, _) => {
+                            continue;
                         }
                     }
                 }
             }
         }
-        _ => {}
     }
 
     Ok(None)
@@ -363,7 +358,7 @@ fn transform_program_atom(
     a: &AtomBuf,
     symbol_table: NodePtr,
 ) -> Response {
-    if allocator.buf(&a).to_vec() == "@".as_bytes().to_vec() {
+    if allocator.buf(a).to_vec() == "@".as_bytes().to_vec() {
         return allocator
             .new_atom(NodePath::new(None).as_path().data())
             .map(|x| Reduction(1, x));
@@ -375,7 +370,7 @@ fn transform_program_atom(
                 match proper_list(allocator, sym, true) {
                     None => {}
                     Some(v) => {
-                        if v.len() == 0 {
+                        if v.is_empty() {
                             continue;
                         }
 
@@ -401,7 +396,7 @@ fn transform_program_atom(
 fn compile_operator_atom(
     allocator: &mut Allocator,
     prog: NodePtr,
-    avec: &Vec<u8>,
+    avec: &[u8],
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
     run_program: Rc<dyn TRunProgram>,
@@ -412,30 +407,27 @@ fn compile_operator_atom(
         return Ok(Some(prog));
     }
 
-    match compile_bindings.get(avec) {
-        Some(f) => {
-            return m! {
-                prog_rest <- rest(allocator, prog);
-                post_prog <-
-                    (f.to_run)(
-                        allocator,
-                        prog_rest,
-                        macro_lookup,
-                        symbol_table,
-                        run_program.clone(),
-                        1
-                    );
-                quoted_post_prog <- quote(allocator, post_prog);
-                top_atom <-
-                    allocator.new_atom(NodePath::new(None).as_path().data());
+    if let Some(f) = compile_bindings.get(avec) {
+        return m! {
+            prog_rest <- rest(allocator, prog);
+            post_prog <-
+                (f.to_run)(
+                    allocator,
+                    prog_rest,
+                    macro_lookup,
+                    symbol_table,
+                    run_program.clone(),
+                    1
+                );
+            quoted_post_prog <- quote(allocator, post_prog);
+            top_atom <-
+                allocator.new_atom(NodePath::new(None).as_path().data());
 
-                let _ = if DIAG_OUTPUT {
-                    print!("COMPILE_BINDINGS {}\n", disassemble(allocator, quoted_post_prog));
-                };
-                evaluate(allocator, quoted_post_prog, top_atom).map(|x| Some(x))
+            let _ = if DIAG_OUTPUT {
+                print!("COMPILE_BINDINGS {}\n", disassemble(allocator, quoted_post_prog));
             };
-        }
-        None => {}
+            evaluate(allocator, quoted_post_prog, top_atom).map(Some)
+        };
     }
 
     Ok(None)
@@ -448,54 +440,49 @@ enum SymbolResult {
 
 fn find_symbol_match(
     allocator: &mut Allocator,
-    opname: &Vec<u8>,
+    opname: &[u8],
     r: NodePtr,
     symbol_table: NodePtr,
 ) -> Result<Option<SymbolResult>, EvalErr> {
-    match proper_list(allocator, symbol_table, true) {
-        Some(symlist) => {
-            for sym in symlist {
-                match proper_list(allocator, sym, true) {
-                    Some(symdef) => {
-                        if symdef.len() < 1 {
-                            continue;
-                        }
+    if let Some(symlist) = proper_list(allocator, symbol_table, true) {
+        for sym in symlist {
+            if let Some(symdef) = proper_list(allocator, sym, true) {
+                if symdef.is_empty() {
+                    continue;
+                }
 
-                        match allocator.sexp(symdef[0]) {
-                            SExp::Atom(symptr) => {
-                                let symbol = symdef[0];
-                                let value = if symdef.len() == 1 {
-                                    allocator.null()
-                                } else {
-                                    symdef[1]
-                                };
+                match allocator.sexp(symdef[0]) {
+                    SExp::Atom(symptr) => {
+                        let symbol = symdef[0];
+                        let value = if symdef.len() == 1 {
+                            allocator.null()
+                        } else {
+                            symdef[1]
+                        };
 
-                                let symbuf = allocator.buf(&symptr).to_vec();
-                                if vec!['*' as u8] == symbuf {
-                                    return Ok(Some(SymbolResult::Direct(r)));
-                                } else if *opname == symbuf {
-                                    return Ok(Some(SymbolResult::Matched(symbol, value)));
-                                }
-                            }
-
-                            SExp::Pair(_, _) => {}
+                        let symbuf = allocator.buf(&symptr).to_vec();
+                        if vec![b'*'] == symbuf {
+                            return Ok(Some(SymbolResult::Direct(r)));
+                        } else if *opname == symbuf {
+                            return Ok(Some(SymbolResult::Matched(symbol, value)));
                         }
                     }
-                    _ => {}
+
+                    SExp::Pair(_, _) => {}
                 }
             }
         }
-        _ => {}
     }
 
     Ok(None)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compile_application(
     allocator: &mut Allocator,
     prog: NodePtr,
     operator: NodePtr,
-    opbuf: &Vec<u8>,
+    opbuf: &[u8],
     rest: NodePtr,
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
@@ -511,83 +498,78 @@ fn compile_application(
         ),
     ));
 
-    if *opbuf == vec![1 as u8] || *opbuf == vec!['q' as u8] {
+    if *opbuf == vec![1] || *opbuf == vec![b'q'] {
         return allocator.new_pair(operator, rest);
     }
 
     match proper_list(allocator, rest, true) {
         Some(prog_args) => {
-            m! {
-                new_args <-
-                    map_m(
-                        allocator,
-                        &mut prog_args.iter(),
-                        &|allocator, arg| {
-                            do_com_prog(
-                                allocator,
-                                544,
-                                *arg,
-                                macro_lookup,
-                                symbol_table,
-                                run_program.clone()
-                            ).map(|x| x.1)
+            let mut new_args =
+                map_m(
+                    allocator,
+                    &mut prog_args.iter(),
+                    &|allocator, arg| {
+                        do_com_prog(
+                            allocator,
+                            544,
+                            *arg,
+                            macro_lookup,
+                            symbol_table,
+                            run_program.clone()
+                        ).map(|x| x.1)
+                    }
+                )?;
+
+            let _ = compiled_args.append(&mut new_args);
+            let r = enlist(allocator, &compiled_args)?;
+
+            if PASS_THROUGH_OPERATORS.contains(opbuf) || (!opbuf.is_empty() && opbuf[0] == b'_') {
+                Ok(r)
+            } else {
+                find_symbol_match(
+                    allocator,
+                    opbuf,
+                    r,
+                    symbol_table
+                ).and_then(|x| match x {
+                    Some(SymbolResult::Direct(v)) => { Ok(v) },
+                    Some(SymbolResult::Matched(_symbol,value)) => {
+                        match proper_list(allocator, rest, true) {
+                            Some(proglist) => {
+                                m! {
+                                    apply_atom <- allocator.new_atom(&[2]);
+                                    list_atom <- allocator.new_atom("list".as_bytes());
+                                    cons_atom <- allocator.new_atom(&[4]);
+                                    com_atom <- allocator.new_atom("com".as_bytes());
+                                    opt_atom <- allocator.new_atom("opt".as_bytes());
+                                    top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
+                                    left_atom <- allocator.new_atom(NodePath::new(None).first().as_path().data());
+
+                                    enlisted <- enlist(allocator, &proglist);
+                                    list_application <- allocator.new_pair(list_atom, enlisted);
+
+                                    quoted_list <- quote(allocator, list_application);
+                                    quoted_macros <- quote(allocator, macro_lookup);
+                                    quoted_symbols <- quote(allocator, symbol_table);
+                                    compiled <- enlist(allocator, &vec!(com_atom, quoted_list, quoted_macros, quoted_symbols));
+                                    to_run <- enlist(allocator, &vec!(opt_atom, compiled));
+                                    new_args <- evaluate(allocator, to_run, top_atom);
+
+                                    cons_enlisted <- enlist(allocator, &vec!(cons_atom, left_atom, new_args));
+
+                                    result <- enlist(
+                                        allocator,
+                                        &vec!(apply_atom, value, cons_enlisted)
+                                    );
+
+                                    Ok(result)
+                                }
+                            },
+                            None => { error_result }
                         }
-                    );
-
-                let _ = compiled_args.append(&mut new_args.clone());
-                r <- enlist(allocator, &compiled_args);
-
-                if PASS_THROUGH_OPERATORS.contains(opbuf) || (opbuf.len() > 0 && opbuf[0] == '_' as u8) {
-                    Ok(r)
-                } else {
-                    find_symbol_match(
-                        allocator,
-                        opbuf,
-                        r,
-                        symbol_table
-                    ).and_then(|x| match x {
-                        Some(SymbolResult::Direct(v)) => { Ok(v) },
-                        Some(SymbolResult::Matched(_symbol,value)) => {
-                            match proper_list(allocator, rest, true) {
-                                Some(proglist) => {
-                                    m! {
-                                        apply_atom <- allocator.new_atom(&vec!(2));
-                                        list_atom <- allocator.new_atom("list".as_bytes());
-                                        cons_atom <- allocator.new_atom(&vec!(4));
-                                        com_atom <- allocator.new_atom("com".as_bytes());
-                                        opt_atom <- allocator.new_atom("opt".as_bytes());
-                                        top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
-                                        left_atom <- allocator.new_atom(NodePath::new(None).first().as_path().data());
-
-                                        enlisted <- enlist(allocator, &proglist);
-                                        list_application <- allocator.new_pair(list_atom, enlisted);
-
-
-                                        quoted_list <- quote(allocator, list_application);
-                                        quoted_macros <- quote(allocator, macro_lookup);
-                                        quoted_symbols <- quote(allocator, symbol_table);
-                                        compiled <- enlist(allocator, &vec!(com_atom, quoted_list, quoted_macros, quoted_symbols));
-                                        to_run <- enlist(allocator, &vec!(opt_atom, compiled));
-                                        new_args <- evaluate(allocator, to_run, top_atom);
-
-
-                                        cons_enlisted <- enlist(allocator, &vec!(cons_atom, left_atom, new_args));
-
-                                        result <- enlist(
-                                            allocator,
-                                            &vec!(apply_atom, value, cons_enlisted)
-                                        );
-
-
-                                        Ok(result)
-                                    }
-                                },
-                                None => { error_result }
-                            }
-                        },
-                        None => { error_result }
-                    })
-                }
+                    },
+                    None => { error_result }
+                })
             }
         }
         None => error_result,
@@ -681,7 +663,7 @@ fn do_com_prog_(
                                         macro_lookup,
                                         symbol_table,
                                         run_program.clone()
-                                    ).and_then(|x| x.map(|y| Ok(y)).unwrap_or_else(|| m! {
+                                    ).and_then(|x| x.map(Ok).unwrap_or_else(|| m! {
                                         compile_application(
                                             allocator,
                                             prog,
@@ -736,14 +718,11 @@ pub fn do_com_prog_for_dialect(
             let macro_lookup;
 
             let mut elist = Vec::new();
-            match proper_list(allocator, extras, true) {
-                Some(elist_vec) => {
-                    elist = elist_vec.to_vec();
-                }
-                _ => {}
+            if let Some(elist_vec) = proper_list(allocator, extras, true) {
+                elist = elist_vec.to_vec();
             }
 
-            if elist.len() == 0 {
+            if elist.is_empty() {
                 macro_lookup = default_macro_lookup(allocator, runner.clone());
             } else {
                 macro_lookup = elist[0];
@@ -764,15 +743,16 @@ pub fn do_com_prog_for_dialect(
                 symbol_table,
                 runner.clone(),
             )
-            .map(|x| {
+            //.map(|x| {
                 // XXX Enable extra info in sym file.
                 // self.compile_outcomes.replace_with(|co| {
                 //     let key = sha256tree(allocator, x.1).hex();
                 //     co.insert(key, sexp_dis);
                 //     co.clone()
                 // });
-                x
-            })
+                // - or -
+                // x
+            //})
         }
         _ => Err(EvalErr(
             sexp,
