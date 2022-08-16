@@ -113,8 +113,7 @@ pub fn disassemble_to_ir_with_kw(
                 allow_keyword = true;
             }
 
-            let v0 =
-                disassemble_to_ir_with_kw(allocator, l, keyword_from_atom, allow_keyword);
+            let v0 = disassemble_to_ir_with_kw(allocator, l, keyword_from_atom, allow_keyword);
             let v1 = disassemble_to_ir_with_kw(allocator, r, keyword_from_atom, false);
             IRRepr::Cons(Rc::new(v0), Rc::new(v1))
         }

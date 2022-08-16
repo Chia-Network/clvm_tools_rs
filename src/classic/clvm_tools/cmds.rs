@@ -110,16 +110,13 @@ pub fn call_tool(
         rest_args.push(a.to_string());
     }
     let args_res = parser.parse_args(&rest_args);
-    let args: HashMap<String, ArgumentValue> =
-        match args_res {
-            Ok(a) => {
-                a
-            }
-            Err(e) => {
-                println!("{}", e);
-                return;
-            }
-        };
+    let args: HashMap<String, ArgumentValue> = match args_res {
+        Ok(a) => a,
+        Err(e) => {
+            println!("{}", e);
+            return;
+        }
+    };
 
     let args_path_or_code_val = match args.get(&"path_or_code".to_string()) {
         None => ArgumentValue::ArgArray(vec![]),
@@ -305,22 +302,16 @@ pub fn cldb(args: &[String]) {
     let prog_srcloc = Srcloc::start("*program*");
     let args_srcloc = Srcloc::start("*args*");
 
-    let mut args = Rc::new(sexp::SExp::atom_from_string(
-        args_srcloc.clone(),
-        "",
-    ));
+    let mut args = Rc::new(sexp::SExp::atom_from_string(args_srcloc.clone(), ""));
     let mut parsed_args_result: String = "".to_string();
 
-    let parsed_args: HashMap<String, ArgumentValue> =
-        match parser.parse_args(&arg_vec) {
-            Err(e) => {
-                println!("FAIL: {}", e);
-                return;
-            }
-            Ok(pa) => {
-                pa
-            }
-        };
+    let parsed_args: HashMap<String, ArgumentValue> = match parser.parse_args(&arg_vec) {
+        Err(e) => {
+            println!("FAIL: {}", e);
+            return;
+        }
+        Ok(pa) => pa,
+    };
 
     if let Some(ArgumentValue::ArgArray(v)) = parsed_args.get("include") {
         for p in v {
@@ -397,20 +388,17 @@ pub fn cldb(args: &[String]) {
         }
     };
 
-    let program =
-        match res {
-            Ok(r) => {
-                r
-            }
-            Err(c) => {
-                let mut parse_error = BTreeMap::new();
-                parse_error.insert("Error-Location".to_string(), c.0.to_string());
-                parse_error.insert("Error".to_string(), c.1);
-                output.push(parse_error.clone());
-                println!("{}", yamlette_string(output));
-                return;
-            }
-        };
+    let program = match res {
+        Ok(r) => r,
+        Err(c) => {
+            let mut parse_error = BTreeMap::new();
+            parse_error.insert("Error-Location".to_string(), c.0.to_string());
+            parse_error.insert("Error".to_string(), c.1);
+            output.push(parse_error.clone());
+            println!("{}", yamlette_string(output));
+            return;
+        }
+    };
 
     match parsed_args.get("hex") {
         Some(ArgumentValue::ArgBool(true)) => {
@@ -541,10 +529,7 @@ fn fix_log(
     }
 }
 
-fn write_sym_output(
-    compiled_lookup: &HashMap<String, String>,
-    path: &str,
-) -> Result<(), String> {
+fn write_sym_output(compiled_lookup: &HashMap<String, String>, path: &str) -> Result<(), String> {
     m! {
         output <- serde_json::to_string(compiled_lookup).map_err(|_| {
             "failed to serialize to json".to_string()
@@ -556,12 +541,7 @@ fn write_sym_output(
     }
 }
 
-pub fn launch_tool(
-    stdout: &mut Stream,
-    args: &[String],
-    tool_name: &str,
-    default_stage: u32,
-) {
+pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, default_stage: u32) {
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
         prog: format!("clvm_tools {}", tool_name),
@@ -682,16 +662,13 @@ pub fn launch_tool(
     }
 
     let arg_vec = args[1..].to_vec();
-    let parsed_args: HashMap<String, ArgumentValue> =
-        match parser.parse_args(&arg_vec) {
-            Err(e) => {
-                stdout.write_string(format!("FAIL: {}\n", e));
-                return;
-            }
-            Ok(pa) => {
-                pa
-            }
-        };
+    let parsed_args: HashMap<String, ArgumentValue> = match parser.parse_args(&arg_vec) {
+        Err(e) => {
+            stdout.write_string(format!("FAIL: {}\n", e));
+            return;
+        }
+        Ok(pa) => pa,
+    };
 
     let empty_map = HashMap::new();
     let keywords = match parsed_args.get("no_keywords") {
@@ -797,10 +774,7 @@ pub fn launch_tool(
             let env = assemble_from_ir(&mut allocator, Rc::new(env_ir)).unwrap();
             time_assemble = SystemTime::now();
 
-            input_sexp = allocator
-                .new_pair(assembled_sexp, env)
-                .map(Some)
-                .unwrap();
+            input_sexp = allocator.new_pair(assembled_sexp, env).map(Some).unwrap();
         }
     }
 
@@ -1068,7 +1042,7 @@ pub fn launch_tool(
                     stdout.write_string(format!(
                         "read_hex: {}\n",
                         time_read_hex
-                                .duration_since(time_start)
+                            .duration_since(time_start)
                             .unwrap()
                             .as_millis()
                     ));
@@ -1109,7 +1083,7 @@ pub fn launch_tool(
                     if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("quiet") {
                         run_output = "".to_string();
                     }
-                },
+                }
             };
 
             run_output
