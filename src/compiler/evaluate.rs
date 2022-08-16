@@ -60,7 +60,13 @@ fn update_parallel_bindings(
 
 // Tell whether the bodyform is a simple primitive.
 pub fn is_primitive(expr: &BodyForm) -> bool {
-    matches!(expr, BodyForm::Quoted(_) | BodyForm::Value(SExp::Nil(_)) | BodyForm::Value(SExp::Integer(_, _)) | BodyForm::Value(SExp::QuotedString(_, _, _)))
+    matches!(
+        expr,
+        BodyForm::Quoted(_)
+            | BodyForm::Value(SExp::Nil(_))
+            | BodyForm::Value(SExp::Integer(_, _))
+            | BodyForm::Value(SExp::QuotedString(_, _, _))
+    )
 }
 
 fn make_operator1(l: &Srcloc, op: String, arg: Rc<BodyForm>) -> BodyForm {
@@ -79,7 +85,7 @@ fn make_operator2(l: &Srcloc, op: String, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>
         vec![
             Rc::new(BodyForm::Value(SExp::atom_from_string(l.clone(), &op))),
             arg1,
-            arg2
+            arg2,
         ],
     )
 }
@@ -165,8 +171,7 @@ fn create_argument_captures(
             if let Some((capture, substructure)) = is_at_capture(f.clone(), r.clone()) {
                 let bfa = get_bodyform_from_arginput(l, af);
                 let bfb = get_bodyform_from_arginput(l, ar);
-                let fused_arguments =
-                    Rc::new(make_operator2(l, "c".to_string(), bfa, bfb));
+                let fused_arguments = Rc::new(make_operator2(l, "c".to_string(), bfa, bfb));
                 argument_captures.insert(capture, fused_arguments);
                 create_argument_captures(argument_captures, formed_arguments, substructure)
             } else {
@@ -189,8 +194,7 @@ fn create_argument_captures(
             function_arg_spec.loc(),
             format!(
                 "not yet supported argument alternative: ArgInput {:?} SExp {}",
-                formed_arguments,
-                function_arg_spec
+                formed_arguments, function_arg_spec
             ),
         )),
     }
@@ -306,10 +310,7 @@ fn synthesize_args(
         SExp::Atom(_, name) => env.get(name).map(|x| Ok(x.clone())).unwrap_or_else(|| {
             Err(CompileErr(
                 template.loc(),
-                format!(
-                    "Argument {} referenced but not in env",
-                    template
-                ),
+                format!("Argument {} referenced but not in env", template),
             ))
         }),
         SExp::Cons(l, f, r) => {
@@ -319,10 +320,7 @@ fn synthesize_args(
                 Ok(Rc::new(BodyForm::Call(
                     l.clone(),
                     vec![
-                        Rc::new(BodyForm::Value(SExp::atom_from_string(
-                            template.loc(),
-                            "c",
-                        ))),
+                        Rc::new(BodyForm::Value(SExp::atom_from_string(template.loc(), "c"))),
                         synthesize_args(f.clone(), env)?,
                         synthesize_args(r.clone(), env)?,
                     ],
@@ -576,8 +574,7 @@ impl Evaluator {
             macro_args = Rc::new(SExp::Cons(l.clone(), arg_repr, macro_args));
         }
 
-        let macro_expansion =
-            self.expand_macro(allocator, l.clone(), program, macro_args)?;
+        let macro_expansion = self.expand_macro(allocator, l.clone(), program, macro_args)?;
 
         if let Ok(input) = dequote(call_loc, macro_expansion.clone()) {
             let frontend_macro_input = Rc::new(SExp::Cons(
@@ -1016,7 +1013,10 @@ impl Evaluator {
             BodyForm::Value(v) => Ok(Rc::new(BodyForm::Quoted(v.clone()))),
             BodyForm::Call(l, parts) => {
                 if parts.is_empty() {
-                    return Err(CompileErr(l.clone(), "Impossible empty call list".to_string()));
+                    return Err(CompileErr(
+                        l.clone(),
+                        "Impossible empty call list".to_string(),
+                    ));
                 }
 
                 let head_expr = parts[0].clone();
@@ -1152,9 +1152,7 @@ impl Evaluator {
             args,
         )
         .map_err(|e| match e {
-            RunFailure::RunExn(_, s) => {
-                CompileErr(call_loc.clone(), format!("exception: {}", s))
-            }
+            RunFailure::RunExn(_, s) => CompileErr(call_loc.clone(), format!("exception: {}", s)),
             RunFailure::RunErr(_, s) => CompileErr(call_loc.clone(), s),
         })
         .map(|res| {
