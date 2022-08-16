@@ -17,14 +17,13 @@ use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 use clvm_rs::run_program::PreEval;
 
-#[macro_use]
-use yamlette::yamlette;
 use yamlette::model::yaml::str::FORCE_QUOTES;
+use yamlette::yamlette;
 
 use crate::classic::clvm::__type_compatibility__::{t, Bytes, BytesFromType, Stream, Tuple};
+use crate::classic::clvm::keyword_from_atom;
 use crate::classic::clvm::serialize::{sexp_from_stream, sexp_to_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
-use crate::classic::clvm::KEYWORD_FROM_ATOM;
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
 use crate::classic::clvm_tools::clvmc::detect_modern;
 use crate::classic::clvm_tools::debug::{
@@ -300,7 +299,7 @@ pub fn cldb(args: &Vec<String>) {
             .set_help("clvm script environment, as clvm src, or hex".to_string()),
     );
     let arg_vec = args[1..].to_vec();
-    let parsedArgs: HashMap<String, ArgumentValue>;
+    let parsed_args: HashMap<String, ArgumentValue>;
 
     let mut input_file = None;
     let mut input_program = "()".to_string();
@@ -320,11 +319,11 @@ pub fn cldb(args: &Vec<String>) {
             return;
         }
         Ok(pa) => {
-            parsedArgs = pa;
+            parsed_args = pa;
         }
     }
 
-    if let Some(ArgumentValue::ArgArray(v)) = parsedArgs.get("include") {
+    if let Some(ArgumentValue::ArgArray(v)) = parsed_args.get("include") {
         for p in v {
             match p {
                 ArgumentValue::ArgString(_, s) => search_paths.push(s.to_string()),
@@ -333,7 +332,7 @@ pub fn cldb(args: &Vec<String>) {
         }
     }
 
-    match parsedArgs.get("path_or_code") {
+    match parsed_args.get("path_or_code") {
         Some(ArgumentValue::ArgString(file, path_or_code)) => {
             input_file = file.clone();
             input_program = path_or_code.to_string();
@@ -341,7 +340,7 @@ pub fn cldb(args: &Vec<String>) {
         _ => {}
     }
 
-    match parsedArgs.get("env") {
+    match parsed_args.get("env") {
         Some(ArgumentValue::ArgString(_, s)) => {
             parsed_args_result = s.to_string();
         }
@@ -350,7 +349,7 @@ pub fn cldb(args: &Vec<String>) {
 
     let mut allocator = Allocator::new();
 
-    let symbol_table = parsedArgs
+    let symbol_table = parsed_args
         .get("symbol_table")
         .and_then(|jstring| match jstring {
             ArgumentValue::ArgString(_, s) => {
@@ -361,7 +360,7 @@ pub fn cldb(args: &Vec<String>) {
             _ => None,
         });
 
-    let do_optimize = parsedArgs
+    let do_optimize = parsed_args
         .get("optimize")
         .map(|x| match x {
             ArgumentValue::ArgBool(true) => true,
@@ -393,7 +392,7 @@ pub fn cldb(args: &Vec<String>) {
         Err(e) => format!("error producing yaml: {:?}", e),
     };
 
-    let res = match parsedArgs.get("hex") {
+    let res = match parsed_args.get("hex") {
         Some(ArgumentValue::ArgBool(true)) => hex_to_modern_sexp(
             &mut allocator,
             &use_symbol_table,
@@ -424,7 +423,7 @@ pub fn cldb(args: &Vec<String>) {
         }
     }
 
-    match parsedArgs.get("hex") {
+    match parsed_args.get("hex") {
         Some(ArgumentValue::ArgBool(true)) => {
             match hex_to_modern_sexp(
                 &mut allocator,
@@ -698,7 +697,7 @@ pub fn launch_tool(
     }
 
     let arg_vec = args[1..].to_vec();
-    let parsedArgs: HashMap<String, ArgumentValue>;
+    let parsed_args: HashMap<String, ArgumentValue>;
 
     match parser.parse_args(&arg_vec) {
         Err(e) => {
@@ -706,21 +705,21 @@ pub fn launch_tool(
             return;
         }
         Ok(pa) => {
-            parsedArgs = pa;
+            parsed_args = pa;
         }
     }
 
     let empty_map = HashMap::new();
-    let keywords = match parsedArgs.get("no_keywords") {
-        None => KEYWORD_FROM_ATOM(),
+    let keywords = match parsed_args.get("no_keywords") {
+        None => keyword_from_atom(),
         Some(ArgumentValue::ArgBool(_b)) => &empty_map,
-        _ => KEYWORD_FROM_ATOM(),
+        _ => keyword_from_atom(),
     };
 
     let dpr;
     let run_program: Rc<dyn TRunProgram>;
     let mut search_paths = Vec::new();
-    match parsedArgs.get("include") {
+    match parsed_args.get("include") {
         Some(ArgumentValue::ArgArray(v)) => {
             let mut bare_paths = Vec::with_capacity(v.len());
             for p in v {
@@ -755,7 +754,7 @@ pub fn launch_tool(
     let mut input_program = "()".to_string();
     let mut input_args = "()".to_string();
 
-    match parsedArgs.get("path_or_code") {
+    match parsed_args.get("path_or_code") {
         Some(ArgumentValue::ArgString(file, path_or_code)) => {
             input_file = file.clone();
             input_program = path_or_code.to_string();
@@ -763,7 +762,7 @@ pub fn launch_tool(
         _ => {}
     }
 
-    match parsedArgs.get("hex") {
+    match parsed_args.get("hex") {
         Some(_) => {
             let assembled_serialized =
                 Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
@@ -791,7 +790,7 @@ pub fn launch_tool(
         }
         _ => {
             let src_sexp;
-            match parsedArgs.get("path_or_code") {
+            match parsed_args.get("path_or_code") {
                 Some(ArgumentValue::ArgString(f, content)) => match read_ir(&content) {
                     Ok(s) => {
                         input_program = content.clone();
@@ -812,7 +811,7 @@ pub fn launch_tool(
             let assembled_sexp = assemble_from_ir(&mut allocator, Rc::new(src_sexp)).unwrap();
             let mut parsed_args_result = "()".to_string();
 
-            match parsedArgs.get("env") {
+            match parsed_args.get("env") {
                 Some(ArgumentValue::ArgString(_f, s)) => {
                     parsed_args_result = s.to_string();
                 }
@@ -835,7 +834,7 @@ pub fn launch_tool(
     let mut symbol_table: Option<HashMap<String, String>> = None;
     let mut emit_symbol_output = false;
 
-    let symbol_table_clone = parsedArgs
+    let symbol_table_clone = parsed_args
         .get("symbol_table")
         .and_then(|jstring| match jstring {
             ArgumentValue::ArgString(_, s) => fs::read_to_string(s).ok().and_then(|s| {
@@ -851,7 +850,7 @@ pub fn launch_tool(
             st
         });
 
-    match parsedArgs.get("verbose") {
+    match parsed_args.get("verbose") {
         Some(ArgumentValue::ArgBool(true)) => {
             emit_symbol_output = true;
         }
@@ -859,7 +858,7 @@ pub fn launch_tool(
     }
 
     // Add unused check.
-    let do_check_unused = parsedArgs
+    let do_check_unused = parsed_args
         .get("check_unused_args")
         .map(|a| match a {
             ArgumentValue::ArgBool(true) => true,
@@ -898,7 +897,7 @@ pub fn launch_tool(
 
     // In testing: short circuit for modern compilation.
     if let Some(dialect) = dialect {
-        let do_optimize = parsedArgs
+        let do_optimize = parsed_args
             .get("optimize")
             .map(|x| match x {
                 ArgumentValue::ArgBool(true) => true,
@@ -963,12 +962,12 @@ pub fn launch_tool(
     let (post_eval_resp_out, post_eval_resp_in): (Sender<()>, Receiver<()>) = channel();
 
     let post_eval_fn: Rc<dyn Fn(NodePtr, Option<NodePtr>)> = Rc::new(move |at, n| {
-        post_eval_req_out.send((at, n));
+        post_eval_req_out.send((at, n)).ok();
         post_eval_resp_in.recv().unwrap();
     });
 
     let pre_eval_fn: Rc<dyn Fn(&mut Allocator, NodePtr)> = Rc::new(move |_allocator, new_log| {
-        pre_eval_req_out.send(new_log);
+        pre_eval_req_out.send(new_log).ok();
         pre_eval_resp_in.recv().unwrap();
     });
 
@@ -1007,15 +1006,14 @@ pub fn launch_tool(
         pre_eval_f = Some(pre_eval_f_closure);
     }
 
-    let run_script = match parsedArgs.get("stage") {
+    let run_script = match parsed_args.get("stage") {
         Some(ArgumentValue::ArgInt(0)) => stages::brun(&mut allocator),
         _ => stages::run(&mut allocator),
     };
 
-    let mut output = "(didn't finish)".to_string();
     let cost_offset = calculate_cost_offset(&mut allocator, run_program.clone(), run_script);
 
-    let max_cost = parsedArgs
+    let max_cost = parsed_args
         .get("max_cost")
         .map(|x| match x {
             ArgumentValue::ArgInt(i) => *i as i64 - cost_offset,
@@ -1048,7 +1046,7 @@ pub fn launch_tool(
                         let locked = log_entries_clone.lock();
                         locked.unwrap().push(received);
                     }
-                    pre_out.send(());
+                    pre_out.send(()).ok();
                 }
                 Err(_e) => {
                     break;
@@ -1069,7 +1067,7 @@ pub fn launch_tool(
                         let locked = log_updates_clone.lock();
                         locked.unwrap().push(received);
                     }
-                    post_out.send(());
+                    post_out.send(()).ok();
                 }
                 Err(_e) => {
                     break;
@@ -1092,7 +1090,7 @@ pub fn launch_tool(
                     Some(max_cost as u64)
                 },
                 pre_eval_f,
-                strict: parsedArgs
+                strict: parsed_args
                     .get("strict")
                     .map(|_| true)
                     .unwrap_or_else(|| false),
@@ -1100,19 +1098,20 @@ pub fn launch_tool(
         )
         .map(|run_program_result| {
             let mut cost: i64 = run_program_result.0 as i64;
+            let mut run_output;
             let result = run_program_result.1;
             let time_done = SystemTime::now();
 
-            let _ = if !parsedArgs.get("cost").is_none() {
+            let _ = if !parsed_args.get("cost").is_none() {
                 if cost > 0 {
                     cost += cost_offset;
                 }
                 stdout.write_string(format!("cost = {}\n", cost));
             };
 
-            let _ = match parsedArgs.get("time") {
+            let _ = match parsed_args.get("time") {
                 Some(ArgumentValue::ArgBool(true)) => {
-                    match parsedArgs.get("hex") {
+                    match parsed_args.get("hex") {
                         Some(_) => {
                             stdout.write_string(format!(
                                 "read_hex: {}\n",
@@ -1150,22 +1149,22 @@ pub fn launch_tool(
                 _ => {}
             };
 
-            let _ = output = disassemble_with_kw(&mut allocator, result, keywords);
-            let _ = match parsedArgs.get("dump") {
+            let _ = run_output = disassemble_with_kw(&mut allocator, result, keywords);
+            let _ = match parsed_args.get("dump") {
                 Some(ArgumentValue::ArgBool(true)) => {
                     let mut f = Stream::new(None);
                     sexp_to_stream(&mut allocator, result, &mut f);
-                    output = f.get_value().hex();
+                    run_output = f.get_value().hex();
                 }
-                _ => match parsedArgs.get("quiet") {
+                _ => match parsed_args.get("quiet") {
                     Some(ArgumentValue::ArgBool(true)) => {
-                        output = "".to_string();
+                        run_output = "".to_string();
                     }
                     _ => {}
                 },
             };
 
-            output
+            run_output
         });
 
     let output = collapse(res.map_err(|ex| {
@@ -1178,7 +1177,7 @@ pub fn launch_tool(
 
     let compile_sym_out = dpr.get_compiles();
     if compile_sym_out.len() > 0 {
-        write_sym_output(&compile_sym_out, &"main.sym".to_string());
+        write_sym_output(&compile_sym_out, &"main.sym".to_string()).ok();
     }
 
     stdout.write_string(format!("{}\n", output));
@@ -1200,7 +1199,7 @@ pub fn launch_tool(
             symbol_table.clone(),
             &disassemble,
         );
-        if !parsedArgs.get("table").is_none() {
+        if !parsed_args.get("table").is_none() {
             trace_to_table(
                 &mut allocator,
                 stdout,

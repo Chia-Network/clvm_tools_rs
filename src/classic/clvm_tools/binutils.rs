@@ -8,10 +8,10 @@ use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Record, Stream};
-use crate::classic::clvm::{KEYWORD_FROM_ATOM, KEYWORD_TO_ATOM};
+use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
+use crate::classic::clvm_tools::ir::r#type::IRRepr;
 use crate::classic::clvm_tools::ir::reader::IRReader;
 use crate::classic::clvm_tools::ir::writer::write_ir;
-use crate::classic::clvm_tools::ir::Type::IRRepr;
 
 pub fn is_printable_string(s: &String) -> bool {
     for ch in s.graphemes(true) {
@@ -39,7 +39,7 @@ pub fn assemble_from_ir<'a>(
                 s_real_name = s[1..].to_string();
             }
 
-            match KEYWORD_TO_ATOM().get(&s_real_name) {
+            match keyword_to_atom().get(&s_real_name) {
                 Some(v) => allocator.new_atom(v),
                 None => {
                     let v: Vec<u8> = s_real_name.as_bytes().to_vec();
@@ -85,7 +85,7 @@ pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
         }
     } else {
         if allow_keyword {
-            match KEYWORD_FROM_ATOM().get(atom.data()) {
+            match keyword_from_atom().get(atom.data()) {
                 Some(kw) => {
                     return IRRepr::Symbol(kw.to_string());
                 }
@@ -149,7 +149,7 @@ pub fn disassemble_with_kw<'a>(
 }
 
 pub fn disassemble<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> String {
-    return disassemble_with_kw(allocator, sexp, KEYWORD_FROM_ATOM());
+    return disassemble_with_kw(allocator, sexp, keyword_from_atom());
 }
 
 pub fn assemble<'a>(allocator: &'a mut Allocator, s: &String) -> Result<NodePtr, EvalErr> {

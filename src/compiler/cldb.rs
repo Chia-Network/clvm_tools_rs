@@ -23,7 +23,7 @@ use crate::util::Number;
 #[derive(Clone, Debug)]
 pub struct PriorResult {
     reference: usize,
-    value: Rc<SExp>,
+    // value: Rc<SExp>, // In future, we'll want to know the value produced.
 }
 
 fn format_arg_inputs(args: &Vec<PriorResult>) -> String {
@@ -155,7 +155,7 @@ impl CldbRun {
                                 n,
                                 PriorResult {
                                     reference: self.row,
-                                    value: x.clone(),
+                                    // value: x.clone(), // for future
                                 },
                             );
                         }
@@ -235,9 +235,7 @@ impl CldbRun {
     }
 }
 
-pub struct CldbNoOverride {
-    symbol_table: HashMap<String, String>,
-}
+pub struct CldbNoOverride {}
 
 impl CldbRunnable for CldbNoOverride {
     fn replace_step(&self, _step: &RunStep) -> Option<Result<RunStep, RunFailure>> {
@@ -247,13 +245,11 @@ impl CldbRunnable for CldbNoOverride {
 
 impl CldbNoOverride {
     pub fn new() -> Self {
-        CldbNoOverride {
-            symbol_table: HashMap::new(),
-        }
+        CldbNoOverride {}
     }
 
-    pub fn new_symbols(symbol_table: HashMap<String, String>) -> Self {
-        CldbNoOverride { symbol_table }
+    pub fn new_symbols(_symbol_table: HashMap<String, String>) -> Self {
+        CldbNoOverride {}
     }
 }
 

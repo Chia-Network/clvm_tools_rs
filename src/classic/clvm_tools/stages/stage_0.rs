@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::chia_dialect::{ChiaDialect, NO_NEG_DIV, NO_UNKNOWN_OPS};
 use clvm_rs::cost::Cost;

@@ -409,7 +409,7 @@ pub fn enlist<'a>(allocator: &'a mut Allocator, vec: &Vec<NodePtr>) -> Result<No
     Ok(built)
 }
 
-pub fn mapM<T>(
+pub fn map_m<T>(
     allocator: &mut Allocator,
     iter: &mut impl Iterator<Item = T>,
     f: &dyn Fn(&mut Allocator, T) -> Result<NodePtr, EvalErr>,
@@ -432,7 +432,7 @@ pub fn mapM<T>(
     }
 }
 
-pub fn foldM<A, B, E>(
+pub fn fold_m<A, B, E>(
     allocator: &mut Allocator,
     f: &dyn Fn(&mut Allocator, A, B) -> Result<A, E>,
     start_: A,

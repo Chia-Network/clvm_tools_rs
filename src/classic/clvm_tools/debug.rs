@@ -6,7 +6,7 @@ use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 use crate::classic::clvm::serialize::sexp_to_stream;
-use crate::classic::clvm::sexp::{enlist, mapM, proper_list, rest};
+use crate::classic::clvm::sexp::{enlist, map_m, proper_list, rest};
 
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
@@ -88,7 +88,7 @@ pub fn build_symbol_dump(
     let compiled_unrolled: Vec<(Vec<u8>, NodePtr)> = constants_lookup.into_iter().collect();
 
     m! {
-        map_result <- mapM(
+        map_result <- map_m(
             allocator,
             &mut compiled_unrolled.iter(),
             &|allocator, kv| m! {

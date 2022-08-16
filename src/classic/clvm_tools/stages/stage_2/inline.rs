@@ -111,15 +111,15 @@ fn formulate_path_selections_for_destructuring_arg(
 
                     selections.insert(allocator.buf(&cbuf).to_vec(), tail);
 
-                    formulate_path_selections_for_destructuring_arg(
+                    return formulate_path_selections_for_destructuring_arg(
                         allocator,
                         substructure,
                         new_arg_path,
                         new_arg_depth,
                         Some(tail),
                         selections,
-                    );
-                    return Ok(arg_sexp);
+                    )
+                    .map(|_| arg_sexp);
                 }
             }
 

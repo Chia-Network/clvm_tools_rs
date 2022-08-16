@@ -9,7 +9,7 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::{run, sha256tree};
+use crate::compiler::clvm::run;
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LetFormKind,
@@ -500,30 +500,6 @@ fn match_i_op(candidate: Rc<BodyForm>) -> Option<(Rc<BodyForm>, Rc<BodyForm>, Rc
     }
 
     None
-}
-
-fn fake_body_of_env(l: Srcloc, env: &HashMap<Vec<u8>, Rc<BodyForm>>) -> Rc<BodyForm> {
-    let mut composed = Rc::new(BodyForm::Quoted(SExp::Nil(l.clone())));
-    let mut sorted_env: Vec<Vec<u8>> = env.iter().map(|nv| nv.0.clone()).collect();
-    sorted_env.sort();
-    for nv in sorted_env.iter() {
-        if let Some(v) = env.get(nv) {
-            let entry = Rc::new(BodyForm::Call(
-                v.loc(),
-                vec![
-                    Rc::new(BodyForm::Value(SExp::Atom(v.loc(), nv.clone()))),
-                    v.clone(),
-                ],
-            ));
-            composed = Rc::new(BodyForm::Call(l.clone(), vec![entry, composed]));
-        }
-    }
-    composed
-}
-
-fn compute_hash_of_apply(body: Rc<BodyForm>, env: Rc<BodyForm>) -> Vec<u8> {
-    let composed = Rc::new(BodyForm::Call(body.loc(), vec![body.clone(), env.clone()]));
-    sha256tree(composed.to_sexp())
 }
 
 fn flatten_expression_to_names_inner(collection: &mut HashSet<Vec<u8>>, expr: Rc<SExp>) {

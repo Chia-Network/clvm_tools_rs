@@ -10,10 +10,10 @@ use crate::classic::clvm_tools::cmds::{launch_tool, OpcConversion, OpdConversion
 
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble};
 use crate::classic::clvm_tools::ir::reader::read_ir;
+use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
-use crate::classic::clvm_tools::NodePath::NodePath;
 
 #[test]
 fn nft_opc() {

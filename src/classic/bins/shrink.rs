@@ -35,13 +35,13 @@ fn main() {
         })
         .and_then(|program| {
             let e = Evaluator::new(opts.clone(), runner.clone(), program.helpers.clone());
-            return e.shrink_bodyform(
+            e.shrink_bodyform(
                 &mut allocator,
                 program.args.clone(),
                 &HashMap::new(),
-                program.exp.clone(),
+                program.exp,
                 false,
-            );
+            )
         })
         .map(|result| {
             println!("shrunk: {}", result.to_sexp().to_string());

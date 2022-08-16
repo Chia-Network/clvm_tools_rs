@@ -16,7 +16,7 @@ fn main() {
     let runner = Rc::new(DefaultProgramRunner::new());
     let opts = Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));
     let stdin = io::stdin();
-    let mut repl = Repl::new(opts.clone(), runner.clone());
+    let mut repl = Repl::new(opts, runner.clone());
 
     print!(">>> ");
     io::stdout().flush().unwrap();
