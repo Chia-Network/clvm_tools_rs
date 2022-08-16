@@ -48,10 +48,7 @@ fn rename_in_cons(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SEx
                         .map(|x| match &x[..] {
                             [v] => Rc::new(SExp::Cons(
                                 l.clone(),
-                                Rc::new(SExp::atom_from_string(
-                                    la.clone(),
-                                    "quote"
-                                )),
+                                Rc::new(SExp::atom_from_string(la.clone(), "quote")),
                                 Rc::new(SExp::Cons(
                                     v.loc(),
                                     Rc::new(v.clone()),
@@ -65,8 +62,8 @@ fn rename_in_cons(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SEx
                     return r
                         .proper_list()
                         .map(|x| match &x[..] {
-                             [qqexpr] => rename_in_qq(namemap, Rc::new(qqexpr.clone())),
-                             _ => body.clone(),
+                            [qqexpr] => rename_in_qq(namemap, Rc::new(qqexpr.clone())),
+                            _ => body.clone(),
                         })
                         .unwrap_or_else(|| body.clone());
                 }
@@ -129,12 +126,7 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
                 })
                 .collect();
             let new_body = rename_in_bodyform(namemap, body.clone());
-            BodyForm::Let(
-                l.clone(),
-                kind.clone(),
-                new_bindings,
-                Rc::new(new_body),
-            )
+            BodyForm::Let(l.clone(), kind.clone(), new_bindings, Rc::new(new_body))
         }
 
         BodyForm::Quoted(atom) => match atom.borrow() {
@@ -326,11 +318,7 @@ fn rename_in_compileform(namemap: &HashMap<Vec<u8>, Vec<u8>>, c: Rc<CompileForm>
 }
 
 pub fn rename_children_compileform(c: &CompileForm) -> CompileForm {
-    let local_renamed_helpers = c
-        .helpers
-        .iter()
-        .map(rename_args_helperform)
-        .collect();
+    let local_renamed_helpers = c.helpers.iter().map(rename_args_helperform).collect();
     let local_renamed_body = rename_args_bodyform(c.exp.borrow());
     CompileForm {
         loc: c.loc.clone(),
@@ -347,11 +335,8 @@ pub fn rename_args_compileform(c: &CompileForm) -> CompileForm {
         local_namemap.insert(x.0.clone(), x.1.clone());
     }
     let local_renamed_arg = rename_in_cons(&local_namemap, c.args.clone());
-    let local_renamed_helpers: Vec<HelperForm> = c
-        .helpers
-        .iter()
-        .map(rename_args_helperform)
-        .collect();
+    let local_renamed_helpers: Vec<HelperForm> =
+        c.helpers.iter().map(rename_args_helperform).collect();
     let local_renamed_body = rename_args_bodyform(c.exp.borrow());
     CompileForm {
         loc: c.loc(),

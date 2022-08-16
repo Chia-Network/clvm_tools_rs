@@ -104,10 +104,7 @@ fn inject_std_macros(body: Rc<SExp>) -> SExp {
                 Rc::new(SExp::atom_from_string(body.loc(), "include")),
                 Rc::new(SExp::Cons(
                     body.loc(),
-                    Rc::new(SExp::quoted_from_string(
-                        body.loc(),
-                        "*macros*",
-                    )),
+                    Rc::new(SExp::quoted_from_string(body.loc(), "*macros*")),
                     Rc::new(SExp::Nil(body.loc())),
                 )),
             ));

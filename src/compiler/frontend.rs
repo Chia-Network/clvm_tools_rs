@@ -102,11 +102,10 @@ fn calculate_live_helpers(
 
         for name in new_names {
             if let Some(new_helper) = helper_map.get(&name) {
-                let even_newer_names: HashSet<Vec<u8>> =
-                    collect_used_names_helperform(new_helper)
-                        .iter()
-                        .map(|x| x.to_vec())
-                        .collect();
+                let even_newer_names: HashSet<Vec<u8>> = collect_used_names_helperform(new_helper)
+                    .iter()
+                    .map(|x| x.to_vec())
+                    .collect();
                 needed_helpers = needed_helpers
                     .union(&even_newer_names)
                     .into_iter()
@@ -136,19 +135,13 @@ fn qq_to_expression(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
             } else if let Some(list) = r.proper_list() {
                 if *op == "quote".as_bytes().to_vec() {
                     if list.len() != 1 {
-                        return Err(CompileErr(
-                            l.clone(),
-                            format!("bad form {}", body),
-                        ));
+                        return Err(CompileErr(l.clone(), format!("bad form {}", body)));
                     }
 
                     return Ok(BodyForm::Quoted(list[0].clone()));
                 } else if *op == "unquote".as_bytes().to_vec() {
                     if list.len() != 1 {
-                        return Err(CompileErr(
-                            l.clone(),
-                            format!("bad form {}", body),
-                        ));
+                        return Err(CompileErr(l.clone(), format!("bad form {}", body)));
                     }
 
                     return compile_bodyform(Rc::new(list[0].clone()));
@@ -156,7 +149,7 @@ fn qq_to_expression(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
             }
 
             qq_to_expression_list(body.clone())
-        },
+        }
         _ => Ok(BodyForm::Quoted(body_copy.clone())),
     }
 }
@@ -372,10 +365,7 @@ fn compile_defmacro(
         .map(|p| HelperForm::Defmacro(l, name, args.clone(), Rc::new(p)))
 }
 
-fn match_op_name_4(
-    body: Rc<SExp>,
-    pl: &[SExp],
-) -> Option<(Vec<u8>, Vec<u8>, Rc<SExp>, Rc<SExp>)> {
+fn match_op_name_4(body: Rc<SExp>, pl: &[SExp]) -> Option<(Vec<u8>, Vec<u8>, Rc<SExp>, Rc<SExp>)> {
     let l = body.loc();
 
     if pl.is_empty() {
@@ -425,18 +415,17 @@ fn compile_helperform(
     let l = body.loc();
     let plist = body.proper_list();
 
-    if let Some((op_name, name, args, body)) = plist.and_then(|pl| match_op_name_4(body.clone(), &pl)) {
+    if let Some((op_name, name, args, body)) =
+        plist.and_then(|pl| match_op_name_4(body.clone(), &pl))
+    {
         if *op_name == "defconstant".as_bytes().to_vec() {
             return compile_defconstant(l, name.to_vec(), args).map(Some);
         } else if *op_name == "defmacro".as_bytes().to_vec() {
-            return compile_defmacro(opts, l, name.to_vec(), args, body)
-                .map(Some);
+            return compile_defmacro(opts, l, name.to_vec(), args, body).map(Some);
         } else if *op_name == "defun".as_bytes().to_vec() {
-            return compile_defun(l, false, name.to_vec(), args, body)
-                .map(Some);
+            return compile_defun(l, false, name.to_vec(), args, body).map(Some);
         } else if *op_name == "defun-inline".as_bytes().to_vec() {
-            return compile_defun(l, true, name.to_vec(), args, body)
-                .map(Some);
+            return compile_defun(l, true, name.to_vec(), args, body).map(Some);
         }
     }
 
@@ -472,9 +461,7 @@ fn compile_mod_(
                         "only the last form can be an exprssion in mod".to_string(),
                     )),
                     Some(form) => match mc.exp_form {
-                        None => {
-                            compile_mod_(&mc.add_helper(form), opts, args, tail.clone())
-                        }
+                        None => compile_mod_(&mc.add_helper(form), opts, args, tail.clone()),
                         Some(_) => Err(CompileErr(l.clone(), "too many expressions".to_string())),
                     },
                 }
