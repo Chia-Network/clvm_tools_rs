@@ -95,8 +95,7 @@ impl CompilerOperators {
                     let filename_buf = allocator.buf(&filename_buf);
                     let filename_bytes =
                         Bytes::new(Some(BytesFromType::Raw(filename_buf.to_vec())));
-                    let ir =
-                        disassemble_to_ir_with_kw(allocator, data, keyword_from_atom(), true);
+                    let ir = disassemble_to_ir_with_kw(allocator, data, keyword_from_atom(), true);
                     let mut stream = Stream::new(None);
                     write_ir_to_stream(Rc::new(ir), &mut stream);
                     return fs::write(filename_bytes.decode(), stream.get_value().decode())
@@ -129,10 +128,7 @@ impl CompilerOperators {
                             .to_str()
                             .map(Ok)
                             .unwrap_or_else(|| {
-                                Err(EvalErr(
-                                    sexp,
-                                    "could not compute absolute path".to_string(),
-                                ))
+                                Err(EvalErr(sexp, "could not compute absolute path".to_string()))
                             })
                             .and_then(|p| {
                                 allocator
@@ -152,18 +148,20 @@ impl CompilerOperators {
         allocator: &mut Allocator,
         table: NodePtr,
     ) -> Result<Reduction, EvalErr> {
-        if let Some(symtable) = proper_list(allocator, table, true).and_then(|t| proper_list(allocator, t[0], true)) {
+        if let Some(symtable) =
+            proper_list(allocator, table, true).and_then(|t| proper_list(allocator, t[0], true))
+        {
             for kv in symtable.iter() {
                 if let SExp::Pair(hash, name) = allocator.sexp(*kv) {
-                    if let (SExp::Atom(hash), SExp::Atom(name)) = (allocator.sexp(hash), allocator.sexp(name)) {
-                        let hash_text = Bytes::new(Some(BytesFromType::Raw(
-                            allocator.buf(&hash).to_vec(),
-                        )))
-                        .decode();
-                        let name_text = Bytes::new(Some(BytesFromType::Raw(
-                            allocator.buf(&name).to_vec(),
-                        )))
-                        .decode();
+                    if let (SExp::Atom(hash), SExp::Atom(name)) =
+                        (allocator.sexp(hash), allocator.sexp(name))
+                    {
+                        let hash_text =
+                            Bytes::new(Some(BytesFromType::Raw(allocator.buf(&hash).to_vec())))
+                                .decode();
+                        let name_text =
+                            Bytes::new(Some(BytesFromType::Raw(allocator.buf(&name).to_vec())))
+                                .decode();
 
                         self.compile_outcomes.replace_with(|co| {
                             let mut result = co.clone();
@@ -232,10 +230,7 @@ impl TRunProgram for CompilerOperators {
         args: NodePtr,
         option: Option<RunProgramOption>,
     ) -> Response {
-        let max_cost = option
-            .as_ref()
-            .and_then(|o| o.max_cost)
-            .unwrap_or(0);
+        let max_cost = option.as_ref().and_then(|o| o.max_cost).unwrap_or(0);
         run_program(
             allocator,
             self,

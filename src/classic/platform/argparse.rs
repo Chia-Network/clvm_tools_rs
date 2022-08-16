@@ -119,7 +119,9 @@ impl Argument {
 }
 
 impl Default for Argument {
-    fn default() -> Self { Argument::new() }
+    fn default() -> Self {
+        Argument::new()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -244,15 +246,12 @@ impl ArgumentParser {
                 }
 
                 let optional_arg = &self.optional_args[optional_arg_idx as usize];
-                let name = 
-                    match self.get_optional_arg_name(optional_arg) {
-                        Ok(n) => {
-                           n
-                        }
-                        Err(e) => {
-                           return Err(e);
-                        }
-                    };
+                let name = match self.get_optional_arg_name(optional_arg) {
+                    Ok(n) => n,
+                    Err(e) => {
+                        return Err(e);
+                    }
+                };
 
                 if optional_arg.options.action == TArgOptionAction::StoreTrue {
                     params.insert(name, ArgumentValue::ArgBool(true));
@@ -332,7 +331,7 @@ impl ArgumentParser {
                         params.insert(name.to_string(), v);
                         i += 1;
                     }
-                },
+                }
                 Some(NArgsSpec::Definite(nargs)) => {
                     for _j in 0..nargs - 1 {
                         if i >= input_positional_args.len() {
@@ -348,14 +347,10 @@ impl ArgumentParser {
                             if let Ok(v) = converter.convert(input_arg) {
                                 let mut lcopy = l.clone();
                                 lcopy.push(v);
-                                params.insert(
-                                    name.to_string(),
-                                    ArgumentValue::ArgArray(lcopy),
-                                );
+                                params.insert(name.to_string(), ArgumentValue::ArgArray(lcopy));
                             }
                         } else if let Ok(v) = converter.convert(input_arg) {
-                            params
-                                .insert(name.to_string(), ArgumentValue::ArgArray(vec![v]));
+                            params.insert(name.to_string(), ArgumentValue::ArgArray(vec![v]));
                         }
                         i += 1;
                     }
@@ -367,12 +362,12 @@ impl ArgumentParser {
                                 if let Ok(v) = converter.convert("") {
                                     params.insert(name.to_string(), v);
                                 }
-                            },
+                            }
                             Some(_) => {
                                 if let Ok(v) = converter.convert("") {
                                     params.insert(name.to_string(), v);
                                 }
-                            },
+                            }
                         }
 
                         i += 1;
@@ -403,16 +398,12 @@ impl ArgumentParser {
 
                     for input_arg in input_positional_args.iter() {
                         if let Some(ArgumentValue::ArgArray(l)) = params.get(name) {
-                           if let Ok(v) = converter.convert(input_arg) {
+                            if let Ok(v) = converter.convert(input_arg) {
                                 let mut lcopy = l.clone();
                                 lcopy.push(v);
-                                params.insert(
-                                    name.to_string(),
-                                    ArgumentValue::ArgArray(lcopy),
-                                );
+                                params.insert(name.to_string(), ArgumentValue::ArgArray(lcopy));
                             } else if let Ok(v) = converter.convert(input_arg) {
-                                params
-                                    .insert(name.to_string(), ArgumentValue::ArgArray(vec![v]));
+                                params.insert(name.to_string(), ArgumentValue::ArgArray(vec![v]));
                             }
                         }
                     }

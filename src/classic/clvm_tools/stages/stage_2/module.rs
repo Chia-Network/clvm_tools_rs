@@ -124,15 +124,13 @@ fn build_used_constants_names(
                 })
                 .collect::<Vec<NodePtr>>();
 
-            let matching_names = matching_names_1
-                .iter()
-                .filter_map(|v| {
-                    if let SExp::Atom(b) = allocator.sexp(*v) {
-                        Some(allocator.buf(&b).to_vec())
-                    } else {
-                        None
-                    }
-                });
+            let matching_names = matching_names_1.iter().filter_map(|v| {
+                if let SExp::Atom(b) = allocator.sexp(*v) {
+                    Some(allocator.buf(&b).to_vec())
+                } else {
+                    None
+                }
+            });
 
             for name in matching_names {
                 if !used_names.contains(&name) {
