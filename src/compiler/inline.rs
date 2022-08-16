@@ -61,10 +61,7 @@ fn enlist_remaining_args(loc: Srcloc, arg_choice: usize, args: &[Rc<BodyForm>]) 
         result_body = BodyForm::Call(
             loc.clone(),
             vec![
-                Rc::new(BodyForm::Value(SExp::atom_from_string(
-                    loc.clone(),
-                    "c",
-                ))),
+                Rc::new(BodyForm::Value(SExp::atom_from_string(loc.clone(), "c"))),
                 args[i].clone(),
                 Rc::new(result_body),
             ],
