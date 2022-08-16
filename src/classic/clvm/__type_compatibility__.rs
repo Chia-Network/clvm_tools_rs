@@ -34,7 +34,7 @@ pub fn vec_to_string(r: &Vec<u8>) -> String {
  * @see https://github.com/python/cpython/blob/main/Objects/bytesobject.c#L1337
  * @param {Uint8Array} r - byteArray to stringify
  */
-pub fn PyBytes_Repr(r: &Vec<u8>, dquoted: bool) -> String {
+pub fn pybytes_repr(r: &Vec<u8>, dquoted: bool) -> String {
     let mut squotes = 0;
     let mut dquotes = 0;
     for i in 0..r.len() {
@@ -199,11 +199,11 @@ impl Bytes {
     }
 
     pub fn to_string(&self) -> String {
-        PyBytes_Repr(&self._b, false)
+        pybytes_repr(&self._b, false)
     }
 
     pub fn to_formal_string(&self) -> String {
-        PyBytes_Repr(&self._b, true)
+        pybytes_repr(&self._b, true)
     }
 
     pub fn hex(&self) -> String {

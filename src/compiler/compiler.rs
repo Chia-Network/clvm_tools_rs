@@ -14,7 +14,7 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::codegen;
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen,
+    CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen,
 };
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator};
 use crate::compiler::frontend::frontend;
@@ -37,60 +37,6 @@ pub struct DefaultCompilerOpts {
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
 
     known_dialects: Rc<HashMap<String, String>>,
-}
-
-fn at_path(path_mask: Number, loc: Srcloc) -> Rc<BodyForm> {
-    Rc::new(BodyForm::Call(
-        loc.clone(),
-        vec![
-            Rc::new(BodyForm::Value(SExp::atom_from_string(
-                loc.clone(),
-                &"@".to_string(),
-            ))),
-            Rc::new(BodyForm::Quoted(SExp::Integer(
-                loc.clone(),
-                path_mask.clone(),
-            ))),
-        ],
-    ))
-}
-
-fn next_path_mask(path_mask: Number) -> Number {
-    path_mask * 2_u32.to_bigint().unwrap()
-}
-
-fn make_simple_argbindings(
-    argbindings: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
-    path_mask: Number,
-    current_path: Number,
-    prog_args: Rc<SExp>,
-) {
-    match prog_args.borrow() {
-        SExp::Cons(_, a, b) => {
-            make_simple_argbindings(
-                argbindings,
-                next_path_mask(path_mask.clone()),
-                current_path.clone(),
-                a.clone(),
-            );
-            make_simple_argbindings(
-                argbindings,
-                next_path_mask(path_mask.clone()),
-                current_path.clone() | path_mask.clone(),
-                b.clone(),
-            );
-        }
-        SExp::Atom(_l, n) => {
-            let borrowed_prog_args: &SExp = prog_args.borrow();
-            // Alternatively, by path
-            // at_path(current_path.clone() | path_mask.clone(), l.clone())
-            argbindings.insert(
-                n.clone(),
-                Rc::new(BodyForm::Value(borrowed_prog_args.clone())),
-            );
-        }
-        _ => {}
-    }
 }
 
 fn fe_opt(

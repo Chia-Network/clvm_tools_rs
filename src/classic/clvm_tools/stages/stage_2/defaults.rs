@@ -19,7 +19,7 @@ some partial "com" operators in there and our
 goals is to compile PROG as much as possible.
  */
 
-fn DEFAULT_MACROS_SRC() -> Vec<&'static str> {
+fn default_macros_src() -> Vec<&'static str> {
     return vec![
         indoc! {"
         ; we have to compile this externally, since it uses itself
@@ -118,10 +118,10 @@ fn build_default_macro_lookup(
     default_macro_lookup
 }
 
-pub fn DEFAULT_MACRO_LOOKUP(allocator: &mut Allocator, runner: Rc<dyn TRunProgram>) -> NodePtr {
+pub fn default_macro_lookup(allocator: &mut Allocator, runner: Rc<dyn TRunProgram>) -> NodePtr {
     build_default_macro_lookup(
         allocator,
         runner.clone(),
-        &DEFAULT_MACROS_SRC().iter().map(|s| s.to_string()).collect(),
+        &default_macros_src().iter().map(|s| s.to_string()).collect(),
     )
 }

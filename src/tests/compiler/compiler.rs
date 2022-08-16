@@ -59,9 +59,11 @@ fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
     run_string_maybe_opt(content, args, false)
 }
 
+/* // Upcoming support for extra optimization (WIP)
 fn run_string_opt(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
     run_string_maybe_opt(content, args, true)
 }
+*/
 
 #[test]
 fn compile_test_1() {

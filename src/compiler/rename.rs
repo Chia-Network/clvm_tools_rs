@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use crate::compiler::comptypes::{Binding, BodyForm, CompileForm, HelperForm, LetFormKind};
 use crate::compiler::gensym::gensym;
-use crate::compiler::sexp::{decode_string, SExp};
+use crate::compiler::sexp::SExp;
 
 fn rename_in_qq(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SExp> {
     body.proper_list()
@@ -122,7 +122,6 @@ fn make_binding_unique(b: &Binding) -> (Vec<u8>, Binding) {
 }
 
 fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> BodyForm {
-    let names: Vec<String> = namemap.iter().map(|x| decode_string(x.0)).collect();
     match b.borrow() {
         BodyForm::Let(l, kind, bindings, body) => {
             let new_bindings = bindings

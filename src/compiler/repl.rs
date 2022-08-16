@@ -20,7 +20,6 @@ pub struct Repl {
 
     toplevel_forms: HashSet<String>,
 
-    starter_empty_program: Rc<SExp>,
     opts: Rc<dyn CompilerOpts>,
     evaluator: Evaluator,
 
@@ -126,7 +125,6 @@ impl Repl {
             depth: 0,
             input_exp: "".to_string(),
             toplevel_forms,
-            starter_empty_program,
             evaluator,
             opts,
             loc,

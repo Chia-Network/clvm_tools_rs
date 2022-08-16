@@ -2,12 +2,12 @@ use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::sexp::enlist;
-use crate::classic::clvm_tools::NodePath::NodePath;
+use crate::classic::clvm_tools::node_path::NodePath;
 
 lazy_static! {
     pub static ref QUOTE_ATOM: Vec<u8> = vec!(1);
     pub static ref APPLY_ATOM: Vec<u8> = vec!(2);
-    pub static ref com_atom: Vec<u8> = vec!('c' as u8, 'o' as u8, 'm' as u8);
+    pub static ref COM_ATOM: Vec<u8> = vec!('c' as u8, 'o' as u8, 'm' as u8);
 }
 
 pub fn quote<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> Result<NodePtr, EvalErr> {
@@ -43,7 +43,7 @@ pub fn run<'a>(
     let args = NodePath::new(None).as_path();
     return m! {
         mac <- quote(allocator, macro_lookup);
-        com_sexp <- allocator.new_atom(&com_atom);
+        com_sexp <- allocator.new_atom(&COM_ATOM);
         arg_sexp <- allocator.new_atom(&args.data());
         to_eval <- enlist(allocator, &vec!(com_sexp, prog, mac));
         evaluate(allocator, to_eval, arg_sexp)

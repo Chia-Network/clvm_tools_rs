@@ -137,7 +137,7 @@ pub struct TArgumentParserProps {
 #[derive(Debug, Clone)]
 pub struct ArgumentParser {
     prog: String,
-    desc: String,
+    /* desc: String, */ // Not used in this code.
     positional_args: Vec<Arg>,
     optional_args: Vec<Arg>,
 }
@@ -149,10 +149,12 @@ impl ArgumentParser {
                 .as_ref()
                 .map(|x| x.prog.clone())
                 .unwrap_or_else(|| "prog".to_string()),
+            /*
             desc: props
                 .as_ref()
                 .map(|x| x.description.clone())
                 .unwrap_or_else(|| "".to_string()),
+            */
             positional_args: vec![],
             optional_args: vec![],
         };

@@ -168,7 +168,7 @@ fn start_clvm_program(
     let (command_tx, command_rx) = mpsc::channel();
     let (result_tx, result_rx) = mpsc::channel();
 
-    let t = thread::spawn(move || {
+    thread::spawn(move || {
         let mut allocator = Allocator::new();
         let runner = Rc::new(DefaultProgramRunner::new());
         let mut prim_map = HashMap::new();

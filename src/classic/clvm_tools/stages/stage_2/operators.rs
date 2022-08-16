@@ -13,8 +13,8 @@ use clvm_rs::run_program::run_program;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 
+use crate::classic::clvm::keyword_from_atom;
 use crate::classic::clvm::sexp::proper_list;
-use crate::classic::clvm::KEYWORD_FROM_ATOM;
 
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble_to_ir_with_kw};
 use crate::classic::clvm_tools::ir::reader::read_ir;
@@ -27,7 +27,6 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::do_optimize;
 
 pub struct CompilerOperators {
     base_dialect: Rc<dyn Dialect>,
-    base_runner: Rc<dyn TRunProgram>,
     search_paths: Vec<String>,
     compile_outcomes: RefCell<HashMap<String, String>>,
     dialect: RefCell<Rc<dyn Dialect>>,
@@ -40,17 +39,11 @@ impl CompilerOperators {
         let base_runner = Rc::new(DefaultProgramRunner::new());
         CompilerOperators {
             base_dialect: base_dialect.clone(),
-            base_runner: base_runner.clone(),
             search_paths,
             compile_outcomes: RefCell::new(HashMap::new()),
             dialect: RefCell::new(base_dialect),
             runner: RefCell::new(base_runner),
         }
-    }
-
-    fn drop(&self) {
-        self.runner.replace(self.base_runner.clone());
-        self.dialect.replace(self.base_dialect.clone());
     }
 
     fn set_runner(&self, runner: Rc<dyn TRunProgram>) {
@@ -104,7 +97,7 @@ impl CompilerOperators {
                         let filename_bytes =
                             Bytes::new(Some(BytesFromType::Raw(filename_buf.to_vec())));
                         let ir =
-                            disassemble_to_ir_with_kw(allocator, data, KEYWORD_FROM_ATOM(), true);
+                            disassemble_to_ir_with_kw(allocator, data, keyword_from_atom(), true);
                         let mut stream = Stream::new(None);
                         write_ir_to_stream(Rc::new(ir), &mut stream);
                         return fs::write(filename_bytes.decode(), stream.get_value().decode())
@@ -257,7 +250,7 @@ impl TRunProgram for CompilerOperators {
         args: NodePtr,
         option: Option<RunProgramOption>,
     ) -> Response {
-        let mut max_cost = option
+        let max_cost = option
             .as_ref()
             .and_then(|o| o.max_cost)
             .unwrap_or_else(|| 0);

@@ -9,13 +9,6 @@ pub enum RunFailure {
     RunExn(Srcloc, Rc<SExp>),
 }
 
-fn collapse<A>(r: Result<A, A>) -> A {
-    match r {
-        Ok(a) => a,
-        Err(a) => a,
-    }
-}
-
 impl RunFailure {
     pub fn to_string(&self) -> String {
         match self {
@@ -27,8 +20,4 @@ impl RunFailure {
             }
         }
     }
-}
-
-fn run_to_string<A>(cvt: &dyn Fn(&A) -> String, r: Result<A, RunFailure>) -> String {
-    collapse(r.map(|a| cvt(&a)).map_err(|o| o.to_string()))
 }

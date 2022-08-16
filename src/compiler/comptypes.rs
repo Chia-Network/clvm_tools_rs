@@ -404,7 +404,7 @@ pub fn cons_of_string_map<X>(
     list_to_cons(l.clone(), &sorted_converted)
 }
 
-pub fn mapM<T, U, E>(f: &dyn Fn(&T) -> Result<U, E>, list: &Vec<T>) -> Result<Vec<U>, E> {
+pub fn map_m<T, U, E>(f: &dyn Fn(&T) -> Result<U, E>, list: &Vec<T>) -> Result<Vec<U>, E> {
     let mut result = Vec::new();
     for e in list {
         let val = f(e)?;
@@ -413,7 +413,11 @@ pub fn mapM<T, U, E>(f: &dyn Fn(&T) -> Result<U, E>, list: &Vec<T>) -> Result<Ve
     Ok(result)
 }
 
-pub fn foldM<R, T, E>(f: &dyn Fn(&R, &T) -> Result<R, E>, start: R, list: &Vec<T>) -> Result<R, E> {
+pub fn fold_m<R, T, E>(
+    f: &dyn Fn(&R, &T) -> Result<R, E>,
+    start: R,
+    list: &Vec<T>,
+) -> Result<R, E> {
     let mut res: R = start;
     for elt in list.iter() {
         res = f(&res, elt)?;

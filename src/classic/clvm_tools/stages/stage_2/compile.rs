@@ -4,27 +4,25 @@ use std::rc::Rc;
 use clvm_rs::allocator::{Allocator, AtomBuf, NodePtr, SExp};
 use clvm_rs::reduction::{EvalErr, Reduction, Response};
 
-use crate::classic::clvm::sexp::{enlist, first, mapM, non_nil, proper_list, rest};
-use crate::classic::clvm::{KEYWORD_FROM_ATOM, KEYWORD_TO_ATOM};
+use crate::classic::clvm::sexp::{enlist, first, map_m, non_nil, proper_list, rest};
+use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
 
-use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble};
-use crate::classic::clvm_tools::ir::reader::read_ir;
+use crate::classic::clvm_tools::binutils::disassemble;
+use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
-use crate::classic::clvm_tools::stages::stage_2::defaults::DEFAULT_MACRO_LOOKUP;
+use crate::classic::clvm_tools::stages::stage_2::defaults::default_macro_lookup;
 use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote};
 use crate::classic::clvm_tools::stages::stage_2::module::compile_mod;
-use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
-use crate::classic::clvm_tools::NodePath::NodePath;
 
 const DIAG_OUTPUT: bool = false;
 
 lazy_static! {
     static ref PASS_THROUGH_OPERATORS: HashSet<Vec<u8>> = {
         let mut result = HashSet::new();
-        for key in KEYWORD_TO_ATOM().keys() {
+        for key in keyword_to_atom().keys() {
             result.insert(key.as_bytes().to_vec());
         }
-        for key in KEYWORD_FROM_ATOM().keys() {
+        for key in keyword_from_atom().keys() {
             result.insert(key.to_vec());
         }
         // added by optimize
@@ -244,14 +242,16 @@ fn lower_quote_(allocator: &mut Allocator, prog: NodePtr) -> Result<NodePtr, Eva
 pub fn lower_quote(allocator: &mut Allocator, prog: NodePtr) -> Result<NodePtr, EvalErr> {
     let res = lower_quote_(allocator, prog);
     if DIAG_OUTPUT {
-        res.as_ref().map(|x| {
-            println!(
-                "LOWER_QUOTE {} TO {}",
-                disassemble(allocator, prog),
-                disassemble(allocator, *x)
-            );
-            x
-        });
+        res.as_ref()
+            .map(|x| {
+                println!(
+                    "LOWER_QUOTE {} TO {}",
+                    disassemble(allocator, prog),
+                    disassemble(allocator, *x)
+                );
+                ()
+            })
+            .unwrap_or_else(|_| ())
     }
     res
 }
@@ -299,7 +299,7 @@ fn try_expand_macro_for_atom_(
     };
 }
 
-fn try_expand_macro_for_atom(
+pub fn try_expand_macro_for_atom(
     allocator: &mut Allocator,
     macro_code: NodePtr,
     prog_rest: NodePtr,
@@ -407,13 +407,13 @@ fn compile_operator_atom(
     symbol_table: NodePtr,
     run_program: Rc<dyn TRunProgram>,
 ) -> Result<Option<NodePtr>, EvalErr> {
-    let COMPILE_BINDINGS = compile_bindings();
+    let compile_bindings = compile_bindings();
 
     if *avec == vec![1] {
         return Ok(Some(prog));
     }
 
-    match COMPILE_BINDINGS.get(avec) {
+    match compile_bindings.get(avec) {
         Some(f) => {
             return m! {
                 prog_rest <- rest(allocator, prog);
@@ -520,7 +520,7 @@ fn compile_application(
         Some(prog_args) => {
             m! {
                 new_args <-
-                    mapM(
+                    map_m(
                         allocator,
                         &mut prog_args.iter(),
                         &|allocator, arg| {
@@ -726,23 +726,6 @@ fn do_com_prog_(
     };
 }
 
-fn dequote(allocator: &mut Allocator, prog: NodePtr) -> NodePtr {
-    match allocator.sexp(prog) {
-        SExp::Atom(_) => prog,
-        SExp::Pair(l, r) => match allocator.sexp(l) {
-            SExp::Atom(b) => {
-                let v = allocator.buf(&b).to_vec();
-                if v == "opt".as_bytes().to_vec() {
-                    r
-                } else {
-                    prog
-                }
-            }
-            _ => prog,
-        },
-    }
-}
-
 pub fn do_com_prog_for_dialect(
     runner: Rc<dyn TRunProgram>,
     allocator: &mut Allocator,
@@ -762,7 +745,7 @@ pub fn do_com_prog_for_dialect(
             }
 
             if elist.len() == 0 {
-                macro_lookup = DEFAULT_MACRO_LOOKUP(allocator, runner.clone());
+                macro_lookup = default_macro_lookup(allocator, runner.clone());
             } else {
                 macro_lookup = elist[0];
                 if elist.len() > 1 {
@@ -797,129 +780,4 @@ pub fn do_com_prog_for_dialect(
             "Program is not a pair in do_com_prog".to_string(),
         )),
     }
-}
-
-fn test_expand_macro(
-    allocator: &mut Allocator,
-    macro_data: String,
-    prog_rest: String,
-    macros: String,
-    symbols: String,
-) -> String {
-    let macro_ir = read_ir(&macro_data).unwrap();
-    let macro_source = assemble_from_ir(allocator, Rc::new(macro_ir)).unwrap();
-    let prog_ir = read_ir(&prog_rest).unwrap();
-    let prog_source = assemble_from_ir(allocator, Rc::new(prog_ir)).unwrap();
-    let macros_ir = read_ir(&macros).unwrap();
-    let macros_source = assemble_from_ir(allocator, Rc::new(macros_ir)).unwrap();
-    let symbols_ir = read_ir(&symbols).unwrap();
-    let symbols_source = assemble_from_ir(allocator, Rc::new(symbols_ir)).unwrap();
-    let exp_res = try_expand_macro_for_atom(
-        allocator,
-        macro_source,
-        prog_source,
-        macros_source,
-        symbols_source,
-    )
-    .unwrap();
-    disassemble(allocator, exp_res.1)
-}
-
-fn test_inner_expansion(
-    allocator: &mut Allocator,
-    macro_code: String,
-    prog_rest: String,
-) -> String {
-    let macro_ir = read_ir(&macro_code).unwrap();
-    let macro_source = assemble_from_ir(allocator, Rc::new(macro_ir)).unwrap();
-    let prog_ir = read_ir(&prog_rest).unwrap();
-    let prog_source = assemble_from_ir(allocator, Rc::new(prog_ir)).unwrap();
-    let exp_res = brun(allocator, macro_source, prog_source).unwrap();
-    disassemble(allocator, exp_res)
-}
-
-fn test_do_com_prog(
-    allocator: &mut Allocator,
-    program_src: String,
-    macro_lookup_src: String,
-    symbol_table_src: String,
-) -> String {
-    let runner = run_program_for_search_paths(&vec![".".to_string()]);
-    let prog_ir = read_ir(&program_src).unwrap();
-    let program = assemble_from_ir(allocator, Rc::new(prog_ir)).unwrap();
-    let macro_ir = read_ir(&macro_lookup_src).unwrap();
-    let macro_lookup = assemble_from_ir(allocator, Rc::new(macro_ir)).unwrap();
-    let sym_ir = read_ir(&symbol_table_src).unwrap();
-    let symbol_table = assemble_from_ir(allocator, Rc::new(sym_ir)).unwrap();
-    let result = do_com_prog(allocator, 849, program, macro_lookup, symbol_table, runner).unwrap();
-    disassemble(allocator, result.1)
-}
-
-#[test]
-fn test_macro_expansion() {
-    let mut allocator = Allocator::new();
-    let res = test_expand_macro(
-        &mut allocator,
-        "(c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q))))".to_string(),
-        "(\"function\" (\"BODY\") (29041 (\"opt\" (\"com\" (q \"unquote\" \"BODY\") (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))))".to_string(),
-        "((\"list\" (a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)) (\"defmacro\" (c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q))))))".to_string(),
-        "()".to_string()
-    );
-    assert_eq!(res, "(a (\"com\" (a (q 4 (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q)))) (q \"function\" (\"BODY\") (29041 (\"opt\" (\"com\" (q \"unquote\" \"BODY\") (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))))) (q (\"list\" (a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)) (\"defmacro\" (c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q)))))) (q)) 1)".to_string());
-}
-
-#[test]
-fn test_inner_macro_exp() {
-    let mut allocator = Allocator::new();
-    let res = test_inner_expansion(
-        &mut allocator,
-        "(c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q))))".to_string(),
-        "(\"function\" (\"BODY\") (29041 (\"opt\" (\"com\" (q \"unquote\" \"BODY\") (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))))".to_string()
-    );
-    assert_eq!(res, "(a (q 4 (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q)))) (q \"function\" (\"BODY\") (29041 (\"opt\" (\"com\" (q \"unquote\" \"BODY\") (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\"))))))))".to_string());
-}
-
-#[test]
-fn test_compile_during_assert_1() {
-    let mut allocator = Allocator::new();
-    let res = test_do_com_prog(
-        &mut allocator,
-        "(\"assert\" 1)".to_string(),
-        "((\"assert\" (a (i 3 (q 4 (q . 26982) (c 2 (c (c (q . \"assert\") 3) (q (x))))) (q . 2)) 1)) (26982 (c (q . 2) (c (c (q . 3) (c 2 (c (c (q . \"function\") (c 5 ())) (c (c (q . \"function\") (c 11 ())) ())))) (q 64)))) (\"function\" (c (q . \"opt\") (c (c (q . \"com\") (c (c (q . 1) 2) (q (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))) ()))) (\"list\" (a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)) (\"defmacro\" (c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q))))))".to_string(),
-        "()".to_string()
-    );
-
-    assert_eq!(res, "(a (\"com\" (a (q 2 (i 3 (q 4 (q . 26982) (c 2 (c (c (q . \"assert\") 3) (q (x))))) (q . 2)) 1) (q 1)) (q (\"assert\" (a (i 3 (q 4 (q . 26982) (c 2 (c (c (q . \"assert\") 3) (q (x))))) (q . 2)) 1)) (26982 (c (q . 2) (c (c (q . 3) (c 2 (c (c (q . \"function\") (c 5 ())) (c (c (q . \"function\") (c 11 ())) ())))) (q 64)))) (\"function\" (c (q . \"opt\") (c (c (q . \"com\") (c (c (q . 1) 2) (q (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))) ()))) (\"list\" (a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)) (\"defmacro\" (c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q)))))) (q)) 1)".to_string());
-}
-
-#[test]
-fn test_compile_check_output_diag_assert() {
-    let mut allocator = Allocator::new();
-    let res = test_do_com_prog(
-        &mut allocator,
-        "(\"mod\" () (\"defmacro\" \"assert\" \"items\" (26982 (r \"items\") (\"list\" 26982 (f \"items\") (c \"assert\" (r \"items\")) (q 8)) (f \"items\"))) (\"assert\" 1))".to_string(),
-        "((26982 (c (q . 2) (c (c (q . 3) (c 2 (c (c (q . \"function\") (c 5 ())) (c (c (q . \"function\") (c 11 ())) ())))) (q 64)))) (\"function\" (c (q . \"opt\") (c (c (q . \"com\") (c (c (q . 1) 2) (q (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))) ()))) (\"list\" (a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)) (\"defmacro\" (c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q))))))".to_string(),
-        "()".to_string()
-    );
-
-    assert_eq!(
-        res,
-        "(a (q \"opt\" (q 2 (\"opt\" (\"com\" (q \"assert\" 1) (q (\"assert\" (a (i 3 (q 4 (q . 26982) (c 2 (c (c (q . \"assert\") 3) (q (x))))) (q . 2)) 1)) (26982 (c (q . 2) (c (c (q . 3) (c 2 (c (c (q . \"function\") (c 5 ())) (c (c (q . \"function\") (c 11 ())) ())))) (q 64)))) (\"function\" (c (q . \"opt\") (c (c (q . \"com\") (c (c (q . 1) 2) (q (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))) ()))) (\"list\" (a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)) (\"defmacro\" (c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q)))))) (q))) 1)) 1)".to_string()
-    );
-}
-
-#[test]
-fn test_compile_assert_2() {
-    let mut allocator = Allocator::new();
-    let res = test_do_com_prog(
-        &mut allocator,
-        "(\"mod\" () (\"defmacro\" \"assert\" \"items\" (26982 (r \"items\") (\"list\" 26982 (f \"items\") (c \"assert\" (r \"items\")) (q 8)) (f \"items\"))) (\"assert\" 1))".to_string(),
-        "((26982 (c (q . 2) (c (c (q . 3) (c 2 (c (c (q . \"function\") (c 5 ())) (c (c (q . \"function\") (c 11 ())) ())))) (q 64)))) (\"function\" (c (q . \"opt\") (c (c (q . \"com\") (c (c (q . 1) 2) (q (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))) ()))) (\"list\" (a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)) (\"defmacro\" (c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q))))))".to_string(),
-        "()".to_string()
-    );
-
-    assert_eq!(
-        res,
-        "(a (q \"opt\" (q 2 (\"opt\" (\"com\" (q \"assert\" 1) (q (\"assert\" (a (i 3 (q 4 (q . 26982) (c 2 (c (c (q . \"assert\") 3) (q (x))))) (q . 2)) 1)) (26982 (c (q . 2) (c (c (q . 3) (c 2 (c (c (q . \"function\") (c 5 ())) (c (c (q . \"function\") (c 11 ())) ())))) (q 64)))) (\"function\" (c (q . \"opt\") (c (c (q . \"com\") (c (c (q . 1) 2) (q (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))) ()))) (\"list\" (a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)) (\"defmacro\" (c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q)))))) (q))) 1)) 1)".to_string()
-    );
 }

@@ -13,9 +13,9 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{is_at_capture, run_optimizer};
 use crate::compiler::comptypes::{
-    cons_of_string_map, foldM, join_vecs_to_string, list_to_cons, with_heading, Binding, BodyForm,
-    Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, DefunCall, HelperForm,
-    InlineFunction, LetFormKind, PrimaryCodegen,
+    fold_m, join_vecs_to_string, list_to_cons, Binding, BodyForm, Callable, CompileErr,
+    CompileForm, CompiledCode, CompilerOpts, DefunCall, HelperForm, InlineFunction, LetFormKind,
+    PrimaryCodegen,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::frontend::compile_bodyform;
@@ -189,102 +189,6 @@ fn create_name_lookup(
             create_name_lookup_(l.clone(), name, compiler.env.clone(), compiler.env.clone())
                 .map(|i| Rc::new(SExp::Integer(l.clone(), i.to_bigint().unwrap())))
         })
-}
-
-fn lookup_prim(
-    compiler: &PrimaryCodegen,
-    l: Srcloc,
-    name: &Vec<u8>,
-) -> Result<Rc<SExp>, CompileErr> {
-    compiler
-        .prims
-        .get(name)
-        .map(|x| Ok(x.clone()))
-        .unwrap_or_else(|| {
-            Err(CompileErr(
-                l.clone(),
-                format!("no such prim {}", decode_string(name)),
-            ))
-        })
-}
-
-fn codegen_to_sexp(opts: Rc<dyn CompilerOpts>, compiler: &PrimaryCodegen) -> SExp {
-    let l = Srcloc::start(&opts.filename());
-    let to_process: Vec<Rc<SExp>> = compiler
-        .to_process
-        .iter()
-        .map(|h| Rc::new(SExp::Atom(l.clone(), h.name().clone())))
-        .collect();
-
-    with_heading(
-        l.clone(),
-        &"codegen".to_string(),
-        Rc::new(list_to_cons(
-            l.clone(),
-            &vec![
-                Rc::new(with_heading(
-                    l.clone(),
-                    &"prims".to_string(),
-                    Rc::new(cons_of_string_map(
-                        l.clone(),
-                        &|x: &Rc<SExp>| x.clone(),
-                        &compiler.prims,
-                    )),
-                )),
-                Rc::new(with_heading(
-                    l.clone(),
-                    &"macros".to_string(),
-                    Rc::new(cons_of_string_map(
-                        l.clone(),
-                        &|x: &Rc<SExp>| x.clone(),
-                        &compiler.macros,
-                    )),
-                )),
-                Rc::new(with_heading(
-                    l.clone(),
-                    &"defuns".to_string(),
-                    Rc::new(cons_of_string_map(
-                        l.clone(),
-                        &|dc: &DefunCall| {
-                            Rc::new(SExp::Cons(
-                                l.clone(),
-                                dc.required_env.clone(),
-                                Rc::new(SExp::Cons(
-                                    l.clone(),
-                                    dc.code.clone(),
-                                    Rc::new(SExp::Nil(l.clone())),
-                                )),
-                            ))
-                        },
-                        &compiler.defuns,
-                    )),
-                )),
-                Rc::new(with_heading(
-                    l.clone(),
-                    &"to_process".to_string(),
-                    Rc::new(list_to_cons(l.clone(), &to_process)),
-                )),
-                Rc::new(with_heading(
-                    l.clone(),
-                    &"env".to_string(),
-                    Rc::new(SExp::Cons(
-                        l.clone(),
-                        compiler.env.clone(),
-                        Rc::new(SExp::Nil(l.clone())),
-                    )),
-                )),
-                Rc::new(with_heading(
-                    l.clone(),
-                    &"final_expr".to_string(),
-                    Rc::new(SExp::Cons(
-                        l.clone(),
-                        compiler.final_expr.to_sexp(),
-                        Rc::new(SExp::Nil(l.clone())),
-                    )),
-                )),
-            ],
-        )),
-    )
 }
 
 fn get_prim(
@@ -1239,7 +1143,7 @@ fn finalize_env(
 }
 
 fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileErr> {
-    foldM(
+    fold_m(
         &|compiler: &PrimaryCodegen, form: &HelperForm| match form {
             HelperForm::Defun(_, name, false, _, _) => {
                 let mut c_copy = compiler.clone();

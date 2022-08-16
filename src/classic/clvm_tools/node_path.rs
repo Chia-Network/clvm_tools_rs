@@ -88,8 +88,8 @@ impl NodePath {
     }
 
     pub fn add(&self, other_node: NodePath) -> Self {
-        let composedPath = compose_paths(&self.index, &other_node.index);
-        NodePath::new(Some(composedPath))
+        let composed_path = compose_paths(&self.index, &other_node.index);
+        NodePath::new(Some(composed_path))
     }
 
     pub fn first(&self) -> Self {
