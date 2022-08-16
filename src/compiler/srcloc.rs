@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use std::fmt::Display;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Srcloc {
@@ -26,17 +27,19 @@ pub struct Srcloc {
 //   |> Js.Dict.fromList
 //   |> Js.Json.object_
 
-impl Srcloc {
-    pub fn to_string(&self) -> String {
+impl Display for Srcloc {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self.until {
-            None => format!("{}({}):{}", self.file, self.line, self.col),
-            Some((l, c)) => format!(
+            None => formatter.write_str(&format!("{}({}):{}", self.file, self.line, self.col)),
+            Some((l, c)) => formatter.write_str(&format!(
                 "{}({}):{}-{}({}):{}",
                 self.file, self.line, self.col, self.file, l, c
-            ),
+            )),
         }
     }
+}
 
+impl Srcloc {
     pub fn ext(&self, other: &Srcloc) -> Srcloc {
         combine_src_location(self, other)
     }
@@ -67,7 +70,7 @@ impl Srcloc {
         }
     }
 
-    pub fn start(file: &String) -> Srcloc {
+    pub fn start(file: &str) -> Srcloc {
         Srcloc {
             file: Rc::new(file.to_string()),
             line: 1,
@@ -98,17 +101,25 @@ fn add_onto(x: &Srcloc, y: &Srcloc) -> Srcloc {
 }
 
 pub fn combine_src_location(a: &Srcloc, b: &Srcloc) -> Srcloc {
-    if a.line < b.line {
-        add_onto(a, b)
-    } else if a.line == b.line {
-        if a.col < b.col {
+    match (a.line < b.line, a.line == b.line) {
+        (true, _) => {
             add_onto(a, b)
-        } else if a.col == b.col {
-            a.clone()
-        } else {
+        },
+        (_, true) => {
+            match (a.col < b.col, a.col == b.col) {
+                (true, _) => {
+                    add_onto(a, b)
+                },
+                (_, true) => {
+                    a.clone()
+                },
+                _ => {
+                    add_onto(b, a)
+                }
+            }
+        }
+        _ => {
             add_onto(b, a)
         }
-    } else {
-        add_onto(b, a)
     }
 }
