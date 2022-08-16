@@ -20,7 +20,7 @@ goals is to compile PROG as much as possible.
  */
 
 fn default_macros_src() -> Vec<&'static str> {
-    return vec![
+    vec![
         indoc! {"
         ; we have to compile this externally, since it uses itself
         ;(defmacro defmacro (name params body)
@@ -97,7 +97,7 @@ fn default_macros_src() -> Vec<&'static str> {
         indoc! {"
         (defmacro / (A B) (qq (f (divmod (unquote A) (unquote B)))))
         "},
-    ];
+    ]
 }
 
 fn build_default_macro_lookup(

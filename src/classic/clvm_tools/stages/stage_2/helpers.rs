@@ -23,10 +23,10 @@ pub fn evaluate(
     prog: NodePtr,
     args: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
-    return m! {
+    m! {
         a <- allocator.new_atom(&APPLY_ATOM);
         enlist(allocator, &[a, prog, args])
-    };
+    }
 }
 
 pub fn run(
@@ -41,13 +41,13 @@ pub fn run(
      * function.
      */
     let args = NodePath::new(None).as_path();
-    return m! {
+    m! {
         mac <- quote(allocator, macro_lookup);
         com_sexp <- allocator.new_atom(&COM_ATOM);
         arg_sexp <- allocator.new_atom(args.data());
         to_eval <- enlist(allocator, &[com_sexp, prog, mac]);
         evaluate(allocator, to_eval, arg_sexp)
-    };
+    }
 }
 
 pub fn brun(allocator: &mut Allocator, prog: NodePtr, args: NodePtr) -> Result<NodePtr, EvalErr> {
