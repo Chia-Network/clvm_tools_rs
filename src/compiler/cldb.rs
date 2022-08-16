@@ -27,12 +27,7 @@ pub struct PriorResult {
 }
 
 fn format_arg_inputs(args: &[PriorResult]) -> String {
-    let value_strings: Vec<String> = args
-        .iter()
-        .map(|pr| {
-            pr.reference.to_string()
-        })
-        .collect();
+    let value_strings: Vec<String> = args.iter().map(|pr| pr.reference.to_string()).collect();
     value_strings.join(", ")
 }
 
@@ -242,7 +237,9 @@ impl CldbNoOverride {
 }
 
 impl Default for CldbNoOverride {
-    fn default() -> Self { CldbNoOverride::new() }
+    fn default() -> Self {
+        CldbNoOverride::new()
+    }
 }
 
 // Allow the caller to examine environment and return an expression that
@@ -341,9 +338,7 @@ impl CldbRunEnv {
         let end_col = use_col.map(|c| l.until.map(|u| u.1 - 1).unwrap_or_else(|| c + 1));
         use_line
             .and_then(|use_line| {
-                use_col.and_then(|use_col| {
-                    end_col.map(|end_col| (use_line, use_col, end_col))
-                })
+                use_col.and_then(|use_col| end_col.map(|end_col| (use_line, use_col, end_col)))
             })
             .and_then(|coords| {
                 let use_line = coords.0;

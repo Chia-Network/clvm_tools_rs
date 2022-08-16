@@ -440,7 +440,7 @@ impl ArgumentParser {
                                     params
                                         .insert(name.to_string(), ArgumentValue::ArgArray(vec![v]));
                                 }
-                            },
+                            }
                         }
                     }
                 }
