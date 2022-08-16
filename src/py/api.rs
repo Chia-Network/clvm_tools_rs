@@ -182,23 +182,15 @@ fn start_clvm_program(
         }
 
         let use_symbol_table = symbol_table.unwrap_or_default();
-        let program = match hex_to_modern_sexp(
-            &mut allocator,
-            &use_symbol_table,
-            prog_srcloc,
-            &hex_prog,
-        ) {
-            Ok(v) => v,
-            Err(_) => {
-                return;
-            }
-        };
-        let args = match hex_to_modern_sexp(
-            &mut allocator,
-            &HashMap::new(),
-            args_srcloc,
-            &hex_args,
-        ) {
+        let program =
+            match hex_to_modern_sexp(&mut allocator, &use_symbol_table, prog_srcloc, &hex_prog) {
+                Ok(v) => v,
+                Err(_) => {
+                    return;
+                }
+            };
+        let args = match hex_to_modern_sexp(&mut allocator, &HashMap::new(), args_srcloc, &hex_args)
+        {
             Ok(v) => v,
             Err(_) => {
                 return;

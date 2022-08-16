@@ -1,5 +1,5 @@
-use std::rc::Rc;
 use std::fmt::Display;
+use std::rc::Rc;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Srcloc {
@@ -102,24 +102,12 @@ fn add_onto(x: &Srcloc, y: &Srcloc) -> Srcloc {
 
 pub fn combine_src_location(a: &Srcloc, b: &Srcloc) -> Srcloc {
     match (a.line < b.line, a.line == b.line) {
-        (true, _) => {
-            add_onto(a, b)
+        (true, _) => add_onto(a, b),
+        (_, true) => match (a.col < b.col, a.col == b.col) {
+            (true, _) => add_onto(a, b),
+            (_, true) => a.clone(),
+            _ => add_onto(b, a),
         },
-        (_, true) => {
-            match (a.col < b.col, a.col == b.col) {
-                (true, _) => {
-                    add_onto(a, b)
-                },
-                (_, true) => {
-                    a.clone()
-                },
-                _ => {
-                    add_onto(b, a)
-                }
-            }
-        }
-        _ => {
-            add_onto(b, a)
-        }
+        _ => add_onto(b, a),
     }
 }

@@ -34,13 +34,17 @@ impl PartialEq for SExp {
 impl Display for SExp {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
-            SExp::Nil(_) => { formatter.write_str("()")?; },
+            SExp::Nil(_) => {
+                formatter.write_str("()")?;
+            }
             SExp::Cons(_, a, b) => {
                 formatter.write_str("(")?;
                 formatter.write_str(&list_no_parens(a, b))?;
                 formatter.write_str(")")?;
-            },
-            SExp::Integer(_, v) => { formatter.write_str(&v.to_string())?; },
+            }
+            SExp::Integer(_, v) => {
+                formatter.write_str(&v.to_string())?;
+            }
             SExp::QuotedString(_, q, s) => {
                 if printable(s) {
                     formatter.write_str("\"")?;
@@ -51,7 +55,9 @@ impl Display for SExp {
                     let mut outbuf = vec![0; vlen];
                     bin2hex(s, &mut outbuf).map_err(|_e| std::fmt::Error::default())?;
                     formatter.write_str("0x")?;
-                    formatter.write_str(std::str::from_utf8(&outbuf).expect("only hex digits expected"))?;
+                    formatter.write_str(
+                        std::str::from_utf8(&outbuf).expect("only hex digits expected"),
+                    )?;
                 }
             }
             SExp::Atom(l, a) => {
@@ -60,7 +66,8 @@ impl Display for SExp {
                 } else if printable(a) {
                     formatter.write_str(&decode_string(a))?;
                 } else {
-                    formatter.write_str(&SExp::Integer(l.clone(), number_from_u8(a)).to_string())?;
+                    formatter
+                        .write_str(&SExp::Integer(l.clone(), number_from_u8(a)).to_string())?;
                 }
             }
         }
@@ -419,10 +426,7 @@ impl SExp {
             SExp::Atom(_, v) => Ok(number_from_u8(v)),
             SExp::QuotedString(_, _, v) => Ok(number_from_u8(v)),
             SExp::Nil(_) => Ok(bi_zero()),
-            _ => Err((
-                self.loc(),
-                format!("wanted atom got cons cell {}", self),
-            )),
+            _ => Err((self.loc(), format!("wanted atom got cons cell {}", self))),
         }
     }
 }
@@ -486,10 +490,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
         }
         SExpParseState::OpenList(pl) => match this_char as char {
             ')' => emit(Rc::new(SExp::Nil(pl.ext(&loc))), SExpParseState::Empty),
-            '.' => error(
-                loc,
-                "Dot can't appear directly after begin paren"
-            ),
+            '.' => error(loc, "Dot can't appear directly after begin paren"),
             _ => match parse_sexp_step(loc.clone(), &SExpParseState::Empty, this_char) {
                 SExpParseResult::Emit(o, p) => resume(SExpParseState::ParsingList(
                     pl.ext(&loc),
@@ -542,10 +543,9 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
             }
         }
         SExpParseState::TermList(pl, pp, list_content) => match (this_char as char, pp.borrow()) {
-            ('.', SExpParseState::Empty) => error(
-                loc,
-                "Multiple dots in list notation are illegal"
-            ),
+            ('.', SExpParseState::Empty) => {
+                error(loc, "Multiple dots in list notation are illegal")
+            }
             (')', SExpParseState::Empty) => {
                 if list_content.len() == 1 {
                     emit(list_content[0].clone(), SExpParseState::Empty)
