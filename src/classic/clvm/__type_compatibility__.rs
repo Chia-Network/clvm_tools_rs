@@ -255,12 +255,11 @@ impl Bytes {
             match (diff < 0, diff > 0) {
                 (true, _) => {
                     return Ordering::Less;
-                },
+                }
                 (_, true) => {
                     return Ordering::Greater;
                 }
-                _ => {
-                }
+                _ => {}
             }
         }
         if self._b.len() < slen {
@@ -277,7 +276,6 @@ impl Display for Bytes {
         fmt.write_str(&pybytes_repr(&self._b, false))?;
         Ok(())
     }
-
 }
 
 pub fn sha256(value: Bytes) -> Bytes {
@@ -336,12 +334,12 @@ impl<T1, T2> Tuple<T1, T2> {
     }
 }
 
-impl<T1, T2> Display for Tuple<T1, T2> where
+impl<T1, T2> Display for Tuple<T1, T2>
+where
     T1: PythonStr,
     T2: PythonStr,
 {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error>
-    {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         fmt.write_str("(")?;
         fmt.write_str(self.first().py_str().as_str())?;
         fmt.write_str(", ")?;

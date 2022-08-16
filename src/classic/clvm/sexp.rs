@@ -35,25 +35,19 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
     let mut ops: Vec<SexpStackOp> = vec![SexpStackOp::OpConvert];
 
     loop {
-        let op =
-            match ops.pop() {
-                None => {
-                    break;
-                }
-                Some(o) => {
-                    o
-                }
-            };
+        let op = match ops.pop() {
+            None => {
+                break;
+            }
+            Some(o) => o,
+        };
 
-        let top =
-            match stack.pop() {
-                None => {
-                    return Err(EvalErr(allocator.null(), "empty value stack".to_string()));
-                }
-                Some(rc) => {
-                    rc
-                }
-            };
+        let top = match stack.pop() {
+            None => {
+                return Err(EvalErr(allocator.null(), "empty value stack".to_string()));
+            }
+            Some(rc) => rc,
+        };
 
         // convert value
         match op {

@@ -37,17 +37,14 @@ fn atom_size_blob(b: &Bytes) -> Result<(bool, Vec<u8>), String> {
     if size < 0x40 {
         Ok((true, vec![0x80 | size as u8]))
     } else if size < 0x2000 {
-        Ok((
-            true,
-            vec![0xC0 | ((size >> 8) as u8), (size & 0xFF) as u8],
-        ))
+        Ok((true, vec![0xC0 | ((size >> 8) as u8), (size & 0xFF) as u8]))
     } else if size < 0x100000 {
         Ok((
             true,
             vec![
                 0xE0 | ((size >> 16) as u8),
                 ((size >> 8) & 0xFF) as u8,
-                ( size       & 0xFF) as u8,
+                (size & 0xFF) as u8,
             ],
         ))
     } else if size < 0x8000000 {
@@ -57,7 +54,7 @@ fn atom_size_blob(b: &Bytes) -> Result<(bool, Vec<u8>), String> {
                 0xF0 | ((size >> 24) as u8),
                 ((size >> 16) & 0xFF) as u8,
                 ((size >> 8) & 0xFF) as u8,
-                ( size       & 0xFF) as u8,
+                (size & 0xFF) as u8,
             ],
         ))
     } else if size < 0x400000000 {
