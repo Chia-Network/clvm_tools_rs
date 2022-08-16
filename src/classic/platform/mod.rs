@@ -8,7 +8,7 @@ pub mod distutils;
 pub struct PathJoin {}
 
 impl ArgumentValueConv for PathJoin {
-    fn convert(&self, arg: &String) -> Result<ArgumentValue, String> {
+    fn convert(&self, arg: &str) -> Result<ArgumentValue, String> {
         let mut p = PathBuf::new();
         p.push(arg);
         return Ok(ArgumentValue::ArgString(

@@ -365,6 +365,7 @@ fn compile_defmacro(
         .map(|p| HelperForm::Defmacro(l, name, args.clone(), Rc::new(p)))
 }
 
+#[allow(clippy::type_complexity)]
 fn match_op_name_4(body: Rc<SExp>, pl: &[SExp]) -> Option<(Vec<u8>, Vec<u8>, Rc<SExp>, Rc<SExp>)> {
     let l = body.loc();
 

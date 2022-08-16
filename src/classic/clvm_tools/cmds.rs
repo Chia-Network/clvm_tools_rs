@@ -57,7 +57,7 @@ use crate::util::collapse;
 pub struct PathOrCodeConv {}
 
 impl ArgumentValueConv for PathOrCodeConv {
-    fn convert(&self, arg: &String) -> Result<ArgumentValue, String> {
+    fn convert(&self, arg: &str) -> Result<ArgumentValue, String> {
         match fs::read_to_string(arg) {
             Ok(s) => Ok(ArgumentValue::ArgString(Some(arg.to_string()), s)),
             Err(_) => Ok(ArgumentValue::ArgString(None, arg.to_string())),
@@ -222,7 +222,7 @@ pub fn opd(args: &Vec<String>) {
 struct StageImport {}
 
 impl ArgumentValueConv for StageImport {
-    fn convert(&self, arg: &String) -> Result<ArgumentValue, String> {
+    fn convert(&self, arg: &str) -> Result<ArgumentValue, String> {
         if arg == "0" {
             return Ok(ArgumentValue::ArgInt(0));
         } else if arg == "1" {
