@@ -14,7 +14,7 @@ use crate::util::u8_from_number;
 
 fn is_at_form(head: Rc<BodyForm>) -> bool {
     match head.borrow() {
-        BodyForm::Value(SExp::Atom(_, a)) => a.len() == 1 && a[0] == '@' as u8,
+        BodyForm::Value(SExp::Atom(_, a)) => a.len() == 1 && a[0] == b'@',
         _ => false,
     }
 }
@@ -30,7 +30,7 @@ pub fn optimize_expr(
         BodyForm::Quoted(_) => Some((true, body)),
         BodyForm::Call(l, forms) => {
             // () evaluates to ()
-            if forms.len() == 0 {
+            if forms.is_empty() {
                 return Some((true, body));
             } else if is_at_form(forms[0].clone()) {
                 return None;
@@ -41,7 +41,7 @@ pub fn optimize_expr(
                     opts.clone(),
                     compiler,
                     l.clone(),
-                    Rc::new(SExp::Atom(al.clone(), an.to_vec())),
+                    Rc::new(SExp::Atom(al, an.to_vec())),
                 )
                 .map(|calltype| match calltype {
                     // A macro invocation emits a bodyform, which we
@@ -85,7 +85,7 @@ pub fn optimize_expr(
                                 runner.clone(),
                                 opts.prim_map(),
                                 code.to_sexp(),
-                                Rc::new(SExp::Nil(l.clone())),
+                                Rc::new(SExp::Nil(l)),
                             )
                             .map(|x| {
                                 let x_borrow: &SExp = x.borrow();

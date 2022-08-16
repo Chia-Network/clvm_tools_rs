@@ -8,7 +8,7 @@ use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 
 pub fn prims() -> Vec<(Vec<u8>, SExp)> {
-    let primloc = Srcloc::start(&"*prims*".to_string());
+    let primloc = Srcloc::start("*prims*");
     vec![
         (
             "q".as_bytes().to_vec(),
@@ -136,7 +136,7 @@ pub fn prims() -> Vec<(Vec<u8>, SExp)> {
         ),
         (
             "softfork".as_bytes().to_vec(),
-            SExp::Integer(primloc.clone(), 36_u32.to_bigint().unwrap()),
+            SExp::Integer(primloc, 36_u32.to_bigint().unwrap()),
         ),
     ]
 }
