@@ -25,13 +25,13 @@ fn main() {
         return;
     }
 
-    let loc = Srcloc::start(&"*program*".to_string());
-    let _ = parse_sexp(loc.clone(), &args[1])
+    let loc = Srcloc::start("*program*");
+    let _ = parse_sexp(loc, &args[1])
         .map_err(|e| {
-            return CompileErr(e.0.clone(), e.1.clone());
+            CompileErr(e.0.clone(), e.1)
         })
         .and_then(|parsed_program| {
-            return frontend(opts.clone(), parsed_program);
+            frontend(opts.clone(), parsed_program)
         })
         .and_then(|program| {
             let e = Evaluator::new(opts.clone(), runner.clone(), program.helpers.clone());
@@ -44,7 +44,7 @@ fn main() {
             )
         })
         .map(|result| {
-            println!("shrunk: {}", result.to_sexp().to_string());
+            println!("shrunk: {}", result.to_sexp());
         })
         .map_err(|e| {
             println!("failed: {:?}", e);

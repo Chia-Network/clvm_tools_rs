@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::rc::Rc;
 
 use crate::compiler::sexp::SExp;
@@ -9,15 +10,20 @@ pub enum RunFailure {
     RunExn(Srcloc, Rc<SExp>),
 }
 
-impl RunFailure {
-    pub fn to_string(&self) -> String {
+impl Display for RunFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
             RunFailure::RunExn(l, s) => {
-                format!("{}: throw(x) {}", l.to_string(), s.to_string())
+                l.fmt(formatter)?;
+                formatter.write_str(": throw(x) ")?;
+                s.fmt(formatter)?;
             }
             RunFailure::RunErr(l, s) => {
-                format!("{}: {}", l.to_string(), s)
+                l.fmt(formatter)?;
+                formatter.write_str(": ")?;
+                s.fmt(formatter)?;
             }
         }
+        Ok(())
     }
 }

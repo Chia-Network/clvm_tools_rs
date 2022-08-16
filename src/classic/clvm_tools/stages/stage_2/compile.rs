@@ -249,7 +249,6 @@ pub fn lower_quote(allocator: &mut Allocator, prog: NodePtr) -> Result<NodePtr, 
                     disassemble(allocator, prog),
                     disassemble(allocator, *x)
                 );
-                ()
             })
             .unwrap_or_else(|_| ())
     }
