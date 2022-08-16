@@ -1,6 +1,6 @@
 use std::fs;
 
-pub fn newer(input_path: &String, output_path: &String) -> Result<bool, String> {
+pub fn newer(input_path: &str, output_path: &str) -> Result<bool, String> {
     if !std::path::Path::new(output_path).exists() {
         return Ok(true);
     }

@@ -49,7 +49,7 @@ fn choose_path(
     context: Rc<SExp>,
 ) -> Result<Rc<SExp>, RunFailure> {
     if p == bi_one() {
-        Ok(context.clone())
+        Ok(context)
     } else {
         match context.borrow() {
             SExp::Cons(l, a, b) => {
@@ -70,7 +70,7 @@ fn choose_path(
 
             _ => Err(RunFailure::RunErr(
                 l,
-                format!("bad path {} in {}", orig, all.to_string()),
+                format!("bad path {} in {}", orig, all),
             )),
         }
     }
@@ -95,7 +95,7 @@ fn translate_head(
             prim_map,
             l.clone(),
             Rc::new(SExp::Atom(l.clone(), v.clone())),
-            context.clone(),
+            context
         ),
         SExp::Atom(l, v) => match prim_map.get(v) {
             None => translate_head(
@@ -104,7 +104,7 @@ fn translate_head(
                 prim_map,
                 l.clone(),
                 Rc::new(SExp::Integer(l.clone(), number_from_u8(v))),
-                context.clone(),
+                context
             ),
             Some(v) => Ok(Rc::new(v.with_loc(l.clone()))),
         },
@@ -113,10 +113,10 @@ fn translate_head(
             Some(v) => Ok(Rc::new(v.with_loc(l.clone()))),
         },
         SExp::Cons(_l, _a, nil) => match nil.borrow() {
-            SExp::Nil(_l1) => run(allocator, runner, prim_map, sexp.clone(), context.clone()),
+            SExp::Nil(_l1) => run(allocator, runner, prim_map, sexp.clone(), context),
             _ => Err(RunFailure::RunErr(
                 sexp.loc(),
-                format!("Unexpected head form in clvm {}", sexp.to_string()),
+                format!("Unexpected head form in clvm {}", sexp),
             )),
         },
     }
@@ -139,10 +139,10 @@ fn eval_args(
             SExp::Nil(_l) => {
                 return Ok(RunStep::Op(
                     head,
-                    context_.clone(),
+                    context_,
                     sexp.clone(),
                     Some(eval_list),
-                    parent.clone(),
+                    parent
                 ));
             }
             SExp::Cons(_l, a, b) => {
@@ -154,8 +154,8 @@ fn eval_args(
                     sexp.loc(),
                     format!(
                         "bad argument list {} {}",
-                        sexp_.to_string(),
-                        context_.to_string()
+                        sexp_,
+                        context_
                     ),
                 ));
             }
@@ -172,13 +172,13 @@ pub fn convert_to_clvm_rs(
         SExp::Atom(_l, x) => allocator.new_atom(x).map_err(|_e| {
             RunFailure::RunErr(
                 head.loc(),
-                format!("failed to alloc atom {}", head.to_string()),
+                format!("failed to alloc atom {}", head),
             )
         }),
         SExp::QuotedString(_, _, x) => allocator.new_atom(x).map_err(|_e| {
             RunFailure::RunErr(
                 head.loc(),
-                format!("failed to alloc string {}", head.to_string()),
+                format!("failed to alloc string {}", head),
             )
         }),
         SExp::Integer(_, i) => {
@@ -190,7 +190,7 @@ pub fn convert_to_clvm_rs(
                     .map_err(|_e| {
                         RunFailure::RunErr(
                             head.loc(),
-                            format!("failed to alloc integer {}", head.to_string()),
+                            format!("failed to alloc integer {}", head),
                         )
                     })
             }
@@ -200,7 +200,7 @@ pub fn convert_to_clvm_rs(
                 allocator.new_pair(head, tail).map_err(|_e| {
                     RunFailure::RunErr(
                         a.loc(),
-                        format!("failed to alloc cons {}", head.to_string()),
+                        format!("failed to alloc cons {}", head),
                     )
                 })
             })
@@ -215,7 +215,7 @@ pub fn convert_from_clvm_rs(
 ) -> Result<Rc<SExp>, RunFailure> {
     match allocator.sexp(head) {
         allocator::SExp::Atom(h) => {
-            if h.len() == 0 {
+            if h.is_empty() {
                 Ok(Rc::new(SExp::Nil(loc)))
             } else {
                 let atom_data = allocator.buf(&h);
@@ -266,9 +266,9 @@ fn apply_op(
         args.clone(),
     ));
     let application = Rc::new(SExp::Cons(
-        l.clone(),
+        l,
         head.clone(),
-        generate_argument_refs(5_i32.to_bigint().unwrap(), args.clone()),
+        generate_argument_refs(5_i32.to_bigint().unwrap(), args),
     ));
     let converted_app = convert_to_clvm_rs(allocator, application.clone())?;
     let converted_args = convert_to_clvm_rs(allocator, wrapped_args.clone())?;
@@ -281,8 +281,8 @@ fn apply_op(
                 format!(
                     "{} in {} {}",
                     e.1,
-                    application.to_string(),
-                    wrapped_args.to_string()
+                    application,
+                    wrapped_args
                 ),
             )
         })
@@ -297,7 +297,7 @@ fn atom_value(head: Rc<SExp>) -> Result<Number, RunFailure> {
         SExp::Atom(_, s) => Ok(number_from_u8(s)),
         SExp::Cons(l, _, _) => Err(RunFailure::RunErr(
             l.clone(),
-            format!("cons is not a number {}", head.to_string()),
+            format!("cons is not a number {}", head),
         )),
     }
 }
@@ -313,7 +313,7 @@ pub fn get_history_len(step: Rc<RunStep>) -> usize {
 
 pub fn truthy(sexp: Rc<SExp>) -> bool {
     // Fails for cons, but cons is truthy
-    atom_value(sexp.clone()).unwrap_or_else(|_| bi_one()) != bi_zero()
+    atom_value(sexp).unwrap_or_else(|_| bi_one()) != bi_zero()
 }
 
 pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
@@ -415,8 +415,8 @@ pub fn run_step(
                         step = eval_args(
                             allocator,
                             runner.clone(),
-                            prim_map.clone(),
-                            head.clone(),
+                            prim_map,
+                            head,
                             b.clone(),
                             context.clone(),
                             parent.clone(),
@@ -430,7 +430,7 @@ pub fn run_step(
             match rest_mut.pop() {
                 Some(x) => {
                     step = RunStep::Step(
-                        x.clone(),
+                        x,
                         context.clone(),
                         Rc::new(RunStep::Op(
                             head.clone(),
@@ -488,14 +488,14 @@ pub fn run_step(
                 None => {
                     return Err(RunFailure::RunErr(
                         tail.loc(),
-                        format!("Bad arguments given to cons {}", tail.to_string()),
+                        format!("Bad arguments given to cons {}", tail),
                     ));
                 }
                 Some(l) => {
                     if wanted_args != -1 && l.len() as i32 != wanted_args {
                         return Err(RunFailure::RunErr(
                             tail.loc(),
-                            format!("Wrong number of parameters to {}: {}", op, tail.to_string()),
+                            format!("Wrong number of parameters to {}: {}", op, tail),
                         ));
                     }
 
@@ -537,7 +537,7 @@ pub fn run_step(
                             _ => {
                                 return Err(RunFailure::RunErr(
                                     tail.loc(),
-                                    format!("Cons expected for {}, got {}", op, tail.to_string()),
+                                    format!("Cons expected for {}, got {}", op, tail),
                                 ));
                             }
                         }
@@ -573,7 +573,7 @@ pub fn run_step(
 pub fn start_step(sexp_: Rc<SExp>, context_: Rc<SExp>) -> RunStep {
     RunStep::Step(
         sexp_.clone(),
-        context_.clone(),
+        context_,
         Rc::new(RunStep::Done(sexp_.loc(), sexp_.clone())),
     )
 }
@@ -585,15 +585,12 @@ pub fn run(
     sexp_: Rc<SExp>,
     context_: Rc<SExp>,
 ) -> Result<Rc<SExp>, RunFailure> {
-    let mut step = start_step(sexp_.clone(), context_.clone());
+    let mut step = start_step(sexp_, context_);
 
     loop {
         step = run_step(allocator, runner.clone(), prim_map.clone(), &step)?;
-        match step {
-            RunStep::Done(_, x) => {
-                return Ok(x);
-            }
-            _ => {}
+        if let RunStep::Done(_, x) = step {
+            return Ok(x);
         }
     }
 }
@@ -601,20 +598,20 @@ pub fn run(
 pub fn parse_and_run(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
-    file: &String,
-    content: &String,
-    args: &String,
+    file: &str,
+    content: &str,
+    args: &str,
 ) -> Result<Rc<SExp>, RunFailure> {
     let code =
         parse_sexp(Srcloc::start(file), content).map_err(|e| RunFailure::RunErr(e.0, e.1))?;
     let args = parse_sexp(Srcloc::start(file), args).map_err(|e| RunFailure::RunErr(e.0, e.1))?;
 
-    if code.len() == 0 {
+    if code.is_empty() {
         Err(RunFailure::RunErr(
             Srcloc::start(file),
             "no code".to_string(),
         ))
-    } else if args.len() == 0 {
+    } else if args.is_empty() {
         Err(RunFailure::RunErr(
             Srcloc::start(file),
             "no args".to_string(),

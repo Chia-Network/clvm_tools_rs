@@ -435,12 +435,11 @@ impl ArgumentParser {
                                     _ => {}
                                 }
                             }
-                            _ => match converter.convert(&input_arg) {
-                                Ok(v) => {
+                            _ => {
+                                if let Ok(v) = converter.convert(input_arg) {
                                     params
                                         .insert(name.to_string(), ArgumentValue::ArgArray(vec![v]));
                                 }
-                                _ => {}
                             },
                         }
                     }
@@ -448,12 +447,9 @@ impl ArgumentParser {
             }
         }
 
-        match params.get(&"help".to_string()) {
-            Some(_) => {
-                let usage = self.compile_help_messages();
-                return Err(usage);
-            }
-            _ => {}
+        if params.get(&"help".to_string()).is_some() {
+            let usage = self.compile_help_messages();
+            return Err(usage);
         }
 
         Ok(params)
@@ -467,7 +463,7 @@ impl ArgumentParser {
                 _ => "".to_string(),
             };
 
-            if a.options.help != "" {
+            if !a.options.help.is_empty() {
                 msg += &("  ".to_string() + &a.options.help);
                 msg = msg.replace("%(prog)", &self.prog);
                 msg = msg.replace("%(default)", &default_value);
@@ -487,14 +483,12 @@ impl ArgumentParser {
             arg_conversions.join(" ")
         )];
 
-        if self.positional_args.len() > 0 {
+        if !self.positional_args.is_empty() {
             messages.push("".to_string());
             messages.push("positional arguments:".to_string());
             for a in &self.positional_args {
                 messages.push(iterator(&a.clone()));
             }
-        }
-        if self.optional_args.len() > 0 {
             messages.push("".to_string());
             messages.push("optional arguments:".to_string());
             for a in &self.optional_args {
@@ -568,21 +562,21 @@ impl ArgumentParser {
     pub fn get_optional_arg_name(&self, arg: &Arg) -> Result<String, String> {
         let names = &arg.names;
 
-        let double_hyphen_arg_index = index_of_match(|n: &String| n.starts_with("--"), &names);
+        let double_hyphen_arg_index = index_of_match(|n: &String| n.starts_with("--"), names);
 
         if double_hyphen_arg_index > -1 {
             let name = &names[double_hyphen_arg_index as usize];
-            let first_non_dash = skip_leading(&name, "-").replace("-", "_");
+            let first_non_dash = skip_leading(name, "-").replace("-", "_");
             return Ok(first_non_dash);
         }
 
         let single_hyphen_arg_index = index_of_match(
             |n: &String| n.starts_with("-") && !n.starts_with("--"),
-            &names,
+            names,
         );
         if single_hyphen_arg_index > -1 {
             let name = &names[single_hyphen_arg_index as usize];
-            let first_non_dash = skip_leading(&name, "-").replace("-", "_");
+            let first_non_dash = skip_leading(name, "-").replace("-", "_");
             return Ok(first_non_dash);
         }
         Err("Invalid argument name".to_string())
