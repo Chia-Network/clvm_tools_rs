@@ -4,18 +4,18 @@ use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use std::collections::HashMap;
 
 lazy_static! {
-    pub static ref ATOM_MATCH: Vec<u8> = {
-        return vec!['$' as u8];
+    pub static ref ATOM_MATCH: [u8; 1] = {
+        [b'$']
     };
-    pub static ref SEXP_MATCH: Vec<u8> = {
-        return vec![':' as u8];
+    pub static ref SEXP_MATCH: [u8; 1] = {
+        [b':']
     };
 }
 
-pub fn unify_bindings<'a>(
-    allocator: &'a mut Allocator,
+pub fn unify_bindings(
+    allocator: &mut Allocator,
     bindings: HashMap<String, NodePtr>,
-    new_key: &Vec<u8>,
+    new_key: &[u8],
     new_value: NodePtr,
 ) -> Option<HashMap<String, NodePtr>> {
     /*
@@ -38,8 +38,8 @@ pub fn unify_bindings<'a>(
     }
 }
 
-pub fn match_sexp<'a>(
-    allocator: &'a mut Allocator,
+pub fn match_sexp(
+    allocator: &mut Allocator,
     pattern: NodePtr,
     sexp: NodePtr,
     known_bindings: HashMap<String, NodePtr>,

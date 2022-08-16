@@ -105,7 +105,7 @@ fn build_default_macro_lookup(
     eval_f: Rc<dyn TRunProgram>,
     macros_src: &[String],
 ) -> NodePtr {
-    let run = assemble(allocator, &"(a (com 2 3) 1)".to_string()).unwrap();
+    let run = assemble(allocator, "(a (com 2 3) 1)").unwrap();
     let mut default_macro_lookup: NodePtr = allocator.null();
     for macro_src in macros_src {
         let macro_sexp = assemble(allocator, macro_src).unwrap();

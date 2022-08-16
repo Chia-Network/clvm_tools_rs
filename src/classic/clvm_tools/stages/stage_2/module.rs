@@ -165,7 +165,7 @@ fn parse_include(
     return m! {
         prog <- assemble(
             allocator,
-            &"(_read (_full_path_for_name 1))".to_string()
+            "(_read (_full_path_for_name 1))"
         );
         assembled_sexp <- run_program.run_program(
             allocator,
@@ -679,7 +679,7 @@ pub fn compile_mod(
 
                 to_run <- assemble(
                     allocator,
-                    &"(_set_symbol_table 1)".to_string()
+                    "(_set_symbol_table 1)"
                 );
 
                 _ <- run_program.run_program(

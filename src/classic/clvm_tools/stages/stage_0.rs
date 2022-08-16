@@ -29,6 +29,10 @@ impl DefaultProgramRunner {
     }
 }
 
+impl Default for DefaultProgramRunner {
+    fn default() -> Self { DefaultProgramRunner::new() }
+}
+
 impl TRunProgram for DefaultProgramRunner {
     fn run_program(
         &self,
@@ -40,7 +44,7 @@ impl TRunProgram for DefaultProgramRunner {
         let max_cost = option
             .as_ref()
             .and_then(|o| o.max_cost)
-            .unwrap_or_else(|| 0);
+            .unwrap_or(0);
 
         run_program(
             allocator,
