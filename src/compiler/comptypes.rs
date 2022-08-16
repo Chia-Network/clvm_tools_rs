@@ -223,10 +223,7 @@ impl HelperForm {
             HelperForm::Defconstant(loc, name, body) => Rc::new(list_to_cons(
                 loc.clone(),
                 &[
-                    Rc::new(SExp::atom_from_string(
-                        loc.clone(),
-                        "defconstant",
-                    )),
+                    Rc::new(SExp::atom_from_string(loc.clone(), "defconstant")),
                     Rc::new(SExp::atom_from_vec(loc.clone(), name)),
                     body.to_sexp(),
                 ],
@@ -370,11 +367,7 @@ impl PrimaryCodegen {
 }
 
 pub fn with_heading(l: Srcloc, name: &str, body: Rc<SExp>) -> SExp {
-    SExp::Cons(
-        l.clone(),
-        Rc::new(SExp::atom_from_string(l, name)),
-        body,
-    )
+    SExp::Cons(l.clone(), Rc::new(SExp::atom_from_string(l, name)), body)
 }
 
 pub fn cons_of_string_map<X>(
@@ -413,11 +406,7 @@ pub fn map_m<T, U, E>(f: &dyn Fn(&T) -> Result<U, E>, list: &[T]) -> Result<Vec<
     Ok(result)
 }
 
-pub fn fold_m<R, T, E>(
-    f: &dyn Fn(&R, &T) -> Result<R, E>,
-    start: R,
-    list: &[T],
-) -> Result<R, E> {
+pub fn fold_m<R, T, E>(f: &dyn Fn(&R, &T) -> Result<R, E>, start: R, list: &[T]) -> Result<R, E> {
     let mut res: R = start;
     for elt in list.iter() {
         res = f(&res, elt)?;
