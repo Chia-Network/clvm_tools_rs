@@ -18,7 +18,7 @@ use clvm_tools_rs::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 fn main() {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
-    let opts = Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));
+    let opts = Rc::new(DefaultCompilerOpts::new("*program*"));
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         println!("give a chialisp program to minify");
