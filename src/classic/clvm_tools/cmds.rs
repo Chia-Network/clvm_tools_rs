@@ -516,7 +516,7 @@ fn calculate_cost_offset(
      This is a hack and need to go away, probably when we do dialects for real,
      and then the dialect can have a `run_program` API.
     */
-    let almost_empty_list = enlist(allocator, &vec![allocator.null()]).unwrap();
+    let almost_empty_list = enlist(allocator, &[allocator.null()]).unwrap();
     let cost = run_program
         .run_program(allocator, run_script, almost_empty_list, None)
         .map(|x| x.0)

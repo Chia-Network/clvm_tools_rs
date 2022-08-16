@@ -35,27 +35,25 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
     let mut ops: Vec<SexpStackOp> = vec![SexpStackOp::OpConvert];
 
     loop {
-        let op;
+        let op =
+            match ops.pop() {
+                None => {
+                    break;
+                }
+                Some(o) => {
+                    o
+                }
+            };
 
-        match ops.pop() {
-            None => {
-                break;
-            }
-            Some(o) => {
-                op = o;
-            }
-        }
-
-        let top;
-
-        match stack.pop() {
-            None => {
-                return Err(EvalErr(allocator.null(), "empty value stack".to_string()));
-            }
-            Some(rc) => {
-                top = rc;
-            }
-        }
+        let top =
+            match stack.pop() {
+                None => {
+                    return Err(EvalErr(allocator.null(), "empty value stack".to_string()));
+                }
+                Some(rc) => {
+                    rc
+                }
+            };
 
         // convert value
         match op {
@@ -85,8 +83,8 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
                     CastableType::ListOf(_sel, v) => {
                         let target_index = stack.len();
                         stack.push(Rc::new(CastableType::CLVMObject(allocator.null())));
-                        for i in 0..v.len() - 1 {
-                            stack.push(v[i].clone());
+                        for vi in v.iter().take(v.len() - 1) {
+                            stack.push(vi.clone());
                             ops.push(SexpStackOp::OpPrepend(target_index));
                             // we only need to convert if it's not already the right type
                             ops.push(SexpStackOp::OpConvert);
@@ -101,7 +99,7 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
                         }
                     },
                     CastableType::String(s) => {
-                        let result_vec: Vec<u8> = s.as_bytes().into_iter().map(|x| *x).collect();
+                        let result_vec: Vec<u8> = s.as_bytes().to_vec();
                         match allocator.new_atom(&result_vec) {
                             Ok(a) => {
                                 stack.push(Rc::new(CastableType::CLVMObject(a)));
@@ -347,7 +345,7 @@ pub fn bool_sexp(allocator: &mut Allocator, b: bool) -> NodePtr {
 pub fn non_nil(allocator: &mut Allocator, sexp: NodePtr) -> bool {
     match allocator.sexp(sexp) {
         SExp::Pair(_, _) => true,
-        SExp::Atom(b) => allocator.buf(&b).len() > 0,
+        SExp::Atom(b) => !allocator.buf(&b).is_empty(),
     }
 }
 
@@ -394,7 +392,7 @@ pub fn proper_list(allocator: &mut Allocator, sexp: NodePtr, store: bool) -> Opt
     }
 }
 
-pub fn enlist<'a>(allocator: &'a mut Allocator, vec: &Vec<NodePtr>) -> Result<NodePtr, EvalErr> {
+pub fn enlist(allocator: &mut Allocator, vec: &[NodePtr]) -> Result<NodePtr, EvalErr> {
     let mut built = allocator.null();
 
     for i_reverse in 0..vec.len() {
@@ -456,7 +454,7 @@ pub fn fold_m<A, B, E>(
     }
 }
 
-pub fn equal_to<'a>(allocator: &'a mut Allocator, first_: NodePtr, second_: NodePtr) -> bool {
+pub fn equal_to(allocator: &mut Allocator, first_: NodePtr, second_: NodePtr) -> bool {
     let mut first = first_;
     let mut second = second_;
 
@@ -481,7 +479,7 @@ pub fn equal_to<'a>(allocator: &'a mut Allocator, first_: NodePtr, second_: Node
     }
 }
 
-pub fn flatten<'a>(allocator: &'a mut Allocator, tree_: NodePtr, res: &mut Vec<NodePtr>) {
+pub fn flatten(allocator: &mut Allocator, tree_: NodePtr, res: &mut Vec<NodePtr>) {
     let mut tree = tree_;
 
     loop {

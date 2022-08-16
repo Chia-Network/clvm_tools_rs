@@ -256,7 +256,7 @@ pub fn trace_pre_eval(
         Ok(None)
     } else {
         m! {
-            log_entry <- enlist(allocator, &vec!(sexp, args));
+            log_entry <- enlist(allocator, &[sexp, args]);
             let _ = append_log(allocator, log_entry);
             Ok(Some(log_entry))
         }

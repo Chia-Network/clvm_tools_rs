@@ -25,7 +25,7 @@ pub fn evaluate(
 ) -> Result<NodePtr, EvalErr> {
     return m! {
         a <- allocator.new_atom(&APPLY_ATOM);
-        enlist(allocator, &vec!(a, prog, args))
+        enlist(allocator, &[a, prog, args])
     };
 }
 
@@ -45,7 +45,7 @@ pub fn run(
         mac <- quote(allocator, macro_lookup);
         com_sexp <- allocator.new_atom(&COM_ATOM);
         arg_sexp <- allocator.new_atom(args.data());
-        to_eval <- enlist(allocator, &vec!(com_sexp, prog, mac));
+        to_eval <- enlist(allocator, &[com_sexp, prog, mac]);
         evaluate(allocator, to_eval, arg_sexp)
     };
 }
