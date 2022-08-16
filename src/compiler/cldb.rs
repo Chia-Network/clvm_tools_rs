@@ -26,14 +26,14 @@ pub struct PriorResult {
     // value: Rc<SExp>, // In future, we'll want to know the value produced.
 }
 
-fn format_arg_inputs(args: &Vec<PriorResult>) -> String {
+fn format_arg_inputs(args: &[PriorResult]) -> String {
     let value_strings: Vec<String> = args
         .iter()
         .map(|pr| {
-            return pr.reference.to_string();
+            pr.reference.to_string()
         })
         .collect();
-    return value_strings.join(", ");
+    value_strings.join(", ")
 }
 
 fn get_arg_associations(
@@ -43,24 +43,18 @@ fn get_arg_associations(
     let mut arg_exp: Rc<SExp> = args;
     let mut result: Vec<PriorResult> = Vec::new();
     loop {
-        match arg_exp.borrow() {
-            SExp::Cons(_, arg, rest) => {
-                match arg
-                    .get_number()
-                    .ok()
-                    .as_ref()
-                    .and_then(|n| associations.get(n))
-                {
-                    Some(n) => {
-                        result.push(n.clone());
-                    }
-                    _ => {}
-                }
-                arg_exp = rest.clone();
+        if let SExp::Cons(_, arg, rest) = arg_exp.borrow() {
+            if let Some(n) = arg
+                .get_number()
+                .ok()
+                .as_ref()
+                .and_then(|n| associations.get(n))
+            {
+                result.push(n.clone());
             }
-            _ => {
-                return result;
-            }
+            arg_exp = rest.clone();
+        } else {
+            return result;
         }
     }
 }
@@ -149,17 +143,14 @@ impl CldbRun {
                     self.to_print.insert("Value".to_string(), x.to_string());
                     self.to_print
                         .insert("Row".to_string(), self.row.to_string());
-                    match x.get_number().ok() {
-                        Some(n) => {
-                            self.outputs_to_step.insert(
-                                n,
-                                PriorResult {
-                                    reference: self.row,
-                                    // value: x.clone(), // for future
-                                },
-                            );
-                        }
-                        _ => {}
+                    if let Ok(n) = x.get_number() {
+                        self.outputs_to_step.insert(
+                            n,
+                            PriorResult {
+                                reference: self.row,
+                                // value: x.clone(), // for future
+                            },
+                        );
                     }
                     self.in_expr = false;
                     swap(&mut self.to_print, &mut result);
@@ -182,17 +173,14 @@ impl CldbRun {
                     .insert("Operator-Location".to_string(), a.loc().to_string());
                 self.to_print
                     .insert("Operator".to_string(), sexp.to_string());
-                match sexp.get_number().ok() {
-                    Some(v) => {
-                        if v == 11_u32.to_bigint().unwrap() {
-                            // Build source tree for hashes.
-                            let arg_associations =
-                                get_arg_associations(&self.outputs_to_step, a.clone());
-                            let args = format_arg_inputs(&arg_associations);
-                            self.to_print.insert("Argument-Refs".to_string(), args);
-                        }
+                if let Ok(v) = sexp.get_number() {
+                    if v == 11_u32.to_bigint().unwrap() {
+                        // Build source tree for hashes.
+                        let arg_associations =
+                            get_arg_associations(&self.outputs_to_step, a.clone());
+                        let args = format_arg_inputs(&arg_associations);
+                        self.to_print.insert("Argument-Refs".to_string(), args);
                     }
-                    _ => {}
                 }
                 self.env.add_context(
                     sexp.borrow(),
@@ -253,6 +241,10 @@ impl CldbNoOverride {
     }
 }
 
+impl Default for CldbNoOverride {
+    fn default() -> Self { CldbNoOverride::new() }
+}
+
 // Allow the caller to examine environment and return an expression that
 // will be quoted.
 pub trait CldbSingleBespokeOverride {
@@ -283,7 +275,7 @@ impl CldbOverrideBespokeCode {
         args: Rc<SExp>,
         p: Rc<RunStep>,
     ) -> Option<Result<RunStep, RunFailure>> {
-        let fun_hash = clvm::sha256tree(f.clone());
+        let fun_hash = clvm::sha256tree(f);
         let fun_hash_str = Bytes::new(Some(BytesFromType::Raw(fun_hash))).hex();
 
         self.symbol_table
@@ -292,7 +284,7 @@ impl CldbOverrideBespokeCode {
             .map(|override_fn| {
                 override_fn
                     .get_override(args.clone())
-                    .map(|new_exp| RunStep::OpResult(sexp.loc(), new_exp.clone(), p.clone()))
+                    .map(|new_exp| RunStep::OpResult(sexp.loc(), new_exp, p.clone()))
             })
     }
 }
@@ -345,12 +337,12 @@ impl CldbRunEnv {
 
     fn extract_text(&self, l: &Srcloc) -> Option<String> {
         let use_line = if l.line < 1 { None } else { Some(l.line - 1) };
-        let use_col = use_line.and_then(|_| if l.col < 1 { None } else { Some(l.col - 1) });
+        let use_col = use_line.and(if l.col < 1 { None } else { Some(l.col - 1) });
         let end_col = use_col.map(|c| l.until.map(|u| u.1 - 1).unwrap_or_else(|| c + 1));
         use_line
             .and_then(|use_line| {
                 use_col.and_then(|use_col| {
-                    end_col.and_then(|end_col| Some((use_line, use_col, end_col)))
+                    end_col.map(|end_col| (use_line, use_col, end_col))
                 })
             })
             .and_then(|coords| {
@@ -381,14 +373,11 @@ impl CldbRunEnv {
         if_true: &dyn Fn(&mut BTreeMap<String, String>),
         if_false: &dyn Fn(&mut BTreeMap<String, String>),
     ) {
-        match s {
-            SExp::Integer(_, i) => {
-                if *i == 2_i32.to_bigint().unwrap() {
-                    if_true(collector);
-                    return;
-                }
+        if let SExp::Integer(_, i) = s {
+            if *i == 2_i32.to_bigint().unwrap() {
+                if_true(collector);
+                return;
             }
-            _ => {}
         }
 
         if_false(collector);
@@ -415,11 +404,10 @@ impl CldbEnvironment for CldbRunEnv {
                     context_result.insert("Function-Context".to_string(), c.to_string());
                 }
             },
-            &|context_result| match &args {
-                Some(a) => {
+            &|context_result| {
+                if let Some(a) = &args {
                     context_result.insert("Arguments".to_string(), a.to_string());
                 }
-                _ => {}
             },
         );
     }
@@ -429,13 +417,12 @@ impl CldbEnvironment for CldbRunEnv {
             s,
             context_result,
             &|_context_result| {},
-            &|context_result| match self.extract_text(&s.loc()) {
-                Some(name) => {
+            &|context_result| {
+                if let Some(name) = self.extract_text(&s.loc()) {
                     if Some(s.loc().file.to_string()) == self.input_file.clone() {
                         context_result.insert("Function".to_string(), name);
                     }
                 }
-                _ => {}
             },
         );
     }
@@ -477,7 +464,7 @@ pub fn hex_to_modern_sexp(
     allocator: &mut Allocator,
     symbol_table: &HashMap<String, String>,
     loc: Srcloc,
-    input_program: &String,
+    input_program: &str,
 ) -> Result<Rc<SExp>, RunFailure> {
     let input_serialized = Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
 
