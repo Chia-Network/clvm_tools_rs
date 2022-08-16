@@ -13,12 +13,12 @@ use std::time::SystemTime;
 
 use core::cmp::max;
 
+use linked_hash_map::LinkedHashMap;
+use yaml_rust::{Yaml, YamlEmitter};
+
 use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 use clvm_rs::run_program::PreEval;
-
-use yamlette::model::yaml::str::FORCE_QUOTES;
-use yamlette::yamlette;
 
 use crate::classic::clvm::__type_compatibility__::{t, Bytes, BytesFromType, Stream, Tuple};
 use crate::classic::clvm::keyword_from_atom;
@@ -246,6 +246,20 @@ pub fn brun(args: &[String]) {
         .expect("stdout");
 }
 
+fn to_yaml(entries: &[BTreeMap<String, String>]) -> Yaml {
+    let result_array: Vec<Yaml> = entries
+        .iter()
+        .map(|tm| {
+            let mut h = LinkedHashMap::new();
+            for (k, v) in tm.iter() {
+                h.insert(Yaml::String(k.clone()), Yaml::String(v.clone()));
+            }
+            Yaml::Hash(h)
+        })
+        .collect();
+    Yaml::Array(result_array)
+}
+
 pub fn cldb(args: &[String]) {
     let tool_name = "cldb".to_string();
     let props = TArgumentParserProps {
@@ -365,10 +379,13 @@ pub fn cldb(args: &[String]) {
     );
 
     let mut output = Vec::new();
-    let yamlette_string = |to_print: Vec<BTreeMap<String, String>>| match yamlette!(write; [[( # FORCE_QUOTES => to_print )]])
-    {
-        Ok(s) => s,
-        Err(e) => format!("error producing yaml: {:?}", e),
+    let yamlette_string = |to_print: Vec<BTreeMap<String, String>>| {
+        let mut result = String::new();
+        let mut emitter = YamlEmitter::new(&mut result);
+        match emitter.dump(&to_yaml(&to_print)) {
+            Ok(_) => result,
+            Err(e) => format!("error producing yaml: {:?}", e),
+        }
     };
 
     let res = match parsed_args.get("hex") {
