@@ -267,10 +267,7 @@ pub fn consume_object(s: &mut IRReader) -> Result<IRRepr, String> {
     } else if b.at(0) == b'(' {
         consume_cons_body(s)
     } else if b.at(0) == b'\"' || b.at(0) == b'\'' {
-        match consume_quoted(s, b.at(0) as char) {
-            Err(e) => Err(e),
-            Ok(v) => Ok(v),
-        }
+        consume_quoted(s, b.at(0) as char)
     } else {
         match consume_atom(s, &b) {
             None => Err("empty stream".to_string()),
