@@ -103,12 +103,12 @@ fn default_macros_src() -> Vec<&'static str> {
 fn build_default_macro_lookup(
     allocator: &mut Allocator,
     eval_f: Rc<dyn TRunProgram>,
-    macros_src: &Vec<String>,
+    macros_src: &[String],
 ) -> NodePtr {
     let run = assemble(allocator, &"(a (com 2 3) 1)".to_string()).unwrap();
     let mut default_macro_lookup: NodePtr = allocator.null();
     for macro_src in macros_src {
-        let macro_sexp = assemble(allocator, &macro_src.to_string()).unwrap();
+        let macro_sexp = assemble(allocator, macro_src).unwrap();
         let env = allocator
             .new_pair(macro_sexp, default_macro_lookup)
             .unwrap();
@@ -119,9 +119,10 @@ fn build_default_macro_lookup(
 }
 
 pub fn default_macro_lookup(allocator: &mut Allocator, runner: Rc<dyn TRunProgram>) -> NodePtr {
+    let macro_srcs: Vec<String> = default_macros_src().iter().map(|s| s.to_string()).collect();
     build_default_macro_lookup(
         allocator,
         runner.clone(),
-        &default_macros_src().iter().map(|s| s.to_string()).collect(),
+        &macro_srcs
     )
 }
