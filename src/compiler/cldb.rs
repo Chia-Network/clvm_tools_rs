@@ -463,7 +463,7 @@ pub fn hex_to_modern_sexp(
 ) -> Result<Rc<SExp>, RunFailure> {
     let input_serialized = Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
 
-    let mut stream = Stream::new(Some(input_serialized.clone()));
+    let mut stream = Stream::new(Some(input_serialized));
     let sexp = sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
         .map(|x| x.1)
         .map_err(|_| RunFailure::RunErr(loc.clone(), "Bad conversion from hex".to_string()))?;

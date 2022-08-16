@@ -52,7 +52,7 @@ fn build_tree_program(allocator: &mut Allocator, items: &[NodePtr]) -> Result<No
     let size = items.len();
     if size == 0 {
         m! {
-            list_of_nil <- enlist(allocator, &vec!(allocator.null()));
+            list_of_nil <- enlist(allocator, &[allocator.null()]);
             quote(allocator, list_of_nil)
         }
     } else if size == 1 {
@@ -66,7 +66,7 @@ fn build_tree_program(allocator: &mut Allocator, items: &[NodePtr]) -> Result<No
                 build_tree_program(allocator, &items[half_size..].to_vec());
 
             cons_atom <- allocator.new_atom(&[4_u8]);
-            enlist(allocator, &vec!(cons_atom, left, right))
+            enlist(allocator, &[cons_atom, left, right])
         }
     }
 }
@@ -215,7 +215,7 @@ fn unquote_args(
                 }
 
                 let unquote_atom = allocator.new_atom("unquote".as_bytes())?;
-                return enlist(allocator, &vec![unquote_atom, code]);
+                return enlist(allocator, &[unquote_atom, code]);
             }
 
             Ok(code)
@@ -277,7 +277,7 @@ fn defun_inline_to_macro(
 
     let unquoted_code = unquote_args(allocator, code, &arg_name_list, &destructure_matches)?;
     let qq_atom = allocator.new_atom("qq".as_bytes())?;
-    let qq_list = enlist(allocator, &vec![qq_atom, unquoted_code])?;
+    let qq_list = enlist(allocator, &[qq_atom, unquoted_code])?;
     r_vec.push(qq_list);
     let res = enlist(allocator, &r_vec)?;
     Ok(res)
@@ -394,7 +394,7 @@ fn compile_mod_stage_1(
                     main_list <-
                         enlist(
                             allocator,
-                            &vec!(main_local_arguments, uncompiled_main)
+                            &[main_local_arguments, uncompiled_main]
                         );
 
                     let _ = functions.insert(MAIN_NAME.as_bytes().to_vec(), main_list);
@@ -477,15 +477,15 @@ fn build_macro_lookup_program(
                 cons_list <-
                     enlist(
                         allocator,
-                        &vec!(cons_atom, macro_def.1, macro_lookup_program)
+                        &[cons_atom, macro_def.1, macro_lookup_program]
                     );
                 quoted_to_compile <- quote(allocator, cons_list);
                 compile_form <-
                     enlist(
                         allocator,
-                        &vec!(com_atom, quoted_to_compile, macro_lookup_program)
+                        &[com_atom, quoted_to_compile, macro_lookup_program]
                     );
-                opt_form <- enlist(allocator, &vec!(opt_atom, compile_form));
+                opt_form <- enlist(allocator, &[opt_atom, compile_form]);
                 top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
                 macro_evaluated <- evaluate(allocator, opt_form, top_atom);
                 optimize_sexp(allocator, macro_evaluated, runner())
@@ -526,7 +526,7 @@ fn add_one_function(
                 &mut all_symbols.iter(),
                 &|allocator, pair| m! {
                     path_atom <- allocator.new_atom(&pair.1);
-                    enlist(allocator, &vec!(pair.0, path_atom))
+                    enlist(allocator, &[pair.0, path_atom])
                 }
             );
 
@@ -536,14 +536,14 @@ fn add_one_function(
         quoted_symbols <- quote(allocator, all_symbols_list);
         com_list <- enlist(
             allocator,
-            &vec!(
+            &[
                 com_atom,
                 quoted_lambda_expr,
                 macro_lookup_program,
                 quoted_symbols
-            )
+            ]
         );
-        opt_list <- enlist(allocator, &vec!(opt_atom, com_list));
+        opt_list <- enlist(allocator, &[opt_atom, com_list]);
         let _ = compiled_functions.insert(name.to_vec(), opt_list);
         Ok(compiled_functions)
     };
@@ -656,19 +656,19 @@ pub fn compile_mod(
                 arg_tree <-
                     enlist(
                         allocator,
-                        &vec!(cons_atom, all_constants_tree_program, top_atom)
+                        &[cons_atom, all_constants_tree_program, top_atom]
                     );
 
                 apply_list <-
                     enlist(
                         allocator,
-                        &vec!(a_atom, main_path, arg_tree)
+                        &[a_atom, main_path, arg_tree]
                     );
                 quoted_apply_list <- quote(allocator, apply_list);
                 opt_list <-
                     enlist(
                         allocator,
-                        &vec!(opt_atom, quoted_apply_list)
+                        &[opt_atom, quoted_apply_list]
                     );
 
                 symbols <- build_symbol_dump(
@@ -697,12 +697,12 @@ pub fn compile_mod(
                 apply_list <-
                     enlist(
                         allocator,
-                        &vec!(a_atom, main_path, top_atom)
+                        &[a_atom, main_path, top_atom]
                     );
                 quoted_apply_list <- quote(allocator, apply_list);
                 enlist(
                     allocator,
-                    &vec!(opt_atom, quoted_apply_list)
+                    &[opt_atom, quoted_apply_list]
                 )
             }
         }

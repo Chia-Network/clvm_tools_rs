@@ -132,8 +132,8 @@ pub fn compile_qq(
                         subexp <-
                             compile_qq(allocator, sexp_rest, macro_lookup, symbol_table, runner.clone(), level+1);
                         quoted_null <- quote(allocator, allocator.null());
-                        consed <- enlist(allocator, &vec!(cons_atom, subexp, quoted_null));
-                        run_list <- enlist(allocator, &vec!(cons_atom, op, consed));
+                        consed <- enlist(allocator, &[cons_atom, subexp, quoted_null]);
+                        run_list <- enlist(allocator, &[cons_atom, op, consed]);
                         com_qq(allocator, "qq sexp pair".to_string(), macro_lookup, symbol_table, runner, run_list)
                     };
                 } else if allocator.buf(&opbuf).to_vec() == unquote_atom() {
@@ -150,8 +150,8 @@ pub fn compile_qq(
                         subexp <-
                             compile_qq(allocator, sexp_rest, macro_lookup, symbol_table, runner.clone(), level-1);
                         quoted_null <- quote(allocator, allocator.null());
-                        consed_subexp <- enlist(allocator, &vec!(cons_atom, subexp, quoted_null));
-                        run_list <- enlist(allocator, &vec!(cons_atom, op, consed_subexp));
+                        consed_subexp <- enlist(allocator, &[cons_atom, subexp, quoted_null]);
+                        run_list <- enlist(allocator, &[cons_atom, op, consed_subexp]);
                         com_qq(allocator, "qq pair general".to_string(), macro_lookup, symbol_table, runner, run_list)
                     };
                 }
@@ -161,11 +161,11 @@ pub fn compile_qq(
             return m! {
                 cons_atom <- allocator.new_atom(&[4]);
                 qq <- allocator.new_atom(&qq_atom());
-                qq_l <- enlist(allocator, &vec!(qq, op));
-                qq_r <- enlist(allocator, &vec!(qq, sexp_rest));
+                qq_l <- enlist(allocator, &[qq, op]);
+                qq_r <- enlist(allocator, &[qq, sexp_rest]);
                 compiled_l <- com_qq(allocator, "A".to_string(), macro_lookup, symbol_table, runner.clone(), qq_l);
                 compiled_r <- com_qq(allocator, "B".to_string(), macro_lookup, symbol_table, runner, qq_r);
-                enlist(allocator, &vec!(cons_atom, compiled_l, compiled_r))
+                enlist(allocator, &[cons_atom, compiled_l, compiled_r])
             };
         }
     }
@@ -268,12 +268,12 @@ fn try_expand_macro_for_atom_(
         quoted_symbols <- quote(allocator, symbol_table);
         to_eval <- enlist(
             allocator,
-            &vec!(
+            &[
                 com_atom,
                 post_prog,
                 quoted_macros,
                 quoted_symbols
-            )
+            ]
         );
         top_path <- allocator.new_atom(NodePath::new(None).as_path().data());
         evaluate(
@@ -547,15 +547,15 @@ fn compile_application(
                                     quoted_list <- quote(allocator, list_application);
                                     quoted_macros <- quote(allocator, macro_lookup);
                                     quoted_symbols <- quote(allocator, symbol_table);
-                                    compiled <- enlist(allocator, &vec!(com_atom, quoted_list, quoted_macros, quoted_symbols));
-                                    to_run <- enlist(allocator, &vec!(opt_atom, compiled));
+                                    compiled <- enlist(allocator, &[com_atom, quoted_list, quoted_macros, quoted_symbols]);
+                                    to_run <- enlist(allocator, &[opt_atom, compiled]);
                                     new_args <- evaluate(allocator, to_run, top_atom);
 
-                                    cons_enlisted <- enlist(allocator, &vec!(cons_atom, left_atom, new_args));
+                                    cons_enlisted <- enlist(allocator, &[cons_atom, left_atom, new_args]);
 
                                     result <- enlist(
                                         allocator,
-                                        &vec!(apply_atom, value, cons_enlisted)
+                                        &[apply_atom, value, cons_enlisted]
                                     );
 
                                     Ok(result)
@@ -684,16 +684,16 @@ fn do_com_prog_(
                             quoted_symbol_table <-
                                 quote(allocator, symbol_table);
                             top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
-                            eval_list <- enlist(allocator, &vec!(
+                            eval_list <- enlist(allocator, &[
                                 com_atom,
                                 quoted_op,
                                 quoted_macro_lookup,
                                 quoted_symbol_table
-                            ));
+                            ]);
 
                             evaluate(
                                 allocator, eval_list, top_atom
-                            ).and_then(|x| enlist(allocator, &vec!(x))).
+                            ).and_then(|x| enlist(allocator, &[x])).
                                 map(|x| Reduction(1, x))
                         };
                     }

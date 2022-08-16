@@ -16,19 +16,19 @@ pub fn u8_from_number(v: Number) -> Vec<u8> {
     v.to_signed_bytes_be()
 }
 
-pub fn index_of_match<F, T>(cb: F, haystack: &Vec<T>) -> i32
+pub fn index_of_match<F, T>(cb: F, haystack: &[T]) -> i32
 where
     F: Fn(&T) -> bool,
 {
-    for i in 0..haystack.len() {
-        if cb(&haystack[i]) {
+    for (i, ch) in haystack.iter().enumerate() {
+        if cb(ch) {
             return i as i32;
         }
     }
     -1
 }
 
-pub fn skip_leading(s: &String, dash: &str) -> String {
+pub fn skip_leading(s: &str, dash: &str) -> String {
     return s.graphemes(true).skip_while(|ch| dash == *ch).collect();
 }
 

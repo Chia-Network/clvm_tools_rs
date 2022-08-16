@@ -4,8 +4,8 @@ use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use std::collections::HashMap;
 
 lazy_static! {
-    pub static ref ATOM_MATCH: [u8; 1] = { [b'$'] };
-    pub static ref SEXP_MATCH: [u8; 1] = { [b':'] };
+    pub static ref ATOM_MATCH: [u8; 1] = [b'$'];
+    pub static ref SEXP_MATCH: [u8; 1] = [b':'];
 }
 
 pub fn unify_bindings(
