@@ -1,7 +1,6 @@
 import os
 import subprocess
 import traceback
-import binascii
 
 recompile_list = [
     'block_program_zero.clvm',
@@ -44,32 +43,17 @@ recompile_list = [
     'test_multiple_generator_input_arguments.clvm'
 ]
 
-def pad(n,v):
-    if len(v) < n:
-        return ('0' * (n - len(v))) + v
-    else:
-        return v
-
 for fname in recompile_list:
     hexfile = f'./chia/wallet/puzzles/{fname}.hex'
     hexdata = open(hexfile).read().strip()
+    os.unlink(hexfile)
     try:
         compiled = subprocess.check_output(['../target/release/run', '-i', 'chia/wallet/puzzles/', f'chia/wallet/puzzles/{fname}']).strip()
-        print('compiled', compiled)
         recompile = subprocess.check_output(['../target/release/opc', compiled]).decode('utf8').strip()
-        print('recompile', recompile)
     except:
         print(f'compiling {fname}')
         traceback.print_exc()
 
     if hexdata != recompile:
         print(f'*** COMPILE RESULTED IN DIFFERENT OUTPUT FOR FILE {fname}')
-        print(hexdata)
-        print(recompile)
-        hd = binascii.unhexlify(hexdata)
-        rc = binascii.unhexlify(recompile)
-
-        for (i,b) in enumerate(hd):
-            if i < len(rc) and b != rc[i]:
-                print(f'{pad(4,hex(i)[2:])}: new {pad(2,hex(b)[2:])} old {pad(2,hex(rc[i])[2:])}')
-        assert hd == rc
+        assert hexdata == recompile
