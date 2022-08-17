@@ -34,15 +34,6 @@ binascii = "0.1.4"
 yaml-rust = "0.4"
 linked-hash-map = "0.5.6"
 
-[patch.crates-io]
-skimmer = { git = "https://github.com/dnsl48/skimmer", rev = "ca914ef624ecf39a75ed7afef10e7838fffe9127" }
-
-[target.x86_64-apple-darwin]
-rustflags = [
-  "-C", "link-arg=-undefined",
-  "-C", "link-arg=dynamic_lookup",
-]
-
 [lib]
 name = "clvm_tools_rs"
 crate-type = ["cdylib", "rlib"]

@@ -105,10 +105,7 @@ pub fn call_tool(
             .set_help("path to clvm script, or literal script".to_string()),
     );
 
-    let mut rest_args = Vec::new();
-    for a in input_args.iter().skip(1) {
-        rest_args.push(a.to_string());
-    }
+    let rest_args: Vec<String> = input_args.iter().skip(1).cloned().collect();
     let args_res = parser.parse_args(&rest_args);
     let args: HashMap<String, ArgumentValue> = match args_res {
         Ok(a) => a,

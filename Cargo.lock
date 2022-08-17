@@ -853,8 +853,3 @@ checksum = "56c1936c4cc7a1c9ab21a1ebb602eb942ba868cbd44a99cb7cdc5892335e1c85"
 dependencies = [
  "linked-hash-map",
 ]
-
-[[patch.unused]]
-name = "skimmer"
-version = "0.0.2"
-source = "git+https://github.com/dnsl48/skimmer?rev=ca914ef624ecf39a75ed7afef10e7838fffe9127#ca914ef624ecf39a75ed7afef10e7838fffe9127"
