@@ -144,7 +144,7 @@ pub struct TArgumentParserProps {
 #[derive(Debug, Clone)]
 pub struct ArgumentParser {
     prog: String,
-    /* desc: String, */ // Not used in this code.
+    // desc: String,
     positional_args: Vec<Arg>,
     optional_args: Vec<Arg>,
 }
@@ -156,12 +156,11 @@ impl ArgumentParser {
                 .as_ref()
                 .map(|x| x.prog.clone())
                 .unwrap_or_else(|| "prog".to_string()),
-            /*
-            desc: props
-                .as_ref()
-                .map(|x| x.description.clone())
-                .unwrap_or_else(|| "".to_string()),
-            */
+            // FIXME: use desc
+            // desc: props
+            //    .as_ref()
+            //    .map(|x| x.description.clone())
+            //    .unwrap_or_else(|| "".to_string()),
             positional_args: vec![],
             optional_args: vec![],
         };
@@ -246,6 +245,7 @@ impl ArgumentParser {
                 }
 
                 let optional_arg = &self.optional_args[optional_arg_idx as usize];
+
                 let name = match self.get_optional_arg_name(optional_arg) {
                     Ok(n) => n,
                     Err(e) => {
@@ -290,17 +290,13 @@ impl ArgumentParser {
                                 None => {}
                             },
                         },
-                        _ => match converter.convert(value) {
-                            Ok(v) => {
+                        _ => {
+                            if let Ok(v) = converter.convert(value) {
                                 params.insert(name, ArgumentValue::ArgArray(vec![v]));
+                            } else if let Some(v) = &optional_arg.options.default {
+                                params.insert(name, ArgumentValue::ArgArray(vec![v.clone()]));
                             }
-                            _ => match &optional_arg.options.default {
-                                Some(v) => {
-                                    params.insert(name, ArgumentValue::ArgArray(vec![v.clone()]));
-                                }
-                                None => {}
-                            },
-                        },
+                        }
                     }
                 } else {
                     let usage = self.compile_help_messages();
@@ -357,17 +353,8 @@ impl ArgumentParser {
                 }
                 Some(NArgsSpec::Optional) => {
                     if i >= input_positional_args.len() {
-                        match &positional_arg_k.options.default {
-                            None => {
-                                if let Ok(v) = converter.convert("") {
-                                    params.insert(name.to_string(), v);
-                                }
-                            }
-                            Some(_) => {
-                                if let Ok(v) = converter.convert("") {
-                                    params.insert(name.to_string(), v);
-                                }
-                            }
+                        if let Ok(v) = converter.convert("") {
+                            params.insert(name.to_string(), v);
                         }
 
                         i += 1;
@@ -402,9 +389,9 @@ impl ArgumentParser {
                                 let mut lcopy = l.clone();
                                 lcopy.push(v);
                                 params.insert(name.to_string(), ArgumentValue::ArgArray(lcopy));
-                            } else if let Ok(v) = converter.convert(input_arg) {
-                                params.insert(name.to_string(), ArgumentValue::ArgArray(vec![v]));
                             }
+                        } else if let Ok(v) = converter.convert(input_arg) {
+                            params.insert(name.to_string(), ArgumentValue::ArgArray(vec![v]));
                         }
                     }
                 }
@@ -453,6 +440,8 @@ impl ArgumentParser {
             for a in &self.positional_args {
                 messages.push(iterator(&a.clone()));
             }
+        }
+        if !self.optional_args.is_empty() {
             messages.push("".to_string());
             messages.push("optional arguments:".to_string());
             for a in &self.optional_args {
@@ -535,8 +524,8 @@ impl ArgumentParser {
             return Ok(first_non_dash);
         }
 
+        #[allow(clippy::single_char_pattern)]
         let single_hyphen_arg_index = index_of_match(
-            #[allow(clippy::single_char_pattern)]
             |n: &String| n.starts_with("-") && !n.starts_with("--"),
             names,
         );
