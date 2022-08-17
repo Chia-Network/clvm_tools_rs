@@ -1,6 +1,6 @@
 use js_sys;
-use js_sys::{Array, BigInt, Object};
 use js_sys::JSON::stringify;
+use js_sys::{Array, BigInt, Object};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -192,15 +192,11 @@ pub fn sexp_from_js_object(sstart: Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
                 v.as_string()
                     .map(|s| Some(Rc::new(SExp::Atom(sstart.clone(), s.as_bytes().to_vec()))))
                     .unwrap_or_else(|| {
-                        stringify(v).ok()
+                        stringify(v)
+                            .ok()
                             .and_then(|v| v.as_string())
                             .and_then(|v| Number::from_str(&v).ok())
-                            .map(|n| {
-                                Rc::new(SExp::Integer(
-                                    sstart.clone(),
-                                    n
-                                ))
-                            })
+                            .map(|n| Rc::new(SExp::Integer(sstart.clone(), n)))
                     })
             })
     }
