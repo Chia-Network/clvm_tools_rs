@@ -564,9 +564,9 @@ pub fn frontend(
     let helper_list = our_mod.helpers.iter().map(|h| (h.name(), h));
     let mut helper_map = HashMap::new();
 
-    let _ = for hpair in helper_list {
+    for hpair in helper_list {
         helper_map.insert(hpair.0.clone(), hpair.1.clone());
-    };
+    }
 
     let helper_names =
         calculate_live_helpers(opts.clone(), &HashSet::new(), &expr_names, &helper_map);

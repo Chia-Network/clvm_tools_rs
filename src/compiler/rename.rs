@@ -84,9 +84,9 @@ fn invent_new_names_sexp(body: Rc<SExp>) -> Vec<(Vec<u8>, Vec<u8>)> {
     match body.borrow() {
         SExp::Atom(_, name) => {
             if name != &vec![b'@'] {
-                return vec![(name.to_vec(), gensym(name.to_vec()))];
+                vec![(name.to_vec(), gensym(name.to_vec()))]
             } else {
-                return vec![];
+                vec![]
             }
         }
         SExp::Cons(_, head, tail) => {

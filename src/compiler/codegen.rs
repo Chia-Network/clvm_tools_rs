@@ -346,10 +346,10 @@ pub fn get_call_name(l: Srcloc, body: BodyForm) -> Result<Rc<SExp>, CompileErr> 
         _ => {}
     }
 
-    return Err(CompileErr(
+    Err(CompileErr(
         l,
         format!("not yet callable {}", body.to_sexp()),
-    ));
+    ))
 }
 
 fn compile_call(

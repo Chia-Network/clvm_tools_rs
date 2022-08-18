@@ -261,10 +261,10 @@ impl CompilerOpts for DefaultCompilerOpts {
                 }
             }
         }
-        return Err(CompileErr(
+        Err(CompileErr(
             Srcloc::start(&inc_from),
             format!("could not find {} to include", filename),
-        ));
+        ))
     }
     fn compile_program(
         &self,

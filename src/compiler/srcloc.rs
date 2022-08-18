@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::rc::Rc;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Srcloc {
     pub file: Rc<String>,
     pub line: usize,

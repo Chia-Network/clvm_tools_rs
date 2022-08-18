@@ -458,7 +458,7 @@ fn cons_optimizer(
     let cons_optimizer_pattern_first = cons_optimizer_pattern_first(allocator);
     let cons_optimizer_pattern_rest = cons_optimizer_pattern_rest(allocator);
 
-    return m! {
+    m! {
         let t1 = match_sexp(
             allocator, cons_optimizer_pattern_first, r, HashMap::new()
         );
@@ -476,7 +476,7 @@ fn cons_optimizer(
                 }
             }
         }
-    };
+    }
 }
 
 fn first_atom_pattern(allocator: &mut Allocator) -> NodePtr {
@@ -576,6 +576,7 @@ fn apply_null_optimizer(
 
 struct OptimizerRunner<'a> {
     pub name: String,
+    #[allow(clippy::type_complexity)]
     to_run: &'a dyn Fn(&mut Allocator, NodePtr, Rc<dyn TRunProgram>) -> Result<NodePtr, EvalErr>,
 }
 

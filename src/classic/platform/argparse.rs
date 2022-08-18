@@ -12,14 +12,14 @@ use std::rc::Rc;
 use crate::classic::clvm::__type_compatibility__::Record;
 use crate::util::{index_of_match, skip_leading};
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Eq)]
 pub enum TArgOptionAction {
     Store,
     StoreTrue,
     Append,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Eq)]
 pub enum NArgsSpec {
     KleeneStar,
     Plus,
@@ -50,7 +50,7 @@ pub struct IntConversion {
     help_messager: Rc<dyn Fn() -> String>,
 }
 
-impl<'a> ArgumentValueConv for IntConversion {
+impl ArgumentValueConv for IntConversion {
     fn convert(&self, v: &str) -> Result<ArgumentValue, String> {
         match v.parse::<i64>() {
             Ok(n) => Ok(ArgumentValue::ArgInt(n)),

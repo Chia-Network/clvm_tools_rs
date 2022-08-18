@@ -35,7 +35,7 @@ fn get_version() -> PyResult<String> {
 
 #[pyfunction(arg3 = "[]", arg4 = "None")]
 fn compile_clvm(
-    input_path: &PyAny,
+    #[allow(clippy::borrow_deref_ref)] input_path: &PyAny,
     output_path: String,
     search_paths: Vec<String>,
     export_symbols: Option<bool>,
