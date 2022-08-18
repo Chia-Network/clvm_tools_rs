@@ -4,7 +4,7 @@ use std::rc::Rc;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunFailure {
     RunErr(Srcloc, String),
     RunExn(Srcloc, Rc<SExp>),
