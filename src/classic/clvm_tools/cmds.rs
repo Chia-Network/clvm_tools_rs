@@ -532,7 +532,7 @@ fn fix_log(
         update_map.insert(update.0, update.1);
     }
 
-    for (i, entry) in log_result.clone().iter().enumerate() {
+    for (i, entry) in log_result.to_vec().iter().enumerate() {
         update_map.get(entry).and_then(|v| *v).map(|v| {
             proper_list(allocator, *entry, true).map(|list| {
                 let mut updated = list.to_vec();
