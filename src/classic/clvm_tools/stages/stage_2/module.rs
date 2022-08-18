@@ -95,11 +95,11 @@ fn build_used_constants_names(
     let mut possible_symbols = HashSet::new();
     for key in functions.keys() {
         possible_symbols.insert(key);
-    };
+    }
 
     for key in constants.keys() {
         possible_symbols.insert(key);
-    };
+    }
 
     let mut new_names: HashSet<Vec<u8>> = HashSet::new();
     new_names.insert(MAIN_NAME.as_bytes().to_vec());
@@ -139,7 +139,7 @@ fn build_used_constants_names(
                 }
             }
         }
-    };
+    }
 
     // used_names.intersection_update(possible_symbols)
     let mut used_name_list: Vec<Vec<u8>> = Vec::new();
@@ -421,9 +421,7 @@ fn symbol_table_for_tree(
     }
 
     match allocator.sexp(tree) {
-        SExp::Atom(_) => {
-            Ok(vec![(tree, root_node.as_path().data().to_vec())])
-        }
+        SExp::Atom(_) => Ok(vec![(tree, root_node.as_path().data().to_vec())]),
         SExp::Pair(_, _) => {
             let left_bytes = NodePath::new(None).first();
             let right_bytes = NodePath::new(None).rest();
