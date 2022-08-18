@@ -100,10 +100,7 @@ impl CompilerOperators {
                     write_ir_to_stream(Rc::new(ir), &mut stream);
                     return fs::write(filename_bytes.decode(), stream.get_value().decode())
                         .map_err(|_| {
-                            return EvalErr(
-                                sexp,
-                                format!("failed to write {}", filename_bytes.decode()),
-                            );
+                            EvalErr(sexp, format!("failed to write {}", filename_bytes.decode()))
                         })
                         .map(|_| Reduction(1, allocator.null()));
                 }

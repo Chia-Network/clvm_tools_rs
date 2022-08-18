@@ -303,7 +303,7 @@ pub fn try_expand_macro_for_atom(
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
 ) -> Response {
-    return m! {
+    m! {
         res <- try_expand_macro_for_atom_(
             allocator,
             macro_code,
@@ -312,7 +312,7 @@ pub fn try_expand_macro_for_atom(
             symbol_table
         );
         Ok(res)
-    };
+    }
 }
 
 fn get_macro_program(

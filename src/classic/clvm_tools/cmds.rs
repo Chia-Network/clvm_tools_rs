@@ -524,7 +524,7 @@ fn calculate_cost_offset(
 
 fn fix_log(
     allocator: &mut Allocator,
-    log_result: &mut Vec<NodePtr>,
+    log_result: &mut [NodePtr],
     log_updates: &[(NodePtr, Option<NodePtr>)],
 ) {
     let mut update_map: HashMap<NodePtr, Option<NodePtr>> = HashMap::new();
@@ -1092,10 +1092,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 let mut f = Stream::new(None);
                 sexp_to_stream(&mut allocator, result, &mut f);
                 run_output = f.get_value().hex();
-            } else {
-                if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("quiet") {
-                    run_output = "".to_string();
-                }
+            } else if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("quiet") {
+                run_output = "".to_string();
             };
 
             run_output

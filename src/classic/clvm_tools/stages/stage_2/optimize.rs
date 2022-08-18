@@ -167,7 +167,7 @@ fn cons_pattern(allocator: &mut Allocator) -> NodePtr {
 }
 
 fn cons_f(allocator: &mut Allocator, args: NodePtr) -> Result<NodePtr, EvalErr> {
-    return m! {
+    m! {
         let cons_pattern = cons_pattern(allocator);
         if let Some(first) = match_sexp(allocator, cons_pattern, args, HashMap::new()).and_then(|t| t.get("first").copied()) {
             Ok(first)
@@ -178,11 +178,11 @@ fn cons_f(allocator: &mut Allocator, args: NodePtr) -> Result<NodePtr, EvalErr> 
                 allocator.new_pair(first_atom, tail)
             }
         }
-    };
+    }
 }
 
 fn cons_r(allocator: &mut Allocator, args: NodePtr) -> Result<NodePtr, EvalErr> {
-    return m! {
+    m! {
         let cons_pattern = cons_pattern(allocator);
         if let Some(rest) = match_sexp(allocator, cons_pattern, args, HashMap::new()).and_then(|t| t.get("rest").copied()) {
             Ok(rest)
@@ -193,7 +193,7 @@ fn cons_r(allocator: &mut Allocator, args: NodePtr) -> Result<NodePtr, EvalErr> 
                 allocator.new_pair(rest_atom, tail)
             }
         }
-    };
+    }
 }
 
 fn path_from_args(
