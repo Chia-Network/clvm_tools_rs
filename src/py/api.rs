@@ -1,3 +1,7 @@
+#![allow(clippy::all)]
+// #[allow(clippy::borrow_deref_ref)]
+// Eventually this can be downgraded and applied just to compile_clvm
+// re: https://github.com/rust-lang/rust-clippy/issues/8971
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyString, PyTuple};
@@ -35,9 +39,6 @@ fn get_version() -> PyResult<String> {
 
 #[pyfunction(arg3 = "[]", arg4 = "None")]
 fn compile_clvm(
-    #[allow(clippy::all)] // #[allow(clippy::borrow_deref_ref)]
-    // Eventually this can be downgraded
-    // re: https://github.com/rust-lang/rust-clippy/issues/8971
     input_path: &PyAny,
     output_path: String,
     search_paths: Vec<String>,
