@@ -223,7 +223,7 @@ impl ArgumentValueConv for StageImport {
         } else if arg == "2" {
             return Ok(ArgumentValue::ArgInt(2));
         }
-        return Err(format!("Unknown stage: {}", arg));
+        Err(format!("Unknown stage: {}", arg))
     }
 }
 
@@ -921,6 +921,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         post_eval_resp_in.recv().unwrap();
     });
 
+    #[allow(clippy::type_complexity)]
     let pre_eval_fn: Rc<dyn Fn(&mut Allocator, NodePtr)> = Rc::new(move |_allocator, new_log| {
         pre_eval_req_out.send(new_log).ok();
         pre_eval_resp_in.recv().unwrap();
@@ -1044,7 +1045,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             let result = run_program_result.1;
             let time_done = SystemTime::now();
 
-            let _ = if parsed_args.get("cost").is_some() {
+            if parsed_args.get("cost").is_some() {
                 if cost > 0 {
                     cost += cost_offset;
                 }
@@ -1086,17 +1087,14 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 ));
             }
 
-            let _ = run_output = disassemble_with_kw(&mut allocator, result, keywords);
-            let _ = match parsed_args.get("dump") {
-                Some(ArgumentValue::ArgBool(true)) => {
-                    let mut f = Stream::new(None);
-                    sexp_to_stream(&mut allocator, result, &mut f);
-                    run_output = f.get_value().hex();
-                }
-                _ => {
-                    if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("quiet") {
-                        run_output = "".to_string();
-                    }
+            run_output = disassemble_with_kw(&mut allocator, result, keywords);
+            if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("dump") {
+                let mut f = Stream::new(None);
+                sexp_to_stream(&mut allocator, result, &mut f);
+                run_output = f.get_value().hex();
+            } else {
+                if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("quiet") {
+                    run_output = "".to_string();
                 }
             };
 

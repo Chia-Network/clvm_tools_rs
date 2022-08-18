@@ -158,7 +158,7 @@ pub fn compile_qq(
             }
 
             // (qq (a . B)) => (c (qq a) (qq B))
-            return m! {
+            m! {
                 cons_atom <- allocator.new_atom(&[4]);
                 qq <- allocator.new_atom(&qq_atom());
                 qq_l <- enlist(allocator, &[qq, op]);
@@ -166,7 +166,7 @@ pub fn compile_qq(
                 compiled_l <- com_qq(allocator, "A".to_string(), macro_lookup, symbol_table, runner.clone(), qq_l);
                 compiled_r <- com_qq(allocator, "B".to_string(), macro_lookup, symbol_table, runner, qq_r);
                 enlist(allocator, &[cons_atom, compiled_l, compiled_r])
-            };
+            }
         }
     }
 }
@@ -516,7 +516,7 @@ fn compile_application(
                 .map(|x| x.1)
             })?;
 
-            let _ = compiled_args.append(&mut new_args);
+            compiled_args.append(&mut new_args);
             let r = enlist(allocator, &compiled_args)?;
 
             if PASS_THROUGH_OPERATORS.contains(opbuf) || (!opbuf.is_empty() && opbuf[0] == b'_') {
@@ -623,7 +623,7 @@ fn do_com_prog_(
      */
 
     // lower "quote" to "q"
-    return m! {
+    m! {
         prog <- lower_quote(allocator, prog_);
 
         // quote atoms
@@ -700,7 +700,7 @@ fn do_com_prog_(
                 }
             }
         }
-    };
+    }
 }
 
 pub fn do_com_prog_for_dialect(

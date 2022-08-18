@@ -38,8 +38,8 @@ fn build_tree(allocator: &mut Allocator, items: &[Vec<u8>]) -> Result<NodePtr, E
     } else {
         m! {
             let half_size = items.len() >> 1;
-            left <- build_tree(allocator, &items[..half_size].to_vec());
-            right <- build_tree(allocator, &items[half_size..].to_vec());
+            left <- build_tree(allocator, &items[..half_size]);
+            right <- build_tree(allocator, &items[half_size..]);
             allocator.new_pair(left, right)
         }
     }
@@ -61,9 +61,9 @@ fn build_tree_program(allocator: &mut Allocator, items: &[NodePtr]) -> Result<No
         m! {
             let half_size = items.len() >> 1;
             left <-
-                build_tree_program(allocator, &items[..half_size].to_vec());
+                build_tree_program(allocator, &items[..half_size]);
             right <-
-                build_tree_program(allocator, &items[half_size..].to_vec());
+                build_tree_program(allocator, &items[half_size..]);
 
             cons_atom <- allocator.new_atom(&[4_u8]);
             enlist(allocator, &[cons_atom, left, right])
@@ -93,11 +93,11 @@ fn build_used_constants_names(
     }
 
     let mut possible_symbols = HashSet::new();
-    let _ = for key in functions.keys() {
+    for key in functions.keys() {
         possible_symbols.insert(key);
     };
 
-    let _ = for key in constants.keys() {
+    for key in constants.keys() {
         possible_symbols.insert(key);
     };
 
@@ -105,7 +105,7 @@ fn build_used_constants_names(
     new_names.insert(MAIN_NAME.as_bytes().to_vec());
     let mut used_names = new_names.clone();
 
-    let _ = while !new_names.is_empty() {
+    while !new_names.is_empty() {
         let iterate_names = new_names.clone();
         new_names = HashSet::new();
 
@@ -162,7 +162,7 @@ fn parse_include(
     macros: &mut Vec<(Vec<u8>, NodePtr)>,
     run_program: Rc<dyn TRunProgram>,
 ) -> Result<(), EvalErr> {
-    return m! {
+    m! {
         prog <- assemble(
             allocator,
             "(_read (_full_path_for_name 1))"
@@ -190,7 +190,7 @@ fn parse_include(
                 Ok(())
             }
         }
-    };
+    }
 }
 
 fn unquote_args(
@@ -261,7 +261,7 @@ fn defun_inline_to_macro(
     let code = first(allocator, code_rest)?;
 
     let mut arg_atom_list = Vec::new();
-    let _ = flatten(allocator, use_args, &mut arg_atom_list);
+    flatten(allocator, use_args, &mut arg_atom_list);
     let arg_name_list = arg_atom_list
         .iter()
         .filter_map(|x| {
@@ -292,7 +292,7 @@ fn parse_mod_sexp(
     macros: &mut Vec<(Vec<u8>, NodePtr)>,
     run_program: Rc<dyn TRunProgram>,
 ) -> Result<(), EvalErr> {
-    return m! {
+    m! {
         op_node <- first(allocator, declaration_sexp);
         dec_rest <- rest(allocator, declaration_sexp);
         name_node <- first(allocator, dec_rest);
@@ -352,7 +352,7 @@ fn parse_mod_sexp(
                 Err(EvalErr(declaration_sexp, "expected defun, defmacro, or defconstant".to_string()))
             }
         }
-    };
+    }
 }
 
 fn compile_mod_stage_1(
@@ -422,7 +422,7 @@ fn symbol_table_for_tree(
 
     match allocator.sexp(tree) {
         SExp::Atom(_) => {
-            return Ok(vec![(tree, root_node.as_path().data().to_vec())]);
+            Ok(vec![(tree, root_node.as_path().data().to_vec())])
         }
         SExp::Pair(_, _) => {
             let left_bytes = NodePath::new(None).first();
@@ -585,7 +585,7 @@ pub fn compile_mod(
     _level: usize,
 ) -> Result<NodePtr, EvalErr> {
     // Deal with the "mod" keyword.
-    return m! {
+    m! {
         cr <- compile_mod_stage_1(allocator, args, run_program.clone());
         a_atom <- allocator.new_atom(&[2]);
         cons_atom <- allocator.new_atom(&[4]);
@@ -706,5 +706,5 @@ pub fn compile_mod(
                 )
             }
         }
-    };
+    }
 }

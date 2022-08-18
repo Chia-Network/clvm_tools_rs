@@ -142,7 +142,7 @@ pub fn compile_clvm(
         let text = fs::read_to_string(input_path)
             .map_err(|x| format!("error reading {}: {:?}", input_path, x))?;
 
-        let _ = compile_clvm_inner(
+        compile_clvm_inner(
             &mut allocator,
             search_paths,
             symbol_table,
@@ -179,7 +179,7 @@ pub fn compile_clvm(
             )
         })?;
 
-        let _ = temp_output_file
+        temp_output_file
             .write_all(target_data.as_bytes())
             .map_err(|_| format!("failed to write to {:?}", temp_output_file.path()))?;
 

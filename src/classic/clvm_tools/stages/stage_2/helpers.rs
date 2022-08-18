@@ -51,9 +51,9 @@ pub fn run(
 }
 
 pub fn brun(allocator: &mut Allocator, prog: NodePtr, args: NodePtr) -> Result<NodePtr, EvalErr> {
-    return m! {
+    m! {
         quoted_prog <- quote(allocator, prog);
         quoted_args <- quote(allocator, args);
         evaluate(allocator, quoted_prog, quoted_args)
-    };
+    }
 }
