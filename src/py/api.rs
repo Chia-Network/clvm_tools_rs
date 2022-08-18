@@ -34,7 +34,9 @@ fn get_version() -> PyResult<String> {
 }
 
 #[pyfunction(arg3 = "[]", arg4 = "None")]
-#[allow(clippy::borrow_deref_ref)]
+#[allow(clippy::all)] // #[allow(clippy::borrow_deref_ref)]
+// Eventually this can be downgraded
+// re: https://github.com/rust-lang/rust-clippy/issues/8971
 fn compile_clvm(
     input_path: &PyAny,
     output_path: String,

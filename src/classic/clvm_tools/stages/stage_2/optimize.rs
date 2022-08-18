@@ -590,9 +590,10 @@ impl<'a> OptimizerRunner<'a> {
         (self.to_run)(allocator, r, eval_f)
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn new(
         name: &str,
-        #[allow(clippy::type_complexity)] to_run: &'a dyn Fn(
+        to_run: &'a dyn Fn(
             &mut Allocator,
             NodePtr,
             Rc<dyn TRunProgram>,
