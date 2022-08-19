@@ -289,17 +289,18 @@ impl CldbOverrideBespokeCode {
 impl CldbRunnable for CldbOverrideBespokeCode {
     fn replace_step(&self, step: &RunStep) -> Option<Result<RunStep, RunFailure>> {
         match step {
-            RunStep::Op(sexp, c, a, None, p) => match sexp.borrow() {
+            RunStep::Op(sexp, context, arguments, None, parent) => match sexp.borrow() {
                 SExp::Integer(_, i) => {
                     if *i == 2_u32.to_bigint().unwrap() {
-                        match a.borrow() {
-                            SExp::Cons(_, f, args) => self.find_function_and_override_if_needed(
-                                sexp.clone(),
-                                c.clone(),
-                                f.clone(),
-                                args.clone(),
-                                p.clone(),
-                            ),
+                        match arguments.borrow() {
+                            SExp::Cons(_, first, args) => self
+                                .find_function_and_override_if_needed(
+                                    sexp.clone(),
+                                    context.clone(),
+                                    first.clone(),
+                                    args.clone(),
+                                    parent.clone(),
+                                ),
                             _ => None,
                         }
                     } else {

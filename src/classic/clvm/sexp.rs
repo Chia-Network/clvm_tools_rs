@@ -479,12 +479,10 @@ pub fn flatten(allocator: &mut Allocator, tree_: NodePtr, res: &mut Vec<NodePtr>
     loop {
         match allocator.sexp(tree) {
             SExp::Atom(_) => {
-                if !non_nil(allocator, tree) {
-                    return;
-                } else {
+                if non_nil(allocator, tree) {
                     res.push(tree);
-                    return;
                 }
+                return;
             }
             SExp::Pair(l, r) => {
                 flatten(allocator, l, res);

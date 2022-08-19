@@ -356,15 +356,10 @@ impl ArgumentParser {
                         if let Ok(v) = converter.convert("") {
                             params.insert(name.to_string(), v);
                         }
-
-                        i += 1;
-                    } else {
-                        if let Ok(v) = converter.convert(input_arg) {
-                            params.insert(name.to_string(), v);
-                        }
-
-                        i += 1;
+                    } else if let Ok(v) = converter.convert(input_arg) {
+                        params.insert(name.to_string(), v);
                     }
+                    i += 1;
                 }
 
                 _ => {

@@ -607,13 +607,13 @@ fn parse_sexp_inner(
     s: &[u8],
 ) -> Result<Vec<Rc<SExp>>, (Srcloc, String)> {
     let mut start = start_;
-    let mut p = p_;
-    let mut n = n_;
+    let mut parse_state = p_;
+    let mut char_index = n_;
     let mut res = Vec::new();
 
     loop {
-        if n >= s.len() {
-            match p {
+        if char_index >= s.len() {
+            match parse_state {
                 SExpParseState::Empty => {
                     return Ok(res);
                 }
@@ -640,21 +640,21 @@ fn parse_sexp_inner(
                 }
             }
         } else {
-            let this_char = s[n];
+            let this_char = s[char_index];
             let next_location = start.clone().advance(this_char);
 
-            match parse_sexp_step(start.clone(), p.borrow(), this_char) {
+            match parse_sexp_step(start.clone(), parse_state.borrow(), this_char) {
                 SExpParseResult::Error(l, e) => {
                     return Err((l, e));
                 }
                 SExpParseResult::Resume(np) => {
                     start = next_location;
-                    p = np;
-                    n += 1;
+                    parse_state = np;
+                    char_index += 1;
                 }
                 SExpParseResult::Emit(o, np) => {
-                    p = np;
-                    n += 1;
+                    parse_state = np;
+                    char_index += 1;
                     res.push(o);
                 }
             }
