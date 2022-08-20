@@ -896,3 +896,33 @@ fn difficult_judgement_about_nested_type() {
     );
     assert_eq!(ty.is_err(), true);
 }
+
+#[test]
+fn basic_nested_judgement_correct() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+    (mod ((V : Atom)) -> (Counter B)
+     (deftype A ((thing : Atom)))
+     (deftype B ((hash : Atom32)))
+     (deftype Counter x ((count : Atom) (obj : x)))
+     (new_Counter V (new_B (sha256 3)))
+    )"},
+        true,
+    );
+    assert_eq!(ty.is_err(), false);
+}
+
+#[test]
+fn basic_nested_judgement_wrong() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+    (mod ((V : Atom)) -> (Counter B)
+     (deftype A ((thing : Atom)))
+     (deftype B ((hash : Atom32)))
+     (deftype Counter x ((count : Atom) (obj : x)))
+     (new_Counter V (new_A (+ V 3)))
+    )"},
+        true,
+    );
+    assert_eq!(ty.is_err(), true);
+}
