@@ -4,9 +4,9 @@
     "binascii": "^0.0.2",
     "browserify": "^17.0.0",
     "jest": "^28.0.3",
-    "rollup": "^2.70.2",
+    "rollup": "^2.77.1",
     "webpack": "^5.72.0",
-    "webpack-cli": "^4.9.2"
+    "webpack-cli": "^4.10.0"
   },
   "devDependencies": {
     "@babel/core": "^7.1.6",

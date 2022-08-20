@@ -154,32 +154,45 @@ pub fn compile_clvm(
             &mut result_stream,
         )?;
 
-        {
-            let output_path_obj = Path::new(output_path);
-            let output_dir = output_path_obj
-                .parent()
-                .map(|p| Ok(p))
-                .unwrap_or_else(|| Err("could not get parent of output path"))?;
+        let output_path_obj = Path::new(output_path);
+        let output_dir = output_path_obj
+            .parent()
+            .map(|p| Ok(p))
+            .unwrap_or_else(|| Err("could not get parent of output path"))?;
 
-            let mut temp_output_file = NamedTempFile::new_in(output_dir).map_err(|e| {
-                format!(
-                    "error creating temporary compiler output for {}: {:?}",
-                    input_path, e
-                )
-            })?;
+        let target_data = result_stream.get_value().hex();
 
-            let _ = temp_output_file
-                .write_all(&result_stream.get_value().hex().as_bytes())
-                .map_err(|_| format!("failed to write to {:?}", temp_output_file.path()))?;
-
-            temp_output_file.persist(output_path.clone()).map_err(|e| {
-                format!(
-                    "error persisting temporary compiler output {}: {:?}",
-                    output_path, e
-                )
-            })?;
+        // Try to detect whether we'd put the same output in the output file.
+        // Don't proceed if true.
+        if let Ok(prev_content) = fs::read_to_string(output_path.clone()) {
+            let prev_trimmed = prev_content.trim();
+            let trimmed = target_data.trim();
+            if prev_trimmed == trimmed {
+                // It's the same program, bail regardless.
+                return Ok(output_path.to_string());
+            }
         }
-    };
+
+        // Make the contents appear atomically so that other test processes
+        // won't mistake an empty file for intended output.
+        let mut temp_output_file = NamedTempFile::new_in(output_dir).map_err(|e| {
+            format!(
+                "error creating temporary compiler output for {}: {:?}",
+                input_path, e
+            )
+        })?;
+
+        let _ = temp_output_file
+            .write_all(&target_data.as_bytes())
+            .map_err(|_| format!("failed to write to {:?}", temp_output_file.path()))?;
+
+        temp_output_file.persist(output_path.clone()).map_err(|e| {
+            format!(
+                "error persisting temporary compiler output {}: {:?}",
+                output_path, e
+            )
+        })?;
+    }
 
     Ok(output_path.to_string())
 }
