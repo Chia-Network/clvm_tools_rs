@@ -144,7 +144,10 @@ impl<const T: usize> PartialEq for Type<T> {
 }
 
 impl<const T: usize> Hash for Type<T> {
-    fn hash<H>(&self, state: &mut H) where H: Hasher {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
         self.to_sexp().hash(state)
     }
 }

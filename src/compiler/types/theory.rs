@@ -75,11 +75,11 @@ impl Context {
             (Type::TNullable(nt), _) => {
                 let (ty, ctx) = self.increase_type_specificity(nt.borrow(), tau)?;
                 Ok((Type::TNullable(Rc::new(ty)), ctx))
-            },
+            }
             (_, Type::TNullable(nt)) => {
                 let (ty, ctx) = self.increase_type_specificity(old, nt.borrow())?;
                 Ok((Type::TNullable(Rc::new(ty)), ctx))
-            },
+            }
             (_, Type::TExists(_)) => {
                 let r1 = self.reify(&polytype(&old), None);
                 let r2 = self.reify(&polytype(tau), None);
@@ -96,21 +96,23 @@ impl Context {
                 debug!("done subtype {}", ctx.to_sexp().to_string());
                 Ok((tau.clone(), ctx))
             }
-            (Type::TUnit(_), _) => {
-                Ok((Type::TNullable(Rc::new(tau.clone())), Box::new(self.clone())))
-            },
-            (_, Type::TUnit(_)) => {
-                Ok((Type::TNullable(Rc::new(old.clone())), Box::new(self.clone())))
-            },
+            (Type::TUnit(_), _) => Ok((
+                Type::TNullable(Rc::new(tau.clone())),
+                Box::new(self.clone()),
+            )),
+            (_, Type::TUnit(_)) => Ok((
+                Type::TNullable(Rc::new(old.clone())),
+                Box::new(self.clone()),
+            )),
             (Type::TExec(a), Type::TExec(b)) => {
                 let (ty, ctx) = self.increase_type_specificity(a.borrow(), b.borrow())?;
                 Ok((Type::TExec(Rc::new(ty)), ctx))
-            },
+            }
             (Type::TPair(a1, b1), Type::TPair(a2, b2)) => {
                 let (ares, ctx1) = self.increase_type_specificity(a1.borrow(), a2.borrow())?;
                 let (bres, ctx2) = ctx1.increase_type_specificity(b1.borrow(), b2.borrow())?;
                 Ok((Type::TPair(Rc::new(ares), Rc::new(bres)), ctx2))
-            },
+            }
             (Type::TFun(a1, b1), Type::TFun(a2, b2)) => {
                 // contravariant order
                 let (ares, ctx1) = self.increase_type_specificity(a2.borrow(), a1.borrow())?;
@@ -143,7 +145,12 @@ impl Context {
     // We must respect the extensionality rules in bidir section 4.
     // This means "increasing information" in the combined context.
     pub fn solve_(&self, alpha: &TypeVar, tau: &Monotype) -> Result<Option<Context>, CompileErr> {
-        debug!("{}solve increase {} for {}", i(), alpha.to_sexp().to_string(), tau.to_sexp().to_string());
+        debug!(
+            "{}solve increase {} for {}",
+            i(),
+            alpha.to_sexp().to_string(),
+            tau.to_sexp().to_string()
+        );
         let (new_tau, gamma1) = self.increase_specificity(alpha, tau)?;
         debug!("{}now figure out", i());
         let (gamma_l, gamma_r) = gamma1.inspect_context(alpha);
@@ -161,7 +168,12 @@ impl Context {
             gammaprime.push(ContextElim::CExistsSolved(alpha.clone(), new_tau.clone()));
             gammaprime.append(&mut gamma_l_copy.clone());
             let ctx = Context::new_wf(gammaprime.clone());
-            debug!("{}solve {} context {}", i(), fa.to_sexp().to_string(), ctx.to_sexp().to_string());
+            debug!(
+                "{}solve {} context {}",
+                i(),
+                fa.to_sexp().to_string(),
+                ctx.to_sexp().to_string()
+            );
             Ok(Some(ctx))
         } else {
             Ok(None)
@@ -455,7 +467,7 @@ impl Context {
                         return self.insert_at(alpha, rcontext).instantiate_r(t, &alpha1);
                     }
 
-                    Type::TPair(x,y) => {
+                    Type::TPair(x, y) => {
                         let alpha1 = fresh_tvar(x.loc());
                         let beta1 = fresh_tvar(y.loc());
                         let rcontext = Context::new_wf(vec![
@@ -463,15 +475,24 @@ impl Context {
                                 alpha.clone(),
                                 Type::TPair(
                                     Rc::new(Type::TExists(alpha1.clone())),
-                                    Rc::new(Type::TExists(beta1.clone()))
-                                )
+                                    Rc::new(Type::TExists(beta1.clone())),
+                                ),
                             ),
                             ContextElim::CExists(alpha1.clone()),
-                            ContextElim::CExists(beta1.clone())
+                            ContextElim::CExists(beta1.clone()),
                         ]);
-                        debug!("{}have pair with context {}", i(), self.to_sexp().to_string());
+                        debug!(
+                            "{}have pair with context {}",
+                            i(),
+                            self.to_sexp().to_string()
+                        );
                         let ctx0 = self.insert_at(alpha, rcontext);
-                        debug!("{}about to instantiate_r {} with pair elaborated {}", i(), alpha.to_sexp().to_string(), ctx0.to_sexp().to_string());
+                        debug!(
+                            "{}about to instantiate_r {} with pair elaborated {}",
+                            i(),
+                            alpha.to_sexp().to_string(),
+                            ctx0.to_sexp().to_string()
+                        );
                         let ctx1 = ctx0.instantiate_r(x.borrow(), &alpha1)?;
                         return ctx1.instantiate_r(y.borrow(), &beta1);
                     }
@@ -937,15 +958,21 @@ impl Context {
 impl TypeTheory for Context {
     fn solve(&self, alpha: &TypeVar, tau: &Monotype) -> Result<Option<Context>, CompileErr> {
         indented(|| {
-            debug!("{}solve {} {} in {}", i(), alpha.to_sexp().to_string(), tau.to_sexp().to_string(), self.to_sexp().to_string());
+            debug!(
+                "{}solve {} {} in {}",
+                i(),
+                alpha.to_sexp().to_string(),
+                tau.to_sexp().to_string(),
+                self.to_sexp().to_string()
+            );
             let res = self.solve_(alpha, tau);
             match &res {
                 Ok(Some(v)) => {
                     debug!("{}solve => {}", i(), v.to_sexp().to_string());
-                },
+                }
                 Ok(None) => {
                     debug!("{}solve => None", i());
-                },
+                }
                 Err(e) => {
                     debug!("{}solve => {:?}", i(), e);
                 }
@@ -1178,11 +1205,20 @@ impl TypeTheory for Context {
                 .map(|x| polytype(x))
                 .unwrap_or_else(|| typ.clone()),
             Type::TForall(tv, ty) => Type::TForall(tv.clone(), Rc::new(self.reify(ty, next_orig))),
-            Type::TFun(a, b) => Type::TFun(Rc::new(self.reify(a, next_orig.clone())), Rc::new(self.reify(b, next_orig))),
+            Type::TFun(a, b) => Type::TFun(
+                Rc::new(self.reify(a, next_orig.clone())),
+                Rc::new(self.reify(b, next_orig)),
+            ),
             Type::TNullable(t) => Type::TNullable(Rc::new(self.reify(t, next_orig.clone()))),
             Type::TExec(t) => Type::TExec(Rc::new(self.reify(t, next_orig.clone()))),
-            Type::TPair(a, b) => Type::TPair(Rc::new(self.reify(a, next_orig.clone())), Rc::new(self.reify(b, next_orig))),
-            Type::TApp(a, b) => Type::TApp(Rc::new(self.reify(a, next_orig.clone())), Rc::new(self.reify(b, next_orig))),
+            Type::TPair(a, b) => Type::TPair(
+                Rc::new(self.reify(a, next_orig.clone())),
+                Rc::new(self.reify(b, next_orig)),
+            ),
+            Type::TApp(a, b) => Type::TApp(
+                Rc::new(self.reify(a, next_orig.clone())),
+                Rc::new(self.reify(b, next_orig)),
+            ),
             _ => typ.clone(),
         }
     }

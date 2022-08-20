@@ -153,7 +153,11 @@ impl Context {
                 // If tau is a simple recursive definition then alpha should
                 // appear in it.  Backstop alpha free in tau.
                 gamma.0.insert(0, ContextElim::CExists(alpha.clone()));
-                debug!("gonna check typewf on {} in {}", tau.to_sexp().to_string(), gamma.to_sexp().to_string());
+                debug!(
+                    "gonna check typewf on {} in {}",
+                    tau.to_sexp().to_string(),
+                    gamma.to_sexp().to_string()
+                );
                 no_existentials && gamma.typewf(&tau)
             }
             ContextElim::CMarker(alpha) => {
@@ -184,9 +188,11 @@ impl Context {
                                 .and_then(|finished_type| monotype(&finished_type))
                                 .map(|tmono| {
                                     debug!("tabls unrecurse");
-                                    let new_ctx = self.appends_wf(vec![
-                                        ContextElim::CExistsSolved(new_tvar.clone(), tmono),
-                                    ]);
+                                    let new_ctx =
+                                        self.appends_wf(vec![ContextElim::CExistsSolved(
+                                            new_tvar.clone(),
+                                            tmono,
+                                        )]);
 
                                     (Type::TExists(new_tvar), new_ctx)
                                 });
@@ -296,8 +302,16 @@ impl Context {
 
     pub fn insert_at(&self, c: &TypeVar, theta: Context) -> Context {
         let (gamma_l, gamma_r) = self.inspect_context(&c);
-        debug!("insert_at {} left  {}", c.to_sexp().to_string(), gamma_l.to_sexp().to_string());
-        debug!("insert_at {} right {}", c.to_sexp().to_string(), gamma_r.to_sexp().to_string());
+        debug!(
+            "insert_at {} left  {}",
+            c.to_sexp().to_string(),
+            gamma_l.to_sexp().to_string()
+        );
+        debug!(
+            "insert_at {} right {}",
+            c.to_sexp().to_string(),
+            gamma_r.to_sexp().to_string()
+        );
         let mut result_list = gamma_r.0.clone();
         let mut theta_copy = theta.0.clone();
         let mut gamma_l_copy = gamma_l.0.clone();
@@ -329,12 +343,19 @@ impl Context {
                 .unwrap_or_else(|| Type::TExists(v.clone())),
             Type::TNullable(t) => Type::TNullable(Rc::new(self.apply_(visited, t))),
             Type::TExec(t) => Type::TExec(Rc::new(self.apply_(visited, t))),
-            Type::TFun(t1, t2) => Type::TFun(Rc::new(self.apply_(visited, t1)), Rc::new(self.apply_(visited, t2))),
-            Type::TPair(t1, t2) => Type::TPair(Rc::new(self.apply_(visited, t1)), Rc::new(self.apply_(visited, t2))),
+            Type::TFun(t1, t2) => Type::TFun(
+                Rc::new(self.apply_(visited, t1)),
+                Rc::new(self.apply_(visited, t2)),
+            ),
+            Type::TPair(t1, t2) => Type::TPair(
+                Rc::new(self.apply_(visited, t1)),
+                Rc::new(self.apply_(visited, t2)),
+            ),
             Type::TAbs(v, t) => Type::TAbs(v.clone(), Rc::new(self.apply_(visited, t))),
-            Type::TApp(t1, t2) => {
-                Type::TApp(Rc::new(self.apply_(visited, t1)), Rc::new(self.apply_(visited, t2)))
-            },
+            Type::TApp(t1, t2) => Type::TApp(
+                Rc::new(self.apply_(visited, t1)),
+                Rc::new(self.apply_(visited, t2)),
+            ),
         }
     }
 
