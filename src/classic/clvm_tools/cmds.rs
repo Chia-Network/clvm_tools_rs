@@ -934,7 +934,7 @@ pub fn launch_tool(
                     let context = standard_type_context();
                     let compileform = frontend(opts.clone(), pre_forms)?;
                     let target_type = context.typecheck_chialisp_program(&compileform)?;
-                    Ok(context.reify(&target_type))
+                    Ok(context.reify(&target_type, None))
                 })
             {
                 stderr_output(format!("{}: {}\n", e.0.to_string(), e.1));

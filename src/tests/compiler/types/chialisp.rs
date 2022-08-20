@@ -135,12 +135,12 @@ fn test_chialisp_program_typecheck(s: &str, flatten: bool) -> Result<Polytype, C
     let target_type = context.typecheck_chialisp_program(&compileform)?;
     if flatten {
         Ok(flatten_exists(
-            &context.reify(&target_type),
+            &context.reify(&target_type, None),
             &mut held,
             &mut fcount,
         ))
     } else {
-        Ok(context.reify(&target_type))
+        Ok(context.reify(&target_type, None))
     }
 }
 
@@ -880,4 +880,19 @@ fn tut_example_17() {
         true,
     );
     assert_eq!(ty.is_err(), false);
+}
+
+#[test]
+fn difficult_judgement_about_nested_type() {
+    let ty = test_chialisp_program_typecheck(
+        indoc! {"
+    (mod ((V : Atom)) -> B
+     (deftype A ((thing : Atom)))
+     (deftype B ((hash : Atom32)))
+     (deftype Counter x ((count : Atom) (obj : x)))
+     (get_Counter_obj (new_Counter V (new_A 3)))
+    )"},
+        true,
+    );
+    assert_eq!(ty.is_err(), true);
 }

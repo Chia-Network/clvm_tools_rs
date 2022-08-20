@@ -4,6 +4,7 @@
 use log::Level::Debug;
 use log::{debug, log_enabled};
 use std::borrow::Borrow;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::compiler::comptypes::CompileErr;
@@ -140,14 +141,20 @@ impl Context {
         let c = self.0[0].clone();
         let cs = self.0.iter().skip(1).map(|x| x.clone()).collect();
         // Do not use new_wf here... we're already checking well-formedness
-        let gamma = Context::new(cs);
+        let mut gamma = Context::new(cs);
 
         match c {
             ContextElim::CForall(alpha) => !gamma.foralls().elem(&alpha),
             ContextElim::CVar(x, a) => !gamma.vars().elem(&x) && gamma.typewf(&a),
             ContextElim::CExists(alpha) => !gamma.existentials().elem(&alpha),
             ContextElim::CExistsSolved(alpha, tau) => {
-                !gamma.existentials().elem(&alpha) && gamma.typewf(&tau)
+                // alpha must not exist to the right of the solution but...
+                let no_existentials = !gamma.existentials().elem(&alpha);
+                // If tau is a simple recursive definition then alpha should
+                // appear in it.  Backstop alpha free in tau.
+                gamma.0.insert(0, ContextElim::CExists(alpha.clone()));
+                debug!("gonna check typewf on {} in {}", tau.to_sexp().to_string(), gamma.to_sexp().to_string());
+                no_existentials && gamma.typewf(&tau)
             }
             ContextElim::CMarker(alpha) => {
                 !gamma.markers().elem(&alpha) && !gamma.existentials().elem(&alpha)
@@ -173,12 +180,11 @@ impl Context {
                             let tpoly = polytype(t.borrow());
                             let new_tvar = fresh_tvar(v.loc());
                             let finished_type_rec = type_subst(t2.borrow(), &v, tpoly.borrow());
-                            return unrecurse(&new_tvar, &t2, &t1, &finished_type_rec)
+                            return unrecurse(&new_tvar, &t1, &t2, &finished_type_rec)
                                 .and_then(|finished_type| monotype(&finished_type))
                                 .map(|tmono| {
                                     debug!("tabls unrecurse");
                                     let new_ctx = self.appends_wf(vec![
-                                        ContextElim::CForall(new_tvar.clone()),
                                         ContextElim::CExistsSolved(new_tvar.clone(), tmono),
                                     ]);
 
@@ -290,17 +296,27 @@ impl Context {
 
     pub fn insert_at(&self, c: &TypeVar, theta: Context) -> Context {
         let (gamma_l, gamma_r) = self.inspect_context(&c);
-        let mut result_list = gamma_l.0.clone();
+        debug!("insert_at {} left  {}", c.to_sexp().to_string(), gamma_l.to_sexp().to_string());
+        debug!("insert_at {} right {}", c.to_sexp().to_string(), gamma_r.to_sexp().to_string());
+        let mut result_list = gamma_r.0.clone();
         let mut theta_copy = theta.0.clone();
-        let mut gamma_r_copy = gamma_r.0.clone();
+        let mut gamma_l_copy = gamma_l.0.clone();
         result_list.append(&mut theta_copy);
-        result_list.append(&mut gamma_r_copy);
+        result_list.append(&mut gamma_l_copy);
         let res = Context::new_wf(result_list);
         debug!("insert_at {}", res.to_sexp().to_string());
         res
     }
 
-    pub fn apply_(&self, typ: &Polytype) -> Polytype {
+    pub fn apply_(&self, visited: &mut HashSet<Polytype>, typ: &Polytype) -> Polytype {
+        // Defeat recursion.
+        if visited.contains(typ) {
+            return typ.clone();
+        }
+
+        debug!("apply {}", typ.to_sexp().to_string());
+        visited.insert(typ.clone());
+
         match typ {
             Type::TUnit(_) => typ.clone(),
             Type::TAny(_) => typ.clone(),
@@ -309,21 +325,22 @@ impl Context {
             Type::TForall(v, t) => Type::TForall(v.clone(), t.clone()),
             Type::TExists(v) => self
                 .find_solved(v)
-                .map(|v| self.apply(&polytype(&v)))
+                .map(|v| self.apply_(visited, &polytype(&v)))
                 .unwrap_or_else(|| Type::TExists(v.clone())),
-            Type::TNullable(t) => Type::TNullable(Rc::new(self.apply(t))),
-            Type::TExec(t) => Type::TExec(Rc::new(self.apply(t))),
-            Type::TFun(t1, t2) => Type::TFun(Rc::new(self.apply(t1)), Rc::new(self.apply(t2))),
-            Type::TPair(t1, t2) => Type::TPair(Rc::new(self.apply(t1)), Rc::new(self.apply(t2))),
-            Type::TAbs(v, t) => Type::TAbs(v.clone(), Rc::new(self.apply(t))),
-            Type::TApp(t1, t2) => Type::TApp(Rc::new(self.apply(t1)), Rc::new(self.apply(t2))),
+            Type::TNullable(t) => Type::TNullable(Rc::new(self.apply_(visited, t))),
+            Type::TExec(t) => Type::TExec(Rc::new(self.apply_(visited, t))),
+            Type::TFun(t1, t2) => Type::TFun(Rc::new(self.apply_(visited, t1)), Rc::new(self.apply_(visited, t2))),
+            Type::TPair(t1, t2) => Type::TPair(Rc::new(self.apply_(visited, t1)), Rc::new(self.apply_(visited, t2))),
+            Type::TAbs(v, t) => Type::TAbs(v.clone(), Rc::new(self.apply_(visited, t))),
+            Type::TApp(t1, t2) => {
+                Type::TApp(Rc::new(self.apply_(visited, t1)), Rc::new(self.apply_(visited, t2)))
+            },
         }
     }
 
     pub fn apply(&self, typ: &Polytype) -> Polytype {
-        let res = self.apply_(typ);
-        // debug!("apply {} in {} => {}", typ.to_sexp().to_string(), self.to_sexp().to_string(), res.to_sexp().to_string());
-        res
+        let mut visited = HashSet::new();
+        self.apply_(&mut visited, typ)
     }
 
     pub fn ordered(&self, alpha: &TypeVar, beta: &TypeVar) -> bool {

@@ -70,9 +70,9 @@ pub fn check_expression_against_type_with_context(
     let mut fcount: usize = 0;
     let mut held = HashMap::new();
     let usetype = if flatten {
-        flatten_exists(&context.reify(&polytype), &mut held, &mut fcount)
+        flatten_exists(&context.reify(&polytype, None), &mut held, &mut fcount)
     } else {
-        context.reify(&polytype)
+        context.reify(&polytype, None)
     };
     assert_eq!(
         expected.to_sexp().to_string(),
