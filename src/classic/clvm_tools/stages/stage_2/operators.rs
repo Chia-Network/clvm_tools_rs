@@ -33,7 +33,7 @@ pub struct CompilerOperators {
     compile_outcomes: RefCell<HashMap<String, String>>,
     dialect: RefCell<Rc<dyn Dialect>>,
     runner: RefCell<Rc<dyn TRunProgram>>,
-    opt_memo: Rc<RefCell<HashMap<String, NodePtr>>>
+    opt_memo: Rc<RefCell<HashMap<String, NodePtr>>>,
 }
 
 impl CompilerOperators {
@@ -233,12 +233,7 @@ impl Dialect for CompilerOperators {
                 } else if opbuf == "com".as_bytes() {
                     do_com_prog_for_dialect(self.get_runner(), allocator, sexp)
                 } else if opbuf == "opt".as_bytes() {
-                    do_optimize(
-                        self.get_runner(),
-                        allocator,
-                        self.opt_memo.clone(),
-                        sexp
-                    )
+                    do_optimize(self.get_runner(), allocator, self.opt_memo.clone(), sexp)
                 } else if opbuf == "_set_symbol_table".as_bytes() {
                     self.set_symbol_table(allocator, sexp)
                 } else if opbuf == "_full_path_for_name".as_bytes() {
