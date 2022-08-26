@@ -1,6 +1,7 @@
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::fs;
+use std::mem::swap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -32,6 +33,7 @@ pub struct CompilerOperators {
     compile_outcomes: RefCell<HashMap<String, String>>,
     dialect: RefCell<Rc<dyn Dialect>>,
     runner: RefCell<Rc<dyn TRunProgram>>,
+    opt_memo: Rc<RefCell<HashMap<String, NodePtr>>>
 }
 
 impl CompilerOperators {
@@ -45,6 +47,7 @@ impl CompilerOperators {
             compile_outcomes: RefCell::new(HashMap::new()),
             dialect: RefCell::new(base_dialect),
             runner: RefCell::new(base_runner),
+            opt_memo: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
@@ -185,7 +188,8 @@ impl CompilerOperators {
                                     .decode();
 
                                     self.compile_outcomes.replace_with(|co| {
-                                        let mut result = co.clone();
+                                        let mut result = HashMap::new();
+                                        swap(&mut result, co);
                                         result.insert(hash_text, name_text);
                                         result
                                     });
@@ -229,7 +233,12 @@ impl Dialect for CompilerOperators {
                 } else if opbuf == "com".as_bytes() {
                     do_com_prog_for_dialect(self.get_runner(), allocator, sexp)
                 } else if opbuf == "opt".as_bytes() {
-                    do_optimize(self.get_runner(), allocator, sexp)
+                    do_optimize(
+                        self.get_runner(),
+                        allocator,
+                        self.opt_memo.clone(),
+                        sexp
+                    )
                 } else if opbuf == "_set_symbol_table".as_bytes() {
                     self.set_symbol_table(allocator, sexp)
                 } else if opbuf == "_full_path_for_name".as_bytes() {

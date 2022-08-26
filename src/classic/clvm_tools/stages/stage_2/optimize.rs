@@ -1,7 +1,12 @@
+use std::borrow::Borrow;
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::fs;
+use std::mem::swap;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering;
 
 use num_bigint::ToBigInt;
 
@@ -21,12 +26,40 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::helpers::quote;
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::clvm_tools::NodePath::NodePath;
+use crate::classic::clvm_tools::sha256tree::sha256tree;
 
 use crate::util::{number_from_u8, u8_from_number};
+
+use crate::compiler::sexp::decode_string;
 
 #[derive(Clone)]
 pub struct DoOptProg {
     runner: Rc<dyn TRunProgram>,
+}
+
+lazy_static! {
+    pub static ref DEPTH_COUNT : AtomicI32 = AtomicI32::new(0);
+}
+
+pub fn depth_count() -> i32 {
+    DEPTH_COUNT.fetch_add(0, Ordering::SeqCst)
+}
+
+pub fn enter() {
+    DEPTH_COUNT.fetch_add(1, Ordering::SeqCst);
+}
+
+pub fn leave() {
+    DEPTH_COUNT.fetch_add(-1, Ordering::SeqCst);
+}
+
+pub fn indent() -> String {
+    let dc = depth_count() as usize;
+    let mut v = Vec::with_capacity(dc);
+    for i in 0..dc {
+        v.push(b' ');
+    }
+    decode_string(&v)
 }
 
 const DEBUG_OPTIMIZATIONS: bool = false;
@@ -83,6 +116,7 @@ pub fn seems_constant<'a>(allocator: &'a mut Allocator, sexp: NodePtr) -> bool {
 
 fn constant_optimizer<'a>(
     allocator: &mut Allocator,
+    memo: Rc<RefCell<HashMap<String, NodePtr>>>,
     r: NodePtr,
     _max_cost: Cost,
     runner: Rc<dyn TRunProgram>,
@@ -92,6 +126,16 @@ fn constant_optimizer<'a>(
      * it's a constant. So we can simply evaluate it and
      * return the quoted result.
      */
+    if let SExp::Pair(first,rest) = allocator.sexp(r) {
+        if let SExp::Atom(b) = allocator.sexp(first) {
+            let buf = allocator.buf(&b);
+            if buf.len() == 1 && buf[0] == 1 {
+                // Short circuit already quoted expression.
+                return Ok(r);
+            }
+        }
+    }
+
     let sc_r = seems_constant(allocator, r);
     let nn_r = non_nil(allocator, r);
     if DIAG_OPTIMIZATIONS {
@@ -112,7 +156,7 @@ fn constant_optimizer<'a>(
             );
             let r1 = res.1;
             let _ = if DIAG_OPTIMIZATIONS {
-                print!(
+                println!(
                     "CONSTANT_OPTIMIZER {} TO {}\n",
                     disassemble(allocator, r),
                     disassemble(allocator, r1)
@@ -142,6 +186,7 @@ pub fn cons_q_a_optimizer_pattern<'a>(allocator: &'a mut Allocator) -> NodePtr {
 
 pub fn cons_q_a_optimizer<'a>(
     allocator: &mut Allocator,
+    memo: Rc<RefCell<HashMap<String, NodePtr>>>,
     r: NodePtr,
     _eval_f: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
@@ -278,6 +323,7 @@ fn var_change_optimizer_cons_eval_pattern<'a>(allocator: &'a mut Allocator) -> N
 
 fn var_change_optimizer_cons_eval(
     allocator: &mut Allocator,
+    memo: Rc<RefCell<HashMap<String, NodePtr>>>,
     r: NodePtr,
     eval_f: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
@@ -296,120 +342,122 @@ fn var_change_optimizer_cons_eval(
     match match_sexp(allocator, pattern, r, HashMap::new()).as_ref() {
         None => Ok(r),
         Some(t1) => {
-            m! {
-                original_args <- t1.get("args").
-                    ok_or(EvalErr(r, "bad pattern match on args".to_string()));
+            let original_args = t1.get("args").
+                    ok_or(EvalErr(r, "bad pattern match on args".to_string()))?;
 
-                let _ = if DIAG_OPTIMIZATIONS {
-                    print!(
-                        "XXX ORIGINAL_ARGS {}\n",
-                        disassemble(allocator, *original_args)
-                    );
-                };
-                original_call <- t1.get("sexp").
-                    ok_or(EvalErr(r, "bad pattern match on sexp".to_string()));
-                let _ = if DIAG_OPTIMIZATIONS {
-                    print!(
-                        "XXX ORIGINAL_CALL {}\n",
-                        disassemble(allocator, *original_call)
-                    );
-                };
-
-                new_eval_sexp_args <- sub_args(
-                    allocator,
-                    *original_call,
-                    *original_args
+            if DIAG_OPTIMIZATIONS {
+                println!(
+                    "XXX ORIGINAL_ARGS {}\n",
+                    disassemble(allocator, *original_args)
                 );
-                let _ = if DIAG_OPTIMIZATIONS {
-                    print!(
-                        "XXX new_eval_sexp_args {} ORIG {}\n",
-                        disassemble(allocator, new_eval_sexp_args),
-                        disassemble(allocator, *original_args)
-                    );
+            };
+            let original_call = t1.get("sexp").
+                ok_or(EvalErr(r, "bad pattern match on sexp".to_string()))?;
+
+            if DIAG_OPTIMIZATIONS {
+                println!(
+                    "XXX ORIGINAL_CALL {}\n",
+                    disassemble(allocator, *original_call)
+                );
+            };
+
+            let new_eval_sexp_args = sub_args(
+                allocator,
+                *original_call,
+                *original_args
+            )?;
+
+            if DIAG_OPTIMIZATIONS {
+                println!(
+                    "XXX new_eval_sexp_args {} ORIG {}\n",
+                    disassemble(allocator, new_eval_sexp_args),
+                    disassemble(allocator, *original_args)
+                );
+            };
+
+            // Do not iterate into a quoted value as if it were a list
+            if seems_constant(allocator, new_eval_sexp_args) {
+                if DIAG_OPTIMIZATIONS {
+                    println!("XXX seems_constant\n");
+                }
+                optimize_sexp_(
+                    allocator,
+                    memo,
+                    new_eval_sexp_args,
+                    eval_f
+                )
+            } else {
+                if DIAG_OPTIMIZATIONS {
+                    println!("XXX does not seems_constant\n");
                 };
 
-                // Do not iterate into a quoted value as if it were a list
-                if seems_constant(allocator, new_eval_sexp_args) {
-                    if DIAG_OPTIMIZATIONS {
-                        print!("XXX seems_constant\n");
-                    }
-                    optimize_sexp(
+                let new_operands =
+                    proper_list(
                         allocator,
                         new_eval_sexp_args,
-                        eval_f
-                    )
-                } else { m! {
-                    let _ = if DIAG_OPTIMIZATIONS {
-                        print!("XXX does not seems_constant\n");
-                    };
-
-                    new_operands <-
-                        proper_list(
-                            allocator,
+                        true).ok_or(
+                        EvalErr(
                             new_eval_sexp_args,
-                            true).ok_or(
-                            EvalErr(
-                                new_eval_sexp_args,
-                                "Must be a proper list".to_string()
-                            )
-                        );
+                            "Must be a proper list".to_string()
+                        )
+                    )?;
 
-                    opt_operands <-
-                        mapM(
-                            allocator,
-                            &mut new_operands.iter(),
-                            &|allocator, item| {
-                                optimize_sexp(allocator, *item, eval_f.clone())
-                            }
-                        );
-
-                    non_constant_count <- foldM(
+                let mut opt_operands = Vec::new();
+                for item in new_operands.iter() {
+                    opt_operands.push(optimize_sexp_(
                         allocator,
-                        &|allocator, acc, val| {
-                            if DIAG_OPTIMIZATIONS {
-                                print!(
-                                    "XXX opt_operands {} {}\n",
-                                    acc,
-                                    disassemble(allocator, val)
-                                );
-                            }
-                            let increment =
-                                match allocator.sexp(val) {
-                                    SExp::Pair(val_first,_) => {
-                                        match allocator.sexp(val_first) {
-                                            SExp::Atom(b) => {
-                                                let vf_buf = allocator.buf(&b);
-                                                if vf_buf.len() != 1 || vf_buf[0] != 1 {
-                                                    1
-                                                } else {
-                                                    0
-                                                }
-                                            },
-                                            _ => 0
-                                        }
-                                    },
-                                    _ => 0
-                                };
+                        memo.clone(),
+                        *item,
+                        eval_f.clone()
+                    )?);
+                }
 
-                            Ok(acc + increment)
-                        },
-                        0,
-                        &mut opt_operands.iter().map(|x| *x)
+                let non_constant_count = foldM(
+                    allocator,
+                    &|allocator, acc, val| {
+                        if DIAG_OPTIMIZATIONS {
+                            println!(
+                                "XXX opt_operands {} {}\n",
+                                acc,
+                                disassemble(allocator, val)
+                            );
+                        }
+                        let increment =
+                            match allocator.sexp(val) {
+                                SExp::Pair(val_first,_) => {
+                                    match allocator.sexp(val_first) {
+                                        SExp::Atom(b) => {
+                                            let vf_buf = allocator.buf(&b);
+                                            if vf_buf.len() != 1 || vf_buf[0] != 1 {
+                                                1
+                                            } else {
+                                                0
+                                            }
+                                        },
+                                        _ => 0
+                                    }
+                                },
+                                _ => 0
+                            };
+
+                        Ok(acc + increment)
+                    },
+                    0,
+                    &mut opt_operands.iter().map(|x| *x)
+                )?;
+
+                if DIAG_OPTIMIZATIONS {
+                    println!(
+                        "XXX non_constant_count {}\n",
+                        non_constant_count
                     );
+                };
 
-                    let _ = if DIAG_OPTIMIZATIONS {
-                        print!(
-                            "XXX non_constant_count {}\n",
-                            non_constant_count
-                        );
-                    };
-
-                    if non_constant_count < 1 {
-                        enlist(allocator, &opt_operands)
-                    } else {
-                        Ok(r)
-                    }
-                } }
+                if non_constant_count < 1 {
+                    enlist(allocator, &opt_operands)
+                } else {
+                    Ok(r)
+                }
             }
         }
     }
@@ -417,10 +465,12 @@ fn var_change_optimizer_cons_eval(
 
 fn children_optimizer(
     allocator: &mut Allocator,
+    memo: Rc<RefCell<HashMap<String, NodePtr>>>,
     r: NodePtr,
     eval_f: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
     // Recursively apply optimizations to all non-quoted child nodes.
+    let mut different = false;
     match proper_list(allocator, r, true) {
         None => Ok(r),
         Some(list) => {
@@ -436,15 +486,27 @@ fn children_optimizer(
                 _ => {}
             }
 
-            m! {
-                optimized <- mapM(
+            let mut optimized = Vec::new();
+            for item in list.iter() {
+                let res = optimize_sexp_(
                     allocator,
-                    &mut list.into_iter(),
-                    &|allocator, v| {
-                        optimize_sexp(allocator, v, eval_f.clone())
-                    }
-                );
+                    memo.clone(),
+                    *item,
+                    eval_f.clone()
+                )?;
+                if !equal_to(allocator, *item, res) {
+                    different = true;
+                }
+                optimized.push(res);
+            }
+
+            if different {
                 enlist(allocator, &optimized)
+            } else {
+                // If we didn't produce any different children, skip producing
+                // a new list and return r.  Take advantage of using a consistent
+                // allocator to help the cache.
+                Ok(r)
             }
         }
     }
@@ -460,6 +522,7 @@ fn cons_optimizer_pattern_rest<'a>(allocator: &'a mut Allocator) -> NodePtr {
 
 fn cons_optimizer<'a>(
     allocator: &mut Allocator,
+    memo_: Rc<RefCell<HashMap<String, NodePtr>>>,
     r: NodePtr,
     _eval_f: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
@@ -503,6 +566,7 @@ fn rest_atom_pattern<'a>(allocator: &'a mut Allocator) -> NodePtr {
 
 fn path_optimizer<'a>(
     allocator: &mut Allocator,
+    memo: Rc<RefCell<HashMap<String, NodePtr>>>,
     r: NodePtr,
     _eval_f: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
@@ -562,6 +626,7 @@ fn quote_pattern_1(allocator: &mut Allocator) -> NodePtr {
 
 fn quote_null_optimizer<'a>(
     allocator: &mut Allocator,
+    memo: Rc<RefCell<HashMap<String, NodePtr>>>,
     r: NodePtr,
     _eval_f: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
@@ -578,6 +643,7 @@ fn apply_null_pattern_1(allocator: &mut Allocator) -> NodePtr {
 
 fn apply_null_optimizer<'a>(
     allocator: &mut Allocator,
+    memo: Rc<RefCell<HashMap<String, NodePtr>>>,
     r: NodePtr,
     _eval_f: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
@@ -590,23 +656,25 @@ fn apply_null_optimizer<'a>(
 
 struct OptimizerRunner<'a> {
     pub name: String,
-    to_run: &'a dyn Fn(&mut Allocator, NodePtr, Rc<dyn TRunProgram>) -> Result<NodePtr, EvalErr>,
+    to_run: &'a dyn Fn(&mut Allocator, Rc<RefCell<HashMap<String, NodePtr>>>, NodePtr, Rc<dyn TRunProgram>) -> Result<NodePtr, EvalErr>,
 }
 
 impl<'a> OptimizerRunner<'a> {
     pub fn invoke(
         &self,
         allocator: &mut Allocator,
+        optimized: Rc<RefCell<HashMap<String, NodePtr>>>,
         r: NodePtr,
         eval_f: Rc<dyn TRunProgram>,
     ) -> Result<NodePtr, EvalErr> {
-        (self.to_run)(allocator, r, eval_f)
+        (self.to_run)(allocator, optimized, r, eval_f)
     }
 
     pub fn new(
         name: &str,
         to_run: &'a dyn Fn(
             &mut Allocator,
+            Rc<RefCell<HashMap<String, NodePtr>>>,
             NodePtr,
             Rc<dyn TRunProgram>,
         ) -> Result<NodePtr, EvalErr>,
@@ -620,10 +688,25 @@ impl<'a> OptimizerRunner<'a> {
 
 pub fn optimize_sexp_<'a>(
     allocator: &mut Allocator,
+    memo: Rc<RefCell<HashMap<String, NodePtr>>>,
     r_: NodePtr,
     eval_f: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
     let mut r = r_;
+    let footprint = sha256tree(allocator, r).hex();
+
+    {
+        let memo_rc: &RefCell<HashMap<String, NodePtr>> = memo.borrow();
+        let memo_ref: Ref<HashMap<String, NodePtr>> = memo_rc.borrow();
+        let memo: &HashMap<String, NodePtr> = memo_ref.borrow();
+        if let Some(res) = memo.get(&r_.to_string()) {
+            return Ok(*res);
+        }
+
+        if let Some(res) = memo.get(&footprint) {
+            return Ok(*res);
+        }
+    }
 
     /*
      * Optimize an s-expression R written for clvm to R_opt where
@@ -631,8 +714,8 @@ pub fn optimize_sexp_<'a>(
      */
     let OPTIMIZERS: Vec<OptimizerRunner> = vec![
         OptimizerRunner::new("cons_optimizer", &cons_optimizer),
-        OptimizerRunner::new("constant_optimizer", &|allocator, r, eval_f| {
-            constant_optimizer(allocator, r, 0, eval_f.clone())
+        OptimizerRunner::new("constant_optimizer", &|allocator, memo, r, eval_f| {
+            constant_optimizer(allocator, memo, r, 0, eval_f.clone())
         }),
         OptimizerRunner::new("cons_q_a_optimizer", &cons_q_a_optimizer),
         OptimizerRunner::new(
@@ -656,7 +739,7 @@ pub fn optimize_sexp_<'a>(
             SExp::Pair(_, _) => {
                 for opt in OPTIMIZERS.iter() {
                     name = opt.name.clone();
-                    match opt.invoke(allocator, r, eval_f.clone()) {
+                    match opt.invoke(allocator, memo.clone(), r, eval_f.clone()) {
                         Err(e) => {
                             return Err(e);
                         }
@@ -670,19 +753,26 @@ pub fn optimize_sexp_<'a>(
                 }
 
                 if equal_to(allocator, start_r, r) {
-                    return Ok(r);
+                    let memo_rc: &RefCell<HashMap<String, NodePtr>> = memo.borrow();
+                    memo_rc.replace_with(|mr| {
+                        let mut work = HashMap::new();
+                        swap(&mut work, mr);
+                        work.insert(footprint.clone(), start_r);
+                        work.insert(r_.to_string(), start_r);
+                        work
+                    });
+
+                    return Ok(start_r);
                 }
 
                 if DEBUG_OPTIMIZATIONS {
                     println!(
-                        "OPT-{:?}[{}] => {}",
+                        "{}OPT-{:?}[{}] => {}",
+                        indent(),
                         name,
                         disassemble(allocator, start_r),
                         disassemble(allocator, r)
                     );
-                    if name == "var_change_optimizer_cons_eval" {
-                        panic!("not supposed to happen for this");
-                    }
                 }
             }
         }
@@ -694,63 +784,75 @@ pub fn optimize_sexp<'a>(
     r: NodePtr,
     eval_f: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
+    let mut optimized = Rc::new(RefCell::new(HashMap::new()));
+
+    enter();
     if DIAG_OPTIMIZATIONS {
-        print!("START OPTIMIZE {}", disassemble(allocator, r));
+        println!("START OPTIMIZE {}", disassemble(allocator, r));
     }
-    optimize_sexp_(allocator, r, eval_f).map(|x| {
+    optimize_sexp_(allocator, optimized, r, eval_f).map(|x| {
         if DIAG_OPTIMIZATIONS {
             println!(
-                "OPTIMIZE_SEXP {} GIVING {}",
+                "{}OPTIMIZE_SEXP {} GIVING {}",
+                indent(),
                 disassemble(allocator, r),
                 disassemble(allocator, x)
             );
         }
+        leave();
         x
     })
 }
 
-pub fn do_optimize(runner: Rc<dyn TRunProgram>, allocator: &mut Allocator, r: NodePtr) -> Response {
-    m! {
-        r_first <- first(allocator, r);
-        optimize_sexp(allocator, r_first, runner.clone()).
-            map(|optimized| Reduction(1, optimized))
-    }
+pub fn do_optimize(
+    runner: Rc<dyn TRunProgram>,
+    allocator: &mut Allocator,
+    memo: Rc<RefCell<HashMap<String, NodePtr>>>,
+    r: NodePtr
+) -> Response {
+    let r_first = first(allocator, r)?;
+    optimize_sexp_(allocator, memo, r_first, runner.clone()).
+        map(|optimized| Reduction(1, optimized))
 }
 
 fn test_cons_q_a(src: String) -> String {
     let mut allocator = Allocator::new();
+    let mut memo = Rc::new(RefCell::new(HashMap::new()));
     let input_ir = read_ir(&src).unwrap();
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths(&vec![".".to_string()]);
-    let optimized = cons_q_a_optimizer(&mut allocator, assembled, runner.clone()).unwrap();
+    let optimized = cons_q_a_optimizer(&mut allocator, memo, assembled, runner.clone()).unwrap();
     disassemble(&mut allocator, optimized)
 }
 
 fn test_var_change_optimizer_cons_eval(src: String) -> String {
     let mut allocator = Allocator::new();
+    let mut memo = Rc::new(RefCell::new(HashMap::new()));
     let input_ir = read_ir(&src).unwrap();
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths(&vec![".".to_string()]);
     let optimized =
-        var_change_optimizer_cons_eval(&mut allocator, assembled, runner.clone()).unwrap();
+        var_change_optimizer_cons_eval(&mut allocator, memo, assembled, runner.clone()).unwrap();
     disassemble(&mut allocator, optimized)
 }
 
 fn test_children_optimizer(src: String) -> String {
     let mut allocator = Allocator::new();
+    let mut memo = Rc::new(RefCell::new(HashMap::new()));
     let input_ir = read_ir(&src).unwrap();
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths(&vec![".".to_string()]);
-    let optimized = children_optimizer(&mut allocator, assembled, runner.clone()).unwrap();
+    let optimized = children_optimizer(&mut allocator, memo, assembled, runner.clone()).unwrap();
     disassemble(&mut allocator, optimized)
 }
 
 fn test_constant_optimizer(src: String) -> String {
     let mut allocator = Allocator::new();
+    let mut memo = Rc::new(RefCell::new(HashMap::new()));
     let input_ir = read_ir(&src).unwrap();
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths(&vec![".".to_string()]);
-    let optimized = constant_optimizer(&mut allocator, assembled, 0, runner.clone()).unwrap();
+    let optimized = constant_optimizer(&mut allocator, memo, assembled, 0, runner.clone()).unwrap();
     disassemble(&mut allocator, optimized)
 }
 
