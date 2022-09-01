@@ -1147,7 +1147,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 &mut allocator,
                 stdout,
                 only_exn,
-                &mut log_content,
+                &log_content,
                 symbol_table,
                 &disassemble,
             );
