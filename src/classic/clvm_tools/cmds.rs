@@ -1127,7 +1127,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let log_updates = log_updates.lock().unwrap().finish();
     fix_log(&mut allocator, &mut log_content, &log_updates);
 
-    let only_exn = parsedArgs
+    let only_exn = parsed_args
         .get("only_exn")
         .map(|_| true)
         .unwrap_or_else(|| false);

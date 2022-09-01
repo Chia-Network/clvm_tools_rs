@@ -148,17 +148,6 @@ impl Bytes {
         self._b.clone()
     }
 
-    pub fn repeat(&self, n: usize) -> Bytes {
-        let capacity = self.length() * n;
-        let set_size = self._b.len();
-        let mut ret = Vec::<u8>::with_capacity(capacity);
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..capacity - 1 {
-            ret[i] = self._b[i % set_size];
-        }
-        Bytes::new(Some(BytesFromType::Raw(ret)))
-    }
-
     pub fn concat(&self, b: &Bytes) -> Bytes {
         let mut this_bin = self._b.clone();
         let mut that_bin = b.raw();
