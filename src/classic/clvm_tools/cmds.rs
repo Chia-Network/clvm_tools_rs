@@ -792,7 +792,11 @@ pub fn launch_tool(
             let assembled_serialized =
                 Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
 
-            let env_serialized = Bytes::new(Some(BytesFromType::Hex(input_args.to_string())));
+            let env_serialized = if input_args == "" {
+                Bytes::new(Some(BytesFromType::Hex("80".to_string())))
+            } else {
+                Bytes::new(Some(BytesFromType::Hex(input_args.to_string())))
+            };
 
             time_read_hex = SystemTime::now();
 
