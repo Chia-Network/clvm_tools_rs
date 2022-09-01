@@ -701,6 +701,12 @@ pub fn launch_tool(
             .set_action(TArgOptionAction::StoreTrue)
             .set_help("run optimizer".to_string()),
     );
+    parser.add_argument(
+        vec!["--only-exn".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("Only show frames along the exception path".to_string()),
+    );
 
     if tool_name == "run" {
         parser.add_argument(
@@ -1207,11 +1213,17 @@ pub fn launch_tool(
     let log_updates = log_updates.lock().unwrap().finish();
     fix_log(&mut allocator, &mut log_content, &log_updates);
 
+    let only_exn = parsedArgs
+        .get("only_exn")
+        .map(|_| true)
+        .unwrap_or_else(|| false);
+
     if emit_symbol_output {
         stdout.write_string(format!("\n"));
         trace_to_text(
             &mut allocator,
             stdout,
+            only_exn,
             &log_content,
             symbol_table.clone(),
             &disassemble,
@@ -1220,6 +1232,7 @@ pub fn launch_tool(
             trace_to_table(
                 &mut allocator,
                 stdout,
+                only_exn,
                 &mut log_content,
                 symbol_table,
                 &disassemble,
