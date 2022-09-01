@@ -783,7 +783,7 @@ pub fn launch_tool(
         Some(ArgumentValue::ArgString(file, path_or_code)) => {
             input_file = file.clone();
             input_args = path_or_code.to_string();
-        },
+        }
         _ => {}
     }
 
@@ -792,8 +792,7 @@ pub fn launch_tool(
             let assembled_serialized =
                 Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
 
-            let env_serialized =
-                Bytes::new(Some(BytesFromType::Hex(input_args.to_string())));
+            let env_serialized = Bytes::new(Some(BytesFromType::Hex(input_args.to_string())));
 
             time_read_hex = SystemTime::now();
 
@@ -803,8 +802,8 @@ pub fn launch_tool(
                 &mut prog_stream,
                 Box::new(SimpleCreateCLVMObject {}),
             )
-                .map(|x| Some(x.1))
-                .unwrap();
+            .map(|x| Some(x.1))
+            .unwrap();
 
             let mut arg_stream = Stream::new(Some(env_serialized.clone()));
             let input_arg_sexp = sexp_from_stream(
@@ -812,8 +811,8 @@ pub fn launch_tool(
                 &mut arg_stream,
                 Box::new(SimpleCreateCLVMObject {}),
             )
-                .map(|x| Some(x.1))
-                .unwrap();
+            .map(|x| Some(x.1))
+            .unwrap();
             if let (Some(ip), Some(ia)) = (input_prog_sexp, input_arg_sexp) {
                 input_sexp = allocator.new_pair(ip, ia).ok();
             }

@@ -228,17 +228,16 @@ fn basic_opc_lil() {
 fn basic_opc_quoted_1() {
     let mut allocator = Allocator::new();
     let result = OpcConversion {}
-    .invoke(&mut allocator, &"(q . 1)".to_string())
+        .invoke(&mut allocator, &"(q . 1)".to_string())
         .unwrap();
     assert_eq!(result.rest(), "ff0101");
 }
-
 
 #[test]
 fn test_simple_opd_conversion() {
     let mut allocator = Allocator::new();
     let result = OpdConversion {}
-    .invoke(&mut allocator, &"ff0183666f6f".to_string())
+        .invoke(&mut allocator, &"ff0183666f6f".to_string())
         .unwrap();
     assert_eq!(result.rest(), "(q . \"foo\")");
 }
@@ -248,7 +247,12 @@ fn test_simple_brun_minus_x_1() {
     let mut s = Stream::new(None);
     launch_tool(
         &mut s,
-        &vec!["brun".to_string(), "-x".to_string(), "ff0183666f6f".to_string(), "ff8080".to_string()],
+        &vec![
+            "brun".to_string(),
+            "-x".to_string(),
+            "ff0183666f6f".to_string(),
+            "ff8080".to_string(),
+        ],
         &"brun".to_string(),
         0,
     );
@@ -261,7 +265,12 @@ fn test_simple_brun_minus_x_2() {
     let mut s = Stream::new(None);
     launch_tool(
         &mut s,
-        &vec!["brun".to_string(), "-x".to_string(), "ff04ff02ff0380".to_string(), "ff01ff0280".to_string()],
+        &vec![
+            "brun".to_string(),
+            "-x".to_string(),
+            "ff04ff02ff0380".to_string(),
+            "ff01ff0280".to_string(),
+        ],
         &"brun".to_string(),
         0,
     );
