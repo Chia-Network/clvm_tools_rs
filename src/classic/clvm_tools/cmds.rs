@@ -767,7 +767,7 @@ pub fn launch_tool(
 
     let mut input_file = None;
     let mut input_serialized = None;
-    let mut input_sexp;
+    let mut input_sexp: Option<NodePtr> = None;
 
     let time_start = SystemTime::now();
     let mut time_read_hex = SystemTime::now();
@@ -785,31 +785,47 @@ pub fn launch_tool(
         _ => {}
     }
 
+    match parsedArgs.get("env") {
+        Some(ArgumentValue::ArgString(file, path_or_code)) => {
+            input_file = file.clone();
+            input_args = path_or_code.to_string();
+        }
+        _ => {}
+    }
+
     match parsedArgs.get("hex") {
         Some(_) => {
             let assembled_serialized =
                 Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
-            if input_args.len() == 0 {
-                input_args = "80".to_string();
-            }
 
-            let env_serialized = Bytes::new(Some(BytesFromType::Hex(input_args.to_string())));
+            let env_serialized = if input_args == "" {
+                Bytes::new(Some(BytesFromType::Hex("80".to_string())))
+            } else {
+                Bytes::new(Some(BytesFromType::Hex(input_args.to_string())))
+            };
+
             time_read_hex = SystemTime::now();
 
-            input_serialized = Some(
-                Bytes::new(Some(BytesFromType::Raw(vec![0xff])))
-                    .concat(&assembled_serialized)
-                    .concat(&env_serialized),
-            );
-
-            let mut stream = Stream::new(input_serialized.clone());
-            input_sexp = sexp_from_stream(
+            let mut prog_stream = Stream::new(Some(assembled_serialized.clone()));
+            let input_prog_sexp = sexp_from_stream(
                 &mut allocator,
-                &mut stream,
+                &mut prog_stream,
                 Box::new(SimpleCreateCLVMObject {}),
             )
             .map(|x| Some(x.1))
             .unwrap();
+
+            let mut arg_stream = Stream::new(Some(env_serialized.clone()));
+            let input_arg_sexp = sexp_from_stream(
+                &mut allocator,
+                &mut arg_stream,
+                Box::new(SimpleCreateCLVMObject {}),
+            )
+            .map(|x| Some(x.1))
+            .unwrap();
+            if let (Some(ip), Some(ia)) = (input_prog_sexp, input_arg_sexp) {
+                input_sexp = allocator.new_pair(ip, ia).ok();
+            }
         }
         _ => {
             let src_sexp;
@@ -845,10 +861,7 @@ pub fn launch_tool(
             let env = assemble_from_ir(&mut allocator, Rc::new(env_ir)).unwrap();
             time_assemble = SystemTime::now();
 
-            input_sexp = allocator
-                .new_pair(assembled_sexp, env)
-                .map(|x| Some(x))
-                .unwrap();
+            input_sexp = allocator.new_pair(assembled_sexp, env).ok();
         }
     }
 
