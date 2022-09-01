@@ -137,7 +137,7 @@ fn text_trace(
         }
     }
 
-    output.write_string(format!("{} => {}\n\n", symbol_val, result));
+    output.write_str(&format!("{} => {}\n\n", symbol_val, result));
 }
 
 fn table_trace(
@@ -154,20 +154,20 @@ fn table_trace(
         SExp::Atom(_) => (form, allocator.null()),
     };
 
-    stdout.write_string(format!("exp: {}\n", disassemble_f(allocator, sexp)));
-    stdout.write_string(format!("arg: {}\n", disassemble_f(allocator, args)));
-    stdout.write_string(format!("env: {}\n", disassemble_f(allocator, env)));
-    stdout.write_string(format!("val: {}\n", result));
+    stdout.write_str(&format!("exp: {}\n", disassemble_f(allocator, sexp)));
+    stdout.write_str(&format!("arg: {}\n", disassemble_f(allocator, args)));
+    stdout.write_str(&format!("env: {}\n", disassemble_f(allocator, env)));
+    stdout.write_str(&format!("val: {}\n", result));
     let mut sexp_stream = Stream::new(None);
     sexp_to_stream(allocator, sexp, &mut sexp_stream);
     let mut args_stream = Stream::new(None);
     sexp_to_stream(allocator, args, &mut args_stream);
     let mut benv_stream = Stream::new(None);
     sexp_to_stream(allocator, env, &mut benv_stream);
-    stdout.write_string(format!("bexp: {}\n", sexp_stream.get_value().hex()));
-    stdout.write_string(format!("barg: {}\n", args_stream.get_value().hex()));
-    stdout.write_string(format!("benv: {}\n", benv_stream.get_value().hex()));
-    stdout.write_string("--\n".to_string());
+    stdout.write_str(&format!("bexp: {}\n", sexp_stream.get_value().hex()));
+    stdout.write_str(&format!("barg: {}\n", args_stream.get_value().hex()));
+    stdout.write_str(&format!("benv: {}\n", benv_stream.get_value().hex()));
+    stdout.write_str("--\n");
 }
 
 type DisplayTraceFun = dyn Fn(
@@ -284,9 +284,9 @@ pub fn check_unused(
     let unused = check_parameters_used_compileform(opts, Rc::new(g))?;
 
     if !unused.is_empty() {
-        output.write_string("unused arguments detected at the mod level (lower case arguments are considered uncurried by convention)\n".to_string());
+        output.write_str("unused arguments detected at the mod level (lower case arguments are considered uncurried by convention)\n");
         for s in unused.iter() {
-            output.write_string(format!(
+            output.write_str(&format!(
                 " - {}\n",
                 Bytes::new(Some(BytesFromType::Raw(s.clone()))).decode()
             ));

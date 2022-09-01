@@ -19,7 +19,7 @@ pub fn is_at_capture(
         allocator.sexp(tree_first),
         proper_list(allocator, tree_rest, true),
     ) {
-        if allocator.buf(&a) == vec![b'@'] && spec.len() == 2 {
+        if allocator.buf(&a) == [b'@'] && spec.len() == 2 {
             return Some((spec[0], spec[1]));
         }
     }

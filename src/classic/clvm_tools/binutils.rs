@@ -35,8 +35,7 @@ pub fn assemble_from_ir(
         IRRepr::Hex(b) => allocator.new_atom(b.data()),
         IRRepr::Symbol(s) => {
             let mut s_real_name = s.clone();
-            #[allow(clippy::single_char_pattern)]
-            if let Some(stripped) = s.strip_prefix("#") {
+            if let Some(stripped) = s.strip_prefix('#') {
                 s_real_name = stripped.to_string();
             }
 

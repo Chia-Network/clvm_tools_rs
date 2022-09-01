@@ -80,14 +80,14 @@ pub trait TConversion {
 }
 pub fn call_tool(
     allocator: &mut Allocator,
-    tool_name: String,
-    desc: String,
+    tool_name: &str,
+    desc: &str,
     conversion: Box<dyn TConversion>,
     input_args: &[String],
 ) {
     let props = TArgumentParserProps {
-        description: desc,
-        prog: tool_name,
+        description: desc.to_string(),
+        prog: tool_name.to_string(),
     };
 
     let mut parser = ArgumentParser::new(Some(props));
@@ -194,8 +194,8 @@ pub fn opc(args: &[String]) {
     let mut allocator = Allocator::new();
     call_tool(
         &mut allocator,
-        "opc".to_string(),
-        "Compile a clvm script.".to_string(),
+        "opc",
+        "Compile a clvm script.",
         Box::new(OpcConversion {}),
         args,
     );
@@ -205,8 +205,8 @@ pub fn opd(args: &[String]) {
     let mut allocator = Allocator::new();
     call_tool(
         &mut allocator,
-        "opd".to_string(),
-        "Disassemble a compiled clvm script from hex.".to_string(),
+        "opd",
+        "Disassemble a compiled clvm script from hex.",
         Box::new(OpdConversion {}),
         args,
     );
@@ -684,7 +684,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let arg_vec = args[1..].to_vec();
     let parsed_args: HashMap<String, ArgumentValue> = match parser.parse_args(&arg_vec) {
         Err(e) => {
-            stdout.write_string(format!("FAIL: {}\n", e));
+            stdout.write_str(&format!("FAIL: {}\n", e));
             return;
         }
         Ok(pa) => pa,
@@ -774,12 +774,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                         src_sexp = s;
                     }
                     Err(e) => {
-                        stdout.write_string(format!("FAIL: {}\n", e));
+                        stdout.write_str(&format!("FAIL: {}\n", e));
                         return;
                     }
                 }
             } else {
-                stdout.write_string(format!("FAIL: {}\n", "non-string argument"));
+                stdout.write_str(&format!("FAIL: {}\n", "non-string argument"));
                 return;
             }
 
@@ -830,11 +830,11 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .unwrap_or(false);
 
     let dialect = input_sexp.and_then(|i| detect_modern(&mut allocator, i));
-    let mut stderr_output = |s| {
+    let mut stderr_output = |s: String| {
         if dialect.is_some() {
             eprintln!("{}", s);
         } else {
-            stdout.write_string(s);
+            stdout.write_str(&s);
         }
     };
 
@@ -887,13 +887,13 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
         match res {
             Ok(r) => {
-                stdout.write_string(r.to_string());
+                stdout.write_str(&r.to_string());
 
                 build_symbol_table_mut(&mut symbol_table, &r);
                 write_sym_output(&symbol_table, "main.sym").expect("writing symbols");
             }
             Err(c) => {
-                stdout.write_string(format!("{}: {}", c.0, c.1));
+                stdout.write_str(&format!("{}: {}", c.0, c.1));
             }
         }
 
@@ -1054,12 +1054,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 if cost > 0 {
                     cost += cost_offset;
                 }
-                stdout.write_string(format!("cost = {}\n", cost));
+                stdout.write_str(&format!("cost = {}\n", cost));
             };
 
             if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("time") {
                 if parsed_args.get("hex").is_some() {
-                    stdout.write_string(format!(
+                    stdout.write_str(&format!(
                         "read_hex: {}\n",
                         time_read_hex
                             .duration_since(time_start)
@@ -1067,14 +1067,14 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                             .as_millis()
                     ));
                 } else {
-                    stdout.write_string(format!(
+                    stdout.write_str(&format!(
                         "assemble_from_ir: {}\n",
                         time_assemble
                             .duration_since(time_start)
                             .unwrap()
                             .as_millis()
                     ));
-                    stdout.write_string(format!(
+                    stdout.write_str(&format!(
                         "to_sexp_f: {}\n",
                         time_parse_input
                             .duration_since(time_assemble)
@@ -1083,7 +1083,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                     ));
                 }
 
-                stdout.write_string(format!(
+                stdout.write_str(&format!(
                     "run_program: {}\n",
                     time_done
                         .duration_since(time_parse_input)
@@ -1117,7 +1117,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         write_sym_output(&compile_sym_out, "main.sym").ok();
     }
 
-    stdout.write_string(format!("{}\n", output));
+    stdout.write_str(&format!("{}\n", output));
 
     // Third part of our scheme: now that we have results from the forward pass
     // and the pass doing the post callbacks, we can integrate them in the main
@@ -1133,7 +1133,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .unwrap_or_else(|| false);
 
     if emit_symbol_output {
-        stdout.write_string("\n".to_string());
+        stdout.write_str("\n");
         trace_to_text(
             &mut allocator,
             stdout,

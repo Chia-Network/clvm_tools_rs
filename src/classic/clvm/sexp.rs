@@ -93,8 +93,7 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
                         }
                     },
                     CastableType::String(s) => {
-                        let result_vec: Vec<u8> = s.as_bytes().to_vec();
-                        match allocator.new_atom(&result_vec) {
+                        match allocator.new_atom(s.as_bytes()) {
                             Ok(a) => {
                                 stack.push(Rc::new(CastableType::CLVMObject(a)));
                             }
@@ -339,7 +338,7 @@ pub fn bool_sexp(allocator: &mut Allocator, b: bool) -> NodePtr {
 pub fn non_nil(allocator: &mut Allocator, sexp: NodePtr) -> bool {
     match allocator.sexp(sexp) {
         SExp::Pair(_, _) => true,
-        SExp::Atom(b) => !allocator.buf(&b).is_empty(),
+        SExp::Atom(b) => !b.is_empty(),
     }
 }
 

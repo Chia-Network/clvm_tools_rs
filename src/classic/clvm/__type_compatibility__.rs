@@ -442,7 +442,7 @@ impl Stream {
         b.length()
     }
 
-    pub fn write_string(&mut self, s: String) -> usize {
+    pub fn write_str(&mut self, s: &str) -> usize {
         self.write(Bytes::new(Some(BytesFromType::Raw(s.as_bytes().to_vec()))))
     }
 

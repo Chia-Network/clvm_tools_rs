@@ -133,13 +133,13 @@ fn qq_to_expression(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
             if op.len() == 1 && (op[0] == b'q' || op[0] == 1) {
                 return Ok(BodyForm::Quoted(body_copy.clone()));
             } else if let Some(list) = r.proper_list() {
-                if *op == "quote".as_bytes().to_vec() {
+                if op == b"quote" {
                     if list.len() != 1 {
                         return Err(CompileErr(l.clone(), format!("bad form {}", body)));
                     }
 
                     return Ok(BodyForm::Quoted(list[0].clone()));
-                } else if *op == "unquote".as_bytes().to_vec() {
+                } else if op == b"unquote" {
                     if list.len() != 1 {
                         return Err(CompileErr(l.clone(), format!("bad form {}", body)));
                     }
@@ -419,13 +419,13 @@ fn compile_helperform(
     if let Some((op_name, name, args, body)) =
         plist.and_then(|pl| match_op_name_4(body.clone(), &pl))
     {
-        if *op_name == "defconstant".as_bytes().to_vec() {
+        if op_name == b"defconstant" {
             return compile_defconstant(l, name.to_vec(), args).map(Some);
-        } else if *op_name == "defmacro".as_bytes().to_vec() {
+        } else if op_name == b"defmacro" {
             return compile_defmacro(opts, l, name.to_vec(), args, body).map(Some);
-        } else if *op_name == "defun".as_bytes().to_vec() {
+        } else if op_name == b"defun" {
             return compile_defun(l, false, name.to_vec(), args, body).map(Some);
-        } else if *op_name == "defun-inline".as_bytes().to_vec() {
+        } else if op_name == b"defun-inline" {
             return compile_defun(l, true, name.to_vec(), args, body).map(Some);
         }
     }

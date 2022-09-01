@@ -10,7 +10,7 @@ fn rename_in_qq(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SExp>
     body.proper_list()
         .and_then(|x| {
             if let [SExp::Atom(_, q), body] = &x[..] {
-                if *q == "unquote".as_bytes().to_vec() {
+                if q == b"unquote" {
                     return Some(rename_in_cons(namemap, Rc::new(body.clone())));
                 }
             }
@@ -36,7 +36,7 @@ fn rename_in_cons(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SEx
         },
         SExp::Cons(l, f, r) => {
             if let SExp::Atom(la, q) = f.borrow() {
-                if *q == "q".as_bytes().to_vec() {
+                if q == b"q" {
                     return Rc::new(SExp::Cons(
                         l.clone(),
                         Rc::new(SExp::Atom(la.clone(), "q".as_bytes().to_vec())),
@@ -83,7 +83,7 @@ fn rename_in_cons(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SEx
 fn invent_new_names_sexp(body: Rc<SExp>) -> Vec<(Vec<u8>, Vec<u8>)> {
     match body.borrow() {
         SExp::Atom(_, name) => {
-            if name != &vec![b'@'] {
+            if name != &[b'@'] {
                 vec![(name.to_vec(), gensym(name.to_vec()))]
             } else {
                 vec![]

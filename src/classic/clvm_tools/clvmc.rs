@@ -93,7 +93,7 @@ fn compile_clvm_text(
             .set_frontend_opt(dialect > 21)
             .set_search_paths(search_paths);
 
-        let unopt_res = compile_file(allocator, runner.clone(), opts.clone(), text, symbol_table);
+        let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
         let res = unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)));
 
         res.and_then(|x| {
