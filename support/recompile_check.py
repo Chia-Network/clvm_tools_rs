@@ -12,7 +12,6 @@ recompile_list = [
     'delegated_tail.clvm',
     'did_innerpuz.clvm',
     'everything_with_signature.clvm',
-    'generator_for_single_coin.clvm',
     'genesis_by_coin_id.clvm',
     'genesis_by_puzzle_hash.clvm',
     'lock.inner.puzzle.clvm',
