@@ -723,7 +723,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let mut allocator = Allocator::new();
 
     let mut input_file = None;
-    let mut input_serialized = None;
+    let input_serialized = None;
     let mut input_sexp: Option<NodePtr> = None;
 
     let time_start = SystemTime::now();
@@ -746,7 +746,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         _ => {}
     }
 
-    match parsed_rgs.get("hex") {
+    match parsed_args.get("hex") {
         Some(_) => {
             let assembled_serialized =
                 Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
