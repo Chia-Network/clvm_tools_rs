@@ -746,7 +746,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         _ => {}
     }
 
-    match parsedArgs.get("hex") {
+    match parsed_rgs.get("hex") {
         Some(_) => {
             let assembled_serialized =
                 Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
