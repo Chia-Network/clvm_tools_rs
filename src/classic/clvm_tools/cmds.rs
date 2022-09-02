@@ -738,12 +738,9 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         input_program = path_or_code.to_string();
     }
 
-    match parsed_args.get("env") {
-        Some(ArgumentValue::ArgString(file, path_or_code)) => {
-            input_file = file.clone();
-            input_args = path_or_code.to_string();
-        }
-        _ => {}
+    if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("env") {
+        input_file = file.clone();
+        input_args = path_or_code.to_string();
     }
 
     match parsed_args.get("hex") {
@@ -751,15 +748,15 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             let assembled_serialized =
                 Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
 
-            let env_serialized = if input_args == "" {
+            let env_serialized = if input_args.is_empty() {
                 Bytes::new(Some(BytesFromType::Hex("80".to_string())))
             } else {
-                Bytes::new(Some(BytesFromType::Hex(input_args.to_string())))
+                Bytes::new(Some(BytesFromType::Hex(input_args)))
             };
 
             time_read_hex = SystemTime::now();
 
-            let mut prog_stream = Stream::new(Some(assembled_serialized.clone()));
+            let mut prog_stream = Stream::new(Some(assembled_serialized));
             let input_prog_sexp = sexp_from_stream(
                 &mut allocator,
                 &mut prog_stream,
@@ -768,7 +765,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .map(|x| Some(x.1))
             .unwrap();
 
-            let mut arg_stream = Stream::new(Some(env_serialized.clone()));
+            let mut arg_stream = Stream::new(Some(env_serialized));
             let input_arg_sexp = sexp_from_stream(
                 &mut allocator,
                 &mut arg_stream,
