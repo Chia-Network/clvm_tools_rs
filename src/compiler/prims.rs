@@ -194,10 +194,6 @@ pub fn prims() -> Vec<(Vec<u8>, SExp)> {
             "bls_map_to_g2".as_bytes().to_vec(),
             SExp::Integer(primloc.clone(), 50_u32.to_bigint().unwrap()),
         ),
-        (
-            "pow".as_bytes().to_vec(),
-            SExp::Integer(primloc.clone(), 51_u32.to_bigint().unwrap()),
-        ),
     ]
 }
 

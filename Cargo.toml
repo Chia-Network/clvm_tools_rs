@@ -34,7 +34,7 @@ clvmr = "0.1.20"
 
 [patch.crates-io]
 skimmer = { git = "https://github.com/dnsl48/skimmer", rev = "ca914ef624ecf39a75ed7afef10e7838fffe9127" }
-clvmr = { git = "https://github.com/cameroncooper/clvm_rs", rev = "dd8b872ce9a77296b4f97bd80c5a5f8fdd672f85" }
+clvmr = { git = "https://github.com/cameroncooper/clvm_rs", rev = "6cc13e4e8a089df71775ffb2409d3c550fe1d80e" }
 bls12_381 = { version = "0.7.0", git = "https://github.com/cameroncooper/bls12_381", rev = "a789b4da7fccb4815f865b30a30218c1ceea2d4e" }
 
 [target.x86_64-apple-darwin]

@@ -151,7 +151,7 @@ dependencies = [
 [[package]]
 name = "clvmr"
 version = "0.1.20"
-source = "git+https://github.com/cameroncooper/clvm_rs?rev=dd8b872ce9a77296b4f97bd80c5a5f8fdd672f85#dd8b872ce9a77296b4f97bd80c5a5f8fdd672f85"
+source = "git+https://github.com/cameroncooper/clvm_rs?rev=6cc13e4e8a089df71775ffb2409d3c550fe1d80e#6cc13e4e8a089df71775ffb2409d3c550fe1d80e"
 dependencies = [
  "bls12_381 0.7.0",
  "hex",
