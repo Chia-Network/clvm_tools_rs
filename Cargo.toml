@@ -1,7 +1,15 @@
 [package]
 name = "clvm_tools_rs"
-version = "0.1.9"
+version = "0.1.24"
 edition = "2018"
+authors = ["Art Yerkes <art.yerkes@gmail.com>"]
+description = "tools for working with chialisp language; compiler, repl, python and wasm bindings"
+homepage = "https://prozacchiwawa.github.io/clvm_tools_rs/"
+readme = "README.md"
+repository = "https://github.com/Chia-Network/clvm_tools_rs"
+license = "MIT"
+keywords = ["chia", "chialisp", "clvm"]
+categories = ["command-line-utilities"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -20,16 +28,14 @@ indoc = "1.0"
 do-notation = "0.1.3"
 serde_json = "1.0"
 sha2 = "0.9.5"
-yamlette = "0.0.8"
 tempfile = "3.3.0"
+clvmr = "0.1.21"
+binascii = "0.1.4"
+yaml-rust = "0.4"
+linked-hash-map = "0.5.6"
 
 [patch.crates-io]
 skimmer = { git = "https://github.com/dnsl48/skimmer", rev = "ca914ef624ecf39a75ed7afef10e7838fffe9127" }
-
-[dependencies.clvm_rs]
-git = "https://github.com/prozacchiwawa/clvm_rs"
-branch = "20211029-try-config"
-package = "clvm_rust"
 
 [target.x86_64-apple-darwin]
 rustflags = [
@@ -46,11 +52,14 @@ extension-module = ["pyo3"]
 default = ["extension-module"]
 
 [target.'cfg(target_family="wasm")'.dependencies]
-wasm-bindgen = "0.2.75"
+wasm-bindgen = "0.2.80"
 wasm-bindgen-test = "0.3.25"
+js-sys = "0.3.58"
+getrandom = { version = "0.2", features = ["js"] }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 pyo3 = { version = "0.14.2", features = ["abi3-py37", "extension-module"], optional = true }
+getrandom = { version = "0.2" }
 
 [build-dependencies]
 pyo3-build-config = "0.15.1"
@@ -74,3 +83,11 @@ path = "src/classic/bins/brun.rs"
 [[bin]]
 name = "cldb"
 path = "src/classic/bins/cldb.rs"
+
+[[bin]]
+name = "shrink"
+path = "src/classic/bins/shrink.rs"
+
+[[bin]]
+name = "repl"
+path = "src/classic/bins/repl.rs"

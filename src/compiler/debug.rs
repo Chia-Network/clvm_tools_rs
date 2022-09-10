@@ -13,7 +13,7 @@ pub fn build_table_mut<X>(
     code: &SExp,
 ) -> Bytes {
     match code {
-        SExp::Cons(l, a, b) => {
+        SExp::Cons(_l, a, b) => {
             let left = build_table_mut(code_map, tx, a.borrow());
             let right = build_table_mut(code_map, tx, b.borrow());
             let treehash = sha256(
@@ -21,7 +21,9 @@ pub fn build_table_mut<X>(
                     .concat(&left)
                     .concat(&right),
             );
-            code_map.insert(treehash.hex(), tx(code));
+            if !code_map.contains_key(&treehash.hex()) {
+                code_map.insert(treehash.hex(), tx(code));
+            }
             treehash
         }
         SExp::Atom(_, a) => {

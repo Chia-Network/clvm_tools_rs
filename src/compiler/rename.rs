@@ -92,7 +92,11 @@ fn rename_in_cons(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SEx
 fn invent_new_names_sexp(body: Rc<SExp>) -> Vec<(Vec<u8>, Vec<u8>)> {
     match body.borrow() {
         SExp::Atom(_, name) => {
-            return vec![(name.to_vec(), gensym(name.to_vec()))];
+            if name != &vec!['@' as u8] {
+                return vec![(name.to_vec(), gensym(name.to_vec()))];
+            } else {
+                return vec![];
+            }
         }
         SExp::Cons(_, head, tail) => {
             let mut head_list = invent_new_names_sexp(head.clone());
@@ -190,7 +194,7 @@ pub fn desugar_sequential_let_bindings(
 
 fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
     match b.borrow() {
-        BodyForm::Let(l, LetFormKind::Sequential, bindings, body) => {
+        BodyForm::Let(_l, LetFormKind::Sequential, bindings, body) => {
             // Renaming a sequential let is exactly as if the bindings were
             // nested in separate parallel lets.
             let new_body = rename_args_bodyform(&desugar_sequential_let_bindings(

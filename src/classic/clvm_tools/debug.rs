@@ -4,12 +4,18 @@ use std::rc::Rc;
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::Stream;
+use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 use crate::classic::clvm::serialize::sexp_to_stream;
 use crate::classic::clvm::sexp::{enlist, mapM, proper_list, rest};
 
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
+
+use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::frontend::frontend;
+use crate::compiler::sexp::parse_sexp;
+use crate::compiler::srcloc::Srcloc;
+use crate::compiler::usecheck::check_parameters_used_compileform;
 
 // export const PRELUDE = `<html>
 // <head>
@@ -167,6 +173,7 @@ fn table_trace(
 fn display_trace(
     allocator: &mut Allocator,
     stdout: &mut Stream,
+    only_exn: bool,
     trace: &Vec<NodePtr>,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
     symbol_table: Option<HashMap<String, String>>,
@@ -184,7 +191,8 @@ fn display_trace(
         let item_vec = proper_list(allocator, *item, true).unwrap();
         let form = item_vec[0];
         let env = item_vec[1];
-        let rv = if item_vec.len() > 2 {
+        let not_exn = item_vec.len() > 2;
+        let rv = if not_exn {
             disassemble_f(allocator, item_vec[2])
         } else {
             "(didn't finish)".to_string()
@@ -194,13 +202,18 @@ fn display_trace(
         let symbol = symbol_table
             .as_ref()
             .and_then(|st| st.get(&h).map(|x| x.to_string()));
-        display_fun(allocator, stdout, disassemble_f, form, symbol, env, &rv);
+
+        let display = !only_exn || !not_exn;
+        if display {
+            display_fun(allocator, stdout, disassemble_f, form, symbol, env, &rv);
+        }
     }
 }
 
 pub fn trace_to_text(
     allocator: &mut Allocator,
     stdout: &mut Stream,
+    only_exn: bool,
     trace: &Vec<NodePtr>,
     symbol_table: Option<HashMap<String, String>>,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
@@ -208,6 +221,7 @@ pub fn trace_to_text(
     display_trace(
         allocator,
         stdout,
+        only_exn,
         trace,
         disassemble_f,
         symbol_table,
@@ -218,6 +232,7 @@ pub fn trace_to_text(
 pub fn trace_to_table(
     allocator: &mut Allocator,
     stdout: &mut Stream,
+    only_exn: bool,
     trace: &Vec<NodePtr>,
     symbol_table: Option<HashMap<String, String>>,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
@@ -225,6 +240,7 @@ pub fn trace_to_table(
     display_trace(
         allocator,
         stdout,
+        only_exn,
         trace,
         disassemble_f,
         symbol_table,
@@ -252,5 +268,29 @@ pub fn trace_pre_eval(
             let _ = append_log(allocator, log_entry);
             Ok(Some(log_entry))
         }
+    }
+}
+
+pub fn check_unused(
+    opts: Rc<dyn CompilerOpts>,
+    input_program: &String,
+) -> Result<(bool, String), CompileErr> {
+    let mut output: Stream = Stream::new(None);
+    let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), input_program)
+        .map_err(|e| CompileErr(e.0, e.1))?;
+    let g = frontend(opts.clone(), pre_forms)?;
+    let unused = check_parameters_used_compileform(opts, Rc::new(g))?;
+
+    if !unused.is_empty() {
+        output.write_string(format!("unused arguments detected at the mod level (lower case arguments are considered uncurried by convention)\n"));
+        for s in unused.iter() {
+            output.write_string(format!(
+                " - {}\n",
+                Bytes::new(Some(BytesFromType::Raw(s.clone()))).decode()
+            ));
+        }
+        Ok((false, output.get_value().decode()))
+    } else {
+        Ok((true, output.get_value().decode()))
     }
 }

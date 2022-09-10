@@ -77,6 +77,26 @@ fn DEFAULT_MACROS_SRC() -> Vec<&'static str> {
                  (function (unquote C)))
               @)))
         "},
+        indoc! {"
+        (q \"__chia__enlist\"
+            (a (q #a (q #a 2 (c 2 (c 3 (q))))
+                     (c (q #a (i 5
+                                 (q #c (q . 4)
+                                       (c 9 (c (a 2 (c 2 (c 13 (q))))
+                                               (q)))
+                                 )
+                                 (q 1))
+                               1)
+                        1))
+                2))
+        "},
+        /*
+         / operator at the clvm layer is becoming deprecated and
+        will be implemented using divmod.
+         */
+        indoc! {"
+        (defmacro / (A B) (qq (f (divmod (unquote A) (unquote B)))))
+        "},
     ];
 }
 

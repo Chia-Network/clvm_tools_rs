@@ -1,0 +1,66 @@
+# Taken from clvm_rs' version.
+name: Build crate
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    tags:
+        - '**'
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  build_crate:
+    name: Crate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+
+    - name: Set up rusts
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+
+    - name: Set up rust (stable)
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+
+    - name: fmt (stable)
+      run: cargo +stable fmt -- --files-with-diff --check
+    - name: clippy (stable)
+      run: cargo +stable clippy
+    - name: tests
+      run: cargo test && cargo test --release
+    # The design of 'run' causes it to drop main.sym unannounced when compiling.
+    # ensure that it gets removed before cargo runs.
+    - name: remove stray main.sym
+      run: rm -f main.sym
+    - name: build
+      run: cargo build --release
+
+    - name: dry-run of `cargo publish`
+      run: cargo publish --dry-run
+
+    - name: Upload crate artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: crate
+        path: ./target/package/clvm_tools_rs-*.crate
+
+    # this has not been tested, so probably needs to be debugged next time a tag is created
+    - name: publish to crates.io if tagged
+      if: startsWith(github.event.ref, 'refs/tags')
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ secrets.cargo_registry_token }}
+      run: cargo publish

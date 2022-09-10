@@ -11,6 +11,9 @@ use crate::classic::clvm_tools::debug::build_symbol_dump;
 use crate::classic::clvm_tools::stages::assemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::helpers::{evaluate, quote};
+use crate::classic::clvm_tools::stages::stage_2::inline::{
+    formulate_path_selections_for_destructuring, is_at_capture, is_inline_destructure,
+};
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::classic::clvm_tools::NodePath::NodePath;
 
@@ -196,6 +199,7 @@ fn unquote_args(
     allocator: &mut Allocator,
     code: NodePtr,
     args: &Vec<Vec<u8>>,
+    matches: &HashMap<Vec<u8>, NodePtr>,
 ) -> Result<NodePtr, EvalErr> {
     match allocator.sexp(code) {
         SExp::Atom(code_buf) => {
@@ -206,18 +210,22 @@ fn unquote_args(
                 .map(|v| v.clone())
                 .collect::<Vec<Vec<u8>>>();
             if matching_args.len() > 0 {
-                return m! {
-                    unquote_atom <- allocator.new_atom("unquote".as_bytes());
-                    enlist(allocator, &vec!(unquote_atom, code))
-                };
+                if let Some(argval) = matches.get(&matching_args[0]) {
+                    // New case: if we've been given an alternate way of computing
+                    // the argument, use it here.
+                    return Ok(*argval);
+                }
+
+                let unquote_atom = allocator.new_atom("unquote".as_bytes())?;
+                return enlist(allocator, &vec![unquote_atom, code]);
             }
 
             Ok(code)
         }
         SExp::Pair(c1, c2) => {
             m! {
-                unquoted_c2 <- unquote_args(allocator, c2, args);
-                unquoted_c1 <- unquote_args(allocator, c1, args);
+                unquoted_c2 <- unquote_args(allocator, c2, args, matches);
+                unquoted_c1 <- unquote_args(allocator, c1, args, matches);
                 allocator.new_pair(unquoted_c1, unquoted_c2)
             }
         }
@@ -228,31 +236,51 @@ fn defun_inline_to_macro(
     allocator: &mut Allocator,
     declaration_sexp: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
-    m! {
-        d2 <- rest(allocator, declaration_sexp);
-        d3 <- rest(allocator, d2);
-        defmacro_atom <- allocator.new_atom("defmacro".as_bytes());
-        d2_first <- first(allocator, d2);
-        d3_first <- first(allocator, d3);
-        let mut r_vec = vec!(defmacro_atom, d2_first, d3_first);
-        code_rest <- rest(allocator, d3);
-        code <- first(allocator, code_rest);
-        let mut arg_atom_list = Vec::new();
-        let _ = flatten(allocator, d3_first, &mut arg_atom_list);
-        let arg_name_list = arg_atom_list.iter().map(|x| {
-            match allocator.sexp(*x) {
-                SExp::Atom(a) => Some(allocator.buf(&a)),
-                _ => None
-            }
-        }).flatten().filter(|x| x.len() > 0).
-            map(|v| v.to_vec()).
-            collect::<Vec<Vec<u8>>>();
-        unquoted_code <- unquote_args(allocator, code, &arg_name_list);
-        qq_atom <- allocator.new_atom("qq".as_bytes());
-        qq_list <- enlist(allocator, &vec!(qq_atom, unquoted_code));
-        let _ = r_vec.push(qq_list);
-        enlist(allocator, &r_vec)
+    let d2 = rest(allocator, declaration_sexp)?;
+    let d3 = rest(allocator, d2)?;
+    let defmacro_atom = allocator.new_atom("defmacro".as_bytes())?;
+    let d2_first = first(allocator, d2)?;
+    let d3_first = first(allocator, d3)?;
+
+    let mut destructure_matches = HashMap::new();
+    let mut use_args = d3_first;
+
+    if is_inline_destructure(allocator, d3_first) {
+        // Given an attempt to destructure via the argument list, we need
+        // to ensure that the inline function receives arguments that are
+        // relative to the _values_ given rather than the code given to
+        // generate the arguments.  These overlap when the argument list is
+        // a single level proper list, but not otherwise.
+        use_args = formulate_path_selections_for_destructuring(
+            allocator,
+            d3_first,
+            &mut destructure_matches,
+        )?;
     }
+
+    let mut r_vec = vec![defmacro_atom, d2_first, use_args];
+    let code_rest = rest(allocator, d3)?;
+    let code = first(allocator, code_rest)?;
+
+    let mut arg_atom_list = Vec::new();
+    let _ = flatten(allocator, use_args, &mut arg_atom_list);
+    let arg_name_list = arg_atom_list
+        .iter()
+        .map(|x| match allocator.sexp(*x) {
+            SExp::Atom(a) => Some(allocator.buf(&a)),
+            _ => None,
+        })
+        .flatten()
+        .filter(|x| x.len() > 0)
+        .map(|v| v.to_vec())
+        .collect::<Vec<Vec<u8>>>();
+
+    let unquoted_code = unquote_args(allocator, code, &arg_name_list, &destructure_matches)?;
+    let qq_atom = allocator.new_atom("qq".as_bytes())?;
+    let qq_list = enlist(allocator, &vec![qq_atom, unquoted_code])?;
+    r_vec.push(qq_list);
+    let res = enlist(allocator, &r_vec)?;
+    Ok(res)
 }
 
 fn parse_mod_sexp(
@@ -400,31 +428,35 @@ fn symbol_table_for_tree(
             return Ok(vec![(tree, root_node.as_path().data().to_vec())]);
         }
         SExp::Pair(_, _) => {
-            return m! {
-                let left_bytes = NodePath::new(None).first();
-                let right_bytes = NodePath::new(None).rest();
+            let left_bytes = NodePath::new(None).first();
+            let right_bytes = NodePath::new(None).rest();
 
-                tree_first <- first(allocator, tree);
-                tree_rest <- rest(allocator, tree);
+            let tree_first = first(allocator, tree)?;
+            let tree_rest = rest(allocator, tree)?;
 
-                left <-
-                    symbol_table_for_tree(
-                        allocator,
-                        tree_first,
-                        &root_node.add(left_bytes)
-                    );
-                right <-
-                    symbol_table_for_tree(
-                        allocator,
-                        tree_rest,
-                        &root_node.add(right_bytes)
-                    );
+            // Allow haskell-like @ capture for destructuring.
+            // If we encounter a form like (@ name substructure) then
+            // treat it as though name captures the current path but
+            // we also continue evaluating at the current position.
+            let mut result_fin = Vec::new();
+            if let Some((capture, destructure)) = is_at_capture(allocator, tree_first, tree_rest) {
+                // Push the given name here.
+                result_fin.push((capture, root_node.as_path().data().to_vec()));
 
-                let mut left_fin = left.to_vec();
-                let mut right_fin = right.to_vec();
-                let _ = left_fin.append(&mut right_fin);
-                Ok(left_fin)
-            };
+                let mut substructure = symbol_table_for_tree(allocator, destructure, root_node)?;
+
+                result_fin.append(&mut substructure);
+            } else {
+                let mut left =
+                    symbol_table_for_tree(allocator, tree_first, &root_node.add(left_bytes))?;
+                let mut right =
+                    symbol_table_for_tree(allocator, tree_rest, &root_node.add(right_bytes))?;
+
+                result_fin.append(&mut left);
+                result_fin.append(&mut right);
+            }
+
+            Ok(result_fin)
         }
     }
 }

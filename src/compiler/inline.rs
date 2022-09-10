@@ -8,6 +8,7 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::codegen::{generate_expr_code, get_call_name, get_callable};
+use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     BodyForm, Callable, CompileErr, CompiledCode, CompilerOpts, InlineFunction, PrimaryCodegen,
 };
@@ -81,6 +82,13 @@ fn pick_value_from_arg_element(
 ) -> Option<Rc<BodyForm>> {
     match match_args.borrow() {
         SExp::Cons(l, a, b) => {
+            if let Some((capture, children)) = is_at_capture(a.clone(), b.clone()) {
+                if capture == name {
+                    return Some(apply(provided));
+                }
+
+                return pick_value_from_arg_element(children, provided.clone(), apply, name);
+            }
             let matched_a = pick_value_from_arg_element(
                 a.clone(),
                 provided.clone(),
@@ -102,7 +110,7 @@ fn pick_value_from_arg_element(
 
             result
         }
-        SExp::Atom(l, a) => {
+        SExp::Atom(_l, a) => {
             if *a == name {
                 Some(apply(provided))
             } else {
@@ -120,7 +128,7 @@ fn arg_lookup(
     name: Vec<u8>,
 ) -> Option<Rc<BodyForm>> {
     match match_args.borrow() {
-        SExp::Cons(l, f, r) => {
+        SExp::Cons(_l, f, r) => {
             match pick_value_from_arg_element(
                 f.clone(),
                 args[arg_choice].clone(),
@@ -161,10 +169,8 @@ fn replace_inline_body(
     args: &Vec<Rc<BodyForm>>,
     expr: Rc<BodyForm>,
 ) -> Result<Rc<BodyForm>, CompileErr> {
-    let arg_str_vec: Vec<String> = args.iter().map(|x| x.to_sexp().to_string()).collect();
-
     match expr.borrow() {
-        BodyForm::Let(l, _, bindings, body) => Err(CompileErr(
+        BodyForm::Let(_l, _, _, _) => Err(CompileErr(
             loc.clone(),
             "let binding should have been hoisted before optimization".to_string(),
         )),
@@ -215,9 +221,12 @@ fn replace_inline_body(
                 }
             }
         }
-        BodyForm::Value(SExp::Atom(_, a)) => arg_lookup(inline.args.clone(), 0, args, a.clone())
-            .map(|x| Ok(x.clone()))
-            .unwrap_or_else(|| Ok(expr.clone())),
+        BodyForm::Value(SExp::Atom(_, a)) => {
+            let alookup = arg_lookup(inline.args.clone(), 0, args, a.clone())
+                .map(|x| Ok(x.clone()))
+                .unwrap_or_else(|| Ok(expr.clone()))?;
+            Ok(alookup)
+        }
         _ => Ok(expr.clone()),
     }
 }
@@ -231,7 +240,6 @@ pub fn replace_in_inline(
     inline: &InlineFunction,
     args: &Vec<Rc<BodyForm>>,
 ) -> Result<CompiledCode, CompileErr> {
-    let arg_str_vec: Vec<String> = args.iter().map(|x| x.to_sexp().to_string()).collect();
     replace_inline_body(
         allocator,
         runner.clone(),

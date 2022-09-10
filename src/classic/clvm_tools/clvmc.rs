@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -27,64 +28,72 @@ use crate::compiler::comptypes::CompileErr;
 use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::runtypes::RunFailure;
 
-pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> bool {
-    match proper_list(allocator, sexp, true) {
-        None => {
-            return false;
-        }
-        Some(l) => {
-            for elt in l.iter() {
-                if detect_modern(allocator, *elt) {
-                    return true;
-                }
-
-                match proper_list(allocator, *elt, true) {
-                    None => {
-                        continue;
-                    }
-                    Some(e) => {
-                        if e.len() != 2 {
-                            continue;
-                        }
-
-                        match (allocator.sexp(e[0]), allocator.sexp(e[1])) {
-                            (SExp::Atom(inc), SExp::Atom(name)) => {
-                                if allocator.buf(&inc) == "include".as_bytes().to_vec()
-                                    && allocator.buf(&name)
-                                        == "*standard-cl-21*".as_bytes().to_vec()
-                                {
-                                    return true;
-                                }
-                            }
-                            _ => {
-                                continue;
-                            }
-                        }
-                    }
-                }
+fn include_dialect(
+    allocator: &mut Allocator,
+    dialects: &HashMap<Vec<u8>, i32>,
+    e: &Vec<NodePtr>,
+) -> Option<i32> {
+    if let (SExp::Atom(inc), SExp::Atom(name)) = (allocator.sexp(e[0]), allocator.sexp(e[1])) {
+        if allocator.buf(&inc) == "include".as_bytes().to_vec() {
+            if let Some(dialect) = dialects.get(allocator.buf(&name)) {
+                return Some(*dialect);
             }
         }
     }
 
-    false
+    None
+}
+
+pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> Option<i32> {
+    let mut dialects = HashMap::new();
+    dialects.insert("*standard-cl-21*".as_bytes().to_vec(), 21);
+    dialects.insert("*standard-cl-22*".as_bytes().to_vec(), 22);
+
+    proper_list(allocator, sexp, true).and_then(|l| {
+        for elt in l.iter() {
+            if let Some(dialect) = detect_modern(allocator, *elt) {
+                return Some(dialect);
+            }
+
+            match proper_list(allocator, *elt, true) {
+                None => {
+                    continue;
+                }
+
+                Some(e) => {
+                    if e.len() != 2 {
+                        continue;
+                    }
+
+                    if let Some(dialect) = include_dialect(allocator, &dialects, &e) {
+                        return Some(dialect);
+                    }
+                }
+            }
+        }
+
+        None
+    })
 }
 
 fn compile_clvm_text(
     allocator: &mut Allocator,
-    use_filename: String,
-    text: String,
     search_paths: &Vec<String>,
+    symbol_table: &mut HashMap<String, String>,
+    text: &String,
+    input_path: &String,
 ) -> Result<NodePtr, EvalErr> {
     let ir_src = read_ir(&text).map_err(|s| EvalErr(allocator.null(), s))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
 
-    if detect_modern(allocator, assembled_sexp) {
+    if let Some(dialect) = detect_modern(allocator, assembled_sexp) {
         let runner = Rc::new(DefaultProgramRunner::new());
-        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
+        let opts = Rc::new(DefaultCompilerOpts::new(&input_path))
             .set_optimize(true)
+            .set_frontend_opt(dialect > 21)
             .set_search_paths(&search_paths);
 
-        let unopt_res = compile_file(allocator, runner.clone(), opts.clone(), &text);
+        let unopt_res = compile_file(allocator, runner.clone(), opts.clone(), &text, symbol_table);
         let res = unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)));
 
         res.and_then(|x| {
@@ -104,56 +113,83 @@ fn compile_clvm_text(
     }
 }
 
+pub fn compile_clvm_inner(
+    allocator: &mut Allocator,
+    search_paths: &Vec<String>,
+    symbol_table: &mut HashMap<String, String>,
+    filename: &String,
+    text: &String,
+    result_stream: &mut Stream,
+) -> Result<(), String> {
+    let result = compile_clvm_text(allocator, search_paths, symbol_table, text, filename)
+        .map_err(|x| format!("error {} compiling {}", x.1, disassemble(allocator, x.0)))?;
+    sexp_to_stream(allocator, result, result_stream);
+    Ok(())
+}
+
 pub fn compile_clvm(
     input_path: &String,
     output_path: &String,
     search_paths: &Vec<String>,
+    symbol_table: &mut HashMap<String, String>,
 ) -> Result<String, String> {
     let mut allocator = Allocator::new();
 
     let compile = newer(input_path, output_path).unwrap_or_else(|_| true);
+    let mut result_stream = Stream::new(None);
 
     if compile {
         let text = fs::read_to_string(input_path)
             .map_err(|x| format!("error reading {}: {:?}", input_path, x))?;
 
-        let result = compile_clvm_text(&mut allocator, input_path.clone(), text, search_paths)
-            .map_err(|x| {
-                format!(
-                    "error {} compiling {}",
-                    x.1,
-                    disassemble(&mut allocator, x.0)
-                )
-            })?;
-        let mut result_stream = Stream::new(None);
-        sexp_to_stream(&mut allocator, result, &mut result_stream);
+        let _ = compile_clvm_inner(
+            &mut allocator,
+            search_paths,
+            symbol_table,
+            input_path,
+            &text,
+            &mut result_stream,
+        )?;
 
-        {
-            let output_path_obj = Path::new(output_path);
-            let output_dir = output_path_obj
-                .parent()
-                .map(|p| Ok(p))
-                .unwrap_or_else(|| Err("could not get parent of output path"))?;
+        let output_path_obj = Path::new(output_path);
+        let output_dir = output_path_obj
+            .parent()
+            .map(|p| Ok(p))
+            .unwrap_or_else(|| Err("could not get parent of output path"))?;
 
-            let mut temp_output_file = NamedTempFile::new_in(output_dir).map_err(|e| {
-                format!(
-                    "error creating temporary compiler output for {}: {:?}",
-                    input_path, e
-                )
-            })?;
+        let target_data = result_stream.get_value().hex();
 
-            let _ = temp_output_file
-                .write_all(&result_stream.get_value().hex().as_bytes())
-                .map_err(|_| format!("failed to write to {:?}", temp_output_file.path()))?;
-
-            temp_output_file.persist(output_path.clone()).map_err(|e| {
-                format!(
-                    "error persisting temporary compiler output {}: {:?}",
-                    output_path, e
-                )
-            })?;
+        // Try to detect whether we'd put the same output in the output file.
+        // Don't proceed if true.
+        if let Ok(prev_content) = fs::read_to_string(output_path.clone()) {
+            let prev_trimmed = prev_content.trim();
+            let trimmed = target_data.trim();
+            if prev_trimmed == trimmed {
+                // It's the same program, bail regardless.
+                return Ok(output_path.to_string());
+            }
         }
-    };
+
+        // Make the contents appear atomically so that other test processes
+        // won't mistake an empty file for intended output.
+        let mut temp_output_file = NamedTempFile::new_in(output_dir).map_err(|e| {
+            format!(
+                "error creating temporary compiler output for {}: {:?}",
+                input_path, e
+            )
+        })?;
+
+        let _ = temp_output_file
+            .write_all(&target_data.as_bytes())
+            .map_err(|_| format!("failed to write to {:?}", temp_output_file.path()))?;
+
+        temp_output_file.persist(output_path.clone()).map_err(|e| {
+            format!(
+                "error persisting temporary compiler output {}: {:?}",
+                output_path, e
+            )
+        })?;
+    }
 
     Ok(output_path.to_string())
 }

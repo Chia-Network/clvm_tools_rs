@@ -16,6 +16,8 @@ extern crate pyo3;
 
 extern crate tempfile;
 
+extern crate clvmr as clvm_rs;
+
 mod util;
 
 pub mod classic;

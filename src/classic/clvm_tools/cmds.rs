@@ -13,13 +13,12 @@ use std::time::SystemTime;
 
 use core::cmp::max;
 
+use linked_hash_map::LinkedHashMap;
+use yaml_rust::{Yaml, YamlEmitter};
+
 use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 use clvm_rs::run_program::PreEval;
-
-#[macro_use]
-use yamlette::yamlette;
-use yamlette::model::yaml::str::FORCE_QUOTES;
 
 use crate::classic::clvm::__type_compatibility__::{t, Bytes, BytesFromType, Stream, Tuple};
 use crate::classic::clvm::serialize::{sexp_from_stream, sexp_to_stream, SimpleCreateCLVMObject};
@@ -27,8 +26,9 @@ use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
 use crate::classic::clvm::KEYWORD_FROM_ATOM;
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
 use crate::classic::clvm_tools::clvmc::detect_modern;
-use crate::classic::clvm_tools::debug::trace_pre_eval;
-use crate::classic::clvm_tools::debug::{trace_to_table, trace_to_text};
+use crate::classic::clvm_tools::debug::{
+    check_unused, trace_pre_eval, trace_to_table, trace_to_text,
+};
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages;
@@ -43,7 +43,7 @@ use crate::classic::platform::argparse::{
     TArgOptionAction, TArgumentParserProps,
 };
 
-use crate::compiler::cldb::{hex_to_modern_sexp, CldbRun, CldbRunEnv};
+use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
 use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
@@ -117,7 +117,7 @@ pub fn call_tool<'a>(
             args = a;
         }
         Err(e) => {
-            println!("{:?}", e);
+            println!("{}", e);
             return;
         }
     }
@@ -237,13 +237,31 @@ impl ArgumentValueConv for StageImport {
 pub fn run(args: &Vec<String>) {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, &"run".to_string(), 2);
-    io::stdout().write_all(s.get_value().data());
+    io::stdout()
+        .write_all(s.get_value().data())
+        .expect("stdout");
 }
 
 pub fn brun(args: &Vec<String>) {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, &"brun".to_string(), 0);
-    io::stdout().write_all(s.get_value().data());
+    io::stdout()
+        .write_all(s.get_value().data())
+        .expect("stdout");
+}
+
+fn to_yaml(entries: &Vec<BTreeMap<String, String>>) -> Yaml {
+    let result_array: Vec<Yaml> = entries
+        .iter()
+        .map(|tm| {
+            let mut h = LinkedHashMap::new();
+            for (k, v) in tm.iter() {
+                h.insert(Yaml::String(k.clone()), Yaml::String(v.clone()));
+            }
+            Yaml::Hash(h)
+        })
+        .collect();
+    Yaml::Array(result_array)
 }
 
 pub fn cldb(args: &Vec<String>) {
@@ -253,6 +271,7 @@ pub fn cldb(args: &Vec<String>) {
         prog: format!("clvm_tools {}", tool_name),
     };
 
+    let mut search_paths = Vec::new();
     let mut parser = ArgumentParser::new(Some(props));
     parser.add_argument(
         vec!["-i".to_string(), "--include".to_string()],
@@ -318,6 +337,15 @@ pub fn cldb(args: &Vec<String>) {
         }
     }
 
+    if let Some(ArgumentValue::ArgArray(v)) = parsedArgs.get("include") {
+        for p in v {
+            match p {
+                ArgumentValue::ArgString(_, s) => search_paths.push(s.to_string()),
+                _ => {}
+            }
+        }
+    }
+
     match parsedArgs.get("path_or_code") {
         Some(ArgumentValue::ArgString(file, path_or_code)) => {
             input_file = file.clone();
@@ -357,22 +385,34 @@ pub fn cldb(args: &Vec<String>) {
     let use_filename = input_file
         .clone()
         .unwrap_or_else(|| "*command*".to_string());
-    let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_optimize(do_optimize);
+    let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
+        .set_optimize(do_optimize)
+        .set_search_paths(&search_paths);
 
-    let unopt_res = compile_file(&mut allocator, runner.clone(), opts.clone(), &input_program);
+    let mut use_symbol_table = symbol_table.unwrap_or_else(|| HashMap::new());
+    let unopt_res = compile_file(
+        &mut allocator,
+        runner.clone(),
+        opts.clone(),
+        &input_program,
+        &mut use_symbol_table,
+    );
 
-    let mut program = Rc::new(sexp::SExp::Nil(Srcloc::start(&"*nil*".to_string())));
+    let program;
     let mut output = Vec::new();
-    let yamlette_string = |to_print: Vec<BTreeMap<String, String>>| match yamlette!(write; [[( # FORCE_QUOTES => to_print )]])
-    {
-        Ok(s) => s,
-        Err(e) => format!("error producing yaml: {:?}", e),
+    let yamlette_string = |to_print: Vec<BTreeMap<String, String>>| {
+        let mut result = String::new();
+        let mut emitter = YamlEmitter::new(&mut result);
+        match emitter.dump(&to_yaml(&to_print)) {
+            Ok(_) => result,
+            Err(e) => format!("error producing yaml: {:?}", e),
+        }
     };
 
     let res = match parsedArgs.get("hex") {
         Some(ArgumentValue::ArgBool(true)) => hex_to_modern_sexp(
             &mut allocator,
-            &symbol_table.unwrap_or_else(|| HashMap::new()),
+            &use_symbol_table,
             prog_srcloc.clone(),
             &input_program,
         )
@@ -443,7 +483,11 @@ pub fn cldb(args: &Vec<String>) {
     }
     let program_lines: Vec<String> = input_program.lines().map(|x| x.to_string()).collect();
     let step = start_step(program.clone(), args.clone());
-    let cldbenv = CldbRunEnv::new(input_file, program_lines);
+    let cldbenv = CldbRunEnv::new(
+        input_file,
+        program_lines,
+        Box::new(CldbNoOverride::new_symbols(use_symbol_table)),
+    );
     let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
 
     loop {
@@ -557,6 +601,13 @@ pub fn launch_tool(
 
     let mut parser = ArgumentParser::new(Some(props));
     parser.add_argument(
+        vec!["-s".to_string(), "--stage".to_string()],
+        Argument::new()
+            .set_type(Rc::new(StageImport {}))
+            .set_help("stage number to include".to_string())
+            .set_default(ArgumentValue::ArgInt(default_stage as i64)),
+    );
+    parser.add_argument(
         vec!["--strict".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
@@ -567,13 +618,6 @@ pub fn launch_tool(
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
             .set_help("Read program and environment as hexadecimal bytecode".to_string()),
-    );
-    parser.add_argument(
-        vec!["-s".to_string(), "--stage".to_string()],
-        Argument::new()
-            .set_type(Rc::new(StageImport {}))
-            .set_help("stage number to include".to_string())
-            .set_default(ArgumentValue::ArgInt(default_stage as i64)),
     );
     parser.add_argument(
         vec!["-v".to_string(), "--verbose".to_string()],
@@ -657,6 +701,23 @@ pub fn launch_tool(
             .set_action(TArgOptionAction::StoreTrue)
             .set_help("run optimizer".to_string()),
     );
+    parser.add_argument(
+        vec!["--only-exn".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("Only show frames along the exception path".to_string()),
+    );
+
+    if tool_name == "run" {
+        parser.add_argument(
+            vec!["--check-unused-args".to_string()],
+            Argument::new()
+                .set_action(TArgOptionAction::StoreTrue)
+                .set_help(
+                    "check for unused uncurried parameters (by convention lower case)".to_string(),
+                ),
+        );
+    }
 
     let arg_vec = args[1..].to_vec();
     let parsedArgs: HashMap<String, ArgumentValue>;
@@ -680,6 +741,7 @@ pub fn launch_tool(
 
     let dpr;
     let run_program: Rc<dyn TRunProgram>;
+    let mut search_paths = Vec::new();
     match parsedArgs.get("include") {
         Some(ArgumentValue::ArgArray(v)) => {
             let mut bare_paths = Vec::with_capacity(v.len());
@@ -690,6 +752,7 @@ pub fn launch_tool(
                 }
             }
             let special_runner = run_program_for_search_paths(&bare_paths);
+            search_paths = bare_paths;
             dpr = special_runner.clone();
             run_program = special_runner;
         }
@@ -704,7 +767,7 @@ pub fn launch_tool(
 
     let mut input_file = None;
     let mut input_serialized = None;
-    let mut input_sexp;
+    let mut input_sexp: Option<NodePtr> = None;
 
     let time_start = SystemTime::now();
     let mut time_read_hex = SystemTime::now();
@@ -722,31 +785,47 @@ pub fn launch_tool(
         _ => {}
     }
 
+    match parsedArgs.get("env") {
+        Some(ArgumentValue::ArgString(file, path_or_code)) => {
+            input_file = file.clone();
+            input_args = path_or_code.to_string();
+        }
+        _ => {}
+    }
+
     match parsedArgs.get("hex") {
         Some(_) => {
             let assembled_serialized =
                 Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
-            if input_args.len() == 0 {
-                input_args = "80".to_string();
-            }
 
-            let env_serialized = Bytes::new(Some(BytesFromType::Hex(input_args.to_string())));
+            let env_serialized = if input_args == "" {
+                Bytes::new(Some(BytesFromType::Hex("80".to_string())))
+            } else {
+                Bytes::new(Some(BytesFromType::Hex(input_args.to_string())))
+            };
+
             time_read_hex = SystemTime::now();
 
-            input_serialized = Some(
-                Bytes::new(Some(BytesFromType::Raw(vec![0xff])))
-                    .concat(&assembled_serialized)
-                    .concat(&env_serialized),
-            );
-
-            let mut stream = Stream::new(input_serialized.clone());
-            input_sexp = sexp_from_stream(
+            let mut prog_stream = Stream::new(Some(assembled_serialized.clone()));
+            let input_prog_sexp = sexp_from_stream(
                 &mut allocator,
-                &mut stream,
+                &mut prog_stream,
                 Box::new(SimpleCreateCLVMObject {}),
             )
             .map(|x| Some(x.1))
             .unwrap();
+
+            let mut arg_stream = Stream::new(Some(env_serialized.clone()));
+            let input_arg_sexp = sexp_from_stream(
+                &mut allocator,
+                &mut arg_stream,
+                Box::new(SimpleCreateCLVMObject {}),
+            )
+            .map(|x| Some(x.1))
+            .unwrap();
+            if let (Some(ip), Some(ia)) = (input_prog_sexp, input_arg_sexp) {
+                input_sexp = allocator.new_pair(ip, ia).ok();
+            }
         }
         _ => {
             let src_sexp;
@@ -772,7 +851,7 @@ pub fn launch_tool(
             let mut parsed_args_result = "()".to_string();
 
             match parsedArgs.get("env") {
-                Some(ArgumentValue::ArgString(f, s)) => {
+                Some(ArgumentValue::ArgString(_f, s)) => {
                     parsed_args_result = s.to_string();
                 }
                 _ => {}
@@ -782,10 +861,7 @@ pub fn launch_tool(
             let env = assemble_from_ir(&mut allocator, Rc::new(env_ir)).unwrap();
             time_assemble = SystemTime::now();
 
-            input_sexp = allocator
-                .new_pair(assembled_sexp, env)
-                .map(|x| Some(x))
-                .unwrap();
+            input_sexp = allocator.new_pair(assembled_sexp, env).ok();
         }
     }
 
@@ -817,11 +893,46 @@ pub fn launch_tool(
         _ => {}
     }
 
+    // Add unused check.
+    let do_check_unused = parsedArgs
+        .get("check_unused_args")
+        .map(|a| match a {
+            ArgumentValue::ArgBool(true) => true,
+            _ => false,
+        })
+        .unwrap_or_else(|| false);
+
+    let dialect = input_sexp.and_then(|i| detect_modern(&mut allocator, i));
+    let mut stderr_output = |s| {
+        if let Some(_) = dialect {
+            eprintln!("{}", s);
+        } else {
+            stdout.write_string(s);
+        }
+    };
+
+    if do_check_unused {
+        let use_filename = input_file
+            .as_ref()
+            .map(|x| x.clone())
+            .unwrap_or_else(|| "*command*".to_string());
+        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_search_paths(&search_paths);
+        match check_unused(opts, &input_program) {
+            Ok((success, output)) => {
+                stderr_output(output);
+                if !success {
+                    return;
+                }
+            }
+            Err(e) => {
+                stderr_output(format!("{}: {}\n", e.0.to_string(), e.1));
+                return;
+            }
+        }
+    }
+
     // In testing: short circuit for modern compilation.
-    if input_sexp
-        .map(|i| detect_modern(&mut allocator, i))
-        .unwrap_or_else(|| false)
-    {
+    if let Some(dialect) = dialect {
         let do_optimize = parsedArgs
             .get("optimize")
             .map(|x| match x {
@@ -831,9 +942,19 @@ pub fn launch_tool(
             .unwrap_or_else(|| false);
         let runner = Rc::new(DefaultProgramRunner::new());
         let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
-        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_optimize(do_optimize);
+        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
+            .set_optimize(do_optimize)
+            .set_search_paths(&search_paths)
+            .set_frontend_opt(dialect > 21);
+        let mut symbol_table = HashMap::new();
 
-        let unopt_res = compile_file(&mut allocator, runner.clone(), opts.clone(), &input_program);
+        let unopt_res = compile_file(
+            &mut allocator,
+            runner.clone(),
+            opts.clone(),
+            &input_program,
+            &mut symbol_table,
+        );
         let res = if do_optimize {
             unopt_res.and_then(|x| run_optimizer(&mut allocator, runner, Rc::new(x)))
         } else {
@@ -842,14 +963,13 @@ pub fn launch_tool(
 
         match res {
             Ok(r) => {
-                println!("{}", r.to_string());
+                stdout.write_string(r.to_string());
 
-                let mut st = HashMap::new();
-                build_symbol_table_mut(&mut st, &r);
-                write_sym_output(&st, &"main.sym".to_string());
+                build_symbol_table_mut(&mut symbol_table, &r);
+                write_sym_output(&symbol_table, &"main.sym".to_string()).expect("writing symbols");
             }
             Err(c) => {
-                println!("{}: {}", c.0.to_string(), c.1);
+                stdout.write_string(format!("{}: {}", c.0.to_string(), c.1));
             }
         }
 
@@ -1001,7 +1121,6 @@ pub fn launch_tool(
             run_script,
             input_sexp.unwrap(),
             Some(RunProgramOption {
-                operator_lookup: None,
                 max_cost: if max_cost == 0 {
                     None
                 } else {
@@ -1027,7 +1146,7 @@ pub fn launch_tool(
             };
 
             let _ = match parsedArgs.get("time") {
-                Some(ArgumentValue::ArgInt(_t)) => {
+                Some(ArgumentValue::ArgBool(true)) => {
                     match parsedArgs.get("hex") {
                         Some(_) => {
                             stdout.write_string(format!(
@@ -1107,11 +1226,17 @@ pub fn launch_tool(
     let log_updates = log_updates.lock().unwrap().finish();
     fix_log(&mut allocator, &mut log_content, &log_updates);
 
+    let only_exn = parsedArgs
+        .get("only_exn")
+        .map(|_| true)
+        .unwrap_or_else(|| false);
+
     if emit_symbol_output {
         stdout.write_string(format!("\n"));
         trace_to_text(
             &mut allocator,
             stdout,
+            only_exn,
             &log_content,
             symbol_table.clone(),
             &disassemble,
@@ -1120,6 +1245,7 @@ pub fn launch_tool(
             trace_to_table(
                 &mut allocator,
                 stdout,
+                only_exn,
                 &mut log_content,
                 symbol_table,
                 &disassemble,
