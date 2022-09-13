@@ -49,10 +49,7 @@ pub fn leave() {
 
 pub fn indent() -> String {
     let dc = depth_count() as usize;
-    let mut v = Vec::with_capacity(dc);
-    for _ in 0..dc {
-        v.push(b' ');
-    }
+    let v = vec![b' '; dc];
     decode_string(&v)
 }
 
@@ -335,7 +332,7 @@ pub fn var_change_optimizer_cons_eval(
         Some(t1) => {
             let original_args = t1
                 .get("args")
-                .ok_or(EvalErr(r, "bad pattern match on args".to_string()))?;
+                .ok_or_else(|| EvalErr(r, "bad pattern match on args".to_string()))?;
 
             if DIAG_OPTIMIZATIONS {
                 println!(
@@ -345,7 +342,7 @@ pub fn var_change_optimizer_cons_eval(
             };
             let original_call = t1
                 .get("sexp")
-                .ok_or(EvalErr(r, "bad pattern match on sexp".to_string()))?;
+                .ok_or_else(|| EvalErr(r, "bad pattern match on sexp".to_string()))?;
 
             if DIAG_OPTIMIZATIONS {
                 println!(
@@ -375,7 +372,7 @@ pub fn var_change_optimizer_cons_eval(
                     println!("XXX does not seems_constant\n");
                 };
 
-                let new_operands = proper_list(allocator, new_eval_sexp_args, true).ok_or(
+                let new_operands = proper_list(allocator, new_eval_sexp_args, true).ok_or_else(||
                     EvalErr(new_eval_sexp_args, "Must be a proper list".to_string()),
                 )?;
 
@@ -413,7 +410,7 @@ pub fn var_change_optimizer_cons_eval(
                         Ok(acc + increment)
                     },
                     0,
-                    &mut opt_operands.iter().map(|x| *x),
+                    &mut opt_operands.iter().copied(),
                 )?;
 
                 if DIAG_OPTIMIZATIONS {
