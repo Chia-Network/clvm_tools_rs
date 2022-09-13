@@ -616,7 +616,12 @@ fn apply_null_optimizer(
 struct OptimizerRunner<'a> {
     pub name: String,
     #[allow(clippy::type_complexity)]
-    to_run: &'a dyn Fn(&mut Allocator, Rc<RefCell<HashMap<String, NodePtr>>>, NodePtr, Rc<dyn TRunProgram>) -> Result<NodePtr, EvalErr>
+    to_run: &'a dyn Fn(
+        &mut Allocator,
+        Rc<RefCell<HashMap<String, NodePtr>>>,
+        NodePtr,
+        Rc<dyn TRunProgram>,
+    ) -> Result<NodePtr, EvalErr>,
 }
 
 impl<'a> OptimizerRunner<'a> {
