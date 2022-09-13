@@ -372,9 +372,10 @@ pub fn var_change_optimizer_cons_eval(
                     println!("XXX does not seems_constant\n");
                 };
 
-                let new_operands = proper_list(allocator, new_eval_sexp_args, true).ok_or_else(||
-                    EvalErr(new_eval_sexp_args, "Must be a proper list".to_string()),
-                )?;
+                let new_operands =
+                    proper_list(allocator, new_eval_sexp_args, true).ok_or_else(|| {
+                        EvalErr(new_eval_sexp_args, "Must be a proper list".to_string())
+                    })?;
 
                 let mut opt_operands = Vec::new();
                 for item in new_operands.iter() {
