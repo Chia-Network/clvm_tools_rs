@@ -1,3 +1,7 @@
+#![allow(clippy::all)]
+// #[allow(clippy::borrow_deref_ref)]
+// Eventually this can be downgraded and applied just to compile_clvm
+// re: https://github.com/rust-lang/rust-clippy/issues/8971
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyString, PyTuple};
@@ -57,12 +61,12 @@ fn compile_clvm(
     let mut path_string = real_input_path.to_string();
 
     if !std::path::Path::new(&path_string).exists() && !path_string.ends_with(".clvm") {
-        path_string = path_string + ".clvm";
+        path_string += ".clvm";
     };
 
     let mut symbols = HashMap::new();
     let compiled = clvmc::compile_clvm(&path_string, &output_path, &search_paths, &mut symbols)
-        .map_err(|s| PyException::new_err(s))?;
+        .map_err(PyException::new_err)?;
 
     Python::with_gil(|py| {
         if export_symbols == Some(true) {
@@ -120,7 +124,7 @@ fn runstep(myself: &mut PythonRunStep) -> PyResult<Option<PyObject>> {
 #[pymethods]
 impl PythonRunStep {
     fn is_ended(&self) -> PyResult<bool> {
-        return Ok(self.ended);
+        Ok(self.ended)
     }
 
     fn drop(&mut self) {
@@ -168,37 +172,29 @@ fn start_clvm_program(
     let (command_tx, command_rx) = mpsc::channel();
     let (result_tx, result_rx) = mpsc::channel();
 
-    let t = thread::spawn(move || {
+    thread::spawn(move || {
         let mut allocator = Allocator::new();
         let runner = Rc::new(DefaultProgramRunner::new());
         let mut prim_map = HashMap::new();
         let cmd_input = command_rx;
         let result_output = result_tx;
-        let prog_srcloc = Srcloc::start(&"*program*".to_string());
-        let args_srcloc = Srcloc::start(&"*args*".to_string());
+        let prog_srcloc = Srcloc::start("*program*");
+        let args_srcloc = Srcloc::start("*args*");
 
         for p in prims::prims().iter() {
             prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
         }
 
-        let use_symbol_table = symbol_table.unwrap_or_else(|| HashMap::new());
-        let program = match hex_to_modern_sexp(
-            &mut allocator,
-            &use_symbol_table,
-            prog_srcloc.clone(),
-            &hex_prog,
-        ) {
-            Ok(v) => v,
-            Err(_) => {
-                return;
-            }
-        };
-        let args = match hex_to_modern_sexp(
-            &mut allocator,
-            &HashMap::new(),
-            args_srcloc.clone(),
-            &hex_args,
-        ) {
+        let use_symbol_table = symbol_table.unwrap_or_default();
+        let program =
+            match hex_to_modern_sexp(&mut allocator, &use_symbol_table, prog_srcloc, &hex_prog) {
+                Ok(v) => v,
+                Err(_) => {
+                    return;
+                }
+            };
+        let args = match hex_to_modern_sexp(&mut allocator, &HashMap::new(), args_srcloc, &hex_args)
+        {
             Ok(v) => v,
             Err(_) => {
                 return;
@@ -207,18 +203,15 @@ fn start_clvm_program(
 
         let mut overrides_table: HashMap<String, Box<dyn CldbSingleBespokeOverride>> =
             HashMap::new();
-        match overrides {
-            Some(t) => {
-                for (k, v) in t.iter() {
-                    let override_fun_callable = CldbSinglePythonOverride::new(v);
-                    overrides_table.insert(k.clone(), Box::new(override_fun_callable));
-                }
+        if let Some(t) = overrides {
+            for (k, v) in t.iter() {
+                let override_fun_callable = CldbSinglePythonOverride::new(v);
+                overrides_table.insert(k.clone(), Box::new(override_fun_callable));
             }
-            _ => {}
         }
         let override_runnable = CldbOverrideBespokeCode::new(use_symbol_table, overrides_table);
 
-        let step = start_step(program.clone(), args.clone());
+        let step = start_step(program, args);
         let cldbenv = CldbRunEnv::new(None, vec![], Box::new(override_runnable));
         let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
         loop {

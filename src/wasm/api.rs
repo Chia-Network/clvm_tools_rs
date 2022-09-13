@@ -8,13 +8,14 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 
 use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 use crate::classic::clvm::serialize::sexp_to_stream;
 use crate::classic::clvm_tools::clvmc::compile_clvm_inner;
-use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
+use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::cldb::{
     hex_to_modern_sexp, CldbOverrideBespokeCode, CldbRun, CldbRunEnv, CldbRunnable,
     CldbSingleBespokeOverride,
@@ -45,8 +46,6 @@ struct JsRunStep {
 
 struct JsRepl {
     allocator: RefCell<Allocator>,
-    runner: Rc<dyn TRunProgram>,
-    prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     repl: RefCell<Repl>,
 }
 
@@ -211,7 +210,7 @@ pub fn create_clvm_runner(
     for ent in js_sys::Object::keys(&overrides).values() {
         let key = ent.unwrap().as_string().unwrap();
         let val = get_property(&overrides, &key).unwrap();
-        match js_sys::Function::try_from(&val) {
+        match val.dyn_ref::<js_sys::Function>() {
             Some(f) => {
                 override_funs.insert(key, Box::new(JsBespokeOverride { fun: f.clone() }));
             }
@@ -306,7 +305,7 @@ pub fn compile(input_js: JsValue, filename_js: JsValue, search_paths_js: Vec<JsV
     let mut result_stream = Stream::new(None);
     let input = input_js.as_string().unwrap();
     let filename = filename_js.as_string().unwrap();
-    let search_paths = search_paths_js
+    let search_paths: Vec<String> = search_paths_js
         .iter()
         .map(|j| j.as_string().unwrap())
         .collect();
@@ -423,8 +422,6 @@ pub fn create_repl() -> i32 {
                 new_id,
                 JsRepl {
                     allocator: RefCell::new(allocator),
-                    runner,
-                    prim_map: Rc::new(prim_map),
                     repl: RefCell::new(repl),
                 },
             );

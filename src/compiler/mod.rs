@@ -1,6 +1,7 @@
 pub mod cldb;
 pub mod clvm;
 mod codegen;
+#[allow(clippy::module_inception)]
 pub mod compiler;
 pub mod comptypes;
 pub mod debug;

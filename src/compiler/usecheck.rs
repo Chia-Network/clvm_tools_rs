@@ -16,14 +16,14 @@ use crate::compiler::sexp::SExp;
 use crate::util::u8_from_number;
 
 // We consider lower case atoms as uncurried by convention.
-fn consider_as_uncurried(v: &Vec<u8>) -> bool {
-    v.len() > 0 && v[0] >= b'a' && v[0] <= b'z'
+fn consider_as_uncurried(v: &[u8]) -> bool {
+    !v.is_empty() && v[0] >= b'a' && v[0] <= b'z'
 }
 
 fn produce_env_captures(
     envmap: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
     envlist: &mut HashMap<Vec<u8>, Vec<u8>>,
-    base_name: Vec<u8>,
+    mut base_name: Vec<u8>,
     args: Rc<SExp>,
 ) {
     match args.borrow() {
@@ -34,7 +34,7 @@ fn produce_env_captures(
         SExp::Atom(l, a) => {
             let mut new_name = a.clone();
             new_name.append(&mut "_$_".as_bytes().to_vec());
-            new_name.append(&mut base_name.clone());
+            new_name.append(&mut base_name);
             envmap.insert(
                 a.clone(),
                 Rc::new(BodyForm::Value(SExp::Atom(l.clone(), new_name.clone()))),
@@ -77,7 +77,7 @@ pub fn check_parameters_used_compileform(
         .hex()
         .as_bytes()
         .to_vec();
-    let e = Evaluator::new(opts.clone(), runner.clone(), program.helpers.clone()).mash_conditions();
+    let e = Evaluator::new(opts.clone(), runner, program.helpers.clone()).mash_conditions();
 
     produce_env_captures(
         &mut env,

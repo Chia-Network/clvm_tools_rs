@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::string::String;
@@ -27,6 +28,51 @@ impl Eq for SExp {}
 impl PartialEq for SExp {
     fn eq(&self, other: &Self) -> bool {
         self.equal_to(other)
+    }
+}
+
+impl Display for SExp {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            SExp::Nil(_) => {
+                formatter.write_str("()")?;
+            }
+            SExp::Cons(_, a, b) => {
+                formatter.write_str("(")?;
+                formatter.write_str(&list_no_parens(a, b))?;
+                formatter.write_str(")")?;
+            }
+            SExp::Integer(_, v) => {
+                formatter.write_str(&v.to_string())?;
+            }
+            SExp::QuotedString(_, q, s) => {
+                if printable(s) {
+                    formatter.write_str("\"")?;
+                    formatter.write_str(&escape_quote(*q, s))?;
+                    formatter.write_str("\"")?;
+                } else {
+                    let vlen = s.len() * 2;
+                    let mut outbuf = vec![0; vlen];
+                    bin2hex(s, &mut outbuf).map_err(|_e| std::fmt::Error::default())?;
+                    formatter.write_str("0x")?;
+                    formatter.write_str(
+                        std::str::from_utf8(&outbuf).expect("only hex digits expected"),
+                    )?;
+                }
+            }
+            SExp::Atom(l, a) => {
+                if a.is_empty() {
+                    formatter.write_str("()")?;
+                } else if printable(a) {
+                    formatter.write_str(&decode_string(a))?;
+                } else {
+                    formatter
+                        .write_str(&SExp::Integer(l.clone(), number_from_u8(a)).to_string())?;
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -74,23 +120,23 @@ enum SExpParseState {
 
 #[derive(Debug)]
 enum SExpParseResult {
-    PResume(SExpParseState),
-    PEmit(Rc<SExp>, SExpParseState),
-    PError(Srcloc, String),
+    Resume(SExpParseState),
+    Emit(Rc<SExp>, SExpParseState),
+    Error(Srcloc, String),
 }
 
 #[derive(Debug)]
 enum Integral {
     Decimal,
     Hex,
-    NotIntegral,
+    NotIntegralValue,
 }
 
-fn is_hex(s: &Vec<u8>) -> bool {
+fn is_hex(s: &[u8]) -> bool {
     s.len() >= 2 && s[0] == b'0' && s[1] == b'x'
 }
 
-fn is_dec(s: &Vec<u8>) -> bool {
+fn is_dec(s: &[u8]) -> bool {
     let mut first = true;
     let mut dec = true;
 
@@ -107,13 +153,13 @@ fn is_dec(s: &Vec<u8>) -> bool {
     dec && *s != vec![b'-']
 }
 
-fn matches_integral(s: &Vec<u8>) -> Integral {
+fn matches_integral(s: &[u8]) -> Integral {
     if is_hex(s) {
         Integral::Hex
     } else if is_dec(s) {
         Integral::Decimal
     } else {
-        Integral::NotIntegral
+        Integral::NotIntegralValue
     }
 }
 
@@ -126,7 +172,7 @@ fn normalize_int(v: Vec<u8>, base: u32) -> Number {
 // while they correspond numerically, integral constants are byte-padded to the
 // left to retain their sign and hex constants are considered unsigned so _not_
 // padded.
-fn from_hex(l: Srcloc, v: &Vec<u8>) -> SExp {
+fn from_hex(l: Srcloc, v: &[u8]) -> SExp {
     let mut result = vec![0; (v.len() - 2) / 2];
     hex2bin(&v[2..], &mut result).expect("should convert from hex");
     SExp::QuotedString(l, b'"', result)
@@ -139,7 +185,7 @@ fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
         let want_name = v[1..].to_vec();
         for p in prims() {
             if want_name == p.0 {
-                return p.1.clone();
+                return p.1;
             }
         }
 
@@ -156,7 +202,7 @@ fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
                     SExp::Integer(l, intval)
                 }
             }
-            Integral::NotIntegral => SExp::Atom(l, v),
+            Integral::NotIntegralValue => SExp::Atom(l, v),
         }
     }
 }
@@ -171,18 +217,18 @@ pub fn enlist(l: Srcloc, v: Vec<Rc<SExp>>) -> SExp {
 }
 
 fn emit(a: Rc<SExp>, p: SExpParseState) -> SExpParseResult {
-    SExpParseResult::PEmit(a, p)
+    SExpParseResult::Emit(a, p)
 }
 
-fn error(l: Srcloc, t: &String) -> SExpParseResult {
-    SExpParseResult::PError(l, t.to_string())
+fn error(l: Srcloc, t: &str) -> SExpParseResult {
+    SExpParseResult::Error(l, t.to_string())
 }
 
 fn resume(p: SExpParseState) -> SExpParseResult {
-    SExpParseResult::PResume(p)
+    SExpParseResult::Resume(p)
 }
 
-fn escape_quote(q: u8, s: &Vec<u8>) -> String {
+fn escape_quote(q: u8, s: &[u8]) -> String {
     let mut res: Vec<char> = Vec::new();
     let _: Vec<()> = s
         .iter()
@@ -207,11 +253,11 @@ fn list_no_parens(a: &SExp, b: &SExp) -> String {
     }
 }
 
-pub fn decode_string(v: &Vec<u8>) -> String {
+pub fn decode_string(v: &[u8]) -> String {
     return String::from_utf8_lossy(v).as_ref().to_string();
 }
 
-fn printable(a: &Vec<u8>) -> bool {
+fn printable(a: &[u8]) -> bool {
     for ch in a.iter() {
         if (*ch as char).is_control() || !(*ch as char).is_ascii() {
             return false;
@@ -242,47 +288,16 @@ impl SExp {
         }
     }
 
-    pub fn atom_from_string(loc: Srcloc, s: &String) -> SExp {
+    pub fn atom_from_string(loc: Srcloc, s: &str) -> SExp {
         SExp::Atom(loc, s.as_bytes().to_vec())
     }
 
-    pub fn atom_from_vec(loc: Srcloc, s: &Vec<u8>) -> SExp {
+    pub fn atom_from_vec(loc: Srcloc, s: &[u8]) -> SExp {
         SExp::Atom(loc, s.to_vec())
     }
 
-    pub fn quoted_from_string(loc: Srcloc, s: &String) -> SExp {
+    pub fn quoted_from_string(loc: Srcloc, s: &str) -> SExp {
         SExp::QuotedString(loc, b'\"', s.as_bytes().to_vec())
-    }
-
-    pub fn to_string(&self) -> String {
-        match self {
-            SExp::Nil(_) => "()".to_string(),
-            SExp::Cons(_, a, b) => format!("({})", list_no_parens(a, b)),
-            SExp::Integer(_, v) => v.to_string(),
-            SExp::QuotedString(_, q, s) => {
-                if printable(s) {
-                    format!("\"{}\"", escape_quote(*q, s))
-                } else {
-                    let vlen = s.len() * 2;
-                    let mut outbuf = vec![0; vlen];
-                    bin2hex(s, &mut outbuf)
-                        .expect("should be able to convert unprintable string to hex");
-                    format!(
-                        "0x{}",
-                        std::str::from_utf8(&outbuf).expect("only hex digits expected")
-                    )
-                }
-            }
-            SExp::Atom(l, a) => {
-                if a.is_empty() {
-                    "()".to_string()
-                } else if printable(a) {
-                    decode_string(a)
-                } else {
-                    SExp::Integer(l.clone(), number_from_u8(a)).to_string()
-                }
-            }
-        }
     }
 
     pub fn nilp(&self) -> bool {
@@ -297,11 +312,7 @@ impl SExp {
     }
 
     pub fn listp(&self) -> bool {
-        match self {
-            SExp::Nil(_) => true,
-            SExp::Cons(_, _, _) => true,
-            _ => false,
-        }
+        matches!(self, SExp::Nil(_) | SExp::Cons(_, _, _))
     }
 
     pub fn cons_fst(&self) -> Rc<SExp> {
@@ -415,10 +426,7 @@ impl SExp {
             SExp::Atom(_, v) => Ok(number_from_u8(v)),
             SExp::QuotedString(_, _, v) => Ok(number_from_u8(v)),
             SExp::Nil(_) => Ok(bi_zero()),
-            _ => Err((
-                self.loc(),
-                format!("wanted atom got cons cell {}", self.to_string()),
-            )),
+            _ => Err((self.loc(), format!("wanted atom got cons cell {}", self))),
         }
     }
 }
@@ -429,7 +437,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
             '(' => resume(SExpParseState::OpenList(loc)),
             '\n' => resume(SExpParseState::Empty),
             ';' => resume(SExpParseState::CommentText(loc, Vec::new())),
-            ')' => error(loc, &"Too many close parens".to_string()),
+            ')' => error(loc, "Too many close parens"),
             '"' => resume(SExpParseState::QuotedText(loc, b'"', Vec::new())),
             '\'' => resume(SExpParseState::QuotedText(loc, b'\'', Vec::new())),
             ch => {
@@ -482,22 +490,19 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
         }
         SExpParseState::OpenList(pl) => match this_char as char {
             ')' => emit(Rc::new(SExp::Nil(pl.ext(&loc))), SExpParseState::Empty),
-            '.' => error(
-                loc,
-                &"Dot can't appear directly after begin paren".to_string(),
-            ),
+            '.' => error(loc, "Dot can't appear directly after begin paren"),
             _ => match parse_sexp_step(loc.clone(), &SExpParseState::Empty, this_char) {
-                SExpParseResult::PEmit(o, p) => resume(SExpParseState::ParsingList(
+                SExpParseResult::Emit(o, p) => resume(SExpParseState::ParsingList(
                     pl.ext(&loc),
                     Rc::new(p),
                     vec![o],
                 )),
-                SExpParseResult::PResume(p) => resume(SExpParseState::ParsingList(
+                SExpParseResult::Resume(p) => resume(SExpParseState::ParsingList(
                     pl.ext(&loc),
                     Rc::new(p),
                     Vec::new(),
                 )),
-                SExpParseResult::PError(l, e) => SExpParseResult::PError(l, e),
+                SExpParseResult::Error(l, e) => SExpParseResult::Error(l, e),
             },
         },
         SExpParseState::ParsingList(pl, pp, list_content) => {
@@ -521,27 +526,26 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                     )
                 }
                 (_, _) => match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
-                    SExpParseResult::PEmit(o, p) => {
+                    SExpParseResult::Emit(o, p) => {
                         let mut list_copy = list_content.clone();
                         list_copy.push(o);
                         let result =
                             SExpParseState::ParsingList(pl.ext(&loc), Rc::new(p), list_copy);
                         resume(result)
                     }
-                    SExpParseResult::PResume(rp) => resume(SExpParseState::ParsingList(
+                    SExpParseResult::Resume(rp) => resume(SExpParseState::ParsingList(
                         pl.ext(&loc),
                         Rc::new(rp),
                         list_content.to_vec(),
                     )),
-                    SExpParseResult::PError(l, e) => SExpParseResult::PError(l, e),
+                    SExpParseResult::Error(l, e) => SExpParseResult::Error(l, e),
                 },
             }
         }
         SExpParseState::TermList(pl, pp, list_content) => match (this_char as char, pp.borrow()) {
-            ('.', SExpParseState::Empty) => error(
-                loc,
-                &"Multiple dots in list notation are illegal".to_string(),
-            ),
+            ('.', SExpParseState::Empty) => {
+                error(loc, "Multiple dots in list notation are illegal")
+            }
             (')', SExpParseState::Empty) => {
                 if list_content.len() == 1 {
                     emit(list_content[0].clone(), SExpParseState::Empty)
@@ -566,11 +570,11 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                             emit(Rc::new(new_list), SExpParseState::Empty)
                         }
                     }
-                    None => error(loc, &"Dot as first element of list?".to_string()),
+                    None => error(loc, "Dot as first element of list?"),
                 }
             }
             (_, _) => match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
-                SExpParseResult::PEmit(o, p) => {
+                SExpParseResult::Emit(o, p) => {
                     let mut list_copy = list_content.to_vec();
                     match list_copy.pop() {
                         Some(v) => {
@@ -582,15 +586,15 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                                 list_copy,
                             ))
                         }
-                        None => error(loc, &"Dot as first element of list?".to_string()),
+                        None => error(loc, "Dot as first element of list?"),
                     }
                 }
-                SExpParseResult::PResume(p) => resume(SExpParseState::TermList(
+                SExpParseResult::Resume(p) => resume(SExpParseState::TermList(
                     pl.ext(&loc),
                     Rc::new(p),
                     list_content.to_vec(),
                 )),
-                SExpParseResult::PError(l, e) => SExpParseResult::PError(l, e),
+                SExpParseResult::Error(l, e) => SExpParseResult::Error(l, e),
             },
         },
     }
@@ -600,16 +604,16 @@ fn parse_sexp_inner(
     start_: Srcloc,
     p_: SExpParseState,
     n_: usize,
-    s: &Vec<u8>,
+    s: &[u8],
 ) -> Result<Vec<Rc<SExp>>, (Srcloc, String)> {
     let mut start = start_;
-    let mut p = p_;
-    let mut n = n_;
+    let mut parse_state = p_;
+    let mut char_index = n_;
     let mut res = Vec::new();
 
     loop {
-        if n >= s.len() {
-            match p {
+        if char_index >= s.len() {
+            match parse_state {
                 SExpParseState::Empty => {
                     return Ok(res);
                 }
@@ -636,21 +640,21 @@ fn parse_sexp_inner(
                 }
             }
         } else {
-            let this_char = s[n];
+            let this_char = s[char_index];
             let next_location = start.clone().advance(this_char);
 
-            match parse_sexp_step(start.clone(), p.borrow(), this_char) {
-                SExpParseResult::PError(l, e) => {
+            match parse_sexp_step(start.clone(), parse_state.borrow(), this_char) {
+                SExpParseResult::Error(l, e) => {
                     return Err((l, e));
                 }
-                SExpParseResult::PResume(np) => {
+                SExpParseResult::Resume(np) => {
                     start = next_location;
-                    p = np;
-                    n += 1;
+                    parse_state = np;
+                    char_index += 1;
                 }
-                SExpParseResult::PEmit(o, np) => {
-                    p = np;
-                    n += 1;
+                SExpParseResult::Emit(o, np) => {
+                    parse_state = np;
+                    char_index += 1;
                     res.push(o);
                 }
             }
@@ -658,6 +662,6 @@ fn parse_sexp_inner(
     }
 }
 
-pub fn parse_sexp(start: Srcloc, input: &String) -> Result<Vec<Rc<SExp>>, (Srcloc, String)> {
-    parse_sexp_inner(start, SExpParseState::Empty, 0, &input.as_bytes().to_vec())
+pub fn parse_sexp(start: Srcloc, input: &str) -> Result<Vec<Rc<SExp>>, (Srcloc, String)> {
+    parse_sexp_inner(start, SExpParseState::Empty, 0, input.as_bytes())
 }

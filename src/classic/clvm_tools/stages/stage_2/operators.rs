@@ -13,8 +13,8 @@ use clvm_rs::run_program::run_program;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 
+use crate::classic::clvm::keyword_from_atom;
 use crate::classic::clvm::sexp::proper_list;
-use crate::classic::clvm::KEYWORD_FROM_ATOM;
 
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble_to_ir_with_kw};
 use crate::classic::clvm_tools::ir::reader::read_ir;
@@ -27,7 +27,6 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::do_optimize;
 
 pub struct CompilerOperators {
     base_dialect: Rc<dyn Dialect>,
-    base_runner: Rc<dyn TRunProgram>,
     search_paths: Vec<String>,
     compile_outcomes: RefCell<HashMap<String, String>>,
     dialect: RefCell<Rc<dyn Dialect>>,
@@ -40,17 +39,11 @@ impl CompilerOperators {
         let base_runner = Rc::new(DefaultProgramRunner::new());
         CompilerOperators {
             base_dialect: base_dialect.clone(),
-            base_runner: base_runner.clone(),
             search_paths,
             compile_outcomes: RefCell::new(HashMap::new()),
             dialect: RefCell::new(base_dialect),
             runner: RefCell::new(base_runner),
         }
-    }
-
-    fn drop(&self) {
-        self.runner.replace(self.base_runner.clone());
-        self.dialect.replace(self.base_dialect.clone());
     }
 
     fn set_runner(&self, runner: Rc<dyn TRunProgram>) {
@@ -96,68 +89,52 @@ impl CompilerOperators {
     }
 
     fn write(&self, allocator: &mut Allocator, sexp: NodePtr) -> Response {
-        match allocator.sexp(sexp) {
-            SExp::Pair(filename_sexp, r) => match allocator.sexp(r) {
-                SExp::Pair(data, _) => match allocator.sexp(filename_sexp) {
-                    SExp::Atom(filename_buf) => {
-                        let filename_buf = allocator.buf(&filename_buf);
-                        let filename_bytes =
-                            Bytes::new(Some(BytesFromType::Raw(filename_buf.to_vec())));
-                        let ir =
-                            disassemble_to_ir_with_kw(allocator, data, KEYWORD_FROM_ATOM(), true);
-                        let mut stream = Stream::new(None);
-                        write_ir_to_stream(Rc::new(ir), &mut stream);
-                        return fs::write(filename_bytes.decode(), stream.get_value().decode())
-                            .map_err(|_| {
-                                return EvalErr(
-                                    sexp,
-                                    format!("failed to write {}", filename_bytes.decode()),
-                                );
-                            })
-                            .map(|_| Reduction(1, allocator.null()));
-                    }
-                    _ => {}
-                },
-                _ => {}
-            },
-            _ => {}
+        if let SExp::Pair(filename_sexp, r) = allocator.sexp(sexp) {
+            if let SExp::Pair(data, _) = allocator.sexp(r) {
+                if let SExp::Atom(filename_buf) = allocator.sexp(filename_sexp) {
+                    let filename_buf = allocator.buf(&filename_buf);
+                    let filename_bytes =
+                        Bytes::new(Some(BytesFromType::Raw(filename_buf.to_vec())));
+                    let ir = disassemble_to_ir_with_kw(allocator, data, keyword_from_atom(), true);
+                    let mut stream = Stream::new(None);
+                    write_ir_to_stream(Rc::new(ir), &mut stream);
+                    return fs::write(filename_bytes.decode(), stream.get_value().decode())
+                        .map_err(|_| {
+                            EvalErr(sexp, format!("failed to write {}", filename_bytes.decode()))
+                        })
+                        .map(|_| Reduction(1, allocator.null()));
+                }
+            }
         }
 
         Err(EvalErr(sexp, "failed to write data".to_string()))
     }
 
     fn get_full_path_for_filename(&self, allocator: &mut Allocator, sexp: NodePtr) -> Response {
-        match allocator.sexp(sexp) {
-            SExp::Pair(l, _r) => match allocator.sexp(l) {
-                SExp::Atom(b) => {
-                    let filename =
-                        Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
-                    for path in &self.search_paths {
-                        let mut path_buf = PathBuf::new();
-                        path_buf.push(path);
-                        path_buf.push(filename.clone());
-                        let f_path = path_buf.as_path();
-                        if f_path.exists() {
-                            return f_path
-                                .to_str()
-                                .map(|r| Ok(r))
-                                .unwrap_or_else(|| {
-                                    Err(EvalErr(
-                                        sexp,
-                                        "could not compute absolute path".to_string(),
-                                    ))
-                                })
-                                .and_then(|p| {
-                                    allocator
-                                        .new_atom(p.as_bytes())
-                                        .map(|res| Reduction(1, res))
-                                });
-                        }
+        if let SExp::Pair(l, _r) = allocator.sexp(sexp) {
+            if let SExp::Atom(b) = allocator.sexp(l) {
+                let filename =
+                    Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
+                for path in &self.search_paths {
+                    let mut path_buf = PathBuf::new();
+                    path_buf.push(path);
+                    path_buf.push(filename.clone());
+                    let f_path = path_buf.as_path();
+                    if f_path.exists() {
+                        return f_path
+                            .to_str()
+                            .map(Ok)
+                            .unwrap_or_else(|| {
+                                Err(EvalErr(sexp, "could not compute absolute path".to_string()))
+                            })
+                            .and_then(|p| {
+                                allocator
+                                    .new_atom(p.as_bytes())
+                                    .map(|res| Reduction(1, res))
+                            });
                     }
                 }
-                _ => {}
-            },
-            _ => {}
+            }
         }
 
         Err(EvalErr(sexp, "can't open file".to_string()))
@@ -168,37 +145,30 @@ impl CompilerOperators {
         allocator: &mut Allocator,
         table: NodePtr,
     ) -> Result<Reduction, EvalErr> {
-        match proper_list(allocator, table, true).and_then(|t| proper_list(allocator, t[0], true)) {
-            Some(symtable) => {
-                for kv in symtable.iter() {
-                    match allocator.sexp(*kv) {
-                        SExp::Pair(hash, name) => {
-                            match (allocator.sexp(hash), allocator.sexp(name)) {
-                                (SExp::Atom(hash), SExp::Atom(name)) => {
-                                    let hash_text = Bytes::new(Some(BytesFromType::Raw(
-                                        allocator.buf(&hash).to_vec(),
-                                    )))
-                                    .decode();
-                                    let name_text = Bytes::new(Some(BytesFromType::Raw(
-                                        allocator.buf(&name).to_vec(),
-                                    )))
-                                    .decode();
+        if let Some(symtable) =
+            proper_list(allocator, table, true).and_then(|t| proper_list(allocator, t[0], true))
+        {
+            for kv in symtable.iter() {
+                if let SExp::Pair(hash, name) = allocator.sexp(*kv) {
+                    if let (SExp::Atom(hash), SExp::Atom(name)) =
+                        (allocator.sexp(hash), allocator.sexp(name))
+                    {
+                        let hash_text =
+                            Bytes::new(Some(BytesFromType::Raw(allocator.buf(&hash).to_vec())))
+                                .decode();
+                        let name_text =
+                            Bytes::new(Some(BytesFromType::Raw(allocator.buf(&name).to_vec())))
+                                .decode();
 
-                                    self.compile_outcomes.replace_with(|co| {
-                                        let mut result = co.clone();
-                                        result.insert(hash_text, name_text);
-                                        result
-                                    });
-                                }
-                                _ => {}
-                            }
-                        }
-                        _ => {}
+                        self.compile_outcomes.replace_with(|co| {
+                            let mut result = co.clone();
+                            result.insert(hash_text, name_text);
+                            result
+                        });
                     }
                 }
             }
-            _ => {}
-        };
+        }
 
         Ok(Reduction(1, allocator.null()))
     }
@@ -257,10 +227,7 @@ impl TRunProgram for CompilerOperators {
         args: NodePtr,
         option: Option<RunProgramOption>,
     ) -> Response {
-        let mut max_cost = option
-            .as_ref()
-            .and_then(|o| o.max_cost)
-            .unwrap_or_else(|| 0);
+        let max_cost = option.as_ref().and_then(|o| o.max_cost).unwrap_or(0);
         run_program(
             allocator,
             self,
@@ -272,8 +239,8 @@ impl TRunProgram for CompilerOperators {
     }
 }
 
-pub fn run_program_for_search_paths(search_paths: &Vec<String>) -> Rc<CompilerOperators> {
-    let ops = Rc::new(CompilerOperators::new(search_paths.clone()));
+pub fn run_program_for_search_paths(search_paths: &[String]) -> Rc<CompilerOperators> {
+    let ops = Rc::new(CompilerOperators::new(search_paths.to_vec()));
     ops.set_dialect(ops.clone());
     ops.set_runner(ops.clone());
     ops

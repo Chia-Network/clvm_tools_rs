@@ -35,27 +35,19 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
     let mut ops: Vec<SexpStackOp> = vec![SexpStackOp::OpConvert];
 
     loop {
-        let op;
-
-        match ops.pop() {
+        let op = match ops.pop() {
             None => {
                 break;
             }
-            Some(o) => {
-                op = o;
-            }
-        }
+            Some(o) => o,
+        };
 
-        let top;
-
-        match stack.pop() {
+        let top = match stack.pop() {
             None => {
                 return Err(EvalErr(allocator.null(), "empty value stack".to_string()));
             }
-            Some(rc) => {
-                top = rc;
-            }
-        }
+            Some(rc) => rc,
+        };
 
         // convert value
         match op {
@@ -85,8 +77,8 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
                     CastableType::ListOf(_sel, v) => {
                         let target_index = stack.len();
                         stack.push(Rc::new(CastableType::CLVMObject(allocator.null())));
-                        for i in 0..v.len() - 1 {
-                            stack.push(v[i].clone());
+                        for vi in v.iter().take(v.len() - 1) {
+                            stack.push(vi.clone());
                             ops.push(SexpStackOp::OpPrepend(target_index));
                             // we only need to convert if it's not already the right type
                             ops.push(SexpStackOp::OpConvert);
@@ -101,8 +93,7 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
                         }
                     },
                     CastableType::String(s) => {
-                        let result_vec: Vec<u8> = s.as_bytes().into_iter().map(|x| *x).collect();
-                        match allocator.new_atom(&result_vec) {
+                        match allocator.new_atom(s.as_bytes()) {
                             Ok(a) => {
                                 stack.push(Rc::new(CastableType::CLVMObject(a)));
                             }
@@ -347,7 +338,7 @@ pub fn bool_sexp(allocator: &mut Allocator, b: bool) -> NodePtr {
 pub fn non_nil(allocator: &mut Allocator, sexp: NodePtr) -> bool {
     match allocator.sexp(sexp) {
         SExp::Pair(_, _) => true,
-        SExp::Atom(b) => allocator.buf(&b).len() > 0,
+        SExp::Atom(b) => !b.is_empty(),
     }
 }
 
@@ -394,7 +385,7 @@ pub fn proper_list(allocator: &mut Allocator, sexp: NodePtr, store: bool) -> Opt
     }
 }
 
-pub fn enlist<'a>(allocator: &'a mut Allocator, vec: &Vec<NodePtr>) -> Result<NodePtr, EvalErr> {
+pub fn enlist(allocator: &mut Allocator, vec: &[NodePtr]) -> Result<NodePtr, EvalErr> {
     let mut built = allocator.null();
 
     for i_reverse in 0..vec.len() {
@@ -409,7 +400,7 @@ pub fn enlist<'a>(allocator: &'a mut Allocator, vec: &Vec<NodePtr>) -> Result<No
     Ok(built)
 }
 
-pub fn mapM<T>(
+pub fn map_m<T>(
     allocator: &mut Allocator,
     iter: &mut impl Iterator<Item = T>,
     f: &dyn Fn(&mut Allocator, T) -> Result<NodePtr, EvalErr>,
@@ -432,7 +423,7 @@ pub fn mapM<T>(
     }
 }
 
-pub fn foldM<A, B, E>(
+pub fn fold_m<A, B, E>(
     allocator: &mut Allocator,
     f: &dyn Fn(&mut Allocator, A, B) -> Result<A, E>,
     start_: A,
@@ -456,7 +447,7 @@ pub fn foldM<A, B, E>(
     }
 }
 
-pub fn equal_to<'a>(allocator: &'a mut Allocator, first_: NodePtr, second_: NodePtr) -> bool {
+pub fn equal_to(allocator: &mut Allocator, first_: NodePtr, second_: NodePtr) -> bool {
     let mut first = first_;
     let mut second = second_;
 
@@ -481,18 +472,16 @@ pub fn equal_to<'a>(allocator: &'a mut Allocator, first_: NodePtr, second_: Node
     }
 }
 
-pub fn flatten<'a>(allocator: &'a mut Allocator, tree_: NodePtr, res: &mut Vec<NodePtr>) {
+pub fn flatten(allocator: &mut Allocator, tree_: NodePtr, res: &mut Vec<NodePtr>) {
     let mut tree = tree_;
 
     loop {
         match allocator.sexp(tree) {
             SExp::Atom(_) => {
-                if !non_nil(allocator, tree) {
-                    return;
-                } else {
+                if non_nil(allocator, tree) {
                     res.push(tree);
-                    return;
                 }
+                return;
             }
             SExp::Pair(l, r) => {
                 flatten(allocator, l, res);

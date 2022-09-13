@@ -1,9 +1,10 @@
 use js_sys;
+use js_sys::JSON::stringify;
 use js_sys::{Array, BigInt, Object};
-use num_bigint::ToBigInt;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::str::FromStr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::compiler::sexp::SExp;
@@ -191,11 +192,11 @@ pub fn sexp_from_js_object(sstart: Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
                 v.as_string()
                     .map(|s| Some(Rc::new(SExp::Atom(sstart.clone(), s.as_bytes().to_vec()))))
                     .unwrap_or_else(|| {
-                        let n = js_sys::Number::new(&v);
-                        Some(Rc::new(SExp::Integer(
-                            sstart.clone(),
-                            (n.value_of() as i64).to_bigint().unwrap(),
-                        )))
+                        stringify(v)
+                            .ok()
+                            .and_then(|v| v.as_string())
+                            .and_then(|v| Number::from_str(&v).ok())
+                            .map(|n| Rc::new(SExp::Integer(sstart.clone(), n)))
                     })
             })
     }
