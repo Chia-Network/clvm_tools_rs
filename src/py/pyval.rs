@@ -16,12 +16,12 @@ pub fn map_err_to_pyerr(srcloc: Srcloc, r: PyResult<Py<PyAny>>) -> Result<Py<PyA
 }
 
 pub fn python_value_to_clvm(py: Python, val: Py<PyAny>) -> Result<Rc<SExp>, RunFailure> {
-    let srcloc = Srcloc::start(&"*python*".to_string());
+    let srcloc = Srcloc::start("*python*");
     val.as_ref(py)
         .downcast::<PyList>()
         .ok()
         .map(|l| {
-            if l.len() == 0 {
+            if l.is_empty() {
                 Ok(Rc::new(SExp::Nil(srcloc.clone())))
             } else {
                 let mut result = SExp::Nil(srcloc.clone());
@@ -38,7 +38,7 @@ pub fn python_value_to_clvm(py: Python, val: Py<PyAny>) -> Result<Rc<SExp>, RunF
                 Ok(Rc::new(result))
             }
         })
-        .map(|x| Some(x))
+        .map(Some)
         .unwrap_or_else(|| {
             val.as_ref(py)
                 .downcast::<PyTuple>()
@@ -60,14 +60,14 @@ pub fn python_value_to_clvm(py: Python, val: Py<PyAny>) -> Result<Rc<SExp>, RunF
                 })
                 .ok()
         })
-        .map(|x| Some(x))
+        .map(Some)
         .unwrap_or_else(|| {
             val.as_ref(py)
                 .downcast::<PyBytes>()
                 .map(|b| Ok(Rc::new(SExp::Atom(srcloc.clone(), b.as_bytes().to_vec()))))
                 .ok()
         })
-        .map(|x| Some(x))
+        .map(Some)
         .unwrap_or_else(|| {
             let stringified = format!("{}", val);
             stringified
@@ -116,8 +116,8 @@ pub fn clvm_value_to_python(py: Python, val: Rc<SExp>) -> Py<PyAny> {
                 .unwrap();
                 int_val
             }
-            SExp::Atom(_, v) => PyBytes::new(py, &v).into_py(py),
-            SExp::QuotedString(_, _, v) => PyBytes::new(py, &v).into_py(py),
+            SExp::Atom(_, v) => PyBytes::new(py, v).into_py(py),
+            SExp::QuotedString(_, _, v) => PyBytes::new(py, v).into_py(py),
             SExp::Nil(_) => {
                 let emptybytes: Vec<u8> = vec![];
                 PyList::new(py, &emptybytes).into_py(py)

@@ -15,16 +15,13 @@ pub fn is_at_capture(
     tree_first: NodePtr,
     tree_rest: NodePtr,
 ) -> Option<(NodePtr, NodePtr)> {
-    match (
+    if let (SExp::Atom(a), Some(spec)) = (
         allocator.sexp(tree_first),
         proper_list(allocator, tree_rest, true),
     ) {
-        (SExp::Atom(a), Some(spec)) => {
-            if allocator.buf(&a) == vec!['@' as u8] && spec.len() == 2 {
-                return Some((spec[0], spec[1]));
-            }
+        if allocator.buf(&a) == [b'@'] && spec.len() == 2 {
+            return Some((spec[0], spec[1]));
         }
-        _ => {}
     }
 
     None
@@ -33,13 +30,13 @@ pub fn is_at_capture(
 // (unquote X)
 fn wrap_in_unquote(allocator: &mut Allocator, code: NodePtr) -> Result<NodePtr, EvalErr> {
     let unquote_atom = allocator.new_atom("unquote".as_bytes())?;
-    enlist(allocator, &vec![unquote_atom, code])
+    enlist(allocator, &[unquote_atom, code])
 }
 
 // (__chia__enlist X)
 fn wrap_in_compile_time_list(allocator: &mut Allocator, code: NodePtr) -> Result<NodePtr, EvalErr> {
     let chia_enlist_atom = allocator.new_atom("__chia__enlist".as_bytes())?;
-    enlist(allocator, &vec![chia_enlist_atom, code])
+    enlist(allocator, &[chia_enlist_atom, code])
 }
 
 // Create the sequence of individual tree moves that will translate to
@@ -69,7 +66,7 @@ fn wrap_path_selection(
     for o in operator_stack.iter() {
         let head_op = if *o { vec![6] } else { vec![5] };
         let head_atom = allocator.new_atom(&head_op)?;
-        tail = enlist(allocator, &vec![head_atom, tail])?;
+        tail = enlist(allocator, &[head_atom, tail])?;
     }
     Ok(tail)
 }
@@ -101,41 +98,38 @@ fn formulate_path_selections_for_destructuring_arg(
                             (arg_path, arg_depth, prev_ref)
                         } else {
                             let capture_code = wrap_in_unquote(allocator, capture)?;
-                            let qtail = wrap_path_selection(
-                                allocator,
-                                arg_path.clone() + arg_depth.clone(),
-                                capture_code,
-                            )?;
+                            let qtail =
+                                wrap_path_selection(allocator, arg_path + arg_depth, capture_code)?;
                             (bi_zero(), bi_one(), qtail)
                         };
 
                     selections.insert(allocator.buf(&cbuf).to_vec(), tail);
 
-                    formulate_path_selections_for_destructuring_arg(
+                    return formulate_path_selections_for_destructuring_arg(
                         allocator,
                         substructure,
                         new_arg_path,
                         new_arg_depth,
                         Some(tail),
                         selections,
-                    );
-                    return Ok(arg_sexp);
+                    )
+                    .map(|_| arg_sexp);
                 }
             }
 
-            if let Some(_) = referenced_from {
+            if referenced_from.is_some() {
                 let f = formulate_path_selections_for_destructuring_arg(
                     allocator,
                     a,
                     arg_path.clone(),
                     next_depth.clone(),
-                    referenced_from.clone(),
+                    referenced_from,
                     selections,
                 )?;
                 let r = formulate_path_selections_for_destructuring_arg(
                     allocator,
                     b,
-                    arg_depth.clone() + arg_path,
+                    arg_depth + arg_path,
                     next_depth,
                     referenced_from,
                     selections,
@@ -145,7 +139,7 @@ fn formulate_path_selections_for_destructuring_arg(
                 let ref_name = gensym("destructuring_capture".as_bytes().to_vec());
                 let at_atom = allocator.new_atom("@".as_bytes())?;
                 let name_atom = allocator.new_atom(&ref_name)?;
-                let new_arg_list = enlist(allocator, &vec![at_atom, name_atom, arg_sexp])?;
+                let new_arg_list = enlist(allocator, &[at_atom, name_atom, arg_sexp])?;
                 formulate_path_selections_for_destructuring_arg(
                     allocator,
                     new_arg_list,
@@ -158,13 +152,9 @@ fn formulate_path_selections_for_destructuring_arg(
         }
         SExp::Atom(b) => {
             let buf = allocator.buf(&b).to_vec();
-            if buf.len() > 0 {
+            if !buf.is_empty() {
                 if let Some(capture) = referenced_from {
-                    let tail = wrap_path_selection(
-                        allocator,
-                        arg_path.clone() + arg_depth.clone(),
-                        capture,
-                    )?;
+                    let tail = wrap_path_selection(allocator, arg_path + arg_depth, capture)?;
                     selections.insert(buf, tail);
                     return Ok(arg_sexp);
                 }
@@ -250,7 +240,7 @@ pub fn formulate_path_selections_for_destructuring(
                     Some(tail),
                     selections,
                 )?;
-                return enlist(allocator, &vec![a, capture, newsub]);
+                return enlist(allocator, &[a, capture, newsub]);
             }
         }
         let f = formulate_path_selections_for_destructuring_arg(

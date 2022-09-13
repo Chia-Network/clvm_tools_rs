@@ -13,8 +13,8 @@ pub struct TConvertOption {
     pub signed: bool,
 }
 
-pub fn int_from_bytes<'a>(
-    allocator: &'a mut Allocator,
+pub fn int_from_bytes(
+    allocator: &mut Allocator,
     b: Bytes,
     option: Option<TConvertOption>,
 ) -> Result<u64, EvalErr> {
@@ -42,7 +42,7 @@ pub fn int_from_bytes<'a>(
             let i = bytes4_length - i_reverse - 1;
             let byte32 = get_u32(&dv, i * 4 + bytes4_remain) as u64;
             unsigned64 += byte32 * order;
-            order = order << 32;
+            order <<= 32;
         }
     }
 
@@ -54,13 +54,13 @@ pub fn int_from_bytes<'a>(
             let i = bytes4_remain - i_reverse - 1;
             let byte = dv[i] as u64;
             unsigned64 += byte * order;
-            order = order << 8;
+            order <<= 8;
         }
     }
 
     // If the first bit is 1, it is recognized as a negative number.
     if signed && ((dv[0] & 0x80) != 0) {
-        return Ok((unsigned64 - 1 << (b.length() * 8)) as u64);
+        return Ok(((unsigned64 - 1) << (b.length() * 8)) as u64);
     }
     Ok(unsigned64)
 }
@@ -139,7 +139,7 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
         while pow(bval.clone(), (byte_count - 1) / 4 + 1) < right_hand {
             byte_count += 4;
         }
-        right_hand = (v.clone() + bi_one()) * (div.clone() + bi_one());
+        right_hand = (v.clone() + bi_one()) * (div + bi_one());
         while pow(2_u32.to_bigint().unwrap(), 8 * byte_count) < right_hand {
             byte_count += 1;
         }
@@ -162,8 +162,8 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
     dv.resize(total_bytes, 0);
 
     let (_sign, u32_digits) = v.to_u32_digits();
-    for i in 0..byte4_length {
-        let num = u32_digits[i];
+    for (i, n) in u32_digits.iter().take(byte4_length).enumerate() {
+        let num = *n as u64;
         let pointer = extra_byte + byte4_remain + (byte4_length - 1 - i) * 4;
         let setval = if negative {
             (1_u64 << 32) - num as u64

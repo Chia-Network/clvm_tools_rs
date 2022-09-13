@@ -14,7 +14,7 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::codegen;
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen,
+    CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen,
 };
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator};
 use crate::compiler::frontend::frontend;
@@ -39,60 +39,6 @@ pub struct DefaultCompilerOpts {
     known_dialects: Rc<HashMap<String, String>>,
 }
 
-fn at_path(path_mask: Number, loc: Srcloc) -> Rc<BodyForm> {
-    Rc::new(BodyForm::Call(
-        loc.clone(),
-        vec![
-            Rc::new(BodyForm::Value(SExp::atom_from_string(
-                loc.clone(),
-                &"@".to_string(),
-            ))),
-            Rc::new(BodyForm::Quoted(SExp::Integer(
-                loc.clone(),
-                path_mask.clone(),
-            ))),
-        ],
-    ))
-}
-
-fn next_path_mask(path_mask: Number) -> Number {
-    path_mask * 2_u32.to_bigint().unwrap()
-}
-
-fn make_simple_argbindings(
-    argbindings: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
-    path_mask: Number,
-    current_path: Number,
-    prog_args: Rc<SExp>,
-) {
-    match prog_args.borrow() {
-        SExp::Cons(_, a, b) => {
-            make_simple_argbindings(
-                argbindings,
-                next_path_mask(path_mask.clone()),
-                current_path.clone(),
-                a.clone(),
-            );
-            make_simple_argbindings(
-                argbindings,
-                next_path_mask(path_mask.clone()),
-                current_path.clone() | path_mask.clone(),
-                b.clone(),
-            );
-        }
-        SExp::Atom(_l, n) => {
-            let borrowed_prog_args: &SExp = prog_args.borrow();
-            // Alternatively, by path
-            // at_path(current_path.clone() | path_mask.clone(), l.clone())
-            argbindings.insert(
-                n.clone(),
-                Rc::new(BodyForm::Value(borrowed_prog_args.clone())),
-            );
-        }
-        _ => {}
-    }
-}
-
 fn fe_opt(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -109,8 +55,8 @@ fn fe_opt(
 
         for helper in (opts
             .compiler()
-            .map(|c| c.orig_help.clone())
-            .unwrap_or_else(|| Vec::new()))
+            .map(|c| c.orig_help)
+            .unwrap_or_else(Vec::new))
         .iter()
         {
             if !used_names.contains(helper.name()) {
@@ -154,7 +100,7 @@ fn fe_opt(
 
     Ok(CompileForm {
         loc: compileform.loc.clone(),
-        args: compileform.args.clone(),
+        args: compileform.args,
         helpers: optimized_helpers.clone(),
         exp: shrunk,
     })
@@ -175,7 +121,7 @@ fn compile_pre_forms(
             loc: g.loc.clone(),
             args: g.args.clone(),
             helpers: g.helpers.clone(), // optimized_helpers.clone(),
-            exp: g.exp.clone(),
+            exp: g.exp,
         }
     };
     codegen(allocator, runner, opts.clone(), &compileform, symbol_table)
@@ -185,7 +131,7 @@ pub fn compile_file(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
-    content: &String,
+    content: &str,
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     let pre_forms =
@@ -203,7 +149,7 @@ pub fn run_optimizer(
         .map(|x| (r.loc(), x))
         .map_err(|e| match e {
             RunFailure::RunErr(l, e) => CompileErr(l, e),
-            RunFailure::RunExn(s, e) => CompileErr(s, format!("exception {}\n", e.to_string())),
+            RunFailure::RunExn(s, e) => CompileErr(s, format!("exception {}\n", e)),
         })?;
 
     let optimized = optimize_sexp(allocator, to_clvm_rs.1, runner)
@@ -212,7 +158,7 @@ pub fn run_optimizer(
 
     convert_from_clvm_rs(allocator, optimized.0, optimized.1).map_err(|e| match e {
         RunFailure::RunErr(l, e) => CompileErr(l, e),
-        RunFailure::RunExn(s, e) => CompileErr(s, format!("exception {}\n", e.to_string())),
+        RunFailure::RunExn(s, e) => CompileErr(s, format!("exception {}\n", e)),
     })
 }
 
@@ -242,9 +188,9 @@ impl CompilerOpts for DefaultCompilerOpts {
         self.prim_map.clone()
     }
 
-    fn set_search_paths(&self, dirs: &Vec<String>) -> Rc<dyn CompilerOpts> {
+    fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
-        copy.include_dirs = dirs.clone();
+        copy.include_dirs = dirs.to_owned();
         Rc::new(copy)
     }
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts> {
@@ -315,10 +261,10 @@ impl CompilerOpts for DefaultCompilerOpts {
                 }
             }
         }
-        return Err(CompileErr(
+        Err(CompileErr(
             Srcloc::start(&inc_from),
             format!("could not find {} to include", filename),
-        ));
+        ))
     }
     fn compile_program(
         &self,
@@ -328,12 +274,12 @@ impl CompilerOpts for DefaultCompilerOpts {
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
-        compile_pre_forms(allocator, runner, me, vec![sexp.clone()], symbol_table)
+        compile_pre_forms(allocator, runner, me, vec![sexp], symbol_table)
     }
 }
 
 impl DefaultCompilerOpts {
-    pub fn new(filename: &String) -> DefaultCompilerOpts {
+    pub fn new(filename: &str) -> DefaultCompilerOpts {
         let mut prim_map = HashMap::new();
 
         for p in prims::prims() {
@@ -358,7 +304,7 @@ impl DefaultCompilerOpts {
 
         DefaultCompilerOpts {
             include_dirs: vec![".".to_string()],
-            filename: filename.clone(),
+            filename: filename.to_string(),
             compiler: None,
             in_defun: false,
             stdenv: true,
@@ -373,7 +319,7 @@ impl DefaultCompilerOpts {
 
 fn path_to_function_inner(
     program: Rc<SExp>,
-    hash: &Vec<u8>,
+    hash: &[u8],
     path_mask: Number,
     current_path: Number,
 ) -> Option<Number> {
@@ -381,7 +327,7 @@ fn path_to_function_inner(
     match program.borrow() {
         SExp::Cons(_, a, b) => {
             path_to_function_inner(a.clone(), hash, nextpath.clone(), current_path.clone())
-                .map(|x| Some(x))
+                .map(Some)
                 .unwrap_or_else(|| {
                     path_to_function_inner(
                         b.clone(),
@@ -389,10 +335,10 @@ fn path_to_function_inner(
                         nextpath.clone(),
                         current_path.clone() + path_mask.clone(),
                     )
-                    .map(|x| Some(x))
+                    .map(Some)
                     .unwrap_or_else(|| {
                         let current_hash = sha256tree(program.clone());
-                        if &current_hash == hash {
+                        if current_hash == hash {
                             Some(current_path + path_mask)
                         } else {
                             None
@@ -402,7 +348,7 @@ fn path_to_function_inner(
         }
         _ => {
             let current_hash = sha256tree(program.clone());
-            if &current_hash == hash {
+            if current_hash == hash {
                 Some(current_path + path_mask)
             } else {
                 None
@@ -411,7 +357,7 @@ fn path_to_function_inner(
     }
 }
 
-pub fn path_to_function(program: Rc<SExp>, hash: &Vec<u8>) -> Option<Number> {
+pub fn path_to_function(program: Rc<SExp>, hash: &[u8]) -> Option<Number> {
     path_to_function_inner(program, hash, bi_one(), bi_zero())
 }
 
@@ -508,13 +454,10 @@ pub fn is_at_capture(head: Rc<SExp>, rest: Rc<SExp>) -> Option<(Vec<u8>, Rc<SExp
         if l.len() != 2 {
             return None;
         }
-        match (head.borrow(), l[0].borrow()) {
-            (SExp::Atom(_, a), SExp::Atom(_, cap)) => {
-                if a == &vec!['@' as u8] {
-                    return Some((cap.clone(), Rc::new(l[1].clone())));
-                }
+        if let (SExp::Atom(_, a), SExp::Atom(_, cap)) = (head.borrow(), l[0].borrow()) {
+            if a == &vec![b'@'] {
+                return Some((cap.clone(), Rc::new(l[1].clone())));
             }
-            _ => {}
         }
 
         None

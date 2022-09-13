@@ -43,12 +43,12 @@ pub enum Callable {
     EnvPath,
 }
 
-pub fn list_to_cons(l: Srcloc, list: &Vec<Rc<SExp>>) -> SExp {
-    if list.len() == 0 {
-        return SExp::Nil(l.clone());
+pub fn list_to_cons(l: Srcloc, list: &[Rc<SExp>]) -> SExp {
+    if list.is_empty() {
+        return SExp::Nil(l);
     }
 
-    let mut result = SExp::Nil(l.clone());
+    let mut result = SExp::Nil(l);
     for i_reverse in 0..list.len() {
         let i = list.len() - i_reverse - 1;
         result = SExp::Cons(list[i].loc(), list[i].clone(), Rc::new(result));
@@ -125,7 +125,7 @@ pub trait CompilerOpts {
     fn start_env(&self) -> Option<Rc<SExp>>;
     fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>>;
 
-    fn set_search_paths(&self, dirs: &Vec<String>) -> Rc<dyn CompilerOpts>;
+    fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts>;
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts>;
     fn set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts>;
     fn set_optimize(&self, opt: bool) -> Rc<dyn CompilerOpts>;
@@ -166,7 +166,7 @@ impl ModAccum {
 
     pub fn add_helper(&self, h: HelperForm) -> Self {
         let mut hs = self.helpers.clone();
-        hs.push(h.clone());
+        hs.push(h);
 
         ModAccum {
             loc: self.loc.clone(),
@@ -222,21 +222,18 @@ impl HelperForm {
         match self {
             HelperForm::Defconstant(loc, name, body) => Rc::new(list_to_cons(
                 loc.clone(),
-                &vec![
-                    Rc::new(SExp::atom_from_string(
-                        loc.clone(),
-                        &"defconstant".to_string(),
-                    )),
-                    Rc::new(SExp::atom_from_vec(loc.clone(), &name)),
+                &[
+                    Rc::new(SExp::atom_from_string(loc.clone(), "defconstant")),
+                    Rc::new(SExp::atom_from_vec(loc.clone(), name)),
                     body.to_sexp(),
                 ],
             )),
             HelperForm::Defmacro(loc, name, _args, body) => Rc::new(SExp::Cons(
                 loc.clone(),
-                Rc::new(SExp::atom_from_string(loc.clone(), &"defmacro".to_string())),
+                Rc::new(SExp::atom_from_string(loc.clone(), "defmacro")),
                 Rc::new(SExp::Cons(
                     loc.clone(),
-                    Rc::new(SExp::atom_from_vec(loc.clone(), &name)),
+                    Rc::new(SExp::atom_from_vec(loc.clone(), name)),
                     body.to_sexp(),
                 )),
             )),
@@ -245,12 +242,12 @@ impl HelperForm {
                 let d_string = "defun".to_string();
                 Rc::new(list_to_cons(
                     loc.clone(),
-                    &vec![
+                    &[
                         Rc::new(SExp::atom_from_string(
                             loc.clone(),
                             if *inline { &di_string } else { &d_string },
                         )),
-                        Rc::new(SExp::atom_from_vec(loc.clone(), &name)),
+                        Rc::new(SExp::atom_from_vec(loc.clone(), name)),
                         arg.clone(),
                         body.to_sexp(),
                     ],
@@ -283,7 +280,7 @@ impl BodyForm {
                 };
                 Rc::new(SExp::Cons(
                     loc.clone(),
-                    Rc::new(SExp::atom_from_string(loc.clone(), &marker.to_string())),
+                    Rc::new(SExp::atom_from_string(loc.clone(), marker)),
                     Rc::new(SExp::Cons(
                         loc.clone(),
                         Rc::new(bindings_cons),
@@ -297,7 +294,7 @@ impl BodyForm {
             }
             BodyForm::Quoted(body) => Rc::new(SExp::Cons(
                 body.loc(),
-                Rc::new(SExp::atom_from_string(body.loc(), &"q".to_string())),
+                Rc::new(SExp::atom_from_string(body.loc(), "q")),
                 Rc::new(body.clone()),
             )),
             BodyForm::Value(body) => Rc::new(body.clone()),
@@ -334,47 +331,43 @@ impl CompiledCode {
 }
 
 impl PrimaryCodegen {
-    pub fn add_constant(&self, name: &Vec<u8>, value: Rc<SExp>) -> Self {
+    pub fn add_constant(&self, name: &[u8], value: Rc<SExp>) -> Self {
         let mut codegen_copy = self.clone();
-        codegen_copy.constants.insert(name.clone(), value);
+        codegen_copy.constants.insert(name.to_owned(), value);
         codegen_copy
     }
 
-    pub fn add_macro(&self, name: &Vec<u8>, value: Rc<SExp>) -> Self {
+    pub fn add_macro(&self, name: &[u8], value: Rc<SExp>) -> Self {
         let mut codegen_copy = self.clone();
-        codegen_copy.macros.insert(name.clone(), value);
+        codegen_copy.macros.insert(name.to_owned(), value);
         codegen_copy
     }
 
-    pub fn add_inline(&self, name: &Vec<u8>, value: &InlineFunction) -> Self {
+    pub fn add_inline(&self, name: &[u8], value: &InlineFunction) -> Self {
         let mut codegen_copy = self.clone();
-        codegen_copy.inlines.insert(name.clone(), value.clone());
+        codegen_copy.inlines.insert(name.to_owned(), value.clone());
         codegen_copy
     }
 
-    pub fn add_defun(&self, name: &Vec<u8>, value: DefunCall) -> Self {
+    pub fn add_defun(&self, name: &[u8], value: DefunCall) -> Self {
         let mut codegen_copy = self.clone();
-        codegen_copy.defuns.insert(name.clone(), value.clone());
-        let hash = sha256tree(value.code.clone());
+        codegen_copy.defuns.insert(name.to_owned(), value.clone());
+        let hash = sha256tree(value.code);
         let hash_str = Bytes::new(Some(BytesFromType::Raw(hash))).hex();
-        let name = Bytes::new(Some(BytesFromType::Raw(name.clone()))).decode();
+        let name = Bytes::new(Some(BytesFromType::Raw(name.to_owned()))).decode();
         codegen_copy.function_symbols.insert(hash_str, name);
         codegen_copy
     }
 
     pub fn set_env(&self, env: Rc<SExp>) -> Self {
         let mut codegen_copy = self.clone();
-        codegen_copy.env = env.clone();
+        codegen_copy.env = env;
         codegen_copy
     }
 }
 
-pub fn with_heading(l: Srcloc, name: &String, body: Rc<SExp>) -> SExp {
-    SExp::Cons(
-        l.clone(),
-        Rc::new(SExp::atom_from_string(l.clone(), &name.to_string())),
-        body.clone(),
-    )
+pub fn with_heading(l: Srcloc, name: &str, body: Rc<SExp>) -> SExp {
+    SExp::Cons(l.clone(), Rc::new(SExp::atom_from_string(l, name)), body)
 }
 
 pub fn cons_of_string_map<X>(
@@ -383,15 +376,15 @@ pub fn cons_of_string_map<X>(
     map: &HashMap<Vec<u8>, X>,
 ) -> SExp {
     // Thanks: https://users.rust-lang.org/t/sort-hashmap-data-by-keys/37095/3
-    let mut v: Vec<_> = map.into_iter().collect();
-    v.sort_by(|x, y| x.0.cmp(&y.0));
+    let mut v: Vec<_> = map.iter().collect();
+    v.sort_by(|x, y| x.0.cmp(y.0));
 
     let sorted_converted: Vec<Rc<SExp>> = v
         .iter()
         .map(|x| {
             Rc::new(SExp::Cons(
                 l.clone(),
-                Rc::new(SExp::QuotedString(l.clone(), '\"' as u8, x.0.to_vec())),
+                Rc::new(SExp::QuotedString(l.clone(), b'\"', x.0.to_vec())),
                 Rc::new(SExp::Cons(
                     l.clone(),
                     cvt_body(x.1),
@@ -401,10 +394,10 @@ pub fn cons_of_string_map<X>(
         })
         .collect();
 
-    list_to_cons(l.clone(), &sorted_converted)
+    list_to_cons(l, &sorted_converted)
 }
 
-pub fn mapM<T, U, E>(f: &dyn Fn(&T) -> Result<U, E>, list: &Vec<T>) -> Result<Vec<U>, E> {
+pub fn map_m<T, U, E>(f: &dyn Fn(&T) -> Result<U, E>, list: &[T]) -> Result<Vec<U>, E> {
     let mut result = Vec::new();
     for e in list {
         let val = f(e)?;
@@ -413,7 +406,7 @@ pub fn mapM<T, U, E>(f: &dyn Fn(&T) -> Result<U, E>, list: &Vec<T>) -> Result<Ve
     Ok(result)
 }
 
-pub fn foldM<R, T, E>(f: &dyn Fn(&R, &T) -> Result<R, E>, start: R, list: &Vec<T>) -> Result<R, E> {
+pub fn fold_m<R, T, E>(f: &dyn Fn(&R, &T) -> Result<R, E>, start: R, list: &[T]) -> Result<R, E> {
     let mut res: R = start;
     for elt in list.iter() {
         res = f(&res, elt)?;
@@ -421,14 +414,14 @@ pub fn foldM<R, T, E>(f: &dyn Fn(&R, &T) -> Result<R, E>, start: R, list: &Vec<T
     Ok(res)
 }
 
-pub fn join_vecs_to_string(sep: Vec<u8>, vecs: &Vec<Vec<u8>>) -> String {
+pub fn join_vecs_to_string(sep: Vec<u8>, vecs: &[Vec<u8>]) -> String {
     let mut s = Vec::new();
     let mut comma = Vec::new();
 
     for elt in vecs {
         s.append(&mut comma.clone());
         s.append(&mut elt.to_vec());
-        if comma.len() == 0 {
+        if comma.is_empty() {
             comma = sep.clone();
         }
     }

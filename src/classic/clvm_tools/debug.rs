@@ -6,7 +6,7 @@ use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 use crate::classic::clvm::serialize::sexp_to_stream;
-use crate::classic::clvm::sexp::{enlist, mapM, proper_list, rest};
+use crate::classic::clvm::sexp::{enlist, map_m, proper_list, rest};
 
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
@@ -88,7 +88,7 @@ pub fn build_symbol_dump(
     let compiled_unrolled: Vec<(Vec<u8>, NodePtr)> = constants_lookup.into_iter().collect();
 
     m! {
-        map_result <- mapM(
+        map_result <- map_m(
             allocator,
             &mut compiled_unrolled.iter(),
             &|allocator, kv| m! {
@@ -100,7 +100,7 @@ pub fn build_symbol_dump(
                 );
 
                 let sha256 = sha256tree(allocator, run_result.1).hex();
-                sha_atom <- allocator.new_atom(&sha256.as_bytes().to_vec());
+                sha_atom <- allocator.new_atom(sha256.as_bytes());
                 name_atom <- allocator.new_atom(&kv.0.clone());
                 allocator.new_pair(sha_atom, name_atom)
             }
@@ -117,14 +117,14 @@ fn text_trace(
     form: NodePtr,
     symbol: Option<String>,
     env_: NodePtr,
-    result: &String,
+    result: &str,
 ) {
     let symbol_val;
     let mut env = env_;
     match symbol {
         Some(sym) => {
             env = rest(allocator, env).unwrap_or_else(|_| allocator.null());
-            let symbol_atom = allocator.new_atom(&sym.as_bytes().to_vec()).unwrap();
+            let symbol_atom = allocator.new_atom(sym.as_bytes()).unwrap();
             let symbol_list = allocator.new_pair(symbol_atom, env).unwrap();
             symbol_val = disassemble_f(allocator, symbol_list);
         }
@@ -137,7 +137,7 @@ fn text_trace(
         }
     }
 
-    output.write_string(format!("{} => {}\n\n", symbol_val, result));
+    output.write_str(&format!("{} => {}\n\n", symbol_val, result));
 }
 
 fn table_trace(
@@ -147,50 +147,54 @@ fn table_trace(
     form: NodePtr,
     _symbol: Option<String>,
     env: NodePtr,
-    result: &String,
+    result: &str,
 ) {
     let (sexp, args) = match allocator.sexp(form) {
         SExp::Pair(sexp, args) => (sexp, args),
         SExp::Atom(_) => (form, allocator.null()),
     };
 
-    stdout.write_string(format!("exp: {}\n", disassemble_f(allocator, sexp)));
-    stdout.write_string(format!("arg: {}\n", disassemble_f(allocator, args)));
-    stdout.write_string(format!("env: {}\n", disassemble_f(allocator, env)));
-    stdout.write_string(format!("val: {}\n", result));
+    stdout.write_str(&format!("exp: {}\n", disassemble_f(allocator, sexp)));
+    stdout.write_str(&format!("arg: {}\n", disassemble_f(allocator, args)));
+    stdout.write_str(&format!("env: {}\n", disassemble_f(allocator, env)));
+    stdout.write_str(&format!("val: {}\n", result));
     let mut sexp_stream = Stream::new(None);
     sexp_to_stream(allocator, sexp, &mut sexp_stream);
     let mut args_stream = Stream::new(None);
     sexp_to_stream(allocator, args, &mut args_stream);
     let mut benv_stream = Stream::new(None);
     sexp_to_stream(allocator, env, &mut benv_stream);
-    stdout.write_string(format!("bexp: {}\n", sexp_stream.get_value().hex()));
-    stdout.write_string(format!("barg: {}\n", args_stream.get_value().hex()));
-    stdout.write_string(format!("benv: {}\n", benv_stream.get_value().hex()));
-    stdout.write_string(format!("--\n"));
+    stdout.write_str(&format!("bexp: {}\n", sexp_stream.get_value().hex()));
+    stdout.write_str(&format!("barg: {}\n", args_stream.get_value().hex()));
+    stdout.write_str(&format!("benv: {}\n", benv_stream.get_value().hex()));
+    stdout.write_str("--\n");
 }
+
+type DisplayTraceFun = dyn Fn(
+    &mut Allocator,
+    &mut Stream,
+    &dyn Fn(&mut Allocator, NodePtr) -> String,
+    NodePtr,
+    Option<String>,
+    NodePtr,
+    &str,
+);
 
 fn display_trace(
     allocator: &mut Allocator,
     stdout: &mut Stream,
-    trace: &Vec<NodePtr>,
+    only_exn: bool,
+    trace: &[NodePtr],
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
     symbol_table: Option<HashMap<String, String>>,
-    display_fun: &dyn Fn(
-        &mut Allocator,
-        &mut Stream,
-        &dyn Fn(&mut Allocator, NodePtr) -> String,
-        NodePtr,
-        Option<String>,
-        NodePtr,
-        &String,
-    ),
+    display_fun: &DisplayTraceFun,
 ) {
     for item in trace {
         let item_vec = proper_list(allocator, *item, true).unwrap();
         let form = item_vec[0];
         let env = item_vec[1];
-        let rv = if item_vec.len() > 2 {
+        let not_exn = item_vec.len() > 2;
+        let rv = if not_exn {
             disassemble_f(allocator, item_vec[2])
         } else {
             "(didn't finish)".to_string()
@@ -200,20 +204,26 @@ fn display_trace(
         let symbol = symbol_table
             .as_ref()
             .and_then(|st| st.get(&h).map(|x| x.to_string()));
-        display_fun(allocator, stdout, disassemble_f, form, symbol, env, &rv);
+
+        let display = !only_exn || !not_exn;
+        if display {
+            display_fun(allocator, stdout, disassemble_f, form, symbol, env, &rv);
+        }
     }
 }
 
 pub fn trace_to_text(
     allocator: &mut Allocator,
     stdout: &mut Stream,
-    trace: &Vec<NodePtr>,
+    only_exn: bool,
+    trace: &[NodePtr],
     symbol_table: Option<HashMap<String, String>>,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
 ) {
     display_trace(
         allocator,
         stdout,
+        only_exn,
         trace,
         disassemble_f,
         symbol_table,
@@ -224,13 +234,15 @@ pub fn trace_to_text(
 pub fn trace_to_table(
     allocator: &mut Allocator,
     stdout: &mut Stream,
-    trace: &Vec<NodePtr>,
+    only_exn: bool,
+    trace: &[NodePtr],
     symbol_table: Option<HashMap<String, String>>,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
 ) {
     display_trace(
         allocator,
         stdout,
+        only_exn,
         trace,
         disassemble_f,
         symbol_table,
@@ -250,11 +262,11 @@ pub fn trace_pre_eval(
         .as_ref()
         .and_then(|symbol_table| symbol_table.get(&h.hex()).map(|x| x.to_string()));
 
-    if recognized.is_none() && !symbol_table.is_none() {
+    if recognized.is_none() && symbol_table.is_some() {
         Ok(None)
     } else {
         m! {
-            log_entry <- enlist(allocator, &vec!(sexp, args));
+            log_entry <- enlist(allocator, &[sexp, args]);
             let _ = append_log(allocator, log_entry);
             Ok(Some(log_entry))
         }
@@ -263,7 +275,7 @@ pub fn trace_pre_eval(
 
 pub fn check_unused(
     opts: Rc<dyn CompilerOpts>,
-    input_program: &String,
+    input_program: &str,
 ) -> Result<(bool, String), CompileErr> {
     let mut output: Stream = Stream::new(None);
     let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), input_program)
@@ -272,9 +284,9 @@ pub fn check_unused(
     let unused = check_parameters_used_compileform(opts, Rc::new(g))?;
 
     if !unused.is_empty() {
-        output.write_string(format!("unused arguments detected at the mod level (lower case arguments are considered uncurried by convention)\n"));
+        output.write_str("unused arguments detected at the mod level (lower case arguments are considered uncurried by convention)\n");
         for s in unused.iter() {
-            output.write_string(format!(
+            output.write_str(&format!(
                 " - {}\n",
                 Bytes::new(Some(BytesFromType::Raw(s.clone()))).decode()
             ));

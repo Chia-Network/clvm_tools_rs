@@ -21,9 +21,7 @@ pub fn build_table_mut<X>(
                     .concat(&left)
                     .concat(&right),
             );
-            if !code_map.contains_key(&treehash.hex()) {
-                code_map.insert(treehash.hex(), tx(code));
-            }
+            code_map.entry(treehash.hex()).or_insert_with(|| tx(code));
             treehash
         }
         SExp::Atom(_, a) => {
@@ -62,7 +60,7 @@ fn relabel_inner_(
     swap_table
         .get(code)
         .and_then(|res| code_map.get(res))
-        .map(|x| x.clone())
+        .cloned()
         .unwrap_or_else(|| match code {
             SExp::Cons(l, a, b) => {
                 let new_a = relabel_inner_(code_map, swap_table, a.borrow());
