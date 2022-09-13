@@ -30,8 +30,6 @@ recompile_list = [
     'p2_singleton_or_delayed_puzhash.clvm',
     'pool_member_innerpuz.clvm',
     'pool_waitingroom_innerpuz.clvm',
-    'rl_aggregation.clvm',
-    'rl.clvm',
     'rom_bootstrap_generator.clvm',
     'settlement_payments.clvm',
     'sha256tree_module.clvm',
