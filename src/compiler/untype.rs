@@ -31,10 +31,7 @@ lazy_static! {
 
 fn run_failure_to_eval_err(sexp: NodePtr, e: &RunFailure) -> EvalErr {
     match e {
-        RunFailure::RunExn(l, t) => EvalErr(
-            sexp,
-            format!("{}: exception: {}", l, t),
-        ),
+        RunFailure::RunExn(l, t) => EvalErr(sexp, format!("{}: exception: {}", l, t)),
         RunFailure::RunErr(l, t) => EvalErr(sexp, format!("{}: {}", l, t)),
     }
 }
@@ -176,14 +173,17 @@ fn untype_definition(
     };
 
     // Pick up first part of definition
-    let mut output_list: Vec<Rc<SExp>> =
-        converted.iter().take(offset).cloned().collect();
+    let mut output_list: Vec<Rc<SExp>> = converted.iter().take(offset).cloned().collect();
 
     // get args
     output_list.push(arguments);
 
     // Push stripped helpers
-    for c in converted.iter().take(converted.len() - 1).skip(use_tail_idx) {
+    for c in converted
+        .iter()
+        .take(converted.len() - 1)
+        .skip(use_tail_idx)
+    {
         for h in process_helper(opts.clone(), l, c.clone())?.iter() {
             output_list.push(h.clone());
         }

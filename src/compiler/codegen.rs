@@ -728,7 +728,14 @@ fn generate_let_defun(
         Rc::new(list_to_cons(l.clone(), &new_arguments)),
     );
 
-    HelperForm::Defun(l, name.to_owned(), true, Rc::new(inner_function_args), body, None)
+    HelperForm::Defun(
+        l,
+        name.to_owned(),
+        true,
+        Rc::new(inner_function_args),
+        body,
+        None,
+    )
 }
 
 fn generate_let_args(_l: Srcloc, blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {

@@ -240,14 +240,8 @@ impl<const A: usize> TheoryToSExp for GContext<A> {
 
 pub fn parse_type_var(atom: Rc<SExp>) -> Result<TypeVar, CompileErr> {
     match atom.atomize() {
-        SExp::Atom(l, a) => Ok(TypeVar(
-            std::str::from_utf8(&a).unwrap().to_string(),
-            l,
-        )),
-        _ => Err(CompileErr(
-            atom.loc(),
-            format!("not a type var: {}", atom),
-        )),
+        SExp::Atom(l, a) => Ok(TypeVar(std::str::from_utf8(&a).unwrap().to_string(), l)),
+        _ => Err(CompileErr(atom.loc(), format!("not a type var: {}", atom))),
     }
 }
 
@@ -273,10 +267,7 @@ fn parse_type_forall<const A: usize>(rest: Rc<SExp>) -> Result<Type<A>, CompileE
         }
     }
 
-    Err(CompileErr(
-        rest.loc(),
-        format!("bad forall tail: {}", rest),
-    ))
+    Err(CompileErr(rest.loc(), format!("bad forall tail: {}", rest)))
 }
 
 fn parse_type_pair<const A: usize, F>(f: F, rest: Rc<SExp>) -> Result<Type<A>, CompileErr>
@@ -331,10 +322,7 @@ fn parse_type_app<const A: usize>(
 }
 
 // Even elements are types, odd elements are "->" or "~>"
-fn parse_type_fun<const A: usize>(
-    full: Rc<SExp>,
-    elist: &[SExp],
-) -> Result<Type<A>, CompileErr> {
+fn parse_type_fun<const A: usize>(full: Rc<SExp>, elist: &[SExp]) -> Result<Type<A>, CompileErr> {
     let mut result = parse_type_sexp(Rc::new(elist[elist.len() - 1].clone()))?;
     let mut use_type = false;
 
@@ -350,10 +338,7 @@ fn parse_type_fun<const A: usize>(
                 result = Type::TFun(Rc::new(ty), Rc::new(result));
             } else if let SExp::Atom(l, a) = &elist[i].atomize() {
                 if &"->".as_bytes().to_vec() != a {
-                    return Err(CompileErr(
-                        l.clone(),
-                        format!("bad arrow in {}", full),
-                    ));
+                    return Err(CompileErr(l.clone(), format!("bad arrow in {}", full)));
                 }
             }
 
@@ -457,10 +442,7 @@ pub fn parse_evar(expr: &SExp) -> Result<Var, CompileErr> {
         return Ok(Var(std::str::from_utf8(a).unwrap().to_string(), l.clone()));
     }
 
-    Err(CompileErr(
-        expr.loc(),
-        format!("expected var got {}", expr),
-    ))
+    Err(CompileErr(expr.loc(), format!("expected var got {}", expr)))
 }
 
 pub fn parse_expr_anno(elist: &[SExp]) -> Result<Expr, CompileErr> {
@@ -558,8 +540,5 @@ pub fn parse_expr_sexp(expr: Rc<SExp>) -> Result<Expr, CompileErr> {
         _ => {}
     }
 
-    Err(CompileErr(
-        expr.loc(),
-        format!("bad expr {}", expr),
-    ))
+    Err(CompileErr(expr.loc(), format!("bad expr {}", expr)))
 }

@@ -404,10 +404,7 @@ pub fn standard_type_context() -> Context {
         ContextElim::CVar(Var("not".to_string(), loc.clone()), polytype(&strlen_prim)),
         ContextElim::CVar(Var("any".to_string(), loc.clone()), polytype(&plus_prim)),
         ContextElim::CVar(Var("all".to_string(), loc.clone()), polytype(&plus_prim)),
-        ContextElim::CVar(
-            Var("softfork".to_string(), loc),
-            polytype(&softfork_prim),
-        ),
+        ContextElim::CVar(Var("softfork".to_string(), loc), polytype(&softfork_prim)),
         // Builtin types
         ContextElim::CExistsSolved(list_tv, list),
         ContextElim::CExistsSolved(unit_tv, unit),
@@ -420,10 +417,7 @@ fn type_of_defun(l: Srcloc, ty: &Option<Polytype>) -> Polytype {
     if let Some(ty) = ty {
         ty.clone()
     } else {
-        Type::TFun(
-            Rc::new(Type::TAny(l.clone())),
-            Rc::new(Type::TAny(l)),
-        )
+        Type::TFun(Rc::new(Type::TAny(l.clone())), Rc::new(Type::TAny(l)))
     }
 }
 
@@ -455,7 +449,7 @@ pub fn context_from_args_and_type(
         ))),
         (SExp::Cons(l, _, _), Type::TUnit(_)) => Err(CompileErr(
             l.clone(),
-            "function has an argument list but specifies empty arguments".to_string()
+            "function has an argument list but specifies empty arguments".to_string(),
         )),
         (SExp::Cons(l, f, r), Type::TAny(_)) => {
             if let Some((_, _)) = is_at_capture(f.clone(), r.clone()) {
@@ -541,11 +535,7 @@ pub fn context_from_args_and_type(
         }
         _ => Err(CompileErr(
             args.loc(),
-            format!(
-                "unhandled case {} vs {}",
-                args,
-                argty.to_sexp()
-            ),
+            format!("unhandled case {} vs {}", args, argty.to_sexp()),
         )),
     }
 }
@@ -721,11 +711,7 @@ fn chialisp_to_expr(
             // Just treat it as an expression...  If it's a function we defined,
             // then it's in the environment.
             Ok(Expr::EApp(
-                Rc::new(chialisp_to_expr(
-                    program,
-                    form_args,
-                    lst[0].clone(),
-                )?),
+                Rc::new(chialisp_to_expr(program, form_args, lst[0].clone())?),
                 Rc::new(arg_expr),
             ))
         }
@@ -754,15 +740,8 @@ fn handle_function_type(
     match ty {
         Type::TFun(a, r) => {
             let r_borrowed: &Polytype = r.borrow();
-            context_from_args_and_type(
-                structs,
-                context,
-                args,
-                a.borrow(),
-                bi_zero(),
-                bi_one(),
-            )
-            .map(|ctx| (ctx, r_borrowed.clone()))
+            context_from_args_and_type(structs, context, args, a.borrow(), bi_zero(), bi_one())
+                .map(|ctx| (ctx, r_borrowed.clone()))
         }
         Type::TForall(t, f) => {
             let inner_ctx = context.snoc_wf(ContextElim::CForall(t.clone()));

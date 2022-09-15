@@ -266,11 +266,8 @@ impl HelperForm {
         match self {
             HelperForm::Deftype(loc, name, args, ty) => {
                 let mut result_vec = vec![
-                    Rc::new(SExp::atom_from_string(
-                        loc.clone(),
-                        "deftype",
-                    )),
-                    Rc::new(SExp::Atom(loc.clone(), name.clone()))
+                    Rc::new(SExp::atom_from_string(loc.clone(), "deftype")),
+                    Rc::new(SExp::Atom(loc.clone(), name.clone())),
                 ];
 
                 for a in args.iter() {

@@ -25,12 +25,10 @@ pub fn monotype<const A: usize>(typ: &Type<A>) -> Option<Monotype> {
         Type::TExists(v) => Some(Type::TExists(v.clone())),
         Type::TNullable(t) => monotype(t.borrow()).map(|tm| Type::TNullable(Rc::new(tm))),
         Type::TExec(t) => monotype(t.borrow()).map(|tm| Type::TExec(Rc::new(tm))),
-        Type::TFun(t1, t2) => monotype(t2.borrow()).and_then(|t2m| {
-            monotype(t1).map(|t1m| Type::TFun(Rc::new(t1m), Rc::new(t2m.clone())))
-        }),
-        Type::TPair(a, b) => monotype(a.borrow()).and_then(|am| {
-            monotype(b).map(|bm| Type::TPair(Rc::new(am.clone()), Rc::new(bm)))
-        }),
+        Type::TFun(t1, t2) => monotype(t2.borrow())
+            .and_then(|t2m| monotype(t1).map(|t1m| Type::TFun(Rc::new(t1m), Rc::new(t2m.clone())))),
+        Type::TPair(a, b) => monotype(a.borrow())
+            .and_then(|am| monotype(b).map(|bm| Type::TPair(Rc::new(am.clone()), Rc::new(bm)))),
         Type::TAbs(v, t) => monotype(t.borrow()).map(|tm| Type::TAbs(v.clone(), Rc::new(tm))),
         Type::TApp(a, b) => monotype(a.borrow())
             .and_then(|am| monotype(b).map(|bm| Type::TApp(Rc::new(am), Rc::new(bm)))),

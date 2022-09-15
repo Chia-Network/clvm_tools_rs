@@ -185,11 +185,10 @@ impl Context {
                         .and_then(|finished_type| monotype(&finished_type))
                         .map(|tmono| {
                             debug!("tabls unrecurse");
-                            let new_ctx =
-                                self.appends_wf(vec![ContextElim::CExistsSolved(
-                                    new_tvar.clone(),
-                                    tmono,
-                                )]);
+                            let new_ctx = self.appends_wf(vec![ContextElim::CExistsSolved(
+                                new_tvar.clone(),
+                                tmono,
+                            )]);
 
                             (Type::TExists(new_tvar), new_ctx)
                         })
@@ -263,11 +262,7 @@ impl Context {
 
         Err(CompileErr(
             a.loc(),
-            format!(
-                "Malformed type: {} in {}",
-                a.to_sexp(),
-                self.to_sexp()
-            ),
+            format!("Malformed type: {} in {}", a.to_sexp(), self.to_sexp()),
         ))
     }
 
@@ -414,9 +409,7 @@ impl GContext<CONTEXT_INCOMPLETE> {
                 debug!(
                     "drop_marker, index {} D {} K {}",
                     idx,
-                    GContext(res.0[..idx].to_vec())
-                        .to_sexp()
-                        .to_string(),
+                    GContext(res.0[..idx].to_vec()).to_sexp().to_string(),
                     out.to_sexp().to_string()
                 );
                 out

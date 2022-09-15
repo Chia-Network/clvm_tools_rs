@@ -157,12 +157,8 @@ impl Context {
         debug!("{}gamma_l {}", i(), gamma_l.to_sexp().to_string());
         debug!("{}gamma_r {}", i(), gamma_r.to_sexp().to_string());
         if gamma_l.typewf(tau) {
-            let mut gammaprime: Vec<ContextElim<CONTEXT_INCOMPLETE>> = gamma_r
-                .0
-                .iter()
-                .filter(|x| *x != &fa)
-                .cloned()
-                .collect();
+            let mut gammaprime: Vec<ContextElim<CONTEXT_INCOMPLETE>> =
+                gamma_r.0.iter().filter(|x| *x != &fa).cloned().collect();
             let mut gamma_l_copy: Vec<ContextElim<CONTEXT_INCOMPLETE>> = gamma_l.0;
             gammaprime.push(ContextElim::CExistsSolved(alpha.clone(), new_tau));
             gammaprime.append(&mut gamma_l_copy);
@@ -576,11 +572,7 @@ impl Context {
                     _ => {
                         return Err(CompileErr(
                             a.loc(),
-                            format!(
-                                "no monotype: {} or {}",
-                                a1.to_sexp(),
-                                a2.to_sexp()
-                            ),
+                            format!("no monotype: {} or {}", a1.to_sexp(), a2.to_sexp()),
                         ));
                     }
                 }
@@ -681,11 +673,10 @@ impl Context {
                 debug!("tforall");
                 let alphaprime = fresh_tvar(typ.loc());
                 let subst_res = type_subst(&Type::TVar(alphaprime.clone()), &alpha.clone(), a);
-                self
-                    .drop_marker(ContextElim::CForall(alphaprime), |gamma| {
-                        gamma.typecheck(e, &subst_res)
-                    })
-                    .map(Box::new)
+                self.drop_marker(ContextElim::CForall(alphaprime), |gamma| {
+                    gamma.typecheck(e, &subst_res)
+                })
+                .map(Box::new)
             }
 
             (Expr::EUnit(_), Type::TNullable(_)) => Ok(Box::new(self.clone())),
@@ -699,10 +690,9 @@ impl Context {
                 let e_borrowed: &Expr = e.borrow();
                 let subst_res = subst(&Expr::EVar(xprime.clone()), x.clone(), e_borrowed);
 
-                self.drop_marker(
-                    ContextElim::CVar(xprime, a_borrowed.clone()),
-                    |gamma| gamma.typecheck(&subst_res, b_borrowed),
-                )
+                self.drop_marker(ContextElim::CVar(xprime, a_borrowed.clone()), |gamma| {
+                    gamma.typecheck(&subst_res, b_borrowed)
+                })
                 .map(Box::new)
             }
             // Sub
@@ -726,21 +716,19 @@ impl Context {
         let _ = self.checkwf(expr.loc());
         match expr {
             // Var
-            Expr::EVar(x) => {
-                self
-                    .find_var_type(x)
-                    .map(|ty| Ok((ty, Box::new(self.clone()))))
-                    .unwrap_or_else(|| {
-                        Err(CompileErr(
-                            expr.loc(),
-                            format!(
-                                "typesynth: not in scope {} in context {}",
-                                expr.to_sexp(),
-                                self.to_sexp()
-                            ),
-                        ))
-                    })
-            }
+            Expr::EVar(x) => self
+                .find_var_type(x)
+                .map(|ty| Ok((ty, Box::new(self.clone()))))
+                .unwrap_or_else(|| {
+                    Err(CompileErr(
+                        expr.loc(),
+                        format!(
+                            "typesynth: not in scope {} in context {}",
+                            expr.to_sexp(),
+                            self.to_sexp()
+                        ),
+                    ))
+                }),
 
             // Anno
             Expr::EAnno(e, a) => {
@@ -749,9 +737,7 @@ impl Context {
             }
 
             // 1I=>
-            Expr::EUnit(l) => {
-                Ok((Type::TUnit(l.clone()), Box::new(self.clone())))
-            }
+            Expr::EUnit(l) => Ok((Type::TUnit(l.clone()), Box::new(self.clone()))),
 
             Expr::ELit(l, n) => {
                 let atom_size = if n == &32_u32.to_bigint().unwrap() {
@@ -893,8 +879,8 @@ impl Context {
                     ContextElim::CExists(alpha2.clone()),
                     ContextElim::CExists(alpha1.clone()),
                 ]);
-                let delta = (self.insert_at(alpha, rcontext))
-                    .typecheck(expr, &Type::TExists(alpha1))?;
+                let delta =
+                    (self.insert_at(alpha, rcontext)).typecheck(expr, &Type::TExists(alpha1))?;
                 return Ok((Type::TExists(alpha2), delta));
             }
 

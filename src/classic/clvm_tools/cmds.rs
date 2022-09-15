@@ -833,9 +833,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             let env = assemble_from_ir(&mut allocator, Rc::new(env_ir)).unwrap();
             time_assemble = SystemTime::now();
 
-            input_sexp = allocator
-                .new_pair(untyped_sexp, env)
-                .ok();
+            input_sexp = allocator.new_pair(untyped_sexp, env).ok();
         }
     }
 

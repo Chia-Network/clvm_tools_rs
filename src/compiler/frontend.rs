@@ -652,10 +652,7 @@ fn augment_fun_type_with_args(
                 TypeAnnoKind::Colon(t) => (args.clone(), Some(t)),
                 TypeAnnoKind::Arrow(t) => (
                     args.clone(),
-                    Some(Type::TFun(
-                        Rc::new(Type::TAny(args.loc())),
-                        Rc::new(t),
-                    )),
+                    Some(Type::TFun(Rc::new(Type::TAny(args.loc())), Rc::new(t))),
                 ),
             })
             .unwrap_or_else(|| (args.clone(), None)))
@@ -796,12 +793,7 @@ fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
             return Ok(ChiaType::Abstract(v[1].loc(), n.clone()));
         }
 
-        let vars: Vec<SExp> = v
-            .iter()
-            .skip(2)
-            .take(v.len() - 3)
-            .cloned()
-            .collect();
+        let vars: Vec<SExp> = v.iter().skip(2).take(v.len() - 3).cloned().collect();
         let expr = Rc::new(v[v.len() - 1].clone());
 
         let mut var_vec = Vec::new();
@@ -912,9 +904,7 @@ pub fn compile_helperform(
             let mut helpers = generate_type_helpers(&parsed_chia);
             debug!("parsed_chia {:?}", parsed_chia);
             let new_form = match &parsed_chia {
-                ChiaType::Abstract(l, n) => {
-                    HelperForm::Deftype(l.clone(), n.clone(), vec![], None)
-                }
+                ChiaType::Abstract(l, n) => HelperForm::Deftype(l.clone(), n.clone(), vec![], None),
                 ChiaType::Struct(sdef) => {
                     if let SExp::Atom(_, _) = sdef.proto.borrow() {
                         return Err(CompileErr(sdef.loc.clone(), "A struct with a single element acting as an alias is currently a hazard.  This will be fixed in the future.".to_string()));
@@ -1053,8 +1043,7 @@ fn frontend_start(
                                 skip_idx += 2;
                             }
                         }
-                        let (stripped_args, parsed_type) =
-                            augment_fun_type_with_args(args, ty)?;
+                        let (stripped_args, parsed_type) = augment_fun_type_with_args(args, ty)?;
 
                         let body_vec = x
                             .iter()
