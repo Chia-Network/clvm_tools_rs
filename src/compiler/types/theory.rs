@@ -185,8 +185,8 @@ impl Context {
             exi.elem(alpha) && !free_tvars(a).contains(alpha)
         };
 
-        let _ = self.checkwftype(typ1)?;
-        let _ = self.checkwftype(typ2)?;
+        self.checkwftype(typ1)?;
+        self.checkwftype(typ2)?;
         match (typ1, typ2) {
             (Type::TVar(alpha), Type::TVar(alphaprime)) => {
                 debug!("case 1");
@@ -366,8 +366,8 @@ impl Context {
     // | Algorithmic instantiation (left):
     //   instantiateL Γ α A = Δ <=> Γ |- α^ :=< A -| Δ
     fn instantiate_l_(&self, alpha: &TypeVar, a: &Polytype) -> Result<Box<Self>, CompileErr> {
-        let _ = self.checkwftype(&Type::TExists(alpha.clone()))?;
-        let _ = self.checkwftype(a)?;
+        self.checkwftype(&Type::TExists(alpha.clone()))?;
+        self.checkwftype(a)?;
         let prev_monotype_a = if let Some(mta) = monotype(a) {
             self.solve(alpha, &mta)?
         } else {
@@ -664,7 +664,7 @@ impl Context {
     // | Type checking:
     //   typecheck Γ e A = Δ <=> Γ |- e <= A -| Δ
     fn typecheck_(&self, expr: &Expr, typ: &Polytype) -> Result<Box<Self>, CompileErr> {
-        let _ = self.checkwftype(typ)?;
+        self.checkwftype(typ)?;
         match (expr, typ) {
             // 1I
             (Expr::EUnit(_), Type::TUnit(_)) => Ok(Box::new(self.clone())),
@@ -838,7 +838,7 @@ impl Context {
         typ: &Polytype,
         expr: &Expr,
     ) -> Result<(Polytype, Box<Self>), CompileErr> {
-        let _ = self.checkwftype(typ)?;
+        self.checkwftype(typ)?;
 
         let resolve_inner_type = |t: &Polytype, delta: &Context| {
             if let Type::TExists(tv) = t.borrow() {
