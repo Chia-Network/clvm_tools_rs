@@ -379,12 +379,7 @@ pub fn var_change_optimizer_cons_eval(
 
                 let mut opt_operands = Vec::new();
                 for item in new_operands.iter() {
-                    opt_operands.push(optimize_sexp_(
-                        allocator,
-                        memo,
-                        *item,
-                        eval_f.clone(),
-                    )?);
+                    opt_operands.push(optimize_sexp_(allocator, memo, *item, eval_f.clone())?);
                 }
 
                 let non_constant_count = fold_m(
