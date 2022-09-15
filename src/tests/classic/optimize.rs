@@ -14,31 +14,31 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::{
 
 fn test_cons_q_a(src: String) -> String {
     let mut allocator = Allocator::new();
-    let memo = Rc::new(RefCell::new(HashMap::new()));
+    let memo = RefCell::new(HashMap::new());
     let input_ir = read_ir(&src).unwrap();
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths(&vec![".".to_string()]);
-    let optimized = cons_q_a_optimizer(&mut allocator, memo, assembled, runner.clone()).unwrap();
+    let optimized = cons_q_a_optimizer(&mut allocator, &memo, assembled, runner.clone()).unwrap();
     disassemble(&mut allocator, optimized)
 }
 
 fn test_children_optimizer(src: String) -> String {
     let mut allocator = Allocator::new();
-    let memo = Rc::new(RefCell::new(HashMap::new()));
+    let memo = RefCell::new(HashMap::new());
     let input_ir = read_ir(&src).unwrap();
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths(&vec![".".to_string()]);
-    let optimized = children_optimizer(&mut allocator, memo, assembled, runner.clone()).unwrap();
+    let optimized = children_optimizer(&mut allocator, &memo, assembled, runner.clone()).unwrap();
     disassemble(&mut allocator, optimized)
 }
 
 fn test_constant_optimizer(src: String) -> String {
     let mut allocator = Allocator::new();
-    let memo = Rc::new(RefCell::new(HashMap::new()));
+    let memo = RefCell::new(HashMap::new());
     let input_ir = read_ir(&src).unwrap();
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths(&vec![".".to_string()]);
-    let optimized = constant_optimizer(&mut allocator, memo, assembled, 0, runner.clone()).unwrap();
+    let optimized = constant_optimizer(&mut allocator, &memo, assembled, 0, runner.clone()).unwrap();
     disassemble(&mut allocator, optimized)
 }
 
