@@ -12,7 +12,7 @@ struct KwAtomPair {
     n: &'static str,
 }
 
-const kw_pairs: [KwAtomPair; 32] = [
+const KW_PAIRS: [KwAtomPair; 32] = [
     KwAtomPair { v: 0x01, n: "q" },
     KwAtomPair { v: 0x02, n: "a" },
     KwAtomPair { v: 0x03, n: "i" },
@@ -86,24 +86,24 @@ const kw_pairs: [KwAtomPair; 32] = [
 lazy_static! {
     pub static ref KEYWORD_FROM_ATOM_: HashMap<Vec<u8>, String> = {
         let mut result = HashMap::new();
-        for pair in kw_pairs {
+        for pair in KW_PAIRS {
             result.insert(vec![pair.v], pair.n.to_string());
         }
         result
     };
     pub static ref KEYWORD_TO_ATOM_: HashMap<String, Vec<u8>> = {
         let mut result = HashMap::new();
-        for pair in kw_pairs {
+        for pair in KW_PAIRS {
             result.insert(pair.n.to_string(), vec![pair.v]);
         }
         result
     };
 }
 
-pub fn KEYWORD_FROM_ATOM() -> &'static HashMap<Vec<u8>, String> {
+pub fn keyword_from_atom() -> &'static HashMap<Vec<u8>, String> {
     &KEYWORD_FROM_ATOM_
 }
 
-pub fn KEYWORD_TO_ATOM() -> &'static HashMap<String, Vec<u8>> {
+pub fn keyword_to_atom() -> &'static HashMap<String, Vec<u8>> {
     &KEYWORD_TO_ATOM_
 }

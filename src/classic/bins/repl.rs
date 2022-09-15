@@ -3,8 +3,6 @@ extern crate clvmr as clvm_rs;
 use std::io::{self, BufRead, Write};
 use std::rc::Rc;
 
-use env_logger;
-
 use clvm_rs::allocator::Allocator;
 
 use clvm_tools_rs::compiler::compiler::DefaultCompilerOpts;
@@ -17,9 +15,9 @@ fn main() {
 
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
-    let opts = Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));
+    let opts = Rc::new(DefaultCompilerOpts::new("*program*"));
     let stdin = io::stdin();
-    let mut repl = Repl::new(opts.clone(), runner.clone());
+    let mut repl = Repl::new(opts, runner);
 
     print!(">>> ");
     io::stdout().flush().unwrap();
@@ -32,7 +30,7 @@ fn main() {
                     .process_line(&mut allocator, line)
                     .map(|result| {
                         if let Some(result) = result {
-                            print!("{}\n>>> ", result.to_sexp().to_string());
+                            print!("{}\n>>> ", result.to_sexp());
                         } else {
                             print!("... ");
                         }

@@ -33,9 +33,9 @@ fn run_failure_to_eval_err(sexp: NodePtr, e: &RunFailure) -> EvalErr {
     match e {
         RunFailure::RunExn(l, t) => EvalErr(
             sexp,
-            format!("{}: exception: {}", l.to_string(), t.to_string()),
+            format!("{}: exception: {}", l, t),
         ),
-        RunFailure::RunErr(l, t) => EvalErr(sexp, format!("{}: {}", l.to_string(), t)),
+        RunFailure::RunErr(l, t) => EvalErr(sexp, format!("{}: {}", l, t)),
     }
 }
 
@@ -49,10 +49,10 @@ fn flatten_type_level_operators_call(sexp: Rc<SExp>) -> Rc<SExp> {
     }
 }
 
-fn choose_operator(_l: Srcloc, n: &Vec<u8>) -> Option<Rc<SExp>> {
+fn choose_operator(_l: Srcloc, n: &[u8]) -> Option<Rc<SExp>> {
     for p in prims() {
-        if n == &p.0 {
-            return Some(Rc::new(p.1.clone()));
+        if n == p.0 {
+            return Some(Rc::new(p.1));
         }
     }
 
@@ -67,11 +67,11 @@ fn flatten_type_level_operators(sexp: Rc<SExp>) -> Rc<SExp> {
                     if n[0] == 1 || n[0] == b'q' {
                         return Rc::new(SExp::Cons(
                             l.clone(),
-                            Rc::new(SExp::Atom(la.clone(), vec![1])),
+                            Rc::new(SExp::Atom(la, vec![1])),
                             b.clone(),
                         ));
                     } else {
-                        let op = choose_operator(la.clone(), &n).unwrap_or_else(|| a.clone());
+                        let op = choose_operator(la, &n).unwrap_or_else(|| a.clone());
                         return Rc::new(SExp::Cons(
                             l.clone(),
                             op,
@@ -79,7 +79,7 @@ fn flatten_type_level_operators(sexp: Rc<SExp>) -> Rc<SExp> {
                         ));
                     }
                 } else if n.len() == 2 && n[1] == b'*' {
-                    let op = choose_operator(la.clone(), &vec![n[0]]).unwrap_or_else(|| a.clone());
+                    let op = choose_operator(la, &[n[0]]).unwrap_or_else(|| a.clone());
                     return Rc::new(SExp::Cons(
                         l.clone(),
                         op,
@@ -92,7 +92,7 @@ fn flatten_type_level_operators(sexp: Rc<SExp>) -> Rc<SExp> {
                 } else {
                     return Rc::new(SExp::Cons(
                         l.clone(),
-                        Rc::new(SExp::Atom(la.clone(), n.clone())),
+                        Rc::new(SExp::Atom(la, n)),
                         flatten_type_level_operators_call(b.clone()),
                     ));
                 }
@@ -117,19 +117,16 @@ fn process_helper(
             if n == &"deftype".as_bytes().to_vec() {
                 debug!("deftype");
                 let result = compile_helperform(opts.clone(), form.clone())
-                    .map_err(|e| EvalErr(sexp, format!("{}: {}", e.0.to_string(), e.1)))?;
+                    .map_err(|e| EvalErr(sexp, format!("{}: {}", e.0, e.1)))?;
                 if let Some(result) = result {
                     debug!("result {:?}", result.new_helpers);
                     let mut result_forms = Vec::new();
                     for f in result.new_helpers.iter() {
-                        match f {
-                            HelperForm::Defun(_, _, _, _, _, _) => {
-                                let downstream = process_helper(opts.clone(), sexp, f.to_sexp())?;
-                                for h in downstream.iter() {
-                                    result_forms.push(h.clone());
-                                }
+                        if matches!(f, HelperForm::Defun(_, _, _, _, _, _)) {
+                            let downstream = process_helper(opts.clone(), sexp, f.to_sexp())?;
+                            for h in downstream.iter() {
+                                result_forms.push(h.clone());
                             }
-                            _ => {}
                         }
                     }
                     Ok(result_forms)
@@ -157,7 +154,7 @@ fn untype_definition(
     opts: Rc<dyn CompilerOpts>,
     loc: Srcloc,
     l: NodePtr,
-    converted: &Vec<Rc<SExp>>,
+    converted: &[Rc<SExp>],
     offset: usize,
 ) -> Result<Option<Rc<SExp>>, EvalErr> {
     let mut use_tail_idx = offset + 1;
@@ -171,26 +168,23 @@ fn untype_definition(
     }
 
     let arguments = if let Some(typed) = recover_arg_type(converted[offset].clone(), false)
-        .map_err(|e| EvalErr(l, format!("{}: {}", e.0.to_string(), e.1)))?
+        .map_err(|e| EvalErr(l, format!("{}: {}", e.0, e.1)))?
     {
         typed.stripped_args
     } else {
         converted[offset].clone()
     };
 
-    let mut output_list = Vec::new();
-
     // Pick up first part of definition
-    for i in 0..offset {
-        output_list.push(converted[i].clone());
-    }
+    let mut output_list: Vec<Rc<SExp>> =
+        converted.iter().take(offset).cloned().collect();
 
     // get args
     output_list.push(arguments);
 
     // Push stripped helpers
-    for i in use_tail_idx..converted.len() - 1 {
-        for h in process_helper(opts.clone(), l, converted[i].clone())?.iter() {
+    for c in converted.iter().take(converted.len() - 1).skip(use_tail_idx) {
+        for h in process_helper(opts.clone(), l, c.clone())?.iter() {
             output_list.push(h.clone());
         }
     }
@@ -207,7 +201,7 @@ fn matches_mod(
     opts: Rc<dyn CompilerOpts>,
     loc: Srcloc,
     l: NodePtr,
-    converted: &Vec<Rc<SExp>>,
+    converted: &[Rc<SExp>],
 ) -> Result<Option<Rc<SExp>>, EvalErr> {
     if converted.len() < 3 {
         return Ok(None);
@@ -217,7 +211,7 @@ fn matches_mod(
         return Ok(None);
     }
 
-    untype_definition(opts.clone(), loc, l, &converted, 1)
+    untype_definition(opts.clone(), loc, l, converted, 1)
 }
 
 // Remove type annotations in a chialisp mod, giving the helper forms that would
@@ -239,7 +233,8 @@ pub fn untype_code(
     loc: Srcloc,
     sexp: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
-    let opts = Rc::new(DefaultCompilerOpts::new(loc.file.borrow()));
+    let file_borrowed: &String = loc.file.borrow();
+    let opts = Rc::new(DefaultCompilerOpts::new(file_borrowed));
     if let Some(l) = proper_list(allocator, sexp, true) {
         // This is only allowed on (mod ...)
         let mut converted = Vec::new();
@@ -250,12 +245,12 @@ pub fn untype_code(
             );
         }
 
-        if let Some(reformed) = matches_mod(opts.clone(), loc.clone(), sexp, &converted)? {
+        if let Some(reformed) = matches_mod(opts, loc.clone(), sexp, &converted)? {
             debug!("reformed {}", reformed.to_string());
             return convert_to_clvm_rs(allocator, reformed)
                 .map_err(|e| run_failure_to_eval_err(sexp, &e));
         }
     };
 
-    return Ok(sexp);
+    Ok(sexp)
 }

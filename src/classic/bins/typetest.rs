@@ -19,17 +19,17 @@ fn main() {
 
     env_logger::init();
 
-    let loc = Srcloc::start(&"*program*".to_string());
+    let loc = Srcloc::start("*program*");
     let mut context = standard_type_context();
 
     let mut takename = true;
     let mut name = "".to_string();
-    for i in 1..args.len() - 1 {
+    for arg in args.iter().take(args.len() - 1).skip(1) {
         if takename {
-            name = args[i].to_string();
+            name = arg.to_string();
         } else {
-            match parse_sexp(loc.clone(), &args[i])
-                .map_err(|e| CompileErr(e.0.clone(), e.1.clone()))
+            match parse_sexp(loc.clone(), arg)
+                .map_err(|e| CompileErr(e.0.clone(), e.1))
                 .and_then(|parsed_program| parse_expr_sexp(parsed_program[0].clone()))
                 .and_then(|result| context.typesynth(&result))
             {
@@ -46,18 +46,18 @@ fn main() {
         takename = !takename;
     }
 
-    println!("starting context {}", context.to_sexp().to_string());
+    println!("starting context {}", context.to_sexp());
 
-    parse_sexp(loc.clone(), &args[args.len() - 1])
-        .map_err(|e| CompileErr(e.0.clone(), e.1.clone()))
+    parse_sexp(loc, &args[args.len() - 1])
+        .map_err(|e| CompileErr(e.0.clone(), e.1))
         .and_then(|parsed_program| parse_expr_sexp(parsed_program[0].clone()))
         .and_then(|result| {
-            println!("parsed: {}", result.to_sexp().to_string());
+            println!("parsed: {}", result.to_sexp());
             context.typesynth(&result)
         })
         .map(|(ty, ctx)| {
-            println!("typed: {}", ctx.reify(&ty, None).to_sexp().to_string());
-            println!("context: {}", ctx.to_sexp().to_string());
+            println!("typed: {}", ctx.reify(&ty, None).to_sexp());
+            println!("context: {}", ctx.to_sexp());
         })
         .map_err(|e| {
             println!("failed: {:?}", e);

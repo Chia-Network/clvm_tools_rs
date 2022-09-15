@@ -10,10 +10,10 @@ use crate::classic::clvm_tools::cmds::{launch_tool, OpcConversion, OpdConversion
 
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble};
 use crate::classic::clvm_tools::ir::reader::read_ir;
+use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
-use crate::classic::clvm_tools::NodePath::NodePath;
 
 #[test]
 fn nft_opc() {
@@ -231,6 +231,51 @@ fn basic_opc_quoted_1() {
         .invoke(&mut allocator, &"(q . 1)".to_string())
         .unwrap();
     assert_eq!(result.rest(), "ff0101");
+}
+
+#[test]
+fn test_simple_opd_conversion() {
+    let mut allocator = Allocator::new();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &"ff0183666f6f".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "(q . \"foo\")");
+}
+
+#[test]
+fn test_simple_brun_minus_x_1() {
+    let mut s = Stream::new(None);
+    launch_tool(
+        &mut s,
+        &vec![
+            "brun".to_string(),
+            "-x".to_string(),
+            "ff0183666f6f".to_string(),
+            "ff8080".to_string(),
+        ],
+        &"brun".to_string(),
+        0,
+    );
+    let result = s.get_value().decode().trim().to_string();
+    assert_eq!(result, "\"foo\"".to_string());
+}
+
+#[test]
+fn test_simple_brun_minus_x_2() {
+    let mut s = Stream::new(None);
+    launch_tool(
+        &mut s,
+        &vec![
+            "brun".to_string(),
+            "-x".to_string(),
+            "ff04ff02ff0380".to_string(),
+            "ff01ff0280".to_string(),
+        ],
+        &"brun".to_string(),
+        0,
+    );
+    let result = s.get_value().decode().trim().to_string();
+    assert_eq!(result, "(q 2)".to_string());
 }
 
 #[test]

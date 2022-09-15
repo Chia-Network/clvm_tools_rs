@@ -288,7 +288,7 @@ fn test_type_def_1() {
             "run".to_string(),
             indoc! {"
 (mod (A) -> Atom
-   (deftype Struct ((A : Atom) . (B : (Atom 32))))
+   (deftype Struct ((A : Atom) . (B : Atom32)))
    (defun-inline foo (X) (new_Struct X 3))
    (get_Struct_A (foo A))
    )"}

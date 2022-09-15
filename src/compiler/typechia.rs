@@ -34,7 +34,7 @@ use crate::util::{number_from_u8, u8_from_number, Number};
 // ordinary operators.
 //
 pub fn standard_type_context() -> Context {
-    let loc = Srcloc::start(&"*type-prelude*".to_string());
+    let loc = Srcloc::start("*type-prelude*");
 
     // Basic sorts
     let unit_tv = TypeVar("Unit".to_string(), loc.clone());
@@ -256,7 +256,7 @@ pub fn standard_type_context() -> Context {
                     )))),
                     Rc::new(Type::TUnit(f0.loc())),
                 )),
-                Rc::new(Type::TVar(r0.clone())),
+                Rc::new(Type::TVar(r0)),
             )),
         )),
     );
@@ -405,7 +405,7 @@ pub fn standard_type_context() -> Context {
         ContextElim::CVar(Var("any".to_string(), loc.clone()), polytype(&plus_prim)),
         ContextElim::CVar(Var("all".to_string(), loc.clone()), polytype(&plus_prim)),
         ContextElim::CVar(
-            Var("softfork".to_string(), loc.clone()),
+            Var("softfork".to_string(), loc),
             polytype(&softfork_prim),
         ),
         // Builtin types
@@ -422,7 +422,7 @@ fn type_of_defun(l: Srcloc, ty: &Option<Polytype>) -> Polytype {
     } else {
         Type::TFun(
             Rc::new(Type::TAny(l.clone())),
-            Rc::new(Type::TAny(l.clone())),
+            Rc::new(Type::TAny(l)),
         )
     }
 }
@@ -442,7 +442,7 @@ pub fn context_from_args_and_type(
             l.clone(),
             format!(
                 "function has empty argument list but type {}",
-                argty.to_sexp().to_string()
+                argty.to_sexp()
             ),
         )),
         (SExp::Atom(l, a), Type::TVar(TypeVar(v, vl))) => Ok(context.snoc_wf(ContextElim::CVar(
@@ -455,16 +455,16 @@ pub fn context_from_args_and_type(
         ))),
         (SExp::Cons(l, _, _), Type::TUnit(_)) => Err(CompileErr(
             l.clone(),
-            format!("function has an argument list but specifies empty arguments"),
+            "function has an argument list but specifies empty arguments".to_string()
         )),
         (SExp::Cons(l, f, r), Type::TAny(_)) => {
             if let Some((_, _)) = is_at_capture(f.clone(), r.clone()) {
                 if let SExp::Cons(_, sub, _) = r.borrow() {
                     let sub_context = context_from_args_and_type(
                         structs,
-                        &context,
+                        context,
                         sub.clone(),
-                        &argty,
+                        argty,
                         path.clone(),
                         path_bit.clone(),
                     )?;
@@ -472,12 +472,12 @@ pub fn context_from_args_and_type(
                         structs,
                         &sub_context,
                         f.clone(),
-                        &argty,
+                        argty,
                         path,
                         path_bit,
                     )
                 } else {
-                    return Err(CompileErr(l.clone(), "Bad at-tail".to_string()));
+                    Err(CompileErr(l.clone(), "Bad at-tail".to_string()))
                 }
             } else {
                 let cf = context_from_args_and_type(
@@ -503,9 +503,9 @@ pub fn context_from_args_and_type(
                 if let SExp::Cons(_, sub, _) = r.borrow() {
                     let sub_context = context_from_args_and_type(
                         structs,
-                        &context,
+                        context,
                         sub.clone(),
-                        &argty,
+                        argty,
                         path.clone(),
                         path_bit.clone(),
                     )?;
@@ -513,12 +513,12 @@ pub fn context_from_args_and_type(
                         structs,
                         &sub_context,
                         f.clone(),
-                        &argty,
+                        argty,
                         path,
                         path_bit,
                     )
                 } else {
-                    return Err(CompileErr(l.clone(), "Bad at-tail".to_string()));
+                    Err(CompileErr(l.clone(), "Bad at-tail".to_string()))
                 }
             } else {
                 let cf = context_from_args_and_type(
@@ -543,8 +543,8 @@ pub fn context_from_args_and_type(
             args.loc(),
             format!(
                 "unhandled case {} vs {}",
-                args.to_string(),
-                argty.to_sexp().to_string()
+                args,
+                argty.to_sexp()
             ),
         )),
     }
@@ -556,7 +556,7 @@ fn handle_macro(
     _args: Rc<SExp>,
     form: Rc<CompileForm>,
     loc: Srcloc,
-    provided_args: &Vec<Rc<BodyForm>>,
+    provided_args: &[Rc<BodyForm>],
 ) -> Result<Expr, CompileErr> {
     // It is a macro, we need to interpret it in our way:
     // We'll compile and run the code itself on a
@@ -602,20 +602,20 @@ fn handle_macro(
         &mut allocator,
         Rc::new(SExp::Nil(loc.clone())),
         &arg_env,
-        parsed_macro_output.exp.clone(),
+        parsed_macro_output.exp,
         false,
     )?;
     match dequote(loc.clone(), exp_result) {
         Ok(dequoted) => {
             let last_reparse = frontend(opts, vec![dequoted])?;
-            let final_res = chialisp_to_expr(program, form_args, last_reparse.exp.clone())?;
+            let final_res = chialisp_to_expr(program, form_args, last_reparse.exp)?;
             Ok(final_res)
         }
         Err(_) => {
             // Give up: we can't do better than Any
             Ok(Expr::EAnno(
                 Rc::new(Expr::EUnit(loc.clone())),
-                Type::TAny(loc.clone()),
+                Type::TAny(loc),
             ))
         }
     }
@@ -649,7 +649,7 @@ fn chialisp_to_expr(
                 )),
                 Rc::new(chialisp_to_expr(
                     program,
-                    form_args.clone(),
+                    form_args,
                     Rc::new(BodyForm::Quoted(b_borrowed.clone())),
                 )?),
             ))
@@ -663,7 +663,8 @@ fn chialisp_to_expr(
         BodyForm::Let(l, _kind, _bindings, _letbody) => {
             // Inline via the evaluator
             let mut allocator = Allocator::new();
-            let opts = Rc::new(DefaultCompilerOpts::new(l.file.borrow()));
+            let file_borrowed: &String = l.file.borrow();
+            let opts = Rc::new(DefaultCompilerOpts::new(file_borrowed));
             let runner = Rc::new(DefaultProgramRunner::new());
             let evaluator = Evaluator::new(opts, runner, program.helpers.clone()).disable_calls();
             let beta_reduced = evaluator.shrink_bodyform(
@@ -695,11 +696,11 @@ fn chialisp_to_expr(
                         if name == n1 {
                             return handle_macro(
                                 program,
-                                form_args.clone(),
+                                form_args,
                                 args.clone(),
                                 form.clone(),
                                 body.loc(),
-                                &lst,
+                                lst,
                             );
                         }
                     }
@@ -708,7 +709,7 @@ fn chialisp_to_expr(
                 if n1 == &vec![b'c', b'o', b'm'] {
                     // Handle com
                     // Rewrite (com X) as (com^ (lambda x X))
-                    let inner = chialisp_to_expr(program, form_args.clone(), lst[1].clone())?;
+                    let inner = chialisp_to_expr(program, form_args, lst[1].clone())?;
                     let var = fresh_var(l.clone());
                     return Ok(Expr::EApp(
                         Rc::new(Expr::EVar(Var("com^".to_string(), l.clone()))),
@@ -722,7 +723,7 @@ fn chialisp_to_expr(
             Ok(Expr::EApp(
                 Rc::new(chialisp_to_expr(
                     program,
-                    form_args.clone(),
+                    form_args,
                     lst[0].clone(),
                 )?),
                 Rc::new(arg_expr),
@@ -739,7 +740,7 @@ fn typecheck_chialisp_body_with_context(
     context_: &Context,
     expr: &Expr,
 ) -> Result<Polytype, CompileErr> {
-    let res = context_.typesynth(&expr).map(|(res, _)| res)?;
+    let res = context_.typesynth(expr).map(|(res, _)| res)?;
     Ok(res)
 }
 
@@ -754,9 +755,9 @@ fn handle_function_type(
         Type::TFun(a, r) => {
             let r_borrowed: &Polytype = r.borrow();
             context_from_args_and_type(
-                &structs,
-                &context,
-                args.clone(),
+                structs,
+                context,
+                args,
                 a.borrow(),
                 bi_zero(),
                 bi_one(),
@@ -766,7 +767,7 @@ fn handle_function_type(
         Type::TForall(t, f) => {
             let inner_ctx = context.snoc_wf(ContextElim::CForall(t.clone()));
             let f_borrowed: &Polytype = f.borrow();
-            handle_function_type(&structs, &inner_ctx, loc, args, f_borrowed)
+            handle_function_type(structs, &inner_ctx, loc, args, f_borrowed)
         }
         _ => Err(CompileErr(
             loc,
@@ -785,7 +786,7 @@ impl Context {
         for h in comp.helpers.iter() {
             if let HelperForm::Deftype(l, name, args, _ty) = &h {
                 let tname = decode_string(name);
-                let n_encoding = number_from_u8(&format!("struct {}", tname).as_bytes());
+                let n_encoding = number_from_u8(format!("struct {}", tname).as_bytes());
                 // Struct
                 structs.insert(tname.clone());
                 // Ensure that we build up a unique type involving all variables so we won't try to solve it to some specific type

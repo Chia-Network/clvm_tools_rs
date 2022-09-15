@@ -22,9 +22,9 @@ pub fn subst(eprime: &Expr, x: Var, expr: &Expr) -> Expr {
     match expr {
         Expr::EVar(xprime) => {
             if *xprime == x {
-                return eprime.clone();
+                eprime.clone()
             } else {
-                return Expr::EVar(xprime.clone());
+                Expr::EVar(xprime.clone())
             }
         }
 
@@ -34,18 +34,18 @@ pub fn subst(eprime: &Expr, x: Var, expr: &Expr) -> Expr {
 
         Expr::EAbs(xprime, e) => {
             if *xprime == x {
-                return Expr::EAbs(xprime.clone(), e.clone());
+                Expr::EAbs(xprime.clone(), e.clone())
             } else {
-                return Expr::EAbs(xprime.clone(), Rc::new(subst(eprime, x.clone(), e)));
+                Expr::EAbs(xprime.clone(), Rc::new(subst(eprime, x, e)))
             }
         }
 
         Expr::EApp(e1, e2) => Expr::EApp(
             Rc::new(subst(eprime, x.clone(), e1)),
-            Rc::new(subst(eprime, x.clone(), e2)),
+            Rc::new(subst(eprime, x, e2)),
         ),
 
-        Expr::EAnno(e, t) => Expr::EAnno(Rc::new(subst(eprime, x.clone(), e)), t.clone()),
+        Expr::EAnno(e, t) => Expr::EAnno(Rc::new(subst(eprime, x, e)), t.clone()),
     }
 }
 
@@ -65,7 +65,7 @@ pub trait HasElem {
 impl<X: Eq> HasElem for Vec<X> {
     type Item = X;
     fn elem(&self, i: &X) -> bool {
-        !self.iter().position(|a| a == i).is_none()
+        self.iter().any(|a| a == i)
     }
 }
 
@@ -139,7 +139,7 @@ impl Context {
         }
 
         let c = self.0[0].clone();
-        let cs = self.0.iter().skip(1).map(|x| x.clone()).collect();
+        let cs = self.0.iter().skip(1).cloned().collect();
         // Do not use new_wf here... we're already checking well-formedness
         let mut gamma = Context::new(cs);
 
@@ -152,7 +152,7 @@ impl Context {
                 let no_existentials = !gamma.existentials().elem(&alpha);
                 // If tau is a simple recursive definition then alpha should
                 // appear in it.  Backstop alpha free in tau.
-                gamma.0.insert(0, ContextElim::CExists(alpha.clone()));
+                gamma.0.insert(0, ContextElim::CExists(alpha));
                 debug!(
                     "gonna check typewf on {} in {}",
                     tau.to_sexp().to_string(),
@@ -167,8 +167,7 @@ impl Context {
     }
 
     pub fn wf(&self) -> bool {
-        let well = self.wf_();
-        well
+        self.wf_()
     }
 
     pub fn newtype<const A: usize>(
@@ -176,32 +175,28 @@ impl Context {
         t1: &Polytype,
         t2: &Polytype,
     ) -> Option<(Type<A>, Context)> {
-        match t1.borrow() {
-            Type::TVar(v) => {
-                if let Some(solved) = self.find_solved(v) {
-                    return match solved {
-                        Type::TAbs(v, t) => {
-                            let tpoly = polytype(t.borrow());
-                            let new_tvar = fresh_tvar(v.loc());
-                            let finished_type_rec = type_subst(t2.borrow(), &v, tpoly.borrow());
-                            return unrecurse(&new_tvar, &t1, &t2, &finished_type_rec)
-                                .and_then(|finished_type| monotype(&finished_type))
-                                .map(|tmono| {
-                                    debug!("tabls unrecurse");
-                                    let new_ctx =
-                                        self.appends_wf(vec![ContextElim::CExistsSolved(
-                                            new_tvar.clone(),
-                                            tmono,
-                                        )]);
+        if let Type::TVar(v) = t1.borrow() {
+            if let Some(solved) = self.find_solved(v) {
+                return if let Type::TAbs(v, t) = solved {
+                    let tpoly = polytype(t.borrow());
+                    let new_tvar = fresh_tvar(v.loc());
+                    let finished_type_rec = type_subst(t2.borrow(), &v, tpoly.borrow());
+                    unrecurse(&new_tvar, t1, t2, &finished_type_rec)
+                        .and_then(|finished_type| monotype(&finished_type))
+                        .map(|tmono| {
+                            debug!("tabls unrecurse");
+                            let new_ctx =
+                                self.appends_wf(vec![ContextElim::CExistsSolved(
+                                    new_tvar.clone(),
+                                    tmono,
+                                )]);
 
-                                    (Type::TExists(new_tvar), new_ctx)
-                                });
-                        }
-                        _ => None,
-                    };
-                }
+                            (Type::TExists(new_tvar), new_ctx)
+                        })
+                } else {
+                    None
+                };
             }
-            _ => {}
         }
 
         None
@@ -209,7 +204,7 @@ impl Context {
 
     pub fn typewf<const A: usize>(&self, typ: &Type<A>) -> bool {
         match typ {
-            Type::TVar(alpha) => self.foralls().elem(&alpha) || self.solved().elem(&alpha),
+            Type::TVar(alpha) => self.foralls().elem(alpha) || self.solved().elem(alpha),
             Type::TUnit(_) => true,
             Type::TAny(_) => true,
             Type::TAtom(_, _) => true,
@@ -257,7 +252,7 @@ impl Context {
 
         Err(CompileErr(
             loc,
-            format!("Malformed context: {}", self.to_sexp().to_string()),
+            format!("Malformed context: {}", self.to_sexp()),
         ))
     }
 
@@ -270,8 +265,8 @@ impl Context {
             a.loc(),
             format!(
                 "Malformed type: {} in {}",
-                a.to_sexp().to_string(),
-                self.to_sexp().to_string()
+                a.to_sexp(),
+                self.to_sexp()
             ),
         ))
     }
@@ -301,7 +296,7 @@ impl Context {
     }
 
     pub fn insert_at(&self, c: &TypeVar, theta: Context) -> Context {
-        let (gamma_l, gamma_r) = self.inspect_context(&c);
+        let (gamma_l, gamma_r) = self.inspect_context(c);
         debug!(
             "insert_at {} left  {}",
             c.to_sexp().to_string(),
@@ -312,9 +307,9 @@ impl Context {
             c.to_sexp().to_string(),
             gamma_r.to_sexp().to_string()
         );
-        let mut result_list = gamma_r.0.clone();
-        let mut theta_copy = theta.0.clone();
-        let mut gamma_l_copy = gamma_l.0.clone();
+        let mut result_list = gamma_r.0;
+        let mut theta_copy = theta.0;
+        let mut gamma_l_copy = gamma_l.0;
         result_list.append(&mut theta_copy);
         result_list.append(&mut gamma_l_copy);
         let res = Context::new_wf(result_list);
@@ -376,30 +371,24 @@ impl GContext<CONTEXT_INCOMPLETE> {
         v: Vec<ContextElim<CONTEXT_INCOMPLETE>>,
     ) -> GContext<CONTEXT_INCOMPLETE> {
         let gamma = self.appends(v);
-        if log_enabled!(Debug) {
-            if !gamma.wf() {
-                panic!("not well formed {}", gamma.to_sexp().to_string());
-            }
+        if log_enabled!(Debug) && !gamma.wf() {
+            panic!("not well formed {}", gamma.to_sexp());
         }
         gamma
     }
 
     pub fn snoc_wf(&self, c: ContextElim<CONTEXT_INCOMPLETE>) -> GContext<CONTEXT_INCOMPLETE> {
         let gamma = self.snoc(c);
-        if log_enabled!(Debug) {
-            if !gamma.wf() {
-                panic!("not well formed {}", gamma.to_sexp().to_string());
-            }
+        if log_enabled!(Debug) && !gamma.wf() {
+            panic!("not well formed {}", gamma.to_sexp());
         }
         gamma
     }
 
     pub fn new_wf(elems: Vec<ContextElim<CONTEXT_INCOMPLETE>>) -> GContext<CONTEXT_INCOMPLETE> {
         let ctx = GContext(elems);
-        if log_enabled!(Debug) {
-            if !ctx.wf() {
-                panic!("not well formed {}", ctx.to_sexp().to_string());
-            }
+        if log_enabled!(Debug) && !ctx.wf() {
+            panic!("not well formed {}", ctx.to_sexp());
         }
         ctx
     }
@@ -421,11 +410,11 @@ impl GContext<CONTEXT_INCOMPLETE> {
             .iter()
             .position(|e| *e == m)
             .map(|idx| {
-                let out = GContext(res.0[idx + 1..].iter().map(|x| x.clone()).collect());
+                let out = GContext(res.0[idx + 1..].to_vec());
                 debug!(
                     "drop_marker, index {} D {} K {}",
                     idx,
-                    GContext(res.0[..idx].iter().map(|x| x.clone()).collect())
+                    GContext(res.0[..idx].to_vec())
                         .to_sexp()
                         .to_string(),
                     out.to_sexp().to_string()

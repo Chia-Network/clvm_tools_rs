@@ -233,7 +233,7 @@ impl<const A: usize> TheoryToSExp for ContextElim<A> {
 
 impl<const A: usize> TheoryToSExp for GContext<A> {
     fn to_sexp(&self) -> SExp {
-        let thloc = Srcloc::start(&"*gcontext*".to_string());
+        let thloc = Srcloc::start("*gcontext*");
         enlist(thloc, self.0.iter().map(|x| Rc::new(x.to_sexp())).collect())
     }
 }
@@ -242,11 +242,11 @@ pub fn parse_type_var(atom: Rc<SExp>) -> Result<TypeVar, CompileErr> {
     match atom.atomize() {
         SExp::Atom(l, a) => Ok(TypeVar(
             std::str::from_utf8(&a).unwrap().to_string(),
-            l.clone(),
+            l,
         )),
         _ => Err(CompileErr(
             atom.loc(),
-            format!("not a type var: {}", atom.to_string()),
+            format!("not a type var: {}", atom),
         )),
     }
 }
@@ -259,7 +259,7 @@ fn parse_type_exists<const A: usize>(rest: Rc<SExp>) -> Result<Type<A>, CompileE
         }
         _ => Err(CompileErr(
             rest.loc(),
-            format!("not a valid exists tail: {}", rest.to_string()),
+            format!("not a valid exists tail: {}", rest),
         )),
     }
 }
@@ -275,7 +275,7 @@ fn parse_type_forall<const A: usize>(rest: Rc<SExp>) -> Result<Type<A>, CompileE
 
     Err(CompileErr(
         rest.loc(),
-        format!("bad forall tail: {}", rest.to_string()),
+        format!("bad forall tail: {}", rest),
     ))
 }
 
@@ -293,7 +293,7 @@ where
 
     Err(CompileErr(
         rest.loc(),
-        format!("bad product tail: {}", rest.to_string()),
+        format!("bad product tail: {}", rest),
     ))
 }
 
@@ -307,7 +307,7 @@ where
 
     Err(CompileErr(
         rest.loc(),
-        format!("bad wrapper tail: {}", rest.to_string()),
+        format!("bad wrapper tail: {}", rest),
     ))
 }
 
@@ -315,14 +315,14 @@ fn parse_type_app<const A: usize>(
     apply_to: Type<A>,
     offs: usize,
     full: Rc<SExp>,
-    elist: &Vec<SExp>,
+    elist: &[SExp],
 ) -> Result<Type<A>, CompileErr> {
     if offs >= elist.len() {
         Ok(apply_to)
     } else {
         let next = parse_type_sexp(Rc::new(elist[offs].clone()))?;
         parse_type_app(
-            Type::TApp(Rc::new(apply_to.clone()), Rc::new(next)),
+            Type::TApp(Rc::new(apply_to), Rc::new(next)),
             offs + 1,
             full,
             elist,
@@ -333,7 +333,7 @@ fn parse_type_app<const A: usize>(
 // Even elements are types, odd elements are "->" or "~>"
 fn parse_type_fun<const A: usize>(
     full: Rc<SExp>,
-    elist: &Vec<SExp>,
+    elist: &[SExp],
 ) -> Result<Type<A>, CompileErr> {
     let mut result = parse_type_sexp(Rc::new(elist[elist.len() - 1].clone()))?;
     let mut use_type = false;
@@ -348,14 +348,12 @@ fn parse_type_fun<const A: usize>(
             if use_type {
                 let ty = parse_type_sexp(Rc::new(elist[i].clone()))?;
                 result = Type::TFun(Rc::new(ty), Rc::new(result));
-            } else {
-                if let SExp::Atom(l, a) = &elist[i].atomize() {
-                    if &"->".as_bytes().to_vec() != a {
-                        return Err(CompileErr(
-                            l.clone(),
-                            format!("bad arrow in {}", full.to_string()),
-                        ));
-                    }
+            } else if let SExp::Atom(l, a) = &elist[i].atomize() {
+                if &"->".as_bytes().to_vec() != a {
+                    return Err(CompileErr(
+                        l.clone(),
+                        format!("bad arrow in {}", full),
+                    ));
                 }
             }
 
@@ -379,7 +377,7 @@ pub fn parse_fixedlist<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, Compil
         SExp::Nil(l) => Ok(Type::TUnit(l.clone())),
         _ => Err(CompileErr(
             expr.loc(),
-            format!("Don't know how to handle type named {}", expr.to_string()),
+            format!("Don't know how to handle type named {}", expr),
         )),
     }
 }
@@ -387,7 +385,7 @@ pub fn parse_fixedlist<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, Compil
 pub fn parse_type_sexp<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, CompileErr> {
     match &expr.atomize() {
         SExp::Atom(l, a) => {
-            if a.len() == 0 || a == &"Unit".as_bytes().to_vec() {
+            if a.is_empty() || a == &"Unit".as_bytes().to_vec() {
                 return Ok(Type::TUnit(l.clone()));
             } else if a == &"Any".as_bytes().to_vec() {
                 return Ok(Type::TAny(l.clone()));
@@ -423,11 +421,11 @@ pub fn parse_type_sexp<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, Compil
                 } else if a == &"forall".as_bytes().to_vec() {
                     return parse_type_forall(b.clone());
                 } else if a == &"Pair".as_bytes().to_vec() {
-                    return parse_type_pair(|a, b| Type::TPair(a, b), b.clone());
+                    return parse_type_pair(Type::TPair, b.clone());
                 } else if a == &"Nullable".as_bytes().to_vec() {
-                    return parse_type_single(|a| Type::TNullable(a), b.clone());
+                    return parse_type_single(Type::TNullable, b.clone());
                 } else if a == &"Exec".as_bytes().to_vec() {
-                    return parse_type_single(|a| Type::TExec(a), b.clone());
+                    return parse_type_single(Type::TExec, b.clone());
                 } else if a == &"FixedList".as_bytes().to_vec() {
                     return parse_fixedlist(b.clone());
                 }
@@ -436,7 +434,7 @@ pub fn parse_type_sexp<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, Compil
             if let Some(lst) = expr.proper_list() {
                 if lst.len() > 1 {
                     return parse_type_fun(expr.clone(), &lst)
-                        .map(|x| Ok(x))
+                        .map(Ok)
                         .unwrap_or_else(|_| {
                             let apply_name = parse_type_var(Rc::new(lst[0].clone()))?;
                             parse_type_app(Type::TVar(apply_name), 1, expr.clone(), &lst)
@@ -450,28 +448,28 @@ pub fn parse_type_sexp<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, Compil
 
     Err(CompileErr(
         expr.loc(),
-        format!("not a valid type expression: {}", expr.to_string()),
+        format!("not a valid type expression: {}", expr),
     ))
 }
 
 pub fn parse_evar(expr: &SExp) -> Result<Var, CompileErr> {
     if let SExp::Atom(l, a) = expr {
-        return Ok(Var(std::str::from_utf8(&a).unwrap().to_string(), l.clone()));
+        return Ok(Var(std::str::from_utf8(a).unwrap().to_string(), l.clone()));
     }
 
     Err(CompileErr(
         expr.loc(),
-        format!("expected var got {}", expr.to_string()),
+        format!("expected var got {}", expr),
     ))
 }
 
-pub fn parse_expr_anno(elist: &Vec<SExp>) -> Result<Expr, CompileErr> {
+pub fn parse_expr_anno(elist: &[SExp]) -> Result<Expr, CompileErr> {
     let ty = parse_type_sexp(Rc::new(elist[2].clone()))?;
     let expr = parse_expr_sexp(Rc::new(elist[0].clone()))?;
     Ok(Expr::EAnno(Rc::new(expr), ty))
 }
 
-pub fn parse_expr_lambda(elist: &Vec<SExp>) -> Result<Expr, CompileErr> {
+pub fn parse_expr_lambda(elist: &[SExp]) -> Result<Expr, CompileErr> {
     let arg = parse_evar(&elist[1])?;
     let body = parse_expr_sexp(Rc::new(elist[2].clone()))?;
     Ok(Expr::EAbs(arg, Rc::new(body)))
@@ -481,7 +479,7 @@ pub fn parse_expr_lambda(elist: &Vec<SExp>) -> Result<Expr, CompileErr> {
 pub fn parse_expr_sexp(expr: Rc<SExp>) -> Result<Expr, CompileErr> {
     match expr.borrow() {
         SExp::Atom(l, a) => {
-            if a.len() == 0 {
+            if a.is_empty() {
                 return Ok(Expr::EUnit(l.clone()));
             } else {
                 return Ok(Expr::EVar(parse_evar(expr.borrow())?));
@@ -542,7 +540,7 @@ pub fn parse_expr_sexp(expr: Rc<SExp>) -> Result<Expr, CompileErr> {
                         res = Expr::EApp(Rc::new(new_expr), Rc::new(res));
                     }
                     return Ok(res);
-                } else if lst.len() > 0 {
+                } else if !lst.is_empty() {
                     // Just pretend (foo) is (foo ())
                     return Ok(Expr::EApp(
                         Rc::new(parse_expr_sexp(Rc::new(lst[0].clone()))?),
@@ -562,6 +560,6 @@ pub fn parse_expr_sexp(expr: Rc<SExp>) -> Result<Expr, CompileErr> {
 
     Err(CompileErr(
         expr.loc(),
-        format!("bad expr {}", expr.to_string()),
+        format!("bad expr {}", expr),
     ))
 }

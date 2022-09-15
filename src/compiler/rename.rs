@@ -9,13 +9,10 @@ use crate::compiler::sexp::SExp;
 fn rename_in_qq(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SExp> {
     body.proper_list()
         .and_then(|x| {
-            match &x[..] {
-                [SExp::Atom(_, q), body] => {
-                    if *q == "unquote".as_bytes().to_vec() {
-                        return Some(rename_in_cons(namemap, Rc::new(body.clone())));
-                    }
+            if let [SExp::Atom(_, q), body] = &x[..] {
+                if q == b"unquote" {
+                    return Some(rename_in_cons(namemap, Rc::new(body.clone())));
                 }
-                _ => {}
             }
 
             None
@@ -38,44 +35,38 @@ fn rename_in_cons(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SEx
             None => body,
         },
         SExp::Cons(l, f, r) => {
-            match f.borrow() {
-                SExp::Atom(la, q) => {
-                    if *q == "q".as_bytes().to_vec() {
-                        return Rc::new(SExp::Cons(
-                            l.clone(),
-                            Rc::new(SExp::Atom(la.clone(), "q".as_bytes().to_vec())),
-                            r.clone(),
-                        ));
-                    } else if *q == "quote".as_bytes().to_vec() {
-                        return r
-                            .proper_list()
-                            .map(|x| match &x[..] {
-                                [v] => Rc::new(SExp::Cons(
-                                    l.clone(),
-                                    Rc::new(SExp::atom_from_string(
-                                        la.clone(),
-                                        &"quote".to_string(),
-                                    )),
-                                    Rc::new(SExp::Cons(
-                                        v.loc(),
-                                        Rc::new(v.clone()),
-                                        Rc::new(SExp::Nil(v.loc())),
-                                    )),
+            if let SExp::Atom(la, q) = f.borrow() {
+                if q == b"q" {
+                    return Rc::new(SExp::Cons(
+                        l.clone(),
+                        Rc::new(SExp::Atom(la.clone(), "q".as_bytes().to_vec())),
+                        r.clone(),
+                    ));
+                } else if *q == "quote".as_bytes().to_vec() {
+                    return r
+                        .proper_list()
+                        .map(|x| match &x[..] {
+                            [v] => Rc::new(SExp::Cons(
+                                l.clone(),
+                                Rc::new(SExp::atom_from_string(la.clone(), "quote")),
+                                Rc::new(SExp::Cons(
+                                    v.loc(),
+                                    Rc::new(v.clone()),
+                                    Rc::new(SExp::Nil(v.loc())),
                                 )),
-                                _ => body.clone(),
-                            })
-                            .unwrap_or_else(|| body.clone());
-                    } else if *q == "qq".as_bytes().to_vec() {
-                        return r
-                            .proper_list()
-                            .map(|x| match &x[..] {
-                                [qqexpr] => rename_in_qq(namemap, Rc::new(qqexpr.clone())),
-                                _ => body.clone(),
-                            })
-                            .unwrap_or_else(|| body.clone());
-                    }
+                            )),
+                            _ => body.clone(),
+                        })
+                        .unwrap_or_else(|| body.clone());
+                } else if *q == "qq".as_bytes().to_vec() {
+                    return r
+                        .proper_list()
+                        .map(|x| match &x[..] {
+                            [qqexpr] => rename_in_qq(namemap, Rc::new(qqexpr.clone())),
+                            _ => body.clone(),
+                        })
+                        .unwrap_or_else(|| body.clone());
                 }
-                _ => {}
             }
 
             Rc::new(SExp::Cons(
@@ -92,10 +83,10 @@ fn rename_in_cons(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SEx
 fn invent_new_names_sexp(body: Rc<SExp>) -> Vec<(Vec<u8>, Vec<u8>)> {
     match body.borrow() {
         SExp::Atom(_, name) => {
-            if name != &vec!['@' as u8] {
-                return vec![(name.to_vec(), gensym(name.to_vec()))];
+            if name != &[b'@'] {
+                vec![(name.to_vec(), gensym(name.to_vec()))]
             } else {
-                return vec![];
+                vec![]
             }
         }
         SExp::Cons(_, head, tail) => {
@@ -128,19 +119,14 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
                 .iter()
                 .map(|b| {
                     Rc::new(Binding {
-                        loc: b.loc().clone(),
+                        loc: b.loc(),
                         name: b.name.clone(),
                         body: Rc::new(rename_in_bodyform(namemap, b.body.clone())),
                     })
                 })
                 .collect();
             let new_body = rename_in_bodyform(namemap, body.clone());
-            BodyForm::Let(
-                l.clone(),
-                kind.clone(),
-                new_bindings,
-                Rc::new(new_body.clone()),
-            )
+            BodyForm::Let(l.clone(), kind.clone(), new_bindings, Rc::new(new_body))
         }
 
         BodyForm::Quoted(atom) => match atom.borrow() {
@@ -170,7 +156,7 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
 }
 
 pub fn desugar_sequential_let_bindings(
-    bindings: &Vec<Rc<Binding>>,
+    bindings: &[Rc<Binding>],
     body: &BodyForm,
     n: usize, // Zero is for post-termination
 ) -> BodyForm {
@@ -196,12 +182,11 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
         BodyForm::Let(_l, LetFormKind::Sequential, bindings, body) => {
             // Renaming a sequential let is exactly as if the bindings were
             // nested in separate parallel lets.
-            let new_body = rename_args_bodyform(&desugar_sequential_let_bindings(
-                &bindings,
+            rename_args_bodyform(&desugar_sequential_let_bindings(
+                bindings,
                 body,
                 bindings.len(),
-            ));
-            new_body
+            ))
         }
 
         BodyForm::Let(l, LetFormKind::Parallel, bindings, body) => {
@@ -213,11 +198,8 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
                 renames.iter().map(|(_, x)| Rc::new(x.clone())).collect();
             let mut local_namemap = HashMap::new();
             for x in renames.iter() {
-                match x {
-                    (oldname, binding) => {
-                        local_namemap.insert(oldname.to_vec(), binding.name.clone());
-                    }
-                }
+                let (oldname, binding) = x;
+                local_namemap.insert(oldname.to_vec(), binding.name.clone());
             }
             let new_bindings = new_renamed_bindings
                 .iter()
@@ -230,13 +212,12 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
                 })
                 .collect();
             let locally_renamed_body = rename_in_bodyform(&local_namemap, body.clone());
-            let new_body = BodyForm::Let(
+            BodyForm::Let(
                 l.clone(),
                 LetFormKind::Parallel,
                 new_bindings,
                 Rc::new(locally_renamed_body),
-            );
-            new_body
+            )
         }
 
         BodyForm::Quoted(e) => BodyForm::Quoted(e.clone()),
@@ -258,21 +239,21 @@ fn rename_in_helperform(namemap: &HashMap<Vec<u8>, Vec<u8>>, h: &HelperForm) -> 
         HelperForm::Defconstant(l, n, body, ty) => HelperForm::Defconstant(
             l.clone(),
             n.to_vec(),
-            Rc::new(rename_in_bodyform(&namemap, body.clone())),
+            Rc::new(rename_in_bodyform(namemap, body.clone())),
             ty.clone(),
         ),
         HelperForm::Defmacro(l, n, arg, body) => HelperForm::Defmacro(
             l.clone(),
             n.to_vec(),
             arg.clone(),
-            Rc::new(rename_in_compileform(&namemap, body.clone())),
+            Rc::new(rename_in_compileform(namemap, body.clone())),
         ),
         HelperForm::Defun(l, n, inline, arg, body, ty) => HelperForm::Defun(
             l.clone(),
             n.to_vec(),
             *inline,
             arg.clone(),
-            Rc::new(rename_in_bodyform(&namemap, body.clone())),
+            Rc::new(rename_in_bodyform(namemap, body.clone())),
             ty.clone(),
         ),
     }
@@ -346,11 +327,7 @@ fn rename_in_compileform(namemap: &HashMap<Vec<u8>, Vec<u8>>, c: Rc<CompileForm>
 }
 
 pub fn rename_children_compileform(c: &CompileForm) -> CompileForm {
-    let local_renamed_helpers = c
-        .helpers
-        .iter()
-        .map(|x| rename_args_helperform(x))
-        .collect();
+    let local_renamed_helpers = c.helpers.iter().map(rename_args_helperform).collect();
     let local_renamed_body = rename_args_bodyform(c.exp.borrow());
     CompileForm {
         loc: c.loc.clone(),
@@ -368,11 +345,8 @@ pub fn rename_args_compileform(c: &CompileForm) -> CompileForm {
         local_namemap.insert(x.0.clone(), x.1.clone());
     }
     let local_renamed_arg = rename_in_cons(&local_namemap, c.args.clone());
-    let local_renamed_helpers: Vec<HelperForm> = c
-        .helpers
-        .iter()
-        .map(|h| rename_args_helperform(h))
-        .collect();
+    let local_renamed_helpers: Vec<HelperForm> =
+        c.helpers.iter().map(rename_args_helperform).collect();
     let local_renamed_body = rename_args_bodyform(c.exp.borrow());
     CompileForm {
         loc: c.loc(),

@@ -3,7 +3,7 @@ use std::clone::Clone;
 use std::cmp::Ordering;
 use std::cmp::{max, min};
 use std::collections::HashMap;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::option::Option;
 use std::string::String;
 
@@ -14,7 +14,7 @@ use sha2::Sha256;
 
 use crate::util::Number;
 
-pub fn to_hexstr(r: &Vec<u8>) -> String {
+pub fn to_hexstr(r: &[u8]) -> String {
     hex::encode(r)
 }
 
@@ -25,7 +25,7 @@ pub fn char_to_string(ch: char) -> String {
     }
 }
 
-pub fn vec_to_string(r: &Vec<u8>) -> String {
+pub fn vec_to_string(r: &[u8]) -> String {
     return String::from_utf8_lossy(r).as_ref().to_string();
 }
 
@@ -34,12 +34,11 @@ pub fn vec_to_string(r: &Vec<u8>) -> String {
  * @see https://github.com/python/cpython/blob/main/Objects/bytesobject.c#L1337
  * @param {Uint8Array} r - byteArray to stringify
  */
-pub fn PyBytes_Repr(r: &Vec<u8>, dquoted: bool) -> String {
+pub fn pybytes_repr(r: &[u8], dquoted: bool) -> String {
     let mut squotes = 0;
     let mut dquotes = 0;
-    for i in 0..r.len() {
-        let b = r[i];
-        let c = b as char;
+    for b in r.iter() {
+        let c = *b as char;
         match c {
             '\'' => squotes += 1,
             '\"' => dquotes += 1,
@@ -54,14 +53,13 @@ pub fn PyBytes_Repr(r: &Vec<u8>, dquoted: bool) -> String {
     let mut s = "".to_string();
 
     if !dquoted {
-        s = s + "b";
+        s += "b";
     }
 
-    s = s + char_to_string(quote).as_str();
+    s += char_to_string(quote).as_str();
 
-    for i in 0..r.len() {
-        let b = r[i];
-        let c = b as char;
+    for b in r.iter() {
+        let c = *b as char;
         if c == quote || c == '\\' {
             s = (s + "\\") + char_to_string(c).as_str();
         } else if c == '\t' {
@@ -70,9 +68,9 @@ pub fn PyBytes_Repr(r: &Vec<u8>, dquoted: bool) -> String {
             s += "\\n";
         } else if c == '\r' {
             s += "\\r";
-        } else if c < ' ' || b >= 0x7f {
+        } else if c < ' ' || *b >= 0x7f {
             s += "\\x";
-            s += hex::encode(vec![b]).as_str();
+            s += hex::encode(vec![*b]).as_str();
         } else {
             s += char_to_string(c).as_str();
         }
@@ -120,6 +118,7 @@ impl Bytes {
                 Bytes::new(Some(BytesFromType::Raw(bvec)))
             }
             Some(BytesFromType::Hex(hstr)) => {
+                #[allow(clippy::single_char_pattern)]
                 let hex_stripped = hstr
                     .replace(" ", "")
                     .replace("\t", "")
@@ -147,16 +146,6 @@ impl Bytes {
 
     pub fn raw(&self) -> Vec<u8> {
         self._b.clone()
-    }
-
-    pub fn repeat(&self, n: usize) -> Bytes {
-        let capacity = self.length() * n;
-        let set_size = self._b.len();
-        let mut ret = Vec::<u8>::with_capacity(capacity);
-        for i in 0..capacity - 1 {
-            ret[i] = self._b[i % set_size];
-        }
-        Bytes::new(Some(BytesFromType::Raw(ret)))
     }
 
     pub fn concat(&self, b: &Bytes) -> Bytes {
@@ -194,16 +183,8 @@ impl Bytes {
         &self._b
     }
 
-    pub fn clone(&self) -> Self {
-        Bytes::new(Some(BytesFromType::Raw(self._b.clone())))
-    }
-
-    pub fn to_string(&self) -> String {
-        PyBytes_Repr(&self._b, false)
-    }
-
     pub fn to_formal_string(&self) -> String {
-        PyBytes_Repr(&self._b, true)
+        pybytes_repr(&self._b, true)
     }
 
     pub fn hex(&self) -> String {
@@ -260,10 +241,14 @@ impl Bytes {
 
         for i in 0..slen - 1 {
             let diff: i32 = other.at(i) as i32 - self._b[i] as i32;
-            if diff < 0 {
-                return Ordering::Less;
-            } else if diff > 0 {
-                return Ordering::Greater;
+            match (diff < 0, diff > 0) {
+                (true, _) => {
+                    return Ordering::Less;
+                }
+                (_, true) => {
+                    return Ordering::Greater;
+                }
+                _ => {}
             }
         }
         if self._b.len() < slen {
@@ -272,6 +257,13 @@ impl Bytes {
             return Ordering::Greater;
         }
         Ordering::Equal
+    }
+}
+
+impl Display for Bytes {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        fmt.write_str(&pybytes_repr(&self._b, false))?;
+        Ok(())
     }
 }
 
@@ -287,7 +279,7 @@ where
     I: Iterator<Item = E>,
     E: Clone,
 {
-    vals.map(|v| v.clone()).collect()
+    vals.collect()
 }
 
 pub trait PythonStr {
@@ -329,17 +321,21 @@ impl<T1, T2> Tuple<T1, T2> {
             Tuple::Tuple(_, r) => r,
         }
     }
+}
 
-    pub fn to_string(&self) -> String
-    where
-        T1: PythonStr,
-        T2: PythonStr,
-    {
-        return "(".to_owned()
-            + self.first().py_str().as_str()
-            + ", "
-            + self.rest().py_str().as_str()
-            + ")";
+impl<T1, T2> Display for Tuple<T1, T2>
+where
+    T1: PythonStr,
+    T2: PythonStr,
+{
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        fmt.write_str("(")?;
+        fmt.write_str(self.first().py_str().as_str())?;
+        fmt.write_str(", ")?;
+        fmt.write_str(self.rest().py_str().as_str())?;
+        fmt.write_str(")")?;
+
+        Ok(())
     }
 }
 
@@ -378,13 +374,11 @@ impl Stream {
             },
             Some(b) => {
                 let data = b.data().to_vec();
-                let stream = Stream {
+                Stream {
                     seek: 0,
                     length: data.len(),
                     buffer: data,
-                };
-
-                stream
+                }
             }
         }
     }
@@ -448,7 +442,7 @@ impl Stream {
         b.length()
     }
 
-    pub fn write_string(&mut self, s: String) -> usize {
+    pub fn write_str(&mut self, s: &str) -> usize {
         self.write(Bytes::new(Some(BytesFromType::Raw(s.as_bytes().to_vec()))))
     }
 
@@ -483,7 +477,7 @@ pub fn bi_one() -> Number {
     One::one()
 }
 
-pub fn get_u32(v: &Vec<u8>, n: usize) -> u32 {
+pub fn get_u32(v: &[u8], n: usize) -> u32 {
     let p1 = v[n] as u32;
     let p2 = v[n + 1] as u32;
     let p3 = v[n + 2] as u32;
@@ -491,11 +485,11 @@ pub fn get_u32(v: &Vec<u8>, n: usize) -> u32 {
     p1 | (p2 << 8) | (p3 << 16) | (p4 << 24)
 }
 
-pub fn set_u8(vec: &mut Vec<u8>, n: usize, v: u8) {
+pub fn set_u8(vec: &mut [u8], n: usize, v: u8) {
     vec[n] = v;
 }
 
-pub fn set_u32(vec: &mut Vec<u8>, n: usize, v: u32) {
+pub fn set_u32(vec: &mut [u8], n: usize, v: u32) {
     vec[n] = ((v >> 24) & 0xff) as u8;
     vec[n + 1] = ((v >> 16) & 0xff) as u8;
     vec[n + 2] = ((v >> 8) & 0xff) as u8;

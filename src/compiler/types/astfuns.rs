@@ -23,13 +23,13 @@ pub fn monotype<const A: usize>(typ: &Type<A>) -> Option<Monotype> {
         Type::TVar(v) => Some(Type::TVar(v.clone())),
         Type::TForall(_, _) => None,
         Type::TExists(v) => Some(Type::TExists(v.clone())),
-        Type::TNullable(t) => monotype(t.borrow()).map(|tm| Type::TNullable(Rc::new(tm.clone()))),
-        Type::TExec(t) => monotype(t.borrow()).map(|tm| Type::TExec(Rc::new(tm.clone()))),
+        Type::TNullable(t) => monotype(t.borrow()).map(|tm| Type::TNullable(Rc::new(tm))),
+        Type::TExec(t) => monotype(t.borrow()).map(|tm| Type::TExec(Rc::new(tm))),
         Type::TFun(t1, t2) => monotype(t2.borrow()).and_then(|t2m| {
-            monotype(t1).map(|t1m| Type::TFun(Rc::new(t1m.clone()), Rc::new(t2m.clone())))
+            monotype(t1).map(|t1m| Type::TFun(Rc::new(t1m), Rc::new(t2m.clone())))
         }),
         Type::TPair(a, b) => monotype(a.borrow()).and_then(|am| {
-            monotype(b).map(|bm| Type::TPair(Rc::new(am.clone()), Rc::new(bm.clone())))
+            monotype(b).map(|bm| Type::TPair(Rc::new(am.clone()), Rc::new(bm)))
         }),
         Type::TAbs(v, t) => monotype(t.borrow()).map(|tm| Type::TAbs(v.clone(), Rc::new(tm))),
         Type::TApp(a, b) => monotype(a.borrow())
@@ -77,11 +77,11 @@ pub fn free_tvars<const A: usize>(typ: &Type<A>) -> HashSet<TypeVar> {
         Type::TExec(t) => free_tvars(t.borrow()),
         Type::TFun(t1, t2) => free_tvars(t1)
             .union(&free_tvars(t2.borrow()))
-            .map(|x| x.clone())
+            .cloned()
             .collect(),
         Type::TPair(t1, t2) => free_tvars(t1)
             .union(&free_tvars(t2.borrow()))
-            .map(|x| x.clone())
+            .cloned()
             .collect(),
         Type::TAbs(v, t) => {
             let mut res = free_tvars(t.borrow());
@@ -90,7 +90,7 @@ pub fn free_tvars<const A: usize>(typ: &Type<A>) -> HashSet<TypeVar> {
         }
         Type::TApp(t1, t2) => free_tvars(t1)
             .union(&free_tvars(t2.borrow()))
-            .map(|x| x.clone())
+            .cloned()
             .collect(),
     }
 }

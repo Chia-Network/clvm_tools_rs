@@ -216,7 +216,6 @@ impl<const A: usize> ExtractContext<A> for Box<GContext<A>> {
 
 #[derive(Clone, Debug)]
 pub struct GContext<const A: usize>(pub Vec<ContextElim<A>>);
-type CompleteContext = GContext<CONTEXT_COMPLETE>;
 pub type Context = GContext<CONTEXT_INCOMPLETE>;
 
 fn instantiates_tvar<const A: usize>(m: &TypeVar, c: &ContextElim<A>) -> bool {
@@ -249,7 +248,7 @@ impl<const A: usize> GContext<A> {
         self.0
             .iter()
             .position(|e| *e == m)
-            .map(|idx| GContext(self.0[idx + 1..].iter().map(|x| x.clone()).collect()))
+            .map(|idx| GContext(self.0[idx + 1..].to_vec()))
             .unwrap_or_else(|| GContext(self.0.clone()))
     }
 
@@ -259,8 +258,8 @@ impl<const A: usize> GContext<A> {
             .position(|e| instantiates_tvar(m, e))
             .map(|idx| {
                 (
-                    GContext(self.0[idx + 1..].iter().map(|x| x.clone()).collect()),
-                    GContext(self.0[..idx].iter().map(|x| x.clone()).collect()),
+                    GContext(self.0[idx + 1..].to_vec()),
+                    GContext(self.0[..idx].to_vec()),
                 )
             })
             .unwrap_or_else(|| (GContext(self.0.clone()), GContext(Vec::new())))
@@ -283,8 +282,8 @@ impl<const A: usize> GContext<A> {
             .position(|e| *e == m)
             .map(|idx| {
                 let res = (
-                    GContext(res.0[..idx].iter().map(|x| x.clone()).collect()),
-                    GContext(res.0[idx + 1..].iter().map(|x| x.clone()).collect()),
+                    GContext(res.0[..idx].to_vec()),
+                    GContext(res.0[idx + 1..].to_vec()),
                 );
                 debug!(
                     "break_marker {} {} from {}",

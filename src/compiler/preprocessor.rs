@@ -9,15 +9,15 @@ use crate::compiler::srcloc::Srcloc;
 
 pub fn process_include(
     opts: Rc<dyn CompilerOpts>,
-    name: &String,
+    name: &str,
 ) -> Result<Vec<Rc<SExp>>, CompileErr> {
     let filename_and_content = opts.read_new_file(opts.filename(), name.to_string())?;
     let content = filename_and_content.1;
 
-    let start_of_file = Srcloc::start(&name);
+    let start_of_file = Srcloc::start(name);
 
     parse_sexp(start_of_file.clone(), &content)
-        .map_err(|e| CompileErr(e.0.clone(), e.1.clone()))
+        .map_err(|e| CompileErr(e.0.clone(), e.1))
         .and_then(|x| match x[0].proper_list() {
             None => Err(CompileErr(
                 start_of_file,
@@ -56,16 +56,13 @@ fn process_pp_form(
                 _ => {
                     // Include is only allowed as a proper form.  It's a keyword in
                     // this language.
-                    match &x[0] {
-                        SExp::Atom(_, inc) => {
-                            if "include".as_bytes().to_vec() == *inc {
-                                return Err(CompileErr(
-                                    body.loc(),
-                                    format!("bad tail in include {}", body.to_string()),
-                                ));
-                            }
+                    if let SExp::Atom(_, inc) = &x[0] {
+                        if "include".as_bytes().to_vec() == *inc {
+                            return Err(CompileErr(
+                                body.loc(),
+                                format!("bad tail in include {}", body),
+                            ));
                         }
-                        _ => {}
                     }
                 }
             }
@@ -104,13 +101,10 @@ fn inject_std_macros(body: Rc<SExp>) -> SExp {
         Some(v) => {
             let include_form = Rc::new(SExp::Cons(
                 body.loc(),
-                Rc::new(SExp::atom_from_string(body.loc(), &"include".to_string())),
+                Rc::new(SExp::atom_from_string(body.loc(), "include")),
                 Rc::new(SExp::Cons(
                     body.loc(),
-                    Rc::new(SExp::quoted_from_string(
-                        body.loc(),
-                        &"*macros*".to_string(),
-                    )),
+                    Rc::new(SExp::quoted_from_string(body.loc(), "*macros*")),
                     Rc::new(SExp::Nil(body.loc())),
                 )),
             ));

@@ -37,17 +37,14 @@ fn atom_size_blob(b: &Bytes) -> Result<(bool, Vec<u8>), String> {
     if size < 0x40 {
         Ok((true, vec![0x80 | size as u8]))
     } else if size < 0x2000 {
-        Ok((
-            true,
-            vec![0xC0 | ((size >> 8) as u8), ((size >> 0) & 0xFF) as u8],
-        ))
+        Ok((true, vec![0xC0 | ((size >> 8) as u8), (size & 0xFF) as u8]))
     } else if size < 0x100000 {
         Ok((
             true,
             vec![
                 0xE0 | ((size >> 16) as u8),
                 ((size >> 8) & 0xFF) as u8,
-                ((size >> 0) & 0xFF) as u8,
+                (size & 0xFF) as u8,
             ],
         ))
     } else if size < 0x8000000 {
@@ -57,7 +54,7 @@ fn atom_size_blob(b: &Bytes) -> Result<(bool, Vec<u8>), String> {
                 0xF0 | ((size >> 24) as u8),
                 ((size >> 16) & 0xFF) as u8,
                 ((size >> 8) & 0xFF) as u8,
-                ((size >> 0) & 0xFF) as u8,
+                (size & 0xFF) as u8,
             ],
         ))
     } else if size < 0x400000000 {
@@ -138,7 +135,7 @@ pub trait OpStackEntry {
 
 type TOpStack<'a> = Vec<Option<Box<dyn OpStackEntry>>>;
 
-pub fn sexp_to_stream<'a>(allocator: &'a mut Allocator, sexp: NodePtr, f: &mut Stream) {
+pub fn sexp_to_stream(allocator: &mut Allocator, sexp: NodePtr, f: &mut Stream) {
     for b in SExpToBytesIterator::new(allocator, sexp) {
         f.write(Bytes::new(Some(BytesFromType::Raw(b))));
     }
@@ -223,28 +220,18 @@ pub fn sexp_from_stream<'a>(
     let mut op_stack: TOpStack = vec![Some(Box::new(OpReadSexp {}))];
     let mut val_stack: TValStack = vec![];
 
-    loop {
-        match op_stack.pop() {
-            Some(Some(func)) => {
-                func.invoke(
-                    allocator,
-                    &mut op_stack,
-                    &mut val_stack,
-                    f,
-                    Box::new(SimpleCreateCLVMObject {}),
-                );
-            }
-            _ => {
-                break;
-            }
-        }
+    while let Some(Some(func)) = op_stack.pop() {
+        func.invoke(
+            allocator,
+            &mut op_stack,
+            &mut val_stack,
+            f,
+            Box::new(SimpleCreateCLVMObject {}),
+        );
     }
 
-    match val_stack.pop() {
-        Some(v) => {
-            return to_sexp_f.invoke(allocator, v);
-        }
-        _ => {}
+    if let Some(v) = val_stack.pop() {
+        return to_sexp_f.invoke(allocator, v);
     }
 
     Err(EvalErr(
@@ -264,7 +251,7 @@ pub fn atom_from_stream<'a>(
     if b == 0x80 {
         return Ok(allocator.null());
     } else if b <= MAX_SINGLE_BYTE as u8 {
-        return allocator.new_atom(&vec![b]);
+        return allocator.new_atom(&[b]);
     }
 
     let mut bit_count = 0;
