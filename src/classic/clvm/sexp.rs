@@ -457,8 +457,8 @@ pub fn equal_to(allocator: &mut Allocator, first_: NodePtr, second_: NodePtr) ->
         }
         match (allocator.sexp(first), allocator.sexp(second)) {
             (SExp::Atom(fbuf), SExp::Atom(sbuf)) => {
-                let fvec = allocator.buf(&fbuf).to_vec();
-                let svec = allocator.buf(&sbuf).to_vec();
+                let fvec = allocator.buf(&fbuf);
+                let svec = allocator.buf(&sbuf);
                 return fvec == svec;
             }
             (SExp::Pair(ff, fr), SExp::Pair(rf, rr)) => {
