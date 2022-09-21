@@ -20,14 +20,14 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
-        python: [3.7, 3.8, 3.9]
+        python: ['3.7', '3.8', '3.9', '3.10', '3.11']
 
     steps:
     - uses: actions/checkout@v2
       with:
         fetch-depth: 0
 
-    - uses: actions/setup-python@v2
+    - uses: chia-network/actions/setup-python@main
       name: Install Python ${{ matrix.python }}
       with:
         python-version: ${{ matrix.python }}
