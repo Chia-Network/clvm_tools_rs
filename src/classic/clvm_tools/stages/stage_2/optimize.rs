@@ -420,7 +420,7 @@ pub fn children_optimizer(
             let mut different = false;
             for item in list.iter() {
                 let res = optimize_sexp_(allocator, memo, *item, eval_f.clone())?;
-                if !equal_to(allocator, *item, res) {
+                if different || !equal_to(allocator, *item, res) {
                     different = true;
                 }
                 optimized.push(res);
