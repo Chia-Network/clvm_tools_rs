@@ -625,8 +625,6 @@ pub fn optimize_sexp_(
     r_: NodePtr,
     eval_f: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
-    let mut r = r_;
-
     // First compare the NodePtr to see if we've cached this exact one.
     // Note that this scoping is here to prevent the borrowed mutable ref from
     // preventing us from using memo downstream when we've done one optimize
@@ -640,7 +638,7 @@ pub fn optimize_sexp_(
     }
 
     // Fall back to treehash comparison since we didn't get an exact pointer hit.
-    let footprint = AllocatorRefOrTreeHash::new_from_sexp(allocator, r);
+    let footprint = AllocatorRefOrTreeHash::new_from_sexp(allocator, r_);
     {
         let memo_ref: Ref<HashMap<AllocatorRefOrTreeHash, NodePtr>> = memo.borrow();
         let memo: &HashMap<AllocatorRefOrTreeHash, NodePtr> = memo_ref.borrow();
@@ -668,6 +666,8 @@ pub fn optimize_sexp_(
         OptimizerRunner::new("quote_null_optimizer", &quote_null_optimizer),
         OptimizerRunner::new("apply_null_optimizer", &apply_null_optimizer),
     ];
+
+    let mut r = r_;
 
     loop {
         let start_r = r;
@@ -698,7 +698,7 @@ pub fn optimize_sexp_(
                         let mut work = HashMap::new();
                         swap(&mut work, mr);
                         work.insert(footprint.clone(), start_r);
-                        work.insert(AllocatorRefOrTreeHash::new_from_nodeptr(r_), start_r);
+                        work.insert(AllocatorRefOrTreeHash::new_from_nodeptr(r), start_r);
                         work
                     });
 
