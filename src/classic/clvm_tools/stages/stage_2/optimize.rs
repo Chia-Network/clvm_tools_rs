@@ -329,76 +329,72 @@ pub fn var_change_optimizer_cons_eval(
                         new_eval_sexp_args,
                         eval_f
                     )
-                } else { m! {
-                    let _ = if DIAG_OPTIMIZATIONS {
+                } else {
+                    if DIAG_OPTIMIZATIONS {
                         print!("XXX does not seems_constant\n");
-                    };
+                    }
 
-                    new_operands <-
-                        proper_list(
-                            allocator,
-                            new_eval_sexp_args,
-                            true).ok_or_else(|| EvalErr(
-                                new_eval_sexp_args,
-                                "Must be a proper list".to_string()
-                            ));
-
-                    opt_operands <-
+                    Ok(proper_list(
+                        allocator,
+                        new_eval_sexp_args,
+                        true
+                    ).map(|new_operands| {
                         map_m(
                             allocator,
                             &mut new_operands.iter(),
                             &|allocator, item| {
                                 optimize_sexp(allocator, *item, eval_f.clone())
                             }
-                        );
-
-                    non_constant_count <- fold_m(
-                        allocator,
-                        &|allocator, acc, val| {
-                            if DIAG_OPTIMIZATIONS {
-                                print!(
-                                    "XXX opt_operands {} {}\n",
-                                    acc,
-                                    disassemble(allocator, val)
-                                );
-                            }
-                            let increment =
-                                match allocator.sexp(val) {
-                                    SExp::Pair(val_first,_) => {
-                                        match allocator.sexp(val_first) {
-                                            SExp::Atom(b) => {
-                                                let vf_buf = allocator.buf(&b);
-                                                if vf_buf.len() != 1 || vf_buf[0] != 1 {
-                                                    1
-                                                } else {
-                                                    0
+                        ).and_then(|opt_operands| m! {
+                            non_constant_count <- fold_m(
+                                allocator,
+                                &|allocator, acc, val| {
+                                    if DIAG_OPTIMIZATIONS {
+                                        print!(
+                                            "XXX opt_operands {} {}\n",
+                                            acc,
+                                            disassemble(allocator, val)
+                                        );
+                                    }
+                                    let increment =
+                                        match allocator.sexp(val) {
+                                            SExp::Pair(val_first,_) => {
+                                                match allocator.sexp(val_first) {
+                                                    SExp::Atom(b) => {
+                                                        let vf_buf = allocator.buf(&b);
+                                                        if vf_buf.len() != 1 || vf_buf[0] != 1 {
+                                                            1
+                                                        } else {
+                                                            0
+                                                        }
+                                                    },
+                                                    _ => 0
                                                 }
                                             },
                                             _ => 0
-                                        }
-                                    },
-                                    _ => 0
-                                };
+                                        };
 
-                            Ok(acc + increment)
-                        },
-                        0,
-                        &mut opt_operands.iter().copied()
-                    );
+                                    Ok(acc + increment)
+                                },
+                                0,
+                                &mut opt_operands.iter().copied()
+                            );
 
-                    let _ = if DIAG_OPTIMIZATIONS {
-                        print!(
-                            "XXX non_constant_count {}\n",
-                            non_constant_count
-                        );
-                    };
+                            let _ = if DIAG_OPTIMIZATIONS {
+                                print!(
+                                    "XXX non_constant_count {}\n",
+                                    non_constant_count
+                                );
+                            };
 
-                    if non_constant_count < 1 {
-                        enlist(allocator, &opt_operands)
-                    } else {
-                        Ok(r)
-                    }
-                } }
+                            if non_constant_count < 1 {
+                                enlist(allocator, &opt_operands)
+                            } else {
+                                Ok(r)
+                            }
+                        }).unwrap_or(r)
+                    }).unwrap_or(r))
+                }
             }
         }
     }
