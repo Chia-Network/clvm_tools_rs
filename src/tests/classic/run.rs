@@ -256,3 +256,8 @@ fn test_forms_of_destructuring_allowed_by_classic_1() {
         "(i 2 (q . 2) (q . 3))"
     );
 }
+
+#[test]
+fn wide_encoding_test() {
+    for 
+}
