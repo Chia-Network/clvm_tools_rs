@@ -121,6 +121,7 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
         return Err("OverflowError: can't convert negative int to unsigned".to_string());
     }
     let mut byte_count = 1;
+    let mut dec = 0;
     let div = if signed { bi_one() } else { bi_zero() };
     let b32: u64 = 1_u64 << 32;
     let bval = b32.to_bigint().unwrap();
@@ -164,7 +165,6 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
     let (_sign, u32_digits) = v.to_u32_digits();
     for (i, n) in u32_digits.iter().take(byte4_length).enumerate() {
         let word_idx = byte4_length - i - 1;
-        let dec = if i == 0 { 0 } else { 1 };
         let num = *n as u64;
         let pointer = extra_byte + byte4_remain + word_idx * 4;
         let setval = if negative {
@@ -172,10 +172,10 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
         } else {
             num as u64
         };
+        dec = 1;
         set_u32(&mut dv, pointer, setval as u32);
     }
 
-    let dec = if total_bytes > 4 { 1 } else { 0 };
     let lastbytes = u32_digits[u32_digits.len() - 1] + dec;
     let transform = |idx| {
         if negative {
