@@ -176,10 +176,10 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
         set_u32(&mut dv, pointer, setval as u32);
     }
 
-    let lastbytes = u32_digits[u32_digits.len() - 1] + dec;
+    let lastbytes = u32_digits[u32_digits.len() - 1];
     let transform = |idx| {
         if negative {
-            (((1 << (8 * byte4_remain)) - lastbytes) >> (8 * idx)) as u8
+            (((1 << (8 * byte4_remain)) - lastbytes - dec) >> (8 * idx)) as u8
         } else {
             (lastbytes >> (8 * idx)) as u8
         }
