@@ -60,7 +60,7 @@ pub fn int_from_bytes(
 
     // If the first bit is 1, it is recognized as a negative number.
     if signed && ((dv[0] & 0x80) != 0) {
-        return Ok(((unsigned64 - 1) << (b.length() * 8)) as u64);
+        return Ok((unsigned64 - (1 << (b.length() * 8))) as u64);
     }
     Ok(unsigned64)
 }
@@ -121,6 +121,7 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
         return Err("OverflowError: can't convert negative int to unsigned".to_string());
     }
     let mut byte_count = 1;
+    let mut dec = 0;
     let div = if signed { bi_one() } else { bi_zero() };
     let b32: u64 = 1_u64 << 32;
     let bval = b32.to_bigint().unwrap();
@@ -163,28 +164,29 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
 
     let (_sign, u32_digits) = v.to_u32_digits();
     for (i, n) in u32_digits.iter().take(byte4_length).enumerate() {
+        let word_idx = byte4_length - i - 1;
         let num = *n as u64;
-        let pointer = extra_byte + byte4_remain + (byte4_length - 1 - i) * 4;
+        let pointer = extra_byte + byte4_remain + word_idx * 4;
         let setval = if negative {
-            (1_u64 << 32) - num as u64
+            (1_u64 << 32) - num - dec as u64
         } else {
             num as u64
         };
+        dec = 1;
         set_u32(&mut dv, pointer, setval as u32);
     }
 
     let lastbytes = u32_digits[u32_digits.len() - 1];
-    let pointer = total_bytes - byte4_remain;
     let transform = |idx| {
         if negative {
-            (((1 << (8 * byte4_remain)) - lastbytes) >> (8 * idx)) as u8
+            (((1 << (8 * byte4_remain)) - lastbytes - dec) >> (8 * idx)) as u8
         } else {
             (lastbytes >> (8 * idx)) as u8
         }
     };
 
     for i in 0..byte4_remain {
-        set_u8(&mut dv, pointer + i, transform(byte4_remain - i - 1));
+        set_u8(&mut dv, extra_byte + i, transform(byte4_remain - i - 1));
     }
 
     Ok(Bytes::new(Some(BytesFromType::Raw(dv))))

@@ -25,6 +25,42 @@ fn nft_opc() {
 }
 
 #[test]
+fn large_odd_sized_neg_opc() {
+    let mut allocator = Allocator::new();
+    let result = OpcConversion {}
+        .invoke(&mut allocator, &"(-9999999999999999999999)".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "ff8afde1e61f36454dc0000180");
+}
+
+#[test]
+fn large_odd_sized_neg_opd() {
+    let mut allocator = Allocator::new();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &"ff8afde1e61f36454dc0000180".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "(0xfde1e61f36454dc00001)");
+}
+
+#[test]
+fn large_odd_sized_pos_opc() {
+    let mut allocator = Allocator::new();
+    let result = OpcConversion {}
+        .invoke(&mut allocator, &"(281474976710655)".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "ff8700ffffffffffff80");
+}
+
+#[test]
+fn large_odd_sized_pos_opd() {
+    let mut allocator = Allocator::new();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &"ff8700ffffffffffff80".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "(0x00ffffffffffff)");
+}
+
+#[test]
 fn basic_opd() {
     let mut allocator = Allocator::new();
     let result = OpdConversion {}
@@ -475,4 +511,29 @@ fn pool_member_innerpuz() {
     );
     let result = s.get_value().decode().trim().to_string();
     assert_eq!(result, desired);
+}
+
+// Tests a fancy identity function using an un-destructured parameter at the
+// module level.
+#[test]
+fn test_non_consed_args() {
+    let program =
+        "(mod params (defun ident (arg) (f (list arg))) (ident (ident params)))".to_string();
+    let mut s = Stream::new(None);
+    launch_tool(
+        &mut s,
+        &vec!["run".to_string(), program],
+        &"run".to_string(),
+        2,
+    );
+    let result = s.get_value().decode().trim().to_string();
+    let mut t = Stream::new(None);
+    launch_tool(
+        &mut t,
+        &vec!["brun".to_string(), result, "99".to_string()],
+        &"brun".to_string(),
+        0,
+    );
+    let run_result = t.get_value().decode().trim().to_string();
+    assert_eq!(run_result, "99");
 }

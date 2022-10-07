@@ -346,52 +346,53 @@ pub fn var_change_optimizer_cons_eval(
                     println!("XXX does not seems_constant");
                 };
 
-                let new_operands =
-                    proper_list(allocator, new_eval_sexp_args, true).ok_or_else(|| {
-                        EvalErr(new_eval_sexp_args, "Must be a proper list".to_string())
-                    })?;
-
-                let mut opt_operands = Vec::new();
-                for item in new_operands.iter() {
-                    opt_operands.push(optimize_sexp_(allocator, memo, *item, eval_f.clone())?);
-                }
-
-                let non_constant_count = fold_m(
+                proper_list(
                     allocator,
-                    &|allocator, acc, val| {
-                        if DIAG_OPTIMIZATIONS {
-                            println!("XXX opt_operands {} {}", acc, disassemble(allocator, val));
-                        }
-                        let increment = match allocator.sexp(val) {
-                            SExp::Pair(val_first, _) => match allocator.sexp(val_first) {
-                                SExp::Atom(b) => {
-                                    let vf_buf = allocator.buf(&b);
-                                    if vf_buf.len() != 1 || vf_buf[0] != 1 {
-                                        1
-                                    } else {
-                                        0
+                    new_eval_sexp_args,
+                    true
+                ).map(|new_operands| {
+                    let mut opt_operands = Vec::new();
+                    for item in new_operands.iter() {
+                        opt_operands.push(optimize_sexp_(allocator, memo, *item, eval_f.clone())?);
+                    }
+
+                    let non_constant_count = fold_m(
+                        allocator,
+                        &|allocator, acc, val| {
+                            if DIAG_OPTIMIZATIONS {
+                                println!("XXX opt_operands {} {}", acc, disassemble(allocator, val));
+                            }
+                            let increment = match allocator.sexp(val) {
+                                SExp::Pair(val_first, _) => match allocator.sexp(val_first) {
+                                    SExp::Atom(b) => {
+                                        let vf_buf = allocator.buf(&b);
+                                        if vf_buf.len() != 1 || vf_buf[0] != 1 {
+                                            1
+                                        } else {
+                                            0
+                                        }
                                     }
-                                }
+                                    _ => 0,
+                                },
                                 _ => 0,
-                            },
-                            _ => 0,
-                        };
+                            };
 
-                        Ok(acc + increment)
-                    },
-                    0,
-                    &mut opt_operands.iter().copied(),
-                )?;
+                            Ok(acc + increment)
+                        },
+                        0,
+                        &mut opt_operands.iter().copied(),
+                    )?;
 
-                if DIAG_OPTIMIZATIONS {
-                    println!("XXX non_constant_count {}", non_constant_count);
-                };
+                    if DIAG_OPTIMIZATIONS {
+                        println!("XXX non_constant_count {}", non_constant_count);
+                    };
 
-                if non_constant_count < 1 {
-                    enlist(allocator, &opt_operands)
-                } else {
-                    Ok(r)
-                }
+                    if non_constant_count < 1 {
+                        enlist(allocator, &opt_operands)
+                    } else {
+                        Ok(r)
+                    }
+                }).unwrap_or(Ok(r))
             }
         }
     }

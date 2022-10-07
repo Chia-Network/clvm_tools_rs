@@ -79,7 +79,7 @@ jobs:
             . ./activate && \
             pip install --upgrade pip
           '
-        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin build --release --strip --manylinux 2010
+        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v0.13.1 build --release --strip --manylinux 2010
         # Refresh in case any ownerships changed.
         mv target target.docker && cp -r target.docker target
         # Ensure an empty .cargo-lock file exists.
