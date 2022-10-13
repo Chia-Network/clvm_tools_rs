@@ -138,8 +138,8 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
         }
     } else {
         let first_digit = u32_digits[u32_digits.len() - 1];
-        byte_count = (u32_digits.len() - 1) * 4 +
-            if first_digit >= 0x1000000 {
+        byte_count = (u32_digits.len() - 1) * 4
+            + if first_digit >= 0x1000000 {
                 4
             } else if first_digit >= 0x10000 {
                 3

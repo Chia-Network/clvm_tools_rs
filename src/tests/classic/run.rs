@@ -259,12 +259,19 @@ fn test_forms_of_destructuring_allowed_by_classic_1() {
 
 #[test]
 fn test_num_encoding_just_less_than_5_bytes() {
-    let res = do_basic_run(&vec!["run".to_string(), "4281419728".to_string()]).trim().to_string();
+    let res = do_basic_run(&vec!["run".to_string(), "4281419728".to_string()])
+        .trim()
+        .to_string();
     assert_eq!(res, "0x00ff3147d0");
 }
 
 #[test]
 fn test_divmod() {
-    let res = do_basic_run(&vec!["run".to_string(), "(/ 78962960182680 4281419728)".to_string()]).trim().to_string();
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "(/ 78962960182680 4281419728)".to_string(),
+    ])
+    .trim()
+    .to_string();
     assert_eq!(res, "18443");
 }
