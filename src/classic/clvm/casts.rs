@@ -125,6 +125,7 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
     let div = if signed { bi_one() } else { bi_zero() };
     let b32: u64 = 1_u64 << 32;
     let bval = b32.to_bigint().unwrap();
+    let (_sign, u32_digits) = v.to_u32_digits();
 
     if negative {
         let mut right_hand = (-(v.clone()) + bi_one()) * (div + bi_one());
@@ -136,14 +137,17 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
             byte_count += 1;
         }
     } else {
-        let mut right_hand = (v.clone() + bi_one()) * (div.clone() + bi_one());
-        while pow(bval.clone(), (byte_count - 1) / 4 + 1) < right_hand {
-            byte_count += 4;
-        }
-        right_hand = (v.clone() + bi_one()) * (div + bi_one());
-        while pow(2_u32.to_bigint().unwrap(), 8 * byte_count) < right_hand {
-            byte_count += 1;
-        }
+        let first_digit = u32_digits[u32_digits.len() - 1];
+        byte_count = (u32_digits.len() - 1) * 4 +
+            if first_digit >= 0x1000000 {
+                4
+            } else if first_digit >= 0x10000 {
+                3
+            } else if first_digit >= 0x100 {
+                2
+            } else {
+                1
+            };
     }
 
     let extra_byte = if signed
@@ -162,7 +166,6 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
 
     dv.resize(total_bytes, 0);
 
-    let (_sign, u32_digits) = v.to_u32_digits();
     for (i, n) in u32_digits.iter().take(byte4_length).enumerate() {
         let word_idx = byte4_length - i - 1;
         let num = *n as u64;
