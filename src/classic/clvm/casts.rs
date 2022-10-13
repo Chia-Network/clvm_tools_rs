@@ -152,7 +152,7 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
 
     let extra_byte = if signed
         && v > bi_zero()
-        && ((v.clone() >> ((byte_count - 1) * 8)) & 0x80_u32.to_bigint().unwrap()) > bi_zero()
+        && ((v >> ((byte_count - 1) * 8)) & 0x80_u32.to_bigint().unwrap()) > bi_zero()
     {
         1
     } else {
