@@ -1,3 +1,6 @@
+use rand::distributions::Standard;
+use rand::prelude::Distribution;
+use rand::Rng;
 use std::borrow::Borrow;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
@@ -13,6 +16,8 @@ use crate::compiler::prims::prims;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, u8_from_number, Number};
 
+pub const MAX_SEXP_COST: usize = 15;
+
 // Compiler view of SExp
 #[derive(Clone, Debug)]
 pub enum SExp {
@@ -21,6 +26,57 @@ pub enum SExp {
     Integer(Srcloc, Number),
     QuotedString(Srcloc, u8, Vec<u8>),
     Atom(Srcloc, Vec<u8>),
+}
+
+pub fn random_atom_name<R: Rng + ?Sized>(rng: &mut R, min_size: usize) -> Vec<u8> {
+    let mut bytevec: Vec<u8> = Vec::new();
+    let mut len = 0;
+    loop {
+        let mut n: u8 = rng.gen();
+        n %= 40;
+        len += 1;
+        if n < 26 || len < min_size {
+            bytevec.push((n % 26) + 97); // lowercase a
+        } else {
+            break;
+        }
+    }
+    bytevec
+}
+
+pub fn random_atom<R: Rng + ?Sized>(rng: &mut R) -> SExp {
+    SExp::Atom(Srcloc::start(&"*rng*".to_string()), random_atom_name(rng, 1))
+}
+
+pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
+    if remaining < 2 {
+        random_atom(rng)
+    } else {
+        let loc = || Srcloc::start("*rng*");
+        let alternative: usize = rng.gen_range(0..=2);
+        match alternative {
+            0 => { // list
+                let length = rng.gen_range(1..=remaining);
+                let costs = vec![remaining / length; length];
+                enlist(loc(), costs.iter().map(|c| Rc::new(random_sexp(rng, *c))).collect())
+            },
+            1 => { // cons
+                let left_cost = rng.gen_range(1..=remaining);
+                let right_cost = remaining - left_cost;
+                SExp::Cons(loc(), Rc::new(random_sexp(rng, left_cost)), Rc::new(random_sexp(rng, right_cost)))
+            },
+            _ => { // atom
+                random_atom(rng)
+            }
+        }
+    }
+}
+
+// Thanks: https://stackoverflow.com/questions/48490049/how-do-i-choose-a-random-value-from-an-enum
+impl Distribution<SExp> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SExp {
+        random_sexp(rng, MAX_SEXP_COST)
+    }
 }
 
 impl Eq for SExp {}
