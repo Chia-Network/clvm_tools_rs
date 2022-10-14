@@ -45,10 +45,7 @@ pub fn random_atom_name<R: Rng + ?Sized>(rng: &mut R, min_size: usize) -> Vec<u8
 }
 
 pub fn random_atom<R: Rng + ?Sized>(rng: &mut R) -> SExp {
-    SExp::Atom(
-        Srcloc::start("*rng*"),
-        random_atom_name(rng, 1),
-    )
+    SExp::Atom(Srcloc::start("*rng*"), random_atom_name(rng, 1))
 }
 
 pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
