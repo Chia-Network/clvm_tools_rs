@@ -1,13 +1,13 @@
-use std::path::PathBuf;
-use rand::prelude::*;
 use rand::distributions::Standard;
+use rand::prelude::*;
 use rand::Rng;
 use rand_chacha::ChaChaRng;
+use std::path::PathBuf;
 
 use crate::classic::clvm::__type_compatibility__::Stream;
 use crate::classic::clvm_tools::cmds::launch_tool;
-use crate::compiler::sexp::{random_atom_name};
-use crate::util::{Number, number_from_u8};
+use crate::compiler::sexp::random_atom_name;
+use crate::util::{number_from_u8, Number};
 
 const NUM_GEN_ATOMS: usize = 16;
 
@@ -279,13 +279,13 @@ fn test_divmod() {
         "run".to_string(),
         "(/ 78962960182680 4281419728)".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     assert_eq!(res, "18443");
 }
 
 struct RandomClvmNumber {
-    intended_value: Number
+    intended_value: Number,
 }
 
 fn random_clvm_number<R: Rng + ?Sized>(rng: &mut R) -> RandomClvmNumber {
@@ -294,20 +294,23 @@ fn random_clvm_number<R: Rng + ?Sized>(rng: &mut R) -> RandomClvmNumber {
     let natoms = rng.gen_range(0..=NUM_GEN_ATOMS);
     let mut result_bytes = Vec::new();
     for _ in 0..=natoms {
-        let mut new_bytes = random_atom_name(rng, 3).iter().map(|x| {
-            if rng.gen() {
-                // The possibility of negative values.
-                x | 0x80
-            } else {
-                *x
-            }
-        }).collect();
+        let mut new_bytes = random_atom_name(rng, 3)
+            .iter()
+            .map(|x| {
+                if rng.gen() {
+                    // The possibility of negative values.
+                    x | 0x80
+                } else {
+                    *x
+                }
+            })
+            .collect();
         result_bytes.append(&mut new_bytes);
     }
     let num = number_from_u8(&result_bytes);
 
     RandomClvmNumber {
-        intended_value: num
+        intended_value: num,
     }
 }
 
@@ -327,23 +330,24 @@ fn test_encoding_properties() {
         // We'll have it compile a constant value.
         // The representation of the number will come out most likely
         // as a hex constant.
-        let serialized_through_run =
-            do_basic_run(&vec![
-                "run".to_string(),
-                format!("(q . {})", number_spec.intended_value)
-            ])
-            .trim()
-            .to_string();
+        let serialized_through_run = do_basic_run(&vec![
+            "run".to_string(),
+            format!("(q . {})", number_spec.intended_value),
+        ])
+        .trim()
+        .to_string();
 
         // If we can subtract the original value from the encoded value and
         // get zero, then we did the right thing.
-        let cancelled_through_run =
-            do_basic_run(&vec![
-                "run".to_string(),
-                format!("(- {} {})", serialized_through_run, number_spec.intended_value)
-            ])
-            .trim()
-            .to_string();
+        let cancelled_through_run = do_basic_run(&vec![
+            "run".to_string(),
+            format!(
+                "(- {} {})",
+                serialized_through_run, number_spec.intended_value
+            ),
+        ])
+        .trim()
+        .to_string();
         assert_eq!(cancelled_through_run, "()");
     }
 }
