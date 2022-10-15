@@ -1,3 +1,5 @@
+use num_bigint::ToBigInt;
+
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -536,4 +538,22 @@ fn test_non_consed_args() {
     );
     let run_result = t.get_value().decode().trim().to_string();
     assert_eq!(run_result, "99");
+}
+
+#[test]
+fn test_check_simple_arg_path_0() {
+    let np = NodePath::new(Some(2_u32.to_bigint().unwrap()));
+    let up = NodePath::new(Some(2_u32.to_bigint().unwrap()));
+    let cp = np.add(up);
+    assert_eq!(cp.as_path().raw(), &[4]);
+}
+
+#[test]
+fn test_check_tricky_arg_path_1() {
+    let np = NodePath::new(Some(4294967295_u32.to_bigint().unwrap()));
+    let path_bytes = np.as_path();
+    assert_eq!(path_bytes.raw(), &[0, 255, 255, 255, 255]);
+    let next_path_segment = NodePath::new(Some(511_u32.to_bigint().unwrap()));
+    let next_path = np.add(next_path_segment);
+    assert_eq!(next_path.as_path().raw(), &[0, 255, 255, 255, 255, 255]);
 }

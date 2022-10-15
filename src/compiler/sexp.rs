@@ -1,6 +1,10 @@
+#[cfg(test)]
 use rand::distributions::Standard;
+#[cfg(test)]
 use rand::prelude::Distribution;
+#[cfg(test)]
 use rand::Rng;
+
 use std::borrow::Borrow;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
@@ -28,6 +32,7 @@ pub enum SExp {
     Atom(Srcloc, Vec<u8>),
 }
 
+#[cfg(test)]
 pub fn random_atom_name<R: Rng + ?Sized>(rng: &mut R, min_size: usize) -> Vec<u8> {
     let mut bytevec: Vec<u8> = Vec::new();
     let mut len = 0;
@@ -44,10 +49,12 @@ pub fn random_atom_name<R: Rng + ?Sized>(rng: &mut R, min_size: usize) -> Vec<u8
     bytevec
 }
 
+#[cfg(test)]
 pub fn random_atom<R: Rng + ?Sized>(rng: &mut R) -> SExp {
     SExp::Atom(Srcloc::start("*rng*"), random_atom_name(rng, 1))
 }
 
+#[cfg(test)]
 pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
     if remaining < 2 {
         random_atom(rng)
@@ -86,6 +93,7 @@ pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
 }
 
 // Thanks: https://stackoverflow.com/questions/48490049/how-do-i-choose-a-random-value-from-an-enum
+#[cfg(test)]
 impl Distribution<SExp> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SExp {
         random_sexp(rng, MAX_SEXP_COST)
@@ -407,10 +415,7 @@ impl SExp {
                 b.encode_mut(v);
             }
             SExp::Integer(_, i) => {
-                let mut bi_bytes = bigint_to_bytes(i, Some(TConvertOption { signed: true }))
-                    .unwrap()
-                    .data()
-                    .to_vec();
+                let mut bi_bytes = bigint_to_bytes(i).unwrap().data().to_vec();
 
                 v.append(&mut bi_bytes);
             }
