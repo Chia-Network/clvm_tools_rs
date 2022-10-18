@@ -443,9 +443,9 @@ fn test_check_tricky_arg_path_random() {
                     Rc::new(sexp::SExp::Cons(
                         random_tree.loc(),
                         Rc::new(sexp::SExp::Atom(random_tree.loc(), vec![b'q'])),
-                        deep_tree.clone()
+                        deep_tree.clone(),
                     )),
-                    Rc::new(sexp::SExp::Nil(random_tree.loc()))
+                    Rc::new(sexp::SExp::Nil(random_tree.loc())),
                 )),
             )),
         );
