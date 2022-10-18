@@ -48,7 +48,7 @@ fn large_odd_sized_neg_opd() {
 fn large_odd_sized_pos_opc() {
     let mut allocator = Allocator::new();
     let result = OpcConversion {}
-    .invoke(&mut allocator, &"(281474976710655)".to_string())
+        .invoke(&mut allocator, &"(281474976710655)".to_string())
         .unwrap();
     assert_eq!(result.rest(), "ff8700ffffffffffff80");
 }
@@ -57,7 +57,7 @@ fn large_odd_sized_pos_opc() {
 fn small_test_opc() {
     let mut allocator = Allocator::new();
     let result = OpcConversion {}
-    .invoke(&mut allocator, &"(191)".to_string())
+        .invoke(&mut allocator, &"(191)".to_string())
         .unwrap();
     assert_eq!(result.rest(), "ff8200bf80");
 }

@@ -294,8 +294,8 @@ fn test_divmod() {
         "run".to_string(),
         "(/ 78962960182680 4281419728)".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     assert_eq!(res, "18443");
 }
 
