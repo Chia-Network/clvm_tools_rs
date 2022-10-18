@@ -398,21 +398,13 @@ fn gather_paths(
 #[cfg(test)]
 fn stringize(sexp: &sexp::SExp) -> sexp::SExp {
     match sexp {
-        sexp::SExp::Cons(l,a,b) => {
-            sexp::SExp::Cons(
-                l.clone(),
-                Rc::new(stringize(a.borrow())),
-                Rc::new(stringize(b.borrow()))
-            )
-        },
-        sexp::SExp::Atom(l,n) => {
-            sexp::SExp::QuotedString(
-                l.clone(),
-                b'"',
-                n.clone()
-            )
-        },
-        _ => sexp.clone()
+        sexp::SExp::Cons(l, a, b) => sexp::SExp::Cons(
+            l.clone(),
+            Rc::new(stringize(a.borrow())),
+            Rc::new(stringize(b.borrow())),
+        ),
+        sexp::SExp::Atom(l, n) => sexp::SExp::QuotedString(l.clone(), b'"', n.clone()),
+        _ => sexp.clone(),
     }
 }
 
