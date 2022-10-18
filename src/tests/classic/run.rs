@@ -433,8 +433,9 @@ fn test_check_tricky_arg_path_random() {
             Rc::new(sexp::SExp::Atom(random_tree.loc(), vec![b'a'])),
             Rc::new(sexp::SExp::Cons(
                 random_tree.loc(),
-                Rc::new(sexp::SExp::Atom(
+                Rc::new(sexp::SExp::QuotedString(
                     random_tree.loc(),
+                    b'"',
                     path_bytes.raw().clone(),
                 )),
                 Rc::new(sexp::SExp::Cons(
