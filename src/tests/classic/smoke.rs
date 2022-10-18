@@ -48,9 +48,18 @@ fn large_odd_sized_neg_opd() {
 fn large_odd_sized_pos_opc() {
     let mut allocator = Allocator::new();
     let result = OpcConversion {}
-        .invoke(&mut allocator, &"(281474976710655)".to_string())
+    .invoke(&mut allocator, &"(281474976710655)".to_string())
         .unwrap();
     assert_eq!(result.rest(), "ff8700ffffffffffff80");
+}
+
+#[test]
+fn small_test_opc() {
+    let mut allocator = Allocator::new();
+    let result = OpcConversion {}
+    .invoke(&mut allocator, &"(191)".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "ff8200bf80");
 }
 
 #[test]
@@ -546,14 +555,4 @@ fn test_check_simple_arg_path_0() {
     let up = NodePath::new(Some(2_u32.to_bigint().unwrap()));
     let cp = np.add(up);
     assert_eq!(cp.as_path().raw(), &[4]);
-}
-
-#[test]
-fn test_check_tricky_arg_path_1() {
-    let np = NodePath::new(Some(4294967295_u32.to_bigint().unwrap()));
-    let path_bytes = np.as_path();
-    assert_eq!(path_bytes.raw(), &[0, 255, 255, 255, 255]);
-    let next_path_segment = NodePath::new(Some(511_u32.to_bigint().unwrap()));
-    let next_path = np.add(next_path_segment);
-    assert_eq!(next_path.as_path().raw(), &[0, 255, 255, 255, 255, 255]);
 }

@@ -26,7 +26,7 @@
 use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, Bytes};
-use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes_unsigned};
+use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes, TConvertOption};
 use crate::util::Number;
 
 pub fn compose_paths(path_0_: &Number, path_1_: &Number) -> Number {
@@ -69,7 +69,8 @@ impl NodePath {
         match index {
             Some(index) => {
                 if index < bi_zero() {
-                    let bytes_repr = bigint_to_bytes_unsigned(&index).unwrap();
+                    let bytes_repr =
+                        bigint_to_bytes(&index, Some(TConvertOption { signed: true })).unwrap();
                     let unsigned = bigint_from_bytes(&bytes_repr, None);
                     NodePath { index: unsigned }
                 } else {
@@ -81,7 +82,7 @@ impl NodePath {
     }
 
     pub fn as_path(&self) -> Bytes {
-        bigint_to_bytes_unsigned(&self.index).unwrap()
+        bigint_to_bytes(&self.index, None).unwrap()
     }
 
     pub fn add(&self, other_node: NodePath) -> Self {
