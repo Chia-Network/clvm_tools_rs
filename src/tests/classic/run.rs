@@ -394,11 +394,33 @@ fn gather_paths(
     }
 }
 
+// Ensure our atoms are not taken up as operators during the reading process.
+#[cfg(test)]
+fn stringize(sexp: &sexp::SExp) -> sexp::SExp {
+    match sexp {
+        sexp::SExp::Cons(l,a,b) => {
+            sexp::SExp::Cons(
+                l.clone(),
+                Rc::new(stringize(a.borrow())),
+                Rc::new(stringize(b.borrow()))
+            )
+        },
+        sexp::SExp::Atom(l,n) => {
+            sexp::SExp::QuotedString(
+                l.clone(),
+                b'"',
+                n.clone()
+            )
+        },
+        _ => sexp.clone()
+    }
+}
+
 #[test]
 fn test_check_tricky_arg_path_random() {
     let mut rng = ChaChaRng::from_entropy();
     // Make a very deep random sexp and make a path table in it.
-    let random_tree = Rc::new(sexp::random_sexp(&mut rng, SEXP_RNG_HORIZON));
+    let random_tree = Rc::new(stringize(&sexp::random_sexp(&mut rng, SEXP_RNG_HORIZON)));
     let mut deep_tree = random_tree.clone();
 
     let mut path_map = HashMap::new();
@@ -464,6 +486,7 @@ fn test_check_tricky_arg_path_random() {
         )
         .unwrap();
         let disassembled = disassemble(&mut allocator, converted);
+        eprintln!("run {} want {} have {}", program, disassembled, res);
         assert_eq!(disassembled, res);
     }
 }
