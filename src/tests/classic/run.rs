@@ -440,8 +440,12 @@ fn test_check_tricky_arg_path_random() {
                 )),
                 Rc::new(sexp::SExp::Cons(
                     random_tree.loc(),
-                    Rc::new(sexp::SExp::Atom(random_tree.loc(), vec![b'@'])),
-                    Rc::new(sexp::SExp::Nil(random_tree.loc())),
+                    Rc::new(sexp::SExp::Cons(
+                        random_tree.loc(),
+                        Rc::new(sexp::SExp::Atom(random_tree.loc(), vec![b'q'])),
+                        deep_tree.clone()
+                    )),
+                    Rc::new(sexp::SExp::Nil(random_tree.loc()))
                 )),
             )),
         );
@@ -449,7 +453,7 @@ fn test_check_tricky_arg_path_random() {
         let res = do_basic_run(&vec![
             "run".to_string(),
             program.to_string(),
-            deep_tree.to_string(),
+            "()".to_string(),
         ])
         .trim()
         .to_string();
