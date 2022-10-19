@@ -109,14 +109,12 @@ pub fn bigint_from_bytes(b: &Bytes, option: Option<TConvertOption>) -> Number {
 
 // This is the version i ported from the typescript code re: chiaminejp.  It is
 // still used in some contexts, such as node_paths.
-pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<Bytes, String> {
-    let v = v_.clone();
-
-    if v == bi_zero() {
+pub fn bigint_to_bytes(v: &Number, option: Option<TConvertOption>) -> Result<Bytes, String> {
+    if *v == bi_zero() {
         return Ok(Bytes::new(None));
     }
 
-    let negative = v < bi_zero();
+    let negative = *v < bi_zero();
 
     let signed = option.map(|o| o.signed).unwrap_or_else(|| false);
     if !signed && negative {
@@ -153,8 +151,8 @@ pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<By
     }
 
     let extra_byte = if signed
-        && v > bi_zero()
-        && ((v >> ((byte_count - 1) * 8)) & 0x80_u32.to_bigint().unwrap()) > bi_zero()
+        && *v > bi_zero()
+        && ((v.clone() >> ((byte_count - 1) * 8)) & 0x80_u32.to_bigint().unwrap()) > bi_zero()
     {
         1
     } else {
