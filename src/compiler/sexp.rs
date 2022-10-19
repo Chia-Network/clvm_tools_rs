@@ -15,7 +15,7 @@ use binascii::{bin2hex, hex2bin};
 use num_traits::{zero, Num};
 
 use crate::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType};
-use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes, TConvertOption};
+use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes_clvm, TConvertOption};
 use crate::compiler::prims::prims;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, u8_from_number, Number};
@@ -415,7 +415,7 @@ impl SExp {
                 b.encode_mut(v);
             }
             SExp::Integer(_, i) => {
-                let mut bi_bytes = bigint_to_bytes(i, Some(TConvertOption { signed: true }))
+                let mut bi_bytes = bigint_to_bytes_clvm(i)
                     .unwrap()
                     .data()
                     .to_vec();
