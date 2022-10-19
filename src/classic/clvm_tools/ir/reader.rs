@@ -2,7 +2,7 @@ use std::mem::swap;
 use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
-use crate::classic::clvm::casts::{bigint_to_bytes_clvm};
+use crate::classic::clvm::casts::bigint_to_bytes_clvm;
 use crate::classic::clvm_tools::ir::r#type::IRRepr;
 use crate::util::Number;
 

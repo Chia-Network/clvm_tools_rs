@@ -415,10 +415,7 @@ impl SExp {
                 b.encode_mut(v);
             }
             SExp::Integer(_, i) => {
-                let mut bi_bytes = bigint_to_bytes_clvm(i)
-                    .unwrap()
-                    .data()
-                    .to_vec();
+                let mut bi_bytes = bigint_to_bytes_clvm(i).unwrap().data().to_vec();
 
                 v.append(&mut bi_bytes);
             }
