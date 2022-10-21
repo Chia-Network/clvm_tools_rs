@@ -71,7 +71,7 @@ impl NodePath {
         match index {
             Some(index) => {
                 if index < bi_zero() {
-                    let bytes_repr = bigint_to_bytes_clvm(&index).unwrap();
+                    let bytes_repr = bigint_to_bytes_clvm(&index);
                     let unsigned = bigint_from_bytes(&bytes_repr, None);
                     NodePath { index: unsigned }
                 } else {
@@ -83,7 +83,7 @@ impl NodePath {
     }
 
     pub fn as_path(&self) -> Bytes {
-        bigint_to_bytes_unsigned(&self.index).unwrap()
+        bigint_to_bytes_unsigned(&self.index)
     }
 
     pub fn add(&self, other_node: NodePath) -> Self {

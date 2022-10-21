@@ -108,16 +108,16 @@ pub fn bigint_from_bytes(b: &Bytes, option: Option<TConvertOption>) -> Number {
 
 // Convert to bytes with no leading zeros added.  This allows numbers to appear
 // negative in the result stream but are treated as positive (for node paths).
-pub fn bigint_to_bytes_unsigned(v: &Number) -> Result<Bytes, String> {
+pub fn bigint_to_bytes_unsigned(v: &Number) -> Bytes {
     if *v == bi_zero() {
-        return Ok(Bytes::new(None));
+        return Bytes::new(None);
     }
 
     // This is only for positive numbers.
     assert!(*v > bi_zero());
 
     let (_, result) = v.to_bytes_be();
-    Ok(Bytes::new(Some(BytesFromType::Raw(result))))
+    Bytes::new(Some(BytesFromType::Raw(result)))
 }
 
 // Pulled in code from clvm_rs to replace this function, re: PR comments.
@@ -126,7 +126,7 @@ pub fn bigint_to_bytes_unsigned(v: &Number) -> Result<Bytes, String> {
 // from the typescript.
 //
 // The unsigned option is easier, as used in as_path.
-pub fn bigint_to_bytes_clvm(v: &Number) -> Result<Bytes, String> {
+pub fn bigint_to_bytes_clvm(v: &Number) -> Bytes {
     let bytes: Vec<u8> = v.to_signed_bytes_be();
     let mut slice = bytes.as_slice();
 
@@ -138,7 +138,7 @@ pub fn bigint_to_bytes_clvm(v: &Number) -> Result<Bytes, String> {
         slice = &slice[1..];
     }
 
-    Ok(Bytes::new(Some(BytesFromType::Raw(slice.to_vec()))))
+    Bytes::new(Some(BytesFromType::Raw(slice.to_vec())))
 }
 
 // /**

@@ -146,7 +146,7 @@ pub fn interpret_atom_value(chars: &[u8]) -> IRRepr {
         match String::from_utf8(chars.to_vec())
             .ok()
             .and_then(|s| s.parse::<Number>().ok())
-            .and_then(|n| bigint_to_bytes_clvm(&n).ok())
+            .map(|n| bigint_to_bytes_clvm(&n))
         {
             Some(n) => IRRepr::Int(n, true),
             None => {

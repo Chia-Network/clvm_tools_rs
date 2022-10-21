@@ -169,17 +169,11 @@ fn test_random_int_just_the_conversion_functions_and_no_other_things_from_the_st
     for _ in 1..=200 {
         let number_spec: RandomClvmNumber = rng.gen();
 
-        let to_bytes_clvm = bigint_to_bytes_clvm(&number_spec.intended_value)
-            .unwrap()
-            .raw();
+        let to_bytes_clvm = bigint_to_bytes_clvm(&number_spec.intended_value).raw();
         let to_bytes_unsigned = if number_spec.intended_value < bi_zero() {
             None
         } else {
-            Some(
-                bigint_to_bytes_unsigned(&number_spec.intended_value)
-                    .unwrap()
-                    .raw(),
-            )
+            Some(bigint_to_bytes_unsigned(&number_spec.intended_value).raw())
         };
 
         if number_spec.intended_value == bi_zero() {
