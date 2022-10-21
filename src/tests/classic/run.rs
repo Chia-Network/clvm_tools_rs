@@ -300,12 +300,12 @@ fn test_divmod() {
 }
 
 #[cfg(test)]
-struct RandomClvmNumber {
-    intended_value: Number,
+pub struct RandomClvmNumber {
+    pub intended_value: Number,
 }
 
 #[cfg(test)]
-fn random_clvm_number<R: Rng + ?Sized>(rng: &mut R) -> RandomClvmNumber {
+pub fn random_clvm_number<R: Rng + ?Sized>(rng: &mut R) -> RandomClvmNumber {
     // Make a number by creating some random atom bytes.
     // Set high bit randomly.
     let natoms = rng.gen_range(0..=NUM_GEN_ATOMS);
