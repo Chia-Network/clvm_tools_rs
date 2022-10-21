@@ -1,16 +1,28 @@
-use std::borrow::Borrow;
-use std::rc::Rc;
+#[cfg(test)]
+use rand::prelude::*;
+#[cfg(test)]
+use rand::Rng;
+#[cfg(test)]
+use rand_chacha::ChaChaRng;
 
 use num_bigint::ToBigInt;
 
+use std::borrow::Borrow;
+use std::rc::Rc;
+
 use clvm_rs::allocator::Allocator;
 
+use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
+use crate::classic::clvm::casts::{bigint_to_bytes_clvm, bigint_to_bytes_unsigned};
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 
 use crate::compiler::clvm::parse_and_run;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::tests::classic::run::RandomClvmNumber;
+
+use crate::util::Number;
 
 fn test_compiler_clvm(to_run: &String, args: &String) -> Result<Rc<SExp>, RunFailure> {
     let mut allocator = Allocator::new();
@@ -137,4 +149,67 @@ fn test_clvm_4() {
     let want = parse_sexp(loc, &"(30000 . 3392)".to_string()).unwrap();
 
     assert!(result.equal_to(want[0].borrow()));
+}
+
+#[cfg(test)]
+fn does_number_need_extension_byte(n: Number) -> bool {
+    let mut iv = n.clone();
+    let eight_ones = 255_u32.to_bigint().unwrap();
+    while iv > eight_ones {
+        iv /= eight_ones.clone() + bi_one();
+    }
+    iv > 127_u32.to_bigint().unwrap()
+}
+
+// This seems like a reasonable way to unit test just the conversion functions
+// in a broad way i suppose.
+#[test]
+fn test_random_int_just_the_conversion_functions_and_no_other_things_from_the_stack_1() {
+    let mut rng = ChaChaRng::from_entropy();
+    for _ in 1..=200 {
+        let number_spec: RandomClvmNumber = rng.gen();
+
+        let to_bytes_clvm = bigint_to_bytes_clvm(&number_spec.intended_value).raw();
+        let to_bytes_unsigned = if number_spec.intended_value < bi_zero() {
+            None
+        } else {
+            Some(bigint_to_bytes_unsigned(&number_spec.intended_value).raw())
+        };
+
+        if number_spec.intended_value == bi_zero() {
+            assert!(to_bytes_clvm.is_empty());
+            if let Some(usbi) = &to_bytes_unsigned {
+                assert!(usbi.is_empty());
+            }
+            continue;
+        }
+
+        // Determine whether an extension byte would be needed.
+        let need_ext_byte = does_number_need_extension_byte(number_spec.intended_value.clone());
+        if need_ext_byte {
+            assert_eq!(to_bytes_clvm[0], 0);
+            if let Some(usbi) = &to_bytes_unsigned {
+                assert_eq!(usbi[0] & 0x80, 0x80);
+            }
+        }
+
+        // Check clvm repr
+        let one_byte_size = 256_u32.to_bigint().unwrap();
+        let mut check_value = number_spec.intended_value.clone();
+        for b in to_bytes_clvm.iter().rev() {
+            let isolated_byte = check_value.clone() & (one_byte_size.clone() - bi_one());
+            check_value >>= 8;
+            assert_eq!(isolated_byte, b.to_bigint().unwrap());
+        }
+
+        // Check unsigned repr
+        check_value = number_spec.intended_value.clone();
+        if let Some(usbi) = &to_bytes_unsigned {
+            for b in usbi.iter().rev() {
+                let isolated_byte = check_value.clone() & (one_byte_size.clone() - bi_one());
+                check_value >>= 8;
+                assert_eq!(isolated_byte, b.to_bigint().unwrap());
+            }
+        }
+    }
 }
