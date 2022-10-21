@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::{bi_zero, bi_one};
+use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm::casts::{bigint_to_bytes_clvm, bigint_to_bytes_unsigned};
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 
@@ -169,14 +169,18 @@ fn test_random_int_just_the_conversion_functions_and_no_other_things_from_the_st
     for _ in 1..=200 {
         let number_spec: RandomClvmNumber = rng.gen();
 
-        let to_bytes_clvm =
-            bigint_to_bytes_clvm(&number_spec.intended_value).unwrap().raw();
-        let to_bytes_unsigned =
-            if number_spec.intended_value < bi_zero() {
-                None
-            } else {
-                Some(bigint_to_bytes_unsigned(&number_spec.intended_value).unwrap().raw())
-            };
+        let to_bytes_clvm = bigint_to_bytes_clvm(&number_spec.intended_value)
+            .unwrap()
+            .raw();
+        let to_bytes_unsigned = if number_spec.intended_value < bi_zero() {
+            None
+        } else {
+            Some(
+                bigint_to_bytes_unsigned(&number_spec.intended_value)
+                    .unwrap()
+                    .raw(),
+            )
+        };
 
         if number_spec.intended_value == bi_zero() {
             assert!(to_bytes_clvm.is_empty());
