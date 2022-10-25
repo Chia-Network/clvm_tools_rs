@@ -1,9 +1,11 @@
 {
   "name": "clvm_tools_rs_mock_test",
+  "scripts": {
+    "build": "webpack"
+  },
   "dependencies": {
     "binascii": "^0.0.2",
     "browserify": "^17.0.0",
-    "jest": "^28.0.3",
     "rollup": "^2.77.2",
     "webpack": "^5.72.0",
     "webpack-cli": "^4.10.0"

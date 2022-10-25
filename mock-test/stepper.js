@@ -1,11 +1,10 @@
-import * as clvm_tools_rs from './build/clvm_tools_rs.js';
 import {hexlify, unhexlify} from 'binascii';
 
 export function bytestring(s) {
     return unhexlify(s);
 }
 
-export function run_program(program, args, symbols, overrides) {
+export function run_program(clvm_tools_rs, program, args, symbols, overrides) {
     let runner = clvm_tools_rs.create_clvm_runner(program, args, symbols, overrides);
     if (runner.error) {
         console.log(runner.error);

@@ -1,0 +1,41 @@
+name: npm publish
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    tags:
+        - '**'
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  build_npm:
+    name: Npm
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+
+    steps:
+    - name: Run wasm tests
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      run: |
+        rustup target add wasm32-unknown-unknown
+        cargo install wasm-bindgen-cli --version 0.2.80
+        cd mock-test && npm install && make && ../resources/tests/linux-install-node.sh ./build/runmock.js
+
+    - name: Test for secrets access
+      id: check_secrets
+      shell: bash
+      run: |
+        unset HAS_SECRET
+        if [ -n "$SECRET" ]; then HAS_SECRET='true' ; fi
+        echo ::set-output name=HAS_SECRET::${HAS_SECRET}
+      env:
+        SECRET: "${{ secrets.test_pypi_password }}"
+
+    - name: Publish wasm
+      if: steps.check_secrets.HAS_SECRET
+      run: cd pkg && npm publish --access public
