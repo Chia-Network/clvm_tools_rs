@@ -91,17 +91,15 @@ impl Srcloc {
         match (self.until.as_ref(), other.until.as_ref()) {
             (None, None) => self.line == other.line && self.col == other.col,
             (None, Some(_)) => other.overlap(self),
-            (Some(u), None) => {
-                if self.line < other.line && u.line > other.line {
+            (Some(self_until), None) => {
+                if self.line < other.line && self_until.line > other.line {
                     return true;
                 }
-                if self.line == other.line
-                    && self.col <= other.col
-                    && self.col + self.len() >= other.col
-                {
+                let len = self.len().unwrap_or(1);
+                if self.line == other.line && self.col <= other.col && self.col + len >= other.col {
                     return true;
                 }
-                if u.line == other.line && self.col + self.len() >= other.col {
+                if self_until.line == other.line && self.col + len >= other.col {
                     return true;
                 }
 
@@ -121,17 +119,18 @@ impl Srcloc {
         false
     }
 
-    pub fn len(&self) -> usize {
-        if let Some(u) = &self.until {
-            if u.line != self.line {
-                1 // TODO: Can't tell length ...
-                  // We can fix this by recording the character
-                  // number in the file.
+    // Length of the string representation for the srcloc's range if it's on
+    // the same line.  Some thought is needed to know what we want for a range
+    // over lines.
+    pub fn len(&self) -> Option<usize> {
+        if let Some(self_until) = &self.until {
+            if self_until.line != self.line {
+                None
             } else {
-                u.col - self.col
+                Some(self_until.col - self.col)
             }
         } else {
-            1
+            Some(1)
         }
     }
 
