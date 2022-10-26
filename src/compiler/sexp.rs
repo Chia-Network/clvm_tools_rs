@@ -675,15 +675,13 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
 }
 
 fn parse_sexp_inner<I>(
-    start_: Srcloc,
-    p_: SExpParseState,
+    mut start: Srcloc,
+    mut parse_state: SExpParseState,
     s: I,
 ) -> Result<Vec<Rc<SExp>>, (Srcloc, String)>
 where
     I: Iterator<Item = u8>,
 {
-    let mut start = start_;
-    let mut parse_state = p_;
     let mut res = Vec::new();
 
     for this_char in s {
