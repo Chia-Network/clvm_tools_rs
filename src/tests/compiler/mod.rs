@@ -8,6 +8,7 @@ mod clvm;
 mod compiler;
 mod evaluate;
 mod repl;
+mod srcloc;
 mod usecheck;
 
 #[test]
