@@ -31,7 +31,8 @@ fn run_string_maybe_opt(
     opts = opts
         .set_frontend_opt(fe_opt)
         .set_search_paths(&vec!["resources/tests".to_string()]);
-    let sexp_args = parse_sexp(srcloc.clone(), &args).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
+    let sexp_args =
+        parse_sexp(srcloc.clone(), args.bytes()).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
 
     compile_file(
         &mut allocator,

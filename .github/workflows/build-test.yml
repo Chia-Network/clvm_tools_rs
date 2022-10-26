@@ -158,7 +158,8 @@ jobs:
       run: |
         . ./activate
         cd clvm
-        python -m py.test tests
+        pip install pytest pytest-asyncio
+        pytest tests
 
     - name: Run tests
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')

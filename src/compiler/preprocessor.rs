@@ -16,7 +16,7 @@ pub fn process_include(
 
     let start_of_file = Srcloc::start(name);
 
-    parse_sexp(start_of_file.clone(), &content)
+    parse_sexp(start_of_file.clone(), content.bytes())
         .map_err(|e| CompileErr(e.0.clone(), e.1))
         .and_then(|x| match x[0].proper_list() {
             None => Err(CompileErr(

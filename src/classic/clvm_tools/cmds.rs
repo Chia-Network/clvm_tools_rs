@@ -434,7 +434,7 @@ pub fn cldb(args: &[String]) {
                 }
             }
         }
-        _ => match parse_sexp(Srcloc::start("*arg*"), &parsed_args_result) {
+        _ => match parse_sexp(Srcloc::start("*arg*"), parsed_args_result.bytes()) {
             Ok(r) => {
                 if !r.is_empty() {
                     args = r[0].clone();
