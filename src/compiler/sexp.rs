@@ -683,29 +683,29 @@ where
     I: Iterator<Item = u8>,
 {
     let mut start = start_;
-    let mut p = p_;
+    let mut parse_state = p_;
     let mut res = Vec::new();
 
     for this_char in s {
         let next_location = start.clone().advance(this_char);
 
-        match parse_sexp_step(start.clone(), p.borrow(), this_char) {
+        match parse_sexp_step(start.clone(), parse_state.borrow(), this_char) {
             SExpParseResult::Error(l, e) => {
                 return Err((l, e));
             }
-            SExpParseResult::Resume(np) => {
+            SExpParseResult::Resume(new_parse_state) => {
                 start = next_location;
-                p = np;
+                parse_state = new_parse_state;
             }
-            SExpParseResult::Emit(o, np) => {
+            SExpParseResult::Emit(o, new_parse_state) => {
                 start = next_location;
-                p = np;
+                parse_state = new_parse_state;
                 res.push(o);
             }
         }
     }
 
-    match p {
+    match parse_state {
         SExpParseState::Empty => Ok(res),
         SExpParseState::Bareword(l, t) => Ok(vec![Rc::new(make_atom(l, t))]),
         SExpParseState::CommentText(_, _) => Ok(res),
