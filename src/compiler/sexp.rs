@@ -587,7 +587,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                     list_content.to_vec(),
                 )),
                 (')', SExpParseState::Empty) => emit(
-                    Rc::new(enlist(pl.clone(), list_content.to_vec())),
+                    Rc::new(enlist(pl.ext(&loc), list_content.to_vec())),
                     SExpParseState::Empty,
                 ),
                 (')', SExpParseState::Bareword(l, t)) => {
@@ -595,7 +595,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                     let mut updated_list = list_content.to_vec();
                     updated_list.push(Rc::new(parsed_atom));
                     emit(
-                        Rc::new(enlist(pl.clone(), updated_list)),
+                        Rc::new(enlist(pl.ext(&loc), updated_list)),
                         SExpParseState::Empty,
                     )
                 }
@@ -625,7 +625,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                     emit(list_content[0].clone(), SExpParseState::Empty)
                 } else {
                     emit(
-                        Rc::new(enlist(pl.clone(), list_content.to_vec())),
+                        Rc::new(enlist(pl.ext(&loc), list_content.to_vec())),
                         SExpParseState::Empty,
                     )
                 }
@@ -640,7 +640,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                             emit(Rc::new(new_tail), SExpParseState::Empty)
                         } else {
                             list_copy.push(Rc::new(new_tail));
-                            let new_list = enlist(pl.ext(l), list_copy);
+                            let new_list = enlist(pl.ext(&loc), list_copy);
                             emit(Rc::new(new_list), SExpParseState::Empty)
                         }
                     }
@@ -674,68 +674,54 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
     }
 }
 
-fn parse_sexp_inner(
+fn parse_sexp_inner<I>(
     start_: Srcloc,
     p_: SExpParseState,
-    n_: usize,
-    s: &[u8],
-) -> Result<Vec<Rc<SExp>>, (Srcloc, String)> {
+    s: I,
+) -> Result<Vec<Rc<SExp>>, (Srcloc, String)>
+where
+    I: Iterator<Item = u8>,
+{
     let mut start = start_;
-    let mut parse_state = p_;
-    let mut char_index = n_;
+    let mut p = p_;
     let mut res = Vec::new();
 
-    loop {
-        if char_index >= s.len() {
-            match parse_state {
-                SExpParseState::Empty => {
-                    return Ok(res);
-                }
-                SExpParseState::Bareword(l, t) => {
-                    return Ok(vec![Rc::new(make_atom(l, t))]);
-                }
-                SExpParseState::CommentText(_, _) => {
-                    return Ok(res);
-                }
-                SExpParseState::QuotedText(l, _, _) => {
-                    return Err((l, "unterminated quoted string".to_string()));
-                }
-                SExpParseState::QuotedEscaped(l, _, _) => {
-                    return Err((l, "unterminated quoted string with escape".to_string()));
-                }
-                SExpParseState::OpenList(l) => {
-                    return Err((l, "Unterminated list (empty)".to_string()));
-                }
-                SExpParseState::ParsingList(l, _, _) => {
-                    return Err((l, "Unterminated mid list".to_string()));
-                }
-                SExpParseState::TermList(l, _, _) => {
-                    return Err((l, "Unterminated tail list".to_string()));
-                }
-            }
-        } else {
-            let this_char = s[char_index];
-            let next_location = start.clone().advance(this_char);
+    for this_char in s {
+        let next_location = start.clone().advance(this_char);
 
-            match parse_sexp_step(start.clone(), parse_state.borrow(), this_char) {
-                SExpParseResult::Error(l, e) => {
-                    return Err((l, e));
-                }
-                SExpParseResult::Resume(np) => {
-                    start = next_location;
-                    parse_state = np;
-                    char_index += 1;
-                }
-                SExpParseResult::Emit(o, np) => {
-                    parse_state = np;
-                    char_index += 1;
-                    res.push(o);
-                }
+        match parse_sexp_step(start.clone(), p.borrow(), this_char) {
+            SExpParseResult::Error(l, e) => {
+                return Err((l, e));
+            }
+            SExpParseResult::Resume(np) => {
+                start = next_location;
+                p = np;
+            }
+            SExpParseResult::Emit(o, np) => {
+                start = next_location;
+                p = np;
+                res.push(o);
             }
         }
     }
+
+    match p {
+        SExpParseState::Empty => Ok(res),
+        SExpParseState::Bareword(l, t) => Ok(vec![Rc::new(make_atom(l, t))]),
+        SExpParseState::CommentText(_, _) => Ok(res),
+        SExpParseState::QuotedText(l, _, _) => Err((l, "unterminated quoted string".to_string())),
+        SExpParseState::QuotedEscaped(l, _, _) => {
+            Err((l, "unterminated quoted string with escape".to_string()))
+        }
+        SExpParseState::OpenList(l) => Err((l, "Unterminated list (empty)".to_string())),
+        SExpParseState::ParsingList(l, _, _) => Err((l, "Unterminated mid list".to_string())),
+        SExpParseState::TermList(l, _, _) => Err((l, "Unterminated tail list".to_string())),
+    }
 }
 
-pub fn parse_sexp(start: Srcloc, input: &str) -> Result<Vec<Rc<SExp>>, (Srcloc, String)> {
-    parse_sexp_inner(start, SExpParseState::Empty, 0, input.as_bytes())
+pub fn parse_sexp<I>(start: Srcloc, input: I) -> Result<Vec<Rc<SExp>>, (Srcloc, String)>
+where
+    I: Iterator<Item = u8>,
+{
+    parse_sexp_inner(start, SExpParseState::Empty, input)
 }
