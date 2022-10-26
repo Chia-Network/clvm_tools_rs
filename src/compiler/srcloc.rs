@@ -1,12 +1,28 @@
+use std::borrow::Borrow;
 use std::fmt::Display;
 use std::rc::Rc;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Until {
+    pub line: usize,
+    pub col: usize,
+}
+
+impl Until {
+    pub fn from_pair(p: (usize, usize)) -> Self {
+        Until {
+            line: p.0,
+            col: p.1,
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Srcloc {
     pub file: Rc<String>,
     pub line: usize,
     pub col: usize,
-    pub until: Option<(usize, usize)>,
+    pub until: Option<Until>,
 }
 
 // let srcLocationToJson sl =
@@ -29,19 +45,102 @@ pub struct Srcloc {
 
 impl Display for Srcloc {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        match self.until {
+        match &self.until {
             None => formatter.write_str(&format!("{}({}):{}", self.file, self.line, self.col)),
-            Some((l, c)) => formatter.write_str(&format!(
+            Some(u) => formatter.write_str(&format!(
                 "{}({}):{}-{}({}):{}",
-                self.file, self.line, self.col, self.file, l, c
+                self.file, self.line, self.col, self.file, u.line, u.col
             )),
         }
     }
 }
 
 impl Srcloc {
+    pub fn new(name: Rc<String>, line: usize, col: usize) -> Self {
+        Srcloc {
+            file: name,
+            line,
+            col,
+            until: None,
+        }
+    }
+
+    pub fn ending(&self) -> Srcloc {
+        if let Some(u) = &self.until {
+            return Srcloc {
+                file: self.file.clone(),
+                line: u.line,
+                col: u.col,
+                until: None,
+            };
+        }
+        self.clone()
+    }
+
+    pub fn overlap(&self, other: &Srcloc) -> bool {
+        let mf: &String = self.file.borrow();
+        let of: &String = other.file.borrow();
+        if mf != of {
+            return false;
+        }
+
+        if self.line == other.line && self.col == other.col {
+            return true;
+        }
+
+        match (self.until.as_ref(), other.until.as_ref()) {
+            (None, None) => self.line == other.line && self.col == other.col,
+            (None, Some(_)) => other.overlap(self),
+            (Some(u), None) => {
+                if self.line < other.line && u.line > other.line {
+                    return true;
+                }
+                if self.line == other.line
+                    && self.col <= other.col
+                    && self.col + self.len() >= other.col
+                {
+                    return true;
+                }
+                if u.line == other.line && self.col + self.len() >= other.col {
+                    return true;
+                }
+
+                false
+            }
+            (Some(u1), Some(u2)) => {
+                let l1 = Srcloc::new(self.file.clone(), self.line, self.col);
+                let l2 = Srcloc::new(self.file.clone(), u1.line, u1.col);
+                let l3 = Srcloc::new(self.file.clone(), other.line, other.col);
+                let l4 = Srcloc::new(self.file.clone(), u2.line, u2.col);
+                other.overlap(&l1) || other.overlap(&l2) || self.overlap(&l3) || self.overlap(&l4)
+            }
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        false
+    }
+
+    pub fn len(&self) -> usize {
+        if let Some(u) = &self.until {
+            if u.line != self.line {
+                1 // TODO: Can't tell length ...
+                  // We can fix this by recording the character
+                  // number in the file.
+            } else {
+                u.col - self.col
+            }
+        } else {
+            1
+        }
+    }
+
     pub fn ext(&self, other: &Srcloc) -> Srcloc {
-        combine_src_location(self, other)
+        if other.file == self.file {
+            combine_src_location(self, other)
+        } else {
+            self.clone()
+        }
     }
 
     pub fn advance(&self, ch: u8) -> Srcloc {
@@ -50,7 +149,7 @@ impl Srcloc {
                 file: self.file.clone(),
                 col: 1,
                 line: self.line + 1,
-                until: self.until,
+                until: self.until.clone(),
             },
             '\t' => {
                 let next_tab = (self.col + 8) & !7;
@@ -58,14 +157,14 @@ impl Srcloc {
                     file: self.file.clone(),
                     col: next_tab,
                     line: self.line,
-                    until: self.until,
+                    until: self.until.clone(),
                 }
             }
             _ => Srcloc {
                 file: self.file.clone(),
                 col: self.col + 1,
                 line: self.line,
-                until: self.until,
+                until: self.until.clone(),
             },
         }
     }
@@ -85,9 +184,9 @@ pub fn src_location_min(a: &Srcloc) -> (usize, usize) {
 }
 
 pub fn src_location_max(a: &Srcloc) -> (usize, usize) {
-    match a.until {
+    match &a.until {
         None => (a.line, a.col + 1),
-        Some((ll, cc)) => (ll, cc),
+        Some(u) => (u.line, u.col),
     }
 }
 
@@ -96,7 +195,7 @@ fn add_onto(x: &Srcloc, y: &Srcloc) -> Srcloc {
         file: x.file.clone(),
         line: x.line,
         col: x.col,
-        until: Some(src_location_max(y)),
+        until: Some(Until::from_pair(src_location_max(y))),
     }
 }
 
