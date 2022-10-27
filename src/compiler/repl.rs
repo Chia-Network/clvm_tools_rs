@@ -140,7 +140,7 @@ impl Repl {
 
         if self.depth < 0 {
             let loc = self.loc.clone();
-            let result = parse_sexp(loc, &input_taken)
+            let result = parse_sexp(loc, input_taken.bytes())
                 .map(|_v| {
                     panic!("too many parens but parsed anyway");
                 })
@@ -157,7 +157,7 @@ impl Repl {
 
         self.input_exp = "".to_string();
 
-        parse_sexp(self.loc.clone(), &input_taken)
+        parse_sexp(self.loc.clone(), input_taken.bytes())
             .map_err(|e| CompileErr(e.0.clone(), e.1))
             .and_then(|parsed_program| {
                 if parsed_program.is_empty() {

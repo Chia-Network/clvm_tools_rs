@@ -28,7 +28,7 @@ fn main() {
         if takename {
             name = arg.to_string();
         } else {
-            match parse_sexp(loc.clone(), arg)
+            match parse_sexp(loc.clone(), arg.bytes())
                 .map_err(|e| CompileErr(e.0.clone(), e.1))
                 .and_then(|parsed_program| parse_expr_sexp(parsed_program[0].clone()))
                 .and_then(|result| context.typesynth(&result))
@@ -48,7 +48,7 @@ fn main() {
 
     println!("starting context {}", context.to_sexp());
 
-    parse_sexp(loc, &args[args.len() - 1])
+    parse_sexp(loc, args[args.len() - 1].bytes())
         .map_err(|e| CompileErr(e.0.clone(), e.1))
         .and_then(|parsed_program| parse_expr_sexp(parsed_program[0].clone()))
         .and_then(|result| {

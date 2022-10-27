@@ -1,3 +1,5 @@
+use num_bigint::ToBigInt;
+
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -22,6 +24,51 @@ fn nft_opc() {
         .invoke(&mut allocator, &"(a (q 2 38 (c 2 (c 5 (c 23 (c 11 (c (a 47 95) ())))))) (c (q ((-21172 2 . 51) (62 . 4) -10 . 1) ((q . 2) (a (i 5 (q 2 42 (c 2 (c 13 (c (sha256 50 (sha256 60 52) (sha256 50 (sha256 50 (sha256 60 34) 9) (sha256 50 11 (sha256 60 ())))) ())))) (q . 11)) 1) 4 (c 56 (c (a 54 (c 2 (c 5 (c 39 (c (a 46 (c 2 (c (a (i -81 (q . -81) (q . 11)) 1) ()))) (c (sha256 60 79) (c (sha256 60 5) ()))))))) 55)) 367) ((a 62 (c 2 (c 5 (c 11 (c 23 (c 47 (c 47 (q () ())))))))) 11 50 (sha256 60 40) (sha256 50 (sha256 50 (sha256 60 34) 5) (sha256 50 (a 42 (c 2 (c 7 (c (sha256 60 60) ())))) (sha256 60 ())))) (a (i (l 5) (q 11 (q . 2) (a 46 (c 2 (c 9 ()))) (a 46 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) 2 (i 95 (q 2 (i (= 287 56) (q 2 (i (= (logand 1439) 60) (q 2 (i (not -65) (q 2 62 (c 2 (c 5 (c 11 (c 23 (c 47 (c -33 (c 415 (c 383 ()))))))))) (q 8)) 1) (q 4 -97 (a 62 (c 2 (c 5 (c 11 (c 23 (c 47 (c -33 (c -65 (c 383 ()))))))))))) 1) (q 2 (i (= 287 44) (q 2 (i (not 383) (q 4 (c 36 (c (concat 16 (a 46 (c 2 (c 415 ())))) ())) (a 62 (c 2 (c 5 (c 11 (c 23 (c 47 (c -33 (c -65 (c (a 11 (c 23 (c 47 (c 415 ())))) ())))))))))) (q 8)) 1) (q 2 (i (= 287 36) (q 2 (i (not (a (i (= (q . 34) (strlen 671)) (q 2 (i (= (substr 671 () (q . 2)) 16) (q 1 . 1) ()) 1) ()) 1)) (q 4 -97 (a 62 (c 2 (c 5 (c 11 (c 23 (c 47 (c -33 (c -65 (c 383 ())))))))))) (q 8)) 1) (q 4 -97 (a 62 (c 2 (c 5 (c 11 (c 23 (c 47 (c -33 (c -65 (c 383 ()))))))))))) 1)) 1)) 1) (q 2 58 (c 2 (c 5 (c 11 (c -65 (c (a (i 383 (q . 383) (q 2 11 (c 23 (c 47 (q ()))))) 1) ()))))))) 1) 1))".to_string())
         .unwrap();
     assert_eq!(result.rest(), "ff02ffff01ff02ff26ffff04ff02ffff04ff05ffff04ff17ffff04ff0bffff04ffff02ff2fff5f80ff80808080808080ffff04ffff01ffffff82ad4cff0233ffff3e04ff81f601ffffff0102ffff02ffff03ff05ffff01ff02ff2affff04ff02ffff04ff0dffff04ffff0bff32ffff0bff3cff3480ffff0bff32ffff0bff32ffff0bff3cff2280ff0980ffff0bff32ff0bffff0bff3cff8080808080ff8080808080ffff010b80ff0180ff04ffff04ff38ffff04ffff02ff36ffff04ff02ffff04ff05ffff04ff27ffff04ffff02ff2effff04ff02ffff04ffff02ffff03ff81afffff0181afffff010b80ff0180ff80808080ffff04ffff0bff3cff4f80ffff04ffff0bff3cff0580ff8080808080808080ff378080ff82016f80ffffff02ff3effff04ff02ffff04ff05ffff04ff0bffff04ff17ffff04ff2fffff04ff2fffff01ff80ff808080808080808080ff0bff32ffff0bff3cff2880ffff0bff32ffff0bff32ffff0bff3cff2280ff0580ffff0bff32ffff02ff2affff04ff02ffff04ff07ffff04ffff0bff3cff3c80ff8080808080ffff0bff3cff8080808080ffff02ffff03ffff07ff0580ffff01ff0bffff0102ffff02ff2effff04ff02ffff04ff09ff80808080ffff02ff2effff04ff02ffff04ff0dff8080808080ffff01ff0bffff0101ff058080ff0180ff02ffff03ff5fffff01ff02ffff03ffff09ff82011fff3880ffff01ff02ffff03ffff09ffff18ff82059f80ff3c80ffff01ff02ffff03ffff20ff81bf80ffff01ff02ff3effff04ff02ffff04ff05ffff04ff0bffff04ff17ffff04ff2fffff04ff81dfffff04ff82019fffff04ff82017fff80808080808080808080ffff01ff088080ff0180ffff01ff04ff819fffff02ff3effff04ff02ffff04ff05ffff04ff0bffff04ff17ffff04ff2fffff04ff81dfffff04ff81bfffff04ff82017fff808080808080808080808080ff0180ffff01ff02ffff03ffff09ff82011fff2c80ffff01ff02ffff03ffff20ff82017f80ffff01ff04ffff04ff24ffff04ffff0eff10ffff02ff2effff04ff02ffff04ff82019fff8080808080ff808080ffff02ff3effff04ff02ffff04ff05ffff04ff0bffff04ff17ffff04ff2fffff04ff81dfffff04ff81bfffff04ffff02ff0bffff04ff17ffff04ff2fffff04ff82019fff8080808080ff8080808080808080808080ffff01ff088080ff0180ffff01ff02ffff03ffff09ff82011fff2480ffff01ff02ffff03ffff20ffff02ffff03ffff09ffff0122ffff0dff82029f8080ffff01ff02ffff03ffff09ffff0cff82029fff80ffff010280ff1080ffff01ff0101ff8080ff0180ff8080ff018080ffff01ff04ff819fffff02ff3effff04ff02ffff04ff05ffff04ff0bffff04ff17ffff04ff2fffff04ff81dfffff04ff81bfffff04ff82017fff8080808080808080808080ffff01ff088080ff0180ffff01ff04ff819fffff02ff3effff04ff02ffff04ff05ffff04ff0bffff04ff17ffff04ff2fffff04ff81dfffff04ff81bfffff04ff82017fff808080808080808080808080ff018080ff018080ff0180ffff01ff02ff3affff04ff02ffff04ff05ffff04ff0bffff04ff81bfffff04ffff02ffff03ff82017fffff0182017fffff01ff02ff0bffff04ff17ffff04ff2fffff01ff808080808080ff0180ff8080808080808080ff0180ff018080");
+}
+
+#[test]
+fn large_odd_sized_neg_opc() {
+    let mut allocator = Allocator::new();
+    let result = OpcConversion {}
+        .invoke(&mut allocator, &"(-9999999999999999999999)".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "ff8afde1e61f36454dc0000180");
+}
+
+#[test]
+fn large_odd_sized_neg_opd() {
+    let mut allocator = Allocator::new();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &"ff8afde1e61f36454dc0000180".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "(0xfde1e61f36454dc00001)");
+}
+
+#[test]
+fn large_odd_sized_pos_opc() {
+    let mut allocator = Allocator::new();
+    let result = OpcConversion {}
+        .invoke(&mut allocator, &"(281474976710655)".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "ff8700ffffffffffff80");
+}
+
+#[test]
+fn small_test_opc() {
+    let mut allocator = Allocator::new();
+    let result = OpcConversion {}
+        .invoke(&mut allocator, &"(191)".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "ff8200bf80");
+}
+
+#[test]
+fn large_odd_sized_pos_opd() {
+    let mut allocator = Allocator::new();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &"ff8700ffffffffffff80".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "(0x00ffffffffffff)");
 }
 
 #[test]
@@ -475,4 +522,37 @@ fn pool_member_innerpuz() {
     );
     let result = s.get_value().decode().trim().to_string();
     assert_eq!(result, desired);
+}
+
+// Tests a fancy identity function using an un-destructured parameter at the
+// module level.
+#[test]
+fn test_non_consed_args() {
+    let program =
+        "(mod params (defun ident (arg) (f (list arg))) (ident (ident params)))".to_string();
+    let mut s = Stream::new(None);
+    launch_tool(
+        &mut s,
+        &vec!["run".to_string(), program],
+        &"run".to_string(),
+        2,
+    );
+    let result = s.get_value().decode().trim().to_string();
+    let mut t = Stream::new(None);
+    launch_tool(
+        &mut t,
+        &vec!["brun".to_string(), result, "99".to_string()],
+        &"brun".to_string(),
+        0,
+    );
+    let run_result = t.get_value().decode().trim().to_string();
+    assert_eq!(run_result, "99");
+}
+
+#[test]
+fn test_check_simple_arg_path_0() {
+    let np = NodePath::new(Some(2_u32.to_bigint().unwrap()));
+    let up = NodePath::new(Some(2_u32.to_bigint().unwrap()));
+    let cp = np.add(up);
+    assert_eq!(cp.as_path().raw(), &[4]);
 }

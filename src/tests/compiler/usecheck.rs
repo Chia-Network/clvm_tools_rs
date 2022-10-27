@@ -12,7 +12,7 @@ use crate::compiler::usecheck::check_parameters_used_compileform;
 
 fn check_argument_use(input_program: String) -> Vec<String> {
     let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
-    let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), &input_program)
+    let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), input_program.bytes())
         .map_err(|e| CompileErr(e.0, e.1))
         .expect("should parse");
     let g = frontend(opts.clone(), pre_forms).expect("should pass frontend");

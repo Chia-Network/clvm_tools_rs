@@ -62,8 +62,8 @@ pub fn check_expression_against_type_with_context(
 ) {
     let eloc = Srcloc::start(&"*expr*".to_string());
     let tloc = Srcloc::start(&"*type*".to_string());
-    let esexp = parse_sexp(eloc, &e.to_string()).unwrap();
-    let tsexp = parse_sexp(tloc, &t.to_string()).unwrap();
+    let esexp = parse_sexp(eloc, e.bytes()).unwrap();
+    let tsexp = parse_sexp(tloc, t.bytes()).unwrap();
     let eid = parse_expr_sexp(esexp[0].clone()).unwrap();
     let expected: Polytype = parse_type_sexp(tsexp[0].clone()).unwrap();
     let (polytype, context) = incontext.typesynth(&eid).expect("should type check");
@@ -86,7 +86,7 @@ fn check_expression_against_type(e: &str, t: &str, flatten: bool) {
 
 fn check_expression_type_fails(e: &str) {
     let eloc = Srcloc::start(&"*expr*".to_string());
-    let esexp = parse_sexp(eloc, &e.to_string()).unwrap();
+    let esexp = parse_sexp(eloc, e.bytes()).unwrap();
     let eid = parse_expr_sexp(esexp[0].clone()).unwrap();
     let res = standard_type_context().typesynth(&eid);
     assert_eq!(res.is_err(), true);

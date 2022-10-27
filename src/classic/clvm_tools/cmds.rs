@@ -442,7 +442,7 @@ pub fn cldb(args: &[String]) {
                 }
             }
         }
-        _ => match parse_sexp(Srcloc::start("*arg*"), &parsed_args_result) {
+        _ => match parse_sexp(Srcloc::start("*arg*"), parsed_args_result.bytes()) {
             Ok(r) => {
                 if !r.is_empty() {
                     args = r[0].clone();
@@ -900,7 +900,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
         if typecheck {
             let loc = Srcloc::start(&use_filename);
-            if let Err(e) = parse_sexp(loc, &input_program)
+            if let Err(e) = parse_sexp(loc, input_program.bytes())
                 .map_err(|e| CompileErr(e.0.clone(), e.1))
                 .and_then(|pre_forms| {
                     let context = standard_type_context();

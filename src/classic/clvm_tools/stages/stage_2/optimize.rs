@@ -334,24 +334,23 @@ pub fn var_change_optimizer_cons_eval(
                         print!("XXX does not seems_constant\n");
                     }
 
-                    proper_list(
+                    Ok(proper_list(
                         allocator,
                         new_eval_sexp_args,
-                        true).map(|new_operands| {
-                            let opt_operands =
-                                map_m(
-                                    allocator,
-                                    &mut new_operands.iter(),
-                                    &|allocator, item| {
-                                        optimize_sexp(allocator, *item, eval_f.clone())
-                                    }
-                                )?;
-
-                            let non_constant_count = fold_m(
+                        true
+                    ).map(|new_operands| {
+                        map_m(
+                            allocator,
+                            &mut new_operands.iter(),
+                            &|allocator, item| {
+                                optimize_sexp(allocator, *item, eval_f.clone())
+                            }
+                        ).and_then(|opt_operands| m! {
+                            non_constant_count <- fold_m(
                                 allocator,
                                 &|allocator, acc, val| {
                                     if DIAG_OPTIMIZATIONS {
-                                        println!(
+                                        print!(
                                             "XXX opt_operands {} {}\n",
                                             acc,
                                             disassemble(allocator, val)
@@ -379,21 +378,22 @@ pub fn var_change_optimizer_cons_eval(
                                 },
                                 0,
                                 &mut opt_operands.iter().copied()
-                            )?;
+                            );
 
-                            if DIAG_OPTIMIZATIONS {
-                                println!(
+                            let _ = if DIAG_OPTIMIZATIONS {
+                                print!(
                                     "XXX non_constant_count {}\n",
                                     non_constant_count
                                 );
-                            }
+                            };
 
                             if non_constant_count < 1 {
                                 enlist(allocator, &opt_operands)
                             } else {
                                 Ok(r)
                             }
-                        }).unwrap_or_else(|| Ok(r))
+                        }).unwrap_or(r)
+                    }).unwrap_or(r))
                 }
             }
         }

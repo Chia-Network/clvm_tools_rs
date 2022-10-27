@@ -137,8 +137,8 @@ pub fn compile_file(
     content: &str,
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
-    let pre_forms =
-        parse_sexp(Srcloc::start(&opts.filename()), content).map_err(|e| CompileErr(e.0, e.1))?;
+    let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), content.bytes())
+        .map_err(|e| CompileErr(e.0, e.1))?;
 
     compile_pre_forms(allocator, runner, opts, pre_forms, symbol_table)
 }

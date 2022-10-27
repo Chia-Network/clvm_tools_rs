@@ -62,7 +62,7 @@ jobs:
           bash -exc '\
             curl -L https://sh.rustup.rs > rustup-init.sh && \
             sh rustup-init.sh -y && \
-            yum -y install openssl-devel && \
+            yum -y install libc6 openssl-devel && \
             source $HOME/.cargo/env && \
             rustup target add x86_64-unknown-linux-musl && \
             rm -rf venv && \
@@ -77,10 +77,13 @@ jobs:
             /opt/python/cp38-cp38/bin/python -m venv venv && \
             if [ ! -f "activate" ]; then ln -s venv/bin/activate; fi && \
             . ./activate && \
-            pip install --upgrade pip && \
-            pip install maturin==0.12.20 && \
-            CC=gcc maturin build --no-sdist --release --strip --manylinux 2010 \
+            pip install --upgrade pip
           '
+        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v0.13.1 build --release --strip --manylinux 2010
+        # Refresh in case any ownerships changed.
+        mv target target.docker && cp -r target.docker target
+        # Ensure an empty .cargo-lock file exists.
+        touch target/release/.cargo-lock
 
     - name: Build alpine wheel via docker
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
@@ -155,7 +158,8 @@ jobs:
       run: |
         . ./activate
         cd clvm
-        python -m py.test tests
+        pip install pytest pytest-asyncio
+        pytest tests
 
     - name: Run tests
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')

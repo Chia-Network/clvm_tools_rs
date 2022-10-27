@@ -2,7 +2,7 @@ use std::mem::swap;
 use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
-use crate::classic::clvm::casts::{bigint_to_bytes, TConvertOption};
+use crate::classic::clvm::casts::bigint_to_bytes_clvm;
 use crate::classic::clvm_tools::ir::r#type::IRRepr;
 use crate::util::Number;
 
@@ -146,7 +146,7 @@ pub fn interpret_atom_value(chars: &[u8]) -> IRRepr {
         match String::from_utf8(chars.to_vec())
             .ok()
             .and_then(|s| s.parse::<Number>().ok())
-            .and_then(|n| bigint_to_bytes(&n, Some(TConvertOption { signed: true })).ok())
+            .map(|n| bigint_to_bytes_clvm(&n))
         {
             Some(n) => IRRepr::Int(n, true),
             None => {
