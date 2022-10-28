@@ -98,13 +98,18 @@ impl Srcloc {
                 // The case where we have len means we have only one line in the self srcloc.
                 // In that case, we want to encompass other with our range (since it's singular).
                 if let Some(len) = self.len() {
-                    if self.line == other.line && self.col <= other.col && self.col + len >= other.col {
+                    if self.line == other.line
+                        && self.col <= other.col
+                        && self.col + len >= other.col
+                    {
                         return true;
                     }
                 } else {
                     // In this case, we have match if other is on the same line as self and after
                     // self.col or on the same line as self_until and before col.
-                    if self.line == other.line && self.col <= other.col || self_until.line == other.line && self_until.col >= other.col {
+                    if self.line == other.line && self.col <= other.col
+                        || self_until.line == other.line && self_until.col >= other.col
+                    {
                         return true;
                     }
                 }
