@@ -10,27 +10,27 @@ use std::sync::atomic::Ordering;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
-use clvm_rs::allocator::Allocator;
+use clvmr::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
-use crate::classic::clvm::serialize::sexp_to_stream;
-use crate::classic::clvm_tools::clvmc::compile_clvm_inner;
-use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
-use crate::compiler::cldb::{
+use clvm_tools_rs::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use clvm_tools_rs::classic::clvm::serialize::sexp_to_stream;
+use clvm_tools_rs::classic::clvm_tools::clvmc::compile_clvm_inner;
+use clvm_tools_rs::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use clvm_tools_rs::compiler::cldb::{
     hex_to_modern_sexp, CldbOverrideBespokeCode, CldbRun, CldbRunEnv, CldbRunnable,
     CldbSingleBespokeOverride,
 };
-use crate::compiler::clvm::{convert_to_clvm_rs, start_step};
-use crate::compiler::compiler::{
+use clvm_tools_rs::compiler::clvm::{convert_to_clvm_rs, start_step};
+use clvm_tools_rs::compiler::compiler::{
     extract_program_and_env, path_to_function, rewrite_in_program, DefaultCompilerOpts,
 };
-use crate::compiler::comptypes::CompileErr;
-use crate::compiler::prims;
-use crate::compiler::repl::Repl;
-use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::SExp;
-use crate::compiler::srcloc::Srcloc;
-use crate::wasm::jsval::{
+use clvm_tools_rs::compiler::comptypes::CompileErr;
+use clvm_tools_rs::compiler::prims;
+use clvm_tools_rs::compiler::repl::Repl;
+use clvm_tools_rs::compiler::runtypes::RunFailure;
+use clvm_tools_rs::compiler::sexp::SExp;
+use clvm_tools_rs::compiler::srcloc::Srcloc;
+use crate::jsval::{
     btreemap_to_object, get_property, js_object_from_sexp, js_pair, object_to_value,
     read_string_to_string_map, sexp_from_js_object,
 };
