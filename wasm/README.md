@@ -1,6 +1,12 @@
 Build
 -----
 
+Clone GitHub repository
+```bash
+git clone https://github.com/Chia-Network/clvm_tools_rs
+cd clvm_tools_rs/wasm
+```
+
 Use `wasm-pack` to build the wasm `pkg` file used with npm. Install it with:
 
 ```bash
@@ -11,7 +17,7 @@ Then build with
 
 ```bash
 # Make sure you're at <clvm_tools_rs root>/wasm
-wasm-pack build --release --target=web
+wasm-pack build --release --target=nodejs
 ```
 
 Test
