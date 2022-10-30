@@ -2,8 +2,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const wasm = require("../pkg/clvm_tools_wasm");
 
-function bytesFromHex(hex){
-  return Uint8Array.from(Buffer.from(hex, "hex"));
+function unHexlify(str){
+  let result = "";
+  for (let i=0, l=str.length; i<l; i+=2) {
+    result += String.fromCharCode(parseInt(str.substring(i, i+2), 16));
+  }
+  return result;
 }
 
 const fact_hex = fs.readFileSync(path.resolve(__dirname, "./test-data/fact.clvm.hex")).toString("utf8");
@@ -12,11 +16,6 @@ const fact_sym = JSON.parse(fact_sym_txt);
 
 function run_program(program, args, symbols, overrides) {
   let runner = wasm.create_clvm_runner(program, args, symbols, overrides);
-  if (runner.error) {
-    console.log(runner.error);
-    return;
-  }
-  
   let ended = null;
   
   do {
@@ -31,7 +30,7 @@ function run_program(program, args, symbols, overrides) {
         break;
       }
     }
-  } while (ended === null);
+  } while (true);
   
   let finished = wasm.final_value(runner);
   wasm.remove_clvm_runner(runner);
@@ -45,7 +44,7 @@ function do_simple_run() {
       return 99;
     }
   });
-  if (value != 11880) {
+  if (value !== 11880n) {
     throw new Error("Didn't wind up with 99 as the factorial base case");
   }
 }
@@ -57,15 +56,16 @@ function do_complex_run() {
     throw new Error(pwcoin.error);
   }
   
-  const value = run_program(pwcoin.hex, ["hello", bytesFromHex("5f5767744f91c1c326d927a63d9b34fa7035c10e3eb838c44e3afe127c1b7675"), 2], pwcoin.symbols, {});
-  if (value.length != 1) {
+  const m = unHexlify("5f5767744f91c1c326d927a63d9b34fa7035c10e3eb838c44e3afe127c1b7675");
+  const value = run_program(pwcoin.hex, ["hello", m, 2], pwcoin.symbols, {});
+  if (value.length !== 1) {
     throw new Error("Didn't receive the expected list");
   }
   let cond = value[0];
-  if (cond[0] != 51) {
+  if (cond[0] !== 51n) {
     throw new Error("Didn't get a create condition");
   }
-  if (cond[2] != 2) {
+  if (cond[2] !== 2n) {
     throw new Error("Didn't get 2 mojo");
   }
   
