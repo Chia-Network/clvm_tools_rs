@@ -41,7 +41,13 @@ jobs:
           node-version: '16.x'
 
       - name: Test wasm
-        run: node tests/index.js
+        run: node wasm/tests/index.js
+
+      - name: Upload npm pkg artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: npm-pkg
+          path: ./wasm/pkg/clvm_wasm-*.tgz
 
       - name: Test for secrets access
         id: check_secrets
