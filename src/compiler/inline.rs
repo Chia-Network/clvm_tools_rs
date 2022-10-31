@@ -166,7 +166,7 @@ fn replace_inline_body(
     expr: Rc<BodyForm>,
 ) -> Result<Rc<BodyForm>, CompileErr> {
     match expr.borrow() {
-        BodyForm::Let(_l, _, _, _) => Err(CompileErr(
+        BodyForm::Let(_, _) => Err(CompileErr(
             loc,
             "let binding should have been hoisted before optimization".to_string(),
         )),
