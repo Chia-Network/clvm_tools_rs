@@ -33,7 +33,6 @@ pub struct DefaultCompilerOpts {
     pub stdenv: bool,
     pub optimize: bool,
     pub frontend_opt: bool,
-    pub frontend_no_check_live: bool,
     pub start_env: Option<Rc<SExp>>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
 
