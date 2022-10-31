@@ -116,12 +116,15 @@ impl Srcloc {
 
                 false
             }
-            (Some(u1), Some(u2)) => {
-                let l1 = Srcloc::new(self.file.clone(), self.line, self.col);
-                let l2 = Srcloc::new(self.file.clone(), u1.line, u1.col);
-                let l3 = Srcloc::new(self.file.clone(), other.line, other.col);
-                let l4 = Srcloc::new(self.file.clone(), u2.line, u2.col);
-                other.overlap(&l1) || other.overlap(&l2) || self.overlap(&l3) || self.overlap(&l4)
+            (Some(my_until), Some(their_until)) => {
+                let self_start = Srcloc::new(self.file.clone(), self.line, self.col);
+                let self_until = Srcloc::new(self.file.clone(), my_until.line, my_until.col);
+                let other_start = Srcloc::new(self.file.clone(), other.line, other.col);
+                let other_until = Srcloc::new(self.file.clone(), their_until.line, their_until.col);
+                other.overlap(&self_start)
+                    || other.overlap(&self_until)
+                    || self.overlap(&other_start)
+                    || self.overlap(&other_until)
             }
         }
     }
