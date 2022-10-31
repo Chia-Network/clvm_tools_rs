@@ -1,11 +1,10 @@
-use num::pow;
 use num_bigint::ToBigInt;
 
 use clvm_rs::allocator::Allocator;
 use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{
-    bi_one, bi_zero, get_u32, set_u32, set_u8, Bytes, BytesFromType,
+    bi_one, bi_zero, get_u32, Bytes, BytesFromType,
 };
 use crate::util::Number;
 
@@ -107,89 +106,39 @@ pub fn bigint_from_bytes(b: &Bytes, option: Option<TConvertOption>) -> Number {
     unsigned
 }
 
-pub fn bigint_to_bytes(v_: &Number, option: Option<TConvertOption>) -> Result<Bytes, String> {
-    let v = v_.clone();
-
-    if v == bi_zero() {
-        return Ok(Bytes::new(None));
+// Convert to bytes with no leading zeros added.  This allows numbers to appear
+// negative in the result stream but are treated as positive (for node paths).
+pub fn bigint_to_bytes_unsigned(v: &Number) -> Bytes {
+    if *v == bi_zero() {
+        return Bytes::new(None);
     }
 
-    let negative = v < bi_zero();
+    // This is only for positive numbers.
+    assert!(*v > bi_zero());
 
-    let signed = option.map(|o| o.signed).unwrap_or_else(|| false);
-    if !signed && negative {
-        return Err("OverflowError: can't convert negative int to unsigned".to_string());
-    }
-    let mut byte_count = 1;
-    let mut dec = 0;
-    let div = if signed { bi_one() } else { bi_zero() };
-    let b32: u64 = 1_u64 << 32;
-    let bval = b32.to_bigint().unwrap();
+    let (_, result) = v.to_bytes_be();
+    Bytes::new(Some(BytesFromType::Raw(result)))
+}
 
-    if negative {
-        let mut right_hand = (-(v.clone()) + bi_one()) * (div + bi_one());
-        while pow(bval.clone(), (byte_count - 1) / 4 + 1) < right_hand {
-            byte_count += 4;
+// Pulled in code from clvm_rs to replace this function, re: PR comments.
+// The whole function relies on allocator so this is just the brass tacks.
+// Conversion type was here for completeness in the original code I ported
+// from the typescript.
+//
+// The unsigned option is easier, as used in as_path.
+pub fn bigint_to_bytes_clvm(v: &Number) -> Bytes {
+    let bytes: Vec<u8> = v.to_signed_bytes_be();
+    let mut slice = bytes.as_slice();
+
+    // make number minimal by removing leading zeros
+    while (!slice.is_empty()) && (slice[0] == 0) {
+        if slice.len() > 1 && (slice[1] & 0x80 == 0x80) {
+            break;
         }
-        right_hand = -(v.clone()) * 2.to_bigint().unwrap();
-        while pow(2.to_bigint().unwrap(), 8 * byte_count) < right_hand {
-            byte_count += 1;
-        }
-    } else {
-        let mut right_hand = (v.clone() + bi_one()) * (div.clone() + bi_one());
-        while pow(bval.clone(), (byte_count - 1) / 4 + 1) < right_hand {
-            byte_count += 4;
-        }
-        right_hand = (v.clone() + bi_one()) * (div + bi_one());
-        while pow(2_u32.to_bigint().unwrap(), 8 * byte_count) < right_hand {
-            byte_count += 1;
-        }
+        slice = &slice[1..];
     }
 
-    let extra_byte = if signed
-        && v > bi_zero()
-        && ((v.clone() >> ((byte_count - 1) * 8)) & 0x80_u32.to_bigint().unwrap()) > bi_zero()
-    {
-        1
-    } else {
-        0
-    };
-
-    let total_bytes = byte_count + extra_byte;
-    let mut dv = Vec::<u8>::with_capacity(total_bytes);
-    let byte4_remain = byte_count % 4;
-    let byte4_length = (byte_count - byte4_remain) / 4;
-
-    dv.resize(total_bytes, 0);
-
-    let (_sign, u32_digits) = v.to_u32_digits();
-    for (i, n) in u32_digits.iter().take(byte4_length).enumerate() {
-        let word_idx = byte4_length - i - 1;
-        let num = *n as u64;
-        let pointer = extra_byte + byte4_remain + word_idx * 4;
-        let setval = if negative {
-            (1_u64 << 32) - num - dec as u64
-        } else {
-            num as u64
-        };
-        dec = 1;
-        set_u32(&mut dv, pointer, setval as u32);
-    }
-
-    let lastbytes = u32_digits[u32_digits.len() - 1];
-    let transform = |idx| {
-        if negative {
-            (((1 << (8 * byte4_remain)) - lastbytes - dec) >> (8 * idx)) as u8
-        } else {
-            (lastbytes >> (8 * idx)) as u8
-        }
-    };
-
-    for i in 0..byte4_remain {
-        set_u8(&mut dv, extra_byte + i, transform(byte4_remain - i - 1));
-    }
-
-    Ok(Bytes::new(Some(BytesFromType::Raw(dv))))
+    Bytes::new(Some(BytesFromType::Raw(slice.to_vec())))
 }
 
 // /**

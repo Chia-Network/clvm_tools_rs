@@ -18,7 +18,7 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
     let runner = Rc::new(DefaultProgramRunner::new());
     let opts = Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));
     let loc = Srcloc::start(&"*program*".to_string());
-    parse_sexp(loc.clone(), &s)
+    parse_sexp(loc.clone(), s.bytes())
         .map_err(|e| {
             return CompileErr(e.0.clone(), e.1.clone());
         })
@@ -72,7 +72,7 @@ fn test_basic_expand_macro_3() {
 
 fn convert_clvm_to_chialisp(s: String) -> Result<Rc<SExp>, CompileErr> {
     let loc = Srcloc::start(&"*program*".to_string());
-    parse_sexp(loc.clone(), &s)
+    parse_sexp(loc.clone(), s.bytes())
         .map_err(|e| {
             return CompileErr(e.0.clone(), e.1.clone());
         })

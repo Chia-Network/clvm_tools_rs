@@ -1,4 +1,4 @@
 mod optimize;
-mod run;
+pub mod run;
 mod smoke;
 mod stage_2;

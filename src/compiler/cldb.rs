@@ -336,7 +336,7 @@ impl CldbRunEnv {
     fn extract_text(&self, l: &Srcloc) -> Option<String> {
         let use_line = if l.line < 1 { None } else { Some(l.line - 1) };
         let use_col = use_line.and(if l.col < 1 { None } else { Some(l.col - 1) });
-        let end_col = use_col.map(|c| l.until.map(|u| u.1 - 1).unwrap_or_else(|| c + 1));
+        let end_col = use_col.map(|c| l.until.as_ref().map(|u| u.col - 1).unwrap_or_else(|| c + 1));
         use_line
             .and_then(|use_line| {
                 use_col.and_then(|use_col| end_col.map(|end_col| (use_line, use_col, end_col)))

@@ -1,3 +1,5 @@
+use num_bigint::ToBigInt;
+
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -49,6 +51,15 @@ fn large_odd_sized_pos_opc() {
         .invoke(&mut allocator, &"(281474976710655)".to_string())
         .unwrap();
     assert_eq!(result.rest(), "ff8700ffffffffffff80");
+}
+
+#[test]
+fn small_test_opc() {
+    let mut allocator = Allocator::new();
+    let result = OpcConversion {}
+        .invoke(&mut allocator, &"(191)".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "ff8200bf80");
 }
 
 #[test]
@@ -536,4 +547,12 @@ fn test_non_consed_args() {
     );
     let run_result = t.get_value().decode().trim().to_string();
     assert_eq!(run_result, "99");
+}
+
+#[test]
+fn test_check_simple_arg_path_0() {
+    let np = NodePath::new(Some(2_u32.to_bigint().unwrap()));
+    let up = NodePath::new(Some(2_u32.to_bigint().unwrap()));
+    let cp = np.add(up);
+    assert_eq!(cp.as_path().raw(), &[4]);
 }
