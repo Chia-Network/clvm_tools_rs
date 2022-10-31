@@ -2,12 +2,13 @@ use num_bigint::ToBigInt;
 use std::rc::Rc;
 
 use crate::compiler::sexp::{parse_sexp, SExp};
-use crate::compiler::srcloc::Srcloc;
+use crate::compiler::srcloc::{Srcloc, Until};
 
 mod clvm;
 mod compiler;
 mod evaluate;
 mod repl;
+mod srcloc;
 mod usecheck;
 
 #[test]
@@ -15,11 +16,11 @@ fn test_sexp_parse_print() {
     let start = Srcloc::start(&"test.cl".to_string());
     let mut end = start.clone();
     end.col = 2;
-    end.until = Some((1, 8));
+    end.until = Some(Until { line: 1, col: 8 });
 
     let mut atom_loc = start.clone();
     atom_loc.col = 2;
-    atom_loc.until = Some((1, 4));
+    atom_loc.until = Some(Until { line: 1, col: 4 });
 
     let mut num_loc = start.clone();
     num_loc.col = 7;
