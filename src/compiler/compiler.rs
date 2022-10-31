@@ -191,9 +191,6 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn frontend_opt(&self) -> bool {
         self.frontend_opt
     }
-    fn frontend_no_check_live(&self) -> bool {
-        self.frontend_no_check_live
-    }
     fn start_env(&self) -> Option<Rc<SExp>> {
         self.start_env.clone()
     }
@@ -224,11 +221,6 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn set_frontend_opt(&self, optimize: bool) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.frontend_opt = optimize;
-        Rc::new(copy)
-    }
-    fn set_frontend_no_check_live(&self, check: bool) -> Rc<dyn CompilerOpts> {
-        let mut copy = self.clone();
-        copy.frontend_no_check_live = check;
         Rc::new(copy)
     }
     fn set_compiler(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
@@ -328,7 +320,6 @@ impl DefaultCompilerOpts {
             stdenv: true,
             optimize: false,
             frontend_opt: false,
-            frontend_no_check_live: false,
             start_env: None,
             prim_map: Rc::new(prim_map),
             known_dialects: Rc::new(known_dialects),

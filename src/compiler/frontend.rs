@@ -682,7 +682,7 @@ pub fn frontend(
 
     let mut live_helpers = Vec::new();
     for h in our_mod.helpers {
-        if opts.frontend_no_check_live() || helper_names.contains(h.name()) {
+        if helper_names.contains(h.name()) {
             live_helpers.push(h);
         }
     }
