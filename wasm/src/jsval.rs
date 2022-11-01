@@ -6,10 +6,10 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
-use crate::compiler::sexp::SExp;
-use crate::compiler::srcloc::{Srcloc, Until};
-use crate::util::Number;
+use clvm_tools_rs::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
+use clvm_tools_rs::compiler::sexp::SExp;
+use clvm_tools_rs::compiler::srcloc::{Srcloc, Until};
+use clvm_tools_rs::util::Number;
 
 use wasm_bindgen::prelude::*;
 
