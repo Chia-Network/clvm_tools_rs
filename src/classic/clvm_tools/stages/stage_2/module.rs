@@ -276,6 +276,7 @@ fn defun_inline_to_macro(
         .collect::<Vec<Vec<u8>>>();
 
     let unquoted_code = unquote_args(allocator, code, &arg_name_list, &destructure_matches)?;
+
     let qq_atom = allocator.new_atom("qq".as_bytes())?;
     let qq_list = enlist(allocator, &[qq_atom, unquoted_code])?;
     r_vec.push(qq_list);

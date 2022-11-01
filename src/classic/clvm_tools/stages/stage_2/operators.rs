@@ -19,11 +19,28 @@ use crate::classic::clvm::sexp::proper_list;
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble_to_ir_with_kw};
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::ir::writer::write_ir_to_stream;
+use crate::classic::clvm_tools::sha256tree::TreeHash;
 use crate::classic::clvm_tools::stages::stage_0::{
     DefaultProgramRunner, RunProgramOption, TRunProgram,
 };
 use crate::classic::clvm_tools::stages::stage_2::compile::do_com_prog_for_dialect;
 use crate::classic::clvm_tools::stages::stage_2::optimize::do_optimize;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum AllocatorRefOrTreeHash {
+    AllocatorRef(NodePtr),
+    TreeHash(TreeHash),
+}
+
+impl AllocatorRefOrTreeHash {
+    pub fn new_from_nodeptr(n: NodePtr) -> Self {
+        AllocatorRefOrTreeHash::AllocatorRef(n)
+    }
+
+    pub fn new_from_sexp(allocator: &mut Allocator, n: NodePtr) -> Self {
+        AllocatorRefOrTreeHash::TreeHash(TreeHash::new_from_sexp(allocator, n))
+    }
+}
 
 pub struct CompilerOperators {
     base_dialect: Rc<dyn Dialect>,
@@ -31,6 +48,7 @@ pub struct CompilerOperators {
     compile_outcomes: RefCell<HashMap<String, String>>,
     dialect: RefCell<Rc<dyn Dialect>>,
     runner: RefCell<Rc<dyn TRunProgram>>,
+    opt_memo: RefCell<HashMap<AllocatorRefOrTreeHash, NodePtr>>,
 }
 
 impl CompilerOperators {
@@ -43,6 +61,7 @@ impl CompilerOperators {
             compile_outcomes: RefCell::new(HashMap::new()),
             dialect: RefCell::new(base_dialect),
             runner: RefCell::new(base_runner),
+            opt_memo: RefCell::new(HashMap::new()),
         }
     }
 
@@ -199,7 +218,7 @@ impl Dialect for CompilerOperators {
                 } else if opbuf == "com".as_bytes() {
                     do_com_prog_for_dialect(self.get_runner(), allocator, sexp)
                 } else if opbuf == "opt".as_bytes() {
-                    do_optimize(self.get_runner(), allocator, sexp)
+                    do_optimize(self.get_runner(), allocator, &self.opt_memo, sexp)
                 } else if opbuf == "_set_symbol_table".as_bytes() {
                     self.set_symbol_table(allocator, sexp)
                 } else if opbuf == "_full_path_for_name".as_bytes() {
