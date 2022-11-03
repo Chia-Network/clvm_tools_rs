@@ -372,11 +372,7 @@ pub fn var_change_optimizer_cons_eval(
                                     SExp::Pair(val_first, _) => match allocator.sexp(val_first) {
                                         SExp::Atom(b) => {
                                             let vf_buf = allocator.buf(&b);
-                                            if vf_buf.len() != 1 || vf_buf[0] != 1 {
-                                                1
-                                            } else {
-                                                0
-                                            }
+                                            (vf_buf.len() != 1 || vf_buf[0] != 1) as i32
                                         }
                                         _ => 0,
                                     },
