@@ -1063,9 +1063,11 @@ fn test_modern_inline_at_capture() {
 fn test_modern_inline_recurse() {
     // Test for a crash doing a recursive inline call.
     run_string(
-        &"(mod () (include *standard-cl-21*) (defun-inline FOO (X) (FOO (+ X 1))) (FOO 3))".to_string(),
-        &"()".to_string()
-    ).unwrap_err();
+        &"(mod () (include *standard-cl-21*) (defun-inline FOO (X) (FOO (+ X 1))) (FOO 3))"
+            .to_string(),
+        &"()".to_string(),
+    )
+    .unwrap_err();
 }
 
 #[test]

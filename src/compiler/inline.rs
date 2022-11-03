@@ -13,7 +13,7 @@ use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     BodyForm, Callable, CompileErr, CompiledCode, CompilerOpts, InlineFunction, PrimaryCodegen,
 };
-use crate::compiler::sexp::{SExp, decode_string};
+use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 use crate::util::Number;
@@ -202,7 +202,13 @@ fn replace_inline_body(
             match get_inline_callable(opts.clone(), compiler, l.clone(), call_args[0].clone())? {
                 Callable::CallInline(l, new_inline) => {
                     if visited_inlines.contains(&new_inline.name) {
-                        return Err(CompileErr(l, format!("recursive call to inline function {}", decode_string(&inline.name))));
+                        return Err(CompileErr(
+                            l,
+                            format!(
+                                "recursive call to inline function {}",
+                                decode_string(&inline.name)
+                            ),
+                        ));
                     }
 
                     visited_inlines.insert(new_inline.name.clone());
@@ -215,7 +221,7 @@ fn replace_inline_body(
                         runner,
                         opts.clone(),
                         compiler,
-                        l.clone(),
+                        l, // clippy update since 1.59
                         &new_inline,
                         &pass_on_args,
                         new_inline.body.clone(),
