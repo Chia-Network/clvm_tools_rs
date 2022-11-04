@@ -41,16 +41,12 @@ fn wrap_in_compile_time_list(allocator: &mut Allocator, code: NodePtr) -> Result
 
 // Create the sequence of individual tree moves that will translate to
 // (f ...) and (r ...) wrapping to select the given path from a larger structure.
-fn create_path_selection_plan(
-    allocator: &mut Allocator,
-    path: Number,
-    operators: &mut Vec<bool>,
-) -> Result<(), EvalErr> {
+fn create_path_selection_plan(path: Number, operators: &mut Vec<bool>) -> Result<(), EvalErr> {
     if path <= bi_one() {
         Ok(())
     } else {
         operators.push(path.clone() % 2_u32.to_bigint().unwrap() == bi_one());
-        create_path_selection_plan(allocator, path / 2_u32.to_bigint().unwrap(), operators)
+        create_path_selection_plan(path / 2_u32.to_bigint().unwrap(), operators)
     }
 }
 
@@ -62,7 +58,7 @@ fn wrap_path_selection(
 ) -> Result<NodePtr, EvalErr> {
     let mut operator_stack = Vec::new();
     let mut tail = wrapped;
-    create_path_selection_plan(allocator, path, &mut operator_stack)?;
+    create_path_selection_plan(path, &mut operator_stack)?;
     for o in operator_stack.iter() {
         let head_op = if *o { vec![6] } else { vec![5] };
         let head_atom = allocator.new_atom(&head_op)?;

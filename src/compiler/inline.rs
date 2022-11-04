@@ -156,7 +156,6 @@ fn get_inline_callable(
 
 #[allow(clippy::too_many_arguments)]
 fn replace_inline_body(
-    allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
@@ -177,7 +176,6 @@ fn replace_inline_body(
                     new_args.push(arg.clone());
                 } else {
                     let replaced = replace_inline_body(
-                        allocator,
                         runner.clone(),
                         opts.clone(),
                         compiler,
@@ -201,7 +199,6 @@ fn replace_inline_body(
                     let pass_on_args: Vec<Rc<BodyForm>> =
                         new_args.iter().skip(1).cloned().collect();
                     replace_inline_body(
-                        allocator,
                         runner,
                         opts.clone(),
                         compiler,
@@ -237,7 +234,6 @@ pub fn replace_in_inline(
     args: &[Rc<BodyForm>],
 ) -> Result<CompiledCode, CompileErr> {
     replace_inline_body(
-        allocator,
         runner.clone(),
         opts.clone(),
         compiler,
