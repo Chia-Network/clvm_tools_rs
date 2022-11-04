@@ -88,7 +88,6 @@ fn collect_used_names_compileform(body: &CompileForm) -> Vec<Vec<u8>> {
 }
 
 fn calculate_live_helpers(
-    opts: Rc<dyn CompilerOpts>,
     last_names: &HashSet<Vec<u8>>,
     names: &HashSet<Vec<u8>>,
     helper_map: &HashMap<Vec<u8>, HelperForm>,
@@ -114,7 +113,7 @@ fn calculate_live_helpers(
             }
         }
 
-        calculate_live_helpers(opts, names, &needed_helpers, helper_map)
+        calculate_live_helpers(names, &needed_helpers, helper_map)
     }
 }
 
@@ -677,8 +676,7 @@ pub fn frontend(
         helper_map.insert(hpair.0.clone(), hpair.1.clone());
     }
 
-    let helper_names =
-        calculate_live_helpers(opts.clone(), &HashSet::new(), &expr_names, &helper_map);
+    let helper_names = calculate_live_helpers(&HashSet::new(), &expr_names, &helper_map);
 
     let mut live_helpers = Vec::new();
     for h in our_mod.helpers {

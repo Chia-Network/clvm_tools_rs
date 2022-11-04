@@ -1,0 +1,68 @@
+name: npm publish
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    tags:
+        - '**'
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  build_npm:
+    name: Npm
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Set up rusts
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: install wasm-pack
+        run: cargo install wasm-pack
+
+      - name: wasm-pack build and pack
+        run: wasm-pack build --release --target=nodejs wasm && wasm-pack pack wasm
+
+      - name: Setup Node 16.x
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16.x'
+
+      - name: Test wasm
+        run: node wasm/tests/index.js
+
+      - name: Upload npm pkg artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: npm-pkg
+          path: ./wasm/pkg/clvm_tools_wasm-*.tgz
+
+      - name: Test for secrets access
+        id: check_secrets
+        shell: bash
+        run: |
+          unset HAS_SECRET
+          if [ -n "$SECRET" ]; then HAS_SECRET='true' ; fi
+          echo ::set-output name=HAS_SECRET::${HAS_SECRET}
+        env:
+          SECRET: "${{ secrets.test_pypi_password }}"
+
+      - name: Publish wasm
+        if: steps.check_secrets.HAS_SECRET
+        shell: bash
+        run: |
+          cd wasm/pkg
+          rm -f clvm_tools_wasm-*.tgz
+          npm publish --access public

@@ -1,1 +1,4 @@
 target
+wasm/target
+.idea
+wasm/tests/node_modules
