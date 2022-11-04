@@ -1,5 +1,5 @@
 #![allow(
-    clippy::blacklisted_name,
+    clippy::disallowed_names,
     clippy::redundant_clone,
     clippy::trivially_copy_pass_by_ref
 )]

@@ -157,7 +157,6 @@ fn get_inline_callable(
 
 #[allow(clippy::too_many_arguments)]
 fn replace_inline_body(
-    allocator: &mut Allocator,
     visited_inlines: &mut HashSet<Vec<u8>>,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
@@ -179,7 +178,6 @@ fn replace_inline_body(
                     new_args.push(arg.clone());
                 } else {
                     let replaced = replace_inline_body(
-                        allocator,
                         visited_inlines,
                         runner.clone(),
                         opts.clone(),
@@ -216,7 +214,6 @@ fn replace_inline_body(
                     let pass_on_args: Vec<Rc<BodyForm>> =
                         new_args.iter().skip(1).cloned().collect();
                     replace_inline_body(
-                        allocator,
                         visited_inlines,
                         runner,
                         opts.clone(),
@@ -255,7 +252,6 @@ pub fn replace_in_inline(
     let mut visited = HashSet::new();
     visited.insert(inline.name.clone());
     replace_inline_body(
-        allocator,
         &mut visited,
         runner.clone(),
         opts.clone(),

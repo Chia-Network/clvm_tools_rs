@@ -102,18 +102,21 @@ pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
 pub fn disassemble_to_ir_with_kw(
     allocator: &mut Allocator,
     sexp: NodePtr,
-    keyword_from_atom: &Record<Vec<u8>, String>,
-    allow_keyword_: bool,
+    // Due to an oversight in the original port, the user's
+    // kw_from_atom settings weren't honored, however they're
+    // never non-default in this code.  This deserves looking
+    // at, but isn't pressing at the moment.
+    _keyword_from_atom: &Record<Vec<u8>, String>,
+    mut allow_keyword: bool,
 ) -> IRRepr {
-    let mut allow_keyword = allow_keyword_;
     match allocator.sexp(sexp) {
         SExp::Pair(l, r) => {
             if let SExp::Pair(_, _) = allocator.sexp(l) {
                 allow_keyword = true;
             }
 
-            let v0 = disassemble_to_ir_with_kw(allocator, l, keyword_from_atom, allow_keyword);
-            let v1 = disassemble_to_ir_with_kw(allocator, r, keyword_from_atom, false);
+            let v0 = disassemble_to_ir_with_kw(allocator, l, _keyword_from_atom, allow_keyword);
+            let v1 = disassemble_to_ir_with_kw(allocator, r, _keyword_from_atom, false);
             IRRepr::Cons(Rc::new(v0), Rc::new(v1))
         }
 
