@@ -76,6 +76,7 @@ pub enum BodyForm {
     Quoted(SExp),
     Value(SExp),
     Call(Srcloc, Vec<Rc<BodyForm>>),
+    Mod(Srcloc, CompileForm),
 }
 
 #[derive(Clone, Debug)]
@@ -264,6 +265,7 @@ impl BodyForm {
             BodyForm::Quoted(a) => a.loc(),
             BodyForm::Call(loc, _) => loc.clone(),
             BodyForm::Value(a) => a.loc(),
+            BodyForm::Mod(kl, program) => kl.ext(&program.loc)
         }
     }
 
@@ -301,6 +303,13 @@ impl BodyForm {
             BodyForm::Call(loc, exprs) => {
                 let converted: Vec<Rc<SExp>> = exprs.iter().map(|x| x.to_sexp()).collect();
                 Rc::new(list_to_cons(loc.clone(), &converted))
+            },
+            BodyForm::Mod(loc, program) => {
+                Rc::new(SExp::Cons(
+                    loc.clone(),
+                    Rc::new(SExp::Atom(loc.clone(), b"mod".to_vec())),
+                    program.to_sexp()
+                ))
             }
         }
     }

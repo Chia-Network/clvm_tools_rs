@@ -4,7 +4,6 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
-
 use crate::compiler::comptypes::{
     list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm,
     LetFormKind, ModAccum,
@@ -63,7 +62,8 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
                 result.append(&mut argnames);
             }
             result
-        }
+        },
+        BodyForm::Mod(_, _) => vec![]
     }
 }
 
@@ -117,7 +117,10 @@ fn calculate_live_helpers(
     }
 }
 
-fn qq_to_expression(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
+fn qq_to_expression(
+    opts: Rc<dyn CompilerOpts>,
+    body: Rc<SExp>
+) -> Result<BodyForm, CompileErr> {
     let body_copy: &SExp = body.borrow();
 
     match body.borrow() {
@@ -143,22 +146,25 @@ fn qq_to_expression(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                         return Err(CompileErr(l.clone(), format!("bad form {}", body)));
                     }
 
-                    return compile_bodyform(Rc::new(list[0].clone()));
+                    return compile_bodyform(opts.clone(), Rc::new(list[0].clone()));
                 }
             }
 
-            qq_to_expression_list(body.clone())
+            qq_to_expression_list(opts, body.clone())
         }
         _ => Ok(BodyForm::Quoted(body_copy.clone())),
     }
 }
 
-fn qq_to_expression_list(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
+fn qq_to_expression_list(
+    opts: Rc<dyn CompilerOpts>,
+    body: Rc<SExp>
+) -> Result<BodyForm, CompileErr> {
     match body.borrow() {
         SExp::Cons(l, f, r) => {
             m! {
-                f_qq <- qq_to_expression(f.clone());
-                r_qq <- qq_to_expression_list(r.clone());
+                f_qq <- qq_to_expression(opts.clone(), f.clone());
+                r_qq <- qq_to_expression_list(opts, r.clone());
                 Ok(BodyForm::Call(l.clone(), vec!(
                     Rc::new(BodyForm::Value(
                         SExp::Atom(l.clone(), "c".as_bytes().to_vec())
@@ -176,16 +182,19 @@ fn qq_to_expression_list(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
     }
 }
 
-fn args_to_expression_list(body: Rc<SExp>) -> Result<Vec<Rc<BodyForm>>, CompileErr> {
+fn args_to_expression_list(
+    opts: Rc<dyn CompilerOpts>,
+    body: Rc<SExp>
+) -> Result<Vec<Rc<BodyForm>>, CompileErr> {
     if body.nilp() {
         Ok(vec![])
     } else {
         match body.borrow() {
             SExp::Cons(_l, first, rest) => {
                 let mut result_list = Vec::new();
-                let f_compiled = compile_bodyform(first.clone())?;
+                let f_compiled = compile_bodyform(opts.clone(), first.clone())?;
                 result_list.push(Rc::new(f_compiled));
-                let mut args = args_to_expression_list(rest.clone())?;
+                let mut args = args_to_expression_list(opts, rest.clone())?;
                 result_list.append(&mut args);
                 Ok(result_list)
             }
@@ -197,7 +206,7 @@ fn args_to_expression_list(body: Rc<SExp>) -> Result<Vec<Rc<BodyForm>>, CompileE
     }
 }
 
-fn make_let_bindings(body: Rc<SExp>) -> Result<Vec<Rc<Binding>>, CompileErr> {
+fn make_let_bindings(opts: Rc<dyn CompilerOpts>, body: Rc<SExp>) -> Result<Vec<Rc<Binding>>, CompileErr> {
     let err = Err(CompileErr(
         body.loc(),
         "Bad binding tail ".to_string() + &body.to_string(),
@@ -208,9 +217,9 @@ fn make_let_bindings(body: Rc<SExp>) -> Result<Vec<Rc<Binding>>, CompileErr> {
             .proper_list()
             .map(|x| match &x[..] {
                 [SExp::Atom(l, name), expr] => {
-                    let compiled_body = compile_bodyform(Rc::new(expr.clone()))?;
+                    let compiled_body = compile_bodyform(opts.clone(), Rc::new(expr.clone()))?;
                     let mut result = Vec::new();
-                    let mut rest_bindings = make_let_bindings(tl.clone())?;
+                    let mut rest_bindings = make_let_bindings(opts, tl.clone())?;
                     result.push(Rc::new(Binding {
                         loc: l.clone(),
                         name: name.to_vec(),
@@ -226,12 +235,15 @@ fn make_let_bindings(body: Rc<SExp>) -> Result<Vec<Rc<Binding>>, CompileErr> {
     }
 }
 
-pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
+pub fn compile_bodyform(
+    opts: Rc<dyn CompilerOpts>,
+    body: Rc<SExp>
+) -> Result<BodyForm, CompileErr> {
     match body.borrow() {
         SExp::Cons(l, op, tail) => {
             let application = || {
-                args_to_expression_list(tail.clone()).and_then(|args| {
-                    compile_bodyform(op.clone()).map(|func| {
+                args_to_expression_list(opts.clone(), tail.clone()).and_then(|args| {
+                    compile_bodyform(opts.clone(), op.clone()).map(|func| {
                         let mut result_call = vec![Rc::new(func)];
                         let mut args_clone = args.to_vec();
                         result_call.append(&mut args_clone);
@@ -274,8 +286,8 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                                 let bindings = v[0].clone();
                                 let body = v[1].clone();
 
-                                let let_bindings = make_let_bindings(Rc::new(bindings))?;
-                                let compiled_body = compile_bodyform(Rc::new(body))?;
+                                let let_bindings = make_let_bindings(opts.clone(), Rc::new(bindings))?;
+                                let compiled_body = compile_bodyform(opts, Rc::new(body))?;
                                 Ok(BodyForm::Let(
                                     l.clone(),
                                     kind,
@@ -297,7 +309,10 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
 
                                 let quote_body = v[0].clone();
 
-                                qq_to_expression(Rc::new(quote_body))
+                                qq_to_expression(opts, Rc::new(quote_body))
+                            } else if *atom_name == "mod".as_bytes().to_vec() {
+                                let subparse = frontend(opts, vec![body.clone()])?;
+                                return Ok(BodyForm::Mod(op.loc(), subparse));
                             } else {
                                 application()
                             }
@@ -305,7 +320,7 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                         None => finish_err("tail_proper"),
                     }
                 }
-                SExp::Integer(il, i) => compile_bodyform(Rc::new(SExp::Cons(
+                SExp::Integer(il, i) => compile_bodyform(opts, Rc::new(SExp::Cons(
                     il.clone(),
                     Rc::new(SExp::Atom(il.clone(), u8_from_number(i.clone()))),
                     tail.clone(),
@@ -328,11 +343,17 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
     }
 }
 
-fn compile_defconstant(l: Srcloc, name: Vec<u8>, body: Rc<SExp>) -> Result<HelperForm, CompileErr> {
-    compile_bodyform(body).map(|bf| HelperForm::Defconstant(l, name.to_vec(), Rc::new(bf)))
+fn compile_defconstant(
+    opts: Rc<dyn CompilerOpts>,
+    l: Srcloc,
+    name: Vec<u8>,
+    body: Rc<SExp>
+) -> Result<HelperForm, CompileErr> {
+    compile_bodyform(opts, body).map(|bf| HelperForm::Defconstant(l, name.to_vec(), Rc::new(bf)))
 }
 
 fn compile_defun(
+    opts: Rc<dyn CompilerOpts>,
     l: Srcloc,
     inline: bool,
     name: Vec<u8>,
@@ -343,7 +364,7 @@ fn compile_defun(
     if let SExp::Cons(_, f, _r) = body.borrow() {
         take_form = f.clone();
     }
-    compile_bodyform(take_form)
+    compile_bodyform(opts, take_form)
         .map(|bf| HelperForm::Defun(l, name, inline, args.clone(), Rc::new(bf)))
 }
 
@@ -419,13 +440,13 @@ fn compile_helperform(
         plist.and_then(|pl| match_op_name_4(body.clone(), &pl))
     {
         if op_name == b"defconstant" {
-            return compile_defconstant(l, name.to_vec(), args).map(Some);
+            return compile_defconstant(opts, l, name.to_vec(), args).map(Some);
         } else if op_name == b"defmacro" {
             return compile_defmacro(opts, l, name.to_vec(), args, body).map(Some);
         } else if op_name == b"defun" {
-            return compile_defun(l, false, name.to_vec(), args, body).map(Some);
+            return compile_defun(opts, l, false, name.to_vec(), args, body).map(Some);
         } else if op_name == b"defun-inline" {
-            return compile_defun(l, true, name.to_vec(), args, body).map(Some);
+            return compile_defun(opts, l, true, name.to_vec(), args, body).map(Some);
         }
     }
 
@@ -450,7 +471,7 @@ fn compile_mod_(
                     loc: mc.loc.clone(),
                     args,
                     helpers: mc.helpers.clone(),
-                    exp: Rc::new(compile_bodyform(body.clone())?),
+                    exp: Rc::new(compile_bodyform(opts.clone(), body.clone())?),
                 })),
             },
             _ => {
