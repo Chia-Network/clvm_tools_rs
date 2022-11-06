@@ -568,18 +568,15 @@ pub fn generate_expr_code(
         }
         BodyForm::Mod(_, program) => {
             // A mod form yields the compiled code.
-            let code = codegen(
-                allocator,
-                runner,
-                opts,
-                &program,
-                &mut HashMap::new()
-            )?;
-            Ok(CompiledCode(program.loc.clone(), Rc::new(SExp::Cons(
+            let code = codegen(allocator, runner, opts, program, &mut HashMap::new())?;
+            Ok(CompiledCode(
                 program.loc.clone(),
-                Rc::new(SExp::Atom(program.loc.clone(), vec![1])),
-                Rc::new(code)
-            ))))
+                Rc::new(SExp::Cons(
+                    program.loc.clone(),
+                    Rc::new(SExp::Atom(program.loc.clone(), vec![1])),
+                    Rc::new(code),
+                )),
+            ))
         }
         _ => Err(CompileErr(
             expr.loc(),

@@ -1,5 +1,6 @@
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
@@ -12,7 +13,7 @@ use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     BodyForm, Callable, CompileErr, CompiledCode, CompilerOpts, InlineFunction, PrimaryCodegen,
 };
-use crate::compiler::sexp::SExp;
+use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 use crate::util::Number;
@@ -156,6 +157,7 @@ fn get_inline_callable(
 
 #[allow(clippy::too_many_arguments)]
 fn replace_inline_body(
+    visited_inlines: &mut HashSet<Vec<u8>>,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
@@ -176,6 +178,7 @@ fn replace_inline_body(
                     new_args.push(arg.clone());
                 } else {
                     let replaced = replace_inline_body(
+                        visited_inlines,
                         runner.clone(),
                         opts.clone(),
                         compiler,
@@ -195,14 +198,27 @@ fn replace_inline_body(
             // If it's a macro we'll expand it here so we can recurse and
             // determine whether an inline is the next level.
             match get_inline_callable(opts.clone(), compiler, l.clone(), call_args[0].clone())? {
-                Callable::CallInline(_, new_inline) => {
+                Callable::CallInline(l, new_inline) => {
+                    if visited_inlines.contains(&new_inline.name) {
+                        return Err(CompileErr(
+                            l,
+                            format!(
+                                "recursive call to inline function {}",
+                                decode_string(&inline.name)
+                            ),
+                        ));
+                    }
+
+                    visited_inlines.insert(new_inline.name.clone());
+
                     let pass_on_args: Vec<Rc<BodyForm>> =
                         new_args.iter().skip(1).cloned().collect();
                     replace_inline_body(
+                        visited_inlines,
                         runner,
                         opts.clone(),
                         compiler,
-                        l.clone(),
+                        l, // clippy update since 1.59
                         &new_inline,
                         &pass_on_args,
                         new_inline.body.clone(),
@@ -233,7 +249,10 @@ pub fn replace_in_inline(
     inline: &InlineFunction,
     args: &[Rc<BodyForm>],
 ) -> Result<CompiledCode, CompileErr> {
+    let mut visited = HashSet::new();
+    visited.insert(inline.name.clone());
     replace_inline_body(
+        &mut visited,
         runner.clone(),
         opts.clone(),
         compiler,

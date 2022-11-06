@@ -151,9 +151,9 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
                 .map(|x| Rc::new(rename_in_bodyform(namemap, x.clone())))
                 .collect();
             BodyForm::Call(l.clone(), new_vs)
-        },
+        }
 
-        BodyForm::Mod(l, prog) => BodyForm::Mod(l.clone(), prog.clone())
+        BodyForm::Mod(l, prog) => BodyForm::Mod(l.clone(), prog.clone()),
     }
 }
 
@@ -231,8 +231,8 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
                 .map(|a| Rc::new(rename_args_bodyform(a)))
                 .collect();
             BodyForm::Call(l.clone(), new_vs)
-        },
-        BodyForm::Mod(l, program) => BodyForm::Mod(l.clone(), program.clone())
+        }
+        BodyForm::Mod(l, program) => BodyForm::Mod(l.clone(), program.clone()),
     }
 }
 

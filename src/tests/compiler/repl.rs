@@ -180,9 +180,9 @@ fn test_collatz() {
 #[test]
 fn test_mod_in_repl() {
     assert_eq!(
-        test_repl_outcome(vec![
-            "(a (mod (X) (+ 1 (* 3 X))) (list 3))"
-        ]).unwrap().unwrap(),
+        test_repl_outcome(vec!["(a (mod (X) (+ 1 (* 3 X))) (list 3))"])
+            .unwrap()
+            .unwrap(),
         "(q . 10)"
     );
 }

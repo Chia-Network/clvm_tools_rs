@@ -1058,15 +1058,15 @@ impl Evaluator {
                         format!("Don't know how to call {}", head_expr.to_sexp()),
                     )),
                 }
-            },
+            }
             BodyForm::Mod(_, program) => {
                 // A mod form yields the compiled code.
                 let code = codegen(
                     allocator,
                     self.runner.clone(),
                     self.opts.clone(),
-                    &program,
-                    &mut HashMap::new()
+                    program,
+                    &mut HashMap::new(),
                 )?;
                 Ok(Rc::new(BodyForm::Quoted(code)))
             }

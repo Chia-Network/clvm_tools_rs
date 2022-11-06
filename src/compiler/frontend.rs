@@ -62,8 +62,8 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
                 result.append(&mut argnames);
             }
             result
-        },
-        BodyForm::Mod(_, _) => vec![]
+        }
+        BodyForm::Mod(_, _) => vec![],
     }
 }
 
@@ -117,10 +117,7 @@ fn calculate_live_helpers(
     }
 }
 
-fn qq_to_expression(
-    opts: Rc<dyn CompilerOpts>,
-    body: Rc<SExp>
-) -> Result<BodyForm, CompileErr> {
+fn qq_to_expression(opts: Rc<dyn CompilerOpts>, body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
     let body_copy: &SExp = body.borrow();
 
     match body.borrow() {
@@ -158,7 +155,7 @@ fn qq_to_expression(
 
 fn qq_to_expression_list(
     opts: Rc<dyn CompilerOpts>,
-    body: Rc<SExp>
+    body: Rc<SExp>,
 ) -> Result<BodyForm, CompileErr> {
     match body.borrow() {
         SExp::Cons(l, f, r) => {
@@ -184,7 +181,7 @@ fn qq_to_expression_list(
 
 fn args_to_expression_list(
     opts: Rc<dyn CompilerOpts>,
-    body: Rc<SExp>
+    body: Rc<SExp>,
 ) -> Result<Vec<Rc<BodyForm>>, CompileErr> {
     if body.nilp() {
         Ok(vec![])
@@ -206,7 +203,10 @@ fn args_to_expression_list(
     }
 }
 
-fn make_let_bindings(opts: Rc<dyn CompilerOpts>, body: Rc<SExp>) -> Result<Vec<Rc<Binding>>, CompileErr> {
+fn make_let_bindings(
+    opts: Rc<dyn CompilerOpts>,
+    body: Rc<SExp>,
+) -> Result<Vec<Rc<Binding>>, CompileErr> {
     let err = Err(CompileErr(
         body.loc(),
         "Bad binding tail ".to_string() + &body.to_string(),
@@ -237,7 +237,7 @@ fn make_let_bindings(opts: Rc<dyn CompilerOpts>, body: Rc<SExp>) -> Result<Vec<R
 
 pub fn compile_bodyform(
     opts: Rc<dyn CompilerOpts>,
-    body: Rc<SExp>
+    body: Rc<SExp>,
 ) -> Result<BodyForm, CompileErr> {
     match body.borrow() {
         SExp::Cons(l, op, tail) => {
@@ -286,7 +286,8 @@ pub fn compile_bodyform(
                                 let bindings = v[0].clone();
                                 let body = v[1].clone();
 
-                                let let_bindings = make_let_bindings(opts.clone(), Rc::new(bindings))?;
+                                let let_bindings =
+                                    make_let_bindings(opts.clone(), Rc::new(bindings))?;
                                 let compiled_body = compile_bodyform(opts, Rc::new(body))?;
                                 Ok(BodyForm::Let(
                                     l.clone(),
@@ -312,7 +313,7 @@ pub fn compile_bodyform(
                                 qq_to_expression(opts, Rc::new(quote_body))
                             } else if *atom_name == "mod".as_bytes().to_vec() {
                                 let subparse = frontend(opts, vec![body.clone()])?;
-                                return Ok(BodyForm::Mod(op.loc(), subparse));
+                                Ok(BodyForm::Mod(op.loc(), subparse))
                             } else {
                                 application()
                             }
@@ -320,11 +321,14 @@ pub fn compile_bodyform(
                         None => finish_err("tail_proper"),
                     }
                 }
-                SExp::Integer(il, i) => compile_bodyform(opts, Rc::new(SExp::Cons(
-                    il.clone(),
-                    Rc::new(SExp::Atom(il.clone(), u8_from_number(i.clone()))),
-                    tail.clone(),
-                ))),
+                SExp::Integer(il, i) => compile_bodyform(
+                    opts,
+                    Rc::new(SExp::Cons(
+                        il.clone(),
+                        Rc::new(SExp::Atom(il.clone(), u8_from_number(i.clone()))),
+                        tail.clone(),
+                    )),
+                ),
                 SExp::QuotedString(_, _, _) => {
                     let body_copy: &SExp = body.borrow();
                     Ok(BodyForm::Value(body_copy.clone()))
@@ -347,7 +351,7 @@ fn compile_defconstant(
     opts: Rc<dyn CompilerOpts>,
     l: Srcloc,
     name: Vec<u8>,
-    body: Rc<SExp>
+    body: Rc<SExp>,
 ) -> Result<HelperForm, CompileErr> {
     compile_bodyform(opts, body).map(|bf| HelperForm::Defconstant(l, name.to_vec(), Rc::new(bf)))
 }
