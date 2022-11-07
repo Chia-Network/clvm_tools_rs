@@ -395,10 +395,7 @@ pub struct CompileDefun {
     pub body: Rc<SExp>,
 }
 
-fn compile_defun(
-    opts: Rc<dyn CompilerOpts>,
-    data: CompileDefun
-) -> Result<HelperForm, CompileErr> {
+fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun) -> Result<HelperForm, CompileErr> {
     let mut take_form = data.body.clone();
 
     if let SExp::Cons(_, f, _r) = data.body.borrow() {
@@ -542,7 +539,7 @@ pub fn compile_helperform(
                     name: matched.name.to_vec(),
                     args: matched.args,
                     body: matched.body,
-                }
+                },
             )
             .map(Some)
         } else if matched.op_name == b"defun-inline" {
@@ -556,7 +553,7 @@ pub fn compile_helperform(
                     name: matched.name.to_vec(),
                     args: matched.args,
                     body: matched.body,
-                }
+                },
             )
             .map(Some)
         } else {
