@@ -321,7 +321,7 @@ pub fn compile_bodyform(
 
                                 qq_to_expression(opts, Rc::new(quote_body))
                             } else if *atom_name == "mod".as_bytes().to_vec() {
-                                let subparse = frontend(opts, vec![body.clone()])?;
+                                let subparse = frontend(opts, &[body.clone()])?;
                                 Ok(BodyForm::Mod(op.loc(), subparse))
                             } else {
                                 application()
@@ -385,30 +385,34 @@ fn location_span(l_: Srcloc, lst_: Rc<SExp>) -> Srcloc {
     l
 }
 
+pub struct CompileDefun {
+    pub l: Srcloc,
+    pub nl: Srcloc,
+    pub kwl: Option<Srcloc>,
+    pub inline: bool,
+    pub name: Vec<u8>,
+    pub args: Rc<SExp>,
+    pub body: Rc<SExp>,
+}
+
 fn compile_defun(
     opts: Rc<dyn CompilerOpts>,
-    l: Srcloc,
-    nl: Srcloc,
-    kwl: Option<Srcloc>,
-    inline: bool,
-    name: Vec<u8>,
-    args: Rc<SExp>,
-    body: Rc<SExp>,
+    data: CompileDefun
 ) -> Result<HelperForm, CompileErr> {
-    let mut take_form = body.clone();
+    let mut take_form = data.body.clone();
 
-    if let SExp::Cons(_, f, _r) = body.borrow() {
+    if let SExp::Cons(_, f, _r) = data.body.borrow() {
         take_form = f.clone();
     }
     compile_bodyform(opts, take_form).map(|bf| {
         HelperForm::Defun(
-            inline,
+            data.inline,
             DefunData {
-                loc: l,
-                nl,
-                kw: kwl,
-                name,
-                args: args.clone(),
+                loc: data.l,
+                nl: data.nl,
+                kw: data.kwl,
+                name: data.name,
+                args: data.args,
                 body: Rc::new(bf),
             },
         )
@@ -530,25 +534,29 @@ pub fn compile_helperform(
         } else if matched.op_name == b"defun" {
             compile_defun(
                 opts,
-                l,
-                matched.nl,
-                Some(matched.opl),
-                false,
-                matched.name.to_vec(),
-                matched.args,
-                matched.body,
+                CompileDefun {
+                    l,
+                    nl: matched.nl,
+                    kwl: Some(matched.opl),
+                    inline: false,
+                    name: matched.name.to_vec(),
+                    args: matched.args,
+                    body: matched.body,
+                }
             )
             .map(Some)
         } else if matched.op_name == b"defun-inline" {
             compile_defun(
                 opts,
-                l,
-                matched.nl,
-                Some(matched.opl),
-                true,
-                matched.name.to_vec(),
-                matched.args,
-                matched.body,
+                CompileDefun {
+                    l,
+                    nl: matched.nl,
+                    kwl: Some(matched.opl),
+                    inline: true,
+                    name: matched.name.to_vec(),
+                    args: matched.args,
+                    body: matched.body,
+                }
             )
             .map(Some)
         } else {
