@@ -304,6 +304,21 @@ pub struct RandomClvmNumber {
     pub intended_value: Number,
 }
 
+#[test]
+fn test_classic_mod_form() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+(mod () (a (mod (X) (+ 1 (* X 2))) (list 3)))
+"}
+        .to_string(),
+        "()".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(res, "(q . 7)");
+}
+
 #[cfg(test)]
 pub fn random_clvm_number<R: Rng + ?Sized>(rng: &mut R) -> RandomClvmNumber {
     // Make a number by creating some random atom bytes.

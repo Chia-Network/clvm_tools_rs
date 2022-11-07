@@ -1078,3 +1078,17 @@ fn test_modern_inline_recurse_deep() {
         &"()".to_string()
     ).unwrap_err();
 }
+
+#[test]
+fn test_modern_mod_form() {
+    let result = run_string(
+        &indoc! {"
+(mod () (include *standard-cl-21*) (a (mod (X) (+ 1 (* X 2))) (list 3)))
+"}
+        .to_string(),
+        &"()".to_string(),
+    )
+    .unwrap();
+
+    assert_eq!(result.to_string(), "7");
+}

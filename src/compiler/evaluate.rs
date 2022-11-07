@@ -10,6 +10,7 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::run;
+use crate::compiler::codegen::codegen;
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LetData, LetFormKind,
@@ -1060,6 +1061,17 @@ impl Evaluator {
                         format!("Don't know how to call {}", head_expr.to_sexp()),
                     )),
                 }
+            }
+            BodyForm::Mod(_, program) => {
+                // A mod form yields the compiled code.
+                let code = codegen(
+                    allocator,
+                    self.runner.clone(),
+                    self.opts.clone(),
+                    program,
+                    &mut HashMap::new(),
+                )?;
+                Ok(Rc::new(BodyForm::Quoted(code)))
             }
         }
     }
