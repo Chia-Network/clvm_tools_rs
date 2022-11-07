@@ -14,7 +14,7 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::codegen;
 use crate::compiler::comptypes::{
-    CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen,
+    CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator};
 use crate::compiler::frontend::frontend;
@@ -69,17 +69,26 @@ fn fe_opt(
     let mut optimized_helpers: Vec<HelperForm> = Vec::new();
     for h in compiler_helpers.iter() {
         match h {
-            HelperForm::Defun(loc, name, inline, args, body) => {
+            HelperForm::Defun(inline, defun) => {
                 let mut env = HashMap::new();
-                build_reflex_captures(&mut env, args.clone());
-                let body_rc =
-                    evaluator.shrink_bodyform(allocator, args.clone(), &env, body.clone(), true)?;
+                build_reflex_captures(&mut env, defun.args.clone());
+                let body_rc = evaluator.shrink_bodyform(
+                    allocator,
+                    defun.args.clone(),
+                    &env,
+                    defun.body.clone(),
+                    true,
+                )?;
                 let new_helper = HelperForm::Defun(
-                    loc.clone(),
-                    name.clone(),
                     *inline,
-                    args.clone(),
-                    body_rc.clone(),
+                    DefunData {
+                        loc: defun.loc.clone(),
+                        nl: defun.nl.clone(),
+                        kw: defun.kw.clone(),
+                        name: defun.name.clone(),
+                        args: defun.args.clone(),
+                        body: body_rc.clone(),
+                    },
                 );
                 optimized_helpers.push(new_helper);
             }
@@ -113,7 +122,7 @@ fn compile_pre_forms(
     pre_forms: Vec<Rc<SExp>>,
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
-    let g = frontend(opts.clone(), pre_forms)?;
+    let g = frontend(opts.clone(), &pre_forms)?;
     let compileform = if opts.frontend_opt() {
         fe_opt(allocator, runner.clone(), opts.clone(), g)?
     } else {
