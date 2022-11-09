@@ -1,5 +1,5 @@
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use log::debug;
@@ -422,7 +422,6 @@ fn type_of_defun(l: Srcloc, ty: &Option<Polytype>) -> Polytype {
 }
 
 pub fn context_from_args_and_type(
-    structs: &HashSet<String>,
     context: &Context,
     args: Rc<SExp>,
     argty: &Polytype,
@@ -455,7 +454,6 @@ pub fn context_from_args_and_type(
             if let Some((_, _)) = is_at_capture(f.clone(), r.clone()) {
                 if let SExp::Cons(_, sub, _) = r.borrow() {
                     let sub_context = context_from_args_and_type(
-                        structs,
                         context,
                         sub.clone(),
                         argty,
@@ -463,7 +461,6 @@ pub fn context_from_args_and_type(
                         path_bit.clone(),
                     )?;
                     context_from_args_and_type(
-                        structs,
                         &sub_context,
                         f.clone(),
                         argty,
@@ -475,7 +472,6 @@ pub fn context_from_args_and_type(
                 }
             } else {
                 let cf = context_from_args_and_type(
-                    structs,
                     context,
                     f.clone(),
                     argty,
@@ -483,7 +479,6 @@ pub fn context_from_args_and_type(
                     path_bit.clone() * 2_u32.to_bigint().unwrap(),
                 )?;
                 context_from_args_and_type(
-                    structs,
                     &cf,
                     r.clone(),
                     argty,
@@ -496,7 +491,6 @@ pub fn context_from_args_and_type(
             if let Some((_, _)) = is_at_capture(f.clone(), r.clone()) {
                 if let SExp::Cons(_, sub, _) = r.borrow() {
                     let sub_context = context_from_args_and_type(
-                        structs,
                         context,
                         sub.clone(),
                         argty,
@@ -504,7 +498,6 @@ pub fn context_from_args_and_type(
                         path_bit.clone(),
                     )?;
                     context_from_args_and_type(
-                        structs,
                         &sub_context,
                         f.clone(),
                         argty,
@@ -516,7 +509,6 @@ pub fn context_from_args_and_type(
                 }
             } else {
                 let cf = context_from_args_and_type(
-                    structs,
                     context,
                     f.clone(),
                     a.borrow(),
@@ -524,7 +516,6 @@ pub fn context_from_args_and_type(
                     bi_one(),
                 )?;
                 context_from_args_and_type(
-                    structs,
                     &cf,
                     r.clone(),
                     b.borrow(),
@@ -731,7 +722,6 @@ fn typecheck_chialisp_body_with_context(
 }
 
 fn handle_function_type(
-    structs: &HashSet<String>,
     context: &Context,
     loc: Srcloc,
     args: Rc<SExp>,
@@ -740,13 +730,13 @@ fn handle_function_type(
     match ty {
         Type::TFun(a, r) => {
             let r_borrowed: &Polytype = r.borrow();
-            context_from_args_and_type(structs, context, args, a.borrow(), bi_zero(), bi_one())
+            context_from_args_and_type(context, args, a.borrow(), bi_zero(), bi_one())
                 .map(|ctx| (ctx, r_borrowed.clone()))
         }
         Type::TForall(t, f) => {
             let inner_ctx = context.snoc_wf(ContextElim::CForall(t.clone()));
             let f_borrowed: &Polytype = f.borrow();
-            handle_function_type(structs, &inner_ctx, loc, args, f_borrowed)
+            handle_function_type(&inner_ctx, loc, args, f_borrowed)
         }
         _ => Err(CompileErr(
             loc,
@@ -759,15 +749,12 @@ fn handle_function_type(
 impl Context {
     pub fn typecheck_chialisp_program(&self, comp: &CompileForm) -> Result<Polytype, CompileErr> {
         let mut context = self.clone();
-        let mut structs = HashSet::new();
 
         // Extract type definitions
         for h in comp.helpers.iter() {
             if let HelperForm::Deftype(deft) = &h {
                 let tname = decode_string(&deft.name);
                 let n_encoding = number_from_u8(format!("struct {}", tname).as_bytes());
-                // Struct
-                structs.insert(tname.clone());
                 // Ensure that we build up a unique type involving all variables so we won't try to solve it to some specific type
                 let mut result_ty = Type::TAtom(h.loc(), Some(n_encoding));
                 for a in deft.args.iter().rev() {
@@ -817,7 +804,7 @@ impl Context {
             if let HelperForm::Defun(_, defun) = &h {
                 let ty = type_of_defun(defun.loc.clone(), &defun.ty);
                 let (context_with_args, result_ty) =
-                    handle_function_type(&structs, &context, h.loc(), defun.args.clone(), &ty)?;
+                    handle_function_type(&context, h.loc(), defun.args.clone(), &ty)?;
                 typecheck_chialisp_body_with_context(
                     &context_with_args,
                     &Expr::EAnno(
@@ -835,7 +822,7 @@ impl Context {
         // Typecheck main expression
         let ty = type_of_defun(comp.exp.loc(), &comp.ty);
         let (context_with_args, result_ty) =
-            handle_function_type(&structs, &context, comp.exp.loc(), comp.args.clone(), &ty)?;
+            handle_function_type(&context, comp.exp.loc(), comp.args.clone(), &ty)?;
         let clexpr = chialisp_to_expr(comp, comp.args.clone(), comp.exp.clone())?;
         typecheck_chialisp_body_with_context(
             &context_with_args,

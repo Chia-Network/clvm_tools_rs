@@ -305,7 +305,6 @@ where
 fn parse_type_app<const A: usize>(
     apply_to: Type<A>,
     offs: usize,
-    full: Rc<SExp>,
     elist: &[SExp],
 ) -> Result<Type<A>, CompileErr> {
     if offs >= elist.len() {
@@ -315,7 +314,6 @@ fn parse_type_app<const A: usize>(
         parse_type_app(
             Type::TApp(Rc::new(apply_to), Rc::new(next)),
             offs + 1,
-            full,
             elist,
         )
     }
@@ -422,7 +420,7 @@ pub fn parse_type_sexp<const A: usize>(expr: Rc<SExp>) -> Result<Type<A>, Compil
                         .map(Ok)
                         .unwrap_or_else(|_| {
                             let apply_name = parse_type_var(Rc::new(lst[0].clone()))?;
-                            parse_type_app(Type::TVar(apply_name), 1, expr.clone(), &lst)
+                            parse_type_app(Type::TVar(apply_name), 1, &lst)
                         });
                 }
             }

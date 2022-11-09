@@ -19,7 +19,6 @@ use crate::tests::compiler::types::types::{
 fn test_chialisp_context_from_args_and_type_empty() {
     let loc = Srcloc::start(&"*test*".to_string());
     let context = context_from_args_and_type(
-        &HashSet::new(),
         &standard_type_context(),
         Rc::new(SExp::Nil(loc.clone())),
         &Type::TAny(loc.clone()),
@@ -34,7 +33,6 @@ fn test_chialisp_context_from_args_and_type_empty() {
 fn test_chialisp_context_from_args_and_type_single_atom_any() {
     let loc = Srcloc::start(&"*test*".to_string());
     let context = context_from_args_and_type(
-        &HashSet::new(),
         &standard_type_context(),
         Rc::new(SExp::atom_from_string(loc.clone(), &"X".to_string())),
         &Type::TAny(loc.clone()),
@@ -49,7 +47,6 @@ fn test_chialisp_context_from_args_and_type_single_atom_any() {
 fn test_chialisp_context_from_args_and_type_single_arg_any() {
     let loc = Srcloc::start(&"*test*".to_string());
     let context = context_from_args_and_type(
-        &HashSet::new(),
         &standard_type_context(),
         Rc::new(SExp::Cons(
             loc.clone(),
@@ -68,7 +65,6 @@ fn test_chialisp_context_from_args_and_type_single_arg_any() {
 fn test_chialisp_context_from_args_and_type_single_arg_any_pair() {
     let loc = Srcloc::start(&"*test*".to_string());
     let context = context_from_args_and_type(
-        &HashSet::new(),
         &standard_type_context(),
         Rc::new(SExp::Cons(
             loc.clone(),
@@ -87,7 +83,6 @@ fn test_chialisp_context_from_args_and_type_single_arg_any_pair() {
 fn test_chialisp_context_from_args_and_type_arg_with_list_type() {
     let loc = Srcloc::start(&"*test*".to_string());
     let context = context_from_args_and_type(
-        &HashSet::new(),
         &standard_type_context(),
         Rc::new(SExp::atom_from_string(loc.clone(), &"X".to_string())),
         &Type::TApp(
@@ -105,7 +100,6 @@ fn test_chialisp_context_from_args_and_type_arg_with_list_type() {
 fn test_chialisp_context_from_args_and_type_single_arg_with_pair_type() {
     let loc = Srcloc::start(&"*test*".to_string());
     let context = context_from_args_and_type(
-        &HashSet::new(),
         &standard_type_context(),
         Rc::new(SExp::Cons(
             loc.clone(),
