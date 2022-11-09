@@ -460,13 +460,7 @@ pub fn context_from_args_and_type(
                         path.clone(),
                         path_bit.clone(),
                     )?;
-                    context_from_args_and_type(
-                        &sub_context,
-                        f.clone(),
-                        argty,
-                        path,
-                        path_bit,
-                    )
+                    context_from_args_and_type(&sub_context, f.clone(), argty, path, path_bit)
                 } else {
                     Err(CompileErr(l.clone(), "Bad at-tail".to_string()))
                 }
@@ -497,13 +491,7 @@ pub fn context_from_args_and_type(
                         path.clone(),
                         path_bit.clone(),
                     )?;
-                    context_from_args_and_type(
-                        &sub_context,
-                        f.clone(),
-                        argty,
-                        path,
-                        path_bit,
-                    )
+                    context_from_args_and_type(&sub_context, f.clone(), argty, path, path_bit)
                 } else {
                     Err(CompileErr(l.clone(), "Bad at-tail".to_string()))
                 }
