@@ -924,7 +924,7 @@ fn process_helper_let_bindings(
                         name: defun.name.clone(),
                         args: defun.args.clone(),
                         body: hoisted_body,
-                        ty: defun.ty.clone()
+                        ty: defun.ty.clone(),
                     },
                 );
 
@@ -1181,8 +1181,12 @@ fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileE
                 Ok(c_copy)
             }
             HelperForm::Defun(true, defun) => Ok(compiler)
-                .and_then(|comp| fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, comp))
-                .and_then(|comp| fail_if_present(defun.loc.clone(), &compiler.defuns, &defun.name, comp))
+                .and_then(|comp| {
+                    fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, comp)
+                })
+                .and_then(|comp| {
+                    fail_if_present(defun.loc.clone(), &compiler.defuns, &defun.name, comp)
+                })
                 .map(|comp| {
                     comp.add_inline(
                         &defun.name,

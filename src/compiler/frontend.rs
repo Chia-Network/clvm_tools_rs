@@ -7,11 +7,11 @@ use log::debug;
 
 use num_bigint::ToBigInt;
 
-
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
     list_to_cons, Binding, BodyForm, ChiaType, CompileErr, CompileForm, CompilerOpts, DefconstData,
-    DefmacData, DeftypeData, DefunData, HelperForm, LetData, LetFormKind, ModAccum, StructDef, StructMember, TypeAnnoKind
+    DefmacData, DeftypeData, DefunData, HelperForm, LetData, LetFormKind, ModAccum, StructDef,
+    StructMember, TypeAnnoKind,
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
@@ -380,7 +380,7 @@ fn compile_defconstant(
             kw: kwl,
             name: name.to_vec(),
             body: Rc::new(bf),
-            ty
+            ty,
         })
     })
 }
@@ -405,7 +405,11 @@ pub struct CompileDefun {
     pub body: Rc<SExp>,
 }
 
-fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun, ty: Option<Polytype>) -> Result<HelperForm, CompileErr> {
+fn compile_defun(
+    opts: Rc<dyn CompilerOpts>,
+    data: CompileDefun,
+    ty: Option<Polytype>,
+) -> Result<HelperForm, CompileErr> {
     let mut take_form = data.body.clone();
 
     if let SExp::Cons(_, f, _r) = data.body.borrow() {
@@ -421,7 +425,7 @@ fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun, ty: Option<Poly
                 name: data.name,
                 args: data.args,
                 body: Rc::new(bf),
-                ty
+                ty,
             },
         )
     })
@@ -470,7 +474,7 @@ struct OpName4Match {
     ty: Option<(TypeKind, Rc<SExp>)>,
 }
 
-fn match_op_name_4(body: Rc<SExp>, pl: &[SExp]) -> Option<OpName4Match> {
+fn match_op_name_4(pl: &[SExp]) -> Option<OpName4Match> {
     if pl.is_empty() {
         return None;
     }
@@ -524,7 +528,7 @@ fn match_op_name_4(body: Rc<SExp>, pl: &[SExp]) -> Option<OpName4Match> {
                     })
                 }
                 _ => Some(OpName4Match {
-                    nl: pl[0].loc().clone(),
+                    nl: pl[0].loc(),
                     opl: l.clone(),
                     op_name: op_name.clone(),
                     name: Vec::new(),
@@ -804,7 +808,7 @@ fn create_constructor(sdef: &StructDef) -> HelperForm {
             args: Rc::new(arguments),
             body: Rc::new(construction),
             ty: Some(funty),
-        }
+        },
     )
 }
 
@@ -868,7 +872,7 @@ pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
                                 ],
                             )),
                             ty: Some(funty),
-                        }
+                        },
                     )
                 })
                 .collect();
@@ -947,10 +951,10 @@ pub fn compile_helperform(
     opts: Rc<dyn CompilerOpts>,
     body: Rc<SExp>,
 ) -> Result<Option<HelperFormResult>, CompileErr> {
-    let l = body.loc();
+    let l = location_span(body.loc(), body.clone());
     let plist = body.proper_list();
 
-    if let Some(matched) = plist.and_then(|pl| match_op_name_4(body.clone(), &pl)) {
+    if let Some(matched) = plist.and_then(|pl| match_op_name_4(&pl)) {
         let inline = matched.op_name == "defun-inline".as_bytes().to_vec();
         if matched.op_name == "defconstant".as_bytes().to_vec() {
             let definition = compile_defconstant(
@@ -960,7 +964,7 @@ pub fn compile_helperform(
                 Some(matched.opl),
                 matched.name.to_vec(),
                 matched.args,
-                None
+                None,
             )?;
             Ok(Some(HelperFormResult {
                 chia_type: None,
@@ -999,12 +1003,12 @@ pub fn compile_helperform(
                     l,
                     nl: matched.nl,
                     kwl: Some(matched.opl),
-                    inline: inline,
+                    inline,
                     name: matched.name.to_vec(),
                     args: stripped_args,
                     body: matched.body,
                 },
-                parsed_type
+                parsed_type,
             )?;
             Ok(Some(HelperFormResult {
                 chia_type: None,
@@ -1019,7 +1023,7 @@ pub fn compile_helperform(
                     loc: l.clone(),
                     name: n.clone(),
                     args: vec![],
-                    ty: None
+                    ty: None,
                 }),
                 ChiaType::Struct(sdef) => {
                     if let SExp::Atom(_, _) = sdef.proto.borrow() {

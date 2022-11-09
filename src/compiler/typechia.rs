@@ -792,7 +792,8 @@ impl Context {
             if let HelperForm::Defconstant(defc) = &h {
                 let tname = decode_string(&defc.name);
                 if let Some(ty) = &defc.ty {
-                    context = context.snoc_wf(ContextElim::CVar(Var(tname, defc.loc.clone()), ty.clone()));
+                    context = context
+                        .snoc_wf(ContextElim::CVar(Var(tname, defc.loc.clone()), ty.clone()));
                 } else {
                     context = context.snoc_wf(ContextElim::CVar(
                         Var(tname, defc.loc.clone()),
@@ -820,7 +821,11 @@ impl Context {
                 typecheck_chialisp_body_with_context(
                     &context_with_args,
                     &Expr::EAnno(
-                        Rc::new(chialisp_to_expr(comp, defun.args.clone(), defun.body.clone())?),
+                        Rc::new(chialisp_to_expr(
+                            comp,
+                            defun.args.clone(),
+                            defun.body.clone(),
+                        )?),
                         result_ty,
                     ),
                 )?;
