@@ -165,13 +165,6 @@ jobs:
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
       run: cargo test --no-default-features
 
-    - name: Run wasm tests
-      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
-      run: |
-        rustup target add wasm32-unknown-unknown
-        cargo install wasm-bindgen-cli --version 0.2.80
-        cd mock-test && npm install && make && ../resources/tests/linux-install-node.sh ./build/runmock.js
-
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
       with:

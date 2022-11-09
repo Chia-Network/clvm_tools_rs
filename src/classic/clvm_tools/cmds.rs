@@ -904,7 +904,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 .map_err(|e| CompileErr(e.0.clone(), e.1))
                 .and_then(|pre_forms| {
                     let context = standard_type_context();
-                    let compileform = frontend(opts.clone(), pre_forms)?;
+                    let compileform = frontend(opts.clone(), &pre_forms)?;
                     let target_type = context.typecheck_chialisp_program(&compileform)?;
                     Ok(context.reify(&target_type, None))
                 })

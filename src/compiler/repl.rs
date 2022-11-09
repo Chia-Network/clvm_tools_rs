@@ -115,7 +115,7 @@ impl Repl {
                 )),
             )),
         );
-        let start_program_fe = frontend(opts.clone(), vec![starter_empty_program]).unwrap();
+        let start_program_fe = frontend(opts.clone(), &[starter_empty_program]).unwrap();
         let evaluator = Evaluator::new(opts.clone(), runner.clone(), start_program_fe.helpers);
 
         Repl {
@@ -163,15 +163,17 @@ impl Repl {
                 if parsed_program.is_empty() {
                     return Ok(None);
                 }
-                if let Some(hresult) =
-                    compile_helperform(self.opts.clone(), parsed_program[0].clone())?
+
+                if let Ok(Some(hresult)) =
+                    compile_helperform(self.opts.clone(), parsed_program[0].clone())
                 {
                     for h in hresult.new_helpers.iter() {
                         self.evaluator.add_helper(h);
                     }
+
                     Ok(Some(Rc::new(BodyForm::Quoted(SExp::Nil(self.loc.clone())))))
                 } else {
-                    frontend(self.opts.clone(), parsed_program)
+                    frontend(self.opts.clone(), &parsed_program)
                         .and_then(|program| {
                             self.evaluator.shrink_bodyform(
                                 allocator,

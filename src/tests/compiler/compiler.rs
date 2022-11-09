@@ -1058,3 +1058,37 @@ fn test_modern_inline_at_capture() {
 
     assert_eq!(result.1, "clvm raise in (8 5) (() 99)");
 }
+
+#[test]
+fn test_modern_inline_recurse() {
+    // Test for a crash doing a recursive inline call.
+    run_string(
+        &"(mod () (include *standard-cl-21*) (defun-inline FOO (X) (FOO (+ X 1))) (FOO 3))"
+            .to_string(),
+        &"()".to_string(),
+    )
+    .unwrap_err();
+}
+
+#[test]
+fn test_modern_inline_recurse_deep() {
+    // Test for a crash doing a recursive inline call.
+    run_string(
+        &"(mod () (include *standard-cl-21*) (defun-inline BAR (X) (FOO (- X 1))) (defun-inline FOO (X) (BAR (+ X 1))) (FOO 3))".to_string(),
+        &"()".to_string()
+    ).unwrap_err();
+}
+
+#[test]
+fn test_modern_mod_form() {
+    let result = run_string(
+        &indoc! {"
+(mod () (include *standard-cl-21*) (a (mod (X) (+ 1 (* X 2))) (list 3)))
+"}
+        .to_string(),
+        &"()".to_string(),
+    )
+    .unwrap();
+
+    assert_eq!(result.to_string(), "7");
+}

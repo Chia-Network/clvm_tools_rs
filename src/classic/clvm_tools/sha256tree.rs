@@ -1,6 +1,27 @@
+use std::fmt::Display;
+
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 
 use crate::classic::clvm::__type_compatibility__::{sha256, Bytes, BytesFromType};
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct TreeHash {
+    s: String,
+}
+
+impl Display for TreeHash {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        formatter.write_str(&self.s)
+    }
+}
+
+impl TreeHash {
+    pub fn new_from_sexp(allocator: &mut Allocator, r: NodePtr) -> Self {
+        TreeHash {
+            s: sha256tree(allocator, r).hex(),
+        }
+    }
+}
 
 pub fn sha256tree(allocator: &mut Allocator, v: NodePtr) -> Bytes {
     match allocator.sexp(v) {

@@ -129,7 +129,7 @@ fn test_chialisp_program_typecheck(s: &str, flatten: bool) -> Result<Polytype, C
     let context = standard_type_context();
     let opts = DefaultCompilerOpts::new(&testname);
     let pre_forms = parse_sexp(loc.clone(), s.bytes()).map_err(|e| CompileErr(e.0, e.1))?;
-    let compileform = frontend(Rc::new(opts), pre_forms)?;
+    let compileform = frontend(Rc::new(opts), &pre_forms)?;
     let mut fcount: usize = 0;
     let mut held = HashMap::new();
     let target_type = context.typecheck_chialisp_program(&compileform)?;

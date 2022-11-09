@@ -119,7 +119,7 @@ fn process_helper(
                     debug!("result {:?}", result.new_helpers);
                     let mut result_forms = Vec::new();
                     for f in result.new_helpers.iter() {
-                        if matches!(f, HelperForm::Defun(_, _, _, _, _, _)) {
+                        if matches!(f, HelperForm::Defun(_, _)) {
                             let downstream = process_helper(opts.clone(), sexp, f.to_sexp())?;
                             for h in downstream.iter() {
                                 result_forms.push(h.clone());

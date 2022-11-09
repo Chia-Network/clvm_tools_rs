@@ -587,7 +587,7 @@ fn handle_macro(
         form.exp.clone(),
         true,
     )?;
-    let parsed_macro_output = frontend(opts.clone(), vec![result.to_sexp()])?;
+    let parsed_macro_output = frontend(opts.clone(), &[result.to_sexp()])?;
     let exp_result = ev.shrink_bodyform(
         &mut allocator,
         Rc::new(SExp::Nil(loc.clone())),
@@ -597,7 +597,7 @@ fn handle_macro(
     )?;
     match dequote(loc.clone(), exp_result) {
         Ok(dequoted) => {
-            let last_reparse = frontend(opts, vec![dequoted])?;
+            let last_reparse = frontend(opts, &[dequoted])?;
             let final_res = chialisp_to_expr(program, form_args, last_reparse.exp)?;
             Ok(final_res)
         }
@@ -650,16 +650,16 @@ fn chialisp_to_expr(
             Ok(Expr::ELit(l.clone(), v.len().to_bigint().unwrap()))
         }
         BodyForm::Value(SExp::Atom(l, n)) => Ok(Expr::EVar(Var(decode_string(n), l.clone()))),
-        BodyForm::Let(l, _kind, _bindings, _letbody) => {
+        BodyForm::Let(_, letdata) => {
             // Inline via the evaluator
             let mut allocator = Allocator::new();
-            let file_borrowed: &String = l.file.borrow();
+            let file_borrowed: &String = letdata.loc.file.borrow();
             let opts = Rc::new(DefaultCompilerOpts::new(file_borrowed));
             let runner = Rc::new(DefaultProgramRunner::new());
             let evaluator = Evaluator::new(opts, runner, program.helpers.clone()).disable_calls();
             let beta_reduced = evaluator.shrink_bodyform(
                 &mut allocator,
-                Rc::new(SExp::Nil(l.clone())),
+                Rc::new(SExp::Nil(letdata.loc.clone())),
                 &HashMap::new(),
                 body.clone(),
                 false,
@@ -682,13 +682,13 @@ fn chialisp_to_expr(
             if let BodyForm::Value(SExp::Atom(_, n1)) = &lst[0].borrow() {
                 // Find out if it's a macro
                 for h in program.helpers.iter() {
-                    if let HelperForm::Defmacro(_, name, args, form) = &h {
-                        if name == n1 {
+                    if let HelperForm::Defmacro(defm) = &h {
+                        if defm.name == *n1 {
                             return handle_macro(
                                 program,
                                 form_args,
-                                args.clone(),
-                                form.clone(),
+                                defm.args.clone(),
+                                defm.program.clone(),
                                 body.loc(),
                                 lst,
                             );
@@ -763,22 +763,22 @@ impl Context {
 
         // Extract type definitions
         for h in comp.helpers.iter() {
-            if let HelperForm::Deftype(l, name, args, _ty) = &h {
-                let tname = decode_string(name);
+            if let HelperForm::Deftype(deft) = &h {
+                let tname = decode_string(&deft.name);
                 let n_encoding = number_from_u8(format!("struct {}", tname).as_bytes());
                 // Struct
                 structs.insert(tname.clone());
                 // Ensure that we build up a unique type involving all variables so we won't try to solve it to some specific type
                 let mut result_ty = Type::TAtom(h.loc(), Some(n_encoding));
-                for a in args.iter().rev() {
+                for a in deft.args.iter().rev() {
                     result_ty = Type::TPair(Rc::new(Type::TVar(a.clone())), Rc::new(result_ty));
                 }
                 result_ty = Type::TExec(Rc::new(result_ty));
-                for a in args.iter().rev() {
+                for a in deft.args.iter().rev() {
                     result_ty = Type::TAbs(a.clone(), Rc::new(result_ty));
                 }
                 let exists_solved =
-                    ContextElim::CExistsSolved(TypeVar(tname.clone(), l.clone()), result_ty);
+                    ContextElim::CExistsSolved(TypeVar(tname.clone(), deft.loc.clone()), result_ty);
                 debug!(
                     "struct exists_solved {}",
                     exists_solved.to_sexp().to_string()
@@ -789,14 +789,14 @@ impl Context {
 
         // Extract constants
         for h in comp.helpers.iter() {
-            if let HelperForm::Defconstant(l, name, _body, ty) = &h {
-                let tname = decode_string(name);
-                if let Some(ty) = ty {
-                    context = context.snoc_wf(ContextElim::CVar(Var(tname, l.clone()), ty.clone()));
+            if let HelperForm::Defconstant(defc) = &h {
+                let tname = decode_string(&defc.name);
+                if let Some(ty) = &defc.ty {
+                    context = context.snoc_wf(ContextElim::CVar(Var(tname, defc.loc.clone()), ty.clone()));
                 } else {
                     context = context.snoc_wf(ContextElim::CVar(
-                        Var(tname, l.clone()),
-                        Type::TAny(l.clone()),
+                        Var(tname, defc.loc.clone()),
+                        Type::TAny(defc.loc.clone()),
                     ));
                 }
             }
@@ -804,23 +804,23 @@ impl Context {
 
         // Extract functions
         for h in comp.helpers.iter() {
-            if let HelperForm::Defun(l, name, _, _args, _body, ty) = &h {
-                let tname = decode_string(name);
-                let ty = type_of_defun(l.clone(), ty);
-                context = context.snoc_wf(ContextElim::CVar(Var(tname, l.clone()), ty));
+            if let HelperForm::Defun(_, defun) = &h {
+                let tname = decode_string(&defun.name);
+                let ty = type_of_defun(defun.loc.clone(), &defun.ty);
+                context = context.snoc_wf(ContextElim::CVar(Var(tname, defun.loc.clone()), ty));
             }
         }
 
         // Typecheck helper functions
         for h in comp.helpers.iter() {
-            if let HelperForm::Defun(l, _name, _, args, body, ty) = &h {
-                let ty = type_of_defun(l.clone(), ty);
+            if let HelperForm::Defun(_, defun) = &h {
+                let ty = type_of_defun(defun.loc.clone(), &defun.ty);
                 let (context_with_args, result_ty) =
-                    handle_function_type(&structs, &context, h.loc(), args.clone(), &ty)?;
+                    handle_function_type(&structs, &context, h.loc(), defun.args.clone(), &ty)?;
                 typecheck_chialisp_body_with_context(
                     &context_with_args,
                     &Expr::EAnno(
-                        Rc::new(chialisp_to_expr(comp, args.clone(), body.clone())?),
+                        Rc::new(chialisp_to_expr(comp, defun.args.clone(), defun.body.clone())?),
                         result_ty,
                     ),
                 )?;

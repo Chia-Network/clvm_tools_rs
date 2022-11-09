@@ -23,7 +23,7 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
             return CompileErr(e.0.clone(), e.1.clone());
         })
         .and_then(|parsed_program| {
-            return frontend(opts.clone(), parsed_program);
+            return frontend(opts.clone(), &parsed_program);
         })
         .and_then(|program| {
             let e = Evaluator::new(opts.clone(), runner, program.helpers);
