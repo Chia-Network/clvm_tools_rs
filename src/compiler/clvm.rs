@@ -614,8 +614,8 @@ pub fn parse_and_run(
 
 pub fn sha256tree_from_atom(v: &[u8]) -> Vec<u8> {
     let mut hasher = Sha256::new();
-    hasher.update(&[1]);
-    hasher.update(&v);
+    hasher.update([1]);
+    hasher.update(v);
     hasher.finalize().to_vec()
 }
 
@@ -626,7 +626,7 @@ pub fn sha256tree(s: Rc<SExp>) -> Vec<u8> {
             let mut hasher = Sha256::new();
             let t1 = sha256tree(a.clone());
             let t2 = sha256tree(b.clone());
-            hasher.update(&[2]);
+            hasher.update([2]);
             hasher.update(&t1);
             hasher.update(&t2);
             hasher.finalize().to_vec()
