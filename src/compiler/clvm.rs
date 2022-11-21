@@ -608,10 +608,10 @@ pub fn parse_and_run(
     }
 }
 
-fn sha256tree_from_atom(v: Vec<u8>) -> Vec<u8> {
+pub fn sha256tree_from_atom(v: &[u8]) -> Vec<u8> {
     sha256(
         Bytes::new(Some(BytesFromType::Raw(vec![1])))
-            .concat(&Bytes::new(Some(BytesFromType::Raw(v)))),
+            .concat(&Bytes::new(Some(BytesFromType::Raw(v.to_vec())))),
     )
     .data()
     .clone()
@@ -631,9 +631,9 @@ pub fn sha256tree(s: Rc<SExp>) -> Vec<u8> {
             .data()
             .clone()
         }
-        SExp::Nil(_) => sha256tree_from_atom(vec![]),
-        SExp::Integer(_, i) => sha256tree_from_atom(u8_from_number(i.clone())),
-        SExp::QuotedString(_, _, v) => sha256tree_from_atom(v.clone()),
-        SExp::Atom(_, v) => sha256tree_from_atom(v.clone()),
+        SExp::Nil(_) => sha256tree_from_atom(&[]),
+        SExp::Integer(_, i) => sha256tree_from_atom(&u8_from_number(i.clone())),
+        SExp::QuotedString(_, _, v) => sha256tree_from_atom(&v.clone()),
+        SExp::Atom(_, v) => sha256tree_from_atom(&v.clone()),
     }
 }

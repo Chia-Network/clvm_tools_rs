@@ -351,6 +351,7 @@ fn rename_in_compileform(namemap: &HashMap<Vec<u8>, Vec<u8>>, c: Rc<CompileForm>
     CompileForm {
         loc: c.loc.clone(),
         args: c.args.clone(),
+        include_forms: c.include_forms.clone(),
         helpers: c
             .helpers
             .iter()
@@ -366,6 +367,7 @@ pub fn rename_children_compileform(c: &CompileForm) -> CompileForm {
     CompileForm {
         loc: c.loc.clone(),
         args: c.args.clone(),
+        include_forms: c.include_forms.clone(),
         helpers: local_renamed_helpers,
         exp: Rc::new(local_renamed_body),
     }
@@ -384,6 +386,7 @@ pub fn rename_args_compileform(c: &CompileForm) -> CompileForm {
     CompileForm {
         loc: c.loc(),
         args: local_renamed_arg,
+        include_forms: c.include_forms.clone(),
         helpers: local_renamed_helpers
             .iter()
             .map(|x| rename_in_helperform(&local_namemap, x))

@@ -1,20 +1,17 @@
 use std::borrow::Borrow;
 use std::rc::Rc;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
-
-use crate::compiler::comptypes::{CompileErr, CompilerOpts};
-use crate::compiler::sexp::{enlist, parse_sexp, SExp};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts, IncludeDesc};
+use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 pub fn process_include(
     opts: Rc<dyn CompilerOpts>,
-    name: &str,
+    include: IncludeDesc,
 ) -> Result<Vec<Rc<SExp>>, CompileErr> {
-    let filename_and_content = opts.read_new_file(opts.filename(), name.to_string())?;
+    let filename_and_content = opts.read_new_file(opts.filename(), decode_string(&include.name))?;
     let content = filename_and_content.1;
-
-    let start_of_file = Srcloc::start(name);
+    let start_of_file = Srcloc::start(&decode_string(&include.name));
 
     parse_sexp(start_of_file.clone(), content.bytes())
         .map_err(|e| CompileErr(e.0.clone(), e.1))
@@ -23,30 +20,36 @@ pub fn process_include(
                 start_of_file,
                 "Includes should contain a list of forms".to_string(),
             )),
-            Some(v) => {
-                let res: Vec<Rc<SExp>> = v.iter().map(|x| Rc::new(x.clone())).collect();
-                Ok(res)
-            }
+            Some(v) => Ok(v.iter().map(|x| Rc::new(x.clone())).collect()),
         })
 }
 
 /* Expand include inline in forms */
 fn process_pp_form(
     opts: Rc<dyn CompilerOpts>,
+    includes: &mut Vec<IncludeDesc>,
     body: Rc<SExp>,
 ) -> Result<Vec<Rc<SExp>>, CompileErr> {
-    let filename: Option<Vec<u8>> = body
+    let included: Option<IncludeDesc> = body
         .proper_list()
         .map(|x| {
             match &x[..] {
-                [SExp::Atom(_, inc), SExp::Atom(_, fname)] => {
+                [SExp::Atom(kw, inc), SExp::Atom(nl, fname)] => {
                     if "include".as_bytes().to_vec() == *inc {
-                        return Ok(Some(fname.clone()));
+                        return Ok(Some(IncludeDesc {
+                            kw: kw.clone(),
+                            nl: nl.clone(),
+                            name: fname.clone(),
+                        }));
                     }
                 }
-                [SExp::Atom(_, inc), SExp::QuotedString(_, _, fname)] => {
+                [SExp::Atom(kw, inc), SExp::QuotedString(nl, _, fname)] => {
                     if "include".as_bytes().to_vec() == *inc {
-                        return Ok(Some(fname.clone()));
+                        return Ok(Some(IncludeDesc {
+                            kw: kw.clone(),
+                            nl: nl.clone(),
+                            name: fname.clone(),
+                        }));
                     }
                 }
 
@@ -71,22 +74,25 @@ fn process_pp_form(
         })
         .unwrap_or_else(|| Ok(None))?;
 
-    match filename {
-        Some(f) => process_include(
-            opts,
-            &Bytes::new(Some(BytesFromType::Raw(f.to_vec()))).decode(),
-        ),
-        _ => Ok(vec![body]),
+    if let Some(i) = included {
+        includes.push(i.clone());
+        process_include(opts, i)
+    } else {
+        Ok(vec![body])
     }
 }
 
-fn preprocess_(opts: Rc<dyn CompilerOpts>, body: Rc<SExp>) -> Result<Vec<Rc<SExp>>, CompileErr> {
+fn preprocess_(
+    opts: Rc<dyn CompilerOpts>,
+    includes: &mut Vec<IncludeDesc>,
+    body: Rc<SExp>,
+) -> Result<Vec<Rc<SExp>>, CompileErr> {
     match body.borrow() {
         SExp::Cons(_, head, rest) => match rest.borrow() {
-            SExp::Nil(_nl) => process_pp_form(opts, head.clone()),
+            SExp::Nil(_nl) => process_pp_form(opts, includes, head.clone()),
             _ => {
-                let lst = process_pp_form(opts.clone(), head.clone())?;
-                let mut rs = preprocess_(opts, rest.clone())?;
+                let lst = process_pp_form(opts.clone(), includes, head.clone())?;
+                let mut rs = preprocess_(opts, includes, rest.clone())?;
                 let mut result = lst;
                 result.append(&mut rs);
                 Ok(result)
@@ -120,7 +126,11 @@ fn inject_std_macros(body: Rc<SExp>) -> SExp {
     }
 }
 
-pub fn preprocess(opts: Rc<dyn CompilerOpts>, cmod: Rc<SExp>) -> Result<Vec<Rc<SExp>>, CompileErr> {
+pub fn preprocess(
+    opts: Rc<dyn CompilerOpts>,
+    includes: &mut Vec<IncludeDesc>,
+    cmod: Rc<SExp>,
+) -> Result<Vec<Rc<SExp>>, CompileErr> {
     let tocompile = if opts.stdenv() {
         let injected = inject_std_macros(cmod);
         Rc::new(injected)
@@ -128,5 +138,5 @@ pub fn preprocess(opts: Rc<dyn CompilerOpts>, cmod: Rc<SExp>) -> Result<Vec<Rc<S
         cmod
     };
 
-    preprocess_(opts, tocompile)
+    preprocess_(opts, includes, tocompile)
 }
