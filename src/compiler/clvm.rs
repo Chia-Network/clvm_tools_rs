@@ -633,7 +633,7 @@ pub fn sha256tree(s: Rc<SExp>) -> Vec<u8> {
         }
         SExp::Nil(_) => sha256tree_from_atom(&[]),
         SExp::Integer(_, i) => sha256tree_from_atom(&u8_from_number(i.clone())),
-        SExp::QuotedString(_, _, v) => sha256tree_from_atom(&v.clone()),
-        SExp::Atom(_, v) => sha256tree_from_atom(&v.clone()),
+        SExp::QuotedString(_, _, v) => sha256tree_from_atom(v),
+        SExp::Atom(_, v) => sha256tree_from_atom(v),
     }
 }
