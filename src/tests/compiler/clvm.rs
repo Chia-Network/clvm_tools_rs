@@ -8,15 +8,16 @@ use rand_chacha::ChaChaRng;
 use num_bigint::ToBigInt;
 
 use std::borrow::Borrow;
+use std::fs;
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
+use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, Bytes, BytesFromType};
 use crate::classic::clvm::casts::{bigint_to_bytes_clvm, bigint_to_bytes_unsigned};
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 
-use crate::compiler::clvm::parse_and_run;
+use crate::compiler::clvm::{parse_and_run, sha256tree};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -212,4 +213,20 @@ fn test_random_int_just_the_conversion_functions_and_no_other_things_from_the_st
             }
         }
     }
+}
+
+#[test]
+fn test_sha256_tree_hash() {
+    let filename = "resources/tests/assert.clvm.out";
+    let assert_clvm_compiled = fs::read_to_string(filename).expect("should exist");
+    let parsed = parse_sexp(
+        Srcloc::start(filename),
+        assert_clvm_compiled.as_bytes().iter().copied(),
+    )
+    .expect("should parse");
+    let hash_result = Bytes::new(Some(BytesFromType::Raw(sha256tree(parsed[0].clone())))).hex();
+    assert_eq!(
+        hash_result,
+        "156e86309040ed6bbfee805c9c6ca7eebc140490bd1b97d6d18fb8ebc91fd05a"
+    );
 }

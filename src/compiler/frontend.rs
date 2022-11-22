@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::comptypes::{
     list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData,
-    DefmacData, DefunData, HelperForm, LetData, LetFormKind, ModAccum,
+    DefmacData, DefunData, HelperForm, IncludeDesc, LetData, LetFormKind, ModAccum,
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
@@ -586,6 +586,7 @@ fn compile_mod_(
                 Some(_) => Err(CompileErr(l.clone(), "too many expressions".to_string())),
                 _ => Ok(mc.set_final(&CompileForm {
                     loc: mc.loc.clone(),
+                    include_forms: mc.includes.clone(),
                     args,
                     helpers: mc.helpers.clone(),
                     exp: Rc::new(compile_bodyform(opts.clone(), body.clone())?),
@@ -612,8 +613,30 @@ fn compile_mod_(
     }
 }
 
+fn frontend_step_finish(
+    opts: Rc<dyn CompilerOpts>,
+    includes: &mut Vec<IncludeDesc>,
+    pre_forms: &[Rc<SExp>],
+) -> Result<ModAccum, CompileErr> {
+    let loc = pre_forms[0].loc();
+    frontend_start(
+        opts.clone(),
+        includes,
+        &[Rc::new(SExp::Cons(
+            loc.clone(),
+            Rc::new(SExp::Atom(loc.clone(), "mod".as_bytes().to_vec())),
+            Rc::new(SExp::Cons(
+                loc.clone(),
+                Rc::new(SExp::Nil(loc.clone())),
+                Rc::new(list_to_cons(loc, pre_forms)),
+            )),
+        ))],
+    )
+}
+
 fn frontend_start(
     opts: Rc<dyn CompilerOpts>,
+    includes: &mut Vec<IncludeDesc>,
     pre_forms: &[Rc<SExp>],
 ) -> Result<ModAccum, CompileErr> {
     if pre_forms.is_empty() {
@@ -622,27 +645,12 @@ fn frontend_start(
             "empty source file not allowed".to_string(),
         ))
     } else {
-        let finish = || {
-            let loc = pre_forms[0].loc();
-            frontend_start(
-                opts.clone(),
-                &[Rc::new(SExp::Cons(
-                    loc.clone(),
-                    Rc::new(SExp::Atom(loc.clone(), "mod".as_bytes().to_vec())),
-                    Rc::new(SExp::Cons(
-                        loc.clone(),
-                        Rc::new(SExp::Nil(loc.clone())),
-                        Rc::new(list_to_cons(loc, pre_forms)),
-                    )),
-                ))],
-            )
-        };
         let l = pre_forms[0].loc();
         pre_forms[0]
             .proper_list()
             .map(|x| {
-                if x.len() < 3 {
-                    return finish();
+                if x.is_empty() {
+                    return frontend_step_finish(opts.clone(), includes, pre_forms);
                 }
 
                 if let SExp::Atom(_, mod_atom) = &x[0] {
@@ -658,7 +666,7 @@ fn frontend_start(
                         let body_vec = x.iter().skip(2).map(|s| Rc::new(s.clone())).collect();
                         let body = Rc::new(enlist(pre_forms[0].loc(), body_vec));
 
-                        let ls = preprocess(opts.clone(), body)?;
+                        let ls = preprocess(opts.clone(), includes, body)?;
                         return compile_mod_(
                             &ModAccum::new(l.clone()),
                             opts.clone(),
@@ -668,9 +676,9 @@ fn frontend_start(
                     }
                 }
 
-                finish()
+                frontend_step_finish(opts.clone(), includes, pre_forms)
             })
-            .unwrap_or_else(finish)
+            .unwrap_or_else(|| frontend_step_finish(opts, includes, pre_forms))
     }
 }
 
@@ -678,7 +686,12 @@ pub fn frontend(
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>],
 ) -> Result<CompileForm, CompileErr> {
-    let started = frontend_start(opts.clone(), pre_forms)?;
+    let mut includes = Vec::new();
+    let started = frontend_start(opts.clone(), &mut includes, pre_forms)?;
+
+    for i in includes.iter() {
+        started.add_include(i.clone());
+    }
 
     let compiled: Result<CompileForm, CompileErr> = match started.exp_form {
         None => Err(CompileErr(
@@ -716,6 +729,7 @@ pub fn frontend(
 
     Ok(CompileForm {
         loc: our_mod.loc.clone(),
+        include_forms: includes.to_vec(),
         args: our_mod.args.clone(),
         helpers: live_helpers,
         exp: our_mod.exp.clone(),

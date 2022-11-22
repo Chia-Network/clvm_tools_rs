@@ -7,13 +7,17 @@ use clvm_rs::allocator::{Allocator, NodePtr};
 
 use num_bigint::ToBigInt;
 
-use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, sha256, Bytes, BytesFromType};
+use sha2::Digest;
+use sha2::Sha256;
+
+use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+
 use crate::util::{number_from_u8, u8_from_number, Number};
 
 #[derive(Clone, Debug)]
@@ -608,32 +612,28 @@ pub fn parse_and_run(
     }
 }
 
-fn sha256tree_from_atom(v: Vec<u8>) -> Vec<u8> {
-    sha256(
-        Bytes::new(Some(BytesFromType::Raw(vec![1])))
-            .concat(&Bytes::new(Some(BytesFromType::Raw(v)))),
-    )
-    .data()
-    .clone()
+pub fn sha256tree_from_atom(v: &[u8]) -> Vec<u8> {
+    let mut hasher = Sha256::new();
+    hasher.update([1]);
+    hasher.update(v);
+    hasher.finalize().to_vec()
 }
 
 // sha256tree for modern style SExp
 pub fn sha256tree(s: Rc<SExp>) -> Vec<u8> {
     match s.borrow() {
         SExp::Cons(_l, a, b) => {
+            let mut hasher = Sha256::new();
             let t1 = sha256tree(a.clone());
             let t2 = sha256tree(b.clone());
-            sha256(
-                Bytes::new(Some(BytesFromType::Raw(vec![2])))
-                    .concat(&Bytes::new(Some(BytesFromType::Raw(t1))))
-                    .concat(&Bytes::new(Some(BytesFromType::Raw(t2)))),
-            )
-            .data()
-            .clone()
+            hasher.update([2]);
+            hasher.update(&t1);
+            hasher.update(&t2);
+            hasher.finalize().to_vec()
         }
-        SExp::Nil(_) => sha256tree_from_atom(vec![]),
-        SExp::Integer(_, i) => sha256tree_from_atom(u8_from_number(i.clone())),
-        SExp::QuotedString(_, _, v) => sha256tree_from_atom(v.clone()),
-        SExp::Atom(_, v) => sha256tree_from_atom(v.clone()),
+        SExp::Nil(_) => sha256tree_from_atom(&[]),
+        SExp::Integer(_, i) => sha256tree_from_atom(&u8_from_number(i.clone())),
+        SExp::QuotedString(_, _, v) => sha256tree_from_atom(v),
+        SExp::Atom(_, v) => sha256tree_from_atom(v),
     }
 }
