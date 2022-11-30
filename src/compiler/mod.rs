@@ -1,4 +1,5 @@
 pub mod cldb;
+pub mod cldb_hierarchy;
 pub mod clvm;
 mod codegen;
 #[allow(clippy::module_inception)]

@@ -216,6 +216,10 @@ impl CldbRun {
             None
         }
     }
+
+    pub fn current_step(&self) -> RunStep {
+        self.step.clone()
+    }
 }
 
 pub struct CldbNoOverride {}
@@ -316,14 +320,14 @@ impl CldbRunnable for CldbOverrideBespokeCode {
 
 pub struct CldbRunEnv {
     input_file: Option<String>,
-    program_lines: Vec<String>,
+    program_lines: Rc<Vec<String>>,
     overrides: Box<dyn CldbRunnable>,
 }
 
 impl CldbRunEnv {
     pub fn new(
         input_file: Option<String>,
-        program_lines: Vec<String>,
+        program_lines: Rc<Vec<String>>,
         runnable: Box<dyn CldbRunnable>,
     ) -> Self {
         CldbRunEnv {

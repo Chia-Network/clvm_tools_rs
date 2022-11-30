@@ -94,6 +94,7 @@ pub struct DefunData {
     pub name: Vec<u8>,
     pub kw: Option<Srcloc>,
     pub nl: Srcloc,
+    pub orig_args: Rc<SExp>,
     pub args: Rc<SExp>,
     pub body: Rc<BodyForm>,
 }
@@ -476,13 +477,21 @@ impl PrimaryCodegen {
         codegen_copy
     }
 
-    pub fn add_defun(&self, name: &[u8], value: DefunCall) -> Self {
+    pub fn add_defun(&self, name: &[u8], args: Rc<SExp>, value: DefunCall, left_env: bool) -> Self {
         let mut codegen_copy = self.clone();
         codegen_copy.defuns.insert(name.to_owned(), value.clone());
         let hash = sha256tree(value.code);
         let hash_str = Bytes::new(Some(BytesFromType::Raw(hash))).hex();
         let name = Bytes::new(Some(BytesFromType::Raw(name.to_owned()))).decode();
-        codegen_copy.function_symbols.insert(hash_str, name);
+        codegen_copy.function_symbols.insert(hash_str.clone(), name);
+        if left_env {
+            codegen_copy
+                .function_symbols
+                .insert(format!("{}_left_env", hash_str), "1".to_string());
+        }
+        codegen_copy
+            .function_symbols
+            .insert(format!("{}_arguments", hash_str), args.to_string());
         codegen_copy
     }
 

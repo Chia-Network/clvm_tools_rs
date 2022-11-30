@@ -212,7 +212,7 @@ fn start_clvm_program(
         let override_runnable = CldbOverrideBespokeCode::new(use_symbol_table, overrides_table);
 
         let step = start_step(program, args);
-        let cldbenv = CldbRunEnv::new(None, vec![], Box::new(override_runnable));
+        let cldbenv = CldbRunEnv::new(None, Rc::new(vec![]), Box::new(override_runnable));
         let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
         loop {
             match cmd_input.recv() {

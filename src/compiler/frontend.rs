@@ -409,7 +409,8 @@ fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun) -> Result<Helpe
                 nl: data.nl,
                 kw: data.kwl,
                 name: data.name,
-                args: data.args,
+                args: data.args.clone(),
+                orig_args: data.args.clone(),
                 body: Rc::new(bf),
             },
         )
@@ -722,7 +723,7 @@ pub fn frontend(
 
     let mut live_helpers = Vec::new();
     for h in our_mod.helpers {
-        if helper_names.contains(h.name()) {
+        if !opts.frontend_check_live() || helper_names.contains(h.name()) {
             live_helpers.push(h);
         }
     }

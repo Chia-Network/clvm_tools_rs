@@ -43,6 +43,32 @@ impl RunStep {
             RunStep::Step(_, _, p) => Some(p.clone()),
         }
     }
+
+    pub fn sexp(&self) -> Rc<SExp> {
+        match self {
+            RunStep::Done(_, s) => s.clone(),
+            RunStep::OpResult(_, s, _) => s.clone(),
+            RunStep::Op(e, _, _, _, _) => e.clone(),
+            RunStep::Step(e, _, _) => e.clone(),
+        }
+    }
+
+    pub fn args(&self) -> Option<Rc<SExp>> {
+        match self {
+            RunStep::Step(_, a, _) => Some(a.clone()),
+            RunStep::Op(_, a, _, _, _) => Some(a.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn loc(&self) -> Srcloc {
+        match self {
+            RunStep::Done(l, _) => l.clone(),
+            RunStep::OpResult(l, _, _) => l.clone(),
+            RunStep::Op(e, _, _, _, _) => e.loc(),
+            RunStep::Step(e, _, _) => e.loc(),
+        }
+    }
 }
 
 fn choose_path(
@@ -325,6 +351,18 @@ pub fn flatten_signed_int(v: Number) -> Number {
     let mut sign_digits = v.to_signed_bytes_le();
     sign_digits.push(0);
     Number::from_signed_bytes_le(&sign_digits)
+}
+
+// Given a RunStep, return a RunStep whose top operation returns <value>
+pub fn step_return_value(
+    step: &RunStep,
+    value: Rc<SExp>
+) -> RunStep {
+    step.parent().map(|p| {
+        RunStep::OpResult(value.loc(), value.clone(), p)
+    }).unwrap_or_else(|| {
+        RunStep::Done(value.loc(), value.clone())
+    })
 }
 
 pub fn run_step(
