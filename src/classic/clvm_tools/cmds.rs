@@ -290,7 +290,7 @@ where
 fn yamlette_string(to_print: &[BTreeMap<String, YamlElement>]) -> String {
     let mut result = String::new();
     let mut emitter = YamlEmitter::new(&mut result);
-    match emitter.dump(&to_yaml(&to_print, |s| s.clone())) {
+    match emitter.dump(&to_yaml(to_print, |s| s.clone())) {
         Ok(_) => result,
         Err(e) => format!("error producing yaml: {:?}", e),
     }

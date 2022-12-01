@@ -470,7 +470,7 @@ fn build_macro_lookup_program(
     macros: &[(Vec<u8>, NodePtr)],
     run_program: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
-    return m! {
+    m! {
         com_atom <- allocator.new_atom("com".as_bytes());
         cons_atom <- allocator.new_atom(&[4]);
         opt_atom <- allocator.new_atom("opt".as_bytes());
@@ -500,9 +500,10 @@ fn build_macro_lookup_program(
             &mut macros.iter()
         );
         Ok(result_program)
-    };
+    }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_one_function(
     allocator: &mut Allocator,
     args_root_node: &NodePath,
@@ -589,7 +590,7 @@ fn add_main_args(
     args: NodePtr,
     symbols: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
-    let entry_name = allocator.new_atom(&"__chia__main_arguments".as_bytes())?;
+    let entry_name = allocator.new_atom("__chia__main_arguments".as_bytes())?;
     let entry_value_string = disassemble(allocator, args);
     let entry_value = allocator.new_atom(entry_value_string.as_bytes())?;
     let entry_cons = allocator.new_pair(entry_name, entry_value)?;
@@ -657,13 +658,13 @@ pub fn compile_mod(
             has_constants_tree
         );
 
-        let main_path = compiled.functions[MAIN_NAME.as_bytes()].clone();
+        let main_path = compiled.functions[MAIN_NAME.as_bytes()];
 
         if has_constants_tree {
             let mut all_constants_lookup: HashMap<Vec<u8>, NodePtr> =
                 HashMap::new();
             for (k,v) in compiled.functions.iter() {
-                if all_constants_names.contains(&k) {
+                if all_constants_names.contains(k) {
                     all_constants_lookup.insert(k.clone(), *v);
                 }
             }

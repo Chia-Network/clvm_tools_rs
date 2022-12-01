@@ -121,9 +121,9 @@ pub fn build_symbol_dump(
             let left_env_name_atom = allocator.new_atom(&left_env_atom)?;
 
             let serialized_args = disassemble(allocator, extra.args);
-            let serialized_args_atom = allocator.new_atom(&serialized_args.as_bytes().to_vec())?;
+            let serialized_args_atom = allocator.new_atom(serialized_args.as_bytes())?;
 
-            let left_env_value = allocator.new_atom(&vec![extra.left_env as u8])?;
+            let left_env_value = allocator.new_atom(&[extra.left_env as u8])?;
 
             map_result.push(allocator.new_pair(args_name_atom, serialized_args_atom)?);
             map_result.push(allocator.new_pair(left_env_name_atom, left_env_value)?);

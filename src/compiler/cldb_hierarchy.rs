@@ -89,7 +89,7 @@ pub fn is_apply_op(op: Rc<SExp>) -> bool {
 
 pub fn get_fun_hash(op: Rc<SExp>, sexp: Rc<SExp>) -> Option<(Vec<u8>, Rc<SExp>, Rc<SExp>)> {
     if let SExp::Cons(_, prog, args) = sexp.borrow() {
-        if is_apply_op(op.clone()) {
+        if is_apply_op(op) {
             if let SExp::Cons(_, env, _) = args.borrow() {
                 return Some((clvm::sha256tree(prog.clone()), prog.clone(), env.clone()));
             }
@@ -133,7 +133,7 @@ fn sexp_from_symbol_table(
 
 fn uses_left_env(symbol_table: &HashMap<String, String>, hash: &[u8]) -> bool {
     let loc = Srcloc::start("*sym*");
-    let hex_hash = hex_of_hash(&hash);
+    let hex_hash = hex_of_hash(hash);
     let item_name = format!("{}_left_env", hex_hash);
     truthy(
         sexp_from_symbol_table(symbol_table, &item_name).unwrap_or_else(|| Rc::new(SExp::Nil(loc))),
@@ -146,7 +146,7 @@ fn make_relevant_info(
     prog: Rc<SExp>,
     env: Rc<SExp>,
 ) -> Option<RunStepRelevantInfo> {
-    let hex_hash = hex_of_hash(&hash);
+    let hex_hash = hex_of_hash(hash);
     let args_name = format!("{}_arguments", hex_hash);
     let fun_args = sexp_from_symbol_table(symbol_table, &args_name).unwrap_or_else(|| {
         let name: Vec<u8> = args_name.as_bytes().to_vec();
@@ -177,8 +177,8 @@ fn get_args_from_env(
                 return;
             }
 
-            get_args_from_env(arg_map, lines.clone(), a.clone(), x.clone(), false);
-            get_args_from_env(arg_map, lines, b.clone(), y.clone(), false);
+            get_args_from_env(arg_map, lines.clone(), a, x.clone(), false);
+            get_args_from_env(arg_map, lines, b, y.clone(), false);
         }
         (SExp::Atom(_, n), _) => {
             arg_map.insert(decode_string(&n), env);
@@ -234,7 +234,7 @@ impl HierarchialRunner {
             running: vec![HierarchyFrame {
                 purpose: RunPurpose::Main,
 
-                env: env,
+                env,
 
                 function_name: input_file.unwrap_or_else(|| {
                     format!(
@@ -275,7 +275,7 @@ impl HierarchialRunner {
 
             idx -= 1;
 
-            self.running[idx].env = outcome.clone();
+            self.running[idx].env = outcome;
 
             let step = clvm::step_return_value(
                 &self.running[idx].run.current_step(),
@@ -369,7 +369,7 @@ impl HierarchialRunner {
                 // Not final result, we'll step the top of the stack.
                 let info = self.running[idx].run.step(&mut self.allocator);
                 if let Some(i) = &info {
-                    self.error = self.error | i.get("Failure").is_some();
+                    self.error |= i.get("Failure").is_some();
                 }
                 Ok(HierarchialStepResult::Info(info))
             }
