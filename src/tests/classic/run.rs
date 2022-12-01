@@ -516,11 +516,13 @@ fn test_generate_extra_symbols() {
         "resources/tests".to_string(),
         "-i".to_string(),
         "resources/tests/usecheck-work".to_string(),
+        "--symbol-output".to_string(),
+        "pmi_extra_symbols.sym".to_string(),
         "resources/tests/cldb_tree/pool_member_innerpuz.cl".to_string(),
     ])
     .trim()
     .to_string();
-    let syms_with_extras = read_json_from_file("main.sym");
+    let syms_with_extras = read_json_from_file("pmi_extra_symbols.sym");
     let syms_want_extras =
         read_json_from_file("resources/tests/cldb_tree/pool_member_innerpuz_extra.sym");
     assert_eq!(syms_with_extras, syms_want_extras);
@@ -530,11 +532,13 @@ fn test_generate_extra_symbols() {
         "resources/tests".to_string(),
         "-i".to_string(),
         "resources/tests/usecheck-work".to_string(),
+        "--symbol-output".to_string(),
+        "pmi_normal_symbols.sym".to_string(),
         "resources/tests/cldb_tree/pool_member_innerpuz.cl".to_string(),
     ])
     .trim()
     .to_string();
-    let syms_normal = read_json_from_file("main.sym");
+    let syms_normal = read_json_from_file("pmi_normal_symbols.sym");
     let want_normal = read_json_from_file("resources/tests/cldb_tree/pool_member_innerpuz_ref.sym");
     assert_eq!(syms_normal, want_normal);
 }

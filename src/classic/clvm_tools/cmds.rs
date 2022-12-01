@@ -854,6 +854,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_action(TArgOptionAction::StoreTrue)
             .set_help("Produce more diagnostic info in symbols".to_string()),
     );
+    parser.add_argument(
+        vec!["--symbol-output".to_string()],
+        Argument::new()
+            .set_type(Rc::new(PathJoin {}))
+            .set_default(ArgumentValue::ArgString(None, "main.sym".to_string())),
+    );
 
     if tool_name == "run" {
         parser.add_argument(
@@ -881,8 +887,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         Some(ArgumentValue::ArgBool(_b)) => &empty_map,
         _ => keyword_from_atom(),
     };
-    let extra_symbol_info = parsed_args.get("extra_syms").map(|_| true).unwrap_or(false);
 
+    let extra_symbol_info = parsed_args.get("extra_syms").map(|_| true).unwrap_or(false);
     let dpr;
     let run_program: Rc<dyn TRunProgram>;
     let mut search_paths = Vec::new();
@@ -1057,6 +1063,17 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         }
     }
 
+    let symbol_table_output = parsed_args
+        .get("symbol_output")
+        .and_then(|s| {
+            if let ArgumentValue::ArgString(_, v) = s {
+                Some(v.clone())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "main.sym".to_string());
+
     // In testing: short circuit for modern compilation.
     if let Some(dialect) = dialect {
         let do_optimize = parsed_args
@@ -1089,7 +1106,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 stdout.write_str(&r.to_string());
 
                 build_symbol_table_mut(&mut symbol_table, &r);
-                write_sym_output(&symbol_table, "main.sym").expect("writing symbols");
+                write_sym_output(&symbol_table, &symbol_table_output).expect("writing symbols");
             }
             Err(c) => {
                 stdout.write_str(&format!("{}: {}", c.0, c.1));
@@ -1313,7 +1330,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     let compile_sym_out = dpr.get_compiles();
     if !compile_sym_out.is_empty() {
-        write_sym_output(&compile_sym_out, "main.sym").ok();
+        write_sym_output(&compile_sym_out, &symbol_table_output).ok();
     }
 
     stdout.write_str(&format!("{}\n", output));
