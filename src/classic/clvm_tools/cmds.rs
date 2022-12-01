@@ -517,14 +517,6 @@ pub fn cldb(args: &[String]) {
         .set_search_paths(&search_paths);
 
     let mut use_symbol_table = symbol_table.unwrap_or_default();
-    let unopt_res = compile_file(
-        &mut allocator,
-        runner.clone(),
-        opts.clone(),
-        &input_program,
-        &mut use_symbol_table,
-    );
-
     let mut output = Vec::new();
 
     let res = match parsed_args.get("hex") {
@@ -536,6 +528,15 @@ pub fn cldb(args: &[String]) {
         )
         .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
         _ => {
+            // don't clobber a symbol table brought in via -y unless we're
+            // compiling here.
+            let unopt_res = compile_file(
+                &mut allocator,
+                runner.clone(),
+                opts.clone(),
+                &input_program,
+                &mut use_symbol_table,
+            );
             if do_optimize {
                 unopt_res.and_then(|x| run_optimizer(&mut allocator, runner.clone(), Rc::new(x)))
             } else {
@@ -832,6 +833,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_action(TArgOptionAction::StoreTrue)
             .set_help("Only show frames along the exception path".to_string()),
     );
+    parser.add_argument(
+        vec!["-g".to_string(), "--extra-syms".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("Produce more diagnostic info in symbols".to_string()),
+    );
 
     if tool_name == "run" {
         parser.add_argument(
@@ -859,6 +866,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         Some(ArgumentValue::ArgBool(_b)) => &empty_map,
         _ => keyword_from_atom(),
     };
+    let extra_symbol_info = parsed_args.get("extra_syms").
+        map(|_| true).unwrap_or(false);
 
     let dpr;
     let run_program: Rc<dyn TRunProgram>;
@@ -871,13 +880,15 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                     bare_paths.push(s.to_string());
                 }
             }
-            let special_runner = run_program_for_search_paths(&bare_paths);
+            let special_runner =
+                run_program_for_search_paths(&bare_paths, extra_symbol_info);
             search_paths = bare_paths;
             dpr = special_runner.clone();
             run_program = special_runner;
         }
         _ => {
-            let ordinary_runner = run_program_for_search_paths(&Vec::new());
+            let ordinary_runner =
+                run_program_for_search_paths(&Vec::new(), extra_symbol_info);
             dpr = ordinary_runner.clone();
             run_program = ordinary_runner;
         }

@@ -125,7 +125,7 @@ fn sexp_from_symbol_table(
     let loc = Srcloc::start("*sym*");
     symbol_table.get(item_name).and_then(|data| {
         parse_sexp(loc.clone(), data.as_bytes().iter().copied()).ok().and_then(|p| {
-            if p.is_empty() { None } else { Some(p[0].clone()) }
+            if p.is_empty() { None } else { Some(Rc::new(p[0].atomize())) }
         })
     })
 }
@@ -173,7 +173,7 @@ fn get_args_from_env(
     env: Rc<SExp>,
     left_env: bool
 ) {
-    match (args.borrow(), env.borrow()) {
+    match (args.atomize(), env.borrow()) {
         (SExp::Cons(_, a, b), SExp::Cons(_, x, y)) => {
             if left_env {
                 get_args_from_env(
