@@ -517,9 +517,12 @@ fn test_generate_extra_symbols() {
         "-i".to_string(),
         "resources/tests/usecheck-work".to_string(),
         "resources/tests/cldb_tree/pool_member_innerpuz.cl".to_string(),
-    ]).trim().to_string();
+    ])
+    .trim()
+    .to_string();
     let syms_with_extras = read_json_from_file("main.sym");
-    let syms_want_extras = read_json_from_file("resources/tests/cldb_tree/pool_member_innerpuz_extra.sym");
+    let syms_want_extras =
+        read_json_from_file("resources/tests/cldb_tree/pool_member_innerpuz_extra.sym");
     assert_eq!(syms_with_extras, syms_want_extras);
     let _ = do_basic_run(&vec![
         "run".to_string(),
@@ -528,7 +531,9 @@ fn test_generate_extra_symbols() {
         "-i".to_string(),
         "resources/tests/usecheck-work".to_string(),
         "resources/tests/cldb_tree/pool_member_innerpuz.cl".to_string(),
-    ]).trim().to_string();
+    ])
+    .trim()
+    .to_string();
     let syms_normal = read_json_from_file("main.sym");
     let want_normal = read_json_from_file("resources/tests/cldb_tree/pool_member_innerpuz_ref.sym");
     assert_eq!(syms_normal, want_normal);

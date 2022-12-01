@@ -697,7 +697,7 @@ fn codegen_(
                                 required_env: defun.args.clone(),
                                 code,
                             },
-                            true // Always take left env for now
+                            true, // Always take left env for now
                         )
                     })
             }

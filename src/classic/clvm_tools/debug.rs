@@ -91,17 +91,12 @@ pub fn build_symbol_dump(
     constants_lookup: &HashMap<Vec<u8>, NodePtr>,
     extra_function_data: &HashMap<Vec<u8>, FunctionExtraInfo>,
     run_program: Rc<dyn TRunProgram>,
-    extra_info: bool
+    extra_info: bool,
 ) -> Result<NodePtr, EvalErr> {
     let mut map_result: Vec<NodePtr> = Vec::new();
 
-    for (k,v) in constants_lookup.iter() {
-        let run_result = run_program.run_program(
-            allocator,
-            *v,
-            allocator.null(),
-            None
-        )?;
+    for (k, v) in constants_lookup.iter() {
+        let run_result = run_program.run_program(allocator, *v, allocator.null(), None)?;
 
         let sha256 = sha256tree(allocator, run_result.1).hex();
         let sha_atom = allocator.new_atom(sha256.as_bytes())?;
@@ -126,17 +121,12 @@ pub fn build_symbol_dump(
             let left_env_name_atom = allocator.new_atom(&left_env_atom)?;
 
             let serialized_args = disassemble(allocator, extra.args);
-            let serialized_args_atom =
-                allocator.new_atom(&serialized_args.as_bytes().to_vec())?;
+            let serialized_args_atom = allocator.new_atom(&serialized_args.as_bytes().to_vec())?;
 
             let left_env_value = allocator.new_atom(&vec![extra.left_env as u8])?;
 
-            map_result.push(
-                allocator.new_pair(args_name_atom, serialized_args_atom)?
-            );
-            map_result.push(
-                allocator.new_pair(left_env_name_atom, left_env_value)?
-            );
+            map_result.push(allocator.new_pair(args_name_atom, serialized_args_atom)?);
+            map_result.push(allocator.new_pair(left_env_name_atom, left_env_value)?);
         }
     }
 

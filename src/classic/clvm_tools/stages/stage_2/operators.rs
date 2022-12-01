@@ -270,8 +270,14 @@ impl TRunProgram for CompilerOperators {
     }
 }
 
-pub fn run_program_for_search_paths(search_paths: &[String], symbols_extra_info: bool) -> Rc<CompilerOperators> {
-    let ops = Rc::new(CompilerOperators::new(search_paths.to_vec(), symbols_extra_info));
+pub fn run_program_for_search_paths(
+    search_paths: &[String],
+    symbols_extra_info: bool,
+) -> Rc<CompilerOperators> {
+    let ops = Rc::new(CompilerOperators::new(
+        search_paths.to_vec(),
+        symbols_extra_info,
+    ));
     ops.set_dialect(ops.clone());
     ops.set_runner(ops.clone());
     ops

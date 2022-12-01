@@ -10,7 +10,7 @@ use crate::classic::clvm::sexp::{
     enlist, first, flatten, fold_m, map_m, non_nil, proper_list, rest,
 };
 use crate::classic::clvm_tools::binutils::disassemble;
-use crate::classic::clvm_tools::debug::{FunctionExtraInfo, build_symbol_dump};
+use crate::classic::clvm_tools::debug::{build_symbol_dump, FunctionExtraInfo};
 use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages::assemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
@@ -511,32 +511,24 @@ fn add_one_function(
     mut compiled: CompileOutput,
     name: &[u8],
     lambda_expression: NodePtr,
-    has_constants_tree: bool
+    has_constants_tree: bool,
 ) -> Result<CompileOutput, EvalErr> {
     let com_atom = allocator.new_atom("com".as_bytes())?;
     let opt_atom = allocator.new_atom("opt".as_bytes())?;
 
     let function_args = first(allocator, lambda_expression)?;
-    let local_symbol_table = symbol_table_for_tree(
-        allocator, function_args, args_root_node
-    )?;
+    let local_symbol_table = symbol_table_for_tree(allocator, function_args, args_root_node)?;
     let mut all_symbols = local_symbol_table;
     all_symbols.append(&mut constants_symbol_table.to_owned());
     let lambda_form_content = rest(allocator, lambda_expression)?;
     let lambda_body = first(allocator, lambda_form_content)?;
     let quoted_lambda_expr = quote(allocator, lambda_body)?;
-    let all_symbols_list_sexp =
-        map_m(
-            allocator,
-            &mut all_symbols.iter(),
-            &|allocator, pair| {
-                let path_atom = allocator.new_atom(&pair.1)?;
-                enlist(allocator, &[pair.0, path_atom])
-            }
-        )?;
+    let all_symbols_list_sexp = map_m(allocator, &mut all_symbols.iter(), &|allocator, pair| {
+        let path_atom = allocator.new_atom(&pair.1)?;
+        enlist(allocator, &[pair.0, path_atom])
+    })?;
 
-    let all_symbols_list =
-        enlist(allocator, &all_symbols_list_sexp)?;
+    let all_symbols_list = enlist(allocator, &all_symbols_list_sexp)?;
 
     let quoted_symbols = quote(allocator, all_symbols_list)?;
     let com_list = enlist(
@@ -545,16 +537,19 @@ fn add_one_function(
             com_atom,
             quoted_lambda_expr,
             macro_lookup_program,
-            quoted_symbols
-        ]
+            quoted_symbols,
+        ],
     )?;
 
     let opt_list = enlist(allocator, &[opt_atom, com_list])?;
     compiled.functions.insert(name.to_vec(), opt_list);
-    compiled.extra_data.insert(name.to_vec(), FunctionExtraInfo {
-        args: function_args,
-        left_env: has_constants_tree
-    });
+    compiled.extra_data.insert(
+        name.to_vec(),
+        FunctionExtraInfo {
+            args: function_args,
+            left_env: has_constants_tree,
+        },
+    );
 
     Ok(compiled)
 }
@@ -565,7 +560,7 @@ fn compile_functions(
     macro_lookup_program: NodePtr,
     constants_symbol_table: &[(NodePtr, Vec<u8>)],
     args_root_node: &NodePath,
-    has_constants_tree: bool
+    has_constants_tree: bool,
 ) -> Result<CompileOutput, EvalErr> {
     let compiled = Default::default();
 
@@ -580,7 +575,7 @@ fn compile_functions(
                 compiled,
                 name_exp.0,
                 *name_exp.1,
-                has_constants_tree
+                has_constants_tree,
             )
         },
         compiled,
@@ -592,7 +587,7 @@ fn compile_functions(
 fn add_main_args(
     allocator: &mut Allocator,
     args: NodePtr,
-    symbols: NodePtr
+    symbols: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
     let entry_name = allocator.new_atom(&"__chia__main_arguments".as_bytes())?;
     let entry_value_string = disassemble(allocator, args);

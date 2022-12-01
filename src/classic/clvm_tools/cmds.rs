@@ -44,13 +44,13 @@ use crate::classic::platform::argparse::{
 };
 
 use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
-use crate::compiler::cldb_hierarchy::{HierarchialStepResult, HierarchialRunner, RunPurpose};
+use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
 use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
 use crate::compiler::prims;
-use crate::compiler::runtypes::{RunFailure};
+use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp;
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::Srcloc;
@@ -258,10 +258,10 @@ pub fn to_yaml_element(y: &YamlElement) -> Yaml {
         YamlElement::Array(a) => {
             let array_elts: Vec<Yaml> = a.iter().map(to_yaml_element).collect();
             Yaml::Array(array_elts)
-        },
+        }
         YamlElement::Subtree(t) => {
             let mut h = LinkedHashMap::new();
-            for (k,v) in t.iter() {
+            for (k, v) in t.iter() {
                 let converted = to_yaml_element(v);
                 h.insert(Yaml::String(k.clone()), converted);
             }
@@ -272,7 +272,7 @@ pub fn to_yaml_element(y: &YamlElement) -> Yaml {
 
 fn to_yaml<T, F>(entries: &[BTreeMap<String, T>], cvt: F) -> Yaml
 where
-    F: Fn(&T) -> YamlElement
+    F: Fn(&T) -> YamlElement,
 {
     let result_array: Vec<Yaml> = entries
         .iter()
@@ -303,7 +303,7 @@ pub fn cldb_hierarchy(
     lines: Rc<Vec<String>>,
     symbol_table: Rc<HashMap<String, String>>,
     prog: Rc<sexp::SExp>,
-    args: Rc<sexp::SExp>
+    args: Rc<sexp::SExp>,
 ) -> Vec<BTreeMap<String, YamlElement>> {
     let mut runner = HierarchialRunner::new(
         runner,
@@ -325,11 +325,14 @@ pub fn cldb_hierarchy(
         match runner.step() {
             Ok(HierarchialStepResult::ShapeChange) => {
                 // Nothing.
-            },
+            }
             Ok(HierarchialStepResult::Info(Some(info))) => {
-                let running_frames = runner.running.iter().map(|f| f.purpose.clone()).filter(|p| {
-                    matches!(p, RunPurpose::Main)
-                }).count();
+                let running_frames = runner
+                    .running
+                    .iter()
+                    .map(|f| f.purpose.clone())
+                    .filter(|p| matches!(p, RunPurpose::Main))
+                    .count();
 
                 // Ensure we're showing enough frames.
                 while running_frames >= output_stack.len() {
@@ -338,14 +341,20 @@ pub fn cldb_hierarchy(
 
                 let run_idx = runner.running.len() - 1;
                 let mut function_entry = BTreeMap::new();
-                function_entry.insert("Function-Name".to_string(), YamlElement::String(runner.running[run_idx].function_name.clone()));
+                function_entry.insert(
+                    "Function-Name".to_string(),
+                    YamlElement::String(runner.running[run_idx].function_name.clone()),
+                );
                 let mut arg_values = BTreeMap::new();
-                for (k,v) in runner.running[run_idx].named_args.iter() {
+                for (k, v) in runner.running[run_idx].named_args.iter() {
                     arg_values.insert(k.clone(), YamlElement::String(format!("{}", v)));
                 }
-                function_entry.insert("Function-Args".to_string(), YamlElement::Subtree(arg_values));
+                function_entry.insert(
+                    "Function-Args".to_string(),
+                    YamlElement::Subtree(arg_values),
+                );
                 let mut info_values = BTreeMap::new();
-                for (k,v) in info.iter() {
+                for (k, v) in info.iter() {
                     info_values.insert(k.clone(), YamlElement::String(v.clone()));
                 }
                 function_entry.insert("Output".to_string(), YamlElement::Subtree(info_values));
@@ -357,38 +366,37 @@ pub fn cldb_hierarchy(
                 // If we're showing too many frames, ensure that children
                 // are in their parent entries.
                 while running_frames < output_stack.len() {
-                    let take_stack = output_stack.pop().unwrap().iter().map(|e| {
-                        YamlElement::Subtree(e.clone())
-                    }).collect();
-                    let mut inner_run_item: BTreeMap<String, YamlElement> =
-                        BTreeMap::new();
-                    inner_run_item.insert(
-                        "Compute".to_string(),
-                        YamlElement::Array(take_stack)
-                    );
+                    let take_stack = output_stack
+                        .pop()
+                        .unwrap()
+                        .iter()
+                        .map(|e| YamlElement::Subtree(e.clone()))
+                        .collect();
+                    let mut inner_run_item: BTreeMap<String, YamlElement> = BTreeMap::new();
+                    inner_run_item.insert("Compute".to_string(), YamlElement::Array(take_stack));
                     let os_last = output_stack.len() - 1;
                     output_stack[os_last].push(inner_run_item);
                 }
-            },
+            }
             Ok(HierarchialStepResult::Info(None)) => {
                 // Nothing
-            },
+            }
             Ok(HierarchialStepResult::Done(Some(info))) => {
                 let mut done_output = BTreeMap::new();
-                for (k,v) in info.iter() {
+                for (k, v) in info.iter() {
                     done_output.insert(k.clone(), YamlElement::String(v.clone()));
                 }
                 let os_last = output_stack.len() - 1;
                 output_stack[os_last].push(done_output);
-            },
+            }
             Ok(HierarchialStepResult::Done(None)) => {
                 // Nothing
             }
-            Err(RunFailure::RunErr(l,e)) => {
+            Err(RunFailure::RunErr(l, e)) => {
                 println!("Runtime Error: {}: {}", l, e);
                 break;
-            },
-            Err(RunFailure::RunExn(l,e)) => {
+            }
+            Err(RunFailure::RunExn(l, e)) => {
                 println!("Raised exception: {}: {}", l, e);
                 break;
             }
@@ -440,7 +448,7 @@ pub fn cldb(args: &[String]) {
         vec!["-t".to_string(), "--tree".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
-            .set_help("new style hierarchial view".to_string())
+            .set_help("new style hierarchial view".to_string()),
     );
     parser.add_argument(
         vec!["path_or_code".to_string()],
@@ -549,7 +557,10 @@ pub fn cldb(args: &[String]) {
         Ok(r) => r,
         Err(c) => {
             let mut parse_error = BTreeMap::new();
-            parse_error.insert("Error-Location".to_string(), YamlElement::String(c.0.to_string()));
+            parse_error.insert(
+                "Error-Location".to_string(),
+                YamlElement::String(c.0.to_string()),
+            );
             parse_error.insert("Error".to_string(), YamlElement::String(c.1));
             output.push(parse_error.clone());
             println!("{}", yamlette_string(&output));
@@ -585,7 +596,10 @@ pub fn cldb(args: &[String]) {
             }
             Err(c) => {
                 let mut parse_error = BTreeMap::new();
-                parse_error.insert("Error-Location".to_string(), YamlElement::String(c.0.to_string()));
+                parse_error.insert(
+                    "Error-Location".to_string(),
+                    YamlElement::String(c.0.to_string()),
+                );
                 parse_error.insert("Error".to_string(), YamlElement::String(c.1));
                 output.push(parse_error.clone());
                 println!("{}", yamlette_string(&output));
@@ -598,7 +612,8 @@ pub fn cldb(args: &[String]) {
     for p in prims::prims().iter() {
         prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
     }
-    let program_lines: Rc<Vec<String>> = Rc::new(input_program.lines().map(|x| x.to_string()).collect());
+    let program_lines: Rc<Vec<String>> =
+        Rc::new(input_program.lines().map(|x| x.to_string()).collect());
     let cldbenv = CldbRunEnv::new(
         input_file.clone(),
         program_lines.clone(),
@@ -613,7 +628,7 @@ pub fn cldb(args: &[String]) {
             program_lines,
             Rc::new(use_symbol_table),
             program,
-            args
+            args,
         );
 
         // Print the tree
@@ -632,7 +647,7 @@ pub fn cldb(args: &[String]) {
 
         if let Some(result) = cldbrun.step(&mut allocator) {
             let mut cvt_subtree = BTreeMap::new();
-            for (k,v) in result.iter() {
+            for (k, v) in result.iter() {
                 cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
             }
             output.push(cvt_subtree);
@@ -866,8 +881,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         Some(ArgumentValue::ArgBool(_b)) => &empty_map,
         _ => keyword_from_atom(),
     };
-    let extra_symbol_info = parsed_args.get("extra_syms").
-        map(|_| true).unwrap_or(false);
+    let extra_symbol_info = parsed_args.get("extra_syms").map(|_| true).unwrap_or(false);
 
     let dpr;
     let run_program: Rc<dyn TRunProgram>;
@@ -880,15 +894,13 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                     bare_paths.push(s.to_string());
                 }
             }
-            let special_runner =
-                run_program_for_search_paths(&bare_paths, extra_symbol_info);
+            let special_runner = run_program_for_search_paths(&bare_paths, extra_symbol_info);
             search_paths = bare_paths;
             dpr = special_runner.clone();
             run_program = special_runner;
         }
         _ => {
-            let ordinary_runner =
-                run_program_for_search_paths(&Vec::new(), extra_symbol_info);
+            let ordinary_runner = run_program_for_search_paths(&Vec::new(), extra_symbol_info);
             dpr = ordinary_runner.clone();
             run_program = ordinary_runner;
         }

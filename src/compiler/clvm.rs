@@ -354,15 +354,10 @@ pub fn flatten_signed_int(v: Number) -> Number {
 }
 
 // Given a RunStep, return a RunStep whose top operation returns <value>
-pub fn step_return_value(
-    step: &RunStep,
-    value: Rc<SExp>
-) -> RunStep {
-    step.parent().map(|p| {
-        RunStep::OpResult(value.loc(), value.clone(), p)
-    }).unwrap_or_else(|| {
-        RunStep::Done(value.loc(), value.clone())
-    })
+pub fn step_return_value(step: &RunStep, value: Rc<SExp>) -> RunStep {
+    step.parent()
+        .map(|p| RunStep::OpResult(value.loc(), value.clone(), p))
+        .unwrap_or_else(|| RunStep::Done(value.loc(), value.clone()))
 }
 
 pub fn run_step(
