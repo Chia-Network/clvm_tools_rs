@@ -24,6 +24,51 @@ use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::Number;
 
+lazy_static! {
+    pub static ref KNOWN_DIALECTS: HashMap<String, String> = {
+        let mut known_dialects: HashMap<String, String> = HashMap::new();
+        known_dialects.insert(
+            "*standard-cl-21*".to_string(),
+            indoc! {"(
+           (defconstant *chialisp-version* 21)
+        )"}
+            .to_string(),
+        );
+        known_dialects.insert(
+            "*standard-cl-22*".to_string(),
+            indoc! {"(
+           (defconstant *chialisp-version* 22)
+        )"}
+            .to_string(),
+        );
+        known_dialects
+    };
+    pub static ref STANDARD_MACROS: String = {
+        indoc! {"(
+            (defmacro if (A B C) (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @)))
+            (defmacro list ARGS
+                            (defun compile-list
+                                   (args)
+                                   (if args
+                                       (qq (c (unquote (f args))
+                                             (unquote (compile-list (r args)))))
+                                       ()))
+                            (compile-list ARGS)
+                    )
+            (defun-inline / (A B) (f (divmod A B)))
+            (defun-inline c* (A B) (c A B))
+            (defun-inline a* (A B) (a A B))
+            (defun-inline coerce (X) : (Any -> Any) X)
+            (defun-inline explode (X) : (forall a ((Exec a) -> a)) X)
+            (defun-inline bless (X) : (forall a ((Pair a Unit) -> (Exec a))) (coerce X))
+            (defun-inline lift (X V) : (forall a (forall b ((Pair (Exec a) (Pair b Unit)) -> (Exec (Pair a b))))) (coerce X))
+            (defun-inline unlift (X) : (forall a (forall b ((Pair (Exec (Pair a b)) Unit) -> (Exec b)))) (coerce X))
+            )
+            "}
+        .to_string()
+    };
+}
+
 #[derive(Clone, Debug)]
 pub struct DefaultCompilerOpts {
     pub include_dirs: Vec<String>,
@@ -33,10 +78,21 @@ pub struct DefaultCompilerOpts {
     pub stdenv: bool,
     pub optimize: bool,
     pub frontend_opt: bool,
+    pub frontend_check_live: bool,
     pub start_env: Option<Rc<SExp>>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
 
     known_dialects: Rc<HashMap<String, String>>,
+}
+
+pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
+    let mut prim_map: HashMap<Vec<u8>, Rc<SExp>> = HashMap::new();
+
+    for p in prims::prims() {
+        prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
+    }
+
+    Rc::new(prim_map)
 }
 
 fn fe_opt(
@@ -110,6 +166,7 @@ fn fe_opt(
 
     Ok(CompileForm {
         loc: compileform.loc.clone(),
+        include_forms: compileform.include_forms.clone(),
         args: compileform.args,
         helpers: optimized_helpers.clone(),
         exp: shrunk,
@@ -117,19 +174,20 @@ fn fe_opt(
     })
 }
 
-fn compile_pre_forms(
+pub fn compile_pre_forms(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
-    pre_forms: Vec<Rc<SExp>>,
+    pre_forms: &[Rc<SExp>],
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
-    let g = frontend(opts.clone(), &pre_forms)?;
+    let g = frontend(opts.clone(), pre_forms)?;
     let compileform = if opts.frontend_opt() {
         fe_opt(allocator, runner.clone(), opts.clone(), g)?
     } else {
         CompileForm {
             loc: g.loc.clone(),
+            include_forms: g.include_forms.clone(),
             args: g.args.clone(),
             helpers: g.helpers.clone(), // optimized_helpers.clone(),
             exp: g.exp,
@@ -149,7 +207,7 @@ pub fn compile_file(
     let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), content.bytes())
         .map_err(|e| CompileErr(e.0, e.1))?;
 
-    compile_pre_forms(allocator, runner, opts, pre_forms, symbol_table)
+    compile_pre_forms(allocator, runner, opts, &pre_forms, symbol_table)
 }
 
 pub fn run_optimizer(
@@ -193,6 +251,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn frontend_opt(&self) -> bool {
         self.frontend_opt
     }
+    fn frontend_check_live(&self) -> bool {
+        self.frontend_check_live
+    }
     fn start_env(&self) -> Option<Rc<SExp>> {
         self.start_env.clone()
     }
@@ -225,6 +286,11 @@ impl CompilerOpts for DefaultCompilerOpts {
         copy.frontend_opt = optimize;
         Rc::new(copy)
     }
+    fn set_frontend_check_live(&self, check: bool) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.frontend_check_live = check;
+        Rc::new(copy)
+    }
     fn set_compiler(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.compiler = Some(new_compiler);
@@ -242,28 +308,7 @@ impl CompilerOpts for DefaultCompilerOpts {
         filename: String,
     ) -> Result<(String, String), CompileErr> {
         if filename == "*macros*" {
-            let macros = indoc! {"(
-            (defmacro if (A B C) (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @)))
-            (defmacro list ARGS
-                            (defun compile-list
-                                   (args)
-                                   (if args
-                                       (qq (c (unquote (f args))
-                                             (unquote (compile-list (r args)))))
-                                       ()))
-                            (compile-list ARGS)
-                    )
-            (defun-inline / (A B) (f (divmod A B)))
-            (defun-inline c* (A B) (c A B))
-            (defun-inline a* (A B) (a A B))
-            (defun-inline coerce (X) : (Any -> Any) X)
-            (defun-inline explode (X) : (forall a ((Exec a) -> a)) X)
-            (defun-inline bless (X) : (forall a ((Pair a Unit) -> (Exec a))) (coerce X))
-            (defun-inline lift (X V) : (forall a (forall b ((Pair (Exec a) (Pair b Unit)) -> (Exec (Pair a b))))) (coerce X))
-            (defun-inline unlift (X) : (forall a (forall b ((Pair (Exec (Pair a b)) Unit) -> (Exec b)))) (coerce X))
-            )
-            "};
-            return Ok((filename, macros.to_string()));
+            return Ok((filename, STANDARD_MACROS.clone()));
         } else if let Some(content) = self.known_dialects.get(&filename) {
             return Ok((filename, content.to_string()));
         }
@@ -293,34 +338,12 @@ impl CompilerOpts for DefaultCompilerOpts {
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
-        compile_pre_forms(allocator, runner, me, vec![sexp], symbol_table)
+        compile_pre_forms(allocator, runner, me, &[sexp], symbol_table)
     }
 }
 
 impl DefaultCompilerOpts {
     pub fn new(filename: &str) -> DefaultCompilerOpts {
-        let mut prim_map = HashMap::new();
-
-        for p in prims::prims() {
-            prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
-        }
-
-        let mut known_dialects: HashMap<String, String> = HashMap::new();
-        known_dialects.insert(
-            "*standard-cl-21*".to_string(),
-            indoc! {"(
-           (defconstant *chialisp-version* 21)
-        )"}
-            .to_string(),
-        );
-        known_dialects.insert(
-            "*standard-cl-22*".to_string(),
-            indoc! {"(
-           (defconstant *chialisp-version* 22)
-        )"}
-            .to_string(),
-        );
-
         DefaultCompilerOpts {
             include_dirs: vec![".".to_string()],
             filename: filename.to_string(),
@@ -329,9 +352,10 @@ impl DefaultCompilerOpts {
             stdenv: true,
             optimize: false,
             frontend_opt: false,
+            frontend_check_live: true,
             start_env: None,
-            prim_map: Rc::new(prim_map),
-            known_dialects: Rc::new(known_dialects),
+            prim_map: create_prim_map(),
+            known_dialects: Rc::new(KNOWN_DIALECTS.clone()),
         }
     }
 }

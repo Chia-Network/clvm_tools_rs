@@ -10,8 +10,8 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
     list_to_cons, Binding, BodyForm, ChiaType, CompileErr, CompileForm, CompilerOpts, DefconstData,
-    DefmacData, DeftypeData, DefunData, HelperForm, LetData, LetFormKind, ModAccum, StructDef,
-    StructMember, TypeAnnoKind,
+    DefmacData, DeftypeData, DefunData, HelperForm, IncludeDesc, LetData, LetFormKind, ModAccum,
+    StructDef, StructMember, TypeAnnoKind,
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
@@ -1020,6 +1020,8 @@ pub fn compile_helperform(
             debug!("parsed_chia {:?}", parsed_chia);
             let new_form = match &parsed_chia {
                 ChiaType::Abstract(l, n) => HelperForm::Deftype(DeftypeData {
+                    kw: matched.opl,
+                    nl: matched.nl,
                     loc: l.clone(),
                     name: n.clone(),
                     args: vec![],
@@ -1030,6 +1032,8 @@ pub fn compile_helperform(
                         return Err(CompileErr(sdef.loc.clone(), "A struct with a single element acting as an alias is currently a hazard.  This will be fixed in the future.".to_string()));
                     }
                     HelperForm::Deftype(DeftypeData {
+                        kw: matched.opl,
+                        nl: matched.nl,
                         loc: sdef.loc.clone(),
                         name: sdef.name.clone(),
                         args: sdef.vars.clone(),
@@ -1057,6 +1061,7 @@ trait ModCompileForms {
     fn compile_mod_body(
         &self,
         opts: Rc<dyn CompilerOpts>,
+        include_forms: Vec<IncludeDesc>,
         args: Rc<SExp>,
         body: Rc<SExp>,
         ty: Option<Polytype>,
@@ -1075,6 +1080,7 @@ impl ModCompileForms for ModAccum {
     fn compile_mod_body(
         &self,
         opts: Rc<dyn CompilerOpts>,
+        include_forms: Vec<IncludeDesc>,
         args: Rc<SExp>,
         body: Rc<SExp>,
         ty: Option<Polytype>,
@@ -1082,6 +1088,7 @@ impl ModCompileForms for ModAccum {
         Ok(self.set_final(&CompileForm {
             loc: self.loc.clone(),
             args,
+            include_forms,
             helpers: self.helpers.clone(),
             exp: Rc::new(compile_bodyform(opts, body)?),
             ty,
@@ -1111,8 +1118,30 @@ impl ModCompileForms for ModAccum {
     }
 }
 
+fn frontend_step_finish(
+    opts: Rc<dyn CompilerOpts>,
+    includes: &mut Vec<IncludeDesc>,
+    pre_forms: &[Rc<SExp>],
+) -> Result<ModAccum, CompileErr> {
+    let loc = pre_forms[0].loc();
+    frontend_start(
+        opts.clone(),
+        includes,
+        &[Rc::new(SExp::Cons(
+            loc.clone(),
+            Rc::new(SExp::Atom(loc.clone(), "mod".as_bytes().to_vec())),
+            Rc::new(SExp::Cons(
+                loc.clone(),
+                Rc::new(SExp::Nil(loc.clone())),
+                Rc::new(list_to_cons(loc, pre_forms)),
+            )),
+        ))],
+    )
+}
+
 fn frontend_start(
     opts: Rc<dyn CompilerOpts>,
+    includes: &mut Vec<IncludeDesc>,
     pre_forms: &[Rc<SExp>],
 ) -> Result<ModAccum, CompileErr> {
     if pre_forms.is_empty() {
@@ -1121,27 +1150,12 @@ fn frontend_start(
             "empty source file not allowed".to_string(),
         ))
     } else {
-        let finish = || {
-            let loc = pre_forms[0].loc();
-            frontend_start(
-                opts.clone(),
-                &[Rc::new(SExp::Cons(
-                    loc.clone(),
-                    Rc::new(SExp::Atom(loc.clone(), "mod".as_bytes().to_vec())),
-                    Rc::new(SExp::Cons(
-                        loc.clone(),
-                        Rc::new(SExp::Nil(loc.clone())),
-                        Rc::new(list_to_cons(loc, pre_forms)),
-                    )),
-                ))],
-            )
-        };
         let l = pre_forms[0].loc();
         pre_forms[0]
             .proper_list()
             .map(|x| {
-                if x.len() < 3 {
-                    return finish();
+                if x.is_empty() {
+                    return frontend_step_finish(opts.clone(), includes, pre_forms);
                 }
 
                 if let SExp::Atom(_, mod_atom) = &x[0] {
@@ -1177,7 +1191,7 @@ fn frontend_start(
                             .collect();
                         let body = Rc::new(enlist(pre_forms[0].loc(), body_vec));
 
-                        let ls = preprocess(opts.clone(), body)?;
+                        let ls = preprocess(opts.clone(), includes, body)?;
                         let mut ma = ModAccum::new(l.clone());
                         for form in ls.iter().take(ls.len() - 1) {
                             ma = ma.compile_mod_helper(
@@ -1190,6 +1204,7 @@ fn frontend_start(
 
                         return ma.compile_mod_body(
                             opts.clone(),
+                            includes.clone(),
                             stripped_args,
                             ls[ls.len() - 1].clone(),
                             parsed_type,
@@ -1197,9 +1212,9 @@ fn frontend_start(
                     }
                 }
 
-                finish()
+                frontend_step_finish(opts.clone(), includes, pre_forms)
             })
-            .unwrap_or_else(finish)
+            .unwrap_or_else(|| frontend_step_finish(opts, includes, pre_forms))
     }
 }
 
@@ -1207,7 +1222,12 @@ pub fn frontend(
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>],
 ) -> Result<CompileForm, CompileErr> {
-    let started = frontend_start(opts.clone(), pre_forms)?;
+    let mut includes = Vec::new();
+    let started = frontend_start(opts.clone(), &mut includes, pre_forms)?;
+
+    for i in includes.iter() {
+        started.add_include(i.clone());
+    }
 
     let compiled: Result<CompileForm, CompileErr> = match started.exp_form {
         None => Err(CompileErr(
@@ -1245,6 +1265,7 @@ pub fn frontend(
 
     Ok(CompileForm {
         loc: our_mod.loc.clone(),
+        include_forms: includes.to_vec(),
         args: our_mod.args.clone(),
         helpers: live_helpers,
         exp: our_mod.exp.clone(),
