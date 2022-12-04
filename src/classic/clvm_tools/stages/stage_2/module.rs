@@ -506,10 +506,15 @@ fn build_macro_lookup_program(
 #[allow(clippy::too_many_arguments)]
 fn add_one_function(
     allocator: &mut Allocator,
+    // Note: mut here means: the body of this function will mutate this by-value
+    // parameter, not that the mutability is visible to the caller.
+    //
+    // My own style generally avoid this, but reviewers tend to dislike having a
+    // phantom name that is copied, so i am using the more brief style here.
+    mut compiled: CompileOutput,
     args_root_node: &NodePath,
     macro_lookup_program: NodePtr,
     constants_symbol_table: &[(NodePtr, Vec<u8>)],
-    mut compiled: CompileOutput,
     name: &[u8],
     lambda_expression: NodePtr,
     has_constants_tree: bool,
@@ -584,7 +589,8 @@ fn compile_functions(
     );
 }
 
-// Prepend __chia__main_arguments with the indicated argument list.
+// Add an entry for main's arguments, named __chia__main_arguments in the
+// symbols, to the symbol list, placing it at the front for simplicity.
 fn add_main_args(
     allocator: &mut Allocator,
     args: NodePtr,
