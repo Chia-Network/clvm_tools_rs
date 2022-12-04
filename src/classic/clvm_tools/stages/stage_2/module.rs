@@ -509,6 +509,11 @@ fn add_one_function(
     args_root_node: &NodePath,
     macro_lookup_program: NodePtr,
     constants_symbol_table: &[(NodePtr, Vec<u8>)],
+    // Note: mut here means: the body of this function will mutate this by-value
+    // parameter, not that the mutability is visible to the caller.
+    //
+    // My own style generally avoid this, but reviewers tend to dislike having a
+    // phantom name that is copied, so i am using the more brief style here.
     mut compiled: CompileOutput,
     name: &[u8],
     lambda_expression: NodePtr,
@@ -584,7 +589,8 @@ fn compile_functions(
     );
 }
 
-// Prepend __chia__main_arguments with the indicated argument list.
+// Add an entry for main's arguments, named __chia__main_arguments in the
+// symbols, to the symbol list, placing it at the front for simplicity.
 fn add_main_args(
     allocator: &mut Allocator,
     args: NodePtr,
