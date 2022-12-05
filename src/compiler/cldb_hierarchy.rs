@@ -10,7 +10,7 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::cldb::{CldbNoOverride, CldbRun, CldbRunEnv};
 use crate::compiler::clvm;
-use crate::compiler::clvm::{truthy, RunStep};
+use crate::compiler::clvm::{sha256tree, truthy, RunStep};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -18,6 +18,7 @@ use crate::compiler::srcloc::Srcloc;
 #[derive(Clone, Debug)]
 pub struct RunStepRelevantInfo {
     name: String,
+    hash: Vec<u8>,
     prog: Rc<SExp>,
     args: Rc<SExp>,
     tail: Rc<SExp>,
@@ -33,12 +34,15 @@ pub enum RunPurpose {
 pub struct HierarchyFrame {
     pub purpose: RunPurpose,
 
+    pub prog: Rc<SExp>,
     env: Rc<SExp>,
 
+    pub function_hash: Vec<u8>,
     pub function_name: String,
     pub function_arguments: Rc<SExp>,
     pub function_left_env: bool,
 
+    pub source: Srcloc,
     pub named_args: HashMap<String, Rc<SExp>>,
 
     run: CldbRun,
@@ -155,6 +159,7 @@ fn make_relevant_info(
     symbol_table
         .get(&hex_hash)
         .map(|fun_name| RunStepRelevantInfo {
+            hash: hash.to_vec(),
             name: fun_name.clone(),
             args: fun_args,
             prog: prog.clone(),
@@ -234,8 +239,10 @@ impl HierarchialRunner {
             running: vec![HierarchyFrame {
                 purpose: RunPurpose::Main,
 
+                prog: prog.clone(),
                 env,
 
+                function_hash: sha256tree(prog.clone()),
                 function_name: input_file.unwrap_or_else(|| {
                     format!(
                         "clvm_program_{}",
@@ -246,6 +253,7 @@ impl HierarchialRunner {
                 function_left_env: false,
 
                 named_args: program_args,
+                source: prog.loc(),
 
                 run,
             }],
@@ -324,8 +332,10 @@ impl HierarchialRunner {
                 let arg_frame = HierarchyFrame {
                     purpose: RunPurpose::ComputeArgument,
 
+                    prog: info.prog.clone(),
                     env: info.tail.clone(),
 
+                    function_hash: info.hash.clone(),
                     function_name: info.name.clone(),
                     function_arguments: info.tail,
                     function_left_env: info.left_env,
@@ -333,6 +343,7 @@ impl HierarchialRunner {
                     named_args: named_args.clone(),
 
                     run: arg_run,
+                    source: info.prog.loc()
                 };
 
                 // Make an empty frame to repopulate (maybe option here?).
@@ -351,11 +362,14 @@ impl HierarchialRunner {
                 self.running.push(HierarchyFrame {
                     purpose: RunPurpose::Main,
 
+                    prog: info.prog.clone(),
                     env: current_env,
 
+                    function_hash: info.hash.clone(),
                     function_name: info.name.clone(),
                     function_arguments: info.args.clone(),
                     function_left_env: info.left_env,
+                    source: info.prog.loc(),
 
                     named_args,
 
