@@ -343,7 +343,7 @@ impl HierarchialRunner {
                     named_args: named_args.clone(),
 
                     run: arg_run,
-                    source: info.prog.loc()
+                    source: info.prog.loc(),
                 };
 
                 // Make an empty frame to repopulate (maybe option here?).
