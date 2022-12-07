@@ -35,7 +35,7 @@ pub struct HierarchyFrame {
     pub purpose: RunPurpose,
 
     pub prog: Rc<SExp>,
-    env: Rc<SExp>,
+    pub env: Rc<SExp>,
 
     pub function_hash: Vec<u8>,
     pub function_name: String,
@@ -45,7 +45,7 @@ pub struct HierarchyFrame {
     pub source: Srcloc,
     pub named_args: HashMap<String, Rc<SExp>>,
 
-    run: CldbRun,
+    pub run: CldbRun,
 }
 
 pub struct HierarchialRunner {
