@@ -14,14 +14,17 @@ use std::thread;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::Stream;
+use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use crate::classic::clvm::serialize::sexp_to_stream;
 use crate::classic::clvm_tools::clvmc;
 use crate::classic::clvm_tools::cmds;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::cldb::{
     hex_to_modern_sexp, CldbOverrideBespokeCode, CldbRun, CldbRunEnv, CldbSingleBespokeOverride,
 };
-use crate::compiler::clvm::start_step;
+use crate::compiler::clvm::{convert_to_clvm_rs, start_step};
+use crate::compiler::compiler::{extract_program_and_env, path_to_function, rewrite_in_program};
+use crate::compiler::comptypes::CompileErr;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::SExp;
@@ -253,6 +256,80 @@ fn launch_tool(tool_name: String, args: Vec<String>, default_stage: u32) -> Vec<
     return stdout.get_value().data().clone();
 }
 
+fn compile_err_to_cldb_err(err: &CompileErr) -> PyErr {
+    CldbError::new_err(format!("{}: {}", err.0, err.1))
+}
+
+fn run_err_to_cldb_err(err: RunFailure) -> PyErr {
+    match err {
+        RunFailure::RunExn(l, v) => CldbError::new_err(format!("{}: {}", l, v)),
+        RunFailure::RunErr(l, e) => CldbError::new_err(format!("{}: {}", l, e)),
+    }
+}
+
+fn find_function_hash(symbol_table: &HashMap<String, String>, f: &String) -> Option<String> {
+    for (k, v) in symbol_table.iter() {
+        if v == f {
+            return Some(k.clone());
+        }
+    }
+    None
+}
+
+// Given a program hex and symbols, compose the program that executes a given
+// function with some given arguments as though the program's primary expression
+// had been that.
+// returns a string or {"error"...}
+#[pyfunction]
+pub fn compose_run_function(
+    hex_prog: String,
+    symbol_table: HashMap<String, String>,
+    function_name: String,
+) -> PyResult<String> {
+    let mut allocator = Allocator::new();
+    let loc = Srcloc::start(&"*py*".to_string());
+    let function_hash = match find_function_hash(&symbol_table, &function_name) {
+        Some(f) => f,
+        _ => {
+            return Err(compile_err_to_cldb_err(&CompileErr(
+                loc.clone(),
+                format!("function not found in symbols: {}", function_name),
+            )));
+        }
+    };
+    let program = hex_to_modern_sexp(&mut allocator, &symbol_table, loc.clone(), &hex_prog)
+        .map_err(run_err_to_cldb_err)?;
+    let main_env = match extract_program_and_env(program.clone()) {
+        Some(em) => em,
+        _ => {
+            return Err(compile_err_to_cldb_err(&CompileErr(
+                program.loc(),
+                "could not extract env from program".to_string(),
+            )));
+        }
+    };
+    let hash_bytes = Bytes::new(Some(BytesFromType::Hex(function_hash.clone())));
+    let function_path = match path_to_function(main_env.1.clone(), &hash_bytes.data().clone()) {
+        Some(p) => p,
+        _ => {
+            return Err(compile_err_to_cldb_err(&CompileErr(
+                program.loc(),
+                format!(
+                    "could not find function with hash from symbols: {}",
+                    function_name
+                ),
+            )));
+        }
+    };
+
+    let new_program = rewrite_in_program(function_path, main_env.1);
+    let mut result_stream = Stream::new(None);
+    let clvm_rs_value =
+        convert_to_clvm_rs(&mut allocator, new_program).map_err(run_err_to_cldb_err)?;
+    sexp_to_stream(&mut allocator, clvm_rs_value, &mut result_stream);
+    Ok(result_stream.get_value().hex())
+}
+
 #[pymodule]
 fn clvm_tools_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add("CldbError", py.get_type::<CldbError>())?;
@@ -260,6 +337,7 @@ fn clvm_tools_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_version, m)?)?;
     m.add_function(wrap_pyfunction!(start_clvm_program, m)?)?;
     m.add_function(wrap_pyfunction!(launch_tool, m)?)?;
+    m.add_function(wrap_pyfunction!(compose_run_function, m)?)?;
     m.add_class::<PythonRunStep>()?;
     Ok(())
 }
