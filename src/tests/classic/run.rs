@@ -11,6 +11,7 @@ use rand_chacha::ChaChaRng;
 
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -496,4 +497,57 @@ fn test_check_tricky_arg_path_random() {
         eprintln!("run {} want {} have {}", program, disassembled, res);
         assert_eq!(disassembled, res);
     }
+}
+
+#[test]
+fn test_classic_sets_source_file_in_symbols() {
+    let tname = "test_classic_sets_source_file_in_symbols.sym".to_string();
+    do_basic_run(&vec![
+        "run".to_string(),
+        "--extra-syms".to_string(),
+        "--symbol-output".to_string(),
+        tname.clone(),
+        "resources/tests/assert.clvm".to_string(),
+    ]);
+    let read_in_file = fs::read_to_string(&tname).expect("should have dropped symbols");
+    let decoded_symbol_file: HashMap<String, String> =
+        serde_json::from_str(&read_in_file).expect("should decode");
+    assert_eq!(
+        decoded_symbol_file.get("source_file").cloned(),
+        Some("resources/tests/assert.clvm".to_string())
+    );
+}
+
+#[test]
+fn test_classic_sets_source_file_in_symbols_only_when_asked() {
+    let tname = "test_classic_sets_source_file_in_symbols.sym".to_string();
+    do_basic_run(&vec![
+        "run".to_string(),
+        "--symbol-output".to_string(),
+        tname.clone(),
+        "resources/tests/assert.clvm".to_string(),
+    ]);
+    let read_in_file = fs::read_to_string(&tname).expect("should have dropped symbols");
+    let decoded_symbol_file: HashMap<String, String> =
+        serde_json::from_str(&read_in_file).expect("should decode");
+    assert_eq!(decoded_symbol_file.get("source_file"), None);
+}
+
+#[test]
+fn test_modern_sets_source_file_in_symbols() {
+    let tname = "test_modern_sets_source_file_in_symbols.sym".to_string();
+    do_basic_run(&vec![
+        "run".to_string(),
+        "--extra-syms".to_string(),
+        "--symbol-output".to_string(),
+        tname.clone(),
+        "resources/tests/steprun/fact.cl".to_string(),
+    ]);
+    let read_in_file = fs::read_to_string(&tname).expect("should have dropped symbols");
+    let decoded_symbol_file: HashMap<String, String> =
+        serde_json::from_str(&read_in_file).expect("should decode");
+    assert_eq!(
+        decoded_symbol_file.get("source_file").cloned(),
+        Some("resources/tests/steprun/fact.cl".to_string())
+    );
 }

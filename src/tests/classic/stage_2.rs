@@ -54,7 +54,7 @@ fn test_do_com_prog(
     macro_lookup_src: String,
     symbol_table_src: String,
 ) -> String {
-    let runner = run_program_for_search_paths(&vec![".".to_string()]);
+    let runner = run_program_for_search_paths("*test*", &vec![".".to_string()], false);
     let prog_ir = read_ir(&program_src).unwrap();
     let program = assemble_from_ir(allocator, Rc::new(prog_ir)).unwrap();
     let macro_ir = read_ir(&macro_lookup_src).unwrap();

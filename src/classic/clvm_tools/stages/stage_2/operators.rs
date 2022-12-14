@@ -44,7 +44,9 @@ impl AllocatorRefOrTreeHash {
 
 pub struct CompilerOperators {
     base_dialect: Rc<dyn Dialect>,
+    source_file: String,
     search_paths: Vec<String>,
+    symbols_extra_info: bool,
     compile_outcomes: RefCell<HashMap<String, String>>,
     dialect: RefCell<Rc<dyn Dialect>>,
     runner: RefCell<Rc<dyn TRunProgram>>,
@@ -52,16 +54,26 @@ pub struct CompilerOperators {
 }
 
 impl CompilerOperators {
-    pub fn new(search_paths: Vec<String>) -> Self {
+    pub fn new(source_file: &str, search_paths: Vec<String>, symbols_extra_info: bool) -> Self {
         let base_dialect = Rc::new(ChiaDialect::new(NO_NEG_DIV | NO_UNKNOWN_OPS));
         let base_runner = Rc::new(DefaultProgramRunner::new());
         CompilerOperators {
             base_dialect: base_dialect.clone(),
+            source_file: source_file.to_owned(),
             search_paths,
+            symbols_extra_info,
             compile_outcomes: RefCell::new(HashMap::new()),
             dialect: RefCell::new(base_dialect),
             runner: RefCell::new(base_runner),
             opt_memo: RefCell::new(HashMap::new()),
+        }
+    }
+
+    fn symbols_extra_info(&self, allocator: &mut Allocator) -> Response {
+        if self.symbols_extra_info {
+            Ok(Reduction(1, allocator.new_atom(&[1])?))
+        } else {
+            Ok(Reduction(1, allocator.null()))
         }
     }
 
@@ -159,6 +171,12 @@ impl CompilerOperators {
         Err(EvalErr(sexp, "can't open file".to_string()))
     }
 
+    fn get_source_file(&self, allocator: &mut Allocator) -> Result<Reduction, EvalErr> {
+        let file_name_bytes = Bytes::new(Some(BytesFromType::String(self.source_file.clone())));
+        let new_atom = allocator.new_atom(file_name_bytes.data())?;
+        Ok(Reduction(1, new_atom))
+    }
+
     pub fn set_symbol_table(
         &self,
         allocator: &mut Allocator,
@@ -223,6 +241,10 @@ impl Dialect for CompilerOperators {
                     self.set_symbol_table(allocator, sexp)
                 } else if opbuf == "_full_path_for_name".as_bytes() {
                     self.get_full_path_for_filename(allocator, sexp)
+                } else if opbuf == "_symbols_extra_info".as_bytes() {
+                    self.symbols_extra_info(allocator)
+                } else if opbuf == "_get_source_file".as_bytes() {
+                    self.get_source_file(allocator)
                 } else {
                     self.base_dialect.op(allocator, op, sexp, max_cost)
                 }
@@ -258,8 +280,16 @@ impl TRunProgram for CompilerOperators {
     }
 }
 
-pub fn run_program_for_search_paths(search_paths: &[String]) -> Rc<CompilerOperators> {
-    let ops = Rc::new(CompilerOperators::new(search_paths.to_vec()));
+pub fn run_program_for_search_paths(
+    source_file: &str,
+    search_paths: &[String],
+    symbols_extra_info: bool,
+) -> Rc<CompilerOperators> {
+    let ops = Rc::new(CompilerOperators::new(
+        source_file,
+        search_paths.to_vec(),
+        symbols_extra_info,
+    ));
     ops.set_dialect(ops.clone());
     ops.set_runner(ops.clone());
     ops
