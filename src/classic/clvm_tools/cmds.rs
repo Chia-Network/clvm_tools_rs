@@ -676,7 +676,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_help("Produce more diagnostic info in symbols".to_string()),
     );
     parser.add_argument(
-        vec!["--symbol-output".to_string()],
+        vec!["--symbol-output-file".to_string()],
         Argument::new()
             .set_type(Rc::new(PathJoin {}))
             .set_default(ArgumentValue::ArgString(None, "main.sym".to_string())),
@@ -897,7 +897,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     }
 
     let symbol_table_output = parsed_args
-        .get("symbol_output")
+        .get("symbol_output_file")
         .and_then(|s| {
             if let ArgumentValue::ArgString(_, v) = s {
                 Some(v.clone())
