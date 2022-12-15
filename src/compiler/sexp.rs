@@ -192,7 +192,13 @@ enum SExpParseState {
     QuotedEscaped(Srcloc, u8, Vec<u8>),
     OpenList(Srcloc),
     ParsingList(Srcloc, Rc<SExpParseState>, Vec<Rc<SExp>>),
-    TermList(Srcloc, Option<Rc<SExp>>, Rc<SExpParseState>, Vec<Rc<SExp>>),
+    TermList(
+        Srcloc,
+        bool,
+        Option<Rc<SExp>>,
+        Rc<SExpParseState>,
+        Vec<Rc<SExp>>,
+    ),
 }
 
 #[derive(Debug)]
@@ -583,6 +589,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
             match (this_char as char, pp.borrow()) {
                 ('.', SExpParseState::Empty) => resume(SExpParseState::TermList(
                     pl.ext(&loc),
+                    false,
                     None,
                     Rc::new(SExpParseState::Empty),
                     list_content.to_vec(),
@@ -617,10 +624,21 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                 },
             }
         }
-        SExpParseState::TermList(pl, Some(parsed), pp, list_content) => {
+        SExpParseState::TermList(pl, true, parsed, pp, list_content) => {
+            let end_comment = this_char as char == '\n' || this_char as char == '\r';
+            resume(SExpParseState::TermList(
+                pl.clone(),
+                !end_comment,
+                parsed.clone(),
+                pp.clone(),
+                list_content.clone(),
+            ))
+        }
+        SExpParseState::TermList(pl, false, Some(parsed), pp, list_content) => {
             if this_char.is_ascii_whitespace() {
                 resume(SExpParseState::TermList(
                     pl.ext(&loc),
+                    false,
                     Some(parsed.clone()),
                     pp.clone(),
                     list_content.to_vec(),
@@ -642,6 +660,14 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                     }
                     None => error(loc, "Dot as first element of list?"),
                 }
+            } else if this_char == b';' {
+                resume(SExpParseState::TermList(
+                    pl.clone(),
+                    true,
+                    Some(parsed.clone()),
+                    pp.clone(),
+                    list_content.clone(),
+                ))
             } else {
                 error(
                     pl.clone(),
@@ -649,7 +675,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                 )
             }
         }
-        SExpParseState::TermList(pl, None, pp, list_content) => {
+        SExpParseState::TermList(pl, false, None, pp, list_content) => {
             match (this_char as char, pp.borrow()) {
                 ('.', SExpParseState::Empty) => {
                     error(loc, "Multiple dots in list notation are illegal")
@@ -686,12 +712,14 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                 (_, _) => match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
                     SExpParseResult::Emit(o, _p) => resume(SExpParseState::TermList(
                         loc,
+                        false,
                         Some(o),
                         pp.clone(),
                         list_content.clone(),
                     )),
                     SExpParseResult::Resume(p) => resume(SExpParseState::TermList(
                         pl.ext(&loc),
+                        false,
                         None,
                         Rc::new(p),
                         list_content.to_vec(),
@@ -742,7 +770,7 @@ where
         }
         SExpParseState::OpenList(l) => Err((l, "Unterminated list (empty)".to_string())),
         SExpParseState::ParsingList(l, _, _) => Err((l, "Unterminated mid list".to_string())),
-        SExpParseState::TermList(l, _, _, _) => Err((l, "Unterminated tail list".to_string())),
+        SExpParseState::TermList(l, _, _, _, _) => Err((l, "Unterminated tail list".to_string())),
     }
 }
 
