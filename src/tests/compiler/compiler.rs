@@ -1092,3 +1092,44 @@ fn test_modern_mod_form() {
 
     assert_eq!(result.to_string(), "7");
 }
+
+#[test]
+fn test_fuzz_seed_3956111146_1_alt_test_1() {
+    let res = run_string(
+        &"(mod () (include *standard-cl-21*) (q (r . lbvepvnoc) dbhk))".to_string(),
+        &"()".to_string(),
+    )
+    .unwrap();
+    assert_eq!(res.to_string(), "((r . lbvepvnoc) dbhk)");
+}
+
+#[test]
+fn test_fuzz_seed_3956111146_1() {
+    let res = run_string(
+        &"(mod () (include *standard-cl-21*) (q (r . lbvepvnoc) . dbhk))".to_string(),
+        &"()".to_string(),
+    )
+    .unwrap();
+    assert_eq!(res.to_string(), "((r . lbvepvnoc) . dbhk)");
+}
+
+#[test]
+fn arg_destructure_test_1() {
+    let prog = indoc! {"
+(mod
+  (
+      SINGLETON_MOD_HASH
+      LAUNCHER_HASH
+      launcher_id
+      . delegated_puzzle_hash
+  )
+
+  (include *standard-cl-21*)
+
+  delegated_puzzle_hash
+)"
+    }
+    .to_string();
+    let res = run_string(&prog, &"(1 2 3 . 4)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "4");
+}

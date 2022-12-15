@@ -1,8 +1,8 @@
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzer"))]
 use rand::distributions::Standard;
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzer"))]
 use rand::prelude::Distribution;
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzer"))]
 use rand::Rng;
 
 use std::borrow::Borrow;
@@ -32,7 +32,7 @@ pub enum SExp {
     Atom(Srcloc, Vec<u8>),
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzer"))]
 pub fn random_atom_name<R: Rng + ?Sized>(rng: &mut R, min_size: usize) -> Vec<u8> {
     let mut bytevec: Vec<u8> = Vec::new();
     let mut len = 0;
@@ -49,12 +49,12 @@ pub fn random_atom_name<R: Rng + ?Sized>(rng: &mut R, min_size: usize) -> Vec<u8
     bytevec
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzer"))]
 pub fn random_atom<R: Rng + ?Sized>(rng: &mut R) -> SExp {
     SExp::Atom(Srcloc::start("*rng*"), random_atom_name(rng, 1))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzer"))]
 pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
     if remaining < 2 {
         random_atom(rng)
@@ -93,7 +93,7 @@ pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
 }
 
 // Thanks: https://stackoverflow.com/questions/48490049/how-do-i-choose-a-random-value-from-an-enum
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzer"))]
 impl Distribution<SExp> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SExp {
         random_sexp(rng, MAX_SEXP_COST)
@@ -192,7 +192,7 @@ enum SExpParseState {
     QuotedEscaped(Srcloc, u8, Vec<u8>),
     OpenList(Srcloc),
     ParsingList(Srcloc, Rc<SExpParseState>, Vec<Rc<SExp>>),
-    TermList(Srcloc, Rc<SExpParseState>, Vec<Rc<SExp>>),
+    TermList(Srcloc, Option<Rc<SExp>>, Rc<SExpParseState>, Vec<Rc<SExp>>),
 }
 
 #[derive(Debug)]
@@ -583,6 +583,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
             match (this_char as char, pp.borrow()) {
                 ('.', SExpParseState::Empty) => resume(SExpParseState::TermList(
                     pl.ext(&loc),
+                    None,
                     Rc::new(SExpParseState::Empty),
                     list_content.to_vec(),
                 )),
@@ -616,61 +617,89 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                 },
             }
         }
-        SExpParseState::TermList(pl, pp, list_content) => match (this_char as char, pp.borrow()) {
-            ('.', SExpParseState::Empty) => {
-                error(loc, "Multiple dots in list notation are illegal")
-            }
-            (')', SExpParseState::Empty) => {
-                if list_content.len() == 1 {
-                    emit(list_content[0].clone(), SExpParseState::Empty)
-                } else {
-                    emit(
-                        Rc::new(enlist(pl.ext(&loc), list_content.to_vec())),
-                        SExpParseState::Empty,
-                    )
-                }
-            }
-            (')', SExpParseState::Bareword(l, t)) => {
-                let parsed_atom = make_atom(l.clone(), t.to_vec());
+        SExpParseState::TermList(pl, Some(parsed), pp, list_content) => {
+            if this_char.is_ascii_whitespace() {
+                resume(SExpParseState::TermList(
+                    pl.ext(&loc),
+                    Some(parsed.clone()),
+                    pp.clone(),
+                    list_content.to_vec(),
+                ))
+            } else if this_char == b')' {
                 let mut list_copy = list_content.to_vec();
                 match list_copy.pop() {
                     Some(v) => {
-                        let new_tail = make_cons(v, Rc::new(parsed_atom));
+                        let new_tail = make_cons(v, parsed.clone());
                         if list_copy.is_empty() {
                             emit(Rc::new(new_tail), SExpParseState::Empty)
                         } else {
-                            list_copy.push(Rc::new(new_tail));
-                            let new_list = enlist(pl.ext(&loc), list_copy);
-                            emit(Rc::new(new_list), SExpParseState::Empty)
+                            let mut result_list = new_tail;
+                            for item in list_copy.iter().rev() {
+                                result_list = make_cons(item.clone(), Rc::new(result_list));
+                            }
+                            emit(Rc::new(result_list), SExpParseState::Empty)
                         }
                     }
                     None => error(loc, "Dot as first element of list?"),
                 }
+            } else {
+                error(
+                    pl.clone(),
+                    &format!("unexpected character {}", this_char as char),
+                )
             }
-            (_, _) => match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
-                SExpParseResult::Emit(o, p) => {
+        }
+        SExpParseState::TermList(pl, None, pp, list_content) => {
+            match (this_char as char, pp.borrow()) {
+                ('.', SExpParseState::Empty) => {
+                    error(loc, "Multiple dots in list notation are illegal")
+                }
+                (')', SExpParseState::Empty) => {
+                    if list_content.len() == 1 {
+                        emit(list_content[0].clone(), SExpParseState::Empty)
+                    } else {
+                        emit(
+                            Rc::new(enlist(pl.ext(&loc), list_content.to_vec())),
+                            SExpParseState::Empty,
+                        )
+                    }
+                }
+                (')', SExpParseState::Bareword(l, t)) => {
+                    let parsed_atom = make_atom(l.clone(), t.to_vec());
                     let mut list_copy = list_content.to_vec();
                     match list_copy.pop() {
                         Some(v) => {
-                            let new_tail = make_cons(v, o);
-                            list_copy.push(Rc::new(new_tail));
-                            resume(SExpParseState::TermList(
-                                pl.ext(&loc),
-                                Rc::new(p),
-                                list_copy,
-                            ))
+                            let new_tail = make_cons(v, Rc::new(parsed_atom));
+                            if list_copy.is_empty() {
+                                emit(Rc::new(new_tail), SExpParseState::Empty)
+                            } else {
+                                let mut result_list = new_tail;
+                                for item in list_copy.iter().rev() {
+                                    result_list = make_cons(item.clone(), Rc::new(result_list));
+                                }
+                                emit(Rc::new(result_list), SExpParseState::Empty)
+                            }
                         }
                         None => error(loc, "Dot as first element of list?"),
                     }
                 }
-                SExpParseResult::Resume(p) => resume(SExpParseState::TermList(
-                    pl.ext(&loc),
-                    Rc::new(p),
-                    list_content.to_vec(),
-                )),
-                SExpParseResult::Error(l, e) => SExpParseResult::Error(l, e),
-            },
-        },
+                (_, _) => match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
+                    SExpParseResult::Emit(o, p) => resume(SExpParseState::TermList(
+                        loc.clone(),
+                        Some(o.clone()),
+                        pp.clone(),
+                        list_content.clone(),
+                    )),
+                    SExpParseResult::Resume(p) => resume(SExpParseState::TermList(
+                        pl.ext(&loc),
+                        None,
+                        Rc::new(p),
+                        list_content.to_vec(),
+                    )),
+                    SExpParseResult::Error(l, e) => SExpParseResult::Error(l, e),
+                },
+            }
+        }
     }
 }
 
@@ -713,7 +742,7 @@ where
         }
         SExpParseState::OpenList(l) => Err((l, "Unterminated list (empty)".to_string())),
         SExpParseState::ParsingList(l, _, _) => Err((l, "Unterminated mid list".to_string())),
-        SExpParseState::TermList(l, _, _) => Err((l, "Unterminated tail list".to_string())),
+        SExpParseState::TermList(l, _, _, _) => Err((l, "Unterminated tail list".to_string())),
     }
 }
 
