@@ -684,7 +684,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                     }
                 }
                 (_, _) => match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
-                    SExpParseResult::Emit(o, p) => resume(SExpParseState::TermList(
+                    SExpParseResult::Emit(o, _p) => resume(SExpParseState::TermList(
                         loc.clone(),
                         Some(o.clone()),
                         pp.clone(),
