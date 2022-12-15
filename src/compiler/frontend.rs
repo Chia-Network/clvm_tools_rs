@@ -689,8 +689,6 @@ pub fn frontend(
     let mut includes = Vec::new();
     let started = frontend_start(opts.clone(), &mut includes, pre_forms)?;
 
-    eprintln!("pre_formst[0] {}", pre_forms[0]);
-
     for i in includes.iter() {
         started.add_include(i.clone());
     }
