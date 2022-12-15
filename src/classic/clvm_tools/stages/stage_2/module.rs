@@ -585,6 +585,16 @@ pub fn compile_mod(
 ) -> Result<NodePtr, EvalErr> {
     // Deal with the "mod" keyword.
     m! {
+        produce_extra_info_prog <- assemble(allocator, "(_symbols_extra_info)");
+        let produce_extra_info_null = allocator.null();
+        extra_info_res <- run_program.run_program(
+            allocator,
+            produce_extra_info_prog,
+            produce_extra_info_null,
+            None
+        );
+        let produce_extra_info = non_nil(allocator, extra_info_res.1);
+
         cr <- compile_mod_stage_1(allocator, args, run_program.clone());
         a_atom <- allocator.new_atom(&[2]);
         cons_atom <- allocator.new_atom(&[4]);
@@ -678,7 +688,11 @@ pub fn compile_mod(
 
                 to_run <- assemble(
                     allocator,
-                    "(_set_symbol_table 1)"
+                    if produce_extra_info {
+                        "(_set_symbol_table (c (c (q . \"source_file\") (_get_source_file)) 1))"
+                    } else {
+                        "(_set_symbol_table 1)"
+                    }
                 );
 
                 _ <- run_program.run_program(
