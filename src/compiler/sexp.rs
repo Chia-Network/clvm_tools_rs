@@ -186,7 +186,7 @@ fn make_cons(a: Rc<SExp>, b: Rc<SExp>) -> SExp {
 #[derive(Debug, PartialEq, Eq)]
 enum TermListCommentState {
     InComment,
-    Empty
+    Empty,
 }
 
 #[derive(Debug)]
@@ -631,12 +631,11 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
             }
         }
         SExpParseState::TermList(pl, TermListCommentState::InComment, parsed, pp, list_content) => {
-            let end_comment =
-                if this_char as char == '\n' || this_char as char == '\r' {
-                    TermListCommentState::Empty
-                } else {
-                    TermListCommentState::InComment
-                };
+            let end_comment = if this_char as char == '\n' || this_char as char == '\r' {
+                TermListCommentState::Empty
+            } else {
+                TermListCommentState::InComment
+            };
             resume(SExpParseState::TermList(
                 pl.clone(),
                 end_comment,
@@ -645,7 +644,13 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                 list_content.clone(),
             ))
         }
-        SExpParseState::TermList(pl, TermListCommentState::Empty, Some(parsed), pp, list_content) => {
+        SExpParseState::TermList(
+            pl,
+            TermListCommentState::Empty,
+            Some(parsed),
+            pp,
+            list_content,
+        ) => {
             if this_char.is_ascii_whitespace() {
                 resume(SExpParseState::TermList(
                     pl.ext(&loc),
