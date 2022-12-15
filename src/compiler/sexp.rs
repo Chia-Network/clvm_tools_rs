@@ -183,6 +183,12 @@ fn make_cons(a: Rc<SExp>, b: Rc<SExp>) -> SExp {
     SExp::Cons(a.loc().ext(&b.loc()), a.clone(), b.clone())
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum TermListCommentState {
+    InComment,
+    Empty
+}
+
 #[derive(Debug)]
 enum SExpParseState {
     Empty,
@@ -194,7 +200,7 @@ enum SExpParseState {
     ParsingList(Srcloc, Rc<SExpParseState>, Vec<Rc<SExp>>),
     TermList(
         Srcloc,
-        bool,
+        TermListCommentState,
         Option<Rc<SExp>>,
         Rc<SExpParseState>,
         Vec<Rc<SExp>>,
@@ -589,7 +595,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
             match (this_char as char, pp.borrow()) {
                 ('.', SExpParseState::Empty) => resume(SExpParseState::TermList(
                     pl.ext(&loc),
-                    false,
+                    TermListCommentState::Empty,
                     None,
                     Rc::new(SExpParseState::Empty),
                     list_content.to_vec(),
@@ -624,21 +630,26 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                 },
             }
         }
-        SExpParseState::TermList(pl, true, parsed, pp, list_content) => {
-            let end_comment = this_char as char == '\n' || this_char as char == '\r';
+        SExpParseState::TermList(pl, TermListCommentState::InComment, parsed, pp, list_content) => {
+            let end_comment =
+                if this_char as char == '\n' || this_char as char == '\r' {
+                    TermListCommentState::Empty
+                } else {
+                    TermListCommentState::InComment
+                };
             resume(SExpParseState::TermList(
                 pl.clone(),
-                !end_comment,
+                end_comment,
                 parsed.clone(),
                 pp.clone(),
                 list_content.clone(),
             ))
         }
-        SExpParseState::TermList(pl, false, Some(parsed), pp, list_content) => {
+        SExpParseState::TermList(pl, TermListCommentState::Empty, Some(parsed), pp, list_content) => {
             if this_char.is_ascii_whitespace() {
                 resume(SExpParseState::TermList(
                     pl.ext(&loc),
-                    false,
+                    TermListCommentState::Empty,
                     Some(parsed.clone()),
                     pp.clone(),
                     list_content.to_vec(),
@@ -663,7 +674,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
             } else if this_char == b';' {
                 resume(SExpParseState::TermList(
                     pl.clone(),
-                    true,
+                    TermListCommentState::InComment,
                     Some(parsed.clone()),
                     pp.clone(),
                     list_content.clone(),
@@ -675,7 +686,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                 )
             }
         }
-        SExpParseState::TermList(pl, false, None, pp, list_content) => {
+        SExpParseState::TermList(pl, TermListCommentState::Empty, None, pp, list_content) => {
             match (this_char as char, pp.borrow()) {
                 ('.', SExpParseState::Empty) => {
                     error(loc, "Multiple dots in list notation are illegal")
@@ -712,14 +723,14 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                 (_, _) => match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
                     SExpParseResult::Emit(o, _p) => resume(SExpParseState::TermList(
                         loc,
-                        false,
+                        TermListCommentState::Empty,
                         Some(o),
                         pp.clone(),
                         list_content.clone(),
                     )),
                     SExpParseResult::Resume(p) => resume(SExpParseState::TermList(
                         pl.ext(&loc),
-                        false,
+                        TermListCommentState::Empty,
                         None,
                         Rc::new(p),
                         list_content.to_vec(),
