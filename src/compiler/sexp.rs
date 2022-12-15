@@ -1,8 +1,8 @@
-#[cfg(any(test, feature = "fuzzer"))]
+#[cfg(test)]
 use rand::distributions::Standard;
-#[cfg(any(test, feature = "fuzzer"))]
+#[cfg(test)]
 use rand::prelude::Distribution;
-#[cfg(any(test, feature = "fuzzer"))]
+#[cfg(test)]
 use rand::Rng;
 
 use std::borrow::Borrow;
@@ -32,7 +32,7 @@ pub enum SExp {
     Atom(Srcloc, Vec<u8>),
 }
 
-#[cfg(any(test, feature = "fuzzer"))]
+#[cfg(test)]
 pub fn random_atom_name<R: Rng + ?Sized>(rng: &mut R, min_size: usize) -> Vec<u8> {
     let mut bytevec: Vec<u8> = Vec::new();
     let mut len = 0;
@@ -49,12 +49,12 @@ pub fn random_atom_name<R: Rng + ?Sized>(rng: &mut R, min_size: usize) -> Vec<u8
     bytevec
 }
 
-#[cfg(any(test, feature = "fuzzer"))]
+#[cfg(test)]
 pub fn random_atom<R: Rng + ?Sized>(rng: &mut R) -> SExp {
     SExp::Atom(Srcloc::start("*rng*"), random_atom_name(rng, 1))
 }
 
-#[cfg(any(test, feature = "fuzzer"))]
+#[cfg(test)]
 pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
     if remaining < 2 {
         random_atom(rng)
@@ -93,7 +93,7 @@ pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
 }
 
 // Thanks: https://stackoverflow.com/questions/48490049/how-do-i-choose-a-random-value-from-an-enum
-#[cfg(any(test, feature = "fuzzer"))]
+#[cfg(test)]
 impl Distribution<SExp> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SExp {
         random_sexp(rng, MAX_SEXP_COST)
@@ -685,8 +685,8 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                 }
                 (_, _) => match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
                     SExpParseResult::Emit(o, _p) => resume(SExpParseState::TermList(
-                        loc.clone(),
-                        Some(o.clone()),
+                        loc,
+                        Some(o),
                         pp.clone(),
                         list_content.clone(),
                     )),
