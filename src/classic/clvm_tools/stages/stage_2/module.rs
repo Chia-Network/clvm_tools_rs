@@ -463,7 +463,7 @@ fn build_macro_lookup_program(
     macros: &[(Vec<u8>, NodePtr)],
     run_program: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
-    return m! {
+    m! {
         com_atom <- allocator.new_atom("com".as_bytes());
         cons_atom <- allocator.new_atom(&[4]);
         opt_atom <- allocator.new_atom("opt".as_bytes());
@@ -493,7 +493,7 @@ fn build_macro_lookup_program(
             &mut macros.iter()
         );
         Ok(result_program)
-    };
+    }
 }
 
 fn add_one_function(
@@ -506,7 +506,7 @@ fn add_one_function(
     lambda_expression: NodePtr,
 ) -> Result<HashMap<Vec<u8>, NodePtr>, EvalErr> {
     let mut compiled_functions = compiled_functions_;
-    return m! {
+    m! {
         com_atom <- allocator.new_atom("com".as_bytes());
         opt_atom <- allocator.new_atom("opt".as_bytes());
 
@@ -545,7 +545,7 @@ fn add_one_function(
         opt_list <- enlist(allocator, &[opt_atom, com_list]);
         let _ = compiled_functions.insert(name.to_vec(), opt_list);
         Ok(compiled_functions)
-    };
+    }
 }
 
 fn compile_functions(

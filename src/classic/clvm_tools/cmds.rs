@@ -993,7 +993,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let max_cost = parsed_args
         .get("max_cost")
         .map(|x| match x {
-            ArgumentValue::ArgInt(i) => *i as i64 - cost_offset,
+            ArgumentValue::ArgInt(i) => *i - cost_offset,
             _ => 0,
         })
         .unwrap_or_else(|| 0);
