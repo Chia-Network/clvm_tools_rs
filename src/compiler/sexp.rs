@@ -316,7 +316,7 @@ fn escape_quote(q: u8, s: &[u8]) -> String {
     let _: Vec<()> = s
         .iter()
         .map(|ch| {
-            if *ch == q as u8 {
+            if *ch == q {
                 res.push('\\');
             }
             res.push(*ch as char);
