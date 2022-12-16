@@ -128,7 +128,7 @@ fn compile_program<'a>(
     src: String,
 ) -> Result<String, EvalErr> {
     let run_script = stages::run(allocator);
-    let runner = run_program_for_search_paths(&vec![include_path]);
+    let runner = run_program_for_search_paths("*test*", &vec![include_path], false);
     let input_ir = read_ir(&src);
     let input_program = assemble_from_ir(allocator, Rc::new(input_ir.unwrap())).unwrap();
     let input_sexp = allocator.new_pair(input_program, allocator.null()).unwrap();

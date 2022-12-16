@@ -260,7 +260,7 @@ fn try_expand_macro_for_atom_(
     macro_lookup: NodePtr,
     symbol_table: NodePtr,
 ) -> Response {
-    return m! {
+    m! {
         com_atom <- allocator.new_atom("com".as_bytes());
         post_prog <- brun(allocator, macro_code, prog_rest);
 
@@ -282,8 +282,8 @@ fn try_expand_macro_for_atom_(
             top_path
         ).map(|x| {
             if DIAG_OUTPUT {
-                print!(
-                    "TRY_EXPAND_MACRO {} WITH {} GIVES {} MACROS {} SYMBOLS {}\n",
+                println!(
+                    "TRY_EXPAND_MACRO {} WITH {} GIVES {} MACROS {} SYMBOLS {}",
                     disassemble(allocator, macro_code),
                     disassemble(allocator, prog_rest),
                     disassemble(allocator, x),
@@ -293,7 +293,7 @@ fn try_expand_macro_for_atom_(
             }
             Reduction(1, x)
         })
-    };
+    }
 }
 
 pub fn try_expand_macro_for_atom(
@@ -424,7 +424,7 @@ fn compile_operator_atom(
                 allocator.new_atom(NodePath::new(None).as_path().data());
 
             let _ = if DIAG_OUTPUT {
-                print!("COMPILE_BINDINGS {}\n", disassemble(allocator, quoted_post_prog));
+                println!("COMPILE_BINDINGS {}", disassemble(allocator, quoted_post_prog));
             };
             evaluate(allocator, quoted_post_prog, top_atom).map(Some)
         };
@@ -676,7 +676,7 @@ fn do_com_prog_(
                     },
                     _ => {
                         // (com ((OP) . RIGHT)) => (a (com (q OP)) 1)
-                        return m! {
+                        m! {
                             com_atom <- allocator.new_atom("com".as_bytes());
                             quoted_op <- quote(allocator, operator);
                             quoted_macro_lookup <-
@@ -695,7 +695,7 @@ fn do_com_prog_(
                                 allocator, eval_list, top_atom
                             ).and_then(|x| enlist(allocator, &[x])).
                                 map(|x| Reduction(1, x))
-                        };
+                        }
                     }
                 }
             }

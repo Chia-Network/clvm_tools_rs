@@ -463,7 +463,7 @@ fn build_macro_lookup_program(
     macros: &[(Vec<u8>, NodePtr)],
     run_program: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
-    return m! {
+    m! {
         com_atom <- allocator.new_atom("com".as_bytes());
         cons_atom <- allocator.new_atom(&[4]);
         opt_atom <- allocator.new_atom("opt".as_bytes());
@@ -493,7 +493,7 @@ fn build_macro_lookup_program(
             &mut macros.iter()
         );
         Ok(result_program)
-    };
+    }
 }
 
 fn add_one_function(
@@ -506,7 +506,7 @@ fn add_one_function(
     lambda_expression: NodePtr,
 ) -> Result<HashMap<Vec<u8>, NodePtr>, EvalErr> {
     let mut compiled_functions = compiled_functions_;
-    return m! {
+    m! {
         com_atom <- allocator.new_atom("com".as_bytes());
         opt_atom <- allocator.new_atom("opt".as_bytes());
 
@@ -545,7 +545,7 @@ fn add_one_function(
         opt_list <- enlist(allocator, &[opt_atom, com_list]);
         let _ = compiled_functions.insert(name.to_vec(), opt_list);
         Ok(compiled_functions)
-    };
+    }
 }
 
 fn compile_functions(
@@ -585,6 +585,16 @@ pub fn compile_mod(
 ) -> Result<NodePtr, EvalErr> {
     // Deal with the "mod" keyword.
     m! {
+        produce_extra_info_prog <- assemble(allocator, "(_symbols_extra_info)");
+        let produce_extra_info_null = allocator.null();
+        extra_info_res <- run_program.run_program(
+            allocator,
+            produce_extra_info_prog,
+            produce_extra_info_null,
+            None
+        );
+        let produce_extra_info = non_nil(allocator, extra_info_res.1);
+
         cr <- compile_mod_stage_1(allocator, args, run_program.clone());
         a_atom <- allocator.new_atom(&[2]);
         cons_atom <- allocator.new_atom(&[4]);
@@ -678,7 +688,11 @@ pub fn compile_mod(
 
                 to_run <- assemble(
                     allocator,
-                    "(_set_symbol_table 1)"
+                    if produce_extra_info {
+                        "(_set_symbol_table (c (c (q . \"source_file\") (_get_source_file)) 1))"
+                    } else {
+                        "(_set_symbol_table 1)"
+                    }
                 );
 
                 _ <- run_program.run_program(

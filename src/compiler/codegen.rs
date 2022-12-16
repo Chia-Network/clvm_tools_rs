@@ -1225,6 +1225,7 @@ pub fn codegen(
     }
 
     *symbol_table = compiler.function_symbols.clone();
+    symbol_table.insert("source_file".to_string(), opts.filename());
 
     final_codegen(allocator, runner.clone(), opts.clone(), &compiler).and_then(|c| {
         let final_env = finalize_env(allocator, runner.clone(), opts.clone(), &c)?;

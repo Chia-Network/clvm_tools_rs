@@ -373,16 +373,28 @@ fn compile_defconstant(
     body: Rc<SExp>,
     ty: Option<Polytype>,
 ) -> Result<HelperForm, CompileErr> {
-    compile_bodyform(opts, body).map(|bf| {
-        HelperForm::Defconstant(DefconstData {
+    let body_borrowed: &SExp = body.borrow();
+    if let SExp::Cons(_, _, _) = body_borrowed {
+        Ok(HelperForm::Defconstant(DefconstData {
             loc: l,
             nl,
             kw: kwl,
             name: name.to_vec(),
-            body: Rc::new(bf),
-            ty,
+            body: Rc::new(BodyForm::Value(body_borrowed.clone())),
+            ty
+        }))
+    } else {
+        compile_bodyform(opts, body).map(|bf| {
+            HelperForm::Defconstant(DefconstData {
+                loc: l,
+                nl,
+                kw: kwl,
+                name: name.to_vec(),
+                body: Rc::new(bf),
+                ty
+            })
         })
-    })
+    }
 }
 
 fn location_span(l_: Srcloc, lst_: Rc<SExp>) -> Srcloc {

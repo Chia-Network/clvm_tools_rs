@@ -1092,3 +1092,57 @@ fn test_modern_mod_form() {
 
     assert_eq!(result.to_string(), "7");
 }
+
+#[test]
+fn test_fuzz_seed_3956111146_1_alt_test_1() {
+    let res = run_string(
+        &"(mod () (include *standard-cl-21*) (q (r . lbvepvnoc) dbhk))".to_string(),
+        &"()".to_string(),
+    )
+    .unwrap();
+    assert_eq!(res.to_string(), "((r . lbvepvnoc) dbhk)");
+}
+
+#[test]
+fn test_fuzz_seed_3956111146_1() {
+    let res = run_string(
+        &"(mod () (include *standard-cl-21*) (q (r . lbvepvnoc) . dbhk))".to_string(),
+        &"()".to_string(),
+    )
+    .unwrap();
+    assert_eq!(res.to_string(), "((r . lbvepvnoc) . dbhk)");
+}
+
+#[test]
+fn arg_destructure_test_1() {
+    let prog = indoc! {"
+(mod
+  (
+      SINGLETON_MOD_HASH
+      LAUNCHER_HASH
+      launcher_id
+      . delegated_puzzle_hash
+  )
+
+  (include *standard-cl-21*)
+
+  delegated_puzzle_hash
+)"
+    }
+    .to_string();
+    let res = run_string(&prog, &"(1 2 3 . 4)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "4");
+}
+
+#[test]
+fn test_defconstant_tree() {
+    let prog = indoc! {"
+(mod ()
+  (include *standard-cl-21*)
+  (include test-defconstant-tree.clib)
+  constant-tree
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"()".to_string()).unwrap();
+    assert_eq!(res.to_string(), "((0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a . 0x9dcf97a184f32623d11a73124ceb99a5709b083721e878a16d78f596718ba7b2) 0x02a12871fee210fb8619291eaea194581cbd2531e4b23759d225f6806923f63222 . 0x02a8d5dd63fba471ebcb1f3e8f7c1e1879b7152a6e7298a91ce119a63400ade7c5)");
+}
