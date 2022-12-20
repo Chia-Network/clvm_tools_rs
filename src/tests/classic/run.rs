@@ -516,6 +516,7 @@ fn test_classic_sets_source_file_in_symbols() {
         decoded_symbol_file.get("source_file").cloned(),
         Some("resources/tests/assert.clvm".to_string())
     );
+    fs::remove_file(tname).expect("should have dropped symbols");
 }
 
 #[test]
