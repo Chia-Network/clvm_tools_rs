@@ -744,8 +744,8 @@ fn generate_let_defun(
                 BindingPattern::Name(name) => {
                     Rc::new(SExp::Atom(l.clone(), name.clone()))
                 }
-                BindingPattern::Complex(_sexp) => {
-                    todo!();
+                BindingPattern::Complex(sexp) => {
+                    sexp.clone()
                 }
             }
         })
@@ -841,6 +841,7 @@ fn hoist_body_let_binding(
                 }));
             }
 
+            eprintln!("generate let {}", body.to_sexp());
             let generated_defun = generate_let_defun(
                 compiler,
                 letdata.loc.clone(),
