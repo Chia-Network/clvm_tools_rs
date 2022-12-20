@@ -1179,3 +1179,23 @@ fn test_assign_form_1() {
     let res = run_string(&prog, &"(13)".to_string()).unwrap();
     assert_eq!(res.to_string(), "35");
 }
+
+#[test]
+fn test_assign_form_cplx_1() {
+    let prog = indoc! {"
+(mod (X)
+  (defun-inline tup (X Y) (c X Y))
+  (assign
+    (X1 . X2) (tup (+ X 1) (+ X 2)) ;; 14
+    X2 (+ X1 1) ;; 15
+    X3 (+ X2 1) ;; 16
+    (Y0 . X4) (tup (+ X3 1) (+ X3 1)) ;; 17
+    X5 (+ Y0 1) ;; 18
+    Y1 (+ X5 Y0) ;; 35
+    Y1
+    )
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(13)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "35");
+}
