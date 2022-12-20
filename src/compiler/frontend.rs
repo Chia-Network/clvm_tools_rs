@@ -5,14 +5,14 @@ use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::comptypes::{
-    list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData,
+    list_to_cons, Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData,
     DefmacData, DefunData, HelperForm, IncludeDesc, LetData, LetFormKind, ModAccum,
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
 use crate::compiler::sexp::{enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::util::u8_from_number;
+use crate::util::{toposort, u8_from_number};
 
 fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
     match body.borrow() {
@@ -303,6 +303,59 @@ pub fn compile_bodyform(
                                         bindings: let_bindings,
                                         body: Rc::new(compiled_body),
                                     },
+                                ))
+                            } else if *atom_name == "assign".as_bytes().to_vec() {
+                                if v.len() % 1 == 0 {
+                                    return finish_err("assign");
+                                }
+
+                                let mut bindings = Vec::new();
+                                for idx in (0..(v.len() - 1) / 2).map(|idx| 1 + idx * 2) {
+                                    let destructure_pattern = v[idx].clone();
+                                    let binding_body = compile_bodyform(opts.clone(), v[idx+1].clone())?;
+                                    bindings.push(Binding {
+                                        loc: v[idx].loc().ext(&v[idx+1].loc()),
+                                        nl: destructure_pattern.loc(),
+                                        pattern: BindingPattern::Complex(destructure_pattern),
+                                        body: Rc::new(binding_body),
+                                    });
+                                }
+
+                                // Topological sort of bindings.
+                                let sorted_spec = toposort(
+                                    &bindings,
+                                    CompileErr(l.clone(), "deadlock resolving binding order".to_string()),
+                                    // Needs: What this binding relies on.
+                                    |possible, b| {
+                                        let mut need_set = HashSet::new();
+                                        make_provides_set(&mut need_set, b.body.to_sexp());
+                                        need_set.intersect(possible)
+                                    }, 
+                                    // Has: What this binding provides.
+                                    |b| {
+                                        match b.pattern {
+                                            BindingPattern::Simple(name) => {
+                                                HashSet::from(vec![Rc::new(SExp::Atom(b.nl.clone(), name.clone()))])
+                                            }
+                                            BindingPattern::Complex(sexp) => {
+                                                let mut result_set = HashSet::new();
+                                                make_provides_set(&mut result_set, sexp.clone());
+                                                result_set
+                                            }
+                                        }
+                                    });
+
+                                let compiled_body =
+                                    compile_bodyform(opts, v[v.len()-1].clone())?;
+
+                                Ok(BodyForm::Let(
+                                    LetFormKind::Parallel,
+                                    LetData {
+                                        loc: l.clone(),
+                                        kw: Some(l.clone()),
+                                        bindings: bindings,
+                                        body: Rc::new(compiled_body)
+                                    }
                                 ))
                             } else if *atom_name == "quote".as_bytes().to_vec() {
                                 if v.len() != 1 {

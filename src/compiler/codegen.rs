@@ -13,7 +13,7 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{is_at_capture, run_optimizer};
 use crate::compiler::comptypes::{
-    fold_m, join_vecs_to_string, list_to_cons, Binding, BodyForm, Callable, CompileErr,
+    fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, Callable, CompileErr,
     CompileForm, CompiledCode, CompilerOpts, DefunCall, DefunData, HelperForm, InlineFunction,
     LetData, LetFormKind, PrimaryCodegen,
 };
@@ -739,7 +739,16 @@ fn generate_let_defun(
 ) -> HelperForm {
     let new_arguments: Vec<Rc<SExp>> = bindings
         .iter()
-        .map(|b| Rc::new(SExp::Atom(l.clone(), b.name.clone())))
+        .map(|b| {
+            match b.pattern {
+                BindingPattern::Name(name) => {
+                    Rc::new(SExp::Atom(l.clone(), name.clone()))
+                }
+                BindingPattern::Complex(sexp) => {
+                    todo!();
+                }
+            }
+        })
         .collect();
 
     let inner_function_args = SExp::Cons(
@@ -827,7 +836,7 @@ fn hoist_body_let_binding(
                 revised_bindings.push(Rc::new(Binding {
                     loc: b.loc.clone(),
                     nl: b.nl.clone(),
-                    name: b.name.clone(),
+                    pattern: b.pattern.clone(),
                     body: new_binding,
                 }));
             }
