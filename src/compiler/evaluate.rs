@@ -13,7 +13,7 @@ use crate::compiler::clvm::run;
 use crate::compiler::codegen::codegen;
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
-    Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LetData, LetFormKind,
+    Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LetData, LetFormKind,
 };
 use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
@@ -48,13 +48,32 @@ fn select_helper(bindings: &[HelperForm], name: &[u8]) -> Option<HelperForm> {
     None
 }
 
+fn compute_paths_of_destructure(_bindings: &mut Vec<(Vec<u8>, Rc<BodyForm>)>, _structure: Rc<SExp>, _bodyform: Rc<BodyForm>) {
+    todo!();
+}
+
 fn update_parallel_bindings(
     bindings: &HashMap<Vec<u8>, Rc<BodyForm>>,
     have_bindings: &[Rc<Binding>],
 ) -> HashMap<Vec<u8>, Rc<BodyForm>> {
     let mut new_bindings = bindings.clone();
     for b in have_bindings.iter() {
-        new_bindings.insert(b.name.clone(), b.body.clone());
+        match &b.pattern {
+            BindingPattern::Name(name) => {
+                new_bindings.insert(name.clone(), b.body.clone());
+            }
+            BindingPattern::Complex(structure) => {
+                let mut computed_getters = Vec::new();
+                compute_paths_of_destructure(
+                    &mut computed_getters,
+                    structure.clone(),
+                    b.body.clone()
+                );
+                for (name, p) in computed_getters.iter() {
+                    new_bindings.insert(name.clone(), p.clone());
+                }
+            }
+        }
     }
     new_bindings
 }

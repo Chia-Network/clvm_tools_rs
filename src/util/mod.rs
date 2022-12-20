@@ -43,9 +43,9 @@ pub fn collapse<A>(r: Result<A, A>) -> A {
 
 #[derive(Debug, Clone)]
 pub struct TopoSortItem<K> {
-    index: usize,
-    needs: HashSet<K>,
-    has: HashSet<K>
+    pub index: usize,
+    pub needs: HashSet<K>,
+    pub has: HashSet<K>
 }
 
 // F: tells whether t2 includes t1.
@@ -69,8 +69,8 @@ where
     let mut finished_idx = 0;
 
     // Determine what's defined in these bindings.
-    for (i,item) in items.iter().enumerate() {
-        for new_item in possible.union(&item.has) {
+    for (_,item) in items.iter().enumerate() {
+        for new_item in item.has.iter() {
             possible.insert(new_item.clone());
         }
     }
@@ -79,11 +79,11 @@ where
     for i in 0..items.len() {
         items[i].needs = needs(&possible, &list[i])?;
     }
- 
+
     while finished_idx < items.len() {
         // Find things with no new dependencies.
-        let move_to_front: Vec<(usize, TopoSortItem<K>)> = 
-            items.iter().enumerate().skip(finished_idx).filter(|(i,item)| {
+        let move_to_front: Vec<(usize, TopoSortItem<K>)> =
+            items.iter().enumerate().skip(finished_idx).filter(|(_,item)| {
                 item.needs.is_subset(&done)
             }).map(|(i,item)| (i, item.clone())).collect();
 
@@ -93,13 +93,14 @@ where
         }
 
         // Swap items into place earlier in the list.
-        for (idx,tomove) in move_to_front.iter() {
+        for (idx, _tomove) in move_to_front.iter() {
             if *idx != finished_idx {
-                swap(&mut items[*idx], &mut items[finished_idx]);
+                let mut tmp = items[*idx].clone();
+                swap(&mut tmp, &mut items[finished_idx]);
             }
 
             // Add new 'has' items to done.
-            let tmp = HashSet::new();
+            let mut tmp = HashSet::new();
             for u in done.union(&items[finished_idx].has) {
                 tmp.insert(u.clone());
             }

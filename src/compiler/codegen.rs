@@ -740,11 +740,11 @@ fn generate_let_defun(
     let new_arguments: Vec<Rc<SExp>> = bindings
         .iter()
         .map(|b| {
-            match b.pattern {
+            match b.pattern.borrow() {
                 BindingPattern::Name(name) => {
                     Rc::new(SExp::Atom(l.clone(), name.clone()))
                 }
-                BindingPattern::Complex(sexp) => {
+                BindingPattern::Complex(_sexp) => {
                     todo!();
                 }
             }

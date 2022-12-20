@@ -442,12 +442,17 @@ impl BodyForm {
 impl Binding {
     pub fn to_sexp(&self) -> Rc<SExp> {
         let pat =
-            match self.pattern {
-                BindingPattern::
+            match &self.pattern {
+                BindingPattern::Name(name) => {
+                    Rc::new(SExp::atom_from_vec(self.loc.clone(), &name))
+                }
+                BindingPattern::Complex(sexp) => {
+                    sexp.clone()
+                }
             };
         Rc::new(SExp::Cons(
             self.loc.clone(),
-            Rc::new(SExp::atom_from_vec(self.loc.clone(), &self.name)),
+            pat,
             Rc::new(SExp::Cons(
                 self.loc.clone(),
                 self.body.to_sexp(),

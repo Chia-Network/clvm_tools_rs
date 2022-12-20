@@ -223,7 +223,7 @@ fn make_let_bindings(
                     result.push(Rc::new(Binding {
                         loc: l.clone(),
                         nl: l.clone(),
-                        name: name.to_vec(),
+                        pattern: BindingPattern::Name(name.to_vec()),
                         body: Rc::new(compiled_body),
                     }));
                     result.append(&mut rest_bindings);
@@ -234,6 +234,13 @@ fn make_let_bindings(
             .unwrap_or_else(|| err.clone()),
         _ => err,
     }
+}
+
+fn make_provides_set(
+    _need_set: &mut HashSet<Vec<u8>>,
+    _body_sexp: Rc<SExp>
+) {
+    todo!();
 }
 
 pub fn compile_bodyform(
@@ -311,14 +318,14 @@ pub fn compile_bodyform(
 
                                 let mut bindings = Vec::new();
                                 for idx in (0..(v.len() - 1) / 2).map(|idx| 1 + idx * 2) {
-                                    let destructure_pattern = v[idx].clone();
-                                    let binding_body = compile_bodyform(opts.clone(), v[idx+1].clone())?;
-                                    bindings.push(Binding {
+                                    let destructure_pattern = Rc::new(v[idx].clone());
+                                    let binding_body = compile_bodyform(opts.clone(), Rc::new(v[idx+1].clone()))?;
+                                    bindings.push(Rc::new(Binding {
                                         loc: v[idx].loc().ext(&v[idx+1].loc()),
                                         nl: destructure_pattern.loc(),
                                         pattern: BindingPattern::Complex(destructure_pattern),
                                         body: Rc::new(binding_body),
-                                    });
+                                    }));
                                 }
 
                                 // Topological sort of bindings.
@@ -329,13 +336,17 @@ pub fn compile_bodyform(
                                     |possible, b| {
                                         let mut need_set = HashSet::new();
                                         make_provides_set(&mut need_set, b.body.to_sexp());
-                                        need_set.intersect(possible)
-                                    }, 
+                                        let mut need_set_thats_possible = HashSet::new();
+                                        for need in need_set.intersection(possible) {
+                                            need_set_thats_possible.insert(need.clone());
+                                        }
+                                        Ok(need_set_thats_possible)
+                                    },
                                     // Has: What this binding provides.
                                     |b| {
-                                        match b.pattern {
-                                            BindingPattern::Simple(name) => {
-                                                HashSet::from(vec![Rc::new(SExp::Atom(b.nl.clone(), name.clone()))])
+                                        match b.pattern.borrow() {
+                                            BindingPattern::Name(name) => {
+                                                HashSet::from([name.clone()])
                                             }
                                             BindingPattern::Complex(sexp) => {
                                                 let mut result_set = HashSet::new();
@@ -343,11 +354,16 @@ pub fn compile_bodyform(
                                                 result_set
                                             }
                                         }
-                                    });
+                                    })?;
+
+                                let sorted_bindings: Vec<Rc<Binding>> = sorted_spec.iter().map(|item| {
+                                    bindings[item.index].clone()
+                                }).collect();
 
                                 let compiled_body =
-                                    compile_bodyform(opts, v[v.len()-1].clone())?;
+                                    compile_bodyform(opts, Rc::new(v[v.len()-1].clone()))?;
 
+                                todo!();
                                 Ok(BodyForm::Let(
                                     LetFormKind::Parallel,
                                     LetData {
