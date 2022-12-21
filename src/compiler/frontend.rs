@@ -76,7 +76,7 @@ fn collect_used_names_helperform(body: &HelperForm) -> Vec<Vec<u8>> {
             let mut all_token_res = collect_used_names_sexp(mac.program.to_sexp());
             res.append(&mut all_token_res);
             res
-        },
+        }
         HelperForm::Defun(_, defun) => collect_used_names_bodyform(&defun.body),
     }
 }
