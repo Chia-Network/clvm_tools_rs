@@ -382,15 +382,17 @@ fn compile_call(
             Rc::new(SExp::Atom(al.clone(), an.to_vec())),
         )
         .and_then(|calltype| match calltype {
-            Callable::CallMacro(l, code) => process_macro_call(
-                allocator,
-                runner,
-                opts.clone(),
-                compiler,
-                l,
-                tl,
-                Rc::new(code),
-            ),
+            Callable::CallMacro(l, code) => {
+                process_macro_call(
+                    allocator,
+                    runner,
+                    opts.clone(),
+                    compiler,
+                    l,
+                    tl,
+                    Rc::new(code),
+                )
+            },
 
             Callable::CallInline(l, inline) => replace_in_inline(
                 allocator,
@@ -840,8 +842,6 @@ fn hoist_body_let_binding(
                     body: new_binding,
                 }));
             }
-
-            eprintln!("generate let {}", body.to_sexp());
             let generated_defun = generate_let_defun(
                 compiler,
                 letdata.loc.clone(),

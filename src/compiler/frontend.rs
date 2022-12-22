@@ -216,8 +216,9 @@ fn make_let_bindings(
         SExp::Nil(_) => Ok(vec![]),
         SExp::Cons(_, head, tl) => head
             .proper_list()
-            .map(|x| match &x[..] {
-                [SExp::Atom(l, name), expr] => {
+            .filter(|x| x.len() == 2)
+            .map(|x| match (x[0].atomize(), &x[1]) {
+                (SExp::Atom(l, name), expr) => {
                     let compiled_body = compile_bodyform(opts.clone(), Rc::new(expr.clone()))?;
                     let mut result = Vec::new();
                     let mut rest_bindings = make_let_bindings(opts, tl.clone())?;
@@ -242,7 +243,7 @@ fn make_provides_set(
     provides_set: &mut HashSet<Vec<u8>>,
     body_sexp: Rc<SExp>
 ) {
-    match body_sexp.borrow() {
+    match body_sexp.atomize() {
         SExp::Cons(_, a, b) => {
             make_provides_set(provides_set, a.clone());
             make_provides_set(provides_set, b.clone());

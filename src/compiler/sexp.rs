@@ -462,6 +462,14 @@ impl SExp {
         }
     }
 
+    pub fn atomize(&self) -> SExp {
+        if let SExp::Integer(l, i) = self {
+            SExp::Atom(l.clone(), u8_from_number(i.clone()))
+        } else {
+            self.clone()
+        }
+    }
+
     pub fn equal_to(&self, other: &SExp) -> bool {
         if self.nilp() && other.nilp() {
             true
