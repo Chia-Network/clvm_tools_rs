@@ -212,7 +212,9 @@ impl CompilerOperators {
 }
 
 impl Dialect for CompilerOperators {
-    fn val_stack_limit(&self) -> usize { return 10000000; }
+    fn val_stack_limit(&self) -> usize {
+        return 10000000;
+    }
     fn quote_kw(&self) -> &[u8] {
         &[1]
     }
