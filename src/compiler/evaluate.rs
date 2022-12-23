@@ -60,13 +60,7 @@ fn compute_paths_of_destructure(
         SExp::Cons(_, a, b) => {
             let next_mask = mask.clone() * 2_u32.to_bigint().unwrap();
             let next_right_path = mask + path.clone();
-            compute_paths_of_destructure(
-                bindings,
-                a,
-                path,
-                next_mask.clone(),
-                bodyform.clone(),
-            );
+            compute_paths_of_destructure(bindings, a, path, next_mask.clone(), bodyform.clone());
             compute_paths_of_destructure(bindings, b, next_right_path, next_mask, bodyform);
         }
         SExp::Atom(_, name) => {
