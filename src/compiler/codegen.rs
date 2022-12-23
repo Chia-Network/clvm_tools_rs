@@ -13,9 +13,9 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{is_at_capture, run_optimizer};
 use crate::compiler::comptypes::{
-    fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, Callable, CompileErr,
-    CompileForm, CompiledCode, CompilerOpts, DefunCall, DefunData, HelperForm, InlineFunction,
-    LetData, LetFormKind, PrimaryCodegen,
+    fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, Callable,
+    CompileErr, CompileForm, CompiledCode, CompilerOpts, DefunCall, DefunData, HelperForm,
+    InlineFunction, LetData, LetFormKind, PrimaryCodegen,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::frontend::compile_bodyform;
@@ -382,17 +382,15 @@ fn compile_call(
             Rc::new(SExp::Atom(al.clone(), an.to_vec())),
         )
         .and_then(|calltype| match calltype {
-            Callable::CallMacro(l, code) => {
-                process_macro_call(
-                    allocator,
-                    runner,
-                    opts.clone(),
-                    compiler,
-                    l,
-                    tl,
-                    Rc::new(code),
-                )
-            },
+            Callable::CallMacro(l, code) => process_macro_call(
+                allocator,
+                runner,
+                opts.clone(),
+                compiler,
+                l,
+                tl,
+                Rc::new(code),
+            ),
 
             Callable::CallInline(l, inline) => replace_in_inline(
                 allocator,
@@ -741,15 +739,9 @@ fn generate_let_defun(
 ) -> HelperForm {
     let new_arguments: Vec<Rc<SExp>> = bindings
         .iter()
-        .map(|b| {
-            match b.pattern.borrow() {
-                BindingPattern::Name(name) => {
-                    Rc::new(SExp::Atom(l.clone(), name.clone()))
-                }
-                BindingPattern::Complex(sexp) => {
-                    sexp.clone()
-                }
-            }
+        .map(|b| match b.pattern.borrow() {
+            BindingPattern::Name(name) => Rc::new(SExp::Atom(l.clone(), name.clone())),
+            BindingPattern::Complex(sexp) => sexp.clone(),
         })
         .collect();
 

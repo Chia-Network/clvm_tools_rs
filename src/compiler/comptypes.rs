@@ -60,7 +60,7 @@ pub fn list_to_cons(l: Srcloc, list: &[Rc<SExp>]) -> SExp {
 #[derive(Clone, Debug)]
 pub enum BindingPattern {
     Name(Vec<u8>),
-    Complex(Rc<SExp>)
+    Complex(Rc<SExp>),
 }
 
 #[derive(Clone, Debug)]
@@ -441,15 +441,10 @@ impl BodyForm {
 
 impl Binding {
     pub fn to_sexp(&self) -> Rc<SExp> {
-        let pat =
-            match &self.pattern {
-                BindingPattern::Name(name) => {
-                    Rc::new(SExp::atom_from_vec(self.loc.clone(), name))
-                }
-                BindingPattern::Complex(sexp) => {
-                    sexp.clone()
-                }
-            };
+        let pat = match &self.pattern {
+            BindingPattern::Name(name) => Rc::new(SExp::atom_from_vec(self.loc.clone(), name)),
+            BindingPattern::Complex(sexp) => sexp.clone(),
+        };
         Rc::new(SExp::Cons(
             self.loc.clone(),
             pat,

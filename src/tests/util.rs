@@ -1,10 +1,10 @@
-use std::collections::HashSet;
 use crate::util::toposort;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 struct TopoSortCheckItem {
     needs: HashSet<String>,
-    has: HashSet<String>
+    has: HashSet<String>,
 }
 
 impl TopoSortCheckItem {
@@ -48,26 +48,27 @@ fn test_topo_sort_0() {
         t(&["A", "W"], &["Y"]),
         t(&[], &["A"]),
         t(&[], &["B"]),
-        t(&["B"], &["W"])
+        t(&["B"], &["W"]),
     ];
     let result = toposort(
         &items,
         true,
         |_p, n: &TopoSortCheckItem| Ok(n.needs.clone()),
-        |h| h.has.clone()
-    ).expect("no deadlocks in this data");
+        |h| h.has.clone(),
+    )
+    .expect("no deadlocks in this data");
 
     for (i, item) in result.iter().enumerate() {
         let have_item = &items[item.index];
         for j in 0..i {
             let item_to_check = &result[j];
-            let item_to_check_for_dependencies_on_have =
-                &items[item_to_check.index];
+            let item_to_check_for_dependencies_on_have = &items[item_to_check.index];
             // item_to_check_for_dependencies is an item occurring prior to
             // have_item in the sorted output.
             // If its 'needs' has anything in have_item's 'has', then we failed.
-            let mut intersection =
-                item_to_check_for_dependencies_on_have.needs.intersection(&have_item.has);
+            let mut intersection = item_to_check_for_dependencies_on_have
+                .needs
+                .intersection(&have_item.has);
             assert!(intersection.next().is_none());
         }
     }
@@ -82,13 +83,13 @@ fn test_topo_sort_1() {
         t(&["A", "W"], &["Y"]),
         t(&[], &["A"]),
         t(&["Z"], &["B"]),
-        t(&["B"], &["W"])
+        t(&["B"], &["W"]),
     ];
     let result = toposort(
         &items,
         true,
         |_p, n: &TopoSortCheckItem| Ok(n.needs.clone()),
-        |h| h.has.clone()
+        |h| h.has.clone(),
     );
 
     assert!(result.is_err());

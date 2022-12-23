@@ -45,31 +45,38 @@ pub fn collapse<A>(r: Result<A, A>) -> A {
 pub struct TopoSortItem<K> {
     pub index: usize,
     pub needs: HashSet<K>,
-    pub has: HashSet<K>
+    pub has: HashSet<K>,
 }
 
 // F: tells whether t2 includes t1.
-pub fn toposort<K, T, E, Needs, Has>(list: &[T], deadlock: E, needs: Needs, has: Has) -> Result<Vec<TopoSortItem<K>>, E>
+pub fn toposort<K, T, E, Needs, Has>(
+    list: &[T],
+    deadlock: E,
+    needs: Needs,
+    has: Has,
+) -> Result<Vec<TopoSortItem<K>>, E>
 where
-  Needs: Fn(&HashSet<K>, &T) -> Result<HashSet<K>, E>,
-  Has: Fn(&T) -> HashSet<K>,
-  K: std::cmp::Eq,
-  K: std::hash::Hash,
-  K: Clone
+    Needs: Fn(&HashSet<K>, &T) -> Result<HashSet<K>, E>,
+    Has: Fn(&T) -> HashSet<K>,
+    K: std::cmp::Eq,
+    K: std::hash::Hash,
+    K: Clone,
 {
     let mut possible = HashSet::new();
     let mut done = HashSet::new();
-    let mut items: Vec<TopoSortItem<K>> = list.iter().enumerate().map(|(i,item)| {
-        TopoSortItem {
+    let mut items: Vec<TopoSortItem<K>> = list
+        .iter()
+        .enumerate()
+        .map(|(i, item)| TopoSortItem {
             index: i,
             needs: HashSet::new(),
-            has: has(item)
-        }
-    }).collect();
+            has: has(item),
+        })
+        .collect();
     let mut finished_idx = 0;
 
     // Determine what's defined in these bindings.
-    for (_,item) in items.iter().enumerate() {
+    for (_, item) in items.iter().enumerate() {
         for new_item in item.has.iter() {
             possible.insert(new_item.clone());
         }
@@ -82,10 +89,13 @@ where
 
     while finished_idx < items.len() {
         // Find things with no new dependencies.
-        let move_to_front: Vec<(usize, TopoSortItem<K>)> =
-            items.iter().enumerate().skip(finished_idx).filter(|(_,item)| {
-                item.needs.is_subset(&done)
-            }).map(|(i,item)| (i, item.clone())).collect();
+        let move_to_front: Vec<(usize, TopoSortItem<K>)> = items
+            .iter()
+            .enumerate()
+            .skip(finished_idx)
+            .filter(|(_, item)| item.needs.is_subset(&done))
+            .map(|(i, item)| (i, item.clone()))
+            .collect();
 
         if move_to_front.is_empty() {
             // Circular dependency somewhere.

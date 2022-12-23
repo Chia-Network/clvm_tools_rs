@@ -6,8 +6,8 @@ use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::comptypes::{
-    list_to_cons, Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData,
-    DefmacData, DefunData, HelperForm, IncludeDesc, LetData, LetFormKind, ModAccum,
+    list_to_cons, Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts,
+    DefconstData, DefmacData, DefunData, HelperForm, IncludeDesc, LetData, LetFormKind, ModAccum,
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
@@ -239,18 +239,15 @@ fn make_let_bindings(
 }
 
 // Make a set of names in this sexp.
-fn make_provides_set(
-    provides_set: &mut HashSet<Vec<u8>>,
-    body_sexp: Rc<SExp>
-) {
+fn make_provides_set(provides_set: &mut HashSet<Vec<u8>>, body_sexp: Rc<SExp>) {
     match body_sexp.atomize() {
         SExp::Cons(_, a, b) => {
             make_provides_set(provides_set, a);
             make_provides_set(provides_set, b);
-        },
+        }
         SExp::Atom(_, name) => {
             provides_set.insert(name);
-        },
+        }
         _ => {}
     }
 }
@@ -258,18 +255,21 @@ fn make_provides_set(
 fn handle_assign_form(
     opts: Rc<dyn CompilerOpts>,
     l: Srcloc,
-    v: &[SExp]
+    v: &[SExp],
 ) -> Result<BodyForm, CompileErr> {
     if v.len() % 2 == 0 {
-        return Err(CompileErr(l, "assign form should be in pairs of pattern value followed by an expression".to_string()));
+        return Err(CompileErr(
+            l,
+            "assign form should be in pairs of pattern value followed by an expression".to_string(),
+        ));
     }
 
     let mut bindings = Vec::new();
     for idx in (0..(v.len() - 1) / 2).map(|idx| idx * 2) {
         let destructure_pattern = Rc::new(v[idx].clone());
-        let binding_body = compile_bodyform(opts.clone(), Rc::new(v[idx+1].clone()))?;
+        let binding_body = compile_bodyform(opts.clone(), Rc::new(v[idx + 1].clone()))?;
         bindings.push(Rc::new(Binding {
-            loc: v[idx].loc().ext(&v[idx+1].loc()),
+            loc: v[idx].loc().ext(&v[idx + 1].loc()),
             nl: destructure_pattern.loc(),
             pattern: BindingPattern::Complex(destructure_pattern),
             body: Rc::new(binding_body),
@@ -291,21 +291,17 @@ fn handle_assign_form(
             Ok(need_set_thats_possible)
         },
         // Has: What this binding provides.
-        |b| {
-            match b.pattern.borrow() {
-                BindingPattern::Name(name) => {
-                    HashSet::from([name.clone()])
-                }
-                BindingPattern::Complex(sexp) => {
-                    let mut result_set = HashSet::new();
-                    make_provides_set(&mut result_set, sexp.clone());
-                    result_set
-                }
+        |b| match b.pattern.borrow() {
+            BindingPattern::Name(name) => HashSet::from([name.clone()]),
+            BindingPattern::Complex(sexp) => {
+                let mut result_set = HashSet::new();
+                make_provides_set(&mut result_set, sexp.clone());
+                result_set
             }
-        })?;
+        },
+    )?;
 
-    let compiled_body =
-        compile_bodyform(opts, Rc::new(v[v.len()-1].clone()))?;
+    let compiled_body = compile_bodyform(opts, Rc::new(v[v.len() - 1].clone()))?;
     // Break up into stages of parallel let forms.
     // Track the needed bindings of this level.
     // If this becomes broader in a way that doesn't
@@ -317,8 +313,7 @@ fn handle_assign_form(
     let mut new_provides: HashSet<Vec<u8>> = HashSet::new();
 
     for spec in sorted_spec.iter() {
-        let mut new_needs =
-            spec.needs.difference(&current_provides).cloned();
+        let mut new_needs = spec.needs.difference(&current_provides).cloned();
         if new_needs.next().is_some() {
             eprintln!("bindings");
             // Roll over the set we're accumulating to the finished version.
@@ -362,8 +357,8 @@ fn handle_assign_form(
             loc: l.clone(),
             kw: Some(l.clone()),
             bindings: end_bindings,
-            body: Rc::new(compiled_body)
-        }
+            body: Rc::new(compiled_body),
+        },
     );
 
     for binding_list in binding_lists.into_iter().skip(1) {
@@ -373,8 +368,8 @@ fn handle_assign_form(
                 loc: l.clone(),
                 kw: Some(l.clone()),
                 bindings: binding_list,
-                body: Rc::new(output_let)
-            }
+                body: Rc::new(output_let),
+            },
         )
     }
 

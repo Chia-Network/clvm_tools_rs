@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::compiler::comptypes::{
-    Binding, BindingPattern, BodyForm, CompileForm, DefconstData, DefmacData, DefunData, HelperForm, LetData,
-    LetFormKind,
+    Binding, BindingPattern, BodyForm, CompileForm, DefconstData, DefmacData, DefunData,
+    HelperForm, LetData, LetFormKind,
 };
 use crate::compiler::gensym::gensym;
 use crate::compiler::sexp::SExp;
@@ -34,7 +34,7 @@ fn rename_in_qq(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SExp>
 fn rename_in_cons(
     namemap: &HashMap<Vec<u8>, Vec<u8>>,
     body: Rc<SExp>,
-    qq_handling: bool
+    qq_handling: bool,
 ) -> Rc<SExp> {
     match body.borrow() {
         SExp::Atom(l, name) => match namemap.get(name) {
@@ -111,7 +111,7 @@ fn invent_new_names_sexp(body: Rc<SExp>) -> Vec<(Vec<u8>, Vec<u8>)> {
 #[derive(Debug, Clone)]
 struct InnerRenameList {
     bindings: HashMap<Vec<u8>, Vec<u8>>,
-    from_wing: Binding
+    from_wing: Binding,
 }
 
 fn make_binding_unique(b: &Binding) -> InnerRenameList {
@@ -127,7 +127,7 @@ fn make_binding_unique(b: &Binding) -> InnerRenameList {
                     nl: b.nl.clone(),
                     pattern: BindingPattern::Name(new_name),
                     body: b.body.clone(),
-                }
+                },
             }
         }
         BindingPattern::Complex(pat) => {
@@ -146,7 +146,7 @@ fn make_binding_unique(b: &Binding) -> InnerRenameList {
                     nl: b.nl.clone(),
                     pattern: BindingPattern::Complex(renamed_pattern),
                     body: b.body.clone(),
-                }
+                },
             }
         }
     }
@@ -250,8 +250,10 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
                 .iter()
                 .map(|x| make_binding_unique(x.borrow()))
                 .collect();
-            let new_renamed_bindings: Vec<Rc<Binding>> =
-                renames.iter().map(|ir| Rc::new(ir.from_wing.clone())).collect();
+            let new_renamed_bindings: Vec<Rc<Binding>> = renames
+                .iter()
+                .map(|ir| Rc::new(ir.from_wing.clone()))
+                .collect();
             let mut local_namemap = HashMap::new();
             for ir in renames.iter() {
                 for (oldname, binding_name) in ir.bindings.iter() {
