@@ -224,7 +224,7 @@ fn make_let_bindings(
                     let mut rest_bindings = make_let_bindings(opts, tl.clone())?;
                     result.push(Rc::new(Binding {
                         loc: l.clone(),
-                        nl: l.clone(),
+                        nl: l,
                         pattern: BindingPattern::Name(name.to_vec()),
                         body: Rc::new(compiled_body),
                     }));
@@ -245,11 +245,11 @@ fn make_provides_set(
 ) {
     match body_sexp.atomize() {
         SExp::Cons(_, a, b) => {
-            make_provides_set(provides_set, a.clone());
-            make_provides_set(provides_set, b.clone());
+            make_provides_set(provides_set, a);
+            make_provides_set(provides_set, b);
         },
         SExp::Atom(_, name) => {
-            provides_set.insert(name.clone());
+            provides_set.insert(name);
         },
         _ => {}
     }
@@ -260,8 +260,8 @@ fn handle_assign_form(
     l: Srcloc,
     v: &[SExp]
 ) -> Result<BodyForm, CompileErr> {
-    if v.len() % 1 == 1 {
-        return Err(CompileErr(l.clone(), "assign form should be in pairs of pattern value followed by an expression".to_string()));
+    if v.len() % 2 == 0 {
+        return Err(CompileErr(l, "assign form should be in pairs of pattern value followed by an expression".to_string()));
     }
 
     let mut bindings = Vec::new();
@@ -317,12 +317,16 @@ fn handle_assign_form(
     let mut new_provides: HashSet<Vec<u8>> = HashSet::new();
 
     for spec in sorted_spec.iter() {
-        let new_needs_vec: Vec<Vec<u8>> =
-            spec.needs.difference(&current_provides).cloned().collect();
-        if !new_needs_vec.is_empty() {
+        let mut new_needs =
+            spec.needs.difference(&current_provides).cloned();
+        if new_needs.next().is_some() {
+            eprintln!("bindings");
             // Roll over the set we're accumulating to the finished version.
-            let mut empty_tmp = Vec::new();
+            let mut empty_tmp: Vec<Rc<Binding>> = Vec::new();
             swap(&mut empty_tmp, &mut this_round_bindings);
+            for e in empty_tmp.iter() {
+                eprintln!("push bindings {}", e.to_sexp());
+            }
             binding_lists.push(empty_tmp);
             for provided in new_provides.iter() {
                 current_provides.insert(provided.clone());
@@ -351,6 +355,7 @@ fn handle_assign_form(
     // Spill let forms as parallel sets to get the best stack we can.
     let mut end_bindings = Vec::new();
     swap(&mut end_bindings, &mut binding_lists[0]);
+
     let mut output_let = BodyForm::Let(
         LetFormKind::Parallel,
         LetData {
@@ -373,6 +378,7 @@ fn handle_assign_form(
         )
     }
 
+    eprintln!("output let from assign {}", output_let.to_sexp());
     Ok(output_let)
 }
 

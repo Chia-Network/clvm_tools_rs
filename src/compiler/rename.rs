@@ -108,21 +108,27 @@ fn invent_new_names_sexp(body: Rc<SExp>) -> Vec<(Vec<u8>, Vec<u8>)> {
     }
 }
 
-fn make_binding_unique(b: &Binding) -> (HashMap<Vec<u8>, Vec<u8>>, Binding) {
+#[derive(Debug, Clone)]
+struct InnerRenameList {
+    bindings: HashMap<Vec<u8>, Vec<u8>>,
+    from_wing: Binding
+}
+
+fn make_binding_unique(b: &Binding) -> InnerRenameList {
     match b.pattern.borrow() {
         BindingPattern::Name(name) => {
             let mut single_name_map = HashMap::new();
             let new_name = gensym(name.clone());
             single_name_map.insert(name.to_vec(), new_name.clone());
-            (
-                single_name_map,
-                Binding {
+            InnerRenameList {
+                bindings: single_name_map,
+                from_wing: Binding {
                     loc: b.loc.clone(),
                     nl: b.nl.clone(),
                     pattern: BindingPattern::Name(new_name),
                     body: b.body.clone(),
                 }
-            )
+            }
         }
         BindingPattern::Complex(pat) => {
             let new_names_vec = invent_new_names_sexp(pat.clone());
@@ -133,15 +139,15 @@ fn make_binding_unique(b: &Binding) -> (HashMap<Vec<u8>, Vec<u8>>, Binding) {
             }
 
             let renamed_pattern = rename_in_cons(&new_names, pat.clone(), false);
-            (
-                new_names,
-                Binding {
+            InnerRenameList {
+                bindings: new_names,
+                from_wing: Binding {
                     loc: b.loc.clone(),
                     nl: b.nl.clone(),
                     pattern: BindingPattern::Complex(renamed_pattern),
                     body: b.body.clone(),
                 }
-            )
+            }
         }
     }
 }
@@ -239,17 +245,16 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
         }
 
         BodyForm::Let(LetFormKind::Parallel, letdata) => {
-            let renames: Vec<(HashMap<Vec<u8>, Vec<u8>>, Binding)> = letdata
+            let renames: Vec<InnerRenameList> = letdata
                 .bindings
                 .iter()
                 .map(|x| make_binding_unique(x.borrow()))
                 .collect();
             let new_renamed_bindings: Vec<Rc<Binding>> =
-                renames.iter().map(|(_, x)| Rc::new(x.clone())).collect();
+                renames.iter().map(|ir| Rc::new(ir.from_wing.clone())).collect();
             let mut local_namemap = HashMap::new();
-            for x in renames.iter() {
-                let (oldnames, _) = x;
-                for (oldname, binding_name) in oldnames.iter() {
+            for ir in renames.iter() {
+                for (oldname, binding_name) in ir.bindings.iter() {
                     local_namemap.insert(oldname.to_vec(), binding_name.clone());
                 }
             }

@@ -48,8 +48,36 @@ fn select_helper(bindings: &[HelperForm], name: &[u8]) -> Option<HelperForm> {
     None
 }
 
-fn compute_paths_of_destructure(_bindings: &mut Vec<(Vec<u8>, Rc<BodyForm>)>, _structure: Rc<SExp>, _bodyform: Rc<BodyForm>) {
-    todo!();
+fn compute_paths_of_destructure(bindings: &mut Vec<(Vec<u8>, Rc<BodyForm>)>, structure: Rc<SExp>, path: Number, mask: Number, bodyform: Rc<BodyForm>) {
+    match structure.atomize() {
+        SExp::Cons(_, a, b) => {
+            let next_mask = mask.clone() * 2_u32.to_bigint().unwrap();
+            let next_right_path = mask + path.clone();
+            compute_paths_of_destructure(bindings, a.clone(), path, next_mask.clone(), bodyform.clone());
+            compute_paths_of_destructure(bindings, b.clone(), next_right_path, next_mask, bodyform);
+        }
+        SExp::Atom(_, name) => {
+            let mut produce_path = path.clone() | mask;
+            let mut output_form = bodyform.clone();
+
+            while produce_path > bi_one() {
+                if path.clone() & produce_path.clone() != bi_zero() {
+                    // Right path
+                    output_form =
+                        Rc::new(make_operator1(&bodyform.loc(), "r".to_string(), output_form));
+                } else {
+                    // Left path
+                    output_form =
+                        Rc::new(make_operator1(&bodyform.loc(), "f".to_string(), output_form));
+                }
+
+                produce_path /= 2_u32.to_bigint().unwrap();
+            }
+
+            bindings.push((name.clone(), output_form));
+        }
+        _ => { }
+    }
 }
 
 fn update_parallel_bindings(
@@ -67,6 +95,8 @@ fn update_parallel_bindings(
                 compute_paths_of_destructure(
                     &mut computed_getters,
                     structure.clone(),
+                    bi_zero(),
+                    bi_one(),
                     b.body.clone()
                 );
                 for (name, p) in computed_getters.iter() {
@@ -937,6 +967,7 @@ impl Evaluator {
         body: Rc<BodyForm>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
+        eprintln!("evaluate {}", body.to_sexp());
         match body.borrow() {
             BodyForm::Let(LetFormKind::Parallel, letdata) => {
                 let updated_bindings = update_parallel_bindings(env, &letdata.bindings);

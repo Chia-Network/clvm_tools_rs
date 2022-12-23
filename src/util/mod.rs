@@ -49,7 +49,7 @@ pub struct TopoSortItem<K> {
 }
 
 // F: tells whether t2 includes t1.
-pub fn toposort<K, T, E, Needs, Has>(list: &Vec<T>, deadlock: E, needs: Needs, has: Has) -> Result<Vec<TopoSortItem<K>>, E>
+pub fn toposort<K, T, E, Needs, Has>(list: &[T], deadlock: E, needs: Needs, has: Has) -> Result<Vec<TopoSortItem<K>>, E>
 where
   Needs: Fn(&HashSet<K>, &T) -> Result<HashSet<K>, E>,
   Has: Fn(&T) -> HashSet<K>,
@@ -97,6 +97,7 @@ where
             if *idx != finished_idx {
                 let mut tmp = items[*idx].clone();
                 swap(&mut tmp, &mut items[finished_idx]);
+                items[*idx] = tmp;
             }
 
             // Add new 'has' items to done.
@@ -109,9 +110,10 @@ where
             for i in intersection {
                 done.insert(i.clone());
             }
+
             finished_idx += 1;
         }
     }
 
-    return Ok(items);
+    Ok(items)
 }

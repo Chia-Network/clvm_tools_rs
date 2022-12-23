@@ -444,7 +444,7 @@ impl Binding {
         let pat =
             match &self.pattern {
                 BindingPattern::Name(name) => {
-                    Rc::new(SExp::atom_from_vec(self.loc.clone(), &name))
+                    Rc::new(SExp::atom_from_vec(self.loc.clone(), name))
                 }
                 BindingPattern::Complex(sexp) => {
                     sexp.clone()

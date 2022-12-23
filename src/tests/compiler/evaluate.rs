@@ -91,7 +91,7 @@ fn test_basic_expand_macro_4() {
         shrink_expr_from_string(
             "(mod () (defun torp (S A B) (if S (+ A B) (* A B))) (torp 0 2 3))".to_string()
         )
-        .unwrap(),
+            .unwrap(),
         "(q . 6)"
     );
 }
@@ -118,5 +118,39 @@ fn test_simple_fe_opt_compile_1() {
     assert_eq!(
         compile_with_fe_opt("(mod () 99)".to_string()).unwrap(),
         "(2 (1 1 . 99) (4 (1) 1))".to_string()
+    );
+}
+
+#[test]
+fn test_assign_simple_form_0() {
+    assert_eq!(
+        shrink_expr_from_string(
+            "(assign A (* Z 3) X 3 Y 4 Z (+ X Y) A)".to_string()
+        )
+            .unwrap(),
+        "(q . 21)"
+    );
+}
+
+#[test]
+fn test_assign_simple_form_1() {
+    assert_eq!(
+        shrink_expr_from_string(
+            "(assign A (* Z 3) Z 2 A)".to_string()
+        )
+            .unwrap(),
+        "(q . 6)"
+    );
+
+}
+
+#[test]
+fn test_assign_simple_form_2() {
+    assert_eq!(
+        shrink_expr_from_string(
+            "(assign Z 2 A (* Z 3) A)".to_string()
+        )
+            .unwrap(),
+        "(q . 6)"
     );
 }
