@@ -2,6 +2,7 @@
 
   (include *standard-cl-21*)
   (include pattern-match.clib)
+  (include nodepath.clib)
 
   (defun seems-constant-tail (sexp)
     (if (l sexp)
@@ -40,13 +41,13 @@
   (defun constant-optimizer (rexp)
     (if (l rexp)
         (let ((first (f rexp)))
-          (if (= first 1)
+          (if (eq? first 1)
               rexp
 
               (let ((sc-r (seems-constant rexp))
-                    (nn-r (truthy r)))
+                    (nn-r (truthy rexp)))
 
-                (if (* sc_r nn_r)
+                (if (* sc-r nn-r)
 
                     (let ((res (a rexp ())))
                       (c 1 res)
@@ -139,5 +140,219 @@
         )
     )
 
-  (path-from-args 5 (q . (c (q . 1) (c (q . 2) ()))))
+  (defun proper-list (rest)
+    (if (l rest)
+        (proper-list (r rest))
+        (not (truthy rest))
+        )
+    )
+
+  (defun sub-all-args (rest new-args)
+    (if rest
+        (c (sub-args (f rest) new-args) (sub-all-args (r rest) new-args))
+        ()
+        )
+    )
+
+  (defun sub-args (sexp new-args)
+    (if (not (l sexp))
+        (path-from-args sexp new-args)
+
+        (let ((first-pre (f sexp))
+              (rest (r sexp)))
+          (let
+              ((first
+                (if (l first-pre)
+                    (sub-args first-pre new-args)
+                    (if (= first-pre 1)
+                        sexp
+                        first-pre
+                        ))))
+
+            (if (proper-list rest)
+                (let ((res (sub-all-args rest new-args)))
+                  (c first res)
+                  )
+
+                (path-from-args sexp new-args)
+                )
+            )
+          )
+        )
+    )
+
+  (defun var-change-optimizer-cons-eval-pattern ()
+    (q . (a (q . (: . sexp)) (: . args)))
+    )
+
+  (defun is-non-const-single (sexp)
+    (if (l sexp)
+        (if (not (l (f sexp)))
+            (= (f sexp) 1)
+            0
+            )
+        0
+        )
+    )
+
+  (defun count-non-const (sexp)
+    (if sexp
+        (+ (is-non-const-single (f sexp)) (count-non-const (r sexp)))
+        0
+        )
+    )
+
+  (defun optimize-all-sexp (rest)
+    (if rest
+        (c (optimize-sexp (f rest)) (optimize-all-sexp (r rest)))
+        ()
+        )
+    )
+
+  ;;;
+  ;;; This applies the transform
+  ;;; (a (q . (op SEXP1...)) (ARGS)) => (q . RET_VAL) where ARGS != @
+  ;;; via
+  ;;; (op (a SEXP1 (ARGS)) ...) (ARGS)) and then "children_optimizer" of this.
+  ;;; In some cases, this can result in a constant in some of the children.
+  ;;;
+  ;;; If we end up needing to push the "change of variables" to only one child, keep
+  ;;; the optimization. Otherwise discard it.
+  ;;;
+  (defun var-change-optimizer-cons-eval (rexp)
+    (let ((matchp (match-sexp pattern rexp ())))
+      (if (not (truthy matchp))
+          rexp
+          (let ((original-args (r (assoc "args" (from-maybe matchp))))
+                (original-call (r (assoc "sexp" (from-maybe matchp)))))
+
+            (let ((new-eval-sexp-args (sub-args original-call original-args)))
+
+              (if (seems-constant new-eval-sexp-args)
+
+                  (optimize-sexp new-eval-sexp-args)
+
+                  (let ((opt-operands (optimize-all-sexp new-eval-sexp-args)))
+                    (if (= (count-non-const opt-operands) 0)
+                        opt-operands
+                        rexp
+                        )
+                    )
+                  )
+              )
+            )
+          )
+      )
+    )
+
+  (defun children-optimizer (rexp)
+    (if (proper-list rexp)
+        (if (not (truthy rexp))
+            rexp
+            (if (not (l (f rexp)))
+                (if (= (f rexp) 1)
+                    rexp
+                    (optimize-all-sexp rexp)
+                    )
+                (optimize-all-sexp rexp)
+                )
+            )
+        rexp
+        )
+    )
+
+  (defun cons-optimizer-pattern-first () (q . (f (c (: . first) (: . rest)))))
+
+  (defun cons-optimizer-pattern-rest () (q . (r (c (: . first) (: . rest)))))
+
+  ;;;
+  ;;; This applies the transform
+  ;;;  (f (c A B)) => A
+  ;;;  and
+  ;;;  (r (c A B)) => B
+  ;;;
+  (defun cons-optimizer (rexp)
+    (let ((t1 (match-sexp (cons-optimizer-pattern-first) rexp ())))
+      (if t1
+          (r (assoc "first" (from-maybe t1)))
+          (let ((t2 (match-sexp (cons-optimizer-pattern-rest) rexp ())))
+            (if t2
+                (r (assoc "rest" (from-maybe t2)))
+                rexp
+                )
+            )
+          )
+      )
+    )
+
+
+  (defun first-atom-pattern () (q . (f ($ . atom))))
+
+  (defun rest-atom-pattern () (q . (r ($ . atom))))
+
+  (defun path-optimizer (rexp)
+    (let ((first-match (match-sexp (first-atom-pattern) rexp ()))
+          (rest-match (match-sexp (rest-atom-pattern) rexp ())))
+      (if first-match
+          (let ((atom (r (assoc "atom" (from-maybe first-match)))))
+            (nodepath-first (nodepath-add (nodepath-new atom) (nodepath-none)))
+            )
+          (if rest-match
+              (let ((atom (r (assoc "atom" (from-maybe rest-match)))))
+                (nodepath-rest (nodepath-add (nodepath-new atom) (nodepath-none)))
+                )
+              rexp
+              )
+          )
+      )
+    )
+
+  (defun quote-pattern-1 () (q . 0))
+
+  (defun quote-null-optimizer (rexp)
+    (let ((t1 (match-sexp (quote-pattern-1) rexp ())))
+      (if t1
+          ()
+          rexp
+          )
+      )
+    )
+
+  (defun apply-null-pattern-1 ()
+    (q . (a 0 . (: . rest)))
+    )
+
+  (defun apply-null-optimizer (rexp)
+    (let ((t1 (match-sexp (apply-null-pattern-1) rexp ())))
+      (if t1
+          ()
+          rexp
+          )
+      )
+    )
+
+  (defun optimize-sexp-single-pass (rexp)
+    (let*
+        ((cons-optimized (cons-optimizer rexp))
+         (constant-optimized (constant-optimizer cons-optimized))
+         (cons-q-a-optimized (cons-q-a-optimizer constant-optimized))
+         (var-change-optimized (var-change-optimizer-cons-eval cons-q-a-optimized))
+         (children-optimized (children-optimizer var-change-optimized))
+         (path-optimized (path-optimizer children-optimized))
+         (quote-null-optimized (quote-null-optimizer path-optimized))
+         )
+      (apply-null-optimizer quote-null-optimized)
+      )
+    )
+
+  (defun optimize-sexp (rexp)
+    (let ((optimized (optimize-sexp-single-pass rexp)))
+      (if (eq? optimized rexp)
+          optimized
+          (optimize-sexp optimized)
+          )
+      )
+    )
+
+  (optimize-sexp (q . (sha256 (r 1))))
   )

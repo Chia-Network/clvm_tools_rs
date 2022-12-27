@@ -1,0 +1,30 @@
+(
+  (defun nodepath-none () 1)
+  (defun nodepath-new (index) index)
+
+  (defun compose-paths-inner (temp-path path-1 mask)
+    (if (> temp-path 1)
+        (compose-paths-inner (/ temp-path 2) (lsh path-1 1) (lsh mask 1))
+        (c path-1 mask)
+        )
+    )
+
+  (defun compose-paths (path-0 path-1)
+    (let ((mask 1)
+          (temp-path path-0))
+      (let ((cr (compose-paths-inner temp-path path-1 mask)))
+        (let ((path-1 (f cr))
+              (mask (r cr)))
+          (logior path-1 (logand path-0 (- mask 1)))
+          )
+        )
+      )
+    )
+
+  (defun nodepath-add (self other)
+    (compose-paths self other)
+    )
+
+  (defun nodepath-first (self) (* 2 self))
+  (defun nodepath-rest (self) (+ 1 (* 2 self)))
+)
