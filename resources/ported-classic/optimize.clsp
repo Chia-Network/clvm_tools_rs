@@ -1,0 +1,143 @@
+(mod (CODE)
+
+  (include *standard-cl-21*)
+  (include pattern-match.clib)
+
+  (defun seems-constant-tail (sexp)
+    (if (l sexp)
+        (if (not (seems-constant (f sexp)))
+            ()
+            (seems-constant-tail (r sexp))
+            )
+        (not (truthy sexp))
+        )
+    )
+
+  (defun seems-constant (sexp)
+    (if (not (l sexp))
+        (not (truthy sexp))
+        (let
+            ((operator (f sexp))
+             (rest (r sexp)))
+
+          (if (not (l operator))
+              (if (= operator 1)
+                  1
+                  (if (= operator 8)
+                      ()
+                      (seems-constant-tail rest)
+                      )
+                  )
+              (if (not (seems-constant operator))
+                  ()
+                  (seems-constant-tail rest)
+                  )
+              )
+          )
+        )
+    )
+
+  (defun constant-optimizer (rexp)
+    (if (l rexp)
+        (let ((first (f rexp)))
+          (if (= first 1)
+              rexp
+
+              (let ((sc-r (seems-constant rexp))
+                    (nn-r (truthy r)))
+
+                (if (* sc_r nn_r)
+
+                    (let ((res (a rexp ())))
+                      (c 1 res)
+                      )
+                    rexp
+                    )
+                )
+              )
+          )
+        rexp
+        )
+    )
+
+  (defun is-args-call (rexp)
+    (if (not (l rexp))
+        (= rexp 1)
+        ()
+        )
+    )
+
+  (defun cons-q-a-optimizer-pattern () (q . (2 (1 . (: . sexp)) (: . args))))
+
+  ;;;
+  ;;; This applies the transform
+  ;;; (a (q . SEXP) @) => SEXP
+  ;;;
+  (defun cons-q-a-optimizer (rexp)
+    (let
+        ((matched (match-sexp (cons-q-a-optimizer-pattern) rexp ())))
+      (if (not matched)
+          rexp
+          (let
+              ((args (r (assoc "args" (from-maybe matched))))
+               (sexp (r (assoc "sexp" (from-maybe matched)))))
+            (if (is-args-call args)
+                sexp
+                rexp
+                )
+            )
+          )
+      )
+    )
+
+  (defun cons-pattern () (q . (c (: . first) (: . rest))))
+
+  (defun cons-f (args)
+    (let ((matchp (match-sexp (cons-pattern) args ())))
+      (if matchp
+          (let ((first (assoc "first" (from-maybe matchp))))
+            (if first
+                (r first)
+
+                (list 5 args)
+                )
+            )
+          (list 5 args)
+          )
+      )
+    )
+
+  (defun cons-r (args)
+    (let ((matchp (match-sexp (cons-pattern) args ())))
+      (if matchp
+          (let ((rest (assoc "rest" (from-maybe matchp))))
+            (if rest
+                (r rest)
+
+                (list 6 args)
+                )
+            )
+          (list 6 args)
+          )
+      )
+    )
+
+  (defun path-from-args (sexp new-args)
+    (if (l sexp)
+        new-args
+
+        (if (> 2 sexp)
+            new-args
+
+            (let ((shifted (/ sexp 2)))
+              (if (logand 1 shifted)
+                  (path-from-args shifted (cons-r new-args))
+                  (path-from-args shifted (cons-f new-args))
+                  )
+              )
+            )
+        )
+    )
+
+  (path-from-args 5 (q . (c (q . 1) (c (q . 2) ()))))
+  )

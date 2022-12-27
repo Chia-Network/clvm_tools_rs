@@ -1,0 +1,153 @@
+(
+  (defconstant ATOM-MATCH "$")
+  (defconstant SEXP-MATCH ":")
+
+  ;; Utilities
+  (defun some (x) (c x ()))
+  (defun from-maybe (x) (f x))
+  (defun truthy (sexp) (if sexp 1 ()))
+
+  (defun eq? (a b)
+    (let
+      ( (is-list-a (l a))
+        (is-list-b (l b))
+        )
+      (if (* is-list-a is-list-b)
+        (* (eq? (f a) (f b)) (eq? (r a) (r b)))
+        (if (+ is-list-a is-list-b)
+          ()
+          (= a b)
+          )
+        )
+      )
+    )
+
+  (defun insert-map (bindings k v)
+    (c (c k v) bindings)
+    )
+
+  (defun assoc (item alist)
+    (if (l alist)
+      (if (= item (f (f alist)))
+        (f alist)
+        (assoc item (r alist))
+        )
+      ()
+      )
+    )
+
+  ;;;
+  ;;; Try to add a new binding to the list, rejecting it if it conflicts
+  ;;; with an existing binding.
+  ;;;
+  (defun unify-bindings (bindings new-key new-value)
+    (let
+      ( (found (assoc new-key bindings)) )
+      (if found
+        (if (eq? new-value (r found))
+          (some bindings)
+          ()
+          )
+        (some (insert-map bindings new-key new-value))
+        )
+      )
+    )
+
+  ;;;
+  ;;; Determine if sexp matches the pattern, with the given known bindings already applied.
+  ;;; Returns None if no match, or a (possibly empty) dictionary of bindings if there is a match
+  ;;; Patterns look like this:
+  ;;; ($ . $) matches the literal "$", no bindings (mostly useless)
+  ;;; (: . :) matches the literal ":", no bindings (mostly useless)
+  ;;; ($ . A) matches B if B is an atom; and A is bound to B
+  ;;; (: . A) matches B always; and A is bound to B
+  ;;; (A . B) matches (C . D) if A matches C and B matches D
+  ;;;         and bindings are the unification (as long as unification is possible)
+  ;;;
+
+  (defun match-sexp (pattern sexp known-bindings)
+    (let
+      ( (is-list-pattern (l pattern))
+        (is-list-sexp (l sexp))
+        )
+
+      (if (* (not is-list-pattern) (not is-list-sexp))
+
+        (match-sexp-atom-atom known-bindings pattern sexp)
+
+        (if is-list-pattern
+
+          (match-sexp-pair known-bindings (f pattern) (r pattern) sexp)
+
+          ()
+          )
+        )
+      )
+    )
+
+  (defun match-sexp-atom-atom (known-bindings pattern sexp)
+    (if (= pattern sexp)
+        (some known-bindings)
+        ()
+        )
+    )
+
+  (defun match-sexp-pair (known-bindings pleft pright sexp)
+    (if (* (not (l pleft)) (not (l pright)))
+
+        (if (not (l sexp))
+
+            (match-sexp-pat-atoms-to-sexp-atom known-bindings pleft pright sexp)
+
+            (match-sexp-pat-atoms-to-sexp-pair known-bindings pleft pright (f sexp) (r sexp))
+            )
+
+        (if (not (l sexp))
+            ()
+            (let ( (lmatch (match-sexp pleft (f sexp) known-bindings)) )
+              (if (not lmatch)
+                  ()
+
+                  (match-sexp pright (r sexp) (from-maybe lmatch))
+                  )
+              )
+            )
+        )
+    )
+
+  (defun match-sexp-pat-atoms-to-sexp-atom (known-bindings pleft pright sexp)
+    (if (= pleft ATOM-MATCH)
+        (if (= pright ATOM-MATCH)
+            (if (= sexp ATOM-MATCH)
+                (some ())
+                ()
+                )
+            (unify-bindings known-bindings pright sexp)
+            )
+
+        (if (= pleft SEXP-MATCH)
+            (if (* (= pright SEXP-MATCH) (= sexp SEXP-MATCH))
+                (some ())
+
+                (unify-bindings known-bindings pright sexp)
+                )
+
+            ()
+            )
+        )
+    )
+
+  (defun match-sexp-pat-atoms-to-sexp-pair (known-bindings pleft pright sleft sright)
+    (if (* (= pleft SEXP-MATCH) (not (= pright SEXP-MATCH)))
+        (unify-bindings known-bindings pright (c sleft sright))
+
+        (let ( (lmatch (match-sexp pleft sleft known-bindings)) )
+          (if (not lmatch)
+              ()
+
+              (match-sexp pright sright (from-maybe lmatch))
+              )
+          )
+        )
+    )
+)
