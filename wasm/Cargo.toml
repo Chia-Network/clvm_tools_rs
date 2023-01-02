@@ -18,7 +18,7 @@ path = "src/mod.rs"
 
 [dependencies]
 clvm_tools_rs = { path= "..", features = [] }
-clvmr = "0.1.21"
+clvmr = "0.1.24"
 wasm-bindgen = "=0.2.83"
 wasm-bindgen-test = "=0.3.25"
 js-sys = "0.3.60"

@@ -70,7 +70,13 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
 fn collect_used_names_helperform(body: &HelperForm) -> Vec<Vec<u8>> {
     match body {
         HelperForm::Defconstant(defc) => collect_used_names_bodyform(defc.body.borrow()),
-        HelperForm::Defmacro(mac) => collect_used_names_compileform(mac.program.borrow()),
+        HelperForm::Defmacro(mac) => {
+            let mut res = collect_used_names_compileform(mac.program.borrow());
+            // Ensure any other names mentioned in qq blocks are included.
+            let mut all_token_res = collect_used_names_sexp(mac.program.to_sexp());
+            res.append(&mut all_token_res);
+            res
+        }
         HelperForm::Defun(_, defun) => collect_used_names_bodyform(&defun.body),
     }
 }

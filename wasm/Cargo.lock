@@ -134,9 +134,9 @@ dependencies = [
 
 [[package]]
 name = "clvmr"
-version = "0.1.23"
+version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "239e0ffdc0f1b21c4247e93df1afec00e9c5c7d3567442b074ce16c301b454de"
+checksum = "8e5e907612d322d0d7def6b0ecb3ad681f6af2db106bcfabe4153746c60ef9e4"
 dependencies = [
  "bls12_381",
  "hex",
