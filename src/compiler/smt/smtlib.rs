@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use rsmt2::{Logic, Solver};
 use rsmt2::errors::{Error, ErrorKind, SmtRes};
 
+use super::model::ModelOrMessage;
+
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::util::Number;
@@ -53,6 +55,9 @@ lazy_static! {
     };
 }
 
+pub struct SMTOutput {
+}
+
 pub struct SMTSolver {
     solver: Solver<()>
 }
@@ -71,6 +76,14 @@ impl SMTSolver {
         Ok(SMTSolver {
             solver: Solver::default_z3(())?
         })
+    }
+
+    pub fn prepare_smt(&mut self) -> SmtRes<SExp> {
+        todo!();
+    }
+
+    pub fn solve(&mut self) -> SmtRes<ModelOrMessage> {
+        todo!();
     }
 
     pub fn run_stmt(&mut self, stmt: &SExp) -> SmtRes<SExp> {

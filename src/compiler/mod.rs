@@ -16,5 +16,6 @@ pub mod rename;
 pub mod repl;
 pub mod runtypes;
 pub mod sexp;
+pub mod smt;
 pub mod srcloc;
 pub mod usecheck;
