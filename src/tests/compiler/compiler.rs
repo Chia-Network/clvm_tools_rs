@@ -1325,3 +1325,21 @@ fn test_assign_fun_cplx_2() {
     let res = run_string(&prog, &"(13)".to_string()).unwrap();
     assert_eq!(res.to_string(), "175");
 }
+
+#[test]
+fn test_inline_out_of_bounds_diagnostic() {
+    let prog = indoc! {"
+(mod ()
+  (include *standard-cl-21*)
+  (defun-inline FOO (X Y) (+ X Y))
+  (FOO 3)
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"()".to_string());
+    if let Err(CompileErr(l, e)) = res {
+        assert_eq!(l.line, 4);
+        assert!(e.starts_with("Lookup"));
+    } else {
+        assert!(false);
+    }
+}
