@@ -118,29 +118,37 @@ fn pick_value_from_arg_element(
 }
 
 fn arg_lookup(
+    callsite: Srcloc,
     match_args: Rc<SExp>,
     arg_choice: usize,
     args: &[Rc<BodyForm>],
     name: Vec<u8>,
-) -> Option<Rc<BodyForm>> {
+) -> Result<Option<Rc<BodyForm>>, CompileErr> {
     match match_args.borrow() {
         SExp::Cons(_l, f, r) => {
+            if arg_choice >= args.len() {
+                return Err(CompileErr(
+                    callsite,
+                    format!("Lookup for argument {} that wasn't passed", arg_choice),
+                ));
+            }
+
             match pick_value_from_arg_element(
                 f.clone(),
                 args[arg_choice].clone(),
                 &|x| x,
                 name.clone(),
             ) {
-                Some(x) => Some(x),
-                None => arg_lookup(r.clone(), arg_choice + 1, args, name),
+                Some(x) => Ok(Some(x)),
+                None => arg_lookup(callsite, r.clone(), arg_choice + 1, args, name),
             }
         }
-        _ => pick_value_from_arg_element(
+        _ => Ok(pick_value_from_arg_element(
             match_args.clone(),
             enlist_remaining_args(match_args.loc(), arg_choice, args),
             &|x: Rc<BodyForm>| x,
             name,
-        ),
+        )),
     }
 }
 
@@ -231,9 +239,8 @@ fn replace_inline_body(
             }
         }
         BodyForm::Value(SExp::Atom(_, a)) => {
-            let alookup = arg_lookup(inline.args.clone(), 0, args, a.clone())
-                .map(Ok)
-                .unwrap_or_else(|| Ok(expr.clone()))?;
+            let alookup = arg_lookup(loc, inline.args.clone(), 0, args, a.clone())?
+                .unwrap_or_else(|| expr.clone());
             Ok(alookup)
         }
         _ => Ok(expr.clone()),
