@@ -250,6 +250,7 @@ fn replace_inline_body(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn replace_in_inline(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
