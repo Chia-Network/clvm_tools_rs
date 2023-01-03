@@ -980,7 +980,6 @@ impl Evaluator {
         body: Rc<BodyForm>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        eprintln!("evaluate {}", body.to_sexp());
         match body.borrow() {
             BodyForm::Let(LetFormKind::Parallel, letdata) => {
                 let updated_bindings = update_parallel_bindings(env, &letdata.bindings);

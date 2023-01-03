@@ -315,13 +315,9 @@ fn handle_assign_form(
     for spec in sorted_spec.iter() {
         let mut new_needs = spec.needs.difference(&current_provides).cloned();
         if new_needs.next().is_some() {
-            eprintln!("bindings");
             // Roll over the set we're accumulating to the finished version.
             let mut empty_tmp: Vec<Rc<Binding>> = Vec::new();
             swap(&mut empty_tmp, &mut this_round_bindings);
-            for e in empty_tmp.iter() {
-                eprintln!("push bindings {}", e.to_sexp());
-            }
             binding_lists.push(empty_tmp);
             for provided in new_provides.iter() {
                 current_provides.insert(provided.clone());
@@ -373,7 +369,6 @@ fn handle_assign_form(
         )
     }
 
-    eprintln!("output let from assign {}", output_let.to_sexp());
     Ok(output_let)
 }
 
