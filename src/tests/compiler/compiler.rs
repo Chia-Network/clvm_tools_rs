@@ -1158,7 +1158,7 @@ fn test_inline_out_of_bounds_diagnostic() {
     .to_string();
     let res = run_string(&prog, &"()".to_string());
     if let Err(CompileErr(l, e)) = res {
-        assert_eq!(l.line, 3);
+        assert_eq!(l.line, 4);
         assert!(e.starts_with("Lookup"));
     } else {
         assert!(false);

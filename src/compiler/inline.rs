@@ -129,7 +129,7 @@ fn arg_lookup(
             if arg_choice >= args.len() {
                 return Err(CompileErr(
                     callsite,
-                    format!("Lookup for argument {} that wasn't passed", arg_choice),
+                    format!("Lookup for argument {} that wasn't passed", arg_choice + 1),
                 ));
             }
 
@@ -172,6 +172,7 @@ fn replace_inline_body(
     loc: Srcloc,
     inline: &InlineFunction,
     args: &[Rc<BodyForm>],
+    callsite: Srcloc,
     expr: Rc<BodyForm>,
 ) -> Result<Rc<BodyForm>, CompileErr> {
     match expr.borrow() {
@@ -193,6 +194,7 @@ fn replace_inline_body(
                         arg.loc(),
                         inline,
                         args,
+                        callsite.clone(),
                         arg.clone(),
                     )?;
                     new_args.push(replaced);
@@ -229,6 +231,7 @@ fn replace_inline_body(
                         l, // clippy update since 1.59
                         &new_inline,
                         &pass_on_args,
+                        callsite,
                         new_inline.body.clone(),
                     )
                 }
@@ -239,7 +242,7 @@ fn replace_inline_body(
             }
         }
         BodyForm::Value(SExp::Atom(_, a)) => {
-            let alookup = arg_lookup(loc, inline.args.clone(), 0, args, a.clone())?
+            let alookup = arg_lookup(callsite, inline.args.clone(), 0, args, a.clone())?
                 .unwrap_or_else(|| expr.clone());
             Ok(alookup)
         }
@@ -254,6 +257,7 @@ pub fn replace_in_inline(
     compiler: &PrimaryCodegen,
     loc: Srcloc,
     inline: &InlineFunction,
+    callsite: Srcloc,
     args: &[Rc<BodyForm>],
 ) -> Result<CompiledCode, CompileErr> {
     let mut visited = HashSet::new();
@@ -266,6 +270,7 @@ pub fn replace_in_inline(
         loc,
         inline,
         args,
+        callsite,
         inline.body.clone(),
     )
     .and_then(|x| generate_expr_code(allocator, runner, opts, compiler, x))
