@@ -1187,11 +1187,11 @@ fn test_assign_form_cplx_1() {
   (defun-inline tup (X Y) (c X Y))
   (assign
     (X1 . X2) (tup (+ X 1) (+ X 2)) ;; 14
-    X2 (+ X1 1) ;; 15
-    X3 (+ X2 1) ;; 16
-    (Y0 . X4) (tup (+ X3 1) (+ X3 1)) ;; 17
-    X5 (+ Y0 1) ;; 18
-    Y1 (+ X5 Y0) ;; 35
+    X3 (+ X1 1) ;; 15
+    X4 (+ X2 1) ;; 16
+    (Y0 . X5) (tup (+ X4 1) (+ X4 1)) ;; 17
+    X6 (+ Y0 1) ;; 18
+    Y1 (+ X6 Y0) ;; 35
     Y1
     )
   )"}
@@ -1209,11 +1209,11 @@ fn test_assign_form_in_let_binding() {
     ((FOO
       (assign
         (X1 . X2) (tup (+ X 1) (+ X 2)) ;; 14
-        X2 (+ X1 1) ;; 15
-        X3 (+ X2 1) ;; 16
-        (Y0 . X4) (tup (+ X3 1) (+ X3 1)) ;; 17
-        X5 (+ Y0 1) ;; 18
-        Y1 (+ X5 Y0) ;; 35
+        X3 (+ X1 1) ;; 15
+        X4 (+ X2 1) ;; 16
+        (Y0 . X5) (tup (+ X4 1) (+ X4 1)) ;; 17
+        X6 (+ Y0 1) ;; 18
+        Y1 (+ X6 Y0) ;; 35
         Y1
         )))
     FOO
@@ -1233,11 +1233,11 @@ fn test_assign_form_in_function_argument() {
   (F
     (assign
       (X1 . X2) (tup (+ X 1) (+ X 2)) ;; 14
-      X2 (+ X1 1) ;; 15
-      X3 (+ X2 1) ;; 16
-      (Y0 . X4) (tup (+ X3 1) (+ X3 1)) ;; 17
-      X5 (+ Y0 1) ;; 18
-      Y1 (+ X5 Y0) ;; 35
+      X3 (+ X1 1) ;; 15
+      X4 (+ X2 1) ;; 16
+      (Y0 . X5) (tup (+ X4 1) (+ X4 1)) ;; 17
+      X6 (+ Y0 1) ;; 18
+      Y1 (+ X6 Y0) ;; 35
       Y1
       )
     101
@@ -1249,7 +1249,7 @@ fn test_assign_form_in_function_argument() {
 }
 
 #[test]
-fn test_assign_for_in_inline_argument() {
+fn test_assign_form_in_inline_argument() {
     let prog = indoc! {"
 (mod (X)
   (defun-inline tup (X Y) (c X Y))
@@ -1257,11 +1257,11 @@ fn test_assign_for_in_inline_argument() {
   (F
     (assign
       (X1 . X2) (tup (+ X 1) (+ X 2)) ;; 14
-      X2 (+ X1 1) ;; 15
-      X3 (+ X2 1) ;; 16
-      (Y0 . X4) (tup (+ X3 1) (+ X3 1)) ;; 17
-      X5 (+ Y0 1) ;; 18
-      Y1 (+ X5 Y0) ;; 35
+      X3 (+ X1 1) ;; 15
+      X4 (+ X2 1) ;; 16
+      (Y0 . X5) (tup (+ X4 1) (+ X4 1)) ;; 17
+      X6 (+ Y0 1) ;; 18
+      Y1 (+ X6 Y0) ;; 35
       Y1
       )
     101
@@ -1281,11 +1281,11 @@ fn test_assign_in_if() {
   (if X
     (assign
       (X1 . X2) (tup (+ X 1) (+ X 2)) ;; 14
-      X2 (+ X1 1) ;; 15
-      X3 (+ X2 1) ;; 16
-      (Y0 . X4) (tup (+ X3 1) (+ X3 1)) ;; 17
-      X5 (+ Y0 1) ;; 18
-      Y1 (+ X5 Y0) ;; 35
+      X3 (+ X1 1) ;; 15
+      X4 (+ X3 1) ;; 16
+      (Y0 . X5) (tup (+ X4 1) (+ X4 1)) ;; 17
+      X6 (+ Y0 1) ;; 18
+      Y1 (+ X6 Y0) ;; 35
       Y1
       )
       101
@@ -1307,11 +1307,11 @@ fn test_assign_fun_cplx_2() {
       ((Z
         (assign
           (X1 . X2) (tup (+ X 1) (+ X 2)) ;; 14
-          X2 (+ X1 1) ;; 15
-          X3 (+ X2 1) ;; 16
-          (Y0 . X4) (tup (+ X3 1) (+ X3 1)) ;; 17
-          X5 (+ Y0 1) ;; 18
-          Y1 (+ X5 Y0) ;; 35
+          X3 (+ X1 1) ;; 15
+          X4 (+ X2 1) ;; 16
+          (Y0 . X5) (tup (+ X4 1) (+ X4 1)) ;; 17
+          X6 (+ Y0 1) ;; 18
+          Y1 (+ X6 Y0) ;; 35
           Y1
           ))
         (Q (assign R (+ 3 2) (* R Z)))
@@ -1324,6 +1324,66 @@ fn test_assign_fun_cplx_2() {
     .to_string();
     let res = run_string(&prog, &"(13)".to_string()).unwrap();
     assert_eq!(res.to_string(), "175");
+}
+
+#[test]
+fn test_assign_simple_with_reodering() {
+    let prog = indoc! {"
+(mod (A) ;; 11
+  (include *standard-cl-21*)
+  (defun tup (a b) (c a b))
+  (assign
+    ;; Tier 1
+    (X0 . X1) (tup (+ A 1) (- A 1)) ;; 12 10
+
+    ;; Tier 4
+    finish (+ x2_gtr_x3 (- X3 x2_minus_x3)) ;; 1 + (70 - 50)
+
+    ;; Tier 3
+    x2_gtr_x3 (> X2 X3) ;; 1
+    x2_minus_x3 (- X2 X3) ;; 50
+
+    ;; Tier 2
+    X2 (* X0 10) ;; 120
+    X3 (* X1 7) ;; 70
+
+    finish
+    ))"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "21");
+}
+
+#[test]
+fn test_assign_detect_multiple_definition() {
+    let prog = indoc! {"
+(mod (A) ;; 11
+  (include *standard-cl-21*)
+  (defun tup (a b) (c a b))
+  (assign
+    ;; Tier 1
+    (X0 . X1) (tup (+ A 1) (- A 1)) ;; 12 10
+
+    ;; Tier 4
+    finish (+ x2_gtr_x3 (- X3 x2_minus_x3)) ;; 1 + (70 - 50)
+
+    ;; Tier 3
+    x2_gtr_x3 (> X2 X3) ;; 1
+    x2_minus_x3 (- X2 X3) ;; 50
+
+    ;; Tier 2
+    X2 (* X0 10) ;; 120
+    X2 (* X1 7) ;; 70
+
+    finish
+    ))"}
+    .to_string();
+    if let Err(CompileErr(l, e)) = run_string(&prog, &"(11)".to_string()) {
+        assert_eq!(l.line, 17);
+        assert!(e.starts_with("Duplicate"));
+    } else {
+        assert!(false);
+    }
 }
 
 #[test]

@@ -11,7 +11,7 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
-use crate::compiler::sexp::{enlist, SExp};
+use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{toposort, u8_from_number};
 
@@ -271,9 +271,27 @@ fn handle_assign_form(
     }
 
     let mut bindings = Vec::new();
+    let mut check_duplicates = HashSet::new();
+
     for idx in (0..(v.len() - 1) / 2).map(|idx| idx * 2) {
         let destructure_pattern = Rc::new(v[idx].clone());
         let binding_body = compile_bodyform(opts.clone(), Rc::new(v[idx + 1].clone()))?;
+
+        // Ensure bindings aren't duplicated as we won't be able to guarantee their
+        // order during toposort.
+        let mut this_provides = HashSet::new();
+        make_provides_set(&mut this_provides, destructure_pattern.clone());
+
+        for item in this_provides.iter() {
+            if check_duplicates.contains(item) {
+                return Err(CompileErr(
+                    v[idx].loc(),
+                    format!("Duplicate binding {}", decode_string(item)),
+                ));
+            }
+            check_duplicates.insert(item.clone());
+        }
+
         bindings.push(Rc::new(Binding {
             loc: v[idx].loc().ext(&v[idx + 1].loc()),
             nl: destructure_pattern.loc(),
