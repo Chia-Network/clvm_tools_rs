@@ -516,7 +516,7 @@ fn test_generate_extra_symbols() {
         "resources/tests".to_string(),
         "-i".to_string(),
         "resources/tests/usecheck-work".to_string(),
-        "--symbol-output".to_string(),
+        "--symbol-output-file".to_string(),
         "/tmp/pmi_extra_symbols.sym".to_string(),
         "resources/tests/cldb_tree/pool_member_innerpuz.cl".to_string(),
     ])
@@ -532,7 +532,7 @@ fn test_generate_extra_symbols() {
         "resources/tests".to_string(),
         "-i".to_string(),
         "resources/tests/usecheck-work".to_string(),
-        "--symbol-output".to_string(),
+        "--symbol-output-file".to_string(),
         "/tmp/pmi_normal_symbols.sym".to_string(),
         "resources/tests/cldb_tree/pool_member_innerpuz.cl".to_string(),
     ])
@@ -541,4 +541,40 @@ fn test_generate_extra_symbols() {
     let syms_normal = read_json_from_file("/tmp/pmi_normal_symbols.sym");
     let want_normal = read_json_from_file("resources/tests/cldb_tree/pool_member_innerpuz_ref.sym");
     assert_eq!(syms_normal, want_normal);
+}
+
+#[test]
+fn test_classic_sets_source_file_in_symbols_only_when_asked() {
+    let tname = "test_classic_sets_source_file_in_symbols.sym".to_string();
+    do_basic_run(&vec![
+        "run".to_string(),
+        "--symbol-output-file".to_string(),
+        tname.clone(),
+        "resources/tests/assert.clvm".to_string(),
+    ]);
+    let read_in_file = fs::read_to_string(&tname).expect("should have dropped symbols");
+    fs::remove_file(&tname).expect("should have existed");
+    let decoded_symbol_file: HashMap<String, String> =
+        serde_json::from_str(&read_in_file).expect("should decode");
+    assert_eq!(decoded_symbol_file.get("source_file"), None);
+}
+
+#[test]
+fn test_modern_sets_source_file_in_symbols() {
+    let tname = "test_modern_sets_source_file_in_symbols.sym".to_string();
+    do_basic_run(&vec![
+        "run".to_string(),
+        "--extra-syms".to_string(),
+        "--symbol-output-file".to_string(),
+        tname.clone(),
+        "resources/tests/steprun/fact.cl".to_string(),
+    ]);
+    let read_in_file = fs::read_to_string(&tname).expect("should have dropped symbols");
+    let decoded_symbol_file: HashMap<String, String> =
+        serde_json::from_str(&read_in_file).expect("should decode");
+    fs::remove_file(&tname).expect("should have existed");
+    assert_eq!(
+        decoded_symbol_file.get("source_file").cloned(),
+        Some("resources/tests/steprun/fact.cl".to_string())
+    );
 }

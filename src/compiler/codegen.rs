@@ -397,8 +397,9 @@ fn compile_call(
                 runner.clone(),
                 opts.clone(),
                 compiler,
-                l,
+                l.clone(),
                 &inline,
+                l,
                 &tl,
             ),
 
@@ -1109,6 +1110,7 @@ fn finalize_env_(
                             c,
                             l.clone(),
                             res,
+                            res.args.loc(),
                             &synthesize_args(res.args.clone()),
                         )
                         .map(|x| x.1),
@@ -1227,6 +1229,7 @@ pub fn codegen(
     }
 
     *symbol_table = compiler.function_symbols.clone();
+    symbol_table.insert("source_file".to_string(), opts.filename());
 
     final_codegen(allocator, runner.clone(), opts.clone(), &compiler).and_then(|c| {
         let final_env = finalize_env(allocator, runner.clone(), opts.clone(), &c)?;

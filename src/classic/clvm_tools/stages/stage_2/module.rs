@@ -521,7 +521,6 @@ fn add_one_function(
 ) -> Result<CompileOutput, EvalErr> {
     let com_atom = allocator.new_atom("com".as_bytes())?;
     let opt_atom = allocator.new_atom("opt".as_bytes())?;
-
     let function_args = first(allocator, lambda_expression)?;
     let local_symbol_table = symbol_table_for_tree(allocator, function_args, args_root_node)?;
     let mut all_symbols = local_symbol_table;
@@ -535,7 +534,6 @@ fn add_one_function(
     })?;
 
     let all_symbols_list = enlist(allocator, &all_symbols_list_sexp)?;
-
     let quoted_symbols = quote(allocator, all_symbols_list)?;
     let com_list = enlist(
         allocator,
@@ -727,7 +725,11 @@ pub fn compile_mod(
 
             let to_run = assemble(
                 allocator,
-                "(_set_symbol_table 1)"
+                if produce_extra_info {
+                    "(_set_symbol_table (c (c (q . \"source_file\") (_get_source_file)) 1))"
+                } else {
+                    "(_set_symbol_table 1)"
+                }
             )?;
 
             let _ = run_program.run_program(
