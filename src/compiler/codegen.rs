@@ -429,6 +429,10 @@ fn compile_call(
                             l.clone(),
                             Rc::new(SExp::Integer(l.clone(), i.clone())),
                         )),
+                        BodyForm::Quoted(SExp::Integer(l, i)) => Ok(CompiledCode(
+                            l.clone(),
+                            Rc::new(SExp::Integer(l.clone(), i.clone())),
+                        )),
                         _ => Err(CompileErr(
                             al.clone(),
                             "@ form only accepts integers at present".to_string(),
@@ -447,6 +451,7 @@ fn compile_call(
                     let updated_opts = opts
                         .set_stdenv(false)
                         .set_in_defun(true)
+                        .set_frontend_opt(false)
                         .set_start_env(Some(compiler.env.clone()))
                         .set_compiler(compiler.clone());
 
@@ -635,6 +640,7 @@ fn codegen_(
                     .set_compiler(compiler.clone())
                     .set_in_defun(true)
                     .set_stdenv(false)
+                    .set_frontend_opt(false)
                     .set_start_env(Some(combine_defun_env(
                         compiler.env.clone(),
                         defun.args.clone(),

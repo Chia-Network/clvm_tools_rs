@@ -1,6 +1,8 @@
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering;
 
 use num_bigint::ToBigInt;
 
@@ -17,9 +19,27 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::SExp;
+use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, u8_from_number, Number};
+
+lazy_static! {
+    pub static ref INDENT: AtomicI32 = AtomicI32::new(0);
+}
+
+pub fn push_indent() {
+    INDENT.fetch_add(1, Ordering::SeqCst);
+}
+
+pub fn pop_indent() {
+    INDENT.fetch_add(-1, Ordering::SeqCst);
+}
+
+pub fn show_indent() -> String {
+    let current_indent = INDENT.fetch_add(0, Ordering::SeqCst);
+    let v: Vec<u8> = (0..current_indent).map(|_| b' ').collect();
+    decode_string(&v)
+}
 
 // Frontend evaluator based on my fuzzer representation and direct interpreter of
 // that.
@@ -27,6 +47,21 @@ use crate::util::{number_from_u8, u8_from_number, Number};
 pub enum ArgInputs {
     Whole(Rc<BodyForm>),
     Pair(Rc<ArgInputs>, Rc<ArgInputs>),
+}
+
+impl ArgInputs {
+    pub fn to_sexp(&self) -> Rc<SExp> {
+        match self {
+            ArgInputs::Whole(bf) => bf.to_sexp(),
+            ArgInputs::Pair(a,b) => {
+                Rc::new(SExp::Cons(
+                    Srcloc::start("*args*"),
+                    a.to_sexp(),
+                    b.to_sexp()
+                ))
+            }
+        }
+    }
 }
 
 pub struct Evaluator {
@@ -303,7 +338,7 @@ pub fn second_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     }
 }
 
-fn synthesize_args(
+fn synthesize_args_inner(
     template: Rc<SExp>,
     env: &HashMap<Vec<u8>, Rc<BodyForm>>,
 ) -> Result<Rc<BodyForm>, CompileErr> {
@@ -316,14 +351,14 @@ fn synthesize_args(
         }),
         SExp::Cons(l, f, r) => {
             if let Some((capture, _substructure)) = is_at_capture(f.clone(), r.clone()) {
-                synthesize_args(Rc::new(SExp::Atom(l.clone(), capture)), env)
+                synthesize_args_inner(Rc::new(SExp::Atom(l.clone(), capture)), env)
             } else {
                 Ok(Rc::new(BodyForm::Call(
                     l.clone(),
                     vec![
                         Rc::new(BodyForm::Value(SExp::atom_from_string(template.loc(), "c"))),
-                        synthesize_args(f.clone(), env)?,
-                        synthesize_args(r.clone(), env)?,
+                        synthesize_args_inner(f.clone(), env)?,
+                        synthesize_args_inner(r.clone(), env)?,
                     ],
                 )))
             }
@@ -333,6 +368,25 @@ fn synthesize_args(
             template.loc(),
             format!("unknown argument template {}", template),
         )),
+    }
+}
+
+fn synthesize_args(
+    template: Rc<SExp>,
+    env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+    with_left_env: bool
+) -> Result<Rc<BodyForm>, CompileErr> {
+    let env_synth = synthesize_args_inner(template, env)?;
+    if with_left_env {
+        let loc = env_synth.loc();
+        Ok(Rc::new(make_operator2(
+            &loc,
+            "c".to_string(),
+            Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone()))),
+            env_synth
+        )))
+    } else {
+        Ok(env_synth)
     }
 }
 
@@ -404,6 +458,22 @@ fn promote_args_to_bodyform(
     ))
 }
 
+fn recognize_consed_env(args_program: Rc<BodyForm>) -> Option<(Rc<BodyForm>, Rc<BodyForm>)> {
+    if let BodyForm::Call(l, args) = args_program.borrow() {
+        if args.len() != 3 {
+            return None;
+        }
+
+        if let BodyForm::Value(SExp::Atom(_, name)) = args[0].borrow() {
+            if name[0] == b'c' || name[0] == 4 {
+                return Some((args[1].clone(), args[2].clone()));
+            }
+        }
+    }
+
+    None
+}
+
 fn choose_from_env_by_path(path_: Number, args_program: Rc<BodyForm>) -> Rc<BodyForm> {
     let mut path = path_;
     let mut op_list = Vec::new();
@@ -411,6 +481,12 @@ fn choose_from_env_by_path(path_: Number, args_program: Rc<BodyForm>) -> Rc<Body
 
     if path == bi_zero() {
         return Rc::new(BodyForm::Quoted(SExp::Nil(args_program.loc())));
+    }
+
+    if let Some((first, rest)) = recognize_consed_env(args_program.clone()) {
+        if (path.clone() & bi_one()) != bi_zero() {
+            return choose_from_env_by_path(path / 2_u32.to_bigint().unwrap(), rest);
+        }
     }
 
     while path != bi_one() {
@@ -575,6 +651,7 @@ impl Evaluator {
             macro_args = Rc::new(SExp::Cons(l.clone(), arg_repr, macro_args));
         }
 
+        eprintln!("{}macro_args {}", show_indent(), macro_args);
         let macro_expansion = self.expand_macro(allocator, l.clone(), program, macro_args)?;
 
         if let Ok(input) = dequote(call_loc, macro_expansion.clone()) {
@@ -623,16 +700,80 @@ impl Evaluator {
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
+        eprintln!("{}invoke_primitive {}", show_indent(), body.to_sexp());
+        let res = self.invoke_primitive_(
+            allocator,
+            visited,
+            l,
+            call_name,
+            parts,
+            body,
+            prog_args,
+            arguments_to_convert,
+            env,
+            only_inline
+        );
+        match &res {
+            Err(CompileErr(l,e)) => {
+                eprintln!("{}invoke_primitive error {} {}", show_indent(), l, e);
+            },
+            Ok(v) => {
+                eprintln!("{}invoke_primitive => {}", show_indent(), v.to_sexp());
+            }
+        }
+        res
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn invoke_primitive_(
+        &self,
+        allocator: &mut Allocator,
+        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        l: Srcloc,
+        call_name: &[u8],
+        parts: &[Rc<BodyForm>],
+        body: Rc<BodyForm>,
+        prog_args: Rc<SExp>,
+        arguments_to_convert: &[Rc<BodyForm>],
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        only_inline: bool,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
         let mut all_primitive = true;
         let mut target_vec: Vec<Rc<BodyForm>> = parts.to_owned();
 
         if call_name == "@".as_bytes() {
             // Synthesize the environment for this function
-            Ok(Rc::new(BodyForm::Quoted(SExp::Cons(
-                l.clone(),
-                Rc::new(SExp::Nil(l)),
+            if parts.is_empty() {
+                return Err(CompileErr(l.clone(), "@ callable not given a constant".to_string()));
+            }
+
+            let path_sexp =
+                match parts[1].borrow() {
+                    BodyForm::Value(val) => Ok(val),
+                    BodyForm::Quoted(val) => Ok(val),
+                    _ => Err(CompileErr(l.clone(), "Not a supported argument for @ call".to_string()))
+                }?;
+            let path =
+                if let Some(bigint) = path_sexp.to_bigint() {
+                    Ok(bigint)
+                } else {
+                    Err(CompileErr(l.clone(), "Not a number in @ call".to_string()))
+                }?;
+
+            // Choose from the live environment.
+            let literal_args = synthesize_args(prog_args.clone(), env, true)?;
+            let arg_part = self.shrink_bodyform_visited(
+                allocator,
+                visited,
                 prog_args,
-            ))))
+                env,
+                literal_args,
+                only_inline,
+            )?;
+
+            let chosen = choose_from_env_by_path(path.clone(), arg_part.clone());
+            eprintln!("{}chosen {} in {} => {}", show_indent(), path, arg_part.to_sexp(), chosen.to_sexp());
+            Ok(chosen)
         } else if call_name == "com".as_bytes() {
             let mut end_of_list = Rc::new(SExp::Cons(
                 l.clone(),
@@ -647,13 +788,37 @@ impl Evaluator {
             let use_body = SExp::Cons(
                 l.clone(),
                 Rc::new(SExp::Atom(l.clone(), "mod".as_bytes().to_vec())),
-                Rc::new(SExp::Cons(l, prog_args, end_of_list)),
+                Rc::new(SExp::Cons(
+                    l.clone(),
+                    Rc::new(SExp::Cons(
+                        l.clone(),
+                        Rc::new(SExp::Nil(l.clone())),
+                        prog_args,
+                    )),
+                    end_of_list
+                )),
             );
+
+            eprintln!("{}compile mod {}", show_indent(), use_body);
 
             let compiled = self.compile_code(allocator, false, Rc::new(use_body))?;
             let compiled_borrowed: &SExp = compiled.borrow();
             Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
         } else {
+            if arguments_to_convert.len() == 1 {
+                // Try to short circuit destruct conses.
+                let is_first = call_name == b"f" || call_name == vec![5];
+                if is_first || call_name == b"r" || call_name == vec![6] {
+                    if let Some((first, rest)) = recognize_consed_env(arguments_to_convert[0].clone()) {
+                        if is_first {
+                            return Ok(first);
+                        } else {
+                            return Ok(rest);
+                        }
+                    }
+                }
+            }
+
             let pres = self
                 .lookup_prim(l.clone(), call_name)
                 .map(|prim| {
@@ -680,6 +845,8 @@ impl Evaluator {
                         converted_args =
                             SExp::Cons(l.clone(), shrunk.to_sexp(), Rc::new(converted_args));
                     }
+
+                    eprintln!("{}prim {} converted_args {}", show_indent(), prim, converted_args);
 
                     if all_primitive {
                         match self.run_prim(
@@ -846,6 +1013,10 @@ impl Evaluator {
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
+        eprintln!("{}invoke helper {}", show_indent(), decode_string(&call_name));
+        for h in self.helpers.iter() {
+            eprintln!("{}- {}", show_indent(), h.to_sexp());
+        }
         let helper = select_helper(&self.helpers, call_name);
         match helper {
             Some(HelperForm::Defmacro(mac)) => self.invoke_macro_expansion(
@@ -918,6 +1089,38 @@ impl Evaluator {
         body: Rc<BodyForm>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
+        eprintln!("{}>> {}", show_indent(), body.to_sexp());
+        push_indent();
+        let res = self.shrink_bodyform_visited_(
+            allocator,
+            visited,
+            prog_args,
+            env,
+            body,
+            only_inline
+        );
+        pop_indent();
+        match &res {
+            Err(CompileErr(l,e)) => {
+                eprintln!("{}<E {} {}", show_indent(), l, e);
+            }
+            Ok(v) => {
+                eprintln!("{}<< {}", show_indent(), v.to_sexp());
+            }
+        }
+        res
+    }
+
+    // A frontend language evaluator and minifier
+    pub fn shrink_bodyform_visited_(
+        &self,
+        allocator: &mut Allocator, // Support random prims via clvm_rs
+        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        body: Rc<BodyForm>,
+        only_inline: bool,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
         match body.borrow() {
             BodyForm::Let(LetFormKind::Parallel, letdata) => {
                 let updated_bindings = update_parallel_bindings(env, &letdata.bindings);
@@ -968,7 +1171,7 @@ impl Evaluator {
             BodyForm::Quoted(_) => Ok(body.clone()),
             BodyForm::Value(SExp::Atom(l, name)) => {
                 if name == &"@".as_bytes().to_vec() {
-                    let literal_args = synthesize_args(prog_args.clone(), env)?;
+                    let literal_args = synthesize_args(prog_args.clone(), env, true)?;
                     self.shrink_bodyform_visited(
                         allocator,
                         visited,
@@ -1101,9 +1304,6 @@ impl Evaluator {
         program: Rc<CompileForm>,
         args: Rc<SExp>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        let mut new_helpers = Vec::new();
-        let mut used_names = HashSet::new();
-
         let mut end_of_list = Rc::new(SExp::Cons(
             call_loc.clone(),
             program.exp.to_sexp(),
@@ -1111,17 +1311,6 @@ impl Evaluator {
         ));
 
         for h in program.helpers.iter() {
-            new_helpers.push(h.clone());
-            used_names.insert(h.name());
-        }
-
-        for h in self.helpers.iter() {
-            if !used_names.contains(h.name()) {
-                new_helpers.push(h.clone());
-            }
-        }
-
-        for h in new_helpers.iter() {
             end_of_list = Rc::new(SExp::Cons(call_loc.clone(), h.to_sexp(), end_of_list))
         }
 
@@ -1135,8 +1324,14 @@ impl Evaluator {
             )),
         ));
 
+        eprintln!("{}use_body {}", show_indent(), use_body);
+
         let compiled = self.compile_code(allocator, false, use_body)?;
-        self.run_prim(allocator, call_loc, compiled, args)
+        eprintln!("{}compiled {}", show_indent(), compiled);
+        eprintln!("{}args ... {}", show_indent(), args);
+        let res = self.run_prim(allocator, call_loc, compiled, args)?;
+        eprintln!("{}result . {}", show_indent(), res.to_sexp());
+        Ok(res)
     }
 
     fn lookup_prim(&self, l: Srcloc, name: &[u8]) -> Option<Rc<SExp>> {

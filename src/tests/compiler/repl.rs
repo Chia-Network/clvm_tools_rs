@@ -147,8 +147,8 @@ fn test_repl_supports_at_capture() {
             "(defun F (A (@ Z (B C)) D) (c (+ A B C D) Z))",
             "(F 1 (q 2 3) 4)",
         ])
-        .unwrap()
-        .unwrap(),
+            .unwrap()
+            .unwrap(),
         "(q 10 2 3)"
     );
 }
@@ -184,5 +184,20 @@ fn test_mod_in_repl() {
             .unwrap()
             .unwrap(),
         "(q . 10)"
+    );
+}
+
+#[test]
+fn test_optimize_let_binding_1_4() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defconstant a 100)",
+            "(defun letbinding_$_265 args args)",
+            "(defun-inline letbinding_$_264 ((a) x) (letbinding_$_265 (c (c a ()) (c x ())) (+ x 1)))",
+            "(letbinding_$_264 (list a) (+ a 1))"
+        ])
+            .unwrap()
+            .unwrap(),
+        "(q ((100) 101) 102)"
     );
 }

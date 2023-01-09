@@ -42,6 +42,7 @@ fn run_string_maybe_opt(
         &mut HashMap::new(),
     )
     .and_then(|x| {
+        eprintln!("run {}", x);
         run(
             &mut allocator,
             runner,
@@ -57,7 +58,15 @@ fn run_string_maybe_opt(
 }
 
 fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
-    run_string_maybe_opt(content, args, false)
+    let unopt = run_string_maybe_opt(content, args, false)?;
+    eprintln!("result-uno {}", unopt);
+
+    eprintln!("*** OPTIMIZED ***");
+    let opt = run_string_maybe_opt(content, args, true)?;
+    eprintln!("result-opt {}", opt);
+
+    assert_eq!(unopt, opt);
+    Ok(opt)
 }
 
 /* // Upcoming support for extra optimization (WIP)

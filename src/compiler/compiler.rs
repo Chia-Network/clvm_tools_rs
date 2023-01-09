@@ -16,7 +16,7 @@ use crate::compiler::codegen::codegen;
 use crate::compiler::comptypes::{
     CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
-use crate::compiler::evaluate::{build_reflex_captures, Evaluator};
+use crate::compiler::evaluate::{build_reflex_captures, Evaluator, show_indent, push_indent, pop_indent};
 use crate::compiler::frontend::frontend;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
@@ -97,6 +97,10 @@ fn fe_opt(
     let mut compiler_helpers = compileform.helpers.clone();
     let mut used_names = HashSet::new();
 
+    push_indent();
+
+    eprintln!("{}>X> fe_opt {}", show_indent(), compileform.to_sexp());
+
     if !opts.in_defun() {
         for c in compileform.helpers.iter() {
             used_names.insert(c.name().clone());
@@ -117,10 +121,12 @@ fn fe_opt(
     let evaluator = Evaluator::new(opts.clone(), runner.clone(), compiler_helpers.clone());
     let mut optimized_helpers: Vec<HelperForm> = Vec::new();
     for h in compiler_helpers.iter() {
-        match h {
+        match &h {
             HelperForm::Defun(inline, defun) => {
+                eprintln!("{}<<< OPTIMIZE HELPER {}", show_indent(), h.to_sexp());
                 let mut env = HashMap::new();
                 build_reflex_captures(&mut env, defun.args.clone());
+                push_indent();
                 let body_rc = evaluator.shrink_bodyform(
                     allocator,
                     defun.args.clone(),
@@ -128,6 +134,7 @@ fn fe_opt(
                     defun.body.clone(),
                     true,
                 )?;
+                pop_indent();
                 let new_helper = HelperForm::Defun(
                     *inline,
                     DefunData {
@@ -139,22 +146,35 @@ fn fe_opt(
                         body: body_rc.clone(),
                     },
                 );
+                eprintln!("{}>>> OPTIMIZED HELPER {}", show_indent(), h.to_sexp());
                 optimized_helpers.push(new_helper);
+                eprintln!("{}XXX helpers {}", show_indent(), optimized_helpers.len());
             }
-            obj => {
-                optimized_helpers.push(obj.clone());
+            _ => {
+                optimized_helpers.push(h.clone());
             }
         }
     }
+
+    eprintln!("{}<X< fe_opt of {}", show_indent(), compileform.to_sexp());
+    eprintln!("{}<X< optimized helpers: {}", show_indent(), optimized_helpers.len());
     let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.clone());
+
+    let mut env = HashMap::new();
+    build_reflex_captures(&mut env, compileform.args.clone());
+    eprintln!("{}*** OPTIMIZE BODY: {}", show_indent(), compileform.exp.to_sexp());
 
     let shrunk = new_evaluator.shrink_bodyform(
         allocator,
-        Rc::new(SExp::Nil(compileform.args.loc())),
-        &HashMap::new(),
+        compileform.args.clone(),
+        &env,
         compileform.exp.clone(),
         true,
     )?;
+
+    eprintln!("{}*** OPTIMIZED BODY: {}", show_indent(), shrunk.to_sexp());
+
+    pop_indent();
 
     Ok(CompileForm {
         loc: compileform.loc.clone(),
