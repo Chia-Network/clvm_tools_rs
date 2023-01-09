@@ -378,17 +378,17 @@ fn compile_defconstant(
             kw: kwl,
             name: name.to_vec(),
             body: Rc::new(BodyForm::Value(body_borrowed.clone())),
-            tabled: false
+            tabled: opts.frontend_opt()
         }))
     } else {
-        compile_bodyform(opts, body).map(|bf| {
+        compile_bodyform(opts.clone(), body.clone()).map(|bf| {
             HelperForm::Defconstant(DefconstData {
                 loc: l,
                 nl,
                 kw: kwl,
                 name: name.to_vec(),
                 body: Rc::new(bf),
-                tabled: false
+                tabled: opts.frontend_opt() && body.to_string().len() > 3
             })
         })
     }

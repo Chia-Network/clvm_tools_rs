@@ -213,34 +213,26 @@ pub fn get_callable(
 ) -> Result<Callable, CompileErr> {
     match atom.borrow() {
         SExp::Atom(l, name) => {
-            let macro_def = compiler.macros.get(name);
-            let inline = compiler.inlines.get(name);
-            let defun = create_name_lookup(compiler, l.clone(), name);
-            let prim = get_prim(l.clone(), compiler.prims.clone(), name);
-            let atom_is_com = *name == "com".as_bytes().to_vec();
-            let atom_is_at = *name == "@".as_bytes().to_vec();
-            match (macro_def, inline, defun, prim, atom_is_com, atom_is_at) {
-                (Some(macro_def), _, _, _, _, _) => {
-                    let macro_def_clone: &SExp = macro_def.borrow();
-                    Ok(Callable::CallMacro(l.clone(), macro_def_clone.clone()))
-                }
-                (_, Some(inline), _, _, _, _) => {
-                    Ok(Callable::CallInline(l.clone(), inline.clone()))
-                }
-                (_, _, Ok(defun), _, _, _) => {
-                    let defun_clone: &SExp = defun.borrow();
-                    Ok(Callable::CallDefun(l.clone(), defun_clone.clone()))
-                }
-                (_, _, _, Some(prim), _, _) => {
-                    let prim_clone: &SExp = prim.borrow();
-                    Ok(Callable::CallPrim(l.clone(), prim_clone.clone()))
-                }
-                (_, _, _, _, true, _) => Ok(Callable::RunCompiler),
-                (_, _, _, _, _, true) => Ok(Callable::EnvPath),
-                _ => Err(CompileErr(
+            if let Some(macro_def) = compiler.macros.get(name) {
+                let macro_def_clone: &SExp = macro_def.borrow();
+                Ok(Callable::CallMacro(l.clone(), macro_def_clone.clone()))
+            } else if let Some(inline) = compiler.inlines.get(name) {
+                Ok(Callable::CallInline(l.clone(), inline.clone()))
+            } else if let Ok(defun) = create_name_lookup(compiler, l.clone(), name) {
+                let defun_clone: &SExp = defun.borrow();
+                Ok(Callable::CallDefun(l.clone(), defun_clone.clone()))
+            } else if let Some(prim) = get_prim(l.clone(), compiler.prims.clone(), name) {
+                let prim_clone: &SExp = prim.borrow();
+                Ok(Callable::CallPrim(l.clone(), prim_clone.clone()))
+            } else if *name == "com".as_bytes().to_vec() {
+                Ok(Callable::RunCompiler)
+            } else if *name == "@".as_bytes().to_vec() {
+                Ok(Callable::EnvPath)
+            } else {
+                Err(CompileErr(
                     l.clone(),
                     format!("no such callable '{}'", decode_string(name)),
-                )),
+                ))
             }
         }
         SExp::Integer(_, v) => Ok(Callable::CallPrim(l.clone(), SExp::Integer(l, v.clone()))),

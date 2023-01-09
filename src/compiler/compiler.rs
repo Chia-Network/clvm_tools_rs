@@ -88,6 +88,20 @@ pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
     Rc::new(prim_map)
 }
 
+// Do final optimizations on the finished CLVM code.
+// These should be lightweight transformations that save space.
+fn finish_optimization(sexp: &SExp) -> SExp {
+    if let SExp::Cons(l,a,b) = sexp.borrow() {
+        if let (SExp::Atom(_,name), SExp::Atom(_,tail)) = (a.atomize(), b.atomize()) {
+            if name == vec![1] && tail.is_empty() {
+                return SExp::Nil(l.clone())
+            }
+        }
+    }
+
+    sexp.clone()
+}
+
 fn fe_opt(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -204,7 +218,12 @@ pub fn compile_pre_forms(
             exp: g.exp,
         }
     };
-    codegen(allocator, runner, opts.clone(), &compileform, symbol_table)
+    let generated = codegen(allocator, runner, opts.clone(), &compileform, symbol_table)?;
+    if opts.frontend_opt() {
+        Ok(finish_optimization(&generated))
+    } else {
+        Ok(generated)
+    }
 }
 
 pub fn compile_file(
