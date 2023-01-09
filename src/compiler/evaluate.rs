@@ -308,7 +308,7 @@ pub fn dequote(l: Srcloc, exp: Rc<BodyForm>) -> Result<Rc<SExp>, CompileErr> {
 fn show_env(env: &HashMap<Vec<u8>, Rc<BodyForm>>) {
     let loc = Srcloc::start(&"*env*".to_string());
     for kv in env.iter() {
-        println!(
+        eprintln!(
             "{} - {}: {}",
             show_indent(),
             SExp::Atom(loc.clone(), kv.0.clone()).to_string(),
@@ -458,7 +458,7 @@ fn promote_args_to_bodyform(
 }
 
 fn recognize_consed_env(args_program: Rc<BodyForm>) -> Option<(Rc<BodyForm>, Rc<BodyForm>)> {
-    if let BodyForm::Call(l, args) = args_program.borrow() {
+    if let BodyForm::Call(_l, args) = args_program.borrow() {
         if args.len() != 3 {
             return None;
         }
@@ -998,7 +998,7 @@ impl Evaluator {
         l: Srcloc,
         call_loc: Srcloc,
         call_name: &[u8],
-        head_expr: Rc<BodyForm>,
+        _head_expr: Rc<BodyForm>,
         parts: &[Rc<BodyForm>],
         body: Rc<BodyForm>,
         prog_args: Rc<SExp>,

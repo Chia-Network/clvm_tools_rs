@@ -115,6 +115,7 @@ pub struct DefconstData {
     pub kw: Option<Srcloc>,
     pub nl: Srcloc,
     pub body: Rc<BodyForm>,
+    pub tabled: bool
 }
 
 #[derive(Clone, Debug)]

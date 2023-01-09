@@ -11,7 +11,7 @@ use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
-fn compile_string(content: &String) -> Result<String, CompileErr> {
+pub fn compile_string(content: &String) -> Result<String, CompileErr> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
     let opts = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));

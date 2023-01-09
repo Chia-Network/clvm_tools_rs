@@ -378,6 +378,7 @@ fn compile_defconstant(
             kw: kwl,
             name: name.to_vec(),
             body: Rc::new(BodyForm::Value(body_borrowed.clone())),
+            tabled: false
         }))
     } else {
         compile_bodyform(opts, body).map(|bf| {
@@ -387,6 +388,7 @@ fn compile_defconstant(
                 kw: kwl,
                 name: name.to_vec(),
                 body: Rc::new(bf),
+                tabled: false
             })
         })
     }
