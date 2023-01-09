@@ -111,10 +111,7 @@ fn smoke_test_optimizer() {
         "},
         "()"
     ).expect("should compile and run");
-    assert!(
-        res.opt.compiled_hex.len() <
-        res.unopt.compiled_hex.len()
-    );
+    assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
     assert!(res.opt.run_cost < res.unopt.run_cost);
     assert_eq!(res.opt.compiled.to_string(), "(2 (1 1 . 6) (4 (1) 1))");
 }
