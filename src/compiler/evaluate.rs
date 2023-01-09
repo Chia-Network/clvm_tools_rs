@@ -798,7 +798,7 @@ impl Evaluator {
             let compiled_borrowed: &SExp = compiled.borrow();
             Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
         } else {
-            if arguments_to_convert.len() == 1 && !self.mash_conditions {
+            if arguments_to_convert.len() == 1 {
                 // Try to short circuit destruct conses.
                 let is_first = call_name == b"f" || call_name == vec![5];
                 if is_first || call_name == b"r" || call_name == vec![6] {
