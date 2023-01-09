@@ -445,7 +445,7 @@ fn promote_args_to_bodyform(
         for a in v.iter() {
             result.push(promote_program_to_bodyform(
                 Rc::new(a.clone()),
-                whole_args.clone(),
+                whole_args.clone()
             )?);
         }
         return Ok(result);
@@ -480,12 +480,6 @@ fn choose_from_env_by_path(path_: Number, args_program: Rc<BodyForm>) -> Rc<Body
 
     if path == bi_zero() {
         return Rc::new(BodyForm::Quoted(SExp::Nil(args_program.loc())));
-    }
-
-    if let Some((first, rest)) = recognize_consed_env(args_program.clone()) {
-        if (path.clone() & bi_one()) != bi_zero() {
-            return choose_from_env_by_path(path / 2_u32.to_bigint().unwrap(), rest);
-        }
     }
 
     while path != bi_one() {
@@ -680,7 +674,7 @@ impl Evaluator {
                 Rc::new(BodyForm::Value(SExp::Atom(
                     macro_expansion.loc(),
                     vec![b'@'],
-                ))),
+                )))
             )
         }
     }
@@ -804,7 +798,7 @@ impl Evaluator {
             let compiled_borrowed: &SExp = compiled.borrow();
             Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
         } else {
-            if arguments_to_convert.len() == 1 {
+            if arguments_to_convert.len() == 1 && !self.mash_conditions {
                 // Try to short circuit destruct conses.
                 let is_first = call_name == b"f" || call_name == vec![5];
                 if is_first || call_name == b"r" || call_name == vec![6] {
