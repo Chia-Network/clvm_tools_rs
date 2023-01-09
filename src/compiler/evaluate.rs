@@ -305,18 +305,17 @@ pub fn dequote(l: Srcloc, exp: Rc<BodyForm>) -> Result<Rc<SExp>, CompileErr> {
     }
 }
 
-/*
 fn show_env(env: &HashMap<Vec<u8>, Rc<BodyForm>>) {
     let loc = Srcloc::start(&"*env*".to_string());
     for kv in env.iter() {
         println!(
-            " - {}: {}",
+            "{} - {}: {}",
+            show_indent(),
             SExp::Atom(loc.clone(), kv.0.clone()).to_string(),
             kv.1.to_sexp().to_string()
         );
     }
 }
-*/
 
 pub fn first_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     match lst.borrow() {
@@ -1005,14 +1004,14 @@ impl Evaluator {
         l: Srcloc,
         call_loc: Srcloc,
         call_name: &[u8],
-        _head_expr: Rc<BodyForm>,
+        head_expr: Rc<BodyForm>,
         parts: &[Rc<BodyForm>],
         body: Rc<BodyForm>,
         prog_args: Rc<SExp>,
         arguments_to_convert: &[Rc<BodyForm>],
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         only_inline: bool,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
+    ) -> Result<Option<Rc<BodyForm>>, CompileErr> {
         eprintln!("{}invoke helper {}", show_indent(), decode_string(&call_name));
         for h in self.helpers.iter() {
             eprintln!("{}- {}", show_indent(), h.to_sexp());
@@ -1028,10 +1027,10 @@ impl Evaluator {
                 prog_args,
                 arguments_to_convert,
                 env,
-            ),
+            ).map(Some),
             Some(HelperForm::Defun(inline, defun)) => {
                 if !inline && only_inline {
-                    return Ok(body);
+                    return Ok(None);
                 }
 
                 let argument_captures_untranslated =
@@ -1060,7 +1059,7 @@ impl Evaluator {
                     &argument_captures,
                     defun.body,
                     only_inline,
-                )
+                ).map(Some)
             }
             _ => self
                 .invoke_primitive(
@@ -1075,7 +1074,8 @@ impl Evaluator {
                     env,
                     only_inline,
                 )
-                .and_then(|res| self.chase_apply(allocator, visited, res)),
+                .and_then(|res| self.chase_apply(allocator, visited, res))
+                .map(Some),
         }
     }
 
@@ -1089,7 +1089,10 @@ impl Evaluator {
         body: Rc<BodyForm>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        eprintln!("{}>> {}", show_indent(), body.to_sexp());
+        eprintln!("{}>shrink> {}", show_indent(), body.to_sexp());
+        show_env(env);
+        eprintln!("{}>s>", show_indent());
+
         push_indent();
         let res = self.shrink_bodyform_visited_(
             allocator,
@@ -1105,7 +1108,7 @@ impl Evaluator {
                 eprintln!("{}<E {} {}", show_indent(), l, e);
             }
             Ok(v) => {
-                eprintln!("{}<< {}", show_indent(), v.to_sexp());
+                eprintln!("{}<shrink< {}", show_indent(), v.to_sexp());
             }
         }
         res
@@ -1240,11 +1243,29 @@ impl Evaluator {
                         head_expr.clone(),
                         parts,
                         body.clone(),
-                        prog_args,
+                        prog_args.clone(),
                         &arguments_to_convert,
                         env,
                         only_inline,
-                    ),
+                    ).and_then(|x| {
+                        if let Some(res) = x {
+                            Ok(res)
+                        } else {
+                            eprintln!("{}None from handle_invoke {}", show_indent(), body.to_sexp());
+                            let mut converted_arguments = vec![head_expr.clone()];
+                            for arg in arguments_to_convert.iter() {
+                                converted_arguments.push(self.shrink_bodyform_visited(
+                                    allocator,
+                                    visited,
+                                    prog_args.clone(),
+                                    env,
+                                    arg.clone(),
+                                    only_inline
+                                )?);
+                            }
+                            Ok(Rc::new(BodyForm::Call(body.loc(), converted_arguments)))
+                        }
+                    }),
                     BodyForm::Value(SExp::Integer(call_loc, call_int)) => self.handle_invoke(
                         allocator,
                         visited,
@@ -1258,7 +1279,7 @@ impl Evaluator {
                         &arguments_to_convert,
                         env,
                         only_inline,
-                    ),
+                    ).map(|x| x.unwrap_or_else(|| body.clone())),
                     _ => Err(CompileErr(
                         l.clone(),
                         format!("Don't know how to call {}", head_expr.to_sexp()),
