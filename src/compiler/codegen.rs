@@ -703,8 +703,12 @@ fn codegen_(
     }
 }
 
-fn is_defun(b: &HelperForm) -> bool {
-    matches!(b, HelperForm::Defun(false, _))
+fn is_defun_or_tabled_const(b: &HelperForm) -> bool {
+    match b {
+        HelperForm::Defun(false, _) => true,
+        HelperForm::Defconstant(cdata) => cdata.tabled,
+        _ => false
+    }
 }
 
 pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> PrimaryCodegen {
@@ -1036,7 +1040,7 @@ fn start_codegen(
     let let_helpers_with_expr = process_helper_let_bindings(&use_compiler, &new_helpers);
     let live_helpers: Vec<HelperForm> = let_helpers_with_expr
         .iter()
-        .filter(|x| is_defun(x))
+        .filter(|x| is_defun_or_tabled_const(x))
         .cloned()
         .collect();
 
@@ -1195,6 +1199,15 @@ fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileE
                         },
                     )
                 }),
+            HelperForm::Defconstant(cdata) => {
+                if cdata.tabled {
+                    let mut c_copy = compiler.clone();
+                    c_copy.parentfns.insert(cdata.name.clone());
+                    Ok(c_copy)
+                } else {
+                    Ok(compiler.clone())
+                }
+            },
             _ => Ok(compiler.clone()),
         },
         compiler.clone(),

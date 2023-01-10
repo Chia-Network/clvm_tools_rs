@@ -1194,7 +1194,7 @@ impl Evaluator {
                             }
                         })
                         .unwrap_or_else(|| {
-                            self.get_constant(name)
+                            self.get_constant(name, only_inline)
                                 .map(|x| {
                                     self.shrink_bodyform_visited(
                                         allocator,
@@ -1421,10 +1421,10 @@ impl Evaluator {
         self.helpers.push(h.clone());
     }
 
-    fn get_constant(&self, name: &[u8]) -> Option<Rc<BodyForm>> {
+    fn get_constant(&self, name: &[u8], only_inline: bool) -> Option<Rc<BodyForm>> {
         for h in self.helpers.iter() {
             if let HelperForm::Defconstant(defc) = h {
-                if defc.name == name {
+                if defc.name == name && (!defc.tabled || !only_inline) {
                     return Some(defc.body.clone());
                 }
             }
