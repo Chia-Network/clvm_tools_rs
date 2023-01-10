@@ -1,6 +1,6 @@
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -14,10 +14,10 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::codegen;
 use crate::compiler::comptypes::{
-    CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
+    CompileErr, CompileForm, CompilerOpts, PrimaryCodegen,
 };
-use crate::compiler::evaluate::{build_reflex_captures, Evaluator, show_indent, push_indent, pop_indent};
 use crate::compiler::frontend::frontend;
+use crate::compiler::optimize::{fe_opt, finish_optimization};
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
@@ -86,176 +86,6 @@ pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
     }
 
     Rc::new(prim_map)
-}
-
-// If (1) appears anywhere outside of a quoted expression, it can be replaced with
-// () since nil yields itself.
-fn null_optimization(sexp: Rc<SExp>, spine: bool) -> (bool, Rc<SExp>) {
-    if let SExp::Cons(l,a,b) = sexp.borrow() {
-        if let SExp::Atom(_,name) = a.atomize() {
-            if (name == vec![1] || name == b"q") && !spine {
-                let b_empty =
-                    match b.borrow() {
-                        SExp::Atom(_,tail) => tail.is_empty(),
-                        SExp::QuotedString(_,_,q) => q.is_empty(),
-                        SExp::Integer(_,i) => *i == bi_zero(),
-                        SExp::Nil(_) => true,
-                        _ => false
-                    };
-
-                if b_empty {
-                    return (true, b.clone());
-                } else {
-                    return (false, sexp);
-                }
-            }
-        }
-
-        let (oa, opt_a) = null_optimization(a.clone(), false);
-        let (ob, opt_b) = null_optimization(b.clone(), true);
-
-        if oa || ob {
-            return (true, Rc::new(SExp::Cons(l.clone(), opt_a, opt_b)));
-        }
-    }
-
-    (false, sexp.clone())
-}
-
-#[test]
-fn test_null_optimization_basic() {
-    let loc = Srcloc::start("*test*");
-    let parsed = parse_sexp(loc.clone(), "(2 (1 1) (4 (1) 1))".bytes()).expect("should parse");
-    let (did_work, optimized) = null_optimization(parsed[0].clone(), true);
-    assert!(did_work);
-    assert_eq!(optimized.to_string(), "(2 (1 1) (4 () 1))");
-}
-
-#[test]
-fn test_null_optimization_skips_quoted() {
-    let loc = Srcloc::start("*test*");
-    let parsed = parse_sexp(loc.clone(), "(2 (1 (1) (1) (1)) (1))".bytes()).expect("should parse");
-    let (did_work, optimized) = null_optimization(parsed[0].clone(), true);
-    assert!(did_work);
-    assert_eq!(optimized.to_string(), "(2 (1 (1) (1) (1)) ())");
-}
-
-#[test]
-fn test_null_optimization_ok_not_doing_anything() {
-    let loc = Srcloc::start("*test*");
-    let parsed = parse_sexp(loc.clone(), "(2 (1 (1) (1) (1)) (3))".bytes()).expect("should parse");
-    let (did_work, optimized) = null_optimization(parsed[0].clone(), true);
-    assert!(!did_work);
-    assert_eq!(optimized.to_string(), "(2 (1 (1) (1) (1)) (3))");
-}
-
-// Do final optimizations on the finished CLVM code.
-// These should be lightweight transformations that save space.
-fn finish_optimization(sexp: &SExp) -> SExp {
-    let (did_work, optimized) = null_optimization(Rc::new(sexp.clone()), false);
-    if did_work {
-        let o_borrowed: &SExp = optimized.borrow();
-        o_borrowed.clone()
-    } else {
-        sexp.clone()
-    }
-}
-
-fn fe_opt(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
-    opts: Rc<dyn CompilerOpts>,
-    compileform: CompileForm,
-) -> Result<CompileForm, CompileErr> {
-    let mut compiler_helpers = compileform.helpers.clone();
-    let mut used_names = HashSet::new();
-
-    push_indent();
-
-    eprintln!("{}>X> fe_opt {}", show_indent(), compileform.to_sexp());
-
-    if !opts.in_defun() {
-        for c in compileform.helpers.iter() {
-            used_names.insert(c.name().clone());
-        }
-
-        for helper in (opts
-            .compiler()
-            .map(|c| c.orig_help)
-            .unwrap_or_else(Vec::new))
-        .iter()
-        {
-            if !used_names.contains(helper.name()) {
-                compiler_helpers.push(helper.clone());
-            }
-        }
-    }
-
-    let evaluator = Evaluator::new(opts.clone(), runner.clone(), compiler_helpers.clone());
-    let mut optimized_helpers: Vec<HelperForm> = Vec::new();
-    for h in compiler_helpers.iter() {
-        match &h {
-            HelperForm::Defun(inline, defun) => {
-                eprintln!("{}<<< OPTIMIZE HELPER {}", show_indent(), h.to_sexp());
-                let mut env = HashMap::new();
-                build_reflex_captures(&mut env, defun.args.clone());
-                push_indent();
-                let body_rc = evaluator.shrink_bodyform(
-                    allocator,
-                    defun.args.clone(),
-                    &env,
-                    defun.body.clone(),
-                    true,
-                )?;
-                pop_indent();
-                let new_helper = HelperForm::Defun(
-                    *inline,
-                    DefunData {
-                        loc: defun.loc.clone(),
-                        nl: defun.nl.clone(),
-                        kw: defun.kw.clone(),
-                        name: defun.name.clone(),
-                        args: defun.args.clone(),
-                        body: body_rc.clone(),
-                    },
-                );
-                eprintln!("{}>>> OPTIMIZED HELPER {}", show_indent(), h.to_sexp());
-                optimized_helpers.push(new_helper);
-                eprintln!("{}XXX helpers {}", show_indent(), optimized_helpers.len());
-            }
-            _ => {
-                optimized_helpers.push(h.clone());
-            }
-        }
-    }
-
-    eprintln!("{}<X< fe_opt of {}", show_indent(), compileform.to_sexp());
-    eprintln!("{}<X< optimized helpers: {}", show_indent(), optimized_helpers.len());
-    let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.clone());
-
-    let mut env = HashMap::new();
-    build_reflex_captures(&mut env, compileform.args.clone());
-    eprintln!("{}*** OPTIMIZE BODY: {}", show_indent(), compileform.exp.to_sexp());
-
-    let shrunk = new_evaluator.shrink_bodyform(
-        allocator,
-        compileform.args.clone(),
-        &env,
-        compileform.exp.clone(),
-        true,
-    )?;
-
-    eprintln!("{}*** OPTIMIZED BODY: {}", show_indent(), shrunk.to_sexp());
-
-    pop_indent();
-
-    Ok(CompileForm {
-        loc: compileform.loc.clone(),
-        include_forms: compileform.include_forms.clone(),
-        args: compileform.args,
-        helpers: optimized_helpers.clone(),
-        exp: shrunk,
-    })
 }
 
 pub fn compile_pre_forms(

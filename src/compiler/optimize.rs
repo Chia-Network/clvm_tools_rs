@@ -1,16 +1,22 @@
 use std::borrow::Borrow;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
+use crate::classic::clvm::__type_compatibility__::bi_zero;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::run;
 use crate::compiler::codegen::get_callable;
-use crate::compiler::comptypes::{BodyForm, Callable, CompilerOpts, PrimaryCodegen};
+use crate::compiler::comptypes::{BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen};
+use crate::compiler::evaluate::{build_reflex_captures, Evaluator};
+#[cfg(test)]
+use crate::compiler::sexp::parse_sexp;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::u8_from_number;
+
 
 fn is_at_form(head: Rc<BodyForm>) -> bool {
     match head.borrow() {
@@ -116,4 +122,158 @@ pub fn optimize_expr(
         )),
         _ => None,
     }
+}
+
+
+// If (1) appears anywhere outside of a quoted expression, it can be replaced with
+// () since nil yields itself.
+fn null_optimization(sexp: Rc<SExp>, spine: bool) -> (bool, Rc<SExp>) {
+    if let SExp::Cons(l,a,b) = sexp.borrow() {
+        if let SExp::Atom(_,name) = a.atomize() {
+            if (name == vec![1] || name == b"q") && !spine {
+                let b_empty =
+                    match b.borrow() {
+                        SExp::Atom(_,tail) => tail.is_empty(),
+                        SExp::QuotedString(_,_,q) => q.is_empty(),
+                        SExp::Integer(_,i) => *i == bi_zero(),
+                        SExp::Nil(_) => true,
+                        _ => false
+                    };
+
+                if b_empty {
+                    return (true, b.clone());
+                } else {
+                    return (false, sexp);
+                }
+            }
+        }
+
+        let (oa, opt_a) = null_optimization(a.clone(), false);
+        let (ob, opt_b) = null_optimization(b.clone(), true);
+
+        if oa || ob {
+            return (true, Rc::new(SExp::Cons(l.clone(), opt_a, opt_b)));
+        }
+    }
+
+    (false, sexp.clone())
+}
+
+#[test]
+fn test_null_optimization_basic() {
+    let loc = Srcloc::start("*test*");
+    let parsed = parse_sexp(loc.clone(), "(2 (1 1) (4 (1) 1))".bytes()).expect("should parse");
+    let (did_work, optimized) = null_optimization(parsed[0].clone(), true);
+    assert!(did_work);
+    assert_eq!(optimized.to_string(), "(2 (1 1) (4 () 1))");
+}
+
+#[test]
+fn test_null_optimization_skips_quoted() {
+    let loc = Srcloc::start("*test*");
+    let parsed = parse_sexp(loc.clone(), "(2 (1 (1) (1) (1)) (1))".bytes()).expect("should parse");
+    let (did_work, optimized) = null_optimization(parsed[0].clone(), true);
+    assert!(did_work);
+    assert_eq!(optimized.to_string(), "(2 (1 (1) (1) (1)) ())");
+}
+
+#[test]
+fn test_null_optimization_ok_not_doing_anything() {
+    let loc = Srcloc::start("*test*");
+    let parsed = parse_sexp(loc.clone(), "(2 (1 (1) (1) (1)) (3))".bytes()).expect("should parse");
+    let (did_work, optimized) = null_optimization(parsed[0].clone(), true);
+    assert!(!did_work);
+    assert_eq!(optimized.to_string(), "(2 (1 (1) (1) (1)) (3))");
+}
+
+// Do final optimizations on the finished CLVM code.
+// These should be lightweight transformations that save space.
+pub fn finish_optimization(sexp: &SExp) -> SExp {
+    let (did_work, optimized) = null_optimization(Rc::new(sexp.clone()), false);
+    if did_work {
+        let o_borrowed: &SExp = optimized.borrow();
+        o_borrowed.clone()
+    } else {
+        sexp.clone()
+    }
+}
+pub fn fe_opt(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    compileform: CompileForm,
+) -> Result<CompileForm, CompileErr> {
+    let mut compiler_helpers = compileform.helpers.clone();
+    let mut used_names = HashSet::new();
+
+    if !opts.in_defun() {
+        for c in compileform.helpers.iter() {
+            used_names.insert(c.name().clone());
+        }
+
+        for helper in (opts
+            .compiler()
+            .map(|c| c.orig_help)
+            .unwrap_or_else(Vec::new))
+        .iter()
+        {
+            if !used_names.contains(helper.name()) {
+                compiler_helpers.push(helper.clone());
+            }
+        }
+    }
+
+    let evaluator = Evaluator::new(opts.clone(), runner.clone(), compiler_helpers.clone());
+    let mut optimized_helpers: Vec<HelperForm> = Vec::new();
+    for h in compiler_helpers.iter() {
+        match &h {
+            HelperForm::Defun(inline, defun) => {
+                let mut env = HashMap::new();
+                build_reflex_captures(&mut env, defun.args.clone());
+                let body_rc = evaluator.shrink_bodyform(
+                    allocator,
+                    defun.args.clone(),
+                    &env,
+                    defun.body.clone(),
+                    true,
+                )?;
+                let new_helper = HelperForm::Defun(
+                    *inline,
+                    DefunData {
+                        loc: defun.loc.clone(),
+                        nl: defun.nl.clone(),
+                        kw: defun.kw.clone(),
+                        name: defun.name.clone(),
+                        args: defun.args.clone(),
+                        body: body_rc.clone(),
+                    },
+                );
+                optimized_helpers.push(new_helper);
+            }
+            _ => {
+                optimized_helpers.push(h.clone());
+            }
+        }
+    }
+
+    let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.clone());
+
+    let mut env = HashMap::new();
+    build_reflex_captures(&mut env, compileform.args.clone());
+
+    let shrunk = new_evaluator.shrink_bodyform(
+        allocator,
+        compileform.args.clone(),
+        &env,
+        compileform.exp.clone(),
+        true,
+    )?;
+
+    Ok(CompileForm {
+        loc: compileform.loc.clone(),
+        include_forms: compileform.include_forms.clone(),
+        args: compileform.args,
+        helpers: optimized_helpers.clone(),
+        exp: shrunk,
+    })
 }
