@@ -10,7 +10,12 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::clvm::run;
 use crate::compiler::codegen::get_callable;
 use crate::compiler::comptypes::{BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen};
+#[cfg(test)]
+use crate::compiler::compiler::DefaultCompilerOpts;
+use crate::compiler::compiler::{is_cons, is_operator};
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator};
+#[cfg(test)]
+use crate::compiler::frontend::compile_bodyform;
 #[cfg(test)]
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::sexp::SExp;
@@ -124,6 +129,133 @@ pub fn optimize_expr(
     }
 }
 
+// Unroll loops
+//
+// A function in this form:
+//
+// (defun name (A1 A2 ... L ... An)
+//   (if L ;; (or (l L)
+//     (c (STUFF ... (f L) ...) (name A1 A2 ... (r L) ... An)) ;; STUFF cannot use (r L)
+//     L ;; (or ())
+//     )
+//   )
+//
+// Can unroll into:
+//
+//
+//  (defun unroll_$_name (A1 A2 ... H ... An) ;; H = (f L)
+//     (STUFF ... H ...)
+//     )
+//
+//  (defun name (A1 A2 ... L ... An)
+//     (if L ;; (or (l L))
+//       (c (unroll_$_name A1 A2 ... (f L) ... An)
+//          (name A1 A2 .. (r L) ... An)
+//          )
+//       L ;; (or ())
+//       )
+//     )
+//
+//   (c (unroll_$_name A1 A2 ... (a 5 L) ... An)
+//     (c (unroll_$_name A1 A2 ... (a 11 L) ... An)
+//        ()))
+//
+// When L is formed as:
+//
+//    (c X (c Y (c Z ())))
+//
+// And
+//
+//   (c (unroll_$_name A1 A2 ... (a 5 L) ... An)
+//     (c (unroll_$_name A1 A2 ... (a 11 L) ... An)
+//        (name A1 A2 ... QQQ ... An)))
+//
+// When L is formed as:
+//
+//    (c X (c Y (c Z QQQ)))
+
+struct UnrollableList {
+    // Any entries that could be recovered.
+    entries: Vec<Rc<BodyForm>>,
+    tail: Rc<BodyForm>
+}
+
+fn is_cons_bf(bf: Rc<BodyForm>) -> bool {
+    if let BodyForm::Value(a) = bf.borrow() {
+        return is_cons(&a) || is_operator(b'c' as u32, &a);
+    }
+
+    false
+}
+
+fn recognize_unrollable_list_inner(
+    body: Rc<BodyForm>
+) -> Result<Option<UnrollableList>, CompileErr> {
+    match body.borrow() {
+        BodyForm::Call(_, exprs) => {
+            if exprs.is_empty() {
+                return Ok(None);
+            }
+
+            if is_cons_bf(exprs[0].clone()) && exprs.len() == 3 {
+                if let Some(mut tail) = recognize_unrollable_list_inner(exprs[2].clone())? {
+                    tail.entries.insert(0, exprs[1].clone());
+                    return Ok(Some(tail));
+                } else {
+                    return Ok(None);
+                }
+            }
+        }
+        BodyForm::Quoted(SExp::Cons(_,f,r)) => {
+            let borrowed_tail: &SExp = r.borrow();
+            if let Some(mut tail) = recognize_unrollable_list_inner(Rc::new(BodyForm::Quoted(borrowed_tail.clone())))? {
+                let borrowed_head: &SExp = f.borrow();
+                tail.entries.insert(0, Rc::new(BodyForm::Quoted(borrowed_head.clone())));
+                return Ok(Some(tail));
+            }
+        }
+        BodyForm::Quoted(SExp::Nil(_)) => {
+            return Ok(Some(UnrollableList {
+                entries: Default::default(),
+                tail: body.clone()
+            }));
+        }
+        _ => {}
+    }
+
+    Ok(None)
+}
+
+// Recognize a list formation in code.
+fn recognize_unrollable_list(
+    body: Rc<BodyForm>
+) -> Result<Option<UnrollableList>, CompileErr> {
+    if let Some(res) = recognize_unrollable_list_inner(body)? {
+        if res.entries.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(res))
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+#[test]
+fn test_recognize_unrollable_basic() {
+    let opts = Rc::new(DefaultCompilerOpts::new("*test*"));
+    let parsed = parse_sexp(Srcloc::start("*test*"), "(c 101 (c 102 (c 103 (q 2 3))))".bytes()).expect("should parse");
+    let compiled = compile_bodyform(opts, parsed[0].clone()).expect("should compile");
+    let recognized_unrollable = recognize_unrollable_list(
+        Rc::new(compiled)
+    ).expect("should be able to determine unrollableness");
+    if let Some(unrollable) = recognized_unrollable {
+        assert_eq!(unrollable.entries.len(), 5);
+        assert!(matches!(unrollable.tail.borrow(), BodyForm::Quoted(SExp::Nil(_))));
+    } else {
+        assert!(false);
+    }
+}
 
 // If (1) appears anywhere outside of a quoted expression, it can be replaced with
 // () since nil yields itself.
