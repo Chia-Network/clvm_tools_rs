@@ -162,6 +162,7 @@ pub struct DefunCall {
 pub struct PrimaryCodegen {
     pub prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     pub constants: HashMap<Vec<u8>, Rc<SExp>>,
+    pub tabled_constants: HashMap<Vec<u8>, Rc<SExp>>,
     pub macros: HashMap<Vec<u8>, Rc<SExp>>,
     pub inlines: HashMap<Vec<u8>, InlineFunction>,
     pub defuns: HashMap<Vec<u8>, DefunCall>,
@@ -462,6 +463,12 @@ impl PrimaryCodegen {
     pub fn add_constant(&self, name: &[u8], value: Rc<SExp>) -> Self {
         let mut codegen_copy = self.clone();
         codegen_copy.constants.insert(name.to_owned(), value);
+        codegen_copy
+    }
+
+    pub fn add_tabled_constant(&self, name: &[u8], value: Rc<SExp>) -> Self {
+        let mut codegen_copy = self.clone();
+        codegen_copy.tabled_constants.insert(name.to_owned(), value);
         codegen_copy
     }
 

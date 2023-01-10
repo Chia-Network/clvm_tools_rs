@@ -519,7 +519,10 @@ pub fn generate_expr_code(
                         ))
                     } else {
                         create_name_lookup(compiler, l.clone(), atom)
-                            .map(|f| Ok(CompiledCode(l.clone(), f)))
+                            .map(|f| {
+                                eprintln!("name lookup {} -> {}", decode_string(&atom), f);
+                                Ok(CompiledCode(l.clone(), f))
+                            })
                             .unwrap_or_else(|_| {
                                 // Pass through atoms that don't look up on behalf of
                                 // macros, as it's possible that a macro returned
@@ -718,6 +721,7 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
     PrimaryCodegen {
         prims: prim_map,
         constants: HashMap::new(),
+        tabled_constants: HashMap::new(),
         inlines: HashMap::new(),
         macros: HashMap::new(),
         defuns: HashMap::new(),
@@ -996,8 +1000,12 @@ fn start_codegen(
                     fail_if_present(defc.loc.clone(), &use_compiler.constants, &defc.name, res)
                 })
                 .map(|res| {
-                    let quoted = primquote(defc.loc.clone(), res);
-                    use_compiler.add_constant(&defc.name, Rc::new(quoted))
+                    let quoted = primquote(defc.loc.clone(), res.clone());
+                    if defc.tabled {
+                        use_compiler.add_tabled_constant(&defc.name, res)
+                    } else {
+                        use_compiler.add_constant(&defc.name, Rc::new(quoted))
+                    }
                 })?
             }
             HelperForm::Defmacro(mac) => {
@@ -1053,6 +1061,8 @@ fn start_codegen(
         )),
     };
 
+    eprintln!("use_compiler.env {}", use_compiler.env);
+
     use_compiler.to_process = let_helpers_with_expr.clone();
     use_compiler.orig_help = let_helpers_with_expr;
     use_compiler.final_expr = expr;
@@ -1097,37 +1107,39 @@ fn finalize_env_(
 ) -> Result<Rc<SExp>, CompileErr> {
     match env.borrow() {
         SExp::Atom(l, v) => {
-            match c.defuns.get(v) {
-                Some(res) => Ok(res.code.clone()),
-                None => {
-                    match c.inlines.get(v) {
-                        Some(res) => replace_in_inline(
-                            allocator,
-                            runner.clone(),
-                            opts.clone(),
-                            c,
-                            l.clone(),
-                            res,
-                            res.args.loc(),
-                            &synthesize_args(res.args.clone()),
-                        )
-                        .map(|x| x.1),
-                        None => {
-                            /* Parentfns are functions in progress in the parent */
-                            if c.parentfns.get(v).is_some() {
-                                Ok(Rc::new(SExp::Nil(l.clone())))
-                            } else {
-                                Err(CompileErr(
-                                    l.clone(),
-                                    format!(
-                                        "A defun was referenced in the defun env but not found {}",
-                                        decode_string(v)
-                                    ),
-                                ))
-                            }
-                        }
-                    }
-                }
+            if let Some(res) = c.defuns.get(v) {
+                return Ok(res.code.clone());
+            }
+
+            if let Some(res) = c.tabled_constants.get(v) {
+                return Ok(res.clone());
+            }
+
+            if let Some(res) = c.inlines.get(v) {
+                return replace_in_inline(
+                    allocator,
+                    runner.clone(),
+                    opts.clone(),
+                    c,
+                    l.clone(),
+                    res,
+                    res.args.loc(),
+                    &synthesize_args(res.args.clone()),
+                )
+                    .map(|x| x.1);
+            }
+
+            /* Parentfns are functions in progress in the parent */
+            if c.parentfns.get(v).is_some() {
+                Ok(Rc::new(SExp::Nil(l.clone())))
+            } else {
+                Err(CompileErr(
+                    l.clone(),
+                    format!(
+                        "A defun was referenced in the defun env but not found {}",
+                        decode_string(v)
+                    ),
+                ))
             }
         }
 

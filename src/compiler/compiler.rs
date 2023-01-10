@@ -98,11 +98,11 @@ fn finish_optimization(sexp: &SExp) -> SExp {
             }
         }
 
-        SExp::Cons(
+        return SExp::Cons(
             l.clone(),
             Rc::new(finish_optimization(a.borrow())),
             Rc::new(finish_optimization(b.borrow()))
-        )
+        );
     }
 
     sexp.clone()
