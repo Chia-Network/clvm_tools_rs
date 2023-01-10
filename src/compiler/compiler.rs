@@ -88,24 +88,77 @@ pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
     Rc::new(prim_map)
 }
 
-// Do final optimizations on the finished CLVM code.
-// These should be lightweight transformations that save space.
-fn finish_optimization(sexp: &SExp) -> SExp {
+// If (1) appears anywhere outside of a quoted expression, it can be replaced with
+// () since nil yields itself.
+fn null_optimization(sexp: Rc<SExp>, spine: bool) -> (bool, Rc<SExp>) {
     if let SExp::Cons(l,a,b) = sexp.borrow() {
-        if let (SExp::Atom(_,name), SExp::Atom(_,tail)) = (a.atomize(), b.atomize()) {
-            if name == vec![1] && tail.is_empty() {
-                return SExp::Nil(l.clone())
+        if let SExp::Atom(_,name) = a.atomize() {
+            if (name == vec![1] || name == b"q") && !spine {
+                let b_empty =
+                    match b.borrow() {
+                        SExp::Atom(_,tail) => tail.is_empty(),
+                        SExp::QuotedString(_,_,q) => q.is_empty(),
+                        SExp::Integer(_,i) => *i == bi_zero(),
+                        SExp::Nil(_) => true,
+                        _ => false
+                    };
+
+                if b_empty {
+                    return (true, b.clone());
+                } else {
+                    return (false, sexp);
+                }
             }
         }
 
-        return SExp::Cons(
-            l.clone(),
-            Rc::new(finish_optimization(a.borrow())),
-            Rc::new(finish_optimization(b.borrow()))
-        );
+        let (oa, opt_a) = null_optimization(a.clone(), false);
+        let (ob, opt_b) = null_optimization(b.clone(), true);
+
+        if oa || ob {
+            return (true, Rc::new(SExp::Cons(l.clone(), opt_a, opt_b)));
+        }
     }
 
-    sexp.clone()
+    (false, sexp.clone())
+}
+
+#[test]
+fn test_null_optimization_basic() {
+    let loc = Srcloc::start("*test*");
+    let parsed = parse_sexp(loc.clone(), "(2 (1 1) (4 (1) 1))".bytes()).expect("should parse");
+    let (did_work, optimized) = null_optimization(parsed[0].clone(), true);
+    assert!(did_work);
+    assert_eq!(optimized.to_string(), "(2 (1 1) (4 () 1))");
+}
+
+#[test]
+fn test_null_optimization_skips_quoted() {
+    let loc = Srcloc::start("*test*");
+    let parsed = parse_sexp(loc.clone(), "(2 (1 (1) (1) (1)) (1))".bytes()).expect("should parse");
+    let (did_work, optimized) = null_optimization(parsed[0].clone(), true);
+    assert!(did_work);
+    assert_eq!(optimized.to_string(), "(2 (1 (1) (1) (1)) ())");
+}
+
+#[test]
+fn test_null_optimization_ok_not_doing_anything() {
+    let loc = Srcloc::start("*test*");
+    let parsed = parse_sexp(loc.clone(), "(2 (1 (1) (1) (1)) (3))".bytes()).expect("should parse");
+    let (did_work, optimized) = null_optimization(parsed[0].clone(), true);
+    assert!(!did_work);
+    assert_eq!(optimized.to_string(), "(2 (1 (1) (1) (1)) (3))");
+}
+
+// Do final optimizations on the finished CLVM code.
+// These should be lightweight transformations that save space.
+fn finish_optimization(sexp: &SExp) -> SExp {
+    let (did_work, optimized) = null_optimization(Rc::new(sexp.clone()), false);
+    if did_work {
+        let o_borrowed: &SExp = optimized.borrow();
+        o_borrowed.clone()
+    } else {
+        sexp.clone()
+    }
 }
 
 fn fe_opt(
