@@ -26,7 +26,6 @@ fn find_and_compose_captures(
     opts: Rc<dyn CompilerOpts>,
     sexp: &SExp,
 ) -> Result<(Rc<SExp>, Option<Rc<BodyForm>>), CompileErr> {
-    eprintln!("find_and_compose {}", sexp);
     if let SExp::Cons(cl, l, r) = sexp {
         if let SExp::Cons(_, head, rest) = l.borrow() {
             if let SExp::Atom(_, name) = head.borrow() {
@@ -77,7 +76,6 @@ pub fn handle_lambda(opts: Rc<dyn CompilerOpts>, v: &[SExp]) -> Result<BodyForm,
         let subparse = frontend(opts, &[mod_form_data])?;
         let module = BodyForm::Mod(v[0].loc(), subparse);
 
-        eprintln!("captures {}", captures.to_sexp());
         let lambda_output = BodyForm::Call(
             v[0].loc(),
             vec![
@@ -106,12 +104,10 @@ pub fn handle_lambda(opts: Rc<dyn CompilerOpts>, v: &[SExp]) -> Result<BodyForm,
             ],
         );
 
-        eprintln!("lambda output {}", lambda_output.to_sexp());
         Ok(lambda_output)
     } else {
         // No captures
         let subparse = frontend(opts, &[mod_form_data.clone()])?;
-        eprintln!("mod form {} subparse {}", mod_form_data, subparse.to_sexp());
         Ok(BodyForm::Mod(v[0].loc(), subparse))
     }
 }

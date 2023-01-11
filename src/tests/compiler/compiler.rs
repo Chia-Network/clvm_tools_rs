@@ -42,7 +42,6 @@ fn run_string_maybe_opt(
         &mut HashMap::new(),
     )
     .and_then(|x| {
-        eprintln!("run {}", x);
         run(
             &mut allocator,
             runner,
@@ -1232,4 +1231,29 @@ fn test_lambda_in_let() {
     .to_string();
     let res = run_string(&prog, &"(5 19)".to_string()).unwrap();
     assert_eq!(res.to_string(), "9");
+}
+
+#[test]
+fn test_lambda_in_map() {
+    let prog = indoc! {"
+(mod (add-number L)
+
+  (include *standard-cl-21*)
+
+  (defun map (F L)
+    (if L
+      (c (a F (list (f L))) (map F (r L)))
+      ()
+      )
+    )
+
+  (map
+    (lambda ((& add-number) number) (+ add-number number))
+    L
+    )
+  )
+"}
+    .to_string();
+    let res = run_string(&prog, &"(5 (1 2 3 4))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(6 7 8 9)");
 }
