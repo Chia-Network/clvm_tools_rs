@@ -146,13 +146,7 @@ fn eval_args(
             }
             _ => {
                 if !truthy(sexp.clone()) {
-                    return Ok(RunStep::Op(
-                        head,
-                        context_,
-                        sexp,
-                        Some(eval_list),
-                        parent,
-                    ));
+                    return Ok(RunStep::Op(head, context_, sexp, Some(eval_list), parent));
                 } else {
                     return Err(RunFailure::RunErr(
                         sexp.loc(),
