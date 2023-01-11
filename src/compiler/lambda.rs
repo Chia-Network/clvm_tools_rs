@@ -10,7 +10,7 @@ use crate::compiler::sexp::SExp;
 fn make_captures(opts: Rc<dyn CompilerOpts>, sexp: Rc<SExp>) -> Result<Rc<BodyForm>, CompileErr> {
     if let SExp::Cons(l, f, r) = sexp.borrow() {
         Ok(Rc::new(make_operator2(
-            &l,
+            l,
             "c".to_string(),
             make_captures(opts.clone(), f.clone())?,
             make_captures(opts, r.clone())?,
@@ -107,7 +107,7 @@ pub fn handle_lambda(opts: Rc<dyn CompilerOpts>, v: &[SExp]) -> Result<BodyForm,
         Ok(lambda_output)
     } else {
         // No captures
-        let subparse = frontend(opts, &[mod_form_data.clone()])?;
+        let subparse = frontend(opts, &[mod_form_data])?;
         Ok(BodyForm::Mod(v[0].loc(), subparse))
     }
 }
