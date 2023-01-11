@@ -8,6 +8,7 @@ use crate::compiler::comptypes::{
     list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData,
     DefmacData, DefunData, HelperForm, IncludeDesc, LetData, LetFormKind, ModAccum,
 };
+use crate::compiler::lambda::handle_lambda;
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
 use crate::compiler::sexp::{enlist, SExp};
@@ -329,6 +330,8 @@ pub fn compile_bodyform(
                             } else if *atom_name == "mod".as_bytes().to_vec() {
                                 let subparse = frontend(opts, &[body.clone()])?;
                                 Ok(BodyForm::Mod(op.loc(), subparse))
+                            } else if *atom_name == "lambda".as_bytes().to_vec() {
+                                handle_lambda(opts, &v)
                             } else {
                                 application()
                             }

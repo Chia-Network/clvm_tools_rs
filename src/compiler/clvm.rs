@@ -140,24 +140,25 @@ fn eval_args(
 
     loop {
         match sexp.borrow() {
-            SExp::Nil(_l) => {
-                return Ok(RunStep::Op(
-                    head,
-                    context_,
-                    sexp.clone(),
-                    Some(eval_list),
-                    parent,
-                ));
-            }
             SExp::Cons(_l, a, b) => {
                 eval_list.push(a.clone());
                 sexp = b.clone();
             }
             _ => {
-                return Err(RunFailure::RunErr(
-                    sexp.loc(),
-                    format!("bad argument list {} {}", sexp_, context_),
-                ));
+                if !truthy(sexp.clone()) {
+                    return Ok(RunStep::Op(
+                        head,
+                        context_,
+                        sexp,
+                        Some(eval_list),
+                        parent,
+                    ));
+                } else {
+                    return Err(RunFailure::RunErr(
+                        sexp.loc(),
+                        format!("bad argument list {} {}", sexp_, context_),
+                    ));
+                }
             }
         }
     }

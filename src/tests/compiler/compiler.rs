@@ -42,6 +42,7 @@ fn run_string_maybe_opt(
         &mut HashMap::new(),
     )
     .and_then(|x| {
+        eprintln!("run {}", x);
         run(
             &mut allocator,
             runner,
@@ -1163,4 +1164,54 @@ fn test_inline_out_of_bounds_diagnostic() {
     } else {
         assert!(false);
     }
+}
+
+#[test]
+fn test_lambda_without_capture_from_function() {
+    let prog = indoc! {"
+(mod (A B)
+  (include *standard-cl-21*)
+  (defun FOO () (lambda (X Y) (+ X Y)))
+  (a (FOO) (list A B))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(3 4)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "7");
+}
+
+#[test]
+fn test_lambda_without_capture() {
+    let prog = indoc! {"
+(mod (A B)
+  (include *standard-cl-21*)
+  (a (lambda (X Y) (+ X Y)) (list A B))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(3 4)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "7");
+}
+
+#[test]
+fn test_lambda_with_capture_from_function() {
+    let prog = indoc! {"
+(mod (A B)
+  (include *standard-cl-21*)
+  (defun FOO (Z) (lambda ((& Z) X) (- X Z)))
+  (a (FOO A) (list B))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(5 19)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "14");
+}
+
+#[test]
+fn test_lambda_with_capture() {
+    let prog = indoc! {"
+(mod (A B)
+  (include *standard-cl-21*)
+  (a (lambda ((& A) Y) (- Y A)) (list B))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(5 19)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "14");
 }
