@@ -1215,7 +1215,6 @@ fn test_lambda_with_capture() {
     assert_eq!(res.to_string(), "14");
 }
 
-
 #[test]
 fn test_lambda_in_let() {
     let prog = indoc! {"
