@@ -1256,3 +1256,30 @@ fn test_lambda_in_map() {
     let res = run_string(&prog, &"(5 (1 2 3 4))".to_string()).unwrap();
     assert_eq!(res.to_string(), "(6 7 8 9)");
 }
+
+#[test]
+fn test_lambda_in_map_with_let_surrounding() {
+    let prog = indoc! {"
+(mod (add-number L)
+
+  (include *standard-cl-21*)
+
+  (defun map (F L)
+    (if L
+      (c (a F (list (f L))) (map F (r L)))
+      ()
+      )
+    )
+
+  (map
+    (let ((A (* add-number 2)))
+      (lambda ((& A) number) (+ A number))
+      )
+    L
+    )
+  )
+"}
+    .to_string();
+    let res = run_string(&prog, &"(5 (1 2 3 4))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(11 12 13 14)");
+}
