@@ -1215,3 +1215,21 @@ fn test_lambda_with_capture() {
     let res = run_string(&prog, &"(5 19)".to_string()).unwrap();
     assert_eq!(res.to_string(), "14");
 }
+
+
+#[test]
+fn test_lambda_in_let() {
+    let prog = indoc! {"
+(mod (A B)
+  (include *standard-cl-21*)
+  (defun FOO (Z)
+    (let ((Q (* 2 Z)))
+      (lambda ((& Q) X) (- X Q))
+      )
+    )
+  (a (FOO A) (list B))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(5 19)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "9");
+}
