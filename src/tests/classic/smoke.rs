@@ -7,7 +7,7 @@ use std::rc::Rc;
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, t, Stream};
+use crate::classic::clvm::__type_compatibility__::{t, Bytes, BytesFromType, Stream};
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm_tools::cmds::{launch_tool, OpcConversion, OpdConversion, TConversion};
 
@@ -40,7 +40,7 @@ fn large_odd_sized_neg_opc() {
 fn large_odd_sized_neg_opd() {
     let mut allocator = Allocator::new();
     let result = OpdConversion {}
-    .invoke(&mut allocator, &"ff8afde1e61f36454dc0000180".to_string())
+        .invoke(&mut allocator, &"ff8afde1e61f36454dc0000180".to_string())
         .unwrap();
     assert_eq!(result.rest(), "(0xfde1e61f36454dc00001)");
 }
@@ -49,7 +49,7 @@ fn large_odd_sized_neg_opd() {
 fn mid_negative_value_opd_m1() {
     let mut allocator = Allocator::new();
     let result = OpdConversion {}
-    .invoke(&mut allocator, &"81ff".to_string())
+        .invoke(&mut allocator, &"81ff".to_string())
         .unwrap();
     assert_eq!(result.rest(), "-1");
 }
@@ -58,7 +58,7 @@ fn mid_negative_value_opd_m1() {
 fn mid_negative_value_opd_m2() {
     let mut allocator = Allocator::new();
     let result = OpdConversion {}
-    .invoke(&mut allocator, &"81fe".to_string())
+        .invoke(&mut allocator, &"81fe".to_string())
         .unwrap();
     assert_eq!(result.rest(), "-2");
 }
@@ -67,7 +67,7 @@ fn mid_negative_value_opd_m2() {
 fn mid_negative_value_opd_two_bytes() {
     let mut allocator = Allocator::new();
     let result = OpdConversion {}
-    .invoke(&mut allocator, &"82ffff".to_string())
+        .invoke(&mut allocator, &"82ffff".to_string())
         .unwrap();
     assert_eq!(result.rest(), "0xffff");
 }
@@ -76,7 +76,7 @@ fn mid_negative_value_opd_two_bytes() {
 fn mid_negative_value_opd_three_bytes() {
     let mut allocator = Allocator::new();
     let result = OpdConversion {}
-    .invoke(&mut allocator, &"83ffffff".to_string())
+        .invoke(&mut allocator, &"83ffffff".to_string())
         .unwrap();
     assert_eq!(result.rest(), "0xffffff");
 }
@@ -85,7 +85,7 @@ fn mid_negative_value_opd_three_bytes() {
 fn mid_negative_value_opd_tricky_negative_2() {
     let mut allocator = Allocator::new();
     let result = OpdConversion {}
-    .invoke(&mut allocator, &"82ff00".to_string())
+        .invoke(&mut allocator, &"82ff00".to_string())
         .unwrap();
     assert_eq!(result.rest(), "-256");
 }
@@ -94,7 +94,7 @@ fn mid_negative_value_opd_tricky_negative_2() {
 fn mid_negative_value_opd_tricky_positive_2() {
     let mut allocator = Allocator::new();
     let result = OpdConversion {}
-    .invoke(&mut allocator, &"8200ff".to_string())
+        .invoke(&mut allocator, &"8200ff".to_string())
         .unwrap();
     assert_eq!(result.rest(), "255");
 }
@@ -103,7 +103,7 @@ fn mid_negative_value_opd_tricky_positive_2() {
 fn mid_negative_value_opd_tricky_negative_3() {
     let mut allocator = Allocator::new();
     let result = OpdConversion {}
-    .invoke(&mut allocator, &"83ff0000".to_string())
+        .invoke(&mut allocator, &"83ff0000".to_string())
         .unwrap();
     assert_eq!(result.rest(), "0xff0000");
 }
@@ -112,7 +112,7 @@ fn mid_negative_value_opd_tricky_negative_3() {
 fn mid_negative_value_opd_tricky_positive_3() {
     let mut allocator = Allocator::new();
     let result = OpdConversion {}
-    .invoke(&mut allocator, &"8300ffff".to_string())
+        .invoke(&mut allocator, &"8300ffff".to_string())
         .unwrap();
     assert_eq!(result.rest(), "0x00ffff");
 }
@@ -121,10 +121,15 @@ fn mid_negative_value_opd_tricky_positive_3() {
 fn mid_negative_value_bin() {
     let mut allocator = Allocator::new();
     let mut stream = Stream::new(Some(Bytes::new(Some(BytesFromType::Hex(
-        "82ffff".to_string()
+        "82ffff".to_string(),
     )))));
 
-    let atom = sexp_from_stream(&mut allocator, &mut stream, Box::new(SimpleCreateCLVMObject {})).expect("should be able to make nodeptr");
+    let atom = sexp_from_stream(
+        &mut allocator,
+        &mut stream,
+        Box::new(SimpleCreateCLVMObject {}),
+    )
+    .expect("should be able to make nodeptr");
     if let SExp::Atom(abuf) = allocator.sexp(atom.1) {
         let res_bytes = allocator.buf(&abuf);
         assert_eq!(res_bytes, &[0xff, 0xff]);
@@ -136,7 +141,9 @@ fn mid_negative_value_bin() {
 #[test]
 fn mid_negative_value_disassemble() {
     let mut allocator = Allocator::new();
-    let nodeptr = allocator.new_atom(&[0xff, 0xff]).expect("should be able to make an atom");
+    let nodeptr = allocator
+        .new_atom(&[0xff, 0xff])
+        .expect("should be able to make an atom");
     assert_eq!(disassemble(&mut allocator, nodeptr), "0xffff");
 }
 
