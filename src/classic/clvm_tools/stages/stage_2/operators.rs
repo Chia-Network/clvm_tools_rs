@@ -42,31 +42,61 @@ impl AllocatorRefOrTreeHash {
     }
 }
 
-pub struct CompilerOperators {
+pub struct CompilerOperatorsInternal {
     base_dialect: Rc<dyn Dialect>,
     source_file: String,
     search_paths: Vec<String>,
     symbols_extra_info: bool,
     compile_outcomes: RefCell<HashMap<String, String>>,
-    dialect: RefCell<Rc<dyn Dialect>>,
     runner: RefCell<Rc<dyn TRunProgram>>,
     opt_memo: RefCell<HashMap<AllocatorRefOrTreeHash, NodePtr>>,
 }
 
+pub struct CompilerOperators {
+    parent: Rc<CompilerOperatorsInternal>,
+}
+
+// This wrapper object is here to hold a drop trait that untangles CompilerOperatorsInternal.
+// The design of this code requires the lifetime of the compiler object (via Rc<dyn TRunProgram>)
+// to be uncertain from rust's perspective (i'm not given a lifetime parameter for the runnable
+// passed to clvmr, so I chose this way to mitigate the lack of specifiable lifetime as passing
+// down a reference became very hairy.  The downside is that a few objects had become fixed in
+// an Rc cycle.  The drop trait below corrects that.
 impl CompilerOperators {
+    pub fn new(source_file: &str, search_paths: Vec<String>, symbols_extra_info: bool) -> Self {
+        CompilerOperators {
+            parent: Rc::new(CompilerOperatorsInternal::new(
+                source_file,
+                search_paths,
+                symbols_extra_info,
+            )),
+        }
+    }
+}
+
+impl Drop for CompilerOperators {
+    fn drop(&mut self) {
+        self.parent.neutralize();
+    }
+}
+
+impl CompilerOperatorsInternal {
     pub fn new(source_file: &str, search_paths: Vec<String>, symbols_extra_info: bool) -> Self {
         let base_dialect = Rc::new(ChiaDialect::new(NO_NEG_DIV | NO_UNKNOWN_OPS));
         let base_runner = Rc::new(DefaultProgramRunner::new());
-        CompilerOperators {
-            base_dialect: base_dialect.clone(),
+        CompilerOperatorsInternal {
+            base_dialect,
             source_file: source_file.to_owned(),
             search_paths,
             symbols_extra_info,
             compile_outcomes: RefCell::new(HashMap::new()),
-            dialect: RefCell::new(base_dialect),
             runner: RefCell::new(base_runner),
             opt_memo: RefCell::new(HashMap::new()),
         }
+    }
+
+    pub fn neutralize(&self) {
+        self.set_runner(Rc::new(DefaultProgramRunner::new()));
     }
 
     fn symbols_extra_info(&self, allocator: &mut Allocator) -> Response {
@@ -79,10 +109,6 @@ impl CompilerOperators {
 
     fn set_runner(&self, runner: Rc<dyn TRunProgram>) {
         self.runner.replace(runner);
-    }
-
-    fn set_dialect(&self, dialect: Rc<dyn Dialect>) {
-        self.dialect.replace(dialect);
     }
 
     fn get_runner(&self) -> Rc<dyn TRunProgram> {
@@ -211,7 +237,10 @@ impl CompilerOperators {
     }
 }
 
-impl Dialect for CompilerOperators {
+impl Dialect for CompilerOperatorsInternal {
+    fn val_stack_limit(&self) -> usize {
+        10000000
+    }
     fn quote_kw(&self) -> &[u8] {
         &[1]
     }
@@ -254,13 +283,19 @@ impl Dialect for CompilerOperators {
     }
 }
 
-impl CompilerOperators {
+impl CompilerOperatorsInternal {
     pub fn get_compiles(&self) -> HashMap<String, String> {
-        return self.compile_outcomes.borrow().clone();
+        self.compile_outcomes.borrow().clone()
     }
 }
 
-impl TRunProgram for CompilerOperators {
+impl CompilerOperators {
+    pub fn get_compiles(&self) -> HashMap<String, String> {
+        self.parent.get_compiles()
+    }
+}
+
+impl TRunProgram for CompilerOperatorsInternal {
     fn run_program(
         &self,
         allocator: &mut Allocator,
@@ -280,6 +315,18 @@ impl TRunProgram for CompilerOperators {
     }
 }
 
+impl TRunProgram for CompilerOperators {
+    fn run_program(
+        &self,
+        allocator: &mut Allocator,
+        program: NodePtr,
+        args: NodePtr,
+        option: Option<RunProgramOption>,
+    ) -> Response {
+        self.parent.run_program(allocator, program, args, option)
+    }
+}
+
 pub fn run_program_for_search_paths(
     source_file: &str,
     search_paths: &[String],
@@ -290,7 +337,6 @@ pub fn run_program_for_search_paths(
         search_paths.to_vec(),
         symbols_extra_info,
     ));
-    ops.set_dialect(ops.clone());
-    ops.set_runner(ops.clone());
+    ops.parent.set_runner(ops.parent.clone());
     ops
 }
