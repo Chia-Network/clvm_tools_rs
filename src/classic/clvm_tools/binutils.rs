@@ -54,20 +54,20 @@ pub fn assemble_from_ir(
 }
 
 fn has_oversized_sign_extension(atom: &Bytes) -> bool {
-    if atom.length() < 3 {
+    if atom.length() < 2 {
         return false;
     }
 
     let data = atom.data();
     if data[0] == 0 {
         // 0x0080 -> 128
-        return data[1] & 0x80 == 0x80;
+        return data[1] & 0x80 == 0;
     } else if data[0] == 0xff {
         // 0xff00 -> -256
-        return data[1] & 0x80 == 0;
+        return data[1] & 0x80 != 0;
     }
 
-    true
+    false
 }
 
 pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
