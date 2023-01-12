@@ -727,7 +727,11 @@ pub fn compile_mod(
 
             let to_run = assemble(
                 allocator,
-                "(_set_symbol_table 1)"
+                if produce_extra_info {
+                    "(_set_symbol_table (c (c (q . \"source_file\") (_get_source_file)) 1))"
+                } else {
+                    "(_set_symbol_table 1)"
+                }
             )?;
 
             let _ = run_program.run_program(

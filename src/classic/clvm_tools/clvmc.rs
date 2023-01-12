@@ -106,7 +106,7 @@ fn compile_clvm_text(
     } else {
         let compile_invoke_code = run(allocator);
         let input_sexp = allocator.new_pair(assembled_sexp, allocator.null())?;
-        let run_program = run_program_for_search_paths(search_paths, false);
+        let run_program = run_program_for_search_paths(input_path, search_paths, false);
         let run_program_output =
             run_program.run_program(allocator, compile_invoke_code, input_sexp, None)?;
         Ok(run_program_output.1)

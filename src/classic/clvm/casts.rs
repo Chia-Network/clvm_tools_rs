@@ -59,7 +59,7 @@ pub fn int_from_bytes(
 
     // If the first bit is 1, it is recognized as a negative number.
     if signed && ((dv[0] & 0x80) != 0) {
-        return Ok((unsigned64 - (1 << (b.length() * 8))) as u64);
+        return Ok(unsigned64 - (1 << (b.length() * 8)));
     }
     Ok(unsigned64)
 }
