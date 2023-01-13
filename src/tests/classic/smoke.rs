@@ -1,3 +1,5 @@
+use num_bigint::ToBigInt;
+
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -5,7 +7,8 @@ use std::rc::Rc;
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::{t, Stream};
+use crate::classic::clvm::__type_compatibility__::{t, Bytes, BytesFromType, Stream};
+use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm_tools::cmds::{launch_tool, OpcConversion, OpdConversion, TConversion};
 
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble};
@@ -43,12 +46,123 @@ fn large_odd_sized_neg_opd() {
 }
 
 #[test]
+fn mid_negative_value_opd_m1() {
+    let mut allocator = Allocator::new();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &"81ff".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "-1");
+}
+
+#[test]
+fn mid_negative_value_opd_m2() {
+    let mut allocator = Allocator::new();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &"81fe".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "-2");
+}
+
+#[test]
+fn mid_negative_value_opd_two_bytes() {
+    let mut allocator = Allocator::new();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &"82ffff".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "0xffff");
+}
+
+#[test]
+fn mid_negative_value_opd_three_bytes() {
+    let mut allocator = Allocator::new();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &"83ffffff".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "0xffffff");
+}
+
+#[test]
+fn mid_negative_value_opd_tricky_negative_2() {
+    let mut allocator = Allocator::new();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &"82ff00".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "-256");
+}
+
+#[test]
+fn mid_negative_value_opd_tricky_positive_2() {
+    let mut allocator = Allocator::new();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &"8200ff".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "255");
+}
+
+#[test]
+fn mid_negative_value_opd_tricky_negative_3() {
+    let mut allocator = Allocator::new();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &"83ff0000".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "0xff0000");
+}
+
+#[test]
+fn mid_negative_value_opd_tricky_positive_3() {
+    let mut allocator = Allocator::new();
+    let result = OpdConversion {}
+        .invoke(&mut allocator, &"8300ffff".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "0x00ffff");
+}
+
+#[test]
+fn mid_negative_value_bin() {
+    let mut allocator = Allocator::new();
+    let mut stream = Stream::new(Some(Bytes::new(Some(BytesFromType::Hex(
+        "82ffff".to_string(),
+    )))));
+
+    let atom = sexp_from_stream(
+        &mut allocator,
+        &mut stream,
+        Box::new(SimpleCreateCLVMObject {}),
+    )
+    .expect("should be able to make nodeptr");
+    if let SExp::Atom(abuf) = allocator.sexp(atom.1) {
+        let res_bytes = allocator.buf(&abuf);
+        assert_eq!(res_bytes, &[0xff, 0xff]);
+    } else {
+        assert!(false);
+    }
+}
+
+#[test]
+fn mid_negative_value_disassemble() {
+    let mut allocator = Allocator::new();
+    let nodeptr = allocator
+        .new_atom(&[0xff, 0xff])
+        .expect("should be able to make an atom");
+    assert_eq!(disassemble(&mut allocator, nodeptr), "0xffff");
+}
+
+#[test]
 fn large_odd_sized_pos_opc() {
     let mut allocator = Allocator::new();
     let result = OpcConversion {}
         .invoke(&mut allocator, &"(281474976710655)".to_string())
         .unwrap();
     assert_eq!(result.rest(), "ff8700ffffffffffff80");
+}
+
+#[test]
+fn small_test_opc() {
+    let mut allocator = Allocator::new();
+    let result = OpcConversion {}
+        .invoke(&mut allocator, &"(191)".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "ff8200bf80");
 }
 
 #[test]
@@ -117,7 +231,7 @@ fn compile_program<'a>(
     src: String,
 ) -> Result<String, EvalErr> {
     let run_script = stages::run(allocator);
-    let runner = run_program_for_search_paths(&vec![include_path]);
+    let runner = run_program_for_search_paths("*test*", &vec![include_path], false);
     let input_ir = read_ir(&src);
     let input_program = assemble_from_ir(allocator, Rc::new(input_ir.unwrap())).unwrap();
     let input_sexp = allocator.new_pair(input_program, allocator.null()).unwrap();
@@ -536,4 +650,12 @@ fn test_non_consed_args() {
     );
     let run_result = t.get_value().decode().trim().to_string();
     assert_eq!(run_result, "99");
+}
+
+#[test]
+fn test_check_simple_arg_path_0() {
+    let np = NodePath::new(Some(2_u32.to_bigint().unwrap()));
+    let up = NodePath::new(Some(2_u32.to_bigint().unwrap()));
+    let cp = np.add(up);
+    assert_eq!(cp.as_path().raw(), &[4]);
 }

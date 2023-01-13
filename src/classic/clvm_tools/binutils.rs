@@ -54,20 +54,27 @@ pub fn assemble_from_ir(
 }
 
 fn has_oversized_sign_extension(atom: &Bytes) -> bool {
-    if atom.length() < 3 {
+    // Can't have an extra sign extension if the number is too short.
+    if atom.length() < 2 {
         return false;
     }
 
     let data = atom.data();
     if data[0] == 0 {
+        // This is a canonical value.  The opposite is non-canonical.
         // 0x0080 -> 128
-        return data[1] & 0x80 == 0x80;
-    } else if data[0] == 0xff {
-        // 0xff00 -> -256
+        // 0x0000 -> 0x0000.  Non canonical because the second byte
+        // wouldn't suggest sign extension so the first 0 is redundant.
         return data[1] & 0x80 == 0;
+    } else if data[0] == 0xff {
+        // This is a canonical value.  The opposite is non-canonical.
+        // 0xff00 -> -256
+        // 0xffff -> 0xffff.  Non canonical because the second byte
+        // would suggest sign extension so the first 0xff is redundant.
+        return data[1] & 0x80 != 0;
     }
 
-    true
+    false
 }
 
 pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
@@ -102,18 +109,21 @@ pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
 pub fn disassemble_to_ir_with_kw(
     allocator: &mut Allocator,
     sexp: NodePtr,
-    keyword_from_atom: &Record<Vec<u8>, String>,
-    allow_keyword_: bool,
+    // Due to an oversight in the original port, the user's
+    // kw_from_atom settings weren't honored, however they're
+    // never non-default in this code.  This deserves looking
+    // at, but isn't pressing at the moment.
+    _keyword_from_atom: &Record<Vec<u8>, String>,
+    mut allow_keyword: bool,
 ) -> IRRepr {
-    let mut allow_keyword = allow_keyword_;
     match allocator.sexp(sexp) {
         SExp::Pair(l, r) => {
             if let SExp::Pair(_, _) = allocator.sexp(l) {
                 allow_keyword = true;
             }
 
-            let v0 = disassemble_to_ir_with_kw(allocator, l, keyword_from_atom, allow_keyword);
-            let v1 = disassemble_to_ir_with_kw(allocator, r, keyword_from_atom, false);
+            let v0 = disassemble_to_ir_with_kw(allocator, l, _keyword_from_atom, allow_keyword);
+            let v1 = disassemble_to_ir_with_kw(allocator, r, _keyword_from_atom, false);
             IRRepr::Cons(Rc::new(v0), Rc::new(v1))
         }
 

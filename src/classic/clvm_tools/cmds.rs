@@ -434,7 +434,7 @@ pub fn cldb(args: &[String]) {
                 }
             }
         }
-        _ => match parse_sexp(Srcloc::start("*arg*"), &parsed_args_result) {
+        _ => match parse_sexp(Srcloc::start("*arg*"), parsed_args_result.bytes()) {
             Ok(r) => {
                 if !r.is_empty() {
                     args = r[0].clone();
@@ -669,6 +669,18 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_action(TArgOptionAction::StoreTrue)
             .set_help("Only show frames along the exception path".to_string()),
     );
+    parser.add_argument(
+        vec!["-g".to_string(), "--extra-syms".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("Produce more diagnostic info in symbols".to_string()),
+    );
+    parser.add_argument(
+        vec!["--symbol-output-file".to_string()],
+        Argument::new()
+            .set_type(Rc::new(PathJoin {}))
+            .set_default(ArgumentValue::ArgString(None, "main.sym".to_string())),
+    );
 
     if tool_name == "run" {
         parser.add_argument(
@@ -697,6 +709,27 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         _ => keyword_from_atom(),
     };
 
+    // If extra symbol output is desired (not all keys are hashes, but there's
+    // more info).
+    let extra_symbol_info = parsed_args.get("extra_syms").map(|_| true).unwrap_or(false);
+
+    // Get name of included file so we can use it to initialize the compiler's
+    // runner, which contains operators used at compile time in clvm to update
+    // symbols.  This is the only means we have of communicating with the
+    // compilation process from this level.
+    let mut input_file = None;
+    let mut input_program = "()".to_string();
+
+    if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("path_or_code") {
+        input_file = file.clone();
+        input_program = path_or_code.to_string();
+    }
+
+    let reported_input_file = input_file
+        .as_ref()
+        .cloned()
+        .unwrap_or_else(|| "*command*".to_string());
+
     let dpr;
     let run_program: Rc<dyn TRunProgram>;
     let mut search_paths = Vec::new();
@@ -708,13 +741,15 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                     bare_paths.push(s.to_string());
                 }
             }
-            let special_runner = run_program_for_search_paths(&bare_paths);
+            let special_runner =
+                run_program_for_search_paths(&reported_input_file, &bare_paths, extra_symbol_info);
             search_paths = bare_paths;
             dpr = special_runner.clone();
             run_program = special_runner;
         }
         _ => {
-            let ordinary_runner = run_program_for_search_paths(&Vec::new());
+            let ordinary_runner =
+                run_program_for_search_paths(&reported_input_file, &Vec::new(), extra_symbol_info);
             dpr = ordinary_runner.clone();
             run_program = ordinary_runner;
         }
@@ -722,7 +757,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     let mut allocator = Allocator::new();
 
-    let mut input_file = None;
     let input_serialized = None;
     let mut input_sexp: Option<NodePtr> = None;
 
@@ -730,13 +764,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let mut time_read_hex = SystemTime::now();
     let mut time_assemble = SystemTime::now();
 
-    let mut input_program = "()".to_string();
     let mut input_args = "()".to_string();
-
-    if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("path_or_code") {
-        input_file = file.clone();
-        input_program = path_or_code.to_string();
-    }
 
     if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("env") {
         input_file = file.clone();
@@ -852,11 +880,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     };
 
     if do_check_unused {
-        let use_filename = input_file
-            .as_ref()
-            .cloned()
-            .unwrap_or_else(|| "*command*".to_string());
-        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_search_paths(&search_paths);
+        let opts =
+            Rc::new(DefaultCompilerOpts::new(&reported_input_file)).set_search_paths(&search_paths);
         match check_unused(opts, &input_program) {
             Ok((success, output)) => {
                 stderr_output(output);
@@ -870,6 +895,17 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             }
         }
     }
+
+    let symbol_table_output = parsed_args
+        .get("symbol_output_file")
+        .and_then(|s| {
+            if let ArgumentValue::ArgString(_, v) = s {
+                Some(v.clone())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "main.sym".to_string());
 
     // In testing: short circuit for modern compilation.
     if let Some(dialect) = dialect {
@@ -903,7 +939,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 stdout.write_str(&r.to_string());
 
                 build_symbol_table_mut(&mut symbol_table, &r);
-                write_sym_output(&symbol_table, "main.sym").expect("writing symbols");
+                write_sym_output(&symbol_table, &symbol_table_output).expect("writing symbols");
             }
             Err(c) => {
                 stdout.write_str(&format!("{}: {}", c.0, c.1));
@@ -993,7 +1029,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let max_cost = parsed_args
         .get("max_cost")
         .map(|x| match x {
-            ArgumentValue::ArgInt(i) => *i as i64 - cost_offset,
+            ArgumentValue::ArgInt(i) => *i - cost_offset,
             _ => 0,
         })
         .unwrap_or_else(|| 0);
@@ -1127,7 +1163,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     let compile_sym_out = dpr.get_compiles();
     if !compile_sym_out.is_empty() {
-        write_sym_output(&compile_sym_out, "main.sym").ok();
+        write_sym_output(&compile_sym_out, &symbol_table_output).ok();
     }
 
     stdout.write_str(&format!("{}\n", output));

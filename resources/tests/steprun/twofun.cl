@@ -1,0 +1,5 @@
+(mod (A)
+  (defun first-fun (X) (* X 3))
+  (defun second-fun (X) (+ X 5))
+  (second-fun (first-fun A))
+  )

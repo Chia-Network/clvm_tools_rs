@@ -102,7 +102,7 @@ impl Repl {
                 )),
             )),
         );
-        let start_program_fe = frontend(opts.clone(), vec![starter_empty_program]).unwrap();
+        let start_program_fe = frontend(opts.clone(), &[starter_empty_program]).unwrap();
         let evaluator = Evaluator::new(opts.clone(), runner.clone(), start_program_fe.helpers);
 
         Repl {
@@ -128,7 +128,7 @@ impl Repl {
 
         if self.depth < 0 {
             let loc = self.loc.clone();
-            let result = parse_sexp(loc, &input_taken)
+            let result = parse_sexp(loc, input_taken.bytes())
                 .map(|_v| {
                     panic!("too many parens but parsed anyway");
                 })
@@ -145,7 +145,7 @@ impl Repl {
 
         self.input_exp = "".to_string();
 
-        parse_sexp(self.loc.clone(), &input_taken)
+        parse_sexp(self.loc.clone(), input_taken.bytes())
             .map_err(|e| CompileErr(e.0.clone(), e.1))
             .and_then(|parsed_program| {
                 if parsed_program.is_empty() {
@@ -160,12 +160,12 @@ impl Repl {
                     let prog0 = parsed_program[0].clone();
                     let name = second_of_alist(prog0.clone())?;
                     let built_program = program_with_helper(vec![name], prog0);
-                    let program = frontend(self.opts.clone(), vec![built_program])?;
+                    let program = frontend(self.opts.clone(), &[built_program])?;
                     self.evaluator
                         .add_helper(&program.helpers[program.helpers.len() - 1]);
                     Ok(Some(Rc::new(BodyForm::Quoted(SExp::Nil(self.loc.clone())))))
                 } else {
-                    frontend(self.opts.clone(), parsed_program)
+                    frontend(self.opts.clone(), &parsed_program)
                         .and_then(|program| {
                             self.evaluator.shrink_bodyform(
                                 allocator,

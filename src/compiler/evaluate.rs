@@ -10,9 +10,10 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::run;
+use crate::compiler::codegen::codegen;
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
-    Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LetFormKind,
+    Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LetData, LetFormKind,
 };
 use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
@@ -587,7 +588,7 @@ impl Evaluator {
                 )),
             ));
 
-            frontend(self.opts.clone(), vec![frontend_macro_input]).and_then(|program| {
+            frontend(self.opts.clone(), &[frontend_macro_input]).and_then(|program| {
                 self.shrink_bodyform_visited(
                     allocator,
                     visited,
@@ -847,23 +848,23 @@ impl Evaluator {
     ) -> Result<Rc<BodyForm>, CompileErr> {
         let helper = select_helper(&self.helpers, call_name);
         match helper {
-            Some(HelperForm::Defmacro(l, _name, _args, program)) => self.invoke_macro_expansion(
+            Some(HelperForm::Defmacro(mac)) => self.invoke_macro_expansion(
                 allocator,
                 visited,
-                l,
+                mac.loc.clone(),
                 call_loc,
-                program,
+                mac.program,
                 prog_args,
                 arguments_to_convert,
                 env,
             ),
-            Some(HelperForm::Defun(_, _, inline, args, fun_body)) => {
+            Some(HelperForm::Defun(inline, defun)) => {
                 if !inline && only_inline {
                     return Ok(body);
                 }
 
                 let argument_captures_untranslated =
-                    build_argument_captures(&call_loc, arguments_to_convert, args.clone())?;
+                    build_argument_captures(&call_loc, arguments_to_convert, defun.args.clone())?;
 
                 let mut argument_captures = HashMap::new();
                 // Do this to protect against misalignment
@@ -884,9 +885,9 @@ impl Evaluator {
                 self.shrink_bodyform_visited(
                     allocator,
                     visited,
-                    args,
+                    defun.args.clone(),
                     &argument_captures,
-                    fun_body,
+                    defun.body,
                     only_inline,
                 )
             }
@@ -918,32 +919,32 @@ impl Evaluator {
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         match body.borrow() {
-            BodyForm::Let(_, LetFormKind::Parallel, bindings, body) => {
-                let updated_bindings = update_parallel_bindings(env, bindings);
+            BodyForm::Let(LetFormKind::Parallel, letdata) => {
+                let updated_bindings = update_parallel_bindings(env, &letdata.bindings);
                 self.shrink_bodyform_visited(
                     allocator,
                     visited,
                     prog_args,
                     &updated_bindings,
-                    body.clone(),
+                    letdata.body.clone(),
                     only_inline,
                 )
             }
-            BodyForm::Let(l, LetFormKind::Sequential, bindings, body) => {
-                if bindings.is_empty() {
+            BodyForm::Let(LetFormKind::Sequential, letdata) => {
+                if letdata.bindings.is_empty() {
                     self.shrink_bodyform_visited(
                         allocator,
                         visited,
                         prog_args,
                         env,
-                        body.clone(),
+                        letdata.body.clone(),
                         only_inline,
                     )
                 } else {
                     let first_binding_as_list: Vec<Rc<Binding>> =
-                        bindings.iter().take(1).cloned().collect();
+                        letdata.bindings.iter().take(1).cloned().collect();
                     let rest_of_bindings: Vec<Rc<Binding>> =
-                        bindings.iter().skip(1).cloned().collect();
+                        letdata.bindings.iter().skip(1).cloned().collect();
 
                     let updated_bindings = update_parallel_bindings(env, &first_binding_as_list);
                     self.shrink_bodyform_visited(
@@ -952,10 +953,13 @@ impl Evaluator {
                         prog_args,
                         &updated_bindings,
                         Rc::new(BodyForm::Let(
-                            l.clone(),
                             LetFormKind::Sequential,
-                            rest_of_bindings,
-                            body.clone(),
+                            LetData {
+                                loc: letdata.loc.clone(),
+                                kw: letdata.kw.clone(),
+                                bindings: rest_of_bindings,
+                                body: letdata.body.clone(),
+                            },
                         )),
                         only_inline,
                     )
@@ -1057,6 +1061,17 @@ impl Evaluator {
                         format!("Don't know how to call {}", head_expr.to_sexp()),
                     )),
                 }
+            }
+            BodyForm::Mod(_, program) => {
+                // A mod form yields the compiled code.
+                let code = codegen(
+                    allocator,
+                    self.runner.clone(),
+                    self.opts.clone(),
+                    program,
+                    &mut HashMap::new(),
+                )?;
+                Ok(Rc::new(BodyForm::Quoted(code)))
             }
         }
     }
@@ -1198,9 +1213,9 @@ impl Evaluator {
 
     fn get_constant(&self, name: &[u8]) -> Option<Rc<BodyForm>> {
         for h in self.helpers.iter() {
-            if let HelperForm::Defconstant(_, n, body) = h {
-                if n == name {
-                    return Some(body.clone());
+            if let HelperForm::Defconstant(defc) = h {
+                if defc.name == name {
+                    return Some(defc.body.clone());
                 }
             }
         }

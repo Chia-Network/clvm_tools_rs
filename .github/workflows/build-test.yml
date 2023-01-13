@@ -158,18 +158,12 @@ jobs:
       run: |
         . ./activate
         cd clvm
-        python -m py.test tests
+        pip install pytest pytest-asyncio
+        pytest tests
 
     - name: Run tests
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
       run: cargo test --no-default-features
-
-    - name: Run wasm tests
-      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
-      run: |
-        rustup target add wasm32-unknown-unknown
-        cargo install wasm-bindgen-cli --version 0.2.80
-        cd mock-test && npm install && make && ../resources/tests/linux-install-node.sh ./build/runmock.js
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
@@ -186,7 +180,7 @@ jobs:
       run: |
         unset HAS_SECRET
         if [ -n "$SECRET" ]; then HAS_SECRET='true' ; fi
-        echo ::set-output name=HAS_SECRET::${HAS_SECRET}
+        echo "HAS_SECRET=${HAS_SECRET}" >>$GITHUB_OUTPUT
       env:
         SECRET: "${{ secrets.test_pypi_password }}"
 

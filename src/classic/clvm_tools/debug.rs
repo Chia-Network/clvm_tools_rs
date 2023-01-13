@@ -278,9 +278,9 @@ pub fn check_unused(
     input_program: &str,
 ) -> Result<(bool, String), CompileErr> {
     let mut output: Stream = Stream::new(None);
-    let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), input_program)
+    let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), input_program.bytes())
         .map_err(|e| CompileErr(e.0, e.1))?;
-    let g = frontend(opts.clone(), pre_forms)?;
+    let g = frontend(opts.clone(), &pre_forms)?;
     let unused = check_parameters_used_compileform(opts, Rc::new(g))?;
 
     if !unused.is_empty() {

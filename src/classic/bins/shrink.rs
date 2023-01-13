@@ -26,9 +26,9 @@ fn main() {
     }
 
     let loc = Srcloc::start("*program*");
-    let _ = parse_sexp(loc, &args[1])
+    let _ = parse_sexp(loc, args[1].bytes())
         .map_err(|e| CompileErr(e.0.clone(), e.1))
-        .and_then(|parsed_program| frontend(opts.clone(), parsed_program))
+        .and_then(|parsed_program| frontend(opts.clone(), &parsed_program))
         .and_then(|program| {
             let e = Evaluator::new(opts.clone(), runner.clone(), program.helpers.clone());
             e.shrink_bodyform(

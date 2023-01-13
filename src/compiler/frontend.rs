@@ -4,10 +4,9 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
-
 use crate::compiler::comptypes::{
-    list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm,
-    LetFormKind, ModAccum,
+    list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData,
+    DefmacData, DefunData, HelperForm, IncludeDesc, LetData, LetFormKind, ModAccum,
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
@@ -34,14 +33,14 @@ fn collect_used_names_binding(body: &Binding) -> Vec<Vec<u8>> {
 
 fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
     match body {
-        BodyForm::Let(_, _, bindings, expr) => {
+        BodyForm::Let(_, letdata) => {
             let mut result = Vec::new();
-            for b in bindings {
+            for b in letdata.bindings.iter() {
                 let mut new_binding_names = collect_used_names_binding(b);
                 result.append(&mut new_binding_names);
             }
 
-            let mut body_names = collect_used_names_bodyform(expr);
+            let mut body_names = collect_used_names_bodyform(letdata.body.borrow());
             result.append(&mut body_names);
             result
         }
@@ -64,14 +63,21 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
             }
             result
         }
+        BodyForm::Mod(_, _) => vec![],
     }
 }
 
 fn collect_used_names_helperform(body: &HelperForm) -> Vec<Vec<u8>> {
     match body {
-        HelperForm::Defconstant(_, _, value) => collect_used_names_bodyform(value),
-        HelperForm::Defmacro(_, _, _, body) => collect_used_names_compileform(body),
-        HelperForm::Defun(_, _, _, _, body) => collect_used_names_bodyform(body),
+        HelperForm::Defconstant(defc) => collect_used_names_bodyform(defc.body.borrow()),
+        HelperForm::Defmacro(mac) => {
+            let mut res = collect_used_names_compileform(mac.program.borrow());
+            // Ensure any other names mentioned in qq blocks are included.
+            let mut all_token_res = collect_used_names_sexp(mac.program.to_sexp());
+            res.append(&mut all_token_res);
+            res
+        }
+        HelperForm::Defun(_, defun) => collect_used_names_bodyform(&defun.body),
     }
 }
 
@@ -88,7 +94,6 @@ fn collect_used_names_compileform(body: &CompileForm) -> Vec<Vec<u8>> {
 }
 
 fn calculate_live_helpers(
-    opts: Rc<dyn CompilerOpts>,
     last_names: &HashSet<Vec<u8>>,
     names: &HashSet<Vec<u8>>,
     helper_map: &HashMap<Vec<u8>, HelperForm>,
@@ -114,11 +119,11 @@ fn calculate_live_helpers(
             }
         }
 
-        calculate_live_helpers(opts, names, &needed_helpers, helper_map)
+        calculate_live_helpers(names, &needed_helpers, helper_map)
     }
 }
 
-fn qq_to_expression(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
+fn qq_to_expression(opts: Rc<dyn CompilerOpts>, body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
     let body_copy: &SExp = body.borrow();
 
     match body.borrow() {
@@ -144,22 +149,25 @@ fn qq_to_expression(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                         return Err(CompileErr(l.clone(), format!("bad form {}", body)));
                     }
 
-                    return compile_bodyform(Rc::new(list[0].clone()));
+                    return compile_bodyform(opts.clone(), Rc::new(list[0].clone()));
                 }
             }
 
-            qq_to_expression_list(body.clone())
+            qq_to_expression_list(opts, body.clone())
         }
         _ => Ok(BodyForm::Quoted(body_copy.clone())),
     }
 }
 
-fn qq_to_expression_list(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
+fn qq_to_expression_list(
+    opts: Rc<dyn CompilerOpts>,
+    body: Rc<SExp>,
+) -> Result<BodyForm, CompileErr> {
     match body.borrow() {
         SExp::Cons(l, f, r) => {
             m! {
-                f_qq <- qq_to_expression(f.clone());
-                r_qq <- qq_to_expression_list(r.clone());
+                f_qq <- qq_to_expression(opts.clone(), f.clone());
+                r_qq <- qq_to_expression_list(opts, r.clone());
                 Ok(BodyForm::Call(l.clone(), vec!(
                     Rc::new(BodyForm::Value(
                         SExp::Atom(l.clone(), "c".as_bytes().to_vec())
@@ -177,16 +185,19 @@ fn qq_to_expression_list(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
     }
 }
 
-fn args_to_expression_list(body: Rc<SExp>) -> Result<Vec<Rc<BodyForm>>, CompileErr> {
+fn args_to_expression_list(
+    opts: Rc<dyn CompilerOpts>,
+    body: Rc<SExp>,
+) -> Result<Vec<Rc<BodyForm>>, CompileErr> {
     if body.nilp() {
         Ok(vec![])
     } else {
         match body.borrow() {
             SExp::Cons(_l, first, rest) => {
                 let mut result_list = Vec::new();
-                let f_compiled = compile_bodyform(first.clone())?;
+                let f_compiled = compile_bodyform(opts.clone(), first.clone())?;
                 result_list.push(Rc::new(f_compiled));
-                let mut args = args_to_expression_list(rest.clone())?;
+                let mut args = args_to_expression_list(opts, rest.clone())?;
                 result_list.append(&mut args);
                 Ok(result_list)
             }
@@ -198,7 +209,10 @@ fn args_to_expression_list(body: Rc<SExp>) -> Result<Vec<Rc<BodyForm>>, CompileE
     }
 }
 
-fn make_let_bindings(body: Rc<SExp>) -> Result<Vec<Rc<Binding>>, CompileErr> {
+fn make_let_bindings(
+    opts: Rc<dyn CompilerOpts>,
+    body: Rc<SExp>,
+) -> Result<Vec<Rc<Binding>>, CompileErr> {
     let err = Err(CompileErr(
         body.loc(),
         "Bad binding tail ".to_string() + &body.to_string(),
@@ -209,11 +223,12 @@ fn make_let_bindings(body: Rc<SExp>) -> Result<Vec<Rc<Binding>>, CompileErr> {
             .proper_list()
             .map(|x| match &x[..] {
                 [SExp::Atom(l, name), expr] => {
-                    let compiled_body = compile_bodyform(Rc::new(expr.clone()))?;
+                    let compiled_body = compile_bodyform(opts.clone(), Rc::new(expr.clone()))?;
                     let mut result = Vec::new();
-                    let mut rest_bindings = make_let_bindings(tl.clone())?;
+                    let mut rest_bindings = make_let_bindings(opts, tl.clone())?;
                     result.push(Rc::new(Binding {
                         loc: l.clone(),
+                        nl: l.clone(),
                         name: name.to_vec(),
                         body: Rc::new(compiled_body),
                     }));
@@ -227,16 +242,24 @@ fn make_let_bindings(body: Rc<SExp>) -> Result<Vec<Rc<Binding>>, CompileErr> {
     }
 }
 
-pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
+pub fn compile_bodyform(
+    opts: Rc<dyn CompilerOpts>,
+    body: Rc<SExp>,
+) -> Result<BodyForm, CompileErr> {
     match body.borrow() {
         SExp::Cons(l, op, tail) => {
             let application = || {
-                args_to_expression_list(tail.clone()).and_then(|args| {
-                    compile_bodyform(op.clone()).map(|func| {
+                args_to_expression_list(opts.clone(), tail.clone()).and_then(|args| {
+                    compile_bodyform(opts.clone(), op.clone()).map(|func| {
                         let mut result_call = vec![Rc::new(func)];
                         let mut args_clone = args.to_vec();
+                        let ending = if args.is_empty() {
+                            l.ending()
+                        } else {
+                            args[args.len() - 1].loc().ending()
+                        };
                         result_call.append(&mut args_clone);
-                        BodyForm::Call(l.clone(), result_call)
+                        BodyForm::Call(l.ext(&ending), result_call)
                     })
                 })
             };
@@ -275,13 +298,17 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                                 let bindings = v[0].clone();
                                 let body = v[1].clone();
 
-                                let let_bindings = make_let_bindings(Rc::new(bindings))?;
-                                let compiled_body = compile_bodyform(Rc::new(body))?;
+                                let let_bindings =
+                                    make_let_bindings(opts.clone(), Rc::new(bindings))?;
+                                let compiled_body = compile_bodyform(opts, Rc::new(body))?;
                                 Ok(BodyForm::Let(
-                                    l.clone(),
                                     kind,
-                                    let_bindings,
-                                    Rc::new(compiled_body),
+                                    LetData {
+                                        loc: l.clone(),
+                                        kw: Some(l.clone()),
+                                        bindings: let_bindings,
+                                        body: Rc::new(compiled_body),
+                                    },
                                 ))
                             } else if *atom_name == "quote".as_bytes().to_vec() {
                                 if v.len() != 1 {
@@ -298,7 +325,10 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
 
                                 let quote_body = v[0].clone();
 
-                                qq_to_expression(Rc::new(quote_body))
+                                qq_to_expression(opts, Rc::new(quote_body))
+                            } else if *atom_name == "mod".as_bytes().to_vec() {
+                                let subparse = frontend(opts, &[body.clone()])?;
+                                Ok(BodyForm::Mod(op.loc(), subparse))
                             } else {
                                 application()
                             }
@@ -306,11 +336,14 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
                         None => finish_err("tail_proper"),
                     }
                 }
-                SExp::Integer(il, i) => compile_bodyform(Rc::new(SExp::Cons(
-                    il.clone(),
-                    Rc::new(SExp::Atom(il.clone(), u8_from_number(i.clone()))),
-                    tail.clone(),
-                ))),
+                SExp::Integer(il, i) => compile_bodyform(
+                    opts,
+                    Rc::new(SExp::Cons(
+                        il.clone(),
+                        Rc::new(SExp::Atom(il.clone(), u8_from_number(i.clone()))),
+                        tail.clone(),
+                    )),
+                ),
                 SExp::QuotedString(_, _, _) => {
                     let body_copy: &SExp = body.borrow();
                     Ok(BodyForm::Value(body_copy.clone()))
@@ -329,108 +362,229 @@ pub fn compile_bodyform(body: Rc<SExp>) -> Result<BodyForm, CompileErr> {
     }
 }
 
-fn compile_defconstant(l: Srcloc, name: Vec<u8>, body: Rc<SExp>) -> Result<HelperForm, CompileErr> {
-    compile_bodyform(body).map(|bf| HelperForm::Defconstant(l, name.to_vec(), Rc::new(bf)))
-}
-
-fn compile_defun(
+fn compile_defconstant(
+    opts: Rc<dyn CompilerOpts>,
     l: Srcloc,
-    inline: bool,
+    nl: Srcloc,
+    kwl: Option<Srcloc>,
     name: Vec<u8>,
-    args: Rc<SExp>,
     body: Rc<SExp>,
 ) -> Result<HelperForm, CompileErr> {
-    let mut take_form = body.clone();
-    if let SExp::Cons(_, f, _r) = body.borrow() {
+    let body_borrowed: &SExp = body.borrow();
+    if let SExp::Cons(_, _, _) = body_borrowed {
+        Ok(HelperForm::Defconstant(DefconstData {
+            loc: l,
+            nl,
+            kw: kwl,
+            name: name.to_vec(),
+            body: Rc::new(BodyForm::Value(body_borrowed.clone())),
+        }))
+    } else {
+        compile_bodyform(opts, body).map(|bf| {
+            HelperForm::Defconstant(DefconstData {
+                loc: l,
+                nl,
+                kw: kwl,
+                name: name.to_vec(),
+                body: Rc::new(bf),
+            })
+        })
+    }
+}
+
+fn location_span(l_: Srcloc, lst_: Rc<SExp>) -> Srcloc {
+    let mut l = l_;
+    let mut lst = lst_;
+    while let SExp::Cons(_, a, b) = lst.borrow() {
+        l = location_span(l.clone(), a.clone()).ext(&b.loc());
+        lst = b.clone();
+    }
+    l
+}
+
+pub struct CompileDefun {
+    pub l: Srcloc,
+    pub nl: Srcloc,
+    pub kwl: Option<Srcloc>,
+    pub inline: bool,
+    pub name: Vec<u8>,
+    pub args: Rc<SExp>,
+    pub body: Rc<SExp>,
+}
+
+fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun) -> Result<HelperForm, CompileErr> {
+    let mut take_form = data.body.clone();
+
+    if let SExp::Cons(_, f, _r) = data.body.borrow() {
         take_form = f.clone();
     }
-    compile_bodyform(take_form)
-        .map(|bf| HelperForm::Defun(l, name, inline, args.clone(), Rc::new(bf)))
+    compile_bodyform(opts, take_form).map(|bf| {
+        HelperForm::Defun(
+            data.inline,
+            DefunData {
+                loc: data.l,
+                nl: data.nl,
+                kw: data.kwl,
+                name: data.name,
+                args: data.args,
+                body: Rc::new(bf),
+            },
+        )
+    })
 }
 
 fn compile_defmacro(
     opts: Rc<dyn CompilerOpts>,
     l: Srcloc,
+    nl: Srcloc,
+    kwl: Option<Srcloc>,
     name: Vec<u8>,
     args: Rc<SExp>,
     body: Rc<SExp>,
 ) -> Result<HelperForm, CompileErr> {
     let program = SExp::Cons(
         l.clone(),
-        Rc::new(SExp::Atom(l.clone(), "mod".as_bytes().to_vec())),
+        Rc::new(SExp::Atom(l.clone(), b"mod".to_vec())),
         Rc::new(SExp::Cons(l.clone(), args.clone(), body)),
     );
     let new_opts = opts.set_stdenv(false);
-    frontend(new_opts, vec![Rc::new(program)])
-        .map(|p| HelperForm::Defmacro(l, name, args.clone(), Rc::new(p)))
+    frontend(new_opts, &[Rc::new(program)]).map(|p| {
+        HelperForm::Defmacro(DefmacData {
+            loc: l,
+            nl,
+            kw: kwl,
+            name,
+            args: args.clone(),
+            program: Rc::new(p),
+        })
+    })
+}
+
+struct OpName4Match {
+    opl: Srcloc,
+    op_name: Vec<u8>,
+    nl: Srcloc,
+    name: Vec<u8>,
+    args: Rc<SExp>,
+    body: Rc<SExp>,
 }
 
 #[allow(clippy::type_complexity)]
-fn match_op_name_4(body: Rc<SExp>, pl: &[SExp]) -> Option<(Vec<u8>, Vec<u8>, Rc<SExp>, Rc<SExp>)> {
-    let l = body.loc();
-
+fn match_op_name_4(pl: &[SExp]) -> Option<OpName4Match> {
     if pl.is_empty() {
         return None;
     }
 
     match &pl[0] {
-        SExp::Atom(_, op_name) => {
+        SExp::Atom(l, op_name) => {
             if pl.len() < 3 {
-                return Some((
-                    op_name.clone(),
-                    Vec::new(),
-                    Rc::new(SExp::Nil(l.clone())),
-                    Rc::new(SExp::Nil(l)),
-                ));
+                return Some(OpName4Match {
+                    opl: l.clone(),
+                    op_name: op_name.clone(),
+                    nl: l.clone(),
+                    name: Vec::new(),
+                    args: Rc::new(SExp::Nil(l.clone())),
+                    body: Rc::new(SExp::Nil(l.clone())),
+                });
             }
 
             match &pl[1] {
-                SExp::Atom(_, name) => {
+                SExp::Atom(ll, name) => {
                     let mut tail_list = Vec::new();
                     for elt in pl.iter().skip(3) {
                         tail_list.push(Rc::new(elt.clone()));
                     }
-                    Some((
-                        op_name.clone(),
-                        name.clone(),
-                        Rc::new(pl[2].clone()),
-                        Rc::new(enlist(l, tail_list)),
-                    ))
+                    Some(OpName4Match {
+                        opl: l.clone(),
+                        op_name: op_name.clone(),
+                        nl: ll.clone(),
+                        name: name.clone(),
+                        args: Rc::new(pl[2].clone()),
+                        body: Rc::new(enlist(l.clone(), tail_list)),
+                    })
                 }
-                _ => Some((
-                    op_name.clone(),
-                    Vec::new(),
-                    Rc::new(SExp::Nil(l.clone())),
-                    Rc::new(SExp::Nil(l)),
-                )),
+                _ => Some(OpName4Match {
+                    opl: l.clone(),
+                    op_name: op_name.clone(),
+                    nl: pl[1].loc(),
+                    name: Vec::new(),
+                    args: Rc::new(SExp::Nil(l.clone())),
+                    body: Rc::new(SExp::Nil(l.clone())),
+                }),
             }
         }
         _ => None,
     }
 }
 
-fn compile_helperform(
+pub fn compile_helperform(
     opts: Rc<dyn CompilerOpts>,
     body: Rc<SExp>,
 ) -> Result<Option<HelperForm>, CompileErr> {
-    let l = body.loc();
-    let plist = body.proper_list();
+    let l = location_span(body.loc(), body.clone());
 
-    if let Some((op_name, name, args, body)) =
-        plist.and_then(|pl| match_op_name_4(body.clone(), &pl))
-    {
-        if op_name == b"defconstant" {
-            return compile_defconstant(l, name.to_vec(), args).map(Some);
-        } else if op_name == b"defmacro" {
-            return compile_defmacro(opts, l, name.to_vec(), args, body).map(Some);
-        } else if op_name == b"defun" {
-            return compile_defun(l, false, name.to_vec(), args, body).map(Some);
-        } else if op_name == b"defun-inline" {
-            return compile_defun(l, true, name.to_vec(), args, body).map(Some);
+    if let Some(matched) = body.proper_list().and_then(|pl| match_op_name_4(&pl)) {
+        if matched.op_name == b"defconstant" {
+            compile_defconstant(
+                opts,
+                l,
+                matched.nl,
+                Some(matched.opl),
+                matched.name.to_vec(),
+                matched.args,
+            )
+            .map(Some)
+        } else if matched.op_name == b"defmacro" {
+            compile_defmacro(
+                opts,
+                l,
+                matched.nl,
+                Some(matched.opl),
+                matched.name.to_vec(),
+                matched.args,
+                matched.body,
+            )
+            .map(Some)
+        } else if matched.op_name == b"defun" {
+            compile_defun(
+                opts,
+                CompileDefun {
+                    l,
+                    nl: matched.nl,
+                    kwl: Some(matched.opl),
+                    inline: false,
+                    name: matched.name.to_vec(),
+                    args: matched.args,
+                    body: matched.body,
+                },
+            )
+            .map(Some)
+        } else if matched.op_name == b"defun-inline" {
+            compile_defun(
+                opts,
+                CompileDefun {
+                    l,
+                    nl: matched.nl,
+                    kwl: Some(matched.opl),
+                    inline: true,
+                    name: matched.name.to_vec(),
+                    args: matched.args,
+                    body: matched.body,
+                },
+            )
+            .map(Some)
+        } else {
+            Err(CompileErr(
+                matched.body.loc(),
+                "unknown keyword in helper".to_string(),
+            ))
         }
+    } else {
+        Err(CompileErr(
+            body.loc(),
+            "Helper wasn't in the proper form".to_string(),
+        ))
     }
-
-    Ok(None)
 }
 
 fn compile_mod_(
@@ -449,9 +603,10 @@ fn compile_mod_(
                 Some(_) => Err(CompileErr(l.clone(), "too many expressions".to_string())),
                 _ => Ok(mc.set_final(&CompileForm {
                     loc: mc.loc.clone(),
+                    include_forms: mc.includes.clone(),
                     args,
                     helpers: mc.helpers.clone(),
-                    exp: Rc::new(compile_bodyform(body.clone())?),
+                    exp: Rc::new(compile_bodyform(opts.clone(), body.clone())?),
                 })),
             },
             _ => {
@@ -475,9 +630,31 @@ fn compile_mod_(
     }
 }
 
+fn frontend_step_finish(
+    opts: Rc<dyn CompilerOpts>,
+    includes: &mut Vec<IncludeDesc>,
+    pre_forms: &[Rc<SExp>],
+) -> Result<ModAccum, CompileErr> {
+    let loc = pre_forms[0].loc();
+    frontend_start(
+        opts.clone(),
+        includes,
+        &[Rc::new(SExp::Cons(
+            loc.clone(),
+            Rc::new(SExp::Atom(loc.clone(), "mod".as_bytes().to_vec())),
+            Rc::new(SExp::Cons(
+                loc.clone(),
+                Rc::new(SExp::Nil(loc.clone())),
+                Rc::new(list_to_cons(loc, pre_forms)),
+            )),
+        ))],
+    )
+}
+
 fn frontend_start(
     opts: Rc<dyn CompilerOpts>,
-    pre_forms: Vec<Rc<SExp>>,
+    includes: &mut Vec<IncludeDesc>,
+    pre_forms: &[Rc<SExp>],
 ) -> Result<ModAccum, CompileErr> {
     if pre_forms.is_empty() {
         Err(CompileErr(
@@ -485,27 +662,12 @@ fn frontend_start(
             "empty source file not allowed".to_string(),
         ))
     } else {
-        let finish = || {
-            let loc = pre_forms[0].loc();
-            frontend_start(
-                opts.clone(),
-                vec![Rc::new(SExp::Cons(
-                    loc.clone(),
-                    Rc::new(SExp::Atom(loc.clone(), "mod".as_bytes().to_vec())),
-                    Rc::new(SExp::Cons(
-                        loc.clone(),
-                        Rc::new(SExp::Nil(loc.clone())),
-                        Rc::new(list_to_cons(loc, &pre_forms)),
-                    )),
-                ))],
-            )
-        };
         let l = pre_forms[0].loc();
         pre_forms[0]
             .proper_list()
             .map(|x| {
-                if x.len() < 3 {
-                    return finish();
+                if x.is_empty() {
+                    return frontend_step_finish(opts.clone(), includes, pre_forms);
                 }
 
                 if let SExp::Atom(_, mod_atom) = &x[0] {
@@ -521,7 +683,7 @@ fn frontend_start(
                         let body_vec = x.iter().skip(2).map(|s| Rc::new(s.clone())).collect();
                         let body = Rc::new(enlist(pre_forms[0].loc(), body_vec));
 
-                        let ls = preprocess(opts.clone(), body)?;
+                        let ls = preprocess(opts.clone(), includes, body)?;
                         return compile_mod_(
                             &ModAccum::new(l.clone()),
                             opts.clone(),
@@ -531,17 +693,22 @@ fn frontend_start(
                     }
                 }
 
-                finish()
+                frontend_step_finish(opts.clone(), includes, pre_forms)
             })
-            .unwrap_or_else(finish)
+            .unwrap_or_else(|| frontend_step_finish(opts, includes, pre_forms))
     }
 }
 
 pub fn frontend(
     opts: Rc<dyn CompilerOpts>,
-    pre_forms: Vec<Rc<SExp>>,
+    pre_forms: &[Rc<SExp>],
 ) -> Result<CompileForm, CompileErr> {
-    let started = frontend_start(opts.clone(), pre_forms)?;
+    let mut includes = Vec::new();
+    let started = frontend_start(opts.clone(), &mut includes, pre_forms)?;
+
+    for i in includes.iter() {
+        started.add_include(i.clone());
+    }
 
     let compiled: Result<CompileForm, CompileErr> = match started.exp_form {
         None => Err(CompileErr(
@@ -568,8 +735,7 @@ pub fn frontend(
         helper_map.insert(hpair.0.clone(), hpair.1.clone());
     }
 
-    let helper_names =
-        calculate_live_helpers(opts.clone(), &HashSet::new(), &expr_names, &helper_map);
+    let helper_names = calculate_live_helpers(&HashSet::new(), &expr_names, &helper_map);
 
     let mut live_helpers = Vec::new();
     for h in our_mod.helpers {
@@ -580,6 +746,7 @@ pub fn frontend(
 
     Ok(CompileForm {
         loc: our_mod.loc.clone(),
+        include_forms: includes.to_vec(),
         args: our_mod.args.clone(),
         helpers: live_helpers,
         exp: our_mod.exp.clone(),
