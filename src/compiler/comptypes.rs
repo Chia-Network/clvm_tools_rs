@@ -85,7 +85,7 @@ pub enum BodyForm {
     Quoted(SExp),
     Value(SExp),
     Call(Srcloc, Vec<Rc<BodyForm>>),
-    Mod(Srcloc, CompileForm),
+    Mod(Srcloc, bool, CompileForm),
 }
 
 #[derive(Clone, Debug)]
@@ -213,6 +213,7 @@ pub struct ModAccum {
     pub loc: Srcloc,
     pub includes: Vec<IncludeDesc>,
     pub helpers: Vec<HelperForm>,
+    pub left_capture: bool,
     pub exp_form: Option<CompileForm>,
 }
 
@@ -222,6 +223,7 @@ impl ModAccum {
             loc: self.loc.clone(),
             includes: self.includes.clone(),
             helpers: self.helpers.clone(),
+            left_capture: self.left_capture,
             exp_form: Some(c.clone()),
         }
     }
@@ -233,6 +235,7 @@ impl ModAccum {
             loc: self.loc.clone(),
             includes: new_includes,
             helpers: self.helpers.clone(),
+            left_capture: self.left_capture,
             exp_form: self.exp_form.clone(),
         }
     }
@@ -245,15 +248,17 @@ impl ModAccum {
             loc: self.loc.clone(),
             includes: self.includes.clone(),
             helpers: hs,
+            left_capture: self.left_capture,
             exp_form: self.exp_form.clone(),
         }
     }
 
-    pub fn new(loc: Srcloc) -> ModAccum {
+    pub fn new(loc: Srcloc, left_capture: bool) -> ModAccum {
         ModAccum {
             loc,
             includes: Vec::new(),
             helpers: Vec::new(),
+            left_capture,
             exp_form: None,
         }
     }
@@ -384,7 +389,7 @@ impl BodyForm {
             BodyForm::Quoted(a) => a.loc(),
             BodyForm::Call(loc, _) => loc.clone(),
             BodyForm::Value(a) => a.loc(),
-            BodyForm::Mod(kl, program) => kl.ext(&program.loc),
+            BodyForm::Mod(kl, _, program) => kl.ext(&program.loc),
         }
     }
 
@@ -424,9 +429,13 @@ impl BodyForm {
                 let converted: Vec<Rc<SExp>> = exprs.iter().map(|x| x.to_sexp()).collect();
                 Rc::new(list_to_cons(loc.clone(), &converted))
             }
-            BodyForm::Mod(loc, program) => Rc::new(SExp::Cons(
+            BodyForm::Mod(loc, left_env, program) => Rc::new(SExp::Cons(
                 loc.clone(),
-                Rc::new(SExp::Atom(loc.clone(), b"mod".to_vec())),
+                if *left_env {
+                    Rc::new(SExp::Atom(loc.clone(), b"mod+".to_vec()))
+                } else {
+                    Rc::new(SExp::Atom(loc.clone(), b"mod".to_vec()))
+                },
                 program.to_sexp(),
             )),
         }

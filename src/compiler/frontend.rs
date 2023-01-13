@@ -64,7 +64,17 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
             }
             result
         }
-        BodyForm::Mod(_, _) => vec![],
+        BodyForm::Mod(_, false, _) => vec![],
+        BodyForm::Mod(_, true, form) => {
+            let mut result = Vec::new();
+            for h in form.helpers.iter() {
+                let mut helper_uses = collect_used_names_helperform(h);
+                result.append(&mut helper_uses);
+            }
+            let mut body_uses = collect_used_names_bodyform(form.exp.borrow());
+            result.append(&mut body_uses);
+            result
+        }
     }
 }
 
@@ -329,7 +339,10 @@ pub fn compile_bodyform(
                                 qq_to_expression(opts, Rc::new(quote_body))
                             } else if *atom_name == "mod".as_bytes().to_vec() {
                                 let subparse = frontend(opts, &[body.clone()])?;
-                                Ok(BodyForm::Mod(op.loc(), subparse))
+                                Ok(BodyForm::Mod(op.loc(), false, subparse))
+                            } else if *atom_name == "mod+".as_bytes().to_vec() {
+                                let subparse = frontend(opts, &[body.clone()])?;
+                                Ok(BodyForm::Mod(op.loc(), true, subparse))
                             } else if *atom_name == "lambda".as_bytes().to_vec() {
                                 handle_lambda(opts, &v)
                             } else {
@@ -681,14 +694,15 @@ fn frontend_start(
                         ));
                     }
 
-                    if *mod_atom == "mod".as_bytes().to_vec() {
+                    let is_capture_mod = *mod_atom == b"mod+";
+                    if is_capture_mod || *mod_atom == b"mod" {
                         let args = Rc::new(x[1].clone());
                         let body_vec = x.iter().skip(2).map(|s| Rc::new(s.clone())).collect();
                         let body = Rc::new(enlist(pre_forms[0].loc(), body_vec));
 
                         let ls = preprocess(opts.clone(), includes, body)?;
                         return compile_mod_(
-                            &ModAccum::new(l.clone()),
+                            &ModAccum::new(l.clone(), is_capture_mod),
                             opts.clone(),
                             args,
                             Rc::new(list_to_cons(l, &ls)),

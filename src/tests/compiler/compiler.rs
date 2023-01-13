@@ -1283,3 +1283,60 @@ fn test_lambda_in_map_with_let_surrounding() {
     let res = run_string(&prog, &"(5 (1 2 3 4))".to_string()).unwrap();
     assert_eq!(res.to_string(), "(11 12 13 14)");
 }
+
+#[test]
+fn test_map_with_lambda_function_from_env_and_bindings() {
+    let prog = indoc! {"
+    (mod (add-number L)
+
+     (include *standard-cl-21*)
+
+     (defun map (F L)
+      (if L
+       (c (a F (list (f L))) (map F (r L)))
+       ()
+      )
+     )
+
+     (defun add-twice (X Y) (+ (* 2 X) Y))
+
+     (map
+      (lambda ((& add-number) number) (add-twice add-number number))
+      L
+     )
+    )"}
+    .to_string();
+    let res = run_string(&prog, &"(5 (1 2 3 4))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(11 12 13 14)");
+}
+
+#[test]
+fn test_map_with_lambda_function_from_env_no_bindings() {
+    let prog = indoc! {"
+    (mod (L)
+
+     (include *standard-cl-21*)
+
+     (defun map (F L)
+      (if L
+       (c (a F (list (f L))) (map F (r L)))
+       ()
+      )
+     )
+
+     (defun sum-list (L)
+       (if L
+         (+ (f L) (sum-list (r L)))
+         ()
+         )
+       )
+
+     (map
+      (lambda (lst) (sum-list lst))
+      L
+     )
+    )"}
+    .to_string();
+    let res = run_string(&prog, &"(((5 10 15) (2 4 8) (3 6 9)))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(30 14 18)");
+}
