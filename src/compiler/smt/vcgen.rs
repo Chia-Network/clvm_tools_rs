@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 use std::rc::Rc;
 use crate::compiler::comptypes::{BodyForm, CompileForm};
-use crate::compiler::smt::verification::VerificationCondition;
 
 pub trait Proposition {
     fn and(&self, other: Rc<dyn Proposition>) -> Rc<dyn DebugProposition>;
@@ -47,6 +46,4 @@ impl VCGenerator {
         self.nextvar += 1;
         format!("_tmp_{}", next_var_num)
     }
-
-    
 }

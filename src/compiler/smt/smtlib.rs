@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use std::io::Write;
+use std::rc::Rc;
 
 use rsmt2::{Logic, Solver};
 use rsmt2::errors::{Error, ErrorKind, SmtRes};
-
-use super::model::ModelOrMessage;
+use rsmt2::print::{AdtDecl, AdtVariant, AdtVariantField, Sort2Smt, Sym2Smt};
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::sexp::{decode_string, SExp};
@@ -71,6 +72,110 @@ fn to_u8(i: &Number) -> u8 {
     }
 }
 
+fn integerize(stmt: &SExp, s: &SExp) -> SmtRes<SExp> {
+    match s {
+        SExp::Nil(l) => Ok(SExp::Integer(l.clone(), bi_zero())),
+        SExp::Integer(_, _) => Ok(s.clone()),
+        _ => {
+            Err(Error::from_kind(
+                ErrorKind::ParseError(
+                    stmt.to_string(),
+                    format!("argument {} must be an integer in {}", s, stmt)
+                )
+            ))
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct GenericAdtString {
+    s: String
+}
+
+impl GenericAdtString {
+    fn new(s: String) -> Self {
+        GenericAdtString { s }
+    }
+}
+
+impl Sym2Smt for GenericAdtString {
+    fn sym_to_smt2<Writer>(&self, writer: &mut Writer, i: ()) -> Result<(), rsmt2::prelude::Error> where Writer: Write {
+        writer.write(self.s.as_bytes()).map(|_| ()).map_err(|_| {
+            Error::from_kind(
+                ErrorKind::ParseError(
+                    self.s.clone(),
+                    "failed to convert string".to_string()
+                )
+            )
+        })
+    }
+}
+
+impl Sort2Smt for GenericAdtString {
+    fn sort_to_smt2<Writer>(&self, writer: &mut Writer) -> Result<(), rsmt2::prelude::Error> where Writer: Write {
+        writer.write(self.s.as_bytes()).map(|_| ()).map_err(|_| {
+            Error::from_kind(
+                ErrorKind::ParseError(
+                    self.s.clone(),
+                    "failed to convert string".to_string()
+                )
+            )
+        })
+    }
+}
+
+pub struct GenericAdtField {
+    sym: GenericAdtString,
+    sort: GenericAdtString
+}
+
+impl GenericAdtField {
+    // As usual, `AdtVariantField` is implemented for certain pairs.
+    fn as_decl(&self) -> impl AdtVariantField {
+        (self.sym.clone(), self.sort.clone())
+    }
+}
+
+pub struct GenericAdtVariant {
+    sym: GenericAdtString,
+    fields: Vec<GenericAdtField>
+}
+
+impl GenericAdtVariant {
+    // Variant declaration; again, `AdtVariant` is implemented for certain types of pairs.
+    fn as_decl<'me>(&'me self) -> impl AdtVariant + 'me {
+        (
+            // Symbol.
+            self.sym.clone(),
+            // Iterator over field declarations.
+            self.fields.iter().map(GenericAdtField::as_decl),
+        )
+    }
+}
+
+pub struct GenericAdtSort {
+    sym: GenericAdtString,
+    args: Vec<GenericAdtString>,
+    variants: Vec<GenericAdtVariant>
+}
+
+impl GenericAdtSort {
+    // This thing build the actual definition expected by rsmt2. Its output is something that
+    // implements `AdtDecl` and can only live as long as the input ref to `self`.
+    fn as_decl<'me>(&'me self) -> impl AdtDecl + 'me {
+        // Check out rsmt2's documentation and you'll see that `AdtDecl` is already implemented for
+        // certain triplets.
+        (
+            // Symbol.
+            self.sym.clone(),
+            // Sized collection of type-parameter symbols.
+            &self.args,
+            // Variant, collection of iterator over `impl AdtVariant` (see below).
+            self.variants.iter().map(GenericAdtVariant::as_decl),
+        )
+    }
+}
+
 impl SMTSolver {
     pub fn new() -> SmtRes<Self> {
         Ok(SMTSolver {
@@ -79,10 +184,6 @@ impl SMTSolver {
     }
 
     pub fn prepare_smt(&mut self) -> SmtRes<SExp> {
-        todo!();
-    }
-
-    pub fn solve(&mut self) -> SmtRes<ModelOrMessage> {
         todo!();
     }
 
@@ -98,10 +199,12 @@ impl SMTSolver {
         // reset
         // push
         // pop
+        // declare-datatype
         // declare-sort
         // declare-fun
         // define-sort
         // define-fun
+        // define-fun-rec
         // check_sat
         let p =
             if let Some(p) = stmt.proper_list() {
@@ -134,8 +237,6 @@ impl SMTSolver {
                     )
                 ))
             }?;
-
-        eprintln!("op {}", decode_string(&op));
 
         if op == b"set-logic" && p.len() == 2 {
             if let SExp::Atom(_,name) = &p[1] {
@@ -174,8 +275,88 @@ impl SMTSolver {
                 self.solver.pop(n)?;
                 return done;
             }
+        } else if op == b"declare-datatype" && p.len() == 3 {
+            if let SExp::Atom(_,name) = &p[1] {
+                if let Some(vlist) = p[2].proper_list() {
+                    let mut new_sort = GenericAdtSort {
+                        sym: GenericAdtString::new(decode_string(&name)),
+                        args: Vec::new(),
+                        variants: Vec::new()
+                    };
+                    if vlist.is_empty() {
+                        self.solver.declare_datatypes([new_sort.as_decl()].iter())?;
+                        return done;
+                    }
+
+                    let mut start_variants = 0;
+                    if let SExp::Atom(_, par_name) = &vlist[0] {
+                        if par_name == b"par" && vlist.len() > 1 {
+                            // Take parameters.
+                            if let Some(plist) = vlist[1].proper_list() {
+                                for par in plist.iter() {
+                                    if let SExp::Atom(_,pname) = &par {
+                                        new_sort.args.push(GenericAdtString::new(decode_string(&pname)));
+                                    } else {
+                                        // Error
+                                        todo!()
+                                    }
+                                }
+                            } else {
+                                // Error
+                                todo!()
+                            }
+                            start_variants = 2;
+                        }
+                    }
+
+                    for v in vlist.iter().skip(start_variants) {
+                        // form of (name (accessor type) ...)
+                        if let Some(variant_list) = v.proper_list() {
+                            if variant_list.is_empty() {
+                                // Error
+                                todo!()
+                            }
+                            if let SExp::Atom(_,varname) = &variant_list[0] {
+                                let mut variant = GenericAdtVariant {
+                                    sym: GenericAdtString::new(decode_string(&varname)),
+                                    fields: Vec::new()
+                                };
+                                for field in variant_list.iter().skip(1) {
+                                    if let Some(flist) = field.proper_list() {
+                                        if flist.len() != 2 {
+                                            // Error
+                                            todo!()
+                                        }
+                                        if let (SExp::Atom(_, fname), SExp::Atom(_, sname)) = (&flist[0], &flist[1]) {
+                                            variant.fields.push(GenericAdtField {
+                                                sym: GenericAdtString::new(decode_string(&fname)),
+                                                sort: GenericAdtString::new(decode_string(&sname))
+                                            });
+                                        } else {
+                                            // Error
+                                            todo!()
+                                        }
+                                    } else {
+                                        // Error
+                                        todo!()
+                                    }
+                                }
+                                new_sort.variants.push(variant);
+                            } else {
+                                // Error
+                                todo!()
+                            }
+                        } else {
+                            // Error
+                            todo!()
+                        }
+                    }
+                    self.solver.declare_datatypes(&[new_sort.as_decl()])?;
+                    return done;
+                }
+            }
         } else if op == b"declare-sort" && p.len() == 3 {
-            if let (SExp::Atom(_,name), SExp::Integer(_,i)) = (&p[1], &p[2]) {
+            if let (SExp::Atom(_,name), SExp::Integer(_,i)) = (&p[1], integerize(&stmt, &p[2])?) {
                 let n = to_u8(&i);
                 self.solver.declare_sort(decode_string(&name), n)?;
                 return done;
@@ -211,7 +392,7 @@ impl SMTSolver {
                 self.solver.define_sort(decode_string(&name), &argvec, p[3].to_string())?;
                 return done;
             }
-        } else if op == b"define-fun" && p.len() == 5 {
+        } else if (op == b"define-fun" || op == b"define-fun-rec") && p.len() == 5 {
             if let (SExp::Atom(_,name), Some(lst)) =
                 (&p[1], p[2].proper_list())
             {
@@ -231,7 +412,11 @@ impl SMTSolver {
                         }
                     }
                 }
-                self.solver.define_fun(decode_string(&name), &argvec, p[3].to_string(), p[4].to_string())?;
+                if op == b"define-fun" {
+                    self.solver.define_fun(decode_string(&name), &argvec, p[3].to_string(), p[4].to_string())?;
+                } else {
+                    self.solver.define_fun_rec(decode_string(&name), &argvec, p[3].to_string(), p[4].to_string())?;
+                }
                 return done;
             }
         } else if op == b"check-sat" {
@@ -240,6 +425,19 @@ impl SMTSolver {
                     SExp::Integer(stmt.loc(), bi_one())
                 } else {
                     SExp::Integer(stmt.loc(), bi_zero())
+                }
+            });
+        } else if op == b"want-unsat" {
+            return self.solver.check_sat().and_then(|b| {
+                if b {
+                    return Err(Error::from_kind(
+                        ErrorKind::ParseError(
+                            stmt.to_string(),
+                            "wanted unsat, got sat".to_string()
+                        )
+                    ));
+                } else {
+                    return Ok(SExp::Integer(stmt.loc(), bi_zero()));
                 }
             });
         }

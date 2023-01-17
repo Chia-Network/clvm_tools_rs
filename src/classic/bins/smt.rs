@@ -15,7 +15,7 @@ fn main() {
     };
 
     for a in args.iter().skip(1) {
-        match parse_sexp(loc.clone(), &a) {
+        match parse_sexp(loc.clone(), a.bytes()) {
             Ok(l) => {
                 match solver.run_stmt(&l[0]) {
                     Ok(res) => {

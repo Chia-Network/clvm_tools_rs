@@ -91,3 +91,7 @@ path = "src/classic/bins/repl.rs"
 [[bin]]
 name = "smt"
 path = "src/classic/bins/smt.rs"
+
+[[bin]]
+name = "smtcheck"
+path = "src/classic/bins/smtcheck.rs"
