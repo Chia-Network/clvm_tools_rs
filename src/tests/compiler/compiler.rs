@@ -1340,3 +1340,51 @@ fn test_map_with_lambda_function_from_env_no_bindings() {
     let res = run_string(&prog, &"(((5 10 15) (2 4 8) (3 6 9)))".to_string()).unwrap();
     assert_eq!(res.to_string(), "(30 14 18)");
 }
+
+#[test]
+fn test_lambda_using_let() {
+    let prog = indoc! {"
+    (mod (P L)
+
+     (include *standard-cl-21*)
+
+     (defun map (F L)
+      (if L
+       (c (a F (list (f L))) (map F (r L)))
+       ()
+      )
+     )
+
+     (map
+      (lambda ((& P) item) (let ((composed (c P item))) composed))
+      L
+     )
+    )"}
+    .to_string();
+    let res = run_string(&prog, &"(1 (10 20 30))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "((1 . 10) (1 . 20) (1 . 30))");
+}
+
+#[test]
+fn test_lambda_using_macro() {
+    let prog = indoc! {"
+    (mod (P L)
+
+     (include *standard-cl-21*)
+
+     (defun map (F L)
+      (if L
+       (c (a F (list (f L))) (map F (r L)))
+       ()
+      )
+     )
+
+     (map
+      (lambda ((& P) item) (list P item))
+      L
+     )
+    )"}
+    .to_string();
+    let res = run_string(&prog, &"(1 (10 20 30))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "((1 10) (1 20) (1 30))");
+}

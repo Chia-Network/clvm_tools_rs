@@ -1038,6 +1038,7 @@ fn start_codegen(
                     .set_compiler(use_compiler.clone())
                     .set_in_defun(false)
                     .set_stdenv(false)
+                    .set_start_env(None)
                     .set_frontend_opt(false);
 
                 updated_opts
