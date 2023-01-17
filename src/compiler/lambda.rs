@@ -52,42 +52,32 @@ fn find_and_compose_captures(
     }
 
     Ok((
-        Rc::new(SExp::Cons(sexp.loc(), capture_args.clone(), args.clone())),
+        Rc::new(SExp::Cons(sexp.loc(), capture_args, args)),
         captures,
     ))
 }
 
-fn make_call(
-    loc: Srcloc,
-    head: &str,
-    args: &[BodyForm]
-) -> BodyForm {
+fn make_call(loc: Srcloc, head: &str, args: &[BodyForm]) -> BodyForm {
     let mut use_vec: Vec<Rc<BodyForm>> = args.iter().cloned().map(Rc::new).collect();
-    use_vec.insert(0, Rc::new(BodyForm::Value(SExp::atom_from_string(loc.clone(), head))));
+    use_vec.insert(
+        0,
+        Rc::new(BodyForm::Value(SExp::atom_from_string(loc.clone(), head))),
+    );
     BodyForm::Call(loc, use_vec)
 }
 
-fn make_operator(
-    loc: Srcloc,
-    op: u8,
-    arg1: Rc<BodyForm>,
-    arg2: Rc<BodyForm>
-) -> BodyForm {
+fn make_operator(loc: Srcloc, op: u8, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) -> BodyForm {
     BodyForm::Call(
         loc.clone(),
         vec![
             Rc::new(BodyForm::Value(SExp::Atom(loc, vec![op]))),
             arg1,
-            arg2
-        ]
+            arg2,
+        ],
     )
 }
 
-fn make_cons(
-    loc: Srcloc,
-    arg1: Rc<BodyForm>,
-    arg2: Rc<BodyForm>
-) -> BodyForm {
+fn make_cons(loc: Srcloc, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) -> BodyForm {
     make_operator(loc, 4, arg1, arg2)
 }
 
@@ -145,16 +135,8 @@ pub fn handle_lambda(opts: Rc<dyn CompilerOpts>, v: &[SExp]) -> Result<BodyForm,
     let cons_atom = BodyForm::Value(SExp::Atom(v[0].loc(), vec![4]));
     let whole_env = quote_atom.clone();
 
-    let compose_captures = make_cons(
-        v[0].loc(),
-        Rc::new(quote_atom.clone()),
-        captures.clone(),
-    );
-    let quoted_code = make_cons(
-        v[0].loc(),
-        Rc::new(quote_atom.clone()),
-        Rc::new(module),
-    );
+    let compose_captures = make_cons(v[0].loc(), Rc::new(quote_atom.clone()), captures);
+    let quoted_code = make_cons(v[0].loc(), Rc::new(quote_atom.clone()), Rc::new(module));
 
     let lambda_output = make_call(
         v[0].loc(),
@@ -167,19 +149,11 @@ pub fn handle_lambda(opts: Rc<dyn CompilerOpts>, v: &[SExp]) -> Result<BodyForm,
                 "list",
                 &[
                     cons_atom.clone(),
-                    make_cons(
-                        v[0].loc(),
-                        Rc::new(quote_atom),
-                        retrieve_left_env,
-                    ),
+                    make_cons(v[0].loc(), Rc::new(quote_atom), retrieve_left_env),
                     make_call(
                         v[0].loc(),
                         "list",
-                        &[
-                            cons_atom,
-                            compose_captures,
-                            whole_env
-                        ],
+                        &[cons_atom, compose_captures, whole_env],
                     ),
                 ],
             ),
