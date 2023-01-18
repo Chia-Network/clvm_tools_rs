@@ -30,6 +30,30 @@ fn is_at_form(head: Rc<BodyForm>) -> bool {
     }
 }
 
+// Return a score for sexp size.
+pub fn sexp_scale(sexp: &SExp) -> u64 {
+    match sexp {
+        SExp::Cons(_,a,b) => {
+            let a_scale = sexp_scale(a.borrow());
+            let b_scale = sexp_scale(b.borrow());
+            1_u64 + a_scale + b_scale
+        }
+        SExp::Nil(_) => 1,
+        SExp::QuotedString(_,_,s) => {
+            1_u64 + s.len() as u64
+        }
+        SExp::Atom(_,n) => {
+            1_u64 + n.len() as u64
+        }
+        SExp::Integer(_,i) => {
+            let raw_bits = i.bits();
+            let use_bits = if raw_bits > 0 { raw_bits - 1 } else { 0 };
+            let bytes = use_bits / 8;
+            1_u64 + bytes
+        }
+    }
+}
+
 pub fn optimize_expr(
     allocator: &mut Allocator,
     opts: Rc<dyn CompilerOpts>,
@@ -329,12 +353,107 @@ pub fn finish_optimization(sexp: &SExp) -> SExp {
         sexp.clone()
     }
 }
+
+fn compile_to_sexp(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    compileform: &CompileForm
+) -> Result<SExp, CompileErr> {
+    let new_program = Rc::new(SExp::Cons(
+        compileform.loc.clone(),
+        Rc::new(SExp::Atom(compileform.loc.clone(), "mod".as_bytes().to_vec())),
+        compileform.to_sexp()
+    ));
+
+    let code = opts.compile_program(
+        allocator,
+        runner.clone(),
+        new_program,
+        &mut HashMap::new()
+    )?;
+
+    Ok(code)
+}
+
+fn try_deinline(
+    helper: &mut HelperForm
+) -> Option<HelperForm> {
+    if let Some((currently_inline, current_data)) =
+        match helper {
+            HelperForm::Defun(inline, data) => {
+                Some((inline, data.clone()))
+            }
+            _ => None
+        } {
+            if *currently_inline {
+                let result = helper.clone();
+                *helper = HelperForm::Defun(false, current_data);
+                return Some(result);
+            }
+        };
+
+    None
+}
+
+fn try_shrink_with_deinline(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    mut compileform: CompileForm
+) -> Result<CompileForm, CompileErr> {
+    let no_opt_options = opts.set_frontend_opt(false);
+    let baseline_compile = compile_to_sexp(
+        allocator,
+        runner.clone(),
+        no_opt_options.clone(),
+        &compileform
+    )?;
+    let mut current_size = sexp_scale(baseline_compile.borrow());
+    let first_size = current_size;
+    let mut shrunk = true;
+
+    while shrunk {
+        shrunk = false;
+        for i in 0..compileform.helpers.len() {
+            if let Some(orig) = try_deinline(&mut compileform.helpers[i]) {
+                if let Ok(compiled) = compile_to_sexp(
+                    allocator,
+                    runner.clone(),
+                    no_opt_options.clone(),
+                    &compileform
+                ) {
+                    let new_size = sexp_scale(compiled.borrow());
+                    if new_size < current_size {
+                        shrunk = true;
+                        current_size = new_size;
+                        continue;
+                    } else {
+                        compileform.helpers[i] = orig;
+                    }
+                } else {
+                    compileform.helpers[i] = orig;
+                }
+            }
+        }
+    }
+    Ok(compileform)
+}
+
 pub fn fe_opt(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
-    compileform: CompileForm,
+    orig_compileform: CompileForm,
 ) -> Result<CompileForm, CompileErr> {
+    // Test binary size exchanging inlines for non-inlines.
+    let compileform = try_shrink_with_deinline(
+        allocator,
+        runner.clone(),
+        opts.clone(),
+        orig_compileform
+    )?;
+
     let mut compiler_helpers = compileform.helpers.clone();
     let mut used_names = HashSet::new();
 
@@ -378,6 +497,7 @@ pub fn fe_opt(
                         name: defun.name.clone(),
                         args: defun.args.clone(),
                         body: body_rc.clone(),
+                        synthetic: defun.synthetic
                     },
                 );
                 optimized_helpers.push(new_helper);

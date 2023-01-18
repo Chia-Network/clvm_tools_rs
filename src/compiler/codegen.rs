@@ -764,6 +764,7 @@ fn generate_let_defun(
             name: name.to_owned(),
             args: Rc::new(inner_function_args),
             body,
+            synthetic: true
         },
     )
 }
@@ -930,6 +931,7 @@ fn process_helper_let_bindings(
                         name: defun.name.clone(),
                         args: defun.args.clone(),
                         body: hoisted_body,
+                        synthetic: true
                     },
                 );
 

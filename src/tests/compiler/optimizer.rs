@@ -114,3 +114,22 @@ fn smoke_test_optimizer() {
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
     assert!(res.opt.run_cost < res.unopt.run_cost);
 }
+
+#[test]
+fn test_optimizer_shrinks_inlines() {
+    let res = do_compile_and_run_opt_size_test(
+        indoc!{"
+        (mod (A)
+          (include *standard-cl-22*)
+          (defun-inline F (N) (* 3 (+ 1 N)))
+          (let* ((FN (F A)))
+            (let ((FA (+ FN 1)) (FB (- FN 1)) (FC (* FN 2)))
+              (+ FA FB FC)
+              )
+            )
+          )
+        "},
+        "(3)"
+    ).expect("should compile and run");
+    assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
+}

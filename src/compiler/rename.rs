@@ -285,6 +285,7 @@ fn rename_in_helperform(namemap: &HashMap<Vec<u8>, Vec<u8>>, h: &HelperForm) -> 
                 name: defun.name.to_vec(),
                 args: defun.args.clone(),
                 body: Rc::new(rename_in_bodyform(namemap, defun.body.clone())),
+                synthetic: defun.synthetic
             },
         ),
     }
@@ -343,6 +344,7 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
                         &local_namemap,
                         Rc::new(local_renamed_body),
                     )),
+                    synthetic: defun.synthetic
                 },
             )
         }

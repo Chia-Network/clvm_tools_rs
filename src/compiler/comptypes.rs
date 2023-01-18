@@ -96,6 +96,7 @@ pub struct DefunData {
     pub nl: Srcloc,
     pub args: Rc<SExp>,
     pub body: Rc<BodyForm>,
+    pub synthetic: bool
 }
 
 #[derive(Clone, Debug)]
