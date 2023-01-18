@@ -54,20 +54,27 @@ pub fn assemble_from_ir(
 }
 
 fn has_oversized_sign_extension(atom: &Bytes) -> bool {
-    if atom.length() < 3 {
+    // Can't have an extra sign extension if the number is too short.
+    if atom.length() < 2 {
         return false;
     }
 
     let data = atom.data();
     if data[0] == 0 {
+        // This is a canonical value.  The opposite is non-canonical.
         // 0x0080 -> 128
-        return data[1] & 0x80 == 0x80;
-    } else if data[0] == 0xff {
-        // 0xff00 -> -256
+        // 0x0000 -> 0x0000.  Non canonical because the second byte
+        // wouldn't suggest sign extension so the first 0 is redundant.
         return data[1] & 0x80 == 0;
+    } else if data[0] == 0xff {
+        // This is a canonical value.  The opposite is non-canonical.
+        // 0xff00 -> -256
+        // 0xffff -> 0xffff.  Non canonical because the second byte
+        // would suggest sign extension so the first 0xff is redundant.
+        return data[1] & 0x80 != 0;
     }
 
-    true
+    false
 }
 
 pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
