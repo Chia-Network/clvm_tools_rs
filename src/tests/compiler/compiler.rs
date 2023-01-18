@@ -1168,7 +1168,7 @@ fn test_cl22_opt_example_1() {
      )
     )"}.to_string();
     let res = run_string(&prog, &"(3)".to_string()).unwrap();
-    assert_eq!(res.to_string(), "0x5b8d92"); // 6000018
+    assert_eq!(res.to_string(), "6000018");
 }
 
 #[test]

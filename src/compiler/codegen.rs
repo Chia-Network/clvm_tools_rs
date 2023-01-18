@@ -777,7 +777,7 @@ fn generate_let_defun(
         count_occurrences(&b.name, body.borrow())
     }).sum();
 
-    let inline = !opts.frontend_opt() && deinline_score == 1;
+    let inline = !opts.frontend_opt() || deinline_score == 1;
     let h = HelperForm::Defun(
         inline,
         DefunData {

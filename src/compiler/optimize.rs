@@ -1,10 +1,12 @@
+use num_bigint::ToBigInt;
+
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::bi_zero;
+use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::run;
@@ -52,6 +54,13 @@ pub fn sexp_scale(sexp: &SExp) -> u64 {
             1_u64 + bytes
         }
     }
+}
+
+#[test]
+fn test_sexp_scale_increases_with_atom_size() {
+    let l = Srcloc::start("*test*");
+    assert!(sexp_scale(&SExp::Integer(l.clone(), bi_one())) <
+            sexp_scale(&SExp::Integer(l, 1000000_u32.to_bigint().unwrap())));
 }
 
 pub fn optimize_expr(

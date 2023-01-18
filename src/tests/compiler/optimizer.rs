@@ -148,5 +148,7 @@ fn test_optimizer_shrinks_repeated_lets() {
     )"},
         "(3)"
     ).expect("should compile and run");
+    eprintln!("res.unopt.compiled_hex {}", res.unopt.compiled_hex);
+    eprintln!("res.opt.compiled_hex . {}", res.opt.compiled_hex);
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
 }

@@ -100,18 +100,22 @@ pub fn compile_pre_forms(
         let compileform_inlined =
             fe_opt(allocator, runner.clone(), opts.clone(), &g, true)?;
         let generated_inlined =
-            codegen(allocator, runner.clone(), opts.clone(), &compileform_inlined, symbol_table)?;
+            finish_optimization(&codegen(allocator, runner.clone(), opts.clone(), &compileform_inlined, symbol_table)?);
         let compileform_noninlined =
             fe_opt(allocator, runner.clone(), opts.clone(), &g, false)?;
         let generated_noninlined =
-            codegen(allocator, runner, opts, &compileform_noninlined, symbol_table)?;
+            finish_optimization(&codegen(allocator, runner, opts, &compileform_noninlined, symbol_table)?);
+        let inlined_scale = sexp_scale(&generated_inlined);
+        let noninlined_scale =  sexp_scale(&generated_noninlined);
+        eprintln!("generated_inlined {} {}", inlined_scale, generated_inlined);
+        eprintln!("generated_noninlined {} {}", noninlined_scale, generated_noninlined);
         let generated =
-            if sexp_scale(&generated_inlined) < sexp_scale(&generated_noninlined) {
+            if inlined_scale < noninlined_scale {
                 generated_inlined
             } else {
                 generated_noninlined
             };
-        Ok(finish_optimization(&generated))
+        Ok(generated)
     } else {
         codegen(allocator, runner, opts.clone(), &g, symbol_table)
     }
