@@ -100,6 +100,21 @@ fn do_compile_and_run_opt_size_test(
 }
 
 #[test]
+fn test_optimizer_tables_big_constants() {
+    let res = do_compile_and_run_opt_size_test(
+        indoc!{"
+        (mod (A)
+         (include *standard-cl-22*)
+         (defconstant X \"hi there this is a test\")
+         (c X (c X A))
+         )
+        "},
+        "(test)"
+    ).expect("should compile and run");
+    assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
+}
+
+#[test]
 fn smoke_test_optimizer() {
     let res = do_compile_and_run_opt_size_test(
         indoc!{"
@@ -148,7 +163,5 @@ fn test_optimizer_shrinks_repeated_lets() {
     )"},
         "(3)"
     ).expect("should compile and run");
-    eprintln!("res.unopt.compiled_hex {}", res.unopt.compiled_hex);
-    eprintln!("res.opt.compiled_hex . {}", res.opt.compiled_hex);
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
 }
