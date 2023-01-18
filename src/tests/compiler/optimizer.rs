@@ -13,7 +13,7 @@ use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 struct CompileRunResult {
-    // pub compiled: Rc<SExp>,
+    pub compiled: Rc<SExp>,
     pub compiled_hex: String,
     pub run_result: Rc<SExp>,
     pub run_cost: u64
@@ -42,7 +42,7 @@ fn run_with_cost(
         RunFailure::RunErr(sexp.loc(), format!("{} in {} {}", e.1, sexp, env))
     }).and_then(|reduction| {
         Ok(CompileRunResult {
-            // compiled: sexp.clone(),
+            compiled: sexp.clone(),
             compiled_hex,
             run_result: convert_from_clvm_rs(allocator, sexp.loc(), reduction.1)?,
             run_cost: reduction.0
@@ -129,6 +129,23 @@ fn test_optimizer_shrinks_inlines() {
             )
           )
         "},
+        "(3)"
+    ).expect("should compile and run");
+    assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
+}
+
+#[test]
+fn test_optimizer_shrinks_repeated_lets() {
+    let res = do_compile_and_run_opt_size_test(
+        indoc!{"
+    (mod (X)
+     (include *standard-cl-22*)
+     (defconstant Z 1000000)
+     (let
+      ((X1 (+ X Z)))
+      (+ X1 X1 X1 X1 X1 X1)
+     )
+    )"},
         "(3)"
     ).expect("should compile and run");
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());

@@ -91,7 +91,7 @@ pub fn check_parameters_used_compileform(
         program.args.clone(),
         &env,
         program.exp.clone(),
-        false,
+        Default::default(),
     )?;
 
     remove_present_atoms(&mut replacement_to_original, result.to_sexp());

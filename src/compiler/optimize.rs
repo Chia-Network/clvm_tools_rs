@@ -13,7 +13,7 @@ use crate::compiler::comptypes::{BodyForm, Callable, CompileErr, CompileForm, Co
 #[cfg(test)]
 use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::compiler::{is_cons, is_operator};
-use crate::compiler::evaluate::{build_reflex_captures, Evaluator};
+use crate::compiler::evaluate::{build_reflex_captures, Evaluator, ExpandMode};
 #[cfg(test)]
 use crate::compiler::frontend::compile_bodyform;
 #[cfg(test)]
@@ -444,16 +444,10 @@ pub fn fe_opt(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
-    orig_compileform: CompileForm,
+    compileform: &CompileForm,
+    with_inlines: bool
 ) -> Result<CompileForm, CompileErr> {
-    // Test binary size exchanging inlines for non-inlines.
-    let compileform = try_shrink_with_deinline(
-        allocator,
-        runner.clone(),
-        opts.clone(),
-        orig_compileform
-    )?;
-
+    eprintln!("fe_opt {}", compileform.to_sexp());
     let mut compiler_helpers = compileform.helpers.clone();
     let mut used_names = HashSet::new();
 
@@ -486,7 +480,7 @@ pub fn fe_opt(
                     defun.args.clone(),
                     &env,
                     defun.body.clone(),
-                    true,
+                    ExpandMode { functions: false, lets: with_inlines },
                 )?;
                 let new_helper = HelperForm::Defun(
                     *inline,
@@ -518,13 +512,13 @@ pub fn fe_opt(
         compileform.args.clone(),
         &env,
         compileform.exp.clone(),
-        true,
+        ExpandMode { functions: false, lets: with_inlines },
     )?;
 
     Ok(CompileForm {
         loc: compileform.loc.clone(),
         include_forms: compileform.include_forms.clone(),
-        args: compileform.args,
+        args: compileform.args.clone(),
         helpers: optimized_helpers.clone(),
         exp: shrunk,
     })

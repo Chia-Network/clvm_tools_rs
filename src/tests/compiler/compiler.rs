@@ -1157,6 +1157,21 @@ fn test_defconstant_tree() {
 }
 
 #[test]
+fn test_cl22_opt_example_1() {
+    let prog = indoc! {"
+    (mod (X)
+     (include *standard-cl-22*)
+     (defconstant Z 1000000)
+     (let
+      ((X1 (+ X Z)))
+      (+ X1 X1 X1 X1 X1 X1)
+     )
+    )"}.to_string();
+    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "0x5b8d92"); // 6000018
+}
+
+#[test]
 fn test_inline_out_of_bounds_diagnostic() {
     let prog = indoc! {"
 (mod ()

@@ -21,7 +21,7 @@ use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::frontend::compile_bodyform;
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
-use crate::compiler::optimize::optimize_expr;
+use crate::compiler::optimize::{optimize_expr, sexp_scale};
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
@@ -714,6 +714,23 @@ fn is_defun_or_tabled_const(b: &HelperForm) -> bool {
     }
 }
 
+fn count_occurrences(name: &[u8], expr: &BodyForm) -> usize {
+    match expr {
+        BodyForm::Value(SExp::Atom(_,n)) => {
+            if n == name { 1 } else { 0 }
+        }
+        BodyForm::Call(_, v) => {
+            v.iter().map(|item| count_occurrences(name, item)).sum()
+        }
+        BodyForm::Let(_, data) => {
+            let use_in_bindings: usize =
+                data.bindings.iter().map(|b| count_occurrences(name, b.body.borrow())).sum();
+            count_occurrences(name, data.body.borrow()) + use_in_bindings
+        }
+        _ => { 0 }
+    }
+}
+
 pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> PrimaryCodegen {
     let nil = SExp::Nil(l.clone());
     let nil_rc = Rc::new(nil.clone());
@@ -736,7 +753,7 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
 }
 
 fn generate_let_defun(
-    _compiler: &PrimaryCodegen,
+    opts: Rc<dyn CompilerOpts>,
     l: Srcloc,
     kwl: Option<Srcloc>,
     name: &[u8],
@@ -755,8 +772,14 @@ fn generate_let_defun(
         Rc::new(list_to_cons(l.clone(), &new_arguments)),
     );
 
-    HelperForm::Defun(
-        true,
+    // Count occurrences per binding.
+    let deinline_score: usize = bindings.iter().map(|b| {
+        count_occurrences(&b.name, body.borrow())
+    }).sum();
+
+    let inline = !opts.frontend_opt() && deinline_score == 1;
+    let h = HelperForm::Defun(
+        inline,
         DefunData {
             loc: l.clone(),
             nl: l,
@@ -766,7 +789,9 @@ fn generate_let_defun(
             body,
             synthetic: true
         },
-    )
+    );
+    eprintln!("helper {}", h.to_sexp());
+    h
 }
 
 fn generate_let_args(_l: Srcloc, blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {
@@ -774,7 +799,7 @@ fn generate_let_args(_l: Srcloc, blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {
 }
 
 fn hoist_body_let_binding(
-    compiler: &PrimaryCodegen,
+    opts: Rc<dyn CompilerOpts>,
     outer_context: Option<Rc<SExp>>,
     args: Rc<SExp>,
     body: Rc<BodyForm>,
@@ -805,7 +830,7 @@ fn hoist_body_let_binding(
             };
 
             hoist_body_let_binding(
-                compiler,
+                opts.clone(),
                 outer_context,
                 args,
                 Rc::new(BodyForm::Let(
@@ -826,7 +851,7 @@ fn hoist_body_let_binding(
             let mut revised_bindings = Vec::new();
             for b in letdata.bindings.iter() {
                 let (mut new_helpers, new_binding) = hoist_body_let_binding(
-                    compiler,
+                    opts.clone(),
                     outer_context.clone(),
                     args.clone(),
                     b.body.clone(),
@@ -841,7 +866,7 @@ fn hoist_body_let_binding(
             }
 
             let generated_defun = generate_let_defun(
-                compiler,
+                opts.clone(),
                 letdata.loc.clone(),
                 None,
                 &defun_name,
@@ -884,7 +909,7 @@ fn hoist_body_let_binding(
             let mut new_call_list = vec![list[0].clone()];
             for i in list.iter().skip(1) {
                 let (new_helper, new_arg) = hoist_body_let_binding(
-                    compiler,
+                    opts.clone(),
                     outer_context.clone(),
                     args.clone(),
                     i.clone(),
@@ -899,7 +924,7 @@ fn hoist_body_let_binding(
 }
 
 fn process_helper_let_bindings(
-    compiler: &PrimaryCodegen,
+    opts: Rc<dyn CompilerOpts>,
     helpers: &[HelperForm],
 ) -> Vec<HelperForm> {
     let mut result = helpers.to_owned();
@@ -913,14 +938,12 @@ fn process_helper_let_bindings(
                 } else {
                     None
                 };
-                let helper_result = hoist_body_let_binding(
-                    compiler,
+                let (hoisted_helpers, hoisted_body) = hoist_body_let_binding(
+                    opts.clone(),
                     context,
                     defun.args.clone(),
                     defun.body.clone(),
                 );
-                let hoisted_helpers = helper_result.0;
-                let hoisted_body = helper_result.1.clone();
 
                 result[i] = HelperForm::Defun(
                     inline,
@@ -930,8 +953,8 @@ fn process_helper_let_bindings(
                         kw: defun.kw.clone(),
                         name: defun.name.clone(),
                         args: defun.args.clone(),
-                        body: hoisted_body,
-                        synthetic: true
+                        body: hoisted_body.clone(),
+                        synthetic: defun.synthetic
                     },
                 );
 
@@ -1043,11 +1066,11 @@ fn start_codegen(
         };
     }
 
-    let hoisted_bindings = hoist_body_let_binding(&use_compiler, None, comp.args.clone(), comp.exp);
+    let hoisted_bindings = hoist_body_let_binding(opts.clone(), None, comp.args.clone(), comp.exp);
     let mut new_helpers = hoisted_bindings.0;
     let expr = hoisted_bindings.1;
     new_helpers.append(&mut comp.helpers.clone());
-    let let_helpers_with_expr = process_helper_let_bindings(&use_compiler, &new_helpers);
+    let let_helpers_with_expr = process_helper_let_bindings(opts.clone(), &new_helpers);
     let live_helpers: Vec<HelperForm> = let_helpers_with_expr
         .iter()
         .filter(|x| is_defun_or_tabled_const(x))

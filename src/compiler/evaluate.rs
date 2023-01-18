@@ -27,6 +27,17 @@ lazy_static! {
     pub static ref INDENT: AtomicI32 = AtomicI32::new(0);
 }
 
+// Governs whether Evaluator expands various forms.
+#[derive(Debug, Clone)]
+pub struct ExpandMode {
+    pub functions: bool,
+    pub lets: bool
+}
+
+impl Default for ExpandMode {
+    fn default() -> Self { ExpandMode { functions: true, lets: true } }
+}
+
 pub fn push_indent() {
     INDENT.fetch_add(1, Ordering::SeqCst);
 }
@@ -665,7 +676,7 @@ impl Evaluator {
                     prog_args.clone(),
                     env,
                     program.exp,
-                    false,
+                    Default::default()
                 )
             })
         } else {
@@ -691,7 +702,7 @@ impl Evaluator {
         prog_args: Rc<SExp>,
         arguments_to_convert: &[Rc<BodyForm>],
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        only_inline: bool,
+        expand: ExpandMode,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         eprintln!("{}invoke_primitive {}", show_indent(), body.to_sexp());
         let res = self.invoke_primitive_(
@@ -704,7 +715,7 @@ impl Evaluator {
             prog_args,
             arguments_to_convert,
             env,
-            only_inline
+            expand.clone()
         );
         match &res {
             Err(CompileErr(l,e)) => {
@@ -729,7 +740,7 @@ impl Evaluator {
         prog_args: Rc<SExp>,
         arguments_to_convert: &[Rc<BodyForm>],
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        only_inline: bool,
+        expand: ExpandMode,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         let mut all_primitive = true;
         let mut target_vec: Vec<Rc<BodyForm>> = parts.to_owned();
@@ -761,7 +772,7 @@ impl Evaluator {
                 prog_args,
                 env,
                 literal_args,
-                only_inline,
+                expand.clone()
             )?;
 
             let chosen = choose_from_env_by_path(path.clone(), arg_part.clone());
@@ -826,7 +837,7 @@ impl Evaluator {
                             prog_args.clone(),
                             env,
                             arguments_to_convert[i].clone(),
-                            only_inline,
+                            expand.clone()
                         )?;
 
                         target_vec[i + 1] = shrunk.clone();
@@ -850,7 +861,7 @@ impl Evaluator {
                         ) {
                             Ok(res) => Ok(res),
                             Err(e) => {
-                                if only_inline || self.ignore_exn {
+                                if !expand.functions || self.ignore_exn {
                                     Ok(Rc::new(BodyForm::Call(l.clone(), target_vec.clone())))
                                 } else {
                                     Err(e)
@@ -894,7 +905,7 @@ impl Evaluator {
             Rc::new(SExp::Nil(run_program.loc())),
             &bindings,
             program,
-            false,
+            Default::default()
         )?;
         self.chase_apply(allocator, visited, apply_result)
     }
@@ -1004,7 +1015,7 @@ impl Evaluator {
         prog_args: Rc<SExp>,
         arguments_to_convert: &[Rc<BodyForm>],
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        only_inline: bool,
+        expand: ExpandMode
     ) -> Result<Option<Rc<BodyForm>>, CompileErr> {
         eprintln!("{}invoke helper {}", show_indent(), decode_string(&call_name));
         for h in self.helpers.iter() {
@@ -1023,7 +1034,7 @@ impl Evaluator {
                 env,
             ).map(Some),
             Some(HelperForm::Defun(inline, defun)) => {
-                if !inline && only_inline {
+                if !inline && !expand.functions {
                     return Ok(None);
                 }
 
@@ -1040,7 +1051,7 @@ impl Evaluator {
                         prog_args.clone(),
                         env,
                         kv.1.clone(),
-                        only_inline,
+                        expand.clone()
                     )?;
 
                     argument_captures.insert(kv.0.clone(), shrunk.clone());
@@ -1052,7 +1063,7 @@ impl Evaluator {
                     defun.args.clone(),
                     &argument_captures,
                     defun.body,
-                    only_inline,
+                    expand.clone()
                 ).map(Some)
             }
             _ => self
@@ -1066,7 +1077,7 @@ impl Evaluator {
                     prog_args,
                     arguments_to_convert,
                     env,
-                    only_inline,
+                    expand.clone()
                 )
                 .and_then(|res| self.chase_apply(allocator, visited, res))
                 .map(Some),
@@ -1081,7 +1092,7 @@ impl Evaluator {
         prog_args: Rc<SExp>,
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         body: Rc<BodyForm>,
-        only_inline: bool,
+        expand: ExpandMode,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         eprintln!("{}>shrink> {}", show_indent(), body.to_sexp());
         show_env(env);
@@ -1094,7 +1105,7 @@ impl Evaluator {
             prog_args,
             env,
             body,
-            only_inline
+            expand.clone()
         );
         pop_indent();
         match &res {
@@ -1116,10 +1127,14 @@ impl Evaluator {
         prog_args: Rc<SExp>,
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         body: Rc<BodyForm>,
-        only_inline: bool,
+        expand: ExpandMode
     ) -> Result<Rc<BodyForm>, CompileErr> {
         match body.borrow() {
             BodyForm::Let(LetFormKind::Parallel, letdata) => {
+                if !expand.lets {
+                    return Ok(body.clone());
+                }
+
                 let updated_bindings = update_parallel_bindings(env, &letdata.bindings);
                 self.shrink_bodyform_visited(
                     allocator,
@@ -1127,10 +1142,14 @@ impl Evaluator {
                     prog_args,
                     &updated_bindings,
                     letdata.body.clone(),
-                    only_inline,
+                    expand.clone()
                 )
             }
             BodyForm::Let(LetFormKind::Sequential, letdata) => {
+                if !expand.lets {
+                    return Ok(body.clone());
+                }
+
                 if letdata.bindings.is_empty() {
                     self.shrink_bodyform_visited(
                         allocator,
@@ -1138,7 +1157,7 @@ impl Evaluator {
                         prog_args,
                         env,
                         letdata.body.clone(),
-                        only_inline,
+                        expand.clone()
                     )
                 } else {
                     let first_binding_as_list: Vec<Rc<Binding>> =
@@ -1161,7 +1180,7 @@ impl Evaluator {
                                 body: letdata.body.clone(),
                             },
                         )),
-                        only_inline,
+                        expand.clone()
                     )
                 }
             }
@@ -1175,7 +1194,7 @@ impl Evaluator {
                         prog_args,
                         env,
                         literal_args,
-                        only_inline,
+                        expand.clone()
                     )
                 } else {
                     env.get(name)
@@ -1189,12 +1208,12 @@ impl Evaluator {
                                     prog_args.clone(),
                                     env,
                                     x.clone(),
-                                    only_inline,
+                                    expand.clone()
                                 )
                             }
                         })
                         .unwrap_or_else(|| {
-                            self.get_constant(name, only_inline)
+                            self.get_constant(name, expand.clone())
                                 .map(|x| {
                                     self.shrink_bodyform_visited(
                                         allocator,
@@ -1202,7 +1221,7 @@ impl Evaluator {
                                         prog_args.clone(),
                                         env,
                                         x,
-                                        only_inline,
+                                        expand.clone()
                                     )
                                 })
                                 .unwrap_or_else(|| {
@@ -1240,7 +1259,7 @@ impl Evaluator {
                         prog_args.clone(),
                         &arguments_to_convert,
                         env,
-                        only_inline,
+                        expand.clone()
                     ).and_then(|x| {
                         if let Some(res) = x {
                             Ok(res)
@@ -1254,7 +1273,7 @@ impl Evaluator {
                                     prog_args.clone(),
                                     env,
                                     arg.clone(),
-                                    only_inline
+                                    expand.clone()
                                 )?);
                             }
                             Ok(Rc::new(BodyForm::Call(body.loc(), converted_arguments)))
@@ -1272,7 +1291,7 @@ impl Evaluator {
                         prog_args,
                         &arguments_to_convert,
                         env,
-                        only_inline,
+                        expand.clone()
                     ).map(|x| x.unwrap_or_else(|| body.clone())),
                     _ => Err(CompileErr(
                         l.clone(),
@@ -1300,7 +1319,7 @@ impl Evaluator {
         prog_args: Rc<SExp>,
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         body: Rc<BodyForm>,
-        only_inline: bool,
+        expand: ExpandMode
     ) -> Result<Rc<BodyForm>, CompileErr> {
         self.shrink_bodyform_visited(
             allocator, // Support random prims via clvm_rs
@@ -1308,7 +1327,7 @@ impl Evaluator {
             prog_args,
             env,
             body,
-            only_inline,
+            expand
         )
     }
 
@@ -1421,10 +1440,10 @@ impl Evaluator {
         self.helpers.push(h.clone());
     }
 
-    fn get_constant(&self, name: &[u8], only_inline: bool) -> Option<Rc<BodyForm>> {
+    fn get_constant(&self, name: &[u8], expand: ExpandMode) -> Option<Rc<BodyForm>> {
         for h in self.helpers.iter() {
             if let HelperForm::Defconstant(defc) = h {
-                if defc.name == name && (!defc.tabled || !only_inline) {
+                if defc.name == name && (!defc.tabled || expand.functions) {
                     return Some(defc.body.clone());
                 }
             }

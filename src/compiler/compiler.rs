@@ -17,7 +17,7 @@ use crate::compiler::comptypes::{
     CompileErr, CompileForm, CompilerOpts, PrimaryCodegen,
 };
 use crate::compiler::frontend::frontend;
-use crate::compiler::optimize::{fe_opt, finish_optimization};
+use crate::compiler::optimize::{fe_opt, finish_optimization, sexp_scale};
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
@@ -96,22 +96,24 @@ pub fn compile_pre_forms(
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     let g = frontend(opts.clone(), pre_forms)?;
-    let compileform = if opts.frontend_opt() {
-        fe_opt(allocator, runner.clone(), opts.clone(), g)?
-    } else {
-        CompileForm {
-            loc: g.loc.clone(),
-            include_forms: g.include_forms.clone(),
-            args: g.args.clone(),
-            helpers: g.helpers.clone(), // optimized_helpers.clone(),
-            exp: g.exp,
-        }
-    };
-    let generated = codegen(allocator, runner, opts.clone(), &compileform, symbol_table)?;
     if opts.frontend_opt() {
+        let compileform_inlined =
+            fe_opt(allocator, runner.clone(), opts.clone(), &g, true)?;
+        let generated_inlined =
+            codegen(allocator, runner.clone(), opts.clone(), &compileform_inlined, symbol_table)?;
+        let compileform_noninlined =
+            fe_opt(allocator, runner.clone(), opts.clone(), &g, false)?;
+        let generated_noninlined =
+            codegen(allocator, runner, opts, &compileform_noninlined, symbol_table)?;
+        let generated =
+            if sexp_scale(&generated_inlined) < sexp_scale(&generated_noninlined) {
+                generated_inlined
+            } else {
+                generated_noninlined
+            };
         Ok(finish_optimization(&generated))
     } else {
-        Ok(generated)
+        codegen(allocator, runner, opts.clone(), &g, symbol_table)
     }
 }
 

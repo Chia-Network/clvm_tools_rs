@@ -32,7 +32,7 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
                 program.args.clone(),
                 &HashMap::new(),
                 program.exp.clone(),
-                false,
+                Default::default(),
             );
         })
         .map(|result| result.to_sexp().to_string())

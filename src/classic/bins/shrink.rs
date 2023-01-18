@@ -36,7 +36,7 @@ fn main() {
                 program.args.clone(),
                 &HashMap::new(),
                 program.exp,
-                false,
+                Default::default(),
             )
         })
         .map(|result| {

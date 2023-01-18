@@ -172,7 +172,7 @@ impl Repl {
                                 program.args.clone(),
                                 &HashMap::new(),
                                 program.exp,
-                                false,
+                                Default::default(),
                             )
                         })
                         .map(Some)
