@@ -83,12 +83,6 @@ impl Model {
               (want-unsat)
             (pop 1)
 
-            ;; Variables to be used later
-            (declare-fun any-int () Int)
-            (declare-fun any-value () Value)
-            (declare-fun any-value2 () Value)
-            (declare-fun any-value3 () Value)
-
             (define-fun make-exception ((v Value)) Value (Exception v))
             (define-fun make-error ((v Value)) Value (Error v))
 
@@ -109,6 +103,15 @@ impl Model {
               (assert (not (is-error (make-error Nil))))
               (want-unsat)
             (pop 1)
+
+            (define-fun is-nil-or-error ((v Value)) Bool
+              (match v (
+                ((Nil) true)
+                ((Error x) true)
+                ((Exception x) true)
+                (_ false)
+              ))
+              )
 
             ;; Atom builder.
             (define-fun make-number-atom ((n Int)) Value (ite (= n (- 1 1)) Nil (Atom n Nil)))
@@ -206,6 +209,67 @@ impl Model {
 
             (push 1)
               (assert (not (= (choose-env 5 (prim-c (make-number-atom 5) (prim-c (make-number-atom 7) Nil))) (make-number-atom 7))))
+              (want-unsat)
+            (pop 1)
+
+            (define-fun-rec execute ((code Value) (env Value)) Value
+              (let ((opcode (choose-env 2 code)))
+                (ite (= opcode (make-number-atom 1))
+                  (choose-env 3 code)
+                  (ite (= opcode (make-number-atom 2))
+                    (let
+                      (
+                        (new-env (execute (choose-env 11 code) env))
+                        (new-code (execute (choose-env 5 code) env))
+                      )
+                      (ite (or (is-error new-env) (is-error new-code))
+                        (make-error (prim-c code (prim-c env Nil)))
+                        (execute new-code new-env)
+                        )
+                      )
+                    (ite (= opcode (make-number-atom 3))
+                      (let
+                        (
+                          (else-case (execute (choose-env 23 code) env))
+                          (then-case (execute (choose-env 11 code) env))
+                          (cond (execute (choose-env 5 code) env))
+                        )
+                        (ite (or (is-error else-case) (is-error then-case) (is-error cond))
+                          (make-error (prim-c code (prim-c env Nil)))
+                          (ite (is-nil cond)
+                            (execute else-case env)
+                            (execute then-case env)
+                            )
+                          )
+                        )
+                      (ite (= opcode (make-number-atom 4))
+                        (let
+                          (
+                            (rest (execute (choose-env 11 code) env))
+                            (first (execute (choose-env 5 code) env))
+                          )
+                          (prim-c first rest)
+                          )
+                        (make-error (prim-c code (prim-c env Nil)))
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+
+            (push 1)
+              (assert (not (= (execute (prim-c (make-number-atom 1) (make-number-atom 3)) Nil) (make-number-atom 3))))
+              (want-unsat)
+            (pop 1)
+
+            (push 1)
+              (assert (not (= (execute (prim-c (make-number-atom 4) (prim-c (make-number-atom 99) (prim-c (make-number-atom 100) Nil))) Nil) (prim-c (make-number-atom 99) (make-number-atom 100)))))
+              (want-unsat)
+            (pop 1)
+
+            (push 1)
+              (assert (not (= (execute (prim-c (make-number-atom 2) (prim-c (prim-c (make-number-atom 1) (make-number-atom 3)) (prim-c Nil Nil))) Nil) (make-number-atom 3))))
               (want-unsat)
             (pop 1)
         "}.bytes()).expect("should parse")
@@ -334,7 +398,7 @@ impl Model {
                         Rc::new(enlist(
                             program.loc(),
                             vec![
-                                Rc::new(SExp::atom_from_string(program.loc(), "is-nil")),
+                                Rc::new(SExp::atom_from_string(program.loc(), "is-nil-or-error")),
                                 Rc::new(enlist(
                                     program.loc(),
                                     vec![
