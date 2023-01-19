@@ -415,7 +415,9 @@ impl SMTSolver {
                 if op == b"define-fun" {
                     self.solver.define_fun(decode_string(&name), &argvec, p[3].to_string(), p[4].to_string())?;
                 } else {
-                    self.solver.define_fun_rec(decode_string(&name), &argvec, p[3].to_string(), p[4].to_string())?;
+                    self.solver.define_funs_rec(&[
+                        (decode_string(&name), &argvec, p[3].to_string(), p[4].to_string())
+                    ])?;
                 }
                 return done;
             }

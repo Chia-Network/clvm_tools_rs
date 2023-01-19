@@ -193,20 +193,16 @@ impl Model {
 
             (define-fun-rec choose-env ((n Int) (v Value)) Value
               (ite (= n (- 1 1))
-                (Nil)
-                (Nil)
+                Nil
+                (ite (= n 1)
+                  v
+                  (ite (prim-odd n)
+                    (choose-env (div n 2) (rest-of v))
+                    (choose-env (div n 2) (first-of v))
+                    )
+                  )
                 )
               )
-
-;;                (ite (= n 1)
-;;                  v
-;;                  (ite (prim-odd n)
-;;                    (choose-env (div n 2) (rest-of v))
-;;                    (choose-env (div n 2) (first-of v))
-;;                    )
-;;                  )
-;;                )
-;;              )
 
             (push 1)
               (assert (not (= (choose-env 5 (prim-c (make-number-atom 5) (prim-c (make-number-atom 7) Nil))) (make-number-atom 7))))
