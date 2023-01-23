@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs;
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
@@ -50,8 +51,8 @@ fn run_with_cost(
     })
 }
 
-fn run_string_get_program_and_output(
-    content: &str, args: &str, fe_opt: bool
+fn run_string_get_program_and_output_with_includes(
+    content: &str, args: &str, include_dirs: &[String], fe_opt: bool
 ) -> Result<CompileRunResult, CompileErr> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
@@ -59,7 +60,7 @@ fn run_string_get_program_and_output(
     let srcloc = Srcloc::start(&"*test*".to_string());
     opts = opts
         .set_frontend_opt(fe_opt)
-        .set_search_paths(&vec!["resources/tests".to_string()]);
+        .set_search_paths(include_dirs);
     let sexp_args =
         parse_sexp(srcloc.clone(), args.bytes()).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
 
@@ -71,6 +72,8 @@ fn run_string_get_program_and_output(
         &mut HashMap::new(),
     )
         .and_then(|program| {
+            eprintln!("program {}", program);
+            eprintln!("sexp_args {}", sexp_args);
             run_with_cost(
                 &mut allocator,
                 runner,
@@ -84,11 +87,15 @@ fn run_string_get_program_and_output(
         })
 }
 
-fn do_compile_and_run_opt_size_test(
-    prog: &str, env: &str
+fn do_compile_and_run_opt_size_test_with_includes(
+    prog: &str, env: &str, includes: &[String]
 ) -> Result<OptRunResult, CompileErr> {
-    let unopt_run = run_string_get_program_and_output(prog, env, false)?;
-    let opt_run = run_string_get_program_and_output(prog, env, true)?;
+    let unopt_run = run_string_get_program_and_output_with_includes(
+        prog, env, includes, false
+    )?;
+    let opt_run = run_string_get_program_and_output_with_includes(
+        prog, env, includes, true
+    )?;
 
     // Ensure the runs had the same output.
     assert_eq!(unopt_run.run_result, opt_run.run_result);
@@ -97,6 +104,14 @@ fn do_compile_and_run_opt_size_test(
         unopt: unopt_run,
         opt: opt_run
     })
+}
+
+fn do_compile_and_run_opt_size_test(
+    prog: &str, env: &str
+) -> Result<OptRunResult, CompileErr> {
+    do_compile_and_run_opt_size_test_with_includes(
+        prog, env, &["resources/tests".to_string()]
+    )
 }
 
 #[test]
@@ -164,4 +179,38 @@ fn test_optimizer_shrinks_repeated_lets() {
         "(3)"
     ).expect("should compile and run");
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
+}
+
+
+#[test]
+fn test_optimizer_shrinks_q_test_1() {
+    let program = fs::read_to_string("resources/tests/optimization/merkle_tree_a2c.clsp").expect("test file should exist");
+    let res = do_compile_and_run_opt_size_test_with_includes(
+        &program,
+        "(0x79539b34c33bc90bdaa6f9a28d3993a1e34025e5f2061fc57f8ff3edb9fb3b85 0x47194347579b7aa1ede51c52ddfd4200d8b560828051608ce599c763fd99291a (() 0xfb3b5605bc59e423b7df9c3bcfa7f559d6cdfcb9a49645dd801b3b24d6e9c439 0xe925a16b925dc355611f46c900ff0c182a3ed29a32d76394ea85b14d760d91c6))",
+        &["resources/tests/bridge-includes".to_string()]
+    ).expect("should compile and run");
+    assert!(res.opt.compiled_hex.len() <= res.unopt.compiled_hex.len());
+}
+
+#[test]
+fn test_optimizer_shrinks_q_test_2() {
+    let program = fs::read_to_string("resources/tests/optimization/validation_taproot.clsp").expect("test file should exist");
+    let res = do_compile_and_run_opt_size_test_with_includes(
+        &program,
+        indoc!{"(
+           ;; Curried
+           (
+             0x7faa3253bfddd1e0decb0906b2dc6247bbc4cf608f58345d173adb63e8b47c9f
+             0x0303030303030303030303030303030303030303030303030303030303030303 .
+             0xeff07522495060c066f66f32acc2a77e3a3e737aca8baea4d1a64ea4cdc13da9
+           )
+           0xa04d9f57764f54a43e4030befb4d80026e870519aaa66334aef8304f5d0393c2
+           0xb521509a3e089e25b66b3e272aa88b19851778eefebbea13e6be63a471ebf12a
+           ;; Args
+           () 0x78305c9b8b52ec71ebdd6db292fd106dbfdee8c061314658e13bf2436fa66a71 0x9dcf97a184f32623d11a73124ceb99a5709b083721e878a16d78f596718ba7b2 1 (((1 . 0x0000000000000000000000000000000000000000000000000000000000000000) 2 . 0x0101010101010101010101010101010101010101010101010101010101010101) . 0x15966a8a80f66c1eb2547b2dcc42b1fccdb7d6c1c787a888b9fdc19bf72ac58b)
+           )"},
+        &["resources/tests/bridge-includes".to_string()]
+    ).expect("should compile and run");
+    assert!(res.opt.compiled_hex.len() <= res.unopt.compiled_hex.len());
 }

@@ -10,7 +10,7 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::run;
-use crate::compiler::codegen::get_callable;
+use crate::compiler::codegen::{codegen, get_callable};
 use crate::compiler::comptypes::{BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen};
 #[cfg(test)]
 use crate::compiler::compiler::DefaultCompilerOpts;
@@ -385,68 +385,54 @@ fn compile_to_sexp(
     Ok(code)
 }
 
-fn try_deinline(
-    helper: &mut HelperForm
-) -> Option<HelperForm> {
-    if let Some((currently_inline, current_data)) =
-        match helper {
-            HelperForm::Defun(inline, data) => {
-                Some((inline, data.clone()))
-            }
-            _ => None
-        } {
-            if *currently_inline {
-                let result = helper.clone();
-                *helper = HelperForm::Defun(false, current_data);
-                return Some(result);
-            }
-        };
-
-    None
-}
-
-fn try_shrink_with_deinline(
+fn take_smaller_form(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
-    mut compileform: CompileForm
+    compileform: &CompileForm,
+    optimized_helpers: &[HelperForm],
+    body: Rc<BodyForm>,
+    with_inlines: bool
 ) -> Result<CompileForm, CompileErr> {
-    let no_opt_options = opts.set_frontend_opt(false);
-    let baseline_compile = compile_to_sexp(
-        allocator,
-        runner.clone(),
-        no_opt_options.clone(),
-        &compileform
-    )?;
-    let mut current_size = sexp_scale(baseline_compile.borrow());
-    let first_size = current_size;
-    let mut shrunk = true;
+    let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.to_vec());
 
-    while shrunk {
-        shrunk = false;
-        for i in 0..compileform.helpers.len() {
-            if let Some(orig) = try_deinline(&mut compileform.helpers[i]) {
-                if let Ok(compiled) = compile_to_sexp(
-                    allocator,
-                    runner.clone(),
-                    no_opt_options.clone(),
-                    &compileform
-                ) {
-                    let new_size = sexp_scale(compiled.borrow());
-                    if new_size < current_size {
-                        shrunk = true;
-                        current_size = new_size;
-                        continue;
-                    } else {
-                        compileform.helpers[i] = orig;
-                    }
-                } else {
-                    compileform.helpers[i] = orig;
-                }
-            }
-        }
+    let mut env = HashMap::new();
+    build_reflex_captures(&mut env, compileform.args.clone());
+
+    let shrunk = new_evaluator.shrink_bodyform(
+        allocator,
+        compileform.args.clone(),
+        &env,
+        body.clone(),
+        ExpandMode { functions: false, lets: with_inlines },
+    )?;
+
+    let normal_form = CompileForm {
+        loc: compileform.loc.clone(),
+        include_forms: compileform.include_forms.clone(),
+        args: compileform.args.clone(),
+        helpers: optimized_helpers.to_vec(),
+        exp: body.clone()
+    };
+    let shrunk_form = CompileForm {
+        loc: compileform.loc.clone(),
+        include_forms: compileform.include_forms.clone(),
+        args: compileform.args.clone(),
+        helpers: optimized_helpers.to_vec(),
+        exp: shrunk,
+    };
+    let mut phantom_table = HashMap::new();
+    let generated_shrunk = finish_optimization(&codegen(allocator, runner.clone(), opts.clone(), &shrunk_form, &mut phantom_table)?);
+    let generated_normal = finish_optimization(&codegen(allocator, runner.clone(), opts.clone(), &normal_form, &mut phantom_table)?);
+    let normal_scale = sexp_scale(&generated_normal);
+    let shrunk_scale = sexp_scale(&generated_shrunk);
+    eprintln!("normal_scale {}", normal_scale);
+    eprintln!("shrunk_scale {}", shrunk_scale);
+    if normal_scale < shrunk_scale {
+        Ok(normal_form)
+    } else {
+        Ok(shrunk_form)
     }
-    Ok(compileform)
 }
 
 pub fn fe_opt(
@@ -480,55 +466,39 @@ pub fn fe_opt(
     let evaluator = Evaluator::new(opts.clone(), runner.clone(), compiler_helpers.clone());
     let mut optimized_helpers: Vec<HelperForm> = Vec::new();
     for h in compiler_helpers.iter() {
-        match &h {
-            HelperForm::Defun(inline, defun) => {
-                let mut env = HashMap::new();
-                build_reflex_captures(&mut env, defun.args.clone());
-                let body_rc = evaluator.shrink_bodyform(
-                    allocator,
-                    defun.args.clone(),
-                    &env,
-                    defun.body.clone(),
-                    ExpandMode { functions: false, lets: with_inlines },
-                )?;
-                let new_helper = HelperForm::Defun(
-                    *inline,
-                    DefunData {
-                        loc: defun.loc.clone(),
-                        nl: defun.nl.clone(),
-                        kw: defun.kw.clone(),
-                        name: defun.name.clone(),
-                        args: defun.args.clone(),
-                        body: body_rc.clone(),
-                        synthetic: defun.synthetic
-                    },
-                );
-                optimized_helpers.push(new_helper);
-            }
-            _ => {
-                optimized_helpers.push(h.clone());
-            }
+        if let HelperForm::Defun(false, defun) = &h {
+            let ref_compileform = CompileForm {
+                loc: compileform.loc.clone(),
+                include_forms: compileform.include_forms.clone(),
+                args: defun.args.clone(),
+                helpers: compileform.helpers.clone(),
+                exp: defun.body.clone(),
+            };
+            let better_form = take_smaller_form(
+                allocator,
+                runner.clone(),
+                opts.clone(),
+                &ref_compileform,
+                &ref_compileform.helpers,
+                defun.body.clone(),
+                with_inlines
+            )?;
+
+            let mut new_defun = defun.clone();
+            new_defun.body = better_form.exp.clone();
+            optimized_helpers.push(HelperForm::Defun(false, new_defun));
+        } else {
+            optimized_helpers.push(h.clone());
         }
     }
 
-    let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.clone());
-
-    let mut env = HashMap::new();
-    build_reflex_captures(&mut env, compileform.args.clone());
-
-    let shrunk = new_evaluator.shrink_bodyform(
+    take_smaller_form(
         allocator,
-        compileform.args.clone(),
-        &env,
+        runner,
+        opts,
+        &compileform,
+        &optimized_helpers,
         compileform.exp.clone(),
-        ExpandMode { functions: false, lets: with_inlines },
-    )?;
-
-    Ok(CompileForm {
-        loc: compileform.loc.clone(),
-        include_forms: compileform.include_forms.clone(),
-        args: compileform.args.clone(),
-        helpers: optimized_helpers.clone(),
-        exp: shrunk,
-    })
+        with_inlines
+    )
 }

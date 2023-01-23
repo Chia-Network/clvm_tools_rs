@@ -391,7 +391,7 @@ fn compile_defconstant(
                 kw: kwl,
                 name: name.to_vec(),
                 body: Rc::new(bf),
-                tabled: opts.frontend_opt() && sexp_scale(bf_generated) > 3
+                tabled: opts.frontend_opt()
             })
         })
     }
