@@ -7,22 +7,23 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::bi_zero;
 #[cfg(test)]
 use crate::classic::clvm::__type_compatibility__::bi_one;
+use crate::classic::clvm::__type_compatibility__::bi_zero;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::run;
 use crate::compiler::codegen::{codegen, get_callable};
-use crate::compiler::comptypes::{BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen};
+use crate::compiler::comptypes::{
+    BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen,
+};
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator, ExpandMode};
 #[cfg(test)]
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::u8_from_number;
-
 
 fn is_at_form(head: Rc<BodyForm>) -> bool {
     match head.borrow() {
@@ -34,19 +35,15 @@ fn is_at_form(head: Rc<BodyForm>) -> bool {
 // Return a score for sexp size.
 pub fn sexp_scale(sexp: &SExp) -> u64 {
     match sexp {
-        SExp::Cons(_,a,b) => {
+        SExp::Cons(_, a, b) => {
             let a_scale = sexp_scale(a.borrow());
             let b_scale = sexp_scale(b.borrow());
             1_u64 + a_scale + b_scale
         }
         SExp::Nil(_) => 1,
-        SExp::QuotedString(_,_,s) => {
-            1_u64 + s.len() as u64
-        }
-        SExp::Atom(_,n) => {
-            1_u64 + n.len() as u64
-        }
-        SExp::Integer(_,i) => {
+        SExp::QuotedString(_, _, s) => 1_u64 + s.len() as u64,
+        SExp::Atom(_, n) => 1_u64 + n.len() as u64,
+        SExp::Integer(_, i) => {
             let raw_bits = i.bits();
             let use_bits = if raw_bits > 0 { raw_bits - 1 } else { 0 };
             let bytes = use_bits / 8;
@@ -58,8 +55,10 @@ pub fn sexp_scale(sexp: &SExp) -> u64 {
 #[test]
 fn test_sexp_scale_increases_with_atom_size() {
     let l = Srcloc::start("*test*");
-    assert!(sexp_scale(&SExp::Integer(l.clone(), bi_one())) <
-            sexp_scale(&SExp::Integer(l, 1000000_u32.to_bigint().unwrap())));
+    assert!(
+        sexp_scale(&SExp::Integer(l.clone(), bi_one()))
+            < sexp_scale(&SExp::Integer(l, 1000000_u32.to_bigint().unwrap()))
+    );
 }
 
 pub fn optimize_expr(
@@ -164,17 +163,16 @@ pub fn optimize_expr(
 // If (1) appears anywhere outside of a quoted expression, it can be replaced with
 // () since nil yields itself.
 fn null_optimization(sexp: Rc<SExp>, spine: bool) -> (bool, Rc<SExp>) {
-    if let SExp::Cons(l,a,b) = sexp.borrow() {
-        if let SExp::Atom(_,name) = a.atomize() {
+    if let SExp::Cons(l, a, b) = sexp.borrow() {
+        if let SExp::Atom(_, name) = a.atomize() {
             if (name == vec![1] || name == b"q") && !spine {
-                let b_empty =
-                    match b.borrow() {
-                        SExp::Atom(_,tail) => tail.is_empty(),
-                        SExp::QuotedString(_,_,q) => q.is_empty(),
-                        SExp::Integer(_,i) => *i == bi_zero(),
-                        SExp::Nil(_) => true,
-                        _ => false
-                    };
+                let b_empty = match b.borrow() {
+                    SExp::Atom(_, tail) => tail.is_empty(),
+                    SExp::QuotedString(_, _, q) => q.is_empty(),
+                    SExp::Integer(_, i) => *i == bi_zero(),
+                    SExp::Nil(_) => true,
+                    _ => false,
+                };
 
                 if b_empty {
                     return (true, b.clone());
@@ -241,7 +239,7 @@ fn take_smaller_form(
     compileform: &CompileForm,
     optimized_helpers: &[HelperForm],
     body: Rc<BodyForm>,
-    with_inlines: bool
+    with_inlines: bool,
 ) -> Result<CompileForm, CompileErr> {
     let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.to_vec());
 
@@ -253,7 +251,10 @@ fn take_smaller_form(
         compileform.args.clone(),
         &env,
         body.clone(),
-        ExpandMode { functions: false, lets: with_inlines },
+        ExpandMode {
+            functions: false,
+            lets: with_inlines,
+        },
     )?;
 
     let normal_form = CompileForm {
@@ -261,7 +262,7 @@ fn take_smaller_form(
         include_forms: compileform.include_forms.clone(),
         args: compileform.args.clone(),
         helpers: optimized_helpers.to_vec(),
-        exp: body
+        exp: body,
     };
     let shrunk_form = CompileForm {
         loc: compileform.loc.clone(),
@@ -271,8 +272,20 @@ fn take_smaller_form(
         exp: shrunk,
     };
     let mut phantom_table = HashMap::new();
-    let generated_shrunk = finish_optimization(&codegen(allocator, runner.clone(), opts.clone(), &shrunk_form, &mut phantom_table)?);
-    let generated_normal = finish_optimization(&codegen(allocator, runner.clone(), opts.clone(), &normal_form, &mut phantom_table)?);
+    let generated_shrunk = finish_optimization(&codegen(
+        allocator,
+        runner.clone(),
+        opts.clone(),
+        &shrunk_form,
+        &mut phantom_table,
+    )?);
+    let generated_normal = finish_optimization(&codegen(
+        allocator,
+        runner.clone(),
+        opts.clone(),
+        &normal_form,
+        &mut phantom_table,
+    )?);
     let normal_scale = sexp_scale(&generated_normal);
     let shrunk_scale = sexp_scale(&generated_shrunk);
     if normal_scale < shrunk_scale {
@@ -287,7 +300,7 @@ pub fn fe_opt(
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     compileform: &CompileForm,
-    with_inlines: bool
+    with_inlines: bool,
 ) -> Result<CompileForm, CompileErr> {
     let mut compiler_helpers = compileform.helpers.clone();
     let mut used_names = HashSet::new();
@@ -326,7 +339,7 @@ pub fn fe_opt(
                 &ref_compileform,
                 &ref_compileform.helpers,
                 defun.body.clone(),
-                with_inlines
+                with_inlines,
             )?;
 
             let mut new_defun = defun.clone();
@@ -344,6 +357,6 @@ pub fn fe_opt(
         compileform,
         &optimized_helpers,
         compileform.exp.clone(),
-        with_inlines
+        with_inlines,
     )
 }

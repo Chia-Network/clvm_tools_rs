@@ -17,50 +17,47 @@ struct CompileRunResult {
     // pub compiled: Rc<SExp>,
     pub compiled_hex: String,
     pub run_result: Rc<SExp>,
-    pub run_cost: u64
+    pub run_cost: u64,
 }
 
 struct OptRunResult {
     unopt: CompileRunResult,
-    opt: CompileRunResult
+    opt: CompileRunResult,
 }
 
 fn run_with_cost(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     sexp: Rc<SExp>,
-    env: Rc<SExp>
+    env: Rc<SExp>,
 ) -> Result<CompileRunResult, RunFailure> {
     let as_classic_program = convert_to_clvm_rs(allocator, sexp.clone())?;
     let as_classic_env = convert_to_clvm_rs(allocator, env.clone())?;
     let compiled_hex = sexp_as_bin(allocator, as_classic_program).hex();
-    runner.run_program(
-        allocator,
-        as_classic_program,
-        as_classic_env,
-        None
-    ).map_err(|e| {
-        RunFailure::RunErr(sexp.loc(), format!("{} in {} {}", e.1, sexp, env))
-    }).and_then(|reduction| {
-        Ok(CompileRunResult {
-            // compiled: sexp.clone(),
-            compiled_hex,
-            run_result: convert_from_clvm_rs(allocator, sexp.loc(), reduction.1)?,
-            run_cost: reduction.0
+    runner
+        .run_program(allocator, as_classic_program, as_classic_env, None)
+        .map_err(|e| RunFailure::RunErr(sexp.loc(), format!("{} in {} {}", e.1, sexp, env)))
+        .and_then(|reduction| {
+            Ok(CompileRunResult {
+                // compiled: sexp.clone(),
+                compiled_hex,
+                run_result: convert_from_clvm_rs(allocator, sexp.loc(), reduction.1)?,
+                run_cost: reduction.0,
+            })
         })
-    })
 }
 
 fn run_string_get_program_and_output_with_includes(
-    content: &str, args: &str, include_dirs: &[String], fe_opt: bool
+    content: &str,
+    args: &str,
+    include_dirs: &[String],
+    fe_opt: bool,
 ) -> Result<CompileRunResult, CompileErr> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
     let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let srcloc = Srcloc::start(&"*test*".to_string());
-    opts = opts
-        .set_frontend_opt(fe_opt)
-        .set_search_paths(include_dirs);
+    opts = opts.set_frontend_opt(fe_opt).set_search_paths(include_dirs);
     let sexp_args =
         parse_sexp(srcloc.clone(), args.bytes()).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
 
@@ -71,74 +68,64 @@ fn run_string_get_program_and_output_with_includes(
         &content,
         &mut HashMap::new(),
     )
-        .and_then(|program| {
-            run_with_cost(
-                &mut allocator,
-                runner,
-                Rc::new(program),
-                sexp_args
-            )
-                .map_err(|e| match e {
-                    RunFailure::RunErr(l, s) => CompileErr(l, s),
-                    RunFailure::RunExn(l, s) => CompileErr(l, s.to_string()),
-                })
+    .and_then(|program| {
+        run_with_cost(&mut allocator, runner, Rc::new(program), sexp_args).map_err(|e| match e {
+            RunFailure::RunErr(l, s) => CompileErr(l, s),
+            RunFailure::RunExn(l, s) => CompileErr(l, s.to_string()),
         })
+    })
 }
 
 fn do_compile_and_run_opt_size_test_with_includes(
-    prog: &str, env: &str, includes: &[String]
+    prog: &str,
+    env: &str,
+    includes: &[String],
 ) -> Result<OptRunResult, CompileErr> {
-    let unopt_run = run_string_get_program_and_output_with_includes(
-        prog, env, includes, false
-    )?;
-    let opt_run = run_string_get_program_and_output_with_includes(
-        prog, env, includes, true
-    )?;
+    let unopt_run = run_string_get_program_and_output_with_includes(prog, env, includes, false)?;
+    let opt_run = run_string_get_program_and_output_with_includes(prog, env, includes, true)?;
 
     // Ensure the runs had the same output.
     assert_eq!(unopt_run.run_result, opt_run.run_result);
 
     Ok(OptRunResult {
         unopt: unopt_run,
-        opt: opt_run
+        opt: opt_run,
     })
 }
 
-fn do_compile_and_run_opt_size_test(
-    prog: &str, env: &str
-) -> Result<OptRunResult, CompileErr> {
-    do_compile_and_run_opt_size_test_with_includes(
-        prog, env, &["resources/tests".to_string()]
-    )
+fn do_compile_and_run_opt_size_test(prog: &str, env: &str) -> Result<OptRunResult, CompileErr> {
+    do_compile_and_run_opt_size_test_with_includes(prog, env, &["resources/tests".to_string()])
 }
 
 #[test]
 fn test_optimizer_tables_big_constants() {
     let res = do_compile_and_run_opt_size_test(
-        indoc!{"
+        indoc! {"
         (mod (A)
          (include *standard-cl-22*)
          (defconstant X \"hi there this is a test\")
          (c X (c X A))
          )
         "},
-        "(test)"
-    ).expect("should compile and run");
+        "(test)",
+    )
+    .expect("should compile and run");
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
 }
 
 #[test]
 fn smoke_test_optimizer() {
     let res = do_compile_and_run_opt_size_test(
-        indoc!{"
+        indoc! {"
         (mod ()
          (include *standard-cl-22*)
          (defun-inline F (X Y) (+ X Y))
          (let ((A 2) (B 4)) (F A B))
           )
         "},
-        "()"
-    ).expect("should compile and run");
+        "()",
+    )
+    .expect("should compile and run");
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
     assert!(res.opt.run_cost < res.unopt.run_cost);
 }
@@ -146,7 +133,7 @@ fn smoke_test_optimizer() {
 #[test]
 fn test_optimizer_shrinks_inlines() {
     let res = do_compile_and_run_opt_size_test(
-        indoc!{"
+        indoc! {"
         (mod (A)
           (include *standard-cl-22*)
           (defun-inline F (N) (* 3 (+ 1 N)))
@@ -157,15 +144,16 @@ fn test_optimizer_shrinks_inlines() {
             )
           )
         "},
-        "(3)"
-    ).expect("should compile and run");
+        "(3)",
+    )
+    .expect("should compile and run");
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
 }
 
 #[test]
 fn test_optimizer_shrinks_repeated_lets() {
     let res = do_compile_and_run_opt_size_test(
-        indoc!{"
+        indoc! {"
     (mod (X)
      (include *standard-cl-22*)
      (defconstant Z 1000000)
@@ -174,15 +162,16 @@ fn test_optimizer_shrinks_repeated_lets() {
       (+ X1 X1 X1 X1 X1 X1)
      )
     )"},
-        "(3)"
-    ).expect("should compile and run");
+        "(3)",
+    )
+    .expect("should compile and run");
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
 }
 
-
 #[test]
 fn test_optimizer_shrinks_q_test_1() {
-    let program = fs::read_to_string("resources/tests/optimization/merkle_tree_a2c.clsp").expect("test file should exist");
+    let program = fs::read_to_string("resources/tests/optimization/merkle_tree_a2c.clsp")
+        .expect("test file should exist");
     let res = do_compile_and_run_opt_size_test_with_includes(
         &program,
         "(0x79539b34c33bc90bdaa6f9a28d3993a1e34025e5f2061fc57f8ff3edb9fb3b85 0x47194347579b7aa1ede51c52ddfd4200d8b560828051608ce599c763fd99291a (() 0xfb3b5605bc59e423b7df9c3bcfa7f559d6cdfcb9a49645dd801b3b24d6e9c439 0xe925a16b925dc355611f46c900ff0c182a3ed29a32d76394ea85b14d760d91c6))",
@@ -193,7 +182,8 @@ fn test_optimizer_shrinks_q_test_1() {
 
 #[test]
 fn test_optimizer_shrinks_q_test_2() {
-    let program = fs::read_to_string("resources/tests/optimization/validation_taproot.clsp").expect("test file should exist");
+    let program = fs::read_to_string("resources/tests/optimization/validation_taproot.clsp")
+        .expect("test file should exist");
     let res = do_compile_and_run_opt_size_test_with_includes(
         &program,
         indoc!{"(

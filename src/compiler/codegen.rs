@@ -21,7 +21,7 @@ use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::frontend::compile_bodyform;
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
-use crate::compiler::optimize::{optimize_expr};
+use crate::compiler::optimize::optimize_expr;
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
@@ -519,9 +519,7 @@ pub fn generate_expr_code(
                         ))
                     } else {
                         create_name_lookup(compiler, l.clone(), atom)
-                            .map(|f| {
-                                Ok(CompiledCode(l.clone(), f))
-                            })
+                            .map(|f| Ok(CompiledCode(l.clone(), f)))
                             .unwrap_or_else(|_| {
                                 // Pass through atoms that don't look up on behalf of
                                 // macros, as it's possible that a macro returned
@@ -709,24 +707,23 @@ fn is_defun_or_tabled_const(b: &HelperForm) -> bool {
     match b {
         HelperForm::Defun(false, _) => true,
         HelperForm::Defconstant(cdata) => cdata.tabled,
-        _ => false
+        _ => false,
     }
 }
 
 fn count_occurrences(name: &[u8], expr: &BodyForm) -> usize {
     match expr {
-        BodyForm::Value(SExp::Atom(_,n)) => {
-            usize::from(n == name)
-        }
-        BodyForm::Call(_, v) => {
-            v.iter().map(|item| count_occurrences(name, item)).sum()
-        }
+        BodyForm::Value(SExp::Atom(_, n)) => usize::from(n == name),
+        BodyForm::Call(_, v) => v.iter().map(|item| count_occurrences(name, item)).sum(),
         BodyForm::Let(_, data) => {
-            let use_in_bindings: usize =
-                data.bindings.iter().map(|b| count_occurrences(name, b.body.borrow())).sum();
+            let use_in_bindings: usize = data
+                .bindings
+                .iter()
+                .map(|b| count_occurrences(name, b.body.borrow()))
+                .sum();
             count_occurrences(name, data.body.borrow()) + use_in_bindings
         }
-        _ => { 0 }
+        _ => 0,
     }
 }
 
@@ -772,9 +769,10 @@ fn generate_let_defun(
     );
 
     // Count occurrences per binding.
-    let deinline_score: usize = bindings.iter().map(|b| {
-        count_occurrences(&b.name, body.borrow())
-    }).sum();
+    let deinline_score: usize = bindings
+        .iter()
+        .map(|b| count_occurrences(&b.name, body.borrow()))
+        .sum();
 
     let inline = !opts.frontend_opt() || deinline_score == 1;
     HelperForm::Defun(
@@ -786,7 +784,7 @@ fn generate_let_defun(
             name: name.to_owned(),
             args: Rc::new(inner_function_args),
             body,
-            synthetic: true
+            synthetic: true,
         },
     )
 }
@@ -951,7 +949,7 @@ fn process_helper_let_bindings(
                         name: defun.name.clone(),
                         args: defun.args.clone(),
                         body: hoisted_body.clone(),
-                        synthetic: defun.synthetic
+                        synthetic: defun.synthetic,
                     },
                 );
 
@@ -1146,7 +1144,7 @@ fn finalize_env_(
                     res.args.loc(),
                     &synthesize_args(res.args.clone()),
                 )
-                    .map(|x| x.1);
+                .map(|x| x.1);
             }
 
             /* Parentfns are functions in progress in the parent */
@@ -1239,7 +1237,7 @@ fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileE
                 } else {
                     Ok(compiler.clone())
                 }
-            },
+            }
             _ => Ok(compiler.clone()),
         },
         compiler.clone(),

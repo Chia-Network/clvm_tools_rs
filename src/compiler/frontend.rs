@@ -378,7 +378,7 @@ fn compile_defconstant(
             kw: kwl,
             name: name.to_vec(),
             body: Rc::new(BodyForm::Value(body_borrowed.clone())),
-            tabled: opts.frontend_opt()
+            tabled: opts.frontend_opt(),
         }))
     } else {
         compile_bodyform(opts.clone(), body.clone()).map(|bf| {
@@ -388,7 +388,7 @@ fn compile_defconstant(
                 kw: kwl,
                 name: name.to_vec(),
                 body: Rc::new(bf),
-                tabled: opts.frontend_opt()
+                tabled: opts.frontend_opt(),
             })
         })
     }
@@ -430,7 +430,7 @@ fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun) -> Result<Helpe
                 name: data.name,
                 args: data.args,
                 body: Rc::new(bf),
-                synthetic: false
+                synthetic: false,
             },
         )
     })

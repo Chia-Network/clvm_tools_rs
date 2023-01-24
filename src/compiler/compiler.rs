@@ -13,9 +13,7 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::codegen;
-use crate::compiler::comptypes::{
-    CompileErr, CompilerOpts, PrimaryCodegen,
-};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
 use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::{fe_opt, finish_optimization, sexp_scale};
 use crate::compiler::prims;
@@ -97,22 +95,29 @@ pub fn compile_pre_forms(
 ) -> Result<SExp, CompileErr> {
     let g = frontend(opts.clone(), pre_forms)?;
     if opts.frontend_opt() {
-        let compileform_inlined =
-            fe_opt(allocator, runner.clone(), opts.clone(), &g, true)?;
-        let generated_inlined =
-            finish_optimization(&codegen(allocator, runner.clone(), opts.clone(), &compileform_inlined, symbol_table)?);
-        let compileform_noninlined =
-            fe_opt(allocator, runner.clone(), opts.clone(), &g, false)?;
-        let generated_noninlined =
-            finish_optimization(&codegen(allocator, runner, opts, &compileform_noninlined, symbol_table)?);
+        let compileform_inlined = fe_opt(allocator, runner.clone(), opts.clone(), &g, true)?;
+        let generated_inlined = finish_optimization(&codegen(
+            allocator,
+            runner.clone(),
+            opts.clone(),
+            &compileform_inlined,
+            symbol_table,
+        )?);
+        let compileform_noninlined = fe_opt(allocator, runner.clone(), opts.clone(), &g, false)?;
+        let generated_noninlined = finish_optimization(&codegen(
+            allocator,
+            runner,
+            opts,
+            &compileform_noninlined,
+            symbol_table,
+        )?);
         let inlined_scale = sexp_scale(&generated_inlined);
-        let noninlined_scale =  sexp_scale(&generated_noninlined);
-        let generated =
-            if inlined_scale < noninlined_scale {
-                generated_inlined
-            } else {
-                generated_noninlined
-            };
+        let noninlined_scale = sexp_scale(&generated_noninlined);
+        let generated = if inlined_scale < noninlined_scale {
+            generated_inlined
+        } else {
+            generated_noninlined
+        };
         Ok(generated)
     } else {
         codegen(allocator, runner, opts.clone(), &g, symbol_table)

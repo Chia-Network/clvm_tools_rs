@@ -25,11 +25,16 @@ use crate::util::{number_from_u8, u8_from_number, Number};
 #[derive(Debug, Clone)]
 pub struct ExpandMode {
     pub functions: bool,
-    pub lets: bool
+    pub lets: bool,
 }
 
 impl Default for ExpandMode {
-    fn default() -> Self { ExpandMode { functions: true, lets: true } }
+    fn default() -> Self {
+        ExpandMode {
+            functions: true,
+            lets: true,
+        }
+    }
 }
 
 // Frontend evaluator based on my fuzzer representation and direct interpreter of
@@ -44,13 +49,11 @@ impl ArgInputs {
     pub fn to_sexp(&self) -> Rc<SExp> {
         match self {
             ArgInputs::Whole(bf) => bf.to_sexp(),
-            ArgInputs::Pair(a,b) => {
-                Rc::new(SExp::Cons(
-                    Srcloc::start("*args*"),
-                    a.to_sexp(),
-                    b.to_sexp()
-                ))
-            }
+            ArgInputs::Pair(a, b) => Rc::new(SExp::Cons(
+                Srcloc::start("*args*"),
+                a.to_sexp(),
+                b.to_sexp(),
+            )),
         }
     }
 }
@@ -366,7 +369,7 @@ fn synthesize_args_inner(
 fn synthesize_args(
     template: Rc<SExp>,
     env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-    with_left_env: bool
+    with_left_env: bool,
 ) -> Result<Rc<BodyForm>, CompileErr> {
     let env_synth = synthesize_args_inner(template, env)?;
     if with_left_env {
@@ -375,7 +378,7 @@ fn synthesize_args(
             &loc,
             "c".to_string(),
             Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone()))),
-            env_synth
+            env_synth,
         )))
     } else {
         Ok(env_synth)
@@ -438,7 +441,7 @@ fn promote_args_to_bodyform(
         for a in v.iter() {
             result.push(promote_program_to_bodyform(
                 Rc::new(a.clone()),
-                whole_args.clone()
+                whole_args.clone(),
             )?);
         }
         return Ok(result);
@@ -657,7 +660,7 @@ impl Evaluator {
                     prog_args.clone(),
                     env,
                     program.exp,
-                    Default::default()
+                    Default::default(),
                 )
             })
         } else {
@@ -666,7 +669,7 @@ impl Evaluator {
                 Rc::new(BodyForm::Value(SExp::Atom(
                     macro_expansion.loc(),
                     vec![b'@'],
-                )))
+                ))),
             )
         }
     }
@@ -694,18 +697,19 @@ impl Evaluator {
                 return Err(CompileErr(l, "@ callable not given a constant".to_string()));
             }
 
-            let path_sexp =
-                match parts[1].borrow() {
-                    BodyForm::Value(val) => Ok(val),
-                    BodyForm::Quoted(val) => Ok(val),
-                    _ => Err(CompileErr(l.clone(), "Not a supported argument for @ call".to_string()))
-                }?;
-            let path =
-                if let Some(bigint) = path_sexp.to_bigint() {
-                    Ok(bigint)
-                } else {
-                    Err(CompileErr(l, "Not a number in @ call".to_string()))
-                }?;
+            let path_sexp = match parts[1].borrow() {
+                BodyForm::Value(val) => Ok(val),
+                BodyForm::Quoted(val) => Ok(val),
+                _ => Err(CompileErr(
+                    l.clone(),
+                    "Not a supported argument for @ call".to_string(),
+                )),
+            }?;
+            let path = if let Some(bigint) = path_sexp.to_bigint() {
+                Ok(bigint)
+            } else {
+                Err(CompileErr(l, "Not a number in @ call".to_string()))
+            }?;
 
             // Choose from the live environment.
             let literal_args = synthesize_args(prog_args.clone(), env, true)?;
@@ -715,7 +719,7 @@ impl Evaluator {
                 prog_args,
                 env,
                 literal_args,
-                expand
+                expand,
             )?;
 
             let chosen = choose_from_env_by_path(path, arg_part);
@@ -736,12 +740,8 @@ impl Evaluator {
                 Rc::new(SExp::Atom(l.clone(), "mod".as_bytes().to_vec())),
                 Rc::new(SExp::Cons(
                     l.clone(),
-                    Rc::new(SExp::Cons(
-                        l.clone(),
-                        Rc::new(SExp::Nil(l)),
-                        prog_args,
-                    )),
-                    end_of_list
+                    Rc::new(SExp::Cons(l.clone(), Rc::new(SExp::Nil(l)), prog_args)),
+                    end_of_list,
                 )),
             );
 
@@ -753,7 +753,9 @@ impl Evaluator {
                 // Try to short circuit destruct conses.
                 let is_first = call_name == b"f" || call_name == vec![5];
                 if is_first || call_name == b"r" || call_name == vec![6] {
-                    if let Some((first, rest)) = recognize_consed_env(arguments_to_convert[0].clone()) {
+                    if let Some((first, rest)) =
+                        recognize_consed_env(arguments_to_convert[0].clone())
+                    {
                         if is_first {
                             return Ok(first);
                         } else {
@@ -777,7 +779,7 @@ impl Evaluator {
                             prog_args.clone(),
                             env,
                             arguments_to_convert[i].clone(),
-                            expand.clone()
+                            expand.clone(),
                         )?;
 
                         target_vec[i + 1] = shrunk.clone();
@@ -843,7 +845,7 @@ impl Evaluator {
             Rc::new(SExp::Nil(run_program.loc())),
             &bindings,
             program,
-            Default::default()
+            Default::default(),
         )?;
         self.chase_apply(allocator, visited, apply_result)
     }
@@ -953,20 +955,22 @@ impl Evaluator {
         prog_args: Rc<SExp>,
         arguments_to_convert: &[Rc<BodyForm>],
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        expand: ExpandMode
+        expand: ExpandMode,
     ) -> Result<Option<Rc<BodyForm>>, CompileErr> {
         let helper = select_helper(&self.helpers, call_name);
         match helper {
-            Some(HelperForm::Defmacro(mac)) => self.invoke_macro_expansion(
-                allocator,
-                visited,
-                mac.loc.clone(),
-                call_loc,
-                mac.program,
-                prog_args,
-                arguments_to_convert,
-                env,
-            ).map(Some),
+            Some(HelperForm::Defmacro(mac)) => self
+                .invoke_macro_expansion(
+                    allocator,
+                    visited,
+                    mac.loc.clone(),
+                    call_loc,
+                    mac.program,
+                    prog_args,
+                    arguments_to_convert,
+                    env,
+                )
+                .map(Some),
             Some(HelperForm::Defun(inline, defun)) => {
                 if !inline && !expand.functions {
                     return Ok(None);
@@ -985,7 +989,7 @@ impl Evaluator {
                         prog_args.clone(),
                         env,
                         kv.1.clone(),
-                        expand.clone()
+                        expand.clone(),
                     )?;
 
                     argument_captures.insert(kv.0.clone(), shrunk.clone());
@@ -997,8 +1001,9 @@ impl Evaluator {
                     defun.args.clone(),
                     &argument_captures,
                     defun.body,
-                    expand
-                ).map(Some)
+                    expand,
+                )
+                .map(Some)
             }
             _ => self
                 .invoke_primitive(
@@ -1011,7 +1016,7 @@ impl Evaluator {
                     prog_args,
                     arguments_to_convert,
                     env,
-                    expand
+                    expand,
                 )
                 .and_then(|res| self.chase_apply(allocator, visited, res))
                 .map(Some),
@@ -1026,7 +1031,7 @@ impl Evaluator {
         prog_args: Rc<SExp>,
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         body: Rc<BodyForm>,
-        expand: ExpandMode
+        expand: ExpandMode,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         match body.borrow() {
             BodyForm::Let(LetFormKind::Parallel, letdata) => {
@@ -1041,7 +1046,7 @@ impl Evaluator {
                     prog_args,
                     &updated_bindings,
                     letdata.body.clone(),
-                    expand
+                    expand,
                 )
             }
             BodyForm::Let(LetFormKind::Sequential, letdata) => {
@@ -1056,7 +1061,7 @@ impl Evaluator {
                         prog_args,
                         env,
                         letdata.body.clone(),
-                        expand
+                        expand,
                     )
                 } else {
                     let first_binding_as_list: Vec<Rc<Binding>> =
@@ -1079,7 +1084,7 @@ impl Evaluator {
                                 body: letdata.body.clone(),
                             },
                         )),
-                        expand
+                        expand,
                     )
                 }
             }
@@ -1093,7 +1098,7 @@ impl Evaluator {
                         prog_args,
                         env,
                         literal_args,
-                        expand
+                        expand,
                     )
                 } else {
                     env.get(name)
@@ -1107,7 +1112,7 @@ impl Evaluator {
                                     prog_args.clone(),
                                     env,
                                     x.clone(),
-                                    expand.clone()
+                                    expand.clone(),
                                 )
                             }
                         })
@@ -1120,7 +1125,7 @@ impl Evaluator {
                                         prog_args.clone(),
                                         env,
                                         x,
-                                        expand.clone()
+                                        expand.clone(),
                                     )
                                 })
                                 .unwrap_or_else(|| {
@@ -1146,51 +1151,55 @@ impl Evaluator {
                     parts.iter().skip(1).cloned().collect();
 
                 match head_expr.borrow() {
-                    BodyForm::Value(SExp::Atom(call_loc, call_name)) => self.handle_invoke(
-                        allocator,
-                        visited,
-                        l.clone(),
-                        call_loc.clone(),
-                        call_name,
-                        head_expr.clone(),
-                        parts,
-                        body.clone(),
-                        prog_args.clone(),
-                        &arguments_to_convert,
-                        env,
-                        expand.clone()
-                    ).and_then(|x| {
-                        if let Some(res) = x {
-                            Ok(res)
-                        } else {
-                            let mut converted_arguments = vec![head_expr.clone()];
-                            for arg in arguments_to_convert.iter() {
-                                converted_arguments.push(self.shrink_bodyform_visited(
-                                    allocator,
-                                    visited,
-                                    prog_args.clone(),
-                                    env,
-                                    arg.clone(),
-                                    expand.clone()
-                                )?);
+                    BodyForm::Value(SExp::Atom(call_loc, call_name)) => self
+                        .handle_invoke(
+                            allocator,
+                            visited,
+                            l.clone(),
+                            call_loc.clone(),
+                            call_name,
+                            head_expr.clone(),
+                            parts,
+                            body.clone(),
+                            prog_args.clone(),
+                            &arguments_to_convert,
+                            env,
+                            expand.clone(),
+                        )
+                        .and_then(|x| {
+                            if let Some(res) = x {
+                                Ok(res)
+                            } else {
+                                let mut converted_arguments = vec![head_expr.clone()];
+                                for arg in arguments_to_convert.iter() {
+                                    converted_arguments.push(self.shrink_bodyform_visited(
+                                        allocator,
+                                        visited,
+                                        prog_args.clone(),
+                                        env,
+                                        arg.clone(),
+                                        expand.clone(),
+                                    )?);
+                                }
+                                Ok(Rc::new(BodyForm::Call(body.loc(), converted_arguments)))
                             }
-                            Ok(Rc::new(BodyForm::Call(body.loc(), converted_arguments)))
-                        }
-                    }),
-                    BodyForm::Value(SExp::Integer(call_loc, call_int)) => self.handle_invoke(
-                        allocator,
-                        visited,
-                        l.clone(),
-                        call_loc.clone(),
-                        &u8_from_number(call_int.clone()),
-                        head_expr.clone(),
-                        parts,
-                        body.clone(),
-                        prog_args,
-                        &arguments_to_convert,
-                        env,
-                        expand
-                    ).map(|x| x.unwrap_or_else(|| body.clone())),
+                        }),
+                    BodyForm::Value(SExp::Integer(call_loc, call_int)) => self
+                        .handle_invoke(
+                            allocator,
+                            visited,
+                            l.clone(),
+                            call_loc.clone(),
+                            &u8_from_number(call_int.clone()),
+                            head_expr.clone(),
+                            parts,
+                            body.clone(),
+                            prog_args,
+                            &arguments_to_convert,
+                            env,
+                            expand,
+                        )
+                        .map(|x| x.unwrap_or_else(|| body.clone())),
                     _ => Err(CompileErr(
                         l.clone(),
                         format!("Don't know how to call {}", head_expr.to_sexp()),
@@ -1217,7 +1226,7 @@ impl Evaluator {
         prog_args: Rc<SExp>,
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         body: Rc<BodyForm>,
-        expand: ExpandMode
+        expand: ExpandMode,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         self.shrink_bodyform_visited(
             allocator, // Support random prims via clvm_rs
@@ -1225,7 +1234,7 @@ impl Evaluator {
             prog_args,
             env,
             body,
-            expand
+            expand,
         )
     }
 

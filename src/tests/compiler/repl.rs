@@ -147,8 +147,8 @@ fn test_repl_supports_at_capture() {
             "(defun F (A (@ Z (B C)) D) (c (+ A B C D) Z))",
             "(F 1 (q 2 3) 4)",
         ])
-            .unwrap()
-            .unwrap(),
+        .unwrap()
+        .unwrap(),
         "(q 10 2 3)"
     );
 }

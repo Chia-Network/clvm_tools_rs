@@ -96,7 +96,7 @@ pub struct DefunData {
     pub nl: Srcloc,
     pub args: Rc<SExp>,
     pub body: Rc<BodyForm>,
-    pub synthetic: bool
+    pub synthetic: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -116,7 +116,7 @@ pub struct DefconstData {
     pub kw: Option<Srcloc>,
     pub nl: Srcloc,
     pub body: Rc<BodyForm>,
-    pub tabled: bool
+    pub tabled: bool,
 }
 
 #[derive(Clone, Debug)]
