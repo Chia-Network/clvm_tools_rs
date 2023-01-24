@@ -1,8 +1,6 @@
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering;
 
 use num_bigint::ToBigInt;
 
@@ -19,13 +17,9 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::{decode_string, SExp};
+use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, u8_from_number, Number};
-
-lazy_static! {
-    pub static ref INDENT: AtomicI32 = AtomicI32::new(0);
-}
 
 // Governs whether Evaluator expands various forms.
 #[derive(Debug, Clone)]
@@ -36,20 +30,6 @@ pub struct ExpandMode {
 
 impl Default for ExpandMode {
     fn default() -> Self { ExpandMode { functions: true, lets: true } }
-}
-
-pub fn push_indent() {
-    INDENT.fetch_add(1, Ordering::SeqCst);
-}
-
-pub fn pop_indent() {
-    INDENT.fetch_add(-1, Ordering::SeqCst);
-}
-
-pub fn show_indent() -> String {
-    let current_indent = INDENT.fetch_add(0, Ordering::SeqCst);
-    let v: Vec<u8> = (0..current_indent).map(|_| b' ').collect();
-    decode_string(&v)
 }
 
 // Frontend evaluator based on my fuzzer representation and direct interpreter of
@@ -316,6 +296,7 @@ pub fn dequote(l: Srcloc, exp: Rc<BodyForm>) -> Result<Rc<SExp>, CompileErr> {
     }
 }
 
+/*
 fn show_env(env: &HashMap<Vec<u8>, Rc<BodyForm>>) {
     let loc = Srcloc::start("*env*");
     for kv in env.iter() {
@@ -327,6 +308,7 @@ fn show_env(env: &HashMap<Vec<u8>, Rc<BodyForm>>) {
         );
     }
 }
+*/
 
 pub fn first_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     match lst.borrow() {
@@ -655,7 +637,6 @@ impl Evaluator {
             macro_args = Rc::new(SExp::Cons(l.clone(), arg_repr, macro_args));
         }
 
-        eprintln!("{}macro_args {}", show_indent(), macro_args);
         let macro_expansion = self.expand_macro(allocator, l.clone(), program, macro_args)?;
 
         if let Ok(input) = dequote(call_loc, macro_expansion.clone()) {
@@ -704,45 +685,6 @@ impl Evaluator {
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         expand: ExpandMode,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        eprintln!("{}invoke_primitive {}", show_indent(), body.to_sexp());
-        show_env(env);
-        let res = self.invoke_primitive_(
-            allocator,
-            visited,
-            l,
-            call_name,
-            parts,
-            body,
-            prog_args,
-            arguments_to_convert,
-            env,
-            expand
-        );
-        match &res {
-            Err(CompileErr(l,e)) => {
-                eprintln!("{}invoke_primitive error {} {}", show_indent(), l, e);
-            },
-            Ok(v) => {
-                eprintln!("{}invoke_primitive => {}", show_indent(), v.to_sexp());
-            }
-        }
-        res
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn invoke_primitive_(
-        &self,
-        allocator: &mut Allocator,
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
-        l: Srcloc,
-        call_name: &[u8],
-        parts: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-        prog_args: Rc<SExp>,
-        arguments_to_convert: &[Rc<BodyForm>],
-        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        expand: ExpandMode,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
         let mut all_primitive = true;
         let mut target_vec: Vec<Rc<BodyForm>> = parts.to_owned();
 
@@ -776,8 +718,7 @@ impl Evaluator {
                 expand
             )?;
 
-            let chosen = choose_from_env_by_path(path.clone(), arg_part.clone());
-            eprintln!("{}chosen {} in {} => {}", show_indent(), path, arg_part.to_sexp(), chosen.to_sexp());
+            let chosen = choose_from_env_by_path(path, arg_part);
             Ok(chosen)
         } else if call_name == "com".as_bytes() {
             let mut end_of_list = Rc::new(SExp::Cons(
@@ -803,8 +744,6 @@ impl Evaluator {
                     end_of_list
                 )),
             );
-
-            eprintln!("{}compile mod {}", show_indent(), use_body);
 
             let compiled = self.compile_code(allocator, false, Rc::new(use_body))?;
             let compiled_borrowed: &SExp = compiled.borrow();
@@ -850,8 +789,6 @@ impl Evaluator {
                         converted_args =
                             SExp::Cons(l.clone(), shrunk.to_sexp(), Rc::new(converted_args));
                     }
-
-                    eprintln!("{}prim {} converted_args {}", show_indent(), prim, converted_args);
 
                     if all_primitive {
                         match self.run_prim(
@@ -1018,10 +955,6 @@ impl Evaluator {
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         expand: ExpandMode
     ) -> Result<Option<Rc<BodyForm>>, CompileErr> {
-        eprintln!("{}invoke helper {}", show_indent(), decode_string(call_name));
-        for h in self.helpers.iter() {
-            eprintln!("{}- {}", show_indent(), h.to_sexp());
-        }
         let helper = select_helper(&self.helpers, call_name);
         match helper {
             Some(HelperForm::Defmacro(mac)) => self.invoke_macro_expansion(
@@ -1087,41 +1020,6 @@ impl Evaluator {
 
     // A frontend language evaluator and minifier
     pub fn shrink_bodyform_visited(
-        &self,
-        allocator: &mut Allocator, // Support random prims via clvm_rs
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
-        prog_args: Rc<SExp>,
-        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        body: Rc<BodyForm>,
-        expand: ExpandMode,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
-        eprintln!("{}>shrink> {}", show_indent(), body.to_sexp());
-        show_env(env);
-        eprintln!("{}>s>", show_indent());
-
-        push_indent();
-        let res = self.shrink_bodyform_visited_(
-            allocator,
-            visited,
-            prog_args,
-            env,
-            body,
-            expand
-        );
-        pop_indent();
-        match &res {
-            Err(CompileErr(l,e)) => {
-                eprintln!("{}<E {} {}", show_indent(), l, e);
-            }
-            Ok(v) => {
-                eprintln!("{}<shrink< {}", show_indent(), v.to_sexp());
-            }
-        }
-        res
-    }
-
-    // A frontend language evaluator and minifier
-    pub fn shrink_bodyform_visited_(
         &self,
         allocator: &mut Allocator, // Support random prims via clvm_rs
         visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
@@ -1265,7 +1163,6 @@ impl Evaluator {
                         if let Some(res) = x {
                             Ok(res)
                         } else {
-                            eprintln!("{}None from handle_invoke {}", show_indent(), body.to_sexp());
                             let mut converted_arguments = vec![head_expr.clone()];
                             for arg in arguments_to_convert.iter() {
                                 converted_arguments.push(self.shrink_bodyform_visited(
@@ -1359,14 +1256,8 @@ impl Evaluator {
             )),
         ));
 
-        eprintln!("{}use_body {}", show_indent(), use_body);
-
         let compiled = self.compile_code(allocator, false, use_body)?;
-        eprintln!("{}compiled {}", show_indent(), compiled);
-        eprintln!("{}args ... {}", show_indent(), args);
-        let res = self.run_prim(allocator, call_loc, compiled, args)?;
-        eprintln!("{}result . {}", show_indent(), res.to_sexp());
-        Ok(res)
+        self.run_prim(allocator, call_loc, compiled, args)
     }
 
     fn lookup_prim(&self, l: Srcloc, name: &[u8]) -> Option<Rc<SExp>> {
