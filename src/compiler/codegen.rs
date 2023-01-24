@@ -21,7 +21,7 @@ use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::frontend::compile_bodyform;
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
-use crate::compiler::optimize::{optimize_expr, sexp_scale};
+use crate::compiler::optimize::{optimize_expr};
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
@@ -520,7 +520,6 @@ pub fn generate_expr_code(
                     } else {
                         create_name_lookup(compiler, l.clone(), atom)
                             .map(|f| {
-                                eprintln!("name lookup {} -> {}", decode_string(&atom), f);
                                 Ok(CompiledCode(l.clone(), f))
                             })
                             .unwrap_or_else(|_| {
@@ -717,7 +716,7 @@ fn is_defun_or_tabled_const(b: &HelperForm) -> bool {
 fn count_occurrences(name: &[u8], expr: &BodyForm) -> usize {
     match expr {
         BodyForm::Value(SExp::Atom(_,n)) => {
-            if n == name { 1 } else { 0 }
+            usize::from(n == name)
         }
         BodyForm::Call(_, v) => {
             v.iter().map(|item| count_occurrences(name, item)).sum()
@@ -778,7 +777,7 @@ fn generate_let_defun(
     }).sum();
 
     let inline = !opts.frontend_opt() || deinline_score == 1;
-    let h = HelperForm::Defun(
+    HelperForm::Defun(
         inline,
         DefunData {
             loc: l.clone(),
@@ -789,9 +788,7 @@ fn generate_let_defun(
             body,
             synthetic: true
         },
-    );
-    eprintln!("helper {}", h.to_sexp());
-    h
+    )
 }
 
 fn generate_let_args(_l: Srcloc, blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {
@@ -1085,8 +1082,6 @@ fn start_codegen(
             &live_helpers,
         )),
     };
-
-    eprintln!("use_compiler.env {}", use_compiler.env);
 
     use_compiler.to_process = let_helpers_with_expr.clone();
     use_compiler.orig_help = let_helpers_with_expr;

@@ -1,3 +1,4 @@
+#[cfg(test)]
 use num_bigint::ToBigInt;
 
 use std::borrow::Borrow;
@@ -6,18 +7,16 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
+use crate::classic::clvm::__type_compatibility__::bi_zero;
+#[cfg(test)]
+use crate::classic::clvm::__type_compatibility__::bi_one;
+
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::run;
 use crate::compiler::codegen::{codegen, get_callable};
-use crate::compiler::comptypes::{BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen};
-#[cfg(test)]
-use crate::compiler::compiler::DefaultCompilerOpts;
-use crate::compiler::compiler::{is_cons, is_operator};
+use crate::compiler::comptypes::{BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen};
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator, ExpandMode};
-#[cfg(test)]
-use crate::compiler::frontend::compile_bodyform;
 #[cfg(test)]
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::sexp::SExp;
@@ -162,134 +161,6 @@ pub fn optimize_expr(
     }
 }
 
-// Unroll loops
-//
-// A function in this form:
-//
-// (defun name (A1 A2 ... L ... An)
-//   (if L ;; (or (l L)
-//     (c (STUFF ... (f L) ...) (name A1 A2 ... (r L) ... An)) ;; STUFF cannot use (r L)
-//     L ;; (or ())
-//     )
-//   )
-//
-// Can unroll into:
-//
-//
-//  (defun unroll_$_name (A1 A2 ... H ... An) ;; H = (f L)
-//     (STUFF ... H ...)
-//     )
-//
-//  (defun name (A1 A2 ... L ... An)
-//     (if L ;; (or (l L))
-//       (c (unroll_$_name A1 A2 ... (f L) ... An)
-//          (name A1 A2 .. (r L) ... An)
-//          )
-//       L ;; (or ())
-//       )
-//     )
-//
-//   (c (unroll_$_name A1 A2 ... (a 5 L) ... An)
-//     (c (unroll_$_name A1 A2 ... (a 11 L) ... An)
-//        ()))
-//
-// When L is formed as:
-//
-//    (c X (c Y (c Z ())))
-//
-// And
-//
-//   (c (unroll_$_name A1 A2 ... (a 5 L) ... An)
-//     (c (unroll_$_name A1 A2 ... (a 11 L) ... An)
-//        (name A1 A2 ... QQQ ... An)))
-//
-// When L is formed as:
-//
-//    (c X (c Y (c Z QQQ)))
-
-struct UnrollableList {
-    // Any entries that could be recovered.
-    entries: Vec<Rc<BodyForm>>,
-    tail: Rc<BodyForm>
-}
-
-fn is_cons_bf(bf: Rc<BodyForm>) -> bool {
-    if let BodyForm::Value(a) = bf.borrow() {
-        return is_cons(&a) || is_operator(b'c' as u32, &a);
-    }
-
-    false
-}
-
-fn recognize_unrollable_list_inner(
-    body: Rc<BodyForm>
-) -> Result<Option<UnrollableList>, CompileErr> {
-    match body.borrow() {
-        BodyForm::Call(_, exprs) => {
-            if exprs.is_empty() {
-                return Ok(None);
-            }
-
-            if is_cons_bf(exprs[0].clone()) && exprs.len() == 3 {
-                if let Some(mut tail) = recognize_unrollable_list_inner(exprs[2].clone())? {
-                    tail.entries.insert(0, exprs[1].clone());
-                    return Ok(Some(tail));
-                } else {
-                    return Ok(None);
-                }
-            }
-        }
-        BodyForm::Quoted(SExp::Cons(_,f,r)) => {
-            let borrowed_tail: &SExp = r.borrow();
-            if let Some(mut tail) = recognize_unrollable_list_inner(Rc::new(BodyForm::Quoted(borrowed_tail.clone())))? {
-                let borrowed_head: &SExp = f.borrow();
-                tail.entries.insert(0, Rc::new(BodyForm::Quoted(borrowed_head.clone())));
-                return Ok(Some(tail));
-            }
-        }
-        BodyForm::Quoted(SExp::Nil(_)) => {
-            return Ok(Some(UnrollableList {
-                entries: Default::default(),
-                tail: body.clone()
-            }));
-        }
-        _ => {}
-    }
-
-    Ok(None)
-}
-
-// Recognize a list formation in code.
-fn recognize_unrollable_list(
-    body: Rc<BodyForm>
-) -> Result<Option<UnrollableList>, CompileErr> {
-    if let Some(res) = recognize_unrollable_list_inner(body)? {
-        if res.entries.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(res))
-        }
-    } else {
-        Ok(None)
-    }
-}
-
-#[test]
-fn test_recognize_unrollable_basic() {
-    let opts = Rc::new(DefaultCompilerOpts::new("*test*"));
-    let parsed = parse_sexp(Srcloc::start("*test*"), "(c 101 (c 102 (c 103 (q 2 3))))".bytes()).expect("should parse");
-    let compiled = compile_bodyform(opts, parsed[0].clone()).expect("should compile");
-    let recognized_unrollable = recognize_unrollable_list(
-        Rc::new(compiled)
-    ).expect("should be able to determine unrollableness");
-    if let Some(unrollable) = recognized_unrollable {
-        assert_eq!(unrollable.entries.len(), 5);
-        assert!(matches!(unrollable.tail.borrow(), BodyForm::Quoted(SExp::Nil(_))));
-    } else {
-        assert!(false);
-    }
-}
-
 // If (1) appears anywhere outside of a quoted expression, it can be replaced with
 // () since nil yields itself.
 fn null_optimization(sexp: Rc<SExp>, spine: bool) -> (bool, Rc<SExp>) {
@@ -321,7 +192,7 @@ fn null_optimization(sexp: Rc<SExp>, spine: bool) -> (bool, Rc<SExp>) {
         }
     }
 
-    (false, sexp.clone())
+    (false, sexp)
 }
 
 #[test]
@@ -363,28 +234,6 @@ pub fn finish_optimization(sexp: &SExp) -> SExp {
     }
 }
 
-fn compile_to_sexp(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
-    opts: Rc<dyn CompilerOpts>,
-    compileform: &CompileForm
-) -> Result<SExp, CompileErr> {
-    let new_program = Rc::new(SExp::Cons(
-        compileform.loc.clone(),
-        Rc::new(SExp::Atom(compileform.loc.clone(), "mod".as_bytes().to_vec())),
-        compileform.to_sexp()
-    ));
-
-    let code = opts.compile_program(
-        allocator,
-        runner.clone(),
-        new_program,
-        &mut HashMap::new()
-    )?;
-
-    Ok(code)
-}
-
 fn take_smaller_form(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -412,7 +261,7 @@ fn take_smaller_form(
         include_forms: compileform.include_forms.clone(),
         args: compileform.args.clone(),
         helpers: optimized_helpers.to_vec(),
-        exp: body.clone()
+        exp: body
     };
     let shrunk_form = CompileForm {
         loc: compileform.loc.clone(),
@@ -426,8 +275,6 @@ fn take_smaller_form(
     let generated_normal = finish_optimization(&codegen(allocator, runner.clone(), opts.clone(), &normal_form, &mut phantom_table)?);
     let normal_scale = sexp_scale(&generated_normal);
     let shrunk_scale = sexp_scale(&generated_shrunk);
-    eprintln!("normal_scale {}", normal_scale);
-    eprintln!("shrunk_scale {}", shrunk_scale);
     if normal_scale < shrunk_scale {
         Ok(normal_form)
     } else {
@@ -442,7 +289,6 @@ pub fn fe_opt(
     compileform: &CompileForm,
     with_inlines: bool
 ) -> Result<CompileForm, CompileErr> {
-    eprintln!("fe_opt {}", compileform.to_sexp());
     let mut compiler_helpers = compileform.helpers.clone();
     let mut used_names = HashSet::new();
 
@@ -463,10 +309,9 @@ pub fn fe_opt(
         }
     }
 
-    let evaluator = Evaluator::new(opts.clone(), runner.clone(), compiler_helpers.clone());
     let mut optimized_helpers: Vec<HelperForm> = Vec::new();
     for h in compiler_helpers.iter() {
-        if let HelperForm::Defun(false, defun) = &h {
+        if let HelperForm::Defun(inline, defun) = &h {
             let ref_compileform = CompileForm {
                 loc: compileform.loc.clone(),
                 include_forms: compileform.include_forms.clone(),
@@ -486,7 +331,7 @@ pub fn fe_opt(
 
             let mut new_defun = defun.clone();
             new_defun.body = better_form.exp.clone();
-            optimized_helpers.push(HelperForm::Defun(false, new_defun));
+            optimized_helpers.push(HelperForm::Defun(*inline, new_defun));
         } else {
             optimized_helpers.push(h.clone());
         }
@@ -496,7 +341,7 @@ pub fn fe_opt(
         allocator,
         runner,
         opts,
-        &compileform,
+        compileform,
         &optimized_helpers,
         compileform.exp.clone(),
         with_inlines

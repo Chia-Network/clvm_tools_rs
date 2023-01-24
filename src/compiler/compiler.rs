@@ -14,7 +14,7 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::codegen;
 use crate::compiler::comptypes::{
-    CompileErr, CompileForm, CompilerOpts, PrimaryCodegen,
+    CompileErr, CompilerOpts, PrimaryCodegen,
 };
 use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::{fe_opt, finish_optimization, sexp_scale};
@@ -107,8 +107,6 @@ pub fn compile_pre_forms(
             finish_optimization(&codegen(allocator, runner, opts, &compileform_noninlined, symbol_table)?);
         let inlined_scale = sexp_scale(&generated_inlined);
         let noninlined_scale =  sexp_scale(&generated_noninlined);
-        eprintln!("generated_inlined {} {}", inlined_scale, generated_inlined);
-        eprintln!("generated_noninlined {} {}", noninlined_scale, generated_noninlined);
         let generated =
             if inlined_scale < noninlined_scale {
                 generated_inlined

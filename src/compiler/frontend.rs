@@ -8,7 +8,6 @@ use crate::compiler::comptypes::{
     list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData,
     DefmacData, DefunData, HelperForm, IncludeDesc, LetData, LetFormKind, ModAccum,
 };
-use crate::compiler::optimize::sexp_scale;
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
 use crate::compiler::sexp::{enlist, SExp};
@@ -383,8 +382,6 @@ fn compile_defconstant(
         }))
     } else {
         compile_bodyform(opts.clone(), body.clone()).map(|bf| {
-            let bf_sexp = bf.to_sexp();
-            let bf_generated: &SExp = bf_sexp.borrow();
             HelperForm::Defconstant(DefconstData {
                 loc: l,
                 nl,

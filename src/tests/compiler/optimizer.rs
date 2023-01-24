@@ -14,7 +14,7 @@ use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 struct CompileRunResult {
-    pub compiled: Rc<SExp>,
+    // pub compiled: Rc<SExp>,
     pub compiled_hex: String,
     pub run_result: Rc<SExp>,
     pub run_cost: u64
@@ -43,7 +43,7 @@ fn run_with_cost(
         RunFailure::RunErr(sexp.loc(), format!("{} in {} {}", e.1, sexp, env))
     }).and_then(|reduction| {
         Ok(CompileRunResult {
-            compiled: sexp.clone(),
+            // compiled: sexp.clone(),
             compiled_hex,
             run_result: convert_from_clvm_rs(allocator, sexp.loc(), reduction.1)?,
             run_cost: reduction.0
@@ -72,8 +72,6 @@ fn run_string_get_program_and_output_with_includes(
         &mut HashMap::new(),
     )
         .and_then(|program| {
-            eprintln!("program {}", program);
-            eprintln!("sexp_args {}", sexp_args);
             run_with_cost(
                 &mut allocator,
                 runner,

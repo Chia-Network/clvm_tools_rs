@@ -317,13 +317,13 @@ pub fn dequote(l: Srcloc, exp: Rc<BodyForm>) -> Result<Rc<SExp>, CompileErr> {
 }
 
 fn show_env(env: &HashMap<Vec<u8>, Rc<BodyForm>>) {
-    let loc = Srcloc::start(&"*env*".to_string());
+    let loc = Srcloc::start("*env*");
     for kv in env.iter() {
         eprintln!(
             "{} - {}: {}",
             show_indent(),
-            SExp::Atom(loc.clone(), kv.0.clone()).to_string(),
-            kv.1.to_sexp().to_string()
+            SExp::Atom(loc.clone(), kv.0.clone()),
+            kv.1.to_sexp()
         );
     }
 }
@@ -705,6 +705,7 @@ impl Evaluator {
         expand: ExpandMode,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         eprintln!("{}invoke_primitive {}", show_indent(), body.to_sexp());
+        show_env(env);
         let res = self.invoke_primitive_(
             allocator,
             visited,
@@ -715,7 +716,7 @@ impl Evaluator {
             prog_args,
             arguments_to_convert,
             env,
-            expand.clone()
+            expand
         );
         match &res {
             Err(CompileErr(l,e)) => {
@@ -748,7 +749,7 @@ impl Evaluator {
         if call_name == "@".as_bytes() {
             // Synthesize the environment for this function
             if parts.is_empty() {
-                return Err(CompileErr(l.clone(), "@ callable not given a constant".to_string()));
+                return Err(CompileErr(l, "@ callable not given a constant".to_string()));
             }
 
             let path_sexp =
@@ -761,7 +762,7 @@ impl Evaluator {
                 if let Some(bigint) = path_sexp.to_bigint() {
                     Ok(bigint)
                 } else {
-                    Err(CompileErr(l.clone(), "Not a number in @ call".to_string()))
+                    Err(CompileErr(l, "Not a number in @ call".to_string()))
                 }?;
 
             // Choose from the live environment.
@@ -772,7 +773,7 @@ impl Evaluator {
                 prog_args,
                 env,
                 literal_args,
-                expand.clone()
+                expand
             )?;
 
             let chosen = choose_from_env_by_path(path.clone(), arg_part.clone());
@@ -796,7 +797,7 @@ impl Evaluator {
                     l.clone(),
                     Rc::new(SExp::Cons(
                         l.clone(),
-                        Rc::new(SExp::Nil(l.clone())),
+                        Rc::new(SExp::Nil(l)),
                         prog_args,
                     )),
                     end_of_list
@@ -1017,7 +1018,7 @@ impl Evaluator {
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         expand: ExpandMode
     ) -> Result<Option<Rc<BodyForm>>, CompileErr> {
-        eprintln!("{}invoke helper {}", show_indent(), decode_string(&call_name));
+        eprintln!("{}invoke helper {}", show_indent(), decode_string(call_name));
         for h in self.helpers.iter() {
             eprintln!("{}- {}", show_indent(), h.to_sexp());
         }
@@ -1063,7 +1064,7 @@ impl Evaluator {
                     defun.args.clone(),
                     &argument_captures,
                     defun.body,
-                    expand.clone()
+                    expand
                 ).map(Some)
             }
             _ => self
@@ -1077,7 +1078,7 @@ impl Evaluator {
                     prog_args,
                     arguments_to_convert,
                     env,
-                    expand.clone()
+                    expand
                 )
                 .and_then(|res| self.chase_apply(allocator, visited, res))
                 .map(Some),
@@ -1105,7 +1106,7 @@ impl Evaluator {
             prog_args,
             env,
             body,
-            expand.clone()
+            expand
         );
         pop_indent();
         match &res {
@@ -1142,7 +1143,7 @@ impl Evaluator {
                     prog_args,
                     &updated_bindings,
                     letdata.body.clone(),
-                    expand.clone()
+                    expand
                 )
             }
             BodyForm::Let(LetFormKind::Sequential, letdata) => {
@@ -1157,7 +1158,7 @@ impl Evaluator {
                         prog_args,
                         env,
                         letdata.body.clone(),
-                        expand.clone()
+                        expand
                     )
                 } else {
                     let first_binding_as_list: Vec<Rc<Binding>> =
@@ -1180,7 +1181,7 @@ impl Evaluator {
                                 body: letdata.body.clone(),
                             },
                         )),
-                        expand.clone()
+                        expand
                     )
                 }
             }
@@ -1194,7 +1195,7 @@ impl Evaluator {
                         prog_args,
                         env,
                         literal_args,
-                        expand.clone()
+                        expand
                     )
                 } else {
                     env.get(name)
@@ -1291,7 +1292,7 @@ impl Evaluator {
                         prog_args,
                         &arguments_to_convert,
                         env,
-                        expand.clone()
+                        expand
                     ).map(|x| x.unwrap_or_else(|| body.clone())),
                     _ => Err(CompileErr(
                         l.clone(),
