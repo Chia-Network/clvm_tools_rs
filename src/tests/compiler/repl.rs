@@ -216,3 +216,16 @@ fn test_intermediate_let_final() {
         "(q . 203)"
     );
 }
+
+#[test]
+fn test_repl_with_at_form() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun G (A (@ pt (x y))) (list (+ x A) (+ y A)))",
+            "(G 9 (list 3 2))"
+        ])
+            .unwrap()
+            .unwrap(),
+        "(q 12 11)"
+    );
+}
