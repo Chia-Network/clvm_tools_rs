@@ -521,7 +521,7 @@ fn test_classic_sets_source_file_in_symbols() {
 
 #[test]
 fn test_classic_sets_source_file_in_symbols_only_when_asked() {
-    let tname = "test_classic_sets_source_file_in_symbols.sym".to_string();
+    let tname = "test_classic_sets_source_file_in_symbols_when_asked.sym".to_string();
     do_basic_run(&vec![
         "run".to_string(),
         "--symbol-output-file".to_string(),

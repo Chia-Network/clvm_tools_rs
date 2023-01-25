@@ -324,7 +324,7 @@ pub fn fe_opt(
 
     let mut optimized_helpers: Vec<HelperForm> = Vec::new();
     for h in compiler_helpers.iter() {
-        if let HelperForm::Defun(inline, defun) = &h {
+        if let HelperForm::Defun(false, defun) = &h {
             let ref_compileform = CompileForm {
                 loc: compileform.loc.clone(),
                 include_forms: compileform.include_forms.clone(),
@@ -344,7 +344,7 @@ pub fn fe_opt(
 
             let mut new_defun = defun.clone();
             new_defun.body = better_form.exp.clone();
-            optimized_helpers.push(HelperForm::Defun(*inline, new_defun));
+            optimized_helpers.push(HelperForm::Defun(false, new_defun));
         } else {
             optimized_helpers.push(h.clone());
         }

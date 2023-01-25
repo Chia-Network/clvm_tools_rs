@@ -304,8 +304,7 @@ fn show_env(env: &HashMap<Vec<u8>, Rc<BodyForm>>) {
     let loc = Srcloc::start("*env*");
     for kv in env.iter() {
         eprintln!(
-            "{} - {}: {}",
-            show_indent(),
+            "- {}: {}",
             SExp::Atom(loc.clone(), kv.0.clone()),
             kv.1.to_sexp()
         );
@@ -757,9 +756,15 @@ impl Evaluator {
                         recognize_consed_env(arguments_to_convert[0].clone())
                     {
                         if is_first {
-                            return Ok(first);
+                            let evaluated_first = self.shrink_bodyform_visited(
+                                allocator, visited, prog_args, env, first, expand,
+                            )?;
+                            return Ok(evaluated_first);
                         } else {
-                            return Ok(rest);
+                            let evaluated_rest = self.shrink_bodyform_visited(
+                                allocator, visited, prog_args, env, rest, expand,
+                            )?;
+                            return Ok(evaluated_rest);
                         }
                     }
                 }
@@ -991,7 +996,6 @@ impl Evaluator {
                         kv.1.clone(),
                         expand.clone(),
                     )?;
-
                     argument_captures.insert(kv.0.clone(), shrunk.clone());
                 }
 

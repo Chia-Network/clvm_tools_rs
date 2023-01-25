@@ -201,3 +201,18 @@ fn test_optimize_let_binding_1_4() {
         "(q ((100) 101) 102)"
     );
 }
+
+#[test]
+fn test_intermediate_let_final() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun-inline letbinding_$_265 (((a) x_$_263) y) (+ x_$_263 y))",
+            "(defun-inline letbinding_$_264 ((a) x) (letbinding_$_265 (c (c a ()) (c x ())) (+ x 1)))",
+            "(defun main (a) (letbinding_$_264 (r @) (+ a 1)))",
+            "(main 100)"
+        ])
+            .unwrap()
+            .unwrap(),
+        "(q . 203)"
+    );
+}
