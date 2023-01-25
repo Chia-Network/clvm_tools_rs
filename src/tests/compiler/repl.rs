@@ -224,8 +224,8 @@ fn test_repl_with_at_form() {
             "(defun G (A (@ pt (x y))) (list (+ x A) (+ y A)))",
             "(G 9 (list 3 2))"
         ])
-            .unwrap()
-            .unwrap(),
+        .unwrap()
+        .unwrap(),
         "(q 12 11)"
     );
 }
