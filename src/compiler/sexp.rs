@@ -32,7 +32,7 @@ pub enum SExp {
     Atom(Srcloc, Vec<u8>),
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzer"))]
 pub fn random_atom_name<R: Rng + ?Sized>(rng: &mut R, min_size: usize) -> Vec<u8> {
     let mut bytevec: Vec<u8> = Vec::new();
     let mut len = 0;
