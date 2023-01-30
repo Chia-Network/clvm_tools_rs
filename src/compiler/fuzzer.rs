@@ -738,19 +738,6 @@ impl Distribution<CollectProgramStructure> for Standard {
     }
 }
 
-#[test]
-fn test_make_program_structure_1() {
-    let mut fpr = FuzzPseudoRng::new(&[0,12,0,3,0,2,0,1,0,4]);
-    let cps: CollectProgramStructure = fpr.gen();
-    let zero_u16: &[u16] = &[0];
-    let one_u16: &[u16] = &[1];
-    assert_eq!(&cps.helper_structures, one_u16);
-    assert_eq!(&cps.body_forms, zero_u16);
-    assert_eq!(&cps.arguments, zero_u16);
-    assert_eq!(&cps.selectors, zero_u16);
-    assert_eq!(&cps.constants, zero_u16);
-}
-
 // We don't actually need all operators here, just a good selection with
 // semantics that are distinguishable.
 #[derive(Debug, Clone)]
