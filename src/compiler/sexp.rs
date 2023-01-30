@@ -1,8 +1,8 @@
-#[cfg(test)]
+#[cfg(any(test, feature="fuzzer"))]
 use rand::distributions::Standard;
-#[cfg(test)]
+#[cfg(any(test, feature="fuzzer"))]
 use rand::prelude::Distribution;
-#[cfg(test)]
+#[cfg(any(test, feature="fuzzer"))]
 use rand::Rng;
 
 use std::borrow::Borrow;
@@ -49,12 +49,12 @@ pub fn random_atom_name<R: Rng + ?Sized>(rng: &mut R, min_size: usize) -> Vec<u8
     bytevec
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature="fuzzer"))]
 pub fn random_atom<R: Rng + ?Sized>(rng: &mut R) -> SExp {
     SExp::Atom(Srcloc::start("*rng*"), random_atom_name(rng, 1))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature="fuzzer"))]
 pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
     if remaining < 2 {
         random_atom(rng)
@@ -93,7 +93,7 @@ pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
 }
 
 // Thanks: https://stackoverflow.com/questions/48490049/how-do-i-choose-a-random-value-from-an-enum
-#[cfg(test)]
+#[cfg(any(test, feature="fuzzer"))]
 impl Distribution<SExp> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SExp {
         random_sexp(rng, MAX_SEXP_COST)

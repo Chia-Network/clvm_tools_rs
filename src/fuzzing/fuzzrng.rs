@@ -11,38 +11,21 @@ use random_lfsr_256_galois::{InitRegisterPayload, LFSRGalois, LFSRGaloisBuilder}
 // This differs from BufRng in that it's not intended to be exhaustible since
 // it's being used to generate extensible data structures.
 pub struct FuzzPseudoRng<'slice> {
-    lfsr: LFSRGalois,
     slice: &'slice [u8],
-
-    // Set on second or subsequent run
-    lfsr_scramble: bool,
     progress: usize,
 }
 
 impl<'slice> FuzzPseudoRng<'slice> {
     pub fn new(slice: &'slice [u8]) -> Self {
-        // Ensure the lfsr state is consistent so the entropy bits produce
-        // an identical randomness every time.
-        let lfsr = LFSRGaloisBuilder::new()
-            .set_initial_payload(InitRegisterPayload::Meander)
-            .build();
         return FuzzPseudoRng {
-            lfsr: lfsr,
             slice: slice,
-
-            lfsr_scramble: false,
             progress: 0,
         };
     }
 
     fn next_u8_untreated(&mut self) -> u8 {
-        if self.slice.len() == 0 {
-            self.lfsr_scramble = true;
+        if self.progress >= self.slice.len() {
             return 0;
-        }
-        if self.progress == self.slice.len() {
-            self.progress = 0;
-            self.lfsr_scramble = true;
         }
         let res = self.slice[self.progress];
         self.progress += 1;
@@ -67,37 +50,18 @@ impl<'slice> FuzzPseudoRng<'slice> {
 impl<'slice> RngCore for FuzzPseudoRng<'slice> {
     #[inline(always)]
     fn next_u32(&mut self) -> u32 {
-        if self.lfsr_scramble {
-            let lfsr32: u32 = self.lfsr.next();
-            self.next_u32_untreated() ^ lfsr32
-        } else {
-            self.next_u32_untreated()
-        }
+        self.next_u32_untreated()
     }
 
     #[inline(always)]
     fn next_u64(&mut self) -> u64 {
-        eprintln!("next_u64");
-        if self.lfsr_scramble {
-            let lfsr64: u64 = self.lfsr.next();
-            self.next_u64_untreated() ^ lfsr64
-        } else {
-            self.next_u64_untreated()
-        }
+        self.next_u64_untreated()
     }
 
     #[inline(always)]
     fn fill_bytes(&mut self, dest: &mut [u8]) {
-        eprintln!("fill_bytes");
-        if self.lfsr_scramble {
-            for i in 0..dest.len() {
-                let lfsr8: u8 = self.lfsr.next();
-                dest[i] = self.next_u8_untreated() ^ lfsr8
-            }
-        } else {
-            for i in 0..dest.len() {
-                dest[i] = self.next_u8_untreated()
-            }
+        for i in 0..dest.len() {
+            dest[i] = self.next_u8_untreated()
         }
     }
 

@@ -89,18 +89,118 @@ pub struct CollectProgramStructure {
     arguments: Vec<u16>,
     selectors: Vec<u16>,
     constants: Vec<u16>,
+    choice: usize,
     main: u16
 }
 
-impl CollectProgramStructure {
-    fn get_selector(&self, sel: &mut usize) -> u16 {
-        if self.selectors.is_empty() {
-            return 0;
+fn arg_identifiers(
+    in_scope: &mut Vec<Vec<u8>>,
+    args: Rc<SExp>
+) {
+    match args.borrow() {
+        SExp::Cons(_,a,b) => {
+            arg_identifiers(in_scope, a.clone());
+            arg_identifiers(in_scope, b.clone());
         }
-
-        self.selectors[*sel % self.selectors.len()]
+        SExp::Atom(_,n) => {
+            if n != b"@" {
+                in_scope.push(n.clone());
+            }
+        }
+        _ => { }
     }
+}
 
+fn rewrite_identifiers_bodyform(
+    in_scope: &Vec<Vec<u8>>,
+    body_form: &BodyForm
+) -> BodyForm {
+    match body_form {
+        BodyForm::Let(LetFormKind::Sequential, data) => {
+            let mut newly_bound = in_scope.clone();
+            let mut new_bindings = Vec::new();
+            for b in data.bindings.iter() {
+                let new_binding_body = rewrite_identifiers_bodyform(
+                    &newly_bound,
+                    b.body.borrow()
+                );
+                newly_bound.push(b.name.clone());
+            }
+            let mut new_data = data.clone();
+            new_data.bindings = new_bindings;
+
+            let new_body = rewrite_identifiers_bodyform(
+                &newly_bound, data.body.borrow()
+            );
+            new_data.body = Rc::new(new_body);
+
+            BodyForm::Let(LetFormKind::Sequential, new_data)
+        }
+        BodyForm::Let(LetFormKind::Parallel, data) => {
+            let new_bindings: Vec<Rc<Binding>> = data.bindings.iter().map(|b| {
+                let mut b_borrowed: &Binding = b.borrow();
+                let mut b_clone = b_borrowed.clone();
+                b_clone.body = Rc::new(rewrite_identifiers_bodyform(
+                    in_scope,
+                    b.body.borrow()
+                ));
+                Rc::new(b_clone)
+            }).collect();
+            let mut new_scope = in_scope.clone();
+            for b in new_bindings.iter() {
+                new_scope.push(b.name.clone());
+            }
+            let mut new_data = data.clone();
+            new_data.bindings = new_bindings;
+            new_data.body = Rc::new(rewrite_identifiers_bodyform(
+                &new_scope,
+                data.body.borrow()
+            ));
+            BodyForm::Let(LetFormKind::Parallel, new_data)
+        }
+        BodyForm::Value(SExp::Atom(l,n)) => {
+            if !in_scope.contains(&n) {
+                eprintln!("n = {}", decode_string(&n));
+                let idnum = n[0] as usize;
+                if in_scope.is_empty() {
+                    BodyForm::Quoted(SExp::Nil(l.clone()))
+                } else {
+                    let selection = in_scope[idnum % in_scope.len()].clone();
+                    BodyForm::Value(SExp::Atom(l.clone(),selection))
+                }
+            } else {
+                BodyForm::Value(SExp::Atom(l.clone(),n.clone()))
+            }
+        }
+        BodyForm::Call(l,args) => {
+            let new_args = args.iter().enumerate().map(|(i,a)| {
+                if i == 0 {
+                    a.clone()
+                } else {
+                    Rc::new(rewrite_identifiers_bodyform(
+                        in_scope,
+                        a.borrow()
+                    ))
+                }
+            }).collect();
+            BodyForm::Call(l.clone(), new_args)
+        }
+        _ => body_form.clone()
+    }
+}
+
+// Rewrite identifiers to match those in scope for the helper and the
+// let forms.
+fn rewrite_identifiers(
+    args: Rc<SExp>,
+    body: &BodyForm
+) -> BodyForm {
+    let mut in_scope = Vec::new();
+    arg_identifiers(&mut in_scope, args.clone());
+    rewrite_identifiers_bodyform(&in_scope, body)
+}
+
+impl CollectProgramStructure {
     fn choose_with_default<T>(&self, lst: &[T], choice: u16, default: T) -> T where T: Clone {
         if lst.is_empty() {
             return default;
@@ -109,19 +209,25 @@ impl CollectProgramStructure {
         lst[(choice as usize) % lst.len()].clone()
     }
 
+    fn get_choice(&mut self) -> u16 {
+        if self.selectors.is_empty() {
+            0
+        } else {
+            let res = self.selectors[self.choice % self.selectors.len()];
+            self.choice += 1;
+            res
+        }
+    }
+
     fn new_constant(
-        &self,
+        &mut self,
         c: u16,
-        selector_choice: &mut usize,
         constants: &[Rc<SExp>]
     ) -> Rc<SExp> {
         let loc = Srcloc::start("*rng*");
         let nil = Rc::new(SExp::Nil(loc.clone()));
         match c & 3 {
-            0 => {
-                Rc::new(SExp::Nil(loc.clone()))
-            }
-            1 => {
+            0..1 => {
                 let raw_number = c >> 2;
                 let bigint =
                     if (c & 0x2000) != 0 {
@@ -150,7 +256,7 @@ impl CollectProgramStructure {
             _ => {
                 // Cons.
                 let choice_of_a = c >> 2;
-                let choice_of_b = self.get_selector(selector_choice);
+                let choice_of_b: u16 = self.get_choice();
                 let a =
                     self.choose_with_default(&constants, choice_of_a, nil.clone());
                 let b =
@@ -163,33 +269,19 @@ impl CollectProgramStructure {
     }
 
     fn new_argument(
-        &self,
+        &mut self,
         arg: u16,
-        selector_choice: &mut usize,
         atom_identifiers: &[Vec<u8>],
         arguments: &[Rc<SExp>]
     ) -> Rc<SExp> {
         let loc = Srcloc::start("*rng*");
         let nil = Rc::new(SExp::Nil(loc.clone()));
-        match arg & 3 {
+        match arg & 1 {
             0 => {
-                Rc::new(SExp::Nil(loc.clone()))
-            }
-            1 => {
-                let letters = arguments.len();
-                let letter1 = (letters % 25) as u8;
-                let letter2 = ((letters / 25) % 25) as u8;
-                let ident = vec![b'a' + letter1, b'a' + letter2];
-                Rc::new(SExp::Atom(
-                    loc.clone(),
-                    ident
-                ))
-            }
-            2 => {
                 // Use 1 selector, this number is for the @ binding.
                 let letters = arg >> 2;
                 let ident = atom_identifiers[letters as usize % atom_identifiers.len()].clone();
-                let choice = self.get_selector(selector_choice);
+                let choice: u16 = self.get_choice();
                 let bind_also = self.choose_with_default(&arguments, choice, nil.clone());
                 Rc::new(SExp::Cons(
                     loc.clone(),
@@ -207,7 +299,7 @@ impl CollectProgramStructure {
             }
             _ => {
                 let choice_of_a = arg >> 2;
-                let choice_of_b = self.get_selector(selector_choice);
+                let choice_of_b: u16 = self.get_choice();
                 let a =
                     self.choose_with_default(&arguments, choice_of_a, nil.clone());
                 let b =
@@ -233,9 +325,8 @@ impl CollectProgramStructure {
     }
 
     fn new_bodyform(
-        &self,
+        &mut self,
         b: u16,
-        selector_choice: &mut usize,
         atom_identifiers: &[Vec<u8>],
         constants: &[Rc<SExp>],
         arguments: &[Rc<SExp>],
@@ -243,25 +334,25 @@ impl CollectProgramStructure {
     ) -> Rc<BodyForm> {
         let loc = Srcloc::start("*rng*");
         let nil = Rc::new(SExp::Nil(loc.clone()));
-        let body_nil = Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone())));
-
+        let body_nil = Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone())))
+;
         // (quote | arg | if | mult  | sub | sha256 | let | call)
-        match b & 7 {
+        match b & 15 {
             0 => {
-                let choice_of_const = b >> 3;
+                let choice_of_const = b >> 4;
                 let constant = self.choose_with_default(&constants, choice_of_const, nil.clone());
                 let constant_borrowed: &SExp = constant.borrow();
                 Rc::new(BodyForm::Quoted(constant_borrowed.clone()))
             }
-            1 => {
+            1..6 => {
                 let choice_of_arg = b >> 3;
                 let arg = self.choose_with_default(&atom_identifiers, choice_of_arg, vec![b'X']);
                 Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), arg)))
             }
-            2 => {
+            7 => {
                 let choice_of_cond = b >> 3;
-                let choice_of_then = self.get_selector(selector_choice);
-                let choice_of_else = self.get_selector(selector_choice);
+                let choice_of_then: u16 = self.get_choice();
+                let choice_of_else: u16 = self.get_choice();
                 let use_cond =
                     self.choose_with_default(&body_forms, choice_of_cond, body_nil.clone());
                 let use_then =
@@ -278,9 +369,9 @@ impl CollectProgramStructure {
                     ]
                 ))
             }
-            3 => {
+            8 => {
                 let choice_of_a = b >> 3;
-                let choice_of_b = self.get_selector(selector_choice);
+                let choice_of_b: u16 = self.get_choice();
                 let use_a =
                     self.choose_with_default(&body_forms, choice_of_a, body_nil.clone());
                 let use_b =
@@ -294,9 +385,9 @@ impl CollectProgramStructure {
                     ]
                 ))
             }
-            4 => {
+            9 => {
                 let choice_of_a = b >> 3;
-                let choice_of_b = self.get_selector(selector_choice);
+                let choice_of_b: u16 = self.get_choice();
                 let use_a =
                     self.choose_with_default(&body_forms, choice_of_a, body_nil.clone());
                 let use_b =
@@ -310,9 +401,9 @@ impl CollectProgramStructure {
                     ]
                 ))
             }
-            5 => {
+            10 => {
                 let choice_of_a = b >> 3;
-                let choice_of_b = self.get_selector(selector_choice);
+                let choice_of_b: u16 = self.get_choice();
                 let use_a =
                     self.choose_with_default(&body_forms, choice_of_a, body_nil.clone());
                 let use_b =
@@ -326,7 +417,7 @@ impl CollectProgramStructure {
                     ]
                 ))
             }
-            6 => {
+            11 => {
                 // Synthesize a let form.
                 let num_bindings = (b >> 3) & 3;
                 let kind =
@@ -338,8 +429,7 @@ impl CollectProgramStructure {
                 let mut collected_names = Vec::new();
                 let mut collected_bindings = Vec::new();
                 for i in 0..=num_bindings {
-                    let choice_of_name =
-                        self.get_selector(selector_choice);
+                    let choice_of_name: u16 = self.get_choice();
                     let choice_of_body = b >> 6;
                     let arg_atom =
                         atom_identifiers[choice_of_name as usize % atom_identifiers.len()].clone();
@@ -395,8 +485,7 @@ impl CollectProgramStructure {
                 // Reference callable
                 let mut call_args: Vec<Rc<BodyForm>> =
                     arg_sites.iter().map(|site| {
-                        let choice_of_expr =
-                            self.get_selector(selector_choice);
+                        let choice_of_expr: u16 = self.get_choice();
                         self.choose_with_default(&body_forms, choice_of_expr, body_nil.clone())
                     }).collect();
                 call_args.insert(0, Rc::new(BodyForm::Value(SExp::atom_from_string(loc.clone(), &helper_name))));
@@ -409,10 +498,9 @@ impl CollectProgramStructure {
     }
 
     fn new_helper(
-        &self,
+        &mut self,
         i: usize,
         h: u16,
-        selector_choice: &mut usize,
         constants: &[Rc<SExp>],
         arguments: &[Rc<SExp>],
         body_forms: &[Rc<BodyForm>],
@@ -424,11 +512,14 @@ impl CollectProgramStructure {
 
         let is_inline = ((h >> 2) & 1) == 1;
         let choice_of_args = h >> 3;
-        let choice_of_body = self.get_selector(selector_choice);
+        let choice_of_body: u16 = self.get_choice();
         let arguments =
             self.choose_with_default(&arguments, choice_of_args, nil.clone());
         let body =
-            self.choose_with_default(&body_forms, choice_of_body, body_nil.clone());
+            Rc::new(rewrite_identifiers(
+                arguments.clone(),
+                self.choose_with_default(&body_forms, choice_of_body, body_nil.clone()).borrow()
+            ));
         let helper_name = format!("helper_{}", i).as_bytes().to_vec();
         match h & 3 {
             0 => {
@@ -467,30 +558,45 @@ impl CollectProgramStructure {
                     program: Rc::new(program)
                 })
             }
-
         }
     }
 
-    fn to_program(&self) -> CompileForm {
+    pub fn to_program(&mut self) -> CompileForm {
         // Build constants...
         let loc = Srcloc::start("*rng*");
-        let mut selector_choice = 0;
         let nil = Rc::new(SExp::Nil(loc.clone()));
         let body_nil = Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone())));
 
-        let mut constants = Vec::new();
-        for c in self.constants.iter() {
-            let new_const = self.new_constant(*c, &mut selector_choice, &constants);
+        let mut constants = vec![
+            nil.clone(),
+            Rc::new(SExp::Integer(loc.clone(), bi_one()))
+        ];
+        let constant_vals = self.constants.clone();
+        for c in constant_vals.iter() {
+            let new_const = self.new_constant(*c, &constants);
             constants.push(new_const);
         }
 
-        let mut arguments = Vec::new();
-        let mut atom_identifiers = vec![b"X".to_vec()];
+        eprintln!("constants");
+        for c in constants.iter() {
+            eprintln!(" - {}", c);
+        }
 
-        for arg in self.arguments.iter() {
+        let mut atom_identifiers = vec![
+            b"A".to_vec(),
+            b"B".to_vec(),
+            b"C".to_vec(),
+            b"D".to_vec(),
+            b"E".to_vec()
+        ];
+        let mut arguments: Vec<Rc<SExp>> = atom_identifiers.iter().map(|n| {
+            Rc::new(SExp::Atom(loc.clone(), n.clone()))
+        }).collect();
+
+        let argument_vals = self.arguments.clone();
+        for arg in argument_vals.iter() {
             let new_arg = self.new_argument(
                 *arg,
-                &mut selector_choice,
                 &atom_identifiers,
                 &arguments
             );
@@ -500,12 +606,22 @@ impl CollectProgramStructure {
             arguments.push(new_arg);
         }
 
+        eprintln!("arguments");
+        for a in arguments.iter() {
+            eprintln!(" - {}", a);
+        }
+
+        eprintln!("identifiers");
+        for i in atom_identifiers.iter() {
+            eprintln!(" - {}", decode_string(&i));
+        }
+
         let mut body_forms = Vec::new();
 
-        for b in self.body_forms.iter() {
+        let body_vals = self.body_forms.clone();
+        for b in body_vals.iter() {
             let new_form = self.new_bodyform(
                 *b,
-                &mut selector_choice,
                 &atom_identifiers,
                 &constants,
                 &arguments,
@@ -514,12 +630,17 @@ impl CollectProgramStructure {
             body_forms.push(new_form);
         }
 
+        eprintln!("bodyforms");
+        for b in body_forms.iter() {
+            eprintln!(" - {}", b.to_sexp());
+        }
+
         let mut helper_forms = Vec::new();
-        for (i,h) in self.helper_structures.iter().enumerate() {
+        let helper_vals = self.helper_structures.clone();
+        for (i,h) in helper_vals.iter().enumerate() {
             let new_helper = self.new_helper(
                 i,
                 *h,
-                &mut selector_choice,
                 &constants,
                 &arguments,
                 &body_forms,
@@ -528,24 +649,32 @@ impl CollectProgramStructure {
             helper_forms.push(new_helper);
         }
 
+        eprintln!("helpers");
+        for h in helper_forms.iter() {
+            eprintln!(" - {}", h.to_sexp());
+        }
+
         let body = self.new_bodyform(
             self.main,
-            &mut selector_choice,
             &atom_identifiers,
             &constants,
             &arguments,
             &body_forms
         );
-        let use_arguments = self.get_selector(&mut selector_choice);
+
+        let use_arguments: u16 = self.get_choice();
         let arguments =
             self.choose_with_default(&arguments, use_arguments, nil.clone());
 
         CompileForm {
             loc: loc.clone(),
             include_forms: Vec::new(),
-            args: arguments,
+            args: arguments.clone(),
             helpers: helper_forms,
-            exp: body
+            exp: Rc::new(rewrite_identifiers(
+                arguments,
+                body.borrow()
+            ))
         }
     }
 }
@@ -553,60 +682,50 @@ impl CollectProgramStructure {
 impl Distribution<CollectProgramStructure> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> CollectProgramStructure {
         let mut message_kind: u16 = MAX_ALTERNATIVE_CPS;
-        let mut helper_kind: u16 = MAX_HELPER_KIND_CPS;
         let mut iters = 0;
         let mut cps: CollectProgramStructure = Default::default();
         let mut have_body = false;
         loop {
-            let mut input: u16 = rng.gen();
-            let input_type = input & 7;
-            let input_val = input >> 3;
-            let mut have_body = false;
+            let mut input_32: u32 = rng.gen();
+
+            // Stop if zero.
+            if input_32 == 0 {
+                break;
+            }
 
             iters += 1;
             if iters > MAX_FORMS_CPS {
                 break;
             }
 
-            // Stop if out of range.
-            if input_type > MAX_ALTERNATIVE_CPS {
-                break;
-            }
+            let inputs = &[(input_32 >> 16) as u16, (input_32 & 0xffff) as u16];
+            for input in inputs.iter() {
+                let input_type = input & 15;
+                let input_val = input >> 4;
+                let mut have_body = false;
 
-            // Stop if we get a retrograde message.
-            if input_type > message_kind {
-                break;
-            }
+                // A new message type advances out of the prev phase.
+                match input_type {
+                    0 => {
+                        let new_helper_kind = input_val & 3;
+                        if new_helper_kind > MAX_HELPER_KIND_CPS {
+                            cps.selectors.push(input_val);
+                            continue;
+                        }
 
-            // A new message type advances out of the prev phase.
-            message_kind = input;
-            match input_type {
-                4 => {
-                    let new_helper_kind = input_val & 3;
-                    if new_helper_kind > MAX_HELPER_KIND_CPS {
-                        message_kind += 1;
-                        continue;
+                        if new_helper_kind == 0 {
+                            have_body = true;
+                            cps.main = input_val;
+                            continue;
+                        }
+
+                        cps.helper_structures.push(input_val);
                     }
-
-                    if new_helper_kind > helper_kind {
-                        message_kind += 1;
-                        continue;
-                    }
-
-                    if new_helper_kind == 0 {
-                        have_body = true;
-                        cps.main = input_val;
-                        message_kind += 1;
-                        continue;
-                    }
-
-                    cps.helper_structures.push(input_val);
+                    1..7 => cps.body_forms.push(input_val),
+                    8..10 => cps.arguments.push(input_val),
+                    11 => cps.constants.push(input_val),
+                    _ => cps.selectors.push(input_val)
                 }
-                3 => cps.body_forms.push(input_val),
-                2 => cps.arguments.push(input_val),
-                1 => cps.selectors.push(input_val),
-                0 => cps.constants.push(input_val),
-                _ => { }
             }
         }
 
@@ -621,7 +740,7 @@ impl Distribution<CollectProgramStructure> for Standard {
 
 #[test]
 fn test_make_program_structure_1() {
-    let mut fpr = FuzzPseudoRng::new(&[0,0,0,12,0,0,0,3,0,0,0,2,0,0,0,1,0,0,0,0]);
+    let mut fpr = FuzzPseudoRng::new(&[0,12,0,3,0,2,0,1,0,4]);
     let cps: CollectProgramStructure = fpr.gen();
     let zero_u16: &[u16] = &[0];
     let one_u16: &[u16] = &[1];
@@ -630,41 +749,6 @@ fn test_make_program_structure_1() {
     assert_eq!(&cps.arguments, zero_u16);
     assert_eq!(&cps.selectors, zero_u16);
     assert_eq!(&cps.constants, zero_u16);
-}
-
-fn do_program(programs: &mut Vec<Vec<u8>>, unique: &mut HashSet<String>, buf: &[u8]) {
-    let mut fpr = FuzzPseudoRng::new(&buf);
-    let cps: CollectProgramStructure = fpr.gen();
-    let program = cps.to_program();
-    let pts = program.to_sexp().to_string();
-    if !unique.contains(&pts) {
-        eprintln!("{}", pts);
-        programs.push(buf.to_vec());
-        unique.insert(pts);
-    }
-}
-
-#[test]
-fn test_make_program_structure_2() {
-    let mut rng = ChaCha8Rng::seed_from_u64(make_random_u64_seed());
-    let mut buf = &[0,0,0,0];
-    let this_len = buf.len();
-    let mut programs = Vec::new();
-    let mut unique = HashSet::new();
-    do_program(&mut programs, &mut unique, buf);
-    for p in 0..50000 {
-        let choice = rng.gen_range(0..programs.len());
-        let mut this_buf = programs[choice].to_vec();
-        let mut next_byte = rng.gen_range(0..=buf.len());
-        if next_byte == buf.len() {
-            this_buf.push(rng.gen());
-        } else {
-            let next_bit = rng.gen_range(0..8);
-            this_buf[next_byte % this_len] ^= rng.gen::<u8>();
-        }
-        do_program(&mut programs, &mut unique, &this_buf);
-    }
-    todo!();
 }
 
 // We don't actually need all operators here, just a good selection with

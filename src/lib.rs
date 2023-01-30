@@ -1,3 +1,5 @@
+#![feature(exclusive_range_pattern)]
+
 #[macro_use]
 extern crate lazy_static;
 

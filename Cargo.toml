@@ -90,3 +90,8 @@ path = "src/classic/bins/shrink.rs"
 [[bin]]
 name = "repl"
 path = "src/classic/bins/repl.rs"
+
+[[bin]]
+name = "chia_prog_gen"
+path = "src/classic/bins/chia_prog_gen.rs"
+default-features = ["fuzzer"]
