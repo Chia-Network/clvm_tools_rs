@@ -16,7 +16,11 @@ use clvm_tools_rs::compiler::srcloc::Srcloc;
 use clvm_tools_rs::fuzzing::fuzzrng::FuzzPseudoRng;
 use clvm_tools_rs::fuzzing::make_random_u64_seed;
 
-fn do_program(dialect: Rc<SExp>, buf: &[u8]) -> Rc<SExp> {
+// Create CollectProgramStructure and use it to generate a program.
+// Return the program in SExp form.
+// The result of CollectProgramStructure is a CompileForm so there are
+// other things you can do with them as well.
+fn build_program(dialect: Rc<SExp>, buf: &[u8]) -> Rc<SExp> {
     let mut fpr = FuzzPseudoRng::new(buf);
     let mut cps: CollectProgramStructure = fpr.gen();
     let program = cps.to_program();
@@ -69,7 +73,7 @@ fn main() {
     let loc = Srcloc::start("*rng*");
     let dialect = Rc::new(SExp::atom_from_string(loc, "*standard-cl-21*"));
 
-    let sexp = do_program(dialect.clone(), &buf);
+    let sexp = build_program(dialect.clone(), &buf);
     write_prog_to_db(&mut conn, &buf, sexp);
 
     for _ in 0..10000 {
@@ -89,6 +93,7 @@ fn main() {
             }
         }
 
+        // Add entropy.
         let next_byte = rng.gen_range(0..=buf.len());
         if next_byte >= buf.len() - 3 {
             for _ in 0..4 {
@@ -99,7 +104,7 @@ fn main() {
                 buf[next_byte + i] ^= rng.gen::<u8>();
             }
         }
-        let sexp = do_program(dialect.clone(), &buf);
+        let sexp = build_program(dialect.clone(), &buf);
         eprintln!("{}", sexp);
         write_prog_to_db(&mut conn, &buf, sexp);
     }
