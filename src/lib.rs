@@ -24,7 +24,7 @@ pub mod util;
 
 pub mod classic;
 pub mod compiler;
-#[cfg(any(test, feature="fuzzer"))]
+#[cfg(any(test, feature = "fuzzer"))]
 pub mod fuzzing;
 
 // Python impl

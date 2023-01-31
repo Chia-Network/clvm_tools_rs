@@ -1,15 +1,7 @@
 use rand::prelude::*;
 use rand::Error;
 
-use random_lfsr_256_galois::{InitRegisterPayload, LFSRGalois, LFSRGaloisBuilder};
-
-// A pseudo RNG which uses a slice for all entropy.  It iterates a given slice
-// many times, scrambling the bits through an LFSR in subsequent passes so that
-// the fuzzer maintains a relationship between the original input bits and the
-// output with some predictability.
-//
-// This differs from BufRng in that it's not intended to be exhaustible since
-// it's being used to generate extensible data structures.
+// A pseudo RNG which uses a slice for all entropy.
 pub struct FuzzPseudoRng<'slice> {
     slice: &'slice [u8],
     progress: usize,
