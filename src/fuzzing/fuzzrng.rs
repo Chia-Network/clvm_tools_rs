@@ -9,10 +9,7 @@ pub struct FuzzPseudoRng<'slice> {
 
 impl<'slice> FuzzPseudoRng<'slice> {
     pub fn new(slice: &'slice [u8]) -> Self {
-        FuzzPseudoRng {
-            slice,
-            progress: 0,
-        }
+        FuzzPseudoRng { slice, progress: 0 }
     }
 
     fn next_u8_untreated(&mut self) -> u8 {
