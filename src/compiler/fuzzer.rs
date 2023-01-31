@@ -196,34 +196,30 @@ impl CollectProgramStructure {
     fn new_constant(&mut self, c: u16, constants: &[Rc<SExp>]) -> Rc<SExp> {
         let loc = Srcloc::start("*rng*");
         let nil = Rc::new(SExp::Nil(loc.clone()));
-        match c & 3 {
-            0..1 => {
-                let raw_number = c & 0x3fff;
-                let bigint = ((raw_number as i32) - 0x2000).to_bigint().unwrap();
-                Rc::new(SExp::Integer(loc.clone(), bigint))
-            }
-            2 => {
-                // Hex+
-                // If the last item is also a number, this number concatenates
-                // them.
-                let new_byte = ((c >> 2) & 0xff) as u8;
-                if !constants.is_empty() {
-                    if let SExp::Atom(l, n) = constants[constants.len() - 1].borrow() {
-                        let mut new_atom_content = n.to_vec();
-                        new_atom_content.push(new_byte);
-                        return Rc::new(SExp::Atom(l.clone(), new_atom_content));
-                    }
+        if c < 2 {
+            let raw_number = c & 0x3fff;
+            let bigint = ((raw_number as i32) - 0x2000).to_bigint().unwrap();
+            Rc::new(SExp::Integer(loc.clone(), bigint))
+        } else if c == 2 {
+            // Hex+
+            // If the last item is also a number, this number concatenates
+            // them.
+            let new_byte = ((c >> 2) & 0xff) as u8;
+            if !constants.is_empty() {
+                if let SExp::Atom(l, n) = constants[constants.len() - 1].borrow() {
+                    let mut new_atom_content = n.to_vec();
+                    new_atom_content.push(new_byte);
+                    return Rc::new(SExp::Atom(l.clone(), new_atom_content));
                 }
-                Rc::new(SExp::Atom(loc.clone(), vec![new_byte]))
             }
-            _ => {
-                // Cons.
-                let choice_of_a = c >> 2;
-                let choice_of_b: u16 = self.get_choice();
-                let a = self.choose_with_default(&constants, choice_of_a, nil.clone());
-                let b = self.choose_with_default(&constants, choice_of_b, nil.clone());
-                Rc::new(SExp::Cons(loc.clone(), a, b))
-            }
+            Rc::new(SExp::Atom(loc.clone(), vec![new_byte]))
+        } else {
+            // Cons.
+            let choice_of_a = c >> 2;
+            let choice_of_b: u16 = self.get_choice();
+            let a = self.choose_with_default(&constants, choice_of_a, nil.clone());
+            let b = self.choose_with_default(&constants, choice_of_b, nil.clone());
+            Rc::new(SExp::Cons(loc.clone(), a, b))
         }
     }
 
@@ -286,58 +282,54 @@ impl CollectProgramStructure {
         let loc = Srcloc::start("*rng*");
         let nil = Rc::new(SExp::Nil(loc.clone()));
         let body_nil = Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone())));
-        match b & 15 {
-            0 => {
-                let choice_of_const = b >> 4;
-                let constant = self.choose_with_default(&constants, choice_of_const, nil.clone());
-                let constant_borrowed: &SExp = constant.borrow();
-                Rc::new(BodyForm::Quoted(constant_borrowed.clone()))
-            }
-            1..6 => {
-                let choice_of_arg = b >> 3;
-                let arg = self.choose_with_default(&atom_identifiers, choice_of_arg, vec![b'X']);
-                Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), arg)))
-            }
-            7 => {
-                let choice_of_cond = b >> 3;
-                let choice_of_then: u16 = self.get_choice();
-                let choice_of_else: u16 = self.get_choice();
-                let use_cond =
-                    self.choose_with_default(&body_forms, choice_of_cond, body_nil.clone());
-                let use_then =
-                    self.choose_with_default(&body_forms, choice_of_then, body_nil.clone());
-                let use_else =
-                    self.choose_with_default(&body_forms, choice_of_else, body_nil.clone());
-                Rc::new(BodyForm::Call(
-                    loc.clone(),
-                    vec![
-                        Rc::new(BodyForm::Value(SExp::atom_from_string(loc.clone(), "if"))),
-                        use_cond,
-                        use_then,
-                        use_else,
-                    ],
-                ))
-            }
-            8 => {
-                let choice_of_a = b >> 3;
-                let choice_of_b: u16 = self.get_choice();
-                let use_a = self.choose_with_default(&body_forms, choice_of_a, body_nil.clone());
-                let use_b = self.choose_with_default(&body_forms, choice_of_b, body_nil.clone());
-                Rc::new(BodyForm::Call(
-                    loc.clone(),
-                    vec![
-                        Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), vec![18]))),
-                        use_a,
-                        use_b,
-                    ],
-                ))
-            }
-            9 => {
-                let choice_of_a = b >> 3;
-                let choice_of_b: u16 = self.get_choice();
-                let use_a = self.choose_with_default(&body_forms, choice_of_a, body_nil.clone());
-                let use_b = self.choose_with_default(&body_forms, choice_of_b, body_nil.clone());
-                Rc::new(BodyForm::Call(
+        let selector = b & 15;
+        if selector == 0 {
+            let choice_of_const = b >> 4;
+            let constant = self.choose_with_default(&constants, choice_of_const, nil.clone());
+            let constant_borrowed: &SExp = constant.borrow();
+            Rc::new(BodyForm::Quoted(constant_borrowed.clone()))
+        } else if selector < 7 {
+            let choice_of_arg = b >> 3;
+            let arg = self.choose_with_default(&atom_identifiers, choice_of_arg, vec![b'X']);
+            Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), arg)))
+        } else if selector == 7 {
+            let choice_of_cond = b >> 3;
+            let choice_of_then: u16 = self.get_choice();
+            let choice_of_else: u16 = self.get_choice();
+            let use_cond =
+                self.choose_with_default(&body_forms, choice_of_cond, body_nil.clone());
+            let use_then =
+                self.choose_with_default(&body_forms, choice_of_then, body_nil.clone());
+            let use_else =
+                self.choose_with_default(&body_forms, choice_of_else, body_nil.clone());
+            Rc::new(BodyForm::Call(
+                loc.clone(),
+                vec![
+                    Rc::new(BodyForm::Value(SExp::atom_from_string(loc.clone(), "if"))),
+                    use_cond,
+                    use_then,
+                    use_else,
+                ],
+            ))
+        } else if selector == 8 {
+            let choice_of_a = b >> 3;
+            let choice_of_b: u16 = self.get_choice();
+            let use_a = self.choose_with_default(&body_forms, choice_of_a, body_nil.clone());
+            let use_b = self.choose_with_default(&body_forms, choice_of_b, body_nil.clone());
+            Rc::new(BodyForm::Call(
+                loc.clone(),
+                vec![
+                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), vec![18]))),
+                    use_a,
+                    use_b,
+                ],
+            ))
+        } else if selector == 9 {
+            let choice_of_a = b >> 3;
+            let choice_of_b: u16 = self.get_choice();
+            let use_a = self.choose_with_default(&body_forms, choice_of_a, body_nil.clone());
+            let use_b = self.choose_with_default(&body_forms, choice_of_b, body_nil.clone());
+            Rc::new(BodyForm::Call(
                     loc.clone(),
                     vec![
                         Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), vec![17]))),
@@ -345,103 +337,99 @@ impl CollectProgramStructure {
                         use_b,
                     ],
                 ))
+        } else if selector == 10 {
+            let choice_of_a = b >> 3;
+            let choice_of_b: u16 = self.get_choice();
+            let use_a = self.choose_with_default(&body_forms, choice_of_a, body_nil.clone());
+            let use_b = self.choose_with_default(&body_forms, choice_of_b, body_nil.clone());
+            Rc::new(BodyForm::Call(
+                loc.clone(),
+                vec![
+                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), vec![11]))),
+                    use_a,
+                    use_b,
+                ],
+            ))
+        } else if selector == 11 {
+            // Synthesize a let form.
+            let num_bindings = (b >> 3) & 3;
+            let kind = if (b >> 5) != 0 {
+                LetFormKind::Parallel
+            } else {
+                LetFormKind::Sequential
+            };
+            let mut collected_names = Vec::new();
+            let mut collected_bindings = Vec::new();
+            for _ in 0..=num_bindings {
+                let choice_of_name: u16 = self.get_choice();
+                let choice_of_body = b >> 6;
+                let arg_atom =
+                    atom_identifiers[choice_of_name as usize % atom_identifiers.len()].clone();
+                if collected_names.contains(&arg_atom) {
+                    break;
+                }
+
+                let body =
+                    self.choose_with_default(&body_forms, choice_of_body, body_nil.clone());
+
+                collected_names.push(arg_atom.clone());
+                collected_bindings.push(Rc::new(Binding {
+                    loc: loc.clone(),
+                    nl: loc.clone(),
+                    name: arg_atom,
+                    body: body,
+                }));
             }
-            10 => {
-                let choice_of_a = b >> 3;
-                let choice_of_b: u16 = self.get_choice();
-                let use_a = self.choose_with_default(&body_forms, choice_of_a, body_nil.clone());
-                let use_b = self.choose_with_default(&body_forms, choice_of_b, body_nil.clone());
-                Rc::new(BodyForm::Call(
+
+            let body = self.choose_with_default(&body_forms, b >> 5, body_nil.clone());
+
+            Rc::new(BodyForm::Let(
+                kind,
+                LetData {
+                    loc: loc.clone(),
+                    kw: None,
+                    bindings: collected_bindings,
+                    body: body,
+                },
+            ))
+        } else {
+            // Call
+            if self.helper_structures.is_empty() {
+                return body_nil.clone();
+            }
+
+            let choice_of_helper = (b >> 3) as usize % self.helper_structures.len();
+            let helper_spec = self.helper_structures
+                [choice_of_helper as usize % self.helper_structures.len()];
+            let choice_of_arg = helper_spec >> 3;
+            let call_args = self.choose_with_default(&arguments, choice_of_arg, nil.clone());
+            let mut arg_sites = Vec::new();
+            self.isolate_arg_sites(&mut arg_sites, call_args);
+            let helper_name = format!("helper_{}", choice_of_helper);
+            if helper_spec & 3 == 0 {
+                // Reference constant
+                return Rc::new(BodyForm::Value(SExp::atom_from_string(
                     loc.clone(),
-                    vec![
-                        Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), vec![11]))),
-                        use_a,
-                        use_b,
-                    ],
-                ))
+                    &helper_name,
+                )));
             }
-            11 => {
-                // Synthesize a let form.
-                let num_bindings = (b >> 3) & 3;
-                let kind = if (b >> 5) != 0 {
-                    LetFormKind::Parallel
-                } else {
-                    LetFormKind::Sequential
-                };
-                let mut collected_names = Vec::new();
-                let mut collected_bindings = Vec::new();
-                for _ in 0..=num_bindings {
-                    let choice_of_name: u16 = self.get_choice();
-                    let choice_of_body = b >> 6;
-                    let arg_atom =
-                        atom_identifiers[choice_of_name as usize % atom_identifiers.len()].clone();
-                    if collected_names.contains(&arg_atom) {
-                        break;
-                    }
 
-                    let body =
-                        self.choose_with_default(&body_forms, choice_of_body, body_nil.clone());
-
-                    collected_names.push(arg_atom.clone());
-                    collected_bindings.push(Rc::new(Binding {
-                        loc: loc.clone(),
-                        nl: loc.clone(),
-                        name: arg_atom,
-                        body: body,
-                    }));
-                }
-
-                let body = self.choose_with_default(&body_forms, b >> 5, body_nil.clone());
-
-                Rc::new(BodyForm::Let(
-                    kind,
-                    LetData {
-                        loc: loc.clone(),
-                        kw: None,
-                        bindings: collected_bindings,
-                        body: body,
-                    },
-                ))
-            }
-            _ => {
-                // Call
-                if self.helper_structures.is_empty() {
-                    return body_nil.clone();
-                }
-
-                let choice_of_helper = (b >> 3) as usize % self.helper_structures.len();
-                let helper_spec = self.helper_structures
-                    [choice_of_helper as usize % self.helper_structures.len()];
-                let choice_of_arg = helper_spec >> 3;
-                let call_args = self.choose_with_default(&arguments, choice_of_arg, nil.clone());
-                let mut arg_sites = Vec::new();
-                self.isolate_arg_sites(&mut arg_sites, call_args);
-                let helper_name = format!("helper_{}", choice_of_helper);
-                if helper_spec & 3 == 0 {
-                    // Reference constant
-                    return Rc::new(BodyForm::Value(SExp::atom_from_string(
-                        loc.clone(),
-                        &helper_name,
-                    )));
-                }
-
-                // Reference callable
-                let mut call_args: Vec<Rc<BodyForm>> = arg_sites
-                    .iter()
-                    .map(|_| {
-                        let choice_of_expr: u16 = self.get_choice();
-                        self.choose_with_default(&body_forms, choice_of_expr, body_nil.clone())
-                    })
-                    .collect();
-                call_args.insert(
-                    0,
-                    Rc::new(BodyForm::Value(SExp::atom_from_string(
-                        loc.clone(),
-                        &helper_name,
-                    ))),
-                );
-                Rc::new(BodyForm::Call(loc.clone(), call_args))
-            }
+            // Reference callable
+            let mut call_args: Vec<Rc<BodyForm>> = arg_sites
+                .iter()
+                .map(|_| {
+                    let choice_of_expr: u16 = self.get_choice();
+                    self.choose_with_default(&body_forms, choice_of_expr, body_nil.clone())
+                })
+                .collect();
+            call_args.insert(
+                0,
+                Rc::new(BodyForm::Value(SExp::atom_from_string(
+                    loc.clone(),
+                    &helper_name,
+                ))),
+            );
+            Rc::new(BodyForm::Call(loc.clone(), call_args))
         }
     }
 
@@ -602,26 +590,28 @@ impl Distribution<CollectProgramStructure> for Standard {
                 let input_val = input >> 4;
 
                 // A new message type advances out of the prev phase.
-                match input_type {
-                    0 => {
-                        let new_helper_kind = input_val & 3;
-                        if new_helper_kind > MAX_HELPER_KIND_CPS {
-                            cps.selectors.push(input_val);
-                            continue;
-                        }
-
-                        if new_helper_kind == 0 {
-                            have_body = true;
-                            cps.main = input_val;
-                            continue;
-                        }
-
-                        cps.helper_structures.push(input_val);
+                if input_type == 0 {
+                    let new_helper_kind = input_val & 3;
+                    if new_helper_kind > MAX_HELPER_KIND_CPS {
+                        cps.selectors.push(input_val);
+                        continue;
                     }
-                    1..7 => cps.body_forms.push(input_val),
-                    8..10 => cps.arguments.push(input_val),
-                    11 => cps.constants.push(input_val),
-                    _ => cps.selectors.push(input_val),
+
+                    if new_helper_kind == 0 {
+                        have_body = true;
+                        cps.main = input_val;
+                        continue;
+                    }
+
+                    cps.helper_structures.push(input_val);
+                } else if input_type < 8 {
+                    cps.body_forms.push(input_val);
+                } else if input_type < 11 {
+                    cps.arguments.push(input_val);
+                } else if input_type < 12 {
+                    cps.constants.push(input_val);
+                } else {
+                    cps.selectors.push(input_val);
                 }
             }
         }
