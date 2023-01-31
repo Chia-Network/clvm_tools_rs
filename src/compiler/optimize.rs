@@ -25,6 +25,8 @@ use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::u8_from_number;
 
+const CONST_FOLD_LIMIT: usize = 10000000;
+
 fn is_at_form(head: Rc<BodyForm>) -> bool {
     match head.borrow() {
         BodyForm::Value(SExp::Atom(_, a)) => a.len() == 1 && a[0] == b'@',
@@ -128,6 +130,7 @@ pub fn optimize_expr(
                                 opts.prim_map(),
                                 code.to_sexp(),
                                 Rc::new(SExp::Nil(l)),
+                                Some(CONST_FOLD_LIMIT)
                             )
                             .map(|x| {
                                 let x_borrow: &SExp = x.borrow();

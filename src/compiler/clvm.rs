@@ -43,6 +43,15 @@ impl RunStep {
             RunStep::Step(_, _, p) => Some(p.clone()),
         }
     }
+
+    pub fn sexp(&self) -> Rc<SExp> {
+        match self {
+            RunStep::Done(_, s) => s.clone(),
+            RunStep::OpResult(_, s, _) => s.clone(),
+            RunStep::Op(s, _, _, _, _) => s.clone(),
+            RunStep::Step(s, _, _) => s.clone()
+        }
+    }
 }
 
 fn choose_path(
@@ -117,7 +126,7 @@ fn translate_head(
             Some(v) => Ok(Rc::new(v.with_loc(l.clone()))),
         },
         SExp::Cons(_l, _a, nil) => match nil.borrow() {
-            SExp::Nil(_l1) => run(allocator, runner, prim_map, sexp.clone(), context),
+            SExp::Nil(_l1) => run(allocator, runner, prim_map, sexp.clone(), context, None),
             _ => Err(RunFailure::RunErr(
                 sexp.loc(),
                 format!("Unexpected head form in clvm {}", sexp),
@@ -567,10 +576,18 @@ pub fn run(
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     sexp_: Rc<SExp>,
     context_: Rc<SExp>,
+    iter_limit: Option<usize>
 ) -> Result<Rc<SExp>, RunFailure> {
     let mut step = start_step(sexp_, context_);
+    let mut iters = 0;
 
     loop {
+        if let Some(limit) = &iter_limit {
+            if *limit <= iters {
+                return Err(RunFailure::RunErr(step.sexp().loc(), "timeout".to_string()));
+            }
+        }
+        iters += 1;
         step = run_step(allocator, runner.clone(), prim_map.clone(), &step)?;
         if let RunStep::Done(_, x) = step {
             return Ok(x);
@@ -584,6 +601,7 @@ pub fn parse_and_run(
     file: &str,
     content: &str,
     args: &str,
+    step_limit: Option<usize>
 ) -> Result<Rc<SExp>, RunFailure> {
     let code = parse_sexp(Srcloc::start(file), content.bytes())
         .map_err(|e| RunFailure::RunErr(e.0, e.1))?;
@@ -608,6 +626,7 @@ pub fn parse_and_run(
             prim_map,
             code[0].clone(),
             args[0].clone(),
+            step_limit
         )
     }
 }

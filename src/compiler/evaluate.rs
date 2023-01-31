@@ -21,6 +21,8 @@ use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, u8_from_number, Number};
 
+const PRIM_RUN_LIMIT: usize = 1000000;
+
 // Governs whether Evaluator expands various forms.
 #[derive(Debug, Clone)]
 pub struct ExpandMode {
@@ -1299,6 +1301,7 @@ impl Evaluator {
             self.prims.clone(),
             prim,
             args,
+            Some(PRIM_RUN_LIMIT),
         )
         .map_err(|e| match e {
             RunFailure::RunExn(_, s) => CompileErr(call_loc.clone(), format!("exception: {}", s)),
