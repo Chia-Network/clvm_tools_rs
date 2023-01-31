@@ -209,7 +209,7 @@ impl CollectProgramStructure {
         match c & 3 {
             0..1 => {
                 let raw_number = c & 0x3fff;
-                let bigint = (raw_number - 0x2000).to_bigint().unwrap();
+                let bigint = ((raw_number as i32) - 0x2000).to_bigint().unwrap();
                 Rc::new(SExp::Integer(loc.clone(), bigint))
             }
             2 => {
