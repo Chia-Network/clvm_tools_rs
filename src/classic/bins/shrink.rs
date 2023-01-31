@@ -43,6 +43,6 @@ fn main() {
             println!("shrunk: {}", result.to_sexp());
         })
         .map_err(|e| {
-            println!("failed: {:?}", e);
+            println!("failed: {e:?}");
         });
 }
