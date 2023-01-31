@@ -33,56 +33,61 @@ const BINDING_NAME_MIN: usize = 3;
 const MAX_FORMS_CPS: usize = 512;
 const MAX_HELPER_KIND_CPS: u16 = 3;
 
-#[derive(Debug, Clone)]
-pub struct FuzzBinding {
-    pub name: Vec<u8>,
-    pub expr: FuzzOperation,
-}
-
-/*
- * Bitstream randomness ->
- *
- * Our goal is to devise a format where adding one to the stream yields a
- * usefully different program.
- *
- * That means that at the left end of the we want more consequential information
- * followed by less and less consequential information.
- *
- * The last bits should be constants, next to last select among alternative
- * objects of the same time first the program structure, then more details.
- *
- * It'd be nice to have the stream start with the number of objects of each
- * type but that'd make simple increments make big changes.  I think it's better
- * to have each new object be introduced via an increment on the right most byte.
- *
- * So we read the data as messages, where we accept a message if its priority is
- * the current or lower priority, and end if it's higher.
- *
- * So we must read a set of messages:
- *
- * Structures (helper) -> Structure (body) -> Arguments -> Selectors -> Constants
- * Where Structures contains
- * (Constant | Function | Macro | Main)
- * (quote | arg | if | mult  | sub | sha256 | let | call)
- * Arguments -> (cons | @ form | atom | nil)
- * Selectors -> choose nth
- * Constants -> (cons | hex+ | int | nil)
- *
- * Each 16 bits is a message.
- *
- * The low 3 bits of each word defines the message type, with types 6 and 7
- * currently ignored.
- * For each, the other 13 bits are taken as the payload.
- */
-
+//
+// Bitstream based randomness ->
+//
+// Our goal is to devise a format where adding one to the stream yields a
+// usefully different program.
+//
+// That means that at the left end of the we want more consequential information
+// followed by less and less consequential information.
+//
+// The last bits should be constants, next to last select among alternative
+// objects of the same time first the program structure, then more details.
+//
+// It'd be nice to have the stream start with the number of objects of each
+// type but that'd make simple increments make big changes.  I think it's better
+// to have each new object be introduced via an increment on the right most byte.
+//
+// So we must read a set of messages.  Each message is 32 bits as a pair of
+// 16 bit values.  If the whole message is 0, then we stop reading.
+//
+// This is useful for scenarios like fuzzing where a specific, limited pattern
+// is provided and we generate only based on that pattern.  The messages are
+// ordered lowest to highest in complexity and each message adds one piece of
+// information.  Since each type of form is generated separately, a correct
+// program can be synthesized from any number (even 0) of accumulated messages.
+//
+// Each 16 bit value goes into one of 5 bins:
+//
+// Structures (helper) -> Structure (body) -> Arguments -> Constants -> Choices
+//
+// The payload of each is used to contain one of the choices needed downstream
+// but others are teken from the choices bin, which is treated as a circular list
+// of choice values we can use.
+//
+// Other than the helpers and choices, each of the structure types builds as an
+// acyclic graph on its own list, accumulating larger structures as it goes, which
+// are available as choices elsewhere.
+//
+// With constants generated, it generates body forms and with arguments generated
+// it generates helpers and the whole program.
+//
 #[derive(Clone, Debug, Default)]
 pub struct CollectProgramStructure {
+    // defmacro, defun, defconstant etc
     helper_structures: Vec<u16>,
+    // if (- ...) (sha256 ...) (let ...) etc
     body_forms: Vec<u16>,
+    // defining the argument shape for functions
     arguments: Vec<u16>,
-    selectors: Vec<u16>,
+    // constructs constants.
     constants: Vec<u16>,
+    // store of choices for filling out trees
+    selectors: Vec<u16>,
+    // current selector
     choice: usize,
+    // message representing the main expression
     main: u16,
 }
 
@@ -296,7 +301,6 @@ impl CollectProgramStructure {
         let loc = Srcloc::start("*rng*");
         let nil = Rc::new(SExp::Nil(loc.clone()));
         let body_nil = Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone())));
-        // (quote | arg | if | mult  | sub | sha256 | let | call)
         match b & 15 {
             0 => {
                 let choice_of_const = b >> 4;
@@ -587,6 +591,8 @@ impl CollectProgramStructure {
     }
 }
 
+// CollectProgramStructure becomes populated by a constrained set of bits.
+// Use to_program to generate a CompileForm.
 impl Distribution<CollectProgramStructure> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> CollectProgramStructure {
         let mut iters = 0;
@@ -644,8 +650,23 @@ impl Distribution<CollectProgramStructure> for Standard {
     }
 }
 
+//
+// Random program generator for a continuous RNG.
+// Assumes there are unlimited bits available and tries to provide a wide
+// diversity of generated programs that have a high probability of processing
+// inputs in interesting ways.  Good for checking what code was generated
+// since it comes with an interpreter for the abstract meaning of what was
+// generated.
+//
 // We don't actually need all operators here, just a good selection with
 // semantics that are distinguishable.
+//
+#[derive(Debug, Clone)]
+pub struct FuzzBinding {
+    pub name: Vec<u8>,
+    pub expr: FuzzOperation,
+}
+
 #[derive(Debug, Clone)]
 pub enum FuzzOperation {
     Argref(usize),
