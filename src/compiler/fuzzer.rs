@@ -160,7 +160,6 @@ fn rewrite_identifiers_bodyform(
         }
         BodyForm::Value(SExp::Atom(l,n)) => {
             if !in_scope.contains(&n) {
-                eprintln!("n = {}", decode_string(&n));
                 let idnum = n[0] as usize;
                 if in_scope.is_empty() {
                     BodyForm::Quoted(SExp::Nil(l.clone()))
@@ -577,11 +576,6 @@ impl CollectProgramStructure {
             constants.push(new_const);
         }
 
-        eprintln!("constants");
-        for c in constants.iter() {
-            eprintln!(" - {}", c);
-        }
-
         let mut atom_identifiers = vec![
             b"A".to_vec(),
             b"B".to_vec(),
@@ -606,16 +600,6 @@ impl CollectProgramStructure {
             arguments.push(new_arg);
         }
 
-        eprintln!("arguments");
-        for a in arguments.iter() {
-            eprintln!(" - {}", a);
-        }
-
-        eprintln!("identifiers");
-        for i in atom_identifiers.iter() {
-            eprintln!(" - {}", decode_string(&i));
-        }
-
         let mut body_forms = Vec::new();
 
         let body_vals = self.body_forms.clone();
@@ -630,11 +614,6 @@ impl CollectProgramStructure {
             body_forms.push(new_form);
         }
 
-        eprintln!("bodyforms");
-        for b in body_forms.iter() {
-            eprintln!(" - {}", b.to_sexp());
-        }
-
         let mut helper_forms = Vec::new();
         let helper_vals = self.helper_structures.clone();
         for (i,h) in helper_vals.iter().enumerate() {
@@ -647,11 +626,6 @@ impl CollectProgramStructure {
                 &helper_forms
             );
             helper_forms.push(new_helper);
-        }
-
-        eprintln!("helpers");
-        for h in helper_forms.iter() {
-            eprintln!(" - {}", h.to_sexp());
         }
 
         let body = self.new_bodyform(
