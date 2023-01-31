@@ -194,8 +194,7 @@ fn create_argument_captures(
         (_, _) => Err(CompileErr(
             function_arg_spec.loc(),
             format!(
-                "not yet supported argument alternative: ArgInput {:?} SExp {}",
-                formed_arguments, function_arg_spec
+                "not yet supported argument alternative: ArgInput {formed_arguments:?} SExp {function_arg_spec}"
             ),
         )),
     }
@@ -305,7 +304,7 @@ fn synthesize_args(
         SExp::Atom(_, name) => env.get(name).map(|x| Ok(x.clone())).unwrap_or_else(|| {
             Err(CompileErr(
                 template.loc(),
-                format!("Argument {} referenced but not in env", template),
+                format!("Argument {template} referenced but not in env"),
             ))
         }),
         SExp::Cons(l, f, r) => {

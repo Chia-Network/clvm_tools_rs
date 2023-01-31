@@ -366,8 +366,7 @@ impl ArgumentParser {
                         if nargs == &Some(NArgsSpec::Plus) {
                             let usage = self.compile_help_messages();
                             return Err(format!(
-                                "{}\n\nError: The following arguments are required: {}",
-                                usage, name
+                                "{usage}\n\nError: The following arguments are required: {name}"
                             ));
                         }
 

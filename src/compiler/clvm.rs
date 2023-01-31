@@ -517,7 +517,7 @@ pub fn run_step(
                             _ => {
                                 return Err(RunFailure::RunErr(
                                     tail.loc(),
-                                    format!("Cons expected for {}, got {}", op, tail),
+                                    format!("Cons expected for {op}, got {tail}"),
                                 ));
                             }
                         }
