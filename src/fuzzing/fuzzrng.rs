@@ -9,10 +9,10 @@ pub struct FuzzPseudoRng<'slice> {
 
 impl<'slice> FuzzPseudoRng<'slice> {
     pub fn new(slice: &'slice [u8]) -> Self {
-        return FuzzPseudoRng {
-            slice: slice,
+        FuzzPseudoRng {
+            slice,
             progress: 0,
-        };
+        }
     }
 
     fn next_u8_untreated(&mut self) -> u8 {
@@ -51,6 +51,7 @@ impl<'slice> RngCore for FuzzPseudoRng<'slice> {
     }
 
     #[inline(always)]
+    #[allow(clippy::needless_range_loop)]
     fn fill_bytes(&mut self, dest: &mut [u8]) {
         for i in 0..dest.len() {
             dest[i] = self.next_u8_untreated()
