@@ -113,7 +113,7 @@ fn compute_env_shape(l: Srcloc, args: Rc<SExp>, helpers: &[HelperForm]) -> SExp 
     SExp::Cons(l, Rc::new(car), cdr)
 }
 
-pub fn create_name_lookup_(
+fn create_name_lookup_(
     l: Srcloc,
     name: &[u8],
     env: Rc<SExp>,
