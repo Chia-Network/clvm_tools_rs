@@ -286,20 +286,14 @@ fn show_env(env: &HashMap<Vec<u8>, Rc<BodyForm>>) {
 pub fn first_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     match lst.borrow() {
         SExp::Cons(_, f, _) => Ok(f.clone()),
-        _ => Err(CompileErr(
-            lst.loc(),
-            format!("No first element of {}", lst),
-        )),
+        _ => Err(CompileErr(lst.loc(), format!("No first element of {lst}"))),
     }
 }
 
 pub fn second_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     match lst.borrow() {
         SExp::Cons(_, _, r) => first_of_alist(r.clone()),
-        _ => Err(CompileErr(
-            lst.loc(),
-            format!("No second element of {}", lst),
-        )),
+        _ => Err(CompileErr(lst.loc(), format!("No second element of {lst}"))),
     }
 }
 
@@ -331,7 +325,7 @@ fn synthesize_args(
         SExp::Nil(l) => Ok(Rc::new(BodyForm::Quoted(SExp::Nil(l.clone())))),
         _ => Err(CompileErr(
             template.loc(),
-            format!("unknown argument template {}", template),
+            format!("unknown argument template {template}"),
         )),
     }
 }
@@ -1167,7 +1161,7 @@ impl Evaluator {
             args,
         )
         .map_err(|e| match e {
-            RunFailure::RunExn(_, s) => CompileErr(call_loc.clone(), format!("exception: {}", s)),
+            RunFailure::RunExn(_, s) => CompileErr(call_loc.clone(), format!("exception: {s}")),
             RunFailure::RunErr(_, s) => CompileErr(call_loc.clone(), s),
         })
         .map(|res| {
