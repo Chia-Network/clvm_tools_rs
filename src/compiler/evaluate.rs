@@ -1,6 +1,5 @@
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
-use std::mem::swap;
 use std::rc::Rc;
 
 use num_bigint::ToBigInt;
@@ -20,10 +19,11 @@ use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::stackvisit::{HasDepthLimit, VisitedMarker};
 use crate::util::{number_from_u8, u8_from_number, Number};
 
 const PRIM_RUN_LIMIT: usize = 1000000;
-pub const EVAL_STACK_LIMIT: usize = 500;
+pub const EVAL_STACK_LIMIT: usize = 200;
 
 // Governs whether Evaluator expands various forms.
 #[derive(Debug, Clone)]
@@ -37,6 +37,43 @@ impl Default for ExpandMode {
         ExpandMode {
             functions: true,
             lets: true,
+        }
+    }
+}
+
+// Stack depth checker.
+#[derive(Clone, Debug, Default)]
+pub struct VisitedInfo {
+    functions: HashMap<Vec<u8>, Rc<BodyForm>>,
+    max_depth: Option<usize>,
+}
+
+impl HasDepthLimit<Srcloc, CompileErr> for VisitedInfo {
+    fn depth_limit(&self) -> Option<usize> {
+        self.max_depth
+    }
+    fn stack_err(&self, loc: Srcloc) -> CompileErr {
+        CompileErr(loc, "stack limit exceeded".to_string())
+    }
+}
+
+trait VisitedInfoAccess {
+    fn get_function(&mut self, name: &[u8]) -> Option<Rc<BodyForm>>;
+    fn insert_function(&mut self, name: Vec<u8>, body: Rc<BodyForm>);
+}
+
+impl<'info> VisitedInfoAccess for VisitedMarker<'info, VisitedInfo> {
+    fn get_function(&mut self, name: &[u8]) -> Option<Rc<BodyForm>> {
+        if let Some(ref mut info) = self.info {
+            info.functions.get(name).cloned()
+        } else {
+            None
+        }
+    }
+
+    fn insert_function(&mut self, name: Vec<u8>, body: Rc<BodyForm>) {
+        if let Some(ref mut info) = self.info {
+            info.functions.insert(name, body);
         }
     }
 }
@@ -58,103 +95,6 @@ impl ArgInputs {
                 a.to_sexp(),
                 b.to_sexp(),
             )),
-        }
-    }
-}
-
-// This is a stack depth checker which avoids running too deep.
-// When the evaluator is used for optimization, setting a limit avoids a stack
-// overflow when certain unterminating code is run.
-//
-// This enhances a previous 'visited' argument to many functions that keeps
-// track of which functions have been used, which allows (for example) the
-// use checker to stop descending.
-#[derive(Clone, Debug, Default)]
-pub struct VisitedInfo {
-    functions: HashMap<Vec<u8>, Rc<BodyForm>>,
-    max_depth: Option<usize>,
-}
-
-// Interface to a parent frame.
-pub trait Unvisit {
-    fn give_back(&mut self, info: Option<Box<VisitedInfo>>);
-    fn take(&mut self) -> Option<Box<VisitedInfo>>;
-    fn depth(&self) -> usize;
-}
-
-// Each stack frame owns a VisitedMarker.  The top stack frame owns the
-// VisitedInfo so that it can be held mutably without multiple borrows.
-// The drop trait uses the Unvisit trait to hand it back when done.
-pub struct VisitedMarker<'info> {
-    info: Option<Box<VisitedInfo>>,
-    prev: Option<&'info mut dyn Unvisit>,
-    depth: usize,
-}
-
-impl<'info> VisitedMarker<'info> {
-    fn new(info: VisitedInfo) -> VisitedMarker<'static> {
-        VisitedMarker {
-            info: Some(Box::new(info)),
-            prev: None,
-            depth: 1,
-        }
-    }
-
-    fn again(
-        loc: Srcloc,
-        prev: &'info mut dyn Unvisit,
-    ) -> Result<VisitedMarker<'info>, CompileErr> {
-        let mut info = prev.take();
-        let depth = prev.depth();
-        if let Some(ref mut info) = info {
-            if let Some(limit) = info.max_depth {
-                if depth >= limit {
-                    return Err(CompileErr(loc, "stack limit exceeded".to_string()));
-                }
-            }
-        }
-        Ok(VisitedMarker {
-            info,
-            prev: Some(prev),
-            depth: depth + 1,
-        })
-    }
-
-    fn get_function(&mut self, name: &[u8]) -> Option<Rc<BodyForm>> {
-        if let Some(ref mut info) = self.info {
-            info.functions.get(name).cloned()
-        } else {
-            None
-        }
-    }
-
-    fn insert_function(&mut self, name: Vec<u8>, body: Rc<BodyForm>) {
-        if let Some(ref mut info) = self.info {
-            info.functions.insert(name, body);
-        }
-    }
-}
-
-impl<'info> Unvisit for VisitedMarker<'info> {
-    fn give_back(&mut self, info: Option<Box<VisitedInfo>>) {
-        self.info = info;
-    }
-    fn take(&mut self) -> Option<Box<VisitedInfo>> {
-        let mut info = None;
-        swap(&mut self.info, &mut info);
-        info
-    }
-    fn depth(&self) -> usize {
-        self.depth
-    }
-}
-
-impl<'info> Drop for VisitedMarker<'info> {
-    fn drop(&mut self) {
-        let mut info = None;
-        swap(&mut self.info, &mut info);
-        if let Some(ref mut prev) = self.prev {
-            prev.give_back(info);
         }
     }
 }
@@ -716,7 +656,7 @@ impl<'info> Evaluator {
     fn invoke_macro_expansion(
         &self,
         allocator: &mut Allocator,
-        visited: &'_ mut VisitedMarker<'info>,
+        visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
         l: Srcloc,
         call_loc: Srcloc,
         program: Rc<CompileForm>,
@@ -771,7 +711,7 @@ impl<'info> Evaluator {
     fn invoke_primitive(
         &self,
         allocator: &mut Allocator,
-        visited: &mut VisitedMarker,
+        visited: &mut VisitedMarker<'info, VisitedInfo>,
         l: Srcloc,
         call_name: &[u8],
         parts: &[Rc<BodyForm>],
@@ -932,7 +872,7 @@ impl<'info> Evaluator {
     fn continue_apply(
         &self,
         allocator: &mut Allocator,
-        visited: &'_ mut VisitedMarker<'info>,
+        visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
         env: Rc<BodyForm>,
         run_program: Rc<SExp>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
@@ -952,7 +892,7 @@ impl<'info> Evaluator {
     fn do_mash_condition(
         &self,
         allocator: &mut Allocator,
-        visited: &'_ mut VisitedMarker<'info>,
+        visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
         maybe_condition: Rc<BodyForm>,
         env: Rc<BodyForm>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
@@ -1018,7 +958,7 @@ impl<'info> Evaluator {
     fn chase_apply(
         &self,
         allocator: &mut Allocator,
-        visited: &'_ mut VisitedMarker<'info>,
+        visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
         body: Rc<BodyForm>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         if let BodyForm::Call(l, vec) = body.borrow() {
@@ -1044,7 +984,7 @@ impl<'info> Evaluator {
     fn handle_invoke(
         &self,
         allocator: &mut Allocator,
-        visited: &'_ mut VisitedMarker<'info>,
+        visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
         l: Srcloc,
         call_loc: Srcloc,
         call_name: &[u8],
@@ -1125,13 +1065,13 @@ impl<'info> Evaluator {
     pub fn shrink_bodyform_visited(
         &self,
         allocator: &mut Allocator, // Support random prims via clvm_rs
-        visited_: &'info mut VisitedMarker<'_>,
+        visited_: &'info mut VisitedMarker<'_, VisitedInfo>,
         prog_args: Rc<SExp>,
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         body: Rc<BodyForm>,
         expand: ExpandMode,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        let mut visited: VisitedMarker<'info> = VisitedMarker::again(body.loc(), visited_)?;
+        let mut visited = VisitedMarker::again(body.loc(), visited_)?;
         match body.borrow() {
             BodyForm::Let(LetFormKind::Parallel, letdata) => {
                 if !expand.lets {

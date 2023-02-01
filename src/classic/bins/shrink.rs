@@ -8,7 +8,7 @@ use clvm_rs::allocator::Allocator;
 
 use clvm_tools_rs::compiler::compiler::DefaultCompilerOpts;
 use clvm_tools_rs::compiler::comptypes::CompileErr;
-use clvm_tools_rs::compiler::evaluate::Evaluator;
+use clvm_tools_rs::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
 use clvm_tools_rs::compiler::frontend::frontend;
 use clvm_tools_rs::compiler::sexp::parse_sexp;
 use clvm_tools_rs::compiler::srcloc::Srcloc;
@@ -37,7 +37,7 @@ fn main() {
                 &HashMap::new(),
                 program.exp,
                 Default::default(),
-                None,
+                Some(EVAL_STACK_LIMIT),
             )
         })
         .map(|result| {

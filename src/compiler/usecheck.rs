@@ -11,11 +11,9 @@ use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 
 use crate::compiler::clvm::sha256tree;
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts};
-use crate::compiler::evaluate::Evaluator;
+use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::sexp::SExp;
 use crate::util::u8_from_number;
-
-const SHRINK_STACK_LIMIT: usize = 1000;
 
 // We consider lower case atoms as uncurried by convention.
 fn consider_as_uncurried(v: &[u8]) -> bool {
@@ -94,7 +92,7 @@ pub fn check_parameters_used_compileform(
         &env,
         program.exp.clone(),
         Default::default(),
-        Some(SHRINK_STACK_LIMIT),
+        Some(EVAL_STACK_LIMIT),
     )?;
 
     remove_present_atoms(&mut replacement_to_original, result.to_sexp());
