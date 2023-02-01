@@ -171,8 +171,8 @@ fn test_collatz() {
             "  )",
             "(collatz 0 3)"
         ])
-            .unwrap()
-            .unwrap(),
+        .unwrap()
+        .unwrap(),
         "(q . 7)"
     );
 }
@@ -187,23 +187,12 @@ fn test_mod_in_repl() {
     );
 }
 
-
 #[test]
 fn test_eval_forever_primitive() {
-    assert!(
-        test_repl_outcome(vec![
-            "(defconstant RUNME (2 1 1))",
-            "(a RUNME RUNME)"
-        ]).is_err()
-    );
+    assert!(test_repl_outcome(vec!["(defconstant RUNME (2 1 1))", "(a RUNME RUNME)"]).is_err());
 }
 
 #[test]
 fn test_eval_forever_recursive() {
-    assert!(
-        test_repl_outcome(vec![
-            "(defun more (N) (more N))",
-            "(more 3)"
-        ]).is_err()
-    );
+    assert!(test_repl_outcome(vec!["(defun more (N) (more N))", "(more 3)"]).is_err());
 }

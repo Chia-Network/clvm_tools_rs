@@ -32,11 +32,11 @@ pub struct VisitedInfo {
     max_depth: Option<usize>,
 }
 
-impl HasDepthLimit<Srcloc,CompileErr> for VisitedInfo {
+impl HasDepthLimit<Srcloc, CompileErr> for VisitedInfo {
     fn depth_limit(&self) -> Option<usize> {
         self.max_depth
     }
-    fn stack_err(&self,loc: Srcloc) -> CompileErr {
+    fn stack_err(&self, loc: Srcloc) -> CompileErr {
         CompileErr(loc, "stack limit exceeded".to_string())
     }
 }
@@ -46,7 +46,7 @@ trait VisitedInfoAccess {
     fn insert_function(&mut self, name: Vec<u8>, body: Rc<BodyForm>);
 }
 
-impl<'info> VisitedInfoAccess for VisitedMarker<'info,VisitedInfo> {
+impl<'info> VisitedInfoAccess for VisitedMarker<'info, VisitedInfo> {
     fn get_function(&mut self, name: &[u8]) -> Option<Rc<BodyForm>> {
         if let Some(ref mut info) = self.info {
             info.functions.get(name).cloned()
@@ -592,7 +592,7 @@ impl<'info> Evaluator {
     fn invoke_macro_expansion(
         &self,
         allocator: &mut Allocator,
-        visited: &'_ mut VisitedMarker<'info,VisitedInfo>,
+        visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
         l: Srcloc,
         call_loc: Srcloc,
         program: Rc<CompileForm>,
@@ -647,7 +647,7 @@ impl<'info> Evaluator {
     fn invoke_primitive(
         &self,
         allocator: &mut Allocator,
-        visited: &mut VisitedMarker<'info,VisitedInfo>,
+        visited: &mut VisitedMarker<'info, VisitedInfo>,
         l: Srcloc,
         call_name: &[u8],
         parts: &[Rc<BodyForm>],
@@ -756,7 +756,7 @@ impl<'info> Evaluator {
     fn continue_apply(
         &self,
         allocator: &mut Allocator,
-        visited: &'_ mut VisitedMarker<'info,VisitedInfo>,
+        visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
         env: Rc<BodyForm>,
         run_program: Rc<SExp>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
@@ -776,7 +776,7 @@ impl<'info> Evaluator {
     fn do_mash_condition(
         &self,
         allocator: &mut Allocator,
-        visited: &'_ mut VisitedMarker<'info,VisitedInfo>,
+        visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
         maybe_condition: Rc<BodyForm>,
         env: Rc<BodyForm>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
@@ -790,7 +790,7 @@ impl<'info> Evaluator {
             let where_from_vec = where_from.as_bytes().to_vec();
 
             if let Some(present) = visited.get_function(&where_from_vec) {
-                return Ok(present.clone());
+                return Ok(present);
             }
 
             visited.insert_function(
@@ -842,7 +842,7 @@ impl<'info> Evaluator {
     fn chase_apply(
         &self,
         allocator: &mut Allocator,
-        visited: &'_ mut VisitedMarker<'info,VisitedInfo>,
+        visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
         body: Rc<BodyForm>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         if let BodyForm::Call(l, vec) = body.borrow() {
@@ -868,7 +868,7 @@ impl<'info> Evaluator {
     fn handle_invoke(
         &self,
         allocator: &mut Allocator,
-        visited: &'_ mut VisitedMarker<'info,VisitedInfo>,
+        visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
         l: Srcloc,
         call_loc: Srcloc,
         call_name: &[u8],
@@ -946,7 +946,7 @@ impl<'info> Evaluator {
     pub fn shrink_bodyform_visited(
         &self,
         allocator: &mut Allocator, // Support random prims via clvm_rs
-        visited_: &'info mut VisitedMarker<'_,VisitedInfo>,
+        visited_: &'info mut VisitedMarker<'_, VisitedInfo>,
         prog_args: Rc<SExp>,
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         body: Rc<BodyForm>,
@@ -1120,8 +1120,10 @@ impl<'info> Evaluator {
         only_inline: bool,
         stack_limit: Option<usize>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        let mut visited_info: VisitedInfo = Default::default();
-        visited_info.max_depth = stack_limit;
+        let visited_info = VisitedInfo {
+            max_depth: stack_limit,
+            ..Default::default()
+        };
         let mut visited_marker = VisitedMarker::new(visited_info);
         self.shrink_bodyform_visited(
             allocator, // Support random prims via clvm_rs
