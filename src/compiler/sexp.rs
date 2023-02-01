@@ -512,7 +512,7 @@ impl SExp {
             SExp::Atom(_, v) => Ok(number_from_u8(v)),
             SExp::QuotedString(_, _, v) => Ok(number_from_u8(v)),
             SExp::Nil(_) => Ok(bi_zero()),
-            _ => Err((self.loc(), format!("wanted atom got cons cell {}", self))),
+            _ => Err((self.loc(), format!("wanted atom got cons cell {self}"))),
         }
     }
 }

@@ -16,7 +16,7 @@ use crate::compiler::codegen::codegen;
 use crate::compiler::comptypes::{
     CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
-use crate::compiler::evaluate::{build_reflex_captures, Evaluator};
+use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
@@ -127,6 +127,7 @@ fn fe_opt(
                     &env,
                     defun.body.clone(),
                     true,
+                    Some(EVAL_STACK_LIMIT),
                 )?;
                 let new_helper = HelperForm::Defun(
                     *inline,
@@ -154,6 +155,7 @@ fn fe_opt(
         &HashMap::new(),
         compileform.exp.clone(),
         true,
+        Some(EVAL_STACK_LIMIT),
     )?;
 
     Ok(CompileForm {
@@ -209,7 +211,7 @@ pub fn run_optimizer(
         .map(|x| (r.loc(), x))
         .map_err(|e| match e {
             RunFailure::RunErr(l, e) => CompileErr(l, e),
-            RunFailure::RunExn(s, e) => CompileErr(s, format!("exception {}\n", e)),
+            RunFailure::RunExn(s, e) => CompileErr(s, format!("exception {e}\n")),
         })?;
 
     let optimized = optimize_sexp(allocator, to_clvm_rs.1, runner)
@@ -218,7 +220,7 @@ pub fn run_optimizer(
 
     convert_from_clvm_rs(allocator, optimized.0, optimized.1).map_err(|e| match e {
         RunFailure::RunErr(l, e) => CompileErr(l, e),
-        RunFailure::RunExn(s, e) => CompileErr(s, format!("exception {}\n", e)),
+        RunFailure::RunExn(s, e) => CompileErr(s, format!("exception {e}\n")),
     })
 }
 
@@ -317,7 +319,7 @@ impl CompilerOpts for DefaultCompilerOpts {
         }
         Err(CompileErr(
             Srcloc::start(&inc_from),
-            format!("could not find {} to include", filename),
+            format!("could not find {filename} to include"),
         ))
     }
     fn compile_program(
