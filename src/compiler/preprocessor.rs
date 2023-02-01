@@ -14,7 +14,7 @@ pub fn process_include(
     let content = filename_and_content.1;
     let start_of_file = Srcloc::start(&decode_string(&include.name));
 
-    parse_sexp(start_of_file.clone(), content.iter().copied())
+    parse_sexp(start_of_file.clone(), content.bytes())
         .map_err(|e| CompileErr(e.0.clone(), e.1))
         .and_then(|x| match x[0].proper_list() {
             None => Err(CompileErr(
@@ -47,7 +47,7 @@ fn process_pp_form(
             ..desc
         });
 
-        let parsed = parse_sexp(Srcloc::start(&full_name), content.iter().copied())
+        let parsed = parse_sexp(Srcloc::start(&full_name), content.bytes())
             .map_err(|e| CompileErr(e.0, e.1))?;
         if parsed.is_empty() {
             return Ok(());

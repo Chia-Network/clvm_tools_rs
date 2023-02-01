@@ -198,7 +198,7 @@ pub trait CompilerOpts {
         &self,
         inc_from: String,
         filename: String,
-    ) -> Result<(String, Vec<u8>), CompileErr>;
+    ) -> Result<(String, String), CompileErr>;
     fn compile_program(
         &self,
         allocator: &mut Allocator,

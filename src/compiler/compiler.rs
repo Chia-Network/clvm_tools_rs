@@ -301,17 +301,17 @@ impl CompilerOpts for DefaultCompilerOpts {
         &self,
         inc_from: String,
         filename: String,
-    ) -> Result<(String, Vec<u8>), CompileErr> {
+    ) -> Result<(String, String), CompileErr> {
         if filename == "*macros*" {
-            return Ok((filename, STANDARD_MACROS.bytes().collect()));
+            return Ok((filename, STANDARD_MACROS.clone()));
         } else if let Some(content) = self.known_dialects.get(&filename) {
-            return Ok((filename, content.bytes().collect()));
+            return Ok((filename, content.to_string()));
         }
 
         for dir in self.include_dirs.iter() {
             let mut p = PathBuf::from(dir);
             p.push(filename.clone());
-            match fs::read(p.clone()) {
+            match fs::read_to_string(p.clone()) {
                 Err(_e) => {
                     continue;
                 }
