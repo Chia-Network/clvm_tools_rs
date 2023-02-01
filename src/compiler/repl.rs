@@ -24,6 +24,7 @@ pub struct Repl {
     evaluator: Evaluator,
 
     loc: Srcloc,
+    stack_limit: Option<usize>,
 }
 
 fn program_with_helper(names: Vec<Rc<SExp>>, parsed_program: Rc<SExp>) -> Rc<SExp> {
@@ -112,7 +113,12 @@ impl Repl {
             evaluator,
             opts,
             loc,
+            stack_limit: Some(EVAL_STACK_LIMIT)
         }
+    }
+
+    pub fn set_stack_limit(&mut self, l: Option<usize>) {
+        self.stack_limit = l;
     }
 
     pub fn process_line(
@@ -173,7 +179,7 @@ impl Repl {
                                 &HashMap::new(),
                                 program.exp,
                                 false,
-                                Some(EVAL_STACK_LIMIT),
+                                self.stack_limit
                             )
                         })
                         .map(Some)
