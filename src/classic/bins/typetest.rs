@@ -37,7 +37,7 @@ fn main() {
                     context = context.snoc(ContextElim::CVar(Var(name.clone(), loc.clone()), ty));
                 }
                 Err(e) => {
-                    println!("error in helper {}: {:?}", name, e);
+                    println!("error in helper {name}: {e:?}");
                     return;
                 }
             }
@@ -60,7 +60,7 @@ fn main() {
             println!("context: {}", ctx.to_sexp());
         })
         .map_err(|e| {
-            println!("failed: {:?}", e);
+            println!("failed: {e:?}");
         })
         .ok();
 }

@@ -31,8 +31,8 @@ lazy_static! {
 
 fn run_failure_to_eval_err(sexp: NodePtr, e: &RunFailure) -> EvalErr {
     match e {
-        RunFailure::RunExn(l, t) => EvalErr(sexp, format!("{}: exception: {}", l, t)),
-        RunFailure::RunErr(l, t) => EvalErr(sexp, format!("{}: {}", l, t)),
+        RunFailure::RunExn(l, t) => EvalErr(sexp, format!("{l}: exception: {t}")),
+        RunFailure::RunErr(l, t) => EvalErr(sexp, format!("{l}: {t}")),
     }
 }
 

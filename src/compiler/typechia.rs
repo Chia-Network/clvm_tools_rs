@@ -514,7 +514,7 @@ pub fn context_from_args_and_type(
         }
         _ => Err(CompileErr(
             args.loc(),
-            format!("unhandled case {} vs {}", args, argty.to_sexp()),
+            format!("unhandled case {args} vs {}", argty.to_sexp()),
         )),
     }
 }
@@ -699,7 +699,7 @@ fn chialisp_to_expr(
         }
         _ => Err(CompileErr(
             body.loc(),
-            format!("not sure how to handle {:?} yet", body),
+            format!("not sure how to handle {body:?} yet"),
         )),
     }
 }
@@ -745,7 +745,7 @@ impl Context {
         for h in comp.helpers.iter() {
             if let HelperForm::Deftype(deft) = &h {
                 let tname = decode_string(&deft.name);
-                let n_encoding = number_from_u8(format!("struct {}", tname).as_bytes());
+                let n_encoding = number_from_u8(format!("struct {tname}").as_bytes());
                 // Ensure that we build up a unique type involving all variables so we won't try to solve it to some specific type
                 let mut result_ty = Type::TAtom(h.loc(), Some(n_encoding));
                 for a in deft.args.iter().rev() {
