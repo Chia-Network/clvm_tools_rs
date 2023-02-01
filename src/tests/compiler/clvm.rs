@@ -25,6 +25,8 @@ use crate::tests::classic::run::RandomClvmNumber;
 
 use crate::util::Number;
 
+const TEST_TIMEOUT: usize = 1000000;
+
 fn test_compiler_clvm(to_run: &String, args: &String) -> Result<Rc<SExp>, RunFailure> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
@@ -34,6 +36,7 @@ fn test_compiler_clvm(to_run: &String, args: &String) -> Result<Rc<SExp>, RunFai
         &"*test*".to_string(),
         &to_run,
         &args,
+        Some(TEST_TIMEOUT),
     )
 }
 

@@ -11,6 +11,8 @@ use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
+const TEST_TIMEOUT: usize = 1000000;
+
 fn compile_string(content: &String) -> Result<String, CompileErr> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
@@ -48,6 +50,7 @@ fn run_string_maybe_opt(
             Rc::new(HashMap::new()),
             Rc::new(x),
             sexp_args,
+            Some(TEST_TIMEOUT),
         )
         .map_err(|e| match e {
             RunFailure::RunErr(l, s) => CompileErr(l, s),

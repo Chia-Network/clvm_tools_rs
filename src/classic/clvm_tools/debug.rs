@@ -137,7 +137,7 @@ fn text_trace(
         }
     }
 
-    output.write_str(&format!("{} => {}\n\n", symbol_val, result));
+    output.write_str(&format!("{symbol_val} => {result}\n\n"));
 }
 
 fn table_trace(
@@ -157,7 +157,7 @@ fn table_trace(
     stdout.write_str(&format!("exp: {}\n", disassemble_f(allocator, sexp)));
     stdout.write_str(&format!("arg: {}\n", disassemble_f(allocator, args)));
     stdout.write_str(&format!("env: {}\n", disassemble_f(allocator, env)));
-    stdout.write_str(&format!("val: {}\n", result));
+    stdout.write_str(&format!("val: {result}\n"));
     let mut sexp_stream = Stream::new(None);
     sexp_to_stream(allocator, sexp, &mut sexp_stream);
     let mut args_stream = Stream::new(None);

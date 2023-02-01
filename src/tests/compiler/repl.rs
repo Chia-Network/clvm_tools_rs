@@ -7,7 +7,10 @@ use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::CompileErr;
 use crate::compiler::repl::Repl;
 
-fn test_repl_outcome<S>(inputs: Vec<S>) -> Result<Option<String>, CompileErr>
+fn test_repl_outcome_with_stack_limit<S>(
+    inputs: Vec<S>,
+    limit: Option<usize>,
+) -> Result<Option<String>, CompileErr>
 where
     S: ToString,
 {
@@ -17,11 +20,22 @@ where
     let runner = Rc::new(DefaultProgramRunner::new());
     let mut repl = Repl::new(opts, runner);
 
+    if let Some(limit) = limit {
+        repl.set_stack_limit(Some(limit));
+    }
+
     for i in inputs.iter() {
         res = res.and_then(|_| repl.process_line(&mut allocator, i.to_string()));
     }
 
     res.map(|r| r.map(|r| r.to_sexp().to_string()))
+}
+
+fn test_repl_outcome<S>(inputs: Vec<S>) -> Result<Option<String>, CompileErr>
+where
+    S: ToString,
+{
+    test_repl_outcome_with_stack_limit(inputs, None)
 }
 
 #[test]
@@ -184,5 +198,43 @@ fn test_mod_in_repl() {
             .unwrap()
             .unwrap(),
         "(q . 10)"
+    );
+}
+
+#[test]
+fn test_eval_forever_primitive() {
+    assert!(test_repl_outcome(vec!["(defconstant RUNME (2 1 1))", "(a RUNME RUNME)"]).is_err());
+}
+
+#[test]
+fn test_eval_forever_recursive() {
+    assert!(test_repl_outcome(vec!["(defun more (N) (more N))", "(more 3)"]).is_err());
+}
+
+#[test]
+fn test_eval_a_bit_more_than_forever_recursive() {
+    assert!(test_repl_outcome_with_stack_limit(
+        vec![
+        "(defun tricky (N) (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ N 1)))))))))))))))))",
+        "(tricky 3)"
+    ],
+        Some(10)
+    )
+    .is_err());
+}
+
+#[test]
+fn test_eval_less_than_forever_recursive() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+        "(defun tricky (N) (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ N 1)))))))))))))))))",
+        "(tricky 3)"
+    ],
+            Some(50)
+        )
+        .unwrap()
+        .unwrap(),
+        "(q . 4)"
     );
 }

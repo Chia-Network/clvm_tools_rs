@@ -6,7 +6,7 @@ use clvm_rs::allocator::Allocator;
 use crate::compiler::compiler::compile_file;
 use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
-use crate::compiler::evaluate::Evaluator;
+use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::{from_clvm, frontend};
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -33,6 +33,7 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
                 &HashMap::new(),
                 program.exp.clone(),
                 false,
+                Some(EVAL_STACK_LIMIT),
             );
         })
         .map(|result| result.to_sexp().to_string())
