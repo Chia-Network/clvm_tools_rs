@@ -15,6 +15,8 @@ use crate::compiler::evaluate::Evaluator;
 use crate::compiler::sexp::SExp;
 use crate::util::u8_from_number;
 
+const SHRINK_STACK_LIMIT: usize = 1000;
+
 // We consider lower case atoms as uncurried by convention.
 fn consider_as_uncurried(v: &[u8]) -> bool {
     !v.is_empty() && v[0] >= b'a' && v[0] <= b'z'
@@ -92,6 +94,7 @@ pub fn check_parameters_used_compileform(
         &env,
         program.exp.clone(),
         Default::default(),
+        Some(SHRINK_STACK_LIMIT)
     )?;
 
     remove_present_atoms(&mut replacement_to_original, result.to_sexp());

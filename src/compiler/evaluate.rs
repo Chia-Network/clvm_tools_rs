@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
+use std::mem::swap;
 use std::rc::Rc;
 
 use num_bigint::ToBigInt;
@@ -22,6 +23,7 @@ use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, u8_from_number, Number};
 
 const PRIM_RUN_LIMIT: usize = 1000000;
+pub const EVAL_STACK_LIMIT: usize = 500;
 
 // Governs whether Evaluator expands various forms.
 #[derive(Debug, Clone)]
@@ -56,6 +58,85 @@ impl ArgInputs {
                 a.to_sexp(),
                 b.to_sexp(),
             )),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct VisitedInfo {
+    functions: HashMap<Vec<u8>, Rc<BodyForm>>,
+    max_depth: Option<usize>
+}
+
+pub trait Unvisit {
+    fn give_back(&mut self, info: Option<Box<VisitedInfo>>);
+    fn take(&mut self) -> Option<Box<VisitedInfo>>;
+    fn depth(&self) -> usize;
+}
+
+pub struct VisitedMarker<'info> {
+    info: Option<Box<VisitedInfo>>,
+    prev: Option<&'info mut dyn Unvisit>,
+    depth: usize
+}
+
+impl<'info> VisitedMarker<'info> {
+    fn new(info: VisitedInfo) -> VisitedMarker<'static> {
+        VisitedMarker {
+            info: Some(Box::new(info)),
+            prev: None,
+            depth: 1
+        }
+    }
+
+    fn again(loc: Srcloc, prev: &'info mut dyn Unvisit) -> Result<VisitedMarker<'info>, CompileErr> {
+        let mut info = prev.take();
+        let depth = prev.depth();
+        if let Some(ref mut info) = info {
+            if let Some(limit) = info.max_depth.clone() {
+                if depth >= limit {
+                    return Err(CompileErr(loc, "stack limit exceeded".to_string()));
+                }
+            }
+        }
+        Ok(VisitedMarker { info, prev: Some(prev), depth: depth + 1 })
+    }
+
+    fn get_function(&mut self, name: &[u8]) -> Option<Rc<BodyForm>> {
+        if let Some(ref mut info) = self.info {
+            info.functions.get(name).cloned()
+        } else {
+            None
+        }
+    }
+
+    fn insert_function(&mut self, name: Vec<u8>, body: Rc<BodyForm>) {
+        if let Some(ref mut info) = self.info {
+            info.functions.insert(name, body);
+        }
+    }
+}
+
+impl<'info> Unvisit for VisitedMarker<'info> {
+    fn give_back(&mut self, info: Option<Box<VisitedInfo>>) {
+        self.info = info;
+    }
+    fn take(&mut self) -> Option<Box<VisitedInfo>> {
+        let mut info = None;
+        swap(&mut self.info, &mut info);
+        info
+    }
+    fn depth(&self) -> usize {
+        self.depth
+    }
+}
+
+impl<'info> Drop for VisitedMarker<'info> {
+    fn drop(&mut self) {
+        let mut info = None;
+        swap(&mut self.info, &mut info);
+        if let Some(ref mut prev) = self.prev {
+            prev.give_back(info);
         }
     }
 }
@@ -593,7 +674,7 @@ fn flatten_expression_to_names(expr: Rc<SExp>) -> Rc<BodyForm> {
     Rc::new(BodyForm::Call(expr.loc(), call_vec))
 }
 
-impl Evaluator {
+impl<'info> Evaluator {
     pub fn new(
         opts: Rc<dyn CompilerOpts>,
         runner: Rc<dyn TRunProgram>,
@@ -624,7 +705,7 @@ impl Evaluator {
     fn invoke_macro_expansion(
         &self,
         allocator: &mut Allocator,
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        visited: &'_ mut VisitedMarker<'info>,
         l: Srcloc,
         call_loc: Srcloc,
         program: Rc<CompileForm>,
@@ -676,10 +757,10 @@ impl Evaluator {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn invoke_primitive(
+    fn invoke_primitive<'a>(
         &self,
         allocator: &mut Allocator,
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        visited: &mut VisitedMarker,
         l: Srcloc,
         call_name: &[u8],
         parts: &[Rc<BodyForm>],
@@ -840,7 +921,7 @@ impl Evaluator {
     fn continue_apply(
         &self,
         allocator: &mut Allocator,
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        visited: &'_ mut VisitedMarker<'info>,
         env: Rc<BodyForm>,
         run_program: Rc<SExp>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
@@ -860,7 +941,7 @@ impl Evaluator {
     fn do_mash_condition(
         &self,
         allocator: &mut Allocator,
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        visited: &'_ mut VisitedMarker<'info>,
         maybe_condition: Rc<BodyForm>,
         env: Rc<BodyForm>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
@@ -873,11 +954,11 @@ impl Evaluator {
             let where_from = cond.loc().to_string();
             let where_from_vec = where_from.as_bytes().to_vec();
 
-            if let Some(present) = visited.get(&where_from_vec) {
+            if let Some(present) = visited.get_function(&where_from_vec) {
                 return Ok(present.clone());
             }
 
-            visited.insert(
+            visited.insert_function(
                 where_from_vec,
                 Rc::new(BodyForm::Call(
                     maybe_condition.loc(),
@@ -926,7 +1007,7 @@ impl Evaluator {
     fn chase_apply(
         &self,
         allocator: &mut Allocator,
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        visited: &'_ mut VisitedMarker<'info>,
         body: Rc<BodyForm>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         if let BodyForm::Call(l, vec) = body.borrow() {
@@ -952,7 +1033,7 @@ impl Evaluator {
     fn handle_invoke(
         &self,
         allocator: &mut Allocator,
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        visited: &'_ mut VisitedMarker<'info>,
         l: Srcloc,
         call_loc: Srcloc,
         call_name: &[u8],
@@ -1033,12 +1114,13 @@ impl Evaluator {
     pub fn shrink_bodyform_visited(
         &self,
         allocator: &mut Allocator, // Support random prims via clvm_rs
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        visited_: &'info mut VisitedMarker<'_>,
         prog_args: Rc<SExp>,
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         body: Rc<BodyForm>,
         expand: ExpandMode,
     ) -> Result<Rc<BodyForm>, CompileErr> {
+        let mut visited: VisitedMarker<'info> = VisitedMarker::again(body.loc(), visited_)?;
         match body.borrow() {
             BodyForm::Let(LetFormKind::Parallel, letdata) => {
                 if !expand.lets {
@@ -1048,7 +1130,7 @@ impl Evaluator {
                 let updated_bindings = update_parallel_bindings(env, &letdata.bindings);
                 self.shrink_bodyform_visited(
                     allocator,
-                    visited,
+                    &mut visited,
                     prog_args,
                     &updated_bindings,
                     letdata.body.clone(),
@@ -1063,7 +1145,7 @@ impl Evaluator {
                 if letdata.bindings.is_empty() {
                     self.shrink_bodyform_visited(
                         allocator,
-                        visited,
+                        &mut visited,
                         prog_args,
                         env,
                         letdata.body.clone(),
@@ -1078,7 +1160,7 @@ impl Evaluator {
                     let updated_bindings = update_parallel_bindings(env, &first_binding_as_list);
                     self.shrink_bodyform_visited(
                         allocator,
-                        visited,
+                        &mut visited,
                         prog_args,
                         &updated_bindings,
                         Rc::new(BodyForm::Let(
@@ -1100,7 +1182,7 @@ impl Evaluator {
                     let literal_args = synthesize_args(prog_args.clone(), env, true)?;
                     self.shrink_bodyform_visited(
                         allocator,
-                        visited,
+                        &mut visited,
                         prog_args,
                         env,
                         literal_args,
@@ -1114,7 +1196,7 @@ impl Evaluator {
                             } else {
                                 self.shrink_bodyform_visited(
                                     allocator,
-                                    visited,
+                                    &mut visited,
                                     prog_args.clone(),
                                     env,
                                     x.clone(),
@@ -1127,7 +1209,7 @@ impl Evaluator {
                                 .map(|x| {
                                     self.shrink_bodyform_visited(
                                         allocator,
-                                        visited,
+                                        &mut visited,
                                         prog_args.clone(),
                                         env,
                                         x,
@@ -1160,7 +1242,7 @@ impl Evaluator {
                     BodyForm::Value(SExp::Atom(call_loc, call_name)) => self
                         .handle_invoke(
                             allocator,
-                            visited,
+                            &mut visited,
                             l.clone(),
                             call_loc.clone(),
                             call_name,
@@ -1180,7 +1262,7 @@ impl Evaluator {
                                 for arg in arguments_to_convert.iter() {
                                     converted_arguments.push(self.shrink_bodyform_visited(
                                         allocator,
-                                        visited,
+                                        &mut visited,
                                         prog_args.clone(),
                                         env,
                                         arg.clone(),
@@ -1193,7 +1275,7 @@ impl Evaluator {
                     BodyForm::Value(SExp::Integer(call_loc, call_int)) => self
                         .handle_invoke(
                             allocator,
-                            visited,
+                            &mut visited,
                             l.clone(),
                             call_loc.clone(),
                             &u8_from_number(call_int.clone()),
@@ -1233,10 +1315,14 @@ impl Evaluator {
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         body: Rc<BodyForm>,
         expand: ExpandMode,
+        stack_limit: Option<usize>
     ) -> Result<Rc<BodyForm>, CompileErr> {
+        let mut visited_info: VisitedInfo = Default::default();
+        visited_info.max_depth = stack_limit;
+        let mut visited_marker = VisitedMarker::new(visited_info);
         self.shrink_bodyform_visited(
             allocator, // Support random prims via clvm_rs
-            &mut HashMap::new(),
+            &mut visited_marker,
             prog_args,
             env,
             body,

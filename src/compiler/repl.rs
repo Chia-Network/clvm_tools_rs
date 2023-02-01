@@ -173,6 +173,7 @@ impl Repl {
                                 &HashMap::new(),
                                 program.exp,
                                 Default::default(),
+                                Default::default()
                             )
                         })
                         .map(Some)
