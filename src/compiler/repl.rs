@@ -113,7 +113,7 @@ impl Repl {
             evaluator,
             opts,
             loc,
-            stack_limit: Some(EVAL_STACK_LIMIT)
+            stack_limit: Some(EVAL_STACK_LIMIT),
         }
     }
 
@@ -179,7 +179,7 @@ impl Repl {
                                 &HashMap::new(),
                                 program.exp,
                                 false,
-                                self.stack_limit
+                                self.stack_limit,
                             )
                         })
                         .map(Some)

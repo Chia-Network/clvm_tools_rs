@@ -7,7 +7,10 @@ use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::CompileErr;
 use crate::compiler::repl::Repl;
 
-fn test_repl_outcome_with_stack_limit<S>(inputs: Vec<S>, limit: Option<usize>) -> Result<Option<String>, CompileErr>
+fn test_repl_outcome_with_stack_limit<S>(
+    inputs: Vec<S>,
+    limit: Option<usize>,
+) -> Result<Option<String>, CompileErr>
 where
     S: ToString,
 {
@@ -208,21 +211,30 @@ fn test_eval_forever_recursive() {
     assert!(test_repl_outcome(vec!["(defun more (N) (more N))", "(more 3)"]).is_err());
 }
 
-
 #[test]
 fn test_eval_a_bit_more_than_forever_recursive() {
-    assert!(test_repl_outcome_with_stack_limit(vec![
+    assert!(test_repl_outcome_with_stack_limit(
+        vec![
         "(defun tricky (N) (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ N 1)))))))))))))))))",
         "(tricky 3)"
-    ], Some(10)).is_err());
+    ],
+        Some(10)
+    )
+    .is_err());
 }
 
 #[test]
 fn test_eval_less_than_forever_recursive() {
-    assert_eq!(test_repl_outcome_with_stack_limit(vec![
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
         "(defun tricky (N) (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ N 1)))))))))))))))))",
         "(tricky 3)"
-    ], Some(50)).unwrap().unwrap(),
+    ],
+            Some(50)
+        )
+        .unwrap()
+        .unwrap(),
         "(q . 4)"
     );
 }
