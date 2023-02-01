@@ -12,7 +12,7 @@ use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 
 pub fn map_err_to_pyerr(srcloc: Srcloc, r: PyResult<Py<PyAny>>) -> Result<Py<PyAny>, RunFailure> {
-    r.map_err(|e| RunFailure::RunErr(srcloc, format!("{}", e)))
+    r.map_err(|e| RunFailure::RunErr(srcloc, format!("{e}")))
 }
 
 pub fn python_value_to_clvm(py: Python, val: Py<PyAny>) -> Result<Rc<SExp>, RunFailure> {
@@ -69,7 +69,7 @@ pub fn python_value_to_clvm(py: Python, val: Py<PyAny>) -> Result<Rc<SExp>, RunF
         })
         .map(Some)
         .unwrap_or_else(|| {
-            let stringified = format!("{}", val);
+            let stringified = format!("{val}");
             stringified
                 .parse::<BigInt>()
                 .map(|i| {
@@ -110,7 +110,7 @@ pub fn clvm_value_to_python(py: Python, val: Rc<SExp>) -> Py<PyAny> {
             SExp::Integer(_, i) => {
                 let int_val: Py<PyAny> = map_err_to_pyerr(
                     val.loc(),
-                    py.eval(&format!("int({})", i), None, None)
+                    py.eval(&format!("int({i})"), None, None)
                         .map(|x| x.into_py(py)),
                 )
                 .unwrap();

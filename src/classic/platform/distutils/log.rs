@@ -1,3 +1,3 @@
 pub fn info(msg: String) {
-    println!("{}", msg);
+    println!("{msg}");
 }

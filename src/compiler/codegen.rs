@@ -239,10 +239,7 @@ pub fn get_callable(
             }
         }
         SExp::Integer(_, v) => Ok(Callable::CallPrim(l.clone(), SExp::Integer(l, v.clone()))),
-        _ => Err(CompileErr(
-            atom.loc(),
-            format!("can't call object {}", atom),
-        )),
+        _ => Err(CompileErr(atom.loc(), format!("can't call object {atom}"))),
     }
 }
 
@@ -269,8 +266,8 @@ pub fn process_macro_call(
         Some(MACRO_TIME_LIMIT)
     )
     .map_err(|e| match e {
-        RunFailure::RunExn(ml, x) => CompileErr(l, format!("macro aborted at {} with {}", ml, x)),
-        RunFailure::RunErr(rl, e) => CompileErr(l, format!("error executing macro: {} {}", rl, e)),
+        RunFailure::RunExn(ml, x) => CompileErr(l, format!("macro aborted at {ml} with {x}")),
+        RunFailure::RunErr(rl, e) => CompileErr(l, format!("error executing macro: {rl} {e}")),
     })
     .and_then(|v| {
         let relabeled_expr = relabel(&swap_table, &v);
@@ -1016,10 +1013,7 @@ fn start_codegen(
                     Some(CONST_EVAL_LIMIT)
                 )
                 .map_err(|r| {
-                    CompileErr(
-                        defc.loc.clone(),
-                        format!("Error evaluating constant: {}", r),
-                    )
+                    CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
                 })
                 .and_then(|res| {
                     fail_if_present(defc.loc.clone(), &use_compiler.constants, &defc.name, res)
