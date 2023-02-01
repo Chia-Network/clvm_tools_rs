@@ -138,7 +138,7 @@ fn sexp_from_symbol_table(
 fn uses_left_env(symbol_table: &HashMap<String, String>, hash: &[u8]) -> bool {
     let loc = Srcloc::start("*sym*");
     let hex_hash = hex_of_hash(hash);
-    let item_name = format!("{}_left_env", hex_hash);
+    let item_name = format!("{hex_hash}_left_env");
     truthy(
         sexp_from_symbol_table(symbol_table, &item_name).unwrap_or_else(|| Rc::new(SExp::Nil(loc))),
     )
@@ -151,7 +151,7 @@ fn make_relevant_info(
     env: Rc<SExp>,
 ) -> Option<RunStepRelevantInfo> {
     let hex_hash = hex_of_hash(hash);
-    let args_name = format!("{}_arguments", hex_hash);
+    let args_name = format!("{hex_hash}_arguments");
     let fun_args = sexp_from_symbol_table(symbol_table, &args_name).unwrap_or_else(|| {
         let name: Vec<u8> = args_name.as_bytes().to_vec();
         Rc::new(SExp::Atom(prog.loc(), name))

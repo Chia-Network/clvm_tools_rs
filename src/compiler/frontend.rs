@@ -113,7 +113,6 @@ fn calculate_live_helpers(
                     .collect();
                 needed_helpers = needed_helpers
                     .union(&even_newer_names)
-                    .into_iter()
                     .map(|x| x.to_vec())
                     .collect();
             }
@@ -140,13 +139,13 @@ fn qq_to_expression(opts: Rc<dyn CompilerOpts>, body: Rc<SExp>) -> Result<BodyFo
             } else if let Some(list) = r.proper_list() {
                 if op == b"quote" {
                     if list.len() != 1 {
-                        return Err(CompileErr(l.clone(), format!("bad form {}", body)));
+                        return Err(CompileErr(l.clone(), format!("bad form {body}")));
                     }
 
                     return Ok(BodyForm::Quoted(list[0].clone()));
                 } else if op == b"unquote" {
                     if list.len() != 1 {
-                        return Err(CompileErr(l.clone(), format!("bad form {}", body)));
+                        return Err(CompileErr(l.clone(), format!("bad form {body}")));
                     }
 
                     return compile_bodyform(opts.clone(), Rc::new(list[0].clone()));
@@ -180,7 +179,7 @@ fn qq_to_expression_list(
         SExp::Nil(l) => Ok(BodyForm::Quoted(SExp::Nil(l.clone()))),
         _ => Err(CompileErr(
             body.loc(),
-            format!("Bad list tail in qq {}", body),
+            format!("Bad list tail in qq {body}"),
         )),
     }
 }
@@ -267,7 +266,7 @@ pub fn compile_bodyform(
             let finish_err = |site| {
                 Err(CompileErr(
                     l.clone(),
-                    format!("{}: bad argument list for form {}", site, body),
+                    format!("{site}: bad argument list for form {body}"),
                 ))
             };
 
@@ -626,7 +625,7 @@ fn compile_mod_(
         },
         _ => Err(CompileErr(
             content.loc(),
-            format!("inappropriate sexp {}", content),
+            format!("inappropriate sexp {content}"),
         )),
     }
 }

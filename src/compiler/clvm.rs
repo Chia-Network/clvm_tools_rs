@@ -98,10 +98,7 @@ fn choose_path(
                 )
             }
 
-            _ => Err(RunFailure::RunErr(
-                l,
-                format!("bad path {} in {}", orig, all),
-            )),
+            _ => Err(RunFailure::RunErr(l, format!("bad path {orig} in {all}"))),
         }
     }
 }
@@ -143,10 +140,10 @@ fn translate_head(
             Some(v) => Ok(Rc::new(v.with_loc(l.clone()))),
         },
         SExp::Cons(_l, _a, nil) => match nil.borrow() {
-            SExp::Nil(_l1) => run(allocator, runner, prim_map, sexp.clone(), context),
+            SExp::Nil(_l1) => run(allocator, runner, prim_map, sexp.clone(), context, None),
             _ => Err(RunFailure::RunErr(
                 sexp.loc(),
-                format!("Unexpected head form in clvm {}", sexp),
+                format!("Unexpected head form in clvm {sexp}"),
             )),
         },
     }
@@ -182,7 +179,7 @@ fn eval_args(
             _ => {
                 return Err(RunFailure::RunErr(
                     sexp.loc(),
-                    format!("bad argument list {} {}", sexp_, context_),
+                    format!("bad argument list {sexp_} {context_}"),
                 ));
             }
         }
@@ -197,10 +194,10 @@ pub fn convert_to_clvm_rs(
         SExp::Nil(_) => Ok(allocator.null()),
         SExp::Atom(_l, x) => allocator
             .new_atom(x)
-            .map_err(|_e| RunFailure::RunErr(head.loc(), format!("failed to alloc atom {}", head))),
-        SExp::QuotedString(_, _, x) => allocator.new_atom(x).map_err(|_e| {
-            RunFailure::RunErr(head.loc(), format!("failed to alloc string {}", head))
-        }),
+            .map_err(|_e| RunFailure::RunErr(head.loc(), format!("failed to alloc atom {head}"))),
+        SExp::QuotedString(_, _, x) => allocator
+            .new_atom(x)
+            .map_err(|_e| RunFailure::RunErr(head.loc(), format!("failed to alloc string {head}"))),
         SExp::Integer(_, i) => {
             if *i == bi_zero() {
                 Ok(allocator.null())
@@ -208,14 +205,14 @@ pub fn convert_to_clvm_rs(
                 allocator
                     .new_atom(&u8_from_number(i.clone()))
                     .map_err(|_e| {
-                        RunFailure::RunErr(head.loc(), format!("failed to alloc integer {}", head))
+                        RunFailure::RunErr(head.loc(), format!("failed to alloc integer {head}"))
                     })
             }
         }
         SExp::Cons(_, a, b) => convert_to_clvm_rs(allocator, a.clone()).and_then(|head| {
             convert_to_clvm_rs(allocator, b.clone()).and_then(|tail| {
                 allocator.new_pair(head, tail).map_err(|_e| {
-                    RunFailure::RunErr(a.loc(), format!("failed to alloc cons {}", head))
+                    RunFailure::RunErr(a.loc(), format!("failed to alloc cons {head}"))
                 })
             })
         }),
@@ -292,7 +289,7 @@ fn apply_op(
         .map_err(|e| {
             RunFailure::RunErr(
                 head.loc(),
-                format!("{} in {} {}", e.1, application, wrapped_args),
+                format!("{} in {application} {wrapped_args}", e.1),
             )
         })
         .and_then(|v| convert_from_clvm_rs(allocator, head.loc(), v.1))
@@ -306,7 +303,7 @@ fn atom_value(head: Rc<SExp>) -> Result<Number, RunFailure> {
         SExp::Atom(_, s) => Ok(number_from_u8(s)),
         SExp::Cons(l, _, _) => Err(RunFailure::RunErr(
             l.clone(),
-            format!("cons is not a number {}", head),
+            format!("cons is not a number {head}"),
         )),
     }
 }
@@ -497,21 +494,21 @@ pub fn run_step(
             } else if aval == rest_atom {
                 "rest".to_string()
             } else {
-                format!("operator {}", aval)
+                format!("operator {aval}")
             };
 
             match tail.proper_list() {
                 None => {
                     return Err(RunFailure::RunErr(
                         tail.loc(),
-                        format!("Bad arguments given to cons {}", tail),
+                        format!("Bad arguments given to cons {tail}"),
                     ));
                 }
                 Some(l) => {
                     if wanted_args != -1 && l.len() as i32 != wanted_args {
                         return Err(RunFailure::RunErr(
                             tail.loc(),
-                            format!("Wrong number of parameters to {}: {}", op, tail),
+                            format!("Wrong number of parameters to {op}: {tail}"),
                         ));
                     }
 
@@ -553,7 +550,7 @@ pub fn run_step(
                             _ => {
                                 return Err(RunFailure::RunErr(
                                     tail.loc(),
-                                    format!("Cons expected for {}, got {}", op, tail),
+                                    format!("Cons expected for {op}, got {tail}"),
                                 ));
                             }
                         }
@@ -600,10 +597,18 @@ pub fn run(
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     sexp_: Rc<SExp>,
     context_: Rc<SExp>,
+    iter_limit: Option<usize>,
 ) -> Result<Rc<SExp>, RunFailure> {
     let mut step = start_step(sexp_, context_);
+    let mut iters = 0;
 
     loop {
+        if let Some(limit) = &iter_limit {
+            if *limit <= iters {
+                return Err(RunFailure::RunErr(step.sexp().loc(), "timeout".to_string()));
+            }
+        }
+        iters += 1;
         step = run_step(allocator, runner.clone(), prim_map.clone(), &step)?;
         if let RunStep::Done(_, x) = step {
             return Ok(x);
@@ -617,6 +622,7 @@ pub fn parse_and_run(
     file: &str,
     content: &str,
     args: &str,
+    step_limit: Option<usize>,
 ) -> Result<Rc<SExp>, RunFailure> {
     let code = parse_sexp(Srcloc::start(file), content.bytes())
         .map_err(|e| RunFailure::RunErr(e.0, e.1))?;
@@ -641,6 +647,7 @@ pub fn parse_and_run(
             prim_map,
             code[0].clone(),
             args[0].clone(),
+            step_limit,
         )
     }
 }
