@@ -167,10 +167,7 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
                 _ => {
                     return Err(EvalErr(
                         allocator.null(),
-                        format!(
-                            "op_set_pair on atom item {:?} in vec {:?} ops {:?}",
-                            target, stack, ops
-                        ),
+                        format!("op_set_pair on atom item {target:?} in vec {stack:?} ops {ops:?}"),
                     ));
                 }
             },
@@ -195,7 +192,7 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
                 _ => {
                     return Err(EvalErr(
                         allocator.null(),
-                        format!("unrealized prepend {:?}", top),
+                        format!("unrealized prepend {top:?}"),
                     ));
                 }
             },
@@ -205,7 +202,7 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
     if stack.len() != 1 {
         return Err(EvalErr(
             allocator.null(),
-            format!("too many values left on op stack {:?}", stack),
+            format!("too many values left on op stack {stack:?}"),
         ));
     }
 
