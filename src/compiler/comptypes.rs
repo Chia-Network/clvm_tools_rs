@@ -487,11 +487,11 @@ impl PrimaryCodegen {
         if left_env {
             codegen_copy
                 .function_symbols
-                .insert(format!("{}_left_env", hash_str), "1".to_string());
+                .insert(format!("{hash_str}_left_env"), "1".to_string());
         }
         codegen_copy
             .function_symbols
-            .insert(format!("{}_arguments", hash_str), args.to_string());
+            .insert(format!("{hash_str}_arguments"), args.to_string());
         codegen_copy
     }
 
