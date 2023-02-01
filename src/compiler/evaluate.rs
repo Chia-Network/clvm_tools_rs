@@ -62,18 +62,29 @@ impl ArgInputs {
     }
 }
 
+// This is a stack depth checker which avoids running too deep.
+// When the evaluator is used for optimization, setting a limit avoids a stack
+// overflow when certain unterminating code is run.
+//
+// This enhances a previous 'visited' argument to many functions that keeps
+// track of which functions have been used, which allows (for example) the
+// use checker to stop descending.
 #[derive(Clone, Debug, Default)]
 pub struct VisitedInfo {
     functions: HashMap<Vec<u8>, Rc<BodyForm>>,
     max_depth: Option<usize>
 }
 
+// Interface to a parent frame.
 pub trait Unvisit {
     fn give_back(&mut self, info: Option<Box<VisitedInfo>>);
     fn take(&mut self) -> Option<Box<VisitedInfo>>;
     fn depth(&self) -> usize;
 }
 
+// Each stack frame owns a VisitedMarker.  The top stack frame owns the
+// VisitedInfo so that it can be held mutably without multiple borrows.
+// The drop trait uses the Unvisit trait to hand it back when done.
 pub struct VisitedMarker<'info> {
     info: Option<Box<VisitedInfo>>,
     prev: Option<&'info mut dyn Unvisit>,
@@ -757,7 +768,7 @@ impl<'info> Evaluator {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn invoke_primitive<'a>(
+    fn invoke_primitive(
         &self,
         allocator: &mut Allocator,
         visited: &mut VisitedMarker,
