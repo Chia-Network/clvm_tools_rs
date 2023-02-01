@@ -63,7 +63,7 @@ fn process_pp_form(
                         if "include".as_bytes().to_vec() == *inc {
                             return Err(CompileErr(
                                 body.loc(),
-                                format!("bad tail in include {}", body),
+                                format!("bad tail in include {body}"),
                             ));
                         }
                     }

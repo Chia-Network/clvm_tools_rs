@@ -76,9 +76,9 @@ impl ArgumentValueConv for PathOrCodeConv {
 // }
 
 pub trait TConversion {
-    fn invoke<'a>(
+    fn invoke(
         &self,
-        allocator: &'a mut Allocator,
+        allocator: &mut Allocator,
         text: &str,
     ) -> Result<Tuple<NodePtr, String>, String>;
 }
@@ -114,7 +114,7 @@ pub fn call_tool(
     let args: HashMap<String, ArgumentValue> = match args_res {
         Ok(a) => a,
         Err(e) => {
-            println!("{}", e);
+            println!("{e}");
             return;
         }
     };
@@ -144,7 +144,7 @@ pub fn call_tool(
                         if args.contains_key(&"script_hash".to_string()) {
                             println!("{}", sha256tree(allocator, sexp).hex());
                         } else if !text.is_empty() {
-                            println!("{}", text);
+                            println!("{text}");
                         }
                     }
                     Err(e) => {
@@ -162,9 +162,9 @@ pub fn call_tool(
 pub struct OpcConversion {}
 
 impl TConversion for OpcConversion {
-    fn invoke<'a>(
+    fn invoke(
         &self,
-        allocator: &'a mut Allocator,
+        allocator: &mut Allocator,
         hex_text: &str,
     ) -> Result<Tuple<NodePtr, String>, String> {
         read_ir(hex_text)
@@ -176,9 +176,9 @@ impl TConversion for OpcConversion {
 pub struct OpdConversion {}
 
 impl TConversion for OpdConversion {
-    fn invoke<'a>(
+    fn invoke(
         &self,
-        allocator: &'a mut Allocator,
+        allocator: &mut Allocator,
         hex_text: &str,
     ) -> Result<Tuple<NodePtr, String>, String> {
         let mut stream = Stream::new(Some(Bytes::new(Some(BytesFromType::Hex(
@@ -227,7 +227,7 @@ impl ArgumentValueConv for StageImport {
         } else if arg == "2" {
             return Ok(ArgumentValue::ArgInt(2));
         }
-        Err(format!("Unknown stage: {}", arg))
+        Err(format!("Unknown stage: {arg}"))
     }
 }
 
@@ -269,7 +269,7 @@ pub fn cldb(args: &[String]) {
     let tool_name = "cldb".to_string();
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
-        prog: format!("clvm_tools {}", tool_name),
+        prog: format!("clvm_tools {tool_name}"),
     };
 
     let mut search_paths = Vec::new();
@@ -326,7 +326,7 @@ pub fn cldb(args: &[String]) {
 
     let parsed_args: HashMap<String, ArgumentValue> = match parser.parse_args(&arg_vec) {
         Err(e) => {
-            println!("FAIL: {}", e);
+            println!("FAIL: {e}");
             return;
         }
         Ok(pa) => pa,
@@ -389,7 +389,7 @@ pub fn cldb(args: &[String]) {
         let mut emitter = YamlEmitter::new(&mut result);
         match emitter.dump(&to_yaml(&to_print)) {
             Ok(_) => result,
-            Err(e) => format!("error producing yaml: {:?}", e),
+            Err(e) => format!("error producing yaml: {e:?}"),
         }
     };
 
@@ -558,7 +558,7 @@ fn write_sym_output(compiled_lookup: &HashMap<String, String>, path: &str) -> Re
         });
 
         fs::write(path, output).map_err(|_| {
-            format!("failed to write {}", path)
+            format!("failed to write {path}")
         }).map(|_| ())
     }
 }
@@ -566,7 +566,7 @@ fn write_sym_output(compiled_lookup: &HashMap<String, String>, path: &str) -> Re
 pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, default_stage: u32) {
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
-        prog: format!("clvm_tools {}", tool_name),
+        prog: format!("clvm_tools {tool_name}"),
     };
 
     let mut parser = ArgumentParser::new(Some(props));
@@ -710,7 +710,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let arg_vec = args[1..].to_vec();
     let parsed_args: HashMap<String, ArgumentValue> = match parser.parse_args(&arg_vec) {
         Err(e) => {
-            stdout.write_str(&format!("FAIL: {}\n", e));
+            stdout.write_str(&format!("FAIL: {e}\n"));
             return;
         }
         Ok(pa) => pa,
@@ -830,7 +830,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                         src_sexp = s;
                     }
                     Err(e) => {
-                        stdout.write_str(&format!("FAIL: {}\n", e));
+                        stdout.write_str(&format!("FAIL: {e}\n"));
                         return;
                     }
                 }
@@ -899,7 +899,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let dialect = input_sexp.and_then(|i| detect_modern(&mut allocator, i));
     let mut stderr_output = |s: String| {
         if dialect.is_some() {
-            eprintln!("{}", s);
+            eprintln!("{s}");
         } else {
             stdout.write_str(&s);
         }
@@ -1147,7 +1147,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 if cost > 0 {
                     cost += cost_offset;
                 }
-                stdout.write_str(&format!("cost = {}\n", cost));
+                stdout.write_str(&format!("cost = {cost}\n"));
             };
 
             if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("time") {
@@ -1210,7 +1210,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         write_sym_output(&compile_sym_out, &symbol_table_output).ok();
     }
 
-    stdout.write_str(&format!("{}\n", output));
+    stdout.write_str(&format!("{output}\n"));
 
     // Third part of our scheme: now that we have results from the forward pass
     // and the pass doing the post callbacks, we can integrate them in the main

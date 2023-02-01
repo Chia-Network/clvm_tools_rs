@@ -36,7 +36,7 @@ fn main() {
                         }
                     })
                     .map_err(|e| {
-                        print!("failed: {:?}\n>>> ", e);
+                        print!("failed: {e:?}\n>>> ");
                     });
             }
         }

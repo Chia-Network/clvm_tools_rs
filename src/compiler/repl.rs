@@ -9,7 +9,7 @@ use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts};
-use crate::compiler::evaluate::Evaluator;
+use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::{compile_helperform, frontend};
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -22,6 +22,7 @@ pub struct Repl {
     evaluator: Evaluator,
 
     loc: Srcloc,
+    stack_limit: Option<usize>,
 }
 
 fn program_with_helper(names: Vec<Rc<SExp>>, parsed_program: Rc<SExp>) -> Rc<SExp> {
@@ -124,7 +125,12 @@ impl Repl {
             evaluator,
             opts,
             loc,
+            stack_limit: Some(EVAL_STACK_LIMIT),
         }
+    }
+
+    pub fn set_stack_limit(&mut self, l: Option<usize>) {
+        self.stack_limit = l;
     }
 
     pub fn process_line(
@@ -181,6 +187,7 @@ impl Repl {
                                 &HashMap::new(),
                                 program.exp,
                                 false,
+                                self.stack_limit,
                             )
                         })
                         .map(Some)
