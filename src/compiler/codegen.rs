@@ -28,6 +28,9 @@ use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::u8_from_number;
 
+const MACRO_TIME_LIMIT: usize = 1000000;
+const CONST_EVAL_LIMIT: usize = 1000000;
+
 /* As in the python code, produce a pair whose (thanks richard)
  *
  *   - car is the compiled code and
@@ -268,6 +271,7 @@ pub fn process_macro_call(
         opts.prim_map(),
         code,
         Rc::new(args_to_macro),
+        Some(MACRO_TIME_LIMIT),
     )
     .map_err(|e| match e {
         RunFailure::RunExn(ml, x) => CompileErr(l, format!("macro aborted at {ml} with {x}")),
@@ -980,6 +984,7 @@ fn start_codegen(
                     opts.prim_map(),
                     Rc::new(code),
                     Rc::new(SExp::Nil(defc.loc.clone())),
+                    Some(CONST_EVAL_LIMIT),
                 )
                 .map_err(|r| {
                     CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
