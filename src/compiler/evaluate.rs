@@ -107,7 +107,7 @@ impl<'info> VisitedMarker<'info> {
         let mut info = prev.take();
         let depth = prev.depth();
         if let Some(ref mut info) = info {
-            if let Some(limit) = info.max_depth.clone() {
+            if let Some(limit) = info.max_depth {
                 if depth >= limit {
                     return Err(CompileErr(loc, "stack limit exceeded".to_string()));
                 }
@@ -966,7 +966,7 @@ impl<'info> Evaluator {
             let where_from_vec = where_from.as_bytes().to_vec();
 
             if let Some(present) = visited.get_function(&where_from_vec) {
-                return Ok(present.clone());
+                return Ok(present);
             }
 
             visited.insert_function(
@@ -1328,8 +1328,10 @@ impl<'info> Evaluator {
         expand: ExpandMode,
         stack_limit: Option<usize>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        let mut visited_info: VisitedInfo = Default::default();
-        visited_info.max_depth = stack_limit;
+        let visited_info = VisitedInfo {
+            max_depth: stack_limit,
+            ..Default::default()
+        };
         let mut visited_marker = VisitedMarker::new(visited_info);
         self.shrink_bodyform_visited(
             allocator, // Support random prims via clvm_rs
