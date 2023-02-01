@@ -76,7 +76,7 @@ pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> Option<i32> {
     })
 }
 
-fn compile_clvm_text(
+pub fn compile_clvm_text(
     allocator: &mut Allocator,
     search_paths: &[String],
     symbol_table: &mut HashMap<String, String>,

@@ -111,10 +111,17 @@ pub struct DefmacData {
 #[derive(Clone, Debug)]
 pub struct DefconstData {
     pub loc: Srcloc,
+    pub kind: ConstantKind,
     pub name: Vec<u8>,
     pub kw: Option<Srcloc>,
     pub nl: Srcloc,
     pub body: Rc<BodyForm>,
+}
+
+#[derive(Clone, Debug)]
+pub enum ConstantKind {
+    Complex,
+    Simple,
 }
 
 #[derive(Clone, Debug)]
@@ -340,14 +347,24 @@ impl HelperForm {
 
     pub fn to_sexp(&self) -> Rc<SExp> {
         match self {
-            HelperForm::Defconstant(defc) => Rc::new(list_to_cons(
-                defc.loc.clone(),
-                &[
-                    Rc::new(SExp::atom_from_string(defc.loc.clone(), "defconstant")),
-                    Rc::new(SExp::atom_from_vec(defc.loc.clone(), &defc.name)),
-                    defc.body.to_sexp(),
-                ],
-            )),
+            HelperForm::Defconstant(defc) => match defc.kind {
+                ConstantKind::Simple => Rc::new(list_to_cons(
+                    defc.loc.clone(),
+                    &[
+                        Rc::new(SExp::atom_from_string(defc.loc.clone(), "defconstant")),
+                        Rc::new(SExp::atom_from_vec(defc.loc.clone(), &defc.name)),
+                        defc.body.to_sexp(),
+                    ],
+                )),
+                ConstantKind::Complex => Rc::new(list_to_cons(
+                    defc.loc.clone(),
+                    &[
+                        Rc::new(SExp::atom_from_string(defc.loc.clone(), "defconst")),
+                        Rc::new(SExp::atom_from_vec(defc.loc.clone(), &defc.name)),
+                        defc.body.to_sexp(),
+                    ],
+                )),
+            },
             HelperForm::Defmacro(mac) => Rc::new(SExp::Cons(
                 mac.loc.clone(),
                 Rc::new(SExp::atom_from_string(mac.loc.clone(), "defmacro")),
