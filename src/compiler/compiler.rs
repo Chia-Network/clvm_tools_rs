@@ -16,7 +16,7 @@ use crate::compiler::codegen::codegen;
 use crate::compiler::comptypes::{
     CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
-use crate::compiler::evaluate::{build_reflex_captures, Evaluator};
+use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
@@ -127,6 +127,7 @@ fn fe_opt(
                     &env,
                     defun.body.clone(),
                     true,
+                    Some(EVAL_STACK_LIMIT),
                 )?;
                 let new_helper = HelperForm::Defun(
                     *inline,
@@ -154,6 +155,7 @@ fn fe_opt(
         &HashMap::new(),
         compileform.exp.clone(),
         true,
+        Some(EVAL_STACK_LIMIT),
     )?;
 
     Ok(CompileForm {
