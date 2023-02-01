@@ -94,7 +94,7 @@ pub fn check_parameters_used_compileform(
         &env,
         program.exp.clone(),
         Default::default(),
-        Some(SHRINK_STACK_LIMIT)
+        Some(SHRINK_STACK_LIMIT),
     )?;
 
     remove_present_atoms(&mut replacement_to_original, result.to_sexp());

@@ -72,7 +72,7 @@ impl ArgInputs {
 #[derive(Clone, Debug, Default)]
 pub struct VisitedInfo {
     functions: HashMap<Vec<u8>, Rc<BodyForm>>,
-    max_depth: Option<usize>
+    max_depth: Option<usize>,
 }
 
 // Interface to a parent frame.
@@ -88,7 +88,7 @@ pub trait Unvisit {
 pub struct VisitedMarker<'info> {
     info: Option<Box<VisitedInfo>>,
     prev: Option<&'info mut dyn Unvisit>,
-    depth: usize
+    depth: usize,
 }
 
 impl<'info> VisitedMarker<'info> {
@@ -96,11 +96,14 @@ impl<'info> VisitedMarker<'info> {
         VisitedMarker {
             info: Some(Box::new(info)),
             prev: None,
-            depth: 1
+            depth: 1,
         }
     }
 
-    fn again(loc: Srcloc, prev: &'info mut dyn Unvisit) -> Result<VisitedMarker<'info>, CompileErr> {
+    fn again(
+        loc: Srcloc,
+        prev: &'info mut dyn Unvisit,
+    ) -> Result<VisitedMarker<'info>, CompileErr> {
         let mut info = prev.take();
         let depth = prev.depth();
         if let Some(ref mut info) = info {
@@ -110,7 +113,11 @@ impl<'info> VisitedMarker<'info> {
                 }
             }
         }
-        Ok(VisitedMarker { info, prev: Some(prev), depth: depth + 1 })
+        Ok(VisitedMarker {
+            info,
+            prev: Some(prev),
+            depth: depth + 1,
+        })
     }
 
     fn get_function(&mut self, name: &[u8]) -> Option<Rc<BodyForm>> {
@@ -1319,7 +1326,7 @@ impl<'info> Evaluator {
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         body: Rc<BodyForm>,
         expand: ExpandMode,
-        stack_limit: Option<usize>
+        stack_limit: Option<usize>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         let mut visited_info: VisitedInfo = Default::default();
         visited_info.max_depth = stack_limit;

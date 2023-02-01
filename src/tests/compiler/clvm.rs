@@ -36,7 +36,7 @@ fn test_compiler_clvm(to_run: &String, args: &String) -> Result<Rc<SExp>, RunFai
         &"*test*".to_string(),
         &to_run,
         &args,
-        Some(TEST_TIMEOUT)
+        Some(TEST_TIMEOUT),
     )
 }
 

@@ -51,7 +51,7 @@ fn run_string_maybe_opt(
             Rc::new(HashMap::new()),
             Rc::new(x),
             sexp_args,
-            Some(TEST_TIMEOUT)
+            Some(TEST_TIMEOUT),
         )
         .map_err(|e| match e {
             RunFailure::RunErr(l, s) => CompileErr(l, s),

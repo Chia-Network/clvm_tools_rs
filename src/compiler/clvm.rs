@@ -49,7 +49,7 @@ impl RunStep {
             RunStep::Done(_, s) => s.clone(),
             RunStep::OpResult(_, s, _) => s.clone(),
             RunStep::Op(s, _, _, _, _) => s.clone(),
-            RunStep::Step(s, _, _) => s.clone()
+            RunStep::Step(s, _, _) => s.clone(),
         }
     }
 }
@@ -573,7 +573,7 @@ pub fn run(
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     sexp_: Rc<SExp>,
     context_: Rc<SExp>,
-    iter_limit: Option<usize>
+    iter_limit: Option<usize>,
 ) -> Result<Rc<SExp>, RunFailure> {
     let mut step = start_step(sexp_, context_);
     let mut iters = 0;
@@ -598,7 +598,7 @@ pub fn parse_and_run(
     file: &str,
     content: &str,
     args: &str,
-    step_limit: Option<usize>
+    step_limit: Option<usize>,
 ) -> Result<Rc<SExp>, RunFailure> {
     let code = parse_sexp(Srcloc::start(file), content.bytes())
         .map_err(|e| RunFailure::RunErr(e.0, e.1))?;
@@ -623,7 +623,7 @@ pub fn parse_and_run(
             prim_map,
             code[0].clone(),
             args[0].clone(),
-            step_limit
+            step_limit,
         )
     }
 }

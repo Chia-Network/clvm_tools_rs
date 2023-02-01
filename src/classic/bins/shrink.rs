@@ -37,7 +37,7 @@ fn main() {
                 &HashMap::new(),
                 program.exp,
                 Default::default(),
-                None
+                None,
             )
         })
         .map(|result| {

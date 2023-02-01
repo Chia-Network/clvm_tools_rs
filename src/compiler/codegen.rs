@@ -263,7 +263,7 @@ pub fn process_macro_call(
         opts.prim_map(),
         code,
         Rc::new(args_to_macro),
-        Some(MACRO_TIME_LIMIT)
+        Some(MACRO_TIME_LIMIT),
     )
     .map_err(|e| match e {
         RunFailure::RunExn(ml, x) => CompileErr(l, format!("macro aborted at {ml} with {x}")),
@@ -1010,7 +1010,7 @@ fn start_codegen(
                     opts.prim_map(),
                     Rc::new(code),
                     Rc::new(SExp::Nil(defc.loc.clone())),
-                    Some(CONST_EVAL_LIMIT)
+                    Some(CONST_EVAL_LIMIT),
                 )
                 .map_err(|r| {
                     CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))

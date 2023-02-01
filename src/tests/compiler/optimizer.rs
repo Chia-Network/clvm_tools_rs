@@ -5,7 +5,9 @@ use std::rc::Rc;
 use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm::sexp::sexp_as_bin;
-use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, RunProgramOption, TRunProgram};
+use crate::classic::clvm_tools::stages::stage_0::{
+    DefaultProgramRunner, RunProgramOption, TRunProgram,
+};
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs};
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
@@ -39,11 +41,16 @@ fn run_with_cost(
     let as_classic_env = convert_to_clvm_rs(allocator, env.clone())?;
     let compiled_hex = sexp_as_bin(allocator, as_classic_program).hex();
     runner
-        .run_program(allocator, as_classic_program, as_classic_env, Some(RunProgramOption {
-            max_cost: Some(MAX_RUN_COST),
-            pre_eval_f: None,
-            strict: false
-        }))
+        .run_program(
+            allocator,
+            as_classic_program,
+            as_classic_env,
+            Some(RunProgramOption {
+                max_cost: Some(MAX_RUN_COST),
+                pre_eval_f: None,
+                strict: false,
+            }),
+        )
         .map_err(|e| RunFailure::RunErr(sexp.loc(), format!("{} in {} {}", e.1, sexp, env)))
         .and_then(|reduction| {
             Ok(CompileRunResult {
@@ -214,17 +221,14 @@ fn test_optimizer_shrinks_q_test_2() {
 // Tests from program builder.
 #[test]
 fn test_optimizer_stack_overflow_1() {
-    let program = indoc!{"
+    let program = indoc! {"
     (mod C
       (include *standard-cl-21*)
       (defun helper_0 E (helper_0 (q)))
       (if (helper_0 (q)) (helper_0 (q)) (helper_0 (q))))
-    "}.to_string();
-    let res = do_compile_and_run_opt_size_test_with_includes(
-        &program,
-        "33",
-        &[]
-    );
+    "}
+    .to_string();
+    let res = do_compile_and_run_opt_size_test_with_includes(&program, "33", &[]);
     if let Err(e) = &res {
         assert!(e.1.starts_with("cost exceeded"));
     } else {
@@ -234,7 +238,7 @@ fn test_optimizer_stack_overflow_1() {
 
 #[test]
 fn test_optimizer_stack_overflow_2() {
-    let program = indoc!{"
+    let program = indoc! {"
     (mod C
       (include *standard-cl-21*)
       (defun helper_0 E (helper_0 (17 (q) (q))))
@@ -243,12 +247,9 @@ fn test_optimizer_stack_overflow_2() {
         (helper_0 (17 (q) (q)))
         )
       )
-    "}.to_string();
-    let res = do_compile_and_run_opt_size_test_with_includes(
-        &program,
-        "33",
-        &[]
-    );
+    "}
+    .to_string();
+    let res = do_compile_and_run_opt_size_test_with_includes(&program, "33", &[]);
     if let Err(e) = &res {
         assert!(e.1.starts_with("cost exceeded"));
     } else {

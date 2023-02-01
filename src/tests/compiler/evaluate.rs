@@ -33,7 +33,7 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
                 &HashMap::new(),
                 program.exp.clone(),
                 Default::default(),
-                Some(EVAL_STACK_LIMIT)
+                Some(EVAL_STACK_LIMIT),
             );
         })
         .map(|result| result.to_sexp().to_string())
