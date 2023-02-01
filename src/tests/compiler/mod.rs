@@ -7,6 +7,7 @@ use crate::compiler::srcloc::{Srcloc, Until};
 mod clvm;
 mod compiler;
 mod evaluate;
+mod fuzzer;
 mod repl;
 mod srcloc;
 mod usecheck;
