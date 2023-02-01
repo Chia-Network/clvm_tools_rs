@@ -113,7 +113,6 @@ fn calculate_live_helpers(
                     .collect();
                 needed_helpers = needed_helpers
                     .union(&even_newer_names)
-                    .into_iter()
                     .map(|x| x.to_vec())
                     .collect();
             }
