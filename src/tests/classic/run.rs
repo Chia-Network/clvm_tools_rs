@@ -309,6 +309,36 @@ fn test_treehash_constant_embedded_classic() {
 }
 
 #[test]
+fn test_treehash_constant_embedded_fancy_order() {
+    let result_text = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        indoc! {"
+            (mod ()
+              (include sha256tree.clib)
+              (defconst C 18)
+              (defconst H (+ C G (sha256tree (q 2 3 4))))
+              (defconst G (+ B A))
+              (defconst A 9)
+              (defconst B (* A A))
+              H
+              )
+        "}
+        .to_string(),
+    ])
+    .trim()
+    .to_string();
+    let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(
+        result_hash,
+        "0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f98df"
+    );
+}
+
+#[test]
 fn test_treehash_constant_embedded_classic_loop() {
     let result_text = do_basic_run(&vec![
         "run".to_string(),

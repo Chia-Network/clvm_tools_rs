@@ -7,7 +7,8 @@ use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm::sexp::{
-    enlist, first, flatten, fold_m, map_m, non_nil, proper_list, rest,
+    enlist, first, flatten, fold_m, map_m, non_nil, proper_list, rest, First, Rest, SelectNode,
+    ThisNode,
 };
 use crate::classic::clvm_tools::debug::build_symbol_dump;
 use crate::classic::clvm_tools::node_path::NodePath;
@@ -353,10 +354,11 @@ fn parse_mod_sexp(
                 constants.insert(name, quoted_decl);
                 Ok(())
             } else if op == "defconst".as_bytes() {
-                let r_of_declaration = rest(allocator, declaration_sexp)?;
-                let rr_of_declaration = rest(allocator, r_of_declaration)?;
-                let frr_of_declaration = first(allocator, rr_of_declaration)?;
-                delayed_constants.insert(name, frr_of_declaration);
+                // Use a new type-based match language.
+                let Rest::Here(Rest::Here(First::Here(definition))) =
+                    Rest::Here(Rest::Here(First::Here(ThisNode::Here))).
+                    select_nodes(allocator, declaration_sexp)?;
+                delayed_constants.insert(name, definition);
                 Ok(())
             } else {
                 Err(EvalErr(declaration_sexp, "expected defun, defmacro, defconst, compile-file or defconstant".to_string()))
