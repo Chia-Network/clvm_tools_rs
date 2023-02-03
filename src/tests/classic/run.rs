@@ -299,7 +299,10 @@ fn test_treehash_constant_embedded_classic() {
     ])
     .trim()
     .to_string();
-    assert_eq!(result_text, "(q . 0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9874)");
+    assert_eq!(
+        result_text,
+        "(q . 0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9874)"
+    );
     let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
         .trim()
         .to_string();
@@ -328,9 +331,12 @@ fn test_treehash_constant_embedded_fancy_order() {
         "}
         .to_string(),
     ])
-        .trim()
-        .to_string();
-    assert_eq!(result_text, "(q . 0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f98df)");
+    .trim()
+    .to_string();
+    assert_eq!(
+        result_text,
+        "(q . 0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f98df)"
+    );
     let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
         .trim()
         .to_string();
@@ -362,7 +368,10 @@ fn test_treehash_constant_embedded_fancy_order_from_fun() {
     ])
     .trim()
     .to_string();
-    assert_eq!(result_text, "(q . 0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f98e0)");
+    assert_eq!(
+        result_text,
+        "(q . 0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f98e0)"
+    );
     let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
         .trim()
         .to_string();
