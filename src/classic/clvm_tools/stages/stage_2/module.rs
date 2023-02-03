@@ -7,8 +7,8 @@ use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm::sexp::{
-    enlist, first, flatten, fold_m, map_m, non_nil, proper_list, rest, First, Rest, SelectNode,
-    ThisNode,
+    enlist, first, flatten, fold_m, map_m, non_nil, nonempty_last, proper_list, rest, First, Rest,
+    SelectNode, ThisNode,
 };
 use crate::classic::clvm_tools::debug::build_symbol_dump;
 use crate::classic::clvm_tools::node_path::NodePath;
@@ -491,7 +491,7 @@ fn compile_mod_stage_1(
                     }
                 }
 
-                let uncompiled_main = alist[alist.len() - 1];
+                let uncompiled_main = nonempty_last(allocator.null(), &alist)?;
                 let main_list =
                     enlist(
                         allocator,

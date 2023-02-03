@@ -491,6 +491,17 @@ pub fn flatten(allocator: &mut Allocator, tree_: NodePtr, res: &mut Vec<NodePtr>
     }
 }
 
+// Wrapper around last that properly bubbles the error into EvalErr for use in
+// the classic chialisp code.
+pub fn nonempty_last<X>(nil: NodePtr, lst: &[X]) -> Result<X, EvalErr>
+where
+    X: Copy,
+{
+    lst.last()
+        .copied()
+        .ok_or_else(|| EvalErr(nil, "alist is empty and shouldn't be".to_string()))
+}
+
 // This is a trait that generates a haskell-like ad-hoc type from the user's
 // construction of NodeSel and ThisNode.
 // the result is transformed into a NodeSel tree of NodePtr if it can be.
