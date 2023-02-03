@@ -299,6 +299,7 @@ fn test_treehash_constant_embedded_classic() {
     ])
     .trim()
     .to_string();
+    assert_eq!(result_text, "(q . 0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9874)");
     let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
         .trim()
         .to_string();
@@ -327,8 +328,9 @@ fn test_treehash_constant_embedded_fancy_order() {
         "}
         .to_string(),
     ])
-    .trim()
-    .to_string();
+        .trim()
+        .to_string();
+    assert_eq!(result_text, "(q . 0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f98df)");
     let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
         .trim()
         .to_string();
@@ -360,6 +362,7 @@ fn test_treehash_constant_embedded_fancy_order_from_fun() {
     ])
     .trim()
     .to_string();
+    assert_eq!(result_text, "(q . 0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f98e0)");
     let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
         .trim()
         .to_string();
@@ -410,6 +413,10 @@ fn test_treehash_constant_embedded_modern() {
     ])
     .trim()
     .to_string();
+    assert_eq!(
+        result_text,
+        "(2 (1 1 . 50565442356047746631413349885570059132562040184787699607120092457326103992436) (4 (1 2 (1 2 (3 (7 5) (1 2 (1 11 (1 . 2) (2 2 (4 2 (4 (5 5) ()))) (2 2 (4 2 (4 (6 5) ())))) 1) (1 2 (1 11 (1 . 1) 5) 1)) 1) 1) 1))"
+    );
     let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
         .trim()
         .to_string();
@@ -439,6 +446,10 @@ fn test_treehash_constant_embedded_modern_fun() {
     ])
     .trim()
     .to_string();
+    assert_eq!(
+        result_text,
+        "(2 (1 2 6 (4 2 (4 (1 . 1) ()))) (4 (1 (2 (1 2 (3 (7 5) (1 2 (1 11 (1 . 2) (2 4 (4 2 (4 (5 5) ()))) (2 4 (4 2 (4 (6 5) ())))) 1) (1 2 (1 11 (1 . 1) 5) 1)) 1) 1) 2 (1 16 5 (1 . 50565442356047746631413349885570059132562040184787699607120092457326103992436)) 1) 1))".to_string()
+    );
     let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
         .trim()
         .to_string();
