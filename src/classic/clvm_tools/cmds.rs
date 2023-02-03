@@ -737,16 +737,19 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .cloned()
         .unwrap_or_else(|| "*command*".to_string());
 
-    let mut search_paths = Vec::new();
-    if let Some(ArgumentValue::ArgArray(v)) = parsed_args.get("include") {
-        let mut bare_paths = Vec::with_capacity(v.len());
-        for p in v {
-            if let ArgumentValue::ArgString(_, s) = p {
-                bare_paths.push(s.to_string());
-            }
-            search_paths = bare_paths.clone();
-        }
-    }
+    let search_paths = if let Some(ArgumentValue::ArgArray(v)) = parsed_args.get("include") {
+        v.iter()
+            .filter_map(|p| {
+                if let ArgumentValue::ArgString(_, s) = p {
+                    Some(s.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     let mut allocator = Allocator::new();
 
