@@ -166,8 +166,6 @@ fn verify_use_check_with_singleton_top_layer_works() {
     let res = do_basic_run(&vec![
         "run".to_string(),
         "-i".to_string(),
-        "resources/tests/usecheck-work".to_string(),
-        "-i".to_string(),
         "resources/tests".to_string(),
         "--check-unused-args".to_string(),
         "resources/tests/singleton_top_layer.clvm".to_string(),
