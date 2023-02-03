@@ -5,6 +5,7 @@ use crate::compiler::compiler::KNOWN_DIALECTS;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, IncludeDesc};
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::util::ErrInto;
 
 pub fn process_include(
     opts: Rc<dyn CompilerOpts>,
@@ -14,8 +15,10 @@ pub fn process_include(
     let content = filename_and_content.1;
     let start_of_file = Srcloc::start(&decode_string(&include.name));
 
+    // Because we're also subsequently returning CompileErr later in the pipe,
+    // this needs an explicit err map.
     parse_sexp(start_of_file.clone(), content.bytes())
-        .map_err(|e| CompileErr(e.0.clone(), e.1))
+        .err_into()
         .and_then(|x| match x[0].proper_list() {
             None => Err(CompileErr(
                 start_of_file,
@@ -47,8 +50,7 @@ fn process_pp_form(
             ..desc
         });
 
-        let parsed = parse_sexp(Srcloc::start(&full_name), content.bytes())
-            .map_err(|e| CompileErr(e.0, e.1))?;
+        let parsed = parse_sexp(Srcloc::start(&full_name), content.bytes())?;
         if parsed.is_empty() {
             return Ok(());
         }
@@ -184,7 +186,7 @@ pub fn gather_dependencies(
     let mut includes = Vec::new();
     let loc = Srcloc::start(real_input_path);
 
-    let parsed = parse_sexp(loc.clone(), file_content.bytes()).map_err(|e| CompileErr(e.0, e.1))?;
+    let parsed = parse_sexp(loc.clone(), file_content.bytes())?;
 
     if parsed.is_empty() {
         return Ok(vec![]);

@@ -14,6 +14,12 @@ use crate::compiler::srcloc::Srcloc;
 #[derive(Clone, Debug)]
 pub struct CompileErr(pub Srcloc, pub String);
 
+impl From<(Srcloc, String)> for CompileErr {
+    fn from(err: (Srcloc, String)) -> Self {
+        CompileErr(err.0, err.1)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct CompiledCode(pub Srcloc, pub Rc<SExp>);
 
