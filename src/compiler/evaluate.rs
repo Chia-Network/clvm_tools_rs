@@ -23,7 +23,7 @@ use crate::compiler::stackvisit::{HasDepthLimit, VisitedMarker};
 use crate::util::{number_from_u8, u8_from_number, Number};
 
 const PRIM_RUN_LIMIT: usize = 1000000;
-pub const EVAL_STACK_LIMIT: usize = 200;
+pub const EVAL_STACK_LIMIT: usize = 100;
 
 // Governs whether Evaluator expands various forms.
 #[derive(Debug, Clone)]
@@ -1139,41 +1139,33 @@ impl<'info> Evaluator {
                         literal_args,
                         expand,
                     )
+                } else if let Some(x) = env.get(name) {
+                    if reflex_capture(name, x.clone()) {
+                        Ok(x.clone())
+                    } else {
+                        self.shrink_bodyform_visited(
+                            allocator,
+                            &mut visited,
+                            prog_args,
+                            env,
+                            x.clone(),
+                            expand,
+                        )
+                    }
+                } else if let Some(x) = self.get_constant(name, expand.clone()) {
+                    self.shrink_bodyform_visited(
+                        allocator,
+                        &mut visited,
+                        prog_args,
+                        env,
+                        x,
+                        expand,
+                    )
                 } else {
-                    env.get(name)
-                        .map(|x| {
-                            if reflex_capture(name, x.clone()) {
-                                Ok(x.clone())
-                            } else {
-                                self.shrink_bodyform_visited(
-                                    allocator,
-                                    &mut visited,
-                                    prog_args.clone(),
-                                    env,
-                                    x.clone(),
-                                    expand.clone(),
-                                )
-                            }
-                        })
-                        .unwrap_or_else(|| {
-                            self.get_constant(name, expand.clone())
-                                .map(|x| {
-                                    self.shrink_bodyform_visited(
-                                        allocator,
-                                        &mut visited,
-                                        prog_args.clone(),
-                                        env,
-                                        x,
-                                        expand.clone(),
-                                    )
-                                })
-                                .unwrap_or_else(|| {
-                                    Ok(Rc::new(BodyForm::Value(SExp::Atom(
-                                        l.clone(),
-                                        name.clone(),
-                                    ))))
-                                })
-                        })
+                    Ok(Rc::new(BodyForm::Value(SExp::Atom(
+                        l.clone(),
+                        name.clone(),
+                    ))))
                 }
             }
             BodyForm::Value(v) => Ok(Rc::new(BodyForm::Quoted(v.clone()))),
@@ -1387,6 +1379,7 @@ impl<'info> Evaluator {
         self.helpers.push(h.clone());
     }
 
+    // The evaluator treats the forms coming up from constants as live.
     fn get_constant(&self, name: &[u8], expand: ExpandMode) -> Option<Rc<BodyForm>> {
         for h in self.helpers.iter() {
             if let HelperForm::Defconstant(defc) = h {

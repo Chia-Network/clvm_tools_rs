@@ -5,8 +5,8 @@ use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::comptypes::{
-    list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData,
-    DefmacData, DefunData, HelperForm, IncludeDesc, LetData, LetFormKind, ModAccum,
+    list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, ConstantKind,
+    DefconstData, DefmacData, DefunData, HelperForm, IncludeDesc, LetData, LetFormKind, ModAccum,
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
@@ -113,7 +113,6 @@ fn calculate_live_helpers(
                     .collect();
                 needed_helpers = needed_helpers
                     .union(&even_newer_names)
-                    .into_iter()
                     .map(|x| x.to_vec())
                     .collect();
             }
@@ -362,11 +361,32 @@ pub fn compile_bodyform(
     }
 }
 
+// More modern constant definition that interprets code ala constexpr.
+fn compile_defconst(
+    opts: Rc<dyn CompilerOpts>,
+    l: Srcloc,
+    nl: Srcloc,
+    kl: Option<Srcloc>,
+    name: Vec<u8>,
+    body: Rc<SExp>,
+) -> Result<HelperForm, CompileErr> {
+    let bf = compile_bodyform(opts.clone(), body)?;
+    Ok(HelperForm::Defconstant(DefconstData {
+        kw: kl,
+        nl,
+        loc: l,
+        kind: ConstantKind::Complex,
+        name: name.to_vec(),
+        body: Rc::new(bf),
+        tabled: opts.frontend_opt(),
+    }))
+}
+
 fn compile_defconstant(
     opts: Rc<dyn CompilerOpts>,
     l: Srcloc,
     nl: Srcloc,
-    kwl: Option<Srcloc>,
+    kl: Option<Srcloc>,
     name: Vec<u8>,
     body: Rc<SExp>,
 ) -> Result<HelperForm, CompileErr> {
@@ -375,7 +395,8 @@ fn compile_defconstant(
         Ok(HelperForm::Defconstant(DefconstData {
             loc: l,
             nl,
-            kw: kwl,
+            kw: kl,
+            kind: ConstantKind::Simple,
             name: name.to_vec(),
             body: Rc::new(BodyForm::Value(body_borrowed.clone())),
             tabled: opts.frontend_opt(),
@@ -385,7 +406,8 @@ fn compile_defconstant(
             HelperForm::Defconstant(DefconstData {
                 loc: l,
                 nl,
-                kw: kwl,
+                kw: kl,
+                kind: ConstantKind::Simple,
                 name: name.to_vec(),
                 body: Rc::new(bf),
                 tabled: opts.frontend_opt(),
@@ -529,6 +551,16 @@ pub fn compile_helperform(
     if let Some(matched) = body.proper_list().and_then(|pl| match_op_name_4(&pl)) {
         if matched.op_name == b"defconstant" {
             compile_defconstant(
+                opts,
+                l,
+                matched.nl,
+                Some(matched.opl),
+                matched.name.to_vec(),
+                matched.args,
+            )
+            .map(Some)
+        } else if matched.op_name == b"defconst" {
+            compile_defconst(
                 opts,
                 l,
                 matched.nl,
@@ -683,7 +715,8 @@ fn frontend_start(
 
                     if *mod_atom == "mod".as_bytes().to_vec() {
                         let args = Rc::new(x[1].clone());
-                        let body_vec = x.iter().skip(2).map(|s| Rc::new(s.clone())).collect();
+                        let body_vec: Vec<Rc<SExp>> =
+                            x.iter().skip(2).map(|s| Rc::new(s.clone())).collect();
                         let body = Rc::new(enlist(pre_forms[0].loc(), body_vec));
 
                         let ls = preprocess(opts.clone(), includes, body)?;
