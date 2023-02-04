@@ -1153,14 +1153,7 @@ impl<'info> Evaluator {
                         )
                     }
                 } else if let Some(x) = self.get_constant(name, expand.clone()) {
-                    self.shrink_bodyform_visited(
-                        allocator,
-                        &mut visited,
-                        prog_args,
-                        env,
-                        x,
-                        expand,
-                    )
+                    self.shrink_bodyform_visited(allocator, &mut visited, prog_args, env, x, expand)
                 } else {
                     Ok(Rc::new(BodyForm::Value(SExp::Atom(
                         l.clone(),
