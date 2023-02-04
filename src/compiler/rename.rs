@@ -262,6 +262,7 @@ fn rename_in_helperform(namemap: &HashMap<Vec<u8>, Vec<u8>>, h: &HelperForm) -> 
     match h {
         HelperForm::Defconstant(defc) => HelperForm::Defconstant(DefconstData {
             loc: defc.loc.clone(),
+            kind: defc.kind.clone(),
             name: defc.name.to_vec(),
             nl: defc.nl.clone(),
             kw: defc.kw.clone(),
@@ -293,6 +294,7 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
     match h {
         HelperForm::Defconstant(defc) => HelperForm::Defconstant(DefconstData {
             loc: defc.loc.clone(),
+            kind: defc.kind.clone(),
             nl: defc.nl.clone(),
             kw: defc.kw.clone(),
             name: defc.name.clone(),
