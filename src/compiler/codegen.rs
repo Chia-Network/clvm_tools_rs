@@ -14,10 +14,11 @@ use crate::compiler::clvm::run;
 use crate::compiler::compiler::{is_at_capture, run_optimizer};
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BodyForm, Callable, CompileErr,
-    CompileForm, CompiledCode, CompilerOpts, DefunCall, DefunData, HelperForm, InlineFunction,
-    LetData, LetFormKind, PrimaryCodegen,
+    CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall, DefunData, HelperForm,
+    InlineFunction, LetData, LetFormKind, PrimaryCodegen,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
+use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::compile_bodyform;
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
@@ -957,46 +958,79 @@ fn start_codegen(
     // Start compiler with all macros and constants
     for h in comp.helpers.iter() {
         use_compiler = match h.borrow() {
-            HelperForm::Defconstant(defc) => {
-                let expand_program = SExp::Cons(
-                    defc.loc.clone(),
-                    Rc::new(SExp::Atom(defc.loc.clone(), "mod".as_bytes().to_vec())),
-                    Rc::new(SExp::Cons(
+            HelperForm::Defconstant(defc) => match defc.kind {
+                ConstantKind::Simple => {
+                    let expand_program = SExp::Cons(
                         defc.loc.clone(),
-                        Rc::new(SExp::Nil(defc.loc.clone())),
+                        Rc::new(SExp::Atom(defc.loc.clone(), "mod".as_bytes().to_vec())),
                         Rc::new(SExp::Cons(
                             defc.loc.clone(),
-                            Rc::new(primquote(defc.loc.clone(), defc.body.to_sexp())),
                             Rc::new(SExp::Nil(defc.loc.clone())),
+                            Rc::new(SExp::Cons(
+                                defc.loc.clone(),
+                                Rc::new(primquote(defc.loc.clone(), defc.body.to_sexp())),
+                                Rc::new(SExp::Nil(defc.loc.clone())),
+                            )),
                         )),
-                    )),
-                );
-                let updated_opts = opts.set_compiler(use_compiler.clone());
-                let code = updated_opts.compile_program(
-                    allocator,
-                    runner.clone(),
-                    Rc::new(expand_program),
-                    &mut HashMap::new(),
-                )?;
-                run(
-                    allocator,
-                    runner.clone(),
-                    opts.prim_map(),
-                    Rc::new(code),
-                    Rc::new(SExp::Nil(defc.loc.clone())),
-                    Some(CONST_EVAL_LIMIT),
-                )
-                .map_err(|r| {
-                    CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
-                })
-                .and_then(|res| {
-                    fail_if_present(defc.loc.clone(), &use_compiler.constants, &defc.name, res)
-                })
-                .map(|res| {
-                    let quoted = primquote(defc.loc.clone(), res);
-                    use_compiler.add_constant(&defc.name, Rc::new(quoted))
-                })?
-            }
+                    );
+                    let updated_opts = opts.set_compiler(use_compiler.clone());
+                    let code = updated_opts.compile_program(
+                        allocator,
+                        runner.clone(),
+                        Rc::new(expand_program),
+                        &mut HashMap::new(),
+                    )?;
+                    run(
+                        allocator,
+                        runner.clone(),
+                        opts.prim_map(),
+                        Rc::new(code),
+                        Rc::new(SExp::Nil(defc.loc.clone())),
+                        Some(CONST_EVAL_LIMIT),
+                    )
+                    .map_err(|r| {
+                        CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
+                    })
+                    .and_then(|res| {
+                        fail_if_present(defc.loc.clone(), &use_compiler.constants, &defc.name, res)
+                    })
+                    .map(|res| {
+                        let quoted = primquote(defc.loc.clone(), res);
+                        use_compiler.add_constant(&defc.name, Rc::new(quoted))
+                    })?
+                }
+                ConstantKind::Complex => {
+                    let evaluator =
+                        Evaluator::new(opts.clone(), runner.clone(), comp.helpers.clone());
+                    let constant_result = evaluator.shrink_bodyform(
+                        allocator,
+                        Rc::new(SExp::Nil(defc.loc.clone())),
+                        &HashMap::new(),
+                        defc.body.clone(),
+                        false,
+                        Some(EVAL_STACK_LIMIT),
+                    )?;
+                    if let BodyForm::Quoted(q) = constant_result.borrow() {
+                        use_compiler.add_constant(
+                            &defc.name,
+                            Rc::new(SExp::Cons(
+                                defc.loc.clone(),
+                                Rc::new(SExp::Atom(defc.loc.clone(), vec![1])),
+                                Rc::new(q.clone()),
+                            )),
+                        )
+                    } else {
+                        return Err(CompileErr(
+                            defc.loc.clone(),
+                            format!(
+                                "constant definition didn't reduce to constant value {}, got {}",
+                                h.to_sexp(),
+                                constant_result.to_sexp()
+                            ),
+                        ));
+                    }
+                }
+            },
             HelperForm::Defmacro(mac) => {
                 let macro_program = Rc::new(SExp::Cons(
                     mac.loc.clone(),
