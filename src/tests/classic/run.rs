@@ -282,6 +282,217 @@ fn test_forms_of_destructuring_allowed_by_classic_1() {
 }
 
 #[test]
+fn test_treehash_constant_embedded_classic() {
+    let result_text = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        indoc! {"
+            (mod ()
+              (include sha256tree.clib)
+              (defconst H (+ G (sha256tree (q 2 3 4))))
+              (defconst G 1)
+              H
+              )
+        "}
+        .to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        result_text,
+        "(q . 0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9874)"
+    );
+    let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(
+        result_hash,
+        "0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9874"
+    );
+}
+
+#[test]
+fn test_treehash_constant_embedded_fancy_order() {
+    let result_text = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        indoc! {"
+            (mod ()
+              (include sha256tree.clib)
+              (defconst C 18)
+              (defconst H (+ C G (sha256tree (q 2 3 4))))
+              (defconst G (+ B A))
+              (defconst A 9)
+              (defconst B (* A A))
+              H
+              )
+        "}
+        .to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        result_text,
+        "(q . 0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f98df)"
+    );
+    let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(
+        result_hash,
+        "0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f98df"
+    );
+}
+
+#[test]
+fn test_treehash_constant_embedded_fancy_order_from_fun() {
+    let result_text = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        indoc! {"
+            (mod ()
+              (include sha256tree.clib)
+              (defconst C 18)
+              (defconst H (+ C G (sha256tree (q 2 3 4))))
+              (defconst G (+ B A))
+              (defconst A 9)
+              (defconst B (* A A))
+              (defun F (X) (+ X H))
+              (F 1)
+              )
+        "}
+        .to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        result_text,
+        "(q . 0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f98e0)"
+    );
+    let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(
+        result_hash,
+        "0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f98e0"
+    );
+}
+
+#[test]
+fn test_treehash_constant_embedded_classic_loop() {
+    let result_text = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        indoc! {"
+            (mod ()
+              (include sha256tree.clib)
+              (defconst H (+ G (sha256tree (q 2 3 4))))
+              (defconst G (logand H 1))
+              H
+              )
+        "}
+        .to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert!(result_text.starts_with("FAIL"));
+    assert!(result_text.contains("got stuck untangling defconst dependencies"));
+}
+
+#[test]
+fn test_treehash_constant_embedded_modern() {
+    let result_text = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        indoc! {"
+            (mod ()
+              (include *standard-cl-21*)
+              (include sha256tree.clib)
+              (defconst H (+ G (sha256tree (q 2 3 4))))
+              (defconst G 1)
+              H
+              )
+        "}
+        .to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        result_text,
+        "(2 (1 1 . 50565442356047746631413349885570059132562040184787699607120092457326103992436) (4 (1 2 (1 2 (3 (7 5) (1 2 (1 11 (1 . 2) (2 2 (4 2 (4 (5 5) ()))) (2 2 (4 2 (4 (6 5) ())))) 1) (1 2 (1 11 (1 . 1) 5) 1)) 1) 1) 1))"
+    );
+    let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(
+        result_hash,
+        "0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9874"
+    );
+}
+
+#[test]
+fn test_treehash_constant_embedded_modern_fun() {
+    let result_text = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        indoc! {"
+            (mod ()
+              (include *standard-cl-21*)
+              (include sha256tree.clib)
+              (defconst H (+ G (sha256tree (q 2 3 4))))
+              (defconst G 1)
+              (defun F (X) (+ X H))
+              (F 1)
+              )
+        "}
+        .to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        result_text,
+        "(2 (1 2 6 (4 2 (4 (1 . 1) ()))) (4 (1 (2 (1 2 (3 (7 5) (1 2 (1 11 (1 . 2) (2 4 (4 2 (4 (5 5) ()))) (2 4 (4 2 (4 (6 5) ())))) 1) (1 2 (1 11 (1 . 1) 5) 1)) 1) 1) 2 (1 16 5 (1 . 50565442356047746631413349885570059132562040184787699607120092457326103992436)) 1) 1))".to_string()
+    );
+    let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(
+        result_hash,
+        "0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9875"
+    );
+}
+
+#[test]
+fn test_treehash_constant_embedded_modern_loop() {
+    let result_text = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        indoc! {"
+            (mod ()
+              (include *standard-cl-21*)
+              (include sha256tree.clib)
+              (defconst H (+ G (sha256tree (q 2 3 4))))
+              (defconst G (logand H 1))
+              H
+              )
+        "}
+        .to_string(),
+    ])
+    .trim()
+    .to_string();
+    eprintln!("{result_text}");
+    assert!(result_text.starts_with("*command*"));
+    assert!(result_text.contains("stack limit exceeded"));
+}
+
+#[test]
 fn test_num_encoding_just_less_than_5_bytes() {
     let res = do_basic_run(&vec!["run".to_string(), "4281419728".to_string()])
         .trim()
