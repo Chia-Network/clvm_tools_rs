@@ -8,8 +8,8 @@ use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::comptypes::{
-    Binding, BodyForm, CompileForm, DefconstData, DefmacData, DefunData, HelperForm, LetData,
-    LetFormKind,
+    Binding, BodyForm, CompileForm, ConstantKind, DefconstData, DefmacData, DefunData, HelperForm,
+    LetData, LetFormKind,
 };
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
@@ -455,6 +455,7 @@ impl CollectProgramStructure {
             0 => HelperForm::Defconstant(DefconstData {
                 loc: loc.clone(),
                 name: helper_name,
+                kind: ConstantKind::Simple,
                 kw: None,
                 nl: loc.clone(),
                 body: body,
