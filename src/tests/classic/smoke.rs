@@ -9,9 +9,10 @@ use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{t, Bytes, BytesFromType, Stream};
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
+use crate::classic::clvm::sexp::{First, NodeSel, Rest, SelectNode, ThisNode};
 use crate::classic::clvm_tools::cmds::{launch_tool, OpcConversion, OpdConversion, TConversion};
 
-use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble};
+use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemble};
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages;
@@ -658,4 +659,53 @@ fn test_check_simple_arg_path_0() {
     let up = NodePath::new(Some(2_u32.to_bigint().unwrap()));
     let cp = np.add(up);
     assert_eq!(cp.as_path().raw(), &[4]);
+}
+
+fn assert_node_find_error<X>(r: Result<X, EvalErr>) {
+    assert!(r.is_err());
+}
+fn assert_node_not_error<X>(r: Result<X, EvalErr>) -> X {
+    r.unwrap()
+}
+
+#[test]
+fn test_fancy_destructuring_type_language() {
+    let mut allocator = Allocator::new();
+    let code = assemble(&mut allocator, "(defconst X (+ 3 1))").expect("should assemble");
+
+    // Empty match should succeed.
+    let () = <() as SelectNode<(), EvalErr>>::select_nodes(&(), &mut allocator, code)
+        .expect("should be found");
+
+    // We should not be able to destructure the keyword.
+    assert_node_find_error(
+        First::Here(NodeSel::Cons(ThisNode::Here, ThisNode::Here))
+            .select_nodes(&mut allocator, code),
+    );
+
+    assert_node_find_error(
+        First::Here(First::Here(ThisNode::Here)).select_nodes(&mut allocator, code),
+    );
+
+    assert_node_find_error(
+        First::Here(Rest::Here(ThisNode::Here)).select_nodes(&mut allocator, code),
+    );
+
+    // Use first
+    let First::Here(kw) =
+        assert_node_not_error(First::Here(ThisNode::Here).select_nodes(&mut allocator, code));
+    assert_eq!(disassemble(&mut allocator, kw), "\"defconst\"");
+
+    // Use second of list
+    let Rest::Here(First::Here(name)) = assert_node_not_error(
+        Rest::Here(First::Here(ThisNode::Here)).select_nodes(&mut allocator, code),
+    );
+    assert_eq!(disassemble(&mut allocator, name), "88");
+
+    let NodeSel::Cons((), NodeSel::Cons(name_by_cons, rest)) = assert_node_not_error(
+        NodeSel::Cons((), NodeSel::Cons(ThisNode::Here, ThisNode::Here))
+            .select_nodes(&mut allocator, code),
+    );
+    assert_eq!(disassemble(&mut allocator, name_by_cons), "88");
+    assert_eq!(disassemble(&mut allocator, rest), "((+ 3 1))");
 }
