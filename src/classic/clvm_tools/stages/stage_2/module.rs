@@ -238,12 +238,17 @@ fn defun_inline_to_macro(
     allocator: &mut Allocator,
     declaration_sexp: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
-    let Rest::Here(d2) = Rest::Here(ThisNode::Here).select_nodes(allocator, declaration_sexp)?;
-    let NodeSel::Cons(d2_first, NodeSel::Cons(d3_first, First::Here(code))) = NodeSel::Cons(
-        ThisNode::Here,
-        NodeSel::Cons(ThisNode::Here, First::Here(ThisNode::Here)),
-    )
-    .select_nodes(allocator, d2)?;
+    let Rest::Here(
+        NodeSel::Cons(
+            d2_first,
+            NodeSel::Cons(d3_first, First::Here(code))
+        )
+    ) = Rest::Here(
+        NodeSel::Cons(
+            ThisNode::Here,
+            NodeSel::Cons(ThisNode::Here, First::Here(ThisNode::Here))
+        )
+    ).select_nodes(allocator, declaration_sexp)?;
     let defmacro_atom = allocator.new_atom("defmacro".as_bytes())?;
 
     let mut destructure_matches = HashMap::new();
