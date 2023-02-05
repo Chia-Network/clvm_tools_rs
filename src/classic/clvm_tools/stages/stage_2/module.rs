@@ -7,8 +7,8 @@ use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm::sexp::{
-    enlist, first, flatten, fold_m, map_m, non_nil, nonempty_last, proper_list, rest, First, NodeSel, Rest,
-    SelectNode, ThisNode,
+    enlist, first, flatten, fold_m, map_m, non_nil, nonempty_last, proper_list, rest, First,
+    NodeSel, Rest, SelectNode, ThisNode,
 };
 use crate::classic::clvm_tools::debug::build_symbol_dump;
 use crate::classic::clvm_tools::node_path::NodePath;
@@ -241,9 +241,8 @@ fn defun_inline_to_macro(
     let defmacro_atom = allocator.new_atom("defmacro".as_bytes())?;
     let Rest::Here(NodeSel::Cons(d2_first, d3)) =
         Rest::Here(NodeSel::Cons(ThisNode::Here, ThisNode::Here))
-        .select_nodes(allocator, declaration_sexp)?;
-    let First::Here(d3_first) = First::Here(ThisNode::Here)
-        .select_nodes(allocator, d3)?;
+            .select_nodes(allocator, declaration_sexp)?;
+    let First::Here(d3_first) = First::Here(ThisNode::Here).select_nodes(allocator, d3)?;
 
     let mut destructure_matches = HashMap::new();
     let mut use_args = d3_first;
@@ -262,8 +261,8 @@ fn defun_inline_to_macro(
     }
 
     let mut r_vec = vec![defmacro_atom, d2_first, use_args];
-    let Rest::Here(First::Here(code)) = Rest::Here(First::Here(ThisNode::Here))
-        .select_nodes(allocator, d3)?;
+    let Rest::Here(First::Here(code)) =
+        Rest::Here(First::Here(ThisNode::Here)).select_nodes(allocator, d3)?;
 
     let mut arg_atom_list = Vec::new();
     flatten(allocator, use_args, &mut arg_atom_list);
@@ -305,17 +304,15 @@ fn parse_mod_sexp(
 ) -> Result<(), EvalErr> {
     let NodeSel::Cons(op_node, First::Here(name_node)) =
         NodeSel::Cons(ThisNode::Here, First::Here(ThisNode::Here))
-        .select_nodes(allocator, declaration_sexp)?;
-    let op =
-        match allocator.sexp(op_node) {
-            SExp::Atom(b) => allocator.buf(&b).to_vec(),
-            _ => Vec::new()
-        };
-    let name =
-        match allocator.sexp(name_node) {
-            SExp::Atom(b) => allocator.buf(&b).to_vec(),
-            _ => Vec::new()
-        };
+            .select_nodes(allocator, declaration_sexp)?;
+    let op = match allocator.sexp(op_node) {
+        SExp::Atom(b) => allocator.buf(&b).to_vec(),
+        _ => Vec::new(),
+    };
+    let name = match allocator.sexp(name_node) {
+        SExp::Atom(b) => allocator.buf(&b).to_vec(),
+        _ => Vec::new(),
+    };
 
     if op == "include".as_bytes() {
         parse_include(
@@ -326,10 +323,16 @@ fn parse_mod_sexp(
             constants,
             delayed_constants,
             macros,
-            run_program.clone()
+            run_program.clone(),
         )
     } else if namespace.contains(&name) {
-        Err(EvalErr(declaration_sexp, format!("symbol \"{}\" redefined", Bytes::new(Some(BytesFromType::Raw(name))).decode())))
+        Err(EvalErr(
+            declaration_sexp,
+            format!(
+                "symbol \"{}\" redefined",
+                Bytes::new(Some(BytesFromType::Raw(name))).decode()
+            ),
+        ))
     } else {
         namespace.insert(name.to_vec());
 
@@ -338,30 +341,31 @@ fn parse_mod_sexp(
             Ok(())
         } else if op == "defun".as_bytes() {
             let Rest::Here(Rest::Here(declaration_sexp_rr)) =
-                Rest::Here(Rest::Here(ThisNode::Here)).
-                select_nodes(allocator, declaration_sexp)?;
+                Rest::Here(Rest::Here(ThisNode::Here)).select_nodes(allocator, declaration_sexp)?;
             functions.insert(name, declaration_sexp_rr);
             Ok(())
         } else if op == "defun-inline".as_bytes() {
-            let defined_macro =
-                defun_inline_to_macro(allocator, declaration_sexp)?;
+            let defined_macro = defun_inline_to_macro(allocator, declaration_sexp)?;
             macros.push((name, defined_macro));
-                Ok(())
+            Ok(())
         } else if op == "defconstant".as_bytes() {
             let Rest::Here(Rest::Here(First::Here(quoted_decl))) =
-                Rest::Here(Rest::Here(First::Here(ThisNode::Here))).
-                select_nodes(allocator, declaration_sexp)?;
+                Rest::Here(Rest::Here(First::Here(ThisNode::Here)))
+                    .select_nodes(allocator, declaration_sexp)?;
             constants.insert(name, quoted_decl);
             Ok(())
         } else if op == "defconst".as_bytes() {
             // Use a new type-based match language.
             let Rest::Here(Rest::Here(First::Here(definition))) =
-                Rest::Here(Rest::Here(First::Here(ThisNode::Here))).
-                select_nodes(allocator, declaration_sexp)?;
+                Rest::Here(Rest::Here(First::Here(ThisNode::Here)))
+                    .select_nodes(allocator, declaration_sexp)?;
             delayed_constants.insert(name, definition);
             Ok(())
         } else {
-            Err(EvalErr(declaration_sexp, "expected defun, defmacro, defconst, compile-file or defconstant".to_string()))
+            Err(EvalErr(
+                declaration_sexp,
+                "expected defun, defmacro, defconst, compile-file or defconstant".to_string(),
+            ))
         }
     }
 }
@@ -524,11 +528,8 @@ fn symbol_table_for_tree(
             let left_bytes = NodePath::new(None).first();
             let right_bytes = NodePath::new(None).rest();
 
-            let NodeSel::Cons(
-                tree_first, tree_rest
-            ) = NodeSel::Cons(
-                ThisNode::Here, ThisNode::Here
-            ).select_nodes(allocator, tree)?;
+            let NodeSel::Cons(tree_first, tree_rest) =
+                NodeSel::Cons(ThisNode::Here, ThisNode::Here).select_nodes(allocator, tree)?;
 
             // Allow haskell-like @ capture for destructuring.
             // If we encounter a form like (@ name substructure) then
