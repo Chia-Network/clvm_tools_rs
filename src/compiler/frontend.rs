@@ -9,7 +9,7 @@ use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
-    list_to_cons, Binding, BodyForm, ChiaType, CompileErr, CompileForm, CompilerOpts, DefconstData,
+    list_to_cons, Binding, BodyForm, ChiaType, CompileErr, CompileForm, CompilerOpts, ConstantKind, DefconstData,
     DefmacData, DeftypeData, DefunData, HelperForm, IncludeDesc, LetData, LetFormKind, ModAccum,
     StructDef, StructMember, TypeAnnoKind,
 };
@@ -369,11 +369,32 @@ pub fn compile_bodyform(
     }
 }
 
+// More modern constant definition that interprets code ala constexpr.
+fn compile_defconst(
+    opts: Rc<dyn CompilerOpts>,
+    l: Srcloc,
+    nl: Srcloc,
+    kl: Option<Srcloc>,
+    name: Vec<u8>,
+    body: Rc<SExp>,
+) -> Result<HelperForm, CompileErr> {
+    let bf = compile_bodyform(opts, body)?;
+    Ok(HelperForm::Defconstant(DefconstData {
+        kw: kl,
+        nl,
+        loc: l,
+        kind: ConstantKind::Complex,
+        name: name.to_vec(),
+        body: Rc::new(bf),
+        ty: None
+    }))
+}
+
 fn compile_defconstant(
     opts: Rc<dyn CompilerOpts>,
     l: Srcloc,
     nl: Srcloc,
-    kwl: Option<Srcloc>,
+    kl: Option<Srcloc>,
     name: Vec<u8>,
     body: Rc<SExp>,
     ty: Option<Polytype>,
@@ -383,7 +404,8 @@ fn compile_defconstant(
         Ok(HelperForm::Defconstant(DefconstData {
             loc: l,
             nl,
-            kw: kwl,
+            kw: kl,
+            kind: ConstantKind::Simple,
             name: name.to_vec(),
             body: Rc::new(BodyForm::Value(body_borrowed.clone())),
             ty,
@@ -393,7 +415,8 @@ fn compile_defconstant(
             HelperForm::Defconstant(DefconstData {
                 loc: l,
                 nl,
-                kw: kwl,
+                kw: kl,
+                kind: ConstantKind::Simple,
                 name: name.to_vec(),
                 body: Rc::new(bf),
                 ty,
@@ -982,6 +1005,19 @@ pub fn compile_helperform(
                 matched.name.to_vec(),
                 matched.args,
                 None,
+            )?;
+            Ok(Some(HelperFormResult {
+                chia_type: None,
+                new_helpers: vec![definition],
+            }))
+        } else if matched.op_name == b"defconst" {
+            let definition = compile_defconst(
+                opts,
+                l,
+                matched.nl,
+                Some(matched.opl),
+                matched.name.to_vec(),
+                matched.args,
             )?;
             Ok(Some(HelperFormResult {
                 chia_type: None,
