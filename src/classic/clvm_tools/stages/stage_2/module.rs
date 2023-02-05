@@ -238,7 +238,7 @@ fn defun_inline_to_macro(
     allocator: &mut Allocator,
     declaration_sexp: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
-    let Rest::Here(NodeSel::Cons(d2_first, NodeSel::Cons(d3_first, First::Here(code)))) =
+    let Rest::Here(NodeSel::Cons(name, NodeSel::Cons(arg_spec, First::Here(code)))) =
         Rest::Here(NodeSel::Cons(
             ThisNode::Here,
             NodeSel::Cons(ThisNode::Here, First::Here(ThisNode::Here)),
@@ -247,22 +247,18 @@ fn defun_inline_to_macro(
     let defmacro_atom = allocator.new_atom("defmacro".as_bytes())?;
 
     let mut destructure_matches = HashMap::new();
-    let mut use_args = d3_first;
-
-    if is_inline_destructure(allocator, d3_first) {
+    let use_args = if is_inline_destructure(allocator, arg_spec) {
         // Given an attempt to destructure via the argument list, we need
         // to ensure that the inline function receives arguments that are
         // relative to the _values_ given rather than the code given to
         // generate the arguments.  These overlap when the argument list is
         // a single level proper list, but not otherwise.
-        use_args = formulate_path_selections_for_destructuring(
-            allocator,
-            d3_first,
-            &mut destructure_matches,
-        )?;
-    }
+        formulate_path_selections_for_destructuring(allocator, arg_spec, &mut destructure_matches)?
+    } else {
+        arg_spec
+    };
 
-    let mut r_vec = vec![defmacro_atom, d2_first, use_args];
+    let mut r_vec = vec![defmacro_atom, name, use_args];
 
     let mut arg_atom_list = Vec::new();
     flatten(allocator, use_args, &mut arg_atom_list);
