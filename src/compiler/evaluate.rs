@@ -22,7 +22,7 @@ use crate::compiler::stackvisit::{HasDepthLimit, VisitedMarker};
 use crate::util::{number_from_u8, u8_from_number, Number};
 
 const PRIM_RUN_LIMIT: usize = 1000000;
-pub const EVAL_STACK_LIMIT: usize = 200;
+pub const EVAL_STACK_LIMIT: usize = 100;
 
 // Stack depth checker.
 #[derive(Clone, Debug, Default)]
