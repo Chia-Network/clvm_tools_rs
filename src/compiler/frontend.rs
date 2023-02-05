@@ -9,9 +9,9 @@ use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
-    list_to_cons, Binding, BodyForm, ChiaType, CompileErr, CompileForm, CompilerOpts, ConstantKind, DefconstData,
-    DefmacData, DeftypeData, DefunData, HelperForm, IncludeDesc, LetData, LetFormKind, ModAccum,
-    StructDef, StructMember, TypeAnnoKind,
+    list_to_cons, Binding, BodyForm, ChiaType, CompileErr, CompileForm, CompilerOpts, ConstantKind,
+    DefconstData, DefmacData, DeftypeData, DefunData, HelperForm, IncludeDesc, LetData,
+    LetFormKind, ModAccum, StructDef, StructMember, TypeAnnoKind,
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
@@ -386,7 +386,7 @@ fn compile_defconst(
         kind: ConstantKind::Complex,
         name: name.to_vec(),
         body: Rc::new(bf),
-        ty: None
+        ty: None,
     }))
 }
 

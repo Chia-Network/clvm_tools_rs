@@ -432,7 +432,7 @@ impl HelperForm {
                         defc.body.to_sexp(),
                     ],
                 )),
-            }
+            },
             HelperForm::Defmacro(mac) => Rc::new(SExp::Cons(
                 mac.loc.clone(),
                 Rc::new(SExp::atom_from_string(mac.loc.clone(), "defmacro")),
