@@ -463,12 +463,10 @@ impl SExp {
     }
 
     pub fn atomize(&self) -> SExp {
-        if let SExp::Integer(l, i) = self {
-            SExp::Atom(l.clone(), u8_from_number(i.clone()))
-        } else if let SExp::QuotedString(l, _, n) = self {
-            SExp::Atom(l.clone(), n.clone())
-        } else {
-            self.clone()
+        match self {
+            SExp::Integer(l, i) => SExp::Atom(l.clone(), u8_from_number(i.clone())),
+            SExp::QuotedString(l, _, a) => SExp::Atom(l.clone(), a.clone()),
+            _ => self.clone(),
         }
     }
 

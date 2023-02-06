@@ -13,6 +13,7 @@ use crate::compiler::evaluate::{first_of_alist, second_of_alist, Evaluator, EVAL
 use crate::compiler::frontend::frontend;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::util::ErrInto;
 
 pub struct Repl {
     depth: i32,
@@ -138,7 +139,7 @@ impl Repl {
                 .map(|_v| {
                     panic!("too many parens but parsed anyway");
                 })
-                .map_err(|e| CompileErr(e.0.clone(), e.1));
+                .err_into();
             self.input_exp = "".to_string();
             self.depth = 0;
             return result;
@@ -152,7 +153,7 @@ impl Repl {
         self.input_exp = "".to_string();
 
         parse_sexp(self.loc.clone(), input_taken.bytes())
-            .map_err(|e| CompileErr(e.0.clone(), e.1))
+            .err_into()
             .and_then(|parsed_program| {
                 if parsed_program.is_empty() {
                     return Ok(None);
