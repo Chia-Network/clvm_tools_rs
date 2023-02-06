@@ -48,9 +48,10 @@ use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
+use crate::compiler::preprocessor::gather_dependencies;
 use crate::compiler::prims;
 use crate::compiler::sexp;
-use crate::compiler::sexp::parse_sexp;
+use crate::compiler::sexp::{decode_string, parse_sexp};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::collapse;
 
@@ -670,6 +671,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_help("Only show frames along the exception path".to_string()),
     );
     parser.add_argument(
+        vec!["-M".to_string(), "--dependencies".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("Visit dependencies and output a list of used files".to_string()),
+    );
+    parser.add_argument(
         vec!["-g".to_string(), "--extra-syms".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
@@ -730,30 +737,19 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .cloned()
         .unwrap_or_else(|| "*command*".to_string());
 
-    let dpr;
-    let run_program: Rc<dyn TRunProgram>;
-    let mut search_paths = Vec::new();
-    match parsed_args.get("include") {
-        Some(ArgumentValue::ArgArray(v)) => {
-            let mut bare_paths = Vec::with_capacity(v.len());
-            for p in v {
+    let search_paths = if let Some(ArgumentValue::ArgArray(v)) = parsed_args.get("include") {
+        v.iter()
+            .filter_map(|p| {
                 if let ArgumentValue::ArgString(_, s) = p {
-                    bare_paths.push(s.to_string());
+                    Some(s.to_string())
+                } else {
+                    None
                 }
-            }
-            let special_runner =
-                run_program_for_search_paths(&reported_input_file, &bare_paths, extra_symbol_info);
-            search_paths = bare_paths;
-            dpr = special_runner.clone();
-            run_program = special_runner;
-        }
-        _ => {
-            let ordinary_runner =
-                run_program_for_search_paths(&reported_input_file, &Vec::new(), extra_symbol_info);
-            dpr = ordinary_runner.clone();
-            run_program = ordinary_runner;
-        }
-    }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     let mut allocator = Allocator::new();
 
@@ -766,10 +762,42 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     let mut input_args = "()".to_string();
 
+    if let (
+        Some(ArgumentValue::ArgBool(true)),
+        Some(ArgumentValue::ArgString(file, file_content)),
+    ) = (
+        parsed_args.get("dependencies"),
+        parsed_args.get("path_or_code"),
+    ) {
+        if let Some(filename) = &file {
+            let opts = DefaultCompilerOpts::new(filename).set_search_paths(&search_paths);
+
+            match gather_dependencies(opts, filename, file_content) {
+                Err(e) => {
+                    stdout.write_str(&format!("{}: {}\n", e.0, e.1));
+                }
+                Ok(res) => {
+                    for r in res.iter() {
+                        stdout.write_str(&decode_string(&r.name));
+                        stdout.write_str("\n");
+                    }
+                }
+            }
+        } else {
+            stdout.write_str("FAIL: must specify a filename\n");
+        }
+        return;
+    }
+
     if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("env") {
         input_file = file.clone();
         input_args = path_or_code.to_string();
     }
+
+    let special_runner =
+        run_program_for_search_paths(&reported_input_file, &search_paths, extra_symbol_info);
+    let dpr = special_runner.clone();
+    let run_program = special_runner;
 
     match parsed_args.get("hex") {
         Some(_) => {
