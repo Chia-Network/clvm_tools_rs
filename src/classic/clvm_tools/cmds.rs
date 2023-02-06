@@ -940,7 +940,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         let do_optimize = parsed_args
             .get("optimize")
             .map(|x| matches!(x, ArgumentValue::ArgBool(true)))
-            .unwrap_or_else(|| false);
+            .unwrap_or_else(|| false) && dialect < 22;
         let runner = Rc::new(DefaultProgramRunner::new());
         let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
@@ -956,7 +956,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             &input_program,
             &mut symbol_table,
         );
-        let res = if do_optimize {
+        let res = if do_optimize && dialect < 22 {
             unopt_res.and_then(|x| run_optimizer(&mut allocator, runner, Rc::new(x)))
         } else {
             unopt_res.map(Rc::new)
