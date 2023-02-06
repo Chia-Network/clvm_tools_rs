@@ -108,13 +108,9 @@ fn process_embed(
                 &full_name,
             )
             .map_err(|e| CompileErr(loc.clone(), format!("Subcompile failed: {}", e.1)))?;
-            let res = convert_from_clvm_rs(&mut allocator, loc.clone(), newly_compiled)
-                .map_err(run_to_compile_err)?;
 
-            eprintln!("compile {decoded_content}");
-            eprintln!("get {res}");
-
-            res
+            convert_from_clvm_rs(&mut allocator, loc.clone(), newly_compiled)
+                .map_err(run_to_compile_err)?
         }
     };
 
