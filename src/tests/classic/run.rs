@@ -739,23 +739,22 @@ fn test_treehash_constant_2() {
         .expect("should have been dropped");
 }
 
-fn compute_hash_of_program(
-    disk_file: &str,
-) -> String {
+fn compute_hash_of_program(disk_file: &str) -> String {
     let mut allocator = Allocator::new();
     let want_program_repr = do_basic_run(&vec![
         "run".to_string(),
         "-i".to_string(),
         "resources/tests".to_string(),
-        disk_file.to_string()
+        disk_file.to_string(),
     ])
-        .trim().
-        to_string();
+    .trim()
+    .to_string();
 
     let hexed = OpcConversion {}
-    .invoke(&mut allocator, &want_program_repr).unwrap();
+        .invoke(&mut allocator, &want_program_repr)
+        .unwrap();
     let sexp = OpdConversion {}
-    .invoke(&mut allocator, &hexed.rest())
+        .invoke(&mut allocator, &hexed.rest())
         .unwrap();
     format!("0x{}", sha256tree(&mut allocator, *sexp.first()).hex())
 }
@@ -782,10 +781,7 @@ fn test_treehash_constant_21() {
         .trim()
         .to_string();
 
-    assert_eq!(
-        result_hash,
-        want_inner_program_hash
-    );
+    assert_eq!(result_hash, want_inner_program_hash);
 }
 
 #[test]
@@ -1026,7 +1022,6 @@ fn test_check_tricky_arg_path_random() {
         )
         .unwrap();
         let disassembled = disassemble(&mut allocator, converted);
-        eprintln!("run {} want {} have {}", program, disassembled, res);
         assert_eq!(disassembled, res);
     }
 }
