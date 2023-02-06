@@ -14,6 +14,12 @@ use crate::compiler::srcloc::Srcloc;
 #[derive(Clone, Debug)]
 pub struct CompileErr(pub Srcloc, pub String);
 
+impl From<(Srcloc, String)> for CompileErr {
+    fn from(err: (Srcloc, String)) -> Self {
+        CompileErr(err.0, err.1)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct CompiledCode(pub Srcloc, pub Rc<SExp>);
 
@@ -190,6 +196,7 @@ pub trait CompilerOpts {
     fn frontend_check_live(&self) -> bool;
     fn start_env(&self) -> Option<Rc<SExp>>;
     fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>>;
+    fn get_search_paths(&self) -> Vec<String>;
 
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts>;
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts>;
