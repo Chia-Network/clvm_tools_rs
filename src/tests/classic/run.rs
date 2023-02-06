@@ -10,7 +10,7 @@ use rand::Rng;
 use rand_chacha::ChaChaRng;
 
 use std::borrow::Borrow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -21,8 +21,10 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, Stream};
 use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::cmds::launch_tool;
 use crate::classic::clvm_tools::node_path::NodePath;
+
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::sexp;
+use crate::compiler::sexp::decode_string;
 use crate::util::{number_from_u8, Number};
 
 const NUM_GEN_ATOMS: usize = 16;
@@ -279,6 +281,46 @@ fn test_forms_of_destructuring_allowed_by_classic_1() {
         .trim(),
         "(i 2 (q . 2) (q . 3))"
     );
+}
+
+fn run_dependencies(filename: &str) -> HashSet<String> {
+    let result_text = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "-M".to_string(),
+        filename.to_owned(),
+    ])
+    .trim()
+    .to_string();
+
+    eprintln!("run_dependencies:\n{}", result_text);
+
+    let mut dep_set = HashSet::new();
+    for l in result_text.lines() {
+        if let Some(suffix_start) = l.find("resources/tests") {
+            let copied_suffix: Vec<u8> = l.as_bytes().iter().skip(suffix_start).copied().collect();
+            dep_set.insert(decode_string(&copied_suffix));
+        } else {
+            panic!("file {} isn't expected", l);
+        }
+    }
+
+    dep_set
+}
+
+#[test]
+fn test_get_dependencies_1() {
+    let dep_set = run_dependencies("resources/tests/singleton_top_layer.clvm");
+
+    eprintln!("dep_set {dep_set:?}");
+
+    let mut expect_set = HashSet::new();
+    expect_set.insert("resources/tests/condition_codes.clvm".to_owned());
+    expect_set.insert("resources/tests/curry-and-treehash.clinc".to_owned());
+    expect_set.insert("resources/tests/singleton_truths.clib".to_owned());
+
+    assert_eq!(dep_set, expect_set);
 }
 
 #[test]
