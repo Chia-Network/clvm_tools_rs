@@ -25,7 +25,7 @@ use crate::classic::clvm::keyword_from_atom;
 use crate::classic::clvm::serialize::{sexp_from_stream, sexp_to_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
-use crate::classic::clvm_tools::clvmc::detect_modern;
+use crate::classic::clvm_tools::clvmc::{detect_modern, write_sym_output};
 use crate::classic::clvm_tools::debug::{
     check_unused, trace_pre_eval, trace_to_table, trace_to_text,
 };
@@ -544,18 +544,6 @@ fn fix_log(
     }
 }
 
-fn write_sym_output(compiled_lookup: &HashMap<String, String>, path: &str) -> Result<(), String> {
-    m! {
-        output <- serde_json::to_string(compiled_lookup).map_err(|_| {
-            "failed to serialize to json".to_string()
-        });
-
-        fs::write(path, output).map_err(|_| {
-            format!("failed to write {path}")
-        }).map(|_| ())
-    }
-}
-
 pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, default_stage: u32) {
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
@@ -935,7 +923,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         })
         .unwrap_or_else(|| "main.sym".to_string());
 
-    // In testing: short circuit for modern compilation.
     if let Some(dialect) = dialect {
         let do_optimize = parsed_args
             .get("optimize")

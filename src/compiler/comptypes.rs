@@ -137,12 +137,22 @@ pub enum HelperForm {
     Defun(bool, DefunData),
 }
 
+// To what purpose is the file included.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum IncludeProcessType {
+    Bin,
+    Hex,
+    SExpression,
+    Compiled,
+}
+
 // A description of an include form.
 #[derive(Clone, Debug)]
 pub struct IncludeDesc {
     pub kw: Srcloc,
     pub nl: Srcloc,
     pub name: Vec<u8>,
+    pub kind: Option<IncludeProcessType>,
 }
 
 impl IncludeDesc {
@@ -211,7 +221,7 @@ pub trait CompilerOpts {
         &self,
         inc_from: String,
         filename: String,
-    ) -> Result<(String, String), CompileErr>;
+    ) -> Result<(String, Vec<u8>), CompileErr>;
     fn compile_program(
         &self,
         allocator: &mut Allocator,

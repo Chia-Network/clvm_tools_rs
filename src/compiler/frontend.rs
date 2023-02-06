@@ -521,7 +521,7 @@ fn match_op_name_4(pl: &[SExp]) -> Option<OpName4Match> {
                         nl: ll.clone(),
                         name: name.clone(),
                         args: Rc::new(pl[2].clone()),
-                        body: Rc::new(enlist(l.clone(), tail_list)),
+                        body: Rc::new(enlist(l.clone(), &tail_list)),
                     })
                 }
                 _ => Some(OpName4Match {
@@ -713,7 +713,7 @@ fn frontend_start(
                         let args = Rc::new(x[1].clone());
                         let body_vec: Vec<Rc<SExp>> =
                             x.iter().skip(2).map(|s| Rc::new(s.clone())).collect();
-                        let body = Rc::new(enlist(pre_forms[0].loc(), body_vec));
+                        let body = Rc::new(enlist(pre_forms[0].loc(), &body_vec));
 
                         let ls = preprocess(opts.clone(), includes, body)?;
                         return compile_mod_(

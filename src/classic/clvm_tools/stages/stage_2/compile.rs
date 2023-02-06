@@ -4,15 +4,21 @@ use std::rc::Rc;
 use clvm_rs::allocator::{Allocator, AtomBuf, NodePtr, SExp};
 use clvm_rs::reduction::{EvalErr, Reduction, Response};
 
+use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm::sexp::{enlist, first, map_m, non_nil, proper_list, rest};
 use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
 
 use crate::classic::clvm_tools::binutils::disassemble;
+use crate::classic::clvm_tools::clvmc::{compile_clvm_text, write_sym_output};
 use crate::classic::clvm_tools::node_path::NodePath;
+use crate::classic::clvm_tools::stages::assemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::defaults::default_macro_lookup;
 use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote};
 use crate::classic::clvm_tools::stages::stage_2::module::compile_mod;
+use crate::classic::clvm_tools::stages::stage_2::reader::read_file;
+
+use crate::compiler::sexp::decode_string;
 
 const DIAG_OUTPUT: bool = false;
 
@@ -754,5 +760,132 @@ pub fn do_com_prog_for_dialect(
             sexp,
             "Program is not a pair in do_com_prog".to_string(),
         )),
+    }
+}
+
+fn get_compile_filename(
+    runner: Rc<dyn TRunProgram>,
+    allocator: &mut Allocator,
+) -> Result<Option<String>, EvalErr> {
+    let cvt_prog = assemble(allocator, "(_get_compile_filename)")?;
+
+    let cvt_prog_result = runner.run_program(allocator, cvt_prog, allocator.null(), None)?;
+
+    if cvt_prog_result.1 == allocator.null() {
+        return Ok(None);
+    }
+
+    if let SExp::Atom(buf) = allocator.sexp(cvt_prog_result.1) {
+        let abuf = allocator.buf(&buf).to_vec();
+        return Ok(Some(Bytes::new(Some(BytesFromType::Raw(abuf))).decode()));
+    }
+
+    Err(EvalErr(
+        allocator.null(),
+        "Couldn't decode result filename".to_string(),
+    ))
+}
+
+pub fn get_search_paths(
+    runner: Rc<dyn TRunProgram>,
+    allocator: &mut Allocator,
+) -> Result<Vec<String>, EvalErr> {
+    let search_paths_prog = assemble(allocator, "(_get_include_paths)")?;
+    let search_path_result =
+        runner.run_program(allocator, search_paths_prog, allocator.null(), None)?;
+
+    let mut res = Vec::new();
+    if let Some(l) = proper_list(allocator, search_path_result.1, true) {
+        for elt in l.iter() {
+            if let SExp::Atom(buf) = allocator.sexp(*elt) {
+                let abuf = allocator.buf(&buf).to_vec();
+                res.push(Bytes::new(Some(BytesFromType::Raw(abuf))).decode());
+            }
+        }
+    }
+
+    Ok(res)
+}
+
+fn get_last_path_component(name: &str) -> String {
+    let mut skip_start = None;
+    let fnbytes = name.as_bytes();
+
+    for (i, ch) in fnbytes.iter().enumerate() {
+        if *ch == b'/' || *ch == b'\\' {
+            skip_start = Some(i + 1);
+        }
+    }
+
+    if let Some(skip) = skip_start {
+        let namevec = fnbytes.iter().skip(skip).copied().collect();
+        Bytes::new(Some(BytesFromType::Raw(namevec))).decode()
+    } else {
+        name.to_owned()
+    }
+}
+
+fn make_symbols_name(current_filename: &str, name: &str) -> String {
+    // Grab the final path component if these strings are composed
+    // that way.
+    let take_start = get_last_path_component(current_filename);
+    let take_end = get_last_path_component(name);
+
+    format!("{take_start}_{take_end}.sym")
+}
+
+pub fn compile_file(
+    runner: Rc<dyn TRunProgram>,
+    allocator: &mut Allocator,
+    parent_sexp: NodePtr,
+    name: &str,
+    filename: &str,
+) -> Response {
+    let mut symtab = HashMap::new();
+    let current_filename = get_compile_filename(runner.clone(), allocator)?;
+    let file = read_file(runner, allocator, parent_sexp, filename)?;
+    let compiled = compile_clvm_text(
+        allocator,
+        &file.search_paths,
+        &mut symtab,
+        &decode_string(&file.data),
+        &file.full_path,
+    )?;
+
+    // Write symbols for the compiled inner module.
+    if let Some(filename) = current_filename {
+        let target_symbols_name = make_symbols_name(&filename, name);
+
+        // Not a hard error if we can't write the symbols,
+        // given the way most write chialisp.
+        write_sym_output(&symtab, &target_symbols_name).ok();
+    }
+
+    Ok(Reduction(1, compiled))
+}
+
+pub fn process_compile_file(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    declaration_sexp: NodePtr,
+    name: Vec<u8>,
+) -> Result<(Vec<u8>, NodePtr), EvalErr> {
+    // A fancy include for the compilation result of a program.
+    let r_of_declaration = rest(allocator, declaration_sexp)?;
+    let rr_of_declaration = rest(allocator, r_of_declaration)?;
+    let frr_of_declaration = first(allocator, rr_of_declaration)?;
+    if let SExp::Atom(b) = allocator.sexp(frr_of_declaration) {
+        let b_name = allocator.buf(&b).to_vec();
+        let compiled_output = compile_file(
+            runner,
+            allocator,
+            declaration_sexp,
+            &Bytes::new(Some(BytesFromType::Raw(name.clone()))).decode(),
+            &Bytes::new(Some(BytesFromType::Raw(b_name))).decode(),
+        )?;
+
+        Ok((name, quote(allocator, compiled_output.1)?))
+    } else {
+        Err(EvalErr(declaration_sexp, "expected filename".to_string()))
     }
 }

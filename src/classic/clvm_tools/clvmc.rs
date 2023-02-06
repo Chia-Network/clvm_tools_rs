@@ -44,6 +44,21 @@ fn include_dialect(
     None
 }
 
+pub fn write_sym_output(
+    compiled_lookup: &HashMap<String, String>,
+    path: &str,
+) -> Result<(), String> {
+    m! {
+        output <- serde_json::to_string(compiled_lookup).map_err(|_| {
+            "failed to serialize to json".to_string()
+        });
+
+        fs::write(path, output).map_err(|_| {
+            format!("failed to write {path}")
+        }).map(|_| ())
+    }
+}
+
 pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> Option<i32> {
     let mut dialects = HashMap::new();
     dialects.insert("*standard-cl-21*".as_bytes().to_vec(), 21);
@@ -76,8 +91,9 @@ pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> Option<i32> {
     })
 }
 
-fn compile_clvm_text(
+pub fn compile_clvm_text_maybe_opt(
     allocator: &mut Allocator,
+    do_optimize: bool,
     search_paths: &[String],
     symbol_table: &mut HashMap<String, String>,
     text: &str,
@@ -89,12 +105,16 @@ fn compile_clvm_text(
     if let Some(dialect) = detect_modern(allocator, assembled_sexp) {
         let runner = Rc::new(DefaultProgramRunner::new());
         let opts = Rc::new(DefaultCompilerOpts::new(input_path))
-            .set_optimize(true)
+            .set_optimize(do_optimize)
             .set_frontend_opt(dialect > 21)
             .set_search_paths(search_paths);
 
         let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
-        let res = unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)));
+        let res = if do_optimize {
+            unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)))
+        } else {
+            unopt_res.map(Rc::new)
+        };
 
         res.and_then(|x| {
             convert_to_clvm_rs(allocator, x).map_err(|r| match r {
@@ -111,6 +131,23 @@ fn compile_clvm_text(
             run_program.run_program(allocator, compile_invoke_code, input_sexp, None)?;
         Ok(run_program_output.1)
     }
+}
+
+pub fn compile_clvm_text(
+    allocator: &mut Allocator,
+    search_paths: &[String],
+    symbol_table: &mut HashMap<String, String>,
+    text: &str,
+    input_path: &str,
+) -> Result<NodePtr, EvalErr> {
+    compile_clvm_text_maybe_opt(
+        allocator,
+        true,
+        search_paths,
+        symbol_table,
+        text,
+        input_path,
+    )
 }
 
 pub fn compile_clvm_inner(

@@ -300,17 +300,17 @@ impl CompilerOpts for DefaultCompilerOpts {
         &self,
         inc_from: String,
         filename: String,
-    ) -> Result<(String, String), CompileErr> {
+    ) -> Result<(String, Vec<u8>), CompileErr> {
         if filename == "*macros*" {
-            return Ok((filename, STANDARD_MACROS.clone()));
+            return Ok((filename, STANDARD_MACROS.clone().as_bytes().to_vec()));
         } else if let Some(content) = self.known_dialects.get(&filename) {
-            return Ok((filename, content.to_string()));
+            return Ok((filename, content.as_bytes().to_vec()));
         }
 
         for dir in self.include_dirs.iter() {
             let mut p = PathBuf::from(dir);
             p.push(filename.clone());
-            match fs::read_to_string(p.clone()) {
+            match fs::read(p.clone()) {
                 Err(_e) => {
                     continue;
                 }
