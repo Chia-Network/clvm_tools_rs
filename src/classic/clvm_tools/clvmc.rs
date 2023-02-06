@@ -94,12 +94,11 @@ fn compile_clvm_text(
             .set_search_paths(search_paths);
 
         let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
-        let res =
-            if dialect < 22 {
-                unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)))
-            } else {
-                unopt_res.map(Rc::new)
-            };
+        let res = if dialect < 22 {
+            unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)))
+        } else {
+            unopt_res.map(Rc::new)
+        };
 
         res.and_then(|x| {
             convert_to_clvm_rs(allocator, x).map_err(|r| match r {
