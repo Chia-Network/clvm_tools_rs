@@ -38,3 +38,16 @@ pub fn collapse<A>(r: Result<A, A>) -> A {
         Err(e) => e,
     }
 }
+
+pub trait ErrInto<D> {
+    fn err_into(self) -> D;
+}
+
+impl<SrcErr, DestErr, DestRes> ErrInto<Result<DestRes, DestErr>> for Result<DestRes, SrcErr>
+where
+    DestErr: From<SrcErr>,
+{
+    fn err_into(self) -> Result<DestRes, DestErr> {
+        self.map_err(|e| e.into())
+    }
+}

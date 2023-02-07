@@ -7,6 +7,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyString, PyTuple};
 
 use std::collections::{BTreeMap, HashMap};
+use std::fs;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
@@ -23,16 +24,20 @@ use crate::compiler::cldb::{
     hex_to_modern_sexp, CldbOverrideBespokeCode, CldbRun, CldbRunEnv, CldbSingleBespokeOverride,
 };
 use crate::compiler::clvm::{convert_to_clvm_rs, start_step};
-use crate::compiler::compiler::{extract_program_and_env, path_to_function, rewrite_in_program};
-use crate::compiler::comptypes::CompileErr;
+use crate::compiler::compiler::{
+    extract_program_and_env, path_to_function, rewrite_in_program, DefaultCompilerOpts,
+};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::preprocessor::gather_dependencies;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::SExp;
+use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 use crate::py::pyval::{clvm_value_to_python, python_value_to_clvm};
 
 create_exception!(mymodule, CldbError, PyException);
+create_exception!(mymodule, CompError, PyException);
 
 // Thanks: https://www.reddit.com/r/rust/comments/bkkpkz/pkgversion_access_your_crates_version_number_as/
 #[pyfunction]
@@ -81,6 +86,38 @@ fn compile_clvm(
             Ok(compiled.into_py(py))
         }
     })
+}
+
+#[pyfunction(arg2 = "[]")]
+fn check_dependencies(input_path: &PyAny, search_paths: Vec<String>) -> PyResult<PyObject> {
+    let has_atom = input_path.hasattr("atom")?;
+    let has_pair = input_path.hasattr("pair")?;
+
+    let real_input_path = if has_atom {
+        input_path.getattr("atom").and_then(|x| x.str())
+    } else if has_pair {
+        input_path
+            .getattr("pair")
+            .and_then(|x| x.get_item(0))
+            .and_then(|x| x.str())
+    } else {
+        input_path.extract()
+    }?;
+
+    let file_content = fs::read_to_string(&real_input_path.to_string())
+        .map_err(|_| CompError::new_err("failed to read file"))?;
+
+    let def_opts: Rc<dyn CompilerOpts> =
+        Rc::new(DefaultCompilerOpts::new(&real_input_path.to_string()));
+    let opts = def_opts.set_search_paths(&search_paths);
+
+    let result_deps: Vec<String> =
+        gather_dependencies(opts, &real_input_path.to_string(), &file_content)
+            .map_err(|e| CompError::new_err(format!("{}: {}", e.0, e.1)))
+            .map(|rlist| rlist.iter().map(|i| decode_string(&i.name)).collect())?;
+
+    // Return all visited files.
+    Python::with_gil(|py| Ok(result_deps.into_py(py)))
 }
 
 #[pyclass]
@@ -333,10 +370,13 @@ pub fn compose_run_function(
 #[pymodule]
 fn clvm_tools_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add("CldbError", py.get_type::<CldbError>())?;
+    m.add("CompError", py.get_type::<CompError>())?;
+
     m.add_function(wrap_pyfunction!(compile_clvm, m)?)?;
     m.add_function(wrap_pyfunction!(get_version, m)?)?;
     m.add_function(wrap_pyfunction!(start_clvm_program, m)?)?;
     m.add_function(wrap_pyfunction!(launch_tool, m)?)?;
+    m.add_function(wrap_pyfunction!(check_dependencies, m)?)?;
     m.add_function(wrap_pyfunction!(compose_run_function, m)?)?;
     m.add_class::<PythonRunStep>()?;
     Ok(())
