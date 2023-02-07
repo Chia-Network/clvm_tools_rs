@@ -322,18 +322,16 @@ fn parse_mod_sexp(
             constants,
             delayed_constants,
             macros,
-            run_program.clone()
+            run_program.clone(),
         )
     } else if op == "embed-file".as_bytes() {
-        let (name, constant) = process_embed_file(
-            allocator, run_program.clone(), declaration_sexp
-        )?;
+        let (name, constant) =
+            process_embed_file(allocator, run_program.clone(), declaration_sexp)?;
         constants.insert(name, constant);
         Ok(())
     } else if op == "compile-file".as_bytes() {
-        let (name, constant) = process_compile_file(
-            allocator, run_program.clone(), declaration_sexp, name
-        )?;
+        let (name, constant) =
+            process_compile_file(allocator, run_program.clone(), declaration_sexp, name)?;
         constants.insert(name, constant);
         Ok(())
     } else if namespace.contains(&name) {
