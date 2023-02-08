@@ -807,3 +807,36 @@ fn test_modern_sets_source_file_in_symbols() {
         Some("resources/tests/steprun/fact.cl".to_string())
     );
 }
+
+// Test that leaving off the lambda captures causes bare words for the
+// requested values to find their way into the output and that having
+// the capture catches it.  This shows that uses of uncaptured words
+// are unencumbered.
+#[test]
+fn test_lambda_without_capture_reproduces_bare_word_in_output() {
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/rps-referee-uncaptured.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert!(compiled.contains("AMOUNT"));
+    assert!(compiled.contains("new_puzzle_hash"));
+}
+
+// Test that having a lambda capture captures all the associated words.
+#[test]
+fn test_lambda_with_capture_defines_word() {
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/rps-referee.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert!(!compiled.contains("AMOUNT"));
+    assert!(!compiled.contains("new_puzzle_hash"));
+}

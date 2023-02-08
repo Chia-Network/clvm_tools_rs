@@ -105,6 +105,7 @@ pub fn handle_lambda(opts: Rc<dyn CompilerOpts>, v: &[SExp]) -> Result<BodyForm,
     }
 
     let (args, captures) = find_and_compose_captures(opts.clone(), &v[0])?;
+    eprintln!("args {args} captures {}", captures.to_sexp());
 
     let rolled_elements_vec: Vec<Rc<SExp>> = v.iter().skip(1).map(|x| Rc::new(x.clone())).collect();
     let body_list = enlist(v[0].loc(), rolled_elements_vec);

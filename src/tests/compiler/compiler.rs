@@ -1390,3 +1390,26 @@ fn test_lambda_using_macro() {
     let res = run_string(&prog, &"(1 (10 20 30))".to_string()).unwrap();
     assert_eq!(res.to_string(), "((1 10) (1 20) (1 30))");
 }
+
+#[test]
+fn test_lambda_reduce() {
+    let prog = indoc! {"
+    (mod (LST)
+     (include *standard-cl-21*)
+     (defun reduce (fun lst init)
+      (if lst
+       (reduce fun (r lst) (a fun (list (f lst) init)))
+       init
+       )
+      )
+
+     (let
+      ((capture 100))
+      (reduce (lambda ((& capture) (X Y) ACC) (+ (* X Y) ACC capture)) LST 0)
+      )
+     )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(((2 3) (4 9)))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "242");
+}
