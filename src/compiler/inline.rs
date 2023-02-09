@@ -182,12 +182,35 @@ fn replace_inline_body(
         )),
         BodyForm::Call(l, call_args) => {
             let mut new_args = Vec::new();
+            // Ensure that we don't count branched invocations when checking
+            // each call downstream of the main expr is recursive.
+            //
+            // Previously, this program detected as recursive:
+            // (mod (A) ;; 11
+            //   (include *standard-cl-22*)
+            //   (defun-inline <= (A B) (not (> A B)))
+            //   (assign
+            //     foo (<= 2 A)
+            //     bar (<= 1 A)
+            //
+            //     baz (<= foo bar)
+            //
+            //     yorgle (<= baz bar)
+            //
+            //     (<= yorgle foo)
+            //     ))
+            //
+            // <= appears in the arguments, but isn't called recursively on itself.
+            // We ensure here that each argument has a separate visited stack.
+            // Recursion only happens when the same stack encounters an inline
+            // twice.
+            let mut new_visited = visited_inlines.clone();
             for (i, arg) in call_args.iter().enumerate() {
                 if i == 0 {
                     new_args.push(arg.clone());
                 } else {
                     let replaced = replace_inline_body(
-                        visited_inlines,
+                        &mut new_visited,
                         runner.clone(),
                         opts.clone(),
                         compiler,
