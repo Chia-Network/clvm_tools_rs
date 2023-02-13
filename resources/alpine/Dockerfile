@@ -1,4 +1,4 @@
-FROM alpine:3.16.2
+FROM alpine:3.16
 WORKDIR /root
 RUN sh -c "echo https://mirrors.edge.kernel.org/alpine/v3.16.2/community >> /etc/apk/repositories"
 RUN apk add git curl python3 openssl openssl-dev perl linux-headers make gcc musl-dev patch patchelf
