@@ -266,6 +266,8 @@ pub fn process_macro_call(
     let args_to_macro = list_to_cons(l.clone(), &converted_args);
     build_swap_table_mut(&mut swap_table, &args_to_macro);
 
+    eprintln!("macro: code {} args {}", code, args_to_macro);
+
     run(
         allocator,
         runner.clone(),
