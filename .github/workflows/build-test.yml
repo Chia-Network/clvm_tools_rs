@@ -154,6 +154,12 @@ jobs:
         cp support/recompile_check.py chia-blockchain
         (cd chia-blockchain && python recompile_check.py)
 
+    - name: Verify recompilation of cl21 sources
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      run: |
+        . ./activate
+        cd resources/tests && python check-recompiles.py
+
     - name: Run tests from clvm
       run: |
         . ./activate
