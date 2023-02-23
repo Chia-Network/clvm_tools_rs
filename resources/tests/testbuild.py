@@ -4,6 +4,7 @@ import binascii
 import json
 from clvm_tools.binutils import assemble, disassemble
 from clvm_tools_rs import start_clvm_program, compose_run_function, compile_clvm
+from chia_rs import run_chia_program, tree_hash
 from chia.types.blockchain_format.program import Program
 
 def compute_output_file_names(source):
@@ -13,7 +14,7 @@ def compute_output_file_names(source):
     return (file_path / (file_stem + ".clvm.hex"), file_path / (file_stem + ".sym"))
 
 def get_program_hash(hexfile):
-    return Program.fromhex(open(hexfile).read().strip()).get_tree_hash()
+    return tree_hash(binascii.unhexlify(open(hexfile).read().strip()))
 
 def compile_module_with_symbols(include_paths,source):
     (hex_file, sym_file) = compute_output_file_names(source)
