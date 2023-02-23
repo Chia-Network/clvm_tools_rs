@@ -31,9 +31,14 @@ def compile_programs(programs):
         prev_symbols = json.loads(open(prev_sym_file).read())
         prev_hash = get_program_hash(prev_hex_file)
 
+        try:
+            os.unlink(hex_file)
+        except:
+            pass
+
         compile_module_with_symbols(p[1], p[0])
-        curr_hash = get_program_hash(prev_hex_file)
-        curr_symbols = json.loads(open(prev_sym_file).read())
+        curr_hash = get_program_hash(hex_file)
+        curr_symbols = json.loads(open(sym_file).read())
 
         if prev_hash != curr_hash:
             print(f'compiling {p[0]} got a different hash')
