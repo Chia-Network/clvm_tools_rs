@@ -162,7 +162,8 @@ jobs:
         pip install chia-rs
         # Ensure we're using the sources we have.  This is a hedge against
         # changes made by any other step doing operations on pip.
-        maturin develop
+        # This script installs the wheel built during this workflow.
+        python support/wheelname.py
         (cd resources/tests && python check-recompiles.py)
 
     - name: Run tests from clvm
