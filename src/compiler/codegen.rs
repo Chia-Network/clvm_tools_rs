@@ -585,7 +585,7 @@ pub fn generate_expr_code(
                 allocator,
                 runner,
                 opts_with_env,
-                &program,
+                program,
                 &mut HashMap::new(),
             )?;
             Ok(CompiledCode(
@@ -611,9 +611,7 @@ pub fn generate_expr_code(
             ))
         }
         BodyForm::Lambda(ldata) => {
-            let desugared_lambda_callsite = lambda_codegen(
-                opts.clone(), &ldata
-            )?;
+            let desugared_lambda_callsite = lambda_codegen(ldata)?;
             let result = generate_expr_code(
                 allocator,
                 runner,

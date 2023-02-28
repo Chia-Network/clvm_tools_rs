@@ -32,30 +32,34 @@ fn make_captures(opts: Rc<dyn CompilerOpts>, sexp: Rc<SExp>) -> Result<Rc<BodyFo
     }
 }
 
+struct FoundLambdaCaptures {
+    args: Rc<SExp>,
+    capture_args: Rc<SExp>,
+    captures: Rc<BodyForm>,
+}
+
 fn find_and_compose_captures(
     opts: Rc<dyn CompilerOpts>,
     sexp: &SExp,
-) -> Result<(Rc<SExp>, Rc<SExp>, Rc<BodyForm>), CompileErr> {
-    let mut args = Rc::new(sexp.clone());
-    let mut capture_args = Rc::new(SExp::Nil(sexp.loc()));
-    let mut captures = Rc::new(BodyForm::Quoted(SExp::Nil(sexp.loc())));
+) -> Result<FoundLambdaCaptures, CompileErr> {
+    let mut found = FoundLambdaCaptures {
+        args: Rc::new(sexp.clone()),
+        capture_args: Rc::new(SExp::Nil(sexp.loc())),
+        captures: Rc::new(BodyForm::Quoted(SExp::Nil(sexp.loc())))
+    };
     if let SExp::Cons(_, l, r) = sexp {
         if let SExp::Cons(_, head, rest) = l.borrow() {
             if let SExp::Atom(_, name) = head.borrow() {
                 if name == b"&" {
-                    args = r.clone();
-                    capture_args = rest.clone();
-                    captures = make_captures(opts, rest.clone())?;
+                    found.args = r.clone();
+                    found.capture_args = rest.clone();
+                    found.captures = make_captures(opts, rest.clone())?;
                 }
             }
         }
     }
 
-    Ok((
-        args,
-        capture_args,
-        captures,
-    ))
+    Ok(found)
 }
 
 fn make_call(loc: Srcloc, head: &str, args: &[BodyForm]) -> BodyForm {
@@ -97,7 +101,7 @@ fn make_cons(loc: Srcloc, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) -> BodyForm {
 //    (list 4 (c 1 (@ 2)) (list 4 (c 1 compose_captures) @))
 //    )
 //
-pub fn lambda_codegen(opts: Rc<dyn CompilerOpts>, ldata: &LambdaData) -> Result<BodyForm, CompileErr> {
+pub fn lambda_codegen(ldata: &LambdaData) -> Result<BodyForm, CompileErr> {
     // Requires captures
     // Code to retrieve the left env.
     let retrieve_left_env = Rc::new(make_operator1(
@@ -141,7 +145,7 @@ pub fn lambda_codegen(opts: Rc<dyn CompilerOpts>, ldata: &LambdaData) -> Result<
     Ok(lambda_output)
 }
 
-pub fn handle_lambda(opts: Rc<dyn CompilerOpts>, kw_loc: Option<Srcloc>, loc: Srcloc, v: &[SExp]) -> Result<BodyForm, CompileErr> {
+pub fn handle_lambda(opts: Rc<dyn CompilerOpts>, kw_loc: Option<Srcloc>, v: &[SExp]) -> Result<BodyForm, CompileErr> {
     if v.len() < 2 {
         return Err(CompileErr(
             v[0].loc(),
@@ -149,8 +153,8 @@ pub fn handle_lambda(opts: Rc<dyn CompilerOpts>, kw_loc: Option<Srcloc>, loc: Sr
         ));
     }
 
-    let (args, capture_args, captures) = find_and_compose_captures(opts.clone(), &v[0])?;
-    let combined_captures_and_args = Rc::new(SExp::Cons(args.loc(), capture_args.clone(), args.clone()));
+    let found = find_and_compose_captures(opts.clone(), &v[0])?;
+    let combined_captures_and_args = Rc::new(SExp::Cons(found.args.loc(), found.capture_args.clone(), found.args.clone()));
 
     let rolled_elements_vec: Vec<Rc<SExp>> = v.iter().skip(1).map(|x| Rc::new(x.clone())).collect();
     let body_list = enlist(v[0].loc(), rolled_elements_vec);
@@ -159,7 +163,7 @@ pub fn handle_lambda(opts: Rc<dyn CompilerOpts>, kw_loc: Option<Srcloc>, loc: Sr
     let mod_form_data = Rc::new(SExp::Cons(
         v[0].loc(),
         Rc::new(SExp::atom_from_string(v[0].loc(), "mod+")),
-        Rc::new(SExp::Cons(args.loc(), combined_captures_and_args.clone(), Rc::new(body_list))),
+        Rc::new(SExp::Cons(found.args.loc(), combined_captures_and_args, Rc::new(body_list))),
     ));
 
     // Requires captures
@@ -167,9 +171,9 @@ pub fn handle_lambda(opts: Rc<dyn CompilerOpts>, kw_loc: Option<Srcloc>, loc: Sr
     Ok(BodyForm::Lambda(LambdaData {
         loc: v[0].loc(),
         kw: kw_loc,
-        args: args.clone(),
-        capture_args: capture_args.clone(),
-        captures: captures,
+        args: found.args.clone(),
+        capture_args: found.capture_args.clone(),
+        captures: found.captures,
         body: Rc::new(subparse)
     }))
 }

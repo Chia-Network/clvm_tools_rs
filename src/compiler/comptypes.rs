@@ -523,8 +523,7 @@ impl BodyForm {
                 program.to_sexp(),
             )),
             BodyForm::Lambda(ldata) => {
-                let lambda = Rc::new(SExp::Atom(ldata.loc.clone(), b"lambda".to_vec()));
-                compose_lambda_serialized_form(&ldata)
+                compose_lambda_serialized_form(ldata)
             }
         }
     }

@@ -673,7 +673,7 @@ impl<'info> Evaluator {
                 self.shrink_bodyform_visited(
                     allocator,
                     &mut visited,
-                    prog_args.clone(),
+                    prog_args,
                     env,
                     parts[2].clone(),
                     only_inline
@@ -683,7 +683,7 @@ impl<'info> Evaluator {
                     return Ok(Some(LambdaApply {
                         lambda: ldata.clone(),
                         body: cf.exp.clone(),
-                        env: evaluated_env.clone()
+                        env: evaluated_env
                     }));
                 }
             }
@@ -718,7 +718,7 @@ impl<'info> Evaluator {
             lapply.lambda.captures.clone(),
             only_inline
         )?;
-        let formed_caps = ArgInputs::Whole(reified_captures.clone());
+        let formed_caps = ArgInputs::Whole(reified_captures);
         create_argument_captures(
             &mut lambda_env,
             &formed_caps,

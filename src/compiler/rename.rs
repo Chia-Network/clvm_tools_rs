@@ -6,7 +6,7 @@ use crate::compiler::comptypes::{
     Binding, BodyForm, CompileForm, DefconstData, DefmacData, DefunData, HelperForm, LambdaData, LetData, LetFormKind
 };
 use crate::compiler::gensym::gensym;
-use crate::compiler::sexp::{decode_string, SExp};
+use crate::compiler::sexp::SExp;
 
 fn rename_in_qq(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SExp> {
     body.proper_list()
@@ -182,7 +182,6 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
 
         BodyForm::Mod(l, left_env, prog) => BodyForm::Mod(l.clone(), *left_env, prog.clone()),
         BodyForm::Lambda(ldata) => {
-            let namelist: Vec<(String, String)> = namemap.iter().map(|n| (decode_string(n.0),decode_string(n.1))).collect();
             let renamed_capture_inputs = Rc::new(rename_in_bodyform(
                 namemap, ldata.captures.clone()
             ));
@@ -192,14 +191,12 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             let renamed_body = lambda_body_rename(
                 namemap, ldata.body.borrow()
             );
-            let result =
-                BodyForm::Lambda(LambdaData {
-                    captures: renamed_capture_inputs,
-                    capture_args: renamed_capture_outputs,
-                    body: Rc::new(renamed_body),
-                    .. ldata.clone()
-                });
-            result
+            BodyForm::Lambda(LambdaData {
+                captures: renamed_capture_inputs,
+                capture_args: renamed_capture_outputs,
+                body: Rc::new(renamed_body),
+                .. ldata.clone()
+            })
         }
     }
 }
