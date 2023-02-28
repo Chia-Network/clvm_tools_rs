@@ -13,7 +13,7 @@ use crate::compiler::clvm::run;
 use crate::compiler::codegen::codegen;
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
-    Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LetData, LetFormKind,
+    Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LambdaData, LetData, LetFormKind,
 };
 use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
@@ -60,6 +60,12 @@ impl<'info> VisitedInfoAccess for VisitedMarker<'info, VisitedInfo> {
             info.functions.insert(name, body);
         }
     }
+}
+
+pub struct LambdaApply {
+    lambda: LambdaData,
+    body: Rc<BodyForm>,
+    env: Rc<BodyForm>
 }
 
 // Frontend evaluator based on my fuzzer representation and direct interpreter of
@@ -643,11 +649,105 @@ impl<'info> Evaluator {
         }
     }
 
+    fn is_lambda_apply(
+        &self,
+        allocator: &mut Allocator,
+        visited_: &'info mut VisitedMarker<'_, VisitedInfo>,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        parts: &[Rc<BodyForm>],
+        only_inline: bool
+    ) -> Result<Option<LambdaApply>, CompileErr> {
+        if parts.len() == 3 && is_apply_atom(parts[0].to_sexp()) {
+            let mut visited = VisitedMarker::again(parts[0].loc(), visited_)?;
+            let evaluated_prog =
+                self.shrink_bodyform_visited(
+                    allocator,
+                    &mut visited,
+                    prog_args.clone(),
+                    env,
+                    parts[1].clone(),
+                    only_inline
+                )?;
+            let evaluated_env =
+                self.shrink_bodyform_visited(
+                    allocator,
+                    &mut visited,
+                    prog_args.clone(),
+                    env,
+                    parts[2].clone(),
+                    only_inline
+                )?;
+            if let BodyForm::Lambda(ldata) = evaluated_prog.borrow() {
+                if let BodyForm::Mod(_, _, cf) = ldata.body.borrow() {
+                    return Ok(Some(LambdaApply {
+                        lambda: ldata.clone(),
+                        body: cf.exp.clone(),
+                        env: evaluated_env.clone()
+                    }));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn do_lambda_apply(
+        &self,
+        allocator: &mut Allocator,
+        visited: &mut VisitedMarker<'info, VisitedInfo>,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        lapply: &LambdaApply,
+        only_inline: bool,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        let mut lambda_env = env.clone();
+        // Finish eta-expansion.
+
+        // We're carrying an enriched environment which we can use to enrich
+        // the env map at this time.  Once we do that we can expand the body
+        // fully because we're carring the info that goes with the primary
+        // arguments.
+        //
+        // Generate the enriched environment.
+        let reified_captures = self.shrink_bodyform_visited(
+            allocator,
+            visited,
+            prog_args.clone(),
+            env,
+            lapply.lambda.captures.clone(),
+            only_inline
+        )?;
+        let formed_caps = ArgInputs::Whole(reified_captures.clone());
+        create_argument_captures(
+            &mut lambda_env,
+            &formed_caps,
+            lapply.lambda.capture_args.clone()
+        )?;
+
+        // Create captures with the actual parameters.
+        let formed_args = ArgInputs::Whole(lapply.env.clone());
+        create_argument_captures(
+            &mut lambda_env,
+            &formed_args,
+            lapply.lambda.args.clone()
+        )?;
+
+        self.shrink_bodyform_visited(
+            allocator,
+            visited,
+            prog_args,
+            &lambda_env,
+            lapply.body.clone(),
+            only_inline
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn invoke_primitive(
         &self,
         allocator: &mut Allocator,
-        visited: &mut VisitedMarker<'info, VisitedInfo>,
+        visited_: &'info mut VisitedMarker<'_, VisitedInfo>,
         l: Srcloc,
         call_name: &[u8],
         parts: &[Rc<BodyForm>],
@@ -659,6 +759,7 @@ impl<'info> Evaluator {
     ) -> Result<Rc<BodyForm>, CompileErr> {
         let mut all_primitive = true;
         let mut target_vec: Vec<Rc<BodyForm>> = parts.to_owned();
+        let mut visited = VisitedMarker::again(body.loc(), visited_)?;
 
         if call_name == "@".as_bytes() {
             // Synthesize the environment for this function
@@ -698,7 +799,7 @@ impl<'info> Evaluator {
                         let i = arguments_to_convert.len() - i_reverse - 1;
                         let shrunk = self.shrink_bodyform_visited(
                             allocator,
-                            visited,
+                            &mut visited,
                             prog_args.clone(),
                             env,
                             arguments_to_convert[i].clone(),
@@ -731,9 +832,25 @@ impl<'info> Evaluator {
                                 }
                             }
                         }
+                    } else if let Some(applied_lambda) = self.is_lambda_apply(
+                        allocator,
+                        &mut visited,
+                        prog_args.clone(),
+                        env,
+                        &target_vec,
+                        only_inline
+                    )? {
+                        self.do_lambda_apply(
+                            allocator,
+                            &mut visited,
+                            prog_args.clone(),
+                            env,
+                            &applied_lambda,
+                            only_inline
+                        )
                     } else {
                         let reformed = BodyForm::Call(l.clone(), target_vec.clone());
-                        self.chase_apply(allocator, visited, Rc::new(reformed))
+                        self.chase_apply(allocator, &mut visited, Rc::new(reformed))
                     }
                 })
                 .unwrap_or_else(|| {
@@ -942,6 +1059,32 @@ impl<'info> Evaluator {
         }
     }
 
+    fn enrich_lambda_site_info(
+        &self,
+        allocator: &mut Allocator,
+        visited: &'info mut VisitedMarker<'_, VisitedInfo>,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        ldata: &LambdaData,
+        only_inline: bool
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        // Rewrite the captures based on what we know at the call site.
+        let new_captures = self.shrink_bodyform_visited(
+            allocator,
+            visited,
+            prog_args,
+            env,
+            ldata.captures.clone(),
+            only_inline
+        )?;
+
+        // This is the first part of eta-conversion.
+        Ok(Rc::new(BodyForm::Lambda(LambdaData {
+            captures: new_captures,
+            .. ldata.clone()
+        })))
+    }
+
     // A frontend language evaluator and minifier
     pub fn shrink_bodyform_visited(
         &self,
@@ -1107,6 +1250,16 @@ impl<'info> Evaluator {
                     &mut HashMap::new(),
                 )?;
                 Ok(Rc::new(BodyForm::Quoted(code)))
+            }
+            BodyForm::Lambda(ldata) => {
+                self.enrich_lambda_site_info(
+                    allocator,
+                    &mut visited,
+                    prog_args,
+                    env,
+                    ldata,
+                    only_inline
+                )
             }
         }
     }

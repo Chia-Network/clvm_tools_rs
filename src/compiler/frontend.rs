@@ -75,6 +75,11 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
             result.append(&mut body_uses);
             result
         }
+        BodyForm::Lambda(ldata) => {
+            let mut capture_names = collect_used_names_bodyform(ldata.captures.borrow());
+            capture_names.append(&mut collect_used_names_bodyform(ldata.body.borrow()));
+            capture_names
+        }
     }
 }
 
@@ -283,7 +288,7 @@ pub fn compile_bodyform(
 
             match op.borrow() {
                 SExp::Atom(l, atom_name) => {
-                    if *atom_name == "q".as_bytes().to_vec()
+                    if *atom_name == b"q"
                         || (atom_name.len() == 1 && atom_name[0] == 1)
                     {
                         let tail_copy: &SExp = tail.borrow();
@@ -292,14 +297,14 @@ pub fn compile_bodyform(
 
                     match tail.proper_list() {
                         Some(v) => {
-                            if *atom_name == "let".as_bytes().to_vec()
-                                || *atom_name == "let*".as_bytes().to_vec()
+                            if *atom_name == b"let"
+                                || *atom_name == b"let*"
                             {
                                 if v.len() != 2 {
                                     return finish_err("let");
                                 }
 
-                                let kind = if *atom_name == "let".as_bytes().to_vec() {
+                                let kind = if *atom_name == b"let" {
                                     LetFormKind::Parallel
                                 } else {
                                     LetFormKind::Sequential
@@ -320,7 +325,7 @@ pub fn compile_bodyform(
                                         body: Rc::new(compiled_body),
                                     },
                                 ))
-                            } else if *atom_name == "quote".as_bytes().to_vec() {
+                            } else if *atom_name == b"quote" {
                                 if v.len() != 1 {
                                     return finish_err("quote");
                                 }
@@ -328,7 +333,7 @@ pub fn compile_bodyform(
                                 let quote_body = v[0].clone();
 
                                 Ok(BodyForm::Quoted(quote_body))
-                            } else if *atom_name == "qq".as_bytes().to_vec() {
+                            } else if *atom_name == b"qq" {
                                 if v.len() != 1 {
                                     return finish_err("qq");
                                 }
@@ -336,14 +341,14 @@ pub fn compile_bodyform(
                                 let quote_body = v[0].clone();
 
                                 qq_to_expression(opts, Rc::new(quote_body))
-                            } else if *atom_name == "mod".as_bytes().to_vec() {
+                            } else if *atom_name == b"mod" {
                                 let subparse = frontend(opts, &[body.clone()])?;
                                 Ok(BodyForm::Mod(op.loc(), false, subparse))
-                            } else if *atom_name == "mod+".as_bytes().to_vec() {
+                            } else if *atom_name == b"mod+" {
                                 let subparse = frontend(opts, &[body.clone()])?;
                                 Ok(BodyForm::Mod(op.loc(), true, subparse))
-                            } else if *atom_name == "lambda".as_bytes().to_vec() {
-                                handle_lambda(opts, &v)
+                            } else if *atom_name == b"lambda" {
+                                handle_lambda(opts, Some(l.clone()), v[0].loc(), &v)
                             } else {
                                 application()
                             }
@@ -771,7 +776,6 @@ pub fn frontend(
     };
 
     let our_mod = rename_children_compileform(&compiled?);
-
     let expr_names: HashSet<Vec<u8>> = collect_used_names_bodyform(our_mod.exp.borrow())
         .iter()
         .map(|x| x.to_vec())

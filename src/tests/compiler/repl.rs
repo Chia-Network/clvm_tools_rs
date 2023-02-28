@@ -228,13 +228,29 @@ fn test_eval_less_than_forever_recursive() {
     assert_eq!(
         test_repl_outcome_with_stack_limit(
             vec![
-        "(defun tricky (N) (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ N 1)))))))))))))))))",
-        "(tricky 3)"
-    ],
+                "(defun tricky (N) (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ N 1)))))))))))))))))",
+                "(tricky 3)"
+            ],
             Some(50)
         )
-        .unwrap()
-        .unwrap(),
+            .unwrap()
+            .unwrap(),
         "(q . 4)"
+    );
+}
+
+#[test]
+fn test_lambda_eval_5() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defun GetFun (L) (lambda ((& L) X) (+ X L)))",
+                "(a (GetFun 10) (list 3))"
+            ],
+            None
+        )
+            .unwrap()
+            .unwrap(),
+        "(q . 13)"
     );
 }

@@ -118,3 +118,35 @@ fn test_simple_fe_opt_compile_1() {
         "(2 (1 1 . 99) (4 (1) 1))".to_string()
     );
 }
+
+#[test]
+fn test_lambda_eval_1() {
+    assert_eq!(
+        shrink_expr_from_string("(lambda (X) (+ X 1))".to_string()).unwrap(),
+        "(lambda (X) (+ X 1))".to_string()
+    );
+}
+
+#[test]
+fn test_lambda_eval_2() {
+    assert_eq!(
+        shrink_expr_from_string("(a (lambda (X) (+ X 1)) (list 3))".to_string()).unwrap(),
+        "(q . 4)".to_string()
+    );
+}
+
+#[test]
+fn test_lambda_eval_3() {
+    assert_eq!(
+        shrink_expr_from_string("(let ((L 10)) (a (lambda ((& L) X) (+ X L)) (list 3)))".to_string()).unwrap(),
+        "(q . 13)".to_string()
+    );
+}
+
+#[test]
+fn test_lambda_eval_4() {
+    assert_eq!(
+        shrink_expr_from_string("(a (let ((L 10)) (lambda ((& L) X) (+ X L))) (list 3))".to_string()).unwrap(),
+        "(q . 13)".to_string()
+    );
+}

@@ -22,7 +22,7 @@ use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::compile_bodyform;
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
-use crate::compiler::lambda::compose_constant_function_env;
+use crate::compiler::lambda::{compose_constant_function_env, lambda_codegen};
 use crate::compiler::optimize::optimize_expr;
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
@@ -585,7 +585,7 @@ pub fn generate_expr_code(
                 allocator,
                 runner,
                 opts_with_env,
-                program,
+                &program,
                 &mut HashMap::new(),
             )?;
             Ok(CompiledCode(
@@ -609,6 +609,19 @@ pub fn generate_expr_code(
                     Rc::new(code),
                 )),
             ))
+        }
+        BodyForm::Lambda(ldata) => {
+            let desugared_lambda_callsite = lambda_codegen(
+                opts.clone(), &ldata
+            )?;
+            let result = generate_expr_code(
+                allocator,
+                runner,
+                opts,
+                compiler,
+                Rc::new(desugared_lambda_callsite)
+            )?;
+            Ok(result)
         }
         _ => Err(CompileErr(
             expr.loc(),

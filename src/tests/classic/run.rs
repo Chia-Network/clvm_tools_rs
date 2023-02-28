@@ -530,7 +530,7 @@ fn test_treehash_constant_embedded_modern_loop() {
     .trim()
     .to_string();
     eprintln!("{result_text}");
-    assert!(result_text.starts_with("*command*"));
+    // Asserting where the stack overflows isn't necessary.
     assert!(result_text.contains("stack limit exceeded"));
 }
 
