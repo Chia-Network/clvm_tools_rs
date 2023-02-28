@@ -617,7 +617,7 @@ pub fn generate_expr_code(
                 runner,
                 opts,
                 compiler,
-                Rc::new(desugared_lambda_callsite)
+                Rc::new(desugared_lambda_callsite),
             )?;
             Ok(result)
         }

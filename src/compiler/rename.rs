@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::compiler::comptypes::{
-    Binding, BodyForm, CompileForm, DefconstData, DefmacData, DefunData, HelperForm, LambdaData, LetData, LetFormKind
+    Binding, BodyForm, CompileForm, DefconstData, DefmacData, DefunData, HelperForm, LambdaData,
+    LetData, LetFormKind,
 };
 use crate::compiler::gensym::gensym;
 use crate::compiler::sexp::SExp;
@@ -119,11 +120,15 @@ pub fn lambda_body_rename(namemap: &HashMap<Vec<u8>, Vec<u8>>, lambda_body: &Bod
     if let BodyForm::Mod(l, true, compiled) = lambda_body {
         let new_args = rename_in_cons(namemap, compiled.args.clone());
         let new_body = rename_in_bodyform(namemap, compiled.exp.clone());
-        BodyForm::Mod(l.clone(), true, CompileForm {
-            args: new_args,
-            exp: Rc::new(new_body),
-            .. compiled.clone()
-        })
+        BodyForm::Mod(
+            l.clone(),
+            true,
+            CompileForm {
+                args: new_args,
+                exp: Rc::new(new_body),
+                ..compiled.clone()
+            },
+        )
     } else {
         lambda_body.clone()
     }
@@ -182,20 +187,15 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
 
         BodyForm::Mod(l, left_env, prog) => BodyForm::Mod(l.clone(), *left_env, prog.clone()),
         BodyForm::Lambda(ldata) => {
-            let renamed_capture_inputs = Rc::new(rename_in_bodyform(
-                namemap, ldata.captures.clone()
-            ));
-            let renamed_capture_outputs = rename_in_cons(
-                namemap, ldata.capture_args.clone()
-            );
-            let renamed_body = lambda_body_rename(
-                namemap, ldata.body.borrow()
-            );
+            let renamed_capture_inputs =
+                Rc::new(rename_in_bodyform(namemap, ldata.captures.clone()));
+            let renamed_capture_outputs = rename_in_cons(namemap, ldata.capture_args.clone());
+            let renamed_body = lambda_body_rename(namemap, ldata.body.borrow());
             BodyForm::Lambda(LambdaData {
                 captures: renamed_capture_inputs,
                 capture_args: renamed_capture_outputs,
                 body: Rc::new(renamed_body),
-                .. ldata.clone()
+                ..ldata.clone()
             })
         }
     }
@@ -285,7 +285,7 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
             BodyForm::Call(l.clone(), new_vs)
         }
         BodyForm::Mod(l, left_env, program) => BodyForm::Mod(l.clone(), *left_env, program.clone()),
-        BodyForm::Lambda(ldata) => BodyForm::Lambda(ldata.clone())
+        BodyForm::Lambda(ldata) => BodyForm::Lambda(ldata.clone()),
     }
 }
 
@@ -362,10 +362,7 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
             }
             let local_renamed_arg = rename_in_cons(&local_namemap, defun.args.clone());
             let local_renamed_body = rename_args_bodyform(defun.body.borrow());
-            let renamed_bodyform = rename_in_bodyform(
-                &local_namemap,
-                Rc::new(local_renamed_body),
-            );
+            let renamed_bodyform = rename_in_bodyform(&local_namemap, Rc::new(local_renamed_body));
             HelperForm::Defun(
                 *inline,
                 DefunData {

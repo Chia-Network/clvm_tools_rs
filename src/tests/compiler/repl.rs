@@ -249,8 +249,8 @@ fn test_lambda_eval_5() {
             ],
             None
         )
-            .unwrap()
-            .unwrap(),
+        .unwrap()
+        .unwrap(),
         "(q . 13)"
     );
 }

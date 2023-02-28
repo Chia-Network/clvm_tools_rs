@@ -138,7 +138,10 @@ fn test_lambda_eval_2() {
 #[test]
 fn test_lambda_eval_3() {
     assert_eq!(
-        shrink_expr_from_string("(let ((L 10)) (a (lambda ((& L) X) (+ X L)) (list 3)))".to_string()).unwrap(),
+        shrink_expr_from_string(
+            "(let ((L 10)) (a (lambda ((& L) X) (+ X L)) (list 3)))".to_string()
+        )
+        .unwrap(),
         "(q . 13)".to_string()
     );
 }
@@ -146,7 +149,10 @@ fn test_lambda_eval_3() {
 #[test]
 fn test_lambda_eval_4() {
     assert_eq!(
-        shrink_expr_from_string("(a (let ((L 10)) (lambda ((& L) X) (+ X L))) (list 3))".to_string()).unwrap(),
+        shrink_expr_from_string(
+            "(a (let ((L 10)) (lambda ((& L) X) (+ X L))) (list 3))".to_string()
+        )
+        .unwrap(),
         "(q . 13)".to_string()
     );
 }

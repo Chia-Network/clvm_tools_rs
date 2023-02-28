@@ -11,7 +11,8 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::codegen::{generate_expr_code, get_call_name, get_callable};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
-    BodyForm, Callable, CompileErr, CompiledCode, CompilerOpts, InlineFunction, LambdaData, PrimaryCodegen,
+    BodyForm, Callable, CompileErr, CompiledCode, CompilerOpts, InlineFunction, LambdaData,
+    PrimaryCodegen,
 };
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -256,11 +257,11 @@ fn replace_inline_body(
                 inline,
                 args,
                 callsite,
-                ldata.captures.clone()
+                ldata.captures.clone(),
             )?;
             Ok(Rc::new(BodyForm::Lambda(LambdaData {
                 captures: rewritten_captures,
-                .. ldata.clone()
+                ..ldata.clone()
             })))
         }
         _ => Ok(expr.clone()),

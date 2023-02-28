@@ -288,18 +288,14 @@ pub fn compile_bodyform(
 
             match op.borrow() {
                 SExp::Atom(l, atom_name) => {
-                    if *atom_name == b"q"
-                        || (atom_name.len() == 1 && atom_name[0] == 1)
-                    {
+                    if *atom_name == b"q" || (atom_name.len() == 1 && atom_name[0] == 1) {
                         let tail_copy: &SExp = tail.borrow();
                         return Ok(BodyForm::Quoted(tail_copy.clone()));
                     }
 
                     match tail.proper_list() {
                         Some(v) => {
-                            if *atom_name == b"let"
-                                || *atom_name == b"let*"
-                            {
+                            if *atom_name == b"let" || *atom_name == b"let*" {
                                 if v.len() != 2 {
                                     return finish_err("let");
                                 }

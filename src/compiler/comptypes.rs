@@ -429,39 +429,33 @@ impl HelperForm {
 fn compose_lambda_serialized_form(ldata: &LambdaData) -> Rc<SExp> {
     let lambda_kw = Rc::new(SExp::Atom(ldata.loc.clone(), b"lambda".to_vec()));
     let amp_kw = Rc::new(SExp::Atom(ldata.loc.clone(), b"&".to_vec()));
-    let arguments =
-        if truthy(ldata.capture_args.clone()) {
+    let arguments = if truthy(ldata.capture_args.clone()) {
+        Rc::new(SExp::Cons(
+            ldata.loc.clone(),
             Rc::new(SExp::Cons(
                 ldata.loc.clone(),
-                Rc::new(SExp::Cons(
-                    ldata.loc.clone(),
-                    amp_kw,
-                    ldata.capture_args.clone()
-                )),
-                ldata.args.clone()
-            ))
-        } else {
-            ldata.args.clone()
-        };
-    let rest_of_body =
-        if let SExp::Cons(_, _, after_kw) = ldata.body.to_sexp().borrow() {
-            if let SExp::Cons(_, _, after_args) = after_kw.borrow() {
-                after_args.clone()
-            } else {
-                Rc::new(SExp::Nil(ldata.loc.clone()))
-            }
+                amp_kw,
+                ldata.capture_args.clone(),
+            )),
+            ldata.args.clone(),
+        ))
+    } else {
+        ldata.args.clone()
+    };
+    let rest_of_body = if let SExp::Cons(_, _, after_kw) = ldata.body.to_sexp().borrow() {
+        if let SExp::Cons(_, _, after_args) = after_kw.borrow() {
+            after_args.clone()
         } else {
             Rc::new(SExp::Nil(ldata.loc.clone()))
-        };
+        }
+    } else {
+        Rc::new(SExp::Nil(ldata.loc.clone()))
+    };
 
     Rc::new(SExp::Cons(
         ldata.loc.clone(),
         lambda_kw,
-        Rc::new(SExp::Cons(
-            ldata.loc.clone(),
-            arguments,
-            rest_of_body
-        ))
+        Rc::new(SExp::Cons(ldata.loc.clone(), arguments, rest_of_body)),
     ))
 }
 
@@ -522,9 +516,7 @@ impl BodyForm {
                 },
                 program.to_sexp(),
             )),
-            BodyForm::Lambda(ldata) => {
-                compose_lambda_serialized_form(ldata)
-            }
+            BodyForm::Lambda(ldata) => compose_lambda_serialized_form(ldata),
         }
     }
 }
