@@ -7,6 +7,11 @@ use crate::classic::clvm::__type_compatibility__::{sha256, Bytes, BytesFromType}
 use crate::compiler::sexp::SExp;
 use crate::util::u8_from_number;
 
+/// Given an SExp and a transformation, make a map of the transformed subtrees of
+/// the given SExp in code that's indexed by treehash.  This will merge equivalent
+/// subtrees but the uses to which it's put will generally work well enough.
+///
+/// Given how it's used downstream, there'd be no way to disambiguate anyhow.
 pub fn build_table_mut<X>(
     code_map: &mut HashMap<String, X>,
     tx: &dyn Fn(&SExp) -> X,
@@ -71,6 +76,33 @@ fn relabel_inner_(
         })
 }
 
+/// Given a map generated from preexisting code, replace value identical subtrees
+/// with their rich valued equivalents.
+///
+/// Consider code that has run through a macro:
+///
+/// (defmacro M (VAR) VAR)
+///
+/// vs
+///
+/// (defmacro M (VAR) (q . 87))
+///
+/// The raw result of either the integer 87, which doesn't give much clue as
+/// to what's intended.  In one case, it *might* be true that VAR was untransformed
+/// and the user intends the compiler to check whether downstream uses of W are
+/// bound, in the second case, it's clear that won't be intended.
+///
+/// In classic chialisp, unclaimed identifiers are always treated as constant
+/// numbers, but when we're being asked to make things strict, deciding which
+/// to do makes things difficult.  Existing macro code assumes it can use unbound
+/// words to name functions in the parent frame, among other things and they'll
+/// be passed through as atom constants if not bound.
+///
+/// Relabel here takes a map made from the input of the macro invocation and
+/// substitutes any equivalent subtree from before the application, which will
+/// retain the form the user gave it.  This is fragile but works for now.
+///
+/// A way to do this better is planned.
 pub fn relabel(code_map: &HashMap<String, SExp>, code: &SExp) -> SExp {
     let mut inv_swap_table = HashMap::new();
     build_swap_table_mut(&mut inv_swap_table, code);

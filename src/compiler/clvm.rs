@@ -20,10 +20,29 @@ use crate::compiler::srcloc::Srcloc;
 
 use crate::util::{number_from_u8, u8_from_number, Number};
 
+/// An object which contains the state of a running CLVM program in a compact
+/// form.
+///
+/// Being immutable, it can be preserved, examined and compared as desired.  The
+/// whole record of CLVM execution can be observed by collecting these until the
+/// program is in the Done state.
 #[derive(Clone, Debug)]
 pub enum RunStep {
+    /// The state of a program (or subprogram) that completed.
+    /// Contains a location taken from the operator that completed and the result
+    /// value.
     Done(Srcloc, Rc<SExp>),
+    /// An operator producing a result.  The operator has run and the result is
+    /// given.  The final argument is a refcounted pointer to a step that the
+    /// operator's result will be returned to if it stepped again.
     OpResult(Srcloc, Rc<SExp>, Rc<RunStep>),
+    /// An operator in flight.  The arguments are
+    /// - An operator
+    /// - The environment
+    /// - The tail of the expression if an operator, in progress.
+    /// - When present, a list of arguments remaining to evaluate, otherwise
+    ///   the expression is ready to run the operator on.
+    /// - The RunStep to which this step returns a value when complete.
     Op(
         Rc<SExp>,
         Rc<SExp>,
@@ -31,6 +50,8 @@ pub enum RunStep {
         Option<Vec<Rc<SExp>>>,
         Rc<RunStep>,
     ),
+    /// A step about to be taken.  Indicates a clvm expression and env, plus the
+    /// parent to which its value is returned.
     Step(Rc<SExp>, Rc<SExp>, Rc<RunStep>),
 }
 
@@ -169,6 +190,7 @@ fn eval_args(
     }
 }
 
+/// Given an SExp, produce a clvmr style NodePtr in the given allocator.
 pub fn convert_to_clvm_rs(
     allocator: &mut Allocator,
     head: Rc<SExp>,
@@ -202,6 +224,7 @@ pub fn convert_to_clvm_rs(
     }
 }
 
+/// Given an allocator and clvmr NodePtr, produce an SExp which is equivalent.
 pub fn convert_from_clvm_rs(
     allocator: &mut Allocator,
     loc: Srcloc,
@@ -291,6 +314,7 @@ fn atom_value(head: Rc<SExp>) -> Result<Number, RunFailure> {
     }
 }
 
+/// Tell how many parents are in the parent step chain until completion.
 pub fn get_history_len(step: Rc<RunStep>) -> usize {
     match step.borrow() {
         RunStep::Done(_, _) => 1,
@@ -300,11 +324,18 @@ pub fn get_history_len(step: Rc<RunStep>) -> usize {
     }
 }
 
+/// Generically determine whether a value is truthy.
 pub fn truthy(sexp: Rc<SExp>) -> bool {
     // Fails for cons, but cons is truthy
     atom_value(sexp).unwrap_or_else(|_| bi_one()) != bi_zero()
 }
 
+/// The second of the core run operations, combine determines how a recently
+/// completed step affects its parent to produce the next evaluation step.
+///
+/// For example, when a finished operation is combined with a parent that needs
+/// more arguments for its operator, one needed argument evaluation is removed
+/// and the step becomes closer to evaluation.
 pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
     match (a, b.borrow()) {
         (RunStep::Done(l, x), RunStep::Done(_, _)) => RunStep::Done(l.clone(), x.clone()),
@@ -333,6 +364,9 @@ pub fn flatten_signed_int(v: Number) -> Number {
     Number::from_signed_bytes_le(&sign_digits)
 }
 
+/// The main operation to step the machine.  Given a RunStep, produce a new RunStep
+/// which is one step farther toward a result.  When complete, the result is a
+/// Done value.
 pub fn run_step(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -567,6 +601,7 @@ pub fn start_step(sexp_: Rc<SExp>, context_: Rc<SExp>) -> RunStep {
     )
 }
 
+/// Use the RunStep object to evaluate some clvm to completion.
 pub fn run(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -592,6 +627,8 @@ pub fn run(
     }
 }
 
+/// A convenience function which, givne a text program, its arguments and filename,
+/// parses the clvm text and runs to completion.
 pub fn parse_and_run(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -635,7 +672,7 @@ pub fn sha256tree_from_atom(v: &[u8]) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
-// sha256tree for modern style SExp
+/// sha256tree for modern style SExp
 pub fn sha256tree(s: Rc<SExp>) -> Vec<u8> {
     match s.borrow() {
         SExp::Cons(_l, a, b) => {
