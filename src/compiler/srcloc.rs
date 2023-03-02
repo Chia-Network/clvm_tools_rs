@@ -129,6 +129,12 @@ impl Srcloc {
         }
     }
 
+    /// Returns whether the srcloc identifies an empty range (re: clippy).
+    /// Currently impossible.
+    pub fn is_empty(&self) -> bool {
+        false
+    }
+
     /// Length of the string representation for the srcloc's range if it's on
     /// the same line.  Some thought is needed to know what we want for a range
     /// over lines.
