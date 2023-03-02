@@ -1472,7 +1472,7 @@ fn test_lambda_hof_1() {
 }
 
 #[test]
-fn test_lambda_as_argument_to_prim() {
+fn test_lambda_as_argument_to_macro() {
     let prog = indoc! {"
     (mod (P)
       (defun map-f (A L)
@@ -1487,4 +1487,22 @@ fn test_lambda_as_argument_to_prim() {
     .to_string();
     let res = run_string(&prog, &"(10)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(9 11 20)");
+}
+
+#[test]
+fn test_lambda_as_argument_to_macro_with_inner_let() {
+    let prog = indoc! {"
+    (mod (P)
+      (defun map-f (A L)
+        (if L (c (a (f L) A) (map-f A (r L))) ())
+        )
+      (let ((Fs (list (lambda (X) (let ((N (* X 3))) N)) (lambda (X) (+ X 1)) (lambda (X) (* 2 X))))
+            (args (list P)))
+        (map-f args Fs)
+        )
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(10)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(30 11 20)");
 }
