@@ -12,7 +12,7 @@ pub mod compiler;
 /// - CompileForm - The type of finished (mod ) forms before code generation.
 /// - HelperForm - The type of declarations like macros, constants and functions.
 pub mod comptypes;
-/// 
+///
 pub mod debug;
 pub mod evaluate;
 pub mod frontend;

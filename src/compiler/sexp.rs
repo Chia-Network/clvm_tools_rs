@@ -37,7 +37,7 @@ pub enum SExp {
     /// content of the list, but may not depending on the construction of the
     /// list.
     Cons(Srcloc, Rc<SExp>, Rc<SExp>),
-    /// 
+    ///
     Integer(Srcloc, Number),
     QuotedString(Srcloc, u8, Vec<u8>),
     Atom(Srcloc, Vec<u8>),

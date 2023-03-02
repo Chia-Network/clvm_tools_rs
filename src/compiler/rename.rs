@@ -9,7 +9,7 @@ use crate::compiler::comptypes::{
 use crate::compiler::gensym::gensym;
 use crate::compiler::sexp::SExp;
 
-/// Rename 
+/// Rename
 fn rename_in_qq(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SExp> {
     body.proper_list()
         .and_then(|x| {
