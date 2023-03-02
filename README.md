@@ -1,6 +1,10 @@
 clvm_tools_rs
 =
 
+There is a more complete readme in ./GETTING_STARTED.md
+
+Theory of operation of the modern compiler: ./COMPILER.md
+
 This is a second-hand port of chia's [clvm tools](https://github.com/Chia-Network/clvm_tools/) to rust via the work of
 ChiaMineJP porting to typescript.  This would have been a lot harder to
 get to where it is without prior work mapping out the types of various
