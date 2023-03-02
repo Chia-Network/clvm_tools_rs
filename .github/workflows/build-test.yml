@@ -247,3 +247,38 @@ jobs:
             components: rustfmt, clippy
       - name: cargo test
         run: cargo test
+
+  cmdline_util_tests: #classic tests from https://github.com/Chia-Network/clvm_tools
+    runs-on: ubuntu-20.04
+    name: Classic compiler tests
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            components: rustfmt, clippy
+      - name: Setup python
+        uses: chia-network/actions/setup-python@main
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: x64
+      - name: Build rust libraries and binaries
+        with:
+          PYO3_PYTHON=`which python` cargo build --no-default-features --release
+      - name: Update pip
+        run: |
+          python -m pip install --upgrade pip
+      - name: Test class cmdline tools with pytest
+        run: |
+          python -m pip install pytest
+          #python -m pip install .
+          #pip install chia-rs chia-tools-rs
+          # This script installs the wheel built during this workflow.
+          python support/wheelname.py
+          #(cd resources/tests && python check-recompiles.py)
+          (cd src/tests/classic/cmdline && py.test tests)
+
+
