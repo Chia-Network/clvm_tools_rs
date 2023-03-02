@@ -1436,3 +1436,25 @@ fn test_lambda_as_let_binding() {
     let res1 = run_string(&prog, &"(1 (1 2 3))".to_string()).unwrap();
     assert_eq!(res1.to_string(), "(4 7 10)");
 }
+
+#[test]
+fn test_lambda_mixed_let_binding() {
+    let prog = indoc! {"
+    (mod (P L)
+      (defun map (F L)
+        (if L (c (a F (list (f L))) (map F (r L))) ())
+        )
+      (defun x2 (N) (* 2 N))
+      (defun x3p1 (N) (+ 1 (* 3 N)))
+      (let* ((G (lambda (N) (x3p1 N)))
+             (F (if P G (lambda (N) (x2 N)))))
+        (map F L)
+        )
+      )
+    "}
+    .to_string();
+    let res0 = run_string(&prog, &"(0 (1 2 3))".to_string()).unwrap();
+    assert_eq!(res0.to_string(), "(2 4 6)");
+    let res1 = run_string(&prog, &"(1 (1 2 3))".to_string()).unwrap();
+    assert_eq!(res1.to_string(), "(4 7 10)");
+}
