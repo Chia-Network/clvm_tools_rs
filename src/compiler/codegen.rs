@@ -612,11 +612,6 @@ pub fn generate_expr_code(
         }
         BodyForm::Lambda(ldata) => {
             let desugared_lambda_callsite = lambda_codegen(ldata)?;
-            eprintln!("lambda callsite {}", desugared_lambda_callsite.to_sexp());
-            eprintln!("helpers here:");
-            for h in compiler.orig_help.iter() {
-                eprintln!("- {}", decode_string(h.name()));
-            }
             let result = generate_expr_code(
                 allocator,
                 runner,
