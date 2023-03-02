@@ -62,15 +62,6 @@ fn find_and_compose_captures(
     Ok(found)
 }
 
-fn make_call(loc: Srcloc, head: &str, args: &[BodyForm]) -> BodyForm {
-    let mut use_vec: Vec<Rc<BodyForm>> = args.iter().cloned().map(Rc::new).collect();
-    use_vec.insert(
-        0,
-        Rc::new(BodyForm::Value(SExp::atom_from_string(loc.clone(), head))),
-    );
-    BodyForm::Call(loc, use_vec)
-}
-
 fn make_operator(loc: Srcloc, op: u8, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) -> BodyForm {
     BodyForm::Call(
         loc.clone(),
@@ -84,6 +75,18 @@ fn make_operator(loc: Srcloc, op: u8, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) ->
 
 fn make_cons(loc: Srcloc, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) -> BodyForm {
     make_operator(loc, 4, arg1, arg2)
+}
+
+fn make_list(loc: Srcloc, args: &[BodyForm]) -> BodyForm {
+    let mut res = BodyForm::Quoted(SExp::Nil(loc.clone()));
+    let cons_atom = BodyForm::Value(SExp::Atom(loc.clone(), vec![4]));
+    for a in args.iter().rev() {
+        res = BodyForm::Call(
+            loc.clone(),
+            vec![Rc::new(cons_atom.clone()), Rc::new(a.clone()), Rc::new(res)],
+        );
+    }
+    res
 }
 
 //
@@ -129,23 +132,17 @@ pub fn lambda_codegen(ldata: &LambdaData) -> Result<BodyForm, CompileErr> {
         ldata.body.clone(),
     );
 
-    let lambda_output = make_call(
+    let lambda_output = make_list(
         ldata.loc.clone(),
-        "list",
         &[
             apply_atom,
             quoted_code,
-            make_call(
+            make_list(
                 ldata.loc.clone(),
-                "list",
                 &[
                     cons_atom.clone(),
                     make_cons(ldata.loc.clone(), Rc::new(quote_atom), retrieve_left_env),
-                    make_call(
-                        ldata.loc.clone(),
-                        "list",
-                        &[cons_atom, compose_captures, whole_env],
-                    ),
+                    make_list(ldata.loc.clone(), &[cons_atom, compose_captures, whole_env]),
                 ],
             ),
         ],
