@@ -1470,3 +1470,21 @@ fn test_lambda_hof_1() {
     let res = run_string(&prog, &"(1)".to_string()).unwrap();
     assert_eq!(res.to_string(), "4");
 }
+
+#[test]
+fn test_lambda_as_argument_to_prim() {
+    let prog = indoc! {"
+    (mod (P)
+      (defun map-f (A L)
+        (if L (c (a (f L) A) (map-f A (r L))) ())
+        )
+      (let ((Fs (list (lambda (X) (- X 1)) (lambda (X) (+ X 1)) (lambda (X) (* 2 X))))
+            (args (list P)))
+        (map-f args Fs)
+        )
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(10)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(9 11 20)");
+}
