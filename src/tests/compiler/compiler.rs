@@ -1458,3 +1458,15 @@ fn test_lambda_mixed_let_binding() {
     let res1 = run_string(&prog, &"(1 (1 2 3))".to_string()).unwrap();
     assert_eq!(res1.to_string(), "(4 7 10)");
 }
+
+#[test]
+fn test_lambda_hof_1() {
+    let prog = indoc! {"
+    (mod (P)
+      (a (a (lambda ((& P) X) (lambda ((& P X)) (+ P X))) (list 3)) ())
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(1)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "4");
+}
