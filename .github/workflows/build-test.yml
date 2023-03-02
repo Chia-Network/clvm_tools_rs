@@ -260,19 +260,19 @@ jobs:
         with:
             toolchain: stable
             components: rustfmt, clippy
-      - name: Setup python
-        uses: chia-network/actions/setup-python@main
+      - uses: actions/setup-python@v4
+        name: Install Python ${{ matrix.python }}
         with:
-          python-version: ${{ matrix.python-version }}
-          architecture: x64
-      - name: Build rust libraries and binaries
-        with:
-          python-version: ${{ matrix.python-version }}
-        run:
-          PYO3_PYTHON=`which python` cargo build --no-default-features --release
+          python-version: ${{ matrix.python }}
+
       - name: Update pip
         run: |
-          python -m pip install --upgrade pip
+            python -m pip install --upgrade pip
+      - name: Build rust libraries and binaries
+        with:
+          python-version: ${{ matrix.python }}
+        run:
+          PYO3_PYTHON=`which python` cargo build --no-default-features --release
       - name: Test class cmdline tools with pytest
         run: |
           python -m pip install pytest
