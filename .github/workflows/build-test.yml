@@ -267,6 +267,8 @@ jobs:
           architecture: x64
       - name: Build rust libraries and binaries
         with:
+          python-version: ${{ matrix.python-version }}
+        run:
           PYO3_PYTHON=`which python` cargo build --no-default-features --release
       - name: Update pip
         run: |
