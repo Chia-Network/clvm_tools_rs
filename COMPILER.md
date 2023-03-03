@@ -85,7 +85,7 @@ and atoms in the source text when those associations make sense.  It contains:
     Nil(Srcloc) -- Represents a literal Nil in the source text.
     
       It may be useful for this to be distinct from 0 and "", at the very
-      least to remember how to user spelled this particular value, but
+      least to remember how the user spelled this particular value, but
       also (for example) it's possible to type Nil as a kind of list,
       but reject "" or 0 in the same scenario.
       
