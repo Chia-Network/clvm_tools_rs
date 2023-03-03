@@ -454,17 +454,43 @@ in various ways.  The goal of the chialisp compiler and its optimization are to
 make decent choices for these and improve the degree to which they produce the
 smallest possible equivalent code over time.  Each of these can be the right choice
 under some circumstances.
+
+It is sometimes necessary to reify (make real) an environment of a given imagined
+shape even if the environment may not have that shape at the moment.  I'll give
+an example:
+
+Imagine this program:
+
+    (mod (X)
+        (defun list-length (N L) (if L (list-length (+ N 1) (r L)) N))
+        (defun-inline QQQ (A . B) (+ A (list-length 0 B)))
+        (QQQ X 4 5 6)
+        )
+        
+The inline here destructures its arguments.  The arguments aren't strictly aligned
+to the elements that are used to call it; B captures (4 5 6).  Because QQQ isn't
+really "called" with an apply atom, the shape of its environment is purely 
+theoretical and yet the program *observes* that shape at runtime.  We must, when
+required, aggregate or dis-aggregate arguments given by the user by figuring their
+positions with respect to landmarks we know.  Best case, we can apply first, rest
+or paths to values we have as arguments if arguments in standard positions are
+destructured, worst case we have to cons values together as though the environment
+was being built for an apply.
     
-2. _CLVM Heap is simiar to other eager functional languages_
+2. _CLVM Heap representation isn't dissimiar to other eager functional languages_
+
+How CLVM compares to other functional languages in structure is a topic that is
+talked about occasionally, and many of its decisions are fairly alike what's out
+there:
 
     In CLVM, there are conses and atoms.  Atoms act as numbers and
     strings and conses act as boxes of size 2.
     
     (7 8 . 9) =
       
-          (  .  )
-           /   \
-          7   (8 . 9)
+          ( 7 .  )
+               \
+              (8 . 9)
 
     
     In cadmium, there are pointers and words.  Words act as numbers
