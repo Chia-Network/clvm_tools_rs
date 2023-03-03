@@ -96,7 +96,7 @@ and atoms in the source text when those associations make sense.  It contains:
        Since the value system contains integers as a first class kind,
        it's possible to positively differentiate atoms from integers
        unless something disrupts them.  I am in the process of
-       introducing a macro system that treat's user input gently.
+       introducing a macro system that treats user input gently.
        
     QuotedString(Srcloc, u8, Vec<u8>) -- A quoted string.
     
