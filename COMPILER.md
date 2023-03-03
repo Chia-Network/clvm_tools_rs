@@ -1,5 +1,8 @@
 Compiler theory of operation
-= 
+==
+
+Code
+--
 
 The modern compiler operates on just a few exposed types, and describes any
 program using these (forming a rough hierarchy).
@@ -284,3 +287,204 @@ After all live defuns have been treated, the compiler uses final\_codegen to
 generate the code for its main expression and then finalize\_env is called to
 match each identifier stored in the left environment with a form for which it
 has generated code recorded and build the env tree.
+
+How CLVM code carries out programs
+--
+
+0. _The basics of CLVM from a compilation perspective_
+
+One can think of CLVM as a calculator with 1 tricky operator, which is called 'a'
+(apply).  The calculator's state can be thought of as a CLVM value like this:
+
+  ((+ 2 5) . (99 101))
+  
+You can imagine the CLVM machine doing this on each evaluation step:
+
+    Find the rightmost index (described well here: [https://github.com/Chia-Network/clvm_tools_rs/blob/a660ce7ce07064a6a81bb361f169f6de195cba10/src/classic/clvm_tools/node_path.rs#L1](clvm paths) ) in the left part of the state that is not in the form of a quoted value
+    (q . <something>) and:
+   
+     - if it's a number, enquote the correspondingly indexed value from
+       the right part and replace the number with that.
+       
+     - otherwise, it must be an operator applicable to some constants so
+       evaluate it.
+       
+    In this case,
+    
+      ((+ 2 3) . (99 . 101)) -> ((+ 2 (q . 101)) . (99 . 101))
+      ((+ 2 (q . 101)) . (99 . 101)) -> ((+ (q . 99) (q . 101)) . (99 101))
+      ((+ (q . 99) (q . 101)) . (99 . 101)) -> 200
+      
+    Of course, CLVM evaluators try to be more efficient than searching subtrees
+    like this but at a theoretical level that's all one needs.
+    
+    The 'a' operator is actually not very exceptional in this, but you can think
+    of its properties like this:
+    
+    1. It conceptually ignores one level of quoting from its first argument.
+    2. It returns (q . X) when its first argument matches the pattern
+       (q . (q . X)).
+    3. When traversed during the search for the next rightmost element to
+       transform, the right hand part of the machine state transforms into
+       the dequoted form of its right hand argument:
+
+            Nothing special happened yet, we just simplified a's second argument -.
+                                                                                  v
+      ((+ (q . 1) (a (q . (* (q . 3) 1)) 2)) . (10)) -> ((+ (q . 1) (a (q . (* (q . 3) 1) (q . 10)))) (10)))
+
+                                      ,--- Here we traverse a and notice that we're entering the quoted code with a's env
+                                      |                                                                  |
+                                      v                                                                  v
+      ((+ (q . 1) (a (q . [(* (q . 3) 1) . 10]) (q . 10)) . (10)) -> ((+ (q . 1) (a (q . (* (q . 3) (q . 10))) (q . 10))) . (10))
+
+            The inner expression multiplied 3 by 10 and now matches (q . (q . X)) --.
+                                                                                    v
+      ((+ (q . 1) (a (q . (* (q . 3) (q . 10))))) . (10)) -> ((+ (q . 1) (a (q . (q . 30)) . (q . 10))) . (10))
+
+        A disappears because we reached its end state of (q . (q . X)) --.
+                                                                         v
+      ((+ (q . 1) (a (q . (q . 30)) (q . 10))) . (10)) -> ((+ (q . 1) (q . 30)) . (10))
+
+                                          Done
+
+      ((+ (q . 1) (q . 30)) . (10)) -> 31
+
+Thinking conceptually like this, we can construct any program we want by computing
+a suitable environment (right side) and suitable code (left side), and letting
+CLVM evaluate them until its done.  There are pragmatic things to think about in
+how CLVM is evaluated:
+
+ - If we have a program with functions that know about each other, their code has
+   to be available to the program as quoted expressions to give to some 'a'
+   operator.
+   
+ - If we have flow control, we have to model it by using some kind of computation
+   and pass through code to an 'a' operator.
+   
+ - If we want to remember anything, we have to make an environment that contains it
+   and then use it in some other code via an 'a' operator.
+   
+If one thinks of everything in these terms, then it isn't too difficult to generate
+code from chialisp.
+
+1. _The basic units of CLVM execution are env lookup and function application_
+
+Because there is no memory other than the environment in CLVM, a basic building
+block of CLVM code is an environment lookup.  If you consider the arguments to
+a function to be some kind of mirror of the program's current environment:
+
+    (defun F (X Y Z) (+ X Y Z))
+    
+    brun '(+ 2 5 11)' '(10 11 12)' -> 33
+    
+Then you can see that there's nothing keeping references to the function's
+argument list from just becoming references.
+
+You can do the same thing with functions in the environment:
+
+    brun '(+ (a 2 (c 5 ())) (q . 3))' '((* (q . 2) 2) 9)' -> 21
+    
+But we don't want to make the user send in another copy of the program when
+running the program, and even more, if it needs that function more than once,
+we'll have to explicitly carry it around.
+
+Richard's answer and the generallly accepted one is to let the environment usually
+be a cons whose first part is the full set of constants and functions the program
+can use and the rest part is the arguments to the current function.  Optimization
+may in the future make this more complicated but thinking about it in this way
+makes a lot of things pretty easy to reason about.
+
+The program starts by putting its arguments with all its functions and applying
+the main expression:
+
+    (a main-expression (c (env ...) 1))
+
+The main-expression expects the functions it has access to to be in the left
+part of the environment:
+
+                              .-- Reference to the left env.
+                              |    .-- An argument
+                              v    v
+    (a (a some-even-number (c 2 (c 5 ()))) (c (env ...) 1))
+
+And those functions expect the same thing, so if they generate code in the same
+way, for example, in this program, the function could call itself recursively:
+
+    (a (i 5 (q . (a some-even-number (c 2 (c (r 5) ())))) ()) 1)
+    
+some-even-number refers to the same subpart of the environment because we've
+promised ourselves that the part of the environment containing ourselves is at
+the same place in the environment 
+
+Because the 'a' operator shares a lot of properties with a function call in a
+purely functional language, chialisp compilers tend to rely heavily on "desugaring"
+various language features into function calls so that they can use the code
+generation tools they already have (hopefully) that implements functions.
+
+This isn't uncommon in language compilers, but converting things to functions is
+a higher percentage of what chialisp has to do.
+
+The second thing chialisp compilers have to do is synthesize ("reify") the
+environment to fit the shape that code it's calling is expected.  Consider this:
+
+   (let ((X (+ Y 1))) (* X 2))
+   
+In chialisp, there are only a few choices you can make:
+
+- Replace X with (+ Y 1) everywhere it appears in the body and return that.
+
+    (* (+ Y 1) 2)
+  
+- Make some anonymous function for the binding like 
+   
+    (defun let_binding_11234 (Y) (+ Y 1))
+    
+  and replace every X with (let_binding_11234 Y)
+   
+- Make a function for the let body like:
+
+    (defun let_body_11234 (Y and_X?) (* and_X? 2))
+    
+  And replace the original site with:
+  
+    (let_body_11234 Y (+ Y 1))
+    
+This takes on complication, but isn't really any worse, if let bindings can nest
+in various ways.  The goal of the chialisp compiler and its optimization are to
+make decent choices for these and improve the degree to which they produce the
+smallest possible equivalent code over time.  Each of these can be the right choice
+under some circumstances.
+    
+2. _CLVM Heap is simiar to other eager functional languages_
+
+    In CLVM, there are conses and atoms.  Atoms act as numbers and
+    strings and conses act as boxes of size 2.
+    
+    (7 8 . 9) =
+      
+          (  .  )
+           /   \
+          7   (8 . 9)
+
+    
+    In cadmium, there are pointers and words.  Words act as numbers
+    and pointers act as boxes of a size determined by their tag word.
+        
+    (7,(8,9)) =
+    
+      [size:2,7,*0x331110] 
+                      \
+                  [size:2,8,9]
+
+    $ ocaml
+    # let x = (7,(8,9));;
+    val x : int * (int * int) = (7, (8, 9))
+    # let a = Obj.repr x;;
+    val a : Obj.t = <abstr>
+    # Obj.size a;;
+    - : int = 2
+    # let b = Obj.field a 1;;
+    val b : Obj.t = <abstr>
+    # Obj.size b;;
+    - : int = 2
+
