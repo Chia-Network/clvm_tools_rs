@@ -115,7 +115,7 @@ although it does that for constant folding and a few other things.
 
 Compilation can be done in a few ways.  There is a 
 
-  CompilerOpts (src/compiler/compoiler.rs)
+  CompilerOpts (src/compiler/compiler.rs)
   
 Type which serves as connection between the consumer's settings for the compiler
 and the compilation process.  Its method compile\_file takes a few objects it will
