@@ -20,7 +20,7 @@ Which spans the kinds of declarations that chialisp can contain.  Having a well
 defined frontend type serves as a proof of sorts (in the vein of the curry-howard
 corresponence) that the code has been fully read and understood.  In the frontend
 form, we can perform transformations on the code without worrying about breaking
-its more primitive representation.  Since we've extract the code's meaning we 
+its more primitive representation.  Since we've extracted the code's meaning we 
 can more easily substitute runtime compatible forms of the code from the
 perspective of the code's meaning.
 
