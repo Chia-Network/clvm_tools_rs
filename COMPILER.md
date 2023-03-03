@@ -718,15 +718,17 @@ In chialisp, there are only a few choices you can make:
   
     (let_body_11234 Y (+ Y 1))
     
+In each of these cases but the pure inline one, extra new arguments were fitted
+into the argument list of some function and the function was called.  In this way,
+we dreamed up an environment shape and then had to match it to call the function.
+
 This takes on complication, but isn't really any worse, if let bindings can nest
 in various ways.  The goal of the chialisp compiler and its optimization are to
 make decent choices for these and improve the degree to which they produce the
 smallest possible equivalent code over time.  Each of these can be the right choice
 under some circumstances.
 
-It is sometimes necessary to reify (make real) an environment of a given imagined
-shape even if the environment may not have that shape at the moment.  I'll give
-an example:
+Along other lines, this example:
 
 Imagine this program:
 
