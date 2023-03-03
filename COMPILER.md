@@ -119,7 +119,7 @@ Compilation can be done in a few ways.  There is a
   
 Type which serves as connection between the consumer's settings for the compiler
 and the compilation process.  Its method compile\_file takes a few objects it will
-need in case it must run clvm code (an Allocator (clvmr) and a runner 
+need in case it must run clvm code: an Allocator (clvmr) and a runner 
 (TRunProgram from src/classic/stages/stage_0.rs).
 
 It's used this way in 'run':
