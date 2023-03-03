@@ -448,6 +448,12 @@ You can break down the basics of how chialisp compilation functions like this:
         // generated_code.1 is an Rc<SExp> which contains the output
         // code.
 
+PrimaryCodegen is the object where the code generation stores and updates
+information it needs and what gets collected during code generation.  It's defined
+in src/compiler/comptypes.rs (line 281 at present).  Many of the functions in
+src/compiler/codegen.rs take a PrimaryCodegen and most of those return a
+PrimaryCodegen.  During this process, the compilation state is updated by each.
+
 Everything before code generation is uninteresting, but I'll note at a high level
 how functions on PrimaryCodegen function.
 
