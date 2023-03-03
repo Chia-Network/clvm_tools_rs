@@ -23,7 +23,7 @@ Which spans the kinds of declarations that chialisp can contain.  Having a well
 defined frontend type serves as a proof of sorts (in the vein of the curry-howard
 corresponence) that the code has been fully read and understood.  In the frontend
 form, we can perform transformations on the code without worrying about breaking
-its more primitive representation.  Since we've extract the code's meaning we 
+its more primitive representation.  Since we've extracted the code's meaning we 
 can more easily substitute runtime compatible forms of the code from the
 perspective of the code's meaning.
 
@@ -88,7 +88,7 @@ and atoms in the source text when those associations make sense.  It contains:
     Nil(Srcloc) -- Represents a literal Nil in the source text.
     
       It may be useful for this to be distinct from 0 and "", at the very
-      least to remember how to user spelled this particular value, but
+      least to remember how the user spelled this particular value, but
       also (for example) it's possible to type Nil as a kind of list,
       but reject "" or 0 in the same scenario.
       
@@ -99,7 +99,7 @@ and atoms in the source text when those associations make sense.  It contains:
        Since the value system contains integers as a first class kind,
        it's possible to positively differentiate atoms from integers
        unless something disrupts them.  I am in the process of
-       introducing a macro system that treat's user input gently.
+       introducing a macro system that treats user input gently.
        
     QuotedString(Srcloc, u8, Vec<u8>) -- A quoted string.
     
@@ -111,18 +111,18 @@ and atoms in the source text when those associations make sense.  It contains:
     Atom(Srcloc,Vec<u8>) -- An atom or identifier.
 
 Its job is to process programs so it doesn't implement compilation the same way
-(by running a program that emits a mod form), but instead is purpose built to
+(by running a program that emits a mod form), but instead is purpose-built to
 read and process a program.  As such it doesn't rely on populating a clvm
 environment with special operators or on running anything necessarily in the VM,
 although it does that for constant folding and a few other things.
 
 Compilation can be done in a few ways.  There is a 
 
-  CompilerOpts (src/compiler/compoiler.rs)
+  CompilerOpts (src/compiler/compiler.rs)
   
 Type which serves as connection between the consumer's settings for the compiler
 and the compilation process.  Its method compile\_file takes a few objects it will
-need in case it must run clvm code (an Allocator (clvmr) and a runner 
+need in case it must run clvm code: an Allocator (clvmr) and a runner 
 (TRunProgram from src/classic/stages/stage_0.rs).
 
 It's used this way in 'run':
