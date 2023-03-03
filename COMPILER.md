@@ -108,7 +108,7 @@ and atoms in the source text when those associations make sense.  It contains:
     Atom(Srcloc,Vec<u8>) -- An atom or identifier.
 
 Its job is to process programs so it doesn't implement compilation the same way
-(by running a program that emits a mod form), but instead is purpose built to
+(by running a program that emits a mod form), but instead is purpose-built to
 read and process a program.  As such it doesn't rely on populating a clvm
 environment with special operators or on running anything necessarily in the VM,
 although it does that for constant folding and a few other things.
