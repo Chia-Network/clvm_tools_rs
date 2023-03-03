@@ -1,6 +1,276 @@
 Compiler theory of operation
 ==
 
+Basic structure and where to look for specific things
+--
+
+_About compilers in general_
+
+What's been suggested is an overview of code compilation overall, which includes
+a good number of elements that are common or where there are a limited number of
+useful choices.
+
+Most code production in compilers starts with a user editing one or more source
+files in a text editor.  These text files are usually stored in files on disk
+in a place accessible to the program or programs that perform compilation, which
+really just means reading the source text in some way and writing out code in
+another language in some way, although most of the time the terms 'translation'
+or 'transpilation' are used for when the other target is also a language people
+consider to be high enough level that it's considered productive to write directly
+by humans.  'Compilation' is normally used when the target is a language that
+is complex and less accessible.  There are definitely overlaps, as a good number
+of people write assembler for smaller CPUs more or less as a high level language
+and a good many compilers treat javascript purely as a VM for executing code on.
+In the case of chialisp, 'chialisp' can be thought of a mid-level language in the
+vein of C++ and the target is CLVM, the virtual machine that chia nodes use to
+evaluate puzzles.  CLVM is quite unergonomic to write by hand given the lack
+of the ability to name things and the need to compute numeric paths through
+CLVM values (more about this later) to do useful work.
+
+So there's really only a few choices a compiler can make in structural terms:
+
+- Read all inputs, write output (golang)
+- Read input a bit at a time and possibly produce output a bit at a time (C)
+
+All chialisp compilers I'm aware of read the whole input first.  Like C, chialisp
+has a textural include file mechanism which allows the programmer to name a file
+to include from a set of specified include paths.  The name given is expected to
+be a literal fragment of a filename (as in C).  When each include file is found,
+a single form is read from it, and that is expected to take the form of a list
+of chialisp toplevel declarations and those are treated as though they appear
+in the current program.  Chialisp forms are allowed to appear in any order in
+the source files they appear in.
+
+Structurally, compilers tend to work in passes, even if on only part of the input.
+In C, where the main abstraction is "functions" in the C sense, each function is
+treated conceptually separately and code is generated for it.  In chialisp, the
+situation is similar; each toplevel function is value that must exist as a quoted
+CLVM value in the program's invariant environment (the word "invariant" is used
+here because CLVM code generation generally encodes paths into this information
+into multiple parts of the code and because of this the representation of this
+information is consistent throughout the program's run).
+
+The classic chialisp compiler does not actually work in usefully separable passes.
+It produces a CLVM expression including a request to run a special primitive (where
+"primitive" here means an operator installed in the CLVM run time system which is
+implemented in "foreign" (non-CLVM) code) whose function is to produce one step of
+chialisp compilation and wraps this in a CLVM primitive whose purpose is to perform
+optimization and constant folding.  These are installed in stage_2 (more on this
+later).  In classic chialisp, compilation is actually performed by constant
+folding, as that is what causes a CLVM primitive ("com" here) to be evaluated to
+a value when the argument is constant ("constant folding" refers to the compile
+time process of taking expression involving constants and computing their results).
+Because of this arrangement, there is only one "pass" (where "pass" refers to a
+traversal of the complete program in some representation to transform it into
+another representation, even when both are internal to the compilation process),
+because the only time when a guarantee is given that the entire S-expression
+("s-expression" refers to the kinds of values held in lisp and lisp-like languages)
+held during compilation in the classic compiler is expected to be completely 
+transformed into CLVM.
+
+The modern compiler does have distinct phases of compilation.
+
+- The first file is completely parsed, and all include files are also parsed and
+  incorporated before any "frontend" work is done (a compiler "frontend" usually
+  refers to the part of compilation that sits directly after the user's source code
+  is parsed.  Usually, for ergonomic reasons, there are parts of the language the
+  user writes that don't translate directly to data structures used to generate
+  code, therefore "frontend" processing translate the user's text into some more
+  convenient representation for further processing).  Preprocessing in the new
+  compiler takes place in src/compiler/preprocess.rs, function preprocess.  This
+  is performed currently at the beginning of the compiler "frontend" but it can
+  (and probably should) be broken out into a pipeline at the same level as the
+  frontend eventually.  You can find the entry into the compiler frontend in
+  src/compiler/frontend.rs, function frontend.  It calls preprocess at line
+  718 (currently) in frontend_start.
+  
+- The compiler frontend produces a kind of "intermediate representation" (where
+  "intermediate representation" refers to a data structure built during compilation
+  that is not intended to be used apart from that compiler and that contains some
+  essential or extract meaning from the source program that relates to some aspect
+  of the program's meaning, code generation or some other process the compiler
+  must perform for some reason).  The main one used by the modern compiler is
+  a CompileForm, which contains a complete representation of the input program
+  expressed in a set of HelperForm objects and a BodyForm object.  CompileForm is
+  declared at line 255 (currently) of src/compiler/comptypes.rs.  Its purpose to
+  to provide a single object that encapsulates the entire meaning of a chialisp
+  program.  It is the only thing that is passed on to code generation.
+  HelperForm is declared slightly earlier (as logically CompileForm depends on it)
+  and concerns representing the kinds of declarations ("declaration" here refers
+  to a part of a user's program where some reusable part of the program is given
+  a name.  In many languages, it is synonomous or at least co-located with a
+  "definition", which in programming languages refers to the site where a named
+  object in the universe of the user's program is given some kind of concrete
+  form).  BodyForm is defined slightly earlier yet (as HelperForm depends on it),
+  at line 122 (currently) in src/compiler/comptypes.rs and contains any kind of
+  expression the chialisp language allows.  Because the frontend is still in the
+  process of collecting information when it converts the user's code into these
+  data structures, it does not neccessarily know (for example) what function is
+  being referred to by a function call, so it does not make any claim that the
+  program is self-consistent exiting the compiler frontend, although at the
+  end of that pass it's possible to make additional checks (for example, the
+  use checker (src/compiler/usecheck.rs) consumers a CompileForm yielded from
+  the compiler frontend in order to check for unused mod arguments.
+  
+- The next phase of compilation and logical "pass" is "desugaring" (where
+  "desugaring" refers to the process of translating high level intentions
+  signalled by the user and translated into the frontend's intermediate
+  representation of the program into a program with fewer or more targeted
+  elements that relate more closely to a part of the compilation process that
+  takes place chronologically later and typically is conceptually
+  targeting a part of compilation that relates more closely to the final
+  environment code is being generated for).  It's intended that desugaring
+  steps will be moved out of codegen to be done fully first, but it counts
+  as a full compiler pass because it is completed before any code generation
+  activities take place.
+  
+- After desugaring, a frontend optimizer is intended to go in.  This is being
+  worked on in a branch.  The frontend optimizer performs higher level
+  transformations on the code that result is simpler or smaller code that has
+  the same meaning as the original, but in a form that faclitates better code
+  generation.  An example from chialisp is noting when a stack of (f and (r
+  primitive invocations exist and translating them into a numeric path, saving
+  space.
+  
+- The final pass is code generation proper.  The "left environment" shape is
+  produced ("left environment" here refers to the invariant part of the CLVM
+  environment which is given to the program when its main expression is run,
+  providing a consistent pool of sibling functions and constant data that the
+  program is able to draw from).
+  The process and concerns of code generation are described in better detail
+  below, but the result is SExp, the data structure that represents S-expressions
+  in this compiler, defined at 33 (presently) of src/compiler/sexp.rs.  In both
+  classic and modern compilers, the representation of parsed source code and
+  emitted code are both their respective views of s-expressions.  The full
+  power of the modern S-expression isn't required in the emitted CLVM code but
+  it's convenient because it carries some useful information from the user's
+  perspective; it's Srcloc (defined in src/compiler/srcloc.rs) contains a record
+  of what part of the source code it was generated from.  These are collected
+  into the "symbols" (where "symbols" generally refers to a parallel set of
+  information about a program regarding user-understandable names and locations
+  that can be associated with landmarks in the generated code).  In the case of
+  chialisp, landmarks are identified by "sha256tree" (where "sha256tree" refers
+  to a standard process by which CLVM values are given a fixed-length hash
+  identifier based on their content that has a nearly 0 possibility of
+  generating collisions).  Because of this, the symbols can refer to code by
+  sha256tree hash and give names to sites in the generated code.
+  
+_Dive into the code from start to compiler_
+
+The code here and the chialisp compiler has a history for its life so far.  It
+started in python, was ported very faithfully to typescript and then the typed
+version in typescript was used as a basis for the rust port.  The rust port
+started after clvm_rs was started, because the wind seemed to be blowing toward
+rust and because changes to the python code didn't seem as relevant.
+
+The newer compiler has a different history; it was started in ocaml as a sketch
+of how the structure of a chialisp compiler could improve some weaknesses of
+the original chialisp compiler; reporting exact coordinates of errors in ways
+that were more understandable to users, preserving more information from the
+source text throughout compilation (the ability to do something like source
+maps in javascript) and the ability to provide new forms with a reduced risk
+of changing the form of code that already compiled.
+
+In order to keep existing code working and ensure that existing processes didn't
+break, a conservative approach was taken; the rust code here supports compiling
+an advanced form of the original chialisp dialect with some things improved but
+the shape and structure of most of the original code was maintained.  Since it
+was in a python style to begin with, that may make some of it difficult to
+navigate.
+
+The python code started with entrypoints into two major functions, call\_tool and
+launch\_tool of which launch_tool was the one that exposed code compilation and
+is the more complex.  Since it both runs code and dispatches into 2 other fully
+independent compiler implementations and does a few other things besides, here's a
+guide to navigating it.
+
+_The "main" program of the chialisp compiler_
+
+The python code contained a 'cmds.py' in 'clvm\_tools', so the structure of the
+rust code is similar; src/classic/clvm_tools/cmds.rs contains the code for all
+the tools that historically existed; 'run', 'brun', 'opc', 'opd' and in similarly
+named functions.  In particular, "launch\_tool".  This is exactly as in the python
+code.
+
+Similarly to the python code, the rust code starts by decoding arguments using an
+analog of argparse.  The arguments are stored in a HashMap with type tags
+determining what the stored data is.  In the case of PathOrCode conversion type,
+it's been extended sligthly to remember the filename that was read in.  That's
+useful so that the returned string can inform compilation of the filename it's
+compiling so it can in turn inform the source locations what file name they belong
+to.  A few other things are similar; since classic chialisp compilation mixes
+code in the compiler's source language with expressions written in chialisp and
+stores state in the CLVM runtime environment, a runtime environment is prepared
+for it containing the search paths for include files (the classic compiler reads
+include files via an imperative CLVM operator, \_read, installed at the time when
+the interpreter is created.  This interpreter was called "stage\_2" in the python
+code so a function, run\_program\_for\_search\_paths was included in
+src/classic/stages/stage\_2/operators.rs for the purpose of creating that.  The
+normal operation of a CLVM environment is usually immutable and this stance is
+further encouraged by the lack of lifetime variables decorating the callbacks to
+the clvm runner in clvmr.  Because of that, the code downstream uses a C++ like
+approach to enriching the runtime environment with mutable state which will be
+talked about later.  The actual call to run\_program\_for\_search\_paths is at
+cmds.rs, line 798 currently.
+
+At line 901 of cmds.rs (currently), the first decision is started regarding
+compilation; an early function called detect_modern is called and returns
+information regarding whether the user requested a specific chialisp dialect.
+This is important because modern and classic chialisp compilers don't accept
+precisely the same language and will continue to diverge.  Due to the demands
+of long term storage of assets on the blockchain, it is necessary for code that
+compiles in a specific form today retains that form forever, so the dialect also
+tells the compiler which of the different forms compilation could take among
+compatible alternatives.  This allows us to make better choices later on and
+grow the ways in which the compiler can benefit users over time along with
+the nature of HelperForm and BodyForm, which allow a clean separation between
+generations of features.
+
+The result of this choice is taken at line 940, where in the case of a modern
+dialect, a short circuit path is taken that bypasses the more complicated
+external interface of the classic compiler (below).  Since classic compilation
+closely mirrors the form the python code takes (and should not be as new to
+readers), I'll skip it for now and focus on modern compilation.
+
+Due to a wrong choice I made early in the modern compiler's interface design,
+cl21's basic optimization is enabled when called from python (the python
+compilation interface used by chia-blockchain is fairly information poor so
+assumes optimization on), but requires a traditional style -O flag on the command
+line (line 358).  Called this way, python and command line compilation are the
+same.  This will be fixed in the cl22 dialect, which will override the cl21
+optimization flag entirely and also isn't the case in classic chialisp.
+
+Mentioned later, CompilerOpts, which is a pure dynamic interface, implements
+a set of toggles and settings that are global to the compilation process and
+provide information during compilation.  One of these is required for compilation
+in modern and the one used is generated at line 946 (currently).  A main entrypoint
+to modern compilation that does all the needed work is in src/compiler/compiler.rs,
+compile\_file.  It's called at line 952 (currently) and I'll talk about it in a
+moment.
+
+compile_file in src/compiler/compiler.rs is a simple interface to compilation,
+given a collection of prerequisite objects, it first parses the source text given
+using parse\_sexp in src/compiler/sexp.rs (line 817 currently) to produce SExp,
+the data structure representing chialisp inputs and CLVM values, then gives the
+resulting list of parsed forms to compile\_pre\_forms (line 170 of
+src/compiler/compiler.rs currently).  compile\_pre\_forms first runs the frontend
+(calling src/compiler/frontend.rs, function frontend at line 747) at line 177 of
+src/compiler/compiler.rs yielding a CompileForm, which represents the full
+semantics of the user's program.
+
+It calls codegen (currently) at line 189 of src/compiler/compiler.rs, which
+yields the compiled code in the way that has been outlined above and is detailed
+below.
+
+When called in this way, cmds.rs, launch_tool which runs the compiler, terminates
+early, yielding the compiled program or error from the modern compiler process,
+be it an error encountered while parsing, preprocessing, doing frontend
+transformation, code generation or any other part of the modern compiler that
+can produce an error.  Every error from the modern compiler has a Srcloc which
+it tries to use to refer to something relevant in the source code.  These errors
+have a relevant source of information through the process via the pervasive use
+of Srcloc in the various compiler data structures.
+
 Code
 --
 
@@ -20,12 +290,11 @@ time, HelperForm is one of:
     Defun(bool, DefunData) // true = inline
     
 Which spans the kinds of declarations that chialisp can contain.  Having a well
-defined frontend type serves as a proof of sorts (in the vein of the curry-howard
-corresponence) that the code has been fully read and understood.  In the frontend
-form, we can perform transformations on the code without worrying about breaking
-its more primitive representation.  Since we've extracted the code's meaning we 
-can more easily substitute runtime compatible forms of the code from the
-perspective of the code's meaning.
+defined frontend type serves as a proof of sorts that the code has been fully
+read and understood.  In the frontend form, we can perform transformations on the
+code without worrying about breaking its more primitive representation.  Since
+we've extracted the code's meaning we can more easily substitute runtime compatible
+forms of the code from the perspective of the code's meaning.
 
 The BodyForm is more diverse and things like Lambdas add alternatives.  Since
 these are cleanly separated from a meaning perspective, it's possible to think
@@ -291,7 +560,7 @@ has generated code recorded and build the env tree.
 How CLVM code carries out programs
 --
 
-0. _The basics of CLVM from a compilation perspective_
+_The basics of CLVM from a compilation perspective_
 
 One can think of CLVM as a calculator with 1 tricky operator, which is called 'a'
 (apply).  The calculator's state can be thought of as a CLVM value like this:
@@ -367,7 +636,7 @@ how CLVM is evaluated:
 If one thinks of everything in these terms, then it isn't too difficult to generate
 code from chialisp.
 
-1. _The basic units of CLVM execution are env lookup and function application_
+_The basic units of CLVM execution are env lookup and function application_
 
 Because there is no memory other than the environment in CLVM, a basic building
 block of CLVM code is an environment lookup.  If you consider the arguments to
@@ -477,7 +746,7 @@ or paths to values we have as arguments if arguments in standard positions are
 destructured, worst case we have to cons values together as though the environment
 was being built for an apply.
     
-2. _CLVM Heap representation isn't dissimiar to other eager functional languages_
+_CLVM Heap representation isn't dissimiar to other eager functional languages_
 
 How CLVM compares to other functional languages in structure is a topic that is
 talked about occasionally, and many of its decisions are fairly alike what's out
@@ -493,8 +762,9 @@ there:
               (8 . 9)
 
     
-    In cadmium, there are pointers and words.  Words act as numbers
-    and pointers act as boxes of a size determined by their tag word.
+    In cadmium (the name some use for the ocaml bytecode vm), there are
+    pointers and words.  Words act as numbers and pointers act as boxes
+    of a size determined by their tag word.
         
     (7,(8,9)) =
     
@@ -513,4 +783,3 @@ there:
     val b : Obj.t = <abstr>
     # Obj.size b;;
     - : int = 2
-

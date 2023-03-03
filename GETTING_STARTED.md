@@ -14,7 +14,6 @@ To install the current release:
     
 To install from a specific branch:
 
-    
     cargo install --no-default-features --git 'https://github.com/Chia-Network/clvm_tools_rs' --branch 20221005-rollup
     
 To install a git checkout into your current python environment (must be in some kind of venv or conda environment):
