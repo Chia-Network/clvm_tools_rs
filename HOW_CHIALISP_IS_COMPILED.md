@@ -483,11 +483,19 @@ of the code generator to lookup later:
 Next, let desugaring takes place (it is intentded that this will be lifted out of
 codegen to a separate pass).
     
-Let desugaring inspects each defun (because they appear in the compiled code) for
-let forms and produces a list of new forms that must be re-inspected.  When no
-new forms are generated for any helper form, the full set of generated helpers
-and the original are introduced to either the defun set or the inline set in
-the PrimaryCodegen based on their type.  This will be a bit more flexible when
+"Let" desugaring (let forms are used in lisp-like languages to bind additional
+variables to new expressions, as in this example:
+
+    (mod (A B)
+      (let ((a-greater-than-2 (> 2 A)))
+        (c (i a-greater-than-2 B A) (i a-greater-than-2 (* 2 B) (* 2 A)))
+        )
+
+inspects each defun (because they appear in the compiled code) and the program's
+body for let forms and produces a list of new forms that must be re-inspected.
+When no new forms are generated for any helper form, the full set of generated
+helpers and the original are introduced to either the defun set or the inline set
+in the PrimaryCodegen based on their type.  This will be a bit more flexible when
 desugaring has its own definite pass as we'll have freedom to rearrange the
 inlining without disturbing codegen itself.
 
