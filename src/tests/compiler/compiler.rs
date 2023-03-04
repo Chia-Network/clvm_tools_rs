@@ -1192,3 +1192,16 @@ fn test_inline_out_of_bounds_diagnostic() {
         assert!(false);
     }
 }
+
+#[test]
+fn test_defmac_basic_0() {
+    let prog = indoc! {"
+    (defmac double-arg (A) (list (concat A \"1\") (concat A \"2\")))
+    (mod (double-arg X)
+      (+ X1 X2)
+      )
+    "}
+     .to_string();
+    let res = run_string(&prog, &"(3 4)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "7");
+}
