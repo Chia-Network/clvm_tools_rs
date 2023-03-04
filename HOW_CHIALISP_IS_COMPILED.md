@@ -280,7 +280,12 @@ program using these (forming a rough hierarchy).
 CompileForm   (src/compiler/comptypes.rs)
   HelperForm
     BodyForm
-    
+
+When things are referred to as "helpers" they are some kind of HelperForm.  These
+are the definitions of things programs use as building blocks (as outlined below),
+broadly the out of line constant, macro and function definitions that are used to
+provide abstractions and parts of programs.
+
 HelperForm and BodyForm are sum types which contain elements of the various kinds
 of things the compiler understands as distinct forms the user can use.  At this
 time, HelperForm is one of:
@@ -464,10 +469,10 @@ of the code generator to lookup later:
     Defconstants are turned into mods and run, unlike classic chialisp.
     The result is stored in the PrimaryCodegen's constant set.
     
-    The defconst form is evaluated by putting all Helpers into an Evaluator
-    and asking it to shrink the constant's expression (resulting in constant
-    folding).  The folded value must reduce to a constant, and if it does,
-    it's stored in the constant set.
+    The defconst form is evaluated by putting all Helpers (as in objects of
+    HelperForm type) into an Evaluator and asking it to shrink the constant's
+    expression (resulting in constant folding).  The folded value must reduce
+    to a constant, and if it does, it's stored in the constant set.
     
     Defmacros are converted to programs and compiled using the
     CompilerOpts' compile_program method.  These methods on CompilerOpts
