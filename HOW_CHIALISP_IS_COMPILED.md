@@ -464,7 +464,7 @@ of the code generator to lookup later:
     Defconstants are turned into mods and run, unlike classic chialisp.
     The result is stored in the PrimaryCodegen's constant set.
     
-    The new defconst form is evaluated by putting all Helpers into an Evaluator
+    The defconst form is evaluated by putting all Helpers into an Evaluator
     and asking it to shrink the constant's expression (resulting in constant
     folding).  The folded value must reduce to a constant, and if it does,
     it's stored in the constant set.
