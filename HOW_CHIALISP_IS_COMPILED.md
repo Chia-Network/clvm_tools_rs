@@ -484,12 +484,15 @@ Next, let desugaring takes place (it is intentded that this will be lifted out o
 codegen to a separate pass).
     
 "Let" desugaring (let forms are used in lisp-like languages to bind additional
-variables to new expressions, as in this example:
+variables to new expressions, as in this example which uses a-greater-than-2
+twice in difference sub-expressions.
 
     (mod (A B)
+      (include *standard-cl-21*)
       (let ((a-greater-than-2 (> 2 A)))
         (c (i a-greater-than-2 B A) (i a-greater-than-2 (* 2 B) (* 2 A)))
         )
+      )
 
 inspects each defun (because they appear in the compiled code) and the program's
 body for let forms and produces a list of new forms that must be re-inspected.
