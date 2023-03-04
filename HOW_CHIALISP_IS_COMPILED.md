@@ -466,7 +466,7 @@ codegen starts by running start_codegen to introduce each helper to the
 PrimaryCodegen and based on their types, bin them into the appropriate parts
 of the code generator to lookup later:
 
-    Defconstants are turned into mods and run, unlike classic chialisp.
+    Defconstants are turned into mods and run.
     The result is stored in the PrimaryCodegen's constant set.
     
     The defconst form is evaluated by putting all Helpers (as in objects of
