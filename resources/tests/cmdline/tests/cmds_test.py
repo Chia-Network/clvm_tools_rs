@@ -4,6 +4,7 @@ import pkg_resources
 import shlex
 import sys
 import unittest
+from clvm_tools_rs import launch_tool
 
 
 # If the REPAIR environment variable is set, any tests failing due to
@@ -57,7 +58,7 @@ class TestCmds(unittest.TestCase):
         sys.stderr = stderr_buffer
 
         args = shlex.split(cmd_line)
-        v = pkg_resources.load_entry_point("clvm_tools", "console_scripts", args[0])(
+        v = launch_tool(
             args
         )
 

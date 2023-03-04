@@ -160,7 +160,7 @@ jobs:
         python -m pip install pytest
         # This script installs the wheel built during this workflow.
         python support/wheelname.py
-        (cd src/tests/classic/cmdline && py.test tests)
+        (cd resources/tests/cmdline && py.test tests)
 
     - name: Verify recompilation of cl21 sources
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')

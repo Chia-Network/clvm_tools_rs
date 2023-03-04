@@ -38,6 +38,7 @@ use crate::py::pyval::{clvm_value_to_python, python_value_to_clvm};
 
 create_exception!(mymodule, CldbError, PyException);
 create_exception!(mymodule, CompError, PyException);
+create_exception!(mymodule, ToolError, PyException);
 
 // Thanks: https://www.reddit.com/r/rust/comments/bkkpkz/pkgversion_access_your_crates_version_number_as/
 #[pyfunction]
@@ -290,7 +291,16 @@ fn start_clvm_program(
 fn launch_tool(tool_name: String, args: Vec<String>, default_stage: u32) -> Vec<u8> {
     let mut stdout = Stream::new(None);
     cmds::launch_tool(&mut stdout, &args, &tool_name, default_stage);
-    return stdout.get_value().data().clone();
+    stdout.get_value().data().clone()
+}
+
+#[pyfunction]
+fn call_tool(tool_name: String, args: Vec<String>) -> PyResult<Vec<u8>> {
+    let mut allocator = Allocator::new();
+    let mut stdout = Stream::new(None);
+    cmds::call_tool(&mut stdout, &mut allocator, &tool_name, &args)
+        .map_err(|e| ToolError::new_err(e))?;
+    Ok(stdout.get_value().data().clone())
 }
 
 fn compile_err_to_cldb_err(err: &CompileErr) -> PyErr {
@@ -376,6 +386,7 @@ fn clvm_tools_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_version, m)?)?;
     m.add_function(wrap_pyfunction!(start_clvm_program, m)?)?;
     m.add_function(wrap_pyfunction!(launch_tool, m)?)?;
+    m.add_function(wrap_pyfunction!(call_tool, m)?)?;
     m.add_function(wrap_pyfunction!(check_dependencies, m)?)?;
     m.add_function(wrap_pyfunction!(compose_run_function, m)?)?;
     m.add_class::<PythonRunStep>()?;

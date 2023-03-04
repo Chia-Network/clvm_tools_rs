@@ -55,6 +55,27 @@ use crate::compiler::sexp::{decode_string, parse_sexp};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::collapse;
 
+struct ConversionDesc {
+    desc: &'static str,
+    conv: Box<dyn TConversion>,
+}
+
+fn get_tool_description(tool_name: &str) -> Option<ConversionDesc> {
+    if tool_name == "opc" {
+        Some(ConversionDesc {
+            desc: "Compile a clvm script.",
+            conv: Box::new(OpcConversion {}),
+        })
+    } else if tool_name == "opd" {
+        Some(ConversionDesc {
+            desc: "Disassemble a compiled clvm script from hex.",
+            conv: Box::new(OpdConversion {}),
+        })
+    } else {
+        None
+    }
+}
+
 pub struct PathOrCodeConv {}
 
 impl ArgumentValueConv for PathOrCodeConv {
@@ -79,15 +100,29 @@ pub trait TConversion {
         text: &str,
     ) -> Result<Tuple<NodePtr, String>, String>;
 }
+
+pub fn call_tool_stdout(allocator: &mut Allocator, tool_name: &str, input_args: &[String]) {
+    let mut stdout_stream = Stream::new(None);
+    match call_tool(&mut stdout_stream, allocator, tool_name, input_args) {
+        Ok(_) => {
+            println!("{}", stdout_stream.get_value().to_formal_string());
+        }
+        Err(e) => {
+            eprintln!("{e}");
+        }
+    }
+}
+
 pub fn call_tool(
+    stream: &mut Stream,
     allocator: &mut Allocator,
     tool_name: &str,
-    desc: &str,
-    conversion: Box<dyn TConversion>,
     input_args: &[String],
-) {
+) -> Result<(), String> {
+    let task =
+        get_tool_description(tool_name).ok_or_else(|| format!("unknown tool {tool_name}"))?;
     let props = TArgumentParserProps {
-        description: desc.to_string(),
+        description: task.desc.to_string(),
         prog: tool_name.to_string(),
     };
 
@@ -112,7 +147,7 @@ pub fn call_tool(
         Ok(a) => a,
         Err(e) => {
             println!("{e}");
-            return;
+            return Ok(());
         }
     };
 
@@ -130,30 +165,28 @@ pub fn call_tool(
         match program {
             ArgumentValue::ArgString(_, s) => {
                 if s == "-" {
-                    panic!("Read stdin is not supported at this time");
+                    return Err("Read stdin is not supported at this time".to_string());
                 }
 
-                let conv_result = conversion.invoke(allocator, &s);
-                match conv_result {
-                    Ok(conv_result) => {
-                        let sexp = *conv_result.first();
-                        let text = conv_result.rest();
-                        if args.contains_key(&"script_hash".to_string()) {
-                            println!("{}", sha256tree(allocator, sexp).hex());
-                        } else if !text.is_empty() {
-                            println!("{text}");
-                        }
-                    }
-                    Err(e) => {
-                        panic!("Conversion returned error: {:?}", e);
-                    }
+                let conv_result = task.conv.invoke(allocator, &s)?;
+                let sexp = *conv_result.first();
+                let text = conv_result.rest();
+                if args.contains_key(&"script_hash".to_string()) {
+                    let data: Vec<u8> =
+                        format!("{}", sha256tree(allocator, sexp)).bytes().collect();
+                    stream.write(Bytes::new(Some(BytesFromType::Raw(data))));
+                } else if !text.is_empty() {
+                    let data: Vec<u8> = text.to_string().bytes().collect();
+                    stream.write(Bytes::new(Some(BytesFromType::Raw(data))));
                 }
             }
             _ => {
-                panic!("inappropriate argument conversion");
+                return Err("inappropriate argument conversion".to_string());
             }
         }
     }
+
+    Ok(())
 }
 
 pub struct OpcConversion {}
@@ -193,24 +226,12 @@ impl TConversion for OpdConversion {
 
 pub fn opc(args: &[String]) {
     let mut allocator = Allocator::new();
-    call_tool(
-        &mut allocator,
-        "opc",
-        "Compile a clvm script.",
-        Box::new(OpcConversion {}),
-        args,
-    );
+    call_tool_stdout(&mut allocator, "opc", args);
 }
 
 pub fn opd(args: &[String]) {
     let mut allocator = Allocator::new();
-    call_tool(
-        &mut allocator,
-        "opd",
-        "Disassemble a compiled clvm script from hex.",
-        Box::new(OpdConversion {}),
-        args,
-    );
+    call_tool_stdout(&mut allocator, "opd", args);
 }
 
 struct StageImport {}
