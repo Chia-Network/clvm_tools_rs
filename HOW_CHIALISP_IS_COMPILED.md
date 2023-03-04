@@ -480,8 +480,8 @@ of the code generator to lookup later:
     of program code to be used during compilation.  The resulting code
     is stored in the macro set.
     
-Next, let desugaring takes place (my intention is to lift this out of codegen to
-a separate pass).
+Next, let desugaring takes place (it is intentded that this will be lifted out of
+codegen to a separate pass).
     
 Let desugaring inspects each defun (because they appear in the compiled code) for
 let forms and produces a list of new forms that must be re-inspected.  When no
