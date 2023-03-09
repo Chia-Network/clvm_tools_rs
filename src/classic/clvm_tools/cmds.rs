@@ -107,7 +107,10 @@ pub fn call_tool_stdout(allocator: &mut Allocator, tool_name: &str, input_args: 
     let mut stdout_stream = Stream::new(None);
     match call_tool(&mut stdout_stream, allocator, tool_name, input_args) {
         Ok(_) => {
-            println!("{}", stdout_stream.get_value().to_formal_string());
+            let s = stdout_stream.get_value();
+            if s.length() > 0 {
+                println!("{}", s.to_formal_string());
+            }
         }
         Err(e) => {
             eprintln!("{e}");
