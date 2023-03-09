@@ -14,6 +14,8 @@ use std::string::String;
 use binascii::{bin2hex, hex2bin};
 use num_traits::{zero, Num};
 
+use serde::Serialize;
+
 use crate::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType};
 use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes_clvm, TConvertOption};
 use crate::compiler::prims::prims;
@@ -23,7 +25,7 @@ use crate::util::{number_from_u8, u8_from_number, Number};
 pub const MAX_SEXP_COST: usize = 15;
 
 // Compiler view of SExp
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum SExp {
     Nil(Srcloc),
     Cons(Srcloc, Rc<SExp>, Rc<SExp>),
