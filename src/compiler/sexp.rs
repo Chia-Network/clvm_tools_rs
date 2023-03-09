@@ -804,3 +804,119 @@ where
 {
     parse_sexp_inner(start, SExpParseState::Empty, input)
 }
+
+// This is a trait that generates a haskell-like ad-hoc type from the user's
+// construction of NodeSel and ThisNode.
+// the result is transformed into a NodeSel tree of NodePtr if it can be.
+// The type of the result is an ad-hoc shape derived from the shape of the
+// original request.
+//
+// This mirrors code in src/classic/clvm/sexp.rs
+//
+// It's a nicer way of modelling matches that will overtake bespoke code for a lot
+// of things.
+#[derive(Debug, Clone)]
+pub enum NodeSel<T, U> {
+    Cons(T, U),
+}
+
+#[derive(Debug, Clone)]
+pub enum First<T> {
+    Here(T),
+}
+
+#[derive(Debug, Clone)]
+pub enum Rest<T> {
+    Here(T),
+}
+
+#[derive(Debug, Clone)]
+pub enum ThisNode {
+    Here,
+}
+
+pub enum Atom<T> {
+    Here(T),
+}
+
+pub trait SelectNode<T, E> {
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<T, E>;
+}
+
+impl<E> SelectNode<Rc<SExp>, E> for ThisNode {
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<Rc<SExp>, E> {
+        Ok(s)
+    }
+}
+
+impl SelectNode<(Srcloc, Vec<u8>), (Srcloc, String)> for Atom<()> {
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<(Srcloc, Vec<u8>), (Srcloc, String)>
+    {
+        if let SExp::Atom(loc,name) = s.borrow() {
+            return Ok((loc.clone(),name.clone()));
+        }
+
+        Err((s.loc(), "Not an atom".to_string()))
+    }
+}
+
+impl SelectNode<Srcloc, (Srcloc, String)> for Atom<&str> {
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<Srcloc, (Srcloc, String)> {
+        let Atom::Here(name) = self;
+        if let Ok((l,n)) = Atom::Here(()).select_nodes(s.clone()) {
+            if n == name.as_bytes() {
+                return Ok(l.clone());
+            }
+        }
+
+        Err((s.loc(), format!("Not an atom named {name}")))
+    }
+}
+
+impl<E> SelectNode<(), E> for () {
+    fn select_nodes(&self, _n: Rc<SExp>) -> Result<(), E> {
+        Ok(())
+    }
+}
+
+impl<R, T, E> SelectNode<First<T>, E> for First<R>
+where
+    R: SelectNode<T, E> + Clone,
+    E: From<(Srcloc, String)>,
+{
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<First<T>, E> {
+        let First::Here(f) = &self;
+        let NodeSel::Cons(first, ()) = NodeSel::Cons(f.clone(), ()).select_nodes(s)?;
+        Ok(First::Here(first))
+    }
+}
+
+impl<R, T, E> SelectNode<Rest<T>, E> for Rest<R>
+where
+    R: SelectNode<T, E> + Clone,
+    E: From<(Srcloc, String)>,
+{
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<Rest<T>, E> {
+        let Rest::Here(f) = &self;
+        let NodeSel::Cons((), rest) = NodeSel::Cons((), f.clone()).select_nodes(s)?;
+        Ok(Rest::Here(rest))
+    }
+}
+
+impl<R, S, T, U, E> SelectNode<NodeSel<T, U>, E> for NodeSel<R, S>
+where
+    R: SelectNode<T, E>,
+    S: SelectNode<U, E>,
+    E: From<(Srcloc, String)>,
+{
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<NodeSel<T, U>, E> {
+        let NodeSel::Cons(my_left, my_right) = &self;
+        if let SExp::Cons(_, l, r) = s.borrow() {
+            let first = my_left.select_nodes(l.clone())?;
+            let rest = my_right.select_nodes(r.clone())?;
+            Ok(NodeSel::Cons(first, rest))
+        } else {
+            Err(E::from((s.loc(), "not a cons".to_string())))
+        }
+    }
+}

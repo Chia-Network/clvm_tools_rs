@@ -70,10 +70,23 @@ pub enum ArgInputs {
     Pair(Rc<ArgInputs>, Rc<ArgInputs>),
 }
 
+pub trait EvalExtension {
+    fn try_eval(
+        &self,
+        evaluator: &Evaluator,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        loc: &Srcloc,
+        name: &[u8],
+        args: &[Rc<BodyForm>],
+        body: Rc<BodyForm>,
+    ) -> Result<Option<Rc<BodyForm>>, CompileErr>;
+}
+
 pub struct Evaluator {
     opts: Rc<dyn CompilerOpts>,
     runner: Rc<dyn TRunProgram>,
     prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    extensions: Vec<Rc<dyn EvalExtension>>,
     helpers: Vec<HelperForm>,
     mash_conditions: bool,
     ignore_exn: bool,
@@ -151,7 +164,7 @@ fn get_bodyform_from_arginput(l: &Srcloc, arginput: &ArgInputs) -> Rc<BodyForm> 
 //
 // It's possible this will result in irreducible (unknown at compile time)
 // argument expressions.
-fn create_argument_captures(
+pub fn create_argument_captures(
     argument_captures: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
     formed_arguments: &ArgInputs,
     function_arg_spec: Rc<SExp>,
@@ -248,7 +261,7 @@ fn arg_inputs_primitive(arginputs: Rc<ArgInputs>) -> bool {
     }
 }
 
-fn build_argument_captures(
+pub fn build_argument_captures(
     l: &Srcloc,
     arguments_to_convert: &[Rc<BodyForm>],
     args: Rc<SExp>,
@@ -574,6 +587,7 @@ impl<'info> Evaluator {
             helpers,
             mash_conditions: false,
             ignore_exn: false,
+            extensions: Vec::new()
         }
     }
 
@@ -583,6 +597,7 @@ impl<'info> Evaluator {
             runner: self.runner.clone(),
             prims: self.prims.clone(),
             helpers: self.helpers.clone(),
+            extensions: self.extensions.clone(),
             mash_conditions: true,
             ignore_exn: true,
         }
@@ -688,6 +703,19 @@ impl<'info> Evaluator {
             let compiled_borrowed: &SExp = compiled.borrow();
             Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
         } else {
+            for ext in self.extensions.iter() {
+                if let Some(res) = ext.try_eval(
+                    self,
+                    env,
+                    &l,
+                    call_name,
+                    arguments_to_convert,
+                    body.clone()
+                )? {
+                    return Ok(res);
+                }
+            }
+
             let pres = self
                 .lookup_prim(l.clone(), call_name)
                 .map(|prim| {
@@ -1251,6 +1279,10 @@ impl<'info> Evaluator {
             }
         }
         self.helpers.push(h.clone());
+    }
+
+    pub fn add_extension(&mut self, e: Rc<dyn EvalExtension>) {
+        self.extensions.push(e);
     }
 
     // The evaluator treats the forms coming up from constants as live.

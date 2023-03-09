@@ -1196,9 +1196,10 @@ fn test_inline_out_of_bounds_diagnostic() {
 #[test]
 fn test_defmac_basic_0() {
     let prog = indoc! {"
-    (defmac double-arg (A) (list (concat A \"1\") (concat A \"2\")))
-    (mod (double-arg X)
-      (+ X1 X2)
+    (mod (X)
+      (defmac double-arg (A) (list (concat A (string->symbol \"1\")) (concat A (string->symbol \"2\"))))
+      (defun strange (double-arg X) (+ X1 X2))
+      (strange X (* 2 X))
       )
     "}
      .to_string();
