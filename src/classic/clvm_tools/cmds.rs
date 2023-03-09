@@ -130,6 +130,12 @@ pub fn call_tool(
 
     let mut parser = ArgumentParser::new(Some(props));
     parser.add_argument(
+        vec!["--version".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("Show version".to_string()),
+    );
+    parser.add_argument(
         vec!["-H".to_string(), "--script-hash".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
@@ -152,6 +158,12 @@ pub fn call_tool(
             return Ok(());
         }
     };
+
+    if args.contains_key("version") {
+        let version = version();
+        println!("{version}");
+        return Ok(());
+    }
 
     let args_path_or_code_val = match args.get(&"path_or_code".to_string()) {
         None => ArgumentValue::ArgArray(vec![]),
