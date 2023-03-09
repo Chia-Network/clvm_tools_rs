@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
+use serde::Serialize;
+
 use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
@@ -63,7 +65,7 @@ pub fn list_to_cons(l: Srcloc, list: &[Rc<SExp>]) -> SExp {
     result
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Binding {
     pub loc: Srcloc,
     pub nl: Srcloc,
@@ -71,13 +73,13 @@ pub struct Binding {
     pub body: Rc<BodyForm>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum LetFormKind {
     Parallel,
     Sequential,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct LetData {
     pub loc: Srcloc,
     pub kw: Option<Srcloc>,
@@ -85,7 +87,7 @@ pub struct LetData {
     pub body: Rc<BodyForm>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum BodyForm {
     Let(LetFormKind, LetData),
     Quoted(SExp),
@@ -94,7 +96,7 @@ pub enum BodyForm {
     Mod(Srcloc, CompileForm),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct DefunData {
     pub loc: Srcloc,
     pub name: Vec<u8>,
@@ -104,7 +106,7 @@ pub struct DefunData {
     pub body: Rc<BodyForm>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct DefmacData {
     pub loc: Srcloc,
     pub name: Vec<u8>,
@@ -114,7 +116,7 @@ pub struct DefmacData {
     pub program: Rc<CompileForm>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct DefconstData {
     pub loc: Srcloc,
     pub kind: ConstantKind,
@@ -124,13 +126,13 @@ pub struct DefconstData {
     pub body: Rc<BodyForm>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum ConstantKind {
     Complex,
     Simple,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum HelperForm {
     Defconstant(DefconstData),
     Defmacro(DefmacData),
@@ -138,7 +140,7 @@ pub enum HelperForm {
 }
 
 // A description of an include form.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct IncludeDesc {
     pub kw: Srcloc,
     pub nl: Srcloc,
@@ -155,7 +157,7 @@ impl IncludeDesc {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct CompileForm {
     pub loc: Srcloc,
     pub include_forms: Vec<IncludeDesc>,

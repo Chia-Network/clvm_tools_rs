@@ -34,16 +34,17 @@ use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 
+use crate::util::version;
+
 use crate::py::pyval::{clvm_value_to_python, python_value_to_clvm};
 
 create_exception!(mymodule, CldbError, PyException);
 create_exception!(mymodule, CompError, PyException);
 create_exception!(mymodule, ToolError, PyException);
 
-// Thanks: https://www.reddit.com/r/rust/comments/bkkpkz/pkgversion_access_your_crates_version_number_as/
 #[pyfunction]
 fn get_version() -> PyResult<String> {
-    Ok(env!("CARGO_PKG_VERSION").to_string())
+    Ok(version())
 }
 
 #[pyfunction(arg3 = "[]", arg4 = "None")]
