@@ -4,7 +4,7 @@ import pkg_resources
 import shlex
 import sys
 import unittest
-from clvm_tools_rs import launch_tool
+from clvm_tools_rs import call_tool, launch_tool
 
 
 # If the REPAIR environment variable is set, any tests failing due to
@@ -47,25 +47,25 @@ def get_test_cases(path):
 class TestCmds(unittest.TestCase):
     def invoke_tool(self, cmd_line):
 
-        # capture io
-        stdout_buffer = io.StringIO()
-        stderr_buffer = io.StringIO()
-
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
-
-        sys.stdout = stdout_buffer
-        sys.stderr = stderr_buffer
-
         args = shlex.split(cmd_line)
-        v = launch_tool(
-            args
-        )
 
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
+        default_stage = 0
+        if args[0] == 'run':
+            default_stage = 2
 
-        return v, stdout_buffer.getvalue(), stderr_buffer.getvalue()
+        if args[0] == 'run' or args[0] == 'brun':
+            stdout = launch_tool(
+                args[0],
+                args,
+                default_stage
+            )
+        else:
+            stdout = call_tool(
+                args[0],
+                args
+            )
+
+        return None, bytes(stdout).decode('utf8'), ''
 
 
 def make_f(cmd_lines, expected_output, comments, path):
