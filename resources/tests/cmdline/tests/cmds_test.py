@@ -68,11 +68,13 @@ class TestCmds(unittest.TestCase):
         return None, bytes(stdout).decode('utf8'), ''
 
 
-def make_f(cmd_lines, expected_output, comments, path):
+def make_f(cmd_lines, expected_output_in, comments, path):
     def f(self):
         cmd = "".join(cmd_lines)
         for c in cmd.split(";"):
             r, actual_output, actual_stderr = self.invoke_tool(c)
+        actual_output = actual_output.strip()
+        expected_output = expected_output_in.strip()
         if actual_output != expected_output:
             print(path)
             print(cmd)
