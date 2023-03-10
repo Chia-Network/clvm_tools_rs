@@ -1197,12 +1197,12 @@ fn test_inline_out_of_bounds_diagnostic() {
 fn test_defmac_basic_0() {
     let prog = indoc! {"
     (mod (X)
-      (defmac double-arg (A) (list (concat A (string->symbol \"1\")) (concat A (string->symbol \"2\"))))
+      (defmac double-arg (A) (list (string->symbol (string-append (symbol->string A) \"1\")) (string->symbol (string-append (symbol->string A) \"2\"))))
       (defun strange (double-arg X) (+ X1 X2))
       (strange X (* 2 X))
       )
     "}
      .to_string();
-    let res = run_string(&prog, &"(3 4)".to_string()).unwrap();
-    assert_eq!(res.to_string(), "7");
+    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "9");
 }

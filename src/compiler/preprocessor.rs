@@ -20,6 +20,29 @@ struct Preprocessor {
     helpers: Vec<HelperForm>,
 }
 
+// If the bodyform represents a constant, only match a quoted string.
+fn match_quoted_string(body: Rc<BodyForm>) -> Result<Option<(Srcloc, Vec<u8>)>, CompileErr> {
+    if let BodyForm::Quoted(SExp::QuotedString(al,_,an)) = body.borrow() {
+        Ok(Some((al.clone(),an.clone())))
+    } else if let BodyForm::Value(SExp::QuotedString(al,_,an)) = body.borrow() {
+        Ok(Some((al.clone(),an.clone())))
+    } else if let BodyForm::Quoted(_) = body.borrow() {
+        Err(CompileErr(body.loc(), "string required".to_string()))
+    } else {
+        Ok(None)
+    }
+}
+
+fn match_atom(body: Rc<BodyForm>) -> Result<Option<(Srcloc, Vec<u8>)>, CompileErr> {
+    if let BodyForm::Quoted(SExp::Atom(al,an)) = body.borrow() {
+        Ok(Some((al.clone(),an.clone())))
+    } else if let BodyForm::Quoted(_) = body.borrow() {
+        Err(CompileErr(body.loc(), "atom required".to_string()))
+    } else {
+        Ok(None)
+    }
+}
+
 struct PreprocessorExtension { }
 impl EvalExtension for PreprocessorExtension {
     fn try_eval(
@@ -36,17 +59,38 @@ impl EvalExtension for PreprocessorExtension {
                 return Err(CompileErr(loc.clone(), "string->symbol needs 1 argument".to_string()));
             }
 
-            eprintln!("args[0] {}", args[0].to_sexp());
+            if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
 
-            if let BodyForm::Quoted(SExp::QuotedString(al,_,an)) = args[0].borrow() {
-                return Ok(Some(Rc::new(BodyForm::Quoted(SExp::Atom(al.clone(),an.clone())))));
-            } else if let BodyForm::Quoted(x) = args[0].borrow() {
-                return Err(CompileErr(loc.clone(), "string->symbol takes a string".to_string()));
+                return Ok(Some(Rc::new(BodyForm::Quoted(SExp::Atom(loc,value)))));
             } else {
+                eprintln!("pp helper returned {}", decode_string(name));
                 return Ok(Some(body.clone()));
             }
+        } else if name == b"symbol->string" {
+            if let Some((loc, value)) = match_atom(args[0].clone())? {
+                return Ok(Some(Rc::new(BodyForm::Quoted(SExp::QuotedString(loc,b'\"',value)))));
+            } else {
+                eprintln!("pp helper returned {}", decode_string(name));
+                return Ok(Some(body.clone()));
+            }
+        } else if name == b"string-append" {
+            let mut out_vec = Vec::new();
+            let mut out_loc = None;
+            for a in args.iter() {
+                if let Some((loc, mut value)) = match_quoted_string(a.clone())? {
+                    if out_loc.is_none() {
+                        out_loc = Some(loc);
+                    }
+                    out_vec.append(&mut value);
+                } else {
+                    eprintln!("pp helper returned {}", decode_string(name));
+                    return Ok(Some(body.clone()));
+                }
+            }
+            return Ok(Some(Rc::new(BodyForm::Quoted(SExp::QuotedString(out_loc.unwrap_or_else(|| body.loc()),b'\"',out_vec)))));
         }
 
+        eprintln!("pp helper didn't handle {}", decode_string(name));
         Ok(None)
     }
 }
@@ -130,16 +174,21 @@ impl Preprocessor {
             // First expand inner macros.
             let first_expanded = self.expand_macros(f.clone())?;
             let rest_expanded = self.expand_macros(r.clone())?;
-            let new_self = SExp::Cons(l.clone(), first_expanded, rest_expanded);
+            let new_self = Rc::new(SExp::Cons(l.clone(), first_expanded, rest_expanded));
             if let Ok(NodeSel::Cons((nl, name), args)) = NodeSel::Cons(
                 Atom::Here(()), ThisNode::Here
-            ).select_nodes(body.clone()) {
+            ).select_nodes(new_self.clone()) {
                 // See if it's a form that calls one of our macros.
                 for m in self.helpers.iter() {
                     eprintln!("want {} helper {}", decode_string(&name), m.to_sexp());
                     if let HelperForm::Defun(_,mdata) = &m { // We record upfront macros
                         if mdata.name != name {
                             continue;
+                        }
+
+                        eprintln!("expanding macro {}", m.to_sexp());
+                        for h in self.helpers.iter() {
+                            eprintln!("- {}", decode_string(h.name()));
                         }
 
                         // as inline defuns because they're closest to that
@@ -165,14 +214,14 @@ impl Preprocessor {
                             None
                         )?;
 
-                        eprintln!("shrink res {}", res.to_sexp());
-
                         if let Ok(unquoted) = dequote(body.loc(), res) {
                             return Ok(unquoted);
                         }
                     }
                 }
             }
+
+            return Ok(new_self);
         }
 
         Ok(body)
@@ -185,35 +234,43 @@ impl Preprocessor {
     ) -> Result<Option<()>, CompileErr> {
         eprintln!("decode_macro {definition}");
         if let Ok(NodeSel::Cons(
-            defmac_loc,
+            (defmac_loc, kw),
             NodeSel::Cons(
                 (nl, name),
                 NodeSel::Cons(args,body)
             )
         )) = NodeSel::Cons(
-            Atom::Here("defmac"),
+            Atom::Here(()),
             NodeSel::Cons(
                 Atom::Here(()),
                 NodeSel::Cons(ThisNode::Here, ThisNode::Here)
             )
         ).select_nodes(definition.clone()) {
-            let target_defun = Rc::new(SExp::Cons(
-                defmac_loc.clone(),
-                Rc::new(SExp::atom_from_string(defmac_loc.clone(), "defun")),
-                Rc::new(SExp::Cons(
-                    nl.clone(),
-                    Rc::new(SExp::Atom(nl.clone(), name.clone())),
-                    Rc::new(SExp::Cons(
-                        args.loc(), args.clone(), body.clone()
-                    ))
-                ))
-            ));
-            eprintln!("target_defun {target_defun}");
-            if let Some(helper) = compile_helperform(self.opts.clone(), target_defun)? {
-                self.evaluator.add_helper(&helper);
-                self.helpers.push(helper);
-            } else {
-                return Err(CompileErr(definition.loc(), "defmac found but couldn't be converted to function".to_string()));
+            let is_defmac = kw == b"defmac";
+            if is_defmac || kw == b"defmacro" || kw == b"defun" || kw == b"defun-inline" || kw == b"defconst" || kw == b"defconstant" {
+                if is_defmac {
+                    let target_defun = Rc::new(SExp::Cons(
+                        defmac_loc.clone(),
+                        Rc::new(SExp::atom_from_string(defmac_loc.clone(), "defun")),
+                        Rc::new(SExp::Cons(
+                            nl.clone(),
+                            Rc::new(SExp::Atom(nl.clone(), name.clone())),
+                            Rc::new(SExp::Cons(
+                                args.loc(), args.clone(), body.clone()
+                            ))
+                        ))
+                    ));
+                    eprintln!("target_defun {target_defun}");
+                    if let Some(helper) = compile_helperform(self.opts.clone(), target_defun)? {
+                        eprintln!("add helper {}", helper.to_sexp());
+                        self.evaluator.add_helper(&helper);
+                        self.helpers.push(helper);
+                    } else {
+                        return Err(CompileErr(definition.loc(), "defmac found but couldn't be converted to function".to_string()));
+                    }
+                } else if let Some(helper) = compile_helperform(self.opts.clone(), definition)? {
+                    self.evaluator.add_helper(&helper);
+                }
             }
         }
 
