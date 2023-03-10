@@ -1202,7 +1202,37 @@ fn test_defmac_basic_0() {
       (strange X (* 2 X))
       )
     "}
-     .to_string();
+    .to_string();
     let res = run_string(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "9");
+}
+
+#[test]
+fn test_defmac_basic_shared_constant() {
+    let prog = indoc! {"
+    (mod (X)
+      (defconstant twostring \"2\")
+      (defmac double-arg (A) (list (string->symbol (string-append (symbol->string A) \"1\")) (string->symbol (string-append (symbol->string A) twostring))))
+      (defun strange (double-arg X) (+ X1 X2))
+      (c twostring (strange X (* 2 X)))
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(\"2\" . 9)");
+}
+
+#[test]
+fn test_defmac_basic_shared_constant_not_string_with_string_operator() {
+    let prog = indoc! {"
+    (mod (X)
+      (defconstant twostring 2)
+      (defmac double-arg (A) (list (string->symbol (string-append (symbol->string A) \"1\")) (string->symbol (string-append (symbol->string A) twostring))))
+      (defun strange (double-arg X) (+ X1 X2))
+      (c twostring (strange X (* 2 X)))
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(3)".to_string());
+    assert!(res.is_err());
 }
