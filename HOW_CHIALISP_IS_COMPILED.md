@@ -4,157 +4,116 @@ Compiler theory of operation
 Basic structure and where to look for specific things
 --
 
-_About compilers in general_
+### About compilers in general
 
-What's been suggested is an overview of code compilation overall, which includes
-a good number of elements that are common or where there are a limited number of
-useful choices.
+Software developers who wish to create a new compiler will typically begin by writing their code in a text editor. The files that contain this source code are then stored on disk. When executed, the program reads in some text, and outputs code in another language. This process is known by different terms, depending on the output:
 
-Most code production in compilers starts with a user editing one or more source
-files in a text editor.  These text files are usually stored in files on disk
-in a place accessible to the program or programs that perform compilation, which
-really just means reading the source text in some way and writing out code in
-another language in some way, although most of the time the terms 'translation'
-or 'transpilation' are used for when the other target is also a language people
-consider to be high enough level that it's considered productive to write directly
-by humans.  'Compilation' is normally used when the target is a language that
-is complex and less accessible.  There are definitely overlaps, as a good number
-of people write assembler for smaller CPUs more or less as a high level language
-and a good many compilers treat javascript purely as a VM for executing code on.
-In the case of chialisp, 'chialisp' can be thought of a mid-level language in the
-vein of C++ and the target is CLVM, the virtual machine that chia nodes use to
-evaluate puzzles.  CLVM is quite unergonomic to write by hand given the lack
-of the ability to name things and the need to compute numeric paths through
-CLVM values (more about this later) to do useful work.
+* **translation** / **transpiliation** - the output is a higher-level language that humans might write
+* **compilation** -- the output is a lower-level language that humans typically would not write
 
-So there's really only a few choices a compiler can make in structural terms:
+These two terms have some overlap -- humans sometimes do write assembler code, and some compilers treat JavaScript as a Virtual Machine on which to execute source code.
 
-- Read all inputs, write output (golang)
-- Read input a bit at a time and possibly produce output a bit at a time (C)
+### Chialisp and CLVM
 
-All chialisp compilers I'm aware of read the whole input first.  Like C, chialisp
-has a textural include file mechanism which allows the programmer to name a file
-to include from a set of specified include paths.  The name given is expected to
-be a literal fragment of a filename (as in C).  When each include file is found,
-a single form is read from it, and that is expected to take the form of a list
-of chialisp toplevel declarations and those are treated as though they appear
-in the current program.  Chialisp forms are allowed to appear in any order in
-the source files they appear in.
+Chia has two separate languages that follow this high-low level paradigm -- Chialisp and CLVM (ChiaLisp Virtual Machine):
+* **Chialisp** - a mid-level language in the vein of C++. Most of Chia's puzzles (smart coin code) are initially written in Chialisp
+* **CLVM** - the low-level language into which Chialisp compiles. Chia nodes use this language to evaluate puzzles. Humans typically do not write code directly in CLVM
 
-Structurally, compilers tend to work in passes, even if on only part of the input.
-In C, where the main abstraction is "functions" in the C sense, each function is
-treated conceptually separately and code is generated for it.  In chialisp, the
-situation is similar; each toplevel function is value that must exist as a quoted
-CLVM value in the program's invariant environment (the word "invariant" is used
-here because CLVM code generation generally encodes paths into this information
-into multiple parts of the code and because of this the representation of this
-information is consistent throughout the program's run).
+### Chialisp structure
 
-The classic chialisp compiler does not actually work in usefully separable passes.
-It produces a CLVM expression including a request to run a special primitive (where
-"primitive" here means an operator installed in the CLVM run time system which is
-implemented in "foreign" (non-CLVM) code) whose function is to produce one step of
-chialisp compilation and wraps this in a CLVM primitive whose purpose is to perform
-optimization and constant folding.  These are installed in stage_2 (more on this
-later).  In classic chialisp, compilation is actually performed by constant
-folding, as that is what causes a CLVM primitive ("com" here) to be evaluated to
-a value when the argument is constant ("constant folding" refers to the compile
-time process of taking expression involving constants and computing their results).
-Because of this arrangement, there is only one "pass" (where "pass" refers to a
-traversal of the complete program in some representation to transform it into
-another representation, even when both are internal to the compilation process),
-because the only time when a guarantee is given that the entire S-expression
-("s-expression" refers to the kinds of values held in lisp and lisp-like languages)
-held during compilation in the classic compiler is expected to be completely 
-transformed into CLVM.
+A compiler has two basic structural options:
 
-The modern compiler does have distinct phases of compilation.
+* Read all inputs, write output (e.g. golang)
+* Read input a bit at a time and possibly produce output a bit at a time (e.g. C)
 
-- The first file is completely parsed, and all include files are also parsed and
-  incorporated before any "frontend" work is done (a compiler "frontend" usually
-  refers to the part of compilation that sits directly after the user's source code
-  is parsed.  Usually, for ergonomic reasons, there are parts of the language the
-  user writes that don't translate directly to data structures used to generate
-  code, therefore "frontend" processing translate the user's text into some more
-  convenient representation for further processing).  Preprocessing in the new
-  compiler takes place in src/compiler/preprocess.rs, function preprocess.  This
-  is performed currently at the beginning of the compiler "frontend" but it can
-  (and probably should) be broken out into a pipeline at the same level as the
-  frontend eventually.  You can find the entry into the compiler frontend in
-  src/compiler/frontend.rs, function frontend.  It calls preprocess at line
-  718 (currently) in frontend_start.
+Chialisp compilers read the whole input first. The language allows the programmer to include external libraries. As in C, this is accomplished with a list of file paths. The Chialisp compiler reads the include files one at a time and treats them as if they had been included in the current program. Chialisp forms are allowed to appear in any order.
+
+### Functions
+
+In C, code is generated separately for each function. In Chialisp, the situation is similar -- each top-level function must exist as a quoted CLVM value in the program's invariant environment.
+
+Note that the word _invariant_ is used here for two reasons:
+1. CLVM code generation generally encodes these paths into multiple parts of the code
+2. The representation of this information is consistent throughout the program's run
+
+### Classic Chialisp
+
+Some definitions:
+* **primitive** -- an operator installed in the CLVM runtime system which is implemented in non-CLVM code
+* **com operator** -- a CLVM primitive
+* **constant folding** -- the compile-time process of inputting expressions that involve constants, and computing their results
+* **pass** -- a traversal of the complete program in some representation to transform it into
+another representation, even when both are internal to the compilation process
+* **s-expression** -- the kinds of values held in lisp and lisp-like languages
+
+The classic Chialisp compiler does not work in usefully separable passes. Instead, it produces a CLVM request to run a special primitive that runs one step of the Chialisp compilation. The compiler then wraps this primitive in a CLVM primitive that engages in optimization and constant folding.
+
+In classic Chialisp, compilation is performed by constant folding, as that is what causes a CLVM primitive to be evaluated to a value when the argument is constant. There is a guarantee that the entire S-expression held during compilation in the classic compiler is completely transformed into CLVM. This is the only time of such a guarantee, so only one pass is needed.
+
+### Modern Chialisp
+
+Some definitions:
+
+* **frontend** - the part of compilation that occurs directly after the user's source code is parsed. This is needed for ergonomic reasons. It is normal for users to write parts of the language that don't translate directly to the data structures used to generate code. Because of this, _frontend_ processing first translates the user's text into a more convenient representation for further processing.
+* **intermediate representation** - a data structure that is built and used during compilation, and discarded afterward. It contains some essential or extract meaning from the source program. It relates to either the program's meaning, its code generation, or some other process the compiler must perform.
+* **high-level intentions** - signaled by the user and translated into the frontend's intermediate representation of the program
+* **desugaring** - the process of translating high-level intentions into a program with targeted elements. These elements are closely related to the final environment for which the code is being generated
+* **declaration** - a name given to a reusable part of a program. In many languages it is synonymous with -- or at least co-located with -- a _definition_
+* **definition** - the site where a named object in a user's program is given a concrete form
+* **left environment** - the invariant part of the CLVM environment which is given to the program when its main expression is run. It provides a consistent pool of sibling functions and constant data that the program is able to draw from
+* **symbols** - a parallel set of information about a program regarding user-understandable names and locations that can be associated with landmarks in the generated code
+* **sha256tree** - a standard process by which CLVM values are given a fixed-length hash identifier based on their content. It has nearly zero possibility of generating collisions
+
+Modern Chialisp is compiled in several distinct phases:
+
+#### Frontend processing
+
+* Before any frontend work is done, the first file, as well as all include files, are completely parsed
+* At the beginning of the compiler frontend, preprocessing in the new compiler takes place in `src/compiler/preprocess.rs`. This can (and probably should) be broken out into a pipeline at the same level as the frontend eventually
+* `src/compiler/frontend.rs` contains the compiler frontend. It currently calls preprocess at line 718 in `frontend_start`.
   
-- The compiler frontend produces a kind of "intermediate representation" (where
-  "intermediate representation" refers to a data structure built during compilation
-  that is not intended to be used apart from that compiler and that contains some
-  essential or extract meaning from the source program that relates to some aspect
-  of the program's meaning, code generation or some other process the compiler
-  must perform for some reason).  The main one used by the modern compiler is
-  a CompileForm, which contains a complete representation of the input program
-  expressed in a set of HelperForm objects and a BodyForm object.  CompileForm is
-  declared at line 255 (currently) of src/compiler/comptypes.rs.  Its purpose to
-  to provide a single object that encapsulates the entire meaning of a chialisp
-  program.  It is the only thing that is passed on to code generation.
-  HelperForm is declared slightly earlier (as logically CompileForm depends on it)
-  and concerns representing the kinds of declarations ("declaration" here refers
-  to a part of a user's program where some reusable part of the program is given
-  a name.  In many languages, it is synonomous or at least co-located with a
-  "definition", which in programming languages refers to the site where a named
-  object in the universe of the user's program is given some kind of concrete
-  form).  BodyForm is defined slightly earlier yet (as HelperForm depends on it),
-  at line 122 (currently) in src/compiler/comptypes.rs and contains any kind of
-  expression the chialisp language allows.  Because the frontend is still in the
-  process of collecting information when it converts the user's code into these
-  data structures, it does not neccessarily know (for example) what function is
-  being referred to by a function call, so it does not make any claim that the
-  program is self-consistent exiting the compiler frontend, although at the
-  end of that pass it's possible to make additional checks (for example, the
-  use checker (src/compiler/usecheck.rs) consumers a CompileForm yielded from
-  the compiler frontend in order to check for unused mod arguments.
+#### Intermediate representation
+
+The main intermediate representation used by the modern compiler is a CompileForm, which contains a complete representation of the input program expressed in a set of HelperForm objects and a BodyForm object.
+
+CompileForm depends on HelperForm, which in turn depends on BodyForm. All three are defined in `src/compiler/comptypes.rs`, currently in the following locations:
+
+1. **BodyForm** -- line 122
+
+  BodyForm contains every type of expression the Chialisp language allows. Because the frontend is still in the process of collecting information when it converts the user's code into these data structures, it does not necessarily know (for example) what function is being referred to by a function call. It therefore does not make any claim that the program is self-consistent when exiting the compiler frontend.
   
-- The next phase of compilation and logical "pass" is "desugaring" (where
-  "desugaring" refers to the process of translating high level intentions
-  signalled by the user and translated into the frontend's intermediate
-  representation of the program into a program with fewer or more targeted
-  elements that relate more closely to a part of the compilation process that
-  takes place chronologically later and typically is conceptually
-  targeting a part of compilation that relates more closely to the final
-  environment code is being generated for).  It's intended that desugaring
-  steps will be moved out of codegen to be done fully first, but it counts
-  as a full compiler pass because it is completed before any code generation
-  activities take place.
+  However, at the end of that pass it's possible to make additional checks. For for example, the use checker (`src/compiler/usecheck.rs`) consumes a CompileForm yielded from the compiler frontend in order to check for unused mod arguments.
+
+2. **HelperForm** -- line 218
+
+  HelperForm concerns representing the kinds of declarations.
+
+3. **CompileForm** -- line 255 
+
+  CompileForm provides a single object that encapsulates the entire meaning of a Chialisp program. It is the only thing that is passed on to code generation.
+
+#### Desugaring
+
+The next phase is desugaring. This phase will likely be moved out of codegen to be done fully first. However, it still will count as a full compiler pass because it is completed before any code generation activities take place.
   
-- After desugaring, a frontend optimizer is intended to go in.  This is being
-  worked on in a branch.  The frontend optimizer performs higher level
-  transformations on the code that result is simpler or smaller code that has
-  the same meaning as the original, but in a form that faclitates better code
-  generation.  An example from chialisp is noting when a stack of (f and (r
-  primitive invocations exist and translating them into a numeric path, saving
-  space.
-  
-- The final pass is code generation proper.  The "left environment" shape is
-  produced ("left environment" here refers to the invariant part of the CLVM
-  environment which is given to the program when its main expression is run,
-  providing a consistent pool of sibling functions and constant data that the
-  program is able to draw from).
-  The process and concerns of code generation are described in better detail
-  below, but the result is SExp, the data structure that represents S-expressions
-  in this compiler, defined at 33 (presently) of src/compiler/sexp.rs.  In both
-  classic and modern compilers, the representation of parsed source code and
-  emitted code are both their respective views of s-expressions.  The full
-  power of the modern S-expression isn't required in the emitted CLVM code but
-  it's convenient because it carries some useful information from the user's
-  perspective; it's Srcloc (defined in src/compiler/srcloc.rs) contains a record
-  of what part of the source code it was generated from.  These are collected
-  into the "symbols" (where "symbols" generally refers to a parallel set of
-  information about a program regarding user-understandable names and locations
-  that can be associated with landmarks in the generated code).  In the case of
-  chialisp, landmarks are identified by "sha256tree" (where "sha256tree" refers
-  to a standard process by which CLVM values are given a fixed-length hash
-  identifier based on their content that has a nearly 0 possibility of
-  generating collisions).  Because of this, the symbols can refer to code by
-  sha256tree hash and give names to sites in the generated code.
-  
+#### Frontend optimizer
+
+The frontend optimizer is intended to be run after the desugaring phase. However, it is currently still being developed in a branch. It performs higher level transformations on the code that result in simpler or smaller code that has the same meaning as the original, but in a form that facilitates better code generation.
+
+For example, in Chialisp the frontend optimizer notes when a stack of `(f` and `(r` primitive invocations exist, and translating them into a numeric path, saving space.
+
+#### Code generation
+
+In the code generation phase, the _left environment_ shape is produced. This results in `SExp`, the data structure that represents S-expressions in this compiler. It is currently defined at line 33 of `src/compiler/sexp.rs`.
+
+In both the classic and modern compilers, the parsed source code and emitted code are represented by their respective views of S-expressions.
+
+The full power of the modern S-expression isn't required in the emitted CLVM code, but it's convenient because it carries some useful information from the user's perspective. Its `Srcloc` (defined in `src/compiler/srcloc.rs`) contains a record of what part of the source code it was generated from. These are collected into the _symbols_.
+
+In the case of Chialisp, landmarks are identified by _sha256tree_. Because of this, the symbols can refer to code by its sha256tree hash, as well as give names to sites in the generated code.
+
+---
+
 _Dive into the code from start to compiler_
 
 The code here and the chialisp compiler has a history for its life so far.  It
