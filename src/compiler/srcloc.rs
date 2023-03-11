@@ -2,9 +2,11 @@ use std::borrow::Borrow;
 use std::fmt::Display;
 use std::rc::Rc;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+use serde::Serialize;
+
 /// If a Srcloc identifies a range of characters in the source file, this
 /// identifies the tail of the range.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Until {
     pub line: usize,
     pub col: usize,
@@ -19,7 +21,6 @@ impl Until {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
 /// Specifies the coordinates of an object in a source file, including the file
 /// name.  The name is held by reference count so they can be held and cloned
 /// relatively freely.
@@ -29,6 +30,7 @@ impl Until {
 /// report errors precisely downstream in the compiler (for example, reporting
 /// the specific atom on which an attempt to do first or rest was made, deep in
 /// the compiler infra.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Srcloc {
     pub file: Rc<String>,
     pub line: usize,

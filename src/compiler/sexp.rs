@@ -14,6 +14,8 @@ use std::string::String;
 use binascii::{bin2hex, hex2bin};
 use num_traits::{zero, Num};
 
+use serde::Serialize;
+
 use crate::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType};
 use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes_clvm, TConvertOption};
 use crate::compiler::prims::prims;
@@ -29,7 +31,7 @@ pub const MAX_SEXP_COST: usize = 15;
 /// required for chialisp but are useful for ergonomics and compilation.  The
 /// Srcloc especially is relied on by the vscode plugin, which uses the frontend
 /// entrypoints here for parsing and to surface some kinds of errors.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum SExp {
     /// A native nil value "()"
     Nil(Srcloc),

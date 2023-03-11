@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
+use serde::Serialize;
+
 use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
@@ -82,7 +84,7 @@ pub fn list_to_cons(l: Srcloc, list: &[Rc<SExp>]) -> SExp {
 /// A binding from a (let ...) form.  Specifies the name of the bound variable
 /// the location of the whole binding form, the location of the name atom (nl)
 /// and the body as a BodyForm (which are chialisp expressions).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Binding {
     /// Overall location of the form.
     pub loc: Srcloc,
@@ -98,7 +100,7 @@ pub struct Binding {
 /// not depend on each other and aren't in scope for each other.  Sequential
 /// is like lisp's let* form in that each binding has the previous ones in scope
 /// for itself.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum LetFormKind {
     Parallel,
     Sequential,
@@ -106,7 +108,7 @@ pub enum LetFormKind {
 
 /// Information about a let form.  Encapsulates everything except whether it's
 /// parallel or sequential, which is left in the BodyForm itself.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct LetData {
     /// The location of the form overall.
     pub loc: Srcloc,
@@ -118,7 +120,7 @@ pub struct LetData {
     pub body: Rc<BodyForm>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum BodyForm {
     /// A let or let* form (depending on LetFormKind).
     Let(LetFormKind, LetData),
@@ -149,7 +151,7 @@ pub enum BodyForm {
 
 /// The information needed to know about a defun.  Whether it's inline is left in
 /// the HelperForm.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct DefunData {
     /// The location of the helper form.
     pub loc: Srcloc,
@@ -167,7 +169,7 @@ pub struct DefunData {
 
 /// Specifies the information extracted from a macro definition allowing the
 /// compiler to expand code using it.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct DefmacData {
     /// The location of the macro.
     pub loc: Srcloc,
@@ -184,7 +186,7 @@ pub struct DefmacData {
 }
 
 /// Information from a constant definition.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct DefconstData {
     /// The location of the constant form.
     pub loc: Srcloc,
@@ -204,7 +206,7 @@ pub struct DefconstData {
 
 /// Specifies where a constant is the classic kind (unevaluated) or a proper
 /// expression.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum ConstantKind {
     Complex,
     Simple,
@@ -214,7 +216,7 @@ pub enum ConstantKind {
 /// Helpers are the (defconst ...) (defun ...) (defun-inline ...) (defmacro ...)
 /// forms from the source code and "help" the program do its job.  They're
 /// individually parsable and represent the atomic units of the program.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum HelperForm {
     /// A constant definition (see DefconstData).
     Defconstant(DefconstData),
@@ -227,7 +229,7 @@ pub enum HelperForm {
 /// A description of an include form.  Here, records the locations of the various
 /// parts of the include so they can be marked in the language server and be
 /// subject to other kind of reporting if desired.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct IncludeDesc {
     /// Location of the keyword introducing this form.
     pub kw: Srcloc,
@@ -251,7 +253,7 @@ impl IncludeDesc {
 /// traversed (for marking in a language server), the argument spec of the program,
 /// the list of helper declarations and the expression serving as the "main"
 /// program.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct CompileForm {
     /// Location of the form that was collected into this object.
     pub loc: Srcloc,
