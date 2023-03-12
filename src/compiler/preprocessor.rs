@@ -43,22 +43,53 @@ fn match_atom(body: Rc<BodyForm>) -> Result<Option<(Srcloc, Vec<u8>)>, CompileEr
     }
 }
 
+fn reify_args(
+    evaluator: &Evaluator,
+    prog_args: Rc<SExp>,
+    env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+    loc: &Srcloc,
+    args: &[Rc<BodyForm>]
+) -> Result<Vec<Rc<BodyForm>>, CompileErr> {
+    let mut allocator = Allocator::new();
+    let mut converted_args = Vec::new();
+    for a in args.iter() {
+        let shrunk = evaluator.shrink_bodyform(
+            &mut allocator,
+            prog_args.clone(),
+            env,
+            a.clone(),
+            false,
+            None
+        )?;
+        converted_args.push(shrunk);
+    }
+    Ok(converted_args)
+}
+
 struct PreprocessorExtension { }
 impl EvalExtension for PreprocessorExtension {
     fn try_eval(
         &self,
         evaluator: &Evaluator,
+        prog_args: Rc<SExp>,
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         loc: &Srcloc,
         name: &[u8],
-        args: &[Rc<BodyForm>],
+        raw_args: &[Rc<BodyForm>],
         body: Rc<BodyForm>,
     ) -> Result<Option<Rc<BodyForm>>, CompileErr> {
         if name == b"string->symbol" {
-            if args.len() != 1 {
+            if raw_args.len() != 1 {
                 return Err(CompileErr(loc.clone(), "string->symbol needs 1 argument".to_string()));
             }
 
+            let args = reify_args(
+                evaluator,
+                prog_args,
+                env,
+                loc,
+                raw_args
+            )?;
             if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
 
                 return Ok(Some(Rc::new(BodyForm::Quoted(SExp::Atom(loc,value)))));
@@ -67,6 +98,13 @@ impl EvalExtension for PreprocessorExtension {
                 return Ok(Some(body.clone()));
             }
         } else if name == b"symbol->string" {
+            let args = reify_args(
+                evaluator,
+                prog_args,
+                env,
+                loc,
+                raw_args
+            )?;
             if let Some((loc, value)) = match_atom(args[0].clone())? {
                 return Ok(Some(Rc::new(BodyForm::Quoted(SExp::QuotedString(loc,b'\"',value)))));
             } else {
@@ -74,6 +112,13 @@ impl EvalExtension for PreprocessorExtension {
                 return Ok(Some(body.clone()));
             }
         } else if name == b"string-append" {
+            let args = reify_args(
+                evaluator,
+                prog_args,
+                env,
+                loc,
+                raw_args
+            )?;
             let mut out_vec = Vec::new();
             let mut out_loc = None;
             for a in args.iter() {

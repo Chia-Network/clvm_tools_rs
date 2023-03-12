@@ -74,6 +74,7 @@ pub trait EvalExtension {
     fn try_eval(
         &self,
         evaluator: &Evaluator,
+        prog_args: Rc<SExp>,
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         loc: &Srcloc,
         name: &[u8],
@@ -703,25 +704,14 @@ impl<'info> Evaluator {
             let compiled_borrowed: &SExp = compiled.borrow();
             Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
         } else {
-            let mut converted_args = Vec::new();
-            for a in arguments_to_convert.iter() {
-                let shrunk = self.shrink_bodyform_visited(
-                    allocator,
-                    visited,
-                    prog_args.clone(),
-                    env,
-                    a.clone(),
-                    only_inline,
-                )?;
-                converted_args.push(shrunk);
-            }
             for ext in self.extensions.iter() {
                 if let Some(res) = ext.try_eval(
                     self,
+                    prog_args.clone(),
                     env,
                     &l,
                     call_name,
-                    &converted_args,
+                    &arguments_to_convert,
                     body.clone()
                 )? {
                     return Ok(res);
