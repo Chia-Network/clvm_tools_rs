@@ -74,8 +74,7 @@ fn remove_present_atoms(envlist: &mut HashMap<Vec<u8>, Vec<u8>>, args: Rc<SExp>)
 /// to check whether a program's inputs contribute to its output.  This is only
 /// enforced for lower case parameter names; upper case names are
 /// by convention curried-in and are required parameters which the user may
-/// not have control over.  Also, a parameter name starting with _ is also not
-/// checked.
+/// not have control over.  Parameter names starting with _ are also not checked.
 pub fn check_parameters_used_compileform(
     opts: Rc<dyn CompilerOpts>,
     program: Rc<CompileForm>,
