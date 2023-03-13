@@ -75,7 +75,7 @@ pub enum ArgInputs {
 /// defun or defmacro) from a program.  In the simplest form, it can be used to
 /// power a chialisp repl, but also to simplify expressions to their components.
 ///
-/// The expressions is simpler and sometimes smaller, depending on what the
+/// The emitted expressions are simpler and sometimes smaller, depending on what the
 /// evaulator was able to do.  It performs all obvious substitutions and some
 /// obvious simplifications based on actual operations (such as combining
 /// picking operations with conses in some cases).  If the expression can't
