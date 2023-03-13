@@ -3,10 +3,6 @@ clvm_tools_rs
 
 Theory of operation of the modern compiler: ./HOW_CHIALISP_IS_COMPILED.md
 -
-
-Using this repo:
--
-
 This repo can be installed via cargo
 
     cargo install clvm_tools_rs
