@@ -1131,7 +1131,7 @@ impl<'info> Evaluator {
     /// current argument set (in case something depends on its shape), the
     /// bindings in force, and a frontend expression to evaluate and simplifies
     /// it as much as possible.  The result is the "least complex" version of the
-    /// express we can make with what we know; this includes taking any part that's
+    /// expression we can make with what we know; this includes taking any part that's
     /// constant and fully applying it to make a constant of the full subexpression
     /// as well as a few other small rewriting elements.
     ///
