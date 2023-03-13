@@ -58,7 +58,7 @@ fn run_string_maybe_opt(
     })
 }
 
-fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
+pub fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
     run_string_maybe_opt(content, args, false)
 }
 
@@ -1191,48 +1191,4 @@ fn test_inline_out_of_bounds_diagnostic() {
     } else {
         assert!(false);
     }
-}
-
-#[test]
-fn test_defmac_basic_0() {
-    let prog = indoc! {"
-    (mod (X)
-      (defmac double-arg (A) (list (string->symbol (string-append (symbol->string A) \"1\")) (string->symbol (string-append (symbol->string A) \"2\"))))
-      (defun strange (double-arg X) (+ X1 X2))
-      (strange X (* 2 X))
-      )
-    "}
-    .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
-    assert_eq!(res.to_string(), "9");
-}
-
-#[test]
-fn test_defmac_basic_shared_constant() {
-    let prog = indoc! {"
-    (mod (X)
-      (defconstant twostring \"2\")
-      (defmac double-arg (A) (list (string->symbol (string-append (symbol->string A) \"1\")) (string->symbol (string-append (symbol->string A) twostring))))
-      (defun strange (double-arg X) (+ X1 X2))
-      (c twostring (strange X (* 2 X)))
-      )
-    "}
-    .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
-    assert_eq!(res.to_string(), "(\"2\" . 9)");
-}
-
-#[test]
-fn test_defmac_basic_shared_constant_not_string_with_string_operator() {
-    let prog = indoc! {"
-    (mod (X)
-      (defconstant twostring 2)
-      (defmac double-arg (A) (list (string->symbol (string-append (symbol->string A) \"1\")) (string->symbol (string-append (symbol->string A) twostring))))
-      (defun strange (double-arg X) (+ X1 X2))
-      (c twostring (strange X (* 2 X)))
-      )
-    "}
-    .to_string();
-    let res = run_string(&prog, &"(3)".to_string());
-    assert!(res.is_err());
 }

@@ -264,7 +264,7 @@ fn normalize_int(v: Vec<u8>, base: u32) -> Number {
 fn from_hex(l: Srcloc, v: &[u8]) -> SExp {
     let mut result = vec![0; (v.len() - 2) / 2];
     hex2bin(&v[2..], &mut result).expect("should convert from hex");
-    SExp::QuotedString(l, b'"', result)
+    SExp::QuotedString(l, b'x', result)
 }
 
 fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
