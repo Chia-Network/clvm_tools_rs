@@ -77,7 +77,7 @@ pub enum ArgInputs {
 ///
 /// The emitted expressions are simpler and sometimes smaller, depending on what the
 /// evaulator was able to do.  It performs all obvious substitutions and some
-/// obvious simplifications based on actual operations (such as combining
+/// obvious simplifications based on CLVM operations (such as combining
 /// picking operations with conses in some cases).  If the expression can't
 /// be simplified to a constant, any remaining variable references and the
 /// operations on them are left.
