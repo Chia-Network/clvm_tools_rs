@@ -85,7 +85,7 @@ pub enum ArgInputs {
 /// Because of what it can do, it's also used for "use checking" to determine
 /// whether input parameters to the program as a whole are used in the program's
 /// eventual results.  The simplification it does is general eta conversion with
-/// some other spot things thrown in.
+/// some other local transformations thrown in.
 pub struct Evaluator {
     opts: Rc<dyn CompilerOpts>,
     runner: Rc<dyn TRunProgram>,
