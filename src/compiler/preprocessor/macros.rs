@@ -14,14 +14,32 @@ use crate::util::{Number, number_from_u8};
 
 // If the bodyform represents a constant, only match a quoted string.
 fn match_quoted_string(body: Rc<BodyForm>) -> Result<Option<(Srcloc, Vec<u8>)>, CompileErr> {
-    if let BodyForm::Quoted(SExp::QuotedString(al,_,an)) = body.borrow() {
-        Ok(Some((al.clone(),an.clone())))
-    } else if let BodyForm::Value(SExp::QuotedString(al,_,an)) = body.borrow() {
-        Ok(Some((al.clone(),an.clone())))
-    } else if let BodyForm::Quoted(_) = body.borrow() {
-        Err(CompileErr(body.loc(), "string required".to_string()))
+    let is_string =
+        match body.borrow() {
+            BodyForm::Quoted(SExp::QuotedString(al,b'x',an)) => {
+                None
+            }
+            BodyForm::Quoted(SExp::QuotedString(al,_,an)) => {
+                Some((al.clone(), an.clone()))
+            }
+            BodyForm::Value(SExp::QuotedString(al,b'x',an)) => {
+                None
+            }
+            BodyForm::Value(SExp::QuotedString(al,_,an)) => {
+                Some((al.clone(), an.clone()))
+            }
+            BodyForm::Quoted(_) => {
+                None
+            }
+            _ => {
+                return Ok(None);
+            }
+        };
+
+    if let Some((loc, s)) = is_string {
+        Ok(Some((loc, s)))
     } else {
-        Ok(None)
+        Err(CompileErr(body.loc(), "string required".to_string()))
     }
 }
 
@@ -149,7 +167,20 @@ impl ExtensionFunction for NumberQ {
         args: &[Rc<BodyForm>],
         body: Rc<BodyForm>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        todo!();
+        let res =
+            match match_number(args[0].clone()) {
+                Ok(Some(_)) => {
+                    SExp::Integer(loc.clone(), bi_one())
+                }
+                Ok(None) => {
+                    return Ok(body.clone());
+                }
+                Err(_) => {
+                    SExp::Nil(loc.clone())
+                }
+            };
+
+        Ok(Rc::new(BodyForm::Quoted(res)))
     }
 }
 
@@ -172,7 +203,20 @@ impl ExtensionFunction for SymbolQ {
         args: &[Rc<BodyForm>],
         body: Rc<BodyForm>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        todo!();
+        let res =
+            match match_atom(args[0].clone()) {
+                Ok(Some(_)) => {
+                    SExp::Integer(loc.clone(), bi_one())
+                }
+                Ok(None) => {
+                    return Ok(body.clone());
+                }
+                Err(_) => {
+                    SExp::Nil(loc.clone())
+                }
+            };
+
+        Ok(Rc::new(BodyForm::Quoted(res)))
     }
 }
 

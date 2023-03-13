@@ -95,3 +95,75 @@ fn test_defmac_basic_test_is_string_neg() {
     let res = run_string(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(3 2 . test)");
 }
+
+#[test]
+fn test_defmac_basic_test_is_symbol_pos() {
+    let prog = indoc! {"
+    (mod (X)
+      (defmac classify (S)
+        (if (symbol? S)
+          (qq (c 1 (unquote S)))
+          (qq (c 2 (unquote S)))
+          )
+        )
+      (c X (classify test))
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(3 1 . test)");
+}
+
+#[test]
+fn test_defmac_basic_test_is_symbol_neg() {
+    let prog = indoc! {"
+    (mod (X)
+      (defmac classify (S)
+        (if (symbol? S)
+          (qq (c 1 (unquote S)))
+          (qq (c 2 (unquote S)))
+          )
+        )
+      (c X (classify \"test\"))
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(3 2 . \"test\")");
+}
+
+#[test]
+fn test_defmac_basic_test_is_number_pos() {
+    let prog = indoc! {"
+    (mod (X)
+      (defmac classify (S)
+        (if (number? S)
+          (qq (c 1 (unquote S)))
+          (qq (c 2 (unquote S)))
+          )
+        )
+      (c X (classify 7))
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(3 1 . 7)");
+}
+
+#[test]
+fn test_defmac_basic_test_is_number_neg() {
+    let prog = indoc! {"
+    (mod (X)
+      (defmac classify (S)
+        (if (number? S)
+          (qq (c 1 (unquote S)))
+          (qq (c 2 (unquote S)))
+          )
+        )
+      (c X (classify \"test\"))
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(3 2 . \"test\")");
+}
