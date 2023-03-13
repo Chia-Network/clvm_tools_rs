@@ -66,7 +66,145 @@ fn reify_args(
     Ok(converted_args)
 }
 
-struct PreprocessorExtension { }
+/// A function to evaluate in preprocessor macros.
+trait ExtensionFunction {
+    fn try_eval(
+        &self,
+        evaluator: &Evaluator,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        loc: &Srcloc,
+        name: &[u8],
+        args: &[Rc<BodyForm>],
+        body: Rc<BodyForm>,
+    ) -> Result<Rc<BodyForm>, CompileErr>;
+}
+
+struct SymbolToString { }
+
+impl SymbolToString {
+    fn new() -> Rc<dyn ExtensionFunction> { Rc::new(SymbolToString { }) }
+}
+
+impl ExtensionFunction for SymbolToString {
+    fn try_eval(
+        &self,
+        evaluator: &Evaluator,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        loc: &Srcloc,
+        name: &[u8],
+        args: &[Rc<BodyForm>],
+        body: Rc<BodyForm>,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        if let Some((loc, value)) = match_atom(args[0].clone())? {
+            return Ok(Rc::new(BodyForm::Quoted(SExp::QuotedString(loc,b'\"',value))));
+        } else {
+            return Ok(body.clone());
+        }
+    }
+}
+
+struct StringToSymbol { }
+
+impl StringToSymbol {
+    fn new() -> Rc<dyn ExtensionFunction> { Rc::new(StringToSymbol { }) }
+}
+
+impl ExtensionFunction for StringToSymbol {
+    fn try_eval(
+        &self,
+        evaluator: &Evaluator,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        loc: &Srcloc,
+        name: &[u8],
+        args: &[Rc<BodyForm>],
+        body: Rc<BodyForm>,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
+            return Ok(Rc::new(BodyForm::Quoted(SExp::Atom(loc,value))));
+        } else {
+            eprintln!("pp helper returned {}", decode_string(name));
+            return Ok(body.clone());
+        }
+    }
+}
+
+struct StringAppend { }
+
+impl StringAppend {
+    fn new() -> Rc<dyn ExtensionFunction> { Rc::new(StringAppend { }) }
+}
+
+impl ExtensionFunction for StringAppend {
+    fn try_eval(
+        &self,
+        evaluator: &Evaluator,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        loc: &Srcloc,
+        name: &[u8],
+        args: &[Rc<BodyForm>],
+        body: Rc<BodyForm>,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        let mut out_vec = Vec::new();
+        let mut out_loc = None;
+        for a in args.iter() {
+            if let Some((loc, mut value)) = match_quoted_string(a.clone())? {
+                if out_loc.is_none() {
+                    out_loc = Some(loc);
+                }
+                out_vec.append(&mut value);
+            } else {
+                eprintln!("pp helper returned {}", decode_string(name));
+                return Ok(body.clone());
+            }
+        }
+        return Ok(Rc::new(BodyForm::Quoted(SExp::QuotedString(out_loc.unwrap_or_else(|| body.loc()),b'\"',out_vec))));
+    }
+}
+
+/// An evaluator extension for the preprocessor.
+///
+/// Implements scheme like conversion functions for handling chialisp programs and
+/// bits of them.
+///
+/// These functions are provided:
+///
+/// Basic conversion
+///
+/// string->symbol
+/// symbol->string
+/// string->number
+/// number->string
+///
+/// Generate fresh symbols
+///
+/// gensym
+///
+/// Working with values
+///
+/// string-append s0 s1 ...
+/// substring s start end
+/// first
+/// rest
+/// cons
+struct PreprocessorExtension {
+    extfuns: HashMap<Vec<u8>, Rc<dyn ExtensionFunction>>
+}
+
+impl PreprocessorExtension {
+    fn new() -> Self {
+        let extfuns = [
+            (b"string->symbol".to_vec(), StringToSymbol::new()),
+            (b"symbol->string".to_vec(), SymbolToString::new()),
+            (b"string-append".to_vec(), StringAppend::new()),
+        ];
+        PreprocessorExtension { extfuns: HashMap::from(extfuns) }
+    }
+}
+
 impl EvalExtension for PreprocessorExtension {
     fn try_eval(
         &self,
@@ -78,70 +216,28 @@ impl EvalExtension for PreprocessorExtension {
         raw_args: &[Rc<BodyForm>],
         body: Rc<BodyForm>,
     ) -> Result<Option<Rc<BodyForm>>, CompileErr> {
-        if name == b"string->symbol" {
-            if raw_args.len() != 1 {
-                return Err(CompileErr(loc.clone(), "string->symbol needs 1 argument".to_string()));
-            }
-
+        if let Some(extfun) = self.extfuns.get(name) {
+            eprintln!("try function {}", decode_string(name));
             let args = reify_args(
                 evaluator,
-                prog_args,
+                prog_args.clone(),
                 env,
                 loc,
                 raw_args
             )?;
-            if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
-
-                return Ok(Some(Rc::new(BodyForm::Quoted(SExp::Atom(loc,value)))));
-            } else {
-                eprintln!("pp helper returned {}", decode_string(name));
-                return Ok(Some(body.clone()));
-            }
-        } else if name == b"symbol->string" {
-            let args = reify_args(
+            Ok(Some(extfun.try_eval(
                 evaluator,
                 prog_args,
                 env,
                 loc,
-                raw_args
-            )?;
-            if let Some((loc, value)) = match_atom(args[0].clone())? {
-                return Ok(Some(Rc::new(BodyForm::Quoted(SExp::QuotedString(loc,b'\"',value)))));
-            } else {
-                eprintln!("pp helper returned {}", decode_string(name));
-                return Ok(Some(body.clone()));
-            }
-        } else if name == b"string-append" {
-            let args = reify_args(
-                evaluator,
-                prog_args,
-                env,
-                loc,
-                raw_args
-            )?;
-            let mut out_vec = Vec::new();
-            let mut out_loc = None;
-            for a in args.iter() {
-                if let Some((loc, mut value)) = match_quoted_string(a.clone())? {
-                    if out_loc.is_none() {
-                        out_loc = Some(loc);
-                    }
-                    out_vec.append(&mut value);
-                } else {
-                    eprintln!("pp helper returned {}", decode_string(name));
-                    return Ok(Some(body.clone()));
-                }
-            }
-            return Ok(Some(Rc::new(BodyForm::Quoted(SExp::QuotedString(out_loc.unwrap_or_else(|| body.loc()),b'\"',out_vec)))));
+                name,
+                &args,
+                body
+            )?))
+        } else {
+            Ok(None)
         }
-
-        eprintln!("pp helper didn't handle {}", decode_string(name));
-        Ok(None)
     }
-}
-
-impl PreprocessorExtension {
-    fn new() -> Self { PreprocessorExtension { } }
 }
 
 impl Preprocessor {
