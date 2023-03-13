@@ -1127,7 +1127,7 @@ impl<'info> Evaluator {
         }
     }
 
-    /// The main entrypoint for evaluator, shrink_bodyform takes a notion of the
+    /// The main entrypoint for the evaluator, shrink_bodyform takes a notion of the
     /// current argument set (in case something depends on its shape), the
     /// bindings in force, and a frontend expression to evaluate and simplifies
     /// it as much as possible.  The result is the "least complex" version of the
