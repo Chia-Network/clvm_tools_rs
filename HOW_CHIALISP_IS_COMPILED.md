@@ -114,249 +114,135 @@ In the case of Chialisp, landmarks are identified by _sha256tree_. Because of th
 
 ---
 
-_Dive into the code from start to compiler_
+### Dive into the code from start to compiler
 
-The code here and the chialisp compiler has a history for its life so far.  It
-started in python, was ported very faithfully to typescript and then the typed
-version in typescript was used as a basis for the rust port.  The rust port
-started after clvm_rs was started, because the wind seemed to be blowing toward
-rust and because changes to the python code didn't seem as relevant.
+#### History
 
-The newer compiler has a different history; it was started in ocaml as a sketch
-of how the structure of a chialisp compiler could improve some weaknesses of
-the original chialisp compiler; reporting exact coordinates of errors in ways
-that were more understandable to users, preserving more information from the
-source text throughout compilation (the ability to do something like source
-maps in javascript) and the ability to provide new forms with a reduced risk
-of changing the form of code that already compiled.
+A brief history of the Chialisp compiler:
+* First iteration was in Python
+* Ported to Typescript
+* Ported to Rust in the `clvm_rs` repository
 
-In order to keep existing code working and ensure that existing processes didn't
-break, a conservative approach was taken; the rust code here supports compiling
-an advanced form of the original chialisp dialect with some things improved but
-the shape and structure of most of the original code was maintained.  Since it
-was in a python style to begin with, that may make some of it difficult to
-navigate.
+The Rust compiler started in ocaml as a sketch of how the structure of a Chialisp compiler could improve some weaknesses of the original Chialisp compiler:
+* Reporting exact coordinates of errors in ways that were more understandable to users
+* Preserving more information from the source text throughout compilation (the ability to do something like source maps in Javascript)
+* Adding the ability to provide new forms with a reduced risk of changing the form of code that already compiled
 
-The python code started with entrypoints into two major functions, call\_tool and
-launch\_tool of which launch_tool was the one that exposed code compilation and
-is the more complex.  Since it both runs code and dispatches into 2 other fully
-independent compiler implementations and does a few other things besides, here's a
-guide to navigating it.
+In order to keep existing code working and ensure that existing processes didn't break, a conservative approach was taken. The Rust code supports compiling an advanced form of the original chialisp dialect, while maintaining
+the shape and structure of the original code. Since it was in a python style to begin with, that may make some of it difficult to navigate.
 
-_The "main" program of the chialisp compiler_
+#### Major functions
 
-The python code contained a 'cmds.py' in 'clvm\_tools', so the structure of the
-rust code is similar; src/classic/clvm_tools/cmds.rs contains the code for all
-the tools that historically existed; 'run', 'brun', 'opc', 'opd' and in similarly
-named functions.  In particular, "launch\_tool".  This is exactly as in the python
-code.
+The python code started with entrypoints into two major functions, `call_tool` and `launch_tool`, of which `launch_tool` was the one that exposed code compilation and is the more complex. Here's a guide to navigating it.
 
-Similarly to the python code, the rust code starts by decoding arguments using an
-analog of argparse.  The arguments are stored in a HashMap with type tags
-determining what the stored data is.  In the case of PathOrCode conversion type,
-it's been extended sligthly to remember the filename that was read in.  That's
-useful so that the returned string can inform compilation of the filename it's
-compiling so it can in turn inform the source locations what file name they belong
-to.  A few other things are similar; since classic chialisp compilation mixes
-code in the compiler's source language with expressions written in chialisp and
-stores state in the CLVM runtime environment, a runtime environment is prepared
-for it containing the search paths for include files (the classic compiler reads
-include files via an imperative CLVM operator, \_read, installed at the time when
-the interpreter is created.  This interpreter was called "stage\_2" in the python
-code so a function, run\_program\_for\_search\_paths was included in
-src/classic/stages/stage\_2/operators.rs for the purpose of creating that.  The
-normal operation of a CLVM environment is usually immutable and this stance is
-further encouraged by the lack of lifetime variables decorating the callbacks to
-the clvm runner in clvmr.  Because of that, the code downstream uses a C++ like
-approach to enriching the runtime environment with mutable state which will be
-talked about later.  The actual call to run\_program\_for\_search\_paths is at
-cmds.rs, line 798 currently.
+The python code included `clvm/tools/cmds.py`. The structure of the rust code is similar -- `src/classic/clvm_tools/cmds.rs` contains the code for all the tools that historically existed, such as `run`, `brun`, `opc`, `opd`, and `launch_tool`.  This is exactly as in the python code.
 
-At line 901 of cmds.rs (currently), the first decision is started regarding
-compilation; an early function called detect_modern is called and returns
-information regarding whether the user requested a specific chialisp dialect.
-This is important because modern and classic chialisp compilers don't accept
-precisely the same language and will continue to diverge.  Due to the demands
-of long term storage of assets on the blockchain, it is necessary for code that
-compiles in a specific form today retains that form forever, so the dialect also
-tells the compiler which of the different forms compilation could take among
-compatible alternatives.  This allows us to make better choices later on and
-grow the ways in which the compiler can benefit users over time along with
-the nature of HelperForm and BodyForm, which allow a clean separation between
-generations of features.
+Similarly to the python code, the rust code starts by decoding arguments using an analog of argparse. The arguments are stored in a HashMap with type tags determining what the stored data is. In the case of PathOrCode conversion type, it has been extended sligthly to remember the filename that was read in. That's useful so that the returned string can inform compilation of the filename it's compiling, and it can in turn inform the source locations what file name they belong to.
 
-The result of this choice is taken at line 940, where in the case of a modern
-dialect, a short circuit path is taken that bypasses the more complicated
-external interface of the classic compiler (below).  Since classic compilation
-closely mirrors the form the python code takes (and should not be as new to
-readers), I'll skip it for now and focus on modern compilation.
+A few other things are similar. Since classic Chialisp compilation mixes code in the compiler's source language with expressions written in Chialisp and stores state in the CLVM runtime environment, a runtime environment is prepared for it containing the search paths for include files.
 
-Due to a wrong choice I made early in the modern compiler's interface design,
-cl21's basic optimization is enabled when called from python (the python
-compilation interface used by chia-blockchain is fairly information poor so
-assumes optimization on), but requires a traditional style -O flag on the command
-line (line 358).  Called this way, python and command line compilation are the
-same.  This will be fixed in the cl22 dialect, which will override the cl21
-optimization flag entirely and also isn't the case in classic chialisp.
+The classic compiler reads include files via an imperative CLVM operator, `_read`, installed at the time when the interpreter is created. This interpreter was called `stage_2` in the Python code so a function, `run_program_for_search_paths` was included in `src/classic/stages/stage_2/operators.rs`.
+The normal operation of a CLVM environment is usually immutable. This stance is further encouraged by the lack of lifetime variables decorating the callbacks to the clvm runner in `clvmr`. Because of that, the code downstream uses a C++ like approach to enriching the runtime environment with mutable state. The actual call to `run_program_for_search_paths` is currently located at line 798 of `cmds.rs`.
 
-Mentioned later, CompilerOpts, which is a pure dynamic interface, implements
-a set of toggles and settings that are global to the compilation process and
-provide information during compilation.  One of these is required for compilation
-in modern and the one used is generated at line 946 (currently).  A main entrypoint
-to modern compilation that does all the needed work is in src/compiler/compiler.rs,
-compile\_file.  It's called at line 952 (currently) and I'll talk about it in a
-moment.
+At line 901 of `cmds.rs` (currently), `detect_modern` is called. This function returns information regarding whether the user requested a specific Chialisp dialect. This is important because modern and classic Chialisp compilers don't accept precisely the same language and will continue to diverge. Due to the demands of long-term storage of assets on the blockchain, it is necessary for code that compiles in a specific form today retains that form forever. The dialect then tells the compiler which of the different forms compilation could take among compatible alternatives. This allows us to make better choices later on, and to grow the ways in which the compiler can benefit users over time. It also enables HelperForm and BodyForm to support a clean separation between generations of features.
 
-compile_file in src/compiler/compiler.rs is a simple interface to compilation,
-given a collection of prerequisite objects, it first parses the source text given
-using parse\_sexp in src/compiler/sexp.rs (line 817 currently) to produce SExp,
-the data structure representing chialisp inputs and CLVM values, then gives the
-resulting list of parsed forms to compile\_pre\_forms (line 170 of
-src/compiler/compiler.rs currently).  compile\_pre\_forms first runs the frontend
-(calling src/compiler/frontend.rs, function frontend at line 747) at line 177 of
-src/compiler/compiler.rs yielding a CompileForm, which represents the full
-semantics of the user's program.
+The result of this choice is taken at line 940, where in the case of a modern dialect, a short-circuit path is taken that bypasses the more complicated external interface of the classic compiler (below). Since classic compilation closely mirrors the form the python code takes (and should not be as new to readers), I'll skip it for now and focus on modern compilation.
 
-It calls codegen (currently) at line 189 of src/compiler/compiler.rs, which
-yields the compiled code in the way that has been outlined above and is detailed
-below.
+The python compilation interface used by `chia-blockchain` is information-poor, so cl21's basic optimization is enabled when called from python. However, it requires a traditional style `-O` flag on the command line (line 358). When called this way, python and command line compilation are the same. This will be fixed in the cl22 dialect, which will override the cl21 optimization flag entirely.
 
-When called in this way, cmds.rs, launch_tool which runs the compiler, terminates
-early, yielding the compiled program or error from the modern compiler process,
-be it an error encountered while parsing, preprocessing, doing frontend
-transformation, code generation or any other part of the modern compiler that
-can produce an error.  Every error from the modern compiler has a Srcloc which
-it tries to use to refer to something relevant in the source code.  These errors
-have a relevant source of information through the process via the pervasive use
-of Srcloc in the various compiler data structures.
+A pure dynamic interface called `CompilerOpts` implements a set of toggles and settings that are global to the compilation process. It also provides information during compilation. One of these is required for compilation
+in modern Chialisp; the one currently used is generated at line 946.
 
-Code
---
+A main entrypoint to modern compilation that does all the needed work is in the `compile_file` interface of `src/compiler/compiler.rs`. It's called at line 952 (currently). Given a collection of prerequisite objects, it produces SExp using `parse_sexp` in `src/compiler/sexp.rs` (line 817 currently) to parse the source, then it gives the resulting list of parsed forms to `compile_pre_forms` (line 170 of `src/compiler/compiler.rs` currently). `compile_pre_forms` first runs the frontend at line 177 of `src/compiler/compiler.rs` by calling the `frontend` function at line 747 of `src/compiler/frontend.rs`. This yields a CompileForm, which represents the full semantics of the user's program.
 
-The modern compiler operates on just a few exposed types, and describes any
-program using these (forming a rough hierarchy).
+It calls `codegen` (currently) at line 189 of `src/compiler/compiler.rs`, which yields the compiled code in the way that has been outlined above and is detailed below.
 
-CompileForm   (src/compiler/comptypes.rs)
-  HelperForm
-    BodyForm
+When called in this way, the `launch_tool` method of `cmds.rs` terminates early, yielding the compiled program or error from the modern compiler process. This is true whether the error was encountered while parsing, preprocessing, doing frontend transformation, code generation or any other part of the modern compiler that
+can produce an error. Every error from the modern compiler has a `Srcloc`, which refers to something relevant in the source code. These errors have a relevant source of information through the process via the pervasive use
+of `Srcloc` in the various compiler data structures.
 
-When things are referred to as "helpers" they are some kind of HelperForm.  These
-are the definitions of things programs use as building blocks (as outlined below),
-broadly the out of line constant, macro and function definitions that are used to
-provide abstractions and parts of programs.
+---
+
+### Code
+
+The modern compiler operates on just a few exposed types, and describes any program using these (forming a rough hierarchy).
+
+-CompileForm (`src/compiler/comptypes.rs`)
+---HelperForm
+-----BodyForm
+
+Things referred to as "helpers" are some kind of HelperForm. These are the definitions of things programs use as building blocks (as outlined below), broadly the out-of-line constant, macro and function definitions that are used to provide abstractions and parts of programs.
 
 HelperForm and BodyForm are sum types which contain elements of the various kinds
-of things the compiler understands as distinct forms the user can use.  At this
-time, HelperForm is one of:
+of things the compiler understands as distinct forms the user can use.
 
-    Defconstant(DefconstData)
-    Defmacro(DefmacData)
-    Defun(bool, DefunData) // true = inline
+#### HelperForm
+
+HelperForm is one of:
+* Defconstant(DefconstData)
+* Defmacro(DefmacData)
+* Defun(bool, DefunData) (where true = inline)
     
-Which spans the kinds of declarations that chialisp can contain.  Having a well
-defined frontend type serves as a proof of sorts that the code has been fully
-read and understood.  In the frontend form, we can perform transformations on the
-code without worrying about breaking its more primitive representation.  Since
-we've extracted the code's meaning we can more easily substitute runtime compatible
-forms of the code from the perspective of the code's meaning.
+This spans the kinds of declarations that chialisp can contain. Having a well-defined frontend type serves as a proof of sorts that the code has been fully read and understood. In the frontend form, we can perform transformations on the code without worrying about breaking its more primitive representation. Since we've extracted the code's meaning, we can more easily substitute runtime compatible forms of the code from the perspective of the code's meaning.
 
-The BodyForm is more diverse and things like Lambdas add alternatives.  Since
-these are cleanly separated from a meaning perspective, it's possible to think
-of groups of later alternatives as being layered on top of earlier ones without
-affecting their meaning or how they're processed.
+#### BodyForm
+
+The BodyForm is more diverse and things like Lambdas add alternatives. Since these are cleanly separated from a meaning perspective, it's possible to think of groups of later alternatives as being layered on top of earlier ones without affecting their meaning or how they're processed.
 
 These are the current BodyForm alternatives:
 
-    Let(LetFormKind, LetData) --
+    Let(<LetFormKind>, <LetData>) --
     
-      Represents let forms and anything that's expressible through let forms,
-      such as the 'assign' form here:
+      Represents let forms and anything that's expressible through let forms, such as the 'assign' form here:
       
   [https://github.com/Chia-Network/clvm_tools_rs/pull/103](assign form pr)
         
     Quoted(SExp) --
       
-      Represents literal data in whatever form.  In particular, Quoted ensures
-      that the semantic meaning of the value is always as a constant as opposed
-      to being treated as a reference to something or a variable name.
+      Represents literal data in any form. In particular, Quoted ensures that the semantic meaning of the value is always as a constant as opposed to being treated as a reference to something or a variable name.
       
     Value(SExp) --
     
-      Value has a couple of meanings based on the content.  It can represent
-      a self quoting value type such as a quoted string or integer if it contains
-      a value in those domains or if it contains an atom, the atom is treated
-      a reference to a constant or environment binding.
+      Value has a couple of meanings based on the content.
+        * If it contains a value in those domains, it represents a self-quoting value type such as a quoted string or integer.
+        * if it contains an atom, the atom is treated a reference to a constant or environment binding.
       
     Call(Srcloc, Vec<Rc<BodyForm>>) --
     
-      Represents any kind of invocation in an expression position in the code,
-      whether it's a macro invocation, invocation of a function or a primtive.
-      The vector contains the top-level spine arguments of the notional cons
-      form that will be given as arguments.  This language disallows tail
-      improper call forms because, while identifiers work in tail position,
-      there's no easy way to identify the user's intention to place a more
-      complex form at the improper tail.  An 'apply' form as in lisp
+      Represents any kind of invocation in an expression position in the code, whether it's a macro invocation, invocation of a function or a primtive.
 
-   [http://clhs.lisp.se/Body/f_apply.htm](chialisp apply)
-   
-       honoring the convention that the final argument is properly bound according
-       to the structure of the called functions arguments, allowing functions with
-       tail-improper arguments to be called without having to manfacture a tail
-       improper syntax for the call site.
+      The vector contains the top-level spine arguments of the notional cons form that will be given as arguments. This language disallows tail improper call forms because, while identifiers work in tail position, there's no easy way to identify the user's intention to place a more
+      complex form at the improper tail.
+      
+      An 'apply' form as in [lisp](http://clhs.lisp.se/Body/f_apply.htm) honoring the convention that the final argument is properly bound according to the structure of the called functions arguments, allowing functions with tail-improper arguments to be called without having to manfacture a tail improper syntax for the call site.
     
     Mod(Srcloc, CompileForm) --
     
-       Chialisp allows (mod () ...) as an expression yielding the
-       compiled code in the form.  Naturally, its analog in the compiler
-       contains a CompileForm, which allows it to be a full program of
-       its own.
+       Chialisp allows (mod () ...) as an expression yielding the compiled code in the form. Naturally, its analog in the compiler contains a CompileForm, which allows it to be a full program of its own.
 
-These are built from and often contain elements of SExp, which is also a sum type.
-The sexp type is intended to reflect user intention, but keep the ability to treat
-each value as plain clvm when required.  This places a greater burden on the
-implementation when using these as values in a program, but allows all parts of
-compilation (including code generation output) to remain associated with sites
-and atoms in the source text when those associations make sense.  It contains:
+These are built from,and often contain, elements of SExp, which is also a sum type. The sexp type is intended to reflect user intention, while keeping the ability to treat each value as plain CLVM when required. This places a greater burden on the implementation when using these as values in a program, but allows all parts of
+compilation (including code generation output) to remain associated with sites and atoms in the source text when those associations make sense. It contains:
 
     Nil(Srcloc) -- Represents a literal Nil in the source text.
     
-      It may be useful for this to be distinct from 0 and "", at the very
-      least to remember how the user spelled this particular value, but
-      also (for example) it's possible to type Nil as a kind of list,
-      but reject "" or 0 in the same scenario.
+      It may be useful for this to be distinct from 0 and "", at the very least to remember how the user spelled this particular value, but also (for example) it's possible to type Nil as a kind of list, but reject "" or 0 in the same scenario.
       
     Cons(Srcloc,Rc<SExp>,Rc<SExp>) -- The cons value.
     
     Integer(Srcloc,Number) -- An integer.
     
-       Since the value system contains integers as a first class kind,
-       it's possible to positively differentiate atoms from integers
-       unless something disrupts them.  I am in the process of
-       introducing a macro system that treats user input gently.
+       Since the value system contains integers as a first-class kind, it's possible to positively differentiate atoms from integers, unless something disrupts them. I am in the process of introducing a macro system that treats user input gently.
        
     QuotedString(Srcloc, u8, Vec<u8>) -- A quoted string.
     
-       Since different kinds of quotes are possible, the QuotedString
-       also remembers which quotation mark was used in the source text.
-       Since its representation is distinct it can't be confused with
-       an identifier.
+       Since different kinds of quotes are possible, the QuotedString also remembers which quotation mark was used in the source text. Since its representation is distinct, it can't be confused with an identifier.
        
     Atom(Srcloc,Vec<u8>) -- An atom or identifier.
 
-Its job is to process programs so it doesn't implement compilation the same way
-(by running a program that emits a mod form), but instead is purpose-built to
-read and process a program.  As such it doesn't rely on populating a clvm
-environment with special operators or on running anything necessarily in the VM,
-although it does that for constant folding and a few other things.
+Its job is to process programs so it doesn't implement compilation the same way (by running a program that emits a mod form), but instead is purpose-built to read and process a program. As such, it doesn't rely on populating a clvm environment with special operators, or on running anything necessarily in the VM, although it does that for constant folding and a few other things.
 
-Compilation can be done in a few ways.  There is a 
-
-  CompilerOpts (src/compiler/compiler.rs)
-  
-Type which serves as connection between the consumer's settings for the compiler
-and the compilation process.  Its method compile\_file takes a few objects it will
-need in case it must run clvm code: an Allocator (clvmr) and a runner 
-(TRunProgram from src/classic/stages/stage_0.rs).
+Compilation can be done in a few ways. There is a [CompilerOpts](src/compiler/compiler.rs) type which serves as a connection between the consumer's settings for the compiler and the compilation process. Its `compile_file` method takes a few objects it will need in case it must run clvm code: an Allocator (clvmr) and a runner 
+(`TRunProgram` from `src/classic/stages/stage_0.rs`).
 
 It's used this way in 'run':
 
@@ -379,23 +265,9 @@ It's used this way in 'run':
 
 This the the full lifecycle of chialisp compilation from an outside perspective.
 
-If you want to parse the source file yourself, you can use parse_sexp from 
-src/compiler/sexp, which yields a result of Vec&lt;Rc&lt;SExp&gt;&gt;, a vector
-of refcounted pointers to s-expression objects.  These are richer than clvm
-values in that atoms, strings, hex values,integers and nils are distinguishable
-in what's read.  This is similar to the code in src/classic/clvm/type.rs but
-since these value distinctions are first-class in SExp, all values processed
-by the compiler, starting with the preprocessor (src/compiler/preprocessor.rs), 
-going through the frontend (src/compile/frontend.rs) and to code generation
-(src/compiler/codegen.rs) use these values.  Every expression read from the
-input stream has a Srcloc (src/compiler/srcloc.rs) which indicates where it
-was read from in the input, and as long as the srcloc is copied from form to
-form, it allows the compiler to maintain known associations between input and
-results.  For example, you can implement syntax coloring by simply using
-parse\_sexp (src/compiler/sexp.rs) to parse a file, run it through the
-preprocessor and frontend, and then decorate the locations present in the
-HelperForms accessible from the CompilerForm that results.  If an error is
-returned, it contains a srcloc that's relevant.
+If you want to parse the source file yourself, you can use `parse_sexp` from `src/compiler/sexp`, which yields a result of `Vec&lt;Rc&lt;SExp&gt;&gt;`, a vector of refcounted pointers to s-expression objects. These are richer than clvm values in that atoms, strings, hex values, integers and nils are distinguishable in what's read. This is similar to the code in `src/classic/clvm/type.rs`, but since these value distinctions are first-class in SExp, all values processed by the compiler, starting with the preprocessor (`src/compiler/preprocessor.rs`), going through the frontend (`src/compile/frontend.rs`) and to code generation (`src/compiler/codegen.rs`) use these values. Every expression read from the input stream has a Srcloc (`src/compiler/srcloc.rs`) which indicates where it was read from in the input. As long as the Srcloc is copied from form to form, it allows the compiler to maintain known associations between input and results.
+
+For example, you can implement syntax coloring by simply using `parse_sexp` (`src/compiler/sexp.rs`) to parse a file, run it through the preprocessor and frontend, and then decorate the locations present in the HelperForms accessible from the CompilerForm that results. If an error is returned, it contains a Srcloc that's relevant.
 
 You can break down the basics of how chialisp compilation functions like this:
 
@@ -412,123 +284,46 @@ You can break down the basics of how chialisp compilation functions like this:
         // generated_code.1 is an Rc<SExp> which contains the output
         // code.
 
-PrimaryCodegen is the object where the code generation stores and updates
-information it needs and what gets collected during code generation.  It's defined
-in src/compiler/comptypes.rs (line 281 at present).  Many of the functions in
-src/compiler/codegen.rs take a PrimaryCodegen and most of those return a
-PrimaryCodegen.  During this process, the compilation state is updated by each.
+PrimaryCodegen is the object where the code generation stores and updates information it needs and what gets collected during code generation. It's defined in `src/compiler/comptypes.rs` (line 281 at present). Many of the functions in `src/compiler/codegen.rs` take a PrimaryCodegen, and most also return a PrimaryCodegen. During this process, the compilation state is updated by each of them.
 
-Everything before code generation is uninteresting, but I'll note at a high level
-how functions on PrimaryCodegen function.
+#### PrimaryCodegen functions
 
-codegen starts by running start_codegen to introduce each helper to the
-PrimaryCodegen and based on their types, bin them into the appropriate parts
-of the code generator to lookup later:
+Codegen starts by running `start_codegen` to introduce each helper to the PrimaryCodegen. Based on their types, it bins them into the appropriate parts of the code generator to lookup later:
+* Defconstants are turned into mods and run. The result is stored in the PrimaryCodegen's constant set.
+* The defconst form is evaluated by putting all Helpers (objects of HelperForm type) into an Evaluator and asking it to shrink the constant's expression (resulting in constant folding). The folded value must reduce to a constant, and if it does, it's stored in the constant set.
+* Defmacros are converted to programs and compiled using the CompilerOpts' `compile_program` methods, which provide recursion, with an eye to allowing the generation of program code to be used during compilation. The resulting code is stored in the macro set.
+* Next, let desugaring takes place (it is intentded that this will be lifted out of
+codegen to a separate pass). Let desugaring inspects each defun (because they appear in the compiled code) for
+let forms, and produces a list of new forms that must be re-inspected. When no new forms are generated for any helper form, the full set of generated helpers and the original are introduced to either the defun set or the inline set in the PrimaryCodegen, based on their type. This will be a bit more flexible when desugaring has its own definite pass, as we'll have freedom to rearrange the inlining without disturbing codegen itself.
+* Once all helpers are processed in this way, let desugaring takes place on the main expression of the program in the same way. The PrimaryCodegen has a special field for the main expression.
 
-    Defconstants are turned into mods and run.
-    The result is stored in the PrimaryCodegen's constant set.
-    
-    The defconst form is evaluated by putting all Helpers (as in objects of
-    HelperForm type) into an Evaluator and asking it to shrink the constant's
-    expression (resulting in constant folding).  The folded value must reduce
-    to a constant, and if it does, it's stored in the constant set.
-    
-    Defmacros are converted to programs and compiled using the
-    CompilerOpts' compile_program method.  These methods on CompilerOpts
-    provide this kind of recursion with an eye to allowing the generation
-    of program code to be used during compilation.  The resulting code
-    is stored in the macro set.
-    
-Next, let desugaring takes place (it is intentded that this will be lifted out of
-codegen to a separate pass).
-    
-Let desugaring inspects each defun (because they appear in the compiled code) for
-let forms and produces a list of new forms that must be re-inspected.  When no
-new forms are generated for any helper form, the full set of generated helpers
-and the original are introduced to either the defun set or the inline set in
-the PrimaryCodegen based on their type.  This will be a bit more flexible when
-desugaring has its own definite pass as we'll have freedom to rearrange the
-inlining without disturbing codegen itself.
+After start_codegen, the PrimaryCodegen is transformed by generating the dummy environment via the `dummy_function`'s internal function. For each non-inlined defun and tabled constant, it extracts the name and generates an envrionment shape. This is also where multiple definitions are detected. As a result of this process, InlineFunction objects are generated for each inline function and the PrimaryCodegen has its "parentfns" member popluated.
 
-Once all helpers are processed in this way, let desugaring takes place on the
-main expression of the program in the same way.  The PrimaryCodegen has a special
-field for the main expression.
+Each surviving helper is then passed through the codegen_ and given an opportunity to transform the PrimaryCodegen. The bodies of all functions are placed in the PrimaryCodegen in the appropriate bin. Defuns are turned into mods and code generation is individually performed for them. The representation placed in the
+PrimaryCodegen is of compiled code. During the process of generating code for each live defun, the compiler is configured with the parent module's PrimaryCodegen. This is done so that they observe the containing program's left environment, and therefore can request the code to make sibling function calls from it.
 
-After start_codegen, the PrimaryCodegen is transformed by generating the dummy
-environment via the dummy\_functions internal function.  For each non-inlined
-defun and tabled constant, it extracts the name and generates an envrionment
-shape from the names.  This is also where multiple definitions are detected.
-As a result of this process, InlineFunction objects are generated for each inline
-function and the PrimaryCodegen has its "parentfns" member popluated.
+#### Invocation types
 
-Each surviving helper is then passed through the codegen_ and given an opportunity
-to transform the PrimaryCodegen.  The bodies of all functions are placed in the
-PrimaryCodegen in the appropriate bin.  Defuns are turned into mods and code
-generation is individually performed for them.  The representation placed in the
-PrimaryCodegen is of compiled code.  During the process of generating code for
-each live defun, the compiler is configured with the parent module's PrimaryCodegen
-so that they observe the containing program's left environment and therefore can
-request the code to make sibling function calls from it.
+A few things about this are tricky; PrimaryCodegen uses a type called `Callable` to look up invocations. It recognizes a few types:
+* **CallMacro** -- expands a macro and then treats the resulting output as the SExp representation of a BodyForm -- parses it and does expr code generation on it
+* **CallInline** -- contains a literal body that is woven into the code via either the evaluator or `src/compiler/inline.rs`
+* **CallDefun** -- contains recorded code indicating how to look up the function, as well as the shape of its right env
+* **CallPrim** -- contains a specification that a primitive is called; outputs a primitive form directly after doing codegen on the arguments
+* **RunCompiler** -- This is exactly the "com" operator in classic chialisp. When it is encountered, the expression evaluator creates a mod, prepares CompilerOpts to override the environment, provides this PrimaryCodegen for code generation, and changes other defaults to be used to compile the mod. The result is code that "takes place" in the current context by sharing the environment shape and using the current PrimaryCodegen as a starting point.
+* **EnvPath** -- As a compromise to allowing certain expressions to become environment lookups when that might not be expected, I provide a dedicated env-lookup form, (@ n), where _n_ is a constant integer only. This desugars to a single environment lookup in the generated code.
 
-A few things about this are tricky; PrimaryCodegen uses a type called Callable to
-lookup invocations and recognizes a few types:
+#### Macro expansions
 
-    CallMacro
-      
-      Expands a macro and then treats the resulting output as the SExp
-      representation of a BodyForm, so parses it and does expr code
-      generation on it.
-      
-    CallInline
-    
-      Contains a literal body that is woven into the code via either the evaluator
-      or src/compiler/inline.rs.
-    
-    CallDefun
-    
-      Contains recorded code indicating how to look up the function as
-      well as the shape of its right env.
-    
-    CallPrim
-    
-      Contains a specification that a primitive is called, so outputs a primitive
-      form directly after doing codegen on the arguments.
-        
-    RunCompiler
-    
-      This is exactly the "com" operator in classic chialisp.  When it is
-      encountered, the expression evaluator creates a mod, prepares CompilerOpts
-      to override the environment, provide this PrimaryCodegen for code generation
-      and change other defaults and then uses it to compile the mod.  The result
-      is code that "takes place" in the current context by sharing the environment
-      shape and using the current PrimaryCodegen as a starting point.
-        
-    EnvPath
-    
-      As a compromise to allowing certain expressions to become environment lookups
-      when that might not be expected, I provide a dedicated env-lookup form, 
-      (@ n), where n is a constant integer only.  This desugars to a single 
-      environment lookup in the generated code.
+Macro expansions require transformation of the user's code into clvm values and back. This is because the macro program is run as a clvm program (when this was written, `src/compiler/clvm` wasn't fully mature and I hadn't written the evaluator yet).
 
-macro expansions require transformation of the user's code into clvm values and
-back because the macro program is run as a clvm program (when this was written,
-src/compiler/clvm wasn't fully mature and I hadn't written the evaluator yet).
-A table of user supplied trees by treehash is made (src/compiler/debug.rs, 
-build\_swap\_table\_mut), and the macro output is "rehydrated" by greedily
-replacing each matching subtree with the one taken from the pre-expansion macro
-callsite (src/compiler/debug.rs, relabel).  In this way, the code mostly preserved
-distinctions between atoms and strings, etc in the source text through macro
-invocation assuming things weren't too intrusive.
+A table of user supplied trees by treehash is made (`src/compiler/debug.rs`, 
+`build_swap_table_mut`), and the macro output is "rehydrated" by greedily replacing each matching subtree with the one taken from the pre-expansion macro callsite (`src/compiler/debug.rs`, `relabel`). In this way, the code mostly preserved distinctions between atoms and strings, etc in the source text through macro invocation assuming things weren't too intrusive.
 
-When running the "com" operator, which is used in macros to give the 
-
-After all live defuns have been treated, the compiler uses final\_codegen to
-generate the code for its main expression and then finalize\_env is called to
-match each identifier stored in the left environment with a form for which it
-has generated code recorded and build the env tree.
+After all live defuns have been treated, the compiler uses `final_codegen` to generate the code for its main expression and then `finalize_env` is called to match each identifier stored in the left environment with a form for which it has generated code recorded and build the env tree.
 
 How CLVM code carries out programs
---
+
+---
 
 _The basics of CLVM from a compilation perspective_
 
