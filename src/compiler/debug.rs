@@ -124,6 +124,27 @@ fn relabel_inner_(
 ///
 /// (defmacro M (VAR) (q . 87))
 ///
+/// As originally envisioned, chialisp macros compile to CLVM programs and consume
+/// the program as CLVM code.  When the language is maximally permissive this isn't
+/// inconsistent; a "W" string is the same representation as a W atom (an
+/// identifier) and the number 87.  The problem is when users want the language to
+/// distinguish between legal and illegal uses of identifiers, this poses a
+/// problem.
+///
+/// In the above code, the macro produces a CLVM value.  That value has a valid
+/// interpretation as the number 87, the string constant "W" or the identifier W.
+/// If I make the rule that 'identifiers must be bound' under these conditions
+/// then I've also made the rule that "one cannot return a number from a macro that
+/// doesn't correspond coincidentally to the name of a bound variable, which
+/// likely isn't expected given that the chialisp language gives the user the
+/// ability to input this value in the distinct forms of integer, identifier,
+/// string and such.  Therefore, the 87 here and the W in the next paragraph refer
+/// to the same ambigious value in the CLVM value space.  A fix for this has been
+/// held off for a while while a good long term solution was thought through, which
+/// will appear in the form of macros that execute in the value space of chialisp
+/// SExp (with distinctions between string, integer, identifier etc) and that
+/// improvement is in process.
+///
 /// The raw result of either the integer 87, which doesn't give much clue as
 /// to what's intended.  In one case, it *might* be true that VAR was untransformed
 /// and the user intends the compiler to check whether downstream uses of W are
