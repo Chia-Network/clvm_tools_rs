@@ -72,8 +72,8 @@ fn remove_present_atoms(envlist: &mut HashMap<Vec<u8>, Vec<u8>>, args: Rc<SExp>)
 ///
 /// This was requested last year by code audit people on the basis that it's useful
 /// to check whether a program's inputs contribute to its output.  This is only
-/// enforced for lower case parameter names in to the program; upper case names are
-/// by convention given to curried-in and required parameters which the user may
+/// enforced for lower case parameter names; upper case names are
+/// by convention curried-in and are required parameters which the user may
 /// not have control over.  Also, a parameter name starting with _ is also not
 /// checked.
 pub fn check_parameters_used_compileform(
