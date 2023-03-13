@@ -368,6 +368,29 @@ impl ExtensionFunction for StringToNumber {
     }
 }
 
+struct Substring { }
+
+impl Substring {
+    fn new() -> Rc<dyn ExtensionFunction> { Rc::new(Substring { }) }
+}
+
+impl ExtensionFunction for Substring {
+    fn required_args(&self) -> Option<usize> { Some(3) }
+
+    fn try_eval(
+        &self,
+        evaluator: &Evaluator,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        loc: &Srcloc,
+        name: &[u8],
+        args: &[Rc<BodyForm>],
+        body: Rc<BodyForm>,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        todo!();
+    }
+}
+
 /// An evaluator extension for the preprocessor.
 ///
 /// Implements scheme like conversion functions for handling chialisp programs and
@@ -413,6 +436,7 @@ impl PreprocessorExtension {
             (b"number->string".to_vec(), NumberToString::new()),
 
             (b"string-append".to_vec(), StringAppend::new()),
+            (b"substring".to_vec(), Substring::new()),
         ];
         PreprocessorExtension { extfuns: HashMap::from(extfuns) }
     }
