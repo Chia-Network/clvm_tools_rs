@@ -21,29 +21,29 @@ use crate::util::u8_from_number;
 ///
 /// These are all equivalent in CLVM:
 ///
-///     "Y" Y 89 0x59
+/// ##    "Y" Y 89 0x59
 ///
 /// So a user writing:
 ///
-///     (list Y "Y" 89 0x59) ;; 1
+/// ##    (list Y "Y" 89 0x59) ;; 1
 ///
 /// Gives the compiler back a CLVM expression that could mean any of these
 /// things:
 ///
-///     (c Y (c Y (c Y (c Y ()))))
-///     (c "Y" (c "Y" (c "Y" (c "Y" ()))))
-///     (c 89 (c 89 (c 89 (c 89 ()))))
-///     (c 0x59 (c 0x59 (c 0x59 (c 0x59 ()))))
+/// ##    (c Y (c Y (c Y (c Y ()))))
+/// ##    (c "Y" (c "Y" (c "Y" (c "Y" ()))))
+/// ##    (c 89 (c 89 (c 89 (c 89 ()))))
+/// ##    (c 0x59 (c 0x59 (c 0x59 (c 0x59 ()))))
 ///
 /// So the compiler rehydrates this result by taking the largest matching subtrees
 /// from the user's input and replacing it. The above is a pathological case for
 /// this, and in general, doing something like:
 ///
-///     (if
-///       (some-condition X)
-///       (do-something-a X)
-///       (let ((Y (something X))) (do-something-else Y))
-///       )
+/// ##    (if
+/// ##      (some-condition X)
+/// ##      (do-something-a X)
+/// ##      (let ((Y (something X))) (do-something-else Y))
+/// ##      )
 ///
 /// Expands into a macro invocation for if, and comes back with 3 subtrees
 /// identical to the user's input, so those whole trees return with their source
