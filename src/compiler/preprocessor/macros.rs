@@ -6,8 +6,10 @@ use clvmr::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 
+use crate::compiler::clvm::truthy;
 use crate::compiler::comptypes::{BodyForm, CompileErr};
 use crate::compiler::evaluate::{EvalExtension, Evaluator};
+use crate::compiler::preprocessor::dequote;
 use crate::compiler::sexp::{SExp, decode_string};
 use crate::compiler::srcloc::{Srcloc};
 use crate::util::{Number, number_from_u8};
@@ -80,6 +82,10 @@ fn reify_args(
     let mut allocator = Allocator::new();
     let mut converted_args = Vec::new();
     for a in args.iter() {
+        eprintln!("shrink {}", a.to_sexp());
+        for (n,e) in env.iter() {
+            eprintln!("- {} = {}", decode_string(&n), e.to_sexp());
+        }
         let shrunk = evaluator.shrink_bodyform(
             &mut allocator,
             prog_args.clone(),
@@ -99,6 +105,7 @@ fn reify_args(
 /// needed.  These are held in a collection and looked up.  To be maximally
 /// conservative with typing and lifetime, we hold these via Rc<dyn ...>.
 pub trait ExtensionFunction {
+    fn want_interp(&self) -> bool { true }
     fn required_args(&self) -> Option<usize>;
     fn try_eval(
         &self,
@@ -391,6 +398,109 @@ impl ExtensionFunction for Substring {
     }
 }
 
+struct List { }
+
+impl List {
+    fn new() -> Rc<dyn ExtensionFunction> { Rc::new(List { }) }
+}
+
+impl ExtensionFunction for List {
+    fn required_args(&self) -> Option<usize> { None }
+
+    fn try_eval(
+        &self,
+        evaluator: &Evaluator,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        loc: &Srcloc,
+        name: &[u8],
+        args: &[Rc<BodyForm>],
+        body: Rc<BodyForm>,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        let mut res = SExp::Nil(loc.clone());
+        for (n,e) in env.iter() {
+            eprintln!("- {} = {}", decode_string(&n), e.to_sexp());
+        }
+        for a in args.iter().rev() {
+            eprintln!("list arg {}", a.to_sexp());
+            if let Ok(unquoted) = dequote(loc.clone(), a.clone()) {
+                res = SExp::Cons(
+                    loc.clone(),
+                    unquoted,
+                    Rc::new(res)
+                );
+            } else {
+                return Ok(body.clone());
+            }
+        }
+        let list_res = BodyForm::Quoted(res);
+        eprintln!("list_res {}", list_res.to_sexp());
+        Ok(Rc::new(list_res))
+    }
+}
+
+struct If { }
+
+impl If {
+    fn new() -> Rc<dyn ExtensionFunction> { Rc::new(If { }) }
+}
+
+impl ExtensionFunction for If {
+    fn want_interp(&self) -> bool { false }
+
+    fn required_args(&self) -> Option<usize> { Some(3) }
+
+    fn try_eval(
+        &self,
+        evaluator: &Evaluator,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        loc: &Srcloc,
+        name: &[u8],
+        args: &[Rc<BodyForm>],
+        body: Rc<BodyForm>,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        let mut allocator = Allocator::new();
+        let cond_result =
+            evaluator.shrink_bodyform(
+                &mut allocator,
+                prog_args.clone(),
+                env,
+                args[0].clone(),
+                false,
+                None
+            )?;
+
+        if let Ok(unquoted) = dequote(body.loc(), cond_result) {
+            eprintln!("unquoted {}", unquoted);
+            if truthy(unquoted) {
+                eprintln!("truthy, expand {}", args[1].to_sexp());
+                evaluator.shrink_bodyform(
+                    &mut allocator,
+                    prog_args.clone(),
+                    env,
+                    args[1].clone(),
+                    false,
+                    None
+                )
+            } else {
+                eprintln!("falsey, expand {}", args[2].to_sexp());
+                evaluator.shrink_bodyform(
+                    &mut allocator,
+                    prog_args.clone(),
+                    env,
+                    args[2].clone(),
+                    false,
+                    None
+                )
+            }
+        } else {
+            eprintln!("can't reduce if {}", body.to_sexp());
+            Ok(body.clone())
+        }
+    }
+}
+
 /// An evaluator extension for the preprocessor.
 ///
 /// Implements scheme like conversion functions for handling chialisp programs and
@@ -416,9 +526,6 @@ impl ExtensionFunction for Substring {
 ///
 /// string-append s0 s1 ...
 /// substring s start end
-/// first
-/// rest
-/// cons
 pub struct PreprocessorExtension {
     extfuns: HashMap<Vec<u8>, Rc<dyn ExtensionFunction>>
 }
@@ -426,6 +533,9 @@ pub struct PreprocessorExtension {
 impl PreprocessorExtension {
     pub fn new() -> Self {
         let extfuns = [
+            (b"if".to_vec(), If::new()),
+            (b"list".to_vec(), List::new()),
+
             (b"string?".to_vec(), StringQ::new()),
             (b"number?".to_vec(), NumberQ::new()),
             (b"symbol?".to_vec(), SymbolQ::new()),
@@ -460,14 +570,19 @@ impl EvalExtension for PreprocessorExtension {
                 }
             }
 
-            eprintln!("try function {}", decode_string(name));
-            let args = reify_args(
-                evaluator,
-                prog_args.clone(),
-                env,
-                loc,
-                raw_args
-            )?;
+            eprintln!("try function {}", body.to_sexp());
+            let args =
+                if extfun.want_interp() {
+                    reify_args(
+                        evaluator,
+                        prog_args.clone(),
+                        env,
+                        loc,
+                        raw_args
+                    )?
+                } else {
+                    raw_args.to_vec()
+                };
             Ok(Some(extfun.try_eval(
                 evaluator,
                 prog_args,

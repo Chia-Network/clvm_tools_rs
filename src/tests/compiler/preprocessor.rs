@@ -169,7 +169,34 @@ fn test_defmac_basic_test_is_number_neg() {
 }
 
 #[test]
-fn test_defmac_create_cond_form() {
+fn test_defmac_extension_from_function() {
+    let prog = indoc! {"
+    (mod (X)
+      (defun FX (X) (symbol->string X))
+      (defmac F (X) (FX X))
+      (c 3 (F X))
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(3 . \"X\")");
+}
+
+#[test]
+fn test_defmac_if_extension() {
+    let prog = indoc! {"
+    (mod (X)
+      (defun FX (X) (if X (number->string 1) 2))
+      (defmac F (X) (c 1 (FX X)))
+      (F X)
+      )
+    "}.to_string();
+    let res = run_string(&prog, &"(9)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "\"1\"");
+}
+
+#[test]
+fn test_defmac_create_match_form() {
     let prog = indoc! {"
     ;; Make a simple list match ala ocaml/elm/haskell.
     ;;
@@ -189,50 +216,101 @@ fn test_defmac_create_cond_form() {
             )
           )
 
-        ;; From a list of bindings or constants, build a matcher for the elements.
-        (defun gather-bindings-list (expr tomatch)
-          (if (not expr)
-            ()
-            ()
-            )
-          )
+        (defun funcall (name args) (c (string->symbol name) args))
+        (defun quoted (X) (c 1 X))
+        (defun equals (A B) (funcall \"=\" (list A B)))
+        (defun emit-list-nth (L N) (funcall \"list-nth\" (list L N)))
+        (defun emit-list-len (L N) (funcall \"list-len\" (list L N)))
+        (defun emit-if (C T E) (funcall \"if\" (list C T E)))
+        (defun emit-let (bindings body) (funcall \"let\" (list bindings body)))
 
-        (defun gather-bindings (condition expr rest)
-          (qq
-            (if (= (list-len (unquote expr)) (unquote (list-len condition)))
-              (unquote
-                (let*
-                  (
-                    (bindings-and-checks (gather-bindings-and-checks condition expr))
-                    (bindings (f bindings-and-checks))
-                    (checks (r bindings-and-checks))
-                  )
-                  (qq (if checks (let bindings rest)))
+        ;; Determine the size of each list as well as the constants and bindings
+        ;; Return either a list of (number-of-elts matches bindings) or symbol.
+        (defun build-matches-and-bindings (n pattern matches bindings)
+            (if (not pattern)
+                (list n matches bindings)
+                (if (l pattern)
+                    (if (symbol? (f pattern))
+                        (build-matches-and-bindings (+ n 1) (r pattern) matches (c (c n (f pattern)) bindings))
+                        (build-matches-and-bindings (+ n 1) (r pattern) (c (c n (f pattern)) matches) bindings)
+                        )
+                    pattern
+                    )
+                )
+            )
+
+        ;; Emit code that matches each match list for length and constants.
+        (defun write-match-code (expr matches)
+            (if (not matches)
+                (quoted 1)
+                (if (l (f matches))
+                    (let*
+                        (
+                         (offset (f (f matches)))
+                         (desire (r (f matches)))
+                         (this-match (equals (quoted desire) (emit-list-nth expr (quoted offset))))
+                         )
+                      (if (not (r matches))
+                          (list this-match)
+                          (c this-match (write-match-code expr (r matches)))
+                          )
+                      )
+                    (quoted 1)
+                    )
+                )
+            )
+
+        ;; Generate let bindings for the bindings indicated in the match.
+        (defun let-bindings (expr bindings)
+            (if (not bindings)
+                ()
+                (let
+                    ((n (f (f bindings)))
+                     (binding (r (f bindings)))
+                     )
+                  (c (list binding (emit-list-nth expr n)) (let-bindings expr (r bindings)))
                   )
                 )
-              ()
-              )
             )
-          )
 
-        ;; For each pair, emit an expression that checks for the requested pattern
-        ;; and returns either the requested result or allows the following matchers
-        ;; to run.
-        (defun handle-matches (expr matches)
-          (if (not matches)
-            (qq (x (unquote expr)))
-            (let
-              (
-                (condition (f (f expr)))
-                (code (f (r (f expr))))
+        ;; Generate if expressions that match the indicates matches and return
+        ;; the indicated code with bindings installed.
+        (defun match-if (expr clauses)
+            (if (not clauses)
+                (list 8)
+                (let
+                    ((extracted-clause-data (build-matches-and-bindings 0 (f (f clauses)) () ()))
+                     (code (f (r (f clauses))))
+                     )
+                  (if (l extracted-clause-data)
+                      (let
+                          (
+                           (number-of-elts (f extracted-clause-data))
+                           (matches (list-nth extracted-clause-data 1))
+                           (bindings (list-nth extracted-clause-data 2))
+                           )
+                        (emit-if
+                          (emit-if
+                            (equals (emit-list-len list expr) (quoted number-of-elts))
+                            ;; then
+                            (list (c (string->symbol \"logand\") (write-match-code expr matches)))
+                            ;; else
+                            ()
+                            )
+                          ;; then
+                          (emit-let (let-bindings expr bindings) code)
+                          ;; else
+                          (match-if expr (r clauses))
+                          )
+                        )
+                      (emit-let (list (list extracted-clause-data expr)) code)
+                      )
+                     )
                 )
-              (qq (if (unquote (make-match-expr condition expr)) (unquote code) (unquote (handle-matches (r matches)))))
-              )
             )
-          )
 
         ;; match as below.
-        (defmac match (expr . matches) (handle-matches expr matches))
+        (defmac match (expr . matches) (match-if expr matches))
 
         (match X
           ((16 x y) (c 1 (+ x y)))

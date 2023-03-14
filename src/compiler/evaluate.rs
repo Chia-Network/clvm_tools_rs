@@ -704,20 +704,6 @@ impl<'info> Evaluator {
             let compiled_borrowed: &SExp = compiled.borrow();
             Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
         } else {
-            for ext in self.extensions.iter() {
-                if let Some(res) = ext.try_eval(
-                    self,
-                    prog_args.clone(),
-                    env,
-                    &l,
-                    call_name,
-                    &arguments_to_convert,
-                    body.clone()
-                )? {
-                    return Ok(res);
-                }
-            }
-
             let pres = self
                 .lookup_prim(l.clone(), call_name)
                 .map(|prim| {
@@ -910,6 +896,20 @@ impl<'info> Evaluator {
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
+        for ext in self.extensions.iter() {
+            if let Some(res) = ext.try_eval(
+                self,
+                prog_args.clone(),
+                env,
+                &l,
+                call_name,
+                &arguments_to_convert,
+                body.clone()
+            )? {
+                return Ok(res);
+            }
+        }
+
         let helper = select_helper(&self.helpers, call_name);
         match helper {
             Some(HelperForm::Defmacro(mac)) => self.invoke_macro_expansion(

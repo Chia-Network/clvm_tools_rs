@@ -138,8 +138,12 @@ impl Preprocessor {
                             None
                         )?;
 
-                        if let Ok(unquoted) = dequote(body.loc(), res) {
+                        if let Ok(unquoted) = dequote(body.loc(), res.clone()) {
+                            eprintln!("expand macro {}", unquoted);
                             return Ok(unquoted);
+                        } else {
+                            eprintln!("bad expand? {}", res.to_sexp());
+                            todo!();
                         }
                     }
                 }
