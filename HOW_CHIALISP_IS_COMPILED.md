@@ -141,7 +141,7 @@ Similarly to the python code, the rust code starts by decoding arguments using a
 
 A few other things are similar. Since classic Chialisp compilation mixes code in the compiler's source language with expressions written in Chialisp and stores state in the CLVM runtime environment, a runtime environment is prepared for it containing the search paths for include files.
 
-The classic compiler reads include files via an imperative CLVM operator, `_read`, installed at the time when the interpreter is created. This interpreter was called `stage_2` in the Python code so a function, `run_program_for_search_paths` was included in [operators.py](/src/classic/clvm_tools/stages/stage_2/operators.py).
+The classic compiler reads include files via an imperative CLVM operator, `_read`, installed at the time when the interpreter is created. This interpreter was called `stage_2` in the Python code so a function, `run_program_for_search_paths` was included in [operators.rs](/src/classic/clvm_tools/stages/stage_2/operators.rs).
 The normal operation of a CLVM environment is usually immutable. This stance is further encouraged by the lack of lifetime variables decorating the callbacks to the CLVM runner in `clvmr`. Because of that, the code downstream uses a C++ like approach to enriching the runtime environment with mutable state. The actual call to `run_program_for_search_paths` is currently located at [line 798](/src/classic/clvm_tools/cmds.rs#L798) of `cmds.rs`.
 
 At [line 901](/src/classic/clvm_tools/cmds.rs#L901) of `cmds.rs` (currently), `detect_modern` is called. This function returns information regarding whether the user requested a specific Chialisp dialect. This is important because modern and classic Chialisp compilers don't accept precisely the same language and will continue to diverge. Due to the demands of long-term storage of assets on the blockchain, it is necessary for code that compiles in a specific form today retains that form forever. The dialect then tells the compiler which of the different forms compilation could take among compatible alternatives. This allows us to make better choices later on, and to grow the ways in which the compiler can benefit users over time. It also enables HelperForm and BodyForm to support a clean separation between generations of features.
@@ -191,53 +191,41 @@ The BodyForm is more diverse and things like Lambdas add alternatives. Since the
 
 These are the current BodyForm alternatives:
 
-    Let(<LetFormKind>, <LetData>) --
-    
-      Represents let forms and anything that's expressible through let forms, such as the 'assign' form here:
-      
-  [assign form pr](https://github.com/Chia-Network/clvm_tools_rs/pull/103)
+* Let(<LetFormKind>, <LetData>)
+  * Represents let forms and anything that's expressible through let forms, such as the 'assign' form here:
+  * [assign form pr](https://github.com/Chia-Network/clvm_tools_rs/pull/103)
         
-    Quoted(SExp) --
+* Quoted(SExp)
+  * Represents literal data in any form. In particular, Quoted ensures that the semantic meaning of the value is always as a constant as opposed to being treated as a reference to something or a variable name.
       
-      Represents literal data in any form. In particular, Quoted ensures that the semantic meaning of the value is always as a constant as opposed to being treated as a reference to something or a variable name.
+* Value(SExp)
+  * Value has a couple of meanings based on the content.
+    * If it contains a value in those domains, it represents a self-quoting value type such as a quoted string or integer.
+    * if it contains an atom, the atom is treated a reference to a constant or environment binding.
       
-    Value(SExp) --
+* Call(Srcloc, Vec<Rc<BodyForm>>)
+  * Represents any kind of invocation in an expression position in the code, whether it's a macro invocation, invocation of a function or a primitive.
+  * The vector contains the top-level spine arguments of the notional cons form that will be given as arguments. This language disallows tail improper call forms because, while identifiers work in tail position, there's no easy way to identify the user's intention to place a more complex form at the improper tail.
+  * An 'apply' form as in [lisp](http://clhs.lisp.se/Body/f_apply.htm) honoring the convention that the final argument is properly bound according to the structure of the called functions arguments, allowing functions with tail-improper arguments to be called without having to manufacture a tail improper syntax for the call site.
     
-      Value has a couple of meanings based on the content.
-        * If it contains a value in those domains, it represents a self-quoting value type such as a quoted string or integer.
-        * if it contains an atom, the atom is treated a reference to a constant or environment binding.
-      
-    Call(Srcloc, Vec<Rc<BodyForm>>) --
-    
-      Represents any kind of invocation in an expression position in the code, whether it's a macro invocation, invocation of a function or a primitive.
-
-      The vector contains the top-level spine arguments of the notional cons form that will be given as arguments. This language disallows tail improper call forms because, while identifiers work in tail position, there's no easy way to identify the user's intention to place a more
-      complex form at the improper tail.
-      
-      An 'apply' form as in [lisp](http://clhs.lisp.se/Body/f_apply.htm) honoring the convention that the final argument is properly bound according to the structure of the called functions arguments, allowing functions with tail-improper arguments to be called without having to manufacture a tail improper syntax for the call site.
-    
-    Mod(Srcloc, CompileForm) --
-    
-       Chialisp allows (mod () ...) as an expression yielding the compiled code in the form. Naturally, its analog in the compiler contains a CompileForm, which allows it to be a full program of its own.
+* Mod(Srcloc, CompileForm)
+  * Chialisp allows (mod () ...) as an expression yielding the compiled code in the form. Naturally, its analog in the compiler contains a CompileForm, which allows it to be a full program of its own.
 
 These are built from,and often contain, elements of SExp, which is also a sum type. The sexp type is intended to reflect user intention, while keeping the ability to treat each value as plain CLVM when required. This places a greater burden on the implementation when using these as values in a program, but allows all parts of
 compilation (including code generation output) to remain associated with sites and atoms in the source text when those associations make sense. It contains:
 
-    Nil(Srcloc) -- Represents a literal Nil in the source text.
-    
-      It may be useful for this to be distinct from 0 and "", at the very least to remember how the user spelled this particular value, but also (for example) it's possible to type Nil as a kind of list, but reject "" or 0 in the same scenario.
+* Nil(Srcloc) -- Represents a literal Nil in the source text.
+  * It may be useful for this to be distinct from 0 and "", at the very least to remember how the user spelled this particular value, but also (for example) it's possible to type Nil as a kind of list, but reject "" or 0 in the same scenario.
       
-    Cons(Srcloc,Rc<SExp>,Rc<SExp>) -- The cons value.
+* Cons(Srcloc,Rc<SExp>,Rc<SExp>) -- The cons value.
     
-    Integer(Srcloc,Number) -- An integer.
-    
-       Since the value system contains integers as a first-class kind, it's possible to positively differentiate atoms from integers, unless something disrupts them. I am in the process of introducing a macro system that treats user input gently.
+* Integer(Srcloc,Number) -- An integer.
+  * Since the value system contains integers as a first-class kind, it's possible to positively differentiate atoms from integers, unless something disrupts them. I am in the process of introducing a macro system that treats user input gently.
        
-    QuotedString(Srcloc, u8, Vec<u8>) -- A quoted string.
-    
-       Since different kinds of quotes are possible, the QuotedString also remembers which quotation mark was used in the source text. Since its representation is distinct, it can't be confused with an identifier.
+* QuotedString(Srcloc, u8, Vec<u8>) -- A quoted string.
+  * Since different kinds of quotes are possible, the QuotedString also remembers which quotation mark was used in the source text. Since its representation is distinct, it can't be confused with an identifier.
        
-    Atom(Srcloc,Vec<u8>) -- An atom or identifier.
+* Atom(Srcloc,Vec<u8>) -- An atom or identifier.
 
 Its job is to process programs so it doesn't implement compilation the same way (by running a program that emits a mod form), but instead is purpose-built to read and process a program. As such, it doesn't rely on populating a CLVM environment with special operators, or on running anything necessarily in the VM, although it does that for constant folding and a few other things.
 
