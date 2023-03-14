@@ -15,7 +15,7 @@ These two terms have some overlap -- humans sometimes do write assembler code, a
 
 ### Chialisp and CLVM
 
-Chia has two separate languages that follow this high-low level paradigm -- Chialisp and CLVM (ChiaLisp Virtual Machine):
+Chia has two separate languages that follow this high-low level paradigm: Chialisp and CLVM (ChiaLisp Virtual Machine):
 * **Chialisp** - a mid-level language in the vein of C++. Most of Chia's puzzles (smart coin code) are initially written in Chialisp
 * **CLVM** - the low-level language into which Chialisp compiles. Chia nodes use this language to evaluate puzzles. Humans typically do not write code directly in CLVM
 
@@ -23,8 +23,8 @@ Chia has two separate languages that follow this high-low level paradigm -- Chia
 
 A compiler has two basic structural options:
 
-* Read all inputs, write output (e.g. golang)
-* Read input a bit at a time and possibly produce output a bit at a time (e.g. C)
+1. Read all inputs, write output (e.g. golang)
+2. Read input a bit at a time and possibly produce output a bit at a time (e.g. C)
 
 Chialisp compilers read the whole input first. The language allows the programmer to include external libraries. As in C, this is accomplished with a list of file paths. The Chialisp compiler reads the include files one at a time and treats them as if they had been included in the current program. Chialisp forms are allowed to appear in any order.
 
@@ -36,6 +36,8 @@ Note that the word _invariant_ is used here for two reasons:
 1. CLVM code generation generally encodes these paths into multiple parts of the code
 2. The representation of this information is consistent throughout the program's run
 
+---
+
 ### Classic Chialisp
 
 Some definitions:
@@ -44,11 +46,11 @@ Some definitions:
 * **constant folding** -- the compile-time process of inputting expressions that involve constants, and computing their results
 * **pass** -- a traversal of the complete program in some representation to transform it into
 another representation, even when both are internal to the compilation process
-* **s-expression** -- the kinds of values held in lisp and lisp-like languages
+* **S-expression** -- the kinds of values held in lisp and lisp-like languages
 
 The classic Chialisp compiler does not work in usefully separable passes. Instead, it produces a CLVM request to run a special primitive that runs one step of the Chialisp compilation. The compiler then wraps this primitive in a CLVM primitive that engages in optimization and constant folding.
 
-In classic Chialisp, compilation is performed by constant folding, as that is what causes a CLVM primitive to be evaluated to a value when the argument is constant. There is a guarantee that the entire S-expression held during compilation in the classic compiler is completely transformed into CLVM. This is the only time of such a guarantee, so only one pass is needed.
+In classic Chialisp, compilation is therefore performed by constant folding, as that is what causes a CLVM primitive to be evaluated to a value when the argument is constant. There is a guarantee that the entire S-expression held during compilation in the classic compiler is completely transformed into CLVM. This is the only time of such a guarantee, so only one pass is needed.
 
 ### Modern Chialisp
 
@@ -69,7 +71,7 @@ Modern Chialisp is compiled in several distinct phases:
 #### Frontend processing
 
 * Before any frontend work is done, the first file, as well as all include files, are completely parsed
-* At the beginning of the compiler frontend, preprocessing in the new compiler takes place in [preprocessor.rs](/src/compiler/preprocessor.rs). This can (and probably should) be broken out into a pipeline at the same level as the frontend eventually
+* At the beginning of the compiler frontend, preprocessing in the new compiler takes place in [preprocessor.rs](/src/compiler/preprocessor.rs). This eventually can (and probably should) be broken out into a pipeline at the same level as the frontend
 * [frontend.rs](/src/compiler/frontend.rs) contains the compiler frontend. It currently calls preprocess at [line 718](/src/compiler/frontend.rs#L718) in `frontend_start`.
 
 #### Intermediate representation
@@ -82,7 +84,7 @@ CompileForm depends on HelperForm, which in turn depends on BodyForm. All three 
 
   BodyForm contains every type of expression the Chialisp language allows. Because the frontend is still in the process of collecting information when it converts the user's code into these data structures, it does not necessarily know (for example) what function is being referred to by a function call. It therefore does not make any claim that the program is self-consistent when exiting the compiler frontend.
   
-  However, at the end of that pass it's possible to make additional checks. For for example, [usecheck.rs](/src/compiler/usecheck.rs) consumes a CompileForm yielded from the compiler frontend in order to check for unused mod arguments.
+  However, at the end of that pass it's possible to make additional checks. For example, [usecheck.rs](/src/compiler/usecheck.rs) consumes a CompileForm yielded from the compiler frontend in order to check for unused mod arguments.
 
 2. **HelperForm** -- [line 218](/src/compiler/comptypes.rs#L218)
 
@@ -100,7 +102,7 @@ The next phase is desugaring. This phase will likely be moved out of codegen to 
 
 The frontend optimizer is intended to be run after the desugaring phase. However, it is currently still being developed in a branch. It performs higher level transformations on the code that result in simpler or smaller code that has the same meaning as the original, but in a form that facilitates better code generation.
 
-For example, in Chialisp the frontend optimizer notes when a stack of `(f` and `(r` primitive invocations exist, and translating them into a numeric path, saving space.
+For example, in Chialisp the frontend optimizer notes when a stack of `(f` and `(r` primitive invocations exist, and translates them into a numeric path, saving space.
 
 #### Code generation
 
@@ -123,32 +125,34 @@ A brief history of the Chialisp compiler:
 * Ported to Typescript
 * Ported to Rust in the [clvm_rs](https://github.com/Chia-Network/clvm_rs) repository
 
-The Rust compiler started in ocaml as a sketch of how the structure of a Chialisp compiler could improve some weaknesses of the original Chialisp compiler:
+The Rust compiler started in ocaml as a sketch of how to improve upon some weaknesses of the original Chialisp compiler:
 * Reporting exact coordinates of errors in ways that were more understandable to users
 * Preserving more information from the source text throughout compilation (the ability to do something like source maps in Javascript)
-* Adding the ability to provide new forms with a reduced risk of changing the form of code that already compiled
+* Adding the ability to provide new forms with a reduced risk of changing the form of compiled code
 
 In order to keep existing code working and ensure that existing processes didn't break, a conservative approach was taken. The Rust code supports compiling an advanced form of the original Chialisp dialect, while maintaining
-the shape and structure of the original code. Since it was in a python style to begin with, that may make some of it difficult to navigate.
+the shape and structure of the original code. Since it was in a Python style to begin with, that may make some of it difficult to navigate.
 
 #### Major functions
 
-The python code started with entry points into two major functions, `call_tool` and `launch_tool`, of which `launch_tool` was the one that exposed code compilation and is the more complex. Here's a guide to navigating it.
+The Python code started with entry points into two major functions, `call_tool` and `launch_tool`, of which `launch_tool` was the one that exposed code compilation and is more complex.
 
-The python code included [cmds.py](https://github.com/Chia-Network/clvm_tools/blob/main/clvm_tools/cmds.py). The structure of the rust code is similar -- [cmds.rs](/src/classic/clvm_tools/cmds.rs) contains the code for all the tools that historically existed, such as `run`, `brun`, `opc`, `opd`, and `launch_tool`. This is exactly as in the python code.
+Here's a guide to navigating it:
 
-Similarly to the python code, the rust code starts by decoding arguments using an analog of argparse. The arguments are stored in a HashMap with type tags determining what the stored data is. In the case of PathOrCode conversion type, it has been extended slightly to remember the filename that was read in. That's useful so that the returned string can inform compilation of the filename it's compiling, and it can in turn inform the source locations what file name they belong to.
+The Python code included [cmds.py](https://github.com/Chia-Network/clvm_tools/blob/main/clvm_tools/cmds.py). The structure of the rust code is similar -- [cmds.rs](/src/classic/clvm_tools/cmds.rs) contains the code for all of the tools that historically existed, such as `run`, `brun`, `opc`, `opd`, and `launch_tool`. This is exactly as in the Python code.
+
+Similarly to the Python code, the rust code starts by decoding arguments using an analog of argparse. The arguments are stored in a HashMap with type tags determining what the stored data is. In the case of PathOrCode conversion type, it has been extended slightly to remember the filename that was read in. That's useful so that the returned string can inform compilation of the filename it's compiling, and it can in turn inform the source locations what file name they belong to.
 
 A few other things are similar. Since classic Chialisp compilation mixes code in the compiler's source language with expressions written in Chialisp and stores state in the CLVM runtime environment, a runtime environment is prepared for it containing the search paths for include files.
 
 The classic compiler reads include files via an imperative CLVM operator, `_read`, installed at the time when the interpreter is created. This interpreter was called `stage_2` in the Python code so a function, `run_program_for_search_paths` was included in [operators.rs](/src/classic/clvm_tools/stages/stage_2/operators.rs).
-The normal operation of a CLVM environment is usually immutable. This stance is further encouraged by the lack of lifetime variables decorating the callbacks to the CLVM runner in `clvmr`. Because of that, the code downstream uses a C++ like approach to enriching the runtime environment with mutable state. The actual call to `run_program_for_search_paths` is currently located at [line 798](/src/classic/clvm_tools/cmds.rs#L798) of `cmds.rs`.
+The normal operation of a CLVM environment is usually immutable. This stance is further encouraged by the lack of lifetime variables decorating the callbacks to the CLVM runner in `clvmr`. Because of that, the code downstream uses a C++ like approach to enriching the runtime environment with a mutable state. The actual call to `run_program_for_search_paths` is currently located at [line 798](/src/classic/clvm_tools/cmds.rs#L798) of `cmds.rs`.
 
-At [line 901](/src/classic/clvm_tools/cmds.rs#L901) of `cmds.rs` (currently), `detect_modern` is called. This function returns information regarding whether the user requested a specific Chialisp dialect. This is important because modern and classic Chialisp compilers don't accept precisely the same language and will continue to diverge. Due to the demands of long-term storage of assets on the blockchain, it is necessary for code that compiles in a specific form today retains that form forever. The dialect then tells the compiler which of the different forms compilation could take among compatible alternatives. This allows us to make better choices later on, and to grow the ways in which the compiler can benefit users over time. It also enables HelperForm and BodyForm to support a clean separation between generations of features.
+At [line 901](/src/classic/clvm_tools/cmds.rs#L901) of `cmds.rs` (currently), `detect_modern` is called. This function returns information regarding whether the user requested a specific Chialisp dialect. This is important because modern and classic Chialisp compilers don't accept precisely the same language and will continue to diverge. Due to the demands of long-term storage of assets on the blockchain, it is necessary for code that compiles in a specific form today to retain that form forever. The dialect then tells the compiler which of the different forms compilation could take among compatible alternatives. This allows us to make better choices later on, and to grow the ways in which the compiler can benefit users over time. It also enables HelperForm and BodyForm to support a clean separation between generations of features.
 
-The result of this choice is taken at line 940, where in the case of a modern dialect, a short-circuit path is taken that bypasses the more complicated external interface of the classic compiler (below). Since classic compilation closely mirrors the form the python code takes (and should not be as new to readers), I'll skip it for now and focus on modern compilation.
+The result of this choice is taken at line 940, where in the case of a modern dialect, a short-circuit path is taken that bypasses the more complicated external interface of the classic compiler (below). Since classic compilation closely mirrors the form the Python code takes (and should not be as new to readers), I'll skip it for now and focus on modern compilation.
 
-The python compilation interface used by `chia-blockchain` is information-poor, so cl21's basic optimization is enabled when called from python. However, it requires a traditional style `-O` flag on the command line (line 358). When called this way, python and command line compilation are the same. This will be fixed in the cl22 dialect, which will override the cl21 optimization flag entirely.
+The Python compilation interface used by `chia-blockchain` is information-poor, so cl21's basic optimization is enabled when called from Python. However, it requires a traditional style `-O` flag on the command line (line 358). When called this way, Python and command line compilation are the same. This will be fixed in the cl22 dialect, which will override the cl21 optimization flag entirely.
 
 A pure dynamic interface called `CompilerOpts` implements a set of toggles and settings that are global to the compilation process. It also provides information during compilation. One of these is required for compilation
 in modern Chialisp; the one currently used is generated at line 946.
@@ -209,23 +213,25 @@ These are the current BodyForm alternatives:
   * An 'apply' form as in [lisp](http://clhs.lisp.se/Body/f_apply.htm) honoring the convention that the final argument is properly bound according to the structure of the called functions arguments, allowing functions with tail-improper arguments to be called without having to manufacture a tail improper syntax for the call site.
     
 * Mod(Srcloc, CompileForm)
-  * Chialisp allows (mod () ...) as an expression yielding the compiled code in the form. Naturally, its analog in the compiler contains a CompileForm, which allows it to be a full program of its own.
+  * Chialisp allows `(mod () ...)` as an expression yielding the compiled code in the form. Naturally, its analog in the compiler contains a CompileForm, which allows it to be a full program of its own.
 
-These are built from,and often contain, elements of SExp, which is also a sum type. The sexp type is intended to reflect user intention, while keeping the ability to treat each value as plain CLVM when required. This places a greater burden on the implementation when using these as values in a program, but allows all parts of
-compilation (including code generation output) to remain associated with sites and atoms in the source text when those associations make sense. It contains:
+These are built from, and often contain, elements of SExp, which is also a sum type. The sexp type is intended to reflect user intention, while keeping the ability to treat each value as plain CLVM when required. This places a greater burden on the implementation when using these as values in a program, but allows all parts of
+compilation (including code generation output) to remain associated with sites and atoms in the source text when those associations make sense.
 
-* Nil(Srcloc) -- Represents a literal Nil in the source text.
+It contains:
+
+* **Nil(`Srcloc`)** -- Represents a literal Nil in the source text.
   * It may be useful for this to be distinct from 0 and "", at the very least to remember how the user spelled this particular value, but also (for example) it's possible to type Nil as a kind of list, but reject "" or 0 in the same scenario.
       
-* Cons(Srcloc,Rc<SExp>,Rc<SExp>) -- The cons value.
+* **Cons(`Srcloc`,`Rc<SExp>`,`Rc<SExp>`)** -- The cons value.
     
-* Integer(Srcloc,Number) -- An integer.
+* **Integer(`Srcloc`,`Number`)** -- An integer.
   * Since the value system contains integers as a first-class kind, it's possible to positively differentiate atoms from integers, unless something disrupts them. I am in the process of introducing a macro system that treats user input gently.
        
-* QuotedString(Srcloc, u8, Vec<u8>) -- A quoted string.
+* **QuotedString(`Srcloc`, `u8`, `Vec<u8>`)** -- A quoted string.
   * Since different kinds of quotes are possible, the QuotedString also remembers which quotation mark was used in the source text. Since its representation is distinct, it can't be confused with an identifier.
        
-* Atom(Srcloc,Vec<u8>) -- An atom or identifier.
+* **Atom(`Srcloc`,`Vec<u8>`)** -- An atom or identifier.
 
 Its job is to process programs so it doesn't implement compilation the same way (by running a program that emits a mod form), but instead is purpose-built to read and process a program. As such, it doesn't rely on populating a CLVM environment with special operators, or on running anything necessarily in the VM, although it does that for constant folding and a few other things.
 
@@ -255,7 +261,7 @@ let res = if do_optimize {
 
 This is the full life cycle of Chialisp compilation from an outside perspective.
 
-If you want to parse the source file yourself, you can use `parse_sexp` from [sexp.rs](/src/compiler/sexp.rs), which yields a result of `Vec<Rc<SExp>>`, a vector of refcounted pointers to s-expression objects. These are richer than CLVM values in that atoms, strings, hex values, integers and nils are distinguishable in what's read. This is similar to the code in `src/classic/clvm/type.rs`, but since these value distinctions are first-class in SExp, all values processed by the compiler, starting with the preprocessor ([preprocessor.rs](/src/compiler/preprocessor.rs)), going through the frontend ([frontend.rs](/src/compiler/frontend.rs)) and to code generation ([codegen.rs](/src/compiler/codegen.rs)) use these values. Every expression read from the input stream has a Srcloc ([srcloc.rs](/src/compiler/srcloc.rs)) which indicates where it was read from in the input. As long as the Srcloc is copied from form to form, it allows the compiler to maintain known associations between input and results.
+If you want to parse the source file yourself, you can use `parse_sexp` from [sexp.rs](/src/compiler/sexp.rs), which yields a result of `Vec<Rc<SExp>>`, a vector of refcounted pointers to S-expression objects. These are richer than CLVM values in that atoms, strings, hex values, integers and nils are distinguishable in what's read. This is similar to the code in `src/classic/clvm/type.rs`, but since these value distinctions are first-class in SExp, all values processed by the compiler, starting with the preprocessor ([preprocessor.rs](/src/compiler/preprocessor.rs)), going through the frontend ([frontend.rs](/src/compiler/frontend.rs)) and to code generation ([codegen.rs](/src/compiler/codegen.rs)) use these values. Every expression read from the input stream has a Srcloc ([srcloc.rs](/src/compiler/srcloc.rs)) which indicates where it was read from in the input. As long as the Srcloc is copied from form to form, it allows the compiler to maintain known associations between input and results.
 
 For example, you can implement syntax coloring by simply using `parse_sexp` to parse a file, run it through the preprocessor and frontend, and then decorate the locations present in the HelperForms accessible from the CompilerForm that results. If an error is returned, it contains a Srcloc that's relevant.
 
@@ -309,9 +315,7 @@ Macro expansions require transformation of the user's code into CLVM values and 
 
 A table of user supplied trees by treehash is made (the `build_swap_table_mut` function in [debug.rs](/src/compiler/debug.rs)), and the macro output is "rehydrated" by greedily replacing each matching subtree with the one taken from the pre-expansion macro callsite (the `relabel` function in `debug.rs`). In this way, the code mostly preserved distinctions between atoms and strings, etc in the source text through macro invocation assuming things weren't too intrusive.
 
-After all live defuns have been treated, the compiler uses `final_codegen` to generate the code for its main expression and then `finalize_env` is called to match each identifier stored in the left environment with a form for which it has generated code recorded and build the env tree.
-
-How CLVM code carries out programs
+After all live defuns have been treated, the compiler uses `final_codegen` to generate the code for its main expression and then `finalize_env` is called to match each identifier stored in the left environment with a form for which it has generated code recorded and built the env tree.
 
 ---
 
@@ -323,7 +327,7 @@ One can think of CLVM as a calculator with 1 tricky operator, which is called `a
   
 The CLVM machine does this on each evaluation step:
 
-* Find the rightmost index (described well here: [CLVM paths](https://github.com/Chia-Network/clvm_tools_rs/blob/a660ce7ce07064a6a81bb361f169f6de195cba10/src/classic/clvm_tools/node_path.rs#L1) ) in the left part of the state that is not in the form of a quoted value `(q . <something>)` and:
+* Find the rightmost index (described well here: [CLVM paths](https://github.com/Chia-Network/clvm_tools_rs/blob/a660ce7ce07064a6a81bb361f169f6de195cba10/src/classic/clvm_tools/node_path.rs#L1)) in the left part of the state that is not in the form of a quoted value `(q . <something>)` and:
   * If it's a number, enquote the correspondingly indexed value from the right part and replace the number with that
   * Otherwise, it must be an operator applicable to some constants, so evaluate it
        
