@@ -141,7 +141,7 @@ Similarly to the python code, the rust code starts by decoding arguments using a
 
 A few other things are similar. Since classic Chialisp compilation mixes code in the compiler's source language with expressions written in Chialisp and stores state in the CLVM runtime environment, a runtime environment is prepared for it containing the search paths for include files.
 
-The classic compiler reads include files via an imperative CLVM operator, `_read`, installed at the time when the interpreter is created. This interpreter was called `stage_2` in the Python code so a function, `run_program_for_search_paths` was included in [operators.py](/stages/stage_2/operators.py).
+The classic compiler reads include files via an imperative CLVM operator, `_read`, installed at the time when the interpreter is created. This interpreter was called `stage_2` in the Python code so a function, `run_program_for_search_paths` was included in [operators.py](/src/classic/clvm_tools/stages/stage_2/operators.py).
 The normal operation of a CLVM environment is usually immutable. This stance is further encouraged by the lack of lifetime variables decorating the callbacks to the CLVM runner in `clvmr`. Because of that, the code downstream uses a C++ like approach to enriching the runtime environment with mutable state. The actual call to `run_program_for_search_paths` is currently located at [line 798](/src/classic/clvm_tools/cmds.rs#L798) of `cmds.rs`.
 
 At [line 901](/src/classic/clvm_tools/cmds.rs#L901) of `cmds.rs` (currently), `detect_modern` is called. This function returns information regarding whether the user requested a specific Chialisp dialect. This is important because modern and classic Chialisp compilers don't accept precisely the same language and will continue to diverge. Due to the demands of long-term storage of assets on the blockchain, it is necessary for code that compiles in a specific form today retains that form forever. The dialect then tells the compiler which of the different forms compilation could take among compatible alternatives. This allows us to make better choices later on, and to grow the ways in which the compiler can benefit users over time. It also enables HelperForm and BodyForm to support a clean separation between generations of features.
@@ -167,9 +167,9 @@ of `Srcloc` in the various compiler data structures.
 
 The modern compiler operates on just a few exposed types, and describes any program using these (forming a rough hierarchy).
 
--CompileForm ([comptypes.rs](/src/compiler/comptypes.rs))
----HelperForm
------BodyForm
+* CompileForm ([comptypes.rs](/src/compiler/comptypes.rs))
+  * HelperForm
+    * BodyForm
 
 Things referred to as "helpers" are some kind of HelperForm. These are the definitions of things programs use as building blocks (as outlined below), broadly the out-of-line constant, macro and function definitions that are used to provide abstractions and parts of programs.
 
