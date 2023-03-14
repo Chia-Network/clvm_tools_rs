@@ -128,7 +128,7 @@ The Rust compiler started in ocaml as a sketch of how the structure of a Chialis
 * Preserving more information from the source text throughout compilation (the ability to do something like source maps in Javascript)
 * Adding the ability to provide new forms with a reduced risk of changing the form of code that already compiled
 
-In order to keep existing code working and ensure that existing processes didn't break, a conservative approach was taken. The Rust code supports compiling an advanced form of the original chialisp dialect, while maintaining
+In order to keep existing code working and ensure that existing processes didn't break, a conservative approach was taken. The Rust code supports compiling an advanced form of the original Chialisp dialect, while maintaining
 the shape and structure of the original code. Since it was in a python style to begin with, that may make some of it difficult to navigate.
 
 #### Major functions
@@ -142,7 +142,7 @@ Similarly to the python code, the rust code starts by decoding arguments using a
 A few other things are similar. Since classic Chialisp compilation mixes code in the compiler's source language with expressions written in Chialisp and stores state in the CLVM runtime environment, a runtime environment is prepared for it containing the search paths for include files.
 
 The classic compiler reads include files via an imperative CLVM operator, `_read`, installed at the time when the interpreter is created. This interpreter was called `stage_2` in the Python code so a function, `run_program_for_search_paths` was included in `src/classic/stages/stage_2/operators.rs`.
-The normal operation of a CLVM environment is usually immutable. This stance is further encouraged by the lack of lifetime variables decorating the callbacks to the clvm runner in `clvmr`. Because of that, the code downstream uses a C++ like approach to enriching the runtime environment with mutable state. The actual call to `run_program_for_search_paths` is currently located at line 798 of `cmds.rs`.
+The normal operation of a CLVM environment is usually immutable. This stance is further encouraged by the lack of lifetime variables decorating the callbacks to the CLVM runner in `clvmr`. Because of that, the code downstream uses a C++ like approach to enriching the runtime environment with mutable state. The actual call to `run_program_for_search_paths` is currently located at line 798 of `cmds.rs`.
 
 At line 901 of `cmds.rs` (currently), `detect_modern` is called. This function returns information regarding whether the user requested a specific Chialisp dialect. This is important because modern and classic Chialisp compilers don't accept precisely the same language and will continue to diverge. Due to the demands of long-term storage of assets on the blockchain, it is necessary for code that compiles in a specific form today retains that form forever. The dialect then tells the compiler which of the different forms compilation could take among compatible alternatives. This allows us to make better choices later on, and to grow the ways in which the compiler can benefit users over time. It also enables HelperForm and BodyForm to support a clean separation between generations of features.
 
@@ -183,7 +183,7 @@ HelperForm is one of:
 * Defmacro(DefmacData)
 * Defun(bool, DefunData) (where true = inline)
     
-This spans the kinds of declarations that chialisp can contain. Having a well-defined frontend type serves as a proof of sorts that the code has been fully read and understood. In the frontend form, we can perform transformations on the code without worrying about breaking its more primitive representation. Since we've extracted the code's meaning, we can more easily substitute runtime compatible forms of the code from the perspective of the code's meaning.
+This spans the kinds of declarations that Chialisp can contain. Having a well-defined frontend type serves as a proof of sorts that the code has been fully read and understood. In the frontend form, we can perform transformations on the code without worrying about breaking its more primitive representation. Since we've extracted the code's meaning, we can more easily substitute runtime compatible forms of the code from the perspective of the code's meaning.
 
 #### BodyForm
 
@@ -239,9 +239,9 @@ compilation (including code generation output) to remain associated with sites a
        
     Atom(Srcloc,Vec<u8>) -- An atom or identifier.
 
-Its job is to process programs so it doesn't implement compilation the same way (by running a program that emits a mod form), but instead is purpose-built to read and process a program. As such, it doesn't rely on populating a clvm environment with special operators, or on running anything necessarily in the VM, although it does that for constant folding and a few other things.
+Its job is to process programs so it doesn't implement compilation the same way (by running a program that emits a mod form), but instead is purpose-built to read and process a program. As such, it doesn't rely on populating a CLVM environment with special operators, or on running anything necessarily in the VM, although it does that for constant folding and a few other things.
 
-Compilation can be done in a few ways. There is a [CompilerOpts](src/compiler/compiler.rs) type which serves as a connection between the consumer's settings for the compiler and the compilation process. Its `compile_file` method takes a few objects it will need in case it must run clvm code: an Allocator (clvmr) and a runner 
+Compilation can be done in a few ways. There is a [CompilerOpts](src/compiler/compiler.rs) type which serves as a connection between the consumer's settings for the compiler and the compilation process. Its `compile_file` method takes a few objects it will need in case it must run CLVM code: an Allocator (clvmr) and a runner 
 (`TRunProgram` from `src/classic/stages/stage_0.rs`).
 
 It's used this way in 'run':
@@ -263,13 +263,13 @@ It's used this way in 'run':
             unopt_res.map(Rc::new)
         };
 
-This the the full lifecycle of chialisp compilation from an outside perspective.
+This the the full lifecycle of Chialisp compilation from an outside perspective.
 
-If you want to parse the source file yourself, you can use `parse_sexp` from `src/compiler/sexp`, which yields a result of `Vec&lt;Rc&lt;SExp&gt;&gt;`, a vector of refcounted pointers to s-expression objects. These are richer than clvm values in that atoms, strings, hex values, integers and nils are distinguishable in what's read. This is similar to the code in `src/classic/clvm/type.rs`, but since these value distinctions are first-class in SExp, all values processed by the compiler, starting with the preprocessor (`src/compiler/preprocessor.rs`), going through the frontend (`src/compile/frontend.rs`) and to code generation (`src/compiler/codegen.rs`) use these values. Every expression read from the input stream has a Srcloc (`src/compiler/srcloc.rs`) which indicates where it was read from in the input. As long as the Srcloc is copied from form to form, it allows the compiler to maintain known associations between input and results.
+If you want to parse the source file yourself, you can use `parse_sexp` from `src/compiler/sexp`, which yields a result of `Vec&lt;Rc&lt;SExp&gt;&gt;`, a vector of refcounted pointers to s-expression objects. These are richer than CLVM values in that atoms, strings, hex values, integers and nils are distinguishable in what's read. This is similar to the code in `src/classic/clvm/type.rs`, but since these value distinctions are first-class in SExp, all values processed by the compiler, starting with the preprocessor (`src/compiler/preprocessor.rs`), going through the frontend (`src/compile/frontend.rs`) and to code generation (`src/compiler/codegen.rs`) use these values. Every expression read from the input stream has a Srcloc (`src/compiler/srcloc.rs`) which indicates where it was read from in the input. As long as the Srcloc is copied from form to form, it allows the compiler to maintain known associations between input and results.
 
 For example, you can implement syntax coloring by simply using `parse_sexp` (`src/compiler/sexp.rs`) to parse a file, run it through the preprocessor and frontend, and then decorate the locations present in the HelperForms accessible from the CompilerForm that results. If an error is returned, it contains a Srcloc that's relevant.
 
-You can break down the basics of how chialisp compilation functions like this:
+You can break down the basics of how Chialisp compilation functions like this:
 
         let mut allocator = Allocator::new();
         let mut symbol_table = HashMap::new();
@@ -309,12 +309,12 @@ A few things about this are tricky; PrimaryCodegen uses a type called `Callable`
 * **CallInline** -- contains a literal body that is woven into the code via either the evaluator or `src/compiler/inline.rs`
 * **CallDefun** -- contains recorded code indicating how to look up the function, as well as the shape of its right env
 * **CallPrim** -- contains a specification that a primitive is called; outputs a primitive form directly after doing codegen on the arguments
-* **RunCompiler** -- This is exactly the "com" operator in classic chialisp. When it is encountered, the expression evaluator creates a mod, prepares CompilerOpts to override the environment, provides this PrimaryCodegen for code generation, and changes other defaults to be used to compile the mod. The result is code that "takes place" in the current context by sharing the environment shape and using the current PrimaryCodegen as a starting point.
+* **RunCompiler** -- This is exactly the "com" operator in classic Chialisp. When it is encountered, the expression evaluator creates a mod, prepares CompilerOpts to override the environment, provides this PrimaryCodegen for code generation, and changes other defaults to be used to compile the mod. The result is code that "takes place" in the current context by sharing the environment shape and using the current PrimaryCodegen as a starting point.
 * **EnvPath** -- As a compromise to allowing certain expressions to become environment lookups when that might not be expected, I provide a dedicated env-lookup form, (@ n), where _n_ is a constant integer only. This desugars to a single environment lookup in the generated code.
 
 #### Macro expansions
 
-Macro expansions require transformation of the user's code into clvm values and back. This is because the macro program is run as a clvm program (when this was written, `src/compiler/clvm` wasn't fully mature and I hadn't written the evaluator yet).
+Macro expansions require transformation of the user's code into CLVM values and back. This is because the macro program is run as a CLVM program (when this was written, `src/compiler/clvm` wasn't fully mature and I hadn't written the evaluator yet).
 
 A table of user supplied trees by treehash is made (`src/compiler/debug.rs`, 
 `build_swap_table_mut`), and the macro output is "rehydrated" by greedily replacing each matching subtree with the one taken from the pre-expansion macro callsite (`src/compiler/debug.rs`, `relabel`). In this way, the code mostly preserved distinctions between atoms and strings, etc in the source text through macro invocation assuming things weren't too intrusive.
@@ -325,228 +325,208 @@ How CLVM code carries out programs
 
 ---
 
-_The basics of CLVM from a compilation perspective_
+### CLVM compilation basics
 
-One can think of CLVM as a calculator with 1 tricky operator, which is called 'a'
+One can think of CLVM as a calculator with 1 tricky operator, which is called `a`
 (apply).  The calculator's state can be thought of as a CLVM value like this:
 
-  ((+ 2 5) . (99 101))
+`((+ 2 5) . (99 101))`
   
-You can imagine the CLVM machine doing this on each evaluation step:
+The CLVM machine does this on each evaluation step:
 
-    Find the rightmost index (described well here: [https://github.com/Chia-Network/clvm_tools_rs/blob/a660ce7ce07064a6a81bb361f169f6de195cba10/src/classic/clvm_tools/node_path.rs#L1](clvm paths) ) in the left part of the state that is not in the form of a quoted value
-    (q . <something>) and:
-   
-     - if it's a number, enquote the correspondingly indexed value from
-       the right part and replace the number with that.
-       
-     - otherwise, it must be an operator applicable to some constants so
-       evaluate it.
+* Find the rightmost index (described well here: [CLVM paths](https://github.com/Chia-Network/clvm_tools_rs/blob/a660ce7ce07064a6a81bb361f169f6de195cba10/src/classic/clvm_tools/node_path.rs#L1) ) in the left part of the state that is not in the form of a quoted value `(q . <something>)` and:
+  * If it's a number, enquote the correspondingly indexed value from the right part and replace the number with that
+  * Otherwise, it must be an operator applicable to some constants, so evaluate it
        
     In this case,
     
-      ((+ 2 3) . (99 . 101)) -> ((+ 2 (q . 101)) . (99 . 101))
-      ((+ 2 (q . 101)) . (99 . 101)) -> ((+ (q . 99) (q . 101)) . (99 101))
-      ((+ (q . 99) (q . 101)) . (99 . 101)) -> 200
+    `((+ 2 3) . (99 . 101)) -> ((+ 2 (q . 101)) . (99 . 101)) ((+ 2 (q . 101)) . (99 . 101)) -> ((+ (q . 99) (q . 101)) . (99 101)) ((+ (q . 99) (q . 101)) . (99 . 101)) -> 200`
       
-    Of course, CLVM evaluators try to be more efficient than searching subtrees
-    like this but at a theoretical level that's all one needs.
+Of course, CLVM evaluators try to be more efficient than searching subtrees like this, but at a theoretical level that's all one needs.
     
-    The 'a' operator is actually not very exceptional in this, but you can think
-    of its properties like this:
-    
-    1. It conceptually ignores one level of quoting from its first argument.
-    2. It returns (q . X) when its first argument matches the pattern
-       (q . (q . X)).
-    3. When traversed during the search for the next rightmost element to
-       transform, the right hand part of the machine state transforms into
-       the dequoted form of its right hand argument:
+The `a` operator is actually not very exceptional, but you can think of its properties like this:
+1. It conceptually ignores one level of quoting from its first argument
+2. It returns `(q . X)` when its first argument matches the pattern `(q . (q . X))`
+3. When traversed during the search for the next rightmost element to transform, the righthand part of the machine state transforms into the dequoted form of its right hand argument:
 
-            Nothing special happened yet, we just simplified a's second argument -.
-                                                                                  v
-      ((+ (q . 1) (a (q . (* (q . 3) 1)) 2)) . (10)) -> ((+ (q . 1) (a (q . (* (q . 3) 1) (q . 10)))) (10)))
+```
+      Nothing special happened yet, we just simplified a's second argument -.
+                                                                            v
+((+ (q . 1) (a (q . (* (q . 3) 1)) 2)) . (10)) -> ((+ (q . 1) (a (q . (* (q . 3) 1) (q . 10)))) (10)))
+```
 
-                                      ,--- Here we traverse a and notice that we're entering the quoted code with a's env
-                                      |                                                                  |
-                                      v                                                                  v
-      ((+ (q . 1) (a (q . [(* (q . 3) 1) . 10]) (q . 10)) . (10)) -> ((+ (q . 1) (a (q . (* (q . 3) (q . 10))) (q . 10))) . (10))
+```
+                                ,--- Here we traverse a and notice that we're entering the quoted code with a's env
+                                |                                                                  |
+                                v                                                                  v
+((+ (q . 1) (a (q . [(* (q . 3) 1) . 10]) (q . 10)) . (10)) -> ((+ (q . 1) (a (q . (* (q . 3) (q . 10))) (q . 10))) . (10))
+```
 
-            The inner expression multiplied 3 by 10 and now matches (q . (q . X)) --.
-                                                                                    v
-      ((+ (q . 1) (a (q . (* (q . 3) (q . 10))))) . (10)) -> ((+ (q . 1) (a (q . (q . 30)) . (q . 10))) . (10))
+```
+      The inner expression multiplied 3 by 10 and now matches (q . (q . X)) --.
+                                                                              v
+((+ (q . 1) (a (q . (* (q . 3) (q . 10))))) . (10)) -> ((+ (q . 1) (a (q . (q . 30)) . (q . 10))) . (10))
+```
 
-        A disappears because we reached its end state of (q . (q . X)) --.
-                                                                         v
-      ((+ (q . 1) (a (q . (q . 30)) (q . 10))) . (10)) -> ((+ (q . 1) (q . 30)) . (10))
+```
+  A disappears because we reached its end state of (q . (q . X)) --.
+                                                                   v
+((+ (q . 1) (a (q . (q . 30)) (q . 10))) . (10)) -> ((+ (q . 1) (q . 30)) . (10))
+```
 
-                                          Done
+```
+                                    Done
 
-      ((+ (q . 1) (q . 30)) . (10)) -> 31
+((+ (q . 1) (q . 30)) . (10)) -> 31
+```
 
-Thinking conceptually like this, we can construct any program we want by computing
-a suitable environment (right side) and suitable code (left side), and letting
-CLVM evaluate them until its done.  There are pragmatic things to think about in
-how CLVM is evaluated:
+Thinking conceptually like this, we can construct any program we want by computing a suitable environment (right side) and suitable code (left side), and letting CLVM evaluate them until its done. There are pragmatic things to think about in how CLVM is evaluated:
 
- - If we have a program with functions that know about each other, their code has
-   to be available to the program as quoted expressions to give to some 'a'
-   operator.
+ - If we have a program with functions that know about each other, their code has to be available to the program as quoted expressions to give to some `a` operator.
    
- - If we have flow control, we have to model it by using some kind of computation
-   and pass through code to an 'a' operator.
+ - If we have flow control, we have to model it by using some kind of computation and pass through code to an `a` operator.
    
- - If we want to remember anything, we have to make an environment that contains it
-   and then use it in some other code via an 'a' operator.
+ - If we want to remember anything, we have to make an environment that contains it and then use it in some other code via an `a` operator.
    
-If one thinks of everything in these terms, then it isn't too difficult to generate
-code from chialisp.
+If one thinks of everything in these terms, then it isn't too difficult to generate code from Chialisp.
 
-_The basic units of CLVM execution are env lookup and function application_
+### CLVM execution basics
 
-Because there is no memory other than the environment in CLVM, a basic building
-block of CLVM code is an environment lookup.  If you consider the arguments to
-a function to be some kind of mirror of the program's current environment:
+Because there is no memory other than the environment in CLVM, a basic building block of CLVM code is an environment lookup. If you consider the arguments to a function to be some kind of mirror of the program's current environment:
 
-    (defun F (X Y Z) (+ X Y Z))
+```
+(defun F (X Y Z) (+ X Y Z))
     
-    brun '(+ 2 5 11)' '(10 11 12)' -> 33
-    
+brun '(+ 2 5 11)' '(10 11 12)' -> 33
+```
+
 Then you can see that there's nothing keeping references to the function's
 argument list from just becoming references.
 
 You can do the same thing with functions in the environment:
 
-    brun '(+ (a 2 (c 5 ())) (q . 3))' '((* (q . 2) 2) 9)' -> 21
-    
-But we don't want to make the user send in another copy of the program when
-running the program, and even more, if it needs that function more than once,
-we'll have to explicitly carry it around.
+```
+brun '(+ (a 2 (c 5 ())) (q . 3))' '((* (q . 2) 2) 9)' -> 21
+```
 
-Richard's answer and the generallly accepted one is to let the environment usually
-be a cons whose first part is the full set of constants and functions the program
-can use and the rest part is the arguments to the current function.  Optimization
-may in the future make this more complicated but thinking about it in this way
-makes a lot of things pretty easy to reason about.
+But we don't want to make the user send in another copy of the program when running the program, and even more, if it needs that function more than once, we'll have to explicitly carry it around.
 
-The program starts by putting its arguments with all its functions and applying
-the main expression:
+The generally accepted answer is to let the environment usually be a cons where:
+1. The first part is the full set of constants and functions the program can use, and
+2. The rest part is the arguments to the current function
 
-    (a main-expression (c (env ...) 1))
+Optimization may in the future make this more complicated, but thinking about it in this way makes a lot of things pretty easy to reason about.
 
-The main-expression expects the functions it has access to to be in the left
-part of the environment:
+The program starts by putting its arguments with all its functions and applying the main expression:
 
-                              .-- Reference to the left env.
-                              |    .-- An argument
-                              v    v
-    (a (a some-even-number (c 2 (c 5 ()))) (c (env ...) 1))
+```
+(a main-expression (c (env ...) 1))
+```
+
+The main-expression expects the functions it has access to to be in the left part of the environment:
+
+```
+                          .-- Reference to the left env.
+                          |    .-- An argument
+                          v    v
+(a (a some-even-number (c 2 (c 5 ()))) (c (env ...) 1))
+```
 
 And those functions expect the same thing, so if they generate code in the same
 way, for example, in this program, the function could call itself recursively:
 
-    (a (i 5 (q . (a some-even-number (c 2 (c (r 5) ())))) ()) 1)
-    
-some-even-number refers to the same subpart of the environment because we've
-promised ourselves that the part of the environment containing ourselves is at
-the same place in the environment 
+```
+(a (i 5 (q . (a some-even-number (c 2 (c (r 5) ())))) ()) 1)
+```
 
-Because the 'a' operator shares a lot of properties with a function call in a
-purely functional language, chialisp compilers tend to rely heavily on "desugaring"
-various language features into function calls so that they can use the code
-generation tools they already have (hopefully) that implements functions.
+`some-even-number` refers to the same subpart of the environment because we've promised ourselves that the part of the environment containing ourselves is at the same place in the environment.
 
-This isn't uncommon in language compilers, but converting things to functions is
-a higher percentage of what chialisp has to do.
+Because the `a` operator shares a lot of properties with a function call in a purely functional language, Chialisp compilers tend to rely heavily on "desugaring" various language features into function calls so that they can use the code generation tools they already have (hopefully) that implements functions.
 
-The second thing chialisp compilers have to do is synthesize ("reify") the
-environment to fit the shape that code it's calling is expected.  Consider this:
+This isn't uncommon in language compilers, but converting things to functions is a higher percentage of what Chialisp has to do.
 
-   (let ((X (+ Y 1))) (* X 2))
-   
-In chialisp, there are only a few choices you can make:
+The second thing Chialisp compilers have to do is synthesize ("reify") the environment to fit the shape that code it's calling is expected. Consider this:
 
-- Replace X with (+ Y 1) everywhere it appears in the body and return that.
+```
+(let ((X (+ Y 1))) (* X 2))
+```
 
-    (* (+ Y 1) 2)
+In Chialisp, there are only a few choices you can make:
+
+- Replace `X` with `(+ Y 1)` everywhere it appears in the body and return that:
   
-- Make some anonymous function for the binding like 
+  `(* (+ Y 1) 2)`
+  
+- Make some anonymous function for the binding like:
    
-    (defun let_binding_11234 (Y) (+ Y 1))
+  `(defun let_binding_11234 (Y) (+ Y 1))`
     
-  and replace every X with (let_binding_11234 Y)
+  and replace every `X` with (`let_binding_11234 Y`)
    
 - Make a function for the let body like:
 
-    (defun let_body_11234 (Y and_X?) (* and_X? 2))
+  `(defun let_body_11234 (Y and_X?) (* and_X? 2))`
     
   And replace the original site with:
   
-    (let_body_11234 Y (+ Y 1))
+  `(let_body_11234 Y (+ Y 1))`
     
-In each of these cases but the pure inline one, extra new arguments were fitted
-into the argument list of some function and the function was called.  In this way,
-we dreamed up an environment shape and then had to match it to call the function.
+In each of these cases except the pure inline one, extra new arguments were fitted into the argument list of some function, and the function was called. In this way, we dreamed up an environment shape and then had to match it to call the function.
 
-This takes on complication, but isn't really any worse, if let bindings can nest
-in various ways.  The goal of the chialisp compiler and its optimization are to
-make decent choices for these and improve the degree to which they produce the
-smallest possible equivalent code over time.  Each of these can be the right choice
-under some circumstances.
+This takes on complication, but isn't really any worse, if let bindings can nest in various ways. The goals of the Chialisp compiler and its optimization are to:
+1. Make decent choices for these, and
+2. Improve the degree to which they produce the smallest possible equivalent code over time.
+
+Each of these can be the right choice under some circumstances.
 
 Along other lines, this example:
 
 Imagine this program:
 
-    (mod (X)
-        (defun list-length (N L) (if L (list-length (+ N 1) (r L)) N))
-        (defun-inline QQQ (A . B) (+ A (list-length 0 B)))
-        (QQQ X 4 5 6)
-        )
-        
-The inline here destructures its arguments.  The arguments aren't strictly aligned
-to the elements that are used to call it; B captures (4 5 6).  Because QQQ isn't
-really "called" with an apply atom, the shape of its environment is purely 
-theoretical and yet the program *observes* that shape at runtime.  We must, when
-required, aggregate or dis-aggregate arguments given by the user by figuring their
-positions with respect to landmarks we know.  Best case, we can apply first, rest
-or paths to values we have as arguments if arguments in standard positions are
-destructured, worst case we have to cons values together as though the environment
-was being built for an apply.
-    
-_CLVM Heap representation isn't dissimiar to other eager functional languages_
+```
+(mod (X)
+    (defun list-length (N L) (if L (list-length (+ N 1) (r L)) N))
+    (defun-inline QQQ (A . B) (+ A (list-length 0 B)))
+    (QQQ X 4 5 6)
+    )
+```
 
-How CLVM compares to other functional languages in structure is a topic that is
-talked about occasionally, and many of its decisions are fairly alike what's out
-there:
-
-    In CLVM, there are conses and atoms.  Atoms act as numbers and
-    strings and conses act as boxes of size 2.
+The inline here destructures its arguments. The arguments aren't strictly aligned to the elements that are used to call it; `B` captures `(4 5 6)`. Because `QQQ` isn't really "called" with an apply atom, the shape of its environment is purely theoretical and yet the program *observes* that shape at runtime. We must, when required, aggregate or dis-aggregate arguments given by the user by figuring their positions with respect to landmarks we know. Best case, we can apply `first`, `rest` or `paths` to values we have as arguments if arguments in standard positions are destructured, worst case we have to `cons` values together as though the environment was being built for an `apply`.
     
-    (7 8 . 9) =
-      
-          ( 7 .  )
-               \
-              (8 . 9)
+### CLVM structure
 
-    
-    In cadmium (the name some use for the ocaml bytecode vm), there are
-    pointers and words.  Words act as numbers and pointers act as boxes
-    of a size determined by their tag word.
-        
-    (7,(8,9)) =
-    
-      [size:2,7,*0x331110] 
-                      \
-                  [size:2,8,9]
+CLVM Heap representation isn't dissimiar to other eager functional languages.
 
-    $ ocaml
-    # let x = (7,(8,9));;
-    val x : int * (int * int) = (7, (8, 9))
-    # let a = Obj.repr x;;
-    val a : Obj.t = <abstr>
-    # Obj.size a;;
-    - : int = 2
-    # let b = Obj.field a 1;;
-    val b : Obj.t = <abstr>
-    # Obj.size b;;
-    - : int = 2
+How CLVM compares to other functional languages in structure is a topic that is talked about occasionally, and many of its decisions are fairly alike what's out there:
+
+In CLVM, there are conses and atoms. Atoms act as numbers and strings and conses act as boxes of size 2.
+
+```
+(7 8 . 9) =
+  
+      ( 7 .  )
+           \
+          (8 . 9)
+```
+
+In cadmium (the name some use for the ocaml bytecode vm), there are pointers and words. Words act as numbers and pointers act as boxes of a size determined by their tag word.
+
+```
+(7,(8,9)) =
+
+  [size:2,7,*0x331110] 
+                  \
+              [size:2,8,9]
+
+$ ocaml
+# let x = (7,(8,9));;
+val x : int * (int * int) = (7, (8, 9))
+# let a = Obj.repr x;;
+val a : Obj.t = <abstr>
+# Obj.size a;;
+- : int = 2
+# let b = Obj.field a 1;;
+val b : Obj.t = <abstr>
+# Obj.size b;;
+- : int = 2
+```
