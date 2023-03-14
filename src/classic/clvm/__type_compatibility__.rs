@@ -125,9 +125,12 @@ impl Bytes {
                     .replace("\r", "")
                     .replace("\n", "");
 
-                match hex::decode(hex_stripped) {
+                match hex::decode(&hex_stripped) {
                     Ok(d) => Bytes { _b: d },
-                    _ => Bytes { _b: vec![] },
+                    Err(e) => {
+                        eprintln!("{} in '{}'", e, hex_stripped);
+                        std::process::exit(1);
+                    }
                 }
             }
             Some(BytesFromType::G1Element(g1)) => Bytes {
