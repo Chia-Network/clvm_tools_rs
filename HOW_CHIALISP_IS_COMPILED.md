@@ -191,19 +191,19 @@ The BodyForm is more diverse and things like Lambdas add alternatives. Since the
 
 These are the current BodyForm alternatives:
 
-* Let(<LetFormKind>, <LetData>)
+* Let(`<LetFormKind>`, `<LetData>`)
   * Represents let forms and anything that's expressible through let forms, such as the 'assign' form here:
   * [assign form pr](https://github.com/Chia-Network/clvm_tools_rs/pull/103)
         
-* Quoted(SExp)
+* Quoted(`SExp`)
   * Represents literal data in any form. In particular, Quoted ensures that the semantic meaning of the value is always as a constant as opposed to being treated as a reference to something or a variable name.
       
-* Value(SExp)
+* Value(`SExp`)
   * Value has a couple of meanings based on the content.
     * If it contains a value in those domains, it represents a self-quoting value type such as a quoted string or integer.
     * if it contains an atom, the atom is treated a reference to a constant or environment binding.
       
-* Call(Srcloc, Vec<Rc<BodyForm>>)
+* Call(`Srcloc`, `Vec<Rc<BodyForm>>`)
   * Represents any kind of invocation in an expression position in the code, whether it's a macro invocation, invocation of a function or a primitive.
   * The vector contains the top-level spine arguments of the notional cons form that will be given as arguments. This language disallows tail improper call forms because, while identifiers work in tail position, there's no easy way to identify the user's intention to place a more complex form at the improper tail.
   * An 'apply' form as in [lisp](http://clhs.lisp.se/Body/f_apply.htm) honoring the convention that the final argument is properly bound according to the structure of the called functions arguments, allowing functions with tail-improper arguments to be called without having to manufacture a tail improper syntax for the call site.
