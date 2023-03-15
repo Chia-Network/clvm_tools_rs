@@ -49,7 +49,7 @@ use crate::compiler::usecheck::check_parameters_used_compileform;
 
 pub struct FunctionExtraInfo {
     pub args: NodePtr,
-    pub left_env: bool,
+    pub has_constants_tree: bool,
 }
 
 // // The function below is broken as of 2021/06/22.
@@ -123,7 +123,7 @@ pub fn build_symbol_dump(
             let serialized_args = disassemble(allocator, extra.args);
             let serialized_args_atom = allocator.new_atom(serialized_args.as_bytes())?;
 
-            let left_env_value = allocator.new_atom(&[extra.left_env as u8])?;
+            let left_env_value = allocator.new_atom(&[extra.has_constants_tree as u8])?;
 
             map_result.push(allocator.new_pair(args_name_atom, serialized_args_atom)?);
             map_result.push(allocator.new_pair(left_env_name_atom, left_env_value)?);

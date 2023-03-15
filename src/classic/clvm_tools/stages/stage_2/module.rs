@@ -652,7 +652,7 @@ fn add_one_function(
         name.to_vec(),
         FunctionExtraInfo {
             args: function_args,
-            left_env: has_constants_tree,
+            has_constants_tree,
         },
     );
 
