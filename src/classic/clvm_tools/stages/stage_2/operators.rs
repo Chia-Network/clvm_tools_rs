@@ -95,16 +95,16 @@ impl CompilerOperatorsInternal {
         }
     }
 
+    pub fn neutralize(&self) {
+        self.set_runner(Rc::new(DefaultProgramRunner::new()));
+    }
+
     fn symbols_extra_info(&self, allocator: &mut Allocator) -> Response {
         if self.symbols_extra_info {
             Ok(Reduction(1, allocator.new_atom(&[1])?))
         } else {
             Ok(Reduction(1, allocator.null()))
         }
-    }
-
-    pub fn neutralize(&self) {
-        self.set_runner(Rc::new(DefaultProgramRunner::new()));
     }
 
     fn set_runner(&self, runner: Rc<dyn TRunProgram>) {
