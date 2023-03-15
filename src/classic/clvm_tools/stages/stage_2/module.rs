@@ -34,7 +34,7 @@ struct CollectionResult {
 #[derive(Default)]
 struct CompileOutput {
     pub functions: HashMap<Vec<u8>, NodePtr>,
-    pub extra_data: HashMap<Vec<u8>, FunctionExtraInfo>,
+    pub symbols_extra_info: HashMap<Vec<u8>, FunctionExtraInfo>,
 }
 
 impl CompileOutput {
@@ -42,8 +42,8 @@ impl CompileOutput {
         for (n, v) in other.functions.iter() {
             self.functions.insert(n.to_vec(), *v);
         }
-        for (n, v) in other.extra_data.iter() {
-            self.extra_data.insert(n.to_vec(), v.clone());
+        for (n, v) in other.symbols_extra_info.iter() {
+            self.symbols_extra_info.insert(n.to_vec(), v.clone());
         }
     }
 }
@@ -654,7 +654,7 @@ fn add_one_function(
 
     let opt_list = enlist(allocator, &[opt_atom, com_list])?;
     compile.functions.insert(name.to_vec(), opt_list);
-    compile.extra_data.insert(
+    compile.symbols_extra_info.insert(
         name.to_vec(),
         FunctionExtraInfo {
             args: function_args,
@@ -782,7 +782,7 @@ fn finish_compile_from_collection(
         let symbols_no_main = build_symbol_dump(
             allocator,
             &all_constants_lookup,
-            &compiled.extra_data,
+            &compiled.symbols_extra_info,
             run_program.clone(),
             produce_extra_info,
         )?;
