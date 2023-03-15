@@ -47,6 +47,7 @@ use crate::compiler::usecheck::check_parameters_used_compileform;
 //   return `<span id="${s.__repr__()}">${disassemble_f(s)}</span>`;
 // }
 
+#[derive(Clone)]
 pub struct FunctionExtraInfo {
     pub args: NodePtr,
     pub has_constants_tree: bool,
