@@ -14,19 +14,32 @@ use std::string::String;
 use binascii::{bin2hex, hex2bin};
 use num_traits::{zero, Num};
 
+use serde::Serialize;
+
 use crate::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType};
 use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes_clvm, TConvertOption};
 use crate::compiler::prims::prims;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, u8_from_number, Number};
 
+/// This relates to automatic generation of random sexp.
 pub const MAX_SEXP_COST: usize = 15;
 
-// Compiler view of SExp
-#[derive(Clone, Debug)]
+/// The compiler's view of SExp.
+///
+/// These preserve some characteristics of the source text that aren't strictly
+/// required for chialisp but are useful for ergonomics and compilation.  The
+/// Srcloc especially is relied on by the vscode plugin, which uses the frontend
+/// entrypoints here for parsing and to surface some kinds of errors.
+#[derive(Clone, Debug, Serialize)]
 pub enum SExp {
+    /// A native nil value "()"
     Nil(Srcloc),
+    /// A cons with a left and right child.  The srcloc should span the entire
+    /// content of the list, but may not depending on the construction of the
+    /// list.
     Cons(Srcloc, Rc<SExp>, Rc<SExp>),
+    ///
     Integer(Srcloc, Number),
     QuotedString(Srcloc, u8, Vec<u8>),
     Atom(Srcloc, Vec<u8>),
@@ -796,6 +809,11 @@ where
     }
 }
 
+///
+/// Entrypoint for parsing chialisp input.
+///
+/// This produces Rc<SExp>, where SExp is described above.
+///
 pub fn parse_sexp<I>(start: Srcloc, input: I) -> Result<Vec<Rc<SExp>>, (Srcloc, String)>
 where
     I: Iterator<Item = u8>,

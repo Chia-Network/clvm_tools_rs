@@ -53,7 +53,9 @@ use crate::compiler::prims;
 use crate::compiler::sexp;
 use crate::compiler::sexp::{decode_string, parse_sexp};
 use crate::compiler::srcloc::Srcloc;
+
 use crate::util::collapse;
+use crate::util::version;
 
 pub struct PathOrCodeConv {}
 
@@ -552,6 +554,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     let mut parser = ArgumentParser::new(Some(props));
     parser.add_argument(
+        vec!["--version".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("Show version".to_string()),
+    );
+    parser.add_argument(
         vec!["-s".to_string(), "--stage".to_string()],
         Argument::new()
             .set_type(Rc::new(StageImport {}))
@@ -696,6 +704,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         }
         Ok(pa) => pa,
     };
+
+    if parsed_args.contains_key("version") {
+        let version = version();
+        println!("{version}");
+        return;
+    }
 
     let empty_map = HashMap::new();
     let keywords = match parsed_args.get("no_keywords") {

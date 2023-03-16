@@ -16,12 +16,23 @@ use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::ErrInto;
 
+/// Determines how an included file is used.
+///
+/// Basic means that the file contains helper forms to include in the program.
+/// Processed means that some kind of processing is done and the result is a named
+/// constant.
 #[derive(Clone, Debug)]
 enum IncludeType {
+    /// Normal include in chialisp.  The code in the target file will join the
+    /// program being compiled.
     Basic(IncludeDesc),
+    /// The data in the file will be processed in some way and the result will
+    /// live in a named constant.
     Processed(IncludeDesc, IncludeProcessType, Vec<u8>),
 }
 
+/// Given a specification of an include file, load up the forms inside it and
+/// return them (or an error if the file couldn't be read or wasn't a list).
 pub fn process_include(
     opts: Rc<dyn CompilerOpts>,
     include: IncludeDesc,
@@ -325,6 +336,9 @@ fn inject_std_macros(body: Rc<SExp>) -> SExp {
     }
 }
 
+/// Run the preprocessor over this code, which at present just finds (include ...)
+/// forms in the source and includes the content of in a combined list.  If a file
+/// can't be found via the directory list in CompilerOrs.
 pub fn preprocess(
     opts: Rc<dyn CompilerOpts>,
     includes: &mut Vec<IncludeDesc>,
@@ -340,7 +354,10 @@ pub fn preprocess(
     preprocess_(opts, includes, tocompile)
 }
 
-// Visit all files used during compilation.
+/// Visit all files used during compilation.
+/// This reports a list of all files used while compiling the input file, via any
+/// form that causes compilation to include another file.  The file names are path
+/// expanded based on the include path they were found in (from opts).
 pub fn gather_dependencies(
     opts: Rc<dyn CompilerOpts>,
     real_input_path: &str,
