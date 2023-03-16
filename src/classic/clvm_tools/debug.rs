@@ -47,9 +47,15 @@ use crate::compiler::usecheck::check_parameters_used_compileform;
 //   return `<span id="${s.__repr__()}">${disassemble_f(s)}</span>`;
 // }
 
+/// Contains additional info beside the compiled form for chialisp functions/
+/// These can be passed on and used by debuggers and such.
+#[derive(Clone)]
 pub struct FunctionExtraInfo {
+    /// The form of the original arguments from the source code.
     pub args: NodePtr,
-    pub left_env: bool,
+    /// Whether this function requires the constants and functions of the program
+    /// as an additional hidden parameter.
+    pub has_constants_tree: bool,
 }
 
 // // The function below is broken as of 2021/06/22.
@@ -123,7 +129,7 @@ pub fn build_symbol_dump(
             let serialized_args = disassemble(allocator, extra.args);
             let serialized_args_atom = allocator.new_atom(serialized_args.as_bytes())?;
 
-            let left_env_value = allocator.new_atom(&[extra.left_env as u8])?;
+            let left_env_value = allocator.new_atom(&[extra.has_constants_tree as u8])?;
 
             map_result.push(allocator.new_pair(args_name_atom, serialized_args_atom)?);
             map_result.push(allocator.new_pair(left_env_name_atom, left_env_value)?);

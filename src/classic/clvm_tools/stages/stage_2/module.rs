@@ -34,7 +34,18 @@ struct CollectionResult {
 #[derive(Default)]
 struct CompileOutput {
     pub functions: HashMap<Vec<u8>, NodePtr>,
-    pub extra_data: HashMap<Vec<u8>, FunctionExtraInfo>,
+    pub symbols_extra_info: HashMap<Vec<u8>, FunctionExtraInfo>,
+}
+
+impl CompileOutput {
+    pub fn add_definitions(&mut self, other: &CompileOutput) {
+        for (n, v) in other.functions.iter() {
+            self.functions.insert(n.to_vec(), *v);
+        }
+        for (n, v) in other.symbols_extra_info.iter() {
+            self.symbols_extra_info.insert(n.to_vec(), v.clone());
+        }
+    }
 }
 
 // export type TBuildTree = Bytes | Tuple<TBuildTree, TBuildTree> | [];
@@ -609,16 +620,11 @@ fn add_one_function(
     args_root_node: &NodePath,
     macro_lookup_program: NodePtr,
     constants_symbol_table: &[(NodePtr, Vec<u8>)],
-    // Note: mut here means: the body of this function will mutate this by-value
-    // parameter, not that the mutability is visible to the caller.
-    //
-    // My own style generally avoid this, but reviewers tend to dislike having a
-    // phantom name that is copied, so i am using the more brief style here.
-    mut compiled: CompileOutput,
     name: &[u8],
     lambda_expression: NodePtr,
     has_constants_tree: bool,
 ) -> Result<CompileOutput, EvalErr> {
+    let mut compile: CompileOutput = Default::default();
     let com_atom = allocator.new_atom("com".as_bytes())?;
     let opt_atom = allocator.new_atom("opt".as_bytes())?;
 
@@ -648,16 +654,16 @@ fn add_one_function(
     )?;
 
     let opt_list = enlist(allocator, &[opt_atom, com_list])?;
-    compiled.functions.insert(name.to_vec(), opt_list);
-    compiled.extra_data.insert(
+    compile.functions.insert(name.to_vec(), opt_list);
+    compile.symbols_extra_info.insert(
         name.to_vec(),
         FunctionExtraInfo {
             args: function_args,
-            left_env: has_constants_tree,
+            has_constants_tree,
         },
     );
 
-    Ok(compiled)
+    Ok(compile)
 }
 
 fn compile_functions(
@@ -668,25 +674,21 @@ fn compile_functions(
     args_root_node: &NodePath,
     has_constants_tree: bool,
 ) -> Result<CompileOutput, EvalErr> {
-    let compiled = Default::default();
+    let mut compiled: CompileOutput = Default::default();
 
-    return fold_m(
-        allocator,
-        &|allocator: &mut Allocator, compiled, name_exp: (&Vec<u8>, &NodePtr)| {
-            add_one_function(
-                allocator,
-                args_root_node,
-                macro_lookup_program,
-                constants_symbol_table,
-                compiled,
-                name_exp.0,
-                *name_exp.1,
-                has_constants_tree,
-            )
-        },
-        compiled,
-        &mut functions.iter(),
-    );
+    for (name, exp) in functions.iter() {
+        compiled.add_definitions(&add_one_function(
+            allocator,
+            args_root_node,
+            macro_lookup_program,
+            constants_symbol_table,
+            name,
+            *exp,
+            has_constants_tree,
+        )?);
+    }
+
+    Ok(compiled)
 }
 
 // Add an entry for main's arguments, named __chia__main_arguments in the
@@ -781,7 +783,7 @@ fn finish_compile_from_collection(
         let symbols_no_main = build_symbol_dump(
             allocator,
             &all_constants_lookup,
-            &compiled.extra_data,
+            &compiled.symbols_extra_info,
             run_program.clone(),
             produce_extra_info,
         )?;
