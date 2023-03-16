@@ -15,6 +15,17 @@ use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::ErrInto;
 
+/// An object implementing a full repl for the language of chialisp toplevel forms
+/// and expressions.
+///
+/// Internally, it determines whether the next form it's been asked to act upon
+/// is a helperform (preferentally) or an expression.  In the case of a HelperForm,
+/// it uses the compiler frontend to absorb the new HelperForm, and in the case of
+/// an expression, uses its Evaluator to simplify it, hopefully to a constant.
+///
+/// Each form used by the repl has a result, which is nil for helperforms and
+/// code for expressions...  If the expression fully evaluated, the result is
+/// a quoted constant.
 pub struct Repl {
     depth: i32,
     input_exp: String,
@@ -73,6 +84,10 @@ fn count_depth(s: &str) -> i32 {
 }
 
 impl Repl {
+    /// Create a new Repl given a set of CompilerOpts and a chialisp program
+    /// runner, TRunProgram.  The runner is used to evaluate arbitrary CLVM
+    /// code when required.  Evaluator implements some primitives itself, but
+    /// many are taken from clvmr.
     pub fn new(opts: Rc<dyn CompilerOpts>, runner: Rc<dyn TRunProgram>) -> Repl {
         let loc = Srcloc::start(&opts.filename());
         let mut toplevel_forms = HashSet::new();
@@ -118,10 +133,20 @@ impl Repl {
         }
     }
 
+    /// There is a stack depth limit in Evaluator which limits the depth to which
+    /// evaluation can take place.  This configures that.
     pub fn set_stack_limit(&mut self, l: Option<usize>) {
         self.stack_limit = l;
     }
 
+    /// Process one line of input.  If the line ends with the parenthesis depth
+    /// greater than zero, then the data is taken, but no attempt is made at
+    /// parsing.  When a line ends with parenthesis depth 0, parsing is done.
+    ///
+    /// SExp's parse_sexp is used, which can handle parsing of multiple complete
+    /// forms in the same text.  The forms will be handled one at a time, first
+    /// checking whether they qualify as HelperForms and second treating each
+    /// as an expression.
     pub fn process_line(
         &mut self,
         allocator: &mut Allocator,

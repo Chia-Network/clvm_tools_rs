@@ -70,6 +70,22 @@ pub enum ArgInputs {
     Pair(Rc<ArgInputs>, Rc<ArgInputs>),
 }
 
+/// Evaluator is an object that simplifies expressions, given the helpers
+/// (helpers are forms that are reusable parts of programs, such as defconst,
+/// defun or defmacro) from a program.  In the simplest form, it can be used to
+/// power a chialisp repl, but also to simplify expressions to their components.
+///
+/// The emitted expressions are simpler and sometimes smaller, depending on what the
+/// evaulator was able to do.  It performs all obvious substitutions and some
+/// obvious simplifications based on CLVM operations (such as combining
+/// picking operations with conses in some cases).  If the expression can't
+/// be simplified to a constant, any remaining variable references and the
+/// operations on them are left.
+///
+/// Because of what it can do, it's also used for "use checking" to determine
+/// whether input parameters to the program as a whole are used in the program's
+/// eventual results.  The simplification it does is general eta conversion with
+/// some other local transformations thrown in.
 pub struct Evaluator {
     opts: Rc<dyn CompilerOpts>,
     runner: Rc<dyn TRunProgram>,
@@ -943,7 +959,7 @@ impl<'info> Evaluator {
     }
 
     // A frontend language evaluator and minifier
-    pub fn shrink_bodyform_visited(
+    fn shrink_bodyform_visited(
         &self,
         allocator: &mut Allocator, // Support random prims via clvm_rs
         visited_: &'info mut VisitedMarker<'_, VisitedInfo>,
@@ -1111,6 +1127,21 @@ impl<'info> Evaluator {
         }
     }
 
+    /// The main entrypoint for the evaluator, shrink_bodyform takes a notion of the
+    /// current argument set (in case something depends on its shape), the
+    /// bindings in force, and a frontend expression to evaluate and simplifies
+    /// it as much as possible.  The result is the "least complex" version of the
+    /// expression we can make with what we know; this includes taking any part that's
+    /// constant and fully applying it to make a constant of the full subexpression
+    /// as well as a few other small rewriting elements.
+    ///
+    /// There are a few simplification steps that may make code larger, such as
+    /// fully substituting inline applications and eliminating let bindings.
+    ///
+    /// the only_inline flag controls whether only inline functions are expanded
+    /// or whether it's allowed to expand all functions, depending on whehter it's
+    /// intended to simply make a result that ends at inline expansion or generate
+    /// as full a result as possible.
     pub fn shrink_bodyform(
         &self,
         allocator: &mut Allocator, // Support random prims via clvm_rs

@@ -4,6 +4,8 @@ use std::rc::Rc;
 
 use serde::Serialize;
 
+/// If a Srcloc identifies a range of characters in the source file, this
+/// identifies the tail of the range.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Until {
     pub line: usize,
@@ -19,6 +21,15 @@ impl Until {
     }
 }
 
+/// Specifies the coordinates of an object in a source file, including the file
+/// name.  The name is held by reference count so they can be held and cloned
+/// relatively freely.
+///
+/// They are intended to be relatively small.  Every SExp is decorated with one
+/// Srcloc to identify where it came from in the source.  These allow tools to
+/// report errors precisely downstream in the compiler (for example, reporting
+/// the specific atom on which an attempt to do first or rest was made, deep in
+/// the compiler infra.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Srcloc {
     pub file: Rc<String>,
@@ -26,24 +37,6 @@ pub struct Srcloc {
     pub col: usize,
     pub until: Option<Until>,
 }
-
-// let srcLocationToJson sl =
-//   let b =
-//     [ ("line", Js.Json.number (float_of_int sl.line))
-//     ; ("col", Js.Json.number (float_of_int sl.col))
-//     ]
-//   in
-//   let u =
-//     match sl.until with
-//     | None -> []
-//     | Some (l,c) ->
-//       [ ("ml", Js.Json.number (float_of_int l))
-//       ; ("mc", Js.Json.number (float_of_int c))
-//       ]
-//   in
-//   List.concat [ b ; u ]
-//   |> Js.Dict.fromList
-//   |> Js.Json.object_
 
 impl Display for Srcloc {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -58,6 +51,8 @@ impl Display for Srcloc {
 }
 
 impl Srcloc {
+    /// Create a srcloc given a refcounted pointer to the filename (so they're
+    /// always shareable) and the line number and column (1-based).
     pub fn new(name: Rc<String>, line: usize, col: usize) -> Self {
         Srcloc {
             file: name,
@@ -67,6 +62,8 @@ impl Srcloc {
         }
     }
 
+    /// Get the ending of the range as a Srcloc.  If there's no tail then
+    /// it's also the beginning.
     pub fn ending(&self) -> Srcloc {
         if let Some(u) = &self.until {
             return Srcloc {
@@ -79,6 +76,9 @@ impl Srcloc {
         self.clone()
     }
 
+    /// Tell whether the srcloc overlaps another srcloc.  This is used by the
+    /// language server to determine the target of an autocompletion or what
+    /// form the cursor is in, among other things.
     pub fn overlap(&self, other: &Srcloc) -> bool {
         let mf: &String = self.file.borrow();
         let of: &String = other.file.borrow();
@@ -131,13 +131,15 @@ impl Srcloc {
         }
     }
 
+    /// Returns whether the srcloc identifies an empty range (re: clippy).
+    /// Currently impossible.
     pub fn is_empty(&self) -> bool {
         false
     }
 
-    // Length of the string representation for the srcloc's range if it's on
-    // the same line.  Some thought is needed to know what we want for a range
-    // over lines.
+    /// Length of the string representation for the srcloc's range if it's on
+    /// the same line.  Some thought is needed to know what we want for a range
+    /// over lines.
     pub fn len(&self) -> Option<usize> {
         if let Some(self_until) = &self.until {
             if self_until.line != self.line {
@@ -150,6 +152,8 @@ impl Srcloc {
         }
     }
 
+    /// Create a srcloc that begins where this srcloc begins and ends at the given
+    /// at the farther of the two range endings.
     pub fn ext(&self, other: &Srcloc) -> Srcloc {
         if other.file == self.file {
             combine_src_location(self, other)
@@ -158,6 +162,8 @@ impl Srcloc {
         }
     }
 
+    /// Given a u8 byte from a stream, figure out the next source location.
+    /// Respects newline and tab.
     pub fn advance(&self, ch: u8) -> Srcloc {
         match ch as char {
             '\n' => Srcloc {
@@ -184,6 +190,8 @@ impl Srcloc {
         }
     }
 
+    /// Given a filename, create a Srcloc that's logically at the beginning of
+    /// that file.
     pub fn start(file: &str) -> Srcloc {
         Srcloc {
             file: Rc::new(file.to_string()),
@@ -194,10 +202,12 @@ impl Srcloc {
     }
 }
 
+/// Return the first character addressed by the srcloc.
 pub fn src_location_min(a: &Srcloc) -> (usize, usize) {
     (a.line, a.col)
 }
 
+/// Return the last character addressed by the srcloc.
 pub fn src_location_max(a: &Srcloc) -> (usize, usize) {
     match &a.until {
         None => (a.line, a.col + 1),
@@ -214,7 +224,8 @@ fn add_onto(x: &Srcloc, y: &Srcloc) -> Srcloc {
     }
 }
 
-pub fn combine_src_location(a: &Srcloc, b: &Srcloc) -> Srcloc {
+/// Helper function for Srcloc::ext.
+fn combine_src_location(a: &Srcloc, b: &Srcloc) -> Srcloc {
     match (a.line < b.line, a.line == b.line) {
         (true, _) => add_onto(a, b),
         (_, true) => match (a.col < b.col, a.col == b.col) {
