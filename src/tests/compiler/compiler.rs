@@ -1389,6 +1389,32 @@ fn test_assign_detect_multiple_definition() {
 }
 
 #[test]
+fn test_assign_dont_detect_unrelated_inlines_as_recursive() {
+    let prog = indoc! {"
+(mod (A) ;; 11
+  (include *standard-cl-22*)
+  (defun-inline <= (A B) (not (> A B)))
+  (let
+    ((foo (<= 2 A))
+     (bar (<= 1 A)))
+
+    (let
+      ((baz (<= foo bar)))
+
+      (let
+        ((yorgle (<= baz bar)))
+
+        (<= yorgle foo)
+        )
+      )
+    )
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(2)".to_string()).expect("should compile");
+    assert_eq!(res.to_string(), "1");
+}
+
+#[test]
 fn test_inline_out_of_bounds_diagnostic() {
     let prog = indoc! {"
 (mod ()

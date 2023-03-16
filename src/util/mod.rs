@@ -5,6 +5,11 @@ use unicode_segmentation::UnicodeSegmentation;
 
 pub type Number = BigInt;
 
+// Thanks: https://www.reddit.com/r/rust/comments/bkkpkz/pkgversion_access_your_crates_version_number_as/
+pub fn version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 pub fn number_from_u8(v: &[u8]) -> Number {
     let len = v.len();
     if len == 0 {

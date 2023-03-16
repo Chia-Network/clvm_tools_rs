@@ -695,10 +695,12 @@ fn codegen_(
                     .map(|code| {
                         compiler.add_defun(
                             &defun.name,
+                            defun.orig_args.clone(),
                             DefunCall {
                                 required_env: defun.args.clone(),
                                 code,
                             },
+                            true, // Always take left env for now
                         )
                     })
             }
@@ -748,11 +750,11 @@ fn generate_let_defun(
         })
         .collect();
 
-    let inner_function_args = SExp::Cons(
+    let inner_function_args = Rc::new(SExp::Cons(
         l.clone(),
         args,
         Rc::new(list_to_cons(l.clone(), &new_arguments)),
-    );
+    ));
 
     HelperForm::Defun(
         true,
@@ -761,7 +763,8 @@ fn generate_let_defun(
             nl: l,
             kw: kwl,
             name: name.to_owned(),
-            args: Rc::new(inner_function_args),
+            orig_args: inner_function_args.clone(),
+            args: inner_function_args,
             body,
         },
     )
@@ -927,6 +930,7 @@ fn process_helper_let_bindings(
                         kw: defun.kw.clone(),
                         name: defun.name.clone(),
                         args: defun.args.clone(),
+                        orig_args: defun.orig_args.clone(),
                         body: hoisted_body,
                     },
                 );
@@ -1264,12 +1268,16 @@ pub fn codegen(
 
     final_codegen(allocator, runner.clone(), opts.clone(), &compiler).and_then(|c| {
         let final_env = finalize_env(allocator, runner.clone(), opts.clone(), &c)?;
+
         match c.final_code {
             None => Err(CompileErr(
                 Srcloc::start(&opts.filename()),
                 "Failed to generate code".to_string(),
             )),
             Some(code) => {
+                // Capture symbols now that we have the final form of the produced code.
+                symbol_table.insert("__chia__main_arguments".to_string(), cmod.args.to_string());
+
                 if opts.in_defun() {
                     let final_code = primapply(
                         code.0.clone(),
