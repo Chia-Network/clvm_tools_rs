@@ -1327,7 +1327,10 @@ pub fn frontend(
 
     let mut live_helpers = Vec::new();
     for h in our_mod.helpers {
-        if matches!(h, HelperForm::Deftype(_)) || !opts.frontend_check_live() || helper_names.contains(h.name()) {
+        if matches!(h, HelperForm::Deftype(_))
+            || !opts.frontend_check_live()
+            || helper_names.contains(h.name())
+        {
             live_helpers.push(h);
         }
     }
