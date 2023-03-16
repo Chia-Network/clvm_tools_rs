@@ -3,6 +3,11 @@ use unicode_segmentation::UnicodeSegmentation;
 
 pub type Number = BigInt;
 
+// Thanks: https://www.reddit.com/r/rust/comments/bkkpkz/pkgversion_access_your_crates_version_number_as/
+pub fn version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 pub fn number_from_u8(v: &[u8]) -> Number {
     let len = v.len();
     if len == 0 {
@@ -36,5 +41,18 @@ pub fn collapse<A>(r: Result<A, A>) -> A {
     match r {
         Ok(a) => a,
         Err(e) => e,
+    }
+}
+
+pub trait ErrInto<D> {
+    fn err_into(self) -> D;
+}
+
+impl<SrcErr, DestErr, DestRes> ErrInto<Result<DestRes, DestErr>> for Result<DestRes, SrcErr>
+where
+    DestErr: From<SrcErr>,
+{
+    fn err_into(self) -> Result<DestRes, DestErr> {
+        self.map_err(|e| e.into())
     }
 }

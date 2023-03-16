@@ -5,6 +5,7 @@ use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
+use serde::Serialize;
 use log::debug;
 
 use crate::compiler::srcloc::{HasLoc, Srcloc};
@@ -43,7 +44,7 @@ impl HasLoc for Var {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct TypeVar(pub String, pub Srcloc);
 
 impl PartialEq for TypeVar {
@@ -107,7 +108,7 @@ impl HasLoc for Expr {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum Type<const T: usize> {
     TUnit(Srcloc),
     TAny(Srcloc),

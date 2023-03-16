@@ -54,10 +54,16 @@ fn get_arg_associations(
     }
 }
 
+/// An interface which allows consumers to inject their own functionality into
+/// cldb runs, including possibly mocking functions, performing tracing and
+/// other desired things.  The result of the operation can be dictated when
+/// the runnable is asked to replace the step state.
 pub trait CldbRunnable {
     fn replace_step(&self, step: &RunStep) -> Option<Result<RunStep, RunFailure>>;
 }
 
+/// A CldbEnvironment is a container for a function-oriented view of clvm programs
+/// when running in Cldb.
 pub trait CldbEnvironment {
     fn add_context(
         &self,
@@ -70,6 +76,18 @@ pub trait CldbEnvironment {
     fn get_override(&self, s: &RunStep) -> Option<Result<RunStep, RunFailure>>;
 }
 
+/// CldbRun is the main object used to run CLVM code in a stepwise way.  The main
+/// advantage of CldbRun over clvmr's runner is that the caller observes a new
+/// step being returned after it asks for each step to be run.  The progress of
+/// evaulation is observable and hopefully understandable and in an order which,
+/// combined with observing the RunStep can help with debugging.
+///
+/// CldmbRun contains a RunStep and moves evaluation forward every time its step
+/// method is called, along with having some convenience methods, like being able
+/// to ask whether the run ended and what the final result was (if it completed).
+///
+/// The result is a map of key value pairs indicating various information about
+/// the run.
 pub struct CldbRun {
     runner: Rc<dyn TRunProgram>,
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
@@ -87,6 +105,10 @@ pub struct CldbRun {
 }
 
 impl CldbRun {
+    /// Create a new CldbRun for running a program.
+    /// Takes an CldbEnvironment and a prepared RunStep, which will be stepped
+    /// through.  The CldbEnvironment specifies places where the consumer has the
+    /// ability to examine the run step and possibly alter the result of execution.
     pub fn new(
         runner: Rc<dyn TRunProgram>,
         prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
@@ -218,6 +240,7 @@ impl CldbRun {
     }
 }
 
+/// A simple implementation of CldbEnvironment that does not override anything.
 pub struct CldbNoOverride {}
 
 impl CldbRunnable for CldbNoOverride {
@@ -242,18 +265,29 @@ impl Default for CldbNoOverride {
     }
 }
 
-// Allow the caller to examine environment and return an expression that
-// will be quoted.
+/// Allow the caller to examine environment and return an expression that
+/// will be quoted, used in conjunction with CldbEnvironment.
 pub trait CldbSingleBespokeOverride {
     fn get_override(&self, env: Rc<SExp>) -> Result<Rc<SExp>, RunFailure>;
 }
 
+/// Provides a collection of overrides to be used with CldbEnvironment and
+/// CldbRun to support use cases like examining the arguments given to a
+/// specific function while CLVM code is executing or to mock functions in
+/// a CLVM program.
 pub struct CldbOverrideBespokeCode {
     symbol_table: HashMap<String, String>,
     overrides: HashMap<String, Box<dyn CldbSingleBespokeOverride>>,
 }
 
 impl CldbOverrideBespokeCode {
+    /// Given the symbol table of a compiled CLVM program and a hashmap from
+    /// function names to override specifications, provie a ClvmEnvironment that
+    /// overrides the targeted functions with the given overrides, which are
+    /// objects the consumer implements CldbSingleBespokeOverride for.
+    ///
+    /// These can do whatever the user likes, from inspecting the arguments
+    /// to replacing the result.
     pub fn new(
         symbol_table: HashMap<String, String>,
         overrides: HashMap<String, Box<dyn CldbSingleBespokeOverride>>,
@@ -314,6 +348,11 @@ impl CldbRunnable for CldbOverrideBespokeCode {
     }
 }
 
+/// A small collection of information about the running program, including the
+/// name of the source file and the lines of the program.  When present, this
+/// allows names to be picked out of the source base and locations to be accurate.
+///
+/// Also provides a CldbRunnable that specifies the user's overrides.
 pub struct CldbRunEnv {
     input_file: Option<String>,
     program_lines: Vec<String>,
@@ -321,6 +360,8 @@ pub struct CldbRunEnv {
 }
 
 impl CldbRunEnv {
+    /// Make a new CldbRunEnv given useful information about the program being
+    /// run.
     pub fn new(
         input_file: Option<String>,
         program_lines: Vec<String>,
@@ -428,7 +469,7 @@ impl CldbEnvironment for CldbRunEnv {
     }
 }
 
-pub fn hex_to_modern_sexp_inner(
+fn hex_to_modern_sexp_inner(
     allocator: &mut Allocator,
     symbol_table: &HashMap<String, String>,
     loc: Srcloc,
@@ -456,6 +497,8 @@ pub fn hex_to_modern_sexp_inner(
     }
 }
 
+/// A function which, given hex input, produces equivalent SExp.
+/// All produced SExp have the location given in loc.
 pub fn hex_to_modern_sexp(
     allocator: &mut Allocator,
     symbol_table: &HashMap<String, String>,

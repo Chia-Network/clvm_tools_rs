@@ -15,7 +15,7 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 hex = "0.4.3"
-num-bigint = "0.4.0"
+num-bigint = { version = "0.4.0", features = ["serde"] }
 bls12_381 = "0.7.0"
 bytestream = "0.4.1"
 num-traits = "0.2.14"
@@ -35,6 +35,7 @@ log = "0.4.17"
 binascii = "0.1.4"
 yaml-rust = "0.4"
 linked-hash-map = "0.5.6"
+serde = { version = "1.0", features = ["derive", "rc"] }
 
 [dev-dependencies]
 rand = "0.8.5"
@@ -84,6 +85,10 @@ path = "src/classic/bins/cldb.rs"
 [[bin]]
 name = "shrink"
 path = "src/classic/bins/shrink.rs"
+
+[[bin]]
+name = "clisp_to_json"
+path = "src/classic/bins/clisp_to_json.rs"
 
 [[bin]]
 name = "repl"

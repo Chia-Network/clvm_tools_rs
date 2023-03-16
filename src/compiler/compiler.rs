@@ -144,6 +144,7 @@ fn fe_opt(
                         kw: defun.kw.clone(),
                         name: defun.name.clone(),
                         args: defun.args.clone(),
+                        orig_args: defun.orig_args.clone(),
                         body: body_rc.clone(),
                         ty: defun.ty.clone(),
                     },
@@ -206,8 +207,7 @@ pub fn compile_file(
     content: &str,
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
-    let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), content.bytes())
-        .map_err(|e| CompileErr(e.0, e.1))?;
+    let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), content.bytes())?;
 
     compile_pre_forms(allocator, runner, opts, &pre_forms, symbol_table)
 }
@@ -261,6 +261,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     }
     fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
         self.prim_map.clone()
+    }
+    fn get_search_paths(&self) -> Vec<String> {
+        self.include_dirs.clone()
     }
 
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
@@ -318,12 +321,15 @@ impl CompilerOpts for DefaultCompilerOpts {
         for dir in self.include_dirs.iter() {
             let mut p = PathBuf::from(dir);
             p.push(filename.clone());
-            match fs::read_to_string(p) {
+            match fs::read_to_string(p.clone()) {
                 Err(_e) => {
                     continue;
                 }
                 Ok(content) => {
-                    return Ok((filename, content));
+                    return Ok((
+                        p.to_str().map(|x| x.to_owned()).unwrap_or_else(|| filename),
+                        content,
+                    ));
                 }
             }
         }

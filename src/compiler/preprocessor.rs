@@ -1,10 +1,14 @@
 use std::borrow::Borrow;
 use std::rc::Rc;
 
+use crate::compiler::compiler::KNOWN_DIALECTS;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, IncludeDesc};
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::util::ErrInto;
 
+/// Given a specification of an include file, load up the forms inside it and
+/// return them (or an error if the file couldn't be read or wasn't a list).
 pub fn process_include(
     opts: Rc<dyn CompilerOpts>,
     include: IncludeDesc,
@@ -13,8 +17,10 @@ pub fn process_include(
     let content = filename_and_content.1;
     let start_of_file = Srcloc::start(&decode_string(&include.name));
 
+    // Because we're also subsequently returning CompileErr later in the pipe,
+    // this needs an explicit err map.
     parse_sexp(start_of_file.clone(), content.bytes())
-        .map_err(|e| CompileErr(e.0.clone(), e.1))
+        .err_into()
         .and_then(|x| match x[0].proper_list() {
             None => Err(CompileErr(
                 start_of_file,
@@ -30,9 +36,41 @@ fn process_pp_form(
     includes: &mut Vec<IncludeDesc>,
     body: Rc<SExp>,
 ) -> Result<Vec<Rc<SExp>>, CompileErr> {
+    // Support using the preprocessor to collect dependencies recursively.
+    let recurse_dependencies = |opts: Rc<dyn CompilerOpts>,
+                                includes: &mut Vec<IncludeDesc>,
+                                desc: IncludeDesc|
+     -> Result<(), CompileErr> {
+        let name_string = decode_string(&desc.name);
+        if KNOWN_DIALECTS.contains_key(&name_string) {
+            return Ok(());
+        }
+
+        let (full_name, content) = opts.read_new_file(opts.filename(), name_string)?;
+        includes.push(IncludeDesc {
+            name: full_name.as_bytes().to_vec(),
+            ..desc
+        });
+
+        let parsed = parse_sexp(Srcloc::start(&full_name), content.bytes())?;
+        if parsed.is_empty() {
+            return Ok(());
+        }
+
+        let program_form = parsed[0].clone();
+        if let Some(l) = program_form.proper_list() {
+            for elt in l.iter() {
+                process_pp_form(opts.clone(), includes, Rc::new(elt.clone()))?;
+            }
+        }
+
+        Ok(())
+    };
+
     let included: Option<IncludeDesc> = body
         .proper_list()
-        .map(|x| {
+        .map(|x| x.iter().map(|elt| elt.atomize()).collect())
+        .map(|x: Vec<SExp>| {
             match &x[..] {
                 [SExp::Atom(kw, inc), SExp::Atom(nl, fname)] => {
                     if "include".as_bytes().to_vec() == *inc {
@@ -75,7 +113,7 @@ fn process_pp_form(
         .unwrap_or_else(|| Ok(None))?;
 
     if let Some(i) = included {
-        includes.push(i.clone());
+        recurse_dependencies(opts.clone(), includes, i.clone())?;
         process_include(opts, i)
     } else {
         Ok(vec![body])
@@ -126,6 +164,9 @@ fn inject_std_macros(body: Rc<SExp>) -> SExp {
     }
 }
 
+/// Run the preprocessor over this code, which at present just finds (include ...)
+/// forms in the source and includes the content of in a combined list.  If a file
+/// can't be found via the directory list in CompilerOrs.
 pub fn preprocess(
     opts: Rc<dyn CompilerOpts>,
     includes: &mut Vec<IncludeDesc>,
@@ -139,4 +180,33 @@ pub fn preprocess(
     };
 
     preprocess_(opts, includes, tocompile)
+}
+
+/// Visit all files used during compilation.
+/// This reports a list of all files used while compiling the input file, via any
+/// form that causes compilation to include another file.  The file names are path
+/// expanded based on the include path they were found in (from opts).
+pub fn gather_dependencies(
+    opts: Rc<dyn CompilerOpts>,
+    real_input_path: &str,
+    file_content: &str,
+) -> Result<Vec<IncludeDesc>, CompileErr> {
+    let mut includes = Vec::new();
+    let loc = Srcloc::start(real_input_path);
+
+    let parsed = parse_sexp(loc.clone(), file_content.bytes())?;
+
+    if parsed.is_empty() {
+        return Ok(vec![]);
+    }
+
+    if let Some(l) = parsed[0].proper_list() {
+        for elt in l.iter() {
+            process_pp_form(opts.clone(), &mut includes, Rc::new(elt.clone()))?;
+        }
+    } else {
+        return Err(CompileErr(loc, "malformed list body".to_string()));
+    };
+
+    Ok(includes)
 }

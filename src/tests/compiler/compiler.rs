@@ -33,8 +33,7 @@ fn run_string_maybe_opt(
     opts = opts
         .set_frontend_opt(fe_opt)
         .set_search_paths(&vec!["resources/tests".to_string()]);
-    let sexp_args =
-        parse_sexp(srcloc.clone(), args.bytes()).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
+    let sexp_args = parse_sexp(srcloc.clone(), args.bytes())?[0].clone();
 
     compile_file(
         &mut allocator,
@@ -1148,6 +1147,32 @@ fn test_defconstant_tree() {
     .to_string();
     let res = run_string(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "((0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a . 0x9dcf97a184f32623d11a73124ceb99a5709b083721e878a16d78f596718ba7b2) 0x02a12871fee210fb8619291eaea194581cbd2531e4b23759d225f6806923f63222 . 0x02a8d5dd63fba471ebcb1f3e8f7c1e1879b7152a6e7298a91ce119a63400ade7c5)");
+}
+
+#[test]
+fn test_assign_dont_detect_unrelated_inlines_as_recursive() {
+    let prog = indoc! {"
+(mod (A) ;; 11
+  (include *standard-cl-22*)
+  (defun-inline <= (A B) (not (> A B)))
+  (let
+    ((foo (<= 2 A))
+     (bar (<= 1 A)))
+
+    (let
+      ((baz (<= foo bar)))
+
+      (let
+        ((yorgle (<= baz bar)))
+
+        (<= yorgle foo)
+        )
+      )
+    )
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(2)".to_string()).expect("should compile");
+    assert_eq!(res.to_string(), "1");
 }
 
 #[test]
