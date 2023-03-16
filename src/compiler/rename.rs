@@ -9,6 +9,8 @@ use crate::compiler::comptypes::{
 use crate::compiler::gensym::gensym;
 use crate::compiler::sexp::SExp;
 
+/// Rename in a qq form.  This searches for (unquote ...) forms inside and performs
+/// rename inside them, leaving the rest of the qq form as is.
 fn rename_in_qq(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SExp> {
     body.proper_list()
         .and_then(|x| {
