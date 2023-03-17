@@ -90,6 +90,15 @@ pub enum BindingPattern {
     Complex(Rc<SExp>),
 }
 
+/// If present, states an intention for desugaring of this let form to favor
+/// inlining or functions.
+#[derive(Clone, Debug, Serialize)]
+pub enum LetFormInlineHint {
+    NoChoice,
+    Inline(Srcloc),
+    NonInline(Srcloc),
+}
+
 /// A binding from a (let ...) form.  Specifies the name of the bound variable
 /// the location of the whole binding form, the location of the name atom (nl)
 /// and the body as a BodyForm (which are chialisp expressions).
@@ -126,6 +135,8 @@ pub struct LetData {
     pub loc: Srcloc,
     /// The location specifically of the let or let* keyword.
     pub kw: Option<Srcloc>,
+    /// Inline hint.
+    pub inline_hint: Option<LetFormInlineHint>,
     /// The bindings introduced.
     pub bindings: Vec<Rc<Binding>>,
     /// The expression evaluated in the context of all the bindings.

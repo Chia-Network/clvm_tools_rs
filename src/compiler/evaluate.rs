@@ -1068,10 +1068,8 @@ impl<'info> Evaluator {
                         Rc::new(BodyForm::Let(
                             LetFormKind::Sequential,
                             LetData {
-                                loc: letdata.loc.clone(),
-                                kw: letdata.kw.clone(),
                                 bindings: rest_of_bindings,
-                                body: letdata.body.clone(),
+                                ..letdata.clone()
                             },
                         )),
                         only_inline,

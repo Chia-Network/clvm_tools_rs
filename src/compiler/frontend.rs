@@ -8,7 +8,7 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::comptypes::{
     list_to_cons, Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts,
     ConstantKind, DefconstData, DefmacData, DefunData, HelperForm, IncludeDesc, LetData,
-    LetFormKind, ModAccum,
+    LetFormInlineHint, LetFormKind, ModAccum,
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
@@ -262,6 +262,7 @@ fn handle_assign_form(
     opts: Rc<dyn CompilerOpts>,
     l: Srcloc,
     v: &[SExp],
+    inline_hint: Option<LetFormInlineHint>,
 ) -> Result<BodyForm, CompileErr> {
     if v.len() % 2 == 0 {
         return Err(CompileErr(
@@ -377,6 +378,7 @@ fn handle_assign_form(
             loc: l.clone(),
             kw: Some(l.clone()),
             bindings: end_bindings,
+            inline_hint: inline_hint.clone(),
             body: Rc::new(compiled_body),
         },
     );
@@ -388,6 +390,7 @@ fn handle_assign_form(
                 loc: l.clone(),
                 kw: Some(l.clone()),
                 bindings: binding_list,
+                inline_hint: inline_hint.clone(),
                 body: Rc::new(output_let),
             },
         )
@@ -434,6 +437,9 @@ pub fn compile_bodyform(
                         return Ok(BodyForm::Quoted(tail_copy.clone()));
                     }
 
+                    let assign_lambda = *atom_name == "assign-lambda".as_bytes().to_vec();
+                    let assign_inline = *atom_name == "assign-inline".as_bytes().to_vec();
+
                     match tail.proper_list() {
                         Some(v) => {
                             if *atom_name == "let".as_bytes().to_vec()
@@ -461,11 +467,26 @@ pub fn compile_bodyform(
                                         loc: l.clone(),
                                         kw: Some(l.clone()),
                                         bindings: let_bindings,
+                                        inline_hint: None,
                                         body: Rc::new(compiled_body),
                                     },
                                 ))
-                            } else if *atom_name == "assign".as_bytes().to_vec() {
-                                handle_assign_form(opts.clone(), l.clone(), &v)
+                            } else if assign_lambda
+                                || assign_inline
+                                || *atom_name == "assign".as_bytes().to_vec()
+                            {
+                                handle_assign_form(
+                                    opts.clone(),
+                                    l.clone(),
+                                    &v,
+                                    if assign_lambda {
+                                        Some(LetFormInlineHint::NonInline(l.clone()))
+                                    } else if assign_inline {
+                                        Some(LetFormInlineHint::Inline(l.clone()))
+                                    } else {
+                                        Some(LetFormInlineHint::NoChoice)
+                                    },
+                                )
                             } else if *atom_name == "quote".as_bytes().to_vec() {
                                 if v.len() != 1 {
                                     return finish_err("quote");

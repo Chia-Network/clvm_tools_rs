@@ -15,7 +15,7 @@ use crate::compiler::compiler::{is_at_capture, run_optimizer};
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, Callable,
     CompileErr, CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall, DefunData,
-    HelperForm, InlineFunction, LetData, LetFormKind, PrimaryCodegen,
+    HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind, PrimaryCodegen,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
@@ -733,12 +733,18 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
     }
 }
 
+fn should_inline_let(inline_hint: &Option<LetFormInlineHint>) -> bool {
+    matches!(inline_hint, None | Some(LetFormInlineHint::Inline(_)))
+}
+
+#[allow(clippy::too_many_arguments)]
 fn generate_let_defun(
     _compiler: &PrimaryCodegen,
     l: Srcloc,
     kwl: Option<Srcloc>,
     name: &[u8],
     args: Rc<SExp>,
+    inline_hint: &Option<LetFormInlineHint>,
     bindings: Vec<Rc<Binding>>,
     body: Rc<BodyForm>,
 ) -> HelperForm {
@@ -757,7 +763,7 @@ fn generate_let_defun(
     ));
 
     HelperForm::Defun(
-        true,
+        should_inline_let(inline_hint),
         DefunData {
             loc: l.clone(),
             nl: l,
@@ -797,10 +803,8 @@ fn hoist_body_let_binding(
                 Rc::new(BodyForm::Let(
                     LetFormKind::Sequential,
                     LetData {
-                        loc: letdata.loc.clone(),
-                        kw: letdata.kw.clone(),
                         bindings: sub_bindings,
-                        body: letdata.body.clone(),
+                        ..letdata.clone()
                     },
                 ))
             };
@@ -812,10 +816,9 @@ fn hoist_body_let_binding(
                 Rc::new(BodyForm::Let(
                     LetFormKind::Parallel,
                     LetData {
-                        loc: letdata.loc.clone(),
-                        kw: letdata.kw.clone(),
                         bindings: vec![letdata.bindings[0].clone()],
                         body: new_sub_expr,
+                        ..letdata.clone()
                     },
                 )),
             )
@@ -846,6 +849,7 @@ fn hoist_body_let_binding(
                 None,
                 &defun_name,
                 args,
+                &letdata.inline_hint,
                 revised_bindings.to_vec(),
                 letdata.body.clone(),
             );
