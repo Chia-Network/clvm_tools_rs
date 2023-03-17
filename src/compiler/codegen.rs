@@ -802,10 +802,10 @@ fn hoist_body_let_binding(
                 let sub_bindings = letdata.bindings.iter().skip(1).cloned().collect();
                 Rc::new(BodyForm::Let(
                     LetFormKind::Sequential,
-                    LetData {
+                    Box::new(LetData {
                         bindings: sub_bindings,
-                        ..letdata.clone()
-                    },
+                        ..*letdata.clone()
+                    }),
                 ))
             };
 
@@ -815,11 +815,11 @@ fn hoist_body_let_binding(
                 args,
                 Rc::new(BodyForm::Let(
                     LetFormKind::Parallel,
-                    LetData {
+                    Box::new(LetData {
                         bindings: vec![letdata.bindings[0].clone()],
                         body: new_sub_expr,
-                        ..letdata.clone()
-                    },
+                        ..*letdata.clone()
+                    }),
                 )),
             )
         }

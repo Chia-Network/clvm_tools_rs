@@ -374,25 +374,25 @@ fn handle_assign_form(
 
     let mut output_let = BodyForm::Let(
         LetFormKind::Parallel,
-        LetData {
+        Box::new(LetData {
             loc: l.clone(),
             kw: Some(l.clone()),
             bindings: end_bindings,
             inline_hint: inline_hint.clone(),
             body: Rc::new(compiled_body),
-        },
+        }),
     );
 
     for binding_list in binding_lists.into_iter().skip(1) {
         output_let = BodyForm::Let(
             LetFormKind::Parallel,
-            LetData {
+            Box::new(LetData {
                 loc: l.clone(),
                 kw: Some(l.clone()),
                 bindings: binding_list,
                 inline_hint: inline_hint.clone(),
                 body: Rc::new(output_let),
-            },
+            }),
         )
     }
 
@@ -463,13 +463,13 @@ pub fn compile_bodyform(
                                 let compiled_body = compile_bodyform(opts, Rc::new(body))?;
                                 Ok(BodyForm::Let(
                                     kind,
-                                    LetData {
+                                    Box::new(LetData {
                                         loc: l.clone(),
                                         kw: Some(l.clone()),
                                         bindings: let_bindings,
                                         inline_hint: None,
                                         body: Rc::new(compiled_body),
-                                    },
+                                    }),
                                 ))
                             } else if assign_lambda
                                 || assign_inline
