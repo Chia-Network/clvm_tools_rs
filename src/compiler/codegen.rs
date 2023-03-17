@@ -733,7 +733,7 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
     }
 }
 
-fn should_inline_let(inline_hint: &Option<LetFormInlineHint>) -> bool {
+pub fn should_inline_let(inline_hint: &Option<LetFormInlineHint>) -> bool {
     matches!(inline_hint, None | Some(LetFormInlineHint::Inline(_)))
 }
 

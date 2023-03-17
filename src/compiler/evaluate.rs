@@ -14,7 +14,7 @@ use crate::compiler::codegen::codegen;
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LetData,
-    LetFormKind,
+    LetFormInlineHint, LetFormKind,
 };
 use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
@@ -639,6 +639,10 @@ fn flatten_expression_to_names(expr: Rc<SExp>) -> Rc<BodyForm> {
     Rc::new(BodyForm::Call(expr.loc(), call_vec))
 }
 
+pub fn eval_dont_expand_let(inline_hint: &Option<LetFormInlineHint>) -> bool {
+    matches!(inline_hint, Some(LetFormInlineHint::NonInline(_)))
+}
+
 impl<'info> Evaluator {
     pub fn new(
         opts: Rc<dyn CompilerOpts>,
@@ -1033,6 +1037,10 @@ impl<'info> Evaluator {
         let mut visited = VisitedMarker::again(body.loc(), visited_)?;
         match body.borrow() {
             BodyForm::Let(LetFormKind::Parallel, letdata) => {
+                if eval_dont_expand_let(&letdata.inline_hint) && only_inline {
+                    return Ok(body.clone());
+                }
+
                 let updated_bindings = update_parallel_bindings(env, &letdata.bindings);
                 self.shrink_bodyform_visited(
                     allocator,
@@ -1044,6 +1052,10 @@ impl<'info> Evaluator {
                 )
             }
             BodyForm::Let(LetFormKind::Sequential, letdata) => {
+                if eval_dont_expand_let(&letdata.inline_hint) && only_inline {
+                    return Ok(body.clone());
+                }
+
                 if letdata.bindings.is_empty() {
                     self.shrink_bodyform_visited(
                         allocator,
