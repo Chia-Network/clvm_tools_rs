@@ -25,13 +25,13 @@ fn main() {
         .and_then(|parsed_program| frontend(opts.clone(), &parsed_program));
     match result {
         Ok(program) => match serde_json::to_string(&program) {
-            Ok(output) => println!("{}", output),
+            Ok(output) => println!("{output}"),
             Err(e) => {
-                println!("{:?}", e);
+                println!("{e:?}");
             }
         },
         Err(e) => {
-            println!("{:?}", e);
+            println!("{e:?}");
         }
     }
 }
