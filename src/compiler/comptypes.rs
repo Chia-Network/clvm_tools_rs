@@ -13,6 +13,9 @@ use crate::compiler::clvm::sha256tree;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 
+/// The basic error type.  It contains a Srcloc identifying coordinates of the
+/// error in the source file and a message.  It probably should be made even better
+/// but this works ok.
 #[derive(Clone, Debug)]
 pub struct CompileErr(pub Srcloc, pub String);
 
@@ -22,9 +25,13 @@ impl From<(Srcloc, String)> for CompileErr {
     }
 }
 
+/// A structure carrying a compilation result to give it a distinct type from
+/// chialisp input.  It's used by codegen.
 #[derive(Clone, Debug)]
 pub struct CompiledCode(pub Srcloc, pub Rc<SExp>);
 
+/// A description of an inlined function for use during inline expansion.
+/// This is used only by PrimaryCodegen.
 #[derive(Clone, Debug)]
 pub struct InlineFunction {
     pub name: Vec<u8>,
@@ -42,15 +49,24 @@ impl InlineFunction {
     }
 }
 
+/// Specifies the type of application that any form (X ...) invokes in an
+/// expression position.
 pub enum Callable {
+    /// The expression is a macro expansion (list, if etc.)
     CallMacro(Srcloc, SExp),
+    /// The expression invokes an env defun.
     CallDefun(Srcloc, SExp),
+    /// The expression expands and inline function.
     CallInline(Srcloc, InlineFunction),
+    /// The expression addresses a clvm primitive (such as a, c, f, =)
     CallPrim(Srcloc, SExp),
+    /// The expression is a (com ...) invokcation (normally used in macros).
     RunCompiler,
+    /// The expression is an (@ n) form that directly references the environment.
     EnvPath,
 }
 
+/// Given a slice of SExp values, generate a proper list containing them.
 pub fn list_to_cons(l: Srcloc, list: &[Rc<SExp>]) -> SExp {
     if list.is_empty() {
         return SExp::Nil(l);
@@ -65,85 +81,163 @@ pub fn list_to_cons(l: Srcloc, list: &[Rc<SExp>]) -> SExp {
     result
 }
 
+/// A binding from a (let ...) form.  Specifies the name of the bound variable
+/// the location of the whole binding form, the location of the name atom (nl)
+/// and the body as a BodyForm (which are chialisp expressions).
 #[derive(Clone, Debug, Serialize)]
 pub struct Binding {
+    /// Overall location of the form.
     pub loc: Srcloc,
+    /// Location of the name atom specifically.
     pub nl: Srcloc,
+    /// The name.
     pub name: Vec<u8>,
+    /// The expression the binding refers to.
     pub body: Rc<BodyForm>,
 }
 
+/// Determines how a let binding is bound.  Parallel means that the bindings do
+/// not depend on each other and aren't in scope for each other.  Sequential
+/// is like lisp's let* form in that each binding has the previous ones in scope
+/// for itself.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum LetFormKind {
     Parallel,
     Sequential,
 }
 
+/// Information about a let form.  Encapsulates everything except whether it's
+/// parallel or sequential, which is left in the BodyForm itself.
 #[derive(Clone, Debug, Serialize)]
 pub struct LetData {
+    /// The location of the form overall.
     pub loc: Srcloc,
+    /// The location specifically of the let or let* keyword.
     pub kw: Option<Srcloc>,
+    /// The bindings introduced.
     pub bindings: Vec<Rc<Binding>>,
+    /// The expression evaluated in the context of all the bindings.
     pub body: Rc<BodyForm>,
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub enum BodyForm {
+    /// A let or let* form (depending on LetFormKind).
     Let(LetFormKind, LetData),
+    /// An explicitly quoted constant of some kind.
     Quoted(SExp),
+    /// An undiferentiated "value" of some kind in the source language.
+    /// If this refers to an atom, then it is a variable reference of some kind,
+    /// otherwise it refers to a self-quoting value (like a quoted string or int).
     Value(SExp),
+    /// An application of some kind, parsed from a proper list.
+    /// This is a proper list because of the ambiguity of the final value in an
+    /// improper list.  While it's possible to treat a final atom
+    ///
+    /// (x y . z)
+    ///
+    /// as an argument that matches a tail argument, there's no way to write
+    ///
+    /// (x y . (+ 1 z))
+    ///
+    /// So tail improper calls aren't allowed.  In real lisp, (apply ...) can
+    /// generate them if needed.
     Call(Srcloc, Vec<Rc<BodyForm>>),
+    /// (mod ...) can be used in chialisp as an expression, in which it returns
+    /// the compiled code.  Here, it contains a CompileForm, which represents
+    /// the full significant input of a program (yielded by frontend()).
     Mod(Srcloc, CompileForm),
 }
 
+/// The information needed to know about a defun.  Whether it's inline is left in
+/// the HelperForm.
 #[derive(Clone, Debug, Serialize)]
 pub struct DefunData {
+    /// The location of the helper form.
     pub loc: Srcloc,
+    /// The name of the defun.
     pub name: Vec<u8>,
+    /// The location of the keyword used in the defun.
     pub kw: Option<Srcloc>,
+    /// The location of the name of the defun.
     pub nl: Srcloc,
+    /// The arguments as originally given by the user.
+    pub orig_args: Rc<SExp>,
+    /// The argument spec for the defun with any renaming.
     pub args: Rc<SExp>,
+    /// The body expression of the defun.
     pub body: Rc<BodyForm>,
 }
 
+/// Specifies the information extracted from a macro definition allowing the
+/// compiler to expand code using it.
 #[derive(Clone, Debug, Serialize)]
 pub struct DefmacData {
+    /// The location of the macro.
     pub loc: Srcloc,
+    /// The name of the macro.
     pub name: Vec<u8>,
+    /// The locaton of the keyword used to define the macro.
     pub kw: Option<Srcloc>,
+    /// The location of the macro's name.
     pub nl: Srcloc,
+    /// The argument spec.
     pub args: Rc<SExp>,
+    /// The program appearing in the macro definition.
     pub program: Rc<CompileForm>,
 }
 
+/// Information from a constant definition.
 #[derive(Clone, Debug, Serialize)]
 pub struct DefconstData {
+    /// The location of the constant form.
     pub loc: Srcloc,
+    /// Specifies whether the constant is a simple quoted sexp or is specified
+    /// by an expression.  This allows us to delay constant evaluation until we
+    /// have the whole program.
     pub kind: ConstantKind,
+    /// The name of constant.
     pub name: Vec<u8>,
+    /// The location of the keyword in the definition.
     pub kw: Option<Srcloc>,
+    /// The location of the name in the definition.
     pub nl: Srcloc,
+    /// The location of the body expression, whatever it is.
     pub body: Rc<BodyForm>,
 }
 
+/// Specifies where a constant is the classic kind (unevaluated) or a proper
+/// expression.
 #[derive(Clone, Debug, Serialize)]
 pub enum ConstantKind {
     Complex,
     Simple,
 }
 
+/// HelperForm is a toplevel binding of some kind.
+/// Helpers are the (defconst ...) (defun ...) (defun-inline ...) (defmacro ...)
+/// forms from the source code and "help" the program do its job.  They're
+/// individually parsable and represent the atomic units of the program.
 #[derive(Clone, Debug, Serialize)]
 pub enum HelperForm {
+    /// A constant definition (see DefconstData).
     Defconstant(DefconstData),
+    /// A macro definition (see DefmacData).
     Defmacro(DefmacData),
+    /// A function definition (see DefunData).
     Defun(bool, DefunData),
 }
 
-// A description of an include form.
+/// A description of an include form.  Here, records the locations of the various
+/// parts of the include so they can be marked in the language server and be
+/// subject to other kind of reporting if desired.
 #[derive(Clone, Debug, Serialize)]
 pub struct IncludeDesc {
+    /// Location of the keyword introducing this form.
     pub kw: Srcloc,
+    /// Location of the name of the file.
     pub nl: Srcloc,
+    /// The relative path to a target or a special directive name.
     pub name: Vec<u8>,
 }
 
@@ -157,21 +251,36 @@ impl IncludeDesc {
     }
 }
 
+/// An encoding of a complete program.  This includes all the include forms
+/// traversed (for marking in a language server), the argument spec of the program,
+/// the list of helper declarations and the expression serving as the "main"
+/// program.
 #[derive(Clone, Debug, Serialize)]
 pub struct CompileForm {
+    /// Location of the form that was collected into this object.
     pub loc: Srcloc,
+    /// List of include directives.
     pub include_forms: Vec<IncludeDesc>,
+    /// Argument spec.
     pub args: Rc<SExp>,
+    /// List of declared helpers encountered.  Unless the CompilerOpts is directed
+    /// to preserve all helpers, helpers not used by a toplevel defun or the main
+    /// expression (those needed by the finished code) are not included.  The
+    /// set_frontend_check_live method of CompilerOpts allows this to be changed.
     pub helpers: Vec<HelperForm>,
+    /// The expression the program evaluates, using the declared helpers.
     pub exp: Rc<BodyForm>,
 }
 
+/// Represents a call to a defun, used by code generation.
 #[derive(Clone, Debug)]
 pub struct DefunCall {
     pub required_env: Rc<SExp>,
     pub code: Rc<SExp>,
 }
 
+/// PrimaryCodegen is an object used by codegen to accumulate and use state needed
+/// during code generation.  It's mostly used internally.
 #[derive(Clone, Debug)]
 pub struct PrimaryCodegen {
     pub prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
@@ -188,32 +297,70 @@ pub struct PrimaryCodegen {
     pub function_symbols: HashMap<String, String>,
 }
 
+/// The CompilerOpts specifies global options used during compilation.
+/// CompilerOpts is used whenever interaction with the compilation infrastructure
+/// is needed that has options or needs guidance.
 pub trait CompilerOpts {
+    /// The toplevel file begin compiled.
     fn filename(&self) -> String;
+    /// A PrimaryCodegen that can be donated to downstream use.  It can be the
+    /// case that the state of compilation needs to be passed down in a specific
+    /// form, such as when a lambda is used (coming soon), when evaluating
+    /// complex constants, and into (com ...) forms.  This allows the CompilerOpts
+    /// to carry this info across boundaries into a new context.
     fn compiler(&self) -> Option<PrimaryCodegen>;
+    /// Specifies whether code is being generated on behalf of an inner defun in
+    /// the program.
     fn in_defun(&self) -> bool;
+    /// Specifies whether the standard environment is injected (list, if etc).
     fn stdenv(&self) -> bool;
+    /// Specifies whether certain basic optimizations are done during and after
+    /// code generation.
     fn optimize(&self) -> bool;
+    /// Specifies whether the frontend code is to be optimized before code
+    /// generation.  This can simplify code from the user and decide on inlining
+    /// of desugared forms.
     fn frontend_opt(&self) -> bool;
+    /// Specifies whether forms not reachable at runtime are included in the
+    /// resulting CompileForm.
     fn frontend_check_live(&self) -> bool;
+    /// Specifies the shape of the environment to use.  This allows injection of
+    /// the parent program's left environment when some form is compiled in the
+    /// parent's context.
     fn start_env(&self) -> Option<Rc<SExp>>;
+    /// Specifies the map of primitives provided during this compilation.
     fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>>;
+    /// Specifies the search paths we're carrying.
     fn get_search_paths(&self) -> Vec<String>;
 
+    /// Set search paths.
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts>;
+    /// Set whether we're compiling on behalf of a defun.
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts>;
+    /// Set whether to inject the standard environment.
     fn set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts>;
+    /// Set whether to run codegen optimization.
     fn set_optimize(&self, opt: bool) -> Rc<dyn CompilerOpts>;
+    /// Set whether to run frontend optimization.
     fn set_frontend_opt(&self, opt: bool) -> Rc<dyn CompilerOpts>;
+    /// Set whether to filter out each HelperForm that isn't reachable at
+    /// run time.
     fn set_frontend_check_live(&self, check: bool) -> Rc<dyn CompilerOpts>;
+    /// Set the codegen object to be used downstream.
     fn set_compiler(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts>;
+    /// Set the environment shape to assume.
     fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts>;
 
+    /// Using the search paths list we have, try to read a file by name,
+    /// Returning the expanded path to the file and its content.
     fn read_new_file(
         &self,
         inc_from: String,
         filename: String,
     ) -> Result<(String, String), CompileErr>;
+
+    /// Given a parsed SExp, compile it as an independent program based on the
+    /// settings given here.  The result is bare generated code.
     fn compile_program(
         &self,
         allocator: &mut Allocator,
@@ -223,7 +370,7 @@ pub trait CompilerOpts {
     ) -> Result<SExp, CompileErr>;
 }
 
-/* Frontend uses this to accumulate frontend forms */
+/// Frontend uses this to accumulate frontend forms, used internally.
 #[derive(Debug)]
 pub struct ModAccum {
     pub loc: Srcloc,
@@ -276,10 +423,14 @@ impl ModAccum {
 }
 
 impl CompileForm {
+    /// Get the location of the compileform.
     pub fn loc(&self) -> Srcloc {
         self.loc.clone()
     }
 
+    /// Express the contents as an SExp.  This SExp does not come with a keyword
+    /// but starts at the arguments, since CompileForm objects are used in the
+    /// encoding of several other types.
     pub fn to_sexp(&self) -> Rc<SExp> {
         let mut sexp_forms: Vec<Rc<SExp>> = self.helpers.iter().map(|x| x.to_sexp()).collect();
         sexp_forms.push(self.exp.to_sexp());
@@ -291,6 +442,7 @@ impl CompileForm {
         ))
     }
 
+    /// Given a set of helpers by name, remove them.
     pub fn remove_helpers(&self, names: &HashSet<Vec<u8>>) -> CompileForm {
         CompileForm {
             loc: self.loc.clone(),
@@ -306,6 +458,8 @@ impl CompileForm {
         }
     }
 
+    /// Given a list of helpers, introduce them in this CompileForm, removing
+    /// conflicting predecessors.
     pub fn replace_helpers(&self, helpers: &[HelperForm]) -> CompileForm {
         let mut new_names = HashSet::new();
         for h in helpers.iter() {
@@ -330,6 +484,7 @@ impl CompileForm {
 }
 
 impl HelperForm {
+    /// Get a reference to the HelperForm's name.
     pub fn name(&self) -> &Vec<u8> {
         match self {
             HelperForm::Defconstant(defc) => &defc.name,
@@ -338,6 +493,7 @@ impl HelperForm {
         }
     }
 
+    /// Get the location of the HelperForm's name.
     pub fn name_loc(&self) -> &Srcloc {
         match self {
             HelperForm::Defconstant(defc) => &defc.nl,
@@ -346,6 +502,7 @@ impl HelperForm {
         }
     }
 
+    /// Return a general location for the whole HelperForm.
     pub fn loc(&self) -> Srcloc {
         match self {
             HelperForm::Defconstant(defc) => defc.loc.clone(),
@@ -354,6 +511,8 @@ impl HelperForm {
         }
     }
 
+    /// Convert the HelperForm to an SExp.  These render into a form that can
+    /// be re-parsed if needed.
     pub fn to_sexp(&self) -> Rc<SExp> {
         match self {
             HelperForm::Defconstant(defc) => match defc.kind {
@@ -404,6 +563,7 @@ impl HelperForm {
 }
 
 impl BodyForm {
+    /// Get the general location of the BodyForm.
     pub fn loc(&self) -> Srcloc {
         match self {
             BodyForm::Let(_, letdata) => letdata.loc.clone(),
@@ -414,6 +574,9 @@ impl BodyForm {
         }
     }
 
+    /// Convert the expression to its SExp form.  These should be reparsable but
+    /// may change when desugaring requires it if re-serialization is needed
+    /// afterward.
     pub fn to_sexp(&self) -> Rc<SExp> {
         match self {
             BodyForm::Let(kind, letdata) => {
@@ -460,6 +623,7 @@ impl BodyForm {
 }
 
 impl Binding {
+    /// Express the binding as it would be used in a let form.
     pub fn to_sexp(&self) -> Rc<SExp> {
         Rc::new(SExp::Cons(
             self.loc.clone(),
@@ -472,12 +636,14 @@ impl Binding {
         ))
     }
 
+    /// Get the general location of the binding.
     pub fn loc(&self) -> Srcloc {
         self.loc.clone()
     }
 }
 
 impl CompiledCode {
+    /// Get the general location the code was compiled from.
     pub fn loc(&self) -> Srcloc {
         self.0.clone()
     }
@@ -502,13 +668,21 @@ impl PrimaryCodegen {
         codegen_copy
     }
 
-    pub fn add_defun(&self, name: &[u8], value: DefunCall) -> Self {
+    pub fn add_defun(&self, name: &[u8], args: Rc<SExp>, value: DefunCall, left_env: bool) -> Self {
         let mut codegen_copy = self.clone();
         codegen_copy.defuns.insert(name.to_owned(), value.clone());
         let hash = sha256tree(value.code);
         let hash_str = Bytes::new(Some(BytesFromType::Raw(hash))).hex();
         let name = Bytes::new(Some(BytesFromType::Raw(name.to_owned()))).decode();
-        codegen_copy.function_symbols.insert(hash_str, name);
+        codegen_copy.function_symbols.insert(hash_str.clone(), name);
+        if left_env {
+            codegen_copy
+                .function_symbols
+                .insert(format!("{hash_str}_left_env"), "1".to_string());
+        }
+        codegen_copy
+            .function_symbols
+            .insert(format!("{hash_str}_arguments"), args.to_string());
         codegen_copy
     }
 

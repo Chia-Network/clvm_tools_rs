@@ -6,8 +6,9 @@ use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 use crate::classic::clvm::serialize::sexp_to_stream;
-use crate::classic::clvm::sexp::{enlist, map_m, proper_list, rest};
+use crate::classic::clvm::sexp::{enlist, proper_list, rest};
 
+use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
@@ -46,6 +47,12 @@ use crate::compiler::usecheck::check_parameters_used_compileform;
 //   return `<span id="${s.__repr__()}">${disassemble_f(s)}</span>`;
 // }
 
+#[derive(Clone)]
+pub struct FunctionExtraInfo {
+    pub args: NodePtr,
+    pub has_constants_tree: bool,
+}
+
 // // The function below is broken as of 2021/06/22.
 // /*
 // export function dump_invocation(
@@ -82,32 +89,49 @@ use crate::compiler::usecheck::check_parameters_used_compileform;
 // */
 pub fn build_symbol_dump(
     allocator: &mut Allocator,
-    constants_lookup: HashMap<Vec<u8>, NodePtr>,
+    constants_lookup: &HashMap<Vec<u8>, NodePtr>,
+    extra_function_data: &HashMap<Vec<u8>, FunctionExtraInfo>,
     run_program: Rc<dyn TRunProgram>,
+    extra_info: bool,
 ) -> Result<NodePtr, EvalErr> {
-    let compiled_unrolled: Vec<(Vec<u8>, NodePtr)> = constants_lookup.into_iter().collect();
+    let mut map_result: Vec<NodePtr> = Vec::new();
 
-    m! {
-        map_result <- map_m(
-            allocator,
-            &mut compiled_unrolled.iter(),
-            &|allocator, kv| m! {
-                run_result <- run_program.run_program(
-                    allocator,
-                    kv.1,
-                    allocator.null(),
-                    None
-                );
+    for (k, v) in constants_lookup.iter() {
+        let run_result = run_program.run_program(allocator, *v, allocator.null(), None)?;
 
-                let sha256 = sha256tree(allocator, run_result.1).hex();
-                sha_atom <- allocator.new_atom(sha256.as_bytes());
-                name_atom <- allocator.new_atom(&kv.0.clone());
-                allocator.new_pair(sha_atom, name_atom)
-            }
-        );
+        let sha256 = sha256tree(allocator, run_result.1).hex();
+        let sha_atom = allocator.new_atom(sha256.as_bytes())?;
+        let name_atom = allocator.new_atom(&k.clone())?;
 
-        enlist(allocator, &map_result)
+        map_result.push(allocator.new_pair(sha_atom, name_atom)?);
+
+        if !extra_info {
+            continue;
+        }
+
+        if let Some(extra) = extra_function_data.get(k) {
+            let mut args_atom = Vec::new();
+            let mut left_env_atom = Vec::new();
+            args_atom.append(&mut sha256.as_bytes().to_vec());
+            args_atom.append(&mut "_arguments".as_bytes().to_vec());
+
+            left_env_atom.append(&mut sha256.as_bytes().to_vec());
+            left_env_atom.append(&mut "_left_env".as_bytes().to_vec());
+
+            let args_name_atom = allocator.new_atom(&args_atom)?;
+            let left_env_name_atom = allocator.new_atom(&left_env_atom)?;
+
+            let serialized_args = disassemble(allocator, extra.args);
+            let serialized_args_atom = allocator.new_atom(serialized_args.as_bytes())?;
+
+            let left_env_value = allocator.new_atom(&[extra.has_constants_tree as u8])?;
+
+            map_result.push(allocator.new_pair(args_name_atom, serialized_args_atom)?);
+            map_result.push(allocator.new_pair(left_env_name_atom, left_env_value)?);
+        }
     }
+
+    enlist(allocator, &map_result)
 }
 
 fn text_trace(

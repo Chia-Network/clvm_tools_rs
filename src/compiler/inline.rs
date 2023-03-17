@@ -273,6 +273,12 @@ fn replace_inline_body(
     }
 }
 
+/// Given an inline function and a list of arguments, return compiled code that
+/// stands in for the inline expansion.  Along the way, generate code for the
+/// expressions in the argument list.
+///
+/// This will probably be changed at some point to return Rc<BodyForm> so it
+/// can be treated as a desugaring step that's subject to frontend optimization.
 #[allow(clippy::too_many_arguments)]
 pub fn replace_in_inline(
     allocator: &mut Allocator,

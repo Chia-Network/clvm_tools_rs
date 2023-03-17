@@ -137,6 +137,7 @@ fn fe_opt(
                         kw: defun.kw.clone(),
                         name: defun.name.clone(),
                         args: defun.args.clone(),
+                        orig_args: defun.orig_args.clone(),
                         body: body_rc.clone(),
                     },
                 );
