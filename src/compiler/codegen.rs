@@ -254,9 +254,7 @@ fn create_name_lookup(
                     // callable like a lambda by repeating the left env into it.
                     let find_program = Rc::new(SExp::Integer(l.clone(), i.to_bigint().unwrap()));
                     if as_variable && is_defun_in_codegen(compiler, name) {
-                        let lambda_ized = lambda_for_defun(l.clone(), find_program);
-                        eprintln!("lambda_ized {}: {}", decode_string(name), lambda_ized);
-                        lambda_ized
+                        lambda_for_defun(l.clone(), find_program)
                     } else {
                         find_program
                     }
