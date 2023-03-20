@@ -201,7 +201,8 @@ fn test_defmac_create_match_form() {
     ;; Make a simple list match ala ocaml/elm/haskell.
     ;;
     ;; The real version will be more elaborate.  This is a test case and a demo.
-    (mod (X)
+    (mod X
+        (include *standard-cl-21*)
         (defun list-nth (L N)
           (if N
             (list-nth (r L) (- N 1))
@@ -291,9 +292,9 @@ fn test_defmac_create_match_form() {
                            )
                         (emit-if
                           (emit-if
-                            (equals (emit-list-len list expr) (quoted number-of-elts))
+                            (equals (emit-list-len expr 0) (quoted number-of-elts))
                             ;; then
-                            (list (c (string->symbol \"logand\") (write-match-code expr matches)))
+                            (c (string->symbol \"logand\") (write-match-code expr matches))
                             ;; else
                             ()
                             )

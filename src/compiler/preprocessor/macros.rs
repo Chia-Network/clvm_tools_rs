@@ -82,10 +82,6 @@ fn reify_args(
     let mut allocator = Allocator::new();
     let mut converted_args = Vec::new();
     for a in args.iter() {
-        eprintln!("shrink {}", a.to_sexp());
-        for (n,e) in env.iter() {
-            eprintln!("- {} = {}", decode_string(&n), e.to_sexp());
-        }
         let shrunk = evaluator.shrink_bodyform(
             &mut allocator,
             prog_args.clone(),
@@ -276,7 +272,7 @@ impl ExtensionFunction for StringToSymbol {
         if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
             return Ok(Rc::new(BodyForm::Quoted(SExp::Atom(loc,value))));
         } else {
-            eprintln!("pp helper returned {}", decode_string(name));
+            eprintln!("pp helper {} returned {} given {}", decode_string(name), body.to_sexp(), args[0].to_sexp());
             return Ok(body.clone());
         }
     }
@@ -417,25 +413,113 @@ impl ExtensionFunction for List {
         args: &[Rc<BodyForm>],
         body: Rc<BodyForm>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        let mut res = SExp::Nil(loc.clone());
-        for (n,e) in env.iter() {
-            eprintln!("- {} = {}", decode_string(&n), e.to_sexp());
-        }
+        let mut allocator = Allocator::new();
+        let mut res = Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone())));
         for a in args.iter().rev() {
-            eprintln!("list arg {}", a.to_sexp());
-            if let Ok(unquoted) = dequote(loc.clone(), a.clone()) {
-                res = SExp::Cons(
-                    loc.clone(),
-                    unquoted,
-                    Rc::new(res)
-                );
-            } else {
-                return Ok(body.clone());
-            }
+            res = Rc::new(BodyForm::Call(
+                loc.clone(),
+                vec![
+                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), b"c".to_vec()))),
+                    a.clone(),
+                    res
+                ]
+            ));
         }
-        let list_res = BodyForm::Quoted(res);
-        eprintln!("list_res {}", list_res.to_sexp());
-        Ok(Rc::new(list_res))
+        evaluator.shrink_bodyform(
+            &mut allocator,
+            prog_args.clone(),
+            env,
+            res,
+            false,
+            None
+        )
+    }
+}
+
+struct Cons { }
+
+impl Cons {
+    fn new() -> Rc<dyn ExtensionFunction> { Rc::new(Cons { }) }
+}
+
+impl ExtensionFunction for Cons {
+    fn required_args(&self) -> Option<usize> { Some(2) }
+
+    fn try_eval(
+        &self,
+        evaluator: &Evaluator,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        loc: &Srcloc,
+        name: &[u8],
+        args: &[Rc<BodyForm>],
+        body: Rc<BodyForm>,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        if let (BodyForm::Quoted(a), BodyForm::Quoted(b)) = (args[0].borrow(), args[1].borrow()) {
+            Ok(Rc::new(BodyForm::Quoted(SExp::Cons(loc.clone(), Rc::new(a.clone()), Rc::new(b.clone())))))
+        } else {
+            Ok(body.clone())
+        }
+    }
+}
+
+struct First { }
+
+impl First {
+    fn new() -> Rc<dyn ExtensionFunction> { Rc::new(First { }) }
+}
+
+impl ExtensionFunction for First {
+    fn required_args(&self) -> Option<usize> { Some(1) }
+
+    fn try_eval(
+        &self,
+        evaluator: &Evaluator,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        loc: &Srcloc,
+        name: &[u8],
+        args: &[Rc<BodyForm>],
+        body: Rc<BodyForm>,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        if let BodyForm::Quoted(SExp::Cons(_,a,b)) = args[0].borrow() {
+            let a_borrowed: &SExp = a.borrow();
+            Ok(Rc::new(BodyForm::Quoted(a_borrowed.clone())))
+        } else if let BodyForm::Quoted(_) = args[0].borrow() {
+            Err(CompileErr(loc.clone(), "bad cons in first".to_string()))
+        } else {
+            Ok(body.clone())
+        }
+    }
+}
+
+struct Rest { }
+
+impl Rest {
+    fn new() -> Rc<dyn ExtensionFunction> { Rc::new(Rest { }) }
+}
+
+impl ExtensionFunction for Rest {
+    fn required_args(&self) -> Option<usize> { Some(1) }
+
+    fn try_eval(
+        &self,
+        evaluator: &Evaluator,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        loc: &Srcloc,
+        name: &[u8],
+        args: &[Rc<BodyForm>],
+        body: Rc<BodyForm>,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        if let BodyForm::Quoted(SExp::Cons(_,a,b)) = args[0].borrow() {
+            let a_borrowed: &SExp = b.borrow();
+            Ok(Rc::new(BodyForm::Quoted(a_borrowed.clone())))
+        } else if let BodyForm::Quoted(_) = args[0].borrow() {
+            Err(CompileErr(loc.clone(), "bad cons in rest".to_string()))
+        } else {
+            Ok(body.clone())
+        }
     }
 }
 
@@ -472,9 +556,7 @@ impl ExtensionFunction for If {
             )?;
 
         if let Ok(unquoted) = dequote(body.loc(), cond_result) {
-            eprintln!("unquoted {}", unquoted);
             if truthy(unquoted) {
-                eprintln!("truthy, expand {}", args[1].to_sexp());
                 evaluator.shrink_bodyform(
                     &mut allocator,
                     prog_args.clone(),
@@ -484,7 +566,6 @@ impl ExtensionFunction for If {
                     None
                 )
             } else {
-                eprintln!("falsey, expand {}", args[2].to_sexp());
                 evaluator.shrink_bodyform(
                     &mut allocator,
                     prog_args.clone(),
@@ -495,7 +576,6 @@ impl ExtensionFunction for If {
                 )
             }
         } else {
-            eprintln!("can't reduce if {}", body.to_sexp());
             Ok(body.clone())
         }
     }
@@ -535,6 +615,9 @@ impl PreprocessorExtension {
         let extfuns = [
             (b"if".to_vec(), If::new()),
             (b"list".to_vec(), List::new()),
+            (b"c".to_vec(), Cons::new()),
+            (b"f".to_vec(), First::new()),
+            (b"r".to_vec(), Rest::new()),
 
             (b"string?".to_vec(), StringQ::new()),
             (b"number?".to_vec(), NumberQ::new()),
@@ -571,6 +654,9 @@ impl EvalExtension for PreprocessorExtension {
             }
 
             eprintln!("try function {}", body.to_sexp());
+            for (n,v) in env.iter() {
+                eprintln!("- {} = {}", decode_string(&n), v.to_sexp());
+            }
             let args =
                 if extfun.want_interp() {
                     reify_args(
