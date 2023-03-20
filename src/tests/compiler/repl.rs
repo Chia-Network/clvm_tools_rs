@@ -246,8 +246,8 @@ fn test_defun_value_in_repl_0() {
             "(defun greater-than-3 (X) (> X 3))",
             "(a greater-than-3 (list 5))"
         ])
-            .unwrap()
-            .unwrap(),
+        .unwrap()
+        .unwrap(),
         "(q . 1)"
     );
 }
@@ -260,8 +260,8 @@ fn test_defun_value_repl_map() {
             "(defun map (F L) (if L (c (a F (list (f L))) (map F (r L))) ()))",
             "(map greater-than-3 (list 1 2 3 4 5))"
         ])
-            .unwrap()
-            .unwrap(),
+        .unwrap()
+        .unwrap(),
         "(q () () () 1 1)"
     );
 }
