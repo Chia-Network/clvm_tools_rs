@@ -154,6 +154,18 @@ jobs:
         cp support/recompile_check.py chia-blockchain
         (cd chia-blockchain && python recompile_check.py)
 
+    - name: Verify recompilation of cl21 sources
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      run: |
+        . ./activate
+        # We need chia-rs for the following.
+        pip install chia-rs
+        # Ensure we're using the sources we have.  This is a hedge against
+        # changes made by any other step doing operations on pip.
+        # This script installs the wheel built during this workflow.
+        python support/wheelname.py
+        (cd resources/tests && python check-recompiles.py)
+
     - name: Run tests from clvm
       run: |
         . ./activate

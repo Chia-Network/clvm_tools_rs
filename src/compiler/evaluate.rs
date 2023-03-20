@@ -64,12 +64,36 @@ impl<'info> VisitedInfoAccess for VisitedMarker<'info, VisitedInfo> {
 
 // Frontend evaluator based on my fuzzer representation and direct interpreter of
 // that.
+
 #[derive(Debug)]
 pub enum ArgInputs {
     Whole(Rc<BodyForm>),
     Pair(Rc<ArgInputs>, Rc<ArgInputs>),
 }
 
+/// EvalExtension provides internal capabilities to the evaluator that function
+/// as extra primitives.  They work entirely at the semantic layer of chialisp
+/// and are preferred compared to CLVM primitives.  These operate on BodyForm
+/// so they have some ability to work on the semantics of chialisp values in
+/// addition to reified values.
+///
+/// These provide the primitive, value aware capabilities to the defmac system
+/// which runs entirely in evaluator space.  This is done because evaluator deals
+/// in high level frontend values...  Rather than having integers, symbols and
+/// strings all crushed into a single atom value space, these observe the
+/// differences and are able to judge and convert them in ways the user specifies.
+///
+/// This allows these macros to pass on programs to the chialisp compiler that
+/// are symbol and constant aware; it's able to write (for example) a matcher
+/// that takes lists of mixed symbols and constants, isolate each and produce
+/// lists of let bindings and match checks that pick out each.  Since atoms are
+/// passed on when appropriate vs constants and such, we can have macros produce
+/// code and be completely certain that any atom landing in the chialisp compiler
+/// was intended to be bound in some way and return an error if it isn't, having
+/// the result plainly be an error if not.
+///
+/// I also anticipate using EvalExtensions to analyze and control code shrinking
+/// during some kinds of optimization.
 pub trait EvalExtension {
     fn try_eval(
         &self,
@@ -83,6 +107,22 @@ pub trait EvalExtension {
     ) -> Result<Option<Rc<BodyForm>>, CompileErr>;
 }
 
+/// Evaluator is an object that simplifies expressions, given the helpers
+/// (helpers are forms that are reusable parts of programs, such as defconst,
+/// defun or defmacro) from a program.  In the simplest form, it can be used to
+/// power a chialisp repl, but also to simplify expressions to their components.
+///
+/// The emitted expressions are simpler and sometimes smaller, depending on what the
+/// evaulator was able to do.  It performs all obvious substitutions and some
+/// obvious simplifications based on CLVM operations (such as combining
+/// picking operations with conses in some cases).  If the expression can't
+/// be simplified to a constant, any remaining variable references and the
+/// operations on them are left.
+///
+/// Because of what it can do, it's also used for "use checking" to determine
+/// whether input parameters to the program as a whole are used in the program's
+/// eventual results.  The simplification it does is general eta conversion with
+/// some other local transformations thrown in.
 pub struct Evaluator {
     opts: Rc<dyn CompilerOpts>,
     runner: Rc<dyn TRunProgram>,
@@ -973,7 +1013,7 @@ impl<'info> Evaluator {
     }
 
     // A frontend language evaluator and minifier
-    pub fn shrink_bodyform_visited(
+    fn shrink_bodyform_visited(
         &self,
         allocator: &mut Allocator, // Support random prims via clvm_rs
         visited_: &'info mut VisitedMarker<'_, VisitedInfo>,
@@ -1141,6 +1181,21 @@ impl<'info> Evaluator {
         }
     }
 
+    /// The main entrypoint for the evaluator, shrink_bodyform takes a notion of the
+    /// current argument set (in case something depends on its shape), the
+    /// bindings in force, and a frontend expression to evaluate and simplifies
+    /// it as much as possible.  The result is the "least complex" version of the
+    /// expression we can make with what we know; this includes taking any part that's
+    /// constant and fully applying it to make a constant of the full subexpression
+    /// as well as a few other small rewriting elements.
+    ///
+    /// There are a few simplification steps that may make code larger, such as
+    /// fully substituting inline applications and eliminating let bindings.
+    ///
+    /// the only_inline flag controls whether only inline functions are expanded
+    /// or whether it's allowed to expand all functions, depending on whehter it's
+    /// intended to simply make a result that ends at inline expansion or generate
+    /// as full a result as possible.
     pub fn shrink_bodyform(
         &self,
         allocator: &mut Allocator, // Support random prims via clvm_rs

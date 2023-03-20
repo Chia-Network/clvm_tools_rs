@@ -752,6 +752,50 @@ fn test_check_tricky_arg_path_random() {
     }
 }
 
+fn read_json_from_file(fname: &str) -> HashMap<String, String> {
+    let extra_symbols_text = fs::read_to_string(fname).expect("should have dropped main.sym");
+    serde_json::from_str(&extra_symbols_text).expect("should be real json")
+}
+
+#[test]
+fn test_generate_extra_symbols() {
+    // Verify that extra symbols are generated.
+    // These include ..._arguments: "(A B C)" <-- arguments of the function
+    //               ..._left_env: "1" <-- specifies whether left env is used
+    let _ = do_basic_run(&vec![
+        "run".to_string(),
+        "-g".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "-i".to_string(),
+        "resources/tests/usecheck-work".to_string(),
+        "--symbol-output-file".to_string(),
+        "/tmp/pmi_extra_symbols.sym".to_string(),
+        "resources/tests/cldb_tree/pool_member_innerpuz.cl".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let syms_with_extras = read_json_from_file("/tmp/pmi_extra_symbols.sym");
+    let syms_want_extras =
+        read_json_from_file("resources/tests/cldb_tree/pool_member_innerpuz_extra.sym");
+    assert_eq!(syms_with_extras, syms_want_extras);
+    let _ = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "-i".to_string(),
+        "resources/tests/usecheck-work".to_string(),
+        "--symbol-output-file".to_string(),
+        "/tmp/pmi_normal_symbols.sym".to_string(),
+        "resources/tests/cldb_tree/pool_member_innerpuz.cl".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let syms_normal = read_json_from_file("/tmp/pmi_normal_symbols.sym");
+    let want_normal = read_json_from_file("resources/tests/cldb_tree/pool_member_innerpuz_ref.sym");
+    assert_eq!(syms_normal, want_normal);
+}
+
 #[test]
 fn test_classic_sets_source_file_in_symbols() {
     let tname = "test_classic_sets_source_file_in_symbols.sym".to_string();
