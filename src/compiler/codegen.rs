@@ -180,10 +180,74 @@ fn create_name_lookup_(
     }
 }
 
+fn is_defun_in_codegen(compiler: &PrimaryCodegen, name: &[u8]) -> bool {
+    // Check for an input defun that matches the name.
+    for h in compiler.orig_help.iter() {
+        if h.name() == name {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn make_list(
+    loc: Srcloc,
+    elements: Vec<Rc<SExp>>
+) -> Rc<SExp> {
+    let mut res = Rc::new(SExp::Nil(loc.clone()));
+    for e in elements.iter().rev() {
+        res = Rc::new(primcons(loc.clone(), e.clone(), res));
+    }
+    res
+}
+
+//
+// Write an expression that conses the left env.
+//
+// (list (q . 2) (c (q . 1) n) (list (q . 4) (c (q . 1) 2) (q . 1)))
+//
+// Something like:
+//   (apply (quoted (expanded n)) (cons (quoted (expanded 2)) given-args))
+//
+fn lambda_for_defun(
+    loc: Srcloc,
+    lookup: Rc<SExp>
+) -> Rc<SExp> {
+    let one_atom = Rc::new(SExp::Atom(loc.clone(), vec![1]));
+    let two_atom = Rc::new(SExp::Atom(loc.clone(), vec![2]));
+    let apply_atom = two_atom.clone();
+    let cons_atom = Rc::new(SExp::Atom(loc.clone(), vec![4]));
+    make_list(
+        loc.clone(),
+        vec![
+            Rc::new(primquote(loc.clone(), apply_atom.clone())),
+            Rc::new(primcons(
+                loc.clone(),
+                Rc::new(primquote(loc.clone(), one_atom.clone())),
+                lookup.clone()
+            )),
+            make_list(
+                loc.clone(),
+                vec![
+                    Rc::new(primquote(loc.clone(), cons_atom.clone())),
+                    Rc::new(primcons(
+                        loc.clone(),
+                        Rc::new(primquote(loc.clone(), one_atom.clone())),
+                        two_atom.clone()
+                    )),
+                    Rc::new(primquote(loc.clone(), one_atom.clone()))
+                ]
+            )
+        ]
+    )
+}
+
 fn create_name_lookup(
     compiler: &PrimaryCodegen,
     l: Srcloc,
     name: &[u8],
+    as_variable: bool
 ) -> Result<Rc<SExp>, CompileErr> {
     compiler
         .constants
@@ -191,7 +255,18 @@ fn create_name_lookup(
         .map(|x| Ok(x.clone()))
         .unwrap_or_else(|| {
             create_name_lookup_(l.clone(), name, compiler.env.clone(), compiler.env.clone())
-                .map(|i| Rc::new(SExp::Integer(l.clone(), i.to_bigint().unwrap())))
+                .map(|i| {
+                    // Determine if it's a defun.  If so we can ensure that it's
+                    // callable like a lambda by repeating the left env into it.
+                    let find_program = Rc::new(SExp::Integer(l.clone(), i.to_bigint().unwrap()));
+                    if as_variable && is_defun_in_codegen(compiler, name) {
+                        let lambda_ized = lambda_for_defun(l.clone(), find_program);
+                        eprintln!("lambda_ized {}: {}", decode_string(name), lambda_ized);
+                        lambda_ized
+                    } else {
+                        find_program
+                    }
+                })
         })
 }
 
@@ -219,7 +294,7 @@ pub fn get_callable(
         SExp::Atom(l, name) => {
             let macro_def = compiler.macros.get(name);
             let inline = compiler.inlines.get(name);
-            let defun = create_name_lookup(compiler, l.clone(), name);
+            let defun = create_name_lookup(compiler, l.clone(), name, false);
             let prim = get_prim(l.clone(), compiler.prims.clone(), name);
             let atom_is_com = *name == "com".as_bytes().to_vec();
             let atom_is_at = *name == "@".as_bytes().to_vec();
@@ -523,7 +598,7 @@ pub fn generate_expr_code(
                             Rc::new(SExp::Integer(l.clone(), bi_one())),
                         ))
                     } else {
-                        create_name_lookup(compiler, l.clone(), atom)
+                        create_name_lookup(compiler, l.clone(), atom, true)
                             .map(|f| Ok(CompiledCode(l.clone(), f)))
                             .unwrap_or_else(|_| {
                                 // Pass through atoms that don't look up on behalf of
