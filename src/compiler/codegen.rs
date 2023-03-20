@@ -191,10 +191,7 @@ fn is_defun_in_codegen(compiler: &PrimaryCodegen, name: &[u8]) -> bool {
     false
 }
 
-fn make_list(
-    loc: Srcloc,
-    elements: Vec<Rc<SExp>>
-) -> Rc<SExp> {
+fn make_list(loc: Srcloc, elements: Vec<Rc<SExp>>) -> Rc<SExp> {
     let mut res = Rc::new(SExp::Nil(loc.clone()));
     for e in elements.iter().rev() {
         res = Rc::new(primcons(loc.clone(), e.clone(), res));
@@ -210,10 +207,7 @@ fn make_list(
 // Something like:
 //   (apply (quoted (expanded n)) (cons (quoted (expanded 2)) given-args))
 //
-fn lambda_for_defun(
-    loc: Srcloc,
-    lookup: Rc<SExp>
-) -> Rc<SExp> {
+fn lambda_for_defun(loc: Srcloc, lookup: Rc<SExp>) -> Rc<SExp> {
     let one_atom = Rc::new(SExp::Atom(loc.clone(), vec![1]));
     let two_atom = Rc::new(SExp::Atom(loc.clone(), vec![2]));
     let apply_atom = two_atom.clone();
@@ -221,25 +215,25 @@ fn lambda_for_defun(
     make_list(
         loc.clone(),
         vec![
-            Rc::new(primquote(loc.clone(), apply_atom.clone())),
+            Rc::new(primquote(loc.clone(), apply_atom)),
             Rc::new(primcons(
                 loc.clone(),
                 Rc::new(primquote(loc.clone(), one_atom.clone())),
-                lookup.clone()
+                lookup,
             )),
             make_list(
                 loc.clone(),
                 vec![
-                    Rc::new(primquote(loc.clone(), cons_atom.clone())),
+                    Rc::new(primquote(loc.clone(), cons_atom)),
                     Rc::new(primcons(
                         loc.clone(),
                         Rc::new(primquote(loc.clone(), one_atom.clone())),
-                        two_atom.clone()
+                        two_atom,
                     )),
-                    Rc::new(primquote(loc.clone(), one_atom.clone()))
-                ]
-            )
-        ]
+                    Rc::new(primquote(loc, one_atom)),
+                ],
+            ),
+        ],
     )
 }
 
@@ -247,15 +241,15 @@ fn create_name_lookup(
     compiler: &PrimaryCodegen,
     l: Srcloc,
     name: &[u8],
-    as_variable: bool
+    as_variable: bool,
 ) -> Result<Rc<SExp>, CompileErr> {
     compiler
         .constants
         .get(name)
         .map(|x| Ok(x.clone()))
         .unwrap_or_else(|| {
-            create_name_lookup_(l.clone(), name, compiler.env.clone(), compiler.env.clone())
-                .map(|i| {
+            create_name_lookup_(l.clone(), name, compiler.env.clone(), compiler.env.clone()).map(
+                |i| {
                     // Determine if it's a defun.  If so we can ensure that it's
                     // callable like a lambda by repeating the left env into it.
                     let find_program = Rc::new(SExp::Integer(l.clone(), i.to_bigint().unwrap()));
@@ -266,7 +260,8 @@ fn create_name_lookup(
                     } else {
                         find_program
                     }
-                })
+                },
+            )
         })
 }
 
