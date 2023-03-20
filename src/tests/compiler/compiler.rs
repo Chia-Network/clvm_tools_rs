@@ -1207,3 +1207,18 @@ fn test_treat_function_name_as_value() {
     let res = run_string(&prog, &"(99)".to_string()).expect("should compile");
     assert_eq!(res.to_string(), "200");
 }
+
+#[test]
+fn test_treat_function_name_as_value_filter() {
+    let prog = indoc! {"
+    (mod L
+     (include *standard-cl-21*)
+     (defun greater-than-3 (X) (> X 3))
+     (defun filter (F L) (let ((rest (filter F (r L)))) (if L (if (a F (list (f L))) (c (f L) rest) rest) ())))
+     (filter greater-than-3 L)
+    )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(1 2 3 4 5)".to_string()).expect("should compile");
+    assert_eq!(res.to_string(), "(4 5)");
+}
