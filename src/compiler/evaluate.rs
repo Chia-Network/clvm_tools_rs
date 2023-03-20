@@ -13,7 +13,7 @@ use crate::compiler::clvm::run;
 use crate::compiler::codegen::codegen;
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
-    Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LetData, LetFormKind,
+    Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, LetData, LetFormKind,
 };
 use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
@@ -958,6 +958,31 @@ impl<'info> Evaluator {
         }
     }
 
+    fn get_function(&self, name: &[u8]) -> Option<Box<DefunData>> {
+        for h in self.helpers.iter() {
+            if let HelperForm::Defun(false, dd) = &h {
+                if name == h.name() {
+                    return Some(Box::new(dd.clone()));
+                }
+            }
+        }
+
+        None
+    }
+
+    fn create_mod_for_fun(&self, l: &Srcloc, function: Box<DefunData>) -> Rc<BodyForm> {
+        Rc::new(BodyForm::Mod(
+            l.clone(),
+            CompileForm {
+                loc: l.clone(),
+                include_forms: Vec::new(),
+                args: function.args.clone(),
+                helpers: self.helpers.clone(),
+                exp: function.body.clone()
+            }
+        ))
+    }
+
     // A frontend language evaluator and minifier
     fn shrink_bodyform_visited(
         &self,
@@ -1027,6 +1052,15 @@ impl<'info> Evaluator {
                         env,
                         literal_args,
                         only_inline,
+                    )
+                } else if let Some(function) = self.get_function(&name) {
+                    self.shrink_bodyform_visited(
+                        allocator,
+                        &mut visited,
+                        prog_args,
+                        env,
+                        self.create_mod_for_fun(&l, function),
+                        only_inline
                     )
                 } else {
                     env.get(name)
