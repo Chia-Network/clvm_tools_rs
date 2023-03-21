@@ -392,7 +392,15 @@ impl ExtensionFunction for StringToNumber {
         args: &[Rc<BodyForm>],
         body: Rc<BodyForm>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        todo!();
+        if let Some((loc, mut value)) = match_quoted_string(args[0].clone())? {
+            if let Ok(cvt_bi) = decode_string(&value).parse::<Number>() {
+                Ok(Rc::new(BodyForm::Quoted(SExp::Integer(loc.clone(), cvt_bi))))
+            } else {
+                Err(CompileErr(loc.clone(), "bad number".to_string()))
+            }
+        } else {
+            Err(CompileErr(loc.clone(), "should be given a string".to_string()))
+        }
     }
 }
 

@@ -415,7 +415,7 @@ fn test_defmac_string_substr_0() {
 }
 
 #[test]
-fn test_defmac_string_substr_1() {
+fn test_defmac_string_substr_bad() {
     let prog = indoc! {"
       (mod (test_variable_name)
         (defmac bind-tail-of-symbol (N Q CODE)
@@ -426,9 +426,68 @@ fn test_defmac_string_substr_1() {
             (qq (let (((unquote suffix) (r (unquote Q)))) (unquote CODE)))
             )
           )
-        (bind-tail-of-symbol 5 test_variable_name (c 9999 variable_name))
+        (bind-tail-of-symbol 100 test_variable_name (c 9999 variable_name))
         )
     "}.to_string();
-    let res = run_string(&prog, &"((87 89 91))".to_string()).unwrap();
-    assert_eq!(res.to_string(), "(9999 89 91)");
+    let res = run_string(&prog, &"((87 89 91))".to_string());
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_defmac_string_to_number_0() {
+    let prog = indoc! {"
+      (mod (X_7)
+        (defmac add-n-to (X)
+          (let
+            ((stringified (symbol->string X))
+             (slen (string-length stringified))
+             (number-part (substring stringified (- slen 1) slen))
+             (numeric-value (string->number number-part)))
+            (qq (+ (unquote numeric-value) (unquote X)))
+            )
+          )
+        (add-n-to X_7)
+        )
+    "}.to_string();
+    let res = run_string(&prog, &"(31)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "38");
+}
+
+#[test]
+fn test_defmac_string_to_number_bad() {
+    let prog = indoc! {"
+      (mod (X_A)
+        (defmac add-n-to (X)
+          (let
+            ((stringified (symbol->string X))
+             (slen (string-length stringified))
+             (number-part (substring stringified (- slen 1) slen))
+             (numeric-value (string->number number-part)))
+            (qq (+ (unquote numeric-value) (unquote X)))
+            )
+          )
+        (add-n-to X_A)
+        )
+    "}.to_string();
+    let res = run_string(&prog, &"(31)".to_string());
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_defmac_number_to_string() {
+    let prog = indoc! {"
+      (mod (Q)
+        (defmac with-my-length (X)
+          (let*
+            ((stringified (symbol->string X))
+             (slen (string-length stringified)))
+            (string->symbol (string-append stringified \"-\" (number->string slen)))
+            )
+          )
+        (defun F (Xanadu-6) (+ (with-my-length Xanadu) 99))
+        (F Q)
+        )
+    "}.to_string();
+    let res = run_string(&prog, &"(37)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "136");
 }
