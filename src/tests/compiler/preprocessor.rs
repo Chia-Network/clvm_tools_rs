@@ -413,3 +413,22 @@ fn test_defmac_string_substr_0() {
     let res = run_string(&prog, &"(5999)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(\"X\" . 5999)");
 }
+
+#[test]
+fn test_defmac_string_substr_1() {
+    let prog = indoc! {"
+      (mod (test_variable_name)
+        (defmac bind-tail-of-symbol (N Q CODE)
+          (let*
+            ((stringified (symbol->string Q))
+             (slen (string-length stringified))
+             (suffix (string->symbol (substring stringified N slen))))
+            (qq (let (((unquote suffix) (r (unquote Q)))) (unquote CODE)))
+            )
+          )
+        (bind-tail-of-symbol 5 test_variable_name (c 9999 variable_name))
+        )
+    "}.to_string();
+    let res = run_string(&prog, &"((87 89 91))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(9999 89 91)");
+}

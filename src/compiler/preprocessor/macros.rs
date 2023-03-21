@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
+use num_bigint::ToBigInt;
 use num_traits::ToPrimitive;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
@@ -395,6 +396,39 @@ impl ExtensionFunction for StringToNumber {
     }
 }
 
+struct StringLength { }
+
+impl StringLength {
+    fn new() -> Rc<dyn ExtensionFunction> { Rc::new(StringLength { }) }
+}
+
+impl ExtensionFunction for StringLength {
+    fn required_args(&self) -> Option<usize> { Some(1) }
+
+    fn try_eval(
+        &self,
+        evaluator: &Evaluator,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        loc: &Srcloc,
+        name: &[u8],
+        args: &[Rc<BodyForm>],
+        body: Rc<BodyForm>,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        if let Some((loc, mut value)) = match_quoted_string(args[0].clone())? {
+            if let Some(len_bi) = value.len().to_bigint() {
+                Ok(Rc::new(BodyForm::Quoted(SExp::Integer(loc.clone(), len_bi))))
+            } else {
+                Err(CompileErr(loc.clone(), "Error getting string length".to_string()))
+            }
+        } else {
+            eprintln!("pp helper returned {}", decode_string(name));
+            Ok(body.clone())
+        }
+    }
+}
+
+
 struct Substring { }
 
 impl Substring {
@@ -671,6 +705,7 @@ impl PreprocessorExtension {
             (b"number->string".to_vec(), NumberToString::new()),
 
             (b"string-append".to_vec(), StringAppend::new()),
+            (b"string-length".to_vec(), StringLength::new()),
             (b"substring".to_vec(), Substring::new()),
         ];
         PreprocessorExtension { extfuns: HashMap::from(extfuns) }
