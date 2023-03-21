@@ -10,12 +10,12 @@ use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 
 use crate::compiler::compiler::KNOWN_DIALECTS;
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, HelperForm, IncludeDesc};
-use crate::compiler::evaluate::{ArgInputs, create_argument_captures, dequote, EvalExtension, Evaluator};
+use crate::compiler::evaluate::{ArgInputs, create_argument_captures, dequote, Evaluator};
 use crate::compiler::frontend::compile_helperform;
-use crate::compiler::sexp::{Atom, decode_string, enlist, First, NodeSel, parse_sexp, SelectNode, SExp, ThisNode};
+use crate::compiler::sexp::{Atom, decode_string, enlist, NodeSel, parse_sexp, SelectNode, SExp, ThisNode};
 use crate::compiler::preprocessor::macros::PreprocessorExtension;
 use crate::compiler::srcloc::Srcloc;
-use crate::util::{ErrInto, Number, number_from_u8};
+use crate::util::ErrInto;
 
 struct Preprocessor {
     opts: Rc<dyn CompilerOpts>,
@@ -101,7 +101,7 @@ impl Preprocessor {
             let first_expanded = self.expand_macros(f.clone())?;
             let rest_expanded = self.expand_macros(r.clone())?;
             let new_self = Rc::new(SExp::Cons(l.clone(), first_expanded, rest_expanded));
-            if let Ok(NodeSel::Cons((nl, name), args)) = NodeSel::Cons(
+            if let Ok(NodeSel::Cons((_, name), args)) = NodeSel::Cons(
                 Atom::Here(()), ThisNode::Here
             ).select_nodes(new_self.clone()) {
                 // See if it's a form that calls one of our macros.
