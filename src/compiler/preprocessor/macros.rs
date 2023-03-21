@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
+use num_traits::ToPrimitive;
 
-use crate::classic::clvm::__type_compatibility__::bi_one;
+use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 
 use crate::compiler::clvm::truthy;
 use crate::compiler::comptypes::{BodyForm, CompileErr};
@@ -61,14 +62,37 @@ enum MatchedNumber {
 }
 
 fn match_number(body: Rc<BodyForm>) -> Result<Option<MatchedNumber>, CompileErr> {
-    if let BodyForm::Quoted(SExp::Integer(il,n)) = body.borrow() {
-        Ok(Some(MatchedNumber::MatchedInt(il.clone(), n.clone())))
-    } else if let BodyForm::Quoted(SExp::QuotedString(ql,b'x',b)) = body.borrow() {
-        Ok(Some(MatchedNumber::MatchedHex(ql.clone(), b.clone())))
-    } else if let BodyForm::Quoted(_) = body.borrow() {
-        Err(CompileErr(body.loc(), "number required".to_string()))
+    match body.borrow() {
+        BodyForm::Quoted(SExp::Integer(il,n)) => {
+            Ok(Some(MatchedNumber::MatchedInt(il.clone(), n.clone())))
+        }
+        BodyForm::Quoted(SExp::QuotedString(ql,b'x',b)) => {
+            Ok(Some(MatchedNumber::MatchedHex(ql.clone(), b.clone())))
+        }
+        BodyForm::Quoted(SExp::Nil(il)) => {
+            Ok(Some(MatchedNumber::MatchedInt(il.clone(), bi_zero())))
+        }
+        BodyForm::Quoted(_) => {
+            Err(CompileErr(body.loc(), "number required".to_string()))
+        }
+        _ => Ok(None)
+    }
+}
+
+fn numeric_value(body: Rc<BodyForm>) -> Result<Number, CompileErr> {
+    match match_number(body.clone())? {
+        Some(MatchedNumber::MatchedInt(_, n)) => Ok(n.clone()),
+        Some(MatchedNumber::MatchedHex(_, h)) => Ok(number_from_u8(&h)),
+        _ => Err(CompileErr(body.loc(), "Not a number".to_string()))
+    }
+}
+
+fn usize_value(body: Rc<BodyForm>) -> Result<usize, CompileErr> {
+    let n = numeric_value(body.clone())?;
+    if let Some(res) = n.to_usize() {
+        Ok(res)
     } else {
-        Ok(None)
+        Err(CompileErr(body.loc(), "Value out of range".to_string()))
     }
 }
 
@@ -390,7 +414,25 @@ impl ExtensionFunction for Substring {
         args: &[Rc<BodyForm>],
         body: Rc<BodyForm>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        todo!();
+        let start_element = usize_value(args[1].clone())?;
+        let end_element = usize_value(args[2].clone())?;
+
+        match args[0].borrow() {
+            BodyForm::Quoted(SExp::QuotedString(l,ch,s)) => {
+                if start_element > end_element || start_element > s.len() || end_element > s.len() {
+                    return Err(CompileErr(l.clone(), "start greater than end in substring".to_string()));
+                }
+                let result_value: Vec<u8> =
+                    s.iter().take(end_element).skip(start_element).copied().collect();
+                Ok(Rc::new(BodyForm::Quoted(SExp::QuotedString(l.clone(), *ch, result_value))))
+            }
+            BodyForm::Quoted(_) => {
+                Err(CompileErr(body.loc(), "Not a string".to_string()))
+            }
+            _ => {
+                Ok(body.clone())
+            }
+        }
     }
 }
 

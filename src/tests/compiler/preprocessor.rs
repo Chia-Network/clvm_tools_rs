@@ -397,3 +397,19 @@ fn test_defmac_string_needs_conversion() {
     let res = run_string(&prog, &"(5)".to_string());
     assert!(res.is_err());
 }
+
+#[test]
+fn test_defmac_string_substr_0() {
+    let prog = indoc! {"
+      (mod (X)
+        (defmac first-letter-of (Q)
+          (let ((first-character (substring (symbol->string Q) 0 1)))
+            (qq (c (unquote first-character) (unquote (string->symbol first-character))))
+            )
+          )
+        (first-letter-of Xanadu)
+        )
+    "}.to_string();
+    let res = run_string(&prog, &"(5999)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(\"X\" . 5999)");
+}
