@@ -325,3 +325,75 @@ fn test_defmac_create_match_form() {
     let res = run_string(&prog, &"(3 () 1001 1002)".to_string()).unwrap();
     assert_eq!(res.to_string(), "1002");
 }
+
+#[test]
+fn test_defmac_stringq() {
+    let prog = indoc! {"
+      (mod ()
+         (defmac is-string (X) (string? X))
+         (list (is-string X) (is-string \"X\") (is-string 3))
+         )
+    "}.to_string();
+    let res = run_string(&prog, &"()".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(() 1 ())");
+}
+
+#[test]
+fn test_defmac_numberq() {
+    let prog = indoc! {"
+      (mod ()
+         (defmac is-number (X) (number? X))
+         (list (is-number X) (is-number \"X\") (is-number 3))
+         )
+    "}.to_string();
+    let res = run_string(&prog, &"()".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(() () 1)");
+}
+
+#[test]
+fn test_defmac_symbolq() {
+    let prog = indoc! {"
+      (mod ()
+         (defmac is-symbol (X) (symbol? X))
+         (list (is-symbol X) (is-symbol \"X\") (is-symbol 3))
+         )
+    "}.to_string();
+    let res = run_string(&prog, &"()".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(1 () ())");
+}
+
+#[test]
+fn test_defmac_string_to_symbol() {
+    let prog = indoc! {"
+      (mod ()
+         (defmac is-symbol (X) (symbol? X))
+         (list (is-symbol X) (is-symbol \"X\") (is-symbol 3))
+         )
+    "}.to_string();
+    let res = run_string(&prog, &"()".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(1 () ())");
+}
+
+#[test]
+fn test_defmac_string_to_symbol_converts() {
+    let prog = indoc! {"
+      (mod (X)
+        (defmac let_pi (code) (qq (let (((unquote (string->symbol \"pi\")) 31415)) (unquote code))))
+        (let_pi (+ pi X))
+        )
+    "}.to_string();
+    let res = run_string(&prog, &"(5)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "31420");
+}
+
+#[test]
+fn test_defmac_string_needs_conversion() {
+    let prog = indoc! {"
+      (mod (X)
+        (defmac let_pi (code) (qq (let ((\"pi\" 31415)) (unquote code))))
+        (let_pi (+ pi X))
+        )
+    "}.to_string();
+    let res = run_string(&prog, &"(5)".to_string());
+    assert!(res.is_err());
+}
