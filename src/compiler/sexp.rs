@@ -882,7 +882,7 @@ impl SelectNode<Srcloc, (Srcloc, String)> for Atom<&str> {
         let Atom::Here(name) = self;
         if let Ok((l, n)) = Atom::Here(()).select_nodes(s.clone()) {
             if n == name.as_bytes() {
-                return Ok(l.clone());
+                return Ok(l);
             }
         }
 

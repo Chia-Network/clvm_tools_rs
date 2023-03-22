@@ -95,6 +95,7 @@ pub enum ArgInputs {
 /// I also anticipate using EvalExtensions to analyze and control code shrinking
 /// during some kinds of optimization.
 pub trait EvalExtension {
+    #[allow(clippy::too_many_arguments)]
     fn try_eval(
         &self,
         evaluator: &Evaluator,
@@ -943,7 +944,7 @@ impl<'info> Evaluator {
                 env,
                 &l,
                 call_name,
-                &arguments_to_convert,
+                arguments_to_convert,
                 body.clone(),
             )? {
                 return Ok(res);

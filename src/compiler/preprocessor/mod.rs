@@ -93,7 +93,6 @@ impl Preprocessor {
     // Check for and apply preprocessor level macros.
     // This is maximally permissive.
     fn expand_macros(&mut self, body: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
-        eprintln!("expand_macros {}", body);
         if let SExp::Cons(l, f, r) = body.borrow() {
             // First expand inner macros.
             let first_expanded = self.expand_macros(f.clone())?;
@@ -104,16 +103,10 @@ impl Preprocessor {
             {
                 // See if it's a form that calls one of our macros.
                 for m in self.helpers.iter() {
-                    eprintln!("want {} helper {}", decode_string(&name), m.to_sexp());
                     if let HelperForm::Defun(_, mdata) = &m {
                         // We record upfront macros
                         if mdata.name != name {
                             continue;
-                        }
-
-                        eprintln!("expanding macro {}", m.to_sexp());
-                        for h in self.helpers.iter() {
-                            eprintln!("- {}", decode_string(h.name()));
                         }
 
                         // as inline defuns because they're closest to that
@@ -139,12 +132,10 @@ impl Preprocessor {
                             None,
                         )?;
 
-                        if let Ok(unquoted) = dequote(body.loc(), res.clone()) {
-                            eprintln!("expand macro {}", unquoted);
+                        if let Ok(unquoted) = dequote(body.loc(), res) {
                             return Ok(unquoted);
                         } else {
-                            eprintln!("bad expand? {}", res.to_sexp());
-                            todo!();
+                            return Err(CompileErr(body.loc(), "Failed to fully evaluate macro".to_string()));
                         }
                     }
                 }
@@ -158,7 +149,6 @@ impl Preprocessor {
 
     // If it's a defmac (preprocessor level macro), add it to the evaulator.
     fn decode_macro(&mut self, definition: Rc<SExp>) -> Result<Option<()>, CompileErr> {
-        eprintln!("decode_macro {definition}");
         if let Ok(NodeSel::Cons(
             (defmac_loc, kw),
             NodeSel::Cons((nl, name), NodeSel::Cons(args, body)),
@@ -182,16 +172,14 @@ impl Preprocessor {
                 if is_defmac {
                     let target_defun = Rc::new(SExp::Cons(
                         defmac_loc.clone(),
-                        Rc::new(SExp::atom_from_string(defmac_loc.clone(), "defun")),
+                        Rc::new(SExp::atom_from_string(defmac_loc, "defun")),
                         Rc::new(SExp::Cons(
                             nl.clone(),
-                            Rc::new(SExp::Atom(nl.clone(), name.clone())),
-                            Rc::new(SExp::Cons(args.loc(), args.clone(), body.clone())),
+                            Rc::new(SExp::Atom(nl, name)),
+                            Rc::new(SExp::Cons(args.loc(), args.clone(), body)),
                         )),
                     ));
-                    eprintln!("target_defun {target_defun}");
                     if let Some(helper) = compile_helperform(self.opts.clone(), target_defun)? {
-                        eprintln!("add helper {}", helper.to_sexp());
                         self.evaluator.add_helper(&helper);
                         self.helpers.push(helper);
                     } else {
@@ -350,7 +338,7 @@ pub fn gather_dependencies(
     let mut p = Preprocessor::new(no_stdenv_opts);
     let loc = Srcloc::start(real_input_path);
 
-    let parsed = parse_sexp(loc.clone(), file_content.bytes())?;
+    let parsed = parse_sexp(loc, file_content.bytes())?;
 
     if parsed.is_empty() {
         return Ok(vec![]);

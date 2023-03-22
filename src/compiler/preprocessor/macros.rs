@@ -69,7 +69,7 @@ fn match_number(body: Rc<BodyForm>) -> Result<Option<MatchedNumber>, CompileErr>
 
 fn numeric_value(body: Rc<BodyForm>) -> Result<Number, CompileErr> {
     match match_number(body.clone())? {
-        Some(MatchedNumber::MatchedInt(_, n)) => Ok(n.clone()),
+        Some(MatchedNumber::MatchedInt(_, n)) => Ok(n),
         Some(MatchedNumber::MatchedHex(_, h)) => Ok(number_from_u8(&h)),
         _ => Err(CompileErr(body.loc(), "Not a number".to_string())),
     }
@@ -116,6 +116,7 @@ pub trait ExtensionFunction {
         true
     }
     fn required_args(&self) -> Option<usize>;
+    #[allow(clippy::too_many_arguments)]
     fn try_eval(
         &self,
         evaluator: &Evaluator,
@@ -131,7 +132,7 @@ pub trait ExtensionFunction {
 struct StringQ {}
 
 impl StringQ {
-    fn new() -> Rc<dyn ExtensionFunction> {
+    fn create() -> Rc<dyn ExtensionFunction> {
         Rc::new(StringQ {})
     }
 }
@@ -154,7 +155,7 @@ impl ExtensionFunction for StringQ {
         let res = match match_quoted_string(args[0].clone()) {
             Ok(Some(_)) => SExp::Integer(loc.clone(), bi_one()),
             Ok(None) => {
-                return Ok(body.clone());
+                return Ok(body);
             }
             Err(_) => SExp::Nil(loc.clone()),
         };
@@ -166,7 +167,7 @@ impl ExtensionFunction for StringQ {
 struct NumberQ {}
 
 impl NumberQ {
-    fn new() -> Rc<dyn ExtensionFunction> {
+    fn create() -> Rc<dyn ExtensionFunction> {
         Rc::new(NumberQ {})
     }
 }
@@ -189,7 +190,7 @@ impl ExtensionFunction for NumberQ {
         let res = match match_number(args[0].clone()) {
             Ok(Some(_)) => SExp::Integer(loc.clone(), bi_one()),
             Ok(None) => {
-                return Ok(body.clone());
+                return Ok(body);
             }
             Err(_) => SExp::Nil(loc.clone()),
         };
@@ -201,7 +202,7 @@ impl ExtensionFunction for NumberQ {
 struct SymbolQ {}
 
 impl SymbolQ {
-    fn new() -> Rc<dyn ExtensionFunction> {
+    fn create() -> Rc<dyn ExtensionFunction> {
         Rc::new(SymbolQ {})
     }
 }
@@ -224,7 +225,7 @@ impl ExtensionFunction for SymbolQ {
         let res = match match_atom(args[0].clone()) {
             Ok(Some(_)) => SExp::Integer(loc.clone(), bi_one()),
             Ok(None) => {
-                return Ok(body.clone());
+                return Ok(body);
             }
             Err(_) => SExp::Nil(loc.clone()),
         };
@@ -236,7 +237,7 @@ impl ExtensionFunction for SymbolQ {
 struct SymbolToString {}
 
 impl SymbolToString {
-    fn new() -> Rc<dyn ExtensionFunction> {
+    fn create() -> Rc<dyn ExtensionFunction> {
         Rc::new(SymbolToString {})
     }
 }
@@ -257,11 +258,11 @@ impl ExtensionFunction for SymbolToString {
         body: Rc<BodyForm>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         if let Some((loc, value)) = match_atom(args[0].clone())? {
-            return Ok(Rc::new(BodyForm::Quoted(SExp::QuotedString(
+            Ok(Rc::new(BodyForm::Quoted(SExp::QuotedString(
                 loc, b'\"', value,
-            ))));
+            ))))
         } else {
-            return Ok(body.clone());
+            Ok(body)
         }
     }
 }
@@ -269,7 +270,7 @@ impl ExtensionFunction for SymbolToString {
 struct StringToSymbol {}
 
 impl StringToSymbol {
-    fn new() -> Rc<dyn ExtensionFunction> {
+    fn create() -> Rc<dyn ExtensionFunction> {
         Rc::new(StringToSymbol {})
     }
 }
@@ -290,9 +291,9 @@ impl ExtensionFunction for StringToSymbol {
         body: Rc<BodyForm>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
-            return Ok(Rc::new(BodyForm::Quoted(SExp::Atom(loc, value))));
+            Ok(Rc::new(BodyForm::Quoted(SExp::Atom(loc, value))))
         } else {
-            return Ok(body.clone());
+            Ok(body)
         }
     }
 }
@@ -300,7 +301,7 @@ impl ExtensionFunction for StringToSymbol {
 struct StringAppend {}
 
 impl StringAppend {
-    fn new() -> Rc<dyn ExtensionFunction> {
+    fn create() -> Rc<dyn ExtensionFunction> {
         Rc::new(StringAppend {})
     }
 }
@@ -329,21 +330,21 @@ impl ExtensionFunction for StringAppend {
                 }
                 out_vec.append(&mut value);
             } else {
-                return Ok(body.clone());
+                return Ok(body);
             }
         }
-        return Ok(Rc::new(BodyForm::Quoted(SExp::QuotedString(
+        Ok(Rc::new(BodyForm::Quoted(SExp::QuotedString(
             out_loc.unwrap_or_else(|| body.loc()),
             b'\"',
             out_vec,
-        ))));
+        ))))
     }
 }
 
 struct NumberToString {}
 
 impl NumberToString {
-    fn new() -> Rc<dyn ExtensionFunction> {
+    fn create() -> Rc<dyn ExtensionFunction> {
         Rc::new(NumberToString {})
     }
 }
@@ -366,9 +367,9 @@ impl ExtensionFunction for NumberToString {
         let match_res = match_number(args[0].clone())?;
         let (use_loc, int_val) = match &match_res {
             Some(MatchedNumber::MatchedInt(l, i)) => (l.clone(), i.clone()),
-            Some(MatchedNumber::MatchedHex(l, h)) => (l.clone(), number_from_u8(&h)),
+            Some(MatchedNumber::MatchedHex(l, h)) => (l.clone(), number_from_u8(h)),
             _ => {
-                return Ok(body.clone());
+                return Ok(body);
             }
         };
         Ok(Rc::new(BodyForm::Quoted(SExp::QuotedString(
@@ -382,7 +383,7 @@ impl ExtensionFunction for NumberToString {
 struct StringToNumber {}
 
 impl StringToNumber {
-    fn new() -> Rc<dyn ExtensionFunction> {
+    fn create() -> Rc<dyn ExtensionFunction> {
         Rc::new(StringToNumber {})
     }
 }
@@ -405,11 +406,11 @@ impl ExtensionFunction for StringToNumber {
         if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
             if let Ok(cvt_bi) = decode_string(&value).parse::<Number>() {
                 Ok(Rc::new(BodyForm::Quoted(SExp::Integer(
-                    loc.clone(),
+                    loc,
                     cvt_bi,
                 ))))
             } else {
-                Err(CompileErr(loc.clone(), "bad number".to_string()))
+                Err(CompileErr(loc, "bad number".to_string()))
             }
         } else {
             Err(CompileErr(
@@ -423,7 +424,7 @@ impl ExtensionFunction for StringToNumber {
 struct StringLength {}
 
 impl StringLength {
-    fn new() -> Rc<dyn ExtensionFunction> {
+    fn create() -> Rc<dyn ExtensionFunction> {
         Rc::new(StringLength {})
     }
 }
@@ -446,17 +447,17 @@ impl ExtensionFunction for StringLength {
         if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
             if let Some(len_bi) = value.len().to_bigint() {
                 Ok(Rc::new(BodyForm::Quoted(SExp::Integer(
-                    loc.clone(),
+                    loc,
                     len_bi,
                 ))))
             } else {
                 Err(CompileErr(
-                    loc.clone(),
+                    loc,
                     "Error getting string length".to_string(),
                 ))
             }
         } else {
-            Ok(body.clone())
+            Ok(body)
         }
     }
 }
@@ -464,7 +465,7 @@ impl ExtensionFunction for StringLength {
 struct Substring {}
 
 impl Substring {
-    fn new() -> Rc<dyn ExtensionFunction> {
+    fn create() -> Rc<dyn ExtensionFunction> {
         Rc::new(Substring {})
     }
 }
@@ -508,7 +509,7 @@ impl ExtensionFunction for Substring {
                 ))))
             }
             BodyForm::Quoted(_) => Err(CompileErr(body.loc(), "Not a string".to_string())),
-            _ => Ok(body.clone()),
+            _ => Ok(body),
         }
     }
 }
@@ -516,7 +517,7 @@ impl ExtensionFunction for Substring {
 struct List {}
 
 impl List {
-    fn new() -> Rc<dyn ExtensionFunction> {
+    fn create() -> Rc<dyn ExtensionFunction> {
         Rc::new(List {})
     }
 }
@@ -548,14 +549,14 @@ impl ExtensionFunction for List {
                 ],
             ));
         }
-        evaluator.shrink_bodyform(&mut allocator, prog_args.clone(), env, res, false, None)
+        evaluator.shrink_bodyform(&mut allocator, prog_args, env, res, false, None)
     }
 }
 
 struct Cons {}
 
 impl Cons {
-    fn new() -> Rc<dyn ExtensionFunction> {
+    fn create() -> Rc<dyn ExtensionFunction> {
         Rc::new(Cons {})
     }
 }
@@ -582,7 +583,7 @@ impl ExtensionFunction for Cons {
                 Rc::new(b.clone()),
             ))))
         } else {
-            Ok(body.clone())
+            Ok(body)
         }
     }
 }
@@ -590,7 +591,7 @@ impl ExtensionFunction for Cons {
 struct First {}
 
 impl First {
-    fn new() -> Rc<dyn ExtensionFunction> {
+    fn create() -> Rc<dyn ExtensionFunction> {
         Rc::new(First {})
     }
 }
@@ -616,7 +617,7 @@ impl ExtensionFunction for First {
         } else if let BodyForm::Quoted(_) = args[0].borrow() {
             Err(CompileErr(loc.clone(), "bad cons in first".to_string()))
         } else {
-            Ok(body.clone())
+            Ok(body)
         }
     }
 }
@@ -624,7 +625,7 @@ impl ExtensionFunction for First {
 struct Rest {}
 
 impl Rest {
-    fn new() -> Rc<dyn ExtensionFunction> {
+    fn create() -> Rc<dyn ExtensionFunction> {
         Rc::new(Rest {})
     }
 }
@@ -650,7 +651,7 @@ impl ExtensionFunction for Rest {
         } else if let BodyForm::Quoted(_) = args[0].borrow() {
             Err(CompileErr(loc.clone(), "bad cons in rest".to_string()))
         } else {
-            Ok(body.clone())
+            Ok(body)
         }
     }
 }
@@ -658,7 +659,7 @@ impl ExtensionFunction for Rest {
 struct If {}
 
 impl If {
-    fn new() -> Rc<dyn ExtensionFunction> {
+    fn create() -> Rc<dyn ExtensionFunction> {
         Rc::new(If {})
     }
 }
@@ -696,7 +697,7 @@ impl ExtensionFunction for If {
             if truthy(unquoted) {
                 evaluator.shrink_bodyform(
                     &mut allocator,
-                    prog_args.clone(),
+                    prog_args,
                     env,
                     args[1].clone(),
                     false,
@@ -705,7 +706,7 @@ impl ExtensionFunction for If {
             } else {
                 evaluator.shrink_bodyform(
                     &mut allocator,
-                    prog_args.clone(),
+                    prog_args,
                     env,
                     args[2].clone(),
                     false,
@@ -759,21 +760,21 @@ pub struct PreprocessorExtension {
 impl PreprocessorExtension {
     pub fn new() -> Self {
         let extfuns = [
-            (b"if".to_vec(), If::new()),
-            (b"list".to_vec(), List::new()),
-            (b"c".to_vec(), Cons::new()),
-            (b"f".to_vec(), First::new()),
-            (b"r".to_vec(), Rest::new()),
-            (b"string?".to_vec(), StringQ::new()),
-            (b"number?".to_vec(), NumberQ::new()),
-            (b"symbol?".to_vec(), SymbolQ::new()),
-            (b"string->symbol".to_vec(), StringToSymbol::new()),
-            (b"symbol->string".to_vec(), SymbolToString::new()),
-            (b"string->number".to_vec(), StringToNumber::new()),
-            (b"number->string".to_vec(), NumberToString::new()),
-            (b"string-append".to_vec(), StringAppend::new()),
-            (b"string-length".to_vec(), StringLength::new()),
-            (b"substring".to_vec(), Substring::new()),
+            (b"if".to_vec(), If::create()),
+            (b"list".to_vec(), List::create()),
+            (b"c".to_vec(), Cons::create()),
+            (b"f".to_vec(), First::create()),
+            (b"r".to_vec(), Rest::create()),
+            (b"string?".to_vec(), StringQ::create()),
+            (b"number?".to_vec(), NumberQ::create()),
+            (b"symbol?".to_vec(), SymbolQ::create()),
+            (b"string->symbol".to_vec(), StringToSymbol::create()),
+            (b"symbol->string".to_vec(), SymbolToString::create()),
+            (b"string->number".to_vec(), StringToNumber::create()),
+            (b"number->string".to_vec(), NumberToString::create()),
+            (b"string-append".to_vec(), StringAppend::create()),
+            (b"string-length".to_vec(), StringLength::create()),
+            (b"substring".to_vec(), Substring::create()),
         ];
         PreprocessorExtension {
             extfuns: HashMap::from(extfuns),
@@ -802,10 +803,6 @@ impl EvalExtension for PreprocessorExtension {
                 }
             }
 
-            eprintln!("try function {}", body.to_sexp());
-            for (n, v) in env.iter() {
-                eprintln!("- {} = {}", decode_string(&n), v.to_sexp());
-            }
             let args = if extfun.want_interp() {
                 reify_args(evaluator, prog_args.clone(), env, raw_args)?
             } else {
