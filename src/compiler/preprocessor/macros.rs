@@ -405,10 +405,7 @@ impl ExtensionFunction for StringToNumber {
     ) -> Result<Rc<BodyForm>, CompileErr> {
         if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
             if let Ok(cvt_bi) = decode_string(&value).parse::<Number>() {
-                Ok(Rc::new(BodyForm::Quoted(SExp::Integer(
-                    loc,
-                    cvt_bi,
-                ))))
+                Ok(Rc::new(BodyForm::Quoted(SExp::Integer(loc, cvt_bi))))
             } else {
                 Err(CompileErr(loc, "bad number".to_string()))
             }
@@ -446,15 +443,9 @@ impl ExtensionFunction for StringLength {
     ) -> Result<Rc<BodyForm>, CompileErr> {
         if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
             if let Some(len_bi) = value.len().to_bigint() {
-                Ok(Rc::new(BodyForm::Quoted(SExp::Integer(
-                    loc,
-                    len_bi,
-                ))))
+                Ok(Rc::new(BodyForm::Quoted(SExp::Integer(loc, len_bi))))
             } else {
-                Err(CompileErr(
-                    loc,
-                    "Error getting string length".to_string(),
-                ))
+                Err(CompileErr(loc, "Error getting string length".to_string()))
             }
         } else {
             Ok(body)

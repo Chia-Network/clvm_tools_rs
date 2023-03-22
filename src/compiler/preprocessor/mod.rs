@@ -135,7 +135,10 @@ impl Preprocessor {
                         if let Ok(unquoted) = dequote(body.loc(), res) {
                             return Ok(unquoted);
                         } else {
-                            return Err(CompileErr(body.loc(), "Failed to fully evaluate macro".to_string()));
+                            return Err(CompileErr(
+                                body.loc(),
+                                "Failed to fully evaluate macro".to_string(),
+                            ));
                         }
                     }
                 }
