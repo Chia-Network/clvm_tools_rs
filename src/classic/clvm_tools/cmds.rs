@@ -20,7 +20,9 @@ use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 use clvm_rs::run_program::PreEval;
 
-use crate::classic::clvm::__type_compatibility__::{t, Bytes, BytesFromType, Stream, Tuple};
+use crate::classic::clvm::__type_compatibility__::{
+    t, Bytes, BytesFromType, Stream, Tuple, UnvalidatedBytesFromType,
+};
 use crate::classic::clvm::keyword_from_atom;
 use crate::classic::clvm::serialize::{sexp_from_stream, sexp_to_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
@@ -228,9 +230,12 @@ impl TConversion for OpdConversion {
         allocator: &mut Allocator,
         hex_text: &str,
     ) -> Result<Tuple<NodePtr, String>, String> {
-        let mut stream = Stream::new(Some(Bytes::new(Some(BytesFromType::Hex(
-            hex_text.to_string(),
-        )))));
+        let mut stream = Stream::new(Some(
+            match Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(hex_text.to_string()))) {
+                Ok(x) => x,
+                Err(e) => return Err(e.to_string()),
+            },
+        ));
 
         sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
             .map_err(|e| e.1)
@@ -851,18 +856,33 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     match parsed_args.get("hex") {
         Some(_) => {
-            let assembled_serialized =
-                Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
+            let assembled_serialized = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(
+                input_program.to_string(),
+            )));
 
             let env_serialized = if input_args.is_empty() {
-                Bytes::new(Some(BytesFromType::Hex("80".to_string())))
+                Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex("80".to_string())))
             } else {
-                Bytes::new(Some(BytesFromType::Hex(input_args)))
+                Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(input_args)))
             };
 
+            let ee = match env_serialized {
+                Ok(x) => x,
+                Err(e) => {
+                    stdout.write_str(&format!("FAIL: {e}\n"));
+                    return;
+                }
+            };
             time_read_hex = SystemTime::now();
 
-            let mut prog_stream = Stream::new(Some(assembled_serialized));
+            let mut prog_stream = Stream::new(Some(match assembled_serialized {
+                Ok(x) => x,
+                Err(e) => {
+                    stdout.write_str(&format!("FAIL: {e}\n"));
+                    return;
+                }
+            }));
+
             let input_prog_sexp = sexp_from_stream(
                 &mut allocator,
                 &mut prog_stream,
@@ -871,7 +891,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .map(|x| Some(x.1))
             .unwrap();
 
-            let mut arg_stream = Stream::new(Some(env_serialized));
+            let mut arg_stream = Stream::new(Some(ee));
             let input_arg_sexp = sexp_from_stream(
                 &mut allocator,
                 &mut arg_stream,
