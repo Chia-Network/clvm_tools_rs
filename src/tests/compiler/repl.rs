@@ -244,13 +244,7 @@ fn test_eval_less_than_forever_recursive() {
 #[test]
 fn test_eval_list_with_constants_z() {
     assert_eq!(
-        test_repl_outcome_with_stack_limit(
-            vec![
-                "(defconstant z 3)",
-                "(list x y z)"
-            ],
-            Some(50)
-        )
+        test_repl_outcome_with_stack_limit(vec!["(defconstant z 3)", "(list x y z)"], Some(50))
             .unwrap()
             .unwrap(),
         "(c x (c y (q 3)))"
@@ -261,15 +255,11 @@ fn test_eval_list_with_constants_z() {
 fn test_eval_list_with_constants_yz() {
     assert_eq!(
         test_repl_outcome_with_stack_limit(
-            vec![
-                "(defconstant y 2)",
-                "(defconstant z 3)",
-                "(list x y z)"
-            ],
+            vec!["(defconstant y 2)", "(defconstant z 3)", "(list x y z)"],
             Some(50)
         )
-            .unwrap()
-            .unwrap(),
+        .unwrap()
+        .unwrap(),
         "(c x (q 2 3))"
     );
 }
@@ -286,8 +276,8 @@ fn test_eval_list_with_constants_xyz() {
             ],
             Some(50)
         )
-            .unwrap()
-            .unwrap(),
+        .unwrap()
+        .unwrap(),
         "(q 1 2 3)"
     );
 }
@@ -295,12 +285,7 @@ fn test_eval_list_with_constants_xyz() {
 #[test]
 fn test_eval_list_partially_evaluated_abc() {
     assert_eq!(
-        test_repl_outcome_with_stack_limit(
-            vec![
-                "(list a b c)"
-            ],
-            Some(50)
-        )
+        test_repl_outcome_with_stack_limit(vec!["(list a b c)"], Some(50))
             .unwrap()
             .unwrap(),
         "(c a (c b (c c (q))))"
@@ -310,12 +295,7 @@ fn test_eval_list_partially_evaluated_abc() {
 #[test]
 fn test_eval_list_partially_evaluated_xyz() {
     assert_eq!(
-        test_repl_outcome_with_stack_limit(
-            vec![
-                "(list x y z)"
-            ],
-            Some(50)
-        )
+        test_repl_outcome_with_stack_limit(vec!["(list x y z)"], Some(50))
             .unwrap()
             .unwrap(),
         "(c x (c y (c z (q))))"
