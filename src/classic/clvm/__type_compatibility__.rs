@@ -13,6 +13,8 @@ use sha2::Digest;
 use sha2::Sha256;
 
 use crate::util::Number;
+//use crate::classic::clvm::__type_compatibility__::SyntaxErr;
+use crate::classic::clvm::syntax_error::SyntaxErr;
 
 pub fn to_hexstr(r: &[u8]) -> String {
     hex::encode(r)
@@ -81,8 +83,11 @@ pub fn pybytes_repr(r: &[u8], dquoted: bool) -> String {
     s
 }
 
-pub enum BytesFromType {
+pub enum UnvalidatedBytesFromType {
     Hex(String),
+}
+
+pub enum BytesFromType {
     Raw(Vec<u8>),
     String(String),
     G1Element(G1Affine),
@@ -117,7 +122,15 @@ impl Bytes {
                 }
                 Bytes::new(Some(BytesFromType::Raw(bvec)))
             }
-            Some(BytesFromType::Hex(hstr)) => {
+            Some(BytesFromType::G1Element(g1)) => Bytes {
+                _b: g1.to_uncompressed().to_vec(),
+            },
+        }
+    }
+
+    pub fn new_validated(value: Option<UnvalidatedBytesFromType>) -> Result<Self, SyntaxErr> {
+        match value {
+            Some(UnvalidatedBytesFromType::Hex(hstr)) => {
                 #[allow(clippy::single_char_pattern)]
                 let hex_stripped = hstr
                     .replace(" ", "")
@@ -126,16 +139,13 @@ impl Bytes {
                     .replace("\n", "");
 
                 match hex::decode(&hex_stripped) {
-                    Ok(d) => Bytes { _b: d },
-                    Err(e) => {
-                        eprintln!("{} in '{}'", e, hex_stripped);
-                        std::process::exit(1);
-                    }
+                    Ok(d) => Ok(Bytes { _b: d }),
+                    Err(e) => Err(SyntaxErr {
+                        msg: format!("{} in '{}'", e, hex_stripped),
+                    }),
                 }
             }
-            Some(BytesFromType::G1Element(g1)) => Bytes {
-                _b: g1.to_uncompressed().to_vec(),
-            },
+            None => Ok(Bytes { _b: vec![] }),
         }
     }
 

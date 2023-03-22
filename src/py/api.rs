@@ -15,7 +15,7 @@ use std::thread;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use crate::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
 use crate::classic::clvm::serialize::sexp_to_stream;
 use crate::classic::clvm_tools::clvmc;
 use crate::classic::clvm_tools::cmds;
@@ -356,7 +356,16 @@ pub fn compose_run_function(
             )));
         }
     };
-    let hash_bytes = Bytes::new(Some(BytesFromType::Hex(function_hash.clone())));
+    let hash_bytes =
+        match Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(function_hash.clone()))) {
+            Ok(x) => x,
+            Err(e) => {
+                return Err(compile_err_to_cldb_err(&CompileErr(
+                    program.loc(),
+                    format!("bad function hash: ({}) {}", function_hash, e),
+                )));
+            }
+        };
     let function_path = match path_to_function(main_env.1.clone(), &hash_bytes.data().clone()) {
         Some(p) => p,
         _ => {

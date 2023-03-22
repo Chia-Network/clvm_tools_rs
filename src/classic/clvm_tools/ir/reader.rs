@@ -1,8 +1,11 @@
 use std::mem::swap;
 use std::rc::Rc;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use crate::classic::clvm::__type_compatibility__::{
+    Bytes, BytesFromType, Stream, UnvalidatedBytesFromType,
+};
 use crate::classic::clvm::casts::bigint_to_bytes_clvm;
+use crate::classic::clvm::syntax_error::SyntaxErr;
 use crate::classic::clvm_tools::ir::r#type::IRRepr;
 use crate::util::Number;
 
@@ -129,49 +132,61 @@ pub fn is_dec(chars: &[u8]) -> bool {
     true
 }
 
-pub fn interpret_atom_value(chars: &[u8]) -> IRRepr {
+pub fn interpret_atom_value(chars: &[u8]) -> Result<IRRepr, SyntaxErr> {
     if chars.is_empty() {
-        IRRepr::Null
+        Ok(IRRepr::Null)
     } else if is_hex(chars) {
         let mut string_bytes = if chars.len() % 2 > 0 {
             Bytes::new(Some(BytesFromType::Raw(vec![b'0'])))
         } else {
+            // hmm ...
             Bytes::new(None)
         };
         string_bytes =
             string_bytes.concat(&Bytes::new(Some(BytesFromType::Raw(chars[2..].to_vec()))));
 
-        IRRepr::Hex(Bytes::new(Some(BytesFromType::Hex(string_bytes.decode()))))
+        Ok(IRRepr::Hex(
+            match Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(string_bytes.decode()))) {
+                Ok(x) => x,
+                Err(e) => return Err(SyntaxErr { msg: e.to_string() }),
+            },
+        ))
     } else {
         match String::from_utf8(chars.to_vec())
             .ok()
             .and_then(|s| s.parse::<Number>().ok())
             .map(|n| bigint_to_bytes_clvm(&n))
         {
-            Some(n) => IRRepr::Int(n, true),
+            Some(n) => Ok(IRRepr::Int(n, true)),
             None => {
                 let string_bytes = Bytes::new(Some(BytesFromType::Raw(chars.to_vec())));
-                IRRepr::Symbol(string_bytes.decode())
+                Ok(IRRepr::Symbol(string_bytes.decode()))
             }
         }
     }
 }
 
-pub fn consume_atom(s: &mut IRReader, b: &Bytes) -> Option<IRRepr> {
+pub fn consume_atom(s: &mut IRReader, b: &Bytes) -> Result<Option<IRRepr>, SyntaxErr> {
     let mut result_vec = b.data().to_vec();
     loop {
         let b = s.read(1);
         if b.length() == 0 {
             if result_vec.is_empty() {
-                return None;
+                return Ok(None);
             } else {
-                return Some(interpret_atom_value(&result_vec));
+                return Ok(Some(match interpret_atom_value(&result_vec) {
+                    Ok(x) => x,
+                    Err(e) => return Err(SyntaxErr { msg: e.to_string() }),
+                }));
             }
         }
 
         if b.at(0) == b'(' || b.at(0) == b')' || is_space(b.at(0)) {
             s.backup(1);
-            return Some(interpret_atom_value(&result_vec));
+            return Ok(Some(match interpret_atom_value(&result_vec) {
+                Ok(x) => x,
+                Err(e) => return Err(SyntaxErr { msg: e.to_string() }),
+            }));
         }
 
         result_vec.push(b.at(0));
@@ -246,7 +261,7 @@ pub fn consume_cons_body(s: &mut IRReader) -> Result<IRRepr, String> {
             }
         } else {
             match consume_atom(s, &b) {
-                Some(f) => {
+                Ok(Some(f)) => {
                     result.push(f);
                     continue;
                 }
@@ -270,8 +285,9 @@ pub fn consume_object(s: &mut IRReader) -> Result<IRRepr, String> {
         consume_quoted(s, b.at(0) as char)
     } else {
         match consume_atom(s, &b) {
-            None => Err("empty stream".to_string()),
-            Some(ir) => Ok(ir),
+            Ok(None) => Err("empty stream".to_string()),
+            Ok(Some(ir)) => Ok(ir),
+            Err(e) => Err(e.to_string()),
         }
     }
 }

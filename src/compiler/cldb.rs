@@ -8,8 +8,11 @@ use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 use num_bigint::ToBigInt;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use crate::classic::clvm::__type_compatibility__::{
+    Bytes, BytesFromType, Stream, UnvalidatedBytesFromType,
+};
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
+//use crate::classic::clvm::syntax_error::SyntaxErr;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
@@ -505,7 +508,15 @@ pub fn hex_to_modern_sexp(
     loc: Srcloc,
     input_program: &str,
 ) -> Result<Rc<SExp>, RunFailure> {
-    let input_serialized = Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
+    let input_serialized = match Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(
+        input_program.to_string(),
+    ))) {
+        Ok(x) => x,
+        Err(e) => {
+            // TODO: Should be SyntaxErr ?
+            return Err(RunFailure::RunErr(loc, e.to_string()));
+        }
+    };
 
     let mut stream = Stream::new(Some(input_serialized));
     let sexp = sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
