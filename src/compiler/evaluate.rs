@@ -628,7 +628,7 @@ impl<'info> Evaluator {
             helpers,
             mash_conditions: false,
             ignore_exn: false,
-            extensions: Vec::new()
+            extensions: Vec::new(),
         }
     }
 
@@ -944,7 +944,7 @@ impl<'info> Evaluator {
                 &l,
                 call_name,
                 &arguments_to_convert,
-                body.clone()
+                body.clone(),
             )? {
                 return Ok(res);
             }

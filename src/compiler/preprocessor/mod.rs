@@ -10,10 +10,12 @@ use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 
 use crate::compiler::compiler::KNOWN_DIALECTS;
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, HelperForm, IncludeDesc};
-use crate::compiler::evaluate::{ArgInputs, create_argument_captures, dequote, Evaluator};
+use crate::compiler::evaluate::{create_argument_captures, dequote, ArgInputs, Evaluator};
 use crate::compiler::frontend::compile_helperform;
-use crate::compiler::sexp::{Atom, decode_string, enlist, NodeSel, parse_sexp, SelectNode, SExp, ThisNode};
 use crate::compiler::preprocessor::macros::PreprocessorExtension;
+use crate::compiler::sexp::{
+    decode_string, enlist, parse_sexp, Atom, NodeSel, SExp, SelectNode, ThisNode,
+};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::ErrInto;
 
@@ -31,17 +33,16 @@ impl Preprocessor {
         Preprocessor {
             opts: opts.clone(),
             evaluator: eval,
-            helpers: Vec::new()
+            helpers: Vec::new(),
         }
     }
 
     /// Given a specification of an include file, load up the forms inside it and
     /// return them (or an error if the file couldn't be read or wasn't a list).
-    pub fn process_include(
-        &mut self,
-        include: IncludeDesc,
-    ) -> Result<Vec<Rc<SExp>>, CompileErr> {
-        let filename_and_content = self.opts.read_new_file(self.opts.filename(), decode_string(&include.name))?;
+    pub fn process_include(&mut self, include: IncludeDesc) -> Result<Vec<Rc<SExp>>, CompileErr> {
+        let filename_and_content = self
+            .opts
+            .read_new_file(self.opts.filename(), decode_string(&include.name))?;
         let content = filename_and_content.1;
         let start_of_file = Srcloc::start(&decode_string(&include.name));
 
@@ -61,7 +62,7 @@ impl Preprocessor {
     fn recurse_dependencies(
         &mut self,
         includes: &mut Vec<IncludeDesc>,
-        desc: IncludeDesc
+        desc: IncludeDesc,
     ) -> Result<(), CompileErr> {
         let name_string = decode_string(&desc.name);
         if KNOWN_DIALECTS.contains_key(&name_string) {
@@ -91,23 +92,21 @@ impl Preprocessor {
 
     // Check for and apply preprocessor level macros.
     // This is maximally permissive.
-    fn expand_macros(
-        &mut self,
-        body: Rc<SExp>
-    ) -> Result<Rc<SExp>, CompileErr> {
+    fn expand_macros(&mut self, body: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
         eprintln!("expand_macros {}", body);
-        if let SExp::Cons(l,f,r) = body.borrow() {
+        if let SExp::Cons(l, f, r) = body.borrow() {
             // First expand inner macros.
             let first_expanded = self.expand_macros(f.clone())?;
             let rest_expanded = self.expand_macros(r.clone())?;
             let new_self = Rc::new(SExp::Cons(l.clone(), first_expanded, rest_expanded));
-            if let Ok(NodeSel::Cons((_, name), args)) = NodeSel::Cons(
-                Atom::Here(()), ThisNode::Here
-            ).select_nodes(new_self.clone()) {
+            if let Ok(NodeSel::Cons((_, name), args)) =
+                NodeSel::Cons(Atom::Here(()), ThisNode::Here).select_nodes(new_self.clone())
+            {
                 // See if it's a form that calls one of our macros.
                 for m in self.helpers.iter() {
                     eprintln!("want {} helper {}", decode_string(&name), m.to_sexp());
-                    if let HelperForm::Defun(_,mdata) = &m { // We record upfront macros
+                    if let HelperForm::Defun(_, mdata) = &m {
+                        // We record upfront macros
                         if mdata.name != name {
                             continue;
                         }
@@ -128,7 +127,7 @@ impl Preprocessor {
                         create_argument_captures(
                             &mut macro_arg_env,
                             &ArgInputs::Whole(Rc::new(BodyForm::Quoted(args_borrowed.clone()))),
-                            mdata.args.clone()
+                            mdata.args.clone(),
                         )?;
 
                         let res = self.evaluator.shrink_bodyform(
@@ -137,7 +136,7 @@ impl Preprocessor {
                             &macro_arg_env,
                             mdata.body.clone(),
                             false,
-                            None
+                            None,
                         )?;
 
                         if let Ok(unquoted) = dequote(body.loc(), res.clone()) {
@@ -158,26 +157,28 @@ impl Preprocessor {
     }
 
     // If it's a defmac (preprocessor level macro), add it to the evaulator.
-    fn decode_macro(
-        &mut self,
-        definition: Rc<SExp>
-    ) -> Result<Option<()>, CompileErr> {
+    fn decode_macro(&mut self, definition: Rc<SExp>) -> Result<Option<()>, CompileErr> {
         eprintln!("decode_macro {definition}");
         if let Ok(NodeSel::Cons(
             (defmac_loc, kw),
-            NodeSel::Cons(
-                (nl, name),
-                NodeSel::Cons(args,body)
-            )
+            NodeSel::Cons((nl, name), NodeSel::Cons(args, body)),
         )) = NodeSel::Cons(
             Atom::Here(()),
             NodeSel::Cons(
                 Atom::Here(()),
-                NodeSel::Cons(ThisNode::Here, ThisNode::Here)
-            )
-        ).select_nodes(definition.clone()) {
+                NodeSel::Cons(ThisNode::Here, ThisNode::Here),
+            ),
+        )
+        .select_nodes(definition.clone())
+        {
             let is_defmac = kw == b"defmac";
-            if is_defmac || kw == b"defmacro" || kw == b"defun" || kw == b"defun-inline" || kw == b"defconst" || kw == b"defconstant" {
+            if is_defmac
+                || kw == b"defmacro"
+                || kw == b"defun"
+                || kw == b"defun-inline"
+                || kw == b"defconst"
+                || kw == b"defconstant"
+            {
                 if is_defmac {
                     let target_defun = Rc::new(SExp::Cons(
                         defmac_loc.clone(),
@@ -185,10 +186,8 @@ impl Preprocessor {
                         Rc::new(SExp::Cons(
                             nl.clone(),
                             Rc::new(SExp::Atom(nl.clone(), name.clone())),
-                            Rc::new(SExp::Cons(
-                                args.loc(), args.clone(), body.clone()
-                            ))
-                        ))
+                            Rc::new(SExp::Cons(args.loc(), args.clone(), body.clone())),
+                        )),
                     ));
                     eprintln!("target_defun {target_defun}");
                     if let Some(helper) = compile_helperform(self.opts.clone(), target_defun)? {
@@ -196,7 +195,10 @@ impl Preprocessor {
                         self.evaluator.add_helper(&helper);
                         self.helpers.push(helper);
                     } else {
-                        return Err(CompileErr(definition.loc(), "defmac found but couldn't be converted to function".to_string()));
+                        return Err(CompileErr(
+                            definition.loc(),
+                            "defmac found but couldn't be converted to function".to_string(),
+                        ));
                     }
                 } else if let Some(helper) = compile_helperform(self.opts.clone(), definition)? {
                     self.evaluator.add_helper(&helper);
@@ -312,7 +314,7 @@ impl Preprocessor {
             cmod
         };
 
-        while let SExp::Cons(_,f,r) = tocompile.borrow() {
+        while let SExp::Cons(_, f, r) = tocompile.borrow() {
             let mut lst = self.process_pp_form(includes, f.clone())?;
             result.append(&mut lst);
             tocompile = r.clone();
@@ -328,7 +330,7 @@ impl Preprocessor {
 pub fn preprocess(
     opts: Rc<dyn CompilerOpts>,
     includes: &mut Vec<IncludeDesc>,
-    cmod: Rc<SExp>
+    cmod: Rc<SExp>,
 ) -> Result<Vec<Rc<SExp>>, CompileErr> {
     let mut p = Preprocessor::new(opts);
     p.run(includes, cmod)

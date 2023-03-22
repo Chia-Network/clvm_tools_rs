@@ -190,7 +190,8 @@ fn test_defmac_if_extension() {
       (defmac F (X) (c 1 (FX X)))
       (F X)
       )
-    "}.to_string();
+    "}
+    .to_string();
     let res = run_string(&prog, &"(9)".to_string()).unwrap();
     assert_eq!(res.to_string(), "\"1\"");
 }
@@ -333,7 +334,8 @@ fn test_defmac_stringq() {
          (defmac is-string (X) (string? X))
          (list (is-string X) (is-string \"X\") (is-string 3))
          )
-    "}.to_string();
+    "}
+    .to_string();
     let res = run_string(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "(() 1 ())");
 }
@@ -345,7 +347,8 @@ fn test_defmac_numberq() {
          (defmac is-number (X) (number? X))
          (list (is-number X) (is-number \"X\") (is-number 3))
          )
-    "}.to_string();
+    "}
+    .to_string();
     let res = run_string(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "(() () 1)");
 }
@@ -357,7 +360,8 @@ fn test_defmac_symbolq() {
          (defmac is-symbol (X) (symbol? X))
          (list (is-symbol X) (is-symbol \"X\") (is-symbol 3))
          )
-    "}.to_string();
+    "}
+    .to_string();
     let res = run_string(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "(1 () ())");
 }
@@ -369,7 +373,8 @@ fn test_defmac_string_to_symbol() {
          (defmac is-symbol (X) (symbol? X))
          (list (is-symbol X) (is-symbol \"X\") (is-symbol 3))
          )
-    "}.to_string();
+    "}
+    .to_string();
     let res = run_string(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "(1 () ())");
 }
@@ -381,7 +386,8 @@ fn test_defmac_string_to_symbol_converts() {
         (defmac let_pi (code) (qq (let (((unquote (string->symbol \"pi\")) 31415)) (unquote code))))
         (let_pi (+ pi X))
         )
-    "}.to_string();
+    "}
+    .to_string();
     let res = run_string(&prog, &"(5)".to_string()).unwrap();
     assert_eq!(res.to_string(), "31420");
 }
@@ -393,7 +399,8 @@ fn test_defmac_string_needs_conversion() {
         (defmac let_pi (code) (qq (let ((\"pi\" 31415)) (unquote code))))
         (let_pi (+ pi X))
         )
-    "}.to_string();
+    "}
+    .to_string();
     let res = run_string(&prog, &"(5)".to_string());
     assert!(res.is_err());
 }
@@ -409,7 +416,8 @@ fn test_defmac_string_substr_0() {
           )
         (first-letter-of Xanadu)
         )
-    "}.to_string();
+    "}
+    .to_string();
     let res = run_string(&prog, &"(5999)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(\"X\" . 5999)");
 }
@@ -428,7 +436,8 @@ fn test_defmac_string_substr_bad() {
           )
         (bind-tail-of-symbol 100 test_variable_name (c 9999 variable_name))
         )
-    "}.to_string();
+    "}
+    .to_string();
     let res = run_string(&prog, &"((87 89 91))".to_string());
     assert!(res.is_err());
 }
@@ -448,7 +457,8 @@ fn test_defmac_string_to_number_0() {
           )
         (add-n-to X_7)
         )
-    "}.to_string();
+    "}
+    .to_string();
     let res = run_string(&prog, &"(31)".to_string()).unwrap();
     assert_eq!(res.to_string(), "38");
 }
@@ -468,7 +478,8 @@ fn test_defmac_string_to_number_bad() {
           )
         (add-n-to X_A)
         )
-    "}.to_string();
+    "}
+    .to_string();
     let res = run_string(&prog, &"(31)".to_string());
     assert!(res.is_err());
 }
@@ -487,7 +498,8 @@ fn test_defmac_number_to_string() {
         (defun F (Xanadu-6) (+ (with-my-length Xanadu) 99))
         (F Q)
         )
-    "}.to_string();
+    "}
+    .to_string();
     let res = run_string(&prog, &"(37)".to_string()).unwrap();
     assert_eq!(res.to_string(), "136");
 }

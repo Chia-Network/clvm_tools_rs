@@ -868,10 +868,9 @@ impl<E> SelectNode<Rc<SExp>, E> for ThisNode {
 }
 
 impl SelectNode<(Srcloc, Vec<u8>), (Srcloc, String)> for Atom<()> {
-    fn select_nodes(&self, s: Rc<SExp>) -> Result<(Srcloc, Vec<u8>), (Srcloc, String)>
-    {
-        if let SExp::Atom(loc,name) = s.borrow() {
-            return Ok((loc.clone(),name.clone()));
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<(Srcloc, Vec<u8>), (Srcloc, String)> {
+        if let SExp::Atom(loc, name) = s.borrow() {
+            return Ok((loc.clone(), name.clone()));
         }
 
         Err((s.loc(), "Not an atom".to_string()))
@@ -881,7 +880,7 @@ impl SelectNode<(Srcloc, Vec<u8>), (Srcloc, String)> for Atom<()> {
 impl SelectNode<Srcloc, (Srcloc, String)> for Atom<&str> {
     fn select_nodes(&self, s: Rc<SExp>) -> Result<Srcloc, (Srcloc, String)> {
         let Atom::Here(name) = self;
-        if let Ok((l,n)) = Atom::Here(()).select_nodes(s.clone()) {
+        if let Ok((l, n)) = Atom::Here(()).select_nodes(s.clone()) {
             if n == name.as_bytes() {
                 return Ok(l.clone());
             }
