@@ -80,10 +80,10 @@ pub fn consume_whitespace(s: &mut IRReader) {
     s.backup(1);
 }
 
-pub fn consume_quoted(s: &mut IRReader, q: char) -> Result<IRRepr, SyntaxErr> {
+pub fn consume_quoted(s: &mut IRReader, q: u8) -> Result<IRRepr, SyntaxErr> {
     let starting_at = s.stream.get_seek() - 1;
     let mut bs = false;
-    let mut qchars = vec![];
+    let mut qchars = vec![q];
 
     loop {
         let b = s.read(1);
@@ -228,7 +228,7 @@ pub fn consume_cons_body(s: &mut IRReader) -> Result<IRRepr, SyntaxErr> {
         }
 
         if b.at(0) == b'\"' || b.at(0) == b'\'' {
-            let v = consume_quoted(s, b.at(0) as char)?;
+            let v = consume_quoted(s, b.at(0))?;
             result.push(v);
             continue;
         } else {
@@ -251,7 +251,7 @@ pub fn consume_object(s: &mut IRReader) -> Result<IRRepr, SyntaxErr> {
     } else if b.at(0) == b'(' {
         consume_cons_body(s)
     } else if b.at(0) == b'\"' || b.at(0) == b'\'' {
-        consume_quoted(s, b.at(0) as char)
+        consume_quoted(s, b.at(0))
     } else {
         if let Some(ir) = consume_atom(s, &b)? {
             Ok(ir)
