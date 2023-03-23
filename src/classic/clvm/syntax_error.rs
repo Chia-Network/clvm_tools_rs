@@ -10,7 +10,7 @@ impl Error for SyntaxErr {}
 
 impl SyntaxErr {
     pub fn new(s: String) -> Self {
-        SyntaxErr{ msg: s }
+        SyntaxErr { msg: s }
     }
 }
 

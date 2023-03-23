@@ -89,7 +89,7 @@ pub fn consume_quoted(s: &mut IRReader, q: u8) -> Result<IRRepr, SyntaxErr> {
         let b = s.read(1);
         if b.length() == 0 {
             return Err(SyntaxErr::new(format!(
-                "unterminated string starting at {}, {}",
+                "unterminated string starting at {}: {}",
                 starting_at,
                 Bytes::new(Some(BytesFromType::Raw(qchars))).decode()
             )));
@@ -149,18 +149,17 @@ pub fn interpret_atom_value(chars: &[u8]) -> Result<IRRepr, SyntaxErr> {
             string_bytes.concat(&Bytes::new(Some(BytesFromType::Raw(chars[2..].to_vec()))));
 
         Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(string_bytes.decode())))
-        .map(IRRepr::Hex)
+            .map(IRRepr::Hex)
     } else if let Some(n) = String::from_utf8(chars.to_vec())
-            .ok()
-            .and_then(|s| s.parse::<Number>().ok())
-            .map(|n| bigint_to_bytes_clvm(&n))
+        .ok()
+        .and_then(|s| s.parse::<Number>().ok())
+        .map(|n| bigint_to_bytes_clvm(&n))
     {
         Ok(IRRepr::Int(n, true))
     } else {
         let string_bytes = Bytes::new(Some(BytesFromType::Raw(chars.to_vec())));
         Ok(IRRepr::Symbol(string_bytes.decode()))
     }
-    
 }
 
 pub fn consume_atom(s: &mut IRReader, b: &Bytes) -> Result<Option<IRRepr>, SyntaxErr> {
