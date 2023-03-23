@@ -154,6 +154,6 @@ pub fn assemble(allocator: &mut Allocator, s: &str) -> Result<NodePtr, EvalErr> 
     let mut reader = IRReader::new(stream);
     reader
         .read_expr()
-        .map_err(|e| EvalErr(allocator.null(), e))
+        .map_err(|e| EvalErr(allocator.null(), e.to_string()))
         .and_then(|ir| assemble_from_ir(allocator, Rc::new(ir)))
 }

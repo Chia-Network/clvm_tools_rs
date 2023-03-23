@@ -28,7 +28,7 @@ impl IRReader {
         }
     }
 
-    pub fn read_expr(&mut self) -> Result<IRRepr, String> {
+    pub fn read_expr(&mut self) -> Result<IRRepr, SyntaxErr> {
         consume_object(self)
     }
 
@@ -80,7 +80,7 @@ pub fn consume_whitespace(s: &mut IRReader) {
     s.backup(1);
 }
 
-pub fn consume_quoted(s: &mut IRReader, q: char) -> Result<IRRepr, String> {
+pub fn consume_quoted(s: &mut IRReader, q: char) -> Result<IRRepr, SyntaxErr> {
     let starting_at = s.stream.get_seek() - 1;
     let mut bs = false;
     let mut qchars = vec![];
@@ -88,11 +88,11 @@ pub fn consume_quoted(s: &mut IRReader, q: char) -> Result<IRRepr, String> {
     loop {
         let b = s.read(1);
         if b.length() == 0 {
-            return Err(format!(
+            return Err(SyntaxErr::new(format!(
                 "unterminated string starting at {}, {}",
                 starting_at,
                 Bytes::new(Some(BytesFromType::Raw(qchars))).decode()
-            ));
+            )));
         }
 
         if bs {
@@ -133,37 +133,34 @@ pub fn is_dec(chars: &[u8]) -> bool {
 }
 
 pub fn interpret_atom_value(chars: &[u8]) -> Result<IRRepr, SyntaxErr> {
+    // The Decimal and Hex representation of atoms in the program
     if chars.is_empty() {
         Ok(IRRepr::Null)
     } else if is_hex(chars) {
         let mut string_bytes = if chars.len() % 2 > 0 {
+            // Pad an odd-length hex constant from the program text
+            // with a zero in the High nibble
             Bytes::new(Some(BytesFromType::Raw(vec![b'0'])))
         } else {
-            // hmm ...
+            // This is the even-length hex constant case
             Bytes::new(None)
         };
         string_bytes =
             string_bytes.concat(&Bytes::new(Some(BytesFromType::Raw(chars[2..].to_vec()))));
 
-        Ok(IRRepr::Hex(
-            match Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(string_bytes.decode()))) {
-                Ok(x) => x,
-                Err(e) => return Err(SyntaxErr { msg: e.to_string() }),
-            },
-        ))
-    } else {
-        match String::from_utf8(chars.to_vec())
+        Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(string_bytes.decode())))
+        .map(IRRepr::Hex)
+    } else if let Some(n) = String::from_utf8(chars.to_vec())
             .ok()
             .and_then(|s| s.parse::<Number>().ok())
             .map(|n| bigint_to_bytes_clvm(&n))
-        {
-            Some(n) => Ok(IRRepr::Int(n, true)),
-            None => {
-                let string_bytes = Bytes::new(Some(BytesFromType::Raw(chars.to_vec())));
-                Ok(IRRepr::Symbol(string_bytes.decode()))
-            }
-        }
+    {
+        Ok(IRRepr::Int(n, true))
+    } else {
+        let string_bytes = Bytes::new(Some(BytesFromType::Raw(chars.to_vec())));
+        Ok(IRRepr::Symbol(string_bytes.decode()))
     }
+    
 }
 
 pub fn consume_atom(s: &mut IRReader, b: &Bytes) -> Result<Option<IRRepr>, SyntaxErr> {
@@ -174,19 +171,13 @@ pub fn consume_atom(s: &mut IRReader, b: &Bytes) -> Result<Option<IRRepr>, Synta
             if result_vec.is_empty() {
                 return Ok(None);
             } else {
-                return Ok(Some(match interpret_atom_value(&result_vec) {
-                    Ok(x) => x,
-                    Err(e) => return Err(SyntaxErr { msg: e.to_string() }),
-                }));
+                return interpret_atom_value(&result_vec).map(Some);
             }
         }
 
         if b.at(0) == b'(' || b.at(0) == b')' || is_space(b.at(0)) {
             s.backup(1);
-            return Ok(Some(match interpret_atom_value(&result_vec) {
-                Ok(x) => x,
-                Err(e) => return Err(SyntaxErr { msg: e.to_string() }),
-            }));
+            return interpret_atom_value(&result_vec).map(Some);
         }
 
         result_vec.push(b.at(0));
@@ -204,7 +195,7 @@ fn enlist_ir(vec: &mut Vec<IRRepr>, tail: IRRepr) -> IRRepr {
     result
 }
 
-pub fn consume_cons_body(s: &mut IRReader) -> Result<IRRepr, String> {
+pub fn consume_cons_body(s: &mut IRReader) -> Result<IRRepr, SyntaxErr> {
     let mut result = vec![];
 
     loop {
@@ -212,7 +203,7 @@ pub fn consume_cons_body(s: &mut IRReader) -> Result<IRRepr, String> {
 
         let b = s.read(1);
         if b.length() == 0 {
-            return Err("missing )".to_string());
+            return Err(SyntaxErr::new("missing )".to_string()));
         }
 
         if b.at(0) == b')' {
@@ -220,60 +211,38 @@ pub fn consume_cons_body(s: &mut IRReader) -> Result<IRRepr, String> {
         }
 
         if b.at(0) == b'(' {
-            match consume_cons_body(s) {
-                Err(e) => {
-                    return Err(e);
-                }
-                Ok(v) => {
-                    result.push(v);
-                    continue;
-                }
-            }
+            let v = consume_cons_body(s)?;
+            result.push(v);
+            continue;
         }
 
         if b.at(0) == b'.' {
             consume_whitespace(s);
-            let tail_obj = consume_object(s);
-            match tail_obj {
-                Err(e) => {
-                    return Err(e);
-                }
-                Ok(v) => {
-                    consume_whitespace(s);
-                    let b = s.read(1);
-                    if b.length() == 0 || b.at(0) != b')' {
-                        return Err("missing )".to_string());
-                    }
-                    return Ok(enlist_ir(&mut result, v));
-                }
+            let v = consume_object(s)?;
+            consume_whitespace(s);
+            let b = s.read(1);
+            if b.length() == 0 || b.at(0) != b')' {
+                return Err(SyntaxErr::new("missing )".to_string()));
             }
+            return Ok(enlist_ir(&mut result, v));
         }
 
         if b.at(0) == b'\"' || b.at(0) == b'\'' {
-            match consume_quoted(s, b.at(0) as char) {
-                Err(e) => {
-                    return Err(e);
-                }
-                Ok(v) => {
-                    result.push(v);
-                    continue;
-                }
-            }
+            let v = consume_quoted(s, b.at(0) as char)?;
+            result.push(v);
+            continue;
         } else {
-            match consume_atom(s, &b) {
-                Ok(Some(f)) => {
-                    result.push(f);
-                    continue;
-                }
-                _ => {
-                    return Err("missing )".to_string());
-                }
+            if let Some(f) = consume_atom(s, &b)? {
+                result.push(f);
+                continue;
+            } else {
+                return Err(SyntaxErr::new("missing )".to_string()));
             }
         }
     }
 }
 
-pub fn consume_object(s: &mut IRReader) -> Result<IRRepr, String> {
+pub fn consume_object(s: &mut IRReader) -> Result<IRRepr, SyntaxErr> {
     consume_whitespace(s);
     let b = s.read(1);
 
@@ -284,15 +253,15 @@ pub fn consume_object(s: &mut IRReader) -> Result<IRRepr, String> {
     } else if b.at(0) == b'\"' || b.at(0) == b'\'' {
         consume_quoted(s, b.at(0) as char)
     } else {
-        match consume_atom(s, &b) {
-            Ok(None) => Err("empty stream".to_string()),
-            Ok(Some(ir)) => Ok(ir),
-            Err(e) => Err(e.to_string()),
+        if let Some(ir) = consume_atom(s, &b)? {
+            Ok(ir)
+        } else {
+            Err(SyntaxErr::new("empty stream".to_string()))
         }
     }
 }
 
-pub fn read_ir(s: &str) -> Result<IRRepr, String> {
+pub fn read_ir(s: &str) -> Result<IRRepr, SyntaxErr> {
     let bytes_of_string = Bytes::new(Some(BytesFromType::Raw(s.as_bytes().to_vec())));
     let stream = Stream::new(Some(bytes_of_string));
     let mut reader = IRReader::new(stream);
