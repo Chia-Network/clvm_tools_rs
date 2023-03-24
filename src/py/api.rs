@@ -38,6 +38,8 @@ use crate::util::version;
 
 use crate::py::pyval::{clvm_value_to_python, python_value_to_clvm};
 
+use super::cmds::create_cmds_module;
+
 create_exception!(mymodule, CldbError, PyException);
 create_exception!(mymodule, CompError, PyException);
 
@@ -370,6 +372,8 @@ pub fn compose_run_function(
 
 #[pymodule]
 fn clvm_tools_rs(py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_submodule(create_cmds_module(py)?)?;
+
     m.add("CldbError", py.get_type::<CldbError>())?;
     m.add("CompError", py.get_type::<CompError>())?;
 
