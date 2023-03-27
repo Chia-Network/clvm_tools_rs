@@ -8,6 +8,12 @@ pub struct SyntaxErr {
 
 impl Error for SyntaxErr {}
 
+impl SyntaxErr {
+    pub fn new(s: String) -> Self {
+        SyntaxErr { msg: s }
+    }
+}
+
 impl fmt::Display for SyntaxErr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.msg)
