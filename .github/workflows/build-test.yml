@@ -142,7 +142,7 @@ jobs:
     # Test cldb output both run from python and via its command line tool.
     # Thanks: https://stackoverflow.com/questions/9948517/how-to-stop-a-powershell-script-on-the-first-error
     - name: "Run step run tests (windows)"
-      if: ${{ startsWith(matrix.os, 'windows') }}:
+      if: ${{ startsWith(matrix.os, 'windows') }}
       run: |
         . ./activate
 
@@ -164,7 +164,7 @@ jobs:
         ThrowOnNativeFailure
 
     - name: Run step run tests (others)
-      if: ${{ !startsWith(matrix.os, 'windows') }}:
+      if: ${{ !startsWith(matrix.os, 'windows') }}
       run: |
         . ./activate
         cargo build --no-default-features
