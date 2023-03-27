@@ -18,7 +18,11 @@ use crate::compiler::clvm::{convert_from_clvm_rs, run_step, RunStep};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
-use crate::util::Number;
+use crate::util::{Number, u8_from_number};
+
+fn print_atom() -> SExp {
+    SExp::Atom(Srcloc::start("*print*"), b"$print$".to_vec())
+}
 
 #[derive(Clone, Debug)]
 pub struct PriorResult {
@@ -137,6 +141,36 @@ impl CldbRun {
         self.final_result.clone()
     }
 
+    fn is_print_request(&self, a: &SExp) -> Option<(Srcloc, Rc<SExp>)> {
+        if let SExp::Cons(l, f, r) = a {
+            if &print_atom() == f.borrow() {
+                return Some((l.clone(), self.humanize(r.clone())));
+            }
+        }
+
+        None
+    }
+
+    fn humanize(&self, a: Rc<SExp>) -> Rc<SExp> {
+        match a.borrow() {
+            SExp::Integer(l, i) => {
+                // If it has a nice string representation then show that.
+                let bytes_of_int = u8_from_number(i.clone());
+                if bytes_of_int.len() > 2 && bytes_of_int.iter().all(|b| *b >= 32 && *b < 127) {
+                    Rc::new(SExp::QuotedString(l.clone(), b'\'', bytes_of_int))
+                } else {
+                    a.clone()
+                }
+            }
+            SExp::Cons(l,a,b) => {
+                let new_a = self.humanize(a.clone());
+                let new_b = self.humanize(b.clone());
+                Rc::new(SExp::Cons(l.clone(), new_a, new_b))
+            }
+            _ => a.clone()
+        }
+    }
+
     pub fn step(&mut self, allocator: &mut Allocator) -> Option<BTreeMap<String, String>> {
         let mut produce_result = false;
         let mut result = BTreeMap::new();
@@ -197,6 +231,12 @@ impl CldbRun {
                             get_arg_associations(&self.outputs_to_step, a.clone());
                         let args = format_arg_inputs(&arg_associations);
                         self.to_print.insert("Argument-Refs".to_string(), args);
+                    } else if v == 34_u32.to_bigint().unwrap() {
+                        // Handle diagnostic output.
+                        if let Some((loc,outputs)) = self.is_print_request(&a) {
+                            self.to_print.insert("Print-Location".to_string(), loc.to_string());
+                            self.to_print.insert("Print".to_string(), outputs.to_string());
+                        }
                     }
                 }
                 self.env.add_context(
