@@ -107,6 +107,8 @@ pub fn consume_quoted(s: &mut IRReader, q: u8) -> Result<IRRepr, SyntaxErr> {
         }
     }
 
+    // Exclude first quote that was captured.
+    qchars = qchars.iter().skip(1).copied().collect();
     Ok(IRRepr::Quotes(Bytes::new(Some(BytesFromType::Raw(qchars)))))
 }
 
