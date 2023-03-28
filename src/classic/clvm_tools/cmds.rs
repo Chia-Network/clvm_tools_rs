@@ -964,6 +964,10 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         emit_symbol_output = true;
     }
 
+    if parsed_args.get("table").is_some() {
+        emit_symbol_output = true;
+    }
+
     // Add unused check.
     let do_check_unused = parsed_args
         .get("check_unused_args")
@@ -1282,15 +1286,18 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .unwrap_or_else(|| false);
 
     if emit_symbol_output {
-        stdout.write_str("\n");
-        trace_to_text(
-            &mut allocator,
-            stdout,
-            only_exn,
-            &log_content,
-            symbol_table.clone(),
-            &disassemble,
-        );
+        if parsed_args.get("table").is_none() {
+            stdout.write_str("\n");
+            trace_to_text(
+                &mut allocator,
+                stdout,
+                only_exn,
+                &log_content,
+                symbol_table.clone(),
+                &disassemble,
+            );
+        }
+
         if parsed_args.get("table").is_some() {
             trace_to_table(
                 &mut allocator,
