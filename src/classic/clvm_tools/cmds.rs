@@ -284,9 +284,9 @@ pub fn run(args: &[String]) {
 pub fn brun(args: &[String]) {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, "brun", 0);
-    io::stdout()
-        .write_all(s.get_value().data())
-        .expect("stdout");
+    if let Err(e) = io::stdout().write_all(s.get_value().data()) {
+        println!("{}", e)
+    }
 }
 
 fn to_yaml(entries: &[BTreeMap<String, String>]) -> Yaml {

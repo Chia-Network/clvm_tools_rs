@@ -232,13 +232,11 @@ pub fn consume_cons_body(s: &mut IRReader) -> Result<IRRepr, SyntaxErr> {
             let v = consume_quoted(s, b.at(0))?;
             result.push(v);
             continue;
+        } else if let Some(f) = consume_atom(s, &b)? {
+            result.push(f);
+            continue;
         } else {
-            if let Some(f) = consume_atom(s, &b)? {
-                result.push(f);
-                continue;
-            } else {
-                return Err(SyntaxErr::new("missing )".to_string()));
-            }
+            return Err(SyntaxErr::new("missing )".to_string()));
         }
     }
 }
@@ -253,12 +251,10 @@ pub fn consume_object(s: &mut IRReader) -> Result<IRRepr, SyntaxErr> {
         consume_cons_body(s)
     } else if b.at(0) == b'\"' || b.at(0) == b'\'' {
         consume_quoted(s, b.at(0))
+    } else if let Some(ir) = consume_atom(s, &b)? {
+        Ok(ir)
     } else {
-        if let Some(ir) = consume_atom(s, &b)? {
-            Ok(ir)
-        } else {
-            Err(SyntaxErr::new("empty stream".to_string()))
-        }
+        Err(SyntaxErr::new("empty stream".to_string()))
     }
 }
 

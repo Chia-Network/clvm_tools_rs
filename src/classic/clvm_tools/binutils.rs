@@ -77,7 +77,11 @@ fn has_oversized_sign_extension(atom: &Bytes) -> bool {
     false
 }
 
-pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool, keyword_from_atom: &Record<Vec<u8>, String>) -> IRRepr {
+pub fn ir_for_atom(
+    atom: &Bytes,
+    allow_keyword: bool,
+    keyword_from_atom: &Record<Vec<u8>, String>,
+) -> IRRepr {
     if atom.length() == 0 {
         return IRRepr::Null;
     }

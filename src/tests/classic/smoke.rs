@@ -121,9 +121,9 @@ fn mid_negative_value_opd_tricky_positive_3() {
 #[test]
 fn mid_negative_value_bin() {
     let mut allocator = Allocator::new();
-    let mut stream = Stream::new(Some(Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(
-        "82ffff".to_string(),
-    ))).unwrap()));
+    let mut stream = Stream::new(Some(
+        Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex("82ffff".to_string()))).unwrap(),
+    ));
 
     let atom = sexp_from_stream(
         &mut allocator,
