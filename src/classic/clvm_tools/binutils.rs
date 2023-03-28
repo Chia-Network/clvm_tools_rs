@@ -77,7 +77,7 @@ fn has_oversized_sign_extension(atom: &Bytes) -> bool {
     false
 }
 
-pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
+pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool, keyword_from_atom: &Record<Vec<u8>, String>) -> IRRepr {
     if atom.length() == 0 {
         return IRRepr::Null;
     }
@@ -89,7 +89,7 @@ pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
         }
     } else {
         if allow_keyword {
-            if let Some(kw) = keyword_from_atom().get(atom.data()) {
+            if let Some(kw) = keyword_from_atom.get(atom.data()) {
                 return IRRepr::Symbol(kw.to_string());
             }
         }
@@ -109,11 +109,7 @@ pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
 pub fn disassemble_to_ir_with_kw(
     allocator: &mut Allocator,
     sexp: NodePtr,
-    // Due to an oversight in the original port, the user's
-    // kw_from_atom settings weren't honored, however they're
-    // never non-default in this code.  This deserves looking
-    // at, but isn't pressing at the moment.
-    _keyword_from_atom: &Record<Vec<u8>, String>,
+    keyword_from_atom: &Record<Vec<u8>, String>,
     mut allow_keyword: bool,
 ) -> IRRepr {
     match allocator.sexp(sexp) {
@@ -122,14 +118,14 @@ pub fn disassemble_to_ir_with_kw(
                 allow_keyword = true;
             }
 
-            let v0 = disassemble_to_ir_with_kw(allocator, l, _keyword_from_atom, allow_keyword);
-            let v1 = disassemble_to_ir_with_kw(allocator, r, _keyword_from_atom, false);
+            let v0 = disassemble_to_ir_with_kw(allocator, l, keyword_from_atom, allow_keyword);
+            let v1 = disassemble_to_ir_with_kw(allocator, r, keyword_from_atom, false);
             IRRepr::Cons(Rc::new(v0), Rc::new(v1))
         }
 
         SExp::Atom(a) => {
             let bytes = Bytes::new(Some(BytesFromType::Raw(allocator.buf(&a).to_vec())));
-            ir_for_atom(&bytes, allow_keyword)
+            ir_for_atom(&bytes, allow_keyword, keyword_from_atom)
         }
     }
 }
