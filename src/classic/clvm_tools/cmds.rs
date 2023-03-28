@@ -191,8 +191,7 @@ pub fn call_tool(
                 let sexp = *conv_result.first();
                 let text = conv_result.rest();
                 if args.contains_key(&"script_hash".to_string()) {
-                    let data: Vec<u8> =
-                        format!("{}", sha256tree(allocator, sexp)).bytes().collect();
+                    let data: Vec<u8> = sha256tree(allocator, sexp).hex().bytes().collect();
                     stream.write(Bytes::new(Some(BytesFromType::Raw(data))));
                 } else if !text.is_empty() {
                     let data: Vec<u8> = text.to_string().bytes().collect();
