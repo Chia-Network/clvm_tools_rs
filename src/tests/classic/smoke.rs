@@ -7,7 +7,7 @@ use std::rc::Rc;
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::{t, Bytes, BytesFromType, Stream};
+use crate::classic::clvm::__type_compatibility__::{t, Bytes, Stream, UnvalidatedBytesFromType};
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{First, NodeSel, Rest, SelectNode, ThisNode};
 use crate::classic::clvm_tools::cmds::{launch_tool, OpcConversion, OpdConversion, TConversion};
@@ -121,9 +121,9 @@ fn mid_negative_value_opd_tricky_positive_3() {
 #[test]
 fn mid_negative_value_bin() {
     let mut allocator = Allocator::new();
-    let mut stream = Stream::new(Some(Bytes::new(Some(BytesFromType::Hex(
+    let mut stream = Stream::new(Some(Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(
         "82ffff".to_string(),
-    )))));
+    ))).unwrap()));
 
     let atom = sexp_from_stream(
         &mut allocator,
