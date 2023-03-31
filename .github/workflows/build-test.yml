@@ -177,6 +177,10 @@ jobs:
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
       run: cargo test --no-default-features
 
+    - name: Check coverage
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      run: python ./resources/coverage/run_coverage.py --require-percent 50
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v3
       with:
