@@ -14,12 +14,16 @@ fn test_compile_clvm_function_1() {
         "resources/tests/bridgeref/validation_taproot.clsp",
         bridge_hex_file,
         &["resources/tests/bridge-includes".to_string()],
-        &mut symbol_hash_table
-    ).expect("should compile");
+        &mut symbol_hash_table,
+    )
+    .expect("should compile");
     let bridge_hex = fs::read_to_string(bridge_hex_file).expect("should have been created");
     fs::remove_file(bridge_hex_file).expect("should have existed");
-    let read_in_hex_data = fs::read_to_string("resources/tests/bridgeref/validation_taproot.clvm.hex.reference").expect("should exist");
-    let read_in_symbol_data = read_json_from_file("resources/tests/bridgeref/validation_taproot.sym.reference");
+    let read_in_hex_data =
+        fs::read_to_string("resources/tests/bridgeref/validation_taproot.clvm.hex.reference")
+            .expect("should exist");
+    let read_in_symbol_data =
+        read_json_from_file("resources/tests/bridgeref/validation_taproot.sym.reference");
     assert_eq!(bridge_hex, read_in_hex_data);
     for (key, value) in read_in_symbol_data.iter() {
         if key != "source_file" {
@@ -31,7 +35,9 @@ fn test_compile_clvm_function_1() {
 #[test]
 fn test_compile_clvm_with_previous_data() {
     let bridge_hex_file = "validation_taproot.clvm.hex";
-    let bridge_hex = fs::read_to_string("resources/tests/bridgeref/validation_taproot.clvm.hex.reference").expect("should have been created");
+    let bridge_hex =
+        fs::read_to_string("resources/tests/bridgeref/validation_taproot.clvm.hex.reference")
+            .expect("should have been created");
     let mut symbol_hash_table = HashMap::new();
 
     fs::write(bridge_hex_file, bridge_hex).expect("should write");
@@ -39,6 +45,7 @@ fn test_compile_clvm_with_previous_data() {
         "resources/tests/bridgeref/validation_taproot.clsp",
         bridge_hex_file,
         &["resources/tests/bridge-includes".to_string()],
-        &mut symbol_hash_table
-    ).expect("should compile");
+        &mut symbol_hash_table,
+    )
+    .expect("should compile");
 }

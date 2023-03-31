@@ -13,8 +13,8 @@ use crate::classic::clvm::sexp::{First, NodeSel, Rest, SelectNode, ThisNode};
 use crate::classic::clvm_tools::cmds::{launch_tool, OpcConversion, OpdConversion, TConversion};
 
 use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemble};
-use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::ir::r#type::IRRepr;
+use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
