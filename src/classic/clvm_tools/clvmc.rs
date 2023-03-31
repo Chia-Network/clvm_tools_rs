@@ -104,7 +104,6 @@ fn compile_clvm_text(
         })
         .map_err(|s| EvalErr(allocator.null(), s.1))
     } else {
-        todo!();
         let compile_invoke_code = run(allocator);
         let input_sexp = allocator.new_pair(assembled_sexp, allocator.null())?;
         let run_program = run_program_for_search_paths(input_path, search_paths, false);
@@ -163,12 +162,10 @@ pub fn compile_clvm(
         // Try to detect whether we'd put the same output in the output file.
         // Don't proceed if true.
         if let Ok(prev_content) = fs::read_to_string(output_path) {
-            todo!();
             let prev_trimmed = prev_content.trim();
             let trimmed = target_data.trim();
             if prev_trimmed == trimmed {
                 // It's the same program, bail regardless.
-                todo!();
                 return Ok(output_path.to_string());
             }
         }
@@ -176,7 +173,6 @@ pub fn compile_clvm(
         // Make the contents appear atomically so that other test processes
         // won't mistake an empty file for intended output.
         let mut temp_output_file = NamedTempFile::new_in(output_dir).map_err(|e| {
-            todo!();
             format!("error creating temporary compiler output for {input_path}: {e:?}")
         })?;
 
@@ -185,7 +181,6 @@ pub fn compile_clvm(
             .map_err(|_| format!("failed to write to {:?}", temp_output_file.path()))?;
 
         temp_output_file.persist(output_path).map_err(|e| {
-            todo!();
             format!("error persisting temporary compiler output {output_path}: {e:?}")
         })?;
     }

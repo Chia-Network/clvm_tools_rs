@@ -14,6 +14,7 @@ use crate::classic::clvm_tools::cmds::{launch_tool, OpcConversion, OpdConversion
 
 use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemble};
 use crate::classic::clvm_tools::ir::reader::read_ir;
+use crate::classic::clvm_tools::ir::r#type::IRRepr;
 use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
@@ -708,4 +709,9 @@ fn test_fancy_destructuring_type_language() {
     );
     assert_eq!(disassemble(&mut allocator, name_by_cons), "88");
     assert_eq!(disassemble(&mut allocator, rest), "((+ 3 1))");
+}
+
+#[test]
+fn test_ir_debug_for_coverage() {
+    assert_eq!(format!("{:?}", IRRepr::Null), "Null");
 }
