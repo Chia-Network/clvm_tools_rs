@@ -4,7 +4,7 @@ use std::rc::Rc;
 use clvmr::allocator::Allocator;
 
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
-use crate::compiler::cldb::{CldbNoOverride, CldbRun, CldbRunEnv};
+use crate::compiler::cldb::{CldbNoOverride, CldbRun, CldbRunEnv, hex_to_modern_sexp};
 use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::prims;
@@ -55,4 +55,46 @@ fn test_run_clvm_in_cldb() {
             output = result;
         }
     }
+}
+
+#[test]
+fn test_cldb_hex_to_modern_sexp_smoke_0() {
+    let mut allocator = Allocator::new();
+    let symbol_table = HashMap::new();
+    let input_program = "ff01ff03ff0580";
+    let result_succeed = hex_to_modern_sexp(
+        &mut allocator,
+        &symbol_table,
+        Srcloc::start("*test*"),
+        input_program
+    ).unwrap();
+    assert_eq!(result_succeed.to_string(), "(1 3 5)");
+}
+
+#[test]
+fn test_cldb_hex_to_modern_sexp_fail_half_cons() {
+    let mut allocator = Allocator::new();
+    let symbol_table = HashMap::new();
+    let input_program = "ff01ff03ff05";
+    let result = hex_to_modern_sexp(
+        &mut allocator,
+        &symbol_table,
+        Srcloc::start("*test*"),
+        input_program
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_cldb_hex_to_modern_sexp_fail_odd_hex() {
+    let mut allocator = Allocator::new();
+    let symbol_table = HashMap::new();
+    let input_program = "ff01ff03ff058";
+    let result = hex_to_modern_sexp(
+        &mut allocator,
+        &symbol_table,
+        Srcloc::start("*test*"),
+        input_program
+    );
+    assert!(result.is_err());
 }

@@ -19,6 +19,7 @@ use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
+use crate::classic::platform::argparse::{TArgumentParserProps, Argument, ArgumentParser, NArgsSpec};
 
 #[test]
 fn nft_opc() {
@@ -714,4 +715,30 @@ fn test_fancy_destructuring_type_language() {
 #[test]
 fn test_ir_debug_for_coverage() {
     assert_eq!(format!("{:?}", IRRepr::Null), "Null");
+}
+
+#[test]
+fn test_argparse_not_present_option_1() {
+    let mut argparse = ArgumentParser::new(Some(TArgumentParserProps {
+        prog: "test".to_string(),
+        description: "test for nonexistent argument".to_string()
+    }));
+    let result = argparse.parse_args(&["--test-me".to_string()]);
+    assert_eq!(result, Err("usage: test, [-h]\n\noptional arguments:\n -h, --help  Show help message\n\nError: Unknown option: --test-me".to_string()));
+}
+
+#[test]
+fn test_argparse_not_present_option_2() {
+    let mut argparse = ArgumentParser::new(Some(TArgumentParserProps {
+        prog: "test".to_string(),
+        description: "test for nonexistent argument".to_string()
+    }));
+    argparse.add_argument(
+        vec!["--fail-to-provide".to_string()],
+        Argument::new()
+            .set_help("A help message".to_string())
+            .set_n_args(NArgsSpec::Definite(1))
+    );
+    let result = argparse.parse_args(&["--fail-to-provide".to_string()]);
+    assert_eq!(result, Err("usage: test, [-h] [--fail-to-provide]\n\noptional arguments:\n -h, --help  Show help message\n --fail-to-provide  A help message\n\nError: fail_to_provide requires a value".to_string()));
 }

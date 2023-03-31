@@ -1,12 +1,12 @@
 use clvmr::allocator::Allocator;
 use std::rc::Rc;
 
-use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble};
+use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemble};
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::stages::stage_2::compile::{
     do_com_prog, try_expand_macro_for_atom,
 };
-use crate::classic::clvm_tools::stages::stage_2::helpers::brun;
+use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote, run};
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 
 fn test_expand_macro(
@@ -132,4 +132,30 @@ fn test_compile_assert_2() {
         res,
         "(a (q \"opt\" (q 2 (\"opt\" (\"com\" (q \"assert\" 1) (q (\"assert\" (a (i 3 (q 4 (q . 26982) (c 2 (c (c (q . \"assert\") 3) (q (x))))) (q . 2)) 1)) (26982 (c (q . 2) (c (c (q . 3) (c 2 (c (c (q . \"function\") (c 5 ())) (c (c (q . \"function\") (c 11 ())) ())))) (q 64)))) (\"function\" (c (q . \"opt\") (c (c (q . \"com\") (c (c (q . 1) 2) (q (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))) ()))) (\"list\" (a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)) (\"defmacro\" (c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q)))))) (q))) 1)) 1)".to_string()
     );
+}
+
+#[test]
+fn test_stage_2_quote() {
+    let mut allocator = Allocator::new();
+    let assembled = assemble(&mut allocator, "(1 2 3)").unwrap();
+    let quoted = quote(&mut allocator, assembled).unwrap();
+    assert_eq!(disassemble(&mut allocator, quoted), "(q 1 2 3)");
+}
+
+#[test]
+fn test_stage_2_evaluate() {
+    let mut allocator = Allocator::new();
+    let prog = assemble(&mut allocator, "(q 16 2 3)").unwrap();
+    let args = assemble(&mut allocator, "(q 9 15)").unwrap();
+    let to_eval = evaluate(&mut allocator, prog, args).unwrap();
+    assert_eq!(disassemble(&mut allocator, to_eval), "(a (q 16 2 3) (q 9 15))");
+}
+
+#[test]
+fn test_stage_2_run() {
+    let mut allocator = Allocator::new();
+    let prog = assemble(&mut allocator, "(q 16 2 3)").unwrap();
+    let macro_lookup_throw = assemble(&mut allocator, "(q 9)").unwrap();
+    let to_eval = run(&mut allocator, prog, macro_lookup_throw).unwrap();
+    assert_eq!(disassemble(&mut allocator, to_eval), "(a (\"com\" (q 16 2 3) (q 1 9)) 1)");
 }
