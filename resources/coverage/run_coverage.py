@@ -46,7 +46,28 @@ def collect_coverage():
     return list(filter(is_my_code, result.show_result()))
 
 if __name__ == '__main__':
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--require-percent', help="required percentage to succeed", default=None)
+    args = parser.parse_args()
+
     delete_coverage_files()
     run_coverage_test()
     result = collect_coverage()
     print(json.dumps(result, indent=4))
+
+    if args.require_percent is not None:
+        required_percentage = int(args.require_percent)
+        has_required_pct = True
+
+        for file in result:
+            have_pct = int(file['coveragePercent'])
+            if have_pct < required_percentage:
+                print(f"{file['name']} lacks required coverage have {have_pct} want {required_percentage}")
+                has_required_pct = False
+
+        if not has_required_pct:
+            sys.exit(1)
+
