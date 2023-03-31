@@ -28,7 +28,11 @@ def run_coverage_test():
     subprocess.check_call(['cargo','test'],env=env)
 
 def is_my_code(desc):
-    return not('.cargo' in desc['name']) and not('library/std' in desc['name']) and not('src/classic/bins' in desc['name'])
+    for path in ['.cargo','library/std','src/py','src/classic/bins']:
+        if path in desc['name']:
+            return False
+
+    return True
 
 def collect_coverage():
     profile_files = get_profile_files('.')
