@@ -48,4 +48,5 @@ fn test_compile_clvm_with_previous_data() {
         &mut symbol_hash_table,
     )
     .expect("should compile");
+    fs::remove_file(bridge_hex_file).expect("should have existed");
 }
