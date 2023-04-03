@@ -100,7 +100,7 @@ pub fn consume_quoted(s: &mut IRReader, q: u8) -> Result<IRRepr, SyntaxErr> {
             qchars.push(b.at(0));
         } else if b.at(0) == b'\\' {
             bs = true;
-        } else if b.at(0) == q as u8 {
+        } else if b.at(0) == q {
             break;
         } else {
             qchars.push(b.at(0));
