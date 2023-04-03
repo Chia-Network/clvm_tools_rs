@@ -78,12 +78,17 @@ pub fn hex_of_hash(hash: &[u8]) -> String {
 }
 
 pub fn is_op(v: u8, op: Rc<SExp>) -> bool {
-    if let SExp::Integer(_, i) = op.borrow() {
-        *i == v.to_bigint().unwrap()
-    } else if let SExp::Atom(_, n) = op.borrow() {
-        *n == vec![v]
-    } else {
-        false
+    match op.borrow() {
+        SExp::Integer(_, i) => {
+            *i == v.to_bigint().unwrap()
+        }
+        SExp::Atom(_, n) => {
+            *n == vec![v]
+        }
+        SExp::QuotedString(_, _, n) => {
+            *n == vec![v]
+        }
+        _ => false
     }
 }
 
