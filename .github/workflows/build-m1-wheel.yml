@@ -82,9 +82,11 @@ jobs:
 #        cd clvm
 #        arch -arm64 python -m py.test tests
 
-    - name: Run tests from clvm_tools
+    - name: Run tests from clvm_tools_rs
       continue-on-error: true
       run: |
+        echo "PWD: $(pwd)"
+        echo "LS: $(ls)"
         . ./venv/bin/activate
         cd clvm_tools_rs
         arch -arm64 cargo test
