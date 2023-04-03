@@ -88,8 +88,8 @@ jobs:
         echo "PWD: $(pwd)"
         echo "LS: $(ls)"
         . ./venv/bin/activate
-        cd clvm_tools_rs
-        arch -arm64 cargo test
+        sleep 3
+        arch -arm64 cargo test --no-default-features
 
     - name: Upload wheels
       uses: actions/upload-artifact@v3
