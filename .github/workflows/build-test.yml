@@ -14,7 +14,7 @@ on:
 
 jobs:
   build_wheels:
-    name: Run cargo tests on ${{ matrix.os }} py-${{ matrix.python }}
+    name: Build wheels and run Cargo tests on ${{ matrix.os }} py-${{ matrix.python }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
