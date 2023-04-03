@@ -79,16 +79,10 @@ pub fn hex_of_hash(hash: &[u8]) -> String {
 
 pub fn is_op(v: u8, op: Rc<SExp>) -> bool {
     match op.borrow() {
-        SExp::Integer(_, i) => {
-            *i == v.to_bigint().unwrap()
-        }
-        SExp::Atom(_, n) => {
-            *n == vec![v]
-        }
-        SExp::QuotedString(_, _, n) => {
-            *n == vec![v]
-        }
-        _ => false
+        SExp::Integer(_, i) => *i == v.to_bigint().unwrap(),
+        SExp::Atom(_, n) => *n == vec![v],
+        SExp::QuotedString(_, _, n) => *n == vec![v],
+        _ => false,
     }
 }
 
@@ -141,12 +135,11 @@ fn sexp_from_symbol_table(
 }
 
 fn uses_left_env(symbol_table: &HashMap<String, String>, hash: &[u8]) -> bool {
-    let loc = Srcloc::start("*sym*");
     let hex_hash = hex_of_hash(hash);
     let item_name = format!("{hex_hash}_left_env");
-    truthy(
-        sexp_from_symbol_table(symbol_table, &item_name).unwrap_or_else(|| Rc::new(SExp::Nil(loc))),
-    )
+    sexp_from_symbol_table(symbol_table, &item_name)
+        .map(|e| truthy(e))
+        .unwrap_or_else(|| false)
 }
 
 fn make_relevant_info(
@@ -284,7 +277,7 @@ impl HierarchialRunner {
             if self.running.pop().is_none() {
                 return Err(RunFailure::RunErr(
                     self.prog.loc(),
-                    "running had no frame to pop".to_string()
+                    "running had no frame to pop".to_string(),
                 ));
             }
 
