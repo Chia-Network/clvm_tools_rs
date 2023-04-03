@@ -47,9 +47,14 @@ use crate::compiler::usecheck::check_parameters_used_compileform;
 //   return `<span id="${s.__repr__()}">${disassemble_f(s)}</span>`;
 // }
 
+/// Contains additional info beside the compiled form for chialisp functions/
+/// These can be passed on and used by debuggers and such.
 #[derive(Clone)]
 pub struct FunctionExtraInfo {
+    /// The form of the original arguments from the source code.
     pub args: NodePtr,
+    /// Whether this function requires the constants and functions of the program
+    /// as an additional hidden parameter.
     pub has_constants_tree: bool,
 }
 

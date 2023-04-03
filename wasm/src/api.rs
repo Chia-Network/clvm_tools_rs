@@ -240,7 +240,7 @@ pub fn create_clvm_runner(
     ));
     let prim_map_rc = Rc::new(prim_map);
     let step = start_step(program.clone(), args.clone());
-    let cldbenv = CldbRunEnv::new(None, vec![], runner_override);
+    let cldbenv = CldbRunEnv::new(None, Rc::new(vec![]), runner_override);
     let cldbrun = CldbRun::new(runner.clone(), prim_map_rc.clone(), Box::new(cldbenv), step);
 
     let this_id = get_next_id();
