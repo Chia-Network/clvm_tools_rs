@@ -287,7 +287,7 @@ pub fn brun(args: &[String]) {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, "brun", 0);
     if let Err(e) = io::stdout().write_all(s.get_value().data()) {
-        println!("{}", e)
+        println!("{e}")
     }
 }
 

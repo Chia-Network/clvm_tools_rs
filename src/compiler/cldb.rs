@@ -508,15 +508,10 @@ pub fn hex_to_modern_sexp(
     loc: Srcloc,
     input_program: &str,
 ) -> Result<Rc<SExp>, RunFailure> {
-    let input_serialized = match Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(
+    let input_serialized = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(
         input_program.to_string(),
-    ))) {
-        Ok(x) => x,
-        Err(e) => {
-            // TODO: Should be SyntaxErr ?
-            return Err(RunFailure::RunErr(loc, e.to_string()));
-        }
-    };
+    )))
+    .map_err(|e| RunFailure::RunErr(loc.clone(), e.to_string()))?;
 
     let mut stream = Stream::new(Some(input_serialized));
     let sexp = sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))

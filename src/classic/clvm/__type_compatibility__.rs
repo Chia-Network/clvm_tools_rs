@@ -141,7 +141,7 @@ impl Bytes {
                 match hex::decode(&hex_stripped) {
                     Ok(d) => Ok(Bytes { _b: d }),
                     Err(e) => Err(SyntaxErr {
-                        msg: format!("{} in '{}'", e, hex_stripped),
+                        msg: format!("{e} in '{hex_stripped}'"),
                     }),
                 }
             }
