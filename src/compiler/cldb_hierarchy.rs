@@ -264,6 +264,79 @@ impl HierarchialRunner {
             || self.running.len() == 1 && self.running[0].run.is_ended()
     }
 
+    fn push_synthetic_stack_frame(&mut self, current_env: Rc<SExp>, info: &RunStepRelevantInfo) {
+        let arg_step = clvm::start_step(info.prog.clone(), info.runtime_argument_values.clone());
+
+        let arg_run = CldbRun::new(
+            self.runner.clone(),
+            self.prim_map.clone(),
+            Box::new(CldbRunEnv::new(
+                self.input_file.clone(),
+                self.program_lines.clone(),
+                Box::new(CldbNoOverride::new()),
+            )),
+            arg_step,
+        );
+
+        let mut named_args = HashMap::new();
+        get_args_from_env(
+            &mut named_args,
+            self.program_lines.clone(),
+            info.formal_parameters.clone(),
+            info.runtime_argument_values.clone(),
+            info.left_env,
+        );
+
+        let arg_frame = HierarchyFrame {
+            purpose: RunPurpose::ComputeArgument,
+
+            prog: info.prog.clone(),
+            env: info.runtime_argument_values.clone(),
+
+            function_hash: info.hash.clone(),
+            function_name: info.name.clone(),
+            function_arguments: info.runtime_argument_values.clone(),
+            function_left_env: info.left_env,
+
+            named_args: named_args.clone(),
+
+            run: arg_run,
+            source: info.prog.loc(),
+        };
+
+        // Make an empty frame to repopulate (maybe option here?).
+        let step = clvm::start_step(info.prog.clone(), current_env.clone());
+        let run = CldbRun::new(
+            self.runner.clone(),
+            self.prim_map.clone(),
+            Box::new(CldbRunEnv::new(
+                self.input_file.clone(),
+                self.program_lines.clone(),
+                Box::new(CldbNoOverride::new()),
+            )),
+            step,
+        );
+
+        self.running.push(HierarchyFrame {
+            purpose: RunPurpose::Main,
+
+            prog: info.prog.clone(),
+            env: current_env,
+
+            function_hash: info.hash.clone(),
+            function_name: info.name.clone(),
+            function_arguments: info.formal_parameters.clone(),
+            function_left_env: info.left_env,
+            source: info.prog.loc(),
+
+            named_args,
+
+            run,
+        });
+
+        self.running.push(arg_frame);
+    }
+
     pub fn step(&mut self) -> Result<HierarchialStepResult, RunFailure> {
         if self.running.is_empty() {
             return Err(RunFailure::RunErr(
@@ -273,6 +346,8 @@ impl HierarchialRunner {
         }
 
         let mut idx = self.running.len() - 1;
+        let current_env = self.running[idx].env.clone();
+        let current_step = self.running[idx].run.current_step();
         if let Some(outcome) = self.running[idx].run.final_result() {
             if self.running.pop().is_none() {
                 return Err(RunFailure::RunErr(
@@ -306,92 +381,18 @@ impl HierarchialRunner {
             );
 
             Ok(HierarchialStepResult::ShapeChange)
+        } else if let Some(info) = relevant_run_step_info(&self.symbol_table, &current_step) {
+            // Create a frame based on the last argument.
+            self.push_synthetic_stack_frame(current_env, &info);
+
+            Ok(HierarchialStepResult::ShapeChange)
         } else {
-            let current_env = self.running[idx].env.clone();
-            let current_step = self.running[idx].run.current_step();
-            if let Some(info) = relevant_run_step_info(&self.symbol_table, &current_step) {
-                // Create a frame based on the last argument.
-                let arg_step =
-                    clvm::start_step(info.prog.clone(), info.runtime_argument_values.clone());
-
-                let arg_run = CldbRun::new(
-                    self.runner.clone(),
-                    self.prim_map.clone(),
-                    Box::new(CldbRunEnv::new(
-                        self.input_file.clone(),
-                        self.program_lines.clone(),
-                        Box::new(CldbNoOverride::new()),
-                    )),
-                    arg_step,
-                );
-
-                let mut named_args = HashMap::new();
-                get_args_from_env(
-                    &mut named_args,
-                    self.program_lines.clone(),
-                    info.formal_parameters.clone(),
-                    info.runtime_argument_values.clone(),
-                    info.left_env,
-                );
-
-                let arg_frame = HierarchyFrame {
-                    purpose: RunPurpose::ComputeArgument,
-
-                    prog: info.prog.clone(),
-                    env: info.runtime_argument_values.clone(),
-
-                    function_hash: info.hash.clone(),
-                    function_name: info.name.clone(),
-                    function_arguments: info.runtime_argument_values,
-                    function_left_env: info.left_env,
-
-                    named_args: named_args.clone(),
-
-                    run: arg_run,
-                    source: info.prog.loc(),
-                };
-
-                // Make an empty frame to repopulate (maybe option here?).
-                let step = clvm::start_step(info.prog.clone(), current_env.clone());
-                let run = CldbRun::new(
-                    self.runner.clone(),
-                    self.prim_map.clone(),
-                    Box::new(CldbRunEnv::new(
-                        self.input_file.clone(),
-                        self.program_lines.clone(),
-                        Box::new(CldbNoOverride::new()),
-                    )),
-                    step,
-                );
-
-                self.running.push(HierarchyFrame {
-                    purpose: RunPurpose::Main,
-
-                    prog: info.prog.clone(),
-                    env: current_env,
-
-                    function_hash: info.hash.clone(),
-                    function_name: info.name.clone(),
-                    function_arguments: info.formal_parameters.clone(),
-                    function_left_env: info.left_env,
-                    source: info.prog.loc(),
-
-                    named_args,
-
-                    run,
-                });
-
-                self.running.push(arg_frame);
-
-                Ok(HierarchialStepResult::ShapeChange)
-            } else {
-                // Not final result, we'll step the top of the stack.
-                let info = self.running[idx].run.step(&mut self.allocator);
-                if let Some(i) = &info {
-                    self.error |= i.get("Failure").is_some();
-                }
-                Ok(HierarchialStepResult::Info(info))
+            // Not final result, we'll step the top of the stack.
+            let info = self.running[idx].run.step(&mut self.allocator);
+            if let Some(i) = &info {
+                self.error |= i.get("Failure").is_some();
             }
+            Ok(HierarchialStepResult::Info(info))
         }
     }
 }
