@@ -226,3 +226,4 @@ jobs:
             components: rustfmt, clippy
       - name: cargo test
         run: cargo test
+

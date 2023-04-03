@@ -83,7 +83,7 @@ fn compile_clvm_text(
     text: &str,
     input_path: &str,
 ) -> Result<NodePtr, EvalErr> {
-    let ir_src = read_ir(text).map_err(|s| EvalErr(allocator.null(), s))?;
+    let ir_src = read_ir(text).map_err(|s| EvalErr(allocator.null(), s.to_string()))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
 
     if let Some(dialect) = detect_modern(allocator, assembled_sexp) {
