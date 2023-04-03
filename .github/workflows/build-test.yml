@@ -1,5 +1,5 @@
 # Thanks: clvm_rs' github actions.
-name: Build wheels
+name: Run Mac, Linux, and Windows tests and build Wheels
 
 on:
   push:
@@ -14,7 +14,7 @@ on:
 
 jobs:
   build_wheels:
-    name: Build Wheel on ${{ matrix.os }} py-${{ matrix.python }}
+    name: Run cargo tests on ${{ matrix.os }} py-${{ matrix.python }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -139,6 +139,10 @@ jobs:
         cd clvm
         pip install pytest pytest-asyncio
         pytest tests
+
+    - name: Run cargo tests
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      run: cargo test --no-default-features
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v3
