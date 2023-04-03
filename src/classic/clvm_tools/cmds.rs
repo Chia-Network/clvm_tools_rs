@@ -113,7 +113,7 @@ pub fn call_tool_stdout(allocator: &mut Allocator, tool_name: &str, input_args: 
         Ok(_) => {
             let s = stdout_stream.get_value();
             if s.length() > 0 {
-                println!("{}", s.to_formal_string());
+                println!("{}", s.decode());
             }
         }
         Err(e) => {
