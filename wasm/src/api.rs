@@ -12,7 +12,7 @@ use wasm_bindgen::JsCast;
 
 use clvmr::allocator::Allocator;
 
-use clvm_tools_rs::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use clvm_tools_rs::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
 use clvm_tools_rs::classic::clvm::serialize::sexp_to_stream;
 use clvm_tools_rs::classic::clvm_tools::clvmc::compile_clvm_inner;
 use clvm_tools_rs::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
@@ -374,7 +374,16 @@ pub fn compose_run_function(
             ));
         }
     };
-    let hash_bytes = Bytes::new(Some(BytesFromType::Hex(function_hash.clone())));
+    let hash_bytes = match Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(function_hash.clone()))) {
+        Err(e) => {
+            return create_clvm_compile_failure(&CompileErr(
+                program.loc(),
+                e.to_string(),
+            ));
+        },
+        Ok(x) => x,
+    };
+    
     let function_path = match path_to_function(main_env.1.clone(), &hash_bytes.data().clone()) {
         Some(p) => p,
         _ => {
