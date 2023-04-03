@@ -20,14 +20,18 @@ use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 use clvm_rs::run_program::PreEval;
 
-use crate::classic::clvm::__type_compatibility__::{t, Bytes, BytesFromType, Stream, Tuple};
+use crate::classic::clvm::__type_compatibility__::{
+    t, Bytes, BytesFromType, Stream, Tuple, UnvalidatedBytesFromType,
+};
 use crate::classic::clvm::keyword_from_atom;
 use crate::classic::clvm::serialize::{sexp_from_stream, sexp_to_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
 use crate::classic::clvm_tools::clvmc::detect_modern;
+use crate::classic::clvm_tools::debug::check_unused;
 use crate::classic::clvm_tools::debug::{
-    check_unused, trace_pre_eval, trace_to_table, trace_to_text,
+    program_hash_from_program_env_cons, start_log_after, trace_pre_eval, trace_to_table,
+    trace_to_text,
 };
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
@@ -59,6 +63,27 @@ use crate::compiler::srcloc::Srcloc;
 use crate::util::collapse;
 use crate::util::version;
 
+struct ConversionDesc {
+    desc: &'static str,
+    conv: Box<dyn TConversion>,
+}
+
+fn get_tool_description(tool_name: &str) -> Option<ConversionDesc> {
+    if tool_name == "opc" {
+        Some(ConversionDesc {
+            desc: "Compile a clvm script.",
+            conv: Box::new(OpcConversion {}),
+        })
+    } else if tool_name == "opd" {
+        Some(ConversionDesc {
+            desc: "Disassemble a compiled clvm script from hex.",
+            conv: Box::new(OpdConversion {}),
+        })
+    } else {
+        None
+    }
+}
+
 pub struct PathOrCodeConv {}
 
 impl ArgumentValueConv for PathOrCodeConv {
@@ -83,19 +108,42 @@ pub trait TConversion {
         text: &str,
     ) -> Result<Tuple<NodePtr, String>, String>;
 }
+
+pub fn call_tool_stdout(allocator: &mut Allocator, tool_name: &str, input_args: &[String]) {
+    let mut stdout_stream = Stream::new(None);
+    match call_tool(&mut stdout_stream, allocator, tool_name, input_args) {
+        Ok(_) => {
+            let s = stdout_stream.get_value();
+            if s.length() > 0 {
+                println!("{}", s.decode());
+            }
+        }
+        Err(e) => {
+            eprintln!("{e}");
+        }
+    }
+}
+
 pub fn call_tool(
+    stream: &mut Stream,
     allocator: &mut Allocator,
     tool_name: &str,
-    desc: &str,
-    conversion: Box<dyn TConversion>,
     input_args: &[String],
-) {
+) -> Result<(), String> {
+    let task =
+        get_tool_description(tool_name).ok_or_else(|| format!("unknown tool {tool_name}"))?;
     let props = TArgumentParserProps {
-        description: desc.to_string(),
+        description: task.desc.to_string(),
         prog: tool_name.to_string(),
     };
 
     let mut parser = ArgumentParser::new(Some(props));
+    parser.add_argument(
+        vec!["--version".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("Show version".to_string()),
+    );
     parser.add_argument(
         vec!["-H".to_string(), "--script-hash".to_string()],
         Argument::new()
@@ -116,9 +164,15 @@ pub fn call_tool(
         Ok(a) => a,
         Err(e) => {
             println!("{e}");
-            return;
+            return Ok(());
         }
     };
+
+    if args.contains_key("version") {
+        let version = version();
+        println!("{version}");
+        return Ok(());
+    }
 
     let args_path_or_code_val = match args.get(&"path_or_code".to_string()) {
         None => ArgumentValue::ArgArray(vec![]),
@@ -134,30 +188,27 @@ pub fn call_tool(
         match program {
             ArgumentValue::ArgString(_, s) => {
                 if s == "-" {
-                    panic!("Read stdin is not supported at this time");
+                    return Err("Read stdin is not supported at this time".to_string());
                 }
 
-                let conv_result = conversion.invoke(allocator, &s);
-                match conv_result {
-                    Ok(conv_result) => {
-                        let sexp = *conv_result.first();
-                        let text = conv_result.rest();
-                        if args.contains_key(&"script_hash".to_string()) {
-                            println!("{}", sha256tree(allocator, sexp).hex());
-                        } else if !text.is_empty() {
-                            println!("{text}");
-                        }
-                    }
-                    Err(e) => {
-                        panic!("Conversion returned error: {:?}", e);
-                    }
+                let conv_result = task.conv.invoke(allocator, &s)?;
+                let sexp = *conv_result.first();
+                let text = conv_result.rest();
+                if args.contains_key(&"script_hash".to_string()) {
+                    let data: Vec<u8> = sha256tree(allocator, sexp).hex().bytes().collect();
+                    stream.write(Bytes::new(Some(BytesFromType::Raw(data))));
+                } else if !text.is_empty() {
+                    let data: Vec<u8> = text.to_string().bytes().collect();
+                    stream.write(Bytes::new(Some(BytesFromType::Raw(data))));
                 }
             }
             _ => {
-                panic!("inappropriate argument conversion");
+                return Err("inappropriate argument conversion".to_string());
             }
         }
     }
+
+    Ok(())
 }
 
 pub struct OpcConversion {}
@@ -169,8 +220,11 @@ impl TConversion for OpcConversion {
         hex_text: &str,
     ) -> Result<Tuple<NodePtr, String>, String> {
         read_ir(hex_text)
+            .map_err(|e| e.to_string())
             .and_then(|ir_sexp| assemble_from_ir(allocator, Rc::new(ir_sexp)).map_err(|e| e.1))
             .map(|sexp| t(sexp, sexp_as_bin(allocator, sexp).hex()))
+            .map(Ok) // Flatten result type to Ok
+            .unwrap_or_else(|err| Ok(t(allocator.null(), err))) // Original code printed error messages on stdout, ret 0 on CLVM error
     }
 }
 
@@ -182,9 +236,12 @@ impl TConversion for OpdConversion {
         allocator: &mut Allocator,
         hex_text: &str,
     ) -> Result<Tuple<NodePtr, String>, String> {
-        let mut stream = Stream::new(Some(Bytes::new(Some(BytesFromType::Hex(
-            hex_text.to_string(),
-        )))));
+        let mut stream = Stream::new(Some(
+            match Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(hex_text.to_string()))) {
+                Ok(x) => x,
+                Err(e) => return Err(e.to_string()),
+            },
+        ));
 
         sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
             .map_err(|e| e.1)
@@ -197,24 +254,12 @@ impl TConversion for OpdConversion {
 
 pub fn opc(args: &[String]) {
     let mut allocator = Allocator::new();
-    call_tool(
-        &mut allocator,
-        "opc",
-        "Compile a clvm script.",
-        Box::new(OpcConversion {}),
-        args,
-    );
+    call_tool_stdout(&mut allocator, "opc", args);
 }
 
 pub fn opd(args: &[String]) {
     let mut allocator = Allocator::new();
-    call_tool(
-        &mut allocator,
-        "opd",
-        "Disassemble a compiled clvm script from hex.",
-        Box::new(OpdConversion {}),
-        args,
-    );
+    call_tool_stdout(&mut allocator, "opd", args);
 }
 
 struct StageImport {}
@@ -243,9 +288,9 @@ pub fn run(args: &[String]) {
 pub fn brun(args: &[String]) {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, "brun", 0);
-    io::stdout()
-        .write_all(s.get_value().data())
-        .expect("stdout");
+    if let Err(e) = io::stdout().write_all(s.get_value().data()) {
+        println!("{e}")
+    }
 }
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
@@ -994,18 +1039,33 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     match parsed_args.get("hex") {
         Some(_) => {
-            let assembled_serialized =
-                Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
+            let assembled_serialized = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(
+                input_program.to_string(),
+            )));
 
             let env_serialized = if input_args.is_empty() {
-                Bytes::new(Some(BytesFromType::Hex("80".to_string())))
+                Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex("80".to_string())))
             } else {
-                Bytes::new(Some(BytesFromType::Hex(input_args)))
+                Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(input_args)))
             };
 
+            let ee = match env_serialized {
+                Ok(x) => x,
+                Err(e) => {
+                    stdout.write_str(&format!("FAIL: {e}\n"));
+                    return;
+                }
+            };
             time_read_hex = SystemTime::now();
 
-            let mut prog_stream = Stream::new(Some(assembled_serialized));
+            let mut prog_stream = Stream::new(Some(match assembled_serialized {
+                Ok(x) => x,
+                Err(e) => {
+                    stdout.write_str(&format!("FAIL: {e}\n"));
+                    return;
+                }
+            }));
+
             let input_prog_sexp = sexp_from_stream(
                 &mut allocator,
                 &mut prog_stream,
@@ -1014,7 +1074,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .map(|x| Some(x.1))
             .unwrap();
 
-            let mut arg_stream = Stream::new(Some(env_serialized));
+            let mut arg_stream = Stream::new(Some(ee));
             let input_arg_sexp = sexp_from_stream(
                 &mut allocator,
                 &mut arg_stream,
@@ -1082,6 +1142,10 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         });
 
     if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("verbose") {
+        emit_symbol_output = true;
+    }
+
+    if parsed_args.get("table").is_some() {
         emit_symbol_output = true;
     }
 
@@ -1296,6 +1360,15 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         }
     });
 
+    // In the case of table tracing, we don't want to emit the startup steps for
+    // brun, which involves excuting (2 2 3) on the program and its args.
+    //
+    // Here, if we're in that mode, we'll produce the hash of the input program so
+    // that we can recognize it and start the output for the table trace.
+    let maybe_program_hash = parsed_args
+        .get("table")
+        .and_then(|_| program_hash_from_program_env_cons(&mut allocator, input_sexp.unwrap()).ok());
+
     let time_parse_input = SystemTime::now();
     let res = run_program
         .run_program(
@@ -1393,7 +1466,11 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     // and the pass doing the post callbacks, we can integrate them in the main
     // thread.  We didn't do this in the callbacks because we didn't want to
     // deal with a possibly escaping mutable allocator &.
-    let mut log_content = log_entries.lock().unwrap().finish();
+    let mut log_content = start_log_after(
+        &mut allocator,
+        maybe_program_hash,
+        log_entries.lock().unwrap().finish(),
+    );
     let log_updates = log_updates.lock().unwrap().finish();
     fix_log(&mut allocator, &mut log_content, &log_updates);
 
@@ -1403,17 +1480,18 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .unwrap_or_else(|| false);
 
     if emit_symbol_output {
-        stdout.write_str("\n");
-        trace_to_text(
-            &mut allocator,
-            stdout,
-            only_exn,
-            &log_content,
-            symbol_table.clone(),
-            &disassemble,
-        );
         if parsed_args.get("table").is_some() {
             trace_to_table(
+                &mut allocator,
+                stdout,
+                only_exn,
+                &log_content,
+                symbol_table,
+                &disassemble,
+            );
+        } else {
+            stdout.write_str("\n");
+            trace_to_text(
                 &mut allocator,
                 stdout,
                 only_exn,
