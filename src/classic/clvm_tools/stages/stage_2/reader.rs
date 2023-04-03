@@ -4,7 +4,7 @@ use std::rc::Rc;
 use clvmr::allocator::{Allocator, NodePtr, SExp};
 use clvmr::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use crate::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{proper_list, rest};
 use crate::classic::clvm_tools::stages::assemble;
@@ -25,7 +25,10 @@ pub fn convert_hex_to_sexp(
     allocator: &mut Allocator,
     file_data: &[u8],
 ) -> Result<NodePtr, EvalErr> {
-    let content_bytes = Bytes::new(Some(BytesFromType::Hex(decode_string(file_data))));
+    let content_bytes = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(decode_string(
+        file_data,
+    ))))
+    .map_err(|e| EvalErr(allocator.null(), e.to_string()))?;
     let mut reader_stream = Stream::new(Some(content_bytes));
     Ok(sexp_from_stream(
         allocator,

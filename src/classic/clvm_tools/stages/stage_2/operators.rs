@@ -153,7 +153,7 @@ impl CompilerOperatorsInternal {
                         .map_err(|_| EvalErr(allocator.null(), "Failed to read file".to_string()))
                         .and_then(|content| {
                             read_ir(&content)
-                                .map_err(|e| EvalErr(allocator.null(), e))
+                                .map_err(|e| EvalErr(allocator.null(), e.to_string()))
                                 .and_then(|ir| {
                                     assemble_from_ir(allocator, Rc::new(ir))
                                         .map(|ir_sexp| Reduction(1, ir_sexp))
