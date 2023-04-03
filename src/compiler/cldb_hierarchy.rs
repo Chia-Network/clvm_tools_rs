@@ -138,7 +138,7 @@ fn uses_left_env(symbol_table: &HashMap<String, String>, hash: &[u8]) -> bool {
     let hex_hash = hex_of_hash(hash);
     let item_name = format!("{hex_hash}_left_env");
     sexp_from_symbol_table(symbol_table, &item_name)
-        .map(|e| truthy(e))
+        .map(truthy)
         .unwrap_or_else(|| false)
 }
 
@@ -311,7 +311,8 @@ impl HierarchialRunner {
             let current_step = self.running[idx].run.current_step();
             if let Some(info) = relevant_run_step_info(&self.symbol_table, &current_step) {
                 // Create a frame based on the last argument.
-                let arg_step = clvm::start_step(info.prog.clone(), info.runtime_argument_values.clone());
+                let arg_step =
+                    clvm::start_step(info.prog.clone(), info.runtime_argument_values.clone());
 
                 let arg_run = CldbRun::new(
                     self.runner.clone(),
