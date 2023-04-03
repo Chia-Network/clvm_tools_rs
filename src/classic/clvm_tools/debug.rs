@@ -6,7 +6,7 @@ use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 use crate::classic::clvm::serialize::sexp_to_stream;
-use crate::classic::clvm::sexp::{enlist, proper_list, rest};
+use crate::classic::clvm::sexp::{enlist, proper_list, rest, First, SelectNode, ThisNode};
 
 use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
@@ -188,9 +188,9 @@ fn table_trace(
     sexp_to_stream(allocator, args, &mut args_stream);
     let mut benv_stream = Stream::new(None);
     sexp_to_stream(allocator, env, &mut benv_stream);
-    stdout.write_str(&format!("bexp: {}\n", sexp_stream.get_value().hex()));
-    stdout.write_str(&format!("barg: {}\n", args_stream.get_value().hex()));
-    stdout.write_str(&format!("benv: {}\n", benv_stream.get_value().hex()));
+    stdout.write_str(&format!("bexp: {}\n", sexp_stream.get_value().pybytes()));
+    stdout.write_str(&format!("barg: {}\n", args_stream.get_value().pybytes()));
+    stdout.write_str(&format!("benv: {}\n", benv_stream.get_value().pybytes()));
     stdout.write_str("--\n");
 }
 
@@ -317,5 +317,34 @@ pub fn check_unused(
         Ok((false, output.get_value().decode()))
     } else {
         Ok((true, output.get_value().decode()))
+    }
+}
+
+pub fn program_hash_from_program_env_cons(
+    allocator: &mut Allocator,
+    prog_pair: NodePtr,
+) -> Result<Bytes, EvalErr> {
+    let First::Here(program) = First::Here(ThisNode::Here).select_nodes(allocator, prog_pair)?;
+    Ok(sha256tree(allocator, program))
+}
+
+pub fn start_log_after(
+    allocator: &mut Allocator,
+    maybe_program_hash: Option<Bytes>,
+    log: Vec<NodePtr>,
+) -> Vec<NodePtr> {
+    if let Some(hash) = maybe_program_hash {
+        log.into_iter()
+            .skip_while(|e| {
+                if let Ok(program_hash) = program_hash_from_program_env_cons(allocator, *e) {
+                    // Skip while we haven't found the hash we want.
+                    program_hash.data() != hash.data()
+                } else {
+                    true
+                }
+            })
+            .collect()
+    } else {
+        log
     }
 }

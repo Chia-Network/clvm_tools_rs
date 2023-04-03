@@ -200,6 +200,10 @@ impl Bytes {
         pybytes_repr(&self._b, true)
     }
 
+    pub fn pybytes(&self) -> String {
+        pybytes_repr(&self._b, false)
+    }
+
     pub fn hex(&self) -> String {
         to_hexstr(&self._b)
     }

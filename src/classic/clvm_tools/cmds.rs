@@ -28,8 +28,10 @@ use crate::classic::clvm::serialize::{sexp_from_stream, sexp_to_stream, SimpleCr
 use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
 use crate::classic::clvm_tools::clvmc::detect_modern;
+use crate::classic::clvm_tools::debug::check_unused;
 use crate::classic::clvm_tools::debug::{
-    check_unused, trace_pre_eval, trace_to_table, trace_to_text,
+    program_hash_from_program_env_cons, start_log_after, trace_pre_eval, trace_to_table,
+    trace_to_text,
 };
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
@@ -1179,6 +1181,15 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         }
     });
 
+    // In the case of table tracing, we don't want to emit the startup steps for
+    // brun, which involves excuting (2 2 3) on the program and its args.
+    //
+    // Here, if we're in that mode, we'll produce the hash of the input program so
+    // that we can recognize it and start the output for the table trace.
+    let maybe_program_hash = parsed_args
+        .get("table")
+        .and_then(|_| program_hash_from_program_env_cons(&mut allocator, input_sexp.unwrap()).ok());
+
     let time_parse_input = SystemTime::now();
     let res = run_program
         .run_program(
@@ -1276,7 +1287,11 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     // and the pass doing the post callbacks, we can integrate them in the main
     // thread.  We didn't do this in the callbacks because we didn't want to
     // deal with a possibly escaping mutable allocator &.
-    let mut log_content = log_entries.lock().unwrap().finish();
+    let mut log_content = start_log_after(
+        &mut allocator,
+        maybe_program_hash,
+        log_entries.lock().unwrap().finish(),
+    );
     let log_updates = log_updates.lock().unwrap().finish();
     fix_log(&mut allocator, &mut log_content, &log_updates);
 
@@ -1286,20 +1301,18 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .unwrap_or_else(|| false);
 
     if emit_symbol_output {
-        if parsed_args.get("table").is_none() {
-            stdout.write_str("\n");
-            trace_to_text(
+        if parsed_args.get("table").is_some() {
+            trace_to_table(
                 &mut allocator,
                 stdout,
                 only_exn,
                 &log_content,
-                symbol_table.clone(),
+                symbol_table,
                 &disassemble,
             );
-        }
-
-        if parsed_args.get("table").is_some() {
-            trace_to_table(
+        } else {
+            stdout.write_str("\n");
+            trace_to_text(
                 &mut allocator,
                 stdout,
                 only_exn,
