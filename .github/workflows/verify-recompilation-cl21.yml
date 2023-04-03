@@ -213,7 +213,7 @@ jobs:
           toolchain: stable
           components: clippy
           override: true
-      - name: clippy
+      - name: clippy on ${{ matrix.os }} py-${{ matrix.python }}
         run: cargo clippy --all -- -D warnings
       - uses: actions-rs/clippy-check@v1
         with:
