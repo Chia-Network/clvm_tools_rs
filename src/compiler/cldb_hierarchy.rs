@@ -20,8 +20,8 @@ pub struct RunStepRelevantInfo {
     name: String,
     hash: Vec<u8>,
     prog: Rc<SExp>,
-    args: Rc<SExp>,
-    tail: Rc<SExp>,
+    formal_parameters: Rc<SExp>,
+    runtime_argument_values: Rc<SExp>,
     left_env: bool,
 }
 
@@ -159,9 +159,9 @@ fn make_relevant_info(
         .map(|fun_name| RunStepRelevantInfo {
             hash: hash.to_vec(),
             name: fun_name.clone(),
-            args: fun_args,
+            formal_parameters: fun_args,
             prog: prog.clone(),
-            tail: env.clone(),
+            runtime_argument_values: env.clone(),
             left_env: uses_left_env(symbol_table, hash),
         })
 }
@@ -311,7 +311,7 @@ impl HierarchialRunner {
             let current_step = self.running[idx].run.current_step();
             if let Some(info) = relevant_run_step_info(&self.symbol_table, &current_step) {
                 // Create a frame based on the last argument.
-                let arg_step = clvm::start_step(info.prog.clone(), info.tail.clone());
+                let arg_step = clvm::start_step(info.prog.clone(), info.runtime_argument_values.clone());
 
                 let arg_run = CldbRun::new(
                     self.runner.clone(),
@@ -328,8 +328,8 @@ impl HierarchialRunner {
                 get_args_from_env(
                     &mut named_args,
                     self.program_lines.clone(),
-                    info.args.clone(),
-                    info.tail.clone(),
+                    info.formal_parameters.clone(),
+                    info.runtime_argument_values.clone(),
                     info.left_env,
                 );
 
@@ -337,11 +337,11 @@ impl HierarchialRunner {
                     purpose: RunPurpose::ComputeArgument,
 
                     prog: info.prog.clone(),
-                    env: info.tail.clone(),
+                    env: info.runtime_argument_values.clone(),
 
                     function_hash: info.hash.clone(),
                     function_name: info.name.clone(),
-                    function_arguments: info.tail,
+                    function_arguments: info.runtime_argument_values,
                     function_left_env: info.left_env,
 
                     named_args: named_args.clone(),
@@ -371,7 +371,7 @@ impl HierarchialRunner {
 
                     function_hash: info.hash.clone(),
                     function_name: info.name.clone(),
-                    function_arguments: info.args.clone(),
+                    function_arguments: info.formal_parameters.clone(),
                     function_left_env: info.left_env,
                     source: info.prog.loc(),
 
