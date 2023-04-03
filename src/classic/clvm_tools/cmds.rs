@@ -496,7 +496,7 @@ pub fn cldb(args: &[String]) {
         vec!["-t".to_string(), "--tree".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
-            .set_help("new style hierarchial view".to_string()),
+            .set_help("new style hierarchial view of function calls and args".to_string()),
     );
     parser.add_argument(
         vec!["path_or_code".to_string()],
