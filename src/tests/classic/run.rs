@@ -798,6 +798,26 @@ fn test_generate_extra_symbols() {
 }
 
 #[test]
+fn test_classic_sets_source_file_in_symbols() {
+    let tname = "test_classic_sets_source_file_in_symbols.sym".to_string();
+    do_basic_run(&vec![
+        "run".to_string(),
+        "--extra-syms".to_string(),
+        "--symbol-output-file".to_string(),
+        tname.clone(),
+        "resources/tests/assert.clvm".to_string(),
+    ]);
+    let read_in_file = fs::read_to_string(&tname).expect("should have dropped symbols");
+    let decoded_symbol_file: HashMap<String, String> =
+        serde_json::from_str(&read_in_file).expect("should decode");
+    assert_eq!(
+        decoded_symbol_file.get("source_file").cloned(),
+        Some("resources/tests/assert.clvm".to_string())
+    );
+    fs::remove_file(tname).expect("should have dropped symbols");
+}
+
+#[test]
 fn test_classic_sets_source_file_in_symbols_only_when_asked() {
     let tname = "test_classic_doesnt_source_file_in_symbols.sym".to_string();
     do_basic_run(&vec![
