@@ -1,5 +1,5 @@
 # Thanks: clvm_rs' github actions.
-name: Build Mac, Linux, and Windows wheels
+name: Verify recompilation and binary output for ChiaLisp21
 
 on:
   push:
@@ -14,7 +14,7 @@ on:
 
 jobs:
   build_wheels:
-    name: Verify recompilation and binary output for CL21 on ${{ matrix.os }} py-${{ matrix.python }}
+    name: Verify recompilation and binary output for ChiaLisp21 on ${{ matrix.os }} py-${{ matrix.python }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

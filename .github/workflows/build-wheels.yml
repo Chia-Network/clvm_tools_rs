@@ -1,5 +1,5 @@
 # Thanks: clvm_rs' github actions.
-name: Build Mac, Linux, and Windows wheels
+name: Build wheels
 
 on:
   push:

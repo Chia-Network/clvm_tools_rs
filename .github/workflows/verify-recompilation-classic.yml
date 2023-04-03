@@ -1,5 +1,5 @@
 # Thanks: clvm_rs' github actions.
-name: Build Mac, Linux, and Windows wheels
+name: Verify recompilation and binary output for classic clvm compiler
 
 on:
   push:
