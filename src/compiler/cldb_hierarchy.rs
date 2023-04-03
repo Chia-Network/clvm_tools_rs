@@ -281,7 +281,13 @@ impl HierarchialRunner {
 
         let mut idx = self.running.len() - 1;
         if let Some(outcome) = self.running[idx].run.final_result() {
-            self.running.pop().unwrap();
+            if self.running.pop().is_none() {
+                return Err(RunFailure::RunErr(
+                    self.prog.loc(),
+                    "running had no frame to pop".to_string()
+                ));
+            }
+
             if self.running.is_empty() {
                 return Ok(HierarchialStepResult::Done(None));
             }
