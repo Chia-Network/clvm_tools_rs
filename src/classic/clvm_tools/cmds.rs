@@ -347,7 +347,7 @@ fn yamlette_string(to_print: &[BTreeMap<String, YamlElement>]) -> String {
 pub fn cldb_hierarchy(
     runner: Rc<dyn TRunProgram>,
     prim_map: Rc<HashMap<Vec<u8>, Rc<sexp::SExp>>>,
-    input_file: Option<String>,
+    input_file_name: Option<String>,
     lines: Rc<Vec<String>>,
     symbol_table: Rc<HashMap<String, String>>,
     prog: Rc<sexp::SExp>,
@@ -356,7 +356,7 @@ pub fn cldb_hierarchy(
     let mut runner = HierarchialRunner::new(
         runner,
         prim_map,
-        input_file,
+        input_file_name,
         lines,
         symbol_table,
         prog,
