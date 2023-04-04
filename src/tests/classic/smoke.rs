@@ -1,15 +1,17 @@
 use num_bigint::ToBigInt;
 
 use std::fs;
+use std::io;
 use std::path::PathBuf;
 use std::rc::Rc;
 
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::{t, Bytes, BytesFromType, Stream};
+use crate::classic::clvm::__type_compatibility__::{t, Bytes, BytesFromType, pybytes_repr, Stream, UnvalidatedBytesFromType};
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{First, NodeSel, Rest, SelectNode, ThisNode};
+use crate::classic::clvm::syntax_error::SyntaxErr;
 use crate::classic::clvm_tools::cmds::{launch_tool, OpcConversion, OpdConversion, TConversion};
 
 use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemble};
@@ -123,9 +125,9 @@ fn mid_negative_value_opd_tricky_positive_3() {
 #[test]
 fn mid_negative_value_bin() {
     let mut allocator = Allocator::new();
-    let mut stream = Stream::new(Some(Bytes::new(Some(BytesFromType::Hex(
-        "82ffff".to_string(),
-    )))));
+    let mut stream = Stream::new(Some(
+        Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex("82ffff".to_string()))).unwrap(),
+    ));
 
     let atom = sexp_from_stream(
         &mut allocator,
@@ -741,4 +743,23 @@ fn test_argparse_not_present_option_2() {
     );
     let result = argparse.parse_args(&["--fail-to-provide".to_string()]);
     assert_eq!(result, Err("usage: test, [-h] [--fail-to-provide]\n\noptional arguments:\n -h, --help  Show help message\n --fail-to-provide  A help message\n\nError: fail_to_provide requires a value".to_string()));
+}
+
+#[test]
+fn test_syntax_err_smoke() {
+    let syntax_err = SyntaxErr::new("err".to_string());
+    assert_eq!(syntax_err.to_string(), "err");
+}
+
+#[test]
+fn test_io_err_from_syntax_err() {
+    let err = SyntaxErr::new("err".to_string());
+    let io_err: io::Error = err.into();
+    assert_eq!(io_err.to_string(), "err");
+}
+
+#[test]
+fn test_bytes_to_pybytes_repr_0() {
+    let b = b"\x11\x01abc\r\ntest\ttest\r\n";
+    assert_eq!(pybytes_repr(b, false), "b'\\x11\\x01abc\\r\\ntest\\ttest\\r\\n'");
 }

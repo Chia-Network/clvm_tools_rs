@@ -282,7 +282,7 @@ fn try_expand_macro_for_atom_(
             top_path
         ).map(|x| {
             if DIAG_OUTPUT {
-                println!(
+                print!(
                     "TRY_EXPAND_MACRO {} WITH {} GIVES {} MACROS {} SYMBOLS {}",
                     disassemble(allocator, macro_code),
                     disassemble(allocator, prog_rest),
@@ -424,7 +424,7 @@ fn compile_operator_atom(
                 allocator.new_atom(NodePath::new(None).as_path().data());
 
             let _ = if DIAG_OUTPUT {
-                println!("COMPILE_BINDINGS {}", disassemble(allocator, quoted_post_prog));
+                print!("COMPILE_BINDINGS {}", disassemble(allocator, quoted_post_prog));
             };
             evaluate(allocator, quoted_post_prog, top_atom).map(Some)
         };

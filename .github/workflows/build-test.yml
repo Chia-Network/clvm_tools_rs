@@ -154,6 +154,15 @@ jobs:
         cp support/recompile_check.py chia-blockchain
         (cd chia-blockchain && python recompile_check.py)
 
+    - name: Test Classic command line tools with pytest
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      run: |
+        python -m pip install pytest
+        # This script installs the wheel built during this workflow.
+        python support/wheelname.py
+        # TODO: bring in the other tests in resources/tests/cmdline/tests besides cmds_test.py
+        (cd resources/tests/cmdline/tests && py.test cmds_test.py )
+
     - name: Verify recompilation of cl21 sources
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
       run: |
@@ -266,3 +275,4 @@ jobs:
             components: rustfmt, clippy
       - name: cargo test
         run: cargo test
+

@@ -8,8 +8,11 @@ use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 use num_bigint::ToBigInt;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use crate::classic::clvm::__type_compatibility__::{
+    Bytes, BytesFromType, Stream, UnvalidatedBytesFromType,
+};
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
+//use crate::classic::clvm::syntax_error::SyntaxErr;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
@@ -28,7 +31,6 @@ pub struct PriorResult {
 
 fn format_arg_inputs(args: &[PriorResult]) -> String {
     let value_strings: Vec<String> = args.iter().map(|pr| pr.reference.to_string()).collect();
-    todo!();
     value_strings.join(", ")
 }
 
@@ -36,7 +38,6 @@ fn get_arg_associations(
     associations: &HashMap<Number, PriorResult>,
     args: Rc<SExp>,
 ) -> Vec<PriorResult> {
-    todo!();
     let mut arg_exp: Rc<SExp> = args;
     let mut result: Vec<PriorResult> = Vec::new();
     loop {
@@ -136,7 +137,6 @@ impl CldbRun {
     }
 
     pub fn final_result(&self) -> Option<Rc<SExp>> {
-        todo!();
         self.final_result.clone()
     }
 
@@ -223,7 +223,6 @@ impl CldbRun {
                 produce_result = true;
             }
             Err(RunFailure::RunErr(l, s)) => {
-                todo!();
                 self.to_print
                     .insert("Failure-Location".to_string(), l.to_string());
                 self.to_print.insert("Failure".to_string(), s.to_string());
@@ -242,6 +241,10 @@ impl CldbRun {
         } else {
             None
         }
+    }
+
+    pub fn current_step(&self) -> RunStep {
+        self.step.clone()
     }
 }
 
@@ -366,7 +369,7 @@ impl CldbRunnable for CldbOverrideBespokeCode {
 /// Also provides a CldbRunnable that specifies the user's overrides.
 pub struct CldbRunEnv {
     input_file: Option<String>,
-    program_lines: Vec<String>,
+    program_lines: Rc<Vec<String>>,
     overrides: Box<dyn CldbRunnable>,
 }
 
@@ -375,7 +378,7 @@ impl CldbRunEnv {
     /// run.
     pub fn new(
         input_file: Option<String>,
-        program_lines: Vec<String>,
+        program_lines: Rc<Vec<String>>,
         runnable: Box<dyn CldbRunnable>,
     ) -> Self {
         CldbRunEnv {
@@ -521,7 +524,10 @@ pub fn hex_to_modern_sexp(
     loc: Srcloc,
     input_program: &str,
 ) -> Result<Rc<SExp>, RunFailure> {
-    let input_serialized = Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
+    let input_serialized = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(
+        input_program.to_string(),
+    )))
+    .map_err(|e| RunFailure::RunErr(loc.clone(), e.to_string()))?;
 
     let mut stream = Stream::new(Some(input_serialized));
     let sexp = sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
