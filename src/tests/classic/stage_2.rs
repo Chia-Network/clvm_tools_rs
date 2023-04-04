@@ -1,13 +1,16 @@
 use clvmr::allocator::Allocator;
 use std::rc::Rc;
 
-use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble};
+use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemble};
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::stages::stage_2::compile::{
     do_com_prog, try_expand_macro_for_atom,
 };
 use crate::classic::clvm_tools::stages::stage_2::helpers::brun;
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
+use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file, read_file};
+
+use crate::compiler::sexp::decode_string;
 
 fn test_expand_macro(
     allocator: &mut Allocator,
@@ -132,4 +135,53 @@ fn test_compile_assert_2() {
         res,
         "(a (q \"opt\" (q 2 (\"opt\" (\"com\" (q \"assert\" 1) (q (\"assert\" (a (i 3 (q 4 (q . 26982) (c 2 (c (c (q . \"assert\") 3) (q (x))))) (q . 2)) 1)) (26982 (c (q . 2) (c (c (q . 3) (c 2 (c (c (q . \"function\") (c 5 ())) (c (c (q . \"function\") (c 11 ())) ())))) (q 64)))) (\"function\" (c (q . \"opt\") (c (c (q . \"com\") (c (c (q . 1) 2) (q (29041 (\"unquote\" (\"macros\"))) (29041 (\"unquote\" (\"symbols\")))))) ()))) (\"list\" (a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)) (\"defmacro\" (c (q . \"list\") (c (f 1) (c (c (q . \"mod\") (c (f (r 1)) (c (f (r (r 1))) (q)))) (q)))))) (q))) 1)) 1)".to_string()
     );
+}
+
+#[test]
+fn test_present_file_smoke_not_exists() {
+    let mut allocator = Allocator::new();
+    let runner = run_program_for_search_paths("*test*", &vec!["resources/tests".to_string()], false);
+    let sexp_triggering_read = assemble(
+        &mut allocator,
+        "(embed-file test-file sexp embed.sexp)"
+    ).expect("should assemble");
+    let res = read_file(
+        runner,
+        &mut allocator,
+        sexp_triggering_read,
+        "test-embed-not-exist.clsp"
+    );
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_present_file_smoke_exists() {
+    let mut allocator = Allocator::new();
+    let runner = run_program_for_search_paths("*test*", &vec!["resources/tests".to_string()], false);
+    let sexp_triggering_read = assemble(
+        &mut allocator,
+        "(embed-file test-file sexp embed.sexp)"
+    ).expect("should assemble");
+    let res = read_file(
+        runner,
+        &mut allocator,
+        sexp_triggering_read,
+        "embed.sexp"
+    ).expect("should exist");
+    assert_eq!(decode_string(&res.data), "(23 24 25)");
+}
+
+#[test]
+fn test_process_embed_file_as_sexp() {
+    let mut allocator = Allocator::new();
+    let runner = run_program_for_search_paths("*test*", &vec!["resources/tests".to_string()], false);
+    let declaration_sexp = assemble(&mut allocator, "(embed-file test-embed sexp embed.sexp)").expect("should assemble");
+    let want_exp = assemble(&mut allocator, "(q 23 24 25)").expect("should assemble");
+    let (name, content) = process_embed_file(
+        &mut allocator,
+        runner,
+        declaration_sexp
+    ).expect("should work");
+    assert_eq!(disassemble(&mut allocator, want_exp), disassemble(&mut allocator, content));
+    assert_eq!(name, b"test-embed");
 }
