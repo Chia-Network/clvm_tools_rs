@@ -6,8 +6,8 @@ use clvmr::allocator::Allocator;
 
 use crate::classic::clvm_tools::cmds::{cldb_hierarchy, YamlElement};
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
-use crate::compiler::cldb::{CldbNoOverride, CldbRun, CldbRunEnv, hex_to_modern_sexp};
-use crate::compiler::clvm::{RunStep, start_step};
+use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
+use crate::compiler::clvm::{start_step, RunStep};
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::prims;
@@ -37,23 +37,21 @@ fn yaml_to_yamlelement(yaml: &BTreeMap<String, YamlElement>) -> YamlElement {
 }
 
 trait StepOfCldbViewer {
-    fn show(
-        &mut self,
-        _step: &RunStep,
-        _output: Option<BTreeMap<String, String>>
-    ) -> bool { true }
+    fn show(&mut self, _step: &RunStep, _output: Option<BTreeMap<String, String>>) -> bool {
+        true
+    }
 }
 
 fn run_clvm_in_cldb<V>(
     program_name: &str,
     program_lines: Rc<Vec<String>>,
     program: Rc<SExp>,
-    symbols: HashMap<String,String>,
+    symbols: HashMap<String, String>,
     args: Rc<SExp>,
-    viewer: &mut V
+    viewer: &mut V,
 ) -> Option<String>
 where
-    V: StepOfCldbViewer
+    V: StepOfCldbViewer,
 {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
@@ -85,9 +83,9 @@ where
     }
 }
 
-struct DoesntWatchCldb { }
+struct DoesntWatchCldb {}
 
-impl StepOfCldbViewer for DoesntWatchCldb { }
+impl StepOfCldbViewer for DoesntWatchCldb {}
 
 #[test]
 fn test_run_clvm_in_cldb() {
@@ -110,14 +108,17 @@ fn test_run_clvm_in_cldb() {
 
     let program_lines: Vec<String> = program_code.lines().map(|x| x.to_string()).collect();
 
-    assert_eq!(run_clvm_in_cldb(
-        program_name,
-        Rc::new(program_lines),
-        Rc::new(program),
-        symbols,
-        args,
-        &mut DoesntWatchCldb {},
-    ), Some("120".to_string()));
+    assert_eq!(
+        run_clvm_in_cldb(
+            program_name,
+            Rc::new(program_lines),
+            Rc::new(program),
+            symbols,
+            args,
+            &mut DoesntWatchCldb {},
+        ),
+        Some("120".to_string())
+    );
 }
 
 #[test]
@@ -129,8 +130,9 @@ fn test_cldb_hex_to_modern_sexp_smoke_0() {
         &mut allocator,
         &symbol_table,
         Srcloc::start("*test*"),
-        input_program
-    ).unwrap();
+        input_program,
+    )
+    .unwrap();
     assert_eq!(result_succeed.to_string(), "(1 3 5)");
 }
 
@@ -143,7 +145,7 @@ fn test_cldb_hex_to_modern_sexp_fail_half_cons() {
         &mut allocator,
         &symbol_table,
         Srcloc::start("*test*"),
-        input_program
+        input_program,
     );
     assert!(result.is_err());
 }
@@ -157,7 +159,7 @@ fn test_cldb_hex_to_modern_sexp_fail_odd_hex() {
         &mut allocator,
         &symbol_table,
         Srcloc::start("*test*"),
-        input_program
+        input_program,
     );
     assert!(result.is_err());
 }
@@ -305,29 +307,32 @@ fn test_execute_program_and_capture_arguments() {
 struct ExpectFailure {
     throw: bool,
     found_desired: bool,
-    want_result: Option<String>
+    want_result: Option<String>,
 }
 
 impl ExpectFailure {
     fn new(throw: bool, want_result: Option<String>) -> Self {
-        ExpectFailure { throw, want_result, found_desired: false }
+        ExpectFailure {
+            throw,
+            want_result,
+            found_desired: false,
+        }
     }
 
-    fn correct_result(&self) -> bool { self.found_desired }
+    fn correct_result(&self) -> bool {
+        self.found_desired
+    }
 }
 
 impl StepOfCldbViewer for ExpectFailure {
-    fn show(
-        &mut self,
-        _step: &RunStep,
-        output: Option<BTreeMap<String, String>>
-    ) -> bool {
+    fn show(&mut self, _step: &RunStep, output: Option<BTreeMap<String, String>>) -> bool {
         eprintln!("{:?}", output);
         if let Some(o) = output {
             if let Some(_) = o.get("Failure") {
                 let did_throw = o.get("Operator") == Some(&"8".to_string());
                 if let Some(desired_outcome) = &self.want_result {
-                    self.found_desired = did_throw == self.throw && o.get("Arguments") == Some(desired_outcome);
+                    self.found_desired =
+                        did_throw == self.throw && o.get("Arguments") == Some(desired_outcome);
                 } else {
                     self.found_desired = did_throw == self.throw;
                 }
@@ -343,20 +348,24 @@ impl StepOfCldbViewer for ExpectFailure {
 fn test_cldb_explicit_throw() {
     let program_name = "*test*";
     let loc = Srcloc::start(program_name);
-    let program = parse_sexp(loc.clone(), b"(x (q . 2))".iter().copied()).expect("should parse")[0].clone();
+    let program =
+        parse_sexp(loc.clone(), b"(x (q . 2))".iter().copied()).expect("should parse")[0].clone();
     let args = Rc::new(SExp::Nil(loc));
     let program_lines = Rc::new(Vec::new());
 
     let mut watcher = ExpectFailure::new(true, Some("(2)".to_string()));
 
-    assert_eq!(run_clvm_in_cldb(
-        program_name,
-        program_lines,
-        program,
-        HashMap::new(),
-        args,
-        &mut watcher
-    ), None);
+    assert_eq!(
+        run_clvm_in_cldb(
+            program_name,
+            program_lines,
+            program,
+            HashMap::new(),
+            args,
+            &mut watcher
+        ),
+        None
+    );
 
     assert!(watcher.correct_result());
 }

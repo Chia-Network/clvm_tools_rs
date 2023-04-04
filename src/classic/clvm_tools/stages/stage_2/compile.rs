@@ -4,10 +4,11 @@ use std::rc::Rc;
 use clvm_rs::allocator::{Allocator, AtomBuf, NodePtr, SExp};
 use clvm_rs::reduction::{EvalErr, Reduction, Response};
 
+use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm::sexp::{enlist, first, map_m, non_nil, proper_list, rest};
 use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
 
-use crate::classic::clvm_tools::binutils::disassemble;
+use crate::classic::clvm_tools::binutils::{assemble, disassemble};
 use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::defaults::default_macro_lookup;
@@ -755,4 +756,25 @@ pub fn do_com_prog_for_dialect(
             "Program is not a pair in do_com_prog".to_string(),
         )),
     }
+}
+
+pub fn get_search_paths(
+    runner: Rc<dyn TRunProgram>,
+    allocator: &mut Allocator,
+) -> Result<Vec<String>, EvalErr> {
+    let search_paths_prog = assemble(allocator, "(_get_include_paths)")?;
+    let search_path_result =
+        runner.run_program(allocator, search_paths_prog, allocator.null(), None)?;
+
+    let mut res = Vec::new();
+    if let Some(l) = proper_list(allocator, search_path_result.1, true) {
+        for elt in l.iter() {
+            if let SExp::Atom(buf) = allocator.sexp(*elt) {
+                let abuf = allocator.buf(&buf).to_vec();
+                res.push(Bytes::new(Some(BytesFromType::Raw(abuf))).decode());
+            }
+        }
+    }
+
+    Ok(res)
 }

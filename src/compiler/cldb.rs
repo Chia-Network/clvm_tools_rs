@@ -490,13 +490,11 @@ fn hex_to_modern_sexp_inner(
         .unwrap_or_else(|| loc.clone());
 
     match allocator.sexp(program) {
-        allocator::SExp::Pair(a, b) => {
-            Ok(Rc::new(SExp::Cons(
-                srcloc.clone(),
-                hex_to_modern_sexp_inner(allocator, symbol_table, srcloc.clone(), a)?,
-                hex_to_modern_sexp_inner(allocator, symbol_table, srcloc, b)?,
-            )))
-        },
+        allocator::SExp::Pair(a, b) => Ok(Rc::new(SExp::Cons(
+            srcloc.clone(),
+            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc.clone(), a)?,
+            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc, b)?,
+        ))),
         _ => convert_from_clvm_rs(allocator, srcloc, program).map_err(|_| {
             EvalErr(
                 Allocator::null(allocator),
