@@ -1,6 +1,7 @@
 use num_bigint::ToBigInt;
 
 use std::fs;
+use std::io;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -10,9 +11,11 @@ use clvm_rs::reduction::EvalErr;
 use crate::classic::clvm::__type_compatibility__::{t, Bytes, Stream, UnvalidatedBytesFromType};
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{First, NodeSel, Rest, SelectNode, ThisNode};
+use crate::classic::clvm::syntax_error::SyntaxErr;
 use crate::classic::clvm_tools::cmds::{launch_tool, OpcConversion, OpdConversion, TConversion};
 
 use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemble};
+use crate::classic::clvm_tools::ir::r#type::IRRepr;
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages;
@@ -708,4 +711,22 @@ fn test_fancy_destructuring_type_language() {
     );
     assert_eq!(disassemble(&mut allocator, name_by_cons), "88");
     assert_eq!(disassemble(&mut allocator, rest), "((+ 3 1))");
+}
+
+#[test]
+fn test_ir_debug_for_coverage() {
+    assert_eq!(format!("{:?}", IRRepr::Null), "Null");
+}
+
+#[test]
+fn test_syntax_err_smoke() {
+    let syntax_err = SyntaxErr::new("err".to_string());
+    assert_eq!(syntax_err.to_string(), "err");
+}
+
+#[test]
+fn test_io_err_from_syntax_err() {
+    let err = SyntaxErr::new("err".to_string());
+    let io_err: io::Error = err.into();
+    assert_eq!(io_err.to_string(), "err");
 }
