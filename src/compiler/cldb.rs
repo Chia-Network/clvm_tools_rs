@@ -213,7 +213,6 @@ impl CldbRun {
             }
             Ok(RunStep::Op(_sexp, _c, _a, Some(_v), _p)) => {}
             Err(RunFailure::RunExn(l, s)) => {
-                todo!();
                 self.to_print
                     .insert("Throw-Location".to_string(), l.to_string());
                 self.to_print.insert("Throw".to_string(), s.to_string());
@@ -300,7 +299,6 @@ impl CldbOverrideBespokeCode {
         symbol_table: HashMap<String, String>,
         overrides: HashMap<String, Box<dyn CldbSingleBespokeOverride>>,
     ) -> Self {
-        todo!();
         CldbOverrideBespokeCode {
             symbol_table,
             overrides,
@@ -315,7 +313,6 @@ impl CldbOverrideBespokeCode {
         args: Rc<SExp>,
         p: Rc<RunStep>,
     ) -> Option<Result<RunStep, RunFailure>> {
-        todo!();
         let fun_hash = clvm::sha256tree(f);
         let fun_hash_str = Bytes::new(Some(BytesFromType::Raw(fun_hash))).hex();
 
@@ -332,13 +329,10 @@ impl CldbOverrideBespokeCode {
 
 impl CldbRunnable for CldbOverrideBespokeCode {
     fn replace_step(&self, step: &RunStep) -> Option<Result<RunStep, RunFailure>> {
-        todo!();
         match step {
             RunStep::Op(sexp, context, arguments, None, parent) => match sexp.borrow() {
                 SExp::Integer(_, i) => {
-                    todo!();
                     if *i == 2_u32.to_bigint().unwrap() {
-                        todo!();
                         match arguments.borrow() {
                             SExp::Cons(_, first, args) => self
                                 .find_function_and_override_if_needed(
@@ -351,7 +345,6 @@ impl CldbRunnable for CldbOverrideBespokeCode {
                             _ => None,
                         }
                     } else {
-                        todo!();
                         None
                     }
                 }
@@ -406,10 +399,8 @@ impl CldbRunEnv {
                 } else {
                     let line_text = self.program_lines[use_line].to_string();
                     if use_col >= line_text.len() {
-                        todo!();
                         None
                     } else if end_col >= line_text.len() {
-                        todo!();
                         end_col = line_text.len();
                         Some(line_text[use_col..end_col].to_string())
                     } else {
@@ -507,7 +498,6 @@ fn hex_to_modern_sexp_inner(
             )))
         },
         _ => convert_from_clvm_rs(allocator, srcloc, program).map_err(|_| {
-            todo!();
             EvalErr(
                 Allocator::null(allocator),
                 "clvm_rs allocator failed".to_string(),
@@ -535,7 +525,6 @@ pub fn hex_to_modern_sexp(
         .map_err(|_| RunFailure::RunErr(loc.clone(), "Bad conversion from hex".to_string()))?;
 
     hex_to_modern_sexp_inner(allocator, symbol_table, loc.clone(), sexp).map_err(|_| {
-        todo!();
         RunFailure::RunErr(loc, "Failed to convert from classic to modern".to_string())
     })
 }

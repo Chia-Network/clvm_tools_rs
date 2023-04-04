@@ -249,7 +249,6 @@ impl ArgumentParser {
                 let name = match self.get_optional_arg_name(optional_arg) {
                     Ok(n) => n,
                     Err(e) => {
-                        todo!();
                         return Err(e);
                     }
                 };
@@ -273,7 +272,6 @@ impl ArgumentParser {
                     if let Ok(c) = converter.convert(value) {
                         params.insert(name, c);
                     } else if let Some(v) = &optional_arg.options.default {
-                        todo!();
                         params.insert(name, v.clone());
                     }
                 } else if optional_arg.options.action == TArgOptionAction::Append {
@@ -286,7 +284,6 @@ impl ArgumentParser {
                             }
                             _ => match &optional_arg.options.default {
                                 Some(v) => {
-                                    todo!();
                                     let mut lcopy = l.clone();
                                     lcopy.push(v.clone());
                                     params.insert(name, ArgumentValue::ArgArray(lcopy));
@@ -295,18 +292,14 @@ impl ArgumentParser {
                             },
                         },
                         _ => {
-                            todo!();
                             if let Ok(v) = converter.convert(value) {
-                                todo!();
                                 params.insert(name, ArgumentValue::ArgArray(vec![v]));
                             } else if let Some(v) = &optional_arg.options.default {
-                                todo!();
                                 params.insert(name, ArgumentValue::ArgArray(vec![v.clone()]));
                             }
                         }
                     }
                 } else {
-                    todo!();
                     let usage = self.compile_help_messages();
                     return Err(format!(
                         "{usage}\n\nError: Unknown action: {:?}",
@@ -337,11 +330,8 @@ impl ArgumentParser {
                     }
                 }
                 Some(NArgsSpec::Definite(nargs)) => {
-                    todo!();
                     for _j in 0..nargs - 1 {
-                        todo!();
                         if i >= input_positional_args.len() {
-                            todo!();
                             let usage = self.compile_help_messages();
                             return Err(format!(
                                 "{usage}\n\nError: Requires {nargs} positional arguments but got {i}"
@@ -350,15 +340,12 @@ impl ArgumentParser {
 
                         let input_arg = &input_positional_args[i];
                         if let Some(ArgumentValue::ArgArray(l)) = params.get(name) {
-                            todo!();
                             if let Ok(v) = converter.convert(input_arg) {
-                                todo!();
                                 let mut lcopy = l.clone();
                                 lcopy.push(v);
                                 params.insert(name.to_string(), ArgumentValue::ArgArray(lcopy));
                             }
                         } else if let Ok(v) = converter.convert(input_arg) {
-                            todo!();
                             params.insert(name.to_string(), ArgumentValue::ArgArray(vec![v]));
                         }
                         i += 1;
@@ -376,11 +363,8 @@ impl ArgumentParser {
                 }
 
                 _ => {
-                    todo!();
                     if i >= input_positional_args.len() {
-                        todo!();
                         if nargs == &Some(NArgsSpec::Plus) {
-                            todo!();
                             let usage = self.compile_help_messages();
                             return Err(format!(
                                 "{usage}\n\nError: The following arguments are required: {name}"
@@ -395,15 +379,12 @@ impl ArgumentParser {
 
                     for input_arg in input_positional_args.iter() {
                         if let Some(ArgumentValue::ArgArray(l)) = params.get(name) {
-                            todo!();
                             if let Ok(v) = converter.convert(input_arg) {
-                                todo!();
                                 let mut lcopy = l.clone();
                                 lcopy.push(v);
                                 params.insert(name.to_string(), ArgumentValue::ArgArray(lcopy));
                             }
                         } else if let Ok(v) = converter.convert(input_arg) {
-                            todo!();
                             params.insert(name.to_string(), ArgumentValue::ArgArray(vec![v]));
                         }
                     }
@@ -412,7 +393,6 @@ impl ArgumentParser {
         }
 
         if params.get(&"help".to_string()).is_some() {
-            todo!();
             let usage = self.compile_help_messages();
             return Err(usage);
         }
@@ -449,11 +429,9 @@ impl ArgumentParser {
         )];
 
         if !self.positional_args.is_empty() {
-            todo!();
             messages.push("".to_string());
             messages.push("positional arguments:".to_string());
             for a in &self.positional_args {
-                todo!();
                 messages.push(iterator(&a.clone()));
             }
         }
@@ -478,7 +456,6 @@ impl ArgumentParser {
      */
     pub fn normalize_args(&self, args: &[String]) -> Vec<String> {
         if self.optional_args.is_empty() {
-            todo!();
             return args.to_vec();
         }
 
@@ -546,15 +523,12 @@ impl ArgumentParser {
             |n: &String| n.starts_with("-") && !n.starts_with("--"),
             names,
         );
-        todo!();
         if single_hyphen_arg_index > -1 {
-            todo!();
             let name = &names[single_hyphen_arg_index as usize];
             #[allow(clippy::single_char_pattern)]
             let first_non_dash = skip_leading(name, "-").replace("-", "_");
             return Ok(first_non_dash);
         }
-        todo!();
         Err("Invalid argument name".to_string())
     }
 

@@ -39,8 +39,8 @@ fn yaml_to_yamlelement(yaml: &BTreeMap<String, YamlElement>) -> YamlElement {
 trait StepOfCldbViewer {
     fn show(
         &mut self,
-        step: &RunStep,
-        output: Option<BTreeMap<String, String>>
+        _step: &RunStep,
+        _output: Option<BTreeMap<String, String>>
     ) -> bool { true }
 }
 
@@ -57,7 +57,6 @@ where
 {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
-    let opts = Rc::new(DefaultCompilerOpts::new(program_name));
 
     let mut prim_map = HashMap::new();
     for p in prims::prims().iter() {
@@ -320,18 +319,20 @@ impl ExpectFailure {
 impl StepOfCldbViewer for ExpectFailure {
     fn show(
         &mut self,
-        step: &RunStep,
+        _step: &RunStep,
         output: Option<BTreeMap<String, String>>
     ) -> bool {
-        let want_key = if self.throw { "Throw" } else { "Failure" };
         eprintln!("{:?}", output);
-        if let Some(res) = output.and_then(|o| o.get(want_key).cloned()) {
-            if let Some(desired_outcome) = &self.want_result {
-                self.found_desired = desired_outcome == &res;
-            } else {
-                self.found_desired = true;
+        if let Some(o) = output {
+            if let Some(_) = o.get("Failure") {
+                let did_throw = o.get("Operator") == Some(&"8".to_string());
+                if let Some(desired_outcome) = &self.want_result {
+                    self.found_desired = did_throw == self.throw && o.get("Arguments") == Some(desired_outcome);
+                } else {
+                    self.found_desired = did_throw == self.throw;
+                }
+                return false;
             }
-            return false;
         }
 
         return true;
@@ -346,7 +347,7 @@ fn test_cldb_explicit_throw() {
     let args = Rc::new(SExp::Nil(loc));
     let program_lines = Rc::new(Vec::new());
 
-    let mut watcher = ExpectFailure::new(true, Some("2".to_string()));
+    let mut watcher = ExpectFailure::new(true, Some("(2)".to_string()));
 
     assert_eq!(run_clvm_in_cldb(
         program_name,
