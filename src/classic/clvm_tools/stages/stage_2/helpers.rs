@@ -23,8 +23,10 @@ pub fn evaluate(
     prog: NodePtr,
     args: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
-    let a = allocator.new_atom(&APPLY_ATOM)?;
-    enlist(allocator, &[a, prog, args])
+    m! {
+        a <- allocator.new_atom(&APPLY_ATOM);
+        enlist(allocator, &[a, prog, args])
+    }
 }
 
 pub fn run(
@@ -39,15 +41,19 @@ pub fn run(
      * function.
      */
     let args = NodePath::new(None).as_path();
-    let mac = quote(allocator, macro_lookup)?;
-    let com_sexp = allocator.new_atom(&COM_ATOM)?;
-    let arg_sexp = allocator.new_atom(args.data())?;
-    let to_eval = enlist(allocator, &[com_sexp, prog, mac])?;
-    evaluate(allocator, to_eval, arg_sexp)
+    m! {
+        mac <- quote(allocator, macro_lookup);
+        com_sexp <- allocator.new_atom(&COM_ATOM);
+        arg_sexp <- allocator.new_atom(args.data());
+        to_eval <- enlist(allocator, &[com_sexp, prog, mac]);
+        evaluate(allocator, to_eval, arg_sexp)
+    }
 }
 
 pub fn brun(allocator: &mut Allocator, prog: NodePtr, args: NodePtr) -> Result<NodePtr, EvalErr> {
-    let quoted_prog = quote(allocator, prog)?;
-    let quoted_args = quote(allocator, args)?;
-    evaluate(allocator, quoted_prog, quoted_args)
+    m! {
+        quoted_prog <- quote(allocator, prog);
+        quoted_args <- quote(allocator, args);
+        evaluate(allocator, quoted_prog, quoted_args)
+    }
 }

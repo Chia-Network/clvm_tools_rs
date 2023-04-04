@@ -262,6 +262,8 @@ impl ArgumentParser {
 
                 ioff += 1;
 
+                // Simplify and fix the ability to read outside the vector bounds
+                // when an optional argument is given without a value.
                 let value = if i + ioff >= normalized_args.len()
                     || (normalized_args[i + ioff].is_empty()
                         && optional_arg.options.default.is_none())
