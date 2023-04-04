@@ -30,11 +30,6 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Set up rust
-      run: |
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > rust.sh
-        arch -arm64 sh rust.sh -y
-
     - name: Build m1 wheels
       run: |
         arch -arm64 python3 -m venv venv
