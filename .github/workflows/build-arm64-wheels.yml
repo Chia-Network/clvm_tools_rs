@@ -11,6 +11,11 @@ on:
     branches:
       - '**'
 
+env:
+  REGISTRY_USER: ${{ github.actor }}
+  REGISTRY_PASSWORD: ${{ github.token }}
+  IMAGE_REGISTRY: ghcr.io/chia-network
+
 jobs:
   build_wheels:
     name: ARM64 Python Wheels on ubuntu-latest
@@ -32,11 +37,18 @@ jobs:
       with:
         platforms: arm64
 
+    - name: Log in to ghcr.io
+      uses: redhat-actions/podman-login@v1
+      with:
+        username: ${{ env.REGISTRY_USER }}
+        password: ${{ env.REGISTRY_PASSWORD }}
+        registry: ${{ env.IMAGE_REGISTRY }}
+
     - name: Build Python wheels
       run: |
         podman run --rm=true \
           -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
-          ghcr.io/chia-network/centos-pypa-aarch64 \
+          ${{ env.IMAGE_REGISTRY }}/centos-pypa-aarch64 \
           bash -exc '\
             echo $PATH && \
             yum -y install openssl-devel && \
