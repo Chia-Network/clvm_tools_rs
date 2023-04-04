@@ -1,4 +1,5 @@
 use clvmr::allocator::Allocator;
+use std::fs;
 use std::rc::Rc;
 
 use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemble};
@@ -180,4 +181,31 @@ fn test_process_embed_file_as_sexp() {
         disassemble(&mut allocator, content)
     );
     assert_eq!(name, b"test-embed");
+}
+
+/// A test where a file is in an unexpected location was requested.
+/// This test tries to read resources/tests/steprun/fact.clvm.hex but specifies
+/// resources/tests/stage_2 as an include path.
+#[test]
+fn test_process_embed_file_as_sexp_in_an_unexpected_location() {
+    let mut allocator = Allocator::new();
+    let runner =
+        run_program_for_search_paths("*test*", &vec!["resources/tests/stage_2".to_string()], false);
+    let sexp_triggering_read = assemble(&mut allocator, "(embed-file test-file hex act.clvm.hex)")
+        .expect("should assemble");
+    let res = read_file(runner, &mut allocator, sexp_triggering_read, "fact.clvm.hex");
+    assert!(res.is_err());
+}
+
+/// Read hex test mirror of the above.
+#[test]
+fn test_process_embed_file_as_sexp_in_an_expected_location() {
+    let mut allocator = Allocator::new();
+    let runner =
+        run_program_for_search_paths("*test*", &vec!["resources/tests/steprun".to_string()], false);
+    let sexp_triggering_read = assemble(&mut allocator, "(embed-file test-file hex act.clvm.hex)")
+        .expect("should assemble");
+    let res = read_file(runner, &mut allocator, sexp_triggering_read, "fact.clvm.hex").expect("should exist");
+    let real_file_content = fs::read_to_string("resources/tests/steprun/fact.clvm.hex").expect("should exist");
+    assert_eq!(res.data, real_file_content.as_bytes().to_vec());
 }
