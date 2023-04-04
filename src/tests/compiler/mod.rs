@@ -9,6 +9,7 @@ mod clvm;
 mod compiler;
 mod evaluate;
 mod repl;
+mod runtypes;
 mod srcloc;
 mod usecheck;
 
