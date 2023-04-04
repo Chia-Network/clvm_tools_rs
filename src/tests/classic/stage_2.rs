@@ -140,16 +140,15 @@ fn test_compile_assert_2() {
 #[test]
 fn test_present_file_smoke_not_exists() {
     let mut allocator = Allocator::new();
-    let runner = run_program_for_search_paths("*test*", &vec!["resources/tests".to_string()], false);
-    let sexp_triggering_read = assemble(
-        &mut allocator,
-        "(embed-file test-file sexp embed.sexp)"
-    ).expect("should assemble");
+    let runner =
+        run_program_for_search_paths("*test*", &vec!["resources/tests".to_string()], false);
+    let sexp_triggering_read = assemble(&mut allocator, "(embed-file test-file sexp embed.sexp)")
+        .expect("should assemble");
     let res = read_file(
         runner,
         &mut allocator,
         sexp_triggering_read,
-        "test-embed-not-exist.clsp"
+        "test-embed-not-exist.clsp",
     );
     assert!(res.is_err());
 }
@@ -157,31 +156,28 @@ fn test_present_file_smoke_not_exists() {
 #[test]
 fn test_present_file_smoke_exists() {
     let mut allocator = Allocator::new();
-    let runner = run_program_for_search_paths("*test*", &vec!["resources/tests".to_string()], false);
-    let sexp_triggering_read = assemble(
-        &mut allocator,
-        "(embed-file test-file sexp embed.sexp)"
-    ).expect("should assemble");
-    let res = read_file(
-        runner,
-        &mut allocator,
-        sexp_triggering_read,
-        "embed.sexp"
-    ).expect("should exist");
+    let runner =
+        run_program_for_search_paths("*test*", &vec!["resources/tests".to_string()], false);
+    let sexp_triggering_read = assemble(&mut allocator, "(embed-file test-file sexp embed.sexp)")
+        .expect("should assemble");
+    let res = read_file(runner, &mut allocator, sexp_triggering_read, "embed.sexp")
+        .expect("should exist");
     assert_eq!(decode_string(&res.data), "(23 24 25)");
 }
 
 #[test]
 fn test_process_embed_file_as_sexp() {
     let mut allocator = Allocator::new();
-    let runner = run_program_for_search_paths("*test*", &vec!["resources/tests".to_string()], false);
-    let declaration_sexp = assemble(&mut allocator, "(embed-file test-embed sexp embed.sexp)").expect("should assemble");
+    let runner =
+        run_program_for_search_paths("*test*", &vec!["resources/tests".to_string()], false);
+    let declaration_sexp = assemble(&mut allocator, "(embed-file test-embed sexp embed.sexp)")
+        .expect("should assemble");
     let want_exp = assemble(&mut allocator, "(q 23 24 25)").expect("should assemble");
-    let (name, content) = process_embed_file(
-        &mut allocator,
-        runner,
-        declaration_sexp
-    ).expect("should work");
-    assert_eq!(disassemble(&mut allocator, want_exp), disassemble(&mut allocator, content));
+    let (name, content) =
+        process_embed_file(&mut allocator, runner, declaration_sexp).expect("should work");
+    assert_eq!(
+        disassemble(&mut allocator, want_exp),
+        disassemble(&mut allocator, content)
+    );
     assert_eq!(name, b"test-embed");
 }
