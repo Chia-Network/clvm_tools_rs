@@ -189,11 +189,19 @@ fn test_process_embed_file_as_sexp() {
 #[test]
 fn test_process_embed_file_as_sexp_in_an_unexpected_location() {
     let mut allocator = Allocator::new();
-    let runner =
-        run_program_for_search_paths("*test*", &vec!["resources/tests/stage_2".to_string()], false);
+    let runner = run_program_for_search_paths(
+        "*test*",
+        &vec!["resources/tests/stage_2".to_string()],
+        false,
+    );
     let sexp_triggering_read = assemble(&mut allocator, "(embed-file test-file hex act.clvm.hex)")
         .expect("should assemble");
-    let res = read_file(runner, &mut allocator, sexp_triggering_read, "fact.clvm.hex");
+    let res = read_file(
+        runner,
+        &mut allocator,
+        sexp_triggering_read,
+        "fact.clvm.hex",
+    );
     assert!(res.is_err());
 }
 
@@ -201,11 +209,21 @@ fn test_process_embed_file_as_sexp_in_an_unexpected_location() {
 #[test]
 fn test_process_embed_file_as_sexp_in_an_expected_location() {
     let mut allocator = Allocator::new();
-    let runner =
-        run_program_for_search_paths("*test*", &vec!["resources/tests/steprun".to_string()], false);
+    let runner = run_program_for_search_paths(
+        "*test*",
+        &vec!["resources/tests/steprun".to_string()],
+        false,
+    );
     let sexp_triggering_read = assemble(&mut allocator, "(embed-file test-file hex act.clvm.hex)")
         .expect("should assemble");
-    let res = read_file(runner, &mut allocator, sexp_triggering_read, "fact.clvm.hex").expect("should exist");
-    let real_file_content = fs::read_to_string("resources/tests/steprun/fact.clvm.hex").expect("should exist");
+    let res = read_file(
+        runner,
+        &mut allocator,
+        sexp_triggering_read,
+        "fact.clvm.hex",
+    )
+    .expect("should exist");
+    let real_file_content =
+        fs::read_to_string("resources/tests/steprun/fact.clvm.hex").expect("should exist");
     assert_eq!(res.data, real_file_content.as_bytes().to_vec());
 }
