@@ -12,7 +12,7 @@ on:
       - '**'
 
 env:
-  IMAGE_REGISTRY: ghcr.io/chia-network
+  IMAGE_REGISTRY: ghcr.io/chia-network/build-images
 
 jobs:
   build_wheels:
@@ -46,7 +46,7 @@ jobs:
       run: |
         podman run --rm=true \
           -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
-          ${{ env.IMAGE_REGISTRY }}/centos-pypa-aarch64 \
+          ${{ env.IMAGE_REGISTRY }}/centos-pypa-aarch64:latest \
           bash -exc '\
             echo $PATH && \
             yum -y install openssl-devel && \
