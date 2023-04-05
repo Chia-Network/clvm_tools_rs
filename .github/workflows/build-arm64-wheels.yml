@@ -46,7 +46,7 @@ jobs:
       run: |
         podman run --rm=true \
           -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
-          ${{ env.IMAGE_REGISTRY }}/centos-pypa-aarch64:latest \
+          ${{ env.IMAGE_REGISTRY }}/centos-pypa-aarch64 \
           bash -exc '\
             echo $PATH && \
             yum -y install openssl-devel && \
