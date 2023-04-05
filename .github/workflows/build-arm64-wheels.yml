@@ -13,8 +13,6 @@ on:
 
 env:
   IMAGE_REGISTRY: ghcr.io/chia-network/build-images
-  REGISTRY_USER: ${{ github.actor }}
-  REGISTRY_PASSWORD: ${{ github.token }}
 
 jobs:
   build_wheels:
@@ -36,13 +34,6 @@ jobs:
       uses: docker/setup-qemu-action@v2
       with:
         platforms: arm64
-
-    - name: Log in to ghcr.io
-      uses: redhat-actions/podman-login@v1
-      with:
-        username: ${{ env.REGISTRY_USER }}
-        password: ${{ env.REGISTRY_PASSWORD }}
-        registry: ${{ env.IMAGE_REGISTRY }}
 
     - name: Build Python wheels
       run: |
