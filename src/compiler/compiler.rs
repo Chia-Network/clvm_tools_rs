@@ -191,7 +191,7 @@ pub fn compile_pre_forms(
         args: p1.args,
         helpers: combined_helpers,
         exp: expr,
-        ty: p1.ty.clone()
+        ty: p1.ty,
     };
 
     // generate code from AST, optionally with optimization
