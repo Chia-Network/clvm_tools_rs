@@ -33,7 +33,7 @@ So there's really only a few choices a compiler can make in structural terms:
 - Read input a bit at a time and possibly produce output a bit at a time (C)
 
 All chialisp compilers I'm aware of read the whole input first.  Like C, chialisp
-has a textural include file mechanism which allows the programmer to name a file
+has a textual include file mechanism which allows the programmer to name a file
 to include from a set of specified include paths.  The name given is expected to
 be a literal fragment of a filename (as in C).  When each include file is found,
 a single form is read from it, and that is expected to take the form of a list
@@ -422,9 +422,9 @@ This the the full lifecycle of chialisp compilation from an outside perspective.
 
 If you want to parse the source file yourself, you can use parse_sexp from 
 src/compiler/sexp, which yields a result of Vec&lt;Rc&lt;SExp&gt;&gt;, a vector
-of refcounted pointers to s-expression objects.  These are richer than clvm
-values in that atoms, strings, hex values,integers and nils are distinguishable
-in what's read.  This is similar to the code in src/classic/clvm/type.rs but
+of refcounted pointers to s-expression objects.  These values are richer than clvm
+values in that atoms, strings, hex values, integers and nils are distinguishable.
+This is similar to the code in src/classic/clvm/type.rs but
 since these value distinctions are first-class in SExp, all values processed
 by the compiler, starting with the preprocessor (src/compiler/preprocessor.rs), 
 going through the frontend (src/compile/frontend.rs) and to code generation
@@ -443,15 +443,17 @@ You can break down the basics of how chialisp compilation functions like this:
         let mut allocator = Allocator::new();
         let mut symbol_table = HashMap::new();
         let runner = Rc::new(DefaultProgramRunner::new());
+        let parsed = parse_sexp(Srcloc::start(&use_filename), file_content.bytes())?;
+        let compileform = frontend(opts.clone(), &parsed)?;
+        let (hoisted_helpers, hoisted_body) = hoist_body_let_binding(compileform);
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
             .set_optimize(do_optimize)
             .set_search_paths(&search_paths)
-            .set_frontend_opt(dialect > 21);
-        let parsed = parse_sexp(Srcloc::start(&use_filename), file_content.bytes())?;
-        let compileform = frontend(opts.clone(), &parsed)?;
-        let generated_code = codegen(&mut allocator, runner, opts, &compileform, &mut symbol_table)?;
-        // generated_code.1 is an Rc<SExp> which contains the output
-        // code.
+            .set_frontend_opt(dialect > 21)
+            .set_helpers(hoisted_helpers + default_helpers)
+            .set_exp(hoisted_body);
+        let generated_code = codegen(&mut allocator, runner, opts, &hoisted_body, &mut symbol_table)?;
+        // generated_code.1 is an Rc<SExp> which contains the output code.
 
 PrimaryCodegen is the object where the code generation stores and updates
 information it needs and what gets collected during code generation.  It's defined
@@ -460,29 +462,10 @@ src/compiler/codegen.rs take a PrimaryCodegen and most of those return a
 PrimaryCodegen.  During this process, the compilation state is updated by each.
 
 Everything before code generation is uninteresting, but I'll note at a high level
-how functions on PrimaryCodegen function.
+how functions on PrimaryCodegen work.
 
-codegen starts by running start_codegen to introduce each helper to the
-PrimaryCodegen and based on their types, bin them into the appropriate parts
-of the code generator to lookup later:
+Next, let desugaring takes place in hoist_body_let_binding.
 
-    Defconstants are turned into mods and run.
-    The result is stored in the PrimaryCodegen's constant set.
-    
-    The defconst form is evaluated by putting all Helpers (as in objects of
-    HelperForm type) into an Evaluator and asking it to shrink the constant's
-    expression (resulting in constant folding).  The folded value must reduce
-    to a constant, and if it does, it's stored in the constant set.
-    
-    Defmacros are converted to programs and compiled using the
-    CompilerOpts' compile_program method.  These methods on CompilerOpts
-    provide this kind of recursion with an eye to allowing the generation
-    of program code to be used during compilation.  The resulting code
-    is stored in the macro set.
-    
-Next, let desugaring takes place (it is intentded that this will be lifted out of
-codegen to a separate pass).
-    
 "Let" desugaring (let forms are used in lisp-like languages to bind additional
 variables to new expressions, as in this example which uses a-greater-than-2
 twice in difference sub-expressions.
@@ -505,6 +488,31 @@ inlining without disturbing codegen itself.
 Once all helpers are processed in this way, let desugaring takes place on the
 main expression of the program in the same way.  The PrimaryCodegen has a special
 field for the main expression.
+
+codegen starts by running start_codegen to introduce each helper to the
+PrimaryCodegen and based on their types, bin them into the appropriate parts
+of the code generator to lookup later:
+
+    Defconstants are turned into mods and run.
+    The result is stored in the PrimaryCodegen's constant set.
+
+    The defconst form is evaluated by putting all Helpers (as in objects of
+    HelperForm type) into an Evaluator and asking it to shrink the constant's
+    expression (resulting in constant folding).  The folded value must reduce
+    to a constant, and if it does, it's stored in the constant set.
+
+    Defmacros are converted to programs and compiled using the
+    CompilerOpts' compile_program method.  These methods on CompilerOpts
+    provide this kind of recursion with an eye to allowing the generation
+    of program code to be used during compilation.  The resulting code
+    is stored in the macro set.
+
+Note that at this stage of compilation, we have helpers from the frontend, as well
+as helpers introduced from let lifting. A HelperForm will have a member
+
+        synthetic: bool = true;
+
+if it was introduced by the compiler.
 
 After start_codegen, the PrimaryCodegen is transformed by generating the dummy
 environment via the dummy\_functions internal function.  For each non-inlined

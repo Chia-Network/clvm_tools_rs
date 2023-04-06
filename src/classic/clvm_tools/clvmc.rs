@@ -85,7 +85,7 @@ fn compile_clvm_text(
     text: &str,
     input_path: &str,
 ) -> Result<NodePtr, EvalErr> {
-    let ir_src = read_ir(text).map_err(|s| EvalErr(allocator.null(), s))?;
+    let ir_src = read_ir(text).map_err(|s| EvalErr(allocator.null(), s.to_string()))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
     let untyped_sexp = untype_code(allocator, Srcloc::start(input_path), assembled_sexp)?;
 

@@ -200,6 +200,10 @@ impl Srcloc {
             until: None,
         }
     }
+
+    pub fn compiler_internal_srcloc() -> Srcloc {
+        Srcloc::start("*sym*")
+    }
 }
 
 /// Return the first character addressed by the srcloc.

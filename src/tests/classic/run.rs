@@ -794,8 +794,9 @@ fn test_check_tricky_arg_path_random() {
     }
 }
 
-fn read_json_from_file(fname: &str) -> HashMap<String, String> {
+pub fn read_json_from_file(fname: &str) -> HashMap<String, String> {
     let extra_symbols_text = fs::read_to_string(fname).expect("should have dropped main.sym");
+    eprintln!("est {extra_symbols_text}");
     serde_json::from_str(&extra_symbols_text).expect("should be real json")
 }
 
