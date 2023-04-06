@@ -1,6 +1,6 @@
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -95,29 +95,9 @@ fn fe_opt(
     opts: Rc<dyn CompilerOpts>,
     compileform: CompileForm,
 ) -> Result<CompileForm, CompileErr> {
-    let mut compiler_helpers = compileform.helpers.clone();
-    let mut used_names = HashSet::new();
-
-    if !opts.in_defun() {
-        for c in compileform.helpers.iter() {
-            used_names.insert(c.name().clone());
-        }
-
-        for helper in (opts
-            .code_generator()
-            .map(|c| c.original_helpers)
-            .unwrap_or_else(Vec::new))
-        .iter()
-        {
-            if !used_names.contains(helper.name()) {
-                compiler_helpers.push(helper.clone());
-            }
-        }
-    }
-
-    let evaluator = Evaluator::new(opts.clone(), runner.clone(), compiler_helpers.clone());
+    let evaluator = Evaluator::new(opts.clone(), runner.clone(), compileform.helpers.clone());
     let mut optimized_helpers: Vec<HelperForm> = Vec::new();
-    for h in compiler_helpers.iter() {
+    for h in compileform.helpers.iter() {
         match h {
             HelperForm::Defun(inline, defun) => {
                 let mut env = HashMap::new();
@@ -179,28 +159,29 @@ pub fn compile_pre_forms(
     // Resolve includes, convert program source to lexemes
     let p0 = frontend(opts.clone(), pre_forms)?;
 
+    let p1 = if opts.frontend_opt() {
+        // Front end optimization
+        fe_opt(allocator, runner.clone(), opts.clone(), p0)?
+    } else {
+        p0
+    };
+
     // Transform let bindings, merging nested let scopes with the top namespace
-    let hoisted_bindings = hoist_body_let_binding(None, p0.args.clone(), p0.exp.clone());
+    let hoisted_bindings = hoist_body_let_binding(None, p1.args.clone(), p1.exp.clone());
     let mut new_helpers = hoisted_bindings.0;
     let expr = hoisted_bindings.1; // expr is the let-hoisted program
 
     // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later stages
 
-    let mut combined_helpers = p0.helpers.clone();
+    let mut combined_helpers = p1.helpers.clone();
     combined_helpers.append(&mut new_helpers);
 
-    let p1 = CompileForm {
-        loc: p0.loc.clone(),
-        include_forms: p0.include_forms.clone(),
-        args: p0.args,
+    let p2 = CompileForm {
+        loc: p1.loc.clone(),
+        include_forms: p1.include_forms.clone(),
+        args: p1.args,
         helpers: combined_helpers,
         exp: expr,
-    };
-    let p2 = if opts.frontend_opt() {
-        // Front end optimization
-        fe_opt(allocator, runner.clone(), opts.clone(), p1)?
-    } else {
-        p1
     };
 
     // generate code from AST, optionally with optimization
