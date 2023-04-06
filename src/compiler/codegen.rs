@@ -1055,8 +1055,12 @@ fn start_codegen(
         };
     }
 
-    let only_defuns: Vec<HelperForm> = program.helpers
-        .iter().filter(|x| is_defun(x)).cloned().collect();
+    let only_defuns: Vec<HelperForm> = program
+        .helpers
+        .iter()
+        .filter(|x| is_defun(x))
+        .cloned()
+        .collect();
 
     code_generator.env = match opts.start_env() {
         Some(env) => env,
