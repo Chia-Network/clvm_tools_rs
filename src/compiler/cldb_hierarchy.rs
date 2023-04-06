@@ -120,7 +120,7 @@ fn sexp_from_symbol_table(
     symbol_table: &HashMap<String, String>,
     item_name: &str,
 ) -> Option<Rc<SExp>> {
-    let loc = Srcloc::start("*sym*");
+    let loc = Srcloc::compiler_internal_srcloc();
     symbol_table.get(item_name).and_then(|data| {
         parse_sexp(loc.clone(), data.as_bytes().iter().copied())
             .ok()

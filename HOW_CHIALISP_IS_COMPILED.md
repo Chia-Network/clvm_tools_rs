@@ -449,7 +449,7 @@ You can break down the basics of how chialisp compilation functions like this:
             .set_frontend_opt(dialect > 21);
         let parsed = parse_sexp(Srcloc::start(&use_filename), file_content.bytes())?;
         let compileform = frontend(opts.clone(), &parsed)?;
-        let generated_code = codegen(&mut allocator, runner, opts, &compileform, &mut symbol_table)?;
+        let generated_code = codegen(&mut allocator, runner, opts, &compileform, &mut symbol_table)?;//xxx update doc here
         // generated_code.1 is an Rc<SExp> which contains the output
         // code.
 
@@ -461,6 +461,8 @@ PrimaryCodegen.  During this process, the compilation state is updated by each.
 
 Everything before code generation is uninteresting, but I'll note at a high level
 how functions on PrimaryCodegen function.
+
+//start_codegen
 
 codegen starts by running start_codegen to introduce each helper to the
 PrimaryCodegen and based on their types, bin them into the appropriate parts
