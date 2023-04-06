@@ -6,7 +6,14 @@ Theory of operation of the modern compiler: ./HOW_CHIALISP_IS_COMPILED.md
 This repo can be installed via cargo
 
     cargo install clvm_tools_rs
-    
+
+or via pip
+
+    pip install clvm_tools_rs@git+https://github.com/Chia-Network/clvm_tools_rs.git@e17412032aa7d3b8b1d1f931893fb5802eee626a
+
+Note: `pip` installs a subset of the tools installed by `cargo`, including `brun`, `run`, `opc` and `opd`.
+
+
 The most current version of the language is in the rollup branch:
 
     20221005-rollup

@@ -1,5 +1,6 @@
 /// Chialisp debugging.
 pub mod cldb;
+pub mod cldb_hierarchy;
 /// CLVM running.
 pub mod clvm;
 mod codegen;

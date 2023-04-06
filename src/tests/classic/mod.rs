@@ -1,3 +1,4 @@
+mod clvmc;
 mod optimize;
 pub mod run;
 mod smoke;
