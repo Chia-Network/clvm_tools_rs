@@ -17,6 +17,7 @@ jobs:
     runs-on: [ARM64, Linux]
     container:
       image: ghcr.io/chia-network/build-images/centos-pypa-rust-aarch64:latest
+      options: --user root
 
     steps:
     - name: Checkout repository
