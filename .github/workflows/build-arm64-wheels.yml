@@ -28,7 +28,7 @@ jobs:
       run: |
         echo "${PATH}"
         yum -y install openssl-devel
-        source $HOME/.cargo/env
+        source /root/.cargo/env
         rustup target add aarch64-unknown-linux-musl
         rm -rf venv
         export PATH="${PATH}:/opt/python/cp39-cp39/bin/:/opt/python/cp38-cp38/bin/:/opt/python/cp37-cp37m/bin/"
