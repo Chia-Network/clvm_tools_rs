@@ -13,8 +13,8 @@ on:
 
 jobs:
   build_wheels:
-    name: ARM64 Python Wheels on ubuntu-latest
-    runs-on: arm-64-runners
+    name: ARM64 Python Wheels
+    runs-on: [ARM64, Linux]
     container:
       image: ghcr.io/chia-network/build-images/centos-pypa-rust-aarch64:latest
 
