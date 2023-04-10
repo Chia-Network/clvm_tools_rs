@@ -6,6 +6,7 @@ on:
     branches:
       - base
       - dev
+      - combine-workflows
     tags:
         - '**'
   pull_request:
