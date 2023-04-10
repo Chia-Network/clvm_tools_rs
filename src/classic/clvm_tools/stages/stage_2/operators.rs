@@ -16,7 +16,9 @@ use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream}
 use crate::classic::clvm::keyword_from_atom;
 use crate::classic::clvm::sexp::proper_list;
 
-use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble_to_ir_with_kw};
+use crate::classic::clvm_tools::binutils::{
+    assemble_from_ir, disassemble, disassemble_to_ir_with_kw,
+};
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::ir::writer::write_ir_to_stream;
 use crate::classic::clvm_tools::sha256tree::TreeHash;
@@ -198,6 +200,11 @@ impl CompilerOperatorsInternal {
         Err(EvalErr(sexp, "failed to write data".to_string()))
     }
 
+    fn get_compile_filename(&self, allocator: &mut Allocator) -> Response {
+        let converted_filename = allocator.new_atom(self.source_file.as_bytes())?;
+        Ok(Reduction(1, converted_filename))
+    }
+
     fn get_include_paths(&self, allocator: &mut Allocator) -> Response {
         let mut converted_search_paths = allocator.null();
         for s in self.search_paths.iter().rev() {
@@ -281,6 +288,7 @@ impl Dialect for CompilerOperatorsInternal {
         sexp: NodePtr,
         max_cost: Cost,
     ) -> Response {
+        eprintln!("op? {}", disassemble(allocator, op));
         match allocator.sexp(op) {
             SExp::Atom(opname) => {
                 let opbuf = allocator.buf(&opname);
@@ -294,6 +302,8 @@ impl Dialect for CompilerOperatorsInternal {
                     do_optimize(self.get_runner(), allocator, &self.opt_memo, sexp)
                 } else if opbuf == "_set_symbol_table".as_bytes() {
                     self.set_symbol_table(allocator, sexp)
+                } else if opbuf == "_get_compile_filename".as_bytes() {
+                    self.get_compile_filename(allocator)
                 } else if opbuf == "_get_include_paths".as_bytes() {
                     self.get_include_paths(allocator)
                 } else if opbuf == "_full_path_for_name".as_bytes() {

@@ -8,7 +8,7 @@ use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemb
 use crate::classic::clvm_tools::cmds::call_tool;
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::stages::stage_2::compile::{
-    do_com_prog, try_expand_macro_for_atom,
+    do_com_prog, get_compile_filename, get_last_path_component, try_expand_macro_for_atom,
 };
 use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote, run};
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
@@ -292,4 +292,23 @@ fn test_process_embed_file_as_hex() {
         decode_string(outstream.get_value().data())
     );
     assert_eq!(name, b"test-embed-from-hex");
+}
+
+#[test]
+fn test_classic_runner_has_compile_filename() {
+    let mut allocator = Allocator::new();
+    let use_filename = "test-classic-runner-has-compile-filename.clsp";
+    let runner = run_program_for_search_paths(use_filename, &vec![], false);
+
+    let result_filename = get_compile_filename(runner, &mut allocator)
+        .expect("should be able to tell us the file name given")
+        .expect("should have returned some");
+
+    assert_eq!(result_filename, use_filename);
+}
+
+#[test]
+fn test_get_last_path_component_0() {
+    let last_path_component = get_last_path_component("test/foo/bar.clsp");
+    assert_eq!(last_path_component, "bar.clsp");
 }
