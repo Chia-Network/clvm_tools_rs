@@ -288,7 +288,6 @@ impl Dialect for CompilerOperatorsInternal {
         sexp: NodePtr,
         max_cost: Cost,
     ) -> Response {
-        eprintln!("op? {}", disassemble(allocator, op));
         match allocator.sexp(op) {
             SExp::Atom(opname) => {
                 let opbuf = allocator.buf(&opname);
