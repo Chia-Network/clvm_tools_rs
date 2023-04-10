@@ -82,28 +82,27 @@ jobs:
     - name: Build Linux in manylinux2010 with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'centos-amd64')
       run: |
-            yum -y install libc6 openssl-devel && \
-            source $HOME/.cargo/env && \
-            rustup target add x86_64-unknown-linux-musl && \
-            rm -rf venv && \
-            PY_VERSION=${{ matrix.python }}
-            PY_VERSION=${PY_VERSION/.} && \
-            echo "Python version with dot removed is $PY_VERSION" && \
-            if [ "$PY_VERSION" = "37" ]; \
-            then export SCND_VERSION="${PY_VERSION}m"; \
-            else export SCND_VERSION="$PY_VERSION"; fi && \
-            echo "Exporting path /opt/python/cp$PY_VERSION-cp$SCND_VERSION/bin" && \
-            export PATH=/opt/python/cp$PY_VERSION-cp$SCND_VERSION/bin/:$PATH && \
-            /opt/python/cp38-cp38/bin/python -m venv venv && \
-            if [ ! -f "activate" ]; then ln -s venv/bin/activate; fi && \
-            . ./activate && \
-            pip install --upgrade pip
-
-            docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v0.13.1 build --release --strip --manylinux 2010
-        # Refresh in case any ownerships changed.
-            mv target target.docker && cp -r target.docker target
-        # Ensure an empty .cargo-lock file exists.
-            touch target/release/.cargo-lock
+        yum -y install libc6 openssl-devel && \
+        source $HOME/.cargo/env && \
+        rustup target add x86_64-unknown-linux-musl && \
+        rm -rf venv && \
+        PY_VERSION=${{ matrix.python }}
+        PY_VERSION=${PY_VERSION/.} && \
+        echo "Python version with dot removed is $PY_VERSION" && \
+        if [ "$PY_VERSION" = "37" ]; \
+        then export SCND_VERSION="${PY_VERSION}m"; \
+        else export SCND_VERSION="$PY_VERSION"; fi && \
+        echo "Exporting path /opt/python/cp$PY_VERSION-cp$SCND_VERSION/bin" && \
+        export PATH=/opt/python/cp$PY_VERSION-cp$SCND_VERSION/bin/:$PATH && \
+        /opt/python/cp38-cp38/bin/python -m venv venv && \
+        if [ ! -f "activate" ]; then ln -s venv/bin/activate; fi && \
+        . ./activate && \
+        pip install --upgrade pip
+        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v0.13.1 build --release --strip --manylinux 2010
+    # Refresh in case any ownerships changed.
+        mv target target.docker && cp -r target.docker target
+    # Ensure an empty .cargo-lock file exists.
+        touch target/release/.cargo-lock
 
     - name: Build alpine wheel via docker
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
