@@ -27,7 +27,7 @@ use crate::classic::clvm::keyword_from_atom;
 use crate::classic::clvm::serialize::{sexp_from_stream, sexp_to_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
-use crate::classic::clvm_tools::clvmc::detect_modern;
+use crate::classic::clvm_tools::clvmc::{detect_modern, write_sym_output};
 use crate::classic::clvm_tools::debug::check_unused;
 use crate::classic::clvm_tools::debug::{
     program_hash_from_program_env_cons, start_log_after, trace_pre_eval, trace_to_table,
@@ -767,18 +767,6 @@ fn fix_log(
                 log_result[i] = enlist(allocator, &updated).unwrap();
             })
         });
-    }
-}
-
-fn write_sym_output(compiled_lookup: &HashMap<String, String>, path: &str) -> Result<(), String> {
-    m! {
-        output <- serde_json::to_string(compiled_lookup).map_err(|_| {
-            "failed to serialize to json".to_string()
-        });
-
-        fs::write(path, output).map_err(|_| {
-            format!("failed to write {path}")
-        }).map(|_| ())
     }
 }
 

@@ -758,6 +758,29 @@ pub fn do_com_prog_for_dialect(
     }
 }
 
+pub fn get_compile_filename(
+    runner: Rc<dyn TRunProgram>,
+    allocator: &mut Allocator,
+) -> Result<Option<String>, EvalErr> {
+    let cvt_prog = assemble(allocator, "(_get_compile_filename)")?;
+
+    let cvt_prog_result = runner.run_program(allocator, cvt_prog, allocator.null(), None)?;
+
+    if cvt_prog_result.1 == allocator.null() {
+        return Ok(None);
+    }
+
+    if let SExp::Atom(buf) = allocator.sexp(cvt_prog_result.1) {
+        let abuf = allocator.buf(&buf).to_vec();
+        return Ok(Some(Bytes::new(Some(BytesFromType::Raw(abuf))).decode()));
+    }
+
+    Err(EvalErr(
+        allocator.null(),
+        "Couldn't decode result filename".to_string(),
+    ))
+}
+
 pub fn get_search_paths(
     runner: Rc<dyn TRunProgram>,
     allocator: &mut Allocator,
@@ -777,4 +800,31 @@ pub fn get_search_paths(
     }
 
     Ok(res)
+}
+
+pub fn get_last_path_component(name: &str) -> String {
+    let mut skip_start = None;
+    let fnbytes = name.as_bytes();
+
+    for (i, ch) in fnbytes.iter().enumerate() {
+        if *ch == b'/' || *ch == b'\\' {
+            skip_start = Some(i + 1);
+        }
+    }
+
+    if let Some(skip) = skip_start {
+        let namevec = fnbytes.iter().skip(skip).copied().collect();
+        Bytes::new(Some(BytesFromType::Raw(namevec))).decode()
+    } else {
+        name.to_owned()
+    }
+}
+
+pub fn make_symbols_name(current_filename: &str, name: &str) -> String {
+    // Grab the final path component if these strings are composed
+    // that way.
+    let take_start = get_last_path_component(current_filename);
+    let take_end = get_last_path_component(name);
+
+    format!("{take_start}_{take_end}.sym")
 }
