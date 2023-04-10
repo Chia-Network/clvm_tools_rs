@@ -2,12 +2,15 @@ use clvmr::allocator::Allocator;
 use std::fs;
 use std::rc::Rc;
 
+use crate::classic::clvm::__type_compatibility__::Stream;
+use crate::classic::clvm::sexp::rest;
 use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemble};
+use crate::classic::clvm_tools::cmds::call_tool;
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::stages::stage_2::compile::{
     do_com_prog, try_expand_macro_for_atom,
 };
-use crate::classic::clvm_tools::stages::stage_2::helpers::brun;
+use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote, run};
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file, read_file};
 
@@ -139,6 +142,38 @@ fn test_compile_assert_2() {
 }
 
 #[test]
+fn test_stage_2_quote() {
+    let mut allocator = Allocator::new();
+    let assembled = assemble(&mut allocator, "(1 2 3)").unwrap();
+    let quoted = quote(&mut allocator, assembled).unwrap();
+    assert_eq!(disassemble(&mut allocator, quoted), "(q 1 2 3)");
+}
+
+#[test]
+fn test_stage_2_evaluate() {
+    let mut allocator = Allocator::new();
+    let prog = assemble(&mut allocator, "(q 16 2 3)").unwrap();
+    let args = assemble(&mut allocator, "(q 9 15)").unwrap();
+    let to_eval = evaluate(&mut allocator, prog, args).unwrap();
+    assert_eq!(
+        disassemble(&mut allocator, to_eval),
+        "(a (q 16 2 3) (q 9 15))"
+    );
+}
+
+#[test]
+fn test_stage_2_run() {
+    let mut allocator = Allocator::new();
+    let prog = assemble(&mut allocator, "(q 16 2 3)").unwrap();
+    let macro_lookup_throw = assemble(&mut allocator, "(q 9)").unwrap();
+    let to_eval = run(&mut allocator, prog, macro_lookup_throw).unwrap();
+    assert_eq!(
+        disassemble(&mut allocator, to_eval),
+        "(a (\"com\" (q 16 2 3) (q 1 9)) 1)"
+    );
+}
+
+#[test]
 fn test_present_file_smoke_not_exists() {
     let mut allocator = Allocator::new();
     let runner =
@@ -226,4 +261,35 @@ fn test_process_embed_file_as_sexp_in_an_expected_location() {
     let real_file_content =
         fs::read_to_string("resources/tests/steprun/fact.clvm.hex").expect("should exist");
     assert_eq!(res.data, real_file_content.as_bytes().to_vec());
+}
+
+#[test]
+fn test_process_embed_file_as_hex() {
+    let mut allocator = Allocator::new();
+    let runner =
+        run_program_for_search_paths("*test*", &vec!["resources/tests".to_string()], false);
+    let declaration_sexp = assemble(
+        &mut allocator,
+        "(embed-file test-embed-from-hex hex steprun/fact.clvm.hex)",
+    )
+    .expect("should assemble");
+    let (name, content) =
+        process_embed_file(&mut allocator, runner, declaration_sexp).expect("should work");
+    let matching_part_of_decl = rest(&mut allocator, content).expect("should be quoted");
+    let mut outstream = Stream::new(None);
+    call_tool(
+        &mut outstream,
+        &mut allocator,
+        "opd",
+        &[
+            "opd".to_string(),
+            "resources/tests/steprun/fact.clvm.hex".to_string(),
+        ],
+    )
+    .expect("should work");
+    assert_eq!(
+        disassemble(&mut allocator, matching_part_of_decl),
+        decode_string(outstream.get_value().data())
+    );
+    assert_eq!(name, b"test-embed-from-hex");
 }
