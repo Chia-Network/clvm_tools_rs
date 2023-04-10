@@ -48,15 +48,12 @@ pub fn write_sym_output(
     compiled_lookup: &HashMap<String, String>,
     path: &str,
 ) -> Result<(), String> {
-    m! {
-        output <- serde_json::to_string(compiled_lookup).map_err(|_| {
-            "failed to serialize to json".to_string()
-        });
+    let output = serde_json::to_string(compiled_lookup)
+        .map_err(|_| "failed to serialize to json".to_string())?;
 
-        fs::write(path, output).map_err(|_| {
-            format!("failed to write {path}")
-        }).map(|_| ())
-    }
+    fs::write(path, output)
+        .map_err(|_| format!("failed to write {path}"))
+        .map(|_| ())
 }
 
 pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> Option<i32> {

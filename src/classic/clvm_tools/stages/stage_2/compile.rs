@@ -762,7 +762,7 @@ pub fn do_com_prog_for_dialect(
     }
 }
 
-fn get_compile_filename(
+pub fn get_compile_filename(
     runner: Rc<dyn TRunProgram>,
     allocator: &mut Allocator,
 ) -> Result<Option<String>, EvalErr> {
@@ -806,7 +806,7 @@ pub fn get_search_paths(
     Ok(res)
 }
 
-fn get_last_path_component(name: &str) -> String {
+pub fn get_last_path_component(name: &str) -> String {
     let mut skip_start = None;
     let fnbytes = name.as_bytes();
 
@@ -824,7 +824,7 @@ fn get_last_path_component(name: &str) -> String {
     }
 }
 
-fn make_symbols_name(current_filename: &str, name: &str) -> String {
+pub fn make_symbols_name(current_filename: &str, name: &str) -> String {
     // Grab the final path component if these strings are composed
     // that way.
     let take_start = get_last_path_component(current_filename);

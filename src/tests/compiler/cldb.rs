@@ -7,11 +7,11 @@ use clvmr::allocator::Allocator;
 use crate::classic::clvm_tools::cmds::{cldb_hierarchy, YamlElement};
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
-use crate::compiler::clvm::start_step;
+use crate::compiler::clvm::{start_step, RunStep};
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::prims;
-use crate::compiler::sexp::parse_sexp;
+use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 fn json_to_yamlelement(json: &serde_json::Value) -> YamlElement {
@@ -36,6 +36,57 @@ fn yaml_to_yamlelement(yaml: &BTreeMap<String, YamlElement>) -> YamlElement {
     YamlElement::Subtree(yaml.clone())
 }
 
+trait StepOfCldbViewer {
+    fn show(&mut self, _step: &RunStep, _output: Option<BTreeMap<String, String>>) -> bool {
+        true
+    }
+}
+
+fn run_clvm_in_cldb<V>(
+    program_name: &str,
+    program_lines: Rc<Vec<String>>,
+    program: Rc<SExp>,
+    symbols: HashMap<String, String>,
+    args: Rc<SExp>,
+    viewer: &mut V,
+) -> Option<String>
+where
+    V: StepOfCldbViewer,
+{
+    let mut allocator = Allocator::new();
+    let runner = Rc::new(DefaultProgramRunner::new());
+
+    let mut prim_map = HashMap::new();
+    for p in prims::prims().iter() {
+        prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
+    }
+    let step = start_step(program, args);
+    let cldbenv = CldbRunEnv::new(
+        Some(program_name.to_string()),
+        program_lines,
+        Box::new(CldbNoOverride::new_symbols(symbols)),
+    );
+    let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
+    let mut output: BTreeMap<String, String> = BTreeMap::new();
+
+    loop {
+        if cldbrun.is_ended() {
+            return output.get("Final").cloned();
+        }
+
+        if let Some(result) = cldbrun.step(&mut allocator) {
+            output = result;
+            if !viewer.show(&cldbrun.current_step(), Some(output.clone())) {
+                return None;
+            }
+        }
+    }
+}
+
+struct DoesntWatchCldb {}
+
+impl StepOfCldbViewer for DoesntWatchCldb {}
+
 #[test]
 fn test_run_clvm_in_cldb() {
     let program_name = "fact.clsp";
@@ -55,31 +106,62 @@ fn test_run_clvm_in_cldb() {
     )
     .expect("should compile");
 
-    let mut prim_map = HashMap::new();
-    for p in prims::prims().iter() {
-        prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
-    }
     let program_lines: Vec<String> = program_code.lines().map(|x| x.to_string()).collect();
 
-    let step = start_step(Rc::new(program), args);
-    let cldbenv = CldbRunEnv::new(
-        Some(program_name.to_string()),
-        Rc::new(program_lines),
-        Box::new(CldbNoOverride::new_symbols(symbols)),
+    assert_eq!(
+        run_clvm_in_cldb(
+            program_name,
+            Rc::new(program_lines),
+            Rc::new(program),
+            symbols,
+            args,
+            &mut DoesntWatchCldb {},
+        ),
+        Some("120".to_string())
     );
-    let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
-    let mut output: BTreeMap<String, String> = BTreeMap::new();
+}
 
-    loop {
-        if cldbrun.is_ended() {
-            assert_eq!(output.get("Final"), Some(&"120".to_string()));
-            return;
-        }
+#[test]
+fn test_cldb_hex_to_modern_sexp_smoke_0() {
+    let mut allocator = Allocator::new();
+    let symbol_table = HashMap::new();
+    let input_program = "ff01ff03ff0580";
+    let result_succeed = hex_to_modern_sexp(
+        &mut allocator,
+        &symbol_table,
+        Srcloc::start("*test*"),
+        input_program,
+    )
+    .unwrap();
+    assert_eq!(result_succeed.to_string(), "(1 3 5)");
+}
 
-        if let Some(result) = cldbrun.step(&mut allocator) {
-            output = result;
-        }
-    }
+#[test]
+fn test_cldb_hex_to_modern_sexp_fail_half_cons() {
+    let mut allocator = Allocator::new();
+    let symbol_table = HashMap::new();
+    let input_program = "ff01ff03ff05";
+    let result = hex_to_modern_sexp(
+        &mut allocator,
+        &symbol_table,
+        Srcloc::start("*test*"),
+        input_program,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_cldb_hex_to_modern_sexp_fail_odd_hex() {
+    let mut allocator = Allocator::new();
+    let symbol_table = HashMap::new();
+    let input_program = "ff01ff03ff058";
+    let result = hex_to_modern_sexp(
+        &mut allocator,
+        &symbol_table,
+        Srcloc::start("*test*"),
+        input_program,
+    );
+    assert!(result.is_err());
 }
 
 fn compile_and_run_program_with_tree(
@@ -220,4 +302,70 @@ fn test_execute_program_and_capture_arguments() {
         serde_json::from_str(&json_text).expect("should contain json");
 
     compare_run_output(result, run_entries);
+}
+
+struct ExpectFailure {
+    throw: bool,
+    found_desired: bool,
+    want_result: Option<String>,
+}
+
+impl ExpectFailure {
+    fn new(throw: bool, want_result: Option<String>) -> Self {
+        ExpectFailure {
+            throw,
+            want_result,
+            found_desired: false,
+        }
+    }
+
+    fn correct_result(&self) -> bool {
+        self.found_desired
+    }
+}
+
+impl StepOfCldbViewer for ExpectFailure {
+    fn show(&mut self, _step: &RunStep, output: Option<BTreeMap<String, String>>) -> bool {
+        eprintln!("{:?}", output);
+        if let Some(o) = output {
+            if let Some(_) = o.get("Failure") {
+                let did_throw = o.get("Operator") == Some(&"8".to_string());
+                if let Some(desired_outcome) = &self.want_result {
+                    self.found_desired =
+                        did_throw == self.throw && o.get("Arguments") == Some(desired_outcome);
+                } else {
+                    self.found_desired = did_throw == self.throw;
+                }
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
+
+#[test]
+fn test_cldb_explicit_throw() {
+    let program_name = "*test*";
+    let loc = Srcloc::start(program_name);
+    let program =
+        parse_sexp(loc.clone(), b"(x (q . 2))".iter().copied()).expect("should parse")[0].clone();
+    let args = Rc::new(SExp::Nil(loc));
+    let program_lines = Rc::new(Vec::new());
+
+    let mut watcher = ExpectFailure::new(true, Some("(2)".to_string()));
+
+    assert_eq!(
+        run_clvm_in_cldb(
+            program_name,
+            program_lines,
+            program,
+            HashMap::new(),
+            args,
+            &mut watcher
+        ),
+        None
+    );
+
+    assert!(watcher.correct_result());
 }
