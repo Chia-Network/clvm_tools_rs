@@ -12,19 +12,6 @@ on:
     branches:
       - '**'
 
-name: Build Mac, Linux, and Windows wheels
-
-on:
-  push:
-    branches:
-      - base
-      - dev
-    tags:
-        - '**'
-  pull_request:
-    branches:
-      - '**'
-
 jobs:
   build_wheels:
     name: Wheel on ${{ matrix.os }} py-${{ matrix.python }}
@@ -42,11 +29,6 @@ jobs:
           - 3.8
           - 3.9
           - 3.10
-
-    steps:
-    - uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
 
     steps:
     - uses: actions/checkout@v3
@@ -79,7 +61,7 @@ jobs:
         . ./activate
         maturin build -i python --release --strip
 
-    - name: Build Linux in manylinux2010 with maturin on Python ${{ matrix.python }}
+    - name: Set up to build wheels Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'centos-amd64')
       run: |
         yum -y install libc6 openssl-devel && \
@@ -102,9 +84,7 @@ jobs:
         . ./activate && \
         pip install --upgrade pip
         docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v0.13.1 build --release --strip --manylinux 2010
-    # Refresh in case any ownerships changed.
         mv target target.docker && cp -r target.docker target
-    # Ensure an empty .cargo-lock file exists.
         touch target/release/.cargo-lock
 
     - name: Build alpine wheel via docker
