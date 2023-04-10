@@ -12,6 +12,19 @@ on:
     branches:
       - '**'
 
+name: Build Mac, Linux, and Windows wheels
+
+on:
+  push:
+    branches:
+      - base
+      - dev
+    tags:
+        - '**'
+  pull_request:
+    branches:
+      - '**'
+
 jobs:
   build_wheels:
     name: Wheel on ${{ matrix.os }} py-${{ matrix.python }}
@@ -19,8 +32,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
-        python: [3.7, 3.8, 3.9, '3.10']
+        os:
+          - macos-latest
+          - { name: centos-amd64, container: ghcr.io/chia-network/build-images/centos-pypa-rust-aarch64:latest }
+          - ubuntu-latest
+          - windows-latest
+        python:
+          - 3.7
+          - 3.8
+          - 3.9
+          - 3.10
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
 
     steps:
     - uses: actions/checkout@v3
@@ -54,14 +80,8 @@ jobs:
         maturin build -i python --release --strip
 
     - name: Build Linux in manylinux2010 with maturin on Python ${{ matrix.python }}
-      if: startsWith(matrix.os, 'ubuntu')
+      if: startsWith(matrix.os, 'centos-amd64')
       run: |
-        podman run --rm=true \
-          -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
-          quay.io/pypa/manylinux2010_x86_64 \
-          bash -exc '\
-            curl -L https://sh.rustup.rs > rustup-init.sh && \
-            sh rustup-init.sh -y && \
             yum -y install libc6 openssl-devel && \
             source $HOME/.cargo/env && \
             rustup target add x86_64-unknown-linux-musl && \
@@ -78,12 +98,12 @@ jobs:
             if [ ! -f "activate" ]; then ln -s venv/bin/activate; fi && \
             . ./activate && \
             pip install --upgrade pip
-          '
-        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v0.13.1 build --release --strip --manylinux 2010
+
+            docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v0.13.1 build --release --strip --manylinux 2010
         # Refresh in case any ownerships changed.
-        mv target target.docker && cp -r target.docker target
+            mv target target.docker && cp -r target.docker target
         # Ensure an empty .cargo-lock file exists.
-        touch target/release/.cargo-lock
+            touch target/release/.cargo-lock
 
     - name: Build alpine wheel via docker
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
@@ -275,4 +295,3 @@ jobs:
             components: rustfmt, clippy
       - name: cargo test
         run: cargo test
-
