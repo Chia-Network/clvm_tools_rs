@@ -8,10 +8,9 @@ use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm::sexp::{enlist, first, map_m, non_nil, proper_list, rest};
 use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
 
-use crate::classic::clvm_tools::binutils::disassemble;
+use crate::classic::clvm_tools::binutils::{assemble, disassemble};
 use crate::classic::clvm_tools::clvmc::{compile_clvm_text, write_sym_output};
 use crate::classic::clvm_tools::node_path::NodePath;
-use crate::classic::clvm_tools::stages::assemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::defaults::default_macro_lookup;
 use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote};

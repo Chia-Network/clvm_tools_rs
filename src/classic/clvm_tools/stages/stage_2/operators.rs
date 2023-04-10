@@ -52,6 +52,10 @@ pub struct CompilerOperatorsInternal {
     opt_memo: RefCell<HashMap<AllocatorRefOrTreeHash, NodePtr>>,
 }
 
+/// Given a list of search paths, find a full path to a file whose partial name
+/// is given.  If the file can't be found in any search path, use the expression
+/// the user gave to cause the file to be searched for in the error result.
+/// They're searched in order so repetition doesn't do anything. (suggested Q+A)
 pub fn full_path_for_filename(
     parent_sexp: NodePtr,
     filename: &str,
@@ -70,7 +74,7 @@ pub fn full_path_for_filename(
                 .unwrap_or_else(|| {
                     Err(EvalErr(
                         parent_sexp,
-                        "could not compute absolute path".to_string(),
+                        format!("could not compute absolute path for the combination of search path {path} and file name {filename} during text conversion from path_buf")
                     ))
                 });
         }
