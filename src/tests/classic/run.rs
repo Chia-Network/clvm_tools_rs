@@ -535,6 +535,123 @@ fn test_treehash_constant_embedded_modern_loop() {
 }
 
 #[test]
+fn test_embed_file_2() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (embed-file testhex hex hex-embed-01.hex) testhex)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(run_result, "(65 66 67)");
+}
+
+#[test]
+fn test_embed_file_4() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (include *standard-cl-21*) (embed-file testhex hex hex-embed-01.hex) testhex)"
+            .to_string(),
+    ])
+    .trim()
+    .to_string();
+    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(run_result, "(65 66 67)");
+}
+
+#[test]
+fn test_embed_file_5() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (embed-file testsexp sexp embed.sexp) testsexp)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(run_result, "(lsh 24 25)");
+}
+
+#[test]
+fn test_embed_file_6() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (include *standard-cl-21*) (embed-file testsexp sexp embed.sexp) testsexp)"
+            .to_string(),
+    ])
+    .trim()
+    .to_string();
+    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(run_result, "(lsh 24 25)");
+}
+
+#[test]
+fn test_embed_file_7() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (embed-file hello bin hello.bin) hello)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(run_result, "\"hello\"");
+}
+
+#[test]
+fn test_embed_file_8() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (include *standard-cl-21*) (embed-file hello bin hello.bin) hello)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(run_result, "\"hello\"");
+}
+
+#[test]
+fn test_embed_file_9() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (include *standard-cl-21*) (embed-file hello bin hello.bin) (sha256 (sha256 hello)))".to_string(),
+    ])
+        .trim()
+        .to_string();
+    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(
+        run_result,
+        "0x9595c9df90075148eb06860365df33584b75bff782a510c6cd4883a419833d50"
+    );
+}
+
+#[test]
 fn test_num_encoding_just_less_than_5_bytes() {
     let res = do_basic_run(&vec!["run".to_string(), "4281419728".to_string()])
         .trim()
@@ -747,7 +864,6 @@ fn test_check_tricky_arg_path_random() {
         )
         .unwrap();
         let disassembled = disassemble(&mut allocator, converted);
-        eprintln!("run {} want {} have {}", program, disassembled, res);
         assert_eq!(disassembled, res);
     }
 }
