@@ -16,16 +16,21 @@ on:
 jobs:
   build_wheels:
     name: Wheel on ${{ matrix.os }} py-${{ matrix.python }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os.runs-on }}
+    container: ${{ matrix.os.container }}
     strategy:
       fail-fast: false
       matrix:
         os:
-          - macos-latest
-          - centos-amd64:
+          - name: macos-latest
+            runs-on: macos-latest
+          - name: macos-latest
+            runs-on: ubuntu-latest
+          - name: macos-latest
+            runs-on: windows-latest
+          - name: Rust container
+            runs-on: ubuntu-latest
             container: 'ghcr.io/chia-network/build-images/centos-pypa-rust-aarch64:latest'
-          - ubuntu-latest
-          - windows-latest
         python:
           - 3.7
           - 3.8
@@ -64,7 +69,7 @@ jobs:
         maturin build -i python --release --strip
 
     - name: Set up to build wheels Python ${{ matrix.python }}
-      if: startsWith(matrix.os, 'centos-amd64')
+      if: startsWith(matrix.os.name, 'centos-amd64')
       run: |
         yum -y install libc6 openssl-devel && \
         source $HOME/.cargo/env && \
