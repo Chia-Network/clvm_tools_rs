@@ -22,7 +22,7 @@ jobs:
       matrix:
         os:
           - macos-latest
-          - centos-amd64
+          - centos-amd64:
             container: 'ghcr.io/chia-network/build-images/centos-pypa-rust-aarch64:latest'
           - ubuntu-latest
           - windows-latest
