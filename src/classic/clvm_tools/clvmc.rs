@@ -78,6 +78,7 @@ pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> Option<i32> {
 
 pub fn compile_clvm_text(
     allocator: &mut Allocator,
+    opts: Rc<dyn CompilerOpts>,
     search_paths: &[String],
     symbol_table: &mut HashMap<String, String>,
     text: &str,
@@ -88,7 +89,7 @@ pub fn compile_clvm_text(
 
     if let Some(dialect) = detect_modern(allocator, assembled_sexp) {
         let runner = Rc::new(DefaultProgramRunner::new());
-        let opts = Rc::new(DefaultCompilerOpts::new(input_path))
+        let opts = opts
             .set_optimize(true)
             .set_frontend_opt(dialect > 21)
             .set_search_paths(search_paths);
@@ -115,13 +116,14 @@ pub fn compile_clvm_text(
 
 pub fn compile_clvm_inner(
     allocator: &mut Allocator,
+    opts: Rc<dyn CompilerOpts>,
     search_paths: &[String],
     symbol_table: &mut HashMap<String, String>,
     filename: &str,
     text: &str,
     result_stream: &mut Stream,
 ) -> Result<(), String> {
-    let result = compile_clvm_text(allocator, search_paths, symbol_table, text, filename)
+    let result = compile_clvm_text(allocator, opts, search_paths, symbol_table, text, filename)
         .map_err(|x| format!("error {} compiling {}", x.1, disassemble(allocator, x.0)))?;
     sexp_to_stream(allocator, result, result_stream);
     Ok(())
@@ -144,6 +146,7 @@ pub fn compile_clvm(
 
         compile_clvm_inner(
             &mut allocator,
+            Rc::new(DefaultCompilerOpts::new(input_path)),
             search_paths,
             symbol_table,
             input_path,
