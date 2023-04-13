@@ -88,9 +88,7 @@ pub fn compile_clvm_text(
 
     if let Some(dialect) = detect_modern(allocator, assembled_sexp) {
         let runner = Rc::new(DefaultProgramRunner::new());
-        let opts = opts
-            .set_optimize(true)
-            .set_frontend_opt(dialect > 21);
+        let opts = opts.set_optimize(true).set_frontend_opt(dialect > 21);
 
         let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
         let res = unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)));
@@ -140,7 +138,7 @@ pub fn compile_clvm(
     if compile {
         let text = fs::read_to_string(input_path)
             .map_err(|x| format!("error reading {input_path}: {x:?}"))?;
-        let opts = Rc::new(DefaultCompilerOpts::new(input_path)).set_search_paths(&search_paths);
+        let opts = Rc::new(DefaultCompilerOpts::new(input_path)).set_search_paths(search_paths);
 
         compile_clvm_inner(
             &mut allocator,
