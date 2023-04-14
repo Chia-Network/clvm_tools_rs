@@ -44,6 +44,18 @@ fn include_dialect(
     None
 }
 
+pub fn write_sym_output(
+    compiled_lookup: &HashMap<String, String>,
+    path: &str,
+) -> Result<(), String> {
+    let output = serde_json::to_string(compiled_lookup)
+        .map_err(|_| "failed to serialize to json".to_string())?;
+
+    fs::write(path, output)
+        .map_err(|_| format!("failed to write {path}"))
+        .map(|_| ())
+}
+
 pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> Option<i32> {
     let mut dialects = HashMap::new();
     dialects.insert("*standard-cl-21*".as_bytes().to_vec(), 21);
@@ -82,7 +94,7 @@ pub fn compile_clvm_text(
     symbol_table: &mut HashMap<String, String>,
     text: &str,
     input_path: &str,
-    classic_with_opts: bool
+    classic_with_opts: bool,
 ) -> Result<NodePtr, EvalErr> {
     let ir_src = read_ir(text).map_err(|s| EvalErr(allocator.null(), s.to_string()))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
@@ -123,8 +135,15 @@ pub fn compile_clvm_inner(
     result_stream: &mut Stream,
     classic_with_opts: bool,
 ) -> Result<(), String> {
-    let result = compile_clvm_text(allocator, opts, symbol_table, text, filename, classic_with_opts)
-        .map_err(|x| format!("error {} compiling {}", x.1, disassemble(allocator, x.0)))?;
+    let result = compile_clvm_text(
+        allocator,
+        opts,
+        symbol_table,
+        text,
+        filename,
+        classic_with_opts,
+    )
+    .map_err(|x| format!("error {} compiling {}", x.1, disassemble(allocator, x.0)))?;
     sexp_to_stream(allocator, result, result_stream);
     Ok(())
 }

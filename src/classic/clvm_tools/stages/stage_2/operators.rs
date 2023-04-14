@@ -167,11 +167,10 @@ impl CompilerOperatorsInternal {
         // Given a string containing the data in the file to parse, parse it or
         // return EvalErr.
         let parse_file_content = |allocator: &mut Allocator, content: &String| {
-            read_ir(&content)
+            read_ir(content)
                 .map_err(|e| EvalErr(allocator.null(), e.to_string()))
                 .and_then(|ir| {
-                    assemble_from_ir(allocator, Rc::new(ir))
-                        .map(|ir_sexp| Reduction(1, ir_sexp))
+                    assemble_from_ir(allocator, Rc::new(ir)).map(|ir_sexp| Reduction(1, ir_sexp))
                 })
         };
 
@@ -182,7 +181,9 @@ impl CompilerOperatorsInternal {
                         Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
                     // Use the read interface in CompilerOpts if we have one.
                     if let Some(opts) = self.get_compiler_opts() {
-                        if let Ok((_, content)) = opts.read_new_file(self.source_file.clone(), filename.clone()) {
+                        if let Ok((_, content)) =
+                            opts.read_new_file(self.source_file.clone(), filename.clone())
+                        {
                             return parse_file_content(allocator, &content);
                         }
                     }
@@ -227,6 +228,11 @@ impl CompilerOperatorsInternal {
         Err(EvalErr(sexp, "failed to write data".to_string()))
     }
 
+    fn get_compile_filename(&self, allocator: &mut Allocator) -> Response {
+        let converted_filename = allocator.new_atom(self.source_file.as_bytes())?;
+        Ok(Reduction(1, converted_filename))
+    }
+
     fn get_include_paths(&self, allocator: &mut Allocator) -> Response {
         let mut converted_search_paths = allocator.null();
         for s in self.search_paths.iter().rev() {
@@ -241,7 +247,7 @@ impl CompilerOperatorsInternal {
     fn get_full_path_for_filename(&self, allocator: &mut Allocator, sexp: NodePtr) -> Response {
         let convert_filename = |allocator: &mut Allocator, full_name: &String| {
             let converted_filename = allocator.new_atom(full_name.as_bytes())?;
-            return Ok(Reduction(1, converted_filename));
+            Ok(Reduction(1, converted_filename))
         };
 
         if let SExp::Pair(l, _r) = allocator.sexp(sexp) {
@@ -333,6 +339,8 @@ impl Dialect for CompilerOperatorsInternal {
                     do_optimize(self.get_runner(), allocator, &self.opt_memo, sexp)
                 } else if opbuf == "_set_symbol_table".as_bytes() {
                     self.set_symbol_table(allocator, sexp)
+                } else if opbuf == "_get_compile_filename".as_bytes() {
+                    self.get_compile_filename(allocator)
                 } else if opbuf == "_get_include_paths".as_bytes() {
                     self.get_include_paths(allocator)
                 } else if opbuf == "_full_path_for_name".as_bytes() {

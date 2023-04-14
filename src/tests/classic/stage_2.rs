@@ -11,14 +11,14 @@ use crate::classic::clvm_tools::cmds::call_tool;
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::compile::{
-    do_com_prog, try_expand_macro_for_atom,
+    do_com_prog, get_compile_filename, get_last_path_component, try_expand_macro_for_atom,
 };
 use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote, run};
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file, read_file};
 
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
-use crate::compiler::sexp::{SExp, decode_string};
+use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 fn test_expand_macro(
@@ -302,7 +302,7 @@ fn test_process_embed_file_as_hex() {
 #[derive(Clone, Debug)]
 struct TestCompilerOptsPresentsOwnFiles {
     filename: String,
-    files: HashMap<String, String>
+    files: HashMap<String, String>,
 }
 
 impl TestCompilerOptsPresentsOwnFiles {
@@ -312,17 +312,37 @@ impl TestCompilerOptsPresentsOwnFiles {
 }
 
 impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
-    fn filename(&self) -> String { self.filename.clone() }
+    fn filename(&self) -> String {
+        self.filename.clone()
+    }
 
-    fn code_generator(&self) -> Option<PrimaryCodegen> { None }
-    fn in_defun(&self) -> bool { false }
-    fn stdenv(&self) -> bool { false }
-    fn optimize(&self) -> bool { false }
-    fn frontend_opt(&self) -> bool { false }
-    fn frontend_check_live(&self) -> bool { false }
-    fn start_env(&self) -> Option<Rc<SExp>> { None }
-    fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>> { Rc::new(HashMap::new()) }
-    fn get_search_paths(&self) -> Vec<String> { vec![".".to_string()] }
+    fn code_generator(&self) -> Option<PrimaryCodegen> {
+        None
+    }
+    fn in_defun(&self) -> bool {
+        false
+    }
+    fn stdenv(&self) -> bool {
+        false
+    }
+    fn optimize(&self) -> bool {
+        false
+    }
+    fn frontend_opt(&self) -> bool {
+        false
+    }
+    fn frontend_check_live(&self) -> bool {
+        false
+    }
+    fn start_env(&self) -> Option<Rc<SExp>> {
+        None
+    }
+    fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
+        Rc::new(HashMap::new())
+    }
+    fn get_search_paths(&self) -> Vec<String> {
+        vec![".".to_string()]
+    }
     fn set_search_paths(&self, _dirs: &[String]) -> Rc<dyn CompilerOpts> {
         Rc::new(self.clone())
     }
@@ -356,7 +376,10 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
             return Ok((filename.clone(), content.clone()));
         }
 
-        Err(CompileErr(Srcloc::start(&inc_from), format!("could not read {filename}")))
+        Err(CompileErr(
+            Srcloc::start(&inc_from),
+            format!("could not read {filename}"),
+        ))
     }
     fn compile_program(
         &self,
@@ -365,7 +388,10 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
         _sexp: Rc<SExp>,
         _symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
-        Err(CompileErr(Srcloc::start(&self.filename), "test object only".to_string()))
+        Err(CompileErr(
+            Srcloc::start(&self.filename),
+            "test object only".to_string(),
+        ))
     }
 }
 
@@ -374,21 +400,62 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
 // in the classic compiler when requested.
 #[test]
 fn test_classic_compiler_with_compiler_opts() {
-    let files_vec: Vec<(String, String)> = vec![
-        ("test.clinc", "( (defun F (X) (+ X 1)) )")
-    ].iter().map(|(n,v)| (n.to_string(), v.to_string())).collect();
+    let files_vec: Vec<(String, String)> = vec![("test.clinc", "( (defun F (X) (+ X 1)) )")]
+        .iter()
+        .map(|(n, v)| (n.to_string(), v.to_string()))
+        .collect();
     let mut files = HashMap::new();
-    for (k,v) in files_vec.into_iter() {
-        files.insert(k,v);
+    for (k, v) in files_vec.into_iter() {
+        files.insert(k, v);
     }
-    let opts = Rc::new(TestCompilerOptsPresentsOwnFiles::new("test.clsp".to_string(), files));
+    let opts = Rc::new(TestCompilerOptsPresentsOwnFiles::new(
+        "test.clsp".to_string(),
+        files,
+    ));
     let to_compile = "(mod (A) (include test.clinc) (F A))";
     let mut allocator = Allocator::new();
     let mut symbols = HashMap::new();
     // Verify injection
-    let result = compile_clvm_text(&mut allocator, opts.clone(), &mut symbols, to_compile, "test.clsp", true).expect("should compile and find the content");
-    assert_eq!(disassemble(&mut allocator, result), "(a (q 2 2 (c 2 (c 5 ()))) (c (q 16 5 (q . 1)) 1))");
+    let result = compile_clvm_text(
+        &mut allocator,
+        opts.clone(),
+        &mut symbols,
+        to_compile,
+        "test.clsp",
+        true,
+    )
+    .expect("should compile and find the content");
+    assert_eq!(
+        disassemble(&mut allocator, result),
+        "(a (q 2 2 (c 2 (c 5 ()))) (c (q 16 5 (q . 1)) 1))"
+    );
     // Verify lack of injection
-    let result_no_injection = compile_clvm_text(&mut allocator, opts, &mut symbols, to_compile, "test.clsp", false);
+    let result_no_injection = compile_clvm_text(
+        &mut allocator,
+        opts,
+        &mut symbols,
+        to_compile,
+        "test.clsp",
+        false,
+    );
     assert!(result_no_injection.is_err());
+}
+
+#[test]
+fn test_classic_runner_has_compile_filename() {
+    let mut allocator = Allocator::new();
+    let use_filename = "test-classic-runner-has-compile-filename.clsp";
+    let runner = run_program_for_search_paths(use_filename, &vec![], false);
+
+    let result_filename = get_compile_filename(runner, &mut allocator)
+        .expect("should be able to tell us the file name given")
+        .expect("should have returned some");
+
+    assert_eq!(result_filename, use_filename);
+}
+
+#[test]
+fn test_get_last_path_component_0() {
+    let last_path_component = get_last_path_component("test/foo/bar.clsp");
+    assert_eq!(last_path_component, "bar.clsp");
 }
