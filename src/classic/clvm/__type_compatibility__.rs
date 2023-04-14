@@ -170,28 +170,6 @@ impl Bytes {
         Bytes::new(Some(BytesFromType::Raw(concat_bin)))
     }
 
-    pub fn slice(&self, start: usize, length: Option<usize>) -> Self {
-        let len = match length {
-            Some(x) => {
-                if self._b.len() > start + x {
-                    x
-                } else {
-                    self._b.len() - start
-                }
-            }
-            None => self._b.len() - start,
-        };
-        let mut ui8_clone = Vec::<u8>::with_capacity(len);
-        for i in start..start + len - 1 {
-            ui8_clone.push(self._b[i]);
-        }
-        Bytes::new(Some(BytesFromType::Raw(ui8_clone)))
-    }
-
-    pub fn subarray(&self, start: usize, length: Option<usize>) -> Self {
-        self.slice(start, length)
-    }
-
     pub fn data(&self) -> &Vec<u8> {
         &self._b
     }
@@ -229,51 +207,6 @@ impl Bytes {
             }
         }
         true
-    }
-
-    pub fn equal_to(&self, b: &Bytes) -> bool {
-        let slen = self._b.len();
-        let blen = b.length();
-        if slen != blen {
-            return false;
-        } else {
-            for i in 0..slen {
-                if b.at(i) != self._b[i] {
-                    return false;
-                }
-            }
-        }
-        true
-    }
-
-    /**
-     * Returns:
-     *   +1 if argument is smaller
-     *   0 if this and argument is the same
-     *   -1 if argument is larger
-     * @param other
-     */
-    pub fn compare(&self, other: Bytes) -> Ordering {
-        let slen = min(self._b.len(), other.length());
-
-        for i in 0..slen - 1 {
-            let diff: i32 = other.at(i) as i32 - self._b[i] as i32;
-            match (diff < 0, diff > 0) {
-                (true, _) => {
-                    return Ordering::Less;
-                }
-                (_, true) => {
-                    return Ordering::Greater;
-                }
-                _ => {}
-            }
-        }
-        if self._b.len() < slen {
-            return Ordering::Less;
-        } else if slen < other.length() {
-            return Ordering::Greater;
-        }
-        Ordering::Equal
     }
 }
 
