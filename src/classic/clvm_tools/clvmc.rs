@@ -82,6 +82,7 @@ pub fn compile_clvm_text(
     symbol_table: &mut HashMap<String, String>,
     text: &str,
     input_path: &str,
+    classic_with_opts: bool
 ) -> Result<NodePtr, EvalErr> {
     let ir_src = read_ir(text).map_err(|s| EvalErr(allocator.null(), s.to_string()))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
@@ -104,6 +105,9 @@ pub fn compile_clvm_text(
         let compile_invoke_code = run(allocator);
         let input_sexp = allocator.new_pair(assembled_sexp, allocator.null())?;
         let run_program = run_program_for_search_paths(input_path, &opts.get_search_paths(), false);
+        if classic_with_opts {
+            run_program.set_compiler_opts(Some(opts));
+        }
         let run_program_output =
             run_program.run_program(allocator, compile_invoke_code, input_sexp, None)?;
         Ok(run_program_output.1)
@@ -117,8 +121,9 @@ pub fn compile_clvm_inner(
     filename: &str,
     text: &str,
     result_stream: &mut Stream,
+    classic_with_opts: bool,
 ) -> Result<(), String> {
-    let result = compile_clvm_text(allocator, opts, symbol_table, text, filename)
+    let result = compile_clvm_text(allocator, opts, symbol_table, text, filename, classic_with_opts)
         .map_err(|x| format!("error {} compiling {}", x.1, disassemble(allocator, x.0)))?;
     sexp_to_stream(allocator, result, result_stream);
     Ok(())
@@ -147,6 +152,7 @@ pub fn compile_clvm(
             input_path,
             &text,
             &mut result_stream,
+            false,
         )?;
 
         let output_path_obj = Path::new(output_path);
