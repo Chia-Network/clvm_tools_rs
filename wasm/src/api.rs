@@ -319,6 +319,7 @@ pub fn compile(input_js: JsValue, filename_js: JsValue, search_paths_js: Vec<JsV
         &filename,
         &input,
         &mut result_stream,
+        false,
     ) {
         Ok(_) => make_compile_output(&result_stream, &symbol_table),
         Err(e) => create_clvm_runner_err(e),
