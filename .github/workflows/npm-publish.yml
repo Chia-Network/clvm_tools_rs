@@ -57,7 +57,7 @@ jobs:
           if [ -n "$SECRET" ]; then HAS_SECRET='true' ; fi
           echo "HAS_SECRET=${HAS_SECRET}" >>$GITHUB_OUTPUT
         env:
-          SECRET: "${{ secrets.test_pypi_password }}"
+          SECRET: "${{ secrets.TEST_PYPI_PASSWORD }}"
 
       - name: Publish wasm
         if: steps.check_secrets.HAS_SECRET
