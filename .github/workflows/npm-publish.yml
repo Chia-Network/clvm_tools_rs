@@ -60,7 +60,7 @@ jobs:
           SECRET: "${{ secrets.TEST_PYPI_PASSWORD }}"
 
       - name: Publish wasm
-        if: steps.check_secrets.HAS_SECRET
+        if: steps.check_secrets.outputs.HAS_SECRET
         shell: bash
         run: |
           cd wasm/pkg
