@@ -23,8 +23,6 @@ jobs:
         os:
           - name: macos-latest
             runs-on: macos-latest
-          - name: ubuntu-latest
-            runs-on: ubuntu-latest
           - name: windows-latest
             runs-on: windows-latest
           - name: Rust container
@@ -60,7 +58,7 @@ jobs:
           python -m pip install maturin==0.12.20
 
     - name: Build MacOs with maturin on Python ${{ matrix.python }}
-      if: startsWith(matrix.os.name, 'macos')
+      if: startsWith(matrix.os.name, 'Rust')
       run: |
         python -m venv venv
         ln -s venv/bin/activate
@@ -68,7 +66,7 @@ jobs:
         maturin build -i python --release --strip
 
     - name: Set up to build wheels Python ${{ matrix.python }}
-      if: startsWith(matrix.os.container, 'centos-amd64')
+      if: startsWith(matrix.os.container, '')
       run: |
         yum -y install libc6 openssl-devel && \
         source $HOME/.cargo/env && \
