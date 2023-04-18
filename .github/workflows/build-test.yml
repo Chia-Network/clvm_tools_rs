@@ -121,21 +121,21 @@ jobs:
     - name: Install other wheels
       run: |
         . ./activate
-        python${{ matrix.python }} -m pip install pytest
-        python${{ matrix.python }} -m pip install blspy
+        python -m pip install pytest
+        python -m pip install blspy
 
     - name: install clvm & clvm_tools
       run: |
         . ./activate
         git clone https://github.com/Chia-Network/clvm.git --branch=main --single-branch
-        python${{ matrix.python }} -m pip install ./clvm
+        python -m pip install ./clvm
 
         echo "installing clvm_rs via pip"
         pip install clvm_rs
 
         echo "installing clvm_tools for clvm tests"
         # clvm tools is required to run the tests is clvm
-        python${{ matrix.python }} -m pip install clvm_tools
+        python -m pip install clvm_tools
 
     - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed
       run: |
