@@ -46,7 +46,7 @@ jobs:
         python-version: ${{ matrix.python }}
 
     - name: Update pip
-      if: startsWith("matrix.os.name, 'macos'"|| "matrix.os.name, 'windows'")
+      if: startsWith(matrix.os.name, 'macos') || startWith(matrix.os.name, 'windows')
       run: |
           python -m pip install --upgrade pip
 
