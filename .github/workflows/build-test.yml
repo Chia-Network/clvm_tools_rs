@@ -58,7 +58,7 @@ jobs:
           python -m pip install maturin==0.12.20
 
     - name: Build MacOs with maturin on Python ${{ matrix.python }}
-      if: startsWith(matrix.os.name, 'Rust')
+      if: startsWith(matrix.os.name, 'macos')
       run: |
         python -m venv venv
         ln -s venv/bin/activate
@@ -66,7 +66,7 @@ jobs:
         maturin build -i python --release --strip
 
     - name: Set up to build wheels Python ${{ matrix.python }}
-      if: startsWith(matrix.os.container, '')
+      if: startsWith(matrix.os.container, 'Rust')
       run: |
         yum -y install libc6 openssl-devel && \
         source $HOME/.cargo/env && \
