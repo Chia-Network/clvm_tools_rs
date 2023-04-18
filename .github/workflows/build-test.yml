@@ -51,7 +51,7 @@ jobs:
           python -m pip install --upgrade pip
 
     - name: Update pip
-      if: startsWith(matrix.os.container)
+      if: ${{ matrix.os.container }}
       run: |
           python3 -m pip install --upgrade pip
 
