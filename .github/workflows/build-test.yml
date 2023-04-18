@@ -41,6 +41,7 @@ jobs:
         fetch-depth: 0
 
     - uses: actions/setup-python@v4
+      if: startsWith(matrix.os.name, 'macos') || startsWith(matrix.os.name, 'windows')
       name: Install Python ${{ matrix.python }}
       with:
         python-version: ${{ matrix.python }}
