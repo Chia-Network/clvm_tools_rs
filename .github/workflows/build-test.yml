@@ -15,7 +15,7 @@ on:
 
 jobs:
   build_wheels:
-    name: Wheel on ${{ matrix.os }} py-${{ matrix.python }}
+    name: Wheel on ${{ matrix.os.name }} py-${{ matrix.python }}
     runs-on: ${{ matrix.os.runs-on }}
     strategy:
       fail-fast: false
@@ -68,7 +68,7 @@ jobs:
         maturin build -i python --release --strip
 
     - name: Set up to build wheels Python ${{ matrix.python }}
-      if: startsWith(matrix.os.name, 'centos-amd64')
+      if: startsWith(matrix.os.container, 'centos-amd64')
       run: |
         yum -y install libc6 openssl-devel && \
         source $HOME/.cargo/env && \
