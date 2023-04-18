@@ -26,6 +26,7 @@ jobs:
           - name: windows-latest
             runs-on: windows-latest
           - name: Rust container
+            runs-on: ubuntu-latest
             container: 'ghcr.io/chia-network/build-images/centos-pypa-rust-aarch64:latest'
         python:
           - '3.7'
