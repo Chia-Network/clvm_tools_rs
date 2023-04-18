@@ -46,28 +46,6 @@ jobs:
       with:
         python-version: ${{ matrix.python }}
 
-    - name: Update pip
-      run: |
-          python -m pip install --upgrade pip
-
-    - name: Set up rust
-      if: startsWith(matrix.os.name, 'macos') || startsWith(matrix.os.name, 'windows')
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-
-    - name: Install dependencies
-      run: |
-          python -m pip install maturin==0.12.20
-
-    - name: Build MacOs with maturin on Python ${{ matrix.python }}
-      if: startsWith(matrix.os.name, 'macos')
-      run: |
-        python -m venv venv
-        ln -s venv/bin/activate
-        . ./activate
-        maturin build -i python --release --strip
-
     - name: Set up to build wheels Python ${{ matrix.python }}
       if: ${{ matrix.os.container }}
       run: |
@@ -90,7 +68,29 @@ jobs:
         docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v0.13.1 build --release --strip --manylinux 2010 && \
         mv target target.docker && cp -r target.docker target && \
         touch target/release/.cargo-lock
-#test
+
+    - name: Update pip
+      run: |
+          python -m pip install --upgrade pip
+
+    - name: Set up rust
+      if: startsWith(matrix.os.name, 'macos') || startsWith(matrix.os.name, 'windows')
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+
+    - name: Install dependencies
+      run: |
+          python -m pip install maturin==0.12.20
+
+    - name: Build MacOs with maturin on Python ${{ matrix.python }}
+      if: startsWith(matrix.os.name, 'macos')
+      run: |
+        python -m venv venv
+        ln -s venv/bin/activate
+        . ./activate
+        maturin build -i python --release --strip
+
     - name: Build alpine wheel via docker
       if: startsWith(matrix.os.name, 'ubuntu') && startsWith(matrix.python, '3.7')
       run: |
@@ -121,21 +121,21 @@ jobs:
     - name: Install other wheels
       run: |
         . ./activate
-        python -m pip install pytest
-        python -m pip install blspy      
+        python${{ matrix.python }} -m pip install pytest
+        python${{ matrix.python }} -m pip install blspy
 
     - name: install clvm & clvm_tools
       run: |
         . ./activate
         git clone https://github.com/Chia-Network/clvm.git --branch=main --single-branch
-        python -m pip install ./clvm
+        python${{ matrix.python }} -m pip install ./clvm
 
         echo "installing clvm_rs via pip"
         pip install clvm_rs
 
         echo "installing clvm_tools for clvm tests"
         # clvm tools is required to run the tests is clvm
-        python -m pip install clvm_tools
+        python${{ matrix.python }} -m pip install clvm_tools
 
     - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed
       run: |
