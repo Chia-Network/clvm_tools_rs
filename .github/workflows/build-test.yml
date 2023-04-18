@@ -23,18 +23,18 @@ jobs:
         os:
           - name: macos-latest
             runs-on: macos-latest
-          - name: macos-latest
+          - name: ubuntu-latest
             runs-on: ubuntu-latest
-          - name: macos-latest
+          - name: windows-latest
             runs-on: windows-latest
           - name: Rust container
             runs-on: ubuntu-latest
             container: 'ghcr.io/chia-network/build-images/centos-pypa-rust-aarch64:latest'
         python:
-          - 3.7
-          - 3.8
-          - 3.9
-          - 3.10
+          - '3.7'
+          - '3.8'
+          - '3.9'
+          - '3.10'
 
     steps:
     - uses: actions/checkout@v3
