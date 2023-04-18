@@ -47,11 +47,11 @@ jobs:
         python-version: ${{ matrix.python }}
 
     - name: Update pip
-      if: startsWith(matrix.os.name, 'macos') || startsWith(matrix.os.name, 'windows')
       run: |
           python -m pip install --upgrade pip
 
     - name: Set up rust
+      if: startsWith(matrix.os.name, 'macos') || startsWith(matrix.os.name, 'windows')
       uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
