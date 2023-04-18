@@ -51,14 +51,6 @@ jobs:
       run: |
           python -m pip install --upgrade pip
 
-    - name: Update pip
-      if: ${{ matrix.os.container }}
-      run: |
-          yum list glibc
-          python3 -m pip install --upgrade pip
-
-
-
     - name: Set up rust
       uses: actions-rs/toolchain@v1
       with:
