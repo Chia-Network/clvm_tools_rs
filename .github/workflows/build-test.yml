@@ -16,7 +16,7 @@ on:
 jobs:
   build_wheels:
     name: Wheel on ${{ matrix.os.name }} py-${{ matrix.python }}
-    runs-on: ${{ matrix.os.name.runs-on }}
+    runs-on: ${{ matrix.os.runs-on }}
     strategy:
       fail-fast: false
       matrix:
