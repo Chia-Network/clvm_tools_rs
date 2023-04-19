@@ -15,23 +15,13 @@ on:
 jobs:
   build_wheels:
     name: ARM64 Python Wheels on ubuntu-latest
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [[ARM64, Linux]]
+    runs-on: [ARM64, Linux]
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
       with:
         fetch-depth: 1
-
-    - name: Set up QEMU on x86_64
-      if: startsWith(matrix.os, 'ubuntu-latest')
-      id: qemu
-      uses: docker/setup-qemu-action@v2
-      with:
-        platforms: arm64
 
     - name: Build Python wheels
       run: |
@@ -103,7 +93,6 @@ jobs:
         twine upload --non-interactive --skip-existing --verbose 'target/wheels/*'
 
     - name: Clean up AMR64
-      if: startsWith(matrix.os, 'ARM64')
       run: |
         rm -rf venv
         rm -rf dist
