@@ -49,7 +49,7 @@ jobs:
     - name: Set up to build wheels Python ${{ matrix.python }}
       if: ${{ matrix.os.container }}
       run: |
-        yum -y install libc6 openssl-devel
+        yum -y install openssl-devel
         source $HOME/.cargo/env
         rustup target add x86_64-unknown-linux-musl
         rm -rf venv
