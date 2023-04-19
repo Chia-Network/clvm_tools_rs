@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - dev
+      - switch-to-ghcr
     tags:
         - '**'
   pull_request:
