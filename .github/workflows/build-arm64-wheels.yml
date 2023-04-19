@@ -7,9 +7,6 @@ on:
       - dev
     tags:
         - '**'
-  pull_request:
-    branches:
-      - '**'
 
 jobs:
   build_wheels:
