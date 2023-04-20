@@ -734,7 +734,7 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
 }
 
 pub fn should_inline_let(inline_hint: &Option<LetFormInlineHint>) -> bool {
-    matches!(inline_hint, None | Some(LetFormInlineHint::Inline(_)))
+    matches!(inline_hint, Some(LetFormInlineHint::Inline(_)))
 }
 
 #[allow(clippy::too_many_arguments)]
