@@ -14,7 +14,6 @@ recompile_list = [
     'everything_with_signature.clsp',
     'genesis_by_coin_id.clsp',
     'genesis_by_puzzle_hash.clsp',
-    'lock.inner.puzzle.clsp',
     'nft_metadata_updater_default.clsp',
     'nft_metadata_updater_updateable.clsp',
     'nft_ownership_layer.clsp',
