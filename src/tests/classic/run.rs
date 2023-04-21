@@ -752,8 +752,9 @@ fn test_check_tricky_arg_path_random() {
     }
 }
 
-fn read_json_from_file(fname: &str) -> HashMap<String, String> {
+pub fn read_json_from_file(fname: &str) -> HashMap<String, String> {
     let extra_symbols_text = fs::read_to_string(fname).expect("should have dropped main.sym");
+    eprintln!("est {extra_symbols_text}");
     serde_json::from_str(&extra_symbols_text).expect("should be real json")
 }
 
@@ -849,5 +850,22 @@ fn test_modern_sets_source_file_in_symbols() {
     assert_eq!(
         decoded_symbol_file.get("source_file").cloned(),
         Some("resources/tests/steprun/fact.cl".to_string())
+    );
+}
+
+#[test]
+fn test_cost_reporting_0() {
+    let program = "(2 (1 2 6 (4 2 (4 (1 . 1) ()))) (4 (1 (2 (1 2 (3 (7 5) (1 2 (1 11 (1 . 2) (2 4 (4 2 (4 (5 5) ()))) (2 4 (4 2 (4 (6 5) ())))) 1) (1 2 (1 11 (1 . 1) 5) 1)) 1) 1) 2 (1 16 5 (1 . 50565442356047746631413349885570059132562040184787699607120092457326103992436)) 1) 1))";
+    let result = do_basic_brun(&vec![
+        "brun".to_string(),
+        "-c".to_string(),
+        program.to_string(),
+        "()".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        result,
+        "cost = 1978\n0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9875"
     );
 }
