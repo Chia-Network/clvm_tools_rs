@@ -13,9 +13,9 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{is_at_capture, run_optimizer};
 use crate::compiler::comptypes::{
-    fold_m, join_vecs_to_string, list_to_cons, Binding, BodyForm, Callable, CompileErr,
-    CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall, DefunData, HelperForm,
-    InlineFunction, LetData, LetFormKind, PrimaryCodegen,
+    fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, Callable,
+    CompileErr, CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall, DefunData,
+    HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind, PrimaryCodegen,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
@@ -733,17 +733,26 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
     }
 }
 
+pub fn should_inline_let(inline_hint: &Option<LetFormInlineHint>) -> bool {
+    matches!(inline_hint, Some(LetFormInlineHint::Inline(_)))
+}
+
+#[allow(clippy::too_many_arguments)]
 fn generate_let_defun(
     l: Srcloc,
     kwl: Option<Srcloc>,
     name: &[u8],
     args: Rc<SExp>,
+    inline_hint: &Option<LetFormInlineHint>,
     bindings: Vec<Rc<Binding>>,
     body: Rc<BodyForm>,
 ) -> HelperForm {
     let new_arguments: Vec<Rc<SExp>> = bindings
         .iter()
-        .map(|b| Rc::new(SExp::Atom(l.clone(), b.name.clone())))
+        .map(|b| match b.pattern.borrow() {
+            BindingPattern::Name(name) => Rc::new(SExp::Atom(l.clone(), name.clone())),
+            BindingPattern::Complex(sexp) => sexp.clone(),
+        })
         .collect();
 
     let inner_function_args = Rc::new(SExp::Cons(
@@ -753,7 +762,7 @@ fn generate_let_defun(
     ));
 
     HelperForm::Defun(
-        true,
+        should_inline_let(inline_hint),
         DefunData {
             loc: l.clone(),
             nl: l,
@@ -791,12 +800,10 @@ pub fn hoist_body_let_binding(
                 let sub_bindings = letdata.bindings.iter().skip(1).cloned().collect();
                 Rc::new(BodyForm::Let(
                     LetFormKind::Sequential,
-                    LetData {
-                        loc: letdata.loc.clone(),
-                        kw: letdata.kw.clone(),
+                    Box::new(LetData {
                         bindings: sub_bindings,
-                        body: letdata.body.clone(),
-                    },
+                        ..*letdata.clone()
+                    }),
                 ))
             };
 
@@ -805,12 +812,11 @@ pub fn hoist_body_let_binding(
                 args,
                 Rc::new(BodyForm::Let(
                     LetFormKind::Parallel,
-                    LetData {
-                        loc: letdata.loc.clone(),
-                        kw: letdata.kw.clone(),
+                    Box::new(LetData {
                         bindings: vec![letdata.bindings[0].clone()],
                         body: new_sub_expr,
-                    },
+                        ..*letdata.clone()
+                    }),
                 )),
             )
         }
@@ -826,16 +832,16 @@ pub fn hoist_body_let_binding(
                 revised_bindings.push(Rc::new(Binding {
                     loc: b.loc.clone(),
                     nl: b.nl.clone(),
-                    name: b.name.clone(),
+                    pattern: b.pattern.clone(),
                     body: new_binding,
                 }));
             }
-
             let generated_defun = generate_let_defun(
                 letdata.loc.clone(),
                 None,
                 &defun_name,
                 args,
+                &letdata.inline_hint,
                 revised_bindings.to_vec(),
                 letdata.body.clone(),
             );

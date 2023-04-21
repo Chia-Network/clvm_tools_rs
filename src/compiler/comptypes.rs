@@ -81,6 +81,24 @@ pub fn list_to_cons(l: Srcloc, list: &[Rc<SExp>]) -> SExp {
     result
 }
 
+/// Specifies the pattern that is destructured in let bindings.
+#[derive(Clone, Debug, Serialize)]
+pub enum BindingPattern {
+    /// The whole expression is bound to this name.
+    Name(Vec<u8>),
+    /// Specifies a tree of atoms into which the value will be destructured.
+    Complex(Rc<SExp>),
+}
+
+/// If present, states an intention for desugaring of this let form to favor
+/// inlining or functions.
+#[derive(Clone, Debug, Serialize)]
+pub enum LetFormInlineHint {
+    NoChoice,
+    Inline(Srcloc),
+    NonInline(Srcloc),
+}
+
 /// A binding from a (let ...) form.  Specifies the name of the bound variable
 /// the location of the whole binding form, the location of the name atom (nl)
 /// and the body as a BodyForm (which are chialisp expressions).
@@ -90,8 +108,11 @@ pub struct Binding {
     pub loc: Srcloc,
     /// Location of the name atom specifically.
     pub nl: Srcloc,
-    /// The name.
-    pub name: Vec<u8>,
+    /// Specifies the pattern which is extracted from the expression, which can
+    /// be a Name (a single name names the whole subexpression) or Complex which
+    /// can destructure and is used in code that extends cl21 past the definition
+    /// of the language at that point.
+    pub pattern: BindingPattern,
     /// The expression the binding refers to.
     pub body: Rc<BodyForm>,
 }
@@ -114,6 +135,8 @@ pub struct LetData {
     pub loc: Srcloc,
     /// The location specifically of the let or let* keyword.
     pub kw: Option<Srcloc>,
+    /// Inline hint.
+    pub inline_hint: Option<LetFormInlineHint>,
     /// The bindings introduced.
     pub bindings: Vec<Rc<Binding>>,
     /// The expression evaluated in the context of all the bindings.
@@ -123,7 +146,7 @@ pub struct LetData {
 #[derive(Clone, Debug, Serialize)]
 pub enum BodyForm {
     /// A let or let* form (depending on LetFormKind).
-    Let(LetFormKind, LetData),
+    Let(LetFormKind, Box<LetData>),
     /// An explicitly quoted constant of some kind.
     Quoted(SExp),
     /// An undiferentiated "value" of some kind in the source language.
@@ -625,9 +648,13 @@ impl BodyForm {
 impl Binding {
     /// Express the binding as it would be used in a let form.
     pub fn to_sexp(&self) -> Rc<SExp> {
+        let pat = match &self.pattern {
+            BindingPattern::Name(name) => Rc::new(SExp::atom_from_vec(self.loc.clone(), name)),
+            BindingPattern::Complex(sexp) => sexp.clone(),
+        };
         Rc::new(SExp::Cons(
             self.loc.clone(),
-            Rc::new(SExp::atom_from_vec(self.loc.clone(), &self.name)),
+            pat,
             Rc::new(SExp::Cons(
                 self.loc.clone(),
                 self.body.to_sexp(),
