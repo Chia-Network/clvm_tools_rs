@@ -580,7 +580,7 @@ pub fn generate_expr_code(
             let opts_with_env = opts
                 .set_start_env(Some(env))
                 .set_in_defun(true)
-                .set_compiler(compiler.clone());
+                .set_code_generator(compiler.clone());
             let code = codegen(
                 allocator,
                 runner,
@@ -609,17 +609,6 @@ pub fn generate_expr_code(
                     Rc::new(code),
                 )),
             ))
-        }
-        BodyForm::Lambda(ldata) => {
-            let desugared_lambda_callsite = lambda_codegen(ldata)?;
-            let result = generate_expr_code(
-                allocator,
-                runner,
-                opts,
-                compiler,
-                Rc::new(desugared_lambda_callsite),
-            )?;
-            Ok(result)
         }
         _ => Err(CompileErr(
             expr.loc(),
@@ -814,11 +803,11 @@ pub fn hoist_body_let_binding(
     outer_context: Option<Rc<SExp>>,
     args: Rc<SExp>,
     body: Rc<BodyForm>,
-) -> (Vec<HelperForm>, Rc<BodyForm>) {
+) -> Result<(Vec<HelperForm>, Rc<BodyForm>), CompileErr> {
     match body.borrow() {
         BodyForm::Let(LetFormKind::Sequential, letdata) => {
             if letdata.bindings.is_empty() {
-                return (vec![], letdata.body.clone());
+                return Ok((vec![], letdata.body.clone()));
             }
 
             // If we're here, we're in the middle of hoisting.
@@ -861,7 +850,7 @@ pub fn hoist_body_let_binding(
             let mut revised_bindings = Vec::new();
             for b in letdata.bindings.iter() {
                 let (mut new_helpers, new_binding) =
-                    hoist_body_let_binding(outer_context.clone(), args.clone(), b.body.clone());
+                    hoist_body_let_binding(outer_context.clone(), args.clone(), b.body.clone())?;
                 out_defuns.append(&mut new_helpers);
                 revised_bindings.push(Rc::new(Binding {
                     loc: b.loc.clone(),
@@ -907,24 +896,53 @@ pub fn hoist_body_let_binding(
             call_args.append(&mut let_args);
 
             let final_call = BodyForm::Call(letdata.loc.clone(), call_args);
-            (out_defuns, Rc::new(final_call))
+            Ok((out_defuns, Rc::new(final_call)))
         }
         BodyForm::Call(l, list) => {
             let mut vres = Vec::new();
             let mut new_call_list = vec![list[0].clone()];
             for i in list.iter().skip(1) {
                 let (new_helper, new_arg) =
-                    hoist_body_let_binding(outer_context.clone(), args.clone(), i.clone());
+                    hoist_body_let_binding(outer_context.clone(), args.clone(), i.clone())?;
                 new_call_list.push(new_arg);
                 vres.append(&mut new_helper.clone());
             }
-            (vres, Rc::new(BodyForm::Call(l.clone(), new_call_list)))
+            Ok((vres, Rc::new(BodyForm::Call(l.clone(), new_call_list))))
         }
-        _ => (Vec::new(), body.clone()),
+        BodyForm::Lambda(letdata) => {
+            let new_function_args = Rc::new(SExp::Cons(
+                letdata.loc.clone(),
+                letdata.capture_args.clone(),
+                letdata.args.clone()
+            ));
+            let new_function_name = gensym(b"lambda".to_vec());
+            let (mut new_helpers_from_body, new_body) = hoist_body_let_binding(
+                Some(new_function_args.clone()),
+                new_function_args.clone(),
+                letdata.body.clone()
+            )?;
+            let new_expr = lambda_codegen(&new_function_name, &letdata)?;
+            let function = HelperForm::Defun(
+                false,
+                DefunData {
+                    loc: letdata.loc.clone(),
+                    name: new_function_name,
+                    kw: letdata.kw.clone(),
+                    nl: letdata.args.loc(),
+                    orig_args: new_function_args.clone(),
+                    args: new_function_args,
+                    body: new_body
+                }
+            );
+            new_helpers_from_body.push(function);
+            eprintln!("replacing {} with {}", body.to_sexp(), new_expr.to_sexp());
+            Ok((new_helpers_from_body, Rc::new(new_expr)))
+        }
+        _ => Ok((Vec::new(), body.clone()))
     }
 }
 
-fn process_helper_let_bindings(helpers: &[HelperForm]) -> Vec<HelperForm> {
+fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperForm>, CompileErr> {
     let mut result = helpers.to_owned();
     let mut i = 0;
 
@@ -937,7 +955,7 @@ fn process_helper_let_bindings(helpers: &[HelperForm]) -> Vec<HelperForm> {
                     None
                 };
                 let helper_result =
-                    hoist_body_let_binding(context, defun.args.clone(), defun.body.clone());
+                    hoist_body_let_binding(context, defun.args.clone(), defun.body.clone())?;
                 let hoisted_helpers = helper_result.0;
                 let hoisted_body = helper_result.1.clone();
 
@@ -966,7 +984,7 @@ fn process_helper_let_bindings(helpers: &[HelperForm]) -> Vec<HelperForm> {
         }
     }
 
-    result
+    Ok(result)
 }
 
 fn start_codegen(
@@ -1097,7 +1115,7 @@ fn start_codegen(
     }
 
     let combined_helpers = &mut program.helpers.clone();
-    let let_helpers_with_expr = process_helper_let_bindings(combined_helpers);
+    let let_helpers_with_expr = process_helper_let_bindings(combined_helpers)?;
     let live_helpers: Vec<HelperForm> = let_helpers_with_expr
         .iter()
         .filter(|x| is_defun(x))

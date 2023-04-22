@@ -7,7 +7,7 @@ use crate::compiler::clvm::truthy;
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, LambdaData, PrimaryCodegen};
 use crate::compiler::evaluate::{make_operator1, make_operator2};
 use crate::compiler::frontend::compile_bodyform;
-use crate::compiler::sexp::{enlist, SExp};
+use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 
 pub fn compose_constant_function_env(compiler: &PrimaryCodegen) -> Result<Rc<SExp>, CompileErr> {
@@ -104,7 +104,7 @@ fn make_list(loc: Srcloc, args: &[BodyForm]) -> BodyForm {
 //    (list 4 (c 1 (@ 2)) (list 4 (c 1 compose_captures) @))
 //    )
 //
-pub fn lambda_codegen(ldata: &LambdaData) -> Result<BodyForm, CompileErr> {
+pub fn lambda_codegen(name: &[u8], ldata: &LambdaData) -> Result<BodyForm, CompileErr> {
     // Requires captures
     // Code to retrieve the left env.
     let retrieve_left_env = Rc::new(make_operator1(
@@ -126,17 +126,12 @@ pub fn lambda_codegen(ldata: &LambdaData) -> Result<BodyForm, CompileErr> {
         Rc::new(quote_atom.clone()),
         ldata.captures.clone(),
     );
-    let quoted_code = make_cons(
-        ldata.loc.clone(),
-        Rc::new(quote_atom.clone()),
-        ldata.body.clone(),
-    );
 
     let lambda_output = make_list(
         ldata.loc.clone(),
         &[
             apply_atom,
-            quoted_code,
+            BodyForm::Value(SExp::Atom(ldata.loc.clone(), name.to_vec())),
             make_list(
                 ldata.loc.clone(),
                 &[
@@ -163,28 +158,10 @@ pub fn handle_lambda(
     }
 
     let found = find_and_compose_captures(opts.clone(), &v[0])?;
-    let combined_captures_and_args = Rc::new(SExp::Cons(
-        found.args.loc(),
-        found.capture_args.clone(),
-        found.args.clone(),
-    ));
-
-    let rolled_elements_vec: Vec<Rc<SExp>> = v.iter().skip(1).map(|x| Rc::new(x.clone())).collect();
-    let body_list = enlist(v[0].loc(), rolled_elements_vec);
-
-    // Make the mod form
-    let mod_form_data = Rc::new(SExp::Cons(
-        v[0].loc(),
-        Rc::new(SExp::atom_from_string(v[0].loc(), "mod+")),
-        Rc::new(SExp::Cons(
-            found.args.loc(),
-            combined_captures_and_args,
-            Rc::new(body_list),
-        )),
-    ));
 
     // Requires captures
-    let subparse = compile_bodyform(opts, mod_form_data)?;
+    let subparse = compile_bodyform(opts, Rc::new(v[1].clone()))?;
+
     Ok(BodyForm::Lambda(LambdaData {
         loc: v[0].loc(),
         kw: kw_loc,

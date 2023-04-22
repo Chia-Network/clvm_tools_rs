@@ -677,6 +677,8 @@ impl<'info> Evaluator {
     ) -> Result<Option<LambdaApply>, CompileErr> {
         if parts.len() == 3 && is_apply_atom(parts[0].to_sexp()) {
             let mut visited = VisitedMarker::again(parts[0].loc(), visited_)?;
+            eprintln!("parts[0] {}", parts[0].to_sexp());
+            eprintln!("parts[1] {}", parts[1].to_sexp());
             let evaluated_prog = self.shrink_bodyform_visited(
                 allocator,
                 &mut visited,

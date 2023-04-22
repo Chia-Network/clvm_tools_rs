@@ -167,7 +167,7 @@ pub fn compile_pre_forms(
     };
 
     // Transform let bindings, merging nested let scopes with the top namespace
-    let hoisted_bindings = hoist_body_let_binding(None, p1.args.clone(), p1.exp.clone());
+    let hoisted_bindings = hoist_body_let_binding(None, p1.args.clone(), p1.exp.clone())?;
     let mut new_helpers = hoisted_bindings.0;
     let expr = hoisted_bindings.1; // expr is the let-hoisted program
 
@@ -183,6 +183,8 @@ pub fn compile_pre_forms(
         helpers: combined_helpers,
         exp: expr,
     };
+
+    eprintln!("p2 = {}", p2.to_sexp());
 
     // generate code from AST, optionally with optimization
     codegen(allocator, runner, opts, &p2, symbol_table)
