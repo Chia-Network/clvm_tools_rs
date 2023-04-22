@@ -182,7 +182,7 @@ fn create_name_lookup_(
 
 fn is_defun_in_codegen(compiler: &PrimaryCodegen, name: &[u8]) -> bool {
     // Check for an input defun that matches the name.
-    for h in compiler.orig_help.iter() {
+    for h in compiler.original_helpers.iter() {
         if matches!(h, HelperForm::Defun(false, _)) && h.name() == name {
             return true;
         }
