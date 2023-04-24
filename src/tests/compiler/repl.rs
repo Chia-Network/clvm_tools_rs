@@ -239,6 +239,96 @@ fn test_eval_less_than_forever_recursive() {
     );
 }
 
+// This shows partial evaluation.  Use of certain constant names such as 'a' and
+// 'c' disrupts this process, which I intend to fix in a separate pr.
+#[test]
+fn test_eval_list_with_constants_z() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(vec!["(defconstant z 3)", "(list x y z)"], Some(50))
+            .unwrap()
+            .unwrap(),
+        "(c x (c y (q 3)))"
+    );
+}
+
+#[test]
+fn test_eval_list_with_constants_yz() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec!["(defconstant y 2)", "(defconstant z 3)", "(list x y z)"],
+            Some(50)
+        )
+        .unwrap()
+        .unwrap(),
+        "(c x (q 2 3))"
+    );
+}
+
+#[test]
+fn test_eval_list_with_constants_xyz() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defconstant x 1)",
+                "(defconstant y 2)",
+                "(defconstant z 3)",
+                "(list x y z)"
+            ],
+            Some(50)
+        )
+        .unwrap()
+        .unwrap(),
+        "(q 1 2 3)"
+    );
+}
+
+#[test]
+fn test_eval_list_partially_evaluated_abc() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(vec!["(list a b c)"], Some(50))
+            .unwrap()
+            .unwrap(),
+        "(c a (c b (c c (q))))"
+    );
+}
+
+#[test]
+fn test_eval_list_partially_evaluated_xyz() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(vec!["(list x y z)"], Some(50))
+            .unwrap()
+            .unwrap(),
+        "(c x (c y (c z (q))))"
+    );
+}
+
+#[test]
+fn test_defun_value_in_repl_0() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun greater-than-3 (X) (> X 3))",
+            "(a greater-than-3 (list 5))"
+        ])
+        .unwrap()
+        .unwrap(),
+        "(q . 1)"
+    );
+}
+
+#[test]
+fn test_defun_value_repl_map() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun greater-than-3 (X) (> X 3))",
+            "(defun map (F L) (if L (c (a F (list (f L))) (map F (r L))) ()))",
+            "(map greater-than-3 (list 1 2 3 4 5))"
+        ])
+        .unwrap()
+        .unwrap(),
+        "(q () () () 1 1)"
+    );
+}
+
 #[test]
 fn test_lambda_eval_5() {
     assert_eq!(

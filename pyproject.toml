@@ -8,9 +8,10 @@ bindings = "pyo3"
 [project]
 name = "clvm_tools_rs"
 
-[project.scripts]
-brun = "clvm_tools_rs.cmds:brun"
-run = "clvm_tools_rs.cmds:run"
-opc = "clvm_tools_rs.cmds:opc"
-opd = "clvm_tools_rs.cmds:opd"
-cldb = "clvm_tools_rs.cmds:cldb"
+# - Reenable these when we switch over from clvm_tools.
+# [project.scripts]
+# brun = "clvm_tools_rs.cmds:brun"
+# run = "clvm_tools_rs.cmds:run"
+# opc = "clvm_tools_rs.cmds:opc"
+# opd = "clvm_tools_rs.cmds:opd"
+# cldb = "clvm_tools_rs.cmds:cldb"
