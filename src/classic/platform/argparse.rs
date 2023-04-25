@@ -27,7 +27,7 @@ pub enum NArgsSpec {
     Definite(usize),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ArgumentValue {
     ArgString(Option<String>, String),
     ArgInt(i64),
@@ -262,11 +262,17 @@ impl ArgumentParser {
 
                 ioff += 1;
 
-                let value = &normalized_args[i + ioff];
-                if value.is_empty() && optional_arg.options.default.is_none() {
+                // Simplify and fix the ability to read outside the vector bounds
+                // when an optional argument is given without a value.
+                let value = if i + ioff >= normalized_args.len()
+                    || (normalized_args[i + ioff].is_empty()
+                        && optional_arg.options.default.is_none())
+                {
                     let usage = self.compile_help_messages();
                     return Err(format!("{usage}\n\nError: {name} requires a value"));
-                }
+                } else {
+                    &normalized_args[i + ioff]
+                };
                 if optional_arg.options.action == TArgOptionAction::Store {
                     if let Ok(c) = converter.convert(value) {
                         params.insert(name, c);

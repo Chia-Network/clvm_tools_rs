@@ -4,10 +4,11 @@ use std::rc::Rc;
 use clvm_rs::allocator::{Allocator, AtomBuf, NodePtr, SExp};
 use clvm_rs::reduction::{EvalErr, Reduction, Response};
 
+use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm::sexp::{enlist, first, map_m, non_nil, proper_list, rest};
 use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
 
-use crate::classic::clvm_tools::binutils::disassemble;
+use crate::classic::clvm_tools::binutils::{assemble, disassemble};
 use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::defaults::default_macro_lookup;
@@ -282,7 +283,7 @@ fn try_expand_macro_for_atom_(
             top_path
         ).map(|x| {
             if DIAG_OUTPUT {
-                println!(
+                print!(
                     "TRY_EXPAND_MACRO {} WITH {} GIVES {} MACROS {} SYMBOLS {}",
                     disassemble(allocator, macro_code),
                     disassemble(allocator, prog_rest),
@@ -424,7 +425,7 @@ fn compile_operator_atom(
                 allocator.new_atom(NodePath::new(None).as_path().data());
 
             let _ = if DIAG_OUTPUT {
-                println!("COMPILE_BINDINGS {}", disassemble(allocator, quoted_post_prog));
+                print!("COMPILE_BINDINGS {}", disassemble(allocator, quoted_post_prog));
             };
             evaluate(allocator, quoted_post_prog, top_atom).map(Some)
         };
@@ -755,4 +756,75 @@ pub fn do_com_prog_for_dialect(
             "Program is not a pair in do_com_prog".to_string(),
         )),
     }
+}
+
+pub fn get_compile_filename(
+    runner: Rc<dyn TRunProgram>,
+    allocator: &mut Allocator,
+) -> Result<Option<String>, EvalErr> {
+    let cvt_prog = assemble(allocator, "(_get_compile_filename)")?;
+
+    let cvt_prog_result = runner.run_program(allocator, cvt_prog, allocator.null(), None)?;
+
+    if cvt_prog_result.1 == allocator.null() {
+        return Ok(None);
+    }
+
+    if let SExp::Atom(buf) = allocator.sexp(cvt_prog_result.1) {
+        let abuf = allocator.buf(&buf).to_vec();
+        return Ok(Some(Bytes::new(Some(BytesFromType::Raw(abuf))).decode()));
+    }
+
+    Err(EvalErr(
+        allocator.null(),
+        "Couldn't decode result filename".to_string(),
+    ))
+}
+
+pub fn get_search_paths(
+    runner: Rc<dyn TRunProgram>,
+    allocator: &mut Allocator,
+) -> Result<Vec<String>, EvalErr> {
+    let search_paths_prog = assemble(allocator, "(_get_include_paths)")?;
+    let search_path_result =
+        runner.run_program(allocator, search_paths_prog, allocator.null(), None)?;
+
+    let mut res = Vec::new();
+    if let Some(l) = proper_list(allocator, search_path_result.1, true) {
+        for elt in l.iter() {
+            if let SExp::Atom(buf) = allocator.sexp(*elt) {
+                let abuf = allocator.buf(&buf).to_vec();
+                res.push(Bytes::new(Some(BytesFromType::Raw(abuf))).decode());
+            }
+        }
+    }
+
+    Ok(res)
+}
+
+pub fn get_last_path_component(name: &str) -> String {
+    let mut skip_start = None;
+    let fnbytes = name.as_bytes();
+
+    for (i, ch) in fnbytes.iter().enumerate() {
+        if *ch == b'/' || *ch == b'\\' {
+            skip_start = Some(i + 1);
+        }
+    }
+
+    if let Some(skip) = skip_start {
+        let namevec = fnbytes.iter().skip(skip).copied().collect();
+        Bytes::new(Some(BytesFromType::Raw(namevec))).decode()
+    } else {
+        name.to_owned()
+    }
+}
+
+pub fn make_symbols_name(current_filename: &str, name: &str) -> String {
+    // Grab the final path component if these strings are composed
+    // that way.
+    let take_start = get_last_path_component(current_filename);
+    let take_end = get_last_path_component(name);
+
+    format!("{take_start}_{take_end}.sym")
 }
