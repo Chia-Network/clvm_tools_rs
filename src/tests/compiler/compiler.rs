@@ -1244,7 +1244,24 @@ fn test_lambda_with_capture() {
 }
 
 #[test]
-fn test_lambda_in_let() {
+fn test_lambda_in_let_0() {
+    let prog = indoc! {"
+(mod (A)
+  (include *standard-cl-21*)
+  (defun FOO (Z)
+    (let ((Q (* 2 Z)))
+      (lambda ((& Q)) (- 100 Q))
+      )
+    )
+  (a (FOO A) ())
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(5)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "90");
+}
+
+#[test]
+fn test_lambda_in_let_1() {
     let prog = indoc! {"
 (mod (A B)
   (include *standard-cl-21*)
@@ -1531,6 +1548,36 @@ fn test_lambda_as_argument_to_macro_with_inner_let() {
     .to_string();
     let res = run_string(&prog, &"(10)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(30 11 20)");
+}
+
+#[test]
+fn test_treat_function_name_as_value() {
+    let prog = indoc! {"
+(mod (X)
+ (include *standard-cl-21*)
+ (defun G (X) (* 2 X))
+ (defun F (X) (G (+ 1 X)))
+ (a F (list X))
+)
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(99)".to_string()).expect("should compile");
+    assert_eq!(res.to_string(), "200");
+}
+
+#[test]
+fn test_treat_function_name_as_value_filter() {
+    let prog = indoc! {"
+    (mod L
+     (include *standard-cl-21*)
+     (defun greater-than-3 (X) (> X 3))
+     (defun filter (F L) (let ((rest (filter F (r L)))) (if L (if (a F (list (f L))) (c (f L) rest) rest) ())))
+     (filter greater-than-3 L)
+    )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(1 2 3 4 5)".to_string()).expect("should compile");
+    assert_eq!(res.to_string(), "(4 5)");
 }
 
 #[test]

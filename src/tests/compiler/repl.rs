@@ -303,6 +303,33 @@ fn test_eval_list_partially_evaluated_xyz() {
 }
 
 #[test]
+fn test_defun_value_in_repl_0() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun greater-than-3 (X) (> X 3))",
+            "(a greater-than-3 (list 5))"
+        ])
+        .unwrap()
+        .unwrap(),
+        "(q . 1)"
+    );
+}
+
+#[test]
+fn test_defun_value_repl_map() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun greater-than-3 (X) (> X 3))",
+            "(defun map (F L) (if L (c (a F (list (f L))) (map F (r L))) ()))",
+            "(map greater-than-3 (list 1 2 3 4 5))"
+        ])
+        .unwrap()
+        .unwrap(),
+        "(q () () () 1 1)"
+    );
+}
+
+#[test]
 fn test_lambda_eval_5() {
     assert_eq!(
         test_repl_outcome_with_stack_limit(

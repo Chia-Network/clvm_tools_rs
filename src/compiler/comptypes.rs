@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -166,9 +165,7 @@ pub enum BodyForm {
     /// (mod ...) can be used in chialisp as an expression, in which it returns
     /// the compiled code.  Here, it contains a CompileForm, which represents
     /// the full significant input of a program (yielded by frontend()).
-    /// If the bool is true, then the module takes a environment when applied in
-    /// the same shape as the host program.
-    Mod(Srcloc, bool, CompileForm),
+    Mod(Srcloc, CompileForm),
     /// A lambda form (lambda (...) ...)
     ///
     /// The lambda arguments are in two parts:
@@ -616,15 +613,11 @@ fn compose_lambda_serialized_form(ldata: &LambdaData) -> Rc<SExp> {
     } else {
         ldata.args.clone()
     };
-    let rest_of_body = if let SExp::Cons(_, _, after_kw) = ldata.body.to_sexp().borrow() {
-        if let SExp::Cons(_, _, after_args) = after_kw.borrow() {
-            after_args.clone()
-        } else {
-            Rc::new(SExp::Nil(ldata.loc.clone()))
-        }
-    } else {
+    let rest_of_body = Rc::new(SExp::Cons(
+        ldata.loc.clone(),
+        ldata.body.to_sexp(),
         Rc::new(SExp::Nil(ldata.loc.clone()))
-    };
+    ));
 
     Rc::new(SExp::Cons(
         ldata.loc.clone(),
@@ -641,7 +634,7 @@ impl BodyForm {
             BodyForm::Quoted(a) => a.loc(),
             BodyForm::Call(loc, _) => loc.clone(),
             BodyForm::Value(a) => a.loc(),
-            BodyForm::Mod(kl, _, program) => kl.ext(&program.loc),
+            BodyForm::Mod(kl, program) => kl.ext(&program.loc),
             BodyForm::Lambda(ldata) => ldata.loc.ext(&ldata.body.loc()),
         }
     }
@@ -685,13 +678,9 @@ impl BodyForm {
                 let converted: Vec<Rc<SExp>> = exprs.iter().map(|x| x.to_sexp()).collect();
                 Rc::new(list_to_cons(loc.clone(), &converted))
             }
-            BodyForm::Mod(loc, left_env, program) => Rc::new(SExp::Cons(
+            BodyForm::Mod(loc, program) => Rc::new(SExp::Cons(
                 loc.clone(),
-                if *left_env {
-                    Rc::new(SExp::Atom(loc.clone(), b"mod+".to_vec()))
-                } else {
-                    Rc::new(SExp::Atom(loc.clone(), b"mod".to_vec()))
-                },
+                Rc::new(SExp::Atom(loc.clone(), b"mod".to_vec())),
                 program.to_sexp(),
             )),
             BodyForm::Lambda(ldata) => compose_lambda_serialized_form(ldata),

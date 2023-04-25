@@ -1,21 +1,12 @@
 use std::borrow::Borrow;
 use std::rc::Rc;
 
-use num_bigint::ToBigInt;
-
 use crate::compiler::clvm::truthy;
-use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, LambdaData, PrimaryCodegen};
-use crate::compiler::evaluate::{make_operator1, make_operator2};
+use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, LambdaData};
+use crate::compiler::evaluate::make_operator2;
 use crate::compiler::frontend::compile_bodyform;
-use crate::compiler::sexp::{enlist, SExp};
+use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
-
-pub fn compose_constant_function_env(compiler: &PrimaryCodegen) -> Result<Rc<SExp>, CompileErr> {
-    match compiler.env.borrow() {
-        SExp::Cons(_, left, _) => Ok(left.clone()),
-        _ => Ok(Rc::new(SExp::Nil(compiler.env.loc()))),
-    }
-}
 
 fn make_captures(opts: Rc<dyn CompilerOpts>, sexp: Rc<SExp>) -> Result<Rc<BodyForm>, CompileErr> {
     if let SExp::Cons(l, f, r) = sexp.borrow() {
@@ -98,23 +89,12 @@ fn make_list(loc: Srcloc, args: &[BodyForm]) -> BodyForm {
 //
 // Yields:
 //
-// M = (mod ((captures) arguments) (body))
 // (list 2
-//    (c 1 (mod ((captures) arguments) body))
-//    (list 4 (c 1 (@ 2)) (list 4 (c 1 compose_captures) @))
+//    (c 1 <name>)
+//    (list 4 (list 4 (c 1 compose_captures) @))
 //    )
 //
-pub fn lambda_codegen(ldata: &LambdaData) -> Result<BodyForm, CompileErr> {
-    // Requires captures
-    // Code to retrieve the left env.
-    let retrieve_left_env = Rc::new(make_operator1(
-        &ldata.loc,
-        "@".to_string(),
-        Rc::new(BodyForm::Value(SExp::Integer(
-            ldata.loc.clone(),
-            2_u32.to_bigint().unwrap(),
-        ))),
-    ));
+pub fn lambda_codegen(name: &[u8], ldata: &LambdaData) -> Result<BodyForm, CompileErr> {
     // Code to retrieve and quote the captures.
     let quote_atom = BodyForm::Value(SExp::Atom(ldata.loc.clone(), vec![1]));
     let apply_atom = BodyForm::Value(SExp::Atom(ldata.loc.clone(), vec![2]));
@@ -126,25 +106,17 @@ pub fn lambda_codegen(ldata: &LambdaData) -> Result<BodyForm, CompileErr> {
         Rc::new(quote_atom.clone()),
         ldata.captures.clone(),
     );
-    let quoted_code = make_cons(
-        ldata.loc.clone(),
-        Rc::new(quote_atom.clone()),
-        ldata.body.clone(),
-    );
 
     let lambda_output = make_list(
         ldata.loc.clone(),
         &[
             apply_atom,
-            quoted_code,
-            make_list(
+            make_cons(
                 ldata.loc.clone(),
-                &[
-                    cons_atom.clone(),
-                    make_cons(ldata.loc.clone(), Rc::new(quote_atom), retrieve_left_env),
-                    make_list(ldata.loc.clone(), &[cons_atom, compose_captures, whole_env]),
-                ],
+                Rc::new(quote_atom.clone()),
+                Rc::new(BodyForm::Value(SExp::Atom(ldata.loc.clone(), name.to_vec())))
             ),
+            make_list(ldata.loc.clone(), &[cons_atom, compose_captures, whole_env]),
         ],
     );
     Ok(lambda_output)
@@ -163,28 +135,10 @@ pub fn handle_lambda(
     }
 
     let found = find_and_compose_captures(opts.clone(), &v[0])?;
-    let combined_captures_and_args = Rc::new(SExp::Cons(
-        found.args.loc(),
-        found.capture_args.clone(),
-        found.args.clone(),
-    ));
-
-    let rolled_elements_vec: Vec<Rc<SExp>> = v.iter().skip(1).map(|x| Rc::new(x.clone())).collect();
-    let body_list = enlist(v[0].loc(), rolled_elements_vec);
-
-    // Make the mod form
-    let mod_form_data = Rc::new(SExp::Cons(
-        v[0].loc(),
-        Rc::new(SExp::atom_from_string(v[0].loc(), "mod+")),
-        Rc::new(SExp::Cons(
-            found.args.loc(),
-            combined_captures_and_args,
-            Rc::new(body_list),
-        )),
-    ));
 
     // Requires captures
-    let subparse = compile_bodyform(opts, mod_form_data)?;
+    let subparse = compile_bodyform(opts, Rc::new(v[1].clone()))?;
+
     Ok(BodyForm::Lambda(LambdaData {
         loc: v[0].loc(),
         kw: kw_loc,

@@ -118,24 +118,6 @@ fn make_binding_unique(b: &Binding) -> (Vec<u8>, Binding) {
     )
 }
 
-pub fn lambda_body_rename(namemap: &HashMap<Vec<u8>, Vec<u8>>, lambda_body: &BodyForm) -> BodyForm {
-    if let BodyForm::Mod(l, true, compiled) = lambda_body {
-        let new_args = rename_in_cons(namemap, compiled.args.clone());
-        let new_body = rename_in_bodyform(namemap, compiled.exp.clone());
-        BodyForm::Mod(
-            l.clone(),
-            true,
-            CompileForm {
-                args: new_args,
-                exp: Rc::new(new_body),
-                ..compiled.clone()
-            },
-        )
-    } else {
-        lambda_body.clone()
-    }
-}
-
 fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> BodyForm {
     match b.borrow() {
         BodyForm::Let(kind, letdata) => {
@@ -187,12 +169,12 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             BodyForm::Call(l.clone(), new_vs)
         }
 
-        BodyForm::Mod(l, left_env, prog) => BodyForm::Mod(l.clone(), *left_env, prog.clone()),
+        BodyForm::Mod(l, prog) => BodyForm::Mod(l.clone(), prog.clone()),
         BodyForm::Lambda(ldata) => {
             let renamed_capture_inputs =
                 Rc::new(rename_in_bodyform(namemap, ldata.captures.clone()));
             let renamed_capture_outputs = rename_in_cons(namemap, ldata.capture_args.clone());
-            let renamed_body = lambda_body_rename(namemap, ldata.body.borrow());
+            let renamed_body = rename_in_bodyform(namemap, ldata.body.clone());
             BodyForm::Lambda(LambdaData {
                 captures: renamed_capture_inputs,
                 capture_args: renamed_capture_outputs,
@@ -286,7 +268,7 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
                 .collect();
             BodyForm::Call(l.clone(), new_vs)
         }
-        BodyForm::Mod(l, left_env, program) => BodyForm::Mod(l.clone(), *left_env, program.clone()),
+        BodyForm::Mod(l, program) => BodyForm::Mod(l.clone(), program.clone()),
         BodyForm::Lambda(ldata) => BodyForm::Lambda(ldata.clone()),
     }
 }
