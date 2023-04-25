@@ -255,10 +255,7 @@ fn create_name_lookup(
                     // callable like a lambda by repeating the left env into it.
                     let find_program = Rc::new(SExp::Integer(l.clone(), i.to_bigint().unwrap()));
                     if as_variable && is_defun_in_codegen(compiler, name) {
-                        let lfd = lambda_for_defun(l.clone(), find_program);
-                        eprintln!("lambda_for_defun {}", lfd);
-                        todo!();
-                        lfd
+                        lambda_for_defun(l.clone(), find_program)
                     } else {
                         find_program
                     }
@@ -848,11 +845,6 @@ pub fn hoist_body_let_binding(
     args: Rc<SExp>,
     body: Rc<BodyForm>,
 ) -> Result<(Vec<HelperForm>, Rc<BodyForm>), CompileErr> {
-    eprintln!("hoist_body_let_binding {}", body.to_sexp());
-    eprintln!("args {args}");
-    if let Some(oc) = &outer_context {
-        eprintln!("outer_context {}", oc);
-    }
     match body.borrow() {
         BodyForm::Let(LetFormKind::Sequential, letdata) => {
             if letdata.bindings.is_empty() {
@@ -983,9 +975,7 @@ pub fn hoist_body_let_binding(
                     body: new_body
                 }
             );
-            eprintln!("new function {}", function.to_sexp());
             new_helpers_from_body.push(function);
-            eprintln!("replacing {} with {}", body.to_sexp(), new_expr.to_sexp());
             Ok((new_helpers_from_body, Rc::new(new_expr)))
         }
         _ => Ok((Vec::new(), body.clone()))
@@ -997,7 +987,6 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
     let mut i = 0;
 
     while i < result.len() {
-        eprintln!("process helper {}", result[i].to_sexp());
         match result[i].clone() {
             HelperForm::Defun(inline, defun) => {
                 let context = if inline {
@@ -1182,7 +1171,11 @@ fn start_codegen(
     };
 
     code_generator.to_process = program.helpers.clone();
-    code_generator.original_helpers = program.helpers.clone();
+    // Ensure that we have the synthesis of the previous codegen's helpers and
+    // The ones provided with the new form if any.
+    let mut combined_helpers_for_codegen = program.helpers.clone();
+    combined_helpers_for_codegen.append(&mut code_generator.original_helpers);
+    code_generator.original_helpers = combined_helpers_for_codegen;
     code_generator.final_expr = program.exp;
 
     Ok(code_generator)
