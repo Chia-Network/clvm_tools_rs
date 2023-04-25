@@ -954,15 +954,15 @@ pub fn hoist_body_let_binding(
             let new_function_args = Rc::new(SExp::Cons(
                 letdata.loc.clone(),
                 letdata.capture_args.clone(),
-                letdata.args.clone()
+                letdata.args.clone(),
             ));
             let new_function_name = gensym(b"lambda".to_vec());
             let (mut new_helpers_from_body, new_body) = hoist_body_let_binding(
                 Some(new_function_args.clone()),
                 new_function_args.clone(),
-                letdata.body.clone()
+                letdata.body.clone(),
             )?;
-            let new_expr = lambda_codegen(&new_function_name, &letdata)?;
+            let new_expr = lambda_codegen(&new_function_name, letdata)?;
             let function = HelperForm::Defun(
                 false,
                 DefunData {
@@ -972,13 +972,13 @@ pub fn hoist_body_let_binding(
                     nl: letdata.args.loc(),
                     orig_args: new_function_args.clone(),
                     args: new_function_args,
-                    body: new_body
-                }
+                    body: new_body,
+                },
             );
             new_helpers_from_body.push(function);
             Ok((new_helpers_from_body, Rc::new(new_expr)))
         }
-        _ => Ok((Vec::new(), body.clone()))
+        _ => Ok((Vec::new(), body.clone())),
     }
 }
 

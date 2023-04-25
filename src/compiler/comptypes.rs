@@ -616,7 +616,7 @@ fn compose_lambda_serialized_form(ldata: &LambdaData) -> Rc<SExp> {
     let rest_of_body = Rc::new(SExp::Cons(
         ldata.loc.clone(),
         ldata.body.to_sexp(),
-        Rc::new(SExp::Nil(ldata.loc.clone()))
+        Rc::new(SExp::Nil(ldata.loc.clone())),
     ));
 
     Rc::new(SExp::Cons(
