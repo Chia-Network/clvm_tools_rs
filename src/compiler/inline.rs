@@ -205,11 +205,11 @@ fn replace_inline_body(
             // We ensure here that each argument has a separate visited stack.
             // Recursion only happens when the same stack encounters an inline
             // twice.
-            let mut new_visited = visited_inlines.clone();
             for (i, arg) in call_args.iter().enumerate() {
                 if i == 0 {
                     new_args.push(arg.clone());
                 } else {
+                    let mut new_visited = visited_inlines.clone();
                     let replaced = replace_inline_body(
                         &mut new_visited,
                         runner.clone(),

@@ -24,7 +24,7 @@ use clvm_tools_rs::compiler::clvm::{convert_to_clvm_rs, start_step};
 use clvm_tools_rs::compiler::compiler::{
     extract_program_and_env, path_to_function, rewrite_in_program, DefaultCompilerOpts,
 };
-use clvm_tools_rs::compiler::comptypes::CompileErr;
+use clvm_tools_rs::compiler::comptypes::{CompileErr, CompilerOpts};
 use clvm_tools_rs::compiler::prims;
 use clvm_tools_rs::compiler::repl::Repl;
 use clvm_tools_rs::compiler::runtypes::RunFailure;
@@ -310,13 +310,16 @@ pub fn compile(input_js: JsValue, filename_js: JsValue, search_paths_js: Vec<JsV
         .map(|j| j.as_string().unwrap())
         .collect();
 
+    let opts = Rc::new(DefaultCompilerOpts::new(&filename))
+        .set_search_paths(&search_paths);
     match compile_clvm_inner(
         &mut allocator,
-        &search_paths,
+        opts,
         &mut symbol_table,
         &filename,
         &input,
         &mut result_stream,
+        false,
     ) {
         Ok(_) => make_compile_output(&result_stream, &symbol_table),
         Err(e) => create_clvm_runner_err(e),

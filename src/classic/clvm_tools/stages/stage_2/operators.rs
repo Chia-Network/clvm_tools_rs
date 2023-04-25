@@ -26,6 +26,8 @@ use crate::classic::clvm_tools::stages::stage_0::{
 use crate::classic::clvm_tools::stages::stage_2::compile::do_com_prog_for_dialect;
 use crate::classic::clvm_tools::stages::stage_2::optimize::do_optimize;
 
+use crate::compiler::comptypes::CompilerOpts;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AllocatorRefOrTreeHash {
     AllocatorRef(NodePtr),
@@ -50,6 +52,9 @@ pub struct CompilerOperatorsInternal {
     compile_outcomes: RefCell<HashMap<String, String>>,
     runner: RefCell<Rc<dyn TRunProgram>>,
     opt_memo: RefCell<HashMap<AllocatorRefOrTreeHash, NodePtr>>,
+    // A compiler opts as in the modern compiler.  If present, try using its
+    // file system interface to read files.
+    compiler_opts: RefCell<Option<Rc<dyn CompilerOpts>>>,
 }
 
 /// Given a list of search paths, find a full path to a file whose partial name
@@ -123,11 +128,13 @@ impl CompilerOperatorsInternal {
             compile_outcomes: RefCell::new(HashMap::new()),
             runner: RefCell::new(base_runner),
             opt_memo: RefCell::new(HashMap::new()),
+            compiler_opts: RefCell::new(None),
         }
     }
 
     pub fn neutralize(&self) {
         self.set_runner(Rc::new(DefaultProgramRunner::new()));
+        self.set_compiler_opts(None);
     }
 
     fn symbols_extra_info(&self, allocator: &mut Allocator) -> Response {
@@ -147,22 +154,45 @@ impl CompilerOperatorsInternal {
         borrow.clone()
     }
 
+    fn set_compiler_opts(&self, opts: Option<Rc<dyn CompilerOpts>>) {
+        self.compiler_opts.replace(opts);
+    }
+
+    fn get_compiler_opts(&self) -> Option<Rc<dyn CompilerOpts>> {
+        let borrow: Ref<'_, Option<Rc<dyn CompilerOpts>>> = self.compiler_opts.borrow();
+        borrow.clone()
+    }
+
     fn read(&self, allocator: &mut Allocator, sexp: NodePtr) -> Response {
+        // Given a string containing the data in the file to parse, parse it or
+        // return EvalErr.
+        let parse_file_content = |allocator: &mut Allocator, content: &String| {
+            read_ir(content)
+                .map_err(|e| EvalErr(allocator.null(), e.to_string()))
+                .and_then(|ir| {
+                    assemble_from_ir(allocator, Rc::new(ir)).map(|ir_sexp| Reduction(1, ir_sexp))
+                })
+        };
+
         match allocator.sexp(sexp) {
             SExp::Pair(f, _) => match allocator.sexp(f) {
                 SExp::Atom(b) => {
                     let filename =
                         Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
+                    // Use the read interface in CompilerOpts if we have one.
+                    if let Some(opts) = self.get_compiler_opts() {
+                        if let Ok((_, content)) =
+                            opts.read_new_file(self.source_file.clone(), filename.clone())
+                        {
+                            return parse_file_content(allocator, &content);
+                        }
+                    }
+
+                    // Use the filesystem like normal if the opts couldn't find
+                    // the file.
                     fs::read_to_string(filename)
                         .map_err(|_| EvalErr(allocator.null(), "Failed to read file".to_string()))
-                        .and_then(|content| {
-                            read_ir(&content)
-                                .map_err(|e| EvalErr(allocator.null(), e.to_string()))
-                                .and_then(|ir| {
-                                    assemble_from_ir(allocator, Rc::new(ir))
-                                        .map(|ir_sexp| Reduction(1, ir_sexp))
-                                })
-                        })
+                        .and_then(|content| parse_file_content(allocator, &content))
                 }
                 _ => Err(EvalErr(
                     allocator.null(),
@@ -198,6 +228,11 @@ impl CompilerOperatorsInternal {
         Err(EvalErr(sexp, "failed to write data".to_string()))
     }
 
+    fn get_compile_filename(&self, allocator: &mut Allocator) -> Response {
+        let converted_filename = allocator.new_atom(self.source_file.as_bytes())?;
+        Ok(Reduction(1, converted_filename))
+    }
+
     fn get_include_paths(&self, allocator: &mut Allocator) -> Response {
         let mut converted_search_paths = allocator.null();
         for s in self.search_paths.iter().rev() {
@@ -210,13 +245,23 @@ impl CompilerOperatorsInternal {
     }
 
     fn get_full_path_for_filename(&self, allocator: &mut Allocator, sexp: NodePtr) -> Response {
+        let convert_filename = |allocator: &mut Allocator, full_name: &String| {
+            let converted_filename = allocator.new_atom(full_name.as_bytes())?;
+            Ok(Reduction(1, converted_filename))
+        };
+
         if let SExp::Pair(l, _r) = allocator.sexp(sexp) {
             if let SExp::Atom(b) = allocator.sexp(l) {
                 let filename =
                     Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
+                // If we have a compiler opts injected, let that handle reading
+                // files.  The name will bubble up to the _read function.
+                if self.get_compiler_opts().is_some() {
+                    return convert_filename(allocator, &filename);
+                }
+
                 let full_name = full_path_for_filename(sexp, &filename, &self.search_paths)?;
-                let converted_filename = allocator.new_atom(full_name.as_bytes())?;
-                return Ok(Reduction(1, converted_filename));
+                return convert_filename(allocator, &full_name);
             }
         }
 
@@ -294,6 +339,8 @@ impl Dialect for CompilerOperatorsInternal {
                     do_optimize(self.get_runner(), allocator, &self.opt_memo, sexp)
                 } else if opbuf == "_set_symbol_table".as_bytes() {
                     self.set_symbol_table(allocator, sexp)
+                } else if opbuf == "_get_compile_filename".as_bytes() {
+                    self.get_compile_filename(allocator)
                 } else if opbuf == "_get_include_paths".as_bytes() {
                     self.get_include_paths(allocator)
                 } else if opbuf == "_full_path_for_name".as_bytes() {
@@ -320,6 +367,10 @@ impl CompilerOperatorsInternal {
 impl CompilerOperators {
     pub fn get_compiles(&self) -> HashMap<String, String> {
         self.parent.get_compiles()
+    }
+
+    pub fn set_compiler_opts(&self, opts: Option<Rc<dyn CompilerOpts>>) {
+        self.parent.set_compiler_opts(opts);
     }
 }
 

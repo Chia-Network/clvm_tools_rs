@@ -580,7 +580,7 @@ pub fn generate_expr_code(
             let opts_with_env = opts
                 .set_start_env(Some(env))
                 .set_in_defun(true)
-                .set_compiler(compiler.clone());
+                .set_code_generator(compiler.clone());
             let code = codegen(
                 allocator,
                 runner,
@@ -924,7 +924,7 @@ pub fn hoist_body_let_binding(
     }
 }
 
-fn process_helper_let_bindings(helpers: &[HelperForm]) -> Vec<HelperForm> {
+pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Vec<HelperForm> {
     let mut result = helpers.to_owned();
     let mut i = 0;
 
@@ -1096,9 +1096,8 @@ fn start_codegen(
         };
     }
 
-    let combined_helpers = &mut program.helpers.clone();
-    let let_helpers_with_expr = process_helper_let_bindings(combined_helpers);
-    let live_helpers: Vec<HelperForm> = let_helpers_with_expr
+    let only_defuns: Vec<HelperForm> = program
+        .helpers
         .iter()
         .filter(|x| is_defun(x))
         .cloned()
@@ -1109,12 +1108,12 @@ fn start_codegen(
         None => Rc::new(compute_env_shape(
             program.loc.clone(),
             program.args,
-            &live_helpers,
+            &only_defuns,
         )),
     };
 
-    code_generator.to_process = let_helpers_with_expr.clone();
-    code_generator.original_helpers = let_helpers_with_expr;
+    code_generator.to_process = program.helpers.clone();
+    code_generator.original_helpers = program.helpers.clone();
     code_generator.final_expr = program.exp;
 
     Ok(code_generator)
