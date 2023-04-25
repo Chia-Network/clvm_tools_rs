@@ -175,14 +175,12 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
                 Rc::new(rename_in_bodyform(namemap, ldata.captures.clone()));
             let renamed_capture_outputs = rename_in_cons(namemap, ldata.capture_args.clone());
             let renamed_body = rename_in_bodyform(namemap, ldata.body.clone());
-            let renamed_lambda = BodyForm::Lambda(LambdaData {
+            BodyForm::Lambda(LambdaData {
                 captures: renamed_capture_inputs,
                 capture_args: renamed_capture_outputs,
                 body: Rc::new(renamed_body),
                 ..ldata.clone()
-            });
-            eprintln!("renamed_lambda {}", renamed_lambda.to_sexp());
-            renamed_lambda
+            })
         }
     }
 }

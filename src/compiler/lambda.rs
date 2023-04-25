@@ -135,11 +135,9 @@ pub fn handle_lambda(
     }
 
     let found = find_and_compose_captures(opts.clone(), &v[0])?;
-    eprintln!("lambda body {}", v[1]);
 
     // Requires captures
     let subparse = compile_bodyform(opts, Rc::new(v[1].clone()))?;
-    eprintln!("lambda body compiled {}", subparse.to_sexp());
 
     Ok(BodyForm::Lambda(LambdaData {
         loc: v[0].loc(),
