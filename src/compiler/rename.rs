@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::compiler::comptypes::{
-    Binding, BindingPattern, BodyForm, CompileForm, DefconstData, DefmacData, DefunData,
-    HelperForm, LetData, LetFormKind,
+    Binding, BindingPattern, BodyForm, CompileForm, DefconstData, DefmacData, DefunData, HelperForm, LambdaData,
+    LetData, LetFormKind,
 };
 use crate::compiler::gensym::gensym;
 use crate::compiler::sexp::SExp;
@@ -205,6 +205,18 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
         }
 
         BodyForm::Mod(l, prog) => BodyForm::Mod(l.clone(), prog.clone()),
+        BodyForm::Lambda(ldata) => {
+            let renamed_capture_inputs =
+                Rc::new(rename_in_bodyform(namemap, ldata.captures.clone()));
+            let renamed_capture_outputs = rename_in_cons(namemap, ldata.capture_args.clone(), false);
+            let renamed_body = rename_in_bodyform(namemap, ldata.body.clone());
+            BodyForm::Lambda(LambdaData {
+                captures: renamed_capture_inputs,
+                capture_args: renamed_capture_outputs,
+                body: Rc::new(renamed_body),
+                ..ldata.clone()
+            })
+        }
     }
 }
 
@@ -295,6 +307,7 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
             BodyForm::Call(l.clone(), new_vs)
         }
         BodyForm::Mod(l, program) => BodyForm::Mod(l.clone(), program.clone()),
+        BodyForm::Lambda(ldata) => BodyForm::Lambda(ldata.clone()),
     }
 }
 
@@ -372,6 +385,7 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
             }
             let local_renamed_arg = rename_in_cons(&local_namemap, defun.args.clone(), true);
             let local_renamed_body = rename_args_bodyform(defun.body.borrow());
+            let renamed_bodyform = rename_in_bodyform(&local_namemap, Rc::new(local_renamed_body));
             HelperForm::Defun(
                 *inline,
                 DefunData {
@@ -381,10 +395,7 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
                     name: defun.name.clone(),
                     orig_args: defun.orig_args.clone(),
                     args: local_renamed_arg,
-                    body: Rc::new(rename_in_bodyform(
-                        &local_namemap,
-                        Rc::new(local_renamed_body),
-                    )),
+                    body: Rc::new(renamed_bodyform),
                 },
             )
         }

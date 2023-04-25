@@ -128,10 +128,26 @@ fn test_assign_simple_form_0() {
 }
 
 #[test]
+fn test_lambda_eval_1() {
+    assert_eq!(
+        shrink_expr_from_string("(lambda (X) (+ X 1))".to_string()).unwrap(),
+        "(lambda (X) (+ X 1))".to_string()
+    );
+}
+
+#[test]
 fn test_assign_simple_form_1() {
     assert_eq!(
         shrink_expr_from_string("(assign A (* Z 3) Z 2 A)".to_string()).unwrap(),
         "(q . 6)"
+            );
+}
+
+#[test]
+fn test_lambda_eval_2() {
+    assert_eq!(
+        shrink_expr_from_string("(a (lambda (X) (+ X 1)) (list 3))".to_string()).unwrap(),
+        "(q . 4)".to_string()
     );
 }
 
@@ -140,5 +156,27 @@ fn test_assign_simple_form_2() {
     assert_eq!(
         shrink_expr_from_string("(assign Z 2 A (* Z 3) A)".to_string()).unwrap(),
         "(q . 6)"
+    );
+}
+
+#[test]
+fn test_lambda_eval_3() {
+    assert_eq!(
+        shrink_expr_from_string(
+            "(let ((L 10)) (a (lambda ((& L) X) (+ X L)) (list 3)))".to_string()
+        )
+        .unwrap(),
+        "(q . 13)".to_string()
+    );
+}
+
+#[test]
+fn test_lambda_eval_4() {
+    assert_eq!(
+        shrink_expr_from_string(
+            "(a (let ((L 10)) (lambda ((& L) X) (+ X L))) (list 3))".to_string()
+        )
+        .unwrap(),
+        "(q . 13)".to_string()
     );
 }
