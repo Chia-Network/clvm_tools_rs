@@ -12,8 +12,7 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
-use crate::compiler::codegen::codegen;
-use crate::compiler::codegen::hoist_body_let_binding;
+use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
     CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
@@ -172,9 +171,9 @@ pub fn compile_pre_forms(
     let expr = hoisted_bindings.1; // expr is the let-hoisted program
 
     // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later stages
-
     let mut combined_helpers = p1.helpers.clone();
     combined_helpers.append(&mut new_helpers);
+    let combined_helpers = process_helper_let_bindings(&combined_helpers);
 
     let p2 = CompileForm {
         loc: p1.loc.clone(),

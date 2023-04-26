@@ -1431,3 +1431,16 @@ fn test_inline_out_of_bounds_diagnostic() {
         assert!(false);
     }
 }
+
+#[test]
+fn test_inline_in_assign_not_actually_recursive() {
+    let prog = indoc! {"
+(mod (POINT)
+  (include *standard-cl-21*)
+  (defun-inline no-op (V) V)
+  (let ((TU 100)) (let ((TI1 (no-op TU)) (TU2 (no-op TU))) 9999))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"()".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "9999");
+}

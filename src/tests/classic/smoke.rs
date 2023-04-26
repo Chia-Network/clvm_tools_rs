@@ -8,7 +8,9 @@ use std::rc::Rc;
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::{t, Bytes, Stream, UnvalidatedBytesFromType};
+use crate::classic::clvm::__type_compatibility__::{
+    pybytes_repr, t, Bytes, Stream, UnvalidatedBytesFromType,
+};
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{First, NodeSel, Rest, SelectNode, ThisNode};
 use crate::classic::clvm::syntax_error::SyntaxErr;
@@ -21,6 +23,9 @@ use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
+use crate::classic::platform::argparse::{
+    Argument, ArgumentParser, NArgsSpec, TArgumentParserProps,
+};
 
 #[test]
 fn nft_opc() {
@@ -719,6 +724,32 @@ fn test_ir_debug_for_coverage() {
 }
 
 #[test]
+fn test_argparse_not_present_option_1() {
+    let mut argparse = ArgumentParser::new(Some(TArgumentParserProps {
+        prog: "test".to_string(),
+        description: "test for nonexistent argument".to_string(),
+    }));
+    let result = argparse.parse_args(&["--test-me".to_string()]);
+    assert_eq!(result, Err("usage: test, [-h]\n\noptional arguments:\n -h, --help  Show help message\n\nError: Unknown option: --test-me".to_string()));
+}
+
+#[test]
+fn test_argparse_not_present_option_2() {
+    let mut argparse = ArgumentParser::new(Some(TArgumentParserProps {
+        prog: "test".to_string(),
+        description: "test for nonexistent argument".to_string(),
+    }));
+    argparse.add_argument(
+        vec!["--fail-to-provide".to_string()],
+        Argument::new()
+            .set_help("A help message".to_string())
+            .set_n_args(NArgsSpec::Definite(1)),
+    );
+    let result = argparse.parse_args(&["--fail-to-provide".to_string()]);
+    assert_eq!(result, Err("usage: test, [-h] [--fail-to-provide]\n\noptional arguments:\n -h, --help  Show help message\n --fail-to-provide  A help message\n\nError: fail_to_provide requires a value".to_string()));
+}
+
+#[test]
 fn test_syntax_err_smoke() {
     let syntax_err = SyntaxErr::new("err".to_string());
     assert_eq!(syntax_err.to_string(), "err");
@@ -729,4 +760,13 @@ fn test_io_err_from_syntax_err() {
     let err = SyntaxErr::new("err".to_string());
     let io_err: io::Error = err.into();
     assert_eq!(io_err.to_string(), "err");
+}
+
+#[test]
+fn test_bytes_to_pybytes_repr_0() {
+    let b = b"\x11\x01abc\r\ntest\ttest\r\n";
+    assert_eq!(
+        pybytes_repr(b, false),
+        "b'\\x11\\x01abc\\r\\ntest\\ttest\\r\\n'"
+    );
 }
