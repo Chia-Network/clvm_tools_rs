@@ -140,7 +140,7 @@ fn test_assign_simple_form_1() {
     assert_eq!(
         shrink_expr_from_string("(assign A (* Z 3) Z 2 A)".to_string()).unwrap(),
         "(q . 6)"
-            );
+    );
 }
 
 #[test]

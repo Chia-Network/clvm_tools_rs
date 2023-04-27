@@ -1818,3 +1818,16 @@ fn test_treat_function_name_as_value_filter() {
     let res = run_string(&prog, &"(1 2 3 4 5)".to_string()).expect("should compile");
     assert_eq!(res.to_string(), "(4 5)");
 }
+
+#[test]
+fn test_inline_in_assign_not_actually_recursive() {
+    let prog = indoc! {"
+(mod (POINT)
+  (include *standard-cl-21*)
+  (defun-inline no-op (V) V)
+  (let ((TU 100)) (let ((TI1 (no-op TU)) (TU2 (no-op TU))) 9999))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"()".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "9999");
+}

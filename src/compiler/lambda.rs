@@ -114,7 +114,10 @@ pub fn lambda_codegen(name: &[u8], ldata: &LambdaData) -> Result<BodyForm, Compi
             make_cons(
                 ldata.loc.clone(),
                 Rc::new(quote_atom.clone()),
-                Rc::new(BodyForm::Value(SExp::Atom(ldata.loc.clone(), name.to_vec())))
+                Rc::new(BodyForm::Value(SExp::Atom(
+                    ldata.loc.clone(),
+                    name.to_vec(),
+                ))),
             ),
             make_list(ldata.loc.clone(), &[cons_atom, compose_captures, whole_env]),
         ],

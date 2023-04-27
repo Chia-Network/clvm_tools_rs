@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::compiler::comptypes::{
-    Binding, BindingPattern, BodyForm, CompileForm, DefconstData, DefmacData, DefunData, HelperForm, LambdaData,
-    LetData, LetFormKind,
+    Binding, BindingPattern, BodyForm, CompileForm, DefconstData, DefmacData, DefunData,
+    HelperForm, LambdaData, LetData, LetFormKind,
 };
 use crate::compiler::gensym::gensym;
 use crate::compiler::sexp::SExp;
@@ -208,7 +208,8 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
         BodyForm::Lambda(ldata) => {
             let renamed_capture_inputs =
                 Rc::new(rename_in_bodyform(namemap, ldata.captures.clone()));
-            let renamed_capture_outputs = rename_in_cons(namemap, ldata.capture_args.clone(), false);
+            let renamed_capture_outputs =
+                rename_in_cons(namemap, ldata.capture_args.clone(), false);
             let renamed_body = rename_in_bodyform(namemap, ldata.body.clone());
             BodyForm::Lambda(LambdaData {
                 captures: renamed_capture_inputs,
