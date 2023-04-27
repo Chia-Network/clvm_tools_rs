@@ -495,6 +495,12 @@ pub fn cldb(args: &[String]) {
             .set_help("path to symbol file".to_string()),
     );
     parser.add_argument(
+        vec!["-p".to_string(), "--only-print".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("only show printing from the program".to_string()),
+    );
+    parser.add_argument(
         vec!["-t".to_string(), "--tree".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
@@ -561,6 +567,8 @@ pub fn cldb(args: &[String]) {
             }
             _ => None,
         });
+
+    let only_print = parsed_args.get("only_print").map(|_| true).unwrap_or(false);
 
     let do_optimize = parsed_args
         .get("optimize")
@@ -696,11 +704,19 @@ pub fn cldb(args: &[String]) {
         }
 
         if let Some(result) = cldbrun.step(&mut allocator) {
-            let mut cvt_subtree = BTreeMap::new();
-            for (k, v) in result.iter() {
-                cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
+            if only_print {
+                if let Some(p) = result.get("Print") {
+                    let mut only_print = BTreeMap::new();
+                    only_print.insert("Print".to_string(), YamlElement::String(p.clone()));
+                    output.push(only_print);
+                }
+            } else {
+                let mut cvt_subtree = BTreeMap::new();
+                for (k, v) in result.iter() {
+                    cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
+                }
+                output.push(cvt_subtree);
             }
-            output.push(cvt_subtree);
         }
     }
 }

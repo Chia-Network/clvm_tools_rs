@@ -139,6 +139,39 @@ jobs:
         python -c 'import clvm_rs; print(clvm_rs.__file__)'
         python -c 'import clvm_tools_rs; print(clvm_tools_rs.__file__)'
 
+    # Test cldb output both run from python and via its command line tool.
+    # Thanks: https://stackoverflow.com/questions/9948517/how-to-stop-a-powershell-script-on-the-first-error
+    - name: "Run step run tests (windows)"
+      if: ${{ startsWith(matrix.os, 'windows') }}
+      run: |
+        . ./activate
+
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = "Stop"
+        $PSDefaultParameterValues['*:ErrorAction']='Stop'
+        function ThrowOnNativeFailure {
+            if (-not $?)
+            {
+                throw 'Native Failure'
+            }
+        }
+        
+        cargo build --no-default-features
+        cd resources/tests
+        python test_clvm_step.py
+        ThrowOnNativeFailure
+        python mandelbrot-cldb.py        
+        ThrowOnNativeFailure
+
+    - name: Run step run tests (others)
+      if: ${{ !startsWith(matrix.os, 'windows') }}
+      run: |
+        . ./activate
+        cargo build --no-default-features
+        cd resources/tests && \
+        python test_clvm_step.py && \
+        python mandelbrot-cldb.py
+
     - name: Verify recompilation of old sources match
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
       run: |
