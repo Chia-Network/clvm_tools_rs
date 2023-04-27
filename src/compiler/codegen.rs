@@ -968,7 +968,7 @@ pub fn hoist_body_let_binding(
                 new_function_args.clone(),
                 letdata.body.clone(),
             )?;
-            let new_expr = lambda_codegen(&new_function_name, &letdata)?;
+            let new_expr = lambda_codegen(&new_function_name, letdata)?;
             let function = HelperForm::Defun(
                 false,
                 DefunData {
