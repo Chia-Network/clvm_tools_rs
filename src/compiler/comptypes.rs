@@ -291,7 +291,7 @@ pub struct PrimaryCodegen {
     pub parentfns: HashSet<Vec<u8>>,
     pub env: Rc<SExp>,
     pub to_process: Vec<HelperForm>,
-    pub orig_help: Vec<HelperForm>,
+    pub original_helpers: Vec<HelperForm>,
     pub final_expr: Rc<BodyForm>,
     pub final_code: Option<CompiledCode>,
     pub function_symbols: HashMap<String, String>,
@@ -308,7 +308,7 @@ pub trait CompilerOpts {
     /// form, such as when a lambda is used (coming soon), when evaluating
     /// complex constants, and into (com ...) forms.  This allows the CompilerOpts
     /// to carry this info across boundaries into a new context.
-    fn compiler(&self) -> Option<PrimaryCodegen>;
+    fn code_generator(&self) -> Option<PrimaryCodegen>;
     /// Specifies whether code is being generated on behalf of an inner defun in
     /// the program.
     fn in_defun(&self) -> bool;
@@ -347,7 +347,7 @@ pub trait CompilerOpts {
     /// run time.
     fn set_frontend_check_live(&self, check: bool) -> Rc<dyn CompilerOpts>;
     /// Set the codegen object to be used downstream.
-    fn set_compiler(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts>;
+    fn set_code_generator(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts>;
     /// Set the environment shape to assume.
     fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts>;
 

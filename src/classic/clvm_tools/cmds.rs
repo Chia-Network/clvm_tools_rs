@@ -20,14 +20,18 @@ use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 use clvm_rs::run_program::PreEval;
 
-use crate::classic::clvm::__type_compatibility__::{t, Bytes, BytesFromType, Stream, Tuple};
+use crate::classic::clvm::__type_compatibility__::{
+    t, Bytes, BytesFromType, Stream, Tuple, UnvalidatedBytesFromType,
+};
 use crate::classic::clvm::keyword_from_atom;
 use crate::classic::clvm::serialize::{sexp_from_stream, sexp_to_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
-use crate::classic::clvm_tools::clvmc::detect_modern;
+use crate::classic::clvm_tools::clvmc::{detect_modern, write_sym_output};
+use crate::classic::clvm_tools::debug::check_unused;
 use crate::classic::clvm_tools::debug::{
-    check_unused, trace_pre_eval, trace_to_table, trace_to_text,
+    program_hash_from_program_env_cons, start_log_after, trace_pre_eval, trace_to_table,
+    trace_to_text,
 };
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
@@ -44,18 +48,41 @@ use crate::classic::platform::argparse::{
 };
 
 use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
+use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
 use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
 use crate::compiler::preprocessor::gather_dependencies;
 use crate::compiler::prims;
+use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp;
 use crate::compiler::sexp::{decode_string, parse_sexp};
 use crate::compiler::srcloc::Srcloc;
 
 use crate::util::collapse;
 use crate::util::version;
+
+struct ConversionDesc {
+    desc: &'static str,
+    conv: Box<dyn TConversion>,
+}
+
+fn get_tool_description(tool_name: &str) -> Option<ConversionDesc> {
+    if tool_name == "opc" {
+        Some(ConversionDesc {
+            desc: "Compile a clvm script.",
+            conv: Box::new(OpcConversion {}),
+        })
+    } else if tool_name == "opd" {
+        Some(ConversionDesc {
+            desc: "Disassemble a compiled clvm script from hex.",
+            conv: Box::new(OpdConversion {}),
+        })
+    } else {
+        None
+    }
+}
 
 pub struct PathOrCodeConv {}
 
@@ -81,19 +108,42 @@ pub trait TConversion {
         text: &str,
     ) -> Result<Tuple<NodePtr, String>, String>;
 }
+
+pub fn call_tool_stdout(allocator: &mut Allocator, tool_name: &str, input_args: &[String]) {
+    let mut stdout_stream = Stream::new(None);
+    match call_tool(&mut stdout_stream, allocator, tool_name, input_args) {
+        Ok(_) => {
+            let s = stdout_stream.get_value();
+            if s.length() > 0 {
+                println!("{}", s.decode());
+            }
+        }
+        Err(e) => {
+            eprintln!("{e}");
+        }
+    }
+}
+
 pub fn call_tool(
+    stream: &mut Stream,
     allocator: &mut Allocator,
     tool_name: &str,
-    desc: &str,
-    conversion: Box<dyn TConversion>,
     input_args: &[String],
-) {
+) -> Result<(), String> {
+    let task =
+        get_tool_description(tool_name).ok_or_else(|| format!("unknown tool {tool_name}"))?;
     let props = TArgumentParserProps {
-        description: desc.to_string(),
+        description: task.desc.to_string(),
         prog: tool_name.to_string(),
     };
 
     let mut parser = ArgumentParser::new(Some(props));
+    parser.add_argument(
+        vec!["--version".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("Show version".to_string()),
+    );
     parser.add_argument(
         vec!["-H".to_string(), "--script-hash".to_string()],
         Argument::new()
@@ -114,9 +164,15 @@ pub fn call_tool(
         Ok(a) => a,
         Err(e) => {
             println!("{e}");
-            return;
+            return Ok(());
         }
     };
+
+    if args.contains_key("version") {
+        let version = version();
+        println!("{version}");
+        return Ok(());
+    }
 
     let args_path_or_code_val = match args.get(&"path_or_code".to_string()) {
         None => ArgumentValue::ArgArray(vec![]),
@@ -132,30 +188,27 @@ pub fn call_tool(
         match program {
             ArgumentValue::ArgString(_, s) => {
                 if s == "-" {
-                    panic!("Read stdin is not supported at this time");
+                    return Err("Read stdin is not supported at this time".to_string());
                 }
 
-                let conv_result = conversion.invoke(allocator, &s);
-                match conv_result {
-                    Ok(conv_result) => {
-                        let sexp = *conv_result.first();
-                        let text = conv_result.rest();
-                        if args.contains_key(&"script_hash".to_string()) {
-                            println!("{}", sha256tree(allocator, sexp).hex());
-                        } else if !text.is_empty() {
-                            println!("{text}");
-                        }
-                    }
-                    Err(e) => {
-                        panic!("Conversion returned error: {:?}", e);
-                    }
+                let conv_result = task.conv.invoke(allocator, &s)?;
+                let sexp = *conv_result.first();
+                let text = conv_result.rest();
+                if args.contains_key(&"script_hash".to_string()) {
+                    let data: Vec<u8> = sha256tree(allocator, sexp).hex().bytes().collect();
+                    stream.write(Bytes::new(Some(BytesFromType::Raw(data))));
+                } else if !text.is_empty() {
+                    let data: Vec<u8> = text.to_string().bytes().collect();
+                    stream.write(Bytes::new(Some(BytesFromType::Raw(data))));
                 }
             }
             _ => {
-                panic!("inappropriate argument conversion");
+                return Err("inappropriate argument conversion".to_string());
             }
         }
     }
+
+    Ok(())
 }
 
 pub struct OpcConversion {}
@@ -167,8 +220,11 @@ impl TConversion for OpcConversion {
         hex_text: &str,
     ) -> Result<Tuple<NodePtr, String>, String> {
         read_ir(hex_text)
+            .map_err(|e| e.to_string())
             .and_then(|ir_sexp| assemble_from_ir(allocator, Rc::new(ir_sexp)).map_err(|e| e.1))
             .map(|sexp| t(sexp, sexp_as_bin(allocator, sexp).hex()))
+            .map(Ok) // Flatten result type to Ok
+            .unwrap_or_else(|err| Ok(t(allocator.null(), err))) // Original code printed error messages on stdout, ret 0 on CLVM error
     }
 }
 
@@ -180,9 +236,12 @@ impl TConversion for OpdConversion {
         allocator: &mut Allocator,
         hex_text: &str,
     ) -> Result<Tuple<NodePtr, String>, String> {
-        let mut stream = Stream::new(Some(Bytes::new(Some(BytesFromType::Hex(
-            hex_text.to_string(),
-        )))));
+        let mut stream = Stream::new(Some(
+            match Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(hex_text.to_string()))) {
+                Ok(x) => x,
+                Err(e) => return Err(e.to_string()),
+            },
+        ));
 
         sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
             .map_err(|e| e.1)
@@ -195,24 +254,12 @@ impl TConversion for OpdConversion {
 
 pub fn opc(args: &[String]) {
     let mut allocator = Allocator::new();
-    call_tool(
-        &mut allocator,
-        "opc",
-        "Compile a clvm script.",
-        Box::new(OpcConversion {}),
-        args,
-    );
+    call_tool_stdout(&mut allocator, "opc", args);
 }
 
 pub fn opd(args: &[String]) {
     let mut allocator = Allocator::new();
-    call_tool(
-        &mut allocator,
-        "opd",
-        "Disassemble a compiled clvm script from hex.",
-        Box::new(OpdConversion {}),
-        args,
-    );
+    call_tool_stdout(&mut allocator, "opd", args);
 }
 
 struct StageImport {}
@@ -236,28 +283,180 @@ pub fn run(args: &[String]) {
     io::stdout()
         .write_all(s.get_value().data())
         .expect("stdout");
+    io::stdout().flush().expect("stdout");
 }
 
 pub fn brun(args: &[String]) {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, "brun", 0);
-    io::stdout()
-        .write_all(s.get_value().data())
-        .expect("stdout");
+    if let Err(e) = io::stdout().write_all(s.get_value().data()) {
+        println!("{e}")
+    }
+    io::stdout().flush().expect("stdout");
 }
 
-fn to_yaml(entries: &[BTreeMap<String, String>]) -> Yaml {
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
+pub enum YamlElement {
+    String(String),
+    Array(Vec<YamlElement>),
+    Subtree(BTreeMap<String, YamlElement>),
+}
+
+pub fn to_yaml_element(y: &YamlElement) -> Yaml {
+    match y {
+        YamlElement::String(s) => Yaml::String(s.clone()),
+        YamlElement::Array(a) => {
+            let array_elts: Vec<Yaml> = a.iter().map(to_yaml_element).collect();
+            Yaml::Array(array_elts)
+        }
+        YamlElement::Subtree(t) => {
+            let mut h = LinkedHashMap::new();
+            for (k, v) in t.iter() {
+                let converted = to_yaml_element(v);
+                h.insert(Yaml::String(k.clone()), converted);
+            }
+            Yaml::Hash(h)
+        }
+    }
+}
+
+fn to_yaml<T, F>(entries: &[BTreeMap<String, T>], cvt: F) -> Yaml
+where
+    F: Fn(&T) -> YamlElement,
+{
     let result_array: Vec<Yaml> = entries
         .iter()
         .map(|tm| {
             let mut h = LinkedHashMap::new();
             for (k, v) in tm.iter() {
-                h.insert(Yaml::String(k.clone()), Yaml::String(v.clone()));
+                h.insert(Yaml::String(k.clone()), to_yaml_element(&cvt(v)));
             }
             Yaml::Hash(h)
         })
         .collect();
     Yaml::Array(result_array)
+}
+
+fn yamlette_string(to_print: &[BTreeMap<String, YamlElement>]) -> String {
+    let mut result = String::new();
+    let mut emitter = YamlEmitter::new(&mut result);
+    match emitter.dump(&to_yaml(to_print, |s| s.clone())) {
+        Ok(_) => result,
+        Err(e) => format!("error producing yaml: {e:?}"),
+    }
+}
+
+pub fn cldb_hierarchy(
+    runner: Rc<dyn TRunProgram>,
+    prim_map: Rc<HashMap<Vec<u8>, Rc<sexp::SExp>>>,
+    input_file_name: Option<String>,
+    lines: Rc<Vec<String>>,
+    symbol_table: Rc<HashMap<String, String>>,
+    prog: Rc<sexp::SExp>,
+    args: Rc<sexp::SExp>,
+) -> Vec<BTreeMap<String, YamlElement>> {
+    let mut runner = HierarchialRunner::new(
+        runner,
+        prim_map,
+        input_file_name,
+        lines,
+        symbol_table,
+        prog,
+        args,
+    );
+
+    let mut output_stack = vec![Vec::new()];
+
+    loop {
+        if runner.is_ended() {
+            break;
+        }
+
+        match runner.step() {
+            Ok(HierarchialStepResult::ShapeChange) => {
+                // Nothing.
+            }
+            Ok(HierarchialStepResult::Info(Some(info))) => {
+                let running_frames = runner
+                    .running
+                    .iter()
+                    .map(|f| f.purpose.clone())
+                    .filter(|p| matches!(p, RunPurpose::Main))
+                    .count();
+
+                // Ensure we're showing enough frames.
+                while running_frames >= output_stack.len() {
+                    output_stack.push(Vec::new());
+                }
+
+                let run_idx = runner.running.len() - 1;
+                let mut function_entry = BTreeMap::new();
+                function_entry.insert(
+                    "Function-Name".to_string(),
+                    YamlElement::String(runner.running[run_idx].function_name.clone()),
+                );
+                let mut arg_values = BTreeMap::new();
+                for (k, v) in runner.running[run_idx].named_args.iter() {
+                    arg_values.insert(k.clone(), YamlElement::String(format!("{v}")));
+                }
+                function_entry.insert(
+                    "Function-Args".to_string(),
+                    YamlElement::Subtree(arg_values),
+                );
+                let mut info_values = BTreeMap::new();
+                for (k, v) in info.iter() {
+                    info_values.insert(k.clone(), YamlElement::String(v.clone()));
+                }
+                function_entry.insert("Output".to_string(), YamlElement::Subtree(info_values));
+
+                // Put in this entry on the current frame.
+                let os_last = output_stack.len() - 1;
+                output_stack[os_last].push(function_entry);
+
+                // If we're showing too many frames, ensure that children
+                // are in their parent entries.
+                while running_frames < output_stack.len() {
+                    let take_stack = output_stack
+                        .pop()
+                        .unwrap()
+                        .iter()
+                        .map(|e| YamlElement::Subtree(e.clone()))
+                        .collect();
+                    let mut inner_run_item: BTreeMap<String, YamlElement> = BTreeMap::new();
+                    inner_run_item.insert("Compute".to_string(), YamlElement::Array(take_stack));
+                    let os_last = output_stack.len() - 1;
+                    output_stack[os_last].push(inner_run_item);
+                }
+            }
+            Ok(HierarchialStepResult::Info(None)) => {
+                // Nothing
+            }
+            Ok(HierarchialStepResult::Done(Some(info))) => {
+                let mut done_output = BTreeMap::new();
+                for (k, v) in info.iter() {
+                    done_output.insert(k.clone(), YamlElement::String(v.clone()));
+                }
+                let os_last = output_stack.len() - 1;
+                output_stack[os_last].push(done_output);
+            }
+            Ok(HierarchialStepResult::Done(None)) => {
+                // Nothing
+            }
+            Err(RunFailure::RunErr(l, e)) => {
+                println!("Runtime Error: {l}: {e}");
+                break;
+            }
+            Err(RunFailure::RunExn(l, e)) => {
+                println!("Raised exception: {l}: {e}");
+                break;
+            }
+        }
+    }
+
+    // Move out of output_stack nicely.
+    let mut result = Vec::new();
+    swap(&mut result, &mut output_stack[0]);
+    result
 }
 
 pub fn cldb(args: &[String]) {
@@ -294,6 +493,12 @@ pub fn cldb(args: &[String]) {
         Argument::new()
             .set_type(Rc::new(PathOrCodeConv {}))
             .set_help("path to symbol file".to_string()),
+    );
+    parser.add_argument(
+        vec!["-t".to_string(), "--tree".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("new style hierarchial view of function calls and args".to_string()),
     );
     parser.add_argument(
         vec!["path_or_code".to_string()],
@@ -370,23 +575,7 @@ pub fn cldb(args: &[String]) {
         .set_search_paths(&search_paths);
 
     let mut use_symbol_table = symbol_table.unwrap_or_default();
-    let unopt_res = compile_file(
-        &mut allocator,
-        runner.clone(),
-        opts.clone(),
-        &input_program,
-        &mut use_symbol_table,
-    );
-
     let mut output = Vec::new();
-    let yamlette_string = |to_print: Vec<BTreeMap<String, String>>| {
-        let mut result = String::new();
-        let mut emitter = YamlEmitter::new(&mut result);
-        match emitter.dump(&to_yaml(&to_print)) {
-            Ok(_) => result,
-            Err(e) => format!("error producing yaml: {e:?}"),
-        }
-    };
 
     let res = match parsed_args.get("hex") {
         Some(ArgumentValue::ArgBool(true)) => hex_to_modern_sexp(
@@ -397,6 +586,15 @@ pub fn cldb(args: &[String]) {
         )
         .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
         _ => {
+            // don't clobber a symbol table brought in via -y unless we're
+            // compiling here.
+            let unopt_res = compile_file(
+                &mut allocator,
+                runner.clone(),
+                opts.clone(),
+                &input_program,
+                &mut use_symbol_table,
+            );
             if do_optimize {
                 unopt_res.and_then(|x| run_optimizer(&mut allocator, runner.clone(), Rc::new(x)))
             } else {
@@ -409,10 +607,13 @@ pub fn cldb(args: &[String]) {
         Ok(r) => r,
         Err(c) => {
             let mut parse_error = BTreeMap::new();
-            parse_error.insert("Error-Location".to_string(), c.0.to_string());
-            parse_error.insert("Error".to_string(), c.1);
+            parse_error.insert(
+                "Error-Location".to_string(),
+                YamlElement::String(c.0.to_string()),
+            );
+            parse_error.insert("Error".to_string(), YamlElement::String(c.1));
             output.push(parse_error.clone());
-            println!("{}", yamlette_string(output));
+            println!("{}", yamlette_string(&output));
             return;
         }
     };
@@ -430,9 +631,9 @@ pub fn cldb(args: &[String]) {
                 }
                 Err(p) => {
                     let mut parse_error = BTreeMap::new();
-                    parse_error.insert("Error".to_string(), p.to_string());
+                    parse_error.insert("Error".to_string(), YamlElement::String(p.to_string()));
                     output.push(parse_error.clone());
-                    println!("{}", yamlette_string(output));
+                    println!("{}", yamlette_string(&output));
                     return;
                 }
             }
@@ -445,10 +646,13 @@ pub fn cldb(args: &[String]) {
             }
             Err(c) => {
                 let mut parse_error = BTreeMap::new();
-                parse_error.insert("Error-Location".to_string(), c.0.to_string());
-                parse_error.insert("Error".to_string(), c.1);
+                parse_error.insert(
+                    "Error-Location".to_string(),
+                    YamlElement::String(c.0.to_string()),
+                );
+                parse_error.insert("Error".to_string(), YamlElement::String(c.1));
                 output.push(parse_error.clone());
-                println!("{}", yamlette_string(output));
+                println!("{}", yamlette_string(&output));
                 return;
             }
         },
@@ -458,23 +662,45 @@ pub fn cldb(args: &[String]) {
     for p in prims::prims().iter() {
         prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
     }
-    let program_lines: Vec<String> = input_program.lines().map(|x| x.to_string()).collect();
-    let step = start_step(program, args);
+    let program_lines: Rc<Vec<String>> =
+        Rc::new(input_program.lines().map(|x| x.to_string()).collect());
     let cldbenv = CldbRunEnv::new(
-        input_file,
-        program_lines,
-        Box::new(CldbNoOverride::new_symbols(use_symbol_table)),
+        input_file.clone(),
+        program_lines.clone(),
+        Box::new(CldbNoOverride::new_symbols(use_symbol_table.clone())),
     );
-    let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
 
+    if parsed_args.get("tree").is_some() {
+        let result = cldb_hierarchy(
+            runner,
+            Rc::new(prim_map),
+            input_file,
+            program_lines,
+            Rc::new(use_symbol_table),
+            program,
+            args,
+        );
+
+        // Print the tree
+        let string_result = yamlette_string(&result);
+        println!("{string_result}");
+        return;
+    }
+
+    let step = start_step(program, args);
+    let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
     loop {
         if cldbrun.is_ended() {
-            println!("{}", yamlette_string(output));
+            println!("{}", yamlette_string(&output));
             return;
         }
 
         if let Some(result) = cldbrun.step(&mut allocator) {
-            output.push(result);
+            let mut cvt_subtree = BTreeMap::new();
+            for (k, v) in result.iter() {
+                cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
+            }
+            output.push(cvt_subtree);
         }
     }
 }
@@ -543,18 +769,6 @@ fn fix_log(
                 log_result[i] = enlist(allocator, &updated).unwrap();
             })
         });
-    }
-}
-
-fn write_sym_output(compiled_lookup: &HashMap<String, String>, path: &str) -> Result<(), String> {
-    m! {
-        output <- serde_json::to_string(compiled_lookup).map_err(|_| {
-            "failed to serialize to json".to_string()
-        });
-
-        fs::write(path, output).map_err(|_| {
-            format!("failed to write {path}")
-        }).map(|_| ())
     }
 }
 
@@ -815,18 +1029,33 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     match parsed_args.get("hex") {
         Some(_) => {
-            let assembled_serialized =
-                Bytes::new(Some(BytesFromType::Hex(input_program.to_string())));
+            let assembled_serialized = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(
+                input_program.to_string(),
+            )));
 
             let env_serialized = if input_args.is_empty() {
-                Bytes::new(Some(BytesFromType::Hex("80".to_string())))
+                Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex("80".to_string())))
             } else {
-                Bytes::new(Some(BytesFromType::Hex(input_args)))
+                Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(input_args)))
             };
 
+            let ee = match env_serialized {
+                Ok(x) => x,
+                Err(e) => {
+                    stdout.write_str(&format!("FAIL: {e}\n"));
+                    return;
+                }
+            };
             time_read_hex = SystemTime::now();
 
-            let mut prog_stream = Stream::new(Some(assembled_serialized));
+            let mut prog_stream = Stream::new(Some(match assembled_serialized {
+                Ok(x) => x,
+                Err(e) => {
+                    stdout.write_str(&format!("FAIL: {e}\n"));
+                    return;
+                }
+            }));
+
             let input_prog_sexp = sexp_from_stream(
                 &mut allocator,
                 &mut prog_stream,
@@ -835,7 +1064,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .map(|x| Some(x.1))
             .unwrap();
 
-            let mut arg_stream = Stream::new(Some(env_serialized));
+            let mut arg_stream = Stream::new(Some(ee));
             let input_arg_sexp = sexp_from_stream(
                 &mut allocator,
                 &mut arg_stream,
@@ -903,6 +1132,10 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         });
 
     if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("verbose") {
+        emit_symbol_output = true;
+    }
+
+    if parsed_args.get("table").is_some() {
         emit_symbol_output = true;
     }
 
@@ -1117,6 +1350,15 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         }
     });
 
+    // In the case of table tracing, we don't want to emit the startup steps for
+    // brun, which involves excuting (2 2 3) on the program and its args.
+    //
+    // Here, if we're in that mode, we'll produce the hash of the input program so
+    // that we can recognize it and start the output for the table trace.
+    let maybe_program_hash = parsed_args
+        .get("table")
+        .and_then(|_| program_hash_from_program_env_cons(&mut allocator, input_sexp.unwrap()).ok());
+
     let time_parse_input = SystemTime::now();
     let res = run_program
         .run_program(
@@ -1214,7 +1456,11 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     // and the pass doing the post callbacks, we can integrate them in the main
     // thread.  We didn't do this in the callbacks because we didn't want to
     // deal with a possibly escaping mutable allocator &.
-    let mut log_content = log_entries.lock().unwrap().finish();
+    let mut log_content = start_log_after(
+        &mut allocator,
+        maybe_program_hash,
+        log_entries.lock().unwrap().finish(),
+    );
     let log_updates = log_updates.lock().unwrap().finish();
     fix_log(&mut allocator, &mut log_content, &log_updates);
 
@@ -1224,17 +1470,18 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .unwrap_or_else(|| false);
 
     if emit_symbol_output {
-        stdout.write_str("\n");
-        trace_to_text(
-            &mut allocator,
-            stdout,
-            only_exn,
-            &log_content,
-            symbol_table.clone(),
-            &disassemble,
-        );
         if parsed_args.get("table").is_some() {
             trace_to_table(
+                &mut allocator,
+                stdout,
+                only_exn,
+                &log_content,
+                symbol_table,
+                &disassemble,
+            );
+        } else {
+            stdout.write_str("\n");
+            trace_to_text(
                 &mut allocator,
                 stdout,
                 only_exn,

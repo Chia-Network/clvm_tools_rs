@@ -1,6 +1,6 @@
 [package]
 name = "clvm_tools_rs"
-version = "0.1.30"
+version = "0.1.31"
 edition = "2018"
 authors = ["Art Yerkes <art.yerkes@gmail.com>"]
 description = "tools for working with chialisp language; compiler, repl, python and wasm bindings"
@@ -10,6 +10,9 @@ repository = "https://github.com/Chia-Network/clvm_tools_rs"
 license = "Apache-2.0"
 keywords = ["chia", "chialisp", "clvm"]
 categories = ["command-line-utilities"]
+
+[package.metadata.maturin]
+python-source = "python"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
