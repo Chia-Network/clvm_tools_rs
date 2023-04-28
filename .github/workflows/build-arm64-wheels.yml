@@ -120,7 +120,7 @@ jobs:
         FILES=$(find ${{ github.workspace }}/target/wheels -type f -name '*.whl')
         while IFS= read -r file; do
           filename=$(basename $file)
-          aws --silent s3 cp "$file" "s3://download.chia.net/nightlies/clvm_tools_rs/$filename"
+          aws --no-progress s3 cp "$file" "s3://download.chia.net/nightlies/clvm_tools_rs/$filename"
         done <<< "$FILES"
 
     - name: Clean up AMR64
