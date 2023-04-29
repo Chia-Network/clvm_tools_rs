@@ -9,6 +9,7 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
+use crate::compiler::UseCompilerVariant;
 use crate::compiler::clvm::run;
 use crate::compiler::codegen::codegen;
 use crate::compiler::compiler::is_at_capture;
@@ -700,7 +701,7 @@ impl<'info> Evaluator {
                 Rc::new(SExp::Cons(l, prog_args, end_of_list)),
             );
 
-            let compiled = self.compile_code(allocator, false, Rc::new(use_body))?;
+            let compiled = self.compile_code(false, Rc::new(use_body))?;
             let compiled_borrowed: &SExp = compiled.borrow();
             Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
         } else {
@@ -1115,12 +1116,12 @@ impl<'info> Evaluator {
             }
             BodyForm::Mod(_, program) => {
                 // A mod form yields the compiled code.
+                let mut target: UseCompilerVariant = Default::default();
                 let code = codegen(
-                    allocator,
+                    &mut target,
                     self.runner.clone(),
                     self.opts.clone(),
                     program,
-                    &mut HashMap::new(),
                 )?;
                 Ok(Rc::new(BodyForm::Quoted(code)))
             }
@@ -1207,7 +1208,7 @@ impl<'info> Evaluator {
             )),
         ));
 
-        let compiled = self.compile_code(allocator, false, use_body)?;
+        let compiled = self.compile_code(false, use_body)?;
         self.run_prim(allocator, call_loc, compiled, args)
     }
 
@@ -1251,7 +1252,6 @@ impl<'info> Evaluator {
 
     fn compile_code(
         &self,
-        allocator: &mut Allocator,
         in_defun: bool,
         use_body: Rc<SExp>,
     ) -> Result<Rc<SExp>, CompileErr> {
@@ -1265,7 +1265,6 @@ impl<'info> Evaluator {
             .set_frontend_opt(false);
 
         let com_result = updated_opts.compile_program(
-            allocator,
             self.runner.clone(),
             use_body,
             &mut HashMap::new(),

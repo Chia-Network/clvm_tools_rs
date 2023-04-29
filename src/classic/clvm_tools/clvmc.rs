@@ -20,6 +20,7 @@ use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_sear
 
 use crate::classic::platform::distutils::dep_util::newer;
 
+use crate::compiler::{CompilerTask, UseCompilerVariant};
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::compile_file;
 use crate::compiler::compiler::run_optimizer;
@@ -88,63 +89,61 @@ pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> Option<i32> {
     })
 }
 
-pub fn compile_clvm_text(
-    allocator: &mut Allocator,
+pub fn compile_clvm_text<T>(
+    target: &mut T,
     opts: Rc<dyn CompilerOpts>,
-    symbol_table: &mut HashMap<String, String>,
     text: &str,
     input_path: &str,
     classic_with_opts: bool,
-) -> Result<NodePtr, EvalErr> {
-    let ir_src = read_ir(text).map_err(|s| EvalErr(allocator.null(), s.to_string()))?;
-    let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
+) -> Result<NodePtr, EvalErr> where T: CompilerTask {
+    let ir_src = read_ir(text).map_err(|s| EvalErr(target.get_allocator().null(), s.to_string()))?;
+    let assembled_sexp = assemble_from_ir(target.get_allocator(), Rc::new(ir_src))?;
 
-    if let Some(dialect) = detect_modern(allocator, assembled_sexp) {
+    let tn = target.get_allocator().null();
+    if let Some(dialect) = detect_modern(target.get_allocator(), assembled_sexp) {
         let runner = Rc::new(DefaultProgramRunner::new());
         let opts = opts.set_optimize(true).set_frontend_opt(dialect > 21);
 
-        let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
-        let res = unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)));
+        let unopt_res = compile_file(target, runner.clone(), opts, text);
+        let res = unopt_res.and_then(|x| run_optimizer(target.get_allocator(), runner, Rc::new(x)));
 
         res.and_then(|x| {
-            convert_to_clvm_rs(allocator, x).map_err(|r| match r {
+            convert_to_clvm_rs(target.get_allocator(), x).map_err(|r| match r {
                 RunFailure::RunErr(l, x) => CompileErr(l, x),
                 RunFailure::RunExn(l, x) => CompileErr(l, x.to_string()),
             })
         })
-        .map_err(|s| EvalErr(allocator.null(), s.1))
+        .map_err(|s| EvalErr(tn, s.1))
     } else {
-        let compile_invoke_code = run(allocator);
-        let input_sexp = allocator.new_pair(assembled_sexp, allocator.null())?;
+        let compile_invoke_code = run(target.get_allocator());
+        let input_sexp = target.get_allocator().new_pair(assembled_sexp, tn)?;
         let run_program = run_program_for_search_paths(input_path, &opts.get_search_paths(), false);
         if classic_with_opts {
             run_program.set_compiler_opts(Some(opts));
         }
         let run_program_output =
-            run_program.run_program(allocator, compile_invoke_code, input_sexp, None)?;
+            run_program.run_program(target.get_allocator(), compile_invoke_code, input_sexp, None)?;
         Ok(run_program_output.1)
     }
 }
 
-pub fn compile_clvm_inner(
-    allocator: &mut Allocator,
+pub fn compile_clvm_inner<T>(
+    target: &mut T,
     opts: Rc<dyn CompilerOpts>,
-    symbol_table: &mut HashMap<String, String>,
     filename: &str,
     text: &str,
     result_stream: &mut Stream,
     classic_with_opts: bool,
-) -> Result<(), String> {
+) -> Result<(), String> where T: CompilerTask {
     let result = compile_clvm_text(
-        allocator,
+        target,
         opts,
-        symbol_table,
         text,
         filename,
         classic_with_opts,
     )
-    .map_err(|x| format!("error {} compiling {}", x.1, disassemble(allocator, x.0)))?;
-    sexp_to_stream(allocator, result, result_stream);
+    .map_err(|x| format!("error {} compiling {}", x.1, disassemble(target.get_allocator(), x.0)))?;
+    sexp_to_stream(target.get_allocator(), result, result_stream);
     Ok(())
 }
 
@@ -154,8 +153,6 @@ pub fn compile_clvm(
     search_paths: &[String],
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<String, String> {
-    let mut allocator = Allocator::new();
-
     let compile = newer(input_path, output_path).unwrap_or(true);
     let mut result_stream = Stream::new(None);
 
@@ -163,16 +160,18 @@ pub fn compile_clvm(
         let text = fs::read_to_string(input_path)
             .map_err(|x| format!("error reading {input_path}: {x:?}"))?;
         let opts = Rc::new(DefaultCompilerOpts::new(input_path)).set_search_paths(search_paths);
+        let mut target: UseCompilerVariant = Default::default();
 
         compile_clvm_inner(
-            &mut allocator,
+            &mut target,
             opts,
-            symbol_table,
             input_path,
             &text,
             &mut result_stream,
             false,
         )?;
+
+        *symbol_table = target.get_symbol_table().clone();
 
         let output_path_obj = Path::new(output_path);
         let output_dir = output_path_obj

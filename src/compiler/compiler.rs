@@ -2,6 +2,7 @@ use num_bigint::ToBigInt;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fs;
+use std::mem::swap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -11,6 +12,8 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
+use crate::compiler::UseCompilerVariant;
+use crate::compiler::CompilerTask;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
@@ -60,6 +63,28 @@ lazy_static! {
             "}
         .to_string()
     };
+}
+
+/// The base case of a compiler along the official release set.
+#[derive(Default)]
+pub struct BasicCompiler {
+    allocator: Allocator,
+    symbols: HashMap<String, String>
+}
+
+impl CompilerTask for BasicCompiler {
+    fn get_allocator<'a>(&'a mut self) -> &'a mut Allocator { &mut self.allocator }
+    fn get_symbol_table<'a>(&'a mut self) -> &'a mut HashMap<String, String> { &mut self.symbols }
+    fn for_new_program<'a, F, R>(&'a mut self, f: F) -> R where F: Fn(&mut Self) -> R {
+        let mut old_symtab = HashMap::new();
+        swap(&mut old_symtab, &mut self.symbols);
+        let res = f(self);
+        swap(&mut old_symtab, &mut self.symbols);
+        res
+    }
+    fn do_frontend_step<T>(&mut self, opts: Rc<dyn CompilerOpts>, pre_forms: &[Rc<SExp>]) -> Result<CompileForm, CompileErr> where T: CompilerTask {
+        frontend(opts.clone(), pre_forms)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -148,19 +173,18 @@ fn fe_opt(
     })
 }
 
-pub fn compile_pre_forms(
-    allocator: &mut Allocator,
+pub fn compile_pre_forms<T>(
+    target: &mut T,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>],
-    symbol_table: &mut HashMap<String, String>,
-) -> Result<SExp, CompileErr> {
+) -> Result<SExp, CompileErr> where T: CompilerTask {
     // Resolve includes, convert program source to lexemes
-    let p0 = frontend(opts.clone(), pre_forms)?;
+    let p0 = target.do_frontend_step::<T>(opts.clone(), pre_forms)?;
 
     let p1 = if opts.frontend_opt() {
         // Front end optimization
-        fe_opt(allocator, runner.clone(), opts.clone(), p0)?
+        fe_opt(target.get_allocator(), runner.clone(), opts.clone(), p0)?
     } else {
         p0
     };
@@ -184,19 +208,18 @@ pub fn compile_pre_forms(
     };
 
     // generate code from AST, optionally with optimization
-    codegen(allocator, runner, opts, &p2, symbol_table)
+    codegen(target, runner, opts, &p2)
 }
 
-pub fn compile_file(
-    allocator: &mut Allocator,
+pub fn compile_file<T>(
+    target: &mut T,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     content: &str,
-    symbol_table: &mut HashMap<String, String>,
-) -> Result<SExp, CompileErr> {
+) -> Result<SExp, CompileErr> where T: CompilerTask {
     let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), content.bytes())?;
 
-    compile_pre_forms(allocator, runner, opts, &pre_forms, symbol_table)
+    compile_pre_forms(target, runner, opts, &pre_forms)
 }
 
 pub fn run_optimizer(
@@ -327,13 +350,15 @@ impl CompilerOpts for DefaultCompilerOpts {
     }
     fn compile_program(
         &self,
-        allocator: &mut Allocator,
         runner: Rc<dyn TRunProgram>,
         sexp: Rc<SExp>,
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
+        let mut target: UseCompilerVariant = Default::default();
         let me = Rc::new(self.clone());
-        compile_pre_forms(allocator, runner, me, &[sexp], symbol_table)
+        let res = compile_pre_forms(&mut target, runner, me, &[sexp]);
+        *symbol_table = target.get_symbol_table().clone();
+        res
     }
 }
 

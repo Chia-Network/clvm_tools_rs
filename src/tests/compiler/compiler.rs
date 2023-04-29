@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use clvm_rs::allocator::Allocator;
-
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use crate::compiler::{CompilerTask, UseCompilerVariant};
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
@@ -14,11 +13,11 @@ use crate::compiler::srcloc::Srcloc;
 const TEST_TIMEOUT: usize = 1000000;
 
 fn compile_string(content: &String) -> Result<String, CompileErr> {
-    let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
     let opts = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
+    let mut target: UseCompilerVariant = Default::default();
 
-    compile_file(&mut allocator, runner, opts, &content, &mut HashMap::new()).map(|x| x.to_string())
+    compile_file(&mut target, runner, opts, &content).map(|x| x.to_string())
 }
 
 fn run_string_maybe_opt(
@@ -26,7 +25,7 @@ fn run_string_maybe_opt(
     args: &String,
     fe_opt: bool,
 ) -> Result<Rc<SExp>, CompileErr> {
-    let mut allocator = Allocator::new();
+    let mut target: UseCompilerVariant = Default::default();
     let runner = Rc::new(DefaultProgramRunner::new());
     let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let srcloc = Srcloc::start(&"*test*".to_string());
@@ -36,15 +35,14 @@ fn run_string_maybe_opt(
     let sexp_args = parse_sexp(srcloc.clone(), args.bytes())?[0].clone();
 
     compile_file(
-        &mut allocator,
+        &mut target,
         runner.clone(),
         opts,
         &content,
-        &mut HashMap::new(),
     )
     .and_then(|x| {
         run(
-            &mut allocator,
+            target.get_allocator(),
             runner,
             Rc::new(HashMap::new()),
             Rc::new(x),

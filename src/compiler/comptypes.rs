@@ -4,8 +4,6 @@ use std::rc::Rc;
 
 use serde::Serialize;
 
-use clvm_rs::allocator::Allocator;
-
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
@@ -363,10 +361,9 @@ pub trait CompilerOpts {
     /// settings given here.  The result is bare generated code.
     fn compile_program(
         &self,
-        allocator: &mut Allocator,
         runner: Rc<dyn TRunProgram>,
         sexp: Rc<SExp>,
-        symbol_table: &mut HashMap<String, String>,
+        symbols: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr>;
 }
 

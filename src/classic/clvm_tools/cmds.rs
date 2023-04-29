@@ -47,6 +47,7 @@ use crate::classic::platform::argparse::{
     TArgOptionAction, TArgumentParserProps,
 };
 
+use crate::compiler::{CompilerTask, UseCompilerVariant};
 use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
 use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
 use crate::compiler::clvm::start_step;
@@ -466,6 +467,7 @@ pub fn cldb(args: &[String]) {
         prog: format!("clvm_tools {tool_name}"),
     };
 
+    let mut target: UseCompilerVariant = Default::default();
     let mut search_paths = Vec::new();
     let mut parser = ArgumentParser::new(Some(props));
     parser.add_argument(
@@ -549,9 +551,7 @@ pub fn cldb(args: &[String]) {
         parsed_args_result = s.to_string();
     }
 
-    let mut allocator = Allocator::new();
-
-    let symbol_table = parsed_args
+    let mut symbol_table = parsed_args
         .get("symbol_table")
         .and_then(|jstring| match jstring {
             ArgumentValue::ArgString(_, s) => {
@@ -574,13 +574,11 @@ pub fn cldb(args: &[String]) {
         .set_optimize(do_optimize)
         .set_search_paths(&search_paths);
 
-    let mut use_symbol_table = symbol_table.unwrap_or_default();
     let mut output = Vec::new();
 
     let res = match parsed_args.get("hex") {
         Some(ArgumentValue::ArgBool(true)) => hex_to_modern_sexp(
-            &mut allocator,
-            &use_symbol_table,
+            &mut target,
             prog_srcloc.clone(),
             &input_program,
         )
@@ -589,14 +587,14 @@ pub fn cldb(args: &[String]) {
             // don't clobber a symbol table brought in via -y unless we're
             // compiling here.
             let unopt_res = compile_file(
-                &mut allocator,
+                &mut target,
                 runner.clone(),
                 opts.clone(),
                 &input_program,
-                &mut use_symbol_table,
             );
+            symbol_table = Some(target.get_symbol_table().clone());
             if do_optimize {
-                unopt_res.and_then(|x| run_optimizer(&mut allocator, runner.clone(), Rc::new(x)))
+                unopt_res.and_then(|x| run_optimizer(target.get_allocator(), runner.clone(), Rc::new(x)))
             } else {
                 unopt_res.map(Rc::new)
             }
@@ -621,8 +619,7 @@ pub fn cldb(args: &[String]) {
     match parsed_args.get("hex") {
         Some(ArgumentValue::ArgBool(true)) => {
             match hex_to_modern_sexp(
-                &mut allocator,
-                &HashMap::new(),
+                &mut target,
                 args_srcloc,
                 &parsed_args_result,
             ) {
@@ -664,10 +661,11 @@ pub fn cldb(args: &[String]) {
     }
     let program_lines: Rc<Vec<String>> =
         Rc::new(input_program.lines().map(|x| x.to_string()).collect());
+    let empty_symbols = HashMap::new();
     let cldbenv = CldbRunEnv::new(
         input_file.clone(),
         program_lines.clone(),
-        Box::new(CldbNoOverride::new_symbols(use_symbol_table.clone())),
+        Box::new(CldbNoOverride::new_symbols(symbol_table.unwrap_or(empty_symbols))),
     );
 
     if parsed_args.get("tree").is_some() {
@@ -676,7 +674,7 @@ pub fn cldb(args: &[String]) {
             Rc::new(prim_map),
             input_file,
             program_lines,
-            Rc::new(use_symbol_table),
+            Rc::new(target.get_symbol_table().clone()),
             program,
             args,
         );
@@ -695,7 +693,7 @@ pub fn cldb(args: &[String]) {
             return;
         }
 
-        if let Some(result) = cldbrun.step(&mut allocator) {
+        if let Some(result) = cldbrun.step(target.get_allocator()) {
             let mut cvt_subtree = BTreeMap::new();
             for (k, v) in result.iter() {
                 cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
@@ -979,8 +977,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         Vec::new()
     };
 
-    let mut allocator = Allocator::new();
-
+    let mut target: UseCompilerVariant = Default::default();
     let input_serialized = None;
     let mut input_sexp: Option<NodePtr> = None;
 
@@ -1057,7 +1054,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             }));
 
             let input_prog_sexp = sexp_from_stream(
-                &mut allocator,
+                target.get_allocator(),
                 &mut prog_stream,
                 Box::new(SimpleCreateCLVMObject {}),
             )
@@ -1066,14 +1063,14 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
             let mut arg_stream = Stream::new(Some(ee));
             let input_arg_sexp = sexp_from_stream(
-                &mut allocator,
+                target.get_allocator(),
                 &mut arg_stream,
                 Box::new(SimpleCreateCLVMObject {}),
             )
             .map(|x| Some(x.1))
             .unwrap();
             if let (Some(ip), Some(ia)) = (input_prog_sexp, input_arg_sexp) {
-                input_sexp = allocator.new_pair(ip, ia).ok();
+                input_sexp = target.get_allocator().new_pair(ip, ia).ok();
             }
         }
         _ => {
@@ -1095,7 +1092,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 return;
             }
 
-            let assembled_sexp = assemble_from_ir(&mut allocator, Rc::new(src_sexp)).unwrap();
+            let assembled_sexp = assemble_from_ir(target.get_allocator(), Rc::new(src_sexp)).unwrap();
             let mut parsed_args_result = "()".to_string();
 
             if let Some(ArgumentValue::ArgString(_f, s)) = parsed_args.get("env") {
@@ -1103,10 +1100,10 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             }
 
             let env_ir = read_ir(&parsed_args_result).unwrap();
-            let env = assemble_from_ir(&mut allocator, Rc::new(env_ir)).unwrap();
+            let env = assemble_from_ir(target.get_allocator(), Rc::new(env_ir)).unwrap();
             time_assemble = SystemTime::now();
 
-            input_sexp = allocator.new_pair(assembled_sexp, env).ok();
+            input_sexp = target.get_allocator().new_pair(assembled_sexp, env).ok();
         }
     }
 
@@ -1145,7 +1142,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .map(|a| matches!(a, ArgumentValue::ArgBool(true)))
         .unwrap_or(false);
 
-    let dialect = input_sexp.and_then(|i| detect_modern(&mut allocator, i));
+    let dialect = input_sexp.and_then(|i| detect_modern(target.get_allocator(), i));
     let mut stderr_output = |s: String| {
         if dialect.is_some() {
             eprintln!("{s}");
@@ -1197,14 +1194,13 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         let mut symbol_table = HashMap::new();
 
         let unopt_res = compile_file(
-            &mut allocator,
+            &mut target,
             runner.clone(),
             opts.clone(),
             &input_program,
-            &mut symbol_table,
         );
         let res = if do_optimize {
-            unopt_res.and_then(|x| run_optimizer(&mut allocator, runner, Rc::new(x)))
+            unopt_res.and_then(|x| run_optimizer(target.get_allocator(), runner, Rc::new(x)))
         } else {
             unopt_res.map(Rc::new)
         };
@@ -1295,11 +1291,11 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     }
 
     let run_script = match parsed_args.get("stage") {
-        Some(ArgumentValue::ArgInt(0)) => stages::brun(&mut allocator),
-        _ => stages::run(&mut allocator),
+        Some(ArgumentValue::ArgInt(0)) => stages::brun(target.get_allocator()),
+        _ => stages::run(target.get_allocator()),
     };
 
-    let cost_offset = calculate_cost_offset(&mut allocator, run_program.clone(), run_script);
+    let cost_offset = calculate_cost_offset(target.get_allocator(), run_program.clone(), run_script);
 
     let max_cost = parsed_args
         .get("max_cost")
@@ -1312,7 +1308,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     if input_sexp.is_none() {
         input_sexp = sexp_from_stream(
-            &mut allocator,
+            target.get_allocator(),
             &mut Stream::new(input_serialized),
             Box::new(SimpleCreateCLVMObject {}),
         )
@@ -1357,12 +1353,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     // that we can recognize it and start the output for the table trace.
     let maybe_program_hash = parsed_args
         .get("table")
-        .and_then(|_| program_hash_from_program_env_cons(&mut allocator, input_sexp.unwrap()).ok());
+        .and_then(|_| program_hash_from_program_env_cons(target.get_allocator(), input_sexp.unwrap()).ok());
 
     let time_parse_input = SystemTime::now();
     let res = run_program
         .run_program(
-            &mut allocator,
+            target.get_allocator(),
             run_script,
             input_sexp.unwrap(),
             Some(RunProgramOption {
@@ -1425,10 +1421,10 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 ));
             }
 
-            let mut run_output = disassemble_with_kw(&mut allocator, result, keywords);
+            let mut run_output = disassemble_with_kw(target.get_allocator(), result, keywords);
             if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("dump") {
                 let mut f = Stream::new(None);
-                sexp_to_stream(&mut allocator, result, &mut f);
+                sexp_to_stream(target.get_allocator(), result, &mut f);
                 run_output = f.get_value().hex();
             } else if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("quiet") {
                 run_output = "".to_string();
@@ -1441,7 +1437,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         format!(
             "FAIL: {} {}",
             ex.1,
-            disassemble_with_kw(&mut allocator, ex.0, keywords)
+            disassemble_with_kw(target.get_allocator(), ex.0, keywords)
         )
     }));
 
@@ -1457,12 +1453,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     // thread.  We didn't do this in the callbacks because we didn't want to
     // deal with a possibly escaping mutable allocator &.
     let mut log_content = start_log_after(
-        &mut allocator,
+        target.get_allocator(),
         maybe_program_hash,
         log_entries.lock().unwrap().finish(),
     );
     let log_updates = log_updates.lock().unwrap().finish();
-    fix_log(&mut allocator, &mut log_content, &log_updates);
+    fix_log(target.get_allocator(), &mut log_content, &log_updates);
 
     let only_exn = parsed_args
         .get("only_exn")
@@ -1472,7 +1468,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     if emit_symbol_output {
         if parsed_args.get("table").is_some() {
             trace_to_table(
-                &mut allocator,
+                target.get_allocator(),
                 stdout,
                 only_exn,
                 &log_content,
@@ -1482,7 +1478,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         } else {
             stdout.write_str("\n");
             trace_to_text(
-                &mut allocator,
+                target.get_allocator(),
                 stdout,
                 only_exn,
                 &log_content,
