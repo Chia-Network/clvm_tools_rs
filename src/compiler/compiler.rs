@@ -12,7 +12,6 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
-use crate::compiler::UseCompilerVariant;
 use crate::compiler::CompilerTask;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
@@ -347,18 +346,6 @@ impl CompilerOpts for DefaultCompilerOpts {
             Srcloc::start(&inc_from),
             format!("could not find {filename} to include"),
         ))
-    }
-    fn compile_program(
-        &self,
-        runner: Rc<dyn TRunProgram>,
-        sexp: Rc<SExp>,
-        symbol_table: &mut HashMap<String, String>,
-    ) -> Result<SExp, CompileErr> {
-        let mut target: UseCompilerVariant = Default::default();
-        let me = Rc::new(self.clone());
-        let res = compile_pre_forms(&mut target, runner, me, &[sexp]);
-        *symbol_table = target.get_symbol_table().clone();
-        res
     }
 }
 

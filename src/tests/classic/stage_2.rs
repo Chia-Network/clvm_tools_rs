@@ -9,7 +9,6 @@ use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemb
 use crate::classic::clvm_tools::clvmc::compile_clvm_text;
 use crate::classic::clvm_tools::cmds::call_tool;
 use crate::classic::clvm_tools::ir::reader::read_ir;
-use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::compile::{
     do_com_prog, get_compile_filename, get_last_path_component, try_expand_macro_for_atom,
 };
@@ -380,17 +379,6 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
         Err(CompileErr(
             Srcloc::start(&inc_from),
             format!("could not read {filename}"),
-        ))
-    }
-    fn compile_program(
-        &self,
-        _runner: Rc<dyn TRunProgram>,
-        _sexp: Rc<SExp>,
-        _symbol_table: &mut HashMap<String, String>,
-    ) -> Result<SExp, CompileErr> {
-        Err(CompileErr(
-            Srcloc::start(&self.filename),
-            "test object only".to_string(),
         ))
     }
 }

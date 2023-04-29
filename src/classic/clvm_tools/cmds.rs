@@ -551,7 +551,7 @@ pub fn cldb(args: &[String]) {
         parsed_args_result = s.to_string();
     }
 
-    let mut symbol_table = parsed_args
+    let symbol_table = parsed_args
         .get("symbol_table")
         .and_then(|jstring| match jstring {
             ArgumentValue::ArgString(_, s) => {
@@ -574,15 +574,18 @@ pub fn cldb(args: &[String]) {
         .set_optimize(do_optimize)
         .set_search_paths(&search_paths);
 
+    *target.get_symbol_table() = symbol_table.unwrap_or_default();
     let mut output = Vec::new();
 
     let res = match parsed_args.get("hex") {
-        Some(ArgumentValue::ArgBool(true)) => hex_to_modern_sexp(
-            &mut target,
-            prog_srcloc.clone(),
-            &input_program,
-        )
-        .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
+        Some(ArgumentValue::ArgBool(true)) => {
+            hex_to_modern_sexp(
+                &mut target,
+                prog_srcloc.clone(),
+                &input_program,
+            )
+                .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string()))
+        }
         _ => {
             // don't clobber a symbol table brought in via -y unless we're
             // compiling here.
@@ -592,7 +595,6 @@ pub fn cldb(args: &[String]) {
                 opts.clone(),
                 &input_program,
             );
-            symbol_table = Some(target.get_symbol_table().clone());
             if do_optimize {
                 unopt_res.and_then(|x| run_optimizer(target.get_allocator(), runner.clone(), Rc::new(x)))
             } else {
@@ -661,11 +663,10 @@ pub fn cldb(args: &[String]) {
     }
     let program_lines: Rc<Vec<String>> =
         Rc::new(input_program.lines().map(|x| x.to_string()).collect());
-    let empty_symbols = HashMap::new();
     let cldbenv = CldbRunEnv::new(
         input_file.clone(),
         program_lines.clone(),
-        Box::new(CldbNoOverride::new_symbols(symbol_table.unwrap_or(empty_symbols))),
+        Box::new(CldbNoOverride::new_symbols(target.get_symbol_table().clone())),
     );
 
     if parsed_args.get("tree").is_some() {

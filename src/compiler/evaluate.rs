@@ -12,7 +12,7 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::UseCompilerVariant;
 use crate::compiler::clvm::run;
 use crate::compiler::codegen::codegen;
-use crate::compiler::compiler::is_at_capture;
+use crate::compiler::compiler::{compile_pre_forms, is_at_capture};
 use crate::compiler::comptypes::{
     Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LetData, LetFormKind,
 };
@@ -1264,10 +1264,12 @@ impl<'info> Evaluator {
             .set_in_defun(in_defun)
             .set_frontend_opt(false);
 
-        let com_result = updated_opts.compile_program(
+        let mut target: UseCompilerVariant = Default::default();
+        let com_result = compile_pre_forms(
+            &mut target,
             self.runner.clone(),
-            use_body,
-            &mut HashMap::new(),
+            updated_opts,
+            &[use_body],
         )?;
 
         Ok(Rc::new(com_result))
