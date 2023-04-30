@@ -16,7 +16,7 @@ use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file, read_file};
 
-use crate::compiler::UseCompilerVariant;
+use crate::compiler::{CompilerTask, UseCompilerVariant};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -401,7 +401,6 @@ fn test_classic_compiler_with_compiler_opts() {
         files,
     ));
     let to_compile = "(mod (A) (include test.clinc) (F A))";
-    let mut allocator = Allocator::new();
     // Verify injection
     let mut target: UseCompilerVariant = Default::default();
     let result = compile_clvm_text(
@@ -413,7 +412,7 @@ fn test_classic_compiler_with_compiler_opts() {
     )
     .expect("should compile and find the content");
     assert_eq!(
-        disassemble(&mut allocator, result),
+        disassemble(target.get_allocator(), result),
         "(a (q 2 2 (c 2 (c 5 ()))) (c (q 16 5 (q . 1)) 1))"
     );
     // Verify lack of injection
