@@ -3,8 +3,9 @@ use std::fs;
 use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
+use yaml_rust::YamlEmitter;
 
-use crate::classic::clvm_tools::cmds::{cldb_hierarchy, YamlElement};
+use crate::classic::clvm_tools::cmds::{cldb_hierarchy, to_yaml_element, YamlElement};
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::{CompilerTask, UseCompilerVariant};
 use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
@@ -208,6 +209,7 @@ fn run_program_as_tree_from_hex(
     let prog_srcloc = Srcloc::start("*program*");
     let args_srcloc = Srcloc::start("*args*");
 
+    *target.get_symbol_table() = symbol_table.clone();
     let program = hex_to_modern_sexp(
         &mut target,
         prog_srcloc.clone(),
@@ -249,6 +251,13 @@ fn compare_run_output(
         let want_entry = &run_entries[i];
         let want_yaml = json_to_yamlelement(want_entry);
         let have_yaml = yaml_to_yamlelement(&result_entry);
+
+        let mut result_string = "".to_string();
+        let mut emitter = YamlEmitter::new(&mut result_string);
+        emitter.dump(&to_yaml_element(&want_yaml)).unwrap();
+        emitter.dump(&to_yaml_element(&have_yaml)).unwrap();
+        eprintln!("{result_string}");
+
         assert_eq!(want_yaml, have_yaml);
     }
 }
