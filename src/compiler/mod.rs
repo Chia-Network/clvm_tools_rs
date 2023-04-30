@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use clvmr::allocator::Allocator;
 
+use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
+
 use crate::compiler::comptypes::{CompileErr, CompileForm, CompilerOpts};
 use crate::compiler::sexp::SExp;
 
@@ -43,6 +45,12 @@ pub type UseCompilerVariant = crate::compiler::compiler::BasicCompiler;
 pub trait CompilerTask {
     fn get_allocator<'a>(&'a mut self) -> &'a mut Allocator;
     fn get_symbol_table<'a>(&'a mut self) -> &'a mut HashMap<String, String>;
-    fn do_frontend_step<T>(&mut self, opts: Rc<dyn CompilerOpts>, pre_forms: &[Rc<SExp>]) -> Result<CompileForm, CompileErr> where T: CompilerTask;
     fn for_new_program<'a, F, R>(&'a mut self, f: F) -> R where F: Fn(&mut Self) -> R;
+
+    fn do_frontend_step(&mut self, runner: Rc<dyn TRunProgram>, opts: Rc<dyn CompilerOpts>, pre_forms: &[Rc<SExp>]) -> Result<CompileForm, CompileErr>;
+    fn do_frontend_pre_desugar_opt(&mut self, runner: Rc<dyn TRunProgram>, opts: Rc<dyn CompilerOpts>, cf: CompileForm) -> Result<CompileForm, CompileErr>;
+    fn do_desugaring(&mut self, runner: Rc<dyn TRunProgram>, opts: Rc<dyn CompilerOpts>, cf: CompileForm) -> Result<CompileForm, CompileErr>;
+    // Insert a post desugaring optimization step when needed.
+    fn do_code_generation(&mut self, runner: Rc<dyn TRunProgram>, opts: Rc<dyn CompilerOpts>, cf: CompileForm) -> Result<SExp, CompileErr>;
+    // Insert a post code generation optimization step when needed.
 }

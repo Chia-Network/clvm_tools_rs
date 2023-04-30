@@ -81,8 +81,41 @@ impl CompilerTask for BasicCompiler {
         swap(&mut old_symtab, &mut self.symbols);
         res
     }
-    fn do_frontend_step<T>(&mut self, opts: Rc<dyn CompilerOpts>, pre_forms: &[Rc<SExp>]) -> Result<CompileForm, CompileErr> where T: CompilerTask {
+
+    fn do_frontend_step(&mut self, _runner: Rc<dyn TRunProgram>, opts: Rc<dyn CompilerOpts>, pre_forms: &[Rc<SExp>]) -> Result<CompileForm, CompileErr> {
         frontend(opts.clone(), pre_forms)
+    }
+
+    fn do_frontend_pre_desugar_opt(&mut self, runner: Rc<dyn TRunProgram>, opts: Rc<dyn CompilerOpts>, cf: CompileForm) -> Result<CompileForm, CompileErr> {
+        if opts.frontend_opt() {
+            // Front end optimization
+            fe_opt(self.get_allocator(), runner.clone(), opts.clone(), cf)
+        } else {
+            Ok(cf)
+        }
+    }
+
+    fn do_desugaring(&mut self, _runner: Rc<dyn TRunProgram>, _opts: Rc<dyn CompilerOpts>, cf: CompileForm) -> Result<CompileForm, CompileErr> {
+        let (mut new_helpers, expr) =
+            hoist_body_let_binding(None, cf.args.clone(), cf.exp.clone());
+
+        // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later
+        // stages
+        let mut combined_helpers = cf.helpers.clone();
+        combined_helpers.append(&mut new_helpers);
+        let combined_helpers = process_helper_let_bindings(&combined_helpers);
+
+        Ok(CompileForm {
+            loc: cf.loc.clone(),
+            include_forms: cf.include_forms.clone(),
+            args: cf.args,
+            helpers: combined_helpers,
+            exp: expr,
+        })
+    }
+
+    fn do_code_generation(&mut self, runner: Rc<dyn TRunProgram>, opts: Rc<dyn CompilerOpts>, cf: CompileForm) -> Result<SExp, CompileErr> {
+        codegen(self, runner, opts, &cf)
     }
 }
 
@@ -179,35 +212,19 @@ pub fn compile_pre_forms<T>(
     pre_forms: &[Rc<SExp>],
 ) -> Result<SExp, CompileErr> where T: CompilerTask {
     // Resolve includes, convert program source to lexemes
-    let p0 = target.do_frontend_step::<T>(opts.clone(), pre_forms)?;
+    let p0 = target.do_frontend_step(runner.clone(), opts.clone(), pre_forms)?;
 
-    let p1 = if opts.frontend_opt() {
-        // Front end optimization
-        fe_opt(target.get_allocator(), runner.clone(), opts.clone(), p0)?
-    } else {
-        p0
-    };
+    let p1 = target.do_frontend_pre_desugar_opt(runner.clone(), opts.clone(), p0)?;
 
     // Transform let bindings, merging nested let scopes with the top namespace
-    let hoisted_bindings = hoist_body_let_binding(None, p1.args.clone(), p1.exp.clone());
-    let mut new_helpers = hoisted_bindings.0;
-    let expr = hoisted_bindings.1; // expr is the let-hoisted program
+    let p2 = target.do_desugaring(runner.clone(), opts.clone(), p1)?;
 
-    // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later stages
-    let mut combined_helpers = p1.helpers.clone();
-    combined_helpers.append(&mut new_helpers);
-    let combined_helpers = process_helper_let_bindings(&combined_helpers);
-
-    let p2 = CompileForm {
-        loc: p1.loc.clone(),
-        include_forms: p1.include_forms.clone(),
-        args: p1.args,
-        helpers: combined_helpers,
-        exp: expr,
-    };
+    // When needed: add a post desugar optimization step.
 
     // generate code from AST, optionally with optimization
-    codegen(target, runner, opts, &p2)
+    target.do_code_generation(runner, opts, p2)
+
+    // When needed: add a post code generation optimization step.
 }
 
 pub fn compile_file<T>(
