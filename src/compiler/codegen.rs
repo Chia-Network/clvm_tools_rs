@@ -466,17 +466,15 @@ fn compile_call<T>(
                         )),
                     );
 
-                    target.for_new_program(|t| {
-                        compile_pre_forms(
-                            t,
-                            runner.clone(),
-                            updated_opts.clone(),
-                            &[Rc::new(use_body.clone())],
-                        )
-                            .map(|code| {
-                                CompiledCode(l.clone(), Rc::new(primquote(l.clone(), Rc::new(code))))
-                            })
-                    })
+                    compile_pre_forms(
+                        target,
+                        runner.clone(),
+                        updated_opts.clone(),
+                        &[Rc::new(use_body.clone())],
+                    )
+                        .map(|code| {
+                            CompiledCode(l.clone(), Rc::new(primquote(l.clone(), Rc::new(code))))
+                        })
                 } else {
                     error.clone()
                 }

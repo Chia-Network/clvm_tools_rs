@@ -844,6 +844,7 @@ fn test_modern_sets_source_file_in_symbols() {
         "resources/tests/steprun/fact.cl".to_string(),
     ]);
     let read_in_file = fs::read_to_string(&tname).expect("should have dropped symbols");
+    eprintln!("read_in_file {read_in_file}");
     let decoded_symbol_file: HashMap<String, String> =
         serde_json::from_str(&read_in_file).expect("should decode");
     fs::remove_file(&tname).expect("should have existed");

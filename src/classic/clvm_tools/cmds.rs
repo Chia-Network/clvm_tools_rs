@@ -1192,7 +1192,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_optimize(do_optimize)
             .set_search_paths(&search_paths)
             .set_frontend_opt(dialect > 21);
-        let mut symbol_table = HashMap::new();
 
         let unopt_res = compile_file(
             &mut target,
@@ -1200,6 +1199,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             opts.clone(),
             &input_program,
         );
+
         let res = if do_optimize {
             unopt_res.and_then(|x| run_optimizer(target.get_allocator(), runner, Rc::new(x)))
         } else {
@@ -1210,8 +1210,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             Ok(r) => {
                 stdout.write_str(&r.to_string());
 
-                build_symbol_table_mut(&mut symbol_table, &r);
-                write_sym_output(&symbol_table, &symbol_table_output).expect("writing symbols");
+                build_symbol_table_mut(target.get_symbol_table(), &r);
+                write_sym_output(target.get_symbol_table(), &symbol_table_output).expect("writing symbols");
             }
             Err(c) => {
                 stdout.write_str(&format!("{}: {}", c.0, c.1));
