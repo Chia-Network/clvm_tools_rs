@@ -21,10 +21,14 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, Stream};
 use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::cmds::launch_tool;
 use crate::classic::clvm_tools::node_path::NodePath;
+use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 
-use crate::compiler::clvm::convert_to_clvm_rs;
+use crate::compiler::cldb::{CldbRun, CldbRunEnv, CldbNoOverride};
+use crate::compiler::clvm::{convert_to_clvm_rs, start_step};
+use crate::compiler::prims::prims;
 use crate::compiler::sexp;
-use crate::compiler::sexp::decode_string;
+use crate::compiler::sexp::{decode_string, parse_sexp};
+use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, Number};
 
 const NUM_GEN_ATOMS: usize = 16;
@@ -869,4 +873,98 @@ fn test_cost_reporting_0() {
         result,
         "cost = 1978\n0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9875"
     );
+}
+
+fn cldb_run_program_and_count_function_invocations(
+    program: Rc<sexp::SExp>,
+    arg: Rc<sexp::SExp>,
+    symbols: &HashMap<String, String>,
+    file_name: &str,
+    watch_function: &str
+) -> usize {
+    let input_program = fs::read_to_string(&file_name).expect("should have source");
+    let mut prim_map = HashMap::new();
+    for p in prims().iter() {
+        prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
+    }
+
+    let program_lines: Rc<Vec<String>> =
+        Rc::new(input_program.lines().map(|x| x.to_string()).collect());
+
+    let cldbenv = CldbRunEnv::new(
+        Some(file_name.to_string()),
+        program_lines,
+        Box::new(CldbNoOverride::new_symbols(symbols.clone())),
+    );
+    let step = start_step(program.clone(), arg.clone());
+    let runner = Rc::new(DefaultProgramRunner::new());
+    let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
+    let mut allocator = Allocator::new();
+
+    let mut call_count = 0;
+    loop {
+        if cldbrun.is_ended() {
+            break;
+        }
+
+        if let Some(result) = cldbrun.step(&mut allocator) {
+            eprintln!("result {result:?}");
+            if let Some(function) = result.get("Function") {
+                if function == watch_function {
+                    call_count += 1;
+                }
+            }
+        }
+    }
+
+    call_count
+}
+
+#[cfg(feature="test-constant-deinline")]
+fn compile_program_for_deinline_check(file_name: &str, function_name: &str, enabled: bool) -> usize {
+    let symbol_file = "test-basic-deinline-1.sym".to_string();
+    let mut test_args = if enabled {
+        vec!["run".to_string(), "--test-deinline".to_string()]
+    } else {
+        vec!["run".to_string()]
+    };
+    test_args.append(&mut vec![
+        "-O".to_string(),
+        "-i".to_string(),
+        "resources/tests/bridge-includes".to_string(),
+        "--extra-syms".to_string(),
+        "--symbol-output-file".to_string(),
+        symbol_file.clone(),
+        file_name.to_string(),
+    ]);
+    let compile_result = do_basic_run(&test_args).trim().to_string();
+    eprintln!("compile_result {enabled} {}", compile_result);
+    let read_in_symbols = fs::read_to_string(&symbol_file).expect("should have dropped symbols");
+    fs::remove_file(&symbol_file).expect("should have existed");
+    let decoded_symbol_file: HashMap<String, String> =
+        serde_json::from_str(&read_in_symbols).expect("should decode");
+
+    let srcloc = Srcloc::start("*program*");
+    let compiled_program = parse_sexp(srcloc.clone(), compile_result.as_bytes().iter().copied()).expect("should parse");
+    let program_arg = Rc::new(sexp::SExp::Nil(Srcloc::start("*nil*")));
+    let call_count = cldb_run_program_and_count_function_invocations(
+        compiled_program[0].clone(),
+        program_arg.clone(),
+        &decoded_symbol_file,
+        &file_name,
+        function_name,
+    );
+
+    call_count
+}
+
+// We'll have a program that can be collapsed to constant under the classic
+// optimizer and demonstrate that we can still run its tests with test output
+// when ProgramWithConstants is used.
+#[cfg(feature="test-constant-deinline")]
+#[test]
+fn test_deinline_run() {
+    let crushed_count = compile_program_for_deinline_check("resources/tests/deinline/test-basic-deinline.clsp", "test-me", false);
+    let spared_count = compile_program_for_deinline_check("resources/tests/deinline/test-basic-deinline.clsp", "test-me", true);
+    todo!();
 }

@@ -569,7 +569,7 @@ pub fn generate_expr_code<T>(
         }
         BodyForm::Mod(_, program) => {
             // A mod form yields the compiled code.
-            target.for_new_program(|t| {
+            target.for_new_program(|t: &mut T| {
                 let code = codegen(t, runner.clone(), opts.clone(), program)?;
                 Ok(CompiledCode(
                     program.loc.clone(),
@@ -1035,7 +1035,7 @@ fn start_codegen<T>(
                     .set_stdenv(false)
                     .set_frontend_opt(false);
 
-                target.for_new_program(|t| {
+                target.for_new_program(|t: &mut T| {
                     compile_pre_forms(
                         t,
                         runner.clone(),

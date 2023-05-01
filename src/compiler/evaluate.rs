@@ -18,7 +18,7 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::SExp;
+use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::stackvisit::{HasDepthLimit, VisitedMarker};
 use crate::util::{number_from_u8, u8_from_number, Number};
@@ -1019,6 +1019,7 @@ impl<'info> Evaluator {
             }
             BodyForm::Quoted(_) => Ok(body.clone()),
             BodyForm::Value(SExp::Atom(l, name)) => {
+                eprintln!("evaluate value {}", decode_string(&name));
                 if name == &"@".as_bytes().to_vec() {
                     let literal_args = synthesize_args(prog_args.clone(), env)?;
                     self.shrink_bodyform_visited(

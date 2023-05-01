@@ -820,5 +820,7 @@ pub fn parse_sexp<I>(start: Srcloc, input: I) -> Result<Vec<Rc<SExp>>, (Srcloc, 
 where
     I: Iterator<Item = u8>,
 {
-    parse_sexp_inner(start, SExpParseState::Empty, input)
+    let fully_read: Vec<u8> = input.collect();
+    eprintln!("fully_read {}", decode_string(&fully_read));
+    parse_sexp_inner(start, SExpParseState::Empty, fully_read.iter().copied())
 }

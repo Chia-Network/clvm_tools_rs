@@ -515,6 +515,7 @@ pub fn cldb(args: &[String]) {
             .set_type(Rc::new(PathOrCodeConv {}))
             .set_help("clvm script environment, as clvm src, or hex".to_string()),
     );
+
     let arg_vec = args[1..].to_vec();
 
     let mut input_file = None;
@@ -921,6 +922,9 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         );
     }
 
+    let mut target: UseCompilerVariant = Default::default();
+    target.setup_new_options(&mut parser);
+
     let arg_vec = args[1..].to_vec();
     let parsed_args: HashMap<String, ArgumentValue> = match parser.parse_args(&arg_vec) {
         Err(e) => {
@@ -929,6 +933,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         }
         Ok(pa) => pa,
     };
+
+    target.evaluate_cmd_options(&parsed_args);
 
     if parsed_args.contains_key("version") {
         let version = version();
@@ -978,7 +984,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         Vec::new()
     };
 
-    let mut target: UseCompilerVariant = Default::default();
     let input_serialized = None;
     let mut input_sexp: Option<NodePtr> = None;
 

@@ -11,9 +11,10 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
+use crate::classic::platform::argparse::{ArgumentParser, ArgumentValue};
 
 use crate::compiler::CompilerTask;
-use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
+use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree, truthy};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
     CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
@@ -72,14 +73,24 @@ pub struct BasicCompiler {
 }
 
 impl CompilerTask for BasicCompiler {
+    type Save = HashMap<String, String>;
+
     fn get_allocator<'a>(&'a mut self) -> &'a mut Allocator { &mut self.allocator }
     fn get_symbol_table<'a>(&'a mut self) -> &'a mut HashMap<String, String> { &mut self.symbols }
-    fn for_new_program<'a, F, R>(&'a mut self, f: F) -> R where F: Fn(&mut Self) -> R {
-        let mut old_symtab = HashMap::new();
-        swap(&mut old_symtab, &mut self.symbols);
-        let res = f(self);
-        swap(&mut old_symtab, &mut self.symbols);
-        res
+
+    // No new options since this is the baseline.
+    fn setup_new_options(&mut self, _argparse: &mut ArgumentParser) {
+    }
+
+    fn evaluate_cmd_options(&mut self, _options: &HashMap<String, ArgumentValue>) {
+    }
+
+    fn evaluate_python_options(&mut self, _options: &HashMap<String, String>) {
+    }
+
+    fn empty_save_state(&self) -> Self::Save { Default::default() }
+    fn swap_save_state(&mut self, save: &mut Self::Save) {
+        swap(&mut self.symbols, save);
     }
 
     fn do_frontend_step(&mut self, _runner: Rc<dyn TRunProgram>, opts: Rc<dyn CompilerOpts>, pre_forms: &[Rc<SExp>]) -> Result<CompileForm, CompileErr> {
@@ -89,7 +100,10 @@ impl CompilerTask for BasicCompiler {
     fn do_frontend_pre_desugar_opt(&mut self, runner: Rc<dyn TRunProgram>, opts: Rc<dyn CompilerOpts>, cf: CompileForm) -> Result<CompileForm, CompileErr> {
         if opts.frontend_opt() {
             // Front end optimization
-            fe_opt(self.get_allocator(), runner.clone(), opts.clone(), cf)
+            eprintln!("would optimize {}", cf.to_sexp());
+            let res = fe_opt(self.get_allocator(), runner.clone(), opts.clone(), cf)?;
+            eprintln!("got from fe_opt: {}", res.to_sexp());
+            Ok(res)
         } else {
             Ok(cf)
         }
@@ -205,6 +219,16 @@ fn fe_opt(
     })
 }
 
+fn has_function(name: &[u8], cf: &CompileForm) -> bool {
+    for h in cf.helpers.iter() {
+        if h.name() == name {
+            return true;
+        }
+    }
+
+    false
+}
+
 pub fn compile_pre_forms<T>(
     target: &mut T,
     runner: Rc<dyn TRunProgram>,
@@ -214,7 +238,12 @@ pub fn compile_pre_forms<T>(
     // Resolve includes, convert program source to lexemes
     let p0 = target.do_frontend_step(runner.clone(), opts.clone(), pre_forms)?;
 
+    eprintln!("gonna desugar {}", p0.to_sexp());
+    // assert!(!has_function(b"test-me", &p0) || truthy(p0.args.clone()));
+
     let p1 = target.do_frontend_pre_desugar_opt(runner.clone(), opts.clone(), p0)?;
+
+    eprintln!("did pre desugar {}", p1.to_sexp());
 
     // Transform let bindings, merging nested let scopes with the top namespace
     let p2 = target.do_desugaring(runner.clone(), opts.clone(), p1)?;
