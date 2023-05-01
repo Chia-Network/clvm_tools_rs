@@ -58,10 +58,8 @@ jobs:
       run: |
         podman run --rm=true \
           -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
-          quay.io/pypa/manylinux2010_x86_64 \
+          ghcr.io/chia-network/build-images/centos-pypa-rust-x86_64 \
           bash -exc '\
-            curl -L https://sh.rustup.rs > rustup-init.sh && \
-            sh rustup-init.sh -y && \
             yum -y install libc6 openssl-devel && \
             source $HOME/.cargo/env && \
             rustup target add x86_64-unknown-linux-musl && \
@@ -308,4 +306,3 @@ jobs:
             components: rustfmt, clippy
       - name: cargo test
         run: cargo test
-
