@@ -6,6 +6,7 @@ on:
     branches:
       - base
       - dev
+      - nightly
     tags:
         - '**'
   pull_request:
@@ -235,7 +236,7 @@ jobs:
       run: twine upload --non-interactive --skip-existing --verbose 'target/wheels/*'
 
     - name: Publish Nightlies
-      if: steps.check_secrets.outputs.HAS_AWS_SECRET
+      if: steps.check_secrets.outputs.HAS_AWS_SECRET && github.ref == 'refs/heads/nightly'
       shell: bash
       working-directory: ./target/wheels
       env:
