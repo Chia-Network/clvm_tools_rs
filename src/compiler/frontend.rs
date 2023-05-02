@@ -229,7 +229,7 @@ fn make_let_bindings(
         SExp::Cons(_, head, tl) => head
             .proper_list()
             .filter(|x| x.len() == 2)
-            .map(|x| match (x[0].atomize(), &x[1]) {
+            .map(|x| match (x[0].clone(), &x[1]) {
                 (SExp::Atom(l, name), expr) => {
                     let compiled_body = compile_bodyform(opts.clone(), Rc::new(expr.clone()))?;
                     let mut result = Vec::new();
