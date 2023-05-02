@@ -58,7 +58,7 @@ fn run_string_maybe_opt(
     })
 }
 
-fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
+pub fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
     run_string_maybe_opt(content, args, false)
 }
 

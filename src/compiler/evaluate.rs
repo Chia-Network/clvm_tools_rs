@@ -71,10 +71,48 @@ pub struct LambdaApply {
 
 // Frontend evaluator based on my fuzzer representation and direct interpreter of
 // that.
+
 #[derive(Debug)]
 pub enum ArgInputs {
     Whole(Rc<BodyForm>),
     Pair(Rc<ArgInputs>, Rc<ArgInputs>),
+}
+
+/// EvalExtension provides internal capabilities to the evaluator that function
+/// as extra primitives.  They work entirely at the semantic layer of chialisp
+/// and are preferred compared to CLVM primitives.  These operate on BodyForm
+/// so they have some ability to work on the semantics of chialisp values in
+/// addition to reified values.
+///
+/// These provide the primitive, value aware capabilities to the defmac system
+/// which runs entirely in evaluator space.  This is done because evaluator deals
+/// in high level frontend values...  Rather than having integers, symbols and
+/// strings all crushed into a single atom value space, these observe the
+/// differences and are able to judge and convert them in ways the user specifies.
+///
+/// This allows these macros to pass on programs to the chialisp compiler that
+/// are symbol and constant aware; it's able to write (for example) a matcher
+/// that takes lists of mixed symbols and constants, isolate each and produce
+/// lists of let bindings and match checks that pick out each.  Since atoms are
+/// passed on when appropriate vs constants and such, we can have macros produce
+/// code and be completely certain that any atom landing in the chialisp compiler
+/// was intended to be bound in some way and return an error if it isn't, having
+/// the result plainly be an error if not.
+///
+/// I also anticipate using EvalExtensions to analyze and control code shrinking
+/// during some kinds of optimization.
+pub trait EvalExtension {
+    #[allow(clippy::too_many_arguments)]
+    fn try_eval(
+        &self,
+        evaluator: &Evaluator,
+        prog_args: Rc<SExp>,
+        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+        loc: &Srcloc,
+        name: &[u8],
+        args: &[Rc<BodyForm>],
+        body: Rc<BodyForm>,
+    ) -> Result<Option<Rc<BodyForm>>, CompileErr>;
 }
 
 /// Evaluator is an object that simplifies expressions, given the helpers
@@ -97,6 +135,7 @@ pub struct Evaluator {
     opts: Rc<dyn CompilerOpts>,
     runner: Rc<dyn TRunProgram>,
     prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    extensions: Vec<Rc<dyn EvalExtension>>,
     helpers: Vec<HelperForm>,
     mash_conditions: bool,
     ignore_exn: bool,
@@ -235,7 +274,7 @@ fn get_bodyform_from_arginput(l: &Srcloc, arginput: &ArgInputs) -> Rc<BodyForm> 
 //
 // It's possible this will result in irreducible (unknown at compile time)
 // argument expressions.
-fn create_argument_captures(
+pub fn create_argument_captures(
     argument_captures: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
     formed_arguments: &ArgInputs,
     function_arg_spec: Rc<SExp>,
@@ -332,7 +371,7 @@ fn arg_inputs_primitive(arginputs: Rc<ArgInputs>) -> bool {
     }
 }
 
-fn build_argument_captures(
+pub fn build_argument_captures(
     l: &Srcloc,
     arguments_to_convert: &[Rc<BodyForm>],
     args: Rc<SExp>,
@@ -662,6 +701,7 @@ impl<'info> Evaluator {
             helpers,
             mash_conditions: false,
             ignore_exn: false,
+            extensions: Vec::new(),
         }
     }
 
@@ -671,6 +711,7 @@ impl<'info> Evaluator {
             runner: self.runner.clone(),
             prims: self.prims.clone(),
             helpers: self.helpers.clone(),
+            extensions: self.extensions.clone(),
             mash_conditions: true,
             ignore_exn: true,
         }
@@ -1071,6 +1112,20 @@ impl<'info> Evaluator {
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
+        for ext in self.extensions.iter() {
+            if let Some(res) = ext.try_eval(
+                self,
+                prog_args.clone(),
+                env,
+                &l,
+                call_name,
+                arguments_to_convert,
+                body.clone(),
+            )? {
+                return Ok(res);
+            }
+        }
+
         let helper = select_helper(&self.helpers, call_name);
         match helper {
             Some(HelperForm::Defmacro(mac)) => self.invoke_macro_expansion(
@@ -1531,6 +1586,10 @@ impl<'info> Evaluator {
             }
         }
         self.helpers.push(h.clone());
+    }
+
+    pub fn add_extension(&mut self, e: Rc<dyn EvalExtension>) {
+        self.extensions.push(e);
     }
 
     // The evaluator treats the forms coming up from constants as live.
