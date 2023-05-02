@@ -447,7 +447,7 @@ fn compile_call(
                         .set_in_defun(true)
                         .set_frontend_opt(false)
                         .set_start_env(Some(compiler.env.clone()))
-                        .set_compiler(compiler.clone());
+                        .set_code_generator(compiler.clone());
 
                     let use_body = SExp::Cons(
                         l.clone(),
@@ -631,7 +631,7 @@ fn codegen_(
                 ))
             } else {
                 let updated_opts = opts
-                    .set_compiler(compiler.clone())
+                    .set_code_generator(compiler.clone())
                     .set_in_defun(true)
                     .set_stdenv(false)
                     .set_frontend_opt(false)
@@ -693,10 +693,12 @@ fn codegen_(
                     .map(|code| {
                         compiler.add_defun(
                             &defun.name,
+                            defun.orig_args.clone(),
                             DefunCall {
                                 required_env: defun.args.clone(),
                                 code,
                             },
+                            true, // Always take left env for now
                         )
                     })
             }
@@ -743,7 +745,7 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
         parentfns: HashSet::new(),
         env: Rc::new(SExp::Cons(l, nil_rc.clone(), nil_rc)),
         to_process: Vec::new(),
-        orig_help: Vec::new(),
+        original_helpers: Vec::new(),
         final_expr: Rc::new(BodyForm::Quoted(nil)),
         final_code: None,
         function_symbols: HashMap::new(),
@@ -764,11 +766,11 @@ fn generate_let_defun(
         .map(|b| Rc::new(SExp::Atom(l.clone(), b.name.clone())))
         .collect();
 
-    let inner_function_args = SExp::Cons(
+    let inner_function_args = Rc::new(SExp::Cons(
         l.clone(),
         args,
         Rc::new(list_to_cons(l.clone(), &new_arguments)),
-    );
+    ));
 
     // Count occurrences per binding.
     let deinline_score: usize = bindings
@@ -784,7 +786,8 @@ fn generate_let_defun(
             nl: l,
             kw: kwl,
             name: name.to_owned(),
-            args: Rc::new(inner_function_args),
+            orig_args: inner_function_args.clone(),
+            args: inner_function_args,
             body,
             synthetic: true,
         },
@@ -795,7 +798,7 @@ fn generate_let_args(_l: Srcloc, blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {
     blist.iter().map(|b| b.body.clone()).collect()
 }
 
-fn hoist_body_let_binding(
+pub fn hoist_body_let_binding(
     opts: Rc<dyn CompilerOpts>,
     outer_context: Option<Rc<SExp>>,
     args: Rc<SExp>,
@@ -847,12 +850,8 @@ fn hoist_body_let_binding(
 
             let mut revised_bindings = Vec::new();
             for b in letdata.bindings.iter() {
-                let (mut new_helpers, new_binding) = hoist_body_let_binding(
-                    opts.clone(),
-                    outer_context.clone(),
-                    args.clone(),
-                    b.body.clone(),
-                );
+                let (mut new_helpers, new_binding) =
+                    hoist_body_let_binding(opts.clone(), outer_context.clone(), args.clone(), b.body.clone());
                 out_defuns.append(&mut new_helpers);
                 revised_bindings.push(Rc::new(Binding {
                     loc: b.loc.clone(),
@@ -905,12 +904,8 @@ fn hoist_body_let_binding(
             let mut vres = Vec::new();
             let mut new_call_list = vec![list[0].clone()];
             for i in list.iter().skip(1) {
-                let (new_helper, new_arg) = hoist_body_let_binding(
-                    opts.clone(),
-                    outer_context.clone(),
-                    args.clone(),
-                    i.clone(),
-                );
+                let (new_helper, new_arg) =
+                    hoist_body_let_binding(opts.clone(), outer_context.clone(), args.clone(), i.clone());
                 new_call_list.push(new_arg);
                 vres.append(&mut new_helper.clone());
             }
@@ -920,7 +915,7 @@ fn hoist_body_let_binding(
     }
 }
 
-fn process_helper_let_bindings(
+pub fn process_helper_let_bindings(
     opts: Rc<dyn CompilerOpts>,
     helpers: &[HelperForm],
 ) -> Vec<HelperForm> {
@@ -935,12 +930,10 @@ fn process_helper_let_bindings(
                 } else {
                     None
                 };
-                let (hoisted_helpers, hoisted_body) = hoist_body_let_binding(
-                    opts.clone(),
-                    context,
-                    defun.args.clone(),
-                    defun.body.clone(),
-                );
+                let helper_result =
+                    hoist_body_let_binding(opts.clone(), context, defun.args.clone(), defun.body.clone());
+                let hoisted_helpers = helper_result.0;
+                let hoisted_body = helper_result.1.clone();
 
                 result[i] = HelperForm::Defun(
                     inline,
@@ -950,8 +943,9 @@ fn process_helper_let_bindings(
                         kw: defun.kw.clone(),
                         name: defun.name.clone(),
                         args: defun.args.clone(),
-                        body: hoisted_body.clone(),
                         synthetic: defun.synthetic,
+                        orig_args: defun.orig_args.clone(),
+                        body: hoisted_body,
                     },
                 );
 
@@ -974,16 +968,17 @@ fn start_codegen(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
-    comp: CompileForm,
+    program: CompileForm,
 ) -> Result<PrimaryCodegen, CompileErr> {
-    let mut use_compiler = match opts.compiler() {
-        None => empty_compiler(opts.prim_map(), comp.loc.clone()),
+    // Choose code generator configuration
+    let mut code_generator = match opts.code_generator() {
+        None => empty_compiler(opts.prim_map(), program.loc.clone()),
         Some(c) => c,
     };
 
     // Start compiler with all macros and constants
-    for h in comp.helpers.iter() {
-        use_compiler = match h.borrow() {
+    for h in program.helpers.iter() {
+        code_generator = match h.borrow() {
             HelperForm::Defconstant(defc) => match defc.kind {
                 ConstantKind::Simple => {
                     let expand_program = SExp::Cons(
@@ -999,7 +994,7 @@ fn start_codegen(
                             )),
                         )),
                     );
-                    let updated_opts = opts.set_compiler(use_compiler.clone());
+                    let updated_opts = opts.set_code_generator(code_generator.clone());
                     let code = updated_opts.compile_program(
                         allocator,
                         runner.clone(),
@@ -1018,20 +1013,25 @@ fn start_codegen(
                         CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
                     })
                     .and_then(|res| {
-                        fail_if_present(defc.loc.clone(), &use_compiler.constants, &defc.name, res)
+                        fail_if_present(
+                            defc.loc.clone(),
+                            &code_generator.constants,
+                            &defc.name,
+                            res,
+                        )
                     })
                     .map(|res| {
                         if defc.tabled {
-                            use_compiler.add_tabled_constant(&defc.name, res)
+                            code_generator.add_tabled_constant(&defc.name, res)
                         } else {
                             let quoted = primquote(defc.loc.clone(), res);
-                            use_compiler.add_constant(&defc.name, Rc::new(quoted))
+                            code_generator.add_constant(&defc.name, Rc::new(quoted))
                         }
                     })?
                 }
                 ConstantKind::Complex => {
                     let evaluator =
-                        Evaluator::new(opts.clone(), runner.clone(), comp.helpers.clone());
+                        Evaluator::new(opts.clone(), runner.clone(), program.helpers.clone());
                     let constant_result = evaluator.shrink_bodyform(
                         allocator,
                         Rc::new(SExp::Nil(defc.loc.clone())),
@@ -1046,10 +1046,10 @@ fn start_codegen(
                     if let BodyForm::Quoted(q) = constant_result.borrow() {
                         let res = Rc::new(q.clone());
                         if defc.tabled {
-                            use_compiler.add_tabled_constant(&defc.name, res)
+                            code_generator.add_tabled_constant(&defc.name, res)
                         } else {
                             let quoted = primquote(defc.loc.clone(), res);
-                            use_compiler.add_constant(&defc.name, Rc::new(quoted))
+                            code_generator.add_constant(&defc.name, Rc::new(quoted))
                         }
                     } else {
                         return Err(CompileErr(
@@ -1071,7 +1071,7 @@ fn start_codegen(
                 ));
 
                 let updated_opts = opts
-                    .set_compiler(use_compiler.clone())
+                    .set_code_generator(code_generator.clone())
                     .set_in_defun(false)
                     .set_stdenv(false)
                     .set_frontend_opt(false);
@@ -1090,37 +1090,33 @@ fn start_codegen(
                             Ok(Rc::new(code))
                         }
                     })
-                    .map(|code| use_compiler.add_macro(&mac.name, code))?
+                    .map(|code| code_generator.add_macro(&mac.name, code))?
             }
-            _ => use_compiler,
+            _ => code_generator,
         };
     }
 
-    let hoisted_bindings = hoist_body_let_binding(opts.clone(), None, comp.args.clone(), comp.exp);
-    let mut new_helpers = hoisted_bindings.0;
-    let expr = hoisted_bindings.1;
-    new_helpers.append(&mut comp.helpers.clone());
-    let let_helpers_with_expr = process_helper_let_bindings(opts.clone(), &new_helpers);
-    let live_helpers: Vec<HelperForm> = let_helpers_with_expr
+    let only_defuns: Vec<HelperForm> = program
+        .helpers
         .iter()
         .filter(|x| is_defun_or_tabled_const(x))
         .cloned()
         .collect();
 
-    use_compiler.env = match opts.start_env() {
+    code_generator.env = match opts.start_env() {
         Some(env) => env,
         None => Rc::new(compute_env_shape(
-            comp.loc.clone(),
-            comp.args,
-            &live_helpers,
+            program.loc.clone(),
+            program.args,
+            &only_defuns,
         )),
     };
 
-    use_compiler.to_process = let_helpers_with_expr.clone();
-    use_compiler.orig_help = let_helpers_with_expr;
-    use_compiler.final_expr = expr;
+    code_generator.to_process = program.helpers.clone();
+    code_generator.original_helpers = program.helpers.clone();
+    code_generator.final_expr = program.exp;
 
-    Ok(use_compiler)
+    Ok(code_generator)
 }
 
 fn final_codegen(
@@ -1287,30 +1283,34 @@ pub fn codegen(
     cmod: &CompileForm,
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
-    let mut compiler = dummy_functions(&start_codegen(
+    let mut code_generator = dummy_functions(&start_codegen(
         allocator,
         runner.clone(),
         opts.clone(),
         cmod.clone(),
     )?)?;
 
-    let to_process = compiler.to_process.clone();
+    let to_process = code_generator.to_process.clone();
 
     for f in to_process {
-        compiler = codegen_(allocator, runner.clone(), opts.clone(), &compiler, &f)?;
+        code_generator = codegen_(allocator, runner.clone(), opts.clone(), &code_generator, &f)?;
     }
 
-    *symbol_table = compiler.function_symbols.clone();
+    *symbol_table = code_generator.function_symbols.clone();
     symbol_table.insert("source_file".to_string(), opts.filename());
 
-    final_codegen(allocator, runner.clone(), opts.clone(), &compiler).and_then(|c| {
+    final_codegen(allocator, runner.clone(), opts.clone(), &code_generator).and_then(|c| {
         let final_env = finalize_env(allocator, runner.clone(), opts.clone(), &c)?;
+
         match c.final_code {
             None => Err(CompileErr(
                 Srcloc::start(&opts.filename()),
                 "Failed to generate code".to_string(),
             )),
             Some(code) => {
+                // Capture symbols now that we have the final form of the produced code.
+                symbol_table.insert("__chia__main_arguments".to_string(), cmod.args.to_string());
+
                 if opts.in_defun() {
                     let final_code = primapply(
                         code.0.clone(),

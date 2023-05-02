@@ -12,8 +12,11 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
-use crate::compiler::codegen::codegen;
-use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
+use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
+use crate::compiler::comptypes::{
+    CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
+};
+use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::{fe_opt, finish_optimization, sexp_scale};
 use crate::compiler::prims;
@@ -64,7 +67,7 @@ lazy_static! {
 pub struct DefaultCompilerOpts {
     pub include_dirs: Vec<String>,
     pub filename: String,
-    pub compiler: Option<PrimaryCodegen>,
+    pub code_generator: Option<PrimaryCodegen>,
     pub in_defun: bool,
     pub stdenv: bool,
     pub optimize: bool,
@@ -93,35 +96,36 @@ pub fn compile_pre_forms(
     pre_forms: &[Rc<SExp>],
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
-    let g = frontend(opts.clone(), pre_forms)?;
-    if opts.frontend_opt() {
-        let compileform_inlined = fe_opt(allocator, runner.clone(), opts.clone(), &g, true)?;
-        let generated_inlined = finish_optimization(&codegen(
-            allocator,
-            runner.clone(),
-            opts.clone(),
-            &compileform_inlined,
-            symbol_table,
-        )?);
-        let compileform_noninlined = fe_opt(allocator, runner.clone(), opts.clone(), &g, false)?;
-        let generated_noninlined = finish_optimization(&codegen(
-            allocator,
-            runner,
-            opts,
-            &compileform_noninlined,
-            symbol_table,
-        )?);
-        let inlined_scale = sexp_scale(&generated_inlined);
-        let noninlined_scale = sexp_scale(&generated_noninlined);
-        let generated = if inlined_scale < noninlined_scale {
-            generated_inlined
-        } else {
-            generated_noninlined
-        };
-        Ok(generated)
+    // Resolve includes, convert program source to lexemes
+    let p0 = frontend(opts.clone(), pre_forms)?;
+
+    let p1 = if opts.frontend_opt() {
+        // Front end optimization
+        fe_opt(allocator, runner.clone(), opts.clone(), &p0, false)?
     } else {
-        codegen(allocator, runner, opts.clone(), &g, symbol_table)
-    }
+        p0
+    };
+
+    // Transform let bindings, merging nested let scopes with the top namespace
+    let hoisted_bindings = hoist_body_let_binding(opts.clone(), None, p1.args.clone(), p1.exp.clone());
+    let mut new_helpers = hoisted_bindings.0;
+    let expr = hoisted_bindings.1; // expr is the let-hoisted program
+
+    // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later stages
+    let mut combined_helpers = p1.helpers.clone();
+    combined_helpers.append(&mut new_helpers);
+    let combined_helpers = process_helper_let_bindings(opts.clone(), &combined_helpers);
+
+    let p2 = CompileForm {
+        loc: p1.loc.clone(),
+        include_forms: p1.include_forms.clone(),
+        args: p1.args,
+        helpers: combined_helpers,
+        exp: expr,
+    };
+
+    // generate code from AST, optionally with optimization
+    codegen(allocator, runner, opts, &p2, symbol_table)
 }
 
 pub fn compile_file(
@@ -162,8 +166,8 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn filename(&self) -> String {
         self.filename.clone()
     }
-    fn compiler(&self) -> Option<PrimaryCodegen> {
-        self.compiler.clone()
+    fn code_generator(&self) -> Option<PrimaryCodegen> {
+        self.code_generator.clone()
     }
     fn in_defun(&self) -> bool {
         self.in_defun
@@ -220,9 +224,9 @@ impl CompilerOpts for DefaultCompilerOpts {
         copy.frontend_check_live = check;
         Rc::new(copy)
     }
-    fn set_compiler(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
+    fn set_code_generator(&self, new_code_generator: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
-        copy.compiler = Some(new_compiler);
+        copy.code_generator = Some(new_code_generator);
         Rc::new(copy)
     }
     fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts> {
@@ -279,7 +283,7 @@ impl DefaultCompilerOpts {
         DefaultCompilerOpts {
             include_dirs: vec![".".to_string()],
             filename: filename.to_string(),
-            compiler: None,
+            code_generator: None,
             in_defun: false,
             stdenv: true,
             optimize: false,

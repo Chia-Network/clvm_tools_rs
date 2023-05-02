@@ -1,0 +1,2 @@
+opc "(equal 'foo 100)"
+unterminated string starting at 7: 'foo 100)

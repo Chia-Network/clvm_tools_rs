@@ -12,7 +12,7 @@ use wasm_bindgen::JsCast;
 
 use clvmr::allocator::Allocator;
 
-use clvm_tools_rs::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use clvm_tools_rs::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
 use clvm_tools_rs::classic::clvm::serialize::sexp_to_stream;
 use clvm_tools_rs::classic::clvm_tools::clvmc::compile_clvm_inner;
 use clvm_tools_rs::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
@@ -24,7 +24,7 @@ use clvm_tools_rs::compiler::clvm::{convert_to_clvm_rs, start_step};
 use clvm_tools_rs::compiler::compiler::{
     extract_program_and_env, path_to_function, rewrite_in_program, DefaultCompilerOpts,
 };
-use clvm_tools_rs::compiler::comptypes::CompileErr;
+use clvm_tools_rs::compiler::comptypes::{CompileErr, CompilerOpts};
 use clvm_tools_rs::compiler::prims;
 use clvm_tools_rs::compiler::repl::Repl;
 use clvm_tools_rs::compiler::runtypes::RunFailure;
@@ -240,7 +240,7 @@ pub fn create_clvm_runner(
     ));
     let prim_map_rc = Rc::new(prim_map);
     let step = start_step(program.clone(), args.clone());
-    let cldbenv = CldbRunEnv::new(None, vec![], runner_override);
+    let cldbenv = CldbRunEnv::new(None, Rc::new(vec![]), runner_override);
     let cldbrun = CldbRun::new(runner.clone(), prim_map_rc.clone(), Box::new(cldbenv), step);
 
     let this_id = get_next_id();
@@ -310,13 +310,16 @@ pub fn compile(input_js: JsValue, filename_js: JsValue, search_paths_js: Vec<JsV
         .map(|j| j.as_string().unwrap())
         .collect();
 
+    let opts = Rc::new(DefaultCompilerOpts::new(&filename))
+        .set_search_paths(&search_paths);
     match compile_clvm_inner(
         &mut allocator,
-        &search_paths,
+        opts,
         &mut symbol_table,
         &filename,
         &input,
         &mut result_stream,
+        false,
     ) {
         Ok(_) => make_compile_output(&result_stream, &symbol_table),
         Err(e) => create_clvm_runner_err(e),
@@ -374,7 +377,16 @@ pub fn compose_run_function(
             ));
         }
     };
-    let hash_bytes = Bytes::new(Some(BytesFromType::Hex(function_hash.clone())));
+    let hash_bytes = match Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(function_hash.clone()))) {
+        Err(e) => {
+            return create_clvm_compile_failure(&CompileErr(
+                program.loc(),
+                e.to_string(),
+            ));
+        },
+        Ok(x) => x,
+    };
+    
     let function_path = match path_to_function(main_env.1.clone(), &hash_bytes.data().clone()) {
         Some(p) => p,
         _ => {

@@ -63,6 +63,7 @@ fn test_sexp_scale_increases_with_atom_size() {
     );
 }
 
+/// At this point, very rudimentary constant folding on body expressions.
 pub fn optimize_expr(
     allocator: &mut Allocator,
     opts: Rc<dyn CompilerOpts>,
@@ -315,8 +316,8 @@ pub fn fe_opt(
         }
 
         for helper in (opts
-            .compiler()
-            .map(|c| c.orig_help)
+            .code_generator()
+            .map(|c| c.original_helpers)
             .unwrap_or_else(Vec::new))
         .iter()
         {

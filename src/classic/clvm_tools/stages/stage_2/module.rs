@@ -10,7 +10,8 @@ use crate::classic::clvm::sexp::{
     enlist, first, flatten, fold_m, map_m, non_nil, nonempty_last, proper_list, rest, First,
     NodeSel, Rest, SelectNode, ThisNode,
 };
-use crate::classic::clvm_tools::debug::build_symbol_dump;
+use crate::classic::clvm_tools::binutils::disassemble;
+use crate::classic::clvm_tools::debug::{build_symbol_dump, FunctionExtraInfo};
 use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages::assemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
@@ -28,6 +29,23 @@ struct CollectionResult {
     pub functions: HashMap<Vec<u8>, NodePtr>,
     pub constants: HashMap<Vec<u8>, NodePtr>,
     pub macros: Vec<(Vec<u8>, NodePtr)>,
+}
+
+#[derive(Default)]
+struct CompileOutput {
+    pub functions: HashMap<Vec<u8>, NodePtr>,
+    pub symbols_extra_info: HashMap<Vec<u8>, FunctionExtraInfo>,
+}
+
+impl CompileOutput {
+    pub fn add_definitions(&mut self, other: &CompileOutput) {
+        for (n, v) in other.functions.iter() {
+            self.functions.insert(n.to_vec(), *v);
+        }
+        for (n, v) in other.symbols_extra_info.iter() {
+            self.symbols_extra_info.insert(n.to_vec(), v.clone());
+        }
+    }
 }
 
 // export type TBuildTree = Bytes | Tuple<TBuildTree, TBuildTree> | [];
@@ -459,6 +477,7 @@ fn compile_mod_stage_1(
                         let compiled =
                             finish_compile_from_collection(
                                 allocator,
+                                args,
                                 macro_lookup,
                                 run_program.clone(),
                                 &result_collection,
@@ -595,56 +614,56 @@ fn build_macro_lookup_program(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_one_function(
     allocator: &mut Allocator,
     args_root_node: &NodePath,
     macro_lookup_program: NodePtr,
     constants_symbol_table: &[(NodePtr, Vec<u8>)],
-    compiled_functions_: HashMap<Vec<u8>, NodePtr>,
     name: &[u8],
     lambda_expression: NodePtr,
-) -> Result<HashMap<Vec<u8>, NodePtr>, EvalErr> {
-    let mut compiled_functions = compiled_functions_;
-    m! {
-        com_atom <- allocator.new_atom("com".as_bytes());
-        opt_atom <- allocator.new_atom("opt".as_bytes());
+    has_constants_tree: bool,
+) -> Result<CompileOutput, EvalErr> {
+    let mut compile: CompileOutput = Default::default();
+    let com_atom = allocator.new_atom("com".as_bytes())?;
+    let opt_atom = allocator.new_atom("opt".as_bytes())?;
 
-        le_first <- first(allocator, lambda_expression);
-        local_symbol_table <- symbol_table_for_tree(
-            allocator, le_first, args_root_node
-        );
-        let mut all_symbols = local_symbol_table;
-        let _ = all_symbols.append(&mut constants_symbol_table.to_owned());
-        lambda_form_content <- rest(allocator, lambda_expression);
-        lambda_body <- first(allocator, lambda_form_content);
-        quoted_lambda_expr <- quote(allocator, lambda_body);
-        all_symbols_list_sexp <-
-            map_m(
-                allocator,
-                &mut all_symbols.iter(),
-                &|allocator, pair| m! {
-                    path_atom <- allocator.new_atom(&pair.1);
-                    enlist(allocator, &[pair.0, path_atom])
-                }
-            );
+    let function_args = first(allocator, lambda_expression)?;
+    let local_symbol_table = symbol_table_for_tree(allocator, function_args, args_root_node)?;
+    let mut all_symbols = local_symbol_table;
+    all_symbols.append(&mut constants_symbol_table.to_owned());
+    let lambda_form_content = rest(allocator, lambda_expression)?;
+    let lambda_body = first(allocator, lambda_form_content)?;
+    let quoted_lambda_expr = quote(allocator, lambda_body)?;
+    let all_symbols_list_sexp = map_m(allocator, &mut all_symbols.iter(), &|allocator, pair| {
+        let path_atom = allocator.new_atom(&pair.1)?;
+        enlist(allocator, &[pair.0, path_atom])
+    })?;
 
-        all_symbols_list <-
-            enlist(allocator, &all_symbols_list_sexp);
+    let all_symbols_list = enlist(allocator, &all_symbols_list_sexp)?;
 
-        quoted_symbols <- quote(allocator, all_symbols_list);
-        com_list <- enlist(
-            allocator,
-            &[
-                com_atom,
-                quoted_lambda_expr,
-                macro_lookup_program,
-                quoted_symbols
-            ]
-        );
-        opt_list <- enlist(allocator, &[opt_atom, com_list]);
-        let _ = compiled_functions.insert(name.to_vec(), opt_list);
-        Ok(compiled_functions)
-    }
+    let quoted_symbols = quote(allocator, all_symbols_list)?;
+    let com_list = enlist(
+        allocator,
+        &[
+            com_atom,
+            quoted_lambda_expr,
+            macro_lookup_program,
+            quoted_symbols,
+        ],
+    )?;
+
+    let opt_list = enlist(allocator, &[opt_atom, com_list])?;
+    compile.functions.insert(name.to_vec(), opt_list);
+    compile.symbols_extra_info.insert(
+        name.to_vec(),
+        FunctionExtraInfo {
+            args: function_args,
+            has_constants_tree,
+        },
+    );
+
+    Ok(compile)
 }
 
 fn compile_functions(
@@ -653,29 +672,42 @@ fn compile_functions(
     macro_lookup_program: NodePtr,
     constants_symbol_table: &[(NodePtr, Vec<u8>)],
     args_root_node: &NodePath,
-) -> Result<HashMap<Vec<u8>, NodePtr>, EvalErr> {
-    let compiled_functions = HashMap::new();
+    has_constants_tree: bool,
+) -> Result<CompileOutput, EvalErr> {
+    let mut compiled: CompileOutput = Default::default();
 
-    return fold_m(
-        allocator,
-        &|allocator: &mut Allocator, compiled_functions, name_exp: (&Vec<u8>, &NodePtr)| {
-            add_one_function(
-                allocator,
-                args_root_node,
-                macro_lookup_program,
-                constants_symbol_table,
-                compiled_functions,
-                name_exp.0,
-                *name_exp.1,
-            )
-        },
-        compiled_functions,
-        &mut functions.iter(),
-    );
+    for (name, exp) in functions.iter() {
+        compiled.add_definitions(&add_one_function(
+            allocator,
+            args_root_node,
+            macro_lookup_program,
+            constants_symbol_table,
+            name,
+            *exp,
+            has_constants_tree,
+        )?);
+    }
+
+    Ok(compiled)
+}
+
+// Add an entry for main's arguments, named __chia__main_arguments in the
+// symbols, to the symbol list, placing it at the front for simplicity.
+fn add_main_args(
+    allocator: &mut Allocator,
+    args: NodePtr,
+    symbols: NodePtr,
+) -> Result<NodePtr, EvalErr> {
+    let entry_name = allocator.new_atom("__chia__main_arguments".as_bytes())?;
+    let entry_value_string = disassemble(allocator, args);
+    let entry_value = allocator.new_atom(entry_value_string.as_bytes())?;
+    let entry_cons = allocator.new_pair(entry_name, entry_value)?;
+    allocator.new_pair(entry_cons, symbols)
 }
 
 fn finish_compile_from_collection(
     allocator: &mut Allocator,
+    args: NodePtr,
     macro_lookup: NodePtr,
     run_program: Rc<dyn TRunProgram>,
     cr: &CollectionResult,
@@ -708,19 +740,20 @@ fn finish_compile_from_collection(
     let constants_symbol_table =
         symbol_table_for_tree(allocator, constants_tree, &constants_root_node)?;
 
-    let compiled_functions = compile_functions(
+    let compiled = compile_functions(
         allocator,
         &cr.functions,
         macro_lookup_program,
         &constants_symbol_table,
         &args_root_node,
+        has_constants_tree,
     )?;
 
-    let main_path = compiled_functions[MAIN_NAME.as_bytes()];
+    let main_path = compiled.functions[MAIN_NAME.as_bytes()];
 
     if has_constants_tree {
         let mut all_constants_lookup = HashMap::new();
-        for (k, v) in compiled_functions {
+        for (k, v) in compiled.functions {
             if all_constants_names.contains(&k) {
                 all_constants_lookup.insert(k, v);
             }
@@ -737,7 +770,6 @@ fn finish_compile_from_collection(
             .collect::<Vec<NodePtr>>();
 
         let all_constants_tree_program = build_tree_program(allocator, &all_constants_list)?;
-
         let top_atom = allocator.new_atom(NodePath::new(None).as_path().data())?;
         let arg_tree = enlist(
             allocator,
@@ -748,8 +780,19 @@ fn finish_compile_from_collection(
 
         let quoted_apply_list = quote(allocator, apply_list)?;
         let opt_list = enlist(allocator, &[opt_atom, quoted_apply_list])?;
-
-        let symbols = build_symbol_dump(allocator, all_constants_lookup, run_program.clone())?;
+        let symbols_no_main = build_symbol_dump(
+            allocator,
+            &all_constants_lookup,
+            &compiled.symbols_extra_info,
+            run_program.clone(),
+            produce_extra_info,
+        )?;
+        let first_of_args = first(allocator, args)?;
+        let symbols = if produce_extra_info {
+            add_main_args(allocator, first_of_args, symbols_no_main)?
+        } else {
+            symbols_no_main
+        };
 
         let to_run = assemble(
             allocator,
@@ -770,6 +813,7 @@ fn finish_compile_from_collection(
         enlist(allocator, &[opt_atom, quoted_apply_list])
     }
 }
+
 pub fn compile_mod(
     allocator: &mut Allocator,
     args: NodePtr,
@@ -798,6 +842,7 @@ pub fn compile_mod(
     )?;
     finish_compile_from_collection(
         allocator,
+        args,
         macro_lookup,
         run_program,
         &cr,

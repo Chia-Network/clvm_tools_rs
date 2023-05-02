@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
-        python: [3.7, 3.8, 3.9]
+        python: [3.7, 3.8, 3.9, '3.10']
 
     steps:
     - uses: actions/checkout@v3
@@ -58,10 +58,8 @@ jobs:
       run: |
         podman run --rm=true \
           -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
-          quay.io/pypa/manylinux2010_x86_64 \
+          ghcr.io/chia-network/build-images/centos-pypa-rust-x86_64 \
           bash -exc '\
-            curl -L https://sh.rustup.rs > rustup-init.sh && \
-            sh rustup-init.sh -y && \
             yum -y install libc6 openssl-devel && \
             source $HOME/.cargo/env && \
             rustup target add x86_64-unknown-linux-musl && \
@@ -154,6 +152,27 @@ jobs:
         cp support/recompile_check.py chia-blockchain
         (cd chia-blockchain && python recompile_check.py)
 
+    - name: Test Classic command line tools with pytest
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      run: |
+        python -m pip install pytest
+        # This script installs the wheel built during this workflow.
+        python support/wheelname.py
+        # TODO: bring in the other tests in resources/tests/cmdline/tests besides cmds_test.py
+        (cd resources/tests/cmdline/tests && py.test cmds_test.py )
+
+    - name: Verify recompilation of cl21 sources
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      run: |
+        . ./activate
+        # We need chia-rs for the following.
+        pip install chia-rs
+        # Ensure we're using the sources we have.  This is a hedge against
+        # changes made by any other step doing operations on pip.
+        # This script installs the wheel built during this workflow.
+        python support/wheelname.py
+        (cd resources/tests && python check-recompiles.py)
+
     - name: Run tests from clvm
       run: |
         . ./activate
@@ -164,6 +183,13 @@ jobs:
     - name: Run tests
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
       run: cargo test --no-default-features
+
+    - name: Check coverage
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      run: |
+        cargo install grcov
+        rustup component add llvm-tools-preview
+        python ./resources/coverage/run_coverage.py --require-percent 60
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v3
