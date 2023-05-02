@@ -3,11 +3,10 @@ use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use clvm_rs::allocator::Allocator;
-
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
+use crate::compiler::CompilerTask;
 use crate::compiler::codegen::{generate_expr_code, get_call_name, get_callable};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
@@ -298,8 +297,8 @@ fn replace_inline_body(
 /// This will probably be changed at some point to return Rc<BodyForm> so it
 /// can be treated as a desugaring step that's subject to frontend optimization.
 #[allow(clippy::too_many_arguments)]
-pub fn replace_in_inline(
-    allocator: &mut Allocator,
+pub fn replace_in_inline<T>(
+    target: &mut T,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
@@ -307,7 +306,7 @@ pub fn replace_in_inline(
     inline: &InlineFunction,
     callsite: Srcloc,
     args: &[Rc<BodyForm>],
-) -> Result<CompiledCode, CompileErr> {
+) -> Result<CompiledCode, CompileErr> where T: CompilerTask {
     let mut visited = HashSet::new();
     visited.insert(inline.name.clone());
     replace_inline_body(
@@ -321,5 +320,5 @@ pub fn replace_in_inline(
         callsite,
         inline.body.clone(),
     )
-    .and_then(|x| generate_expr_code(allocator, runner, opts, compiler, x))
+    .and_then(|x| generate_expr_code(target, runner, opts, compiler, x))
 }

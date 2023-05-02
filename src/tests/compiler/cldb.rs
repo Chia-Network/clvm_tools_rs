@@ -3,9 +3,11 @@ use std::fs;
 use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
+use yaml_rust::YamlEmitter;
 
-use crate::classic::clvm_tools::cmds::{cldb_hierarchy, YamlElement};
+use crate::classic::clvm_tools::cmds::{cldb_hierarchy, to_yaml_element, YamlElement};
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use crate::compiler::{CompilerTask, UseCompilerVariant};
 use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
 use crate::compiler::clvm::{start_step, RunStep};
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
@@ -91,18 +93,16 @@ impl StepOfCldbViewer for DoesntWatchCldb {}
 fn test_run_clvm_in_cldb() {
     let program_name = "fact.clsp";
     let program_code = "(mod (X) (include *standard-cl-21*) (defun fact (X) (if (> X 1) (* X (fact (- X 1))) 1)) (fact X))";
-    let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
     let opts = Rc::new(DefaultCompilerOpts::new(program_name));
-    let mut symbols = HashMap::new();
     let args = parse_sexp(Srcloc::start("*args*"), "(5)".bytes()).expect("should parse")[0].clone();
+    let mut target: UseCompilerVariant = Default::default();
 
     let program = compile_file(
-        &mut allocator,
+        &mut target,
         runner.clone(),
         opts,
         &program_code,
-        &mut symbols,
     )
     .expect("should compile");
 
@@ -113,7 +113,7 @@ fn test_run_clvm_in_cldb() {
             program_name,
             Rc::new(program_lines),
             Rc::new(program),
-            symbols,
+            target.get_symbol_table().clone(),
             args,
             &mut DoesntWatchCldb {},
         ),
@@ -123,12 +123,10 @@ fn test_run_clvm_in_cldb() {
 
 #[test]
 fn test_cldb_hex_to_modern_sexp_smoke_0() {
-    let mut allocator = Allocator::new();
-    let symbol_table = HashMap::new();
+    let mut target: UseCompilerVariant = Default::default();
     let input_program = "ff01ff03ff0580";
     let result_succeed = hex_to_modern_sexp(
-        &mut allocator,
-        &symbol_table,
+        &mut target,
         Srcloc::start("*test*"),
         input_program,
     )
@@ -138,12 +136,10 @@ fn test_cldb_hex_to_modern_sexp_smoke_0() {
 
 #[test]
 fn test_cldb_hex_to_modern_sexp_fail_half_cons() {
-    let mut allocator = Allocator::new();
-    let symbol_table = HashMap::new();
+    let mut target: UseCompilerVariant = Default::default();
     let input_program = "ff01ff03ff05";
     let result = hex_to_modern_sexp(
-        &mut allocator,
-        &symbol_table,
+        &mut target,
         Srcloc::start("*test*"),
         input_program,
     );
@@ -152,12 +148,10 @@ fn test_cldb_hex_to_modern_sexp_fail_half_cons() {
 
 #[test]
 fn test_cldb_hex_to_modern_sexp_fail_odd_hex() {
-    let mut allocator = Allocator::new();
-    let symbol_table = HashMap::new();
+    let mut target: UseCompilerVariant = Default::default();
     let input_program = "ff01ff03ff058";
     let result = hex_to_modern_sexp(
-        &mut allocator,
-        &symbol_table,
+        &mut target,
         Srcloc::start("*test*"),
         input_program,
     );
@@ -170,20 +164,17 @@ fn compile_and_run_program_with_tree(
     args_text: &str,
     search_paths: &[String],
 ) -> Vec<BTreeMap<String, YamlElement>> {
-    let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
     let opts = Rc::new(DefaultCompilerOpts::new(&input_file))
         .set_optimize(false)
         .set_search_paths(search_paths);
-
-    let mut use_symbol_table = HashMap::new();
+    let mut target: UseCompilerVariant = Default::default();
 
     let program = compile_file(
-        &mut allocator,
+        &mut target,
         runner.clone(),
         opts.clone(),
         &input_program_text,
-        &mut use_symbol_table,
     )
     .expect("should compile");
     let args = parse_sexp(program.loc(), args_text.as_bytes().iter().copied())
@@ -202,7 +193,7 @@ fn compile_and_run_program_with_tree(
         Rc::new(prim_map),
         Some(input_file.to_owned()),
         program_lines,
-        Rc::new(use_symbol_table),
+        Rc::new(target.get_symbol_table().clone()),
         Rc::new(program),
         args,
     )
@@ -214,21 +205,20 @@ fn run_program_as_tree_from_hex(
     input_args: &str,
     symbol_table: HashMap<String, String>,
 ) -> Vec<BTreeMap<String, YamlElement>> {
-    let mut allocator = Allocator::new();
+    let mut target: UseCompilerVariant = Default::default();
     let prog_srcloc = Srcloc::start("*program*");
     let args_srcloc = Srcloc::start("*args*");
 
+    *target.get_symbol_table() = symbol_table.clone();
     let program = hex_to_modern_sexp(
-        &mut allocator,
-        &symbol_table,
+        &mut target,
         prog_srcloc.clone(),
         &input_program,
     )
     .expect("should decode from hex");
 
     let args = hex_to_modern_sexp(
-        &mut allocator,
-        &symbol_table,
+        &mut target,
         args_srcloc.clone(),
         &input_args,
     )
@@ -261,6 +251,13 @@ fn compare_run_output(
         let want_entry = &run_entries[i];
         let want_yaml = json_to_yamlelement(want_entry);
         let have_yaml = yaml_to_yamlelement(&result_entry);
+
+        let mut result_string = "".to_string();
+        let mut emitter = YamlEmitter::new(&mut result_string);
+        emitter.dump(&to_yaml_element(&want_yaml)).unwrap();
+        emitter.dump(&to_yaml_element(&have_yaml)).unwrap();
+        eprintln!("{result_string}");
+
         assert_eq!(want_yaml, have_yaml);
     }
 }

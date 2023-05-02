@@ -48,6 +48,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 extension-module = ["pyo3"]
+test-constant-deinline = []
 default = ["extension-module"]
 
 [target.'cfg(target_family="wasm")'.dependencies]

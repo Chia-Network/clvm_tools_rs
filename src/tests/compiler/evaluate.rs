@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
+use crate::compiler::UseCompilerVariant;
 use crate::compiler::compiler::compile_file;
 use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
@@ -103,12 +104,12 @@ fn test_expand_with_recursive_1() {
 }
 
 fn compile_with_fe_opt(s: String) -> Result<String, CompileErr> {
-    let mut allocator = Allocator::new();
+    let mut target: UseCompilerVariant = Default::default();
     let runner = Rc::new(DefaultProgramRunner::new());
     let mut opts: Rc<dyn CompilerOpts> =
         Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));
     opts = opts.set_frontend_opt(true);
-    compile_file(&mut allocator, runner, opts, &s, &mut HashMap::new()).map(|r| r.to_string())
+    compile_file(&mut target, runner, opts, &s).map(|r| r.to_string())
 }
 
 #[test]

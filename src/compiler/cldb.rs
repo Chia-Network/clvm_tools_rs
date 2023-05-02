@@ -16,6 +16,7 @@ use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
+use crate::compiler::CompilerTask;
 use crate::compiler::clvm;
 use crate::compiler::clvm::{convert_from_clvm_rs, run_step, RunStep};
 use crate::compiler::runtypes::RunFailure;
@@ -518,28 +519,27 @@ impl CldbEnvironment for CldbRunEnv {
     }
 }
 
-fn hex_to_modern_sexp_inner(
-    allocator: &mut Allocator,
-    symbol_table: &HashMap<String, String>,
+fn hex_to_modern_sexp_inner<T>(
+    target: &mut T,
     loc: Srcloc,
     program: NodePtr,
-) -> Result<Rc<SExp>, EvalErr> {
-    let hash = sha256tree(allocator, program);
+) -> Result<Rc<SExp>, EvalErr> where T: CompilerTask {
+    let hash = sha256tree(target.get_allocator(), program);
     let hash_str = hash.hex();
-    let srcloc = symbol_table
+    let srcloc = target.get_symbol_table()
         .get(&hash_str)
         .map(|f| Srcloc::start(f))
         .unwrap_or_else(|| loc.clone());
 
-    match allocator.sexp(program) {
+    match target.get_allocator().sexp(program) {
         allocator::SExp::Pair(a, b) => Ok(Rc::new(SExp::Cons(
             srcloc.clone(),
-            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc.clone(), a)?,
-            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc, b)?,
+            hex_to_modern_sexp_inner(target, srcloc.clone(), a)?,
+            hex_to_modern_sexp_inner(target, srcloc, b)?,
         ))),
-        _ => convert_from_clvm_rs(allocator, srcloc, program).map_err(|_| {
+        _ => convert_from_clvm_rs(target.get_allocator(), srcloc, program).map_err(|_| {
             EvalErr(
-                Allocator::null(allocator),
+                Allocator::null(target.get_allocator()),
                 "clvm_rs allocator failed".to_string(),
             )
         }),
@@ -548,23 +548,22 @@ fn hex_to_modern_sexp_inner(
 
 /// A function which, given hex input, produces equivalent SExp.
 /// All produced SExp have the location given in loc.
-pub fn hex_to_modern_sexp(
-    allocator: &mut Allocator,
-    symbol_table: &HashMap<String, String>,
+pub fn hex_to_modern_sexp<T>(
+    target: &mut T,
     loc: Srcloc,
     input_program: &str,
-) -> Result<Rc<SExp>, RunFailure> {
+) -> Result<Rc<SExp>, RunFailure> where T: CompilerTask {
     let input_serialized = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(
         input_program.to_string(),
     )))
     .map_err(|e| RunFailure::RunErr(loc.clone(), e.to_string()))?;
 
     let mut stream = Stream::new(Some(input_serialized));
-    let sexp = sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
+    let sexp = sexp_from_stream(target.get_allocator(), &mut stream, Box::new(SimpleCreateCLVMObject {}))
         .map(|x| x.1)
         .map_err(|_| RunFailure::RunErr(loc.clone(), "Bad conversion from hex".to_string()))?;
 
-    hex_to_modern_sexp_inner(allocator, symbol_table, loc.clone(), sexp).map_err(|_| {
+    hex_to_modern_sexp_inner(target, loc.clone(), sexp).map_err(|_| {
         RunFailure::RunErr(loc, "Failed to convert from classic to modern".to_string())
     })
 }

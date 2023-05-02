@@ -4,10 +4,7 @@ use std::rc::Rc;
 
 use serde::Serialize;
 
-use clvm_rs::allocator::Allocator;
-
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
-use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::{sha256tree, truthy};
 use crate::compiler::sexp::{decode_string, SExp};
@@ -411,16 +408,6 @@ pub trait CompilerOpts {
         inc_from: String,
         filename: String,
     ) -> Result<(String, String), CompileErr>;
-
-    /// Given a parsed SExp, compile it as an independent program based on the
-    /// settings given here.  The result is bare generated code.
-    fn compile_program(
-        &self,
-        allocator: &mut Allocator,
-        runner: Rc<dyn TRunProgram>,
-        sexp: Rc<SExp>,
-        symbol_table: &mut HashMap<String, String>,
-    ) -> Result<SExp, CompileErr>;
 }
 
 /// Frontend uses this to accumulate frontend forms, used internally.

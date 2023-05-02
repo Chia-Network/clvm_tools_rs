@@ -2,6 +2,7 @@ use num_bigint::ToBigInt;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fs;
+use std::mem::swap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -10,7 +11,9 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
+use crate::classic::platform::argparse::{ArgumentParser, ArgumentValue};
 
+use crate::compiler::CompilerTask;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
@@ -60,6 +63,74 @@ lazy_static! {
             "}
         .to_string()
     };
+}
+
+/// The base case of a compiler along the official release set.
+#[derive(Default)]
+pub struct BasicCompiler {
+    allocator: Allocator,
+    symbols: HashMap<String, String>
+}
+
+impl CompilerTask for BasicCompiler {
+    type Save = HashMap<String, String>;
+
+    fn get_allocator<'a>(&'a mut self) -> &'a mut Allocator { &mut self.allocator }
+    fn get_symbol_table<'a>(&'a mut self) -> &'a mut HashMap<String, String> { &mut self.symbols }
+
+    // No new options since this is the baseline.
+    fn setup_new_options(&mut self, _argparse: &mut ArgumentParser) {
+    }
+
+    fn evaluate_cmd_options(&mut self, _options: &HashMap<String, ArgumentValue>) {
+    }
+
+    fn evaluate_python_options(&mut self, _options: &HashMap<String, String>) {
+    }
+
+    fn empty_save_state(&self) -> Self::Save { Default::default() }
+    fn swap_save_state(&mut self, save: &mut Self::Save) {
+        swap(&mut self.symbols, save);
+    }
+
+    fn do_frontend_step(&mut self, _runner: Rc<dyn TRunProgram>, opts: Rc<dyn CompilerOpts>, pre_forms: &[Rc<SExp>]) -> Result<CompileForm, CompileErr> {
+        frontend(opts.clone(), pre_forms)
+    }
+
+    fn do_frontend_pre_desugar_opt(&mut self, runner: Rc<dyn TRunProgram>, opts: Rc<dyn CompilerOpts>, cf: CompileForm) -> Result<CompileForm, CompileErr> {
+        if opts.frontend_opt() {
+            // Front end optimization
+            eprintln!("would optimize {}", cf.to_sexp());
+            let res = fe_opt(self.get_allocator(), runner.clone(), opts.clone(), cf)?;
+            eprintln!("got from fe_opt: {}", res.to_sexp());
+            Ok(res)
+        } else {
+            Ok(cf)
+        }
+    }
+
+    fn do_desugaring(&mut self, _runner: Rc<dyn TRunProgram>, _opts: Rc<dyn CompilerOpts>, cf: CompileForm) -> Result<CompileForm, CompileErr> {
+        let (mut new_helpers, expr) =
+            hoist_body_let_binding(None, cf.args.clone(), cf.exp.clone())?;
+
+        // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later
+        // stages
+        let mut combined_helpers = cf.helpers.clone();
+        combined_helpers.append(&mut new_helpers);
+        combined_helpers = process_helper_let_bindings(&combined_helpers)?;
+
+        Ok(CompileForm {
+            loc: cf.loc.clone(),
+            include_forms: cf.include_forms.clone(),
+            args: cf.args,
+            helpers: combined_helpers,
+            exp: expr,
+        })
+    }
+
+    fn do_code_generation(&mut self, runner: Rc<dyn TRunProgram>, opts: Rc<dyn CompilerOpts>, cf: CompileForm) -> Result<SExp, CompileErr> {
+        codegen(self, runner, opts, &cf)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -148,55 +219,52 @@ fn fe_opt(
     })
 }
 
-pub fn compile_pre_forms(
-    allocator: &mut Allocator,
+fn has_function(name: &[u8], cf: &CompileForm) -> bool {
+    for h in cf.helpers.iter() {
+        if h.name() == name {
+            return true;
+        }
+    }
+
+    false
+}
+
+pub fn compile_pre_forms<T>(
+    target: &mut T,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>],
-    symbol_table: &mut HashMap<String, String>,
-) -> Result<SExp, CompileErr> {
+) -> Result<SExp, CompileErr> where T: CompilerTask {
     // Resolve includes, convert program source to lexemes
-    let p0 = frontend(opts.clone(), pre_forms)?;
+    let p0 = target.do_frontend_step(runner.clone(), opts.clone(), pre_forms)?;
 
-    let p1 = if opts.frontend_opt() {
-        // Front end optimization
-        fe_opt(allocator, runner.clone(), opts.clone(), p0)?
-    } else {
-        p0
-    };
+    eprintln!("gonna desugar {}", p0.to_sexp());
+    // assert!(!has_function(b"test-me", &p0) || truthy(p0.args.clone()));
+
+    let p1 = target.do_frontend_pre_desugar_opt(runner.clone(), opts.clone(), p0)?;
+
+    eprintln!("did pre desugar {}", p1.to_sexp());
 
     // Transform let bindings, merging nested let scopes with the top namespace
-    let hoisted_bindings = hoist_body_let_binding(None, p1.args.clone(), p1.exp.clone())?;
-    let mut new_helpers = hoisted_bindings.0;
-    let expr = hoisted_bindings.1; // expr is the let-hoisted program
+    let p2 = target.do_desugaring(runner.clone(), opts.clone(), p1)?;
 
-    // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later stages
-    let mut combined_helpers = p1.helpers.clone();
-    combined_helpers.append(&mut new_helpers);
-    let combined_helpers = process_helper_let_bindings(&combined_helpers)?;
-
-    let p2 = CompileForm {
-        loc: p1.loc.clone(),
-        include_forms: p1.include_forms.clone(),
-        args: p1.args,
-        helpers: combined_helpers,
-        exp: expr,
-    };
+    // When needed: add a post desugar optimization step.
 
     // generate code from AST, optionally with optimization
-    codegen(allocator, runner, opts, &p2, symbol_table)
+    target.do_code_generation(runner, opts, p2)
+
+    // When needed: add a post code generation optimization step.
 }
 
-pub fn compile_file(
-    allocator: &mut Allocator,
+pub fn compile_file<T>(
+    target: &mut T,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     content: &str,
-    symbol_table: &mut HashMap<String, String>,
-) -> Result<SExp, CompileErr> {
+) -> Result<SExp, CompileErr> where T: CompilerTask {
     let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), content.bytes())?;
 
-    compile_pre_forms(allocator, runner, opts, &pre_forms, symbol_table)
+    compile_pre_forms(target, runner, opts, &pre_forms)
 }
 
 pub fn run_optimizer(
@@ -324,16 +392,6 @@ impl CompilerOpts for DefaultCompilerOpts {
             Srcloc::start(&inc_from),
             format!("could not find {filename} to include"),
         ))
-    }
-    fn compile_program(
-        &self,
-        allocator: &mut Allocator,
-        runner: Rc<dyn TRunProgram>,
-        sexp: Rc<SExp>,
-        symbol_table: &mut HashMap<String, String>,
-    ) -> Result<SExp, CompileErr> {
-        let me = Rc::new(self.clone());
-        compile_pre_forms(allocator, runner, me, &[sexp], symbol_table)
     }
 }
 

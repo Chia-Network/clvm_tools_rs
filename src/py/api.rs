@@ -20,6 +20,7 @@ use crate::classic::clvm::serialize::sexp_to_stream;
 use crate::classic::clvm_tools::clvmc;
 use crate::classic::clvm_tools::cmds;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use crate::compiler::{CompilerTask, UseCompilerVariant};
 use crate::compiler::cldb::{
     hex_to_modern_sexp, CldbOverrideBespokeCode, CldbRun, CldbRunEnv, CldbSingleBespokeOverride,
 };
@@ -217,7 +218,7 @@ fn start_clvm_program(
     let (result_tx, result_rx) = mpsc::channel();
 
     thread::spawn(move || {
-        let mut allocator = Allocator::new();
+        let mut target: UseCompilerVariant = Default::default();
         let runner = Rc::new(DefaultProgramRunner::new());
         let mut prim_map = HashMap::new();
         let cmd_input = command_rx;
@@ -229,15 +230,15 @@ fn start_clvm_program(
             prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
         }
 
-        let use_symbol_table = symbol_table.unwrap_or_default();
+        *target.get_symbol_table() = symbol_table.unwrap_or_default();
         let program =
-            match hex_to_modern_sexp(&mut allocator, &use_symbol_table, prog_srcloc, &hex_prog) {
+            match hex_to_modern_sexp(&mut target, prog_srcloc, &hex_prog) {
                 Ok(v) => v,
                 Err(_) => {
                     return;
                 }
             };
-        let args = match hex_to_modern_sexp(&mut allocator, &HashMap::new(), args_srcloc, &hex_args)
+        let args = match hex_to_modern_sexp(&mut target, args_srcloc, &hex_args)
         {
             Ok(v) => v,
             Err(_) => {
@@ -253,7 +254,7 @@ fn start_clvm_program(
                 overrides_table.insert(k.clone(), Box::new(override_fun_callable));
             }
         }
-        let override_runnable = CldbOverrideBespokeCode::new(use_symbol_table, overrides_table);
+        let override_runnable = CldbOverrideBespokeCode::new(target.get_symbol_table().clone(), overrides_table);
 
         let step = start_step(program, args);
         let cldbenv = CldbRunEnv::new(None, Rc::new(vec![]), Box::new(override_runnable));
@@ -266,7 +267,7 @@ fn start_clvm_program(
                         return;
                     }
 
-                    let result = cldbrun.step(&mut allocator);
+                    let result = cldbrun.step(target.get_allocator());
                     let is_ended = cldbrun.is_ended();
                     match result_output.send((is_ended, result)) {
                         Ok(_) => {}
@@ -336,7 +337,6 @@ pub fn compose_run_function(
     symbol_table: HashMap<String, String>,
     function_name: String,
 ) -> PyResult<String> {
-    let mut allocator = Allocator::new();
     let loc = Srcloc::start(&"*py*".to_string());
     let function_hash = match find_function_hash(&symbol_table, &function_name) {
         Some(f) => f,
@@ -347,7 +347,9 @@ pub fn compose_run_function(
             )));
         }
     };
-    let program = hex_to_modern_sexp(&mut allocator, &symbol_table, loc.clone(), &hex_prog)
+    let mut target: UseCompilerVariant = Default::default();
+    *target.get_symbol_table() = symbol_table;
+    let program = hex_to_modern_sexp(&mut target, loc.clone(), &hex_prog)
         .map_err(run_err_to_cldb_err)?;
     let main_env = match extract_program_and_env(program.clone()) {
         Some(em) => em,
@@ -384,8 +386,8 @@ pub fn compose_run_function(
     let new_program = rewrite_in_program(function_path, main_env.1);
     let mut result_stream = Stream::new(None);
     let clvm_rs_value =
-        convert_to_clvm_rs(&mut allocator, new_program).map_err(run_err_to_cldb_err)?;
-    sexp_to_stream(&mut allocator, clvm_rs_value, &mut result_stream);
+        convert_to_clvm_rs(target.get_allocator(), new_program).map_err(run_err_to_cldb_err)?;
+    sexp_to_stream(target.get_allocator(), clvm_rs_value, &mut result_stream);
     Ok(result_stream.get_value().hex())
 }
 

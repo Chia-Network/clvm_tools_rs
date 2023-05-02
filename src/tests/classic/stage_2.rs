@@ -9,7 +9,6 @@ use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemb
 use crate::classic::clvm_tools::clvmc::compile_clvm_text;
 use crate::classic::clvm_tools::cmds::call_tool;
 use crate::classic::clvm_tools::ir::reader::read_ir;
-use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::compile::{
     do_com_prog, get_compile_filename, get_last_path_component, try_expand_macro_for_atom,
 };
@@ -17,6 +16,7 @@ use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file, read_file};
 
+use crate::compiler::{CompilerTask, UseCompilerVariant};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -381,18 +381,6 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
             format!("could not read {filename}"),
         ))
     }
-    fn compile_program(
-        &self,
-        _allocator: &mut Allocator,
-        _runner: Rc<dyn TRunProgram>,
-        _sexp: Rc<SExp>,
-        _symbol_table: &mut HashMap<String, String>,
-    ) -> Result<SExp, CompileErr> {
-        Err(CompileErr(
-            Srcloc::start(&self.filename),
-            "test object only".to_string(),
-        ))
-    }
 }
 
 // Shows that we can inject a compiler opts and have it provide file data.
@@ -413,27 +401,24 @@ fn test_classic_compiler_with_compiler_opts() {
         files,
     ));
     let to_compile = "(mod (A) (include test.clinc) (F A))";
-    let mut allocator = Allocator::new();
-    let mut symbols = HashMap::new();
     // Verify injection
+    let mut target: UseCompilerVariant = Default::default();
     let result = compile_clvm_text(
-        &mut allocator,
+        &mut target,
         opts.clone(),
-        &mut symbols,
         to_compile,
         "test.clsp",
         true,
     )
     .expect("should compile and find the content");
     assert_eq!(
-        disassemble(&mut allocator, result),
+        disassemble(target.get_allocator(), result),
         "(a (q 2 2 (c 2 (c 5 ()))) (c (q 16 5 (q . 1)) 1))"
     );
     // Verify lack of injection
     let result_no_injection = compile_clvm_text(
-        &mut allocator,
+        &mut target,
         opts,
-        &mut symbols,
         to_compile,
         "test.clsp",
         false,

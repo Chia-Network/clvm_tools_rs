@@ -6,12 +6,12 @@ use std::rc::Rc;
 use num_bigint::ToBigInt;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
-use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 
+use crate::compiler::CompilerTask;
 use crate::compiler::clvm::run;
-use crate::compiler::compiler::{is_at_capture, run_optimizer};
+use crate::compiler::compiler::{is_at_capture, run_optimizer, compile_pre_forms};
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, Callable,
     CompileErr, CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall, DefunData,
@@ -321,22 +321,22 @@ pub fn get_callable(
     }
 }
 
-pub fn process_macro_call(
-    allocator: &mut Allocator,
+pub fn process_macro_call<T>(
+    target: &mut T,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
     l: Srcloc,
     args: Vec<Rc<BodyForm>>,
     code: Rc<SExp>,
-) -> Result<CompiledCode, CompileErr> {
+) -> Result<CompiledCode, CompileErr> where T: CompilerTask {
     let converted_args: Vec<Rc<SExp>> = args.iter().map(|b| b.to_sexp()).collect();
     let mut swap_table = HashMap::new();
     let args_to_macro = list_to_cons(l.clone(), &converted_args);
     build_swap_table_mut(&mut swap_table, &args_to_macro);
 
     run(
-        allocator,
+        target.get_allocator(),
         runner.clone(),
         opts.prim_map(),
         code,
@@ -351,24 +351,24 @@ pub fn process_macro_call(
         let relabeled_expr = relabel(&swap_table, &v);
         compile_bodyform(opts.clone(), Rc::new(relabeled_expr))
     })
-    .and_then(|body| generate_expr_code(allocator, runner, opts, compiler, Rc::new(body)))
+    .and_then(|body| generate_expr_code(target, runner, opts, compiler, Rc::new(body)))
 }
 
-fn generate_args_code(
-    allocator: &mut Allocator,
+fn generate_args_code<T>(
+    target: &mut T,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
     l: Srcloc,
     list: &[Rc<BodyForm>],
-) -> Result<SExp, CompileErr> {
+) -> Result<SExp, CompileErr> where T: CompilerTask {
     if list.is_empty() {
         Ok(SExp::Nil(l))
     } else {
         let mut compiled_args: Vec<Rc<SExp>> = Vec::new();
         for hd in list.iter() {
             let generated = generate_expr_code(
-                allocator,
+                target,
                 runner.clone(),
                 opts.clone(),
                 compiler,
@@ -423,14 +423,14 @@ pub fn get_call_name(l: Srcloc, body: BodyForm) -> Result<Rc<SExp>, CompileErr> 
     ))
 }
 
-fn compile_call(
-    allocator: &mut Allocator,
+fn compile_call<T>(
+    target: &mut T,
     runner: Rc<dyn TRunProgram>,
     l: Srcloc,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
     list: Vec<Rc<BodyForm>>,
-) -> Result<CompiledCode, CompileErr> {
+) -> Result<CompiledCode, CompileErr> where T: CompilerTask {
     let arg_string_list: Vec<Vec<u8>> = list
         .iter()
         .map(|v| v.to_sexp().to_string().as_bytes().to_vec())
@@ -454,7 +454,7 @@ fn compile_call(
         )
         .and_then(|calltype| match calltype {
             Callable::CallMacro(l, code) => process_macro_call(
-                allocator,
+                target,
                 runner,
                 opts.clone(),
                 compiler,
@@ -464,7 +464,7 @@ fn compile_call(
             ),
 
             Callable::CallInline(l, inline) => replace_in_inline(
-                allocator,
+                target,
                 runner.clone(),
                 opts.clone(),
                 compiler,
@@ -475,7 +475,7 @@ fn compile_call(
             ),
 
             Callable::CallDefun(l, lookup) => {
-                generate_args_code(allocator, runner, opts.clone(), compiler, l.clone(), &tl)
+                generate_args_code(target, runner, opts.clone(), compiler, l.clone(), &tl)
                     .and_then(|args| {
                         process_defun_call(
                             opts.clone(),
@@ -488,7 +488,7 @@ fn compile_call(
             }
 
             Callable::CallPrim(l, p) => {
-                generate_args_code(allocator, runner, opts, compiler, l.clone(), &tl).map(|args| {
+                generate_args_code(target, runner, opts, compiler, l.clone(), &tl).map(|args| {
                     CompiledCode(l.clone(), Rc::new(SExp::Cons(l, Rc::new(p), Rc::new(args))))
                 })
             }
@@ -535,14 +535,12 @@ fn compile_call(
                         )),
                     );
 
-                    let mut unused_symbol_table = HashMap::new();
-                    updated_opts
-                        .compile_program(
-                            allocator,
-                            runner,
-                            Rc::new(use_body),
-                            &mut unused_symbol_table,
-                        )
+                    compile_pre_forms(
+                        target,
+                        runner.clone(),
+                        updated_opts.clone(),
+                        &[Rc::new(use_body.clone())],
+                    )
                         .map(|code| {
                             CompiledCode(l.clone(), Rc::new(primquote(l.clone(), Rc::new(code))))
                         })
@@ -563,18 +561,18 @@ fn compile_call(
     }
 }
 
-pub fn generate_expr_code(
-    allocator: &mut Allocator,
+pub fn generate_expr_code<T>(
+    target: &mut T,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
     expr: Rc<BodyForm>,
-) -> Result<CompiledCode, CompileErr> {
+) -> Result<CompiledCode, CompileErr> where T: CompilerTask {
     match expr.borrow() {
         BodyForm::Let(LetFormKind::Parallel, letdata) => {
             /* Depends on a defun having been desugared from this let and the let
             expressing rewritten. */
-            generate_expr_code(allocator, runner, opts, compiler, letdata.body.clone())
+            generate_expr_code(target, runner, opts, compiler, letdata.body.clone())
         }
         BodyForm::Quoted(q) => {
             let l = q.loc();
@@ -599,7 +597,7 @@ pub fn generate_expr_code(
                                 // macros, as it's possible that a macro returned
                                 // something that's canonically a name in number form.
                                 generate_expr_code(
-                                    allocator,
+                                    target,
                                     runner,
                                     opts,
                                     compiler,
@@ -613,7 +611,7 @@ pub fn generate_expr_code(
                 // accomodate bare numbers coming back in place of identifiers.
                 // I'm considering ways to make this better.
                 SExp::Integer(l, i) => generate_expr_code(
-                    allocator,
+                    target,
                     runner,
                     opts,
                     compiler,
@@ -635,21 +633,23 @@ pub fn generate_expr_code(
                     "created a call with no forms".to_string(),
                 ))
             } else {
-                compile_call(allocator, runner, l.clone(), opts, compiler, list.to_vec())
+                compile_call(target, runner, l.clone(), opts, compiler, list.to_vec())
             }
         }
         BodyForm::Mod(_, program) => {
             // A mod form yields the compiled code.
             let without_env = opts.set_start_env(None).set_in_defun(false);
-            let code = codegen(allocator, runner, without_env, program, &mut HashMap::new())?;
-            Ok(CompiledCode(
-                program.loc.clone(),
-                Rc::new(SExp::Cons(
+            target.for_new_program(|t: &mut T| {
+                let code = codegen(t, runner.clone(), without_env.clone(), program)?;
+                Ok(CompiledCode(
                     program.loc.clone(),
-                    Rc::new(SExp::Atom(program.loc.clone(), vec![1])),
-                    Rc::new(code),
-                )),
-            ))
+                    Rc::new(SExp::Cons(
+                        program.loc.clone(),
+                        Rc::new(SExp::Atom(program.loc.clone(), vec![1])),
+                        Rc::new(code),
+                    )),
+                ))
+            })
         }
         _ => Err(CompileErr(
             expr.loc(),
@@ -682,13 +682,13 @@ fn fail_if_present<T, R>(
     }
 }
 
-fn codegen_(
-    allocator: &mut Allocator,
+fn codegen_<T>(
+    target: &mut T,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
     h: &HelperForm,
-) -> Result<PrimaryCodegen, CompileErr> {
+) -> Result<PrimaryCodegen, CompileErr> where T: CompilerTask {
     match h {
         HelperForm::Defun(inline, defun) => {
             if *inline {
@@ -715,7 +715,7 @@ fn codegen_(
                 let opt = if opts.optimize() {
                     // Run optimizer on frontend style forms.
                     optimize_expr(
-                        allocator,
+                        target.get_allocator(),
                         opts.clone(),
                         runner.clone(),
                         compiler,
@@ -741,17 +741,15 @@ fn codegen_(
                     )),
                 );
 
-                let mut unused_symbol_table = HashMap::new();
-                updated_opts
-                    .compile_program(
-                        allocator,
-                        runner.clone(),
-                        Rc::new(tocompile),
-                        &mut unused_symbol_table,
-                    )
+                compile_pre_forms(
+                    target,
+                    runner.clone(),
+                    updated_opts,
+                    &[Rc::new(tocompile)]
+                )
                     .and_then(|code| {
                         if opts.optimize() {
-                            run_optimizer(allocator, runner, Rc::new(code))
+                            run_optimizer(target.get_allocator(), runner, Rc::new(code))
                         } else {
                             Ok(Rc::new(code))
                         }
@@ -1033,12 +1031,12 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
     Ok(result)
 }
 
-fn start_codegen(
-    allocator: &mut Allocator,
+fn start_codegen<T>(
+    target: &mut T,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     program: CompileForm,
-) -> Result<PrimaryCodegen, CompileErr> {
+) -> Result<PrimaryCodegen, CompileErr> where T: CompilerTask {
     // Choose code generator configuration
     let mut code_generator = match opts.code_generator() {
         None => empty_compiler(opts.prim_map(), program.loc.clone()),
@@ -1064,41 +1062,43 @@ fn start_codegen(
                         )),
                     );
                     let updated_opts = opts.set_code_generator(code_generator.clone());
-                    let code = updated_opts.compile_program(
-                        allocator,
-                        runner.clone(),
-                        Rc::new(expand_program),
-                        &mut HashMap::new(),
-                    )?;
+                    let code = target.for_new_program(|t| {
+                        compile_pre_forms(
+                            t,
+                            runner.clone(),
+                            updated_opts.clone(),
+                            &[Rc::new(expand_program.clone())],
+                        )
+                    })?;
                     run(
-                        allocator,
+                        target.get_allocator(),
                         runner.clone(),
                         opts.prim_map(),
                         Rc::new(code),
                         Rc::new(SExp::Nil(defc.loc.clone())),
                         Some(CONST_EVAL_LIMIT),
                     )
-                    .map_err(|r| {
-                        CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
-                    })
-                    .and_then(|res| {
-                        fail_if_present(
-                            defc.loc.clone(),
-                            &code_generator.constants,
-                            &defc.name,
-                            res,
-                        )
-                    })
-                    .map(|res| {
-                        let quoted = primquote(defc.loc.clone(), res);
-                        code_generator.add_constant(&defc.name, Rc::new(quoted))
-                    })?
+                        .map_err(|r| {
+                            CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
+                        })
+                        .and_then(|res| {
+                            fail_if_present(
+                                defc.loc.clone(),
+                                &code_generator.constants,
+                                &defc.name,
+                                res,
+                            )
+                        })
+                        .map(|res| {
+                            let quoted = primquote(defc.loc.clone(), res);
+                            code_generator.add_constant(&defc.name, Rc::new(quoted))
+                        })?
                 }
                 ConstantKind::Complex => {
                     let evaluator =
                         Evaluator::new(opts.clone(), runner.clone(), program.helpers.clone());
                     let constant_result = evaluator.shrink_bodyform(
-                        allocator,
+                        target.get_allocator(),
                         Rc::new(SExp::Nil(defc.loc.clone())),
                         &HashMap::new(),
                         defc.body.clone(),
@@ -1140,21 +1140,22 @@ fn start_codegen(
                     .set_start_env(None)
                     .set_frontend_opt(false);
 
-                updated_opts
-                    .compile_program(
-                        allocator,
+                target.for_new_program(|t: &mut T| {
+                    compile_pre_forms(
+                        t,
                         runner.clone(),
-                        macro_program,
-                        &mut HashMap::new(),
+                        updated_opts.clone(),
+                        &[macro_program.clone()],
                     )
-                    .and_then(|code| {
-                        if opts.optimize() {
-                            run_optimizer(allocator, runner.clone(), Rc::new(code))
-                        } else {
-                            Ok(Rc::new(code))
-                        }
-                    })
-                    .map(|code| code_generator.add_macro(&mac.name, code))?
+                        .and_then(|code| {
+                            if opts.optimize() {
+                                run_optimizer(t.get_allocator(), runner.clone(), Rc::new(code))
+                            } else {
+                                Ok(Rc::new(code))
+                            }
+                        })
+                        .map(|code| code_generator.add_macro(&mac.name, code))
+                })?
             }
             _ => code_generator,
         };
@@ -1187,15 +1188,15 @@ fn start_codegen(
     Ok(code_generator)
 }
 
-fn final_codegen(
-    allocator: &mut Allocator,
+fn final_codegen<T>(
+    target: &mut T,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
-) -> Result<PrimaryCodegen, CompileErr> {
+) -> Result<PrimaryCodegen, CompileErr> where T: CompilerTask {
     let opt_final_expr = if opts.optimize() {
         optimize_expr(
-            allocator,
+            target.get_allocator(),
             opts.clone(),
             runner.clone(),
             compiler,
@@ -1207,21 +1208,21 @@ fn final_codegen(
         compiler.final_expr.clone()
     };
 
-    generate_expr_code(allocator, runner, opts, compiler, opt_final_expr).map(|code| {
+    generate_expr_code(target, runner, opts, compiler, opt_final_expr).map(|code| {
         let mut final_comp = compiler.clone();
         final_comp.final_code = Some(CompiledCode(code.0, code.1));
         final_comp
     })
 }
 
-fn finalize_env_(
-    allocator: &mut Allocator,
+fn finalize_env_<T>(
+    target: &mut T,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     c: &PrimaryCodegen,
     _l: Srcloc,
     env: Rc<SExp>,
-) -> Result<Rc<SExp>, CompileErr> {
+) -> Result<Rc<SExp>, CompileErr> where T: CompilerTask {
     match env.borrow() {
         SExp::Atom(l, v) => {
             match c.defuns.get(v) {
@@ -1229,7 +1230,7 @@ fn finalize_env_(
                 None => {
                     match c.inlines.get(v) {
                         Some(res) => replace_in_inline(
-                            allocator,
+                            target,
                             runner.clone(),
                             opts.clone(),
                             c,
@@ -1259,7 +1260,7 @@ fn finalize_env_(
         }
 
         SExp::Cons(l, h, r) => finalize_env_(
-            allocator,
+            target,
             runner.clone(),
             opts.clone(),
             c,
@@ -1268,7 +1269,7 @@ fn finalize_env_(
         )
         .and_then(|h| {
             finalize_env_(
-                allocator,
+                target,
                 runner.clone(),
                 opts.clone(),
                 c,
@@ -1282,15 +1283,15 @@ fn finalize_env_(
     }
 }
 
-fn finalize_env(
-    allocator: &mut Allocator,
+fn finalize_env<T>(
+    target: &mut T,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     c: &PrimaryCodegen,
-) -> Result<Rc<SExp>, CompileErr> {
+) -> Result<Rc<SExp>, CompileErr> where T: CompilerTask {
     match c.env.borrow() {
         SExp::Cons(l, h, _) => finalize_env_(
-            allocator,
+            target,
             runner.clone(),
             opts.clone(),
             c,
@@ -1333,15 +1334,14 @@ fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileE
     )
 }
 
-pub fn codegen(
-    allocator: &mut Allocator,
+pub fn codegen<T>(
+    target: &mut T,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     cmod: &CompileForm,
-    symbol_table: &mut HashMap<String, String>,
-) -> Result<SExp, CompileErr> {
+) -> Result<SExp, CompileErr> where T: CompilerTask {
     let mut code_generator = dummy_functions(&start_codegen(
-        allocator,
+        target,
         runner.clone(),
         opts.clone(),
         cmod.clone(),
@@ -1350,14 +1350,14 @@ pub fn codegen(
     let to_process = code_generator.to_process.clone();
 
     for f in to_process {
-        code_generator = codegen_(allocator, runner.clone(), opts.clone(), &code_generator, &f)?;
+        code_generator = codegen_(target, runner.clone(), opts.clone(), &code_generator, &f)?;
     }
 
-    *symbol_table = code_generator.function_symbols.clone();
-    symbol_table.insert("source_file".to_string(), opts.filename());
+    *target.get_symbol_table() = code_generator.function_symbols.clone();
+    target.get_symbol_table().insert("source_file".to_string(), opts.filename());
 
-    final_codegen(allocator, runner.clone(), opts.clone(), &code_generator).and_then(|c| {
-        let final_env = finalize_env(allocator, runner.clone(), opts.clone(), &c)?;
+    final_codegen(target, runner.clone(), opts.clone(), &code_generator).and_then(|c| {
+        let final_env = finalize_env(target, runner.clone(), opts.clone(), &c)?;
 
         match c.final_code {
             None => Err(CompileErr(
@@ -1366,7 +1366,7 @@ pub fn codegen(
             )),
             Some(code) => {
                 // Capture symbols now that we have the final form of the produced code.
-                symbol_table.insert("__chia__main_arguments".to_string(), cmod.args.to_string());
+                target.get_symbol_table().insert("__chia__main_arguments".to_string(), cmod.args.to_string());
 
                 if opts.in_defun() {
                     let final_code = primapply(
