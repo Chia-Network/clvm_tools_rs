@@ -19,7 +19,7 @@ const MAX_RUN_COST: u64 = 1000000;
 
 #[derive(Debug)]
 struct CompileRunResult {
-    // pub compiled: Rc<SExp>,
+    pub compiled: Rc<SExp>,
     pub compiled_hex: String,
     pub run_result: Rc<SExp>,
     pub run_cost: u64,
@@ -54,7 +54,7 @@ fn run_with_cost(
         .map_err(|e| RunFailure::RunErr(sexp.loc(), format!("{} in {} {}", e.1, sexp, env)))
         .and_then(|reduction| {
             Ok(CompileRunResult {
-                // compiled: sexp.clone(),
+                compiled: sexp.clone(),
                 compiled_hex,
                 run_result: convert_from_clvm_rs(allocator, sexp.loc(), reduction.1)?,
                 run_cost: reduction.0,
@@ -72,7 +72,8 @@ fn run_string_get_program_and_output_with_includes(
     let runner = Rc::new(DefaultProgramRunner::new());
     let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let srcloc = Srcloc::start(&"*test*".to_string());
-    opts = opts.set_frontend_opt(fe_opt).set_search_paths(include_dirs);
+    let dialect = if fe_opt { Some(22) } else { Some(21) };
+    opts = opts.set_frontend_opt(fe_opt).set_dialect(dialect).set_search_paths(include_dirs);
     let sexp_args =
         parse_sexp(srcloc.clone(), args.bytes()).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
 
@@ -141,6 +142,8 @@ fn smoke_test_optimizer() {
         "()",
     )
     .expect("should compile and run");
+    eprintln!("res.opt {}", res.opt.compiled);
+    eprintln!("res.uno {}", res.unopt.compiled);
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
     assert!(res.opt.run_cost < res.unopt.run_cost);
 }

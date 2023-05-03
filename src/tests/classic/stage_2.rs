@@ -325,6 +325,9 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
     fn stdenv(&self) -> bool {
         false
     }
+    fn dialect(&self) -> Option<i32> {
+        Some(21)
+    }
     fn optimize(&self) -> bool {
         false
     }
@@ -350,6 +353,9 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
         Rc::new(self.clone())
     }
     fn set_stdenv(&self, _new_stdenv: bool) -> Rc<dyn CompilerOpts> {
+        Rc::new(self.clone())
+    }
+    fn set_dialect(&self, _d: Option<i32>) -> Rc<dyn CompilerOpts> {
         Rc::new(self.clone())
     }
     fn set_optimize(&self, _opt: bool) -> Rc<dyn CompilerOpts> {

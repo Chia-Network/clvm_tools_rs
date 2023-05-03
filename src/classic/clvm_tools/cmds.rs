@@ -1156,7 +1156,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     if do_check_unused {
         let opts =
-            Rc::new(DefaultCompilerOpts::new(&reported_input_file)).set_search_paths(&search_paths);
+            Rc::new(DefaultCompilerOpts::new(&reported_input_file)).set_search_paths(&search_paths).set_dialect(dialect);
         match check_unused(opts, &input_program) {
             Ok((success, output)) => {
                 stderr_output(output);

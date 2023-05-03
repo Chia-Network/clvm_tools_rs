@@ -60,6 +60,7 @@ pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> Option<i32> {
     let mut dialects = HashMap::new();
     dialects.insert("*standard-cl-21*".as_bytes().to_vec(), 21);
     dialects.insert("*standard-cl-22*".as_bytes().to_vec(), 22);
+    dialects.insert("*standard-cl-23*".as_bytes().to_vec(), 23);
 
     proper_list(allocator, sexp, true).and_then(|l| {
         for elt in l.iter() {
@@ -101,7 +102,7 @@ pub fn compile_clvm_text(
 
     if let Some(dialect) = detect_modern(allocator, assembled_sexp) {
         let runner = Rc::new(DefaultProgramRunner::new());
-        let opts = opts.set_optimize(true).set_frontend_opt(dialect > 21);
+        let opts = opts.set_optimize(true).set_frontend_opt(dialect == 22).set_dialect(Some(dialect));
 
         let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
         let res = if dialect < 22 {

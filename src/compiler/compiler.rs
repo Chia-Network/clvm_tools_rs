@@ -42,6 +42,13 @@ lazy_static! {
         )"}
             .to_string(),
         );
+        known_dialects.insert(
+            "*standard-cl-23*".to_string(),
+            indoc! {"(
+           (defconstant *chialisp-version* 23)
+        )"}
+            .to_string(),
+        );
         known_dialects
     };
     pub static ref STANDARD_MACROS: String = {
@@ -75,6 +82,7 @@ pub struct DefaultCompilerOpts {
     pub frontend_check_live: bool,
     pub start_env: Option<Rc<SExp>>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    pub dialect: Option<i32>,
 
     known_dialects: Rc<HashMap<String, String>>,
 }
@@ -89,23 +97,12 @@ pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
     Rc::new(prim_map)
 }
 
-pub fn compile_pre_forms(
+fn do_desugaring(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
-    pre_forms: &[Rc<SExp>],
-    symbol_table: &mut HashMap<String, String>,
-) -> Result<SExp, CompileErr> {
-    // Resolve includes, convert program source to lexemes
-    let p0 = frontend(opts.clone(), pre_forms)?;
-
-    let p1 = if opts.frontend_opt() {
-        // Front end optimization
-        fe_opt(allocator, runner.clone(), opts.clone(), &p0, false)?
-    } else {
-        p0
-    };
-
+    p1: CompileForm
+) -> Result<CompileForm, CompileErr> {
     // Transform let bindings, merging nested let scopes with the top namespace
     let hoisted_bindings = hoist_body_let_binding(opts.clone(), None, p1.args.clone(), p1.exp.clone());
     let mut new_helpers = hoisted_bindings.0;
@@ -116,13 +113,115 @@ pub fn compile_pre_forms(
     combined_helpers.append(&mut new_helpers);
     let combined_helpers = process_helper_let_bindings(opts.clone(), &combined_helpers);
 
-    let p2 = CompileForm {
+    Ok(CompileForm {
         loc: p1.loc.clone(),
         include_forms: p1.include_forms.clone(),
         args: p1.args,
         helpers: combined_helpers,
         exp: expr,
+    })
+}
+
+pub fn compile_pre_forms_22(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    pre_forms: &[Rc<SExp>],
+    symbol_table: &mut HashMap<String, String>,
+) -> Result<SExp, CompileErr> {
+    let p1 = frontend(opts.clone(), pre_forms)?;
+
+    // Do optimization by selecting inline or out of line.
+    if opts.frontend_opt() {
+        let compileform_inlined = fe_opt(allocator, runner.clone(), opts.clone(), &p1, true)?;
+        eprintln!("tried inlined {}", compileform_inlined.to_sexp());
+
+        let p2_i = do_desugaring(
+            allocator,
+            runner.clone(),
+            opts.clone(),
+            compileform_inlined
+        )?;
+
+        let generated_inlined = finish_optimization(&codegen(
+            allocator,
+            runner.clone(),
+            opts.clone(),
+            &p2_i,
+            symbol_table,
+        )?);
+        let compileform_noninlined = fe_opt(allocator, runner.clone(), opts.clone(), &p1, false)?;
+        eprintln!("tried non-inlined {}", compileform_noninlined.to_sexp());
+
+        let p2_n = do_desugaring(
+            allocator,
+            runner.clone(),
+            opts.clone(),
+            compileform_noninlined
+        )?;
+
+        let generated_noninlined = finish_optimization(&codegen(
+            allocator,
+            runner,
+            opts,
+            &p2_n,
+            symbol_table,
+        )?);
+
+        let inlined_scale = sexp_scale(&generated_inlined);
+        let noninlined_scale = sexp_scale(&generated_noninlined);
+
+        let generated = if inlined_scale < noninlined_scale {
+            generated_inlined
+        } else {
+            generated_noninlined
+        };
+
+        Ok(generated)
+     } else {
+        let p2 = do_desugaring(
+            allocator,
+            runner.clone(),
+            opts.clone(),
+            p1
+        )?;
+        codegen(allocator, runner, opts, &p2, symbol_table)
+    }
+}
+
+pub fn compile_pre_forms(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    pre_forms: &[Rc<SExp>],
+    symbol_table: &mut HashMap<String, String>,
+) -> Result<SExp, CompileErr> {
+    if opts.dialect() == Some(22) {
+        return compile_pre_forms_22(
+            allocator,
+            runner,
+            opts,
+            pre_forms,
+                symbol_table
+        );
+    }
+
+    // Resolve includes, convert program source to lexemes
+    let p0 = frontend(opts.clone(), pre_forms)?;
+
+    let p1 = if opts.frontend_opt() {
+        // Front end optimization
+        fe_opt(allocator, runner.clone(), opts.clone(), &p0, false)?
+    } else {
+        p0
     };
+
+    let p2 = do_desugaring(
+        allocator,
+        runner.clone(),
+        opts.clone(),
+        p1
+    )?;
 
     // generate code from AST, optionally with optimization
     codegen(allocator, runner, opts, &p2, symbol_table)
@@ -175,6 +274,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn stdenv(&self) -> bool {
         self.stdenv
     }
+    fn dialect(&self) -> Option<i32> {
+        self.dialect
+    }
     fn optimize(&self) -> bool {
         self.optimize
     }
@@ -207,6 +309,11 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.stdenv = new_stdenv;
+        Rc::new(copy)
+    }
+    fn set_dialect(&self, dialect: Option<i32>) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.dialect = dialect;
         Rc::new(copy)
     }
     fn set_optimize(&self, optimize: bool) -> Rc<dyn CompilerOpts> {
@@ -291,6 +398,7 @@ impl DefaultCompilerOpts {
             frontend_check_live: true,
             start_env: None,
             prim_map: create_prim_map(),
+            dialect: None,
             known_dialects: Rc::new(KNOWN_DIALECTS.clone()),
         }
     }

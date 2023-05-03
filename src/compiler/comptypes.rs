@@ -317,6 +317,8 @@ pub trait CompilerOpts {
     fn in_defun(&self) -> bool;
     /// Specifies whether the standard environment is injected (list, if etc).
     fn stdenv(&self) -> bool;
+    /// Remember the precise dialect requested.
+    fn dialect(&self) -> Option<i32>;
     /// Specifies whether certain basic optimizations are done during and after
     /// code generation.
     fn optimize(&self) -> bool;
@@ -342,6 +344,8 @@ pub trait CompilerOpts {
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts>;
     /// Set whether to inject the standard environment.
     fn set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts>;
+    /// Set precise dialect
+    fn set_dialect(&self, d: Option<i32>) -> Rc<dyn CompilerOpts>;
     /// Set whether to run codegen optimization.
     fn set_optimize(&self, opt: bool) -> Rc<dyn CompilerOpts>;
     /// Set whether to run frontend optimization.

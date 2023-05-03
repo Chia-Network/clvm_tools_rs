@@ -107,7 +107,7 @@ fn compile_with_fe_opt(s: String) -> Result<String, CompileErr> {
     let runner = Rc::new(DefaultProgramRunner::new());
     let mut opts: Rc<dyn CompilerOpts> =
         Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));
-    opts = opts.set_frontend_opt(true);
+    opts = opts.set_frontend_opt(true).set_dialect(Some(22));
     compile_file(&mut allocator, runner, opts, &s, &mut HashMap::new()).map(|r| r.to_string())
 }
 
