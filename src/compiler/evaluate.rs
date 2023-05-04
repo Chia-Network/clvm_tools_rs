@@ -23,7 +23,8 @@ use crate::compiler::stackvisit::{HasDepthLimit, VisitedMarker};
 use crate::util::{number_from_u8, u8_from_number, Number};
 
 const PRIM_RUN_LIMIT: usize = 1000000;
-pub const EVAL_STACK_LIMIT: usize = 200;
+// Temporary decrease from 200 ... gonna refactor to fix this.
+pub const EVAL_STACK_LIMIT: usize = 100;
 
 // Governs whether Evaluator expands various forms.
 #[derive(Debug, Clone)]
@@ -84,6 +85,19 @@ impl<'info> VisitedInfoAccess for VisitedMarker<'info, VisitedInfo> {
 pub enum ArgInputs {
     Whole(Rc<BodyForm>),
     Pair(Rc<ArgInputs>, Rc<ArgInputs>),
+}
+
+impl ArgInputs {
+    pub fn to_sexp(&self) -> Rc<SExp> {
+        match self {
+            ArgInputs::Whole(bf) => bf.to_sexp(),
+            ArgInputs::Pair(a, b) => Rc::new(SExp::Cons(
+                Srcloc::start("*args*"),
+                a.to_sexp(),
+                b.to_sexp(),
+            )),
+        }
+    }
 }
 
 /// Evaluator is an object that simplifies expressions, given the helpers
@@ -344,12 +358,12 @@ pub fn dequote(l: Srcloc, exp: Rc<BodyForm>) -> Result<Rc<SExp>, CompileErr> {
 
 /*
 fn show_env(env: &HashMap<Vec<u8>, Rc<BodyForm>>) {
-    let loc = Srcloc::start(&"*env*".to_string());
+    let loc = Srcloc::start("*env*");
     for kv in env.iter() {
-        println!(
-            " - {}: {}",
-            SExp::Atom(loc.clone(), kv.0.clone()).to_string(),
-            kv.1.to_sexp().to_string()
+        eprintln!(
+            "- {}: {}",
+            SExp::Atom(loc.clone(), kv.0.clone()),
+            kv.1.to_sexp()
         );
     }
 }
@@ -369,7 +383,7 @@ pub fn second_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     }
 }
 
-fn synthesize_args(
+fn synthesize_args_inner(
     template: Rc<SExp>,
     env: &HashMap<Vec<u8>, Rc<BodyForm>>,
 ) -> Result<Rc<BodyForm>, CompileErr> {
@@ -382,14 +396,14 @@ fn synthesize_args(
         }),
         SExp::Cons(l, f, r) => {
             if let Some((capture, _substructure)) = is_at_capture(f.clone(), r.clone()) {
-                synthesize_args(Rc::new(SExp::Atom(l.clone(), capture)), env)
+                synthesize_args_inner(Rc::new(SExp::Atom(l.clone(), capture)), env)
             } else {
                 Ok(Rc::new(BodyForm::Call(
                     l.clone(),
                     vec![
                         Rc::new(BodyForm::Value(SExp::atom_from_string(template.loc(), "c"))),
-                        synthesize_args(f.clone(), env)?,
-                        synthesize_args(r.clone(), env)?,
+                        synthesize_args_inner(f.clone(), env)?,
+                        synthesize_args_inner(r.clone(), env)?,
                     ],
                 )))
             }
@@ -399,6 +413,25 @@ fn synthesize_args(
             template.loc(),
             format!("unknown argument template {template}"),
         )),
+    }
+}
+
+fn synthesize_args(
+    template: Rc<SExp>,
+    env: &HashMap<Vec<u8>, Rc<BodyForm>>,
+    with_left_env: bool,
+) -> Result<Rc<BodyForm>, CompileErr> {
+    let env_synth = synthesize_args_inner(template, env)?;
+    if with_left_env {
+        let loc = env_synth.loc();
+        Ok(Rc::new(make_operator2(
+            &loc,
+            "c".to_string(),
+            Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone()))),
+            env_synth,
+        )))
+    } else {
+        Ok(env_synth)
     }
 }
 
@@ -468,6 +501,22 @@ fn promote_args_to_bodyform(
         arg.loc(),
         "improper argument list for primitive".to_string(),
     ))
+}
+
+fn recognize_consed_env(args_program: Rc<BodyForm>) -> Option<(Rc<BodyForm>, Rc<BodyForm>)> {
+    if let BodyForm::Call(_l, args) = args_program.borrow() {
+        if args.len() != 3 {
+            return None;
+        }
+
+        if let BodyForm::Value(SExp::Atom(_, name)) = args[0].borrow() {
+            if name[0] == b'c' || name[0] == 4 {
+                return Some((args[1].clone(), args[2].clone()));
+            }
+        }
+    }
+
+    None
 }
 
 fn choose_from_env_by_path(path_: Number, args_program: Rc<BodyForm>) -> Rc<BodyForm> {
@@ -694,11 +743,37 @@ impl<'info> Evaluator {
 
         if call_name == "@".as_bytes() {
             // Synthesize the environment for this function
-            Ok(Rc::new(BodyForm::Quoted(SExp::Cons(
-                l.clone(),
-                Rc::new(SExp::Nil(l)),
+            if parts.is_empty() {
+                return Err(CompileErr(l, "@ callable not given a constant".to_string()));
+            }
+
+            let path_sexp = match parts[1].borrow() {
+                BodyForm::Value(val) => Ok(val),
+                BodyForm::Quoted(val) => Ok(val),
+                _ => Err(CompileErr(
+                    l.clone(),
+                    "Not a supported argument for @ call".to_string(),
+                )),
+            }?;
+            let path = if let Some(bigint) = path_sexp.to_bigint() {
+                Ok(bigint)
+            } else {
+                Err(CompileErr(l, "Not a number in @ call".to_string()))
+            }?;
+
+            // Choose from the live environment.
+            let literal_args = synthesize_args(prog_args.clone(), env, true)?;
+            let arg_part = self.shrink_bodyform_visited(
+                allocator,
+                visited,
                 prog_args,
-            ))))
+                env,
+                literal_args,
+                only_inline,
+            )?;
+
+            let chosen = choose_from_env_by_path(path, arg_part);
+            Ok(chosen)
         } else if call_name == "com".as_bytes() {
             let mut end_of_list = Rc::new(SExp::Cons(
                 l.clone(),
@@ -1035,7 +1110,7 @@ impl<'info> Evaluator {
             BodyForm::Quoted(_) => Ok(body.clone()),
             BodyForm::Value(SExp::Atom(l, name)) => {
                 if name == &"@".as_bytes().to_vec() {
-                    let literal_args = synthesize_args(prog_args.clone(), env)?;
+                    let literal_args = synthesize_args(prog_args.clone(), env, self.opts.dialect().map(|d| d > 22).unwrap_or(false))?;
                     self.shrink_bodyform_visited(
                         allocator,
                         &mut visited,
