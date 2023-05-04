@@ -18,6 +18,7 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
+use crate::compiler::optimize::{finish_optimization, sexp_scale};
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
@@ -93,7 +94,8 @@ fn fe_opt(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
-    compileform: CompileForm,
+    compileform: &CompileForm,
+    with_inlines: bool,
 ) -> Result<CompileForm, CompileErr> {
     let evaluator = Evaluator::new(opts.clone(), runner.clone(), compileform.helpers.clone());
     let mut optimized_helpers: Vec<HelperForm> = Vec::new();
@@ -113,13 +115,8 @@ fn fe_opt(
                 let new_helper = HelperForm::Defun(
                     *inline,
                     DefunData {
-                        loc: defun.loc.clone(),
-                        nl: defun.nl.clone(),
-                        kw: defun.kw.clone(),
-                        name: defun.name.clone(),
-                        args: defun.args.clone(),
-                        orig_args: defun.orig_args.clone(),
                         body: body_rc.clone(),
+                        .. defun.clone()
                     },
                 );
                 optimized_helpers.push(new_helper);
@@ -143,10 +140,88 @@ fn fe_opt(
     Ok(CompileForm {
         loc: compileform.loc.clone(),
         include_forms: compileform.include_forms.clone(),
-        args: compileform.args,
+        args: compileform.args.clone(),
         helpers: optimized_helpers.clone(),
         exp: shrunk,
     })
+}
+
+fn do_desugar(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    program: CompileForm,
+) -> Result<CompileForm, CompileErr> {
+    // Transform let bindings, merging nested let scopes with the top namespace
+    let hoisted_bindings = hoist_body_let_binding(None, program.args.clone(), program.exp.clone());
+    let mut new_helpers = hoisted_bindings.0;
+    let expr = hoisted_bindings.1; // expr is the let-hoisted program
+
+    // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later stages
+    let mut combined_helpers = program.helpers.clone();
+    combined_helpers.append(&mut new_helpers);
+    let combined_helpers = process_helper_let_bindings(&combined_helpers);
+
+    Ok(CompileForm {
+        loc: program.loc.clone(),
+        include_forms: program.include_forms.clone(),
+        args: program.args,
+        helpers: combined_helpers,
+        exp: expr,
+    })
+}
+
+fn do_optimization_23(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    pre_forms: &[Rc<SExp>],
+    symbol_table: &mut HashMap<String, String>,
+) -> Result<SExp, CompileErr> {
+    let g = frontend(opts.clone(), pre_forms)?;
+    let compileform_inlined = fe_opt(
+        allocator, runner.clone(), opts.clone(), &g, true
+    )?;
+    let desugared_inlined = do_desugar(
+        allocator,
+        runner.clone(),
+        opts.clone(),
+        compileform_inlined,
+    )?;
+    let generated_inlined = finish_optimization(&codegen(
+        allocator,
+        runner.clone(),
+        opts.clone(),
+        &desugared_inlined,
+        symbol_table,
+    )?);
+    let inlined_scale = sexp_scale(&generated_inlined);
+
+    let compileform_noninlined = fe_opt(
+        allocator, runner.clone(), opts.clone(), &g, false
+    )?;
+    let desugared_noninlined = do_desugar(
+        allocator,
+        runner.clone(),
+        opts.clone(),
+        compileform_noninlined,
+    )?;
+    let generated_noninlined = finish_optimization(&codegen(
+        allocator,
+        runner,
+        opts,
+        &desugared_noninlined,
+        symbol_table,
+    )?);
+    let noninlined_scale = sexp_scale(&generated_noninlined);
+
+    let generated = if inlined_scale < noninlined_scale {
+        generated_inlined
+    } else {
+        generated_noninlined
+    };
+
+    Ok(generated)
 }
 
 pub fn compile_pre_forms(
@@ -156,33 +231,32 @@ pub fn compile_pre_forms(
     pre_forms: &[Rc<SExp>],
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
+    if opts.frontend_opt() && opts.dialect().map(|d| d > 22).unwrap_or(false) {
+        return do_optimization_23(
+            allocator,
+            runner,
+            opts,
+            pre_forms,
+            symbol_table
+        );
+    }
+
     // Resolve includes, convert program source to lexemes
     let p0 = frontend(opts.clone(), pre_forms)?;
 
     let p1 = if opts.frontend_opt() {
         // Front end optimization
-        fe_opt(allocator, runner.clone(), opts.clone(), p0)?
+        fe_opt(allocator, runner.clone(), opts.clone(), &p0, false)?
     } else {
         p0
     };
 
-    // Transform let bindings, merging nested let scopes with the top namespace
-    let hoisted_bindings = hoist_body_let_binding(None, p1.args.clone(), p1.exp.clone());
-    let mut new_helpers = hoisted_bindings.0;
-    let expr = hoisted_bindings.1; // expr is the let-hoisted program
-
-    // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later stages
-    let mut combined_helpers = p1.helpers.clone();
-    combined_helpers.append(&mut new_helpers);
-    let combined_helpers = process_helper_let_bindings(&combined_helpers);
-
-    let p2 = CompileForm {
-        loc: p1.loc.clone(),
-        include_forms: p1.include_forms.clone(),
-        args: p1.args,
-        helpers: combined_helpers,
-        exp: expr,
-    };
+    let p2 = do_desugar(
+        allocator,
+        runner.clone(),
+        opts.clone(),
+        p1,
+    )?;
 
     // generate code from AST, optionally with optimization
     codegen(allocator, runner, opts, &p2, symbol_table)

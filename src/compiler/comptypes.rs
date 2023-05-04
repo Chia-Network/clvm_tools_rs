@@ -167,6 +167,8 @@ pub struct DefunData {
     pub args: Rc<SExp>,
     /// The body expression of the defun.
     pub body: Rc<BodyForm>,
+    /// Whether this defun was created during desugaring.
+    pub synthetic: bool,
 }
 
 /// Specifies the information extracted from a macro definition allowing the

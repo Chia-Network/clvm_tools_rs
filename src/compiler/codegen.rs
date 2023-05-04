@@ -776,6 +776,7 @@ fn generate_let_defun(
             orig_args: inner_function_args.clone(),
             args: inner_function_args,
             body,
+            synthetic: true,
         },
     )
 }
@@ -925,6 +926,7 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Vec<HelperForm> {
                         args: defun.args.clone(),
                         orig_args: defun.orig_args.clone(),
                         body: hoisted_body,
+                        synthetic: false,
                     },
                 );
 

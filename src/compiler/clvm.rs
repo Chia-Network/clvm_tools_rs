@@ -69,8 +69,8 @@ impl RunStep {
         match self {
             RunStep::Done(_, s) => s.clone(),
             RunStep::OpResult(_, s, _) => s.clone(),
-            RunStep::Op(e, _, _, _, _) => e.clone(),
-            RunStep::Step(e, _, _) => e.clone(),
+            RunStep::Op(s, _, _, _, _) => s.clone(),
+            RunStep::Step(s, _, _) => s.clone(),
         }
     }
 
