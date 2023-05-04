@@ -701,8 +701,28 @@ fn codegen_(
     }
 }
 
-fn is_defun(b: &HelperForm) -> bool {
-    matches!(b, HelperForm::Defun(false, _))
+fn is_defun_or_tabled_const(b: &HelperForm) -> bool {
+    match b {
+        HelperForm::Defun(false, _) => true,
+        HelperForm::Defconstant(cdata) => cdata.tabled,
+        _ => false,
+    }
+}
+
+fn count_occurrences(name: &[u8], expr: &BodyForm) -> usize {
+    match expr {
+        BodyForm::Value(SExp::Atom(_, n)) => usize::from(n == name),
+        BodyForm::Call(_, v) => v.iter().map(|item| count_occurrences(name, item)).sum(),
+        BodyForm::Let(_, data) => {
+            let use_in_bindings: usize = data
+                .bindings
+                .iter()
+                .map(|b| count_occurrences(name, b.body.borrow()))
+                .sum();
+            count_occurrences(name, data.body.borrow()) + use_in_bindings
+        }
+        _ => 0,
+    }
 }
 
 pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> PrimaryCodegen {
@@ -1050,7 +1070,7 @@ fn start_codegen(
     let only_defuns: Vec<HelperForm> = program
         .helpers
         .iter()
-        .filter(|x| is_defun(x))
+        .filter(|x| is_defun_or_tabled_const(x))
         .cloned()
         .collect();
 

@@ -204,6 +204,8 @@ pub struct DefconstData {
     pub nl: Srcloc,
     /// The location of the body expression, whatever it is.
     pub body: Rc<BodyForm>,
+    /// This constant should exist in the left env rather than be inlined.
+    pub tabled: bool,
 }
 
 /// Specifies where a constant is the classic kind (unevaluated) or a proper

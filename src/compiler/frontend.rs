@@ -370,7 +370,7 @@ fn compile_defconst(
     name: Vec<u8>,
     body: Rc<SExp>,
 ) -> Result<HelperForm, CompileErr> {
-    let bf = compile_bodyform(opts, body)?;
+    let bf = compile_bodyform(opts.clone(), body)?;
     Ok(HelperForm::Defconstant(DefconstData {
         kw: kl,
         nl,
@@ -378,6 +378,7 @@ fn compile_defconst(
         kind: ConstantKind::Complex,
         name: name.to_vec(),
         body: Rc::new(bf),
+        tabled: opts.frontend_opt(),
     }))
 }
 
@@ -398,6 +399,7 @@ fn compile_defconstant(
             kind: ConstantKind::Simple,
             name: name.to_vec(),
             body: Rc::new(BodyForm::Value(body_borrowed.clone())),
+            tabled: false,
         }))
     } else {
         compile_bodyform(opts, body).map(|bf| {
@@ -408,6 +410,7 @@ fn compile_defconstant(
                 kind: ConstantKind::Simple,
                 name: name.to_vec(),
                 body: Rc::new(bf),
+                tabled: false,
             })
         })
     }
