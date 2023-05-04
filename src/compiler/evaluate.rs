@@ -788,13 +788,43 @@ impl<'info> Evaluator {
             let use_body = SExp::Cons(
                 l.clone(),
                 Rc::new(SExp::Atom(l.clone(), "mod".as_bytes().to_vec())),
-                Rc::new(SExp::Cons(l, prog_args, end_of_list)),
+                if self.opts.dialect().map(|d| d > 22).unwrap_or(false) {
+                    Rc::new(SExp::Cons(
+                        l.clone(),
+                        Rc::new(SExp::Cons(l.clone(), Rc::new(SExp::Nil(l)), prog_args)),
+                        end_of_list,
+                    ))
+                } else {
+                    Rc::new(SExp::Cons(l, prog_args, end_of_list))
+                }
             );
 
             let compiled = self.compile_code(allocator, false, Rc::new(use_body))?;
             let compiled_borrowed: &SExp = compiled.borrow();
             Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
         } else {
+            if arguments_to_convert.len() == 1 {
+                // Try to short circuit destruct conses.
+                let is_first = call_name == b"f" || call_name == vec![5];
+                if is_first || call_name == b"r" || call_name == vec![6] {
+                    if let Some((first, rest)) =
+                        recognize_consed_env(arguments_to_convert[0].clone())
+                    {
+                        if is_first {
+                            let evaluated_first = self.shrink_bodyform_visited(
+                                allocator, visited, prog_args, env, first, only_inline,
+                            )?;
+                            return Ok(evaluated_first);
+                        } else {
+                            let evaluated_rest = self.shrink_bodyform_visited(
+                                allocator, visited, prog_args, env, rest, only_inline,
+                            )?;
+                            return Ok(evaluated_rest);
+                        }
+                    }
+                }
+            }
+
             let pres = self
                 .lookup_prim(l.clone(), call_name)
                 .map(|prim| {
@@ -1119,41 +1149,26 @@ impl<'info> Evaluator {
                         literal_args,
                         only_inline,
                     )
+                } else if let Some(x) = env.get(name) {
+                    if reflex_capture(name, x.clone()) {
+                        Ok(x.clone())
+                    } else {
+                        self.shrink_bodyform_visited(
+                            allocator,
+                            &mut visited,
+                            prog_args,
+                            env,
+                            x.clone(),
+                            only_inline,
+                        )
+                    }
+                } else if let Some(x) = self.get_constant(name) {
+                    self.shrink_bodyform_visited(allocator, &mut visited, prog_args, env, x, only_inline)
                 } else {
-                    env.get(name)
-                        .map(|x| {
-                            if reflex_capture(name, x.clone()) {
-                                Ok(x.clone())
-                            } else {
-                                self.shrink_bodyform_visited(
-                                    allocator,
-                                    &mut visited,
-                                    prog_args.clone(),
-                                    env,
-                                    x.clone(),
-                                    only_inline,
-                                )
-                            }
-                        })
-                        .unwrap_or_else(|| {
-                            self.get_constant(name)
-                                .map(|x| {
-                                    self.shrink_bodyform_visited(
-                                        allocator,
-                                        &mut visited,
-                                        prog_args.clone(),
-                                        env,
-                                        x,
-                                        only_inline,
-                                    )
-                                })
-                                .unwrap_or_else(|| {
-                                    Ok(Rc::new(BodyForm::Value(SExp::Atom(
-                                        l.clone(),
-                                        name.clone(),
-                                    ))))
-                                })
-                        })
+                    Ok(Rc::new(BodyForm::Value(SExp::Atom(
+                        l.clone(),
+                        name.clone(),
+                    ))))
                 }
             }
             BodyForm::Value(v) => Ok(Rc::new(BodyForm::Quoted(v.clone()))),

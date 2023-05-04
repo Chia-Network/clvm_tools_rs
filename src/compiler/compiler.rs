@@ -18,7 +18,7 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
-use crate::compiler::optimize::{finish_optimization, sexp_scale};
+use crate::compiler::optimize::{deinline_opt, fe_opt, finish_optimization, sexp_scale};
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
@@ -90,67 +90,11 @@ pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
     Rc::new(prim_map)
 }
 
-fn fe_opt(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
-    opts: Rc<dyn CompilerOpts>,
-    compileform: &CompileForm,
-    with_inlines: bool,
-) -> Result<CompileForm, CompileErr> {
-    let evaluator = Evaluator::new(opts.clone(), runner.clone(), compileform.helpers.clone());
-    let mut optimized_helpers: Vec<HelperForm> = Vec::new();
-    for h in compileform.helpers.iter() {
-        match h {
-            HelperForm::Defun(inline, defun) => {
-                let mut env = HashMap::new();
-                build_reflex_captures(&mut env, defun.args.clone());
-                let body_rc = evaluator.shrink_bodyform(
-                    allocator,
-                    defun.args.clone(),
-                    &env,
-                    defun.body.clone(),
-                    true,
-                    Some(EVAL_STACK_LIMIT),
-                )?;
-                let new_helper = HelperForm::Defun(
-                    *inline,
-                    DefunData {
-                        body: body_rc.clone(),
-                        .. defun.clone()
-                    },
-                );
-                optimized_helpers.push(new_helper);
-            }
-            obj => {
-                optimized_helpers.push(obj.clone());
-            }
-        }
-    }
-    let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.clone());
-
-    let shrunk = new_evaluator.shrink_bodyform(
-        allocator,
-        Rc::new(SExp::Nil(compileform.args.loc())),
-        &HashMap::new(),
-        compileform.exp.clone(),
-        true,
-        Some(EVAL_STACK_LIMIT),
-    )?;
-
-    Ok(CompileForm {
-        loc: compileform.loc.clone(),
-        include_forms: compileform.include_forms.clone(),
-        args: compileform.args.clone(),
-        helpers: optimized_helpers.clone(),
-        exp: shrunk,
-    })
-}
-
 fn do_desugar(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
-    program: CompileForm,
+    program: &CompileForm,
 ) -> Result<CompileForm, CompileErr> {
     // Transform let bindings, merging nested let scopes with the top namespace
     let hoisted_bindings = hoist_body_let_binding(None, program.args.clone(), program.exp.clone());
@@ -165,7 +109,7 @@ fn do_desugar(
     Ok(CompileForm {
         loc: program.loc.clone(),
         include_forms: program.include_forms.clone(),
-        args: program.args,
+        args: program.args.clone(),
         helpers: combined_helpers,
         exp: expr,
     })
@@ -179,48 +123,25 @@ fn do_optimization_23(
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     let g = frontend(opts.clone(), pre_forms)?;
-    let compileform_inlined = fe_opt(
-        allocator, runner.clone(), opts.clone(), &g, true
-    )?;
-    let desugared_inlined = do_desugar(
+    let desugared = do_desugar(
         allocator,
         runner.clone(),
         opts.clone(),
-        compileform_inlined,
+        &g,
     )?;
-    let generated_inlined = finish_optimization(&codegen(
+    let deinlined = deinline_opt(
         allocator,
         runner.clone(),
         opts.clone(),
-        &desugared_inlined,
-        symbol_table,
-    )?);
-    let inlined_scale = sexp_scale(&generated_inlined);
-
-    let compileform_noninlined = fe_opt(
-        allocator, runner.clone(), opts.clone(), &g, false
+        &desugared,
     )?;
-    let desugared_noninlined = do_desugar(
-        allocator,
-        runner.clone(),
-        opts.clone(),
-        compileform_noninlined,
-    )?;
-    let generated_noninlined = finish_optimization(&codegen(
+    let generated = finish_optimization(&codegen(
         allocator,
         runner,
         opts,
-        &desugared_noninlined,
+        &deinlined,
         symbol_table,
     )?);
-    let noninlined_scale = sexp_scale(&generated_noninlined);
-
-    let generated = if inlined_scale < noninlined_scale {
-        generated_inlined
-    } else {
-        generated_noninlined
-    };
-
     Ok(generated)
 }
 
@@ -255,7 +176,7 @@ pub fn compile_pre_forms(
         allocator,
         runner.clone(),
         opts.clone(),
-        p1,
+        &p1,
     )?;
 
     // generate code from AST, optionally with optimization

@@ -16,7 +16,7 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::clvm::run;
 use crate::compiler::codegen::{codegen, get_callable};
 use crate::compiler::comptypes::{
-    BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen,
+    BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator, ExpandMode, EVAL_STACK_LIMIT};
 #[cfg(test)]
@@ -243,7 +243,6 @@ fn take_smaller_form(
     compileform: &CompileForm,
     optimized_helpers: &[HelperForm],
     body: Rc<BodyForm>,
-    with_inlines: bool,
 ) -> Result<CompileForm, CompileErr> {
     let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.to_vec());
 
@@ -255,7 +254,7 @@ fn take_smaller_form(
         compileform.args.clone(),
         &env,
         body.clone(),
-        with_inlines,
+        false,
         Some(EVAL_STACK_LIMIT),
     )?;
 
@@ -304,6 +303,61 @@ pub fn fe_opt(
     compileform: &CompileForm,
     with_inlines: bool,
 ) -> Result<CompileForm, CompileErr> {
+    let evaluator = Evaluator::new(opts.clone(), runner.clone(), compileform.helpers.clone());
+    let mut optimized_helpers: Vec<HelperForm> = Vec::new();
+    for h in compileform.helpers.iter() {
+        match h {
+            HelperForm::Defun(inline, defun) => {
+                let mut env = HashMap::new();
+                build_reflex_captures(&mut env, defun.args.clone());
+                let body_rc = evaluator.shrink_bodyform(
+                    allocator,
+                    defun.args.clone(),
+                    &env,
+                    defun.body.clone(),
+                    true,
+                    Some(EVAL_STACK_LIMIT),
+                )?;
+                let new_helper = HelperForm::Defun(
+                    *inline,
+                    DefunData {
+                        body: body_rc.clone(),
+                        .. defun.clone()
+                    },
+                );
+                optimized_helpers.push(new_helper);
+            }
+            obj => {
+                optimized_helpers.push(obj.clone());
+            }
+        }
+    }
+    let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.clone());
+
+    let shrunk = new_evaluator.shrink_bodyform(
+        allocator,
+        Rc::new(SExp::Nil(compileform.args.loc())),
+        &HashMap::new(),
+        compileform.exp.clone(),
+        true,
+        Some(EVAL_STACK_LIMIT),
+    )?;
+
+    Ok(CompileForm {
+        loc: compileform.loc.clone(),
+        include_forms: compileform.include_forms.clone(),
+        args: compileform.args.clone(),
+        helpers: optimized_helpers.clone(),
+        exp: shrunk,
+    })
+}
+
+pub fn deinline_opt(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    compileform: &CompileForm,
+) -> Result<CompileForm, CompileErr> {
     let mut compiler_helpers = compileform.helpers.clone();
     let mut used_names = HashSet::new();
 
@@ -341,7 +395,6 @@ pub fn fe_opt(
                 &ref_compileform,
                 &ref_compileform.helpers,
                 defun.body.clone(),
-                with_inlines,
             )?;
 
             let mut new_defun = defun.clone();
@@ -359,6 +412,5 @@ pub fn fe_opt(
         compileform,
         &optimized_helpers,
         compileform.exp.clone(),
-        with_inlines,
     )
 }
