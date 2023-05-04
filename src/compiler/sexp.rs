@@ -5,6 +5,8 @@ use rand::prelude::Distribution;
 #[cfg(test)]
 use rand::Rng;
 
+use serde::Serialize;
+
 use std::borrow::Borrow;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
@@ -23,7 +25,7 @@ use crate::util::{number_from_u8, u8_from_number, Number};
 pub const MAX_SEXP_COST: usize = 15;
 
 // Compiler view of SExp
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum SExp {
     Nil(Srcloc),
     Cons(Srcloc, Rc<SExp>, Rc<SExp>),

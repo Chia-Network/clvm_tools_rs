@@ -447,7 +447,7 @@ fn compile_call(
                         .set_in_defun(true)
                         .set_frontend_opt(false)
                         .set_start_env(Some(compiler.env.clone()))
-                        .set_compiler(compiler.clone());
+                        .set_code_generator(compiler.clone());
 
                     let use_body = SExp::Cons(
                         l.clone(),
@@ -631,7 +631,7 @@ fn codegen_(
                 ))
             } else {
                 let updated_opts = opts
-                    .set_compiler(compiler.clone())
+                    .set_code_generator(compiler.clone())
                     .set_in_defun(true)
                     .set_stdenv(false)
                     .set_frontend_opt(false)
@@ -693,10 +693,12 @@ fn codegen_(
                     .map(|code| {
                         compiler.add_defun(
                             &defun.name,
+                            defun.args.clone(),
                             DefunCall {
                                 required_env: defun.args.clone(),
                                 code,
                             },
+                            true
                         )
                     })
             }
@@ -764,11 +766,11 @@ fn generate_let_defun(
         .map(|b| Rc::new(SExp::Atom(l.clone(), b.name.clone())))
         .collect();
 
-    let inner_function_args = SExp::Cons(
+    let inner_function_args = Rc::new(SExp::Cons(
         l.clone(),
         args,
         Rc::new(list_to_cons(l.clone(), &new_arguments)),
-    );
+    ));
 
     // Count occurrences per binding.
     let deinline_score: usize = bindings
@@ -784,7 +786,8 @@ fn generate_let_defun(
             nl: l,
             kw: kwl,
             name: name.to_owned(),
-            args: Rc::new(inner_function_args),
+            orig_args: inner_function_args.clone(),
+            args: inner_function_args,
             body,
             synthetic: true,
         },
@@ -945,13 +948,8 @@ fn process_helper_let_bindings(
                 result[i] = HelperForm::Defun(
                     inline,
                     DefunData {
-                        loc: defun.loc.clone(),
-                        nl: defun.nl.clone(),
-                        kw: defun.kw.clone(),
-                        name: defun.name.clone(),
-                        args: defun.args.clone(),
                         body: hoisted_body.clone(),
-                        synthetic: defun.synthetic,
+                        .. defun.clone()
                     },
                 );
 
@@ -976,7 +974,7 @@ fn start_codegen(
     opts: Rc<dyn CompilerOpts>,
     comp: CompileForm,
 ) -> Result<PrimaryCodegen, CompileErr> {
-    let mut use_compiler = match opts.compiler() {
+    let mut use_compiler = match opts.code_generator() {
         None => empty_compiler(opts.prim_map(), comp.loc.clone()),
         Some(c) => c,
     };
@@ -999,7 +997,7 @@ fn start_codegen(
                             )),
                         )),
                     );
-                    let updated_opts = opts.set_compiler(use_compiler.clone());
+                    let updated_opts = opts.set_code_generator(use_compiler.clone());
                     let code = updated_opts.compile_program(
                         allocator,
                         runner.clone(),
@@ -1071,7 +1069,7 @@ fn start_codegen(
                 ));
 
                 let updated_opts = opts
-                    .set_compiler(use_compiler.clone())
+                    .set_code_generator(use_compiler.clone())
                     .set_in_defun(false)
                     .set_stdenv(false)
                     .set_frontend_opt(false);

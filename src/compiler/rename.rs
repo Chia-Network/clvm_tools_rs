@@ -280,13 +280,8 @@ fn rename_in_helperform(namemap: &HashMap<Vec<u8>, Vec<u8>>, h: &HelperForm) -> 
         HelperForm::Defun(inline, defun) => HelperForm::Defun(
             *inline,
             DefunData {
-                loc: defun.loc.clone(),
-                kw: defun.kw.clone(),
-                nl: defun.nl.clone(),
-                name: defun.name.to_vec(),
-                args: defun.args.clone(),
                 body: Rc::new(rename_in_bodyform(namemap, defun.body.clone())),
-                synthetic: defun.synthetic,
+                .. defun.clone()
             },
         ),
     }
@@ -337,16 +332,12 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
             HelperForm::Defun(
                 *inline,
                 DefunData {
-                    loc: defun.loc.clone(),
-                    nl: defun.nl.clone(),
-                    kw: defun.kw.clone(),
-                    name: defun.name.clone(),
-                    args: local_renamed_arg,
                     body: Rc::new(rename_in_bodyform(
                         &local_namemap,
                         Rc::new(local_renamed_body),
                     )),
-                    synthetic: defun.synthetic,
+                    args: local_renamed_arg,
+                    .. defun.clone()
                 },
             )
         }

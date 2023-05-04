@@ -1,8 +1,9 @@
 use std::borrow::Borrow;
 use std::fmt::Display;
 use std::rc::Rc;
+use serde::Serialize;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Until {
     pub line: usize,
     pub col: usize,
@@ -17,7 +18,7 @@ impl Until {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Srcloc {
     pub file: Rc<String>,
     pub line: usize,

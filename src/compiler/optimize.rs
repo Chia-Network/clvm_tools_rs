@@ -315,7 +315,7 @@ pub fn fe_opt(
         }
 
         for helper in (opts
-            .compiler()
+            .code_generator()
             .map(|c| c.orig_help)
             .unwrap_or_else(Vec::new))
         .iter()
