@@ -665,6 +665,12 @@ impl PrimaryCodegen {
         codegen_copy
     }
 
+    pub fn add_tabled_constant(&self, name: &[u8], value: Rc<SExp>) -> Self {
+        let mut codegen_copy = self.clone();
+        codegen_copy.tabled_constants.insert(name.to_owned(), value);
+        codegen_copy
+    }
+
     pub fn add_macro(&self, name: &[u8], value: Rc<SExp>) -> Self {
         let mut codegen_copy = self.clone();
         codegen_copy.macros.insert(name.to_owned(), value);

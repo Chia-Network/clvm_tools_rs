@@ -1001,8 +1001,12 @@ fn start_codegen(
                         )
                     })
                     .map(|res| {
-                        let quoted = primquote(defc.loc.clone(), res);
-                        code_generator.add_constant(&defc.name, Rc::new(quoted))
+                        if defc.tabled {
+                            code_generator.add_tabled_constant(&defc.name, res)
+                        } else {
+                            let quoted = primquote(defc.loc.clone(), res);
+                            code_generator.add_constant(&defc.name, Rc::new(quoted))
+                        }
                     })?
                 }
                 ConstantKind::Complex => {
@@ -1130,37 +1134,39 @@ fn finalize_env_(
 ) -> Result<Rc<SExp>, CompileErr> {
     match env.borrow() {
         SExp::Atom(l, v) => {
-            match c.defuns.get(v) {
-                Some(res) => Ok(res.code.clone()),
-                None => {
-                    match c.inlines.get(v) {
-                        Some(res) => replace_in_inline(
-                            allocator,
-                            runner.clone(),
-                            opts.clone(),
-                            c,
-                            l.clone(),
-                            res,
-                            res.args.loc(),
-                            &synthesize_args(res.args.clone()),
-                        )
-                        .map(|x| x.1),
-                        None => {
-                            /* Parentfns are functions in progress in the parent */
-                            if c.parentfns.get(v).is_some() {
-                                Ok(Rc::new(SExp::Nil(l.clone())))
-                            } else {
-                                Err(CompileErr(
-                                    l.clone(),
-                                    format!(
-                                        "A defun was referenced in the defun env but not found {}",
-                                        decode_string(v)
-                                    ),
-                                ))
-                            }
-                        }
-                    }
-                }
+            if let Some(res) = c.defuns.get(v) {
+                return Ok(res.code.clone());
+            }
+
+            if let Some(res) = c.tabled_constants.get(v) {
+                return Ok(res.clone());
+            }
+
+            if let Some(res) = c.inlines.get(v) {
+                return replace_in_inline(
+                    allocator,
+                    runner.clone(),
+                    opts.clone(),
+                    c,
+                    l.clone(),
+                    res,
+                    res.args.loc(),
+                    &synthesize_args(res.args.clone()),
+                )
+                .map(|x| x.1);
+            }
+
+            /* Parentfns are functions in progress in the parent */
+            if c.parentfns.get(v).is_some() {
+                Ok(Rc::new(SExp::Nil(l.clone())))
+            } else {
+                Err(CompileErr(
+                    l.clone(),
+                    format!(
+                        "A defun was referenced in the defun env but not found {}",
+                        decode_string(v)
+                    ),
+                ))
             }
         }
 
@@ -1232,6 +1238,15 @@ fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileE
                         },
                     )
                 }),
+            HelperForm::Defconstant(cdata) => {
+                if cdata.tabled {
+                    let mut c_copy = compiler.clone();
+                    c_copy.parentfns.insert(cdata.name.clone());
+                    Ok(c_copy)
+                } else {
+                    Ok(compiler.clone())
+                }
+            }
             _ => Ok(compiler.clone()),
         },
         compiler.clone(),
