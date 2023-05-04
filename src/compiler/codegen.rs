@@ -924,14 +924,8 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Vec<HelperForm> {
                 result[i] = HelperForm::Defun(
                     inline,
                     DefunData {
-                        loc: defun.loc.clone(),
-                        nl: defun.nl.clone(),
-                        kw: defun.kw.clone(),
-                        name: defun.name.clone(),
-                        args: defun.args.clone(),
-                        orig_args: defun.orig_args.clone(),
                         body: hoisted_body,
-                        synthetic: false,
+                        .. defun.clone()
                     },
                 );
 
