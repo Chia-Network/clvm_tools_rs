@@ -1021,14 +1021,13 @@ fn start_codegen(
                         Some(EVAL_STACK_LIMIT),
                     )?;
                     if let BodyForm::Quoted(q) = constant_result.borrow() {
-                        code_generator.add_constant(
-                            &defc.name,
-                            Rc::new(SExp::Cons(
-                                defc.loc.clone(),
-                                Rc::new(SExp::Atom(defc.loc.clone(), vec![1])),
-                                Rc::new(q.clone()),
-                            )),
-                        )
+                        let res = Rc::new(q.clone());
+                        if defc.tabled {
+                            code_generator.add_tabled_constant(&defc.name, res)
+                        } else {
+                            let quoted = primquote(defc.loc.clone(), res);
+                            code_generator.add_constant(&defc.name, Rc::new(quoted))
+                        }
                     } else {
                         return Err(CompileErr(
                             defc.loc.clone(),
