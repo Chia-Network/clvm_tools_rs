@@ -1,13 +1,26 @@
+#[cfg(test)]
+use num_bigint::ToBigInt;
+
 use std::borrow::Borrow;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
+#[cfg(test)]
+use crate::classic::clvm::__type_compatibility__::bi_one;
+use crate::classic::clvm::__type_compatibility__::bi_zero;
+
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::run;
-use crate::compiler::codegen::get_callable;
-use crate::compiler::comptypes::{BodyForm, Callable, CompilerOpts, PrimaryCodegen};
+use crate::compiler::codegen::{codegen, get_callable};
+use crate::compiler::comptypes::{
+    BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen,
+};
+use crate::compiler::evaluate::{build_reflex_captures, Evaluator, ExpandMode, EVAL_STACK_LIMIT};
+#[cfg(test)]
+use crate::compiler::sexp::parse_sexp;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::u8_from_number;
@@ -19,6 +32,35 @@ fn is_at_form(head: Rc<BodyForm>) -> bool {
         BodyForm::Value(SExp::Atom(_, a)) => a.len() == 1 && a[0] == b'@',
         _ => false,
     }
+}
+
+// Return a score for sexp size.
+pub fn sexp_scale(sexp: &SExp) -> u64 {
+    match sexp {
+        SExp::Cons(_, a, b) => {
+            let a_scale = sexp_scale(a.borrow());
+            let b_scale = sexp_scale(b.borrow());
+            1_u64 + a_scale + b_scale
+        }
+        SExp::Nil(_) => 1,
+        SExp::QuotedString(_, _, s) => 1_u64 + s.len() as u64,
+        SExp::Atom(_, n) => 1_u64 + n.len() as u64,
+        SExp::Integer(_, i) => {
+            let raw_bits = i.bits();
+            let use_bits = if raw_bits > 0 { raw_bits - 1 } else { 0 };
+            let bytes = use_bits / 8;
+            1_u64 + bytes
+        }
+    }
+}
+
+#[test]
+fn test_sexp_scale_increases_with_atom_size() {
+    let l = Srcloc::start("*test*");
+    assert!(
+        sexp_scale(&SExp::Integer(l.clone(), bi_one()))
+            < sexp_scale(&SExp::Integer(l, 1000000_u32.to_bigint().unwrap()))
+    );
 }
 
 /// At this point, very rudimentary constant folding on body expressions.
@@ -120,4 +162,203 @@ pub fn optimize_expr(
         )),
         _ => None,
     }
+}
+
+// If (1) appears anywhere outside of a quoted expression, it can be replaced with
+// () since nil yields itself.
+fn null_optimization(sexp: Rc<SExp>, spine: bool) -> (bool, Rc<SExp>) {
+    if let SExp::Cons(l, a, b) = sexp.borrow() {
+        if let SExp::Atom(_, name) = a.atomize() {
+            if (name == vec![1] || name == b"q") && !spine {
+                let b_empty = match b.borrow() {
+                    SExp::Atom(_, tail) => tail.is_empty(),
+                    SExp::QuotedString(_, _, q) => q.is_empty(),
+                    SExp::Integer(_, i) => *i == bi_zero(),
+                    SExp::Nil(_) => true,
+                    _ => false,
+                };
+
+                if b_empty {
+                    return (true, b.clone());
+                } else {
+                    return (false, sexp);
+                }
+            }
+        }
+
+        let (oa, opt_a) = null_optimization(a.clone(), false);
+        let (ob, opt_b) = null_optimization(b.clone(), true);
+
+        if oa || ob {
+            return (true, Rc::new(SExp::Cons(l.clone(), opt_a, opt_b)));
+        }
+    }
+
+    (false, sexp)
+}
+
+#[test]
+fn test_null_optimization_basic() {
+    let loc = Srcloc::start("*test*");
+    let parsed = parse_sexp(loc.clone(), "(2 (1 1) (4 (1) 1))".bytes()).expect("should parse");
+    let (did_work, optimized) = null_optimization(parsed[0].clone(), true);
+    assert!(did_work);
+    assert_eq!(optimized.to_string(), "(2 (1 1) (4 () 1))");
+}
+
+#[test]
+fn test_null_optimization_skips_quoted() {
+    let loc = Srcloc::start("*test*");
+    let parsed = parse_sexp(loc.clone(), "(2 (1 (1) (1) (1)) (1))".bytes()).expect("should parse");
+    let (did_work, optimized) = null_optimization(parsed[0].clone(), true);
+    assert!(did_work);
+    assert_eq!(optimized.to_string(), "(2 (1 (1) (1) (1)) ())");
+}
+
+#[test]
+fn test_null_optimization_ok_not_doing_anything() {
+    let loc = Srcloc::start("*test*");
+    let parsed = parse_sexp(loc.clone(), "(2 (1 (1) (1) (1)) (3))".bytes()).expect("should parse");
+    let (did_work, optimized) = null_optimization(parsed[0].clone(), true);
+    assert!(!did_work);
+    assert_eq!(optimized.to_string(), "(2 (1 (1) (1) (1)) (3))");
+}
+
+// Do final optimizations on the finished CLVM code.
+// These should be lightweight transformations that save space.
+pub fn finish_optimization(sexp: &SExp) -> SExp {
+    let (did_work, optimized) = null_optimization(Rc::new(sexp.clone()), false);
+    if did_work {
+        let o_borrowed: &SExp = optimized.borrow();
+        o_borrowed.clone()
+    } else {
+        sexp.clone()
+    }
+}
+
+fn take_smaller_form(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    compileform: &CompileForm,
+    optimized_helpers: &[HelperForm],
+    body: Rc<BodyForm>,
+    with_inlines: bool,
+) -> Result<CompileForm, CompileErr> {
+    let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.to_vec());
+
+    let mut env = HashMap::new();
+    build_reflex_captures(&mut env, compileform.args.clone());
+
+    let shrunk = new_evaluator.shrink_bodyform(
+        allocator,
+        compileform.args.clone(),
+        &env,
+        body.clone(),
+        with_inlines,
+        Some(EVAL_STACK_LIMIT),
+    )?;
+
+    let normal_form = CompileForm {
+        loc: compileform.loc.clone(),
+        include_forms: compileform.include_forms.clone(),
+        args: compileform.args.clone(),
+        helpers: optimized_helpers.to_vec(),
+        exp: body,
+    };
+    let shrunk_form = CompileForm {
+        loc: compileform.loc.clone(),
+        include_forms: compileform.include_forms.clone(),
+        args: compileform.args.clone(),
+        helpers: optimized_helpers.to_vec(),
+        exp: shrunk,
+    };
+    let mut phantom_table = HashMap::new();
+    let generated_shrunk = finish_optimization(&codegen(
+        allocator,
+        runner.clone(),
+        opts.clone(),
+        &shrunk_form,
+        &mut phantom_table,
+    )?);
+    let generated_normal = finish_optimization(&codegen(
+        allocator,
+        runner.clone(),
+        opts.clone(),
+        &normal_form,
+        &mut phantom_table,
+    )?);
+    let normal_scale = sexp_scale(&generated_normal);
+    let shrunk_scale = sexp_scale(&generated_shrunk);
+    if normal_scale < shrunk_scale {
+        Ok(normal_form)
+    } else {
+        Ok(shrunk_form)
+    }
+}
+
+pub fn fe_opt(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    compileform: &CompileForm,
+    with_inlines: bool,
+) -> Result<CompileForm, CompileErr> {
+    let mut compiler_helpers = compileform.helpers.clone();
+    let mut used_names = HashSet::new();
+
+    if !opts.in_defun() {
+        for c in compileform.helpers.iter() {
+            used_names.insert(c.name().clone());
+        }
+
+        for helper in (opts
+            .code_generator()
+            .map(|c| c.original_helpers)
+            .unwrap_or_else(Vec::new))
+        .iter()
+        {
+            if !used_names.contains(helper.name()) {
+                compiler_helpers.push(helper.clone());
+            }
+        }
+    }
+
+    let mut optimized_helpers: Vec<HelperForm> = Vec::new();
+    for h in compiler_helpers.iter() {
+        if let HelperForm::Defun(false, defun) = &h {
+            let ref_compileform = CompileForm {
+                loc: compileform.loc.clone(),
+                include_forms: compileform.include_forms.clone(),
+                args: defun.args.clone(),
+                helpers: compileform.helpers.clone(),
+                exp: defun.body.clone(),
+            };
+            let better_form = take_smaller_form(
+                allocator,
+                runner.clone(),
+                opts.clone(),
+                &ref_compileform,
+                &ref_compileform.helpers,
+                defun.body.clone(),
+                with_inlines,
+            )?;
+
+            let mut new_defun = defun.clone();
+            new_defun.body = better_form.exp.clone();
+            optimized_helpers.push(HelperForm::Defun(false, new_defun));
+        } else {
+            optimized_helpers.push(h.clone());
+        }
+    }
+
+    take_smaller_form(
+        allocator,
+        runner,
+        opts,
+        compileform,
+        &optimized_helpers,
+        compileform.exp.clone(),
+        with_inlines,
+    )
 }

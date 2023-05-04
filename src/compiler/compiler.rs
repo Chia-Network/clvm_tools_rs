@@ -74,6 +74,7 @@ pub struct DefaultCompilerOpts {
     pub frontend_check_live: bool,
     pub start_env: Option<Rc<SExp>>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    pub dialect: Option<i32>,
 
     known_dialects: Rc<HashMap<String, String>>,
 }
@@ -228,6 +229,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn code_generator(&self) -> Option<PrimaryCodegen> {
         self.code_generator.clone()
     }
+    fn dialect(&self) -> Option<i32> {
+        self.dialect
+    }
     fn in_defun(&self) -> bool {
         self.in_defun
     }
@@ -253,6 +257,11 @@ impl CompilerOpts for DefaultCompilerOpts {
         self.include_dirs.clone()
     }
 
+    fn set_dialect(&self, dialect: Option<i32>) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.dialect = dialect;
+        Rc::new(copy)
+    }
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.include_dirs = dirs.to_owned();
@@ -349,6 +358,7 @@ impl DefaultCompilerOpts {
             frontend_opt: false,
             frontend_check_live: true,
             start_env: None,
+            dialect: None,
             prim_map: create_prim_map(),
             known_dialects: Rc::new(KNOWN_DIALECTS.clone()),
         }

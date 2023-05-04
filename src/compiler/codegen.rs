@@ -441,6 +441,7 @@ fn compile_call(
                     let updated_opts = opts
                         .set_stdenv(false)
                         .set_in_defun(true)
+                        .set_frontend_opt(false)
                         .set_start_env(Some(compiler.env.clone()))
                         .set_code_generator(compiler.clone());
 
@@ -629,6 +630,7 @@ fn codegen_(
                     .set_code_generator(compiler.clone())
                     .set_in_defun(true)
                     .set_stdenv(false)
+                    .set_frontend_opt(false)
                     .set_start_env(Some(combine_defun_env(
                         compiler.env.clone(),
                         defun.args.clone(),

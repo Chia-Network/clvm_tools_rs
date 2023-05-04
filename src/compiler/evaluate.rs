@@ -25,6 +25,22 @@ use crate::util::{number_from_u8, u8_from_number, Number};
 const PRIM_RUN_LIMIT: usize = 1000000;
 pub const EVAL_STACK_LIMIT: usize = 200;
 
+// Governs whether Evaluator expands various forms.
+#[derive(Debug, Clone)]
+pub struct ExpandMode {
+    pub functions: bool,
+    pub lets: bool,
+}
+
+impl Default for ExpandMode {
+    fn default() -> Self {
+        ExpandMode {
+            functions: true,
+            lets: true,
+        }
+    }
+}
+
 // Stack depth checker.
 #[derive(Clone, Debug, Default)]
 pub struct VisitedInfo {

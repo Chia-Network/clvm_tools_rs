@@ -319,6 +319,9 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
     fn code_generator(&self) -> Option<PrimaryCodegen> {
         None
     }
+    fn dialect(&self) -> Option<i32> {
+        None
+    }
     fn in_defun(&self) -> bool {
         false
     }
@@ -342,6 +345,9 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
     }
     fn get_search_paths(&self) -> Vec<String> {
         vec![".".to_string()]
+    }
+    fn set_dialect(&self, dialect: Option<i32>) -> Rc<dyn CompilerOpts> {
+        Rc::new(self.clone())
     }
     fn set_search_paths(&self, _dirs: &[String]) -> Rc<dyn CompilerOpts> {
         Rc::new(self.clone())
