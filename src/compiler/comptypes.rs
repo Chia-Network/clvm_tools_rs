@@ -149,6 +149,14 @@ pub enum BodyForm {
     Mod(Srcloc, CompileForm),
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub enum SyntheticType {
+    NoInlinePreference,
+    MaybeRecursive,
+    WantInline,
+    WantNonInline
+}
+
 /// The information needed to know about a defun.  Whether it's inline is left in
 /// the HelperForm.
 #[derive(Clone, Debug, Serialize)]
@@ -168,7 +176,7 @@ pub struct DefunData {
     /// The body expression of the defun.
     pub body: Rc<BodyForm>,
     /// Whether this defun was created during desugaring.
-    pub synthetic: bool,
+    pub synthetic: Option<SyntheticType>,
 }
 
 /// Specifies the information extracted from a macro definition allowing the

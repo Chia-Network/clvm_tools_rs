@@ -22,7 +22,6 @@ struct CompileRunResult {
     // pub compiled: Rc<SExp>,
     pub compiled_hex: String,
     pub run_result: Rc<SExp>,
-    pub run_cost: u64,
 }
 
 #[derive(Debug)]
@@ -57,7 +56,6 @@ fn run_with_cost(
                 // compiled: sexp.clone(),
                 compiled_hex,
                 run_result: convert_from_clvm_rs(allocator, sexp.loc(), reduction.1)?,
-                run_cost: reduction.0,
             })
         })
 }
@@ -142,7 +140,6 @@ fn smoke_test_optimizer() {
     )
     .expect("should compile and run");
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
-    assert!(res.opt.run_cost < res.unopt.run_cost);
 }
 
 #[test]

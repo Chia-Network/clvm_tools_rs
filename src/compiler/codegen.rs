@@ -15,7 +15,7 @@ use crate::compiler::compiler::{is_at_capture, run_optimizer};
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BodyForm, Callable, CompileErr,
     CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall, DefunData, HelperForm,
-    InlineFunction, LetData, LetFormKind, PrimaryCodegen,
+    InlineFunction, LetData, LetFormKind, PrimaryCodegen, SyntheticType
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
@@ -715,22 +715,6 @@ fn is_defun_or_tabled_const(b: &HelperForm) -> bool {
     }
 }
 
-fn count_occurrences(name: &[u8], expr: &BodyForm) -> usize {
-    match expr {
-        BodyForm::Value(SExp::Atom(_, n)) => usize::from(n == name),
-        BodyForm::Call(_, v) => v.iter().map(|item| count_occurrences(name, item)).sum(),
-        BodyForm::Let(_, data) => {
-            let use_in_bindings: usize = data
-                .bindings
-                .iter()
-                .map(|b| count_occurrences(name, b.body.borrow()))
-                .sum();
-            count_occurrences(name, data.body.borrow()) + use_in_bindings
-        }
-        _ => 0,
-    }
-}
-
 pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> PrimaryCodegen {
     let nil = SExp::Nil(l.clone());
     let nil_rc = Rc::new(nil.clone());
@@ -781,7 +765,7 @@ fn generate_let_defun(
             orig_args: inner_function_args.clone(),
             args: inner_function_args,
             body,
-            synthetic: true,
+            synthetic: Some(SyntheticType::NoInlinePreference),
         },
     )
 }

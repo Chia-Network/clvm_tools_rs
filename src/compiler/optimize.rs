@@ -2,7 +2,7 @@
 use num_bigint::ToBigInt;
 
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
@@ -16,9 +16,9 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::clvm::run;
 use crate::compiler::codegen::{codegen, get_callable};
 use crate::compiler::comptypes::{
-    BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
+    BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen, SyntheticType
 };
-use crate::compiler::evaluate::{build_reflex_captures, Evaluator, ExpandMode, EVAL_STACK_LIMIT};
+use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 #[cfg(test)]
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::sexp::SExp;
@@ -236,72 +236,11 @@ pub fn finish_optimization(sexp: &SExp) -> SExp {
     }
 }
 
-fn take_smaller_form(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
-    opts: Rc<dyn CompilerOpts>,
-    compileform: &CompileForm,
-    optimized_helpers: &[HelperForm],
-    body: Rc<BodyForm>,
-) -> Result<CompileForm, CompileErr> {
-    let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.to_vec());
-
-    let mut env = HashMap::new();
-    build_reflex_captures(&mut env, compileform.args.clone());
-
-    let shrunk = new_evaluator.shrink_bodyform(
-        allocator,
-        compileform.args.clone(),
-        &env,
-        body.clone(),
-        false,
-        Some(EVAL_STACK_LIMIT),
-    )?;
-
-    let normal_form = CompileForm {
-        loc: compileform.loc.clone(),
-        include_forms: compileform.include_forms.clone(),
-        args: compileform.args.clone(),
-        helpers: optimized_helpers.to_vec(),
-        exp: body,
-    };
-    let shrunk_form = CompileForm {
-        loc: compileform.loc.clone(),
-        include_forms: compileform.include_forms.clone(),
-        args: compileform.args.clone(),
-        helpers: optimized_helpers.to_vec(),
-        exp: shrunk,
-    };
-    let mut phantom_table = HashMap::new();
-    let generated_shrunk = finish_optimization(&codegen(
-        allocator,
-        runner.clone(),
-        opts.clone(),
-        &shrunk_form,
-        &mut phantom_table,
-    )?);
-    let generated_normal = finish_optimization(&codegen(
-        allocator,
-        runner.clone(),
-        opts.clone(),
-        &normal_form,
-        &mut phantom_table,
-    )?);
-    let normal_scale = sexp_scale(&generated_normal);
-    let shrunk_scale = sexp_scale(&generated_shrunk);
-    if normal_scale < shrunk_scale {
-        Ok(normal_form)
-    } else {
-        Ok(shrunk_form)
-    }
-}
-
 pub fn fe_opt(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     compileform: &CompileForm,
-    with_inlines: bool,
 ) -> Result<CompileForm, CompileErr> {
     let evaluator = Evaluator::new(opts.clone(), runner.clone(), compileform.helpers.clone());
     let mut optimized_helpers: Vec<HelperForm> = Vec::new();
@@ -352,65 +291,57 @@ pub fn fe_opt(
     })
 }
 
+// Should take a desugared program.
 pub fn deinline_opt(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
-    compileform: &CompileForm,
-) -> Result<CompileForm, CompileErr> {
-    let mut compiler_helpers = compileform.helpers.clone();
-    let mut used_names = HashSet::new();
-
-    if !opts.in_defun() {
-        for c in compileform.helpers.iter() {
-            used_names.insert(c.name().clone());
-        }
-
-        for helper in (opts
-            .code_generator()
-            .map(|c| c.original_helpers)
-            .unwrap_or_else(Vec::new))
-        .iter()
-        {
-            if !used_names.contains(helper.name()) {
-                compiler_helpers.push(helper.clone());
+    mut compileform: CompileForm,
+    symbol_table: &mut HashMap<String, String>,
+) -> Result<SExp, CompileErr> {
+    let mut generated_program = codegen(
+        allocator, runner.clone(), opts.clone(), &compileform, symbol_table
+    )?;
+    let mut metric = sexp_scale(&generated_program);
+    let flip_helper = |h: &mut HelperForm| {
+        if let HelperForm::Defun(inline, defun) = h {
+            if matches!(&defun.synthetic, Some(SyntheticType::NoInlinePreference)) {
+                *h = HelperForm::Defun(!*inline, defun.clone());
+                return true;
             }
         }
-    }
 
-    let mut optimized_helpers: Vec<HelperForm> = Vec::new();
-    for h in compiler_helpers.iter() {
-        if let HelperForm::Defun(false, defun) = &h {
-            let ref_compileform = CompileForm {
-                loc: compileform.loc.clone(),
-                include_forms: compileform.include_forms.clone(),
-                args: defun.args.clone(),
-                helpers: compileform.helpers.clone(),
-                exp: defun.body.clone(),
-            };
-            let better_form = take_smaller_form(
-                allocator,
-                runner.clone(),
-                opts.clone(),
-                &ref_compileform,
-                &ref_compileform.helpers,
-                defun.body.clone(),
+        false
+    };
+
+    loop {
+        let start_metric = metric;
+
+        for i in 0..compileform.helpers.len() {
+            // Try flipped.
+            let old_helper = compileform.helpers[i].clone();
+            if !flip_helper(&mut compileform.helpers[i]) {
+                continue;
+            }
+
+            let maybe_smaller_program = codegen(
+                allocator, runner.clone(), opts.clone(), &compileform, symbol_table
             )?;
+            let new_metric = sexp_scale(&maybe_smaller_program);
 
-            let mut new_defun = defun.clone();
-            new_defun.body = better_form.exp.clone();
-            optimized_helpers.push(HelperForm::Defun(false, new_defun));
-        } else {
-            optimized_helpers.push(h.clone());
+            // Don't keep this change if it made things worse.
+            if new_metric >= metric {
+                compileform.helpers[i] = old_helper;
+            } else {
+                metric = new_metric;
+                generated_program = maybe_smaller_program;
+            }
+        }
+
+        if start_metric == metric {
+            break;
         }
     }
 
-    take_smaller_form(
-        allocator,
-        runner,
-        opts,
-        compileform,
-        &optimized_helpers,
-        compileform.exp.clone(),
-    )
+    Ok(generated_program)
 }

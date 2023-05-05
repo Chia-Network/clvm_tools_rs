@@ -346,7 +346,7 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
     fn get_search_paths(&self) -> Vec<String> {
         vec![".".to_string()]
     }
-    fn set_dialect(&self, dialect: Option<i32>) -> Rc<dyn CompilerOpts> {
+    fn set_dialect(&self, _dialect: Option<i32>) -> Rc<dyn CompilerOpts> {
         Rc::new(self.clone())
     }
     fn set_search_paths(&self, _dirs: &[String]) -> Rc<dyn CompilerOpts> {

@@ -14,11 +14,10 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
-    CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
+    CompileErr, CompileForm, CompilerOpts, PrimaryCodegen,
 };
-use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
-use crate::compiler::optimize::{deinline_opt, fe_opt, finish_optimization, sexp_scale};
+use crate::compiler::optimize::{deinline_opt, fe_opt, finish_optimization};
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
@@ -91,9 +90,6 @@ pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
 }
 
 fn do_desugar(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
-    opts: Rc<dyn CompilerOpts>,
     program: &CompileForm,
 ) -> Result<CompileForm, CompileErr> {
     // Transform let bindings, merging nested let scopes with the top namespace
@@ -123,25 +119,15 @@ fn do_optimization_23(
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     let g = frontend(opts.clone(), pre_forms)?;
-    let desugared = do_desugar(
-        allocator,
-        runner.clone(),
-        opts.clone(),
-        &g,
-    )?;
+    let desugared = do_desugar(&g)?;
     let deinlined = deinline_opt(
         allocator,
         runner.clone(),
         opts.clone(),
-        &desugared,
+        desugared,
+        symbol_table
     )?;
-    let generated = finish_optimization(&codegen(
-        allocator,
-        runner,
-        opts,
-        &deinlined,
-        symbol_table,
-    )?);
+    let generated = finish_optimization(&deinlined);
     Ok(generated)
 }
 
@@ -167,17 +153,12 @@ pub fn compile_pre_forms(
 
     let p1 = if opts.frontend_opt() {
         // Front end optimization
-        fe_opt(allocator, runner.clone(), opts.clone(), &p0, false)?
+        fe_opt(allocator, runner.clone(), opts.clone(), &p0)?
     } else {
         p0
     };
 
-    let p2 = do_desugar(
-        allocator,
-        runner.clone(),
-        opts.clone(),
-        &p1,
-    )?;
+    let p2 = do_desugar(&p1)?;
 
     // generate code from AST, optionally with optimization
     codegen(allocator, runner, opts, &p2, symbol_table)

@@ -1016,22 +1016,24 @@ impl<'info> Evaluator {
         arguments_to_convert: &[Rc<BodyForm>],
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         only_inline: bool,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
+    ) -> Result<Option<Rc<BodyForm>>, CompileErr> {
         let helper = select_helper(&self.helpers, call_name);
         match helper {
-            Some(HelperForm::Defmacro(mac)) => self.invoke_macro_expansion(
-                allocator,
-                visited,
-                mac.loc.clone(),
-                call_loc,
-                mac.program,
-                prog_args,
-                arguments_to_convert,
-                env,
-            ),
+            Some(HelperForm::Defmacro(mac)) => self
+                .invoke_macro_expansion(
+                    allocator,
+                    visited,
+                    mac.loc.clone(),
+                    call_loc,
+                    mac.program,
+                    prog_args,
+                    arguments_to_convert,
+                    env,
+                )
+                .map(Some),
             Some(HelperForm::Defun(inline, defun)) => {
                 if !inline && only_inline {
-                    return Ok(body);
+                    return Ok(None);
                 }
 
                 let argument_captures_untranslated =
@@ -1060,7 +1062,7 @@ impl<'info> Evaluator {
                     &argument_captures,
                     defun.body,
                     only_inline,
-                )
+                ).map(Some)
             }
             _ => self
                 .invoke_primitive(
@@ -1075,7 +1077,8 @@ impl<'info> Evaluator {
                     env,
                     only_inline,
                 )
-                .and_then(|res| self.chase_apply(allocator, visited, res)),
+                .and_then(|res| self.chase_apply(allocator, visited, res))
+                .map(Some),
         }
     }
 
@@ -1185,34 +1188,55 @@ impl<'info> Evaluator {
                     parts.iter().skip(1).cloned().collect();
 
                 match head_expr.borrow() {
-                    BodyForm::Value(SExp::Atom(call_loc, call_name)) => self.handle_invoke(
-                        allocator,
-                        &mut visited,
-                        l.clone(),
-                        call_loc.clone(),
-                        call_name,
-                        head_expr.clone(),
-                        parts,
-                        body.clone(),
-                        prog_args,
-                        &arguments_to_convert,
-                        env,
-                        only_inline,
-                    ),
-                    BodyForm::Value(SExp::Integer(call_loc, call_int)) => self.handle_invoke(
-                        allocator,
-                        &mut visited,
-                        l.clone(),
-                        call_loc.clone(),
-                        &u8_from_number(call_int.clone()),
-                        head_expr.clone(),
-                        parts,
-                        body.clone(),
-                        prog_args,
-                        &arguments_to_convert,
-                        env,
-                        only_inline,
-                    ),
+                    BodyForm::Value(SExp::Atom(call_loc, call_name)) => self
+                        .handle_invoke(
+                            allocator,
+                            &mut visited,
+                            l.clone(),
+                            call_loc.clone(),
+                            call_name,
+                            head_expr.clone(),
+                            parts,
+                            body.clone(),
+                            prog_args.clone(),
+                            &arguments_to_convert,
+                            env,
+                            only_inline,
+                        )
+                        .and_then(|x| {
+                            if let Some(res) = x {
+                                Ok(res)
+                            } else {
+                                let mut converted_arguments = vec![head_expr.clone()];
+                                for arg in arguments_to_convert.iter() {
+                                    converted_arguments.push(self.shrink_bodyform_visited(
+                                        allocator,
+                                        &mut visited,
+                                        prog_args.clone(),
+                                        env,
+                                        arg.clone(),
+                                        only_inline,
+                                    )?);
+                                }
+                                Ok(Rc::new(BodyForm::Call(body.loc(), converted_arguments)))
+                            }
+                        }),
+                    BodyForm::Value(SExp::Integer(call_loc, call_int)) => self
+                        .handle_invoke(
+                            allocator,
+                            &mut visited,
+                            l.clone(),
+                            call_loc.clone(),
+                            &u8_from_number(call_int.clone()),
+                            head_expr.clone(),
+                            parts,
+                            body.clone(),
+                            prog_args,
+                            &arguments_to_convert,
+                            env,
+                            only_inline,
+                        )
+                        .map(|x| x.unwrap_or_else(|| body.clone())),
                     _ => Err(CompileErr(
                         l.clone(),
                         format!("Don't know how to call {}", head_expr.to_sexp()),

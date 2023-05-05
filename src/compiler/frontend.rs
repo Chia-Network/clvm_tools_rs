@@ -453,7 +453,7 @@ fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun) -> Result<Helpe
                 args: data.args.clone(),
                 orig_args: data.args,
                 body: Rc::new(bf),
-                synthetic: false,
+                synthetic: None,
             },
         )
     })
