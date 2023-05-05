@@ -60,6 +60,7 @@ pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> Option<i32> {
     let mut dialects = HashMap::new();
     dialects.insert("*standard-cl-21*".as_bytes().to_vec(), 21);
     dialects.insert("*standard-cl-22*".as_bytes().to_vec(), 22);
+    dialects.insert("*standard-cl-23*".as_bytes().to_vec(), 23);
 
     proper_list(allocator, sexp, true).and_then(|l| {
         for elt in l.iter() {

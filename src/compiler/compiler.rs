@@ -41,6 +41,13 @@ lazy_static! {
         )"}
             .to_string(),
         );
+        known_dialects.insert(
+            "*standard-cl-23*".to_string(),
+            indoc! {"(
+           (defconstant *chialisp-version* 23)
+        )"}
+            .to_string(),
+        );
         known_dialects
     };
     pub static ref STANDARD_MACROS: String = {
