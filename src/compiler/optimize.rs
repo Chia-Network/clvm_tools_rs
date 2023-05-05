@@ -16,9 +16,8 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::clvm::run;
 use crate::compiler::codegen::{codegen, get_callable};
 use crate::compiler::comptypes::{
-    BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen, SyntheticType
+    BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen, SyntheticType
 };
-use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 #[cfg(test)]
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::sexp::SExp;
@@ -234,61 +233,6 @@ pub fn finish_optimization(sexp: &SExp) -> SExp {
     } else {
         sexp.clone()
     }
-}
-
-pub fn fe_opt(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
-    opts: Rc<dyn CompilerOpts>,
-    compileform: &CompileForm,
-) -> Result<CompileForm, CompileErr> {
-    let evaluator = Evaluator::new(opts.clone(), runner.clone(), compileform.helpers.clone());
-    let mut optimized_helpers: Vec<HelperForm> = Vec::new();
-    for h in compileform.helpers.iter() {
-        match h {
-            HelperForm::Defun(inline, defun) => {
-                let mut env = HashMap::new();
-                build_reflex_captures(&mut env, defun.args.clone());
-                let body_rc = evaluator.shrink_bodyform(
-                    allocator,
-                    defun.args.clone(),
-                    &env,
-                    defun.body.clone(),
-                    true,
-                    Some(EVAL_STACK_LIMIT),
-                )?;
-                let new_helper = HelperForm::Defun(
-                    *inline,
-                    DefunData {
-                        body: body_rc.clone(),
-                        .. defun.clone()
-                    },
-                );
-                optimized_helpers.push(new_helper);
-            }
-            obj => {
-                optimized_helpers.push(obj.clone());
-            }
-        }
-    }
-    let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.clone());
-
-    let shrunk = new_evaluator.shrink_bodyform(
-        allocator,
-        Rc::new(SExp::Nil(compileform.args.loc())),
-        &HashMap::new(),
-        compileform.exp.clone(),
-        true,
-        Some(EVAL_STACK_LIMIT),
-    )?;
-
-    Ok(CompileForm {
-        loc: compileform.loc.clone(),
-        include_forms: compileform.include_forms.clone(),
-        args: compileform.args.clone(),
-        helpers: optimized_helpers.clone(),
-        exp: shrunk,
-    })
 }
 
 // Should take a desugared program.

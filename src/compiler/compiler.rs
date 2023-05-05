@@ -14,10 +14,11 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
-    CompileErr, CompileForm, CompilerOpts, PrimaryCodegen,
+    CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
+use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
-use crate::compiler::optimize::{deinline_opt, fe_opt, finish_optimization};
+use crate::compiler::optimize::{deinline_opt, finish_optimization};
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
@@ -96,6 +97,67 @@ pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
     Rc::new(prim_map)
 }
 
+fn fe_opt(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    compileform: CompileForm,
+) -> Result<CompileForm, CompileErr> {
+    let evaluator = Evaluator::new(opts.clone(), runner.clone(), compileform.helpers.clone());
+    let mut optimized_helpers: Vec<HelperForm> = Vec::new();
+    for h in compileform.helpers.iter() {
+        match h {
+            HelperForm::Defun(inline, defun) => {
+                let mut env = HashMap::new();
+                build_reflex_captures(&mut env, defun.args.clone());
+                let body_rc = evaluator.shrink_bodyform(
+                    allocator,
+                    defun.args.clone(),
+                    &env,
+                    defun.body.clone(),
+                    true,
+                    Some(EVAL_STACK_LIMIT),
+                )?;
+                let new_helper = HelperForm::Defun(
+                    *inline,
+                    DefunData {
+                        loc: defun.loc.clone(),
+                        nl: defun.nl.clone(),
+                        kw: defun.kw.clone(),
+                        name: defun.name.clone(),
+                        args: defun.args.clone(),
+                        orig_args: defun.orig_args.clone(),
+                        synthetic: defun.synthetic.clone(),
+                        body: body_rc.clone(),
+                    },
+                );
+                optimized_helpers.push(new_helper);
+            }
+            obj => {
+                optimized_helpers.push(obj.clone());
+            }
+        }
+    }
+    let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.clone());
+
+    let shrunk = new_evaluator.shrink_bodyform(
+        allocator,
+        Rc::new(SExp::Nil(compileform.args.loc())),
+        &HashMap::new(),
+        compileform.exp.clone(),
+        true,
+        Some(EVAL_STACK_LIMIT),
+    )?;
+
+    Ok(CompileForm {
+        loc: compileform.loc.clone(),
+        include_forms: compileform.include_forms.clone(),
+        args: compileform.args,
+        helpers: optimized_helpers.clone(),
+        exp: shrunk,
+    })
+}
+
 fn do_desugar(
     program: &CompileForm,
 ) -> Result<CompileForm, CompileErr> {
@@ -160,7 +222,7 @@ pub fn compile_pre_forms(
 
     let p1 = if opts.frontend_opt() {
         // Front end optimization
-        fe_opt(allocator, runner.clone(), opts.clone(), &p0)?
+        fe_opt(allocator, runner.clone(), opts.clone(), p0)?
     } else {
         p0
     };
