@@ -15,7 +15,8 @@ use crate::compiler::compiler::{is_at_capture, run_optimizer};
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, Callable,
     CompileErr, CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall, DefunData,
-    HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind, PrimaryCodegen, SyntheticType
+    HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind, PrimaryCodegen,
+    SyntheticType,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
@@ -313,7 +314,7 @@ pub fn get_callable(
                 _ => Err(CompileErr(
                     l.clone(),
                     format!("no such callable '{}'", decode_string(name)),
-                ))
+                )),
             }
         }
         SExp::Integer(_, v) => Ok(Callable::CallPrim(l.clone(), SExp::Integer(l, v.clone()))),
@@ -991,7 +992,7 @@ pub fn hoist_body_let_binding(
                     orig_args: new_function_args.clone(),
                     args: new_function_args,
                     body: new_body,
-                    synthetic: Some(SyntheticType::WantNonInline)
+                    synthetic: Some(SyntheticType::WantNonInline),
                 },
             );
             new_helpers_from_body.push(function);
@@ -1022,7 +1023,7 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
                     inline,
                     DefunData {
                         body: hoisted_body,
-                        .. defun.clone()
+                        ..defun.clone()
                     },
                 );
 

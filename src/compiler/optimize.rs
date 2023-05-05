@@ -16,7 +16,8 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::clvm::run;
 use crate::compiler::codegen::{codegen, get_callable};
 use crate::compiler::comptypes::{
-    BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen, SyntheticType
+    BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen,
+    SyntheticType,
 };
 #[cfg(test)]
 use crate::compiler::sexp::parse_sexp;
@@ -244,7 +245,11 @@ pub fn deinline_opt(
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     let mut generated_program = codegen(
-        allocator, runner.clone(), opts.clone(), &compileform, symbol_table
+        allocator,
+        runner.clone(),
+        opts.clone(),
+        &compileform,
+        symbol_table,
     )?;
     let mut metric = sexp_scale(&generated_program);
     let flip_helper = |h: &mut HelperForm| {
@@ -269,7 +274,11 @@ pub fn deinline_opt(
             }
 
             let maybe_smaller_program = codegen(
-                allocator, runner.clone(), opts.clone(), &compileform, symbol_table
+                allocator,
+                runner.clone(),
+                opts.clone(),
+                &compileform,
+                symbol_table,
             )?;
             let new_metric = sexp_scale(&maybe_smaller_program);
 

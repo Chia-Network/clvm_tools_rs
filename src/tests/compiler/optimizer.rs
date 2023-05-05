@@ -70,7 +70,10 @@ fn run_string_get_program_and_output_with_includes(
     let runner = Rc::new(DefaultProgramRunner::new());
     let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let srcloc = Srcloc::start(&"*test*".to_string());
-    opts = opts.set_frontend_opt(fe_opt).set_dialect(Some(23)).set_search_paths(include_dirs);
+    opts = opts
+        .set_frontend_opt(fe_opt)
+        .set_dialect(Some(23))
+        .set_search_paths(include_dirs);
     let sexp_args =
         parse_sexp(srcloc.clone(), args.bytes()).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
 

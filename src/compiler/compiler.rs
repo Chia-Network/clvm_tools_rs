@@ -158,9 +158,7 @@ fn fe_opt(
     })
 }
 
-fn do_desugar(
-    program: &CompileForm,
-) -> Result<CompileForm, CompileErr> {
+fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
     // Transform let bindings, merging nested let scopes with the top namespace
     let hoisted_bindings = hoist_body_let_binding(None, program.args.clone(), program.exp.clone())?;
     let mut new_helpers = hoisted_bindings.0;
@@ -194,7 +192,7 @@ fn do_optimization_23(
         runner.clone(),
         opts.clone(),
         desugared,
-        symbol_table
+        symbol_table,
     )?;
     let generated = finish_optimization(&deinlined);
     Ok(generated)
@@ -208,13 +206,7 @@ pub fn compile_pre_forms(
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     if opts.frontend_opt() && opts.dialect().map(|d| d > 22).unwrap_or(false) {
-        return do_optimization_23(
-            allocator,
-            runner,
-            opts,
-            pre_forms,
-            symbol_table
-        );
+        return do_optimization_23(allocator, runner, opts, pre_forms, symbol_table);
     }
 
     // Resolve includes, convert program source to lexemes

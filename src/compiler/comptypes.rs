@@ -207,7 +207,7 @@ pub enum SyntheticType {
     NoInlinePreference,
     MaybeRecursive,
     WantInline,
-    WantNonInline
+    WantNonInline,
 }
 
 /// The information needed to know about a defun.  Whether it's inline is left in
