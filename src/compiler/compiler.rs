@@ -18,6 +18,7 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
+use crate::compiler::optimize::{deinline_opt, finish_optimization};
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
@@ -38,6 +39,13 @@ lazy_static! {
             "*standard-cl-22*".to_string(),
             indoc! {"(
            (defconstant *chialisp-version* 22)
+        )"}
+            .to_string(),
+        );
+        known_dialects.insert(
+            "*standard-cl-23*".to_string(),
+            indoc! {"(
+           (defconstant *chialisp-version* 23)
         )"}
             .to_string(),
         );
@@ -74,6 +82,7 @@ pub struct DefaultCompilerOpts {
     pub frontend_check_live: bool,
     pub start_env: Option<Rc<SExp>>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    pub dialect: Option<i32>,
 
     known_dialects: Rc<HashMap<String, String>>,
 }
@@ -118,6 +127,7 @@ fn fe_opt(
                         name: defun.name.clone(),
                         args: defun.args.clone(),
                         orig_args: defun.orig_args.clone(),
+                        synthetic: defun.synthetic.clone(),
                         body: body_rc.clone(),
                     },
                 );
@@ -148,6 +158,48 @@ fn fe_opt(
     })
 }
 
+fn do_desugar(
+    program: &CompileForm,
+) -> Result<CompileForm, CompileErr> {
+    // Transform let bindings, merging nested let scopes with the top namespace
+    let hoisted_bindings = hoist_body_let_binding(None, program.args.clone(), program.exp.clone())?;
+    let mut new_helpers = hoisted_bindings.0;
+    let expr = hoisted_bindings.1; // expr is the let-hoisted program
+
+    // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later stages
+    let mut combined_helpers = program.helpers.clone();
+    combined_helpers.append(&mut new_helpers);
+    let combined_helpers = process_helper_let_bindings(&combined_helpers)?;
+
+    Ok(CompileForm {
+        loc: program.loc.clone(),
+        include_forms: program.include_forms.clone(),
+        args: program.args.clone(),
+        helpers: combined_helpers,
+        exp: expr,
+    })
+}
+
+fn do_optimization_23(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    pre_forms: &[Rc<SExp>],
+    symbol_table: &mut HashMap<String, String>,
+) -> Result<SExp, CompileErr> {
+    let g = frontend(opts.clone(), pre_forms)?;
+    let desugared = do_desugar(&g)?;
+    let deinlined = deinline_opt(
+        allocator,
+        runner.clone(),
+        opts.clone(),
+        desugared,
+        symbol_table
+    )?;
+    let generated = finish_optimization(&deinlined);
+    Ok(generated)
+}
+
 pub fn compile_pre_forms(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -155,6 +207,16 @@ pub fn compile_pre_forms(
     pre_forms: &[Rc<SExp>],
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
+    if opts.frontend_opt() && opts.dialect().map(|d| d > 22).unwrap_or(false) {
+        return do_optimization_23(
+            allocator,
+            runner,
+            opts,
+            pre_forms,
+            symbol_table
+        );
+    }
+
     // Resolve includes, convert program source to lexemes
     let p0 = frontend(opts.clone(), pre_forms)?;
 
@@ -165,23 +227,7 @@ pub fn compile_pre_forms(
         p0
     };
 
-    // Transform let bindings, merging nested let scopes with the top namespace
-    let hoisted_bindings = hoist_body_let_binding(None, p1.args.clone(), p1.exp.clone())?;
-    let mut new_helpers = hoisted_bindings.0;
-    let expr = hoisted_bindings.1; // expr is the let-hoisted program
-
-    // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later stages
-    let mut combined_helpers = p1.helpers.clone();
-    combined_helpers.append(&mut new_helpers);
-    let combined_helpers = process_helper_let_bindings(&combined_helpers)?;
-
-    let p2 = CompileForm {
-        loc: p1.loc.clone(),
-        include_forms: p1.include_forms.clone(),
-        args: p1.args,
-        helpers: combined_helpers,
-        exp: expr,
-    };
+    let p2 = do_desugar(&p1)?;
 
     // generate code from AST, optionally with optimization
     codegen(allocator, runner, opts, &p2, symbol_table)
@@ -228,6 +274,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn code_generator(&self) -> Option<PrimaryCodegen> {
         self.code_generator.clone()
     }
+    fn dialect(&self) -> Option<i32> {
+        self.dialect
+    }
     fn in_defun(&self) -> bool {
         self.in_defun
     }
@@ -253,6 +302,11 @@ impl CompilerOpts for DefaultCompilerOpts {
         self.include_dirs.clone()
     }
 
+    fn set_dialect(&self, dialect: Option<i32>) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.dialect = dialect;
+        Rc::new(copy)
+    }
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.include_dirs = dirs.to_owned();
@@ -349,6 +403,7 @@ impl DefaultCompilerOpts {
             frontend_opt: false,
             frontend_check_live: true,
             start_env: None,
+            dialect: None,
             prim_map: create_prim_map(),
             known_dialects: Rc::new(KNOWN_DIALECTS.clone()),
         }

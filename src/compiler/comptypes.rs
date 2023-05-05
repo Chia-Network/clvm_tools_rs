@@ -202,6 +202,14 @@ pub enum BodyForm {
     Lambda(LambdaData),
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub enum SyntheticType {
+    NoInlinePreference,
+    MaybeRecursive,
+    WantInline,
+    WantNonInline
+}
+
 /// The information needed to know about a defun.  Whether it's inline is left in
 /// the HelperForm.
 #[derive(Clone, Debug, Serialize)]
@@ -220,6 +228,8 @@ pub struct DefunData {
     pub args: Rc<SExp>,
     /// The body expression of the defun.
     pub body: Rc<BodyForm>,
+    /// Whether this defun was created during desugaring.
+    pub synthetic: Option<SyntheticType>,
 }
 
 /// Specifies the information extracted from a macro definition allowing the
@@ -257,6 +267,8 @@ pub struct DefconstData {
     pub nl: Srcloc,
     /// The location of the body expression, whatever it is.
     pub body: Rc<BodyForm>,
+    /// This constant should exist in the left env rather than be inlined.
+    pub tabled: bool,
 }
 
 /// Specifies where a constant is the classic kind (unevaluated) or a proper
@@ -338,6 +350,7 @@ pub struct DefunCall {
 pub struct PrimaryCodegen {
     pub prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     pub constants: HashMap<Vec<u8>, Rc<SExp>>,
+    pub tabled_constants: HashMap<Vec<u8>, Rc<SExp>>,
     pub macros: HashMap<Vec<u8>, Rc<SExp>>,
     pub inlines: HashMap<Vec<u8>, InlineFunction>,
     pub defuns: HashMap<Vec<u8>, DefunCall>,
@@ -362,6 +375,8 @@ pub trait CompilerOpts {
     /// complex constants, and into (com ...) forms.  This allows the CompilerOpts
     /// to carry this info across boundaries into a new context.
     fn code_generator(&self) -> Option<PrimaryCodegen>;
+    /// Get the dialect declared in the toplevel program.
+    fn dialect(&self) -> Option<i32>;
     /// Specifies whether code is being generated on behalf of an inner defun in
     /// the program.
     fn in_defun(&self) -> bool;
@@ -386,6 +401,8 @@ pub trait CompilerOpts {
     /// Specifies the search paths we're carrying.
     fn get_search_paths(&self) -> Vec<String>;
 
+    /// Set the dialect.
+    fn set_dialect(&self, dialect: Option<i32>) -> Rc<dyn CompilerOpts>;
     /// Set search paths.
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts>;
     /// Set whether we're compiling on behalf of a defun.
@@ -770,6 +787,12 @@ impl PrimaryCodegen {
     pub fn add_constant(&self, name: &[u8], value: Rc<SExp>) -> Self {
         let mut codegen_copy = self.clone();
         codegen_copy.constants.insert(name.to_owned(), value);
+        codegen_copy
+    }
+
+    pub fn add_tabled_constant(&self, name: &[u8], value: Rc<SExp>) -> Self {
+        let mut codegen_copy = self.clone();
+        codegen_copy.tabled_constants.insert(name.to_owned(), value);
         codegen_copy
     }
 

@@ -15,7 +15,7 @@ use crate::compiler::compiler::{is_at_capture, run_optimizer};
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, Callable,
     CompileErr, CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall, DefunData,
-    HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind, PrimaryCodegen,
+    HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind, PrimaryCodegen, SyntheticType
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
@@ -313,7 +313,7 @@ pub fn get_callable(
                 _ => Err(CompileErr(
                     l.clone(),
                     format!("no such callable '{}'", decode_string(name)),
-                )),
+                ))
             }
         }
         SExp::Integer(_, v) => Ok(Callable::CallPrim(l.clone(), SExp::Integer(l, v.clone()))),
@@ -500,6 +500,10 @@ fn compile_call(
                             l.clone(),
                             Rc::new(SExp::Integer(l.clone(), i.clone())),
                         )),
+                        BodyForm::Quoted(SExp::Integer(l, i)) => Ok(CompiledCode(
+                            l.clone(),
+                            Rc::new(SExp::Integer(l.clone(), i.clone())),
+                        )),
                         _ => Err(CompileErr(
                             al.clone(),
                             "@ form only accepts integers at present".to_string(),
@@ -518,6 +522,7 @@ fn compile_call(
                     let updated_opts = opts
                         .set_stdenv(false)
                         .set_in_defun(true)
+                        .set_frontend_opt(false)
                         .set_start_env(Some(compiler.env.clone()))
                         .set_code_generator(compiler.clone());
 
@@ -707,6 +712,7 @@ fn codegen_(
                     .set_code_generator(compiler.clone())
                     .set_in_defun(true)
                     .set_stdenv(false)
+                    .set_frontend_opt(false)
                     .set_start_env(Some(combine_defun_env(
                         compiler.env.clone(),
                         defun.args.clone(),
@@ -779,8 +785,12 @@ fn codegen_(
     }
 }
 
-fn is_defun(b: &HelperForm) -> bool {
-    matches!(b, HelperForm::Defun(false, _))
+fn is_defun_or_tabled_const(b: &HelperForm) -> bool {
+    match b {
+        HelperForm::Defun(false, _) => true,
+        HelperForm::Defconstant(cdata) => cdata.tabled,
+        _ => false,
+    }
 }
 
 pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> PrimaryCodegen {
@@ -790,6 +800,7 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
     PrimaryCodegen {
         prims: prim_map,
         constants: HashMap::new(),
+        tabled_constants: HashMap::new(),
         inlines: HashMap::new(),
         macros: HashMap::new(),
         defuns: HashMap::new(),
@@ -841,6 +852,7 @@ fn generate_let_defun(
             orig_args: inner_function_args.clone(),
             args: inner_function_args,
             body,
+            synthetic: Some(SyntheticType::NoInlinePreference),
         },
     )
 }
@@ -979,6 +991,7 @@ pub fn hoist_body_let_binding(
                     orig_args: new_function_args.clone(),
                     args: new_function_args,
                     body: new_body,
+                    synthetic: Some(SyntheticType::WantNonInline)
                 },
             );
             new_helpers_from_body.push(function);
@@ -1008,13 +1021,8 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
                 result[i] = HelperForm::Defun(
                     inline,
                     DefunData {
-                        loc: defun.loc.clone(),
-                        nl: defun.nl.clone(),
-                        kw: defun.kw.clone(),
-                        name: defun.name.clone(),
-                        args: defun.args.clone(),
-                        orig_args: defun.orig_args.clone(),
                         body: hoisted_body,
+                        .. defun.clone()
                     },
                 );
 
@@ -1090,8 +1098,12 @@ fn start_codegen(
                         )
                     })
                     .map(|res| {
-                        let quoted = primquote(defc.loc.clone(), res);
-                        code_generator.add_constant(&defc.name, Rc::new(quoted))
+                        if defc.tabled {
+                            code_generator.add_tabled_constant(&defc.name, res)
+                        } else {
+                            let quoted = primquote(defc.loc.clone(), res);
+                            code_generator.add_constant(&defc.name, Rc::new(quoted))
+                        }
                     })?
                 }
                 ConstantKind::Complex => {
@@ -1106,14 +1118,13 @@ fn start_codegen(
                         Some(EVAL_STACK_LIMIT),
                     )?;
                     if let BodyForm::Quoted(q) = constant_result.borrow() {
-                        code_generator.add_constant(
-                            &defc.name,
-                            Rc::new(SExp::Cons(
-                                defc.loc.clone(),
-                                Rc::new(SExp::Atom(defc.loc.clone(), vec![1])),
-                                Rc::new(q.clone()),
-                            )),
-                        )
+                        let res = Rc::new(q.clone());
+                        if defc.tabled {
+                            code_generator.add_tabled_constant(&defc.name, res)
+                        } else {
+                            let quoted = primquote(defc.loc.clone(), res);
+                            code_generator.add_constant(&defc.name, Rc::new(quoted))
+                        }
                     } else {
                         return Err(CompileErr(
                             defc.loc.clone(),
@@ -1163,7 +1174,7 @@ fn start_codegen(
     let only_defuns: Vec<HelperForm> = program
         .helpers
         .iter()
-        .filter(|x| is_defun(x))
+        .filter(|x| is_defun_or_tabled_const(x))
         .cloned()
         .collect();
 
@@ -1224,37 +1235,39 @@ fn finalize_env_(
 ) -> Result<Rc<SExp>, CompileErr> {
     match env.borrow() {
         SExp::Atom(l, v) => {
-            match c.defuns.get(v) {
-                Some(res) => Ok(res.code.clone()),
-                None => {
-                    match c.inlines.get(v) {
-                        Some(res) => replace_in_inline(
-                            allocator,
-                            runner.clone(),
-                            opts.clone(),
-                            c,
-                            l.clone(),
-                            res,
-                            res.args.loc(),
-                            &synthesize_args(res.args.clone()),
-                        )
-                        .map(|x| x.1),
-                        None => {
-                            /* Parentfns are functions in progress in the parent */
-                            if c.parentfns.get(v).is_some() {
-                                Ok(Rc::new(SExp::Nil(l.clone())))
-                            } else {
-                                Err(CompileErr(
-                                    l.clone(),
-                                    format!(
-                                        "A defun was referenced in the defun env but not found {}",
-                                        decode_string(v)
-                                    ),
-                                ))
-                            }
-                        }
-                    }
-                }
+            if let Some(res) = c.defuns.get(v) {
+                return Ok(res.code.clone());
+            }
+
+            if let Some(res) = c.tabled_constants.get(v) {
+                return Ok(res.clone());
+            }
+
+            if let Some(res) = c.inlines.get(v) {
+                return replace_in_inline(
+                    allocator,
+                    runner.clone(),
+                    opts.clone(),
+                    c,
+                    l.clone(),
+                    res,
+                    res.args.loc(),
+                    &synthesize_args(res.args.clone()),
+                )
+                .map(|x| x.1);
+            }
+
+            /* Parentfns are functions in progress in the parent */
+            if c.parentfns.get(v).is_some() {
+                Ok(Rc::new(SExp::Nil(l.clone())))
+            } else {
+                Err(CompileErr(
+                    l.clone(),
+                    format!(
+                        "A defun was referenced in the defun env but not found {}",
+                        decode_string(v)
+                    ),
+                ))
             }
         }
 
@@ -1326,6 +1339,15 @@ fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileE
                         },
                     )
                 }),
+            HelperForm::Defconstant(cdata) => {
+                if cdata.tabled {
+                    let mut c_copy = compiler.clone();
+                    c_copy.parentfns.insert(cdata.name.clone());
+                    Ok(c_copy)
+                } else {
+                    Ok(compiler.clone())
+                }
+            }
             _ => Ok(compiler.clone()),
         },
         compiler.clone(),
