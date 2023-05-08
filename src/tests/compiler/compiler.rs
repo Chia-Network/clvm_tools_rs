@@ -10,8 +10,7 @@ use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
-
-const TEST_TIMEOUT: usize = 1000000;
+use crate::tests::compiler::TEST_TIMEOUT;
 
 fn compile_string(content: &String) -> Result<String, CompileErr> {
     let mut allocator = Allocator::new();

@@ -7,6 +7,7 @@ use crate::compiler::srcloc::{Srcloc, Until};
 mod cldb;
 mod clvm;
 mod compiler;
+mod deinline;
 mod evaluate;
 mod optimizer;
 mod preprocessor;
@@ -14,6 +15,8 @@ mod repl;
 mod runtypes;
 mod srcloc;
 mod usecheck;
+
+pub const TEST_TIMEOUT: usize = 1000000;
 
 #[test]
 fn test_sexp_parse_print() {
