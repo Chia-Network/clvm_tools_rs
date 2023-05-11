@@ -21,6 +21,7 @@ fn is_at_form(head: Rc<BodyForm>) -> bool {
     }
 }
 
+/// At this point, very rudimentary constant folding on body expressions.
 pub fn optimize_expr(
     allocator: &mut Allocator,
     opts: Rc<dyn CompilerOpts>,

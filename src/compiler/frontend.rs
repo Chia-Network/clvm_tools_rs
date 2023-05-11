@@ -447,7 +447,8 @@ fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun) -> Result<Helpe
                 nl: data.nl,
                 kw: data.kwl,
                 name: data.name,
-                args: data.args,
+                args: data.args.clone(),
+                orig_args: data.args,
                 body: Rc::new(bf),
             },
         )
@@ -731,6 +732,19 @@ fn frontend_start(
     }
 }
 
+/// Entrypoint for compilation.  This yields a CompileForm which represents a full
+/// program.
+///
+/// Given a CompilerOpts specifying the global options for the compilation, return
+/// a representation of the parsed program.  Desugaring is not done in this step
+/// so this is a close representation of the user's input, containing location
+/// references etc.
+///
+/// pre_forms is a list of forms, because most SExp readers, including parse_sexp
+/// parse a list of complete forms from a source text.  It is possible for frontend
+/// to use a list of forms, but it is most often used with a single list in
+/// chialisp.  Usually pre_forms will contain a slice containing one list or
+/// mod form.
 pub fn frontend(
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>],
@@ -771,7 +785,7 @@ pub fn frontend(
 
     let mut live_helpers = Vec::new();
     for h in our_mod.helpers {
-        if helper_names.contains(h.name()) {
+        if !opts.frontend_check_live() || helper_names.contains(h.name()) {
             live_helpers.push(h);
         }
     }

@@ -490,3 +490,95 @@ pub fn flatten(allocator: &mut Allocator, tree_: NodePtr, res: &mut Vec<NodePtr>
         }
     }
 }
+
+// Wrapper around last that properly bubbles the error into EvalErr for use in
+// the classic chialisp code.
+pub fn nonempty_last<X>(nil: NodePtr, lst: &[X]) -> Result<X, EvalErr>
+where
+    X: Copy,
+{
+    lst.last()
+        .copied()
+        .ok_or_else(|| EvalErr(nil, "alist is empty and shouldn't be".to_string()))
+}
+
+// This is a trait that generates a haskell-like ad-hoc type from the user's
+// construction of NodeSel and ThisNode.
+// the result is transformed into a NodeSel tree of NodePtr if it can be.
+// The type of the result is an ad-hoc shape derived from the shape of the
+// original request.
+#[derive(Debug, Clone)]
+pub enum NodeSel<T, U> {
+    Cons(T, U),
+}
+
+#[derive(Debug, Clone)]
+pub enum First<T> {
+    Here(T),
+}
+
+#[derive(Debug, Clone)]
+pub enum Rest<T> {
+    Here(T),
+}
+
+#[derive(Debug, Clone)]
+pub enum ThisNode {
+    Here,
+}
+
+pub trait SelectNode<T, E> {
+    fn select_nodes(&self, allocator: &mut Allocator, n: NodePtr) -> Result<T, E>;
+}
+
+impl<E> SelectNode<NodePtr, E> for ThisNode {
+    fn select_nodes(&self, _allocator: &mut Allocator, n: NodePtr) -> Result<NodePtr, E> {
+        Ok(n)
+    }
+}
+
+impl<E> SelectNode<(), E> for () {
+    fn select_nodes(&self, _allocator: &mut Allocator, _n: NodePtr) -> Result<(), E> {
+        Ok(())
+    }
+}
+
+impl<R, T, E> SelectNode<First<T>, E> for First<R>
+where
+    R: SelectNode<T, E> + Clone,
+    E: From<EvalErr>,
+{
+    fn select_nodes(&self, allocator: &mut Allocator, n: NodePtr) -> Result<First<T>, E> {
+        let First::Here(f) = &self;
+        let NodeSel::Cons(first, ()) = NodeSel::Cons(f.clone(), ()).select_nodes(allocator, n)?;
+        Ok(First::Here(first))
+    }
+}
+
+impl<R, T, E> SelectNode<Rest<T>, E> for Rest<R>
+where
+    R: SelectNode<T, E> + Clone,
+    E: From<EvalErr>,
+{
+    fn select_nodes(&self, allocator: &mut Allocator, n: NodePtr) -> Result<Rest<T>, E> {
+        let Rest::Here(f) = &self;
+        let NodeSel::Cons((), rest) = NodeSel::Cons((), f.clone()).select_nodes(allocator, n)?;
+        Ok(Rest::Here(rest))
+    }
+}
+
+impl<R, S, T, U, E> SelectNode<NodeSel<T, U>, E> for NodeSel<R, S>
+where
+    R: SelectNode<T, E>,
+    S: SelectNode<U, E>,
+    E: From<EvalErr>,
+{
+    fn select_nodes(&self, allocator: &mut Allocator, n: NodePtr) -> Result<NodeSel<T, U>, E> {
+        let NodeSel::Cons(my_left, my_right) = &self;
+        let l = first(allocator, n)?;
+        let r = rest(allocator, n)?;
+        let first = my_left.select_nodes(allocator, l)?;
+        let rest = my_right.select_nodes(allocator, r)?;
+        Ok(NodeSel::Cons(first, rest))
+    }
+}

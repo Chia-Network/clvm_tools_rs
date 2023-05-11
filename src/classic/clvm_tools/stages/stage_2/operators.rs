@@ -14,17 +14,23 @@ use clvm_rs::run_program::run_program;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 
 use crate::classic::clvm::keyword_from_atom;
-use crate::classic::clvm::sexp::proper_list;
+use crate::classic::clvm::sexp::{First, proper_list, ThisNode, SelectNode};
 
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble_to_ir_with_kw};
+use crate::classic::clvm_tools::clvmc::{compile_clvm_text, write_sym_output};
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::ir::writer::write_ir_to_stream;
 use crate::classic::clvm_tools::sha256tree::TreeHash;
 use crate::classic::clvm_tools::stages::stage_0::{
     DefaultProgramRunner, RunProgramOption, TRunProgram,
 };
-use crate::classic::clvm_tools::stages::stage_2::compile::do_com_prog_for_dialect;
+use crate::classic::clvm_tools::stages::stage_2::compile::{do_com_prog_for_dialect, make_symbols_name};
 use crate::classic::clvm_tools::stages::stage_2::optimize::do_optimize;
+use crate::classic::clvm_tools::stages::stage_2::reader::read_file;
+
+use crate::compiler::compiler::DefaultCompilerOpts;
+use crate::compiler::comptypes::CompilerOpts;
+use crate::compiler::sexp::decode_string;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AllocatorRefOrTreeHash {
@@ -50,8 +56,15 @@ pub struct CompilerOperatorsInternal {
     compile_outcomes: RefCell<HashMap<String, String>>,
     runner: RefCell<Rc<dyn TRunProgram>>,
     opt_memo: RefCell<HashMap<AllocatorRefOrTreeHash, NodePtr>>,
+    // A compiler opts as in the modern compiler.  If present, try using its
+    // file system interface to read files.
+    compiler_opts: RefCell<Option<Rc<dyn CompilerOpts>>>,
 }
 
+/// Given a list of search paths, find a full path to a file whose partial name
+/// is given.  If the file can't be found in any search path, use the expression
+/// the user gave to cause the file to be searched for in the error result.
+/// They're searched in order so repetition doesn't do anything. (suggested Q+A)
 pub fn full_path_for_filename(
     parent_sexp: NodePtr,
     filename: &str,
@@ -70,7 +83,7 @@ pub fn full_path_for_filename(
                 .unwrap_or_else(|| {
                     Err(EvalErr(
                         parent_sexp,
-                        "could not compute absolute path".to_string(),
+                        format!("could not compute absolute path for the combination of search path {path} and file name {filename} during text conversion from path_buf")
                     ))
                 });
         }
@@ -119,11 +132,13 @@ impl CompilerOperatorsInternal {
             compile_outcomes: RefCell::new(HashMap::new()),
             runner: RefCell::new(base_runner),
             opt_memo: RefCell::new(HashMap::new()),
+            compiler_opts: RefCell::new(None),
         }
     }
 
     pub fn neutralize(&self) {
         self.set_runner(Rc::new(DefaultProgramRunner::new()));
+        self.set_compiler_opts(None);
     }
 
     fn symbols_extra_info(&self, allocator: &mut Allocator) -> Response {
@@ -143,22 +158,45 @@ impl CompilerOperatorsInternal {
         borrow.clone()
     }
 
+    fn set_compiler_opts(&self, opts: Option<Rc<dyn CompilerOpts>>) {
+        self.compiler_opts.replace(opts);
+    }
+
+    fn get_compiler_opts(&self) -> Option<Rc<dyn CompilerOpts>> {
+        let borrow: Ref<'_, Option<Rc<dyn CompilerOpts>>> = self.compiler_opts.borrow();
+        borrow.clone()
+    }
+
     fn read(&self, allocator: &mut Allocator, sexp: NodePtr) -> Response {
+        // Given a string containing the data in the file to parse, parse it or
+        // return EvalErr.
+        let parse_file_content = |allocator: &mut Allocator, content: &String| {
+            read_ir(content)
+                .map_err(|e| EvalErr(allocator.null(), e.to_string()))
+                .and_then(|ir| {
+                    assemble_from_ir(allocator, Rc::new(ir)).map(|ir_sexp| Reduction(1, ir_sexp))
+                })
+        };
+
         match allocator.sexp(sexp) {
             SExp::Pair(f, _) => match allocator.sexp(f) {
                 SExp::Atom(b) => {
                     let filename =
                         Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
+                    // Use the read interface in CompilerOpts if we have one.
+                    if let Some(opts) = self.get_compiler_opts() {
+                        if let Ok((_, content)) =
+                            opts.read_new_file(self.source_file.clone(), filename.clone())
+                        {
+                            return parse_file_content(allocator, &decode_string(&content));
+                        }
+                    }
+
+                    // Use the filesystem like normal if the opts couldn't find
+                    // the file.
                     fs::read_to_string(filename)
                         .map_err(|_| EvalErr(allocator.null(), "Failed to read file".to_string()))
-                        .and_then(|content| {
-                            read_ir(&content)
-                                .map_err(|e| EvalErr(allocator.null(), e))
-                                .and_then(|ir| {
-                                    assemble_from_ir(allocator, Rc::new(ir))
-                                        .map(|ir_sexp| Reduction(1, ir_sexp))
-                                })
-                        })
+                        .and_then(|content| parse_file_content(allocator, &content))
                 }
                 _ => Err(EvalErr(
                     allocator.null(),
@@ -211,13 +249,23 @@ impl CompilerOperatorsInternal {
     }
 
     fn get_full_path_for_filename(&self, allocator: &mut Allocator, sexp: NodePtr) -> Response {
+        let convert_filename = |allocator: &mut Allocator, full_name: &String| {
+            let converted_filename = allocator.new_atom(full_name.as_bytes())?;
+            Ok(Reduction(1, converted_filename))
+        };
+
         if let SExp::Pair(l, _r) = allocator.sexp(sexp) {
             if let SExp::Atom(b) = allocator.sexp(l) {
                 let filename =
                     Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
+                // If we have a compiler opts injected, let that handle reading
+                // files.  The name will bubble up to the _read function.
+                if self.get_compiler_opts().is_some() {
+                    return convert_filename(allocator, &filename);
+                }
+
                 let full_name = full_path_for_filename(sexp, &filename, &self.search_paths)?;
-                let converted_filename = allocator.new_atom(full_name.as_bytes())?;
-                return Ok(Reduction(1, converted_filename));
+                return convert_filename(allocator, &full_name);
             }
         }
 
@@ -262,6 +310,49 @@ impl CompilerOperatorsInternal {
 
         Ok(Reduction(1, allocator.null()))
     }
+
+    pub fn run_compiler(
+        &self,
+        allocator: &mut Allocator,
+        sexp: NodePtr
+    ) -> Result<Reduction, EvalErr> {
+        let mut symtab = HashMap::new();
+        let First::Here(name_node) =
+            First::Here(ThisNode::Here).select_nodes(allocator, sexp)?;
+        let name =
+            if let SExp::Atom(b) = allocator.sexp(name_node) {
+                allocator.buf(&b).to_vec()
+            } else {
+                return Err(EvalErr(sexp, "malformed _read arguments".to_string()));
+            };
+
+        let file = read_file(
+            self.runner.borrow().clone(),
+            allocator,
+            sexp,
+            &decode_string(&name)
+        )?;
+        let compiled = compile_clvm_text(
+            allocator,
+            self.get_compiler_opts().unwrap_or_else(|| {
+                Rc::new(DefaultCompilerOpts::new(&self.source_file))
+            }),
+            &mut symtab,
+            &decode_string(&file.data),
+            &file.full_path,
+            self.get_compiler_opts().is_some(),
+        )?;
+
+        // Write symbols for the compiled inner module.
+        let target_symbols_name =
+            make_symbols_name(&self.source_file, &decode_string(&name));
+
+        // Not a hard error if we can't write the symbols,
+        // given the way most write chialisp.
+        write_sym_output(&symtab, &target_symbols_name).ok();
+
+        Ok(Reduction(1, compiled))
+    }
 }
 
 impl Dialect for CompilerOperatorsInternal {
@@ -305,6 +396,8 @@ impl Dialect for CompilerOperatorsInternal {
                     self.symbols_extra_info(allocator)
                 } else if opbuf == "_get_source_file".as_bytes() {
                     self.get_source_file(allocator)
+                } else if opbuf == "_run_compiler".as_bytes() {
+                    self.run_compiler(allocator, sexp)
                 } else {
                     self.base_dialect.op(allocator, op, sexp, max_cost)
                 }
@@ -323,6 +416,10 @@ impl CompilerOperatorsInternal {
 impl CompilerOperators {
     pub fn get_compiles(&self) -> HashMap<String, String> {
         self.parent.get_compiles()
+    }
+
+    pub fn set_compiler_opts(&self, opts: Option<Rc<dyn CompilerOpts>>) {
+        self.parent.set_compiler_opts(opts);
     }
 }
 

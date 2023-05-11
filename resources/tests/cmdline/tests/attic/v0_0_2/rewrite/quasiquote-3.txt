@@ -1,0 +1,2 @@
+rewrite '(quasiquote (unquote x0))'
+(first (args))

@@ -33,8 +33,7 @@ fn run_string_maybe_opt(
     opts = opts
         .set_frontend_opt(fe_opt)
         .set_search_paths(&vec!["resources/tests".to_string()]);
-    let sexp_args =
-        parse_sexp(srcloc.clone(), args.bytes()).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
+    let sexp_args = parse_sexp(srcloc.clone(), args.bytes())?[0].clone();
 
     compile_file(
         &mut allocator,
@@ -1151,6 +1150,32 @@ fn test_defconstant_tree() {
 }
 
 #[test]
+fn test_assign_dont_detect_unrelated_inlines_as_recursive() {
+    let prog = indoc! {"
+(mod (A) ;; 11
+  (include *standard-cl-22*)
+  (defun-inline <= (A B) (not (> A B)))
+  (let
+    ((foo (<= 2 A))
+     (bar (<= 1 A)))
+
+    (let
+      ((baz (<= foo bar)))
+
+      (let
+        ((yorgle (<= baz bar)))
+
+        (<= yorgle foo)
+        )
+      )
+    )
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(2)".to_string()).expect("should compile");
+    assert_eq!(res.to_string(), "1");
+}
+
+#[test]
 fn test_inline_out_of_bounds_diagnostic() {
     let prog = indoc! {"
 (mod ()
@@ -1166,4 +1191,17 @@ fn test_inline_out_of_bounds_diagnostic() {
     } else {
         assert!(false);
     }
+}
+
+#[test]
+fn test_inline_in_assign_not_actually_recursive() {
+    let prog = indoc! {"
+(mod (POINT)
+  (include *standard-cl-21*)
+  (defun-inline no-op (V) V)
+  (let ((TU 100)) (let ((TI1 (no-op TU)) (TU2 (no-op TU))) 9999))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"()".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "9999");
 }

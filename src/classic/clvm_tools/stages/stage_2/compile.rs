@@ -8,17 +8,12 @@ use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm::sexp::{enlist, first, map_m, non_nil, proper_list, rest};
 use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
 
-use crate::classic::clvm_tools::binutils::disassemble;
-use crate::classic::clvm_tools::clvmc::{compile_clvm_text, write_sym_output};
+use crate::classic::clvm_tools::binutils::{assemble, disassemble};
 use crate::classic::clvm_tools::node_path::NodePath;
-use crate::classic::clvm_tools::stages::assemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::defaults::default_macro_lookup;
 use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote};
 use crate::classic::clvm_tools::stages::stage_2::module::compile_mod;
-use crate::classic::clvm_tools::stages::stage_2::reader::read_file;
-
-use crate::compiler::sexp::decode_string;
 
 const DIAG_OUTPUT: bool = false;
 
@@ -288,7 +283,7 @@ fn try_expand_macro_for_atom_(
             top_path
         ).map(|x| {
             if DIAG_OUTPUT {
-                println!(
+                print!(
                     "TRY_EXPAND_MACRO {} WITH {} GIVES {} MACROS {} SYMBOLS {}",
                     disassemble(allocator, macro_code),
                     disassemble(allocator, prog_rest),
@@ -430,7 +425,7 @@ fn compile_operator_atom(
                 allocator.new_atom(NodePath::new(None).as_path().data());
 
             let _ = if DIAG_OUTPUT {
-                println!("COMPILE_BINDINGS {}", disassemble(allocator, quoted_post_prog));
+                print!("COMPILE_BINDINGS {}", disassemble(allocator, quoted_post_prog));
             };
             evaluate(allocator, quoted_post_prog, top_atom).map(Some)
         };
@@ -763,7 +758,7 @@ pub fn do_com_prog_for_dialect(
     }
 }
 
-fn get_compile_filename(
+pub fn get_compile_filename(
     runner: Rc<dyn TRunProgram>,
     allocator: &mut Allocator,
 ) -> Result<Option<String>, EvalErr> {
@@ -807,7 +802,7 @@ pub fn get_search_paths(
     Ok(res)
 }
 
-fn get_last_path_component(name: &str) -> String {
+pub fn get_last_path_component(name: &str) -> String {
     let mut skip_start = None;
     let fnbytes = name.as_bytes();
 
@@ -825,7 +820,7 @@ fn get_last_path_component(name: &str) -> String {
     }
 }
 
-fn make_symbols_name(current_filename: &str, name: &str) -> String {
+pub fn make_symbols_name(current_filename: &str, name: &str) -> String {
     // Grab the final path component if these strings are composed
     // that way.
     let take_start = get_last_path_component(current_filename);
@@ -841,27 +836,20 @@ pub fn compile_file(
     name: &str,
     filename: &str,
 ) -> Response {
-    let mut symtab = HashMap::new();
-    let current_filename = get_compile_filename(runner.clone(), allocator)?;
-    let file = read_file(runner, allocator, parent_sexp, filename)?;
-    let compiled = compile_clvm_text(
+    let compile_operator = allocator.new_atom(b"_run_compiler")?;
+    let quote_atom = allocator.new_atom(&[1])?;
+    let filename_atom = allocator.new_atom(filename.as_bytes())?;
+    let quoted_filename = allocator.new_pair(quote_atom, filename_atom)?;
+    let compile_command_tail = allocator.new_pair(quoted_filename, allocator.null())?;
+    let compile_command = allocator.new_pair(compile_operator, compile_command_tail)?;
+    let compiled = runner.run_program(
         allocator,
-        &file.search_paths,
-        &mut symtab,
-        &decode_string(&file.data),
-        &file.full_path,
+        compile_command,
+        allocator.null(),
+        None
     )?;
 
-    // Write symbols for the compiled inner module.
-    if let Some(filename) = current_filename {
-        let target_symbols_name = make_symbols_name(&filename, name);
-
-        // Not a hard error if we can't write the symbols,
-        // given the way most write chialisp.
-        write_sym_output(&symtab, &target_symbols_name).ok();
-    }
-
-    Ok(Reduction(1, compiled))
+    Ok(compiled)
 }
 
 pub fn process_compile_file(

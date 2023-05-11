@@ -15,7 +15,7 @@ use std::thread;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use crate::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
 use crate::classic::clvm::serialize::sexp_to_stream;
 use crate::classic::clvm_tools::clvmc;
 use crate::classic::clvm_tools::cmds;
@@ -34,15 +34,19 @@ use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 
+use crate::util::version;
+
 use crate::py::pyval::{clvm_value_to_python, python_value_to_clvm};
+
+use super::cmds::create_cmds_module;
 
 create_exception!(mymodule, CldbError, PyException);
 create_exception!(mymodule, CompError, PyException);
+create_exception!(mymodule, ToolError, PyException);
 
-// Thanks: https://www.reddit.com/r/rust/comments/bkkpkz/pkgversion_access_your_crates_version_number_as/
 #[pyfunction]
 fn get_version() -> PyResult<String> {
-    Ok(env!("CARGO_PKG_VERSION").to_string())
+    Ok(version())
 }
 
 #[pyfunction(arg3 = "[]", arg4 = "None")]
@@ -252,7 +256,7 @@ fn start_clvm_program(
         let override_runnable = CldbOverrideBespokeCode::new(use_symbol_table, overrides_table);
 
         let step = start_step(program, args);
-        let cldbenv = CldbRunEnv::new(None, vec![], Box::new(override_runnable));
+        let cldbenv = CldbRunEnv::new(None, Rc::new(vec![]), Box::new(override_runnable));
         let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
         loop {
             match cmd_input.recv() {
@@ -290,7 +294,16 @@ fn start_clvm_program(
 fn launch_tool(tool_name: String, args: Vec<String>, default_stage: u32) -> Vec<u8> {
     let mut stdout = Stream::new(None);
     cmds::launch_tool(&mut stdout, &args, &tool_name, default_stage);
-    return stdout.get_value().data().clone();
+    stdout.get_value().data().clone()
+}
+
+#[pyfunction]
+fn call_tool(tool_name: String, args: Vec<String>) -> PyResult<Vec<u8>> {
+    let mut allocator = Allocator::new();
+    let mut stdout = Stream::new(None);
+    cmds::call_tool(&mut stdout, &mut allocator, &tool_name, &args)
+        .map_err(|e| ToolError::new_err(e))?;
+    Ok(stdout.get_value().data().clone())
 }
 
 fn compile_err_to_cldb_err(err: &CompileErr) -> PyErr {
@@ -345,7 +358,16 @@ pub fn compose_run_function(
             )));
         }
     };
-    let hash_bytes = Bytes::new(Some(BytesFromType::Hex(function_hash.clone())));
+    let hash_bytes =
+        match Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(function_hash.clone()))) {
+            Ok(x) => x,
+            Err(e) => {
+                return Err(compile_err_to_cldb_err(&CompileErr(
+                    program.loc(),
+                    format!("bad function hash: ({}) {}", function_hash, e),
+                )));
+            }
+        };
     let function_path = match path_to_function(main_env.1.clone(), &hash_bytes.data().clone()) {
         Some(p) => p,
         _ => {
@@ -369,6 +391,8 @@ pub fn compose_run_function(
 
 #[pymodule]
 fn clvm_tools_rs(py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_submodule(create_cmds_module(py)?)?;
+
     m.add("CldbError", py.get_type::<CldbError>())?;
     m.add("CompError", py.get_type::<CompError>())?;
 
@@ -376,6 +400,7 @@ fn clvm_tools_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_version, m)?)?;
     m.add_function(wrap_pyfunction!(start_clvm_program, m)?)?;
     m.add_function(wrap_pyfunction!(launch_tool, m)?)?;
+    m.add_function(wrap_pyfunction!(call_tool, m)?)?;
     m.add_function(wrap_pyfunction!(check_dependencies, m)?)?;
     m.add_function(wrap_pyfunction!(compose_run_function, m)?)?;
     m.add_class::<PythonRunStep>()?;

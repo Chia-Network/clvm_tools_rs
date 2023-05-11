@@ -14,6 +14,7 @@ use crate::compiler::comptypes::{CompileErr, CompilerOpts, IncludeDesc, IncludeP
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::util::ErrInto;
 
 #[derive(Clone, Debug)]
 enum IncludeType {
@@ -21,6 +22,8 @@ enum IncludeType {
     Processed(IncludeDesc, IncludeProcessType, Vec<u8>),
 }
 
+/// Given a specification of an include file, load up the forms inside it and
+/// return them (or an error if the file couldn't be read or wasn't a list).
 pub fn process_include(
     opts: Rc<dyn CompilerOpts>,
     include: IncludeDesc,
@@ -29,8 +32,10 @@ pub fn process_include(
     let content = filename_and_content.1;
     let start_of_file = Srcloc::start(&decode_string(&include.name));
 
+    // Because we're also subsequently returning CompileErr later in the pipe,
+    // this needs an explicit err map.
     parse_sexp(start_of_file.clone(), content.iter().copied())
-        .map_err(|e| CompileErr(e.0.clone(), e.1))
+        .err_into()
         .and_then(|x| match x[0].proper_list() {
             None => Err(CompileErr(
                 start_of_file,
@@ -98,10 +103,11 @@ fn process_embed(
             let mut symtab = HashMap::new();
             let newly_compiled = compile_clvm_text(
                 &mut allocator,
-                &opts.get_search_paths(),
+                opts.clone(),
                 &mut symtab,
                 &decoded_content,
                 &full_name,
+                true,
             )
             .map_err(|e| CompileErr(loc.clone(), format!("Subcompile failed: {}", e.1)))?;
             convert_from_clvm_rs(&mut allocator, loc.clone(), newly_compiled)
@@ -320,6 +326,9 @@ fn inject_std_macros(body: Rc<SExp>) -> SExp {
     }
 }
 
+/// Run the preprocessor over this code, which at present just finds (include ...)
+/// forms in the source and includes the content of in a combined list.  If a file
+/// can't be found via the directory list in CompilerOrs.
 pub fn preprocess(
     opts: Rc<dyn CompilerOpts>,
     includes: &mut Vec<IncludeDesc>,
@@ -335,7 +344,10 @@ pub fn preprocess(
     preprocess_(opts, includes, tocompile)
 }
 
-// Visit all files used during compilation.
+/// Visit all files used during compilation.
+/// This reports a list of all files used while compiling the input file, via any
+/// form that causes compilation to include another file.  The file names are path
+/// expanded based on the include path they were found in (from opts).
 pub fn gather_dependencies(
     opts: Rc<dyn CompilerOpts>,
     real_input_path: &str,

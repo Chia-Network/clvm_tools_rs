@@ -4,7 +4,7 @@ use std::rc::Rc;
 use clvmr::allocator::{Allocator, NodePtr, SExp};
 use clvmr::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use crate::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{proper_list, rest};
 use crate::classic::clvm_tools::stages::assemble;
@@ -15,17 +15,24 @@ use crate::classic::clvm_tools::stages::stage_2::operators::full_path_for_filena
 
 use crate::compiler::sexp::decode_string;
 
+/// An object that represents file contents that were found when fulfilling a
+/// form that requested some data be embedded at compile time in this program.
 pub struct PresentFile {
     pub data: Vec<u8>,
     pub full_path: String,
     pub search_paths: Vec<String>,
 }
 
+/// Given u8 data from a hex file, build an sexp from it.
+/// This is used for the compile-file and embed-file feature.
 pub fn convert_hex_to_sexp(
     allocator: &mut Allocator,
     file_data: &[u8],
 ) -> Result<NodePtr, EvalErr> {
-    let content_bytes = Bytes::new(Some(BytesFromType::Hex(decode_string(file_data))));
+    let content_bytes = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(decode_string(
+        file_data,
+    ))))
+    .map_err(|e| EvalErr(allocator.null(), e.to_string()))?;
     let mut reader_stream = Stream::new(Some(content_bytes));
     Ok(sexp_from_stream(
         allocator,
@@ -35,12 +42,29 @@ pub fn convert_hex_to_sexp(
     .1)
 }
 
+/// Given a runner (which in the case of classic, contains the search paths as
+/// reading a file is done by evaluating a clvm program on this special compile
+/// time runner), try to find a file to embed given its name.  Try to report an
+/// error nicely by using the form the user gave (parent_sexp) in the error
+/// report.
 pub fn read_file(
     runner: Rc<dyn TRunProgram>,
     allocator: &mut Allocator,
     parent_sexp: NodePtr,
     filename: &str,
 ) -> Result<PresentFile, EvalErr> {
+    let name = allocator.new_atom(filename.as_bytes())?;
+    let prog = assemble(
+        allocator,
+        "(_read (_full_path_for_name 1))"
+    )?;
+    let assembled_sexp = runner.run_program(
+        allocator,
+        prog,
+        name,
+        None
+    )?;
+
     let search_paths = get_search_paths(runner, allocator)?;
     let full_path = full_path_for_filename(parent_sexp, filename, &search_paths)?;
 
@@ -53,6 +77,11 @@ pub fn read_file(
         })
 }
 
+/// Given an sexp representing an embedding preprocessor form of some kind such
+/// as (embed-file constant-name kind filename)
+/// or (compile-file constant-name filename)
+/// Return the resulting constant name and a quoted expression suitable for use
+/// as a constant or an error if the file wasn't found.
 pub fn process_embed_file(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
