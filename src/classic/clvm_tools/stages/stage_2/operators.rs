@@ -195,7 +195,7 @@ impl CompilerOperatorsInternal {
 
         Ok(PresentFile {
             data: content,
-            full_path: full_path,
+            full_path,
         })
     }
 
