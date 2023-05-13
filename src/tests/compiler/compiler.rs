@@ -1,15 +1,23 @@
 use std::collections::HashMap;
+use std::fs;
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
+use crate::classic::clvm_tools::binutils::disassemble;
+use crate::classic::clvm_tools::clvmc::compile_clvm_text;
+use crate::classic::clvm_tools::cmds::{OpcConversion, OpdConversion, TConversion};
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use crate::classic::clvm_tools::sha256tree;
+
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+
+use crate::tests::classic::run::{do_basic_run, do_basic_brun};
 
 const TEST_TIMEOUT: usize = 1000000;
 
@@ -1204,4 +1212,41 @@ fn test_inline_in_assign_not_actually_recursive() {
     .to_string();
     let res = run_string(&prog, &"()".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "9999");
+}
+
+#[test]
+fn test_embedded_compile_via_python_interface() {
+    let mut allocator = Allocator::new();
+    let mut opts: Rc<dyn CompilerOpts> =
+        Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()))
+        .set_search_paths(&["resources/tests".to_string()]);
+    let mut symtab = HashMap::new();
+    let input_file = "resources/tests/test_treehash_constant_21_2.cl";
+    let file_content = fs::read_to_string(input_file).expect("should exist");
+
+    let result_compiled = compile_clvm_text(
+        &mut allocator,
+        opts.clone(),
+        &mut symtab,
+        &file_content,
+        &input_file,
+        false
+    ).expect("should compile");
+    let result_text = disassemble(&mut allocator, result_compiled);
+    let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
+        .trim()
+        .to_string();
+
+    // Test that run matches
+    let compiled = compile_clvm_text(
+        &mut allocator,
+        opts.clone(),
+        &mut symtab,
+        &file_content,
+        &input_file,
+        false
+    ).expect("should compile");
+    let expect_hash = sha256tree::sha256tree(&mut allocator, compiled);
+
+    assert_eq!(result_hash, result_hash);
 }
