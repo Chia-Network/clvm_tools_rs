@@ -1,4 +1,3 @@
-use std::fs;
 use std::rc::Rc;
 
 use clvmr::allocator::{Allocator, NodePtr, SExp};
@@ -6,12 +5,8 @@ use clvmr::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
-use crate::classic::clvm::sexp::{enlist, First, proper_list, NodeSel, rest, SelectNode, ThisNode};
-use crate::classic::clvm_tools::binutils::{assemble, disassemble};
+use crate::classic::clvm::sexp::{enlist, NodeSel, SelectNode, ThisNode};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
-use crate::classic::clvm_tools::stages::stage_2::compile::get_search_paths;
-use crate::classic::clvm_tools::stages::stage_2::helpers::quote;
-use crate::classic::clvm_tools::stages::stage_2::operators::full_path_for_filename;
 
 use crate::compiler::sexp::decode_string;
 
@@ -55,19 +50,18 @@ pub fn process_embed_file(
     let env_atom = allocator.new_atom(&[1])?;
     let command = enlist(allocator, &[command_name, env_atom])?;
 
-    let result = runner.run_program(
-        allocator,
-        command,
-        declaration_sexp,
-        None
-    )?.1;
+    let result = runner
+        .run_program(allocator, command, declaration_sexp, None)?
+        .1;
 
-    eprintln!("_embed result {}", disassemble(allocator, result));
-
-    let NodeSel::Cons(name, content) = NodeSel::Cons(ThisNode::Here, ThisNode::Here).select_nodes(allocator, result)?;
+    let NodeSel::Cons(name, content) =
+        NodeSel::Cons(ThisNode::Here, ThisNode::Here).select_nodes(allocator, result)?;
     if let SExp::Atom(name_buf) = allocator.sexp(name) {
         Ok((allocator.buf(&name_buf).to_vec(), content))
     } else {
-        Err(EvalErr(declaration_sexp, "Wrong result from embed primitive".to_string()))
+        Err(EvalErr(
+            declaration_sexp,
+            "Wrong result from embed primitive".to_string(),
+        ))
     }
 }

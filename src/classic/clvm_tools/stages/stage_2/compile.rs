@@ -832,24 +832,16 @@ pub fn make_symbols_name(current_filename: &str, name: &str) -> String {
 pub fn compile_file(
     runner: Rc<dyn TRunProgram>,
     allocator: &mut Allocator,
-    parent_sexp: NodePtr,
     name: &str,
     filename: &str,
 ) -> Response {
-    eprintln!("parent_sexp {}", disassemble(allocator, parent_sexp));
     let compile_operator = allocator.new_atom(b"_run_compiler")?;
     let env_atom = allocator.new_atom(&[1])?;
     let filename_atom = allocator.new_atom(filename.as_bytes())?;
     let name_atom = allocator.new_atom(name.as_bytes())?;
     let compile_env = enlist(allocator, &[filename_atom, name_atom])?;
     let compile_command = enlist(allocator, &[compile_operator, env_atom])?;
-    eprintln!("compile_command {}", disassemble(allocator, compile_command));
-    let compiled = runner.run_program(
-        allocator,
-        compile_command,
-        compile_env,
-        None
-    )?;
+    let compiled = runner.run_program(allocator, compile_command, compile_env, None)?;
 
     Ok(compiled)
 }
@@ -869,7 +861,6 @@ pub fn process_compile_file(
         let compiled_output = compile_file(
             runner,
             allocator,
-            declaration_sexp,
             &Bytes::new(Some(BytesFromType::Raw(name.clone()))).decode(),
             &Bytes::new(Some(BytesFromType::Raw(b_name))).decode(),
         )?;

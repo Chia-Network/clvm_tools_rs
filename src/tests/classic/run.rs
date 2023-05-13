@@ -758,8 +758,8 @@ fn test_treehash_constant_21_2() {
         "resources/tests".to_string(),
         "resources/tests/test_treehash_constant_21_2.cl".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
         .trim()
         .to_string();
@@ -773,12 +773,12 @@ fn test_treehash_constant_21_2() {
         "resources/tests".to_string(),
         "resources/tests/secret_number2.cl".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
 
     let hexed = OpcConversion {}.invoke(&mut allocator, &compiled).unwrap();
     let sexp = OpdConversion {}
-    .invoke(&mut allocator, &hexed.rest())
+        .invoke(&mut allocator, &hexed.rest())
         .unwrap();
     let tree_hash = format!("0x{}", sha256tree(&mut allocator, *sexp.first()).hex());
 

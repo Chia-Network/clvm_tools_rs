@@ -14,9 +14,9 @@ use clvm_rs::run_program::run_program;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 
 use crate::classic::clvm::keyword_from_atom;
-use crate::classic::clvm::sexp::{enlist, First, proper_list, NodeSel, rest, Rest, SelectNode, ThisNode};
+use crate::classic::clvm::sexp::{proper_list, rest, First, NodeSel, SelectNode, ThisNode};
 
-use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemble_to_ir_with_kw, disassemble};
+use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemble_to_ir_with_kw};
 use crate::classic::clvm_tools::clvmc::{compile_clvm_text, write_sym_output};
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::ir::writer::write_ir_to_stream;
@@ -24,7 +24,9 @@ use crate::classic::clvm_tools::sha256tree::TreeHash;
 use crate::classic::clvm_tools::stages::stage_0::{
     DefaultProgramRunner, RunProgramOption, TRunProgram,
 };
-use crate::classic::clvm_tools::stages::stage_2::compile::{do_com_prog_for_dialect, make_symbols_name};
+use crate::classic::clvm_tools::stages::stage_2::compile::{
+    do_com_prog_for_dialect, make_symbols_name,
+};
 use crate::classic::clvm_tools::stages::stage_2::optimize::do_optimize;
 use crate::classic::clvm_tools::stages::stage_2::reader::{convert_hex_to_sexp, PresentFile};
 
@@ -167,35 +169,38 @@ impl CompilerOperatorsInternal {
         borrow.clone()
     }
 
-    fn primitive_read_internal(&self, allocator: &mut Allocator, parent_sexp: NodePtr, filename: &str) -> Result<PresentFile, EvalErr> {
+    fn primitive_read_internal(
+        &self,
+        allocator: &mut Allocator,
+        parent_sexp: NodePtr,
+        filename: &str,
+    ) -> Result<PresentFile, EvalErr> {
         // Use the read interface in CompilerOpts if we have one.
-        let (full_path, content) =
-            if let Some(opts) = self.get_compiler_opts() {
-                eprintln!("read with opts: {}", filename);
-                eprintln!("read_with_include_paths: {:?}", opts.get_search_paths());
-                if let Ok((filename, content)) =
-                    opts.read_new_file(self.source_file.clone(), filename.to_string())
-                {
-                    (filename, content)
-                } else {
-                    return Err(EvalErr(allocator.null(), "Failed to read file".to_string()));
-                }
+        let (full_path, content) = if let Some(opts) = self.get_compiler_opts() {
+            if let Ok((filename, content)) =
+                opts.read_new_file(self.source_file.clone(), filename.to_string())
+            {
+                (filename, content)
             } else {
-                let full_path = full_path_for_filename(parent_sexp, filename, &self.search_paths)?;
-                // Use the filesystem like normal if the opts couldn't find
-                // the file.
-                eprintln!("try read file {}", full_path);
-                let content = fs::read(&full_path)
-                    .map_err(|_| EvalErr(allocator.null(), "Failed to read file".to_string()))?;
-                (full_path, content)
-            };
+                return Err(EvalErr(allocator.null(), "Failed to read file".to_string()));
+            }
+        } else {
+            let full_path = full_path_for_filename(parent_sexp, filename, &self.search_paths)?;
+            // Use the filesystem like normal if the opts couldn't find
+            // the file.
+            let content = fs::read(&full_path)
+                .map_err(|_| EvalErr(allocator.null(), "Failed to read file".to_string()))?;
+            (full_path, content)
+        };
 
-        Ok(PresentFile { data: content, full_path: full_path })
+        Ok(PresentFile {
+            data: content,
+            full_path: full_path,
+        })
     }
 
     fn read(&self, allocator: &mut Allocator, sexp: NodePtr) -> Response {
-        let First::Here(f) =
-            First::Here(ThisNode::Here).select_nodes(allocator, sexp)?;
+        let First::Here(f) = First::Here(ThisNode::Here).select_nodes(allocator, sexp)?;
         match allocator.sexp(f) {
             SExp::Atom(b) => {
                 let filename =
@@ -204,7 +209,8 @@ impl CompilerOperatorsInternal {
                 read_ir(&decode_string(&result.data))
                     .map_err(|e| EvalErr(allocator.null(), e.to_string()))
                     .and_then(|ir| {
-                        assemble_from_ir(allocator, Rc::new(ir)).map(|ir_sexp| Reduction(1, ir_sexp))
+                        assemble_from_ir(allocator, Rc::new(ir))
+                            .map(|ir_sexp| Reduction(1, ir_sexp))
                     })
             }
             _ => Err(EvalErr(
@@ -222,9 +228,8 @@ impl CompilerOperatorsInternal {
     fn embed(&self, allocator: &mut Allocator, embed_args: NodePtr) -> Response {
         let First::Here(declaration_sexp) =
             First::Here(ThisNode::Here).select_nodes(allocator, embed_args)?;
-        eprintln!("embed declaration_sexp {}", disassemble(allocator, declaration_sexp));
         let rest_of_decl = rest(allocator, declaration_sexp)?;
-        let (name_node, name, kind, filename) =
+        let (name_node, kind, filename) =
             if let Some(l) = proper_list(allocator, rest_of_decl, true) {
                 if l.len() != 3 {
                     return Err(EvalErr(
@@ -233,12 +238,12 @@ impl CompilerOperatorsInternal {
                     ));
                 }
 
-                if let (SExp::Atom(name), SExp::Atom(kind), SExp::Atom(filename)) = (
+                if let (SExp::Atom(_name), SExp::Atom(kind), SExp::Atom(filename)) = (
                     allocator.sexp(l[0]),
                     allocator.sexp(l[1]),
-                    allocator.sexp(l[2])
+                    allocator.sexp(l[2]),
                 ) {
-                    (l[0], name, kind, filename)
+                    (l[0], kind, filename)
                 } else {
                     return Err(EvalErr(
                         declaration_sexp,
@@ -268,16 +273,15 @@ impl CompilerOperatorsInternal {
         // bin
         // hex
         // sexp
-        let processed_data =
-            if kind_buf == b"bin" {
-                allocator.new_atom(&file.data)?
-            } else if kind_buf == b"hex" {
-                convert_hex_to_sexp(allocator, &file.data)?
-            } else if kind_buf == b"sexp" {
-                assemble(allocator, &decode_string(&file.data))?
-            } else {
-                return Err(EvalErr(declaration_sexp, "no such embed kind".to_string()));
-            };
+        let processed_data = if kind_buf == b"bin" {
+            allocator.new_atom(&file.data)?
+        } else if kind_buf == b"hex" {
+            convert_hex_to_sexp(allocator, &file.data)?
+        } else if kind_buf == b"sexp" {
+            assemble(allocator, &decode_string(&file.data))?
+        } else {
+            return Err(EvalErr(declaration_sexp, "no such embed kind".to_string()));
+        };
 
         let result = allocator.new_pair(name_node, processed_data)?;
         Ok(Reduction(1, result))
@@ -331,8 +335,6 @@ impl CompilerOperatorsInternal {
             if let SExp::Atom(b) = allocator.sexp(l) {
                 let filename =
                     Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
-                eprintln!("try find file {}", filename);
-
                 // If we have a compiler opts injected, let that handle reading
                 // files.  The name will bubble up to the _read function.
                 if self.get_compiler_opts().is_some() {
@@ -389,39 +391,37 @@ impl CompilerOperatorsInternal {
     pub fn run_compiler(
         &self,
         allocator: &mut Allocator,
-        sexp: NodePtr
+        sexp: NodePtr,
     ) -> Result<Reduction, EvalErr> {
-        eprintln!("in run_compiler {}", disassemble(allocator, sexp));
         let mut symtab = HashMap::new();
         let First::Here(NodeSel::Cons(compile_arg, First::Here(varname_arg))) =
-            First::Here(NodeSel::Cons(ThisNode::Here, First::Here(ThisNode::Here))).select_nodes(allocator, sexp)?;
-        eprintln!("compile_arg {}", disassemble(allocator, compile_arg));
-        let name =
-            if let SExp::Atom(b) = allocator.sexp(compile_arg) {
-                allocator.buf(&b).to_vec()
-            } else {
-                return Err(EvalErr(sexp, "malformed _run_compiler arguments: bad filename".to_string()));
-            };
+            First::Here(NodeSel::Cons(ThisNode::Here, First::Here(ThisNode::Here)))
+                .select_nodes(allocator, sexp)?;
+        let name = if let SExp::Atom(b) = allocator.sexp(compile_arg) {
+            allocator.buf(&b).to_vec()
+        } else {
+            return Err(EvalErr(
+                sexp,
+                "malformed _run_compiler arguments: bad filename".to_string(),
+            ));
+        };
 
-        let varname =
-            if let SExp::Atom(b) = allocator.sexp(varname_arg) {
-                allocator.buf(&b).to_vec()
-            } else {
-                return Err(EvalErr(sexp, "malformed _run_compiler arguments: bad varname".to_string()));
-            };
+        let varname = if let SExp::Atom(b) = allocator.sexp(varname_arg) {
+            allocator.buf(&b).to_vec()
+        } else {
+            return Err(EvalErr(
+                sexp,
+                "malformed _run_compiler arguments: bad varname".to_string(),
+            ));
+        };
 
-        eprintln!("name is {}", decode_string(&name));
-        let file = self.primitive_read_internal(
-            allocator,
-            sexp,
-            &decode_string(&name)
-        )?;
+        let file = self.primitive_read_internal(allocator, sexp, &decode_string(&name))?;
 
-        eprintln!("got content {}", decode_string(&file.data));
         let compiled_res = compile_clvm_text(
             allocator,
             self.get_compiler_opts().unwrap_or_else(|| {
-                Rc::new(DefaultCompilerOpts::new(&self.source_file)).set_search_paths(&self.search_paths)
+                Rc::new(DefaultCompilerOpts::new(&self.source_file))
+                    .set_search_paths(&self.search_paths)
             }),
             &mut symtab,
             &decode_string(&file.data),
@@ -429,15 +429,10 @@ impl CompilerOperatorsInternal {
             self.get_compiler_opts().is_some(),
         );
 
-        eprintln!("compiled_res {compiled_res:?}");
-
         let compiled = compiled_res?;
 
-        eprintln!("got program {}", disassemble(allocator, compiled));
-
         // Write symbols for the compiled inner module.
-        let target_symbols_name =
-            make_symbols_name(&self.source_file, &decode_string(&varname));
+        let target_symbols_name = make_symbols_name(&self.source_file, &decode_string(&varname));
 
         // Not a hard error if we can't write the symbols,
         // given the way most write chialisp.

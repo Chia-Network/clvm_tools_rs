@@ -21,9 +21,7 @@ use crate::classic::clvm_tools::stages::stage_2::inline::{
     formulate_path_selections_for_destructuring, is_at_capture, is_inline_destructure,
 };
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
-use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file};
-
-use crate::compiler::sexp::decode_string;
+use crate::classic::clvm_tools::stages::stage_2::reader::process_embed_file;
 
 lazy_static! {
     pub static ref MAIN_NAME: String = "".to_string();
@@ -180,7 +178,6 @@ fn build_used_constants_names(
 fn parse_include(
     allocator: &mut Allocator,
     parent_sexp: NodePtr,
-    name_node: NodePtr,
     name: &[u8],
     namespace: &mut HashSet<Vec<u8>>,
     functions: &mut HashMap<Vec<u8>, NodePtr>,
@@ -191,16 +188,15 @@ fn parse_include(
 ) -> Result<(), EvalErr> {
     let assembled_read = assemble(allocator, "(_read 1)")?;
     let name_atom = allocator.new_atom(name)?;
-    let assemble_result = run_program.run_program(
-        allocator,
-        assembled_read,
-        name_atom,
-        None
-    )?.1;
-    eprintln!("read result {}", disassemble(allocator, assemble_result));
+    let assemble_result = run_program
+        .run_program(allocator, assembled_read, name_atom, None)?
+        .1;
 
     match proper_list(allocator, assemble_result, true) {
-        None => { Err(EvalErr(parent_sexp, "include returned malformed result".to_string())) },
+        None => Err(EvalErr(
+            parent_sexp,
+            "include returned malformed result".to_string(),
+        )),
         Some(assembled) => {
             for sexp in assembled {
                 parse_mod_sexp(
@@ -211,9 +207,9 @@ fn parse_include(
                     constants,
                     delayed_constants,
                     macros,
-                    run_program.clone()
+                    run_program.clone(),
                 )?;
-            };
+            }
             Ok(())
         }
     }
@@ -337,34 +333,36 @@ fn parse_mod_sexp(
         parse_include(
             allocator,
             declaration_sexp,
-            name_node,
             &name,
             namespace,
             functions,
             constants,
             delayed_constants,
             macros,
-            run_program.clone()
+            run_program.clone(),
         )
     } else if op == "embed-file".as_bytes() {
-        let (name, constant) = process_embed_file(
-            allocator, run_program.clone(), declaration_sexp
-        )?;
-        eprintln!("embed-file {} {}", decode_string(&name), disassemble(allocator, constant));
+        let (name, constant) =
+            process_embed_file(allocator, run_program.clone(), declaration_sexp)?;
         let quote_id = allocator.new_atom(&[1])?;
         let quoted = allocator.new_pair(quote_id, constant)?;
         constants.insert(name, quoted);
         Ok(())
     } else if op == "compile-file".as_bytes() {
-        let (name, constant) = process_compile_file(
-            allocator, run_program.clone(), declaration_sexp, name
-        )?;
+        let (name, constant) =
+            process_compile_file(allocator, run_program.clone(), declaration_sexp, name)?;
         let quote_id = allocator.new_atom(&[1])?;
         let quoted = allocator.new_pair(quote_id, constant)?;
         constants.insert(name, quoted);
         Ok(())
     } else if namespace.contains(&name) {
-        Err(EvalErr(declaration_sexp, format!("symbol \"{}\" redefined", Bytes::new(Some(BytesFromType::Raw(name))).decode())))
+        Err(EvalErr(
+            declaration_sexp,
+            format!(
+                "symbol \"{}\" redefined",
+                Bytes::new(Some(BytesFromType::Raw(name))).decode()
+            ),
+        ))
     } else {
         namespace.insert(name.to_vec());
 
@@ -395,7 +393,10 @@ fn parse_mod_sexp(
             delayed_constants.insert(name, definition);
             Ok(())
         } else {
-            Err(EvalErr(declaration_sexp, "expected defun, defmacro, defconst, compile-file or defconstant".to_string()))
+            Err(EvalErr(
+                declaration_sexp,
+                "expected defun, defmacro, defconst, compile-file or defconstant".to_string(),
+            ))
         }
     }
 }

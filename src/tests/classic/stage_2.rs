@@ -1,10 +1,8 @@
 use clvmr::allocator::Allocator;
 use std::collections::HashMap;
-use std::fs;
 use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::Stream;
-use crate::classic::clvm::sexp::rest;
 use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemble};
 use crate::classic::clvm_tools::clvmc::compile_clvm_text;
 use crate::classic::clvm_tools::cmds::call_tool;
@@ -183,16 +181,13 @@ fn test_present_file_smoke_not_exists() {
     let mut allocator = Allocator::new();
     let runner =
         run_program_for_search_paths("*test*", &vec!["resources/tests".to_string()], false);
-    let form = assemble(&mut allocator, "(embed test-file sexp test-embed-not-exist.sexp)")
-        .expect("should assemble");
-    let sexp_triggering_read = assemble(&mut allocator, "(_embed 1)")
-        .expect("should assemble");
-    let res = runner.run_program(
+    let form = assemble(
         &mut allocator,
-        sexp_triggering_read,
-        form,
-        None
-    );
+        "(embed test-file sexp test-embed-not-exist.sexp)",
+    )
+    .expect("should assemble");
+    let sexp_triggering_read = assemble(&mut allocator, "(_embed 1)").expect("should assemble");
+    let res = runner.run_program(&mut allocator, sexp_triggering_read, form, None);
     assert!(res.is_err());
 }
 
@@ -201,16 +196,13 @@ fn test_present_file_smoke_exists() {
     let mut allocator = Allocator::new();
     let runner =
         run_program_for_search_paths("*test*", &vec!["resources/tests".to_string()], false);
-    let form = assemble(&mut allocator, "(embed test-file sexp embed.sexp)")
-        .expect("should assemble");
-    let sexp_triggering_read = assemble(&mut allocator, "(_embed 1)")
-        .expect("should assemble");
-    let res = runner.run_program(
-        &mut allocator,
-        sexp_triggering_read,
-        form,
-        None
-    ).expect("should run and return data").1;
+    let form =
+        assemble(&mut allocator, "(embed test-file sexp embed.sexp)").expect("should assemble");
+    let sexp_triggering_read = assemble(&mut allocator, "(_embed 1)").expect("should assemble");
+    let res = runner
+        .run_program(&mut allocator, sexp_triggering_read, form, None)
+        .expect("should run and return data")
+        .1;
     assert_eq!(disassemble(&mut allocator, res), "(\"test-file\" 23 24 25)");
 }
 
@@ -242,15 +234,10 @@ fn test_process_embed_file_as_sexp_in_an_unexpected_location() {
         &vec!["resources/tests/stage_2".to_string()],
         false,
     );
-    let declaration_sexp = assemble(&mut allocator, "(embed test-file hex act.clvm.hex)").expect("should assemble");
-    let sexp_triggering_read = assemble(&mut allocator, "(_embed 1)")
-        .expect("should assemble");
-    let res = runner.run_program(
-        &mut allocator,
-        sexp_triggering_read,
-        declaration_sexp,
-        None
-    );
+    let declaration_sexp =
+        assemble(&mut allocator, "(embed test-file hex act.clvm.hex)").expect("should assemble");
+    let sexp_triggering_read = assemble(&mut allocator, "(_embed 1)").expect("should assemble");
+    let res = runner.run_program(&mut allocator, sexp_triggering_read, declaration_sexp, None);
     assert!(res.is_err());
 }
 
@@ -263,16 +250,10 @@ fn test_process_embed_file_as_sexp_in_an_expected_location() {
         &vec!["resources/tests/steprun".to_string()],
         false,
     );
-    let declaration_sexp = assemble(&mut allocator, "(embed test-file hex act.clvm.hex)")
-        .expect("should assemble");
-    let sexp_triggering_read = assemble(&mut allocator, "(_embed 1)")
-        .expect("should assemble");
-    let res = runner.run_program(
-        &mut allocator,
-        sexp_triggering_read,
-        declaration_sexp,
-        None
-    );
+    let declaration_sexp =
+        assemble(&mut allocator, "(embed test-file hex act.clvm.hex)").expect("should assemble");
+    let sexp_triggering_read = assemble(&mut allocator, "(_embed 1)").expect("should assemble");
+    let res = runner.run_program(&mut allocator, sexp_triggering_read, declaration_sexp, None);
     assert!(res.is_err());
 }
 

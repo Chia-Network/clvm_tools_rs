@@ -6,9 +6,8 @@ use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::clvmc::compile_clvm_text;
-use crate::classic::clvm_tools::cmds::{OpcConversion, OpdConversion, TConversion};
-use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::classic::clvm_tools::sha256tree;
+use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
@@ -17,7 +16,7 @@ use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
-use crate::tests::classic::run::{do_basic_run, do_basic_brun};
+use crate::tests::classic::run::do_basic_brun;
 
 const TEST_TIMEOUT: usize = 1000000;
 
@@ -1217,8 +1216,7 @@ fn test_inline_in_assign_not_actually_recursive() {
 #[test]
 fn test_embedded_compile_via_python_interface() {
     let mut allocator = Allocator::new();
-    let mut opts: Rc<dyn CompilerOpts> =
-        Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()))
+    let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()))
         .set_search_paths(&["resources/tests".to_string()]);
     let mut symtab = HashMap::new();
     let input_file = "resources/tests/test_treehash_constant_21_2.cl";
@@ -1230,23 +1228,30 @@ fn test_embedded_compile_via_python_interface() {
         &mut symtab,
         &file_content,
         &input_file,
-        false
-    ).expect("should compile");
+        false,
+    )
+    .expect("should compile");
     let result_text = disassemble(&mut allocator, result_compiled);
     let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
         .trim()
         .to_string();
 
+    eprintln!("result_hash {}", result_hash);
+
     // Test that run matches
+    let secret_number2 = "resources/tests/secret_number2.cl";
+    let secret_number2_text = fs::read_to_string(secret_number2).expect("should load");
     let compiled = compile_clvm_text(
         &mut allocator,
         opts.clone(),
         &mut symtab,
-        &file_content,
-        &input_file,
-        false
-    ).expect("should compile");
+        &secret_number2_text,
+        &secret_number2,
+        false,
+    )
+    .expect("should compile");
+    eprintln!("compiled code {}", disassemble(&mut allocator, compiled));
     let expect_hash = sha256tree::sha256tree(&mut allocator, compiled);
 
-    assert_eq!(result_hash, result_hash);
+    assert_eq!(result_hash, format!("0x{}", expect_hash.hex()));
 }
