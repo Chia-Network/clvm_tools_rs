@@ -101,9 +101,12 @@ fn process_embed(
         IncludeProcessType::Compiled => {
             let decoded_content = decode_string(&content);
             let mut symtab = HashMap::new();
+            // Reset optimization so compile_clvm_text can set what it wants.
+            let de_escalated_opts =
+                opts.set_optimize(false).set_frontend_opt(false);
             let newly_compiled = compile_clvm_text(
                 &mut allocator,
-                opts.clone(),
+                de_escalated_opts.clone(),
                 &mut symtab,
                 &decoded_content,
                 &full_name,

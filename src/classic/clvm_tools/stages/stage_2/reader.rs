@@ -6,8 +6,8 @@ use clvmr::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
-use crate::classic::clvm::sexp::{proper_list, rest};
-use crate::classic::clvm_tools::stages::assemble;
+use crate::classic::clvm::sexp::{enlist, First, proper_list, NodeSel, rest, SelectNode, ThisNode};
+use crate::classic::clvm_tools::binutils::{assemble, disassemble};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::compile::get_search_paths;
 use crate::classic::clvm_tools::stages::stage_2::helpers::quote;
@@ -20,7 +20,6 @@ use crate::compiler::sexp::decode_string;
 pub struct PresentFile {
     pub data: Vec<u8>,
     pub full_path: String,
-    pub search_paths: Vec<String>,
 }
 
 /// Given u8 data from a hex file, build an sexp from it.
@@ -42,41 +41,6 @@ pub fn convert_hex_to_sexp(
     .1)
 }
 
-/// Given a runner (which in the case of classic, contains the search paths as
-/// reading a file is done by evaluating a clvm program on this special compile
-/// time runner), try to find a file to embed given its name.  Try to report an
-/// error nicely by using the form the user gave (parent_sexp) in the error
-/// report.
-pub fn read_file(
-    runner: Rc<dyn TRunProgram>,
-    allocator: &mut Allocator,
-    parent_sexp: NodePtr,
-    filename: &str,
-) -> Result<PresentFile, EvalErr> {
-    let name = allocator.new_atom(filename.as_bytes())?;
-    let prog = assemble(
-        allocator,
-        "(_read (_full_path_for_name 1))"
-    )?;
-    let assembled_sexp = runner.run_program(
-        allocator,
-        prog,
-        name,
-        None
-    )?;
-
-    let search_paths = get_search_paths(runner, allocator)?;
-    let full_path = full_path_for_filename(parent_sexp, filename, &search_paths)?;
-
-    fs::read(full_path.clone())
-        .map_err(|x| EvalErr(parent_sexp, format!("error reading {full_path}: {x:?}")))
-        .map(|data| PresentFile {
-            data,
-            full_path,
-            search_paths,
-        })
-}
-
 /// Given an sexp representing an embedding preprocessor form of some kind such
 /// as (embed-file constant-name kind filename)
 /// or (compile-file constant-name filename)
@@ -87,70 +51,23 @@ pub fn process_embed_file(
     runner: Rc<dyn TRunProgram>,
     declaration_sexp: NodePtr,
 ) -> Result<(Vec<u8>, NodePtr), EvalErr> {
-    // Include the file's contents in the constant pool.
-    // The user can specify the format to read:
-    //
-    // bin
-    // hex
-    // sexp
-    let rest_of_decl = rest(allocator, declaration_sexp)?;
-    if let Some(l) = proper_list(allocator, rest_of_decl, true) {
-        if l.len() != 3 {
-            return Err(EvalErr(
-                declaration_sexp,
-                "must have a type and a name".to_string(),
-            ));
-        }
+    let command_name = allocator.new_atom(b"_embed")?;
+    let env_atom = allocator.new_atom(&[1])?;
+    let command = enlist(allocator, &[command_name, env_atom])?;
 
-        if let (SExp::Atom(name), SExp::Atom(kind), SExp::Atom(filename)) = (
-            allocator.sexp(l[0]),
-            allocator.sexp(l[1]),
-            allocator.sexp(l[2]),
-        ) {
-            // Note: we don't want to keep borrowing here because we
-            // need the mutable borrow below.
-            let name_buf = allocator.buf(&name).to_vec();
-            let kind_buf = allocator.buf(&kind).to_vec();
-            let filename_buf = allocator.buf(&filename).to_vec();
-            let file_data = if kind_buf == b"bin" {
-                let file = read_file(
-                    runner,
-                    allocator,
-                    declaration_sexp,
-                    &decode_string(&filename_buf),
-                )?;
-                allocator.new_atom(&file.data)?
-            } else if kind_buf == b"hex" {
-                let file = read_file(
-                    runner,
-                    allocator,
-                    declaration_sexp,
-                    &decode_string(&filename_buf),
-                )?;
-                convert_hex_to_sexp(allocator, &file.data)?
-            } else if kind_buf == b"sexp" {
-                let file = read_file(
-                    runner,
-                    allocator,
-                    declaration_sexp,
-                    &decode_string(&filename_buf),
-                )?;
-                assemble(allocator, &decode_string(&file.data))?
-            } else {
-                return Err(EvalErr(declaration_sexp, "no such embed kind".to_string()));
-            };
+    let result = runner.run_program(
+        allocator,
+        command,
+        declaration_sexp,
+        None
+    )?.1;
 
-            Ok((name_buf, quote(allocator, file_data)?))
-        } else {
-            Err(EvalErr(
-                declaration_sexp,
-                "malformed embed-file".to_string(),
-            ))
-        }
+    eprintln!("_embed result {}", disassemble(allocator, result));
+
+    let NodeSel::Cons(name, content) = NodeSel::Cons(ThisNode::Here, ThisNode::Here).select_nodes(allocator, result)?;
+    if let SExp::Atom(name_buf) = allocator.sexp(name) {
+        Ok((allocator.buf(&name_buf).to_vec(), content))
     } else {
-        Err(EvalErr(
-            declaration_sexp,
-            "must be a proper list".to_string(),
-        ))
+        Err(EvalErr(declaration_sexp, "Wrong result from embed primitive".to_string()))
     }
 }

@@ -15,7 +15,7 @@ use crate::classic::clvm_tools::stages::stage_2::compile::{
 };
 use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote, run};
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
-use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file, read_file};
+use crate::classic::clvm_tools::stages::stage_2::reader::process_embed_file;
 
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
 use crate::compiler::sexp::{decode_string, SExp};
@@ -183,13 +183,15 @@ fn test_present_file_smoke_not_exists() {
     let mut allocator = Allocator::new();
     let runner =
         run_program_for_search_paths("*test*", &vec!["resources/tests".to_string()], false);
-    let sexp_triggering_read = assemble(&mut allocator, "(embed-file test-file sexp embed.sexp)")
+    let form = assemble(&mut allocator, "(embed test-file sexp test-embed-not-exist.sexp)")
         .expect("should assemble");
-    let res = read_file(
-        runner,
+    let sexp_triggering_read = assemble(&mut allocator, "(_embed 1)")
+        .expect("should assemble");
+    let res = runner.run_program(
         &mut allocator,
         sexp_triggering_read,
-        "test-embed-not-exist.clsp",
+        form,
+        None
     );
     assert!(res.is_err());
 }
@@ -199,11 +201,17 @@ fn test_present_file_smoke_exists() {
     let mut allocator = Allocator::new();
     let runner =
         run_program_for_search_paths("*test*", &vec!["resources/tests".to_string()], false);
-    let sexp_triggering_read = assemble(&mut allocator, "(embed-file test-file sexp embed.sexp)")
+    let form = assemble(&mut allocator, "(embed test-file sexp embed.sexp)")
         .expect("should assemble");
-    let res = read_file(runner, &mut allocator, sexp_triggering_read, "embed.sexp")
-        .expect("should exist");
-    assert_eq!(decode_string(&res.data), "(23 24 25)");
+    let sexp_triggering_read = assemble(&mut allocator, "(_embed 1)")
+        .expect("should assemble");
+    let res = runner.run_program(
+        &mut allocator,
+        sexp_triggering_read,
+        form,
+        None
+    ).expect("should run and return data").1;
+    assert_eq!(disassemble(&mut allocator, res), "(\"test-file\" 23 24 25)");
 }
 
 #[test]
@@ -213,7 +221,7 @@ fn test_process_embed_file_as_sexp() {
         run_program_for_search_paths("*test*", &vec!["resources/tests".to_string()], false);
     let declaration_sexp = assemble(&mut allocator, "(embed-file test-embed sexp embed.sexp)")
         .expect("should assemble");
-    let want_exp = assemble(&mut allocator, "(q 23 24 25)").expect("should assemble");
+    let want_exp = assemble(&mut allocator, "(23 24 25)").expect("should assemble");
     let (name, content) =
         process_embed_file(&mut allocator, runner, declaration_sexp).expect("should work");
     assert_eq!(
@@ -234,13 +242,14 @@ fn test_process_embed_file_as_sexp_in_an_unexpected_location() {
         &vec!["resources/tests/stage_2".to_string()],
         false,
     );
-    let sexp_triggering_read = assemble(&mut allocator, "(embed-file test-file hex act.clvm.hex)")
+    let declaration_sexp = assemble(&mut allocator, "(embed test-file hex act.clvm.hex)").expect("should assemble");
+    let sexp_triggering_read = assemble(&mut allocator, "(_embed 1)")
         .expect("should assemble");
-    let res = read_file(
-        runner,
+    let res = runner.run_program(
         &mut allocator,
         sexp_triggering_read,
-        "fact.clvm.hex",
+        declaration_sexp,
+        None
     );
     assert!(res.is_err());
 }
@@ -254,18 +263,17 @@ fn test_process_embed_file_as_sexp_in_an_expected_location() {
         &vec!["resources/tests/steprun".to_string()],
         false,
     );
-    let sexp_triggering_read = assemble(&mut allocator, "(embed-file test-file hex act.clvm.hex)")
+    let declaration_sexp = assemble(&mut allocator, "(embed test-file hex act.clvm.hex)")
         .expect("should assemble");
-    let res = read_file(
-        runner,
+    let sexp_triggering_read = assemble(&mut allocator, "(_embed 1)")
+        .expect("should assemble");
+    let res = runner.run_program(
         &mut allocator,
         sexp_triggering_read,
-        "fact.clvm.hex",
-    )
-    .expect("should exist");
-    let real_file_content =
-        fs::read_to_string("resources/tests/steprun/fact.clvm.hex").expect("should exist");
-    assert_eq!(res.data, real_file_content.as_bytes().to_vec());
+        declaration_sexp,
+        None
+    );
+    assert!(res.is_err());
 }
 
 #[test]
@@ -280,7 +288,7 @@ fn test_process_embed_file_as_hex() {
     .expect("should assemble");
     let (name, content) =
         process_embed_file(&mut allocator, runner, declaration_sexp).expect("should work");
-    let matching_part_of_decl = rest(&mut allocator, content).expect("should be quoted");
+    eprintln!("content {}", disassemble(&mut allocator, content));
     let mut outstream = Stream::new(None);
     call_tool(
         &mut outstream,
@@ -293,7 +301,7 @@ fn test_process_embed_file_as_hex() {
     )
     .expect("should work");
     assert_eq!(
-        disassemble(&mut allocator, matching_part_of_decl),
+        disassemble(&mut allocator, content),
         decode_string(outstream.get_value().data())
     );
     assert_eq!(name, b"test-embed-from-hex");
@@ -372,7 +380,9 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
         inc_from: String,
         filename: String,
     ) -> Result<(String, Vec<u8>), CompileErr> {
+        eprintln!("read_new_file {}", filename);
         if let Some(content) = self.files.get(&filename) {
+            eprintln!("content {}", content);
             return Ok((filename.clone(), content.as_bytes().to_vec()));
         }
 

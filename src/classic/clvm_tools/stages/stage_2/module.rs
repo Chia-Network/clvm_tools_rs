@@ -21,7 +21,7 @@ use crate::classic::clvm_tools::stages::stage_2::inline::{
     formulate_path_selections_for_destructuring, is_at_capture, is_inline_destructure,
 };
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
-use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file, read_file};
+use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file};
 
 use crate::compiler::sexp::decode_string;
 
@@ -189,16 +189,17 @@ fn parse_include(
     macros: &mut Vec<(Vec<u8>, NodePtr)>,
     run_program: Rc<dyn TRunProgram>,
 ) -> Result<(), EvalErr> {
-    let read_in_data = read_file(
-        run_program.clone(),
+    let assembled_read = assemble(allocator, "(_read 1)")?;
+    let name_atom = allocator.new_atom(name)?;
+    let assemble_result = run_program.run_program(
         allocator,
-        parent_sexp,
-        &decode_string(name),
-    )?;
+        assembled_read,
+        name_atom,
+        None
+    )?.1;
+    eprintln!("read result {}", disassemble(allocator, assemble_result));
 
-    let assembled = assemble(allocator, &decode_string(&read_in_data.data))?;
-
-    match proper_list(allocator, assembled, true) {
+    match proper_list(allocator, assemble_result, true) {
         None => { Err(EvalErr(parent_sexp, "include returned malformed result".to_string())) },
         Some(assembled) => {
             for sexp in assembled {
@@ -349,13 +350,18 @@ fn parse_mod_sexp(
         let (name, constant) = process_embed_file(
             allocator, run_program.clone(), declaration_sexp
         )?;
-        constants.insert(name, constant);
+        eprintln!("embed-file {} {}", decode_string(&name), disassemble(allocator, constant));
+        let quote_id = allocator.new_atom(&[1])?;
+        let quoted = allocator.new_pair(quote_id, constant)?;
+        constants.insert(name, quoted);
         Ok(())
     } else if op == "compile-file".as_bytes() {
         let (name, constant) = process_compile_file(
             allocator, run_program.clone(), declaration_sexp, name
         )?;
-        constants.insert(name, constant);
+        let quote_id = allocator.new_atom(&[1])?;
+        let quoted = allocator.new_pair(quote_id, constant)?;
+        constants.insert(name, quoted);
         Ok(())
     } else if namespace.contains(&name) {
         Err(EvalErr(declaration_sexp, format!("symbol \"{}\" redefined", Bytes::new(Some(BytesFromType::Raw(name))).decode())))

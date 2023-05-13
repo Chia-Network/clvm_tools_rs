@@ -14,9 +14,9 @@ use clvm_rs::run_program::run_program;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 
 use crate::classic::clvm::keyword_from_atom;
-use crate::classic::clvm::sexp::{First, proper_list, ThisNode, SelectNode};
+use crate::classic::clvm::sexp::{enlist, First, proper_list, NodeSel, rest, Rest, SelectNode, ThisNode};
 
-use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble_to_ir_with_kw};
+use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemble_to_ir_with_kw, disassemble};
 use crate::classic::clvm_tools::clvmc::{compile_clvm_text, write_sym_output};
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::ir::writer::write_ir_to_stream;
@@ -26,7 +26,7 @@ use crate::classic::clvm_tools::stages::stage_0::{
 };
 use crate::classic::clvm_tools::stages::stage_2::compile::{do_com_prog_for_dialect, make_symbols_name};
 use crate::classic::clvm_tools::stages::stage_2::optimize::do_optimize;
-use crate::classic::clvm_tools::stages::stage_2::reader::read_file;
+use crate::classic::clvm_tools::stages::stage_2::reader::{convert_hex_to_sexp, PresentFile};
 
 use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::CompilerOpts;
@@ -167,47 +167,120 @@ impl CompilerOperatorsInternal {
         borrow.clone()
     }
 
-    fn read(&self, allocator: &mut Allocator, sexp: NodePtr) -> Response {
-        // Given a string containing the data in the file to parse, parse it or
-        // return EvalErr.
-        let parse_file_content = |allocator: &mut Allocator, content: &String| {
-            read_ir(content)
-                .map_err(|e| EvalErr(allocator.null(), e.to_string()))
-                .and_then(|ir| {
-                    assemble_from_ir(allocator, Rc::new(ir)).map(|ir_sexp| Reduction(1, ir_sexp))
-                })
-        };
-
-        match allocator.sexp(sexp) {
-            SExp::Pair(f, _) => match allocator.sexp(f) {
-                SExp::Atom(b) => {
-                    let filename =
-                        Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
-                    // Use the read interface in CompilerOpts if we have one.
-                    if let Some(opts) = self.get_compiler_opts() {
-                        if let Ok((_, content)) =
-                            opts.read_new_file(self.source_file.clone(), filename.clone())
-                        {
-                            return parse_file_content(allocator, &decode_string(&content));
-                        }
-                    }
-
-                    // Use the filesystem like normal if the opts couldn't find
-                    // the file.
-                    fs::read_to_string(filename)
-                        .map_err(|_| EvalErr(allocator.null(), "Failed to read file".to_string()))
-                        .and_then(|content| parse_file_content(allocator, &content))
+    fn primitive_read_internal(&self, allocator: &mut Allocator, parent_sexp: NodePtr, filename: &str) -> Result<PresentFile, EvalErr> {
+        // Use the read interface in CompilerOpts if we have one.
+        let (full_path, content) =
+            if let Some(opts) = self.get_compiler_opts() {
+                eprintln!("read with opts: {}", filename);
+                eprintln!("read_with_include_paths: {:?}", opts.get_search_paths());
+                if let Ok((filename, content)) =
+                    opts.read_new_file(self.source_file.clone(), filename.to_string())
+                {
+                    (filename, content)
+                } else {
+                    return Err(EvalErr(allocator.null(), "Failed to read file".to_string()));
                 }
-                _ => Err(EvalErr(
-                    allocator.null(),
-                    "filename is not an atom".to_string(),
-                )),
-            },
+            } else {
+                let full_path = full_path_for_filename(parent_sexp, filename, &self.search_paths)?;
+                // Use the filesystem like normal if the opts couldn't find
+                // the file.
+                eprintln!("try read file {}", full_path);
+                let content = fs::read(&full_path)
+                    .map_err(|_| EvalErr(allocator.null(), "Failed to read file".to_string()))?;
+                (full_path, content)
+            };
+
+        Ok(PresentFile { data: content, full_path: full_path })
+    }
+
+    fn read(&self, allocator: &mut Allocator, sexp: NodePtr) -> Response {
+        let First::Here(f) =
+            First::Here(ThisNode::Here).select_nodes(allocator, sexp)?;
+        match allocator.sexp(f) {
+            SExp::Atom(b) => {
+                let filename =
+                    Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
+                let result = self.primitive_read_internal(allocator, sexp, &filename)?;
+                read_ir(&decode_string(&result.data))
+                    .map_err(|e| EvalErr(allocator.null(), e.to_string()))
+                    .and_then(|ir| {
+                        assemble_from_ir(allocator, Rc::new(ir)).map(|ir_sexp| Reduction(1, ir_sexp))
+                    })
+            }
             _ => Err(EvalErr(
                 allocator.null(),
-                "given a program that is an atom".to_string(),
+                "filename is not an atom".to_string(),
             )),
         }
+    }
+
+    /// Given an sexp representing an embedding preprocessor form of some kind such
+    /// as (embed-file constant-name kind filename)
+    /// or (compile-file constant-name filename)
+    /// Return the resulting constant name and a quoted expression suitable for use
+    /// as a constant or an error if the file wasn't found.
+    fn embed(&self, allocator: &mut Allocator, embed_args: NodePtr) -> Response {
+        let First::Here(declaration_sexp) =
+            First::Here(ThisNode::Here).select_nodes(allocator, embed_args)?;
+        eprintln!("embed declaration_sexp {}", disassemble(allocator, declaration_sexp));
+        let rest_of_decl = rest(allocator, declaration_sexp)?;
+        let (name_node, name, kind, filename) =
+            if let Some(l) = proper_list(allocator, rest_of_decl, true) {
+                if l.len() != 3 {
+                    return Err(EvalErr(
+                        declaration_sexp,
+                        "must have a type and a name".to_string(),
+                    ));
+                }
+
+                if let (SExp::Atom(name), SExp::Atom(kind), SExp::Atom(filename)) = (
+                    allocator.sexp(l[0]),
+                    allocator.sexp(l[1]),
+                    allocator.sexp(l[2])
+                ) {
+                    (l[0], name, kind, filename)
+                } else {
+                    return Err(EvalErr(
+                        declaration_sexp,
+                        "malformed embed-file".to_string(),
+                    ));
+                }
+            } else {
+                return Err(EvalErr(
+                    declaration_sexp,
+                    "malformed embed-file".to_string(),
+                ));
+            };
+
+        // Note: we don't want to keep borrowing here because we
+        // need the mutable borrow below.
+        let kind_buf = allocator.buf(&kind).to_vec();
+        let filename_buf = allocator.buf(&filename).to_vec();
+        let file = self.primitive_read_internal(
+            allocator,
+            declaration_sexp,
+            &decode_string(&filename_buf),
+        )?;
+
+        // Include the file's contents in the constant pool.
+        // The user can specify the format to read:
+        //
+        // bin
+        // hex
+        // sexp
+        let processed_data =
+            if kind_buf == b"bin" {
+                allocator.new_atom(&file.data)?
+            } else if kind_buf == b"hex" {
+                convert_hex_to_sexp(allocator, &file.data)?
+            } else if kind_buf == b"sexp" {
+                assemble(allocator, &decode_string(&file.data))?
+            } else {
+                return Err(EvalErr(declaration_sexp, "no such embed kind".to_string()));
+            };
+
+        let result = allocator.new_pair(name_node, processed_data)?;
+        Ok(Reduction(1, result))
     }
 
     fn write(&self, allocator: &mut Allocator, sexp: NodePtr) -> Response {
@@ -258,6 +331,8 @@ impl CompilerOperatorsInternal {
             if let SExp::Atom(b) = allocator.sexp(l) {
                 let filename =
                     Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
+                eprintln!("try find file {}", filename);
+
                 // If we have a compiler opts injected, let that handle reading
                 // files.  The name will bubble up to the _read function.
                 if self.get_compiler_opts().is_some() {
@@ -316,36 +391,53 @@ impl CompilerOperatorsInternal {
         allocator: &mut Allocator,
         sexp: NodePtr
     ) -> Result<Reduction, EvalErr> {
+        eprintln!("in run_compiler {}", disassemble(allocator, sexp));
         let mut symtab = HashMap::new();
-        let First::Here(name_node) =
-            First::Here(ThisNode::Here).select_nodes(allocator, sexp)?;
+        let First::Here(NodeSel::Cons(compile_arg, First::Here(varname_arg))) =
+            First::Here(NodeSel::Cons(ThisNode::Here, First::Here(ThisNode::Here))).select_nodes(allocator, sexp)?;
+        eprintln!("compile_arg {}", disassemble(allocator, compile_arg));
         let name =
-            if let SExp::Atom(b) = allocator.sexp(name_node) {
+            if let SExp::Atom(b) = allocator.sexp(compile_arg) {
                 allocator.buf(&b).to_vec()
             } else {
-                return Err(EvalErr(sexp, "malformed _read arguments".to_string()));
+                return Err(EvalErr(sexp, "malformed _run_compiler arguments: bad filename".to_string()));
             };
 
-        let file = read_file(
-            self.runner.borrow().clone(),
+        let varname =
+            if let SExp::Atom(b) = allocator.sexp(varname_arg) {
+                allocator.buf(&b).to_vec()
+            } else {
+                return Err(EvalErr(sexp, "malformed _run_compiler arguments: bad varname".to_string()));
+            };
+
+        eprintln!("name is {}", decode_string(&name));
+        let file = self.primitive_read_internal(
             allocator,
             sexp,
             &decode_string(&name)
         )?;
-        let compiled = compile_clvm_text(
+
+        eprintln!("got content {}", decode_string(&file.data));
+        let compiled_res = compile_clvm_text(
             allocator,
             self.get_compiler_opts().unwrap_or_else(|| {
-                Rc::new(DefaultCompilerOpts::new(&self.source_file))
+                Rc::new(DefaultCompilerOpts::new(&self.source_file)).set_search_paths(&self.search_paths)
             }),
             &mut symtab,
             &decode_string(&file.data),
-            &file.full_path,
+            &decode_string(&varname),
             self.get_compiler_opts().is_some(),
-        )?;
+        );
+
+        eprintln!("compiled_res {compiled_res:?}");
+
+        let compiled = compiled_res?;
+
+        eprintln!("got program {}", disassemble(allocator, compiled));
 
         // Write symbols for the compiled inner module.
         let target_symbols_name =
-            make_symbols_name(&self.source_file, &decode_string(&name));
+            make_symbols_name(&self.source_file, &decode_string(&varname));
 
         // Not a hard error if we can't write the symbols,
         // given the way most write chialisp.
@@ -376,7 +468,9 @@ impl Dialect for CompilerOperatorsInternal {
         match allocator.sexp(op) {
             SExp::Atom(opname) => {
                 let opbuf = allocator.buf(&opname);
-                if opbuf == "_read".as_bytes() {
+                if opbuf == "_embed".as_bytes() {
+                    self.embed(allocator, sexp)
+                } else if opbuf == "_read".as_bytes() {
                     self.read(allocator, sexp)
                 } else if opbuf == "_write".as_bytes() {
                     self.write(allocator, sexp)

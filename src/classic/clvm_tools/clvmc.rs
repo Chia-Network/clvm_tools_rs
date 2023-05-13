@@ -48,6 +48,7 @@ pub fn write_sym_output(
     compiled_lookup: &HashMap<String, String>,
     path: &str,
 ) -> Result<(), String> {
+    eprintln!("write sym output {path}");
     let output = serde_json::to_string(compiled_lookup)
         .map_err(|_| "failed to serialize to json".to_string())?;
 
@@ -98,21 +99,34 @@ pub fn compile_clvm_text(
 ) -> Result<NodePtr, EvalErr> {
     let ir_src = read_ir(text).map_err(|s| EvalErr(allocator.null(), s.to_string()))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
+    eprintln!("assembled_sexp {} (compile_clvm_text) {}", input_path, disassemble(allocator, assembled_sexp));
 
     if let Some(dialect) = detect_modern(allocator, assembled_sexp) {
         let runner = Rc::new(DefaultProgramRunner::new());
+        eprintln!("modern compilation {}", text);
         let opts = opts.set_optimize(true).set_frontend_opt(dialect > 21);
 
         let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
-        let res = unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)));
+        if let Ok(u) = unopt_res.as_ref() {
+            eprintln!("unopt_res {}", u);
+        }
 
-        res.and_then(|x| {
+        let res = unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)));
+        if let Ok(r) = res.as_ref() {
+            eprintln!("res {}", r);
+        }
+
+        let out = res.and_then(|x| {
             convert_to_clvm_rs(allocator, x).map_err(|r| match r {
                 RunFailure::RunErr(l, x) => CompileErr(l, x),
                 RunFailure::RunExn(l, x) => CompileErr(l, x.to_string()),
             })
         })
-        .map_err(|s| EvalErr(allocator.null(), s.1))
+        .map_err(|s| EvalErr(allocator.null(), s.1))?;
+
+        eprintln!("back from compiler: {}", out);
+
+        Ok(out)
     } else {
         let compile_invoke_code = run(allocator);
         let input_sexp = allocator.new_pair(assembled_sexp, allocator.null())?;
@@ -122,6 +136,7 @@ pub fn compile_clvm_text(
         }
         let run_program_output =
             run_program.run_program(allocator, compile_invoke_code, input_sexp, None)?;
+        eprintln!("classic compile => {}", disassemble(allocator, run_program_output.1));
         Ok(run_program_output.1)
     }
 }

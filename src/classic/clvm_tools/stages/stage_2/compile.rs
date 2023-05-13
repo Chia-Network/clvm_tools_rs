@@ -836,16 +836,18 @@ pub fn compile_file(
     name: &str,
     filename: &str,
 ) -> Response {
+    eprintln!("parent_sexp {}", disassemble(allocator, parent_sexp));
     let compile_operator = allocator.new_atom(b"_run_compiler")?;
-    let quote_atom = allocator.new_atom(&[1])?;
+    let env_atom = allocator.new_atom(&[1])?;
     let filename_atom = allocator.new_atom(filename.as_bytes())?;
-    let quoted_filename = allocator.new_pair(quote_atom, filename_atom)?;
-    let compile_command_tail = allocator.new_pair(quoted_filename, allocator.null())?;
-    let compile_command = allocator.new_pair(compile_operator, compile_command_tail)?;
+    let name_atom = allocator.new_atom(name.as_bytes())?;
+    let compile_env = enlist(allocator, &[filename_atom, name_atom])?;
+    let compile_command = enlist(allocator, &[compile_operator, env_atom])?;
+    eprintln!("compile_command {}", disassemble(allocator, compile_command));
     let compiled = runner.run_program(
         allocator,
         compile_command,
-        allocator.null(),
+        compile_env,
         None
     )?;
 
@@ -872,7 +874,7 @@ pub fn process_compile_file(
             &Bytes::new(Some(BytesFromType::Raw(b_name))).decode(),
         )?;
 
-        Ok((name, quote(allocator, compiled_output.1)?))
+        Ok((name, compiled_output.1))
     } else {
         Err(EvalErr(declaration_sexp, "expected filename".to_string()))
     }

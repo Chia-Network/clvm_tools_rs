@@ -155,8 +155,11 @@ pub fn compile_pre_forms(
     pre_forms: &[Rc<SExp>],
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
+    eprintln!("compile_pre_forms {} with fe {} opt {}", pre_forms[0], opts.frontend_opt(), opts.optimize());
     // Resolve includes, convert program source to lexemes
     let p0 = frontend(opts.clone(), pre_forms)?;
+
+    eprintln!("fe {}", p0.to_sexp());
 
     let p1 = if opts.frontend_opt() {
         // Front end optimization
@@ -164,6 +167,8 @@ pub fn compile_pre_forms(
     } else {
         p0
     };
+
+    eprintln!("fe_opt {}", p1.to_sexp());
 
     // Transform let bindings, merging nested let scopes with the top namespace
     let hoisted_bindings = hoist_body_let_binding(None, p1.args.clone(), p1.exp.clone());
@@ -182,6 +187,8 @@ pub fn compile_pre_forms(
         helpers: combined_helpers,
         exp: expr,
     };
+
+    eprintln!("desugared {}", p2.to_sexp());
 
     // generate code from AST, optionally with optimization
     codegen(allocator, runner, opts, &p2, symbol_table)
