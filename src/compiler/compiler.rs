@@ -69,6 +69,7 @@ pub struct DefaultCompilerOpts {
     pub code_generator: Option<PrimaryCodegen>,
     pub in_defun: bool,
     pub stdenv: bool,
+    pub cmdline_opt: Option<bool>,
     pub optimize: bool,
     pub frontend_opt: bool,
     pub frontend_check_live: bool,
@@ -241,6 +242,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn stdenv(&self) -> bool {
         self.stdenv
     }
+    fn cmdline_opt(&self) -> Option<bool> {
+        self.cmdline_opt
+    }
     fn optimize(&self) -> bool {
         self.optimize
     }
@@ -273,6 +277,11 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.stdenv = new_stdenv;
+        Rc::new(copy)
+    }
+    fn set_cmdline_opt(&self, optimize: Option<bool>) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.cmdline_opt = optimize;
         Rc::new(copy)
     }
     fn set_optimize(&self, optimize: bool) -> Rc<dyn CompilerOpts> {
@@ -352,6 +361,7 @@ impl DefaultCompilerOpts {
             code_generator: None,
             in_defun: false,
             stdenv: true,
+            cmdline_opt: None,
             optimize: false,
             frontend_opt: false,
             frontend_check_live: true,

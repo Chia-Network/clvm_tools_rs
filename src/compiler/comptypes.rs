@@ -324,6 +324,8 @@ pub trait CompilerOpts {
     fn in_defun(&self) -> bool;
     /// Specifies whether the standard environment is injected (list, if etc).
     fn stdenv(&self) -> bool;
+    /// Whether cl21 was requested as -O on the command line (default via python).
+    fn cmdline_opt(&self) -> Option<bool>;
     /// Specifies whether certain basic optimizations are done during and after
     /// code generation.
     fn optimize(&self) -> bool;
@@ -349,6 +351,8 @@ pub trait CompilerOpts {
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts>;
     /// Set whether to inject the standard environment.
     fn set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts>;
+    /// Set original optimize.
+    fn set_cmdline_opt(&self, opt: Option<bool>) -> Rc<dyn CompilerOpts>;
     /// Set whether to run codegen optimization.
     fn set_optimize(&self, opt: bool) -> Rc<dyn CompilerOpts>;
     /// Set whether to run frontend optimization.

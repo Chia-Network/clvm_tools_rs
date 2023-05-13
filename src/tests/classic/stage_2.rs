@@ -333,6 +333,9 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
     fn stdenv(&self) -> bool {
         false
     }
+    fn cmdline_opt(&self) -> Option<bool> {
+        None
+    }
     fn optimize(&self) -> bool {
         false
     }
@@ -358,6 +361,9 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
         Rc::new(self.clone())
     }
     fn set_stdenv(&self, _new_stdenv: bool) -> Rc<dyn CompilerOpts> {
+        Rc::new(self.clone())
+    }
+    fn set_cmdline_opt(&self, _opt: Option<bool>) -> Rc<dyn CompilerOpts> {
         Rc::new(self.clone())
     }
     fn set_optimize(&self, _opt: bool) -> Rc<dyn CompilerOpts> {

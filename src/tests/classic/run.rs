@@ -582,7 +582,7 @@ fn test_compile_file_3() {
     let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
         .trim()
         .to_string();
-    assert_eq!(run_result, "(+ 2 (q . 19))");
+    assert_eq!(run_result, "(a (q 16 (f (r 1)) (q . 19)) (c (q) 1))");
 }
 
 #[test]
@@ -743,14 +743,14 @@ fn test_treehash_constant_21() {
         .to_string();
     assert_eq!(
         result_hash,
-        "0x34380f2097b86970818f8b026b68135d665babc5fda5afe577f86d51105e08b5"
+        "0xfb5255887665727c721852a42493d43710a66a331f7ba50e0248459e23d0a0b2"
     );
 }
 
 #[test]
 fn test_treehash_constant_21_2() {
     let mut allocator = Allocator::new();
-    let expected_hash = "0xe2954b5f459d1cffff293498f8263c961890a06fe28d6be1a0f08412164ced80";
+    let expected_hash = "0xd9e5da863d7f61605f4430d4f59d2e7b65e87bf8aa664a28a73c73e1523a7a17";
 
     let result_text = do_basic_run(&vec![
         "run".to_string(),
@@ -758,8 +758,8 @@ fn test_treehash_constant_21_2() {
         "resources/tests".to_string(),
         "resources/tests/test_treehash_constant_21_2.cl".to_string(),
     ])
-    .trim()
-    .to_string();
+        .trim()
+        .to_string();
     let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
         .trim()
         .to_string();
@@ -773,11 +773,12 @@ fn test_treehash_constant_21_2() {
         "resources/tests".to_string(),
         "resources/tests/secret_number2.cl".to_string(),
     ])
-    .trim()
-    .to_string();
+        .trim()
+        .to_string();
+
     let hexed = OpcConversion {}.invoke(&mut allocator, &compiled).unwrap();
     let sexp = OpdConversion {}
-        .invoke(&mut allocator, &hexed.rest())
+    .invoke(&mut allocator, &hexed.rest())
         .unwrap();
     let tree_hash = format!("0x{}", sha256tree(&mut allocator, *sexp.first()).hex());
 

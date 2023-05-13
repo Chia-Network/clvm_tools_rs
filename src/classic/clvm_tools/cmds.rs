@@ -1191,6 +1191,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         let runner = Rc::new(DefaultProgramRunner::new());
         let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
+            .set_cmdline_opt(Some(do_optimize))
             .set_optimize(do_optimize)
             .set_search_paths(&search_paths)
             .set_frontend_opt(dialect > 21);

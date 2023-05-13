@@ -104,14 +104,22 @@ pub fn compile_clvm_text(
     if let Some(dialect) = detect_modern(allocator, assembled_sexp) {
         let runner = Rc::new(DefaultProgramRunner::new());
         eprintln!("modern compilation {}", text);
-        let opts = opts.set_optimize(true).set_frontend_opt(dialect > 21);
+        let optimize = opts.cmdline_opt().unwrap_or(true);
+        eprintln!("optimize {} cmdline {:?}", opts.optimize(), opts.cmdline_opt());
+        let opts = opts.set_optimize(optimize).set_frontend_opt(dialect > 21);
 
         let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
         if let Ok(u) = unopt_res.as_ref() {
             eprintln!("unopt_res {}", u);
         }
 
-        let res = unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)));
+        let res =
+            if optimize {
+                unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)))
+            } else {
+                unopt_res.map(Rc::new)
+            };
+
         if let Ok(r) = res.as_ref() {
             eprintln!("res {}", r);
         }
