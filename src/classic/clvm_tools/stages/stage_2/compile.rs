@@ -17,6 +17,8 @@ use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote
 use crate::classic::clvm_tools::stages::stage_2::module::compile_mod;
 use crate::classic::clvm_tools::stages::stage_2::reader::read_file;
 
+use crate::compiler::compiler::DefaultCompilerOpts;
+use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::sexp::decode_string;
 
 const DIAG_OUTPUT: bool = false;
@@ -840,15 +842,18 @@ pub fn compile_file(
     name: &str,
     filename: &str,
 ) -> Response {
+    let search_paths = get_search_paths(runner.clone(), allocator)?;
+    let opts = Rc::new(DefaultCompilerOpts::new(filename)).set_search_paths(&search_paths);
     let mut symtab = HashMap::new();
     let current_filename = get_compile_filename(runner.clone(), allocator)?;
     let file = read_file(runner, allocator, parent_sexp, filename)?;
     let compiled = compile_clvm_text(
         allocator,
-        &file.search_paths,
+        opts,
         &mut symtab,
         &decode_string(&file.data),
         &file.full_path,
+        true,
     )?;
 
     // Write symbols for the compiled inner module.

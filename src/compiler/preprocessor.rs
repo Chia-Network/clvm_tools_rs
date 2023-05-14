@@ -113,10 +113,11 @@ fn process_embed(
             let newly_compiled = compile_clvm_text_maybe_opt(
                 &mut allocator,
                 opts.optimize(),
-                &opts.get_search_paths(),
+                opts,
                 &mut symtab,
                 &decoded_content,
                 &full_name,
+                true,
             )
             .map_err(|e| CompileErr(loc.clone(), format!("Subcompile failed: {}", e.1)))?;
 

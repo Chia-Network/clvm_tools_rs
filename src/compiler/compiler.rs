@@ -254,6 +254,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     }
 
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
+        if dirs.len() == 1 && dirs[0].len() == 1 {
+            todo!();
+        }
         let mut copy = self.clone();
         copy.include_dirs = dirs.to_owned();
         Rc::new(copy)

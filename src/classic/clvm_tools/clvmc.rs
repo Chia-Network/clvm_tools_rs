@@ -91,20 +91,20 @@ pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> Option<i32> {
 pub fn compile_clvm_text_maybe_opt(
     allocator: &mut Allocator,
     do_optimize: bool,
-    search_paths: &[String],
+    opts: Rc<dyn CompilerOpts>,
     symbol_table: &mut HashMap<String, String>,
     text: &str,
     input_path: &str,
+    classic_with_opts: bool,
 ) -> Result<NodePtr, EvalErr> {
     let ir_src = read_ir(text).map_err(|s| EvalErr(allocator.null(), s.to_string()))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
 
     if let Some(dialect) = detect_modern(allocator, assembled_sexp) {
         let runner = Rc::new(DefaultProgramRunner::new());
-        let opts = Rc::new(DefaultCompilerOpts::new(input_path))
+        let opts = opts
             .set_optimize(do_optimize)
-            .set_frontend_opt(dialect > 21)
-            .set_search_paths(search_paths);
+            .set_frontend_opt(dialect > 21);
 
         let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
         let res = if do_optimize {
@@ -123,7 +123,10 @@ pub fn compile_clvm_text_maybe_opt(
     } else {
         let compile_invoke_code = run(allocator);
         let input_sexp = allocator.new_pair(assembled_sexp, allocator.null())?;
-        let run_program = run_program_for_search_paths(input_path, search_paths, false);
+        let run_program = run_program_for_search_paths(input_path, &opts.get_search_paths(), false);
+        if classic_with_opts {
+            run_program.set_compiler_opts(Some(opts));
+        }
         let run_program_output =
             run_program.run_program(allocator, compile_invoke_code, input_sexp, None)?;
         Ok(run_program_output.1)
@@ -132,31 +135,41 @@ pub fn compile_clvm_text_maybe_opt(
 
 pub fn compile_clvm_text(
     allocator: &mut Allocator,
-    search_paths: &[String],
+    opts: Rc<dyn CompilerOpts>,
     symbol_table: &mut HashMap<String, String>,
     text: &str,
     input_path: &str,
+    classic_with_opts: bool,
 ) -> Result<NodePtr, EvalErr> {
     compile_clvm_text_maybe_opt(
         allocator,
         true,
-        search_paths,
+        opts,
         symbol_table,
         text,
         input_path,
+        classic_with_opts,
     )
 }
 
 pub fn compile_clvm_inner(
     allocator: &mut Allocator,
-    search_paths: &[String],
+    opts: Rc<dyn CompilerOpts>,
     symbol_table: &mut HashMap<String, String>,
     filename: &str,
     text: &str,
     result_stream: &mut Stream,
+    classic_with_opts: bool,
 ) -> Result<(), String> {
-    let result = compile_clvm_text(allocator, search_paths, symbol_table, text, filename)
-        .map_err(|x| format!("error {} compiling {}", x.1, disassemble(allocator, x.0)))?;
+    let result = compile_clvm_text(
+        allocator,
+        opts,
+        symbol_table,
+        text,
+        filename,
+        classic_with_opts,
+    )
+    .map_err(|x| format!("error {} compiling {}", x.1, disassemble(allocator, x.0)))?;
     sexp_to_stream(allocator, result, result_stream);
     Ok(())
 }
@@ -175,14 +188,16 @@ pub fn compile_clvm(
     if compile {
         let text = fs::read_to_string(input_path)
             .map_err(|x| format!("error reading {input_path}: {x:?}"))?;
+        let opts = Rc::new(DefaultCompilerOpts::new(input_path)).set_search_paths(search_paths);
 
         compile_clvm_inner(
             &mut allocator,
-            search_paths,
+            opts,
             symbol_table,
             input_path,
             &text,
             &mut result_stream,
+            false,
         )?;
 
         let output_path_obj = Path::new(output_path);
