@@ -89,8 +89,9 @@ pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> Option<i32> {
     })
 }
 
-pub fn compile_clvm_text(
+pub fn compile_clvm_text_maybe_opt(
     allocator: &mut Allocator,
+    do_optimize: bool,
     opts: Rc<dyn CompilerOpts>,
     symbol_table: &mut HashMap<String, String>,
     text: &str,
@@ -102,10 +103,16 @@ pub fn compile_clvm_text(
 
     if let Some(dialect) = detect_modern(allocator, assembled_sexp) {
         let runner = Rc::new(DefaultProgramRunner::new());
-        let opts = opts.set_optimize(true).set_frontend_opt(dialect > 21);
+        let opts = opts
+            .set_optimize(do_optimize)
+            .set_frontend_opt(dialect > 21);
 
         let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
-        let res = unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)));
+        let res = if do_optimize {
+            unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)))
+        } else {
+            unopt_res.map(Rc::new)
+        };
 
         res.and_then(|x| {
             convert_to_clvm_rs(allocator, x).map_err(|r| match r {
@@ -125,6 +132,25 @@ pub fn compile_clvm_text(
             run_program.run_program(allocator, compile_invoke_code, input_sexp, None)?;
         Ok(run_program_output.1)
     }
+}
+
+pub fn compile_clvm_text(
+    allocator: &mut Allocator,
+    opts: Rc<dyn CompilerOpts>,
+    symbol_table: &mut HashMap<String, String>,
+    text: &str,
+    input_path: &str,
+    classic_with_opts: bool,
+) -> Result<NodePtr, EvalErr> {
+    compile_clvm_text_maybe_opt(
+        allocator,
+        true,
+        opts,
+        symbol_table,
+        text,
+        input_path,
+        classic_with_opts,
+    )
 }
 
 pub fn compile_clvm_inner(
