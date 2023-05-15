@@ -55,7 +55,7 @@ pub trait TypeTheory {
 }
 
 impl Context {
-    fn increase_type_specificity(
+    pub fn increase_type_specificity(
         &self,
         old: &Monotype,
         tau: &Monotype,

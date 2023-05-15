@@ -6,7 +6,7 @@ use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::{HasLoc, Srcloc};
 use crate::compiler::typecheck::{parse_expr_sexp, parse_type_sexp, TheoryToSExp};
 use crate::compiler::typechia::standard_type_context;
-use crate::compiler::types::ast::{Context, Polytype, Type, TypeVar};
+use crate::compiler::types::ast::{Context, Monotype, Polytype, Type, TypeVar};
 use crate::compiler::types::theory::TypeTheory;
 
 fn resolve_test_var(held: &mut HashMap<TypeVar, TypeVar>, n: &mut usize, v: &TypeVar) -> TypeVar {
@@ -78,6 +78,22 @@ pub fn check_expression_against_type_with_context(
         expected.to_sexp().to_string(),
         usetype.to_sexp().to_string()
     );
+}
+
+pub fn check_increase_specificity(
+    incontext: &Context,
+    t1: &str,
+    t2: &str,
+    result: &str,
+) {
+    let eloc = Srcloc::start(&"*expr*".to_string());
+    let tloc = Srcloc::start(&"*type*".to_string());
+    let t1sexp = parse_sexp(eloc, t1.bytes()).unwrap();
+    let t2sexp = parse_sexp(tloc, t2.bytes()).unwrap();
+    let t1type: Monotype = parse_type_sexp(t1sexp[0].clone()).unwrap();
+    let t2type: Monotype = parse_type_sexp(t2sexp[0].clone()).unwrap();
+    let (usetype, _) = incontext.increase_type_specificity(&t1type, &t2type).expect("should widen");
+    assert_eq!(usetype.to_sexp().to_string(), result);
 }
 
 fn check_expression_against_type(e: &str, t: &str, flatten: bool) {
@@ -231,4 +247,19 @@ fn test_list_content_with_anno() {
 #[test]
 fn test_sized_atom() {
     check_expression_against_type("(sha256 (cons 3 ()))", "Atom32", false);
+}
+
+#[test]
+fn test_nullable_simple_1() {
+    check_expression_against_type("(() : (Nullable Atom))", "(Nullable Atom)", false);
+}
+
+#[test]
+fn test_nullable_simple_2() {
+    check_increase_specificity(
+        &standard_type_context(),
+        "Atom",
+        "(Nullable Atom)",
+        "(Nullable Atom)",
+    );
 }
