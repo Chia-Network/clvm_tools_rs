@@ -93,6 +93,16 @@ pub fn check_increase_specificity(incontext: &Context, t1: &str, t2: &str, resul
     assert_eq!(usetype.to_sexp().to_string(), result);
 }
 
+pub fn check_subtype(incontext: &Context, t1: &str, t2: &str, result: &str) {
+    let eloc = Srcloc::start(&"*expr*".to_string());
+    let tloc = Srcloc::start(&"*type*".to_string());
+    let t1sexp = parse_sexp(eloc, t1.bytes()).unwrap();
+    let t2sexp = parse_sexp(tloc, t2.bytes()).unwrap();
+    let t1type: Polytype = parse_type_sexp(t1sexp[0].clone()).unwrap();
+    let t2type: Polytype = parse_type_sexp(t2sexp[0].clone()).unwrap();
+    assert!(incontext.subtype(&t1type, &t2type).is_ok());
+}
+
 fn check_expression_against_type(e: &str, t: &str, flatten: bool) {
     check_expression_against_type_with_context(&standard_type_context(), e, t, flatten)
 }
@@ -258,5 +268,15 @@ fn test_nullable_simple_2() {
         "Atom",
         "(Nullable Atom)",
         "(Nullable Atom)",
+    );
+}
+
+#[test]
+fn test_subtype_1() {
+    check_subtype(
+        &standard_type_context(),
+        "(forall t (t -> Atom))",
+        "(forall t (t -> (Nullable Atom)))",
+        "()"
     );
 }
