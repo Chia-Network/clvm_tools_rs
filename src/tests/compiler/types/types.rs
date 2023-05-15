@@ -2,11 +2,12 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::compiler::comptypes::CompileErr;
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::{HasLoc, Srcloc};
 use crate::compiler::typecheck::{parse_expr_sexp, parse_type_sexp, TheoryToSExp};
 use crate::compiler::typechia::standard_type_context;
-use crate::compiler::types::ast::{Context, Monotype, Polytype, Type, TypeVar};
+use crate::compiler::types::ast::{Context, ContextElim, Monotype, Polytype, Type, TypeVar};
 use crate::compiler::types::theory::TypeTheory;
 
 fn resolve_test_var(held: &mut HashMap<TypeVar, TypeVar>, n: &mut usize, v: &TypeVar) -> TypeVar {
@@ -93,14 +94,14 @@ pub fn check_increase_specificity(incontext: &Context, t1: &str, t2: &str, resul
     assert_eq!(usetype.to_sexp().to_string(), result);
 }
 
-pub fn check_subtype(incontext: &Context, t1: &str, t2: &str, result: &str) {
+pub fn check_subtype(incontext: &Context, t1: &str, t2: &str) -> Result<Box<Context>, CompileErr> {
     let eloc = Srcloc::start(&"*expr*".to_string());
     let tloc = Srcloc::start(&"*type*".to_string());
-    let t1sexp = parse_sexp(eloc, t1.bytes()).unwrap();
-    let t2sexp = parse_sexp(tloc, t2.bytes()).unwrap();
-    let t1type: Polytype = parse_type_sexp(t1sexp[0].clone()).unwrap();
-    let t2type: Polytype = parse_type_sexp(t2sexp[0].clone()).unwrap();
-    assert!(incontext.subtype(&t1type, &t2type).is_ok());
+    let t1sexp = parse_sexp(eloc, t1.bytes())?;
+    let t2sexp = parse_sexp(tloc, t2.bytes())?;
+    let t1type: Polytype = parse_type_sexp(t1sexp[0].clone())?;
+    let t2type: Polytype = parse_type_sexp(t2sexp[0].clone())?;
+    incontext.subtype(&t1type, &t2type)
 }
 
 fn check_expression_against_type(e: &str, t: &str, flatten: bool) {
@@ -277,6 +278,29 @@ fn test_subtype_1() {
         &standard_type_context(),
         "(forall t (t -> Atom))",
         "(forall t (t -> (Nullable Atom)))",
-        "()",
-    );
+    ).unwrap();
+}
+
+#[test]
+fn test_subtype_2() {
+    let loc = Srcloc::start("*type*");
+    let typevar_u = TypeVar("u".to_string(), loc.clone());
+    let type_context = standard_type_context()
+        .snoc(ContextElim::CExists(typevar_u.clone()));
+    let t1: Polytype = Type::TExists(typevar_u.clone());
+    let tc2 = check_subtype(
+        &type_context,
+        "(exists u)",
+        "(exists u)"
+    ).unwrap();
+    assert!(tc2.typewf(&t1));
+}
+
+#[test]
+fn test_reify_equal_types() {
+    let loc = Srcloc::start("*type*");
+    let parsedt1 = parse_sexp(loc.clone(), "Atom".bytes()).expect("should parse");
+    let t1: Polytype = parse_type_sexp(parsedt1[0].clone()).expect("should work");
+    let t2: Polytype = t1.clone();
+    assert_eq!(standard_type_context().reify(&t1, Some(t2)), t1);
 }
