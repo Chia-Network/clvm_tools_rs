@@ -293,6 +293,20 @@ fn test_subtype_2() {
 }
 
 #[test]
+fn test_subtype_3() {
+    let loc = Srcloc::start("*type*");
+    let typevar_u = TypeVar("u".to_string(), loc.clone());
+    let type_context = standard_type_context()
+        .snoc(ContextElim::CForall(typevar_u.clone()))
+        .snoc(ContextElim::CExistsSolved(
+            typevar_u.clone(),
+            Type::TAtom(loc.clone(), None),
+        ));
+    let tc2 = check_subtype(&type_context, "u", "(exists u)");
+    assert!(tc2.is_err());
+}
+
+#[test]
 fn test_reify_equal_types() {
     let loc = Srcloc::start("*type*");
     let parsedt1 = parse_sexp(loc.clone(), "Atom".bytes()).expect("should parse");
