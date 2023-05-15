@@ -695,7 +695,7 @@ fn codegen_(
     compiler: &PrimaryCodegen,
     h: &HelperForm,
 ) -> Result<PrimaryCodegen, CompileErr> {
-    match h {
+    match &h {
         HelperForm::Defun(inline, defun) => {
             if *inline {
                 // Note: this just replaces a dummy function inserted earlier.
@@ -854,6 +854,7 @@ fn generate_let_defun(
             args: inner_function_args,
             body,
             synthetic: Some(SyntheticType::NoInlinePreference),
+            ty: None,
         },
     )
 }
@@ -993,6 +994,7 @@ pub fn hoist_body_let_binding(
                     args: new_function_args,
                     body: new_body,
                     synthetic: Some(SyntheticType::WantNonInline),
+                    ty: None,
                 },
             );
             new_helpers_from_body.push(function);
@@ -1023,6 +1025,7 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
                     inline,
                     DefunData {
                         body: hoisted_body,
+                        ty: defun.ty.clone(),
                         ..defun.clone()
                     },
                 );

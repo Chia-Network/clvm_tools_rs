@@ -27,6 +27,8 @@ use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::CompileErr;
 use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::runtypes::RunFailure;
+use crate::compiler::srcloc::Srcloc;
+use crate::compiler::untype::untype_code;
 
 fn include_dialect(
     allocator: &mut Allocator,
@@ -100,8 +102,9 @@ pub fn compile_clvm_text_maybe_opt(
 ) -> Result<NodePtr, EvalErr> {
     let ir_src = read_ir(text).map_err(|s| EvalErr(allocator.null(), s.to_string()))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
+    let untyped_sexp = untype_code(allocator, Srcloc::start(input_path), assembled_sexp)?;
 
-    if let Some(dialect) = detect_modern(allocator, assembled_sexp) {
+    if let Some(dialect) = detect_modern(allocator, untyped_sexp) {
         let runner = Rc::new(DefaultProgramRunner::new());
         let opts = opts
             .set_optimize(do_optimize)
