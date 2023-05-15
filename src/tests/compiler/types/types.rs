@@ -278,21 +278,17 @@ fn test_subtype_1() {
         &standard_type_context(),
         "(forall t (t -> Atom))",
         "(forall t (t -> (Nullable Atom)))",
-    ).unwrap();
+    )
+    .unwrap();
 }
 
 #[test]
 fn test_subtype_2() {
     let loc = Srcloc::start("*type*");
     let typevar_u = TypeVar("u".to_string(), loc.clone());
-    let type_context = standard_type_context()
-        .snoc(ContextElim::CExists(typevar_u.clone()));
+    let type_context = standard_type_context().snoc(ContextElim::CExists(typevar_u.clone()));
     let t1: Polytype = Type::TExists(typevar_u.clone());
-    let tc2 = check_subtype(
-        &type_context,
-        "(exists u)",
-        "(exists u)"
-    ).unwrap();
+    let tc2 = check_subtype(&type_context, "(exists u)", "(exists u)").unwrap();
     assert!(tc2.typewf(&t1));
 }
 
