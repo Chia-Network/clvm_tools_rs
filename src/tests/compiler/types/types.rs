@@ -80,19 +80,16 @@ pub fn check_expression_against_type_with_context(
     );
 }
 
-pub fn check_increase_specificity(
-    incontext: &Context,
-    t1: &str,
-    t2: &str,
-    result: &str,
-) {
+pub fn check_increase_specificity(incontext: &Context, t1: &str, t2: &str, result: &str) {
     let eloc = Srcloc::start(&"*expr*".to_string());
     let tloc = Srcloc::start(&"*type*".to_string());
     let t1sexp = parse_sexp(eloc, t1.bytes()).unwrap();
     let t2sexp = parse_sexp(tloc, t2.bytes()).unwrap();
     let t1type: Monotype = parse_type_sexp(t1sexp[0].clone()).unwrap();
     let t2type: Monotype = parse_type_sexp(t2sexp[0].clone()).unwrap();
-    let (usetype, _) = incontext.increase_type_specificity(&t1type, &t2type).expect("should widen");
+    let (usetype, _) = incontext
+        .increase_type_specificity(&t1type, &t2type)
+        .expect("should widen");
     assert_eq!(usetype.to_sexp().to_string(), result);
 }
 
