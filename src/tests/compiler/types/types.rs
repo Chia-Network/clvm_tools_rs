@@ -277,6 +277,6 @@ fn test_subtype_1() {
         &standard_type_context(),
         "(forall t (t -> Atom))",
         "(forall t (t -> (Nullable Atom)))",
-        "()"
+        "()",
     );
 }
