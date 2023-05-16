@@ -104,20 +104,6 @@ pub fn check_subtype(incontext: &Context, t1: &str, t2: &str) -> Result<Box<Cont
     incontext.subtype(&t1type, &t2type)
 }
 
-pub fn check_typeapplysynth(
-    incontext: &Context,
-    t1: &str,
-    t2: &str,
-) -> Result<Box<Context>, CompileErr> {
-    let eloc = Srcloc::start(&"*expr*".to_string());
-    let tloc = Srcloc::start(&"*type*".to_string());
-    let t1sexp = parse_sexp(eloc, t1.bytes())?;
-    let t2sexp = parse_sexp(tloc, t2.bytes())?;
-    let t1type: Polytype = parse_type_sexp(t1sexp[0].clone())?;
-    let t2type: Polytype = parse_type_sexp(t2sexp[0].clone())?;
-    incontext.subtype(&t1type, &t2type)
-}
-
 fn check_expression_against_type(e: &str, t: &str, flatten: bool) {
     check_expression_against_type_with_context(&standard_type_context(), e, t, flatten)
 }
@@ -347,6 +333,20 @@ fn test_subtype_5() {
         ));
     // Verify good result.
     check_subtype(&type_context, "(exists u)", "(Exec v)").expect("should typecheck");
+}
+
+#[test]
+fn test_subtype_6() {
+    let loc = Srcloc::start("*type*");
+    let typevar_u = TypeVar("u".to_string(), loc.clone());
+    let type_context = standard_type_context().snoc(ContextElim::CExists(typevar_u.clone()));
+    // Verify good result.
+    let res = check_subtype(
+        &type_context,
+        "(exists u)",
+        "(forall t (Exec (Nullable t)))",
+    )
+    .expect("should typecheck");
 }
 
 #[test]
