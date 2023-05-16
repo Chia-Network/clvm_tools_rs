@@ -341,12 +341,22 @@ fn test_subtype_6() {
     let typevar_u = TypeVar("u".to_string(), loc.clone());
     let type_context = standard_type_context().snoc(ContextElim::CExists(typevar_u.clone()));
     // Verify good result.
-    let res = check_subtype(
+    check_subtype(
         &type_context,
         "(exists u)",
         "(forall t (Exec (Nullable t)))",
     )
     .expect("should typecheck");
+}
+
+#[test]
+fn test_subtype_7() {
+    let loc = Srcloc::start("*type*");
+    let typevar_u = TypeVar("u".to_string(), loc.clone());
+    let type_context = standard_type_context().snoc(ContextElim::CExists(typevar_u.clone()));
+    // Verify good result.
+    check_subtype(&type_context, "(exists u)", "(forall t (Exec (Pair t t)))")
+        .expect("should typecheck");
 }
 
 #[test]
