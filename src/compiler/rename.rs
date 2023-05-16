@@ -314,8 +314,10 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
 
 fn rename_in_helperform(namemap: &HashMap<Vec<u8>, Vec<u8>>, h: &HelperForm) -> HelperForm {
     match h {
+        HelperForm::Deftype(_) => h.clone(),
         HelperForm::Defconstant(defc) => HelperForm::Defconstant(DefconstData {
             body: Rc::new(rename_in_bodyform(namemap, defc.body.clone())),
+            ty: defc.ty.clone(),
             ..defc.clone()
         }),
         HelperForm::Defmacro(mac) => HelperForm::Defmacro(DefmacData {
@@ -330,6 +332,7 @@ fn rename_in_helperform(namemap: &HashMap<Vec<u8>, Vec<u8>>, h: &HelperForm) -> 
             *inline,
             DefunData {
                 body: Rc::new(rename_in_bodyform(namemap, defun.body.clone())),
+                ty: defun.ty.clone(),
                 ..defun.clone()
             },
         ),
@@ -338,8 +341,10 @@ fn rename_in_helperform(namemap: &HashMap<Vec<u8>, Vec<u8>>, h: &HelperForm) -> 
 
 fn rename_args_helperform(h: &HelperForm) -> HelperForm {
     match h {
+        HelperForm::Deftype(_) => h.clone(),
         HelperForm::Defconstant(defc) => HelperForm::Defconstant(DefconstData {
             body: Rc::new(rename_args_bodyform(defc.body.borrow())),
+            ty: defc.ty.clone(),
             ..defc.clone()
         }),
         HelperForm::Defmacro(mac) => {
@@ -373,12 +378,16 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
             }
             let local_renamed_arg = rename_in_cons(&local_namemap, defun.args.clone(), true);
             let local_renamed_body = rename_args_bodyform(defun.body.borrow());
-            let renamed_bodyform = rename_in_bodyform(&local_namemap, Rc::new(local_renamed_body));
+            let renamed_bodyform = Rc::new(rename_in_bodyform(
+                &local_namemap,
+                Rc::new(local_renamed_body),
+            ));
             HelperForm::Defun(
                 *inline,
                 DefunData {
                     args: local_renamed_arg,
-                    body: Rc::new(renamed_bodyform),
+                    body: renamed_bodyform,
+                    ty: defun.ty.clone(),
                     ..defun.clone()
                 },
             )
@@ -397,6 +406,7 @@ fn rename_in_compileform(namemap: &HashMap<Vec<u8>, Vec<u8>>, c: Rc<CompileForm>
             .map(|x| rename_in_helperform(namemap, x))
             .collect(),
         exp: Rc::new(rename_in_bodyform(namemap, c.exp.clone())),
+        ty: c.ty.clone(),
     }
 }
 
@@ -409,6 +419,7 @@ pub fn rename_children_compileform(c: &CompileForm) -> CompileForm {
         include_forms: c.include_forms.clone(),
         helpers: local_renamed_helpers,
         exp: Rc::new(local_renamed_body),
+        ty: c.ty.clone(),
     }
 }
 
@@ -434,5 +445,6 @@ pub fn rename_args_compileform(c: &CompileForm) -> CompileForm {
             &local_namemap,
             Rc::new(local_renamed_body),
         )),
+        ty: c.ty.clone(),
     }
 }

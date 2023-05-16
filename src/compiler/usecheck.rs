@@ -101,7 +101,7 @@ pub fn check_parameters_used_compileform(
         program.args.clone(),
         &env,
         program.exp.clone(),
-        false,
+        Default::default(),
         Some(EVAL_STACK_LIMIT),
     )?;
 

@@ -16,7 +16,7 @@ use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_l
 use crate::compiler::comptypes::{
     CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
-use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
+use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT, ExpandMode};
 use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::{deinline_opt, finish_optimization};
 use crate::compiler::prims;
@@ -64,6 +64,13 @@ lazy_static! {
                             (compile-list ARGS)
                     )
             (defun-inline / (A B) (f (divmod A B)))
+            (defun-inline c* (A B) (c A B))
+            (defun-inline a* (A B) (a A B))
+            (defun-inline coerce (X) : (Any -> Any) X)
+            (defun-inline explode (X) : (forall a ((Exec a) -> a)) X)
+            (defun-inline bless (X) : (forall a ((Pair a Unit) -> (Exec a))) (coerce X))
+            (defun-inline lift (X V) : (forall a (forall b ((Pair (Exec a) (Pair b Unit)) -> (Exec (Pair a b))))) (coerce X))
+            (defun-inline unlift (X) : (forall a (forall b ((Pair (Exec (Pair a b)) Unit) -> (Exec b)))) (coerce X))
             )
             "}
         .to_string()
@@ -115,7 +122,7 @@ fn fe_opt(
                     defun.args.clone(),
                     &env,
                     defun.body.clone(),
-                    true,
+                    ExpandMode::only_inline(),
                     Some(EVAL_STACK_LIMIT),
                 )?;
                 let new_helper = HelperForm::Defun(
@@ -129,6 +136,7 @@ fn fe_opt(
                         orig_args: defun.orig_args.clone(),
                         synthetic: defun.synthetic.clone(),
                         body: body_rc.clone(),
+                        ty: defun.ty.clone(),
                     },
                 );
                 optimized_helpers.push(new_helper);
@@ -145,7 +153,7 @@ fn fe_opt(
         Rc::new(SExp::Nil(compileform.args.loc())),
         &HashMap::new(),
         compileform.exp.clone(),
-        true,
+        ExpandMode::only_inline(),
         Some(EVAL_STACK_LIMIT),
     )?;
 
@@ -155,6 +163,7 @@ fn fe_opt(
         args: compileform.args,
         helpers: optimized_helpers.clone(),
         exp: shrunk,
+        ty: None,
     })
 }
 
@@ -170,11 +179,9 @@ fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
     let combined_helpers = process_helper_let_bindings(&combined_helpers)?;
 
     Ok(CompileForm {
-        loc: program.loc.clone(),
-        include_forms: program.include_forms.clone(),
-        args: program.args.clone(),
         helpers: combined_helpers,
         exp: expr,
+        .. program.clone()
     })
 }
 

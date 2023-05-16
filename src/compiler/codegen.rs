@@ -287,34 +287,26 @@ pub fn get_callable(
 ) -> Result<Callable, CompileErr> {
     match atom.borrow() {
         SExp::Atom(l, name) => {
-            let macro_def = compiler.macros.get(name);
-            let inline = compiler.inlines.get(name);
-            let defun = create_name_lookup(compiler, l.clone(), name, false);
-            let prim = get_prim(l.clone(), compiler.prims.clone(), name);
-            let atom_is_com = *name == "com".as_bytes().to_vec();
-            let atom_is_at = *name == "@".as_bytes().to_vec();
-            match (macro_def, inline, defun, prim, atom_is_com, atom_is_at) {
-                (Some(macro_def), _, _, _, _, _) => {
-                    let macro_def_clone: &SExp = macro_def.borrow();
-                    Ok(Callable::CallMacro(l.clone(), macro_def_clone.clone()))
-                }
-                (_, Some(inline), _, _, _, _) => {
-                    Ok(Callable::CallInline(l.clone(), inline.clone()))
-                }
-                (_, _, Ok(defun), _, _, _) => {
-                    let defun_clone: &SExp = defun.borrow();
-                    Ok(Callable::CallDefun(l.clone(), defun_clone.clone()))
-                }
-                (_, _, _, Some(prim), _, _) => {
-                    let prim_clone: &SExp = prim.borrow();
-                    Ok(Callable::CallPrim(l.clone(), prim_clone.clone()))
-                }
-                (_, _, _, _, true, _) => Ok(Callable::RunCompiler),
-                (_, _, _, _, _, true) => Ok(Callable::EnvPath),
-                _ => Err(CompileErr(
+            if let Some(macro_def) = compiler.macros.get(name) {
+                let macro_def_clone: &SExp = macro_def.borrow();
+                Ok(Callable::CallMacro(l.clone(), macro_def_clone.clone()))
+            } else if let Some(inline) = compiler.inlines.get(name) {
+                Ok(Callable::CallInline(l.clone(), inline.clone()))
+            } else if let Ok(defun) = create_name_lookup(compiler, l.clone(), name, false) {
+                let defun_clone: &SExp = defun.borrow();
+                Ok(Callable::CallDefun(l.clone(), defun_clone.clone()))
+            } else if let Some(prim) = get_prim(l.clone(), compiler.prims.clone(), name) {
+                let prim_clone: &SExp = prim.borrow();
+                Ok(Callable::CallPrim(l.clone(), prim_clone.clone()))
+            } else if *name == "com".as_bytes().to_vec() {
+                Ok(Callable::RunCompiler)
+            } else if *name == "@".as_bytes().to_vec() {
+                Ok(Callable::EnvPath)
+            } else {
+                Err(CompileErr(
                     l.clone(),
                     format!("no such callable '{}'", decode_string(name)),
-                )),
+                ))
             }
         }
         SExp::Integer(_, v) => Ok(Callable::CallPrim(l.clone(), SExp::Integer(l, v.clone()))),
@@ -695,7 +687,7 @@ fn codegen_(
     compiler: &PrimaryCodegen,
     h: &HelperForm,
 ) -> Result<PrimaryCodegen, CompileErr> {
-    match h {
+    match &h {
         HelperForm::Defun(inline, defun) => {
             if *inline {
                 // Note: this just replaces a dummy function inserted earlier.
@@ -854,6 +846,7 @@ fn generate_let_defun(
             args: inner_function_args,
             body,
             synthetic: Some(SyntheticType::NoInlinePreference),
+            ty: None,
         },
     )
 }
@@ -993,6 +986,7 @@ pub fn hoist_body_let_binding(
                     args: new_function_args,
                     body: new_body,
                     synthetic: Some(SyntheticType::WantNonInline),
+                    ty: None,
                 },
             );
             new_helpers_from_body.push(function);
@@ -1023,6 +1017,7 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
                     inline,
                     DefunData {
                         body: hoisted_body,
+                        ty: defun.ty.clone(),
                         ..defun.clone()
                     },
                 );
@@ -1115,7 +1110,7 @@ fn start_codegen(
                         Rc::new(SExp::Nil(defc.loc.clone())),
                         &HashMap::new(),
                         defc.body.clone(),
-                        false,
+                        Default::default(),
                         Some(EVAL_STACK_LIMIT),
                     )?;
                     if let BodyForm::Quoted(q) = constant_result.borrow() {

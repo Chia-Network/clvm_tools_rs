@@ -53,12 +53,16 @@ use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
+use crate::compiler::frontend::frontend;
 use crate::compiler::preprocessor::gather_dependencies;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp;
 use crate::compiler::sexp::{decode_string, parse_sexp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::typechia::standard_type_context;
+use crate::compiler::types::theory::TypeTheory;
+use crate::compiler::untype::untype_code;
 
 use crate::util::collapse;
 use crate::util::version;
@@ -278,6 +282,8 @@ impl ArgumentValueConv for StageImport {
 }
 
 pub fn run(args: &[String]) {
+    env_logger::init();
+
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, "run", 2);
     io::stdout()
@@ -460,6 +466,8 @@ pub fn cldb_hierarchy(
 }
 
 pub fn cldb(args: &[String]) {
+    env_logger::init();
+
     let tool_name = "cldb".to_string();
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
@@ -903,6 +911,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_help("run optimizer".to_string()),
     );
     parser.add_argument(
+        vec!["--typecheck".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("type check".to_string()),
+    );
+    parser.add_argument(
         vec!["--only-exn".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
@@ -1003,6 +1017,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let time_start = SystemTime::now();
     let mut time_read_hex = SystemTime::now();
     let mut time_assemble = SystemTime::now();
+    let typecheck = parsed_args.get("typecheck").map(|_| true).unwrap_or(false);
 
     let mut input_args = "()".to_string();
 
@@ -1112,6 +1127,17 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             }
 
             let assembled_sexp = assemble_from_ir(&mut allocator, Rc::new(src_sexp)).unwrap();
+            let use_filename = input_file
+                .clone()
+                .unwrap_or_else(|| "*command*".to_string());
+
+            let untyped_sexp_err =
+                untype_code(&mut allocator, Srcloc::start(&use_filename), assembled_sexp);
+            if let Err(e) = untyped_sexp_err {
+                stdout.write_str(&format!("{}: failed to strip type annotations", e.1));
+                return;
+            }
+            let untyped_sexp = untyped_sexp_err.unwrap();
             let mut parsed_args_result = "()".to_string();
 
             if let Some(ArgumentValue::ArgString(_f, s)) = parsed_args.get("env") {
@@ -1122,7 +1148,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             let env = assemble_from_ir(&mut allocator, Rc::new(env_ir)).unwrap();
             time_assemble = SystemTime::now();
 
-            input_sexp = allocator.new_pair(assembled_sexp, env).ok();
+            input_sexp = allocator.new_pair(untyped_sexp, env).ok();
         }
     }
 
@@ -1170,17 +1196,35 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         }
     };
 
-    if do_check_unused {
+    if do_check_unused || typecheck {
         let opts =
             Rc::new(DefaultCompilerOpts::new(&reported_input_file)).set_search_paths(&search_paths);
-        match check_unused(opts, &input_program) {
-            Ok((success, output)) => {
-                stderr_output(output);
-                if !success {
+        if do_check_unused {
+            match check_unused(opts.clone(), &input_program) {
+                Ok((success, output)) => {
+                    stderr_output(output);
+                    if !success {
+                        return;
+                    }
+                }
+                Err(e) => {
+                    stderr_output(format!("{}: {}\n", e.0, e.1));
                     return;
                 }
             }
-            Err(e) => {
+        }
+
+        if typecheck {
+            let loc = Srcloc::start(&reported_input_file);
+            if let Err(e) = parse_sexp(loc, input_program.bytes())
+                .map_err(|e| CompileErr(e.0.clone(), e.1))
+                .and_then(|pre_forms| {
+                    let context = standard_type_context();
+                    let compileform = frontend(opts.clone(), &pre_forms)?;
+                    let target_type = context.typecheck_chialisp_program(&compileform)?;
+                    Ok(context.reify(&target_type, None))
+                })
+            {
                 stderr_output(format!("{}: {}\n", e.0, e.1));
                 return;
             }

@@ -99,7 +99,9 @@ fn choose_path(
     all: Rc<SExp>,
     context: Rc<SExp>,
 ) -> Result<Rc<SExp>, RunFailure> {
-    if p == bi_one() {
+    if p == bi_zero() {
+        Ok(Rc::new(SExp::Nil(l.clone())))
+    } else if p == bi_one() {
         Ok(context)
     } else {
         match context.borrow() {

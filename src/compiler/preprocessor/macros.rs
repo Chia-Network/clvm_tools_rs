@@ -10,7 +10,7 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 
 use crate::compiler::clvm::truthy;
 use crate::compiler::comptypes::{BodyForm, CompileErr};
-use crate::compiler::evaluate::{EvalExtension, Evaluator};
+use crate::compiler::evaluate::{EvalExtension, Evaluator, ExpandMode};
 use crate::compiler::preprocessor::dequote;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -98,7 +98,7 @@ fn reify_args(
             prog_args.clone(),
             env,
             a.clone(),
-            false,
+            Default::default(),
             None,
         )?;
         converted_args.push(shrunk);
@@ -540,7 +540,7 @@ impl ExtensionFunction for List {
                 ],
             ));
         }
-        evaluator.shrink_bodyform(&mut allocator, prog_args, env, res, false, None)
+        evaluator.shrink_bodyform(&mut allocator, prog_args, env, res, Default::default(), None)
     }
 }
 
@@ -680,7 +680,7 @@ impl ExtensionFunction for If {
             prog_args.clone(),
             env,
             args[0].clone(),
-            false,
+            Default::default(),
             None,
         )?;
 
@@ -691,7 +691,7 @@ impl ExtensionFunction for If {
                     prog_args,
                     env,
                     args[1].clone(),
-                    false,
+                    ExpandMode::default(),
                     None,
                 )
             } else {
@@ -700,7 +700,7 @@ impl ExtensionFunction for If {
                     prog_args,
                     env,
                     args[2].clone(),
-                    false,
+                    ExpandMode::default(),
                     None,
                 )
             }
