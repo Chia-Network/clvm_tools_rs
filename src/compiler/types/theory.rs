@@ -308,15 +308,6 @@ impl Context {
                     return Err(CompileErr(a.loc(), "instantiateL TExists".to_string()));
                 }
 
-                if let Type::TNullable(aprime) = a {
-                    if let Type::TVar(avar) = aprime.borrow() {
-                        return Ok(Box::new(self.snoc_wf(ContextElim::CExistsSolved(
-                            alpha.clone(),
-                            Type::TNullable(Rc::new(Type::TVar(avar.clone()))),
-                        ))));
-                    }
-                }
-
                 if let Type::TExec(aprime) = a {
                     if let Type::TVar(avar) = aprime.borrow() {
                         return Ok(Box::new(self.snoc_wf(ContextElim::CExistsSolved(
@@ -326,10 +317,7 @@ impl Context {
                     }
                 }
 
-                let exi = self.existentials();
-                if exi.elem(alpha) && !free_tvars(a).contains(alpha) {
-                    return self.instantiate_l(alpha, a);
-                }
+                return self.instantiate_l(alpha, a);
             }
 
             // <:instantiateR
