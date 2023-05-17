@@ -771,14 +771,7 @@ impl<'info> Evaluator {
             ));
 
             let program = frontend(self.opts.clone(), &[frontend_macro_input])?;
-            self.shrink_bodyform_visited(
-                allocator,
-                visited,
-                prog_args,
-                env,
-                program.exp,
-                false,
-            )
+            self.shrink_bodyform_visited(allocator, visited, prog_args, env, program.exp, false)
         } else {
             promote_program_to_bodyform(
                 macro_expansion.to_sexp(),
@@ -942,8 +935,7 @@ impl<'info> Evaluator {
                     all_primitive = false;
                 }
 
-                converted_args =
-                    SExp::Cons(l.clone(), shrunk.to_sexp(), Rc::new(converted_args));
+                converted_args = SExp::Cons(l.clone(), shrunk.to_sexp(), Rc::new(converted_args));
             }
 
             if all_primitive {
