@@ -114,7 +114,7 @@ jobs:
       run: |
         . ./activate
         python -m pip install pytest
-        python -m pip install blspy      
+        python -m pip install blspy
 
     - name: install clvm & clvm_tools
       run: |
@@ -153,12 +153,12 @@ jobs:
                 throw 'Native Failure'
             }
         }
-        
+
         cargo build --no-default-features
         cd resources/tests
         python test_clvm_step.py
         ThrowOnNativeFailure
-        python mandelbrot-cldb.py        
+        python mandelbrot-cldb.py
         ThrowOnNativeFailure
 
     - name: Run step run tests (others)
