@@ -160,7 +160,7 @@ fn fe_opt(
     Ok(CompileForm {
         helpers: optimized_helpers.clone(),
         exp: shrunk,
-        .. compileform.clone()
+        ..compileform
     })
 }
 
@@ -178,7 +178,7 @@ fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
     Ok(CompileForm {
         helpers: combined_helpers,
         exp: expr,
-        .. program.clone()
+        ..program.clone()
     })
 }
 

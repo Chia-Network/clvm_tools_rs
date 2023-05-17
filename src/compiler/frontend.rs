@@ -9,9 +9,10 @@ use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
-    list_to_cons, Binding, BindingPattern, BodyForm, ChiaType, CompileErr, CompileForm, CompilerOpts,
-    ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData, HelperForm, IncludeDesc, LetData,
-    LetFormInlineHint, LetFormKind, ModAccum, StructDef, StructMember, SyntheticType, TypeAnnoKind,
+    list_to_cons, Binding, BindingPattern, BodyForm, ChiaType, CompileErr, CompileForm,
+    CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData, HelperForm,
+    IncludeDesc, LetData, LetFormInlineHint, LetFormKind, ModAccum, StructDef, StructMember,
+    SyntheticType, TypeAnnoKind,
 };
 use crate::compiler::lambda::handle_lambda;
 use crate::compiler::preprocessor::preprocess;
@@ -20,7 +21,7 @@ use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::{HasLoc, Srcloc};
 use crate::compiler::typecheck::{parse_type_sexp, parse_type_var};
 use crate::compiler::types::ast::{Polytype, Type, TypeVar};
-use crate::util::{Number, toposort, u8_from_number};
+use crate::util::{toposort, u8_from_number, Number};
 
 fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
     match body.borrow() {

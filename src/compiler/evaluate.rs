@@ -48,7 +48,7 @@ trait VisitedInfoAccess {
 
 impl<'info> VisitedInfoAccess for VisitedMarker<'info, VisitedInfo> {
     fn get_function(&mut self, name: &[u8]) -> Option<Rc<BodyForm>> {
-        if let Some(ref info) = self.info.as_ref() {
+        if let Some(info) = self.info.as_ref() {
             info.functions.get(name).cloned()
         } else {
             None
@@ -714,7 +714,7 @@ impl<'info> Evaluator {
             mash_conditions: true,
             ignore_exn: true,
             disable_calls: false,
-            .. self.clone()
+            ..self.clone()
         }
     }
 
@@ -723,7 +723,7 @@ impl<'info> Evaluator {
             mash_conditions: false,
             ignore_exn: true,
             disable_calls: true,
-            .. self.clone()
+            ..self.clone()
         }
     }
 
@@ -732,7 +732,7 @@ impl<'info> Evaluator {
             mash_conditions: false,
             ignore_exn: true,
             disable_calls: false,
-            .. self.clone()
+            ..self.clone()
         }
     }
 
@@ -774,7 +774,7 @@ impl<'info> Evaluator {
             self.shrink_bodyform_visited(
                 allocator,
                 visited,
-                prog_args.clone(),
+                prog_args,
                 env,
                 program.exp,
                 false,
@@ -921,81 +921,79 @@ impl<'info> Evaluator {
             let compiled = self.compile_code(allocator, false, Rc::new(use_body))?;
             let compiled_borrowed: &SExp = compiled.borrow();
             Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
-        } else {
-            if let Some(prim) = self.lookup_prim(l.clone(), call_name) {
-                // Reduce all arguments.
-                let mut converted_args = SExp::Nil(l.clone());
+        } else if let Some(prim) = self.lookup_prim(l.clone(), call_name) {
+            // Reduce all arguments.
+            let mut converted_args = SExp::Nil(l.clone());
 
-                for i_reverse in 0..arguments_to_convert.len() {
-                    let i = arguments_to_convert.len() - i_reverse - 1;
-                    let shrunk = self.shrink_bodyform_visited(
-                        allocator,
-                        &mut visited,
-                        prog_args.clone(),
-                        env,
-                        arguments_to_convert[i].clone(),
-                        only_inline,
-                    )?;
-
-                    target_vec[i + 1] = shrunk.clone();
-
-                    if !arg_inputs_primitive(Rc::new(ArgInputs::Whole(shrunk.clone()))) {
-                        all_primitive = false;
-                    }
-
-                    converted_args =
-                        SExp::Cons(l.clone(), shrunk.to_sexp(), Rc::new(converted_args));
-                }
-
-                if all_primitive {
-                    match self.run_prim(
-                        allocator,
-                        l.clone(),
-                        make_prim_call(l.clone(), prim, Rc::new(converted_args)),
-                        Rc::new(SExp::Nil(l.clone())),
-                    ) {
-                        Ok(res) => Ok(res),
-                        Err(e) => {
-                            if only_inline || self.ignore_exn {
-                                Ok(Rc::new(BodyForm::Call(l.clone(), target_vec.clone())))
-                            } else {
-                                Err(e)
-                            }
-                        }
-                    }
-                } else if let Some(applied_lambda) = self.is_lambda_apply(
+            for i_reverse in 0..arguments_to_convert.len() {
+                let i = arguments_to_convert.len() - i_reverse - 1;
+                let shrunk = self.shrink_bodyform_visited(
                     allocator,
                     &mut visited,
                     prog_args.clone(),
                     env,
-                    &target_vec,
+                    arguments_to_convert[i].clone(),
                     only_inline,
-                )? {
-                    self.do_lambda_apply(
-                        allocator,
-                        &mut visited,
-                        prog_args.clone(),
-                        env,
-                        &applied_lambda,
-                        only_inline,
-                    )
-                } else {
-                    let reformed = BodyForm::Call(l.clone(), target_vec.clone());
-                    self.chase_apply(allocator, &mut visited, Rc::new(reformed))
+                )?;
+
+                target_vec[i + 1] = shrunk.clone();
+
+                if !arg_inputs_primitive(Rc::new(ArgInputs::Whole(shrunk.clone()))) {
+                    all_primitive = false;
                 }
-            } else {
-                // Build SExp arguments for external call or
-                // return the unevaluated chunk with minimized
-                // arguments.
-                Err(CompileErr(
-                    l.clone(),
-                    format!(
-                        "Don't yet support this call type {} {:?}",
-                        body.to_sexp(),
-                        body
-                    ),
-                ))
+
+                converted_args =
+                    SExp::Cons(l.clone(), shrunk.to_sexp(), Rc::new(converted_args));
             }
+
+            if all_primitive {
+                match self.run_prim(
+                    allocator,
+                    l.clone(),
+                    make_prim_call(l.clone(), prim, Rc::new(converted_args)),
+                    Rc::new(SExp::Nil(l.clone())),
+                ) {
+                    Ok(res) => Ok(res),
+                    Err(e) => {
+                        if only_inline || self.ignore_exn {
+                            Ok(Rc::new(BodyForm::Call(l, target_vec.clone())))
+                        } else {
+                            Err(e)
+                        }
+                    }
+                }
+            } else if let Some(applied_lambda) = self.is_lambda_apply(
+                allocator,
+                &mut visited,
+                prog_args.clone(),
+                env,
+                &target_vec,
+                only_inline,
+            )? {
+                self.do_lambda_apply(
+                    allocator,
+                    &mut visited,
+                    prog_args,
+                    env,
+                    &applied_lambda,
+                    only_inline,
+                )
+            } else {
+                let reformed = BodyForm::Call(l, target_vec.clone());
+                self.chase_apply(allocator, &mut visited, Rc::new(reformed))
+            }
+        } else {
+            // Build SExp arguments for external call or
+            // return the unevaluated chunk with minimized
+            // arguments.
+            Err(CompileErr(
+                l,
+                format!(
+                    "Don't yet support this call type {} {:?}",
+                    body.to_sexp(),
+                    body
+                ),
+            ))
         }
     }
 
@@ -1097,13 +1095,21 @@ impl<'info> Evaluator {
         if let BodyForm::Call(l, vec) = body.borrow() {
             if is_apply_atom(vec[0].to_sexp()) {
                 if let Ok(run_program) = dequote(l.clone(), vec[1].clone()) {
-                    return self.continue_apply(allocator, &mut visited, vec[2].clone(), run_program);
+                    return self.continue_apply(
+                        allocator,
+                        &mut visited,
+                        vec[2].clone(),
+                        run_program,
+                    );
                 }
 
                 if self.mash_conditions {
-                    if let Ok(mashed) =
-                        self.do_mash_condition(allocator, &mut visited, vec[1].clone(), vec[2].clone())
-                    {
+                    if let Ok(mashed) = self.do_mash_condition(
+                        allocator,
+                        &mut visited,
+                        vec[1].clone(),
+                        vec[2].clone(),
+                    ) {
                         return Ok(mashed);
                     }
                 }
@@ -1358,35 +1364,33 @@ impl<'info> Evaluator {
                         self.create_mod_for_fun(l, function.borrow()),
                         only_inline,
                     )
-                } else {
-                    if let Some(x) = env.get(name) {
-                        if reflex_capture(name, x.clone()) {
-                            Ok(x.clone())
-                        } else {
-                            self.shrink_bodyform_visited(
-                                allocator,
-                                &mut visited,
-                                prog_args.clone(),
-                                env,
-                                x.clone(),
-                                only_inline,
-                            )
-                        }
-                    } else if let Some(x) = self.get_constant(name) {
+                } else if let Some(x) = env.get(name) {
+                    if reflex_capture(name, x.clone()) {
+                        Ok(x.clone())
+                    } else {
                         self.shrink_bodyform_visited(
                             allocator,
                             &mut visited,
-                            prog_args.clone(),
+                            prog_args,
                             env,
-                            x,
+                            x.clone(),
                             only_inline,
                         )
-                    } else {
-                        Ok(Rc::new(BodyForm::Value(SExp::Atom(
-                            l.clone(),
-                            name.clone(),
-                        ))))
                     }
+                } else if let Some(x) = self.get_constant(name) {
+                    self.shrink_bodyform_visited(
+                        allocator,
+                        &mut visited,
+                        prog_args,
+                        env,
+                        x,
+                        only_inline,
+                    )
+                } else {
+                    Ok(Rc::new(BodyForm::Value(SExp::Atom(
+                        l.clone(),
+                        name.clone(),
+                    ))))
                 }
             }
             BodyForm::Value(v) => Ok(Rc::new(BodyForm::Quoted(v.clone()))),
