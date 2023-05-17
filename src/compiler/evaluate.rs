@@ -2,9 +2,8 @@ use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use num_bigint::ToBigInt;
-
 use clvm_rs::allocator::Allocator;
+use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
@@ -24,7 +23,7 @@ use crate::compiler::stackvisit::{HasDepthLimit, VisitedMarker};
 use crate::util::{number_from_u8, u8_from_number, Number};
 
 const PRIM_RUN_LIMIT: usize = 1000000;
-pub const EVAL_STACK_LIMIT: usize = 200;
+pub const EVAL_STACK_LIMIT: usize = 100;
 
 // Stack depth checker.
 #[derive(Clone, Debug, Default)]
@@ -131,6 +130,7 @@ pub trait EvalExtension {
 /// whether input parameters to the program as a whole are used in the program's
 /// eventual results.  The simplification it does is general eta conversion with
 /// some other local transformations thrown in.
+#[derive(Clone)]
 pub struct Evaluator {
     opts: Rc<dyn CompilerOpts>,
     runner: Rc<dyn TRunProgram>,
@@ -139,6 +139,7 @@ pub struct Evaluator {
     helpers: Vec<HelperForm>,
     mash_conditions: bool,
     ignore_exn: bool,
+    disable_calls: bool,
 }
 
 fn select_helper(bindings: &[HelperForm], name: &[u8]) -> Option<HelperForm> {
@@ -702,18 +703,34 @@ impl<'info> Evaluator {
             mash_conditions: false,
             ignore_exn: false,
             extensions: Vec::new(),
+            disable_calls: false,
         }
     }
 
     pub fn mash_conditions(&self) -> Self {
         Evaluator {
-            opts: self.opts.clone(),
-            runner: self.runner.clone(),
-            prims: self.prims.clone(),
-            helpers: self.helpers.clone(),
-            extensions: self.extensions.clone(),
             mash_conditions: true,
             ignore_exn: true,
+            disable_calls: false,
+            .. self.clone()
+        }
+    }
+
+    pub fn disable_calls(&self) -> Self {
+        Evaluator {
+            mash_conditions: false,
+            ignore_exn: true,
+            disable_calls: true,
+            .. self.clone()
+        }
+    }
+
+    pub fn enable_calls_for_macro(&self) -> Self {
+        Evaluator {
+            mash_conditions: false,
+            ignore_exn: true,
+            disable_calls: false,
+            .. self.clone()
         }
     }
 
@@ -1104,7 +1121,7 @@ impl<'info> Evaluator {
         l: Srcloc,
         call_loc: Srcloc,
         call_name: &[u8],
-        _head_expr: Rc<BodyForm>,
+        head_expr: Rc<BodyForm>,
         parts: &[Rc<BodyForm>],
         body: Rc<BodyForm>,
         prog_args: Rc<SExp>,
@@ -1141,6 +1158,21 @@ impl<'info> Evaluator {
             Some(HelperForm::Defun(inline, defun)) => {
                 if !inline && only_inline {
                     return Ok(body);
+                }
+
+                if self.disable_calls {
+                    let mut call_vec = vec![head_expr];
+                    for a in arguments_to_convert.iter() {
+                        call_vec.push(self.shrink_bodyform_visited(
+                            allocator,
+                            visited,
+                            prog_args.clone(),
+                            env,
+                            a.clone(),
+                            only_inline,
+                        )?);
+                    }
+                    return Ok(Rc::new(BodyForm::Call(l, call_vec)));
                 }
 
                 let argument_captures_untranslated =
@@ -1235,6 +1267,7 @@ impl<'info> Evaluator {
                 args: function.args.clone(),
                 helpers: self.helpers.clone(),
                 exp: function.body.clone(),
+                ty: function.ty.clone(),
             },
         ))
     }
@@ -1370,6 +1403,8 @@ impl<'info> Evaluator {
                     ));
                 }
 
+                // Allow us to punt all calls to functions, which preserved type
+                // signatures for type checking.
                 let head_expr = parts[0].clone();
                 let arguments_to_convert: Vec<Rc<BodyForm>> =
                     parts.iter().skip(1).cloned().collect();

@@ -325,17 +325,21 @@ impl Preprocessor {
                             Rc::new(SExp::Cons(args.loc(), args.clone(), body)),
                         )),
                     ));
-                    if let Some(helper) = compile_helperform(self.opts.clone(), target_defun)? {
-                        self.evaluator.add_helper(&helper);
-                        self.helpers.push(helper);
+                    if let Some(helpers) = compile_helperform(self.opts.clone(), target_defun)? {
+                        for h in helpers.new_helpers.iter() {
+                            self.evaluator.add_helper(&h);
+                            self.helpers.push(h.clone());
+                        }
                     } else {
                         return Err(CompileErr(
                             definition.loc(),
                             "defmac found but couldn't be converted to function".to_string(),
                         ));
                     }
-                } else if let Some(helper) = compile_helperform(self.opts.clone(), definition)? {
-                    self.evaluator.add_helper(&helper);
+                } else if let Some(helpers) = compile_helperform(self.opts.clone(), definition)? {
+                    for h in helpers.new_helpers.iter() {
+                        self.evaluator.add_helper(&h);
+                    }
                 }
             }
         }

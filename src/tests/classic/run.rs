@@ -325,6 +325,18 @@ fn test_get_dependencies_1() {
 }
 
 #[test]
+fn test_type_strip_1() {
+    assert_eq!(
+        do_basic_run(&vec![
+            "run".to_string(),
+            "(mod ((A : Atom)) (defun-inline foo (X Y . Z) (i X Y . Z)) (foo A 2 3))".to_string()
+        ])
+        .trim(),
+        "(i 2 (q . 2) (q . 3))"
+    );
+}
+
+#[test]
 fn test_treehash_constant_embedded_classic() {
     let result_text = do_basic_run(&vec![
         "run".to_string(),
@@ -352,6 +364,18 @@ fn test_treehash_constant_embedded_classic() {
     assert_eq!(
         result_hash,
         "0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9874"
+    );
+}
+
+#[test]
+fn test_type_strip_2() {
+    assert_eq!(
+        do_basic_run(&vec![
+            "run".to_string(),
+            "(mod (A) -> Atom (defun-inline foo (X Y . Z) (i X Y . Z)) (foo A 2 3))".to_string()
+        ])
+        .trim(),
+        "(i 2 (q . 2) (q . 3))"
     );
 }
 
@@ -386,6 +410,24 @@ fn test_treehash_constant_embedded_fancy_order() {
     assert_eq!(
         result_hash,
         "0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f98df"
+    );
+}
+
+#[test]
+fn test_type_def_1() {
+    assert_eq!(
+        do_basic_run(&vec![
+            "run".to_string(),
+            indoc! {"
+(mod (A) -> Atom
+   (deftype Struct ((A : Atom) . (B : Atom32)))
+   (defun-inline foo (X) (new_Struct X 3))
+   (get_Struct_A (foo A))
+   )"}
+            .to_string()
+        ])
+        .trim(),
+        "(a (q . 2) (c 2 (q . 3)))"
     );
 }
 

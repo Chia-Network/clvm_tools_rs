@@ -13,6 +13,7 @@ mod preprocessor;
 mod repl;
 mod runtypes;
 mod srcloc;
+mod types;
 mod usecheck;
 
 #[test]

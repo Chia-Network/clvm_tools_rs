@@ -64,6 +64,13 @@ lazy_static! {
                             (compile-list ARGS)
                     )
             (defun-inline / (A B) (f (divmod A B)))
+            (defun-inline c* (A B) (c A B))
+            (defun-inline a* (A B) (a A B))
+            (defun-inline coerce (X) : (Any -> Any) X)
+            (defun-inline explode (X) : (forall a ((Exec a) -> a)) X)
+            (defun-inline bless (X) : (forall a ((Pair a Unit) -> (Exec a))) (coerce X))
+            (defun-inline lift (X V) : (forall a (forall b ((Pair (Exec a) (Pair b Unit)) -> (Exec (Pair a b))))) (coerce X))
+            (defun-inline unlift (X) : (forall a (forall b ((Pair (Exec (Pair a b)) Unit) -> (Exec b)))) (coerce X))
             )
             "}
         .to_string()
@@ -129,6 +136,7 @@ fn fe_opt(
                         orig_args: defun.orig_args.clone(),
                         synthetic: defun.synthetic.clone(),
                         body: body_rc.clone(),
+                        ty: defun.ty.clone(),
                     },
                 );
                 optimized_helpers.push(new_helper);
@@ -150,11 +158,9 @@ fn fe_opt(
     )?;
 
     Ok(CompileForm {
-        loc: compileform.loc.clone(),
-        include_forms: compileform.include_forms.clone(),
-        args: compileform.args,
         helpers: optimized_helpers.clone(),
         exp: shrunk,
+        .. compileform.clone()
     })
 }
 
@@ -170,11 +176,9 @@ fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
     let combined_helpers = process_helper_let_bindings(&combined_helpers)?;
 
     Ok(CompileForm {
-        loc: program.loc.clone(),
-        include_forms: program.include_forms.clone(),
-        args: program.args.clone(),
         helpers: combined_helpers,
         exp: expr,
+        .. program.clone()
     })
 }
 
