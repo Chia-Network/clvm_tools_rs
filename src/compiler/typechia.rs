@@ -564,7 +564,10 @@ fn handle_macro(
         Rc::new(SExp::Nil(loc.clone())),
         &arg_env,
         form.exp.clone(),
-        ExpandMode::only_inline(),
+        ExpandMode {
+            functions: false,
+            lets: true,
+        },
         Some(EVAL_STACK_LIMIT),
     )?;
     let parsed_macro_output = frontend(opts.clone(), &[result.to_sexp()])?;
@@ -573,7 +576,10 @@ fn handle_macro(
         Rc::new(SExp::Nil(loc.clone())),
         &arg_env,
         parsed_macro_output.exp,
-        Default::default(),
+        ExpandMode {
+            functions: true,
+            lets: true,
+        },
         Some(EVAL_STACK_LIMIT),
     )?;
     match dequote(loc.clone(), exp_result) {
@@ -643,7 +649,10 @@ fn chialisp_to_expr(
                 Rc::new(SExp::Nil(letdata.loc.clone())),
                 &HashMap::new(),
                 body.clone(),
-                Default::default(),
+                ExpandMode {
+                    functions: true,
+                    lets: true,
+                },
                 Some(EVAL_STACK_LIMIT),
             )?;
             chialisp_to_expr(program, form_args, beta_reduced)

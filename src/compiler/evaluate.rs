@@ -76,6 +76,7 @@ impl<'info> VisitedInfoAccess for VisitedMarker<'info, VisitedInfo> {
         if let Some(ref mut info) = self.info {
             info.functions.get(name).cloned()
         } else {
+            todo!();
             None
         }
     }
@@ -828,16 +829,16 @@ impl<'info> Evaluator {
                 )),
             ));
 
-            frontend(self.opts.clone(), &[frontend_macro_input]).and_then(|program| {
-                self.shrink_bodyform_visited(
-                    allocator,
-                    visited,
-                    prog_args.clone(),
-                    env,
-                    program.exp,
-                    Default::default(),
-                )
-            })
+            let program =
+                frontend(self.opts.clone(), &[frontend_macro_input])?;
+            self.shrink_bodyform_visited(
+                allocator,
+                visited,
+                prog_args.clone(),
+                env,
+                program.exp,
+                Default::default(),
+            )
         } else {
             promote_program_to_bodyform(
                 macro_expansion.to_sexp(),
@@ -1033,84 +1034,80 @@ impl<'info> Evaluator {
                 }
             }
 
-            let pres = self
-                .lookup_prim(l.clone(), call_name)
-                .map(|prim| {
-                    // Reduce all arguments.
-                    let mut converted_args = SExp::Nil(l.clone());
+            if let Some(prim) = self.lookup_prim(l.clone(), call_name) {
+                // Reduce all arguments.
+                let mut converted_args = SExp::Nil(l.clone());
 
-                    for i_reverse in 0..arguments_to_convert.len() {
-                        let i = arguments_to_convert.len() - i_reverse - 1;
-                        let shrunk = self.shrink_bodyform_visited(
-                            allocator,
-                            &mut visited,
-                            prog_args.clone(),
-                            env,
-                            arguments_to_convert[i].clone(),
-                            expand.clone(),
-                        )?;
-
-                        target_vec[i + 1] = shrunk.clone();
-
-                        if !arg_inputs_primitive(Rc::new(ArgInputs::Whole(shrunk.clone()))) {
-                            all_primitive = false;
-                        }
-
-                        converted_args =
-                            SExp::Cons(l.clone(), shrunk.to_sexp(), Rc::new(converted_args));
-                    }
-
-                    if all_primitive {
-                        match self.run_prim(
-                            allocator,
-                            l.clone(),
-                            make_prim_call(l.clone(), prim, Rc::new(converted_args)),
-                            Rc::new(SExp::Nil(l.clone())),
-                        ) {
-                            Ok(res) => Ok(res),
-                            Err(e) => {
-                                if !expand.functions || self.ignore_exn {
-                                    Ok(Rc::new(BodyForm::Call(l.clone(), target_vec.clone())))
-                                } else {
-                                    Err(e)
-                                }
-                            }
-                        }
-                    } else if let Some(applied_lambda) = self.is_lambda_apply(
+                for i_reverse in 0..arguments_to_convert.len() {
+                    let i = arguments_to_convert.len() - i_reverse - 1;
+                    let shrunk = self.shrink_bodyform_visited(
                         allocator,
                         &mut visited,
                         prog_args.clone(),
                         env,
-                        &target_vec,
+                        arguments_to_convert[i].clone(),
                         expand.clone(),
-                    )? {
-                        self.do_lambda_apply(
-                            allocator,
-                            &mut visited,
-                            prog_args.clone(),
-                            env,
-                            &applied_lambda,
-                            expand,
-                        )
-                    } else {
-                        let reformed = BodyForm::Call(l.clone(), target_vec.clone());
-                        self.chase_apply(allocator, &mut visited, Rc::new(reformed))
+                    )?;
+
+                    target_vec[i + 1] = shrunk.clone();
+
+                    if !arg_inputs_primitive(Rc::new(ArgInputs::Whole(shrunk.clone()))) {
+                        all_primitive = false;
                     }
-                })
-                .unwrap_or_else(|| {
-                    // Build SExp arguments for external call or
-                    // return the unevaluated chunk with minimized
-                    // arguments.
-                    Err(CompileErr(
+
+                    converted_args =
+                        SExp::Cons(l.clone(), shrunk.to_sexp(), Rc::new(converted_args));
+                }
+
+                if all_primitive {
+                    match self.run_prim(
+                        allocator,
                         l.clone(),
-                        format!(
-                            "Don't yet support this call type {} {:?}",
-                            body.to_sexp(),
-                            body
-                        ),
-                    ))
-                })?;
-            Ok(pres)
+                        make_prim_call(l.clone(), prim, Rc::new(converted_args)),
+                        Rc::new(SExp::Nil(l.clone())),
+                    ) {
+                        Ok(res) => Ok(res),
+                        Err(e) => {
+                            if !expand.functions || self.ignore_exn {
+                                Ok(Rc::new(BodyForm::Call(l.clone(), target_vec.clone())))
+                            } else {
+                                Err(e)
+                            }
+                        }
+                    }
+                } else if let Some(applied_lambda) = self.is_lambda_apply(
+                    allocator,
+                    &mut visited,
+                    prog_args.clone(),
+                    env,
+                    &target_vec,
+                    expand.clone(),
+                )? {
+                    self.do_lambda_apply(
+                        allocator,
+                        &mut visited,
+                        prog_args.clone(),
+                        env,
+                        &applied_lambda,
+                        expand,
+                    )
+                } else {
+                    let reformed = BodyForm::Call(l.clone(), target_vec.clone());
+                    self.chase_apply(allocator, &mut visited, Rc::new(reformed))
+                }
+            } else {
+                // Build SExp arguments for external call or
+                // return the unevaluated chunk with minimized
+                // arguments.
+                Err(CompileErr(
+                    l.clone(),
+                    format!(
+                        "Don't yet support this call type {} {:?}",
+                        body.to_sexp(),
+                        body
+                    ),
+                ))
+            }
         }
     }
 

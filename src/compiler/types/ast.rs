@@ -5,8 +5,9 @@ use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
-use log::debug;
 use serde::Serialize;
+
+use log::debug;
 
 use crate::compiler::srcloc::{HasLoc, Srcloc};
 use crate::compiler::typecheck::TheoryToSExp;

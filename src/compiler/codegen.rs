@@ -24,7 +24,7 @@ use crate::compiler::frontend::compile_bodyform;
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
 use crate::compiler::lambda::lambda_codegen;
-use crate::compiler::optimize::optimize_expr;
+use crate::compiler::optimize::{finish_optimization, optimize_expr};
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
@@ -368,7 +368,11 @@ fn generate_args_code(
                 hd.clone(),
             )
             .map(|x| x.1)?;
-            compiled_args.push(generated);
+            if opts.frontend_opt() {
+                compiled_args.push(Rc::new(finish_optimization(&generated)));
+            } else {
+                compiled_args.push(generated);
+            }
         }
         Ok(list_to_cons(l, &compiled_args))
     }
