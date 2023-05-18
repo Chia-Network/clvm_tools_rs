@@ -206,7 +206,7 @@ impl CldbSingleBespokeOverride for CldbSinglePythonOverride {
     }
 }
 
-#[pyfunction(arg4 = "None")]
+#[pyfunction(arg3 = "None", arg4 = "None")]
 fn start_clvm_program(
     hex_prog: String,
     hex_args: String,
