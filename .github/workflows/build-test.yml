@@ -53,7 +53,7 @@ jobs:
           echo "USE_FEATURES=${USE_FEATURES}" >> "$GITHUB_ENV"
 
     - name: Set up feature flags to use
-      if: ! startsWith(matrix.os, 'windows')
+      if: !startsWith(matrix.os, 'windows')
       run: |
           python -m pip install tomlkit
           USE_FEATURES=$(./support/feature-fishing.py)
