@@ -43,12 +43,10 @@ jobs:
 
     - name: Install dependencies
       run: |
+          python -m pip install tomlkit
           python -m pip install maturin==0.12.20
-
-    - name: Get feature flags to use for macos builds
-      run: |
-        python -m pip install tomlkit
-        echo "USE_FEATURES=$(./support/feature-fishing.py)" >> "$GITHUB_ENV"
+          USE=FEATURES=$(./support/feature-fishing.py)
+          echo "USE_FEATURES=${USE_FEATURES}" >> "$GITHUB_ENV"
 
     - name: Build MacOs with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'macos')
