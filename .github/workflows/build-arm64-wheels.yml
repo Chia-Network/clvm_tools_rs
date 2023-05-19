@@ -46,6 +46,10 @@ jobs:
         name: wheels
         path: target/wheels/
 
+    - name: Get feature flags to use for macos builds
+      run: |
+        echo "USE_FEATURES=$(./support/feature-fishing.py)" >> "$GITHUB_ENV"
+
     - name: Clean up AMR64
       run: |
         rm -rf venv
