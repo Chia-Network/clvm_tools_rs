@@ -49,9 +49,11 @@ jobs:
       if: startsWith(matrix.os, 'windows')
       run: |
           python -m pip install tomlkit
-          $USE_FEATURES = @(./support/feature-fishing.py)
-          echo "USE_FEATURES=${USE_FEATURES}" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
-
+          Write-Host $Env:GITHUB_REF
+          $USE_FEATURES = &python ./support/feature-fishing.py
+          echo "USE_FEATURES=$USE_FEATURES" >> $Env:GITHUB_ENV
+      shell: pwsh
+      
     - name: Set up feature flags to use
       if: ${{ !startsWith(matrix.os, 'windows') }}
       run: |
