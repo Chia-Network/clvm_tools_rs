@@ -45,13 +45,17 @@ jobs:
       run: |
           python -m pip install maturin==0.12.20
 
+    - name: Get feature flags to use for macos builds
+      run: |
+        echo "USE_FEATURES=$(./support/feature-fishing.py)" >> "$GITHUB_ENV"
+
     - name: Build MacOs with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'macos')
       run: |
         python -m venv venv
         ln -s venv/bin/activate
         . ./activate
-        maturin build -i python --release --strip
+        maturin build -i python --release --strip --cargo-extra-args="--features=${USE_FEATURES}"
 
     - name: Build Linux in manylinux2010 with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'ubuntu')
@@ -95,7 +99,7 @@ jobs:
         python -m venv venv
         echo ". .\venv\Scripts\Activate.ps1" > activate.ps1
         . ./activate
-        maturin build --no-sdist -i python --release --strip
+        maturin build --no-sdist -i python --release --strip --cargo-extra-args="--features=${USE_FEATURES}"
         # Find and install the newly built wheel
         python support/wheelname.py
 
@@ -154,7 +158,7 @@ jobs:
             }
         }
 
-        cargo build --no-default-features
+        cargo build --features="${USE_FEATURES}"
         cd resources/tests
         python test_clvm_step.py
         ThrowOnNativeFailure
@@ -165,7 +169,7 @@ jobs:
       if: ${{ !startsWith(matrix.os, 'windows') }}
       run: |
         . ./activate
-        cargo build --no-default-features
+        cargo build --features="${USE_FEATURES}"
         cd resources/tests && \
         python test_clvm_step.py && \
         python mandelbrot-cldb.py
@@ -175,7 +179,7 @@ jobs:
       run: |
         . ./activate
         # Build cmd line tools
-        PYO3_PYTHON=`which python` cargo build --no-default-features --release
+        PYO3_PYTHON=`which python` cargo build --features="${USE_FEATURES}" --release
 
         # Grab chia-blockchain
         rm -rf chia-blockchain
@@ -215,7 +219,7 @@ jobs:
 
     - name: Run tests
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
-      run: cargo test --no-default-features
+      run: cargo test --features="${USE_FEATURES}"
 
     - name: Check coverage
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
