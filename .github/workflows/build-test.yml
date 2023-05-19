@@ -65,7 +65,7 @@ jobs:
         python -m venv venv
         ln -s venv/bin/activate
         . ./activate
-        maturin build -i python --release --strip --cargo-extra-args="--no-default-features --features=${USE_FEATURES}"
+        maturin build -i python --release --strip
 
     - name: Build Linux in manylinux2010 with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'ubuntu')
@@ -109,7 +109,7 @@ jobs:
         python -m venv venv
         echo ". .\venv\Scripts\Activate.ps1" > activate.ps1
         . ./activate
-        maturin build --no-sdist -i python --release --strip --cargo-extra-args="--no-default-features --features=${USE_FEATURES}"
+        maturin build --no-sdist -i python --release --strip
         # Find and install the newly built wheel
         python support/wheelname.py
 
