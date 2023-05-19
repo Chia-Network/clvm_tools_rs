@@ -45,6 +45,7 @@ jobs:
         echo "USE_FEATURES=${USE_FEATURES}" >> "$GITHUB_ENV"
         arch -arm64 pip install maturin==0.12.20
         arch -arm64 maturin build --no-sdist -i python --release --strip --cargo-extra-args="--features=${USE_FEATURES}"
+        echo "cargo test using features: ${USE_FEATURES}"
         arch -arm64 cargo test --features="${USE_FEATURES}"
 
     - name: Install clvm_tools_rs wheel
