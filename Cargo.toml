@@ -48,7 +48,8 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 extension-module = ["pyo3"]
-default = ["extension-module"]
+debug-print = []
+default = ["debug-print", "extension-module"]
 
 [target.'cfg(target_family="wasm")'.dependencies]
 wasm-bindgen = { version = "0.2.80", features = ["serde-serialize"] }
