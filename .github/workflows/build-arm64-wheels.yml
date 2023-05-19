@@ -33,6 +33,12 @@ jobs:
         rustup target add aarch64-unknown-linux-musl
         rm -rf venv
         export PATH="${PATH}:/opt/python/cp39-cp39/bin/:/opt/python/cp38-cp38/bin/:/opt/python/cp37-cp37m/bin/"
+
+    - name: Get feature flags to use for macos builds
+      run: |
+        python -m pip install tomlkit
+        echo "USE_FEATURES=$(./support/feature-fishing.py)" >> "$GITHUB_ENV"
+
     - name: Build Python wheels
       run: |
         /opt/python/cp38-cp38/bin/python -m venv venv
@@ -45,10 +51,6 @@ jobs:
       with:
         name: wheels
         path: target/wheels/
-
-    - name: Get feature flags to use for macos builds
-      run: |
-        echo "USE_FEATURES=$(./support/feature-fishing.py)" >> "$GITHUB_ENV"
 
     - name: Clean up AMR64
       run: |
