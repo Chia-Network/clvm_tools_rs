@@ -38,6 +38,7 @@ jobs:
     - name: Get feature flags to use for macos builds
       run: |
         echo "USE_FEATURES=$(./support/feature-fishing.py)" >> "$GITHUB_ENV"
+        echo "using experimental features ${USE_FEATURES}"
 
     - name: Build m1 wheels
       run: |
@@ -91,7 +92,7 @@ jobs:
       run: |
         . ./venv/bin/activate
         cd clvm_tools_rs
-        arch -arm64 cargo test
+        arch -arm64 cargo test --features="${USE_FEATURES}"
 
     - name: Upload wheels
       uses: actions/upload-artifact@v3
