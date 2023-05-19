@@ -35,12 +35,6 @@ jobs:
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > rust.sh
         arch -arm64 sh rust.sh -y
 
-    - name: Get feature flags to use for macos builds
-      run: |
-        pip install tomlkit
-        echo "USE_FEATURES=$(./support/feature-fishing.py)" >> "$GITHUB_ENV"
-        echo "using experimental features ${USE_FEATURES}"
-
     - name: Build m1 wheels
       run: |
         arch -arm64 python3 -m venv venv
