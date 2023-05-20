@@ -697,6 +697,14 @@ pub fn cldb(args: &[String]) {
 
     let step = start_step(program, args);
     let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
+    let print_tree = |output: &mut Vec<_>, result: &BTreeMap<String, String>| {
+        let mut cvt_subtree = BTreeMap::new();
+        for (k, v) in result.iter() {
+            cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
+        }
+        output.push(cvt_subtree);
+    };
+
     loop {
         if cldbrun.is_ended() {
             println!("{}", yamlette_string(&output));
@@ -709,13 +717,16 @@ pub fn cldb(args: &[String]) {
                     let mut only_print = BTreeMap::new();
                     only_print.insert("Print".to_string(), YamlElement::String(p.clone()));
                     output.push(only_print);
+                } else {
+                    let is_final = result.get("Final").is_some();
+                    let is_throw = result.get("Throw").is_some();
+                    let is_failure = result.get("Failure").is_some();
+                    if is_final || is_throw || is_failure {
+                        print_tree(&mut output, &result);
+                    }
                 }
             } else {
-                let mut cvt_subtree = BTreeMap::new();
-                for (k, v) in result.iter() {
-                    cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
-                }
-                output.push(cvt_subtree);
+                print_tree(&mut output, &result);
             }
         }
     }
