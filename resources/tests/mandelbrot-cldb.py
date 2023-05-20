@@ -29,6 +29,8 @@ want_output = """---
 - Print: ((escape-at -184 -128) 6)
 - Print: ((escape-at -192 -128) 5)
 - Print: "(\\"result\\" \\"||567AAC|68DEEE|78EEEE|78BEEE\\")"
+- Final: "3356114000950459963475899699747220812557867594760040767593731831711045"
+  Final-Location: "./mandelbrot/mandelbrot.clsp(8):43"
 """
 
 have_output = subprocess.check_output(command).decode('utf8')
