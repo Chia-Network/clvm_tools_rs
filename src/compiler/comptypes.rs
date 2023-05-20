@@ -176,7 +176,7 @@ pub enum BodyForm {
     /// Captures are optional.
     /// The real args are given in the indicated shape when the lambda is applied
     /// with the 'a' operator.
-    Lambda(LambdaData),
+    Lambda(Box<LambdaData>),
 }
 
 /// The information needed to know about a defun.  Whether it's inline is left in
