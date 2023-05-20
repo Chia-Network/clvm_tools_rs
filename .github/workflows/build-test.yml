@@ -101,6 +101,7 @@ jobs:
       shell: bash
       run: |
         python -m venv venv
+        ln -s venv/bin/activate ./activate
         . ./activate
         maturin build --no-sdist -i python --release --strip
         # Find and install the newly built wheel
