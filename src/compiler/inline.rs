@@ -282,10 +282,10 @@ fn replace_inline_body(
                 callsite,
                 ldata.captures.clone(),
             )?;
-            Ok(Rc::new(BodyForm::Lambda(LambdaData {
+            Ok(Rc::new(BodyForm::Lambda(Box::new(LambdaData {
                 captures: rewritten_captures,
-                ..ldata.clone()
-            })))
+                ..*ldata.clone()
+            }))))
         }
         _ => Ok(expr.clone()),
     }

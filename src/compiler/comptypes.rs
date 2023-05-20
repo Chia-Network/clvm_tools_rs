@@ -202,7 +202,7 @@ pub enum BodyForm {
     /// Captures are optional.
     /// The real args are given in the indicated shape when the lambda is applied
     /// with the 'a' operator.
-    Lambda(LambdaData),
+    Lambda(Box<LambdaData>),
 }
 
 #[derive(Clone, Debug, Serialize)]

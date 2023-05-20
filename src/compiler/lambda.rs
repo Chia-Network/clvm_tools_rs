@@ -142,12 +142,12 @@ pub fn handle_lambda(
     // Requires captures
     let subparse = compile_bodyform(opts, Rc::new(v[1].clone()))?;
 
-    Ok(BodyForm::Lambda(LambdaData {
+    Ok(BodyForm::Lambda(Box::new(LambdaData {
         loc: v[0].loc(),
         kw: kw_loc,
         args: found.args.clone(),
         capture_args: found.capture_args.clone(),
         captures: found.captures,
         body: Rc::new(subparse),
-    }))
+    })))
 }

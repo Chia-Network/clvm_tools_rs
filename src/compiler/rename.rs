@@ -211,12 +211,12 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             let renamed_capture_outputs =
                 rename_in_cons(namemap, ldata.capture_args.clone(), false);
             let renamed_body = rename_in_bodyform(namemap, ldata.body.clone());
-            BodyForm::Lambda(LambdaData {
+            BodyForm::Lambda(Box::new(LambdaData {
                 captures: renamed_capture_inputs,
                 capture_args: renamed_capture_outputs,
                 body: Rc::new(renamed_body),
-                ..ldata.clone()
-            })
+                ..*ldata.clone()
+            }))
         }
     }
 }

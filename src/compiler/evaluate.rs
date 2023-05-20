@@ -812,7 +812,7 @@ impl<'info> Evaluator {
             )?;
             if let BodyForm::Lambda(ldata) = evaluated_prog.borrow() {
                 return Ok(Some(LambdaApply {
-                    lambda: ldata.clone(),
+                    lambda: *ldata.clone(),
                     body: ldata.body.clone(),
                     env: evaluated_env,
                 }));
@@ -1239,10 +1239,10 @@ impl<'info> Evaluator {
         )?;
 
         // This is the first part of eta-conversion.
-        Ok(Rc::new(BodyForm::Lambda(LambdaData {
+        Ok(Rc::new(BodyForm::Lambda(Box::new(LambdaData {
             captures: new_captures,
             ..ldata.clone()
-        })))
+        }))))
     }
 
     fn get_function(&self, name: &[u8]) -> Option<Box<DefunData>> {
