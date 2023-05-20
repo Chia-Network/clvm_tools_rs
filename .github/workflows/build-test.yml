@@ -178,8 +178,6 @@ jobs:
 
     - name: Run step run tests (others)
       if: ${{ !startsWith(matrix.os, 'windows') }}
-      env:
-        USE_FEATURES: "${{ env.USE_FEATURES }}"
       run: |
         . ./activate
         cargo build --no-default-features --features="${USE_FEATURES}"
