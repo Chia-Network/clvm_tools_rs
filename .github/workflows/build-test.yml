@@ -49,10 +49,7 @@ jobs:
       if: startsWith(matrix.os, 'windows')
       run: |
           python -m pip install tomlkit
-          USE_FEATURES=$(./support/feature-fishing.py)
-          echo "contents of USE_FEATURES is ${USE_FEATURES}"
-          echo "USE_FEATURES=${USE_FEATURES}" >> "$GITHUB_ENV"
-      shell: bash
+          python ./support/feature-fishing.py USE_FEATURES= | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
       
     - name: Set up feature flags to use
       if: ${{ !startsWith(matrix.os, 'windows') }}
@@ -157,6 +154,8 @@ jobs:
     # Thanks: https://stackoverflow.com/questions/9948517/how-to-stop-a-powershell-script-on-the-first-error
     - name: "Run step run tests (windows)"
       if: ${{ startsWith(matrix.os, 'windows') }}
+      env:
+        USE_FEATURES: "${{ env.USE_FEATURES }}"
       run: |
         . ./activate
 
@@ -179,6 +178,8 @@ jobs:
 
     - name: Run step run tests (others)
       if: ${{ !startsWith(matrix.os, 'windows') }}
+      env:
+        USE_FEATURES: "${{ env.USE_FEATURES }}"
       run: |
         . ./activate
         cargo build --no-default-features --features="${USE_FEATURES}"
