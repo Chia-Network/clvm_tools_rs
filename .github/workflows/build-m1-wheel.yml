@@ -40,9 +40,13 @@ jobs:
         arch -arm64 python3 -m venv venv
         . ./venv/bin/activate
         export PATH=~/.cargo/bin:$PATH
+        arch -arm64 pip install tomlkit
+        USE_FEATURES=$(arch -arm64 ./support/feature-fishing.py)
+        echo "USE_FEATURES=${USE_FEATURES}" >> "$GITHUB_ENV"
         arch -arm64 pip install maturin==0.12.20
-        arch -arm64 maturin build --no-sdist -i python --release --strip --cargo-extra-args="--all-features"
-        arch -arm64 cargo test --no-default-features
+        arch -arm64 maturin build --no-sdist -i python --release --strip --cargo-extra-args="--features=${USE_FEATURES}"
+        echo "cargo test using features: ${USE_FEATURES}"
+        arch -arm64 cargo test --no-default-features --features="${USE_FEATURES}"
 
     - name: Install clvm_tools_rs wheel
       run: |
@@ -87,7 +91,7 @@ jobs:
       run: |
         . ./venv/bin/activate
         cd clvm_tools_rs
-        arch -arm64 cargo test
+        arch -arm64 cargo test --features="${USE_FEATURES}"
 
     - name: Upload wheels
       uses: actions/upload-artifact@v3

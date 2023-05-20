@@ -28,7 +28,7 @@
       (- V 1)
       )
     )
-    
+
 
   (defun basic-scanline (X1 Y1 X2 STEP)
     (if (> X2 X1)
