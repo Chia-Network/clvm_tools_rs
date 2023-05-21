@@ -20,14 +20,14 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
-        python: [3.7, 3.8, 3.9]
+        python: [3.7, 3.8, 3.9, '3.10']
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         fetch-depth: 0
 
-    - uses: actions/setup-python@v2
+    - uses: actions/setup-python@v4
       name: Install Python ${{ matrix.python }}
       with:
         python-version: ${{ matrix.python }}
@@ -47,6 +47,8 @@ jobs:
 
     - name: Build MacOs with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'macos')
+      env:
+        MACOSX_DEPLOYMENT_TARGET: '10.14'
       run: |
         python -m venv venv
         ln -s venv/bin/activate
@@ -58,10 +60,8 @@ jobs:
       run: |
         podman run --rm=true \
           -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
-          quay.io/pypa/manylinux2010_x86_64 \
+          ghcr.io/chia-network/build-images/centos-pypa-rust-x86_64 \
           bash -exc '\
-            curl -L https://sh.rustup.rs > rustup-init.sh && \
-            sh rustup-init.sh -y && \
             yum -y install libc6 openssl-devel && \
             source $HOME/.cargo/env && \
             rustup target add x86_64-unknown-linux-musl && \
@@ -154,6 +154,27 @@ jobs:
         cp support/recompile_check.py chia-blockchain
         (cd chia-blockchain && python recompile_check.py)
 
+    - name: Test Classic command line tools with pytest
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      run: |
+        python -m pip install pytest
+        # This script installs the wheel built during this workflow.
+        python support/wheelname.py
+        # TODO: bring in the other tests in resources/tests/cmdline/tests besides cmds_test.py
+        (cd resources/tests/cmdline/tests && py.test cmds_test.py )
+
+    - name: Verify recompilation of cl21 sources
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      run: |
+        . ./activate
+        # We need chia-rs for the following.
+        pip install chia-rs
+        # Ensure we're using the sources we have.  This is a hedge against
+        # changes made by any other step doing operations on pip.
+        # This script installs the wheel built during this workflow.
+        python support/wheelname.py
+        (cd resources/tests && python check-recompiles.py)
+
     - name: Run tests from clvm
       run: |
         . ./activate
@@ -165,8 +186,15 @@ jobs:
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
       run: cargo test --no-default-features
 
+    - name: Check coverage
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      run: |
+        cargo install grcov
+        rustup component add llvm-tools-preview
+        python ./resources/coverage/run_coverage.py --require-percent 60
+
     - name: Upload artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: wheels
         path: ./target/wheels/
@@ -205,7 +233,7 @@ jobs:
     runs-on: ubuntu-20.04
     name: cargo fmt
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 1
       - name: Install rust
@@ -220,7 +248,7 @@ jobs:
   clippy:
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -237,7 +265,7 @@ jobs:
     runs-on: ubuntu-20.04
     name: Unit tests
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 1
       - name: Install rust
@@ -247,3 +275,22 @@ jobs:
             components: rustfmt, clippy
       - name: cargo test
         run: cargo test
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: nightly
+      - name: Install tarpaulin
+        run: cargo +nightly install cargo-tarpaulin
+      - name: Run tarpaulin
+        run: cargo tarpaulin --no-dead-code --engine llvm --workspace --all-features --ignore-panics --out Lcov
+      - name: Upload to Coveralls
+        uses: coverallsapp/github-action@v2
+        if: always()
+        env:
+          COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
+        with:
+          path-to-lcov: './lcov.info'

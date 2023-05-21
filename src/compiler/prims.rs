@@ -7,6 +7,7 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 
+/// The primitives in clvm that are known about.
 pub fn prims() -> Vec<(Vec<u8>, SExp)> {
     let primloc = Srcloc::start("*prims*");
     vec![

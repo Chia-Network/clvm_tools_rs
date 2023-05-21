@@ -27,7 +27,7 @@ pub enum NArgsSpec {
     Definite(usize),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ArgumentValue {
     ArgString(Option<String>, String),
     ArgInt(i64),
@@ -57,7 +57,7 @@ impl ArgumentValueConv for IntConversion {
             _ => {
                 let m: &dyn Fn() -> String = self.help_messager.borrow();
                 let usage = m();
-                Err(format!("{}\n\nError: Invalid parameter: {}", usage, v))
+                Err(format!("{usage}\n\nError: Invalid parameter: {v}"))
             }
         }
     }
@@ -241,7 +241,7 @@ impl ArgumentParser {
 
                 if optional_arg_idx < 0 {
                     let usage = self.compile_help_messages();
-                    return Err(format!("{}\n\nError: Unknown option: {}", usage, arg));
+                    return Err(format!("{usage}\n\nError: Unknown option: {arg}"));
                 }
 
                 let optional_arg = &self.optional_args[optional_arg_idx as usize];
@@ -262,11 +262,17 @@ impl ArgumentParser {
 
                 ioff += 1;
 
-                let value = &normalized_args[i + ioff];
-                if value.is_empty() && optional_arg.options.default.is_none() {
+                // Simplify and fix the ability to read outside the vector bounds
+                // when an optional argument is given without a value.
+                let value = if i + ioff >= normalized_args.len()
+                    || (normalized_args[i + ioff].is_empty()
+                        && optional_arg.options.default.is_none())
+                {
                     let usage = self.compile_help_messages();
-                    return Err(format!("{}\n\nError: {} requires a value", usage, name));
-                }
+                    return Err(format!("{usage}\n\nError: {name} requires a value"));
+                } else {
+                    &normalized_args[i + ioff]
+                };
                 if optional_arg.options.action == TArgOptionAction::Store {
                     if let Ok(c) = converter.convert(value) {
                         params.insert(name, c);
@@ -301,8 +307,8 @@ impl ArgumentParser {
                 } else {
                     let usage = self.compile_help_messages();
                     return Err(format!(
-                        "{}\n\nError: Unknown action: {:?}",
-                        usage, optional_arg.options.action
+                        "{usage}\n\nError: Unknown action: {:?}",
+                        optional_arg.options.action
                     ));
                 }
             }
@@ -333,8 +339,7 @@ impl ArgumentParser {
                         if i >= input_positional_args.len() {
                             let usage = self.compile_help_messages();
                             return Err(format!(
-                                "{}\n\nError: Requires {} positional arguments but got {}",
-                                usage, nargs, i
+                                "{usage}\n\nError: Requires {nargs} positional arguments but got {i}"
                             ));
                         }
 
@@ -367,8 +372,7 @@ impl ArgumentParser {
                         if nargs == &Some(NArgsSpec::Plus) {
                             let usage = self.compile_help_messages();
                             return Err(format!(
-                                "{}\n\nError: The following arguments are required: {}",
-                                usage, name
+                                "{usage}\n\nError: The following arguments are required: {name}"
                             ));
                         }
 

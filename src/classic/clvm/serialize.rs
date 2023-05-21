@@ -69,7 +69,7 @@ fn atom_size_blob(b: &Bytes) -> Result<(bool, Vec<u8>), String> {
             ],
         ))
     } else {
-        Err(format!("oversize bytes is unrepresentable {:?}", size))
+        Err(format!("oversize bytes is unrepresentable {size:?}"))
     }
 }
 

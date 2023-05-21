@@ -19,7 +19,48 @@ use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::stackvisit::{HasDepthLimit, VisitedMarker};
 use crate::util::{number_from_u8, u8_from_number, Number};
+
+const PRIM_RUN_LIMIT: usize = 1000000;
+pub const EVAL_STACK_LIMIT: usize = 200;
+
+// Stack depth checker.
+#[derive(Clone, Debug, Default)]
+pub struct VisitedInfo {
+    functions: HashMap<Vec<u8>, Rc<BodyForm>>,
+    max_depth: Option<usize>,
+}
+
+impl HasDepthLimit<Srcloc, CompileErr> for VisitedInfo {
+    fn depth_limit(&self) -> Option<usize> {
+        self.max_depth
+    }
+    fn stack_err(&self, loc: Srcloc) -> CompileErr {
+        CompileErr(loc, "stack limit exceeded".to_string())
+    }
+}
+
+trait VisitedInfoAccess {
+    fn get_function(&mut self, name: &[u8]) -> Option<Rc<BodyForm>>;
+    fn insert_function(&mut self, name: Vec<u8>, body: Rc<BodyForm>);
+}
+
+impl<'info> VisitedInfoAccess for VisitedMarker<'info, VisitedInfo> {
+    fn get_function(&mut self, name: &[u8]) -> Option<Rc<BodyForm>> {
+        if let Some(ref mut info) = self.info {
+            info.functions.get(name).cloned()
+        } else {
+            None
+        }
+    }
+
+    fn insert_function(&mut self, name: Vec<u8>, body: Rc<BodyForm>) {
+        if let Some(ref mut info) = self.info {
+            info.functions.insert(name, body);
+        }
+    }
+}
 
 // Frontend evaluator based on my fuzzer representation and direct interpreter of
 // that.
@@ -29,6 +70,22 @@ pub enum ArgInputs {
     Pair(Rc<ArgInputs>, Rc<ArgInputs>),
 }
 
+/// Evaluator is an object that simplifies expressions, given the helpers
+/// (helpers are forms that are reusable parts of programs, such as defconst,
+/// defun or defmacro) from a program.  In the simplest form, it can be used to
+/// power a chialisp repl, but also to simplify expressions to their components.
+///
+/// The emitted expressions are simpler and sometimes smaller, depending on what the
+/// evaulator was able to do.  It performs all obvious substitutions and some
+/// obvious simplifications based on CLVM operations (such as combining
+/// picking operations with conses in some cases).  If the expression can't
+/// be simplified to a constant, any remaining variable references and the
+/// operations on them are left.
+///
+/// Because of what it can do, it's also used for "use checking" to determine
+/// whether input parameters to the program as a whole are used in the program's
+/// eventual results.  The simplification it does is general eta conversion with
+/// some other local transformations thrown in.
 pub struct Evaluator {
     opts: Rc<dyn CompilerOpts>,
     runner: Rc<dyn TRunProgram>,
@@ -194,8 +251,7 @@ fn create_argument_captures(
         (_, _) => Err(CompileErr(
             function_arg_spec.loc(),
             format!(
-                "not yet supported argument alternative: ArgInput {:?} SExp {}",
-                formed_arguments, function_arg_spec
+                "not yet supported argument alternative: ArgInput {formed_arguments:?} SExp {function_arg_spec}"
             ),
         )),
     }
@@ -286,20 +342,14 @@ fn show_env(env: &HashMap<Vec<u8>, Rc<BodyForm>>) {
 pub fn first_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     match lst.borrow() {
         SExp::Cons(_, f, _) => Ok(f.clone()),
-        _ => Err(CompileErr(
-            lst.loc(),
-            format!("No first element of {}", lst),
-        )),
+        _ => Err(CompileErr(lst.loc(), format!("No first element of {lst}"))),
     }
 }
 
 pub fn second_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     match lst.borrow() {
         SExp::Cons(_, _, r) => first_of_alist(r.clone()),
-        _ => Err(CompileErr(
-            lst.loc(),
-            format!("No second element of {}", lst),
-        )),
+        _ => Err(CompileErr(lst.loc(), format!("No second element of {lst}"))),
     }
 }
 
@@ -311,7 +361,7 @@ fn synthesize_args(
         SExp::Atom(_, name) => env.get(name).map(|x| Ok(x.clone())).unwrap_or_else(|| {
             Err(CompileErr(
                 template.loc(),
-                format!("Argument {} referenced but not in env", template),
+                format!("Argument {template} referenced but not in env"),
             ))
         }),
         SExp::Cons(l, f, r) => {
@@ -331,7 +381,7 @@ fn synthesize_args(
         SExp::Nil(l) => Ok(Rc::new(BodyForm::Quoted(SExp::Nil(l.clone())))),
         _ => Err(CompileErr(
             template.loc(),
-            format!("unknown argument template {}", template),
+            format!("unknown argument template {template}"),
         )),
     }
 }
@@ -527,7 +577,7 @@ fn flatten_expression_to_names(expr: Rc<SExp>) -> Rc<BodyForm> {
     Rc::new(BodyForm::Call(expr.loc(), call_vec))
 }
 
-impl Evaluator {
+impl<'info> Evaluator {
     pub fn new(
         opts: Rc<dyn CompilerOpts>,
         runner: Rc<dyn TRunProgram>,
@@ -558,7 +608,7 @@ impl Evaluator {
     fn invoke_macro_expansion(
         &self,
         allocator: &mut Allocator,
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
         l: Srcloc,
         call_loc: Srcloc,
         program: Rc<CompileForm>,
@@ -613,7 +663,7 @@ impl Evaluator {
     fn invoke_primitive(
         &self,
         allocator: &mut Allocator,
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        visited: &mut VisitedMarker<'info, VisitedInfo>,
         l: Srcloc,
         call_name: &[u8],
         parts: &[Rc<BodyForm>],
@@ -722,7 +772,7 @@ impl Evaluator {
     fn continue_apply(
         &self,
         allocator: &mut Allocator,
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
         env: Rc<BodyForm>,
         run_program: Rc<SExp>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
@@ -742,7 +792,7 @@ impl Evaluator {
     fn do_mash_condition(
         &self,
         allocator: &mut Allocator,
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
         maybe_condition: Rc<BodyForm>,
         env: Rc<BodyForm>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
@@ -755,11 +805,11 @@ impl Evaluator {
             let where_from = cond.loc().to_string();
             let where_from_vec = where_from.as_bytes().to_vec();
 
-            if let Some(present) = visited.get(&where_from_vec) {
-                return Ok(present.clone());
+            if let Some(present) = visited.get_function(&where_from_vec) {
+                return Ok(present);
             }
 
-            visited.insert(
+            visited.insert_function(
                 where_from_vec,
                 Rc::new(BodyForm::Call(
                     maybe_condition.loc(),
@@ -808,7 +858,7 @@ impl Evaluator {
     fn chase_apply(
         &self,
         allocator: &mut Allocator,
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
         body: Rc<BodyForm>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         if let BodyForm::Call(l, vec) = body.borrow() {
@@ -834,7 +884,7 @@ impl Evaluator {
     fn handle_invoke(
         &self,
         allocator: &mut Allocator,
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
         l: Srcloc,
         call_loc: Srcloc,
         call_name: &[u8],
@@ -909,21 +959,22 @@ impl Evaluator {
     }
 
     // A frontend language evaluator and minifier
-    pub fn shrink_bodyform_visited(
+    fn shrink_bodyform_visited(
         &self,
         allocator: &mut Allocator, // Support random prims via clvm_rs
-        visited: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
+        visited_: &'info mut VisitedMarker<'_, VisitedInfo>,
         prog_args: Rc<SExp>,
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         body: Rc<BodyForm>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
+        let mut visited = VisitedMarker::again(body.loc(), visited_)?;
         match body.borrow() {
             BodyForm::Let(LetFormKind::Parallel, letdata) => {
                 let updated_bindings = update_parallel_bindings(env, &letdata.bindings);
                 self.shrink_bodyform_visited(
                     allocator,
-                    visited,
+                    &mut visited,
                     prog_args,
                     &updated_bindings,
                     letdata.body.clone(),
@@ -934,7 +985,7 @@ impl Evaluator {
                 if letdata.bindings.is_empty() {
                     self.shrink_bodyform_visited(
                         allocator,
-                        visited,
+                        &mut visited,
                         prog_args,
                         env,
                         letdata.body.clone(),
@@ -949,7 +1000,7 @@ impl Evaluator {
                     let updated_bindings = update_parallel_bindings(env, &first_binding_as_list);
                     self.shrink_bodyform_visited(
                         allocator,
-                        visited,
+                        &mut visited,
                         prog_args,
                         &updated_bindings,
                         Rc::new(BodyForm::Let(
@@ -971,7 +1022,7 @@ impl Evaluator {
                     let literal_args = synthesize_args(prog_args.clone(), env)?;
                     self.shrink_bodyform_visited(
                         allocator,
-                        visited,
+                        &mut visited,
                         prog_args,
                         env,
                         literal_args,
@@ -985,7 +1036,7 @@ impl Evaluator {
                             } else {
                                 self.shrink_bodyform_visited(
                                     allocator,
-                                    visited,
+                                    &mut visited,
                                     prog_args.clone(),
                                     env,
                                     x.clone(),
@@ -998,7 +1049,7 @@ impl Evaluator {
                                 .map(|x| {
                                     self.shrink_bodyform_visited(
                                         allocator,
-                                        visited,
+                                        &mut visited,
                                         prog_args.clone(),
                                         env,
                                         x,
@@ -1030,7 +1081,7 @@ impl Evaluator {
                 match head_expr.borrow() {
                     BodyForm::Value(SExp::Atom(call_loc, call_name)) => self.handle_invoke(
                         allocator,
-                        visited,
+                        &mut visited,
                         l.clone(),
                         call_loc.clone(),
                         call_name,
@@ -1044,7 +1095,7 @@ impl Evaluator {
                     ),
                     BodyForm::Value(SExp::Integer(call_loc, call_int)) => self.handle_invoke(
                         allocator,
-                        visited,
+                        &mut visited,
                         l.clone(),
                         call_loc.clone(),
                         &u8_from_number(call_int.clone()),
@@ -1076,6 +1127,21 @@ impl Evaluator {
         }
     }
 
+    /// The main entrypoint for the evaluator, shrink_bodyform takes a notion of the
+    /// current argument set (in case something depends on its shape), the
+    /// bindings in force, and a frontend expression to evaluate and simplifies
+    /// it as much as possible.  The result is the "least complex" version of the
+    /// expression we can make with what we know; this includes taking any part that's
+    /// constant and fully applying it to make a constant of the full subexpression
+    /// as well as a few other small rewriting elements.
+    ///
+    /// There are a few simplification steps that may make code larger, such as
+    /// fully substituting inline applications and eliminating let bindings.
+    ///
+    /// the only_inline flag controls whether only inline functions are expanded
+    /// or whether it's allowed to expand all functions, depending on whehter it's
+    /// intended to simply make a result that ends at inline expansion or generate
+    /// as full a result as possible.
     pub fn shrink_bodyform(
         &self,
         allocator: &mut Allocator, // Support random prims via clvm_rs
@@ -1083,10 +1149,16 @@ impl Evaluator {
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         body: Rc<BodyForm>,
         only_inline: bool,
+        stack_limit: Option<usize>,
     ) -> Result<Rc<BodyForm>, CompileErr> {
+        let visited_info = VisitedInfo {
+            max_depth: stack_limit,
+            ..Default::default()
+        };
+        let mut visited_marker = VisitedMarker::new(visited_info);
         self.shrink_bodyform_visited(
             allocator, // Support random prims via clvm_rs
-            &mut HashMap::new(),
+            &mut visited_marker,
             prog_args,
             env,
             body,
@@ -1165,9 +1237,10 @@ impl Evaluator {
             self.prims.clone(),
             prim,
             args,
+            Some(PRIM_RUN_LIMIT),
         )
         .map_err(|e| match e {
-            RunFailure::RunExn(_, s) => CompileErr(call_loc.clone(), format!("exception: {}", s)),
+            RunFailure::RunExn(_, s) => CompileErr(call_loc.clone(), format!("exception: {s}")),
             RunFailure::RunErr(_, s) => CompileErr(call_loc.clone(), s),
         })
         .map(|res| {
@@ -1211,6 +1284,7 @@ impl Evaluator {
         self.helpers.push(h.clone());
     }
 
+    // The evaluator treats the forms coming up from constants as live.
     fn get_constant(&self, name: &[u8]) -> Option<Rc<BodyForm>> {
         for h in self.helpers.iter() {
             if let HelperForm::Defconstant(defc) = h {

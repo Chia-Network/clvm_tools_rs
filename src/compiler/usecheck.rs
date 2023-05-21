@@ -11,7 +11,7 @@ use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 
 use crate::compiler::clvm::sha256tree;
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts};
-use crate::compiler::evaluate::Evaluator;
+use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::sexp::SExp;
 use crate::util::u8_from_number;
 
@@ -65,6 +65,16 @@ fn remove_present_atoms(envlist: &mut HashMap<Vec<u8>, Vec<u8>>, args: Rc<SExp>)
     }
 }
 
+/// Given a CompilerOpts and a compiled program CompileForm, produce the set of
+/// eligible parameters to the program which, after expanding the complete program
+/// into a single expression, do not contribute to the program's output along any
+/// conditional branch.
+///
+/// This was requested last year by code audit people on the basis that it's useful
+/// to check whether a program's inputs contribute to its output.  This is only
+/// enforced for lower case parameter names; upper case names are
+/// by convention curried-in and are required parameters which the user may
+/// not have control over.  Parameter names starting with _ are also not checked.
 pub fn check_parameters_used_compileform(
     opts: Rc<dyn CompilerOpts>,
     program: Rc<CompileForm>,
@@ -92,6 +102,7 @@ pub fn check_parameters_used_compileform(
         &env,
         program.exp.clone(),
         false,
+        Some(EVAL_STACK_LIMIT),
     )?;
 
     remove_present_atoms(&mut replacement_to_original, result.to_sexp());

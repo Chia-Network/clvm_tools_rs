@@ -5,6 +5,7 @@ lazy_static! {
     pub static ref ARGNAME_CTR: AtomicUsize = AtomicUsize::new(0);
 }
 
+/// As (gensym ...) in lisp.
 pub fn gensym(name: Vec<u8>) -> Vec<u8> {
     let count = ARGNAME_CTR.fetch_add(1, Ordering::SeqCst);
     let mut result_vec = name;

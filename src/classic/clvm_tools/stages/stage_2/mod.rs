@@ -5,3 +5,4 @@ pub mod inline;
 pub mod module;
 pub mod operators;
 pub mod optimize;
+pub mod reader;
