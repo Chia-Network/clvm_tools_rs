@@ -386,7 +386,7 @@ pub fn var_change_optimizer_cons_eval(
                         )?;
 
                         if DIAG_OPTIMIZATIONS {
-                            println!("XXX non_constant_count {}", non_constant_count);
+                            println!("XXX non_constant_count {non_constant_count}");
                         };
 
                         if non_constant_count < 1 {

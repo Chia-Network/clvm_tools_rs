@@ -14,19 +14,32 @@ use std::string::String;
 use binascii::{bin2hex, hex2bin};
 use num_traits::{zero, Num};
 
+use serde::Serialize;
+
 use crate::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType};
 use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes_clvm, TConvertOption};
 use crate::compiler::prims::prims;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, u8_from_number, Number};
 
+/// This relates to automatic generation of random sexp.
 pub const MAX_SEXP_COST: usize = 15;
 
-// Compiler view of SExp
-#[derive(Clone, Debug)]
+/// The compiler's view of SExp.
+///
+/// These preserve some characteristics of the source text that aren't strictly
+/// required for chialisp but are useful for ergonomics and compilation.  The
+/// Srcloc especially is relied on by the vscode plugin, which uses the frontend
+/// entrypoints here for parsing and to surface some kinds of errors.
+#[derive(Clone, Debug, Serialize)]
 pub enum SExp {
+    /// A native nil value "()"
     Nil(Srcloc),
+    /// A cons with a left and right child.  The srcloc should span the entire
+    /// content of the list, but may not depending on the construction of the
+    /// list.
     Cons(Srcloc, Rc<SExp>, Rc<SExp>),
+    ///
     Integer(Srcloc, Number),
     QuotedString(Srcloc, u8, Vec<u8>),
     Atom(Srcloc, Vec<u8>),
@@ -207,6 +220,12 @@ fn make_cons(a: Rc<SExp>, b: Rc<SExp>) -> SExp {
     SExp::Cons(a.loc().ext(&b.loc()), a.clone(), b.clone())
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum TermListCommentState {
+    InComment,
+    Empty,
+}
+
 #[derive(Debug)]
 enum SExpParseState {
     Empty,
@@ -216,7 +235,13 @@ enum SExpParseState {
     QuotedEscaped(Srcloc, u8, Vec<u8>),
     OpenList(Srcloc),
     ParsingList(Srcloc, Rc<SExpParseState>, Vec<Rc<SExp>>),
-    TermList(Srcloc, Rc<SExpParseState>, Vec<Rc<SExp>>),
+    TermList(
+        Srcloc,
+        TermListCommentState,
+        Option<Rc<SExp>>,
+        Rc<SExpParseState>,
+        Vec<Rc<SExp>>,
+    ),
 }
 
 #[derive(Debug)]
@@ -334,7 +359,7 @@ fn escape_quote(q: u8, s: &[u8]) -> String {
     let _: Vec<()> = s
         .iter()
         .map(|ch| {
-            if *ch == q as u8 {
+            if *ch == q {
                 res.push('\\');
             }
             res.push(*ch as char);
@@ -474,6 +499,14 @@ impl SExp {
         }
     }
 
+    pub fn atomize(&self) -> SExp {
+        match self {
+            SExp::Integer(l, i) => SExp::Atom(l.clone(), u8_from_number(i.clone())),
+            SExp::QuotedString(l, _, a) => SExp::Atom(l.clone(), a.clone()),
+            _ => self.clone(),
+        }
+    }
+
     pub fn equal_to(&self, other: &SExp) -> bool {
         if self.nilp() && other.nilp() {
             true
@@ -524,7 +557,7 @@ impl SExp {
             SExp::Atom(_, v) => Ok(number_from_u8(v)),
             SExp::QuotedString(_, _, v) => Ok(number_from_u8(v)),
             SExp::Nil(_) => Ok(bi_zero()),
-            _ => Err((self.loc(), format!("wanted atom got cons cell {}", self))),
+            _ => Err((self.loc(), format!("wanted atom got cons cell {self}"))),
         }
     }
 }
@@ -607,6 +640,8 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
             match (this_char as char, pp.borrow()) {
                 ('.', SExpParseState::Empty) => resume(SExpParseState::TermList(
                     pl.ext(&loc),
+                    TermListCommentState::Empty,
+                    None,
                     Rc::new(SExpParseState::Empty),
                     list_content.to_vec(),
                 )),
@@ -640,26 +675,40 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                 },
             }
         }
-        SExpParseState::TermList(pl, pp, list_content) => match (this_char as char, pp.borrow()) {
-            ('.', SExpParseState::Empty) => {
-                error(loc, "Multiple dots in list notation are illegal")
-            }
-            (')', SExpParseState::Empty) => {
-                if list_content.len() == 1 {
-                    emit(list_content[0].clone(), SExpParseState::Empty)
-                } else {
-                    emit(
-                        Rc::new(enlist(pl.ext(&loc), list_content.to_vec())),
-                        SExpParseState::Empty,
-                    )
-                }
-            }
-            (')', SExpParseState::Bareword(l, t)) => {
-                let parsed_atom = make_atom(l.clone(), t.to_vec());
+        SExpParseState::TermList(pl, TermListCommentState::InComment, parsed, pp, list_content) => {
+            let end_comment = if this_char as char == '\n' || this_char as char == '\r' {
+                TermListCommentState::Empty
+            } else {
+                TermListCommentState::InComment
+            };
+            resume(SExpParseState::TermList(
+                pl.clone(),
+                end_comment,
+                parsed.clone(),
+                pp.clone(),
+                list_content.clone(),
+            ))
+        }
+        SExpParseState::TermList(
+            pl,
+            TermListCommentState::Empty,
+            Some(parsed),
+            pp,
+            list_content,
+        ) => {
+            if this_char.is_ascii_whitespace() {
+                resume(SExpParseState::TermList(
+                    pl.ext(&loc),
+                    TermListCommentState::Empty,
+                    Some(parsed.clone()),
+                    pp.clone(),
+                    list_content.to_vec(),
+                ))
+            } else if this_char == b')' {
                 let mut list_copy = list_content.to_vec();
                 match list_copy.pop() {
                     Some(v) => {
-                        let new_tail = make_cons(v, Rc::new(parsed_atom));
+                        let new_tail = make_cons(v, parsed.clone());
                         if list_copy.is_empty() {
                             emit(Rc::new(new_tail), SExpParseState::Empty)
                         } else {
@@ -672,31 +721,74 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                     }
                     None => error(loc, "Dot as first element of list?"),
                 }
+            } else if this_char == b';' {
+                resume(SExpParseState::TermList(
+                    pl.clone(),
+                    TermListCommentState::InComment,
+                    Some(parsed.clone()),
+                    pp.clone(),
+                    list_content.clone(),
+                ))
+            } else {
+                error(
+                    pl.clone(),
+                    &format!("unexpected character {}", this_char as char),
+                )
             }
-            (_, _) => match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
-                SExpParseResult::Emit(o, p) => {
+        }
+        SExpParseState::TermList(pl, TermListCommentState::Empty, None, pp, list_content) => {
+            match (this_char as char, pp.borrow()) {
+                ('.', SExpParseState::Empty) => {
+                    error(loc, "Multiple dots in list notation are illegal")
+                }
+                (')', SExpParseState::Empty) => {
+                    if list_content.len() == 1 {
+                        emit(list_content[0].clone(), SExpParseState::Empty)
+                    } else {
+                        emit(
+                            Rc::new(enlist(pl.ext(&loc), list_content.to_vec())),
+                            SExpParseState::Empty,
+                        )
+                    }
+                }
+                (')', SExpParseState::Bareword(l, t)) => {
+                    let parsed_atom = make_atom(l.clone(), t.to_vec());
                     let mut list_copy = list_content.to_vec();
                     match list_copy.pop() {
                         Some(v) => {
-                            let new_tail = make_cons(v, o);
-                            list_copy.push(Rc::new(new_tail));
-                            resume(SExpParseState::TermList(
-                                pl.ext(&loc),
-                                Rc::new(p),
-                                list_copy,
-                            ))
+                            let new_tail = make_cons(v, Rc::new(parsed_atom));
+                            if list_copy.is_empty() {
+                                emit(Rc::new(new_tail), SExpParseState::Empty)
+                            } else {
+                                let mut result_list = new_tail;
+                                for item in list_copy.iter().rev() {
+                                    result_list = make_cons(item.clone(), Rc::new(result_list));
+                                }
+                                emit(Rc::new(result_list), SExpParseState::Empty)
+                            }
                         }
                         None => error(loc, "Dot as first element of list?"),
                     }
                 }
-                SExpParseResult::Resume(p) => resume(SExpParseState::TermList(
-                    pl.ext(&loc),
-                    Rc::new(p),
-                    list_content.to_vec(),
-                )),
-                SExpParseResult::Error(l, e) => SExpParseResult::Error(l, e),
-            },
-        },
+                (_, _) => match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
+                    SExpParseResult::Emit(o, _p) => resume(SExpParseState::TermList(
+                        loc,
+                        TermListCommentState::Empty,
+                        Some(o),
+                        pp.clone(),
+                        list_content.clone(),
+                    )),
+                    SExpParseResult::Resume(p) => resume(SExpParseState::TermList(
+                        pl.ext(&loc),
+                        TermListCommentState::Empty,
+                        None,
+                        Rc::new(p),
+                        list_content.to_vec(),
+                    )),
+                    SExpParseResult::Error(l, e) => SExpParseResult::Error(l, e),
+                },
+            }
+        }
     }
 }
 
@@ -739,10 +831,15 @@ where
         }
         SExpParseState::OpenList(l) => Err((l, "Unterminated list (empty)".to_string())),
         SExpParseState::ParsingList(l, _, _) => Err((l, "Unterminated mid list".to_string())),
-        SExpParseState::TermList(l, _, _) => Err((l, "Unterminated tail list".to_string())),
+        SExpParseState::TermList(l, _, _, _, _) => Err((l, "Unterminated tail list".to_string())),
     }
 }
 
+///
+/// Entrypoint for parsing chialisp input.
+///
+/// This produces Rc<SExp>, where SExp is described above.
+///
 pub fn parse_sexp<I>(start: Srcloc, input: I) -> Result<Vec<Rc<SExp>>, (Srcloc, String)>
 where
     I: Iterator<Item = u8>,

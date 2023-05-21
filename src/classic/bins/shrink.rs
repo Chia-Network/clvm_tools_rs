@@ -7,13 +7,13 @@ use std::rc::Rc;
 use clvm_rs::allocator::Allocator;
 
 use clvm_tools_rs::compiler::compiler::DefaultCompilerOpts;
-use clvm_tools_rs::compiler::comptypes::CompileErr;
-use clvm_tools_rs::compiler::evaluate::Evaluator;
+use clvm_tools_rs::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
 use clvm_tools_rs::compiler::frontend::frontend;
 use clvm_tools_rs::compiler::sexp::parse_sexp;
 use clvm_tools_rs::compiler::srcloc::Srcloc;
 
 use clvm_tools_rs::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use clvm_tools_rs::util::ErrInto;
 
 fn main() {
     let mut allocator = Allocator::new();
@@ -27,7 +27,7 @@ fn main() {
 
     let loc = Srcloc::start("*program*");
     let _ = parse_sexp(loc, args[1].bytes())
-        .map_err(|e| CompileErr(e.0.clone(), e.1))
+        .err_into()
         .and_then(|parsed_program| frontend(opts.clone(), &parsed_program))
         .and_then(|program| {
             let e = Evaluator::new(opts.clone(), runner.clone(), program.helpers.clone());
@@ -37,12 +37,13 @@ fn main() {
                 &HashMap::new(),
                 program.exp,
                 false,
+                Some(EVAL_STACK_LIMIT),
             )
         })
         .map(|result| {
             println!("shrunk: {}", result.to_sexp());
         })
         .map_err(|e| {
-            println!("failed: {:?}", e);
+            println!("failed: {e:?}");
         });
 }

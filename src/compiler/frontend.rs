@@ -5,8 +5,8 @@ use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::comptypes::{
-    list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData,
-    DefmacData, DefunData, HelperForm, IncludeDesc, LetData, LetFormKind, ModAccum,
+    list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, ConstantKind,
+    DefconstData, DefmacData, DefunData, HelperForm, IncludeDesc, LetData, LetFormKind, ModAccum,
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
@@ -70,7 +70,13 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
 fn collect_used_names_helperform(body: &HelperForm) -> Vec<Vec<u8>> {
     match body {
         HelperForm::Defconstant(defc) => collect_used_names_bodyform(defc.body.borrow()),
-        HelperForm::Defmacro(mac) => collect_used_names_compileform(mac.program.borrow()),
+        HelperForm::Defmacro(mac) => {
+            let mut res = collect_used_names_compileform(mac.program.borrow());
+            // Ensure any other names mentioned in qq blocks are included.
+            let mut all_token_res = collect_used_names_sexp(mac.program.to_sexp());
+            res.append(&mut all_token_res);
+            res
+        }
         HelperForm::Defun(_, defun) => collect_used_names_bodyform(&defun.body),
     }
 }
@@ -107,7 +113,6 @@ fn calculate_live_helpers(
                     .collect();
                 needed_helpers = needed_helpers
                     .union(&even_newer_names)
-                    .into_iter()
                     .map(|x| x.to_vec())
                     .collect();
             }
@@ -134,13 +139,13 @@ fn qq_to_expression(opts: Rc<dyn CompilerOpts>, body: Rc<SExp>) -> Result<BodyFo
             } else if let Some(list) = r.proper_list() {
                 if op == b"quote" {
                     if list.len() != 1 {
-                        return Err(CompileErr(l.clone(), format!("bad form {}", body)));
+                        return Err(CompileErr(l.clone(), format!("bad form {body}")));
                     }
 
                     return Ok(BodyForm::Quoted(list[0].clone()));
                 } else if op == b"unquote" {
                     if list.len() != 1 {
-                        return Err(CompileErr(l.clone(), format!("bad form {}", body)));
+                        return Err(CompileErr(l.clone(), format!("bad form {body}")));
                     }
 
                     return compile_bodyform(opts.clone(), Rc::new(list[0].clone()));
@@ -174,7 +179,7 @@ fn qq_to_expression_list(
         SExp::Nil(l) => Ok(BodyForm::Quoted(SExp::Nil(l.clone()))),
         _ => Err(CompileErr(
             body.loc(),
-            format!("Bad list tail in qq {}", body),
+            format!("Bad list tail in qq {body}"),
         )),
     }
 }
@@ -261,7 +266,7 @@ pub fn compile_bodyform(
             let finish_err = |site| {
                 Err(CompileErr(
                     l.clone(),
-                    format!("{}: bad argument list for form {}", site, body),
+                    format!("{site}: bad argument list for form {body}"),
                 ))
             };
 
@@ -356,23 +361,56 @@ pub fn compile_bodyform(
     }
 }
 
+// More modern constant definition that interprets code ala constexpr.
+fn compile_defconst(
+    opts: Rc<dyn CompilerOpts>,
+    l: Srcloc,
+    nl: Srcloc,
+    kl: Option<Srcloc>,
+    name: Vec<u8>,
+    body: Rc<SExp>,
+) -> Result<HelperForm, CompileErr> {
+    let bf = compile_bodyform(opts, body)?;
+    Ok(HelperForm::Defconstant(DefconstData {
+        kw: kl,
+        nl,
+        loc: l,
+        kind: ConstantKind::Complex,
+        name: name.to_vec(),
+        body: Rc::new(bf),
+    }))
+}
+
 fn compile_defconstant(
     opts: Rc<dyn CompilerOpts>,
     l: Srcloc,
     nl: Srcloc,
-    kwl: Option<Srcloc>,
+    kl: Option<Srcloc>,
     name: Vec<u8>,
     body: Rc<SExp>,
 ) -> Result<HelperForm, CompileErr> {
-    compile_bodyform(opts, body).map(|bf| {
-        HelperForm::Defconstant(DefconstData {
+    let body_borrowed: &SExp = body.borrow();
+    if let SExp::Cons(_, _, _) = body_borrowed {
+        Ok(HelperForm::Defconstant(DefconstData {
             loc: l,
             nl,
-            kw: kwl,
+            kw: kl,
+            kind: ConstantKind::Simple,
             name: name.to_vec(),
-            body: Rc::new(bf),
+            body: Rc::new(BodyForm::Value(body_borrowed.clone())),
+        }))
+    } else {
+        compile_bodyform(opts, body).map(|bf| {
+            HelperForm::Defconstant(DefconstData {
+                loc: l,
+                nl,
+                kw: kl,
+                kind: ConstantKind::Simple,
+                name: name.to_vec(),
+                body: Rc::new(bf),
+            })
         })
-    })
+    }
 }
 
 fn location_span(l_: Srcloc, lst_: Rc<SExp>) -> Srcloc {
@@ -409,7 +447,8 @@ fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun) -> Result<Helpe
                 nl: data.nl,
                 kw: data.kwl,
                 name: data.name,
-                args: data.args,
+                args: data.args.clone(),
+                orig_args: data.args,
                 body: Rc::new(bf),
             },
         )
@@ -517,6 +556,16 @@ pub fn compile_helperform(
                 matched.args,
             )
             .map(Some)
+        } else if matched.op_name == b"defconst" {
+            compile_defconst(
+                opts,
+                l,
+                matched.nl,
+                Some(matched.opl),
+                matched.name.to_vec(),
+                matched.args,
+            )
+            .map(Some)
         } else if matched.op_name == b"defmacro" {
             compile_defmacro(
                 opts,
@@ -608,7 +657,7 @@ fn compile_mod_(
         },
         _ => Err(CompileErr(
             content.loc(),
-            format!("inappropriate sexp {}", content),
+            format!("inappropriate sexp {content}"),
         )),
     }
 }
@@ -663,7 +712,8 @@ fn frontend_start(
 
                     if *mod_atom == "mod".as_bytes().to_vec() {
                         let args = Rc::new(x[1].clone());
-                        let body_vec = x.iter().skip(2).map(|s| Rc::new(s.clone())).collect();
+                        let body_vec: Vec<Rc<SExp>> =
+                            x.iter().skip(2).map(|s| Rc::new(s.clone())).collect();
                         let body = Rc::new(enlist(pre_forms[0].loc(), body_vec));
 
                         let ls = preprocess(opts.clone(), includes, body)?;
@@ -682,6 +732,19 @@ fn frontend_start(
     }
 }
 
+/// Entrypoint for compilation.  This yields a CompileForm which represents a full
+/// program.
+///
+/// Given a CompilerOpts specifying the global options for the compilation, return
+/// a representation of the parsed program.  Desugaring is not done in this step
+/// so this is a close representation of the user's input, containing location
+/// references etc.
+///
+/// pre_forms is a list of forms, because most SExp readers, including parse_sexp
+/// parse a list of complete forms from a source text.  It is possible for frontend
+/// to use a list of forms, but it is most often used with a single list in
+/// chialisp.  Usually pre_forms will contain a slice containing one list or
+/// mod form.
 pub fn frontend(
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>],
@@ -722,7 +785,7 @@ pub fn frontend(
 
     let mut live_helpers = Vec::new();
     for h in our_mod.helpers {
-        if helper_names.contains(h.name()) {
+        if !opts.frontend_check_live() || helper_names.contains(h.name()) {
             live_helpers.push(h);
         }
     }

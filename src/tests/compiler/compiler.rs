@@ -11,6 +11,8 @@ use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
+const TEST_TIMEOUT: usize = 1000000;
+
 fn compile_string(content: &String) -> Result<String, CompileErr> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
@@ -31,8 +33,7 @@ fn run_string_maybe_opt(
     opts = opts
         .set_frontend_opt(fe_opt)
         .set_search_paths(&vec!["resources/tests".to_string()]);
-    let sexp_args =
-        parse_sexp(srcloc.clone(), args.bytes()).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
+    let sexp_args = parse_sexp(srcloc.clone(), args.bytes())?[0].clone();
 
     compile_file(
         &mut allocator,
@@ -48,6 +49,7 @@ fn run_string_maybe_opt(
             Rc::new(HashMap::new()),
             Rc::new(x),
             sexp_args,
+            Some(TEST_TIMEOUT),
         )
         .map_err(|e| match e {
             RunFailure::RunErr(l, s) => CompileErr(l, s),
@@ -1165,4 +1167,95 @@ fn test_fuzz_seed_1839384357_1() {
     )
     .unwrap();
     assert_eq!(res.to_string(), "ki");
+}
+
+#[test]
+fn arg_destructure_test_1() {
+    let prog = indoc! {"
+(mod
+  (
+      SINGLETON_MOD_HASH
+      LAUNCHER_HASH
+      launcher_id
+      . delegated_puzzle_hash
+  )
+
+  (include *standard-cl-21*)
+
+  delegated_puzzle_hash
+)"
+    }
+    .to_string();
+    let res = run_string(&prog, &"(1 2 3 . 4)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "4");
+}
+
+#[test]
+fn test_defconstant_tree() {
+    let prog = indoc! {"
+(mod ()
+  (include *standard-cl-21*)
+  (include test-defconstant-tree.clib)
+  constant-tree
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"()".to_string()).unwrap();
+    assert_eq!(res.to_string(), "((0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a . 0x9dcf97a184f32623d11a73124ceb99a5709b083721e878a16d78f596718ba7b2) 0x02a12871fee210fb8619291eaea194581cbd2531e4b23759d225f6806923f63222 . 0x02a8d5dd63fba471ebcb1f3e8f7c1e1879b7152a6e7298a91ce119a63400ade7c5)");
+}
+
+#[test]
+fn test_assign_dont_detect_unrelated_inlines_as_recursive() {
+    let prog = indoc! {"
+(mod (A) ;; 11
+  (include *standard-cl-22*)
+  (defun-inline <= (A B) (not (> A B)))
+  (let
+    ((foo (<= 2 A))
+     (bar (<= 1 A)))
+
+    (let
+      ((baz (<= foo bar)))
+
+      (let
+        ((yorgle (<= baz bar)))
+
+        (<= yorgle foo)
+        )
+      )
+    )
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(2)".to_string()).expect("should compile");
+    assert_eq!(res.to_string(), "1");
+}
+
+#[test]
+fn test_inline_out_of_bounds_diagnostic() {
+    let prog = indoc! {"
+(mod ()
+  (include *standard-cl-21*)
+  (defun-inline FOO (X Y) (+ X Y))
+  (FOO 3)
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"()".to_string());
+    if let Err(CompileErr(l, e)) = res {
+        assert_eq!(l.line, 4);
+        assert!(e.starts_with("Lookup"));
+    } else {
+        assert!(false);
+    }
+}
+
+#[test]
+fn test_inline_in_assign_not_actually_recursive() {
+    let prog = indoc! {"
+(mod (POINT)
+  (include *standard-cl-21*)
+  (defun-inline no-op (V) V)
+  (let ((TU 100)) (let ((TI1 (no-op TU)) (TU2 (no-op TU))) 9999))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"()".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "9999");
 }

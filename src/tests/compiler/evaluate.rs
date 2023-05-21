@@ -6,12 +6,13 @@ use clvm_rs::allocator::Allocator;
 use crate::compiler::compiler::compile_file;
 use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
-use crate::compiler::evaluate::Evaluator;
+use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::{from_clvm, frontend};
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use crate::util::ErrInto;
 
 fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
     let mut allocator = Allocator::new();
@@ -19,9 +20,7 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
     let opts = Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));
     let loc = Srcloc::start(&"*program*".to_string());
     parse_sexp(loc.clone(), s.bytes())
-        .map_err(|e| {
-            return CompileErr(e.0.clone(), e.1.clone());
-        })
+        .err_into()
         .and_then(|parsed_program| {
             return frontend(opts.clone(), &parsed_program);
         })
@@ -33,6 +32,7 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
                 &HashMap::new(),
                 program.exp.clone(),
                 false,
+                Some(EVAL_STACK_LIMIT),
             );
         })
         .map(|result| result.to_sexp().to_string())
@@ -73,9 +73,7 @@ fn test_basic_expand_macro_3() {
 fn convert_clvm_to_chialisp(s: String) -> Result<Rc<SExp>, CompileErr> {
     let loc = Srcloc::start(&"*program*".to_string());
     parse_sexp(loc.clone(), s.bytes())
-        .map_err(|e| {
-            return CompileErr(e.0.clone(), e.1.clone());
-        })
+        .err_into()
         .map(|parsed_program| from_clvm(parsed_program[0].clone()))
 }
 

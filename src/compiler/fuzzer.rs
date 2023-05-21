@@ -906,7 +906,8 @@ fn run_op(
             Rc::new(op),
             Rc::new(opargs)
         )),
-        Rc::new(SExp::Nil(loc))
+        Rc::new(SExp::Nil(loc)),
+        None
     ).map(|v| {
         let vb: &SExp = v.borrow();
         vb.clone()

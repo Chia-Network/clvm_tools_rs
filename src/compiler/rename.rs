@@ -9,6 +9,8 @@ use crate::compiler::comptypes::{
 use crate::compiler::gensym::gensym;
 use crate::compiler::sexp::SExp;
 
+/// Rename in a qq form.  This searches for (unquote ...) forms inside and performs
+/// rename inside them, leaving the rest of the qq form as is.
 fn rename_in_qq(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SExp> {
     body.proper_list()
         .and_then(|x| {
@@ -256,6 +258,7 @@ fn rename_in_helperform(namemap: &HashMap<Vec<u8>, Vec<u8>>, h: &HelperForm) -> 
     match h {
         HelperForm::Defconstant(defc) => HelperForm::Defconstant(DefconstData {
             loc: defc.loc.clone(),
+            kind: defc.kind.clone(),
             name: defc.name.to_vec(),
             nl: defc.nl.clone(),
             kw: defc.kw.clone(),
@@ -276,6 +279,7 @@ fn rename_in_helperform(namemap: &HashMap<Vec<u8>, Vec<u8>>, h: &HelperForm) -> 
                 kw: defun.kw.clone(),
                 nl: defun.nl.clone(),
                 name: defun.name.to_vec(),
+                orig_args: defun.orig_args.clone(),
                 args: defun.args.clone(),
                 body: Rc::new(rename_in_bodyform(namemap, defun.body.clone())),
             },
@@ -287,6 +291,7 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
     match h {
         HelperForm::Defconstant(defc) => HelperForm::Defconstant(DefconstData {
             loc: defc.loc.clone(),
+            kind: defc.kind.clone(),
             nl: defc.nl.clone(),
             kw: defc.kw.clone(),
             name: defc.name.clone(),
@@ -330,6 +335,7 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
                     nl: defun.nl.clone(),
                     kw: defun.kw.clone(),
                     name: defun.name.clone(),
+                    orig_args: defun.orig_args.clone(),
                     args: local_renamed_arg,
                     body: Rc::new(rename_in_bodyform(
                         &local_namemap,

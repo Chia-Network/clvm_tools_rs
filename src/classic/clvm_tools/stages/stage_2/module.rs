@@ -7,9 +7,11 @@ use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm::sexp::{
-    enlist, first, flatten, fold_m, map_m, non_nil, proper_list, rest,
+    enlist, first, flatten, fold_m, map_m, non_nil, nonempty_last, proper_list, rest, First,
+    NodeSel, Rest, SelectNode, ThisNode,
 };
-use crate::classic::clvm_tools::debug::build_symbol_dump;
+use crate::classic::clvm_tools::binutils::disassemble;
+use crate::classic::clvm_tools::debug::{build_symbol_dump, FunctionExtraInfo};
 use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages::assemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
@@ -27,6 +29,23 @@ struct CollectionResult {
     pub functions: HashMap<Vec<u8>, NodePtr>,
     pub constants: HashMap<Vec<u8>, NodePtr>,
     pub macros: Vec<(Vec<u8>, NodePtr)>,
+}
+
+#[derive(Default)]
+struct CompileOutput {
+    pub functions: HashMap<Vec<u8>, NodePtr>,
+    pub symbols_extra_info: HashMap<Vec<u8>, FunctionExtraInfo>,
+}
+
+impl CompileOutput {
+    pub fn add_definitions(&mut self, other: &CompileOutput) {
+        for (n, v) in other.functions.iter() {
+            self.functions.insert(n.to_vec(), *v);
+        }
+        for (n, v) in other.symbols_extra_info.iter() {
+            self.symbols_extra_info.insert(n.to_vec(), v.clone());
+        }
+    }
 }
 
 // export type TBuildTree = Bytes | Tuple<TBuildTree, TBuildTree> | [];
@@ -153,12 +172,14 @@ fn build_used_constants_names(
     Ok(used_name_list)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn parse_include(
     allocator: &mut Allocator,
     name: NodePtr,
     namespace: &mut HashSet<Vec<u8>>,
     functions: &mut HashMap<Vec<u8>, NodePtr>,
     constants: &mut HashMap<Vec<u8>, NodePtr>,
+    delayed_constants: &mut HashMap<Vec<u8>, NodePtr>,
     macros: &mut Vec<(Vec<u8>, NodePtr)>,
     run_program: Rc<dyn TRunProgram>,
 ) -> Result<(), EvalErr> {
@@ -183,6 +204,7 @@ fn parse_include(
                         namespace,
                         functions,
                         constants,
+                        delayed_constants,
                         macros,
                         run_program.clone()
                     )?;
@@ -234,31 +256,27 @@ fn defun_inline_to_macro(
     allocator: &mut Allocator,
     declaration_sexp: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
-    let d2 = rest(allocator, declaration_sexp)?;
-    let d3 = rest(allocator, d2)?;
+    let Rest::Here(NodeSel::Cons(name, NodeSel::Cons(arg_spec, First::Here(code)))) =
+        Rest::Here(NodeSel::Cons(
+            ThisNode::Here,
+            NodeSel::Cons(ThisNode::Here, First::Here(ThisNode::Here)),
+        ))
+        .select_nodes(allocator, declaration_sexp)?;
     let defmacro_atom = allocator.new_atom("defmacro".as_bytes())?;
-    let d2_first = first(allocator, d2)?;
-    let d3_first = first(allocator, d3)?;
 
     let mut destructure_matches = HashMap::new();
-    let mut use_args = d3_first;
-
-    if is_inline_destructure(allocator, d3_first) {
+    let use_args = if is_inline_destructure(allocator, arg_spec) {
         // Given an attempt to destructure via the argument list, we need
         // to ensure that the inline function receives arguments that are
         // relative to the _values_ given rather than the code given to
         // generate the arguments.  These overlap when the argument list is
         // a single level proper list, but not otherwise.
-        use_args = formulate_path_selections_for_destructuring(
-            allocator,
-            d3_first,
-            &mut destructure_matches,
-        )?;
-    }
+        formulate_path_selections_for_destructuring(allocator, arg_spec, &mut destructure_matches)?
+    } else {
+        arg_spec
+    };
 
-    let mut r_vec = vec![defmacro_atom, d2_first, use_args];
-    let code_rest = rest(allocator, d3)?;
-    let code = first(allocator, code_rest)?;
+    let mut r_vec = vec![defmacro_atom, name, use_args];
 
     let mut arg_atom_list = Vec::new();
     flatten(allocator, use_args, &mut arg_atom_list);
@@ -284,74 +302,86 @@ fn defun_inline_to_macro(
     Ok(res)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn parse_mod_sexp(
     allocator: &mut Allocator,
     declaration_sexp: NodePtr,
     namespace: &mut HashSet<Vec<u8>>,
     functions: &mut HashMap<Vec<u8>, NodePtr>,
     constants: &mut HashMap<Vec<u8>, NodePtr>,
+    // Delayed constants are new: they represent constant values
+    // but we need the whole module to evaluate them since they
+    // may call local functions (such as sha256tree).
+    delayed_constants: &mut HashMap<Vec<u8>, NodePtr>,
     macros: &mut Vec<(Vec<u8>, NodePtr)>,
     run_program: Rc<dyn TRunProgram>,
 ) -> Result<(), EvalErr> {
-    m! {
-        op_node <- first(allocator, declaration_sexp);
-        dec_rest <- rest(allocator, declaration_sexp);
-        name_node <- first(allocator, dec_rest);
-        let op =
-            match allocator.sexp(op_node) {
-                SExp::Atom(b) => allocator.buf(&b).to_vec(),
-                _ => Vec::new()
-            };
-        let name =
-            match allocator.sexp(name_node) {
-                SExp::Atom(b) => allocator.buf(&b).to_vec(),
-                _ => Vec::new()
-            };
+    let NodeSel::Cons(op_node, First::Here(name_node)) =
+        NodeSel::Cons(ThisNode::Here, First::Here(ThisNode::Here))
+            .select_nodes(allocator, declaration_sexp)?;
 
-        if op == "include".as_bytes() {
-            parse_include(
-                allocator,
-                name_node,
-                namespace,
-                functions,
-                constants,
-                macros,
-                run_program.clone()
-            )
-        } else if namespace.contains(&name) {
-            Err(EvalErr(declaration_sexp, format!("symbol \"{}\" redefined", Bytes::new(Some(BytesFromType::Raw(name))).decode())))
+    let op = match allocator.sexp(op_node) {
+        SExp::Atom(b) => allocator.buf(&b).to_vec(),
+        _ => Vec::new(),
+    };
+    let name = match allocator.sexp(name_node) {
+        SExp::Atom(b) => allocator.buf(&b).to_vec(),
+        _ => Vec::new(),
+    };
+
+    if op == "include".as_bytes() {
+        parse_include(
+            allocator,
+            name_node,
+            namespace,
+            functions,
+            constants,
+            delayed_constants,
+            macros,
+            run_program.clone(),
+        )
+    } else if namespace.contains(&name) {
+        Err(EvalErr(
+            declaration_sexp,
+            format!(
+                "symbol \"{}\" redefined",
+                Bytes::new(Some(BytesFromType::Raw(name))).decode()
+            ),
+        ))
+    } else {
+        namespace.insert(name.to_vec());
+
+        if op == "defmacro".as_bytes() {
+            macros.push((name.to_vec(), declaration_sexp));
+            Ok(())
+        } else if op == "defun".as_bytes() {
+            let Rest::Here(Rest::Here(declaration_sexp_rr)) =
+                Rest::Here(Rest::Here(ThisNode::Here)).select_nodes(allocator, declaration_sexp)?;
+            functions.insert(name, declaration_sexp_rr);
+            Ok(())
+        } else if op == "defun-inline".as_bytes() {
+            let defined_macro = defun_inline_to_macro(allocator, declaration_sexp)?;
+            macros.push((name, defined_macro));
+            Ok(())
+        } else if op == "defconstant".as_bytes() {
+            let Rest::Here(Rest::Here(First::Here(frr_of_declaration))) =
+                Rest::Here(Rest::Here(First::Here(ThisNode::Here)))
+                    .select_nodes(allocator, declaration_sexp)?;
+            let quoted_decl = quote(allocator, frr_of_declaration)?;
+            constants.insert(name, quoted_decl);
+            Ok(())
+        } else if op == "defconst".as_bytes() {
+            // Use a new type-based match language.
+            let Rest::Here(Rest::Here(First::Here(definition))) =
+                Rest::Here(Rest::Here(First::Here(ThisNode::Here)))
+                    .select_nodes(allocator, declaration_sexp)?;
+            delayed_constants.insert(name, definition);
+            Ok(())
         } else {
-            namespace.insert(name.to_vec());
-
-            if op == "defmacro".as_bytes() {
-                macros.push((name.to_vec(), declaration_sexp));
-                Ok(())
-            } else if op == "defun".as_bytes() {
-                m! {
-                    declaration_sexp_r <- rest(allocator, declaration_sexp);
-                    declaration_sexp_rr <- rest(allocator, declaration_sexp_r);
-                    let _ = functions.insert(name, declaration_sexp_rr);
-                    Ok(())
-                }
-            } else if op == "defun-inline".as_bytes() {
-                m! {
-                    defined_macro <-
-                        defun_inline_to_macro(allocator, declaration_sexp);
-                    let _ = macros.push((name, defined_macro));
-                    Ok(())
-                }
-            } else if op == "defconstant".as_bytes() {
-                m! {
-                    r_of_declaration <- rest(allocator, declaration_sexp);
-                    rr_of_declaration <- rest(allocator, r_of_declaration);
-                    frr_of_declaration <- first(allocator, rr_of_declaration);
-                    quoted_decl <- quote(allocator, frr_of_declaration);
-                    let _ = constants.insert(name, quoted_decl);
-                    Ok(())
-                }
-            } else {
-                Err(EvalErr(declaration_sexp, "expected defun, defmacro, or defconstant".to_string()))
-            }
+            Err(EvalErr(
+                declaration_sexp,
+                "expected defun, defmacro, defconst, compile-file or defconstant".to_string(),
+            ))
         }
     }
 }
@@ -359,12 +389,15 @@ fn parse_mod_sexp(
 fn compile_mod_stage_1(
     allocator: &mut Allocator,
     args: NodePtr,
+    macro_lookup: NodePtr,
     run_program: Rc<dyn TRunProgram>,
+    produce_extra_info: bool,
 ) -> Result<CollectionResult, EvalErr> {
     // stage 1: collect up names of globals (functions, constants, macros)
     m! {
         let mut functions = HashMap::new();
         let mut constants = HashMap::new();
+        let mut delayed_constants = HashMap::new();
         let mut macros = Vec::new();
         let mut namespace = HashSet::new();
 
@@ -385,26 +418,111 @@ fn compile_mod_stage_1(
                         &mut namespace,
                         &mut functions,
                         &mut constants,
+                        &mut delayed_constants,
                         &mut macros,
                         run_program.clone()
                     )?;
                 }
 
-                let uncompiled_main = alist[alist.len() - 1];
-                m! {
-                    main_list <-
-                        enlist(
-                            allocator,
-                            &[main_local_arguments, uncompiled_main]
+                // For each delayed constant, drain it into the
+                // main constant pool.
+                let mut result_collection = CollectionResult {
+                    functions,
+                    constants,
+                    macros
+                };
+
+                let main_name_vec = MAIN_NAME.as_bytes().to_vec();
+
+                // Process delayed constants until we either can't advance or
+                // they're all done.
+
+                loop {
+                    if delayed_constants.is_empty() {
+                        break;
+                    }
+
+                    let mut processed = false;
+                    // copy so we can modify delayed_constants.
+                    let delayed_constant_defs: Vec<(Vec<u8>, NodePtr)> =
+                        delayed_constants.iter().map(|(k,v)| (k.clone(), *v)).collect();
+
+                    for (name, delayed_body) in delayed_constant_defs.iter() {
+                        let main_list =
+                            enlist(
+                                allocator,
+                                &[allocator.null(), *delayed_body]
+                            )?;
+
+                        result_collection.functions.insert(
+                            main_name_vec.clone(), main_list
                         );
 
-                    let _ = functions.insert(MAIN_NAME.as_bytes().to_vec(), main_list);
-                    Ok(CollectionResult {
-                        functions,
-                        constants,
-                        macros
-                    })
+                        let used_in_this_constant = build_used_constants_names(
+                            allocator,
+                            &result_collection.functions,
+                            &delayed_constants,
+                            &result_collection.macros
+                        )?;
+
+                        let uses_other_constants = used_in_this_constant.iter().
+                            any(|u| delayed_constants.contains_key(u));
+
+                        if uses_other_constants {
+                            continue;
+                        }
+
+                        processed = true;
+
+                        let compiled =
+                            finish_compile_from_collection(
+                                allocator,
+                                args,
+                                macro_lookup,
+                                run_program.clone(),
+                                &result_collection,
+                                produce_extra_info
+                            )?;
+
+                        let compilation_result =
+                            run_program.run_program(
+                                allocator,
+                                compiled,
+                                allocator.null(),
+                                None
+                            )?;
+
+                        let result =
+                            run_program.run_program(
+                                allocator,
+                                compilation_result.1,
+                                allocator.null(),
+                                None
+                            )?;
+
+                        delayed_constants.remove(name);
+                        result_collection.constants.insert(
+                            name.to_vec(), quote(allocator, result.1)?
+                        );
+                    }
+
+                    if !processed {
+                        return Err(EvalErr(allocator.null(), "got stuck untangling defconst dependencies".to_string()));
+                    }
                 }
+
+                let uncompiled_main = nonempty_last(allocator.null(), &alist)?;
+                let main_list =
+                    enlist(
+                        allocator,
+                        &[main_local_arguments, uncompiled_main]
+                    )?;
+
+                result_collection.functions.insert(
+                    MAIN_NAME.as_bytes().to_vec(), main_list
+                );
+
+                Ok(result_collection)
             }
         }
     }
@@ -427,8 +545,8 @@ fn symbol_table_for_tree(
             let left_bytes = NodePath::new(None).first();
             let right_bytes = NodePath::new(None).rest();
 
-            let tree_first = first(allocator, tree)?;
-            let tree_rest = rest(allocator, tree)?;
+            let NodeSel::Cons(tree_first, tree_rest) =
+                NodeSel::Cons(ThisNode::Here, ThisNode::Here).select_nodes(allocator, tree)?;
 
             // Allow haskell-like @ capture for destructuring.
             // If we encounter a form like (@ name substructure) then
@@ -463,7 +581,7 @@ fn build_macro_lookup_program(
     macros: &[(Vec<u8>, NodePtr)],
     run_program: Rc<dyn TRunProgram>,
 ) -> Result<NodePtr, EvalErr> {
-    return m! {
+    m! {
         com_atom <- allocator.new_atom("com".as_bytes());
         cons_atom <- allocator.new_atom(&[4]);
         opt_atom <- allocator.new_atom("opt".as_bytes());
@@ -493,59 +611,59 @@ fn build_macro_lookup_program(
             &mut macros.iter()
         );
         Ok(result_program)
-    };
+    }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_one_function(
     allocator: &mut Allocator,
     args_root_node: &NodePath,
     macro_lookup_program: NodePtr,
     constants_symbol_table: &[(NodePtr, Vec<u8>)],
-    compiled_functions_: HashMap<Vec<u8>, NodePtr>,
     name: &[u8],
     lambda_expression: NodePtr,
-) -> Result<HashMap<Vec<u8>, NodePtr>, EvalErr> {
-    let mut compiled_functions = compiled_functions_;
-    return m! {
-        com_atom <- allocator.new_atom("com".as_bytes());
-        opt_atom <- allocator.new_atom("opt".as_bytes());
+    has_constants_tree: bool,
+) -> Result<CompileOutput, EvalErr> {
+    let mut compile: CompileOutput = Default::default();
+    let com_atom = allocator.new_atom("com".as_bytes())?;
+    let opt_atom = allocator.new_atom("opt".as_bytes())?;
 
-        le_first <- first(allocator, lambda_expression);
-        local_symbol_table <- symbol_table_for_tree(
-            allocator, le_first, args_root_node
-        );
-        let mut all_symbols = local_symbol_table;
-        let _ = all_symbols.append(&mut constants_symbol_table.to_owned());
-        lambda_form_content <- rest(allocator, lambda_expression);
-        lambda_body <- first(allocator, lambda_form_content);
-        quoted_lambda_expr <- quote(allocator, lambda_body);
-        all_symbols_list_sexp <-
-            map_m(
-                allocator,
-                &mut all_symbols.iter(),
-                &|allocator, pair| m! {
-                    path_atom <- allocator.new_atom(&pair.1);
-                    enlist(allocator, &[pair.0, path_atom])
-                }
-            );
+    let function_args = first(allocator, lambda_expression)?;
+    let local_symbol_table = symbol_table_for_tree(allocator, function_args, args_root_node)?;
+    let mut all_symbols = local_symbol_table;
+    all_symbols.append(&mut constants_symbol_table.to_owned());
+    let lambda_form_content = rest(allocator, lambda_expression)?;
+    let lambda_body = first(allocator, lambda_form_content)?;
+    let quoted_lambda_expr = quote(allocator, lambda_body)?;
+    let all_symbols_list_sexp = map_m(allocator, &mut all_symbols.iter(), &|allocator, pair| {
+        let path_atom = allocator.new_atom(&pair.1)?;
+        enlist(allocator, &[pair.0, path_atom])
+    })?;
 
-        all_symbols_list <-
-            enlist(allocator, &all_symbols_list_sexp);
+    let all_symbols_list = enlist(allocator, &all_symbols_list_sexp)?;
 
-        quoted_symbols <- quote(allocator, all_symbols_list);
-        com_list <- enlist(
-            allocator,
-            &[
-                com_atom,
-                quoted_lambda_expr,
-                macro_lookup_program,
-                quoted_symbols
-            ]
-        );
-        opt_list <- enlist(allocator, &[opt_atom, com_list]);
-        let _ = compiled_functions.insert(name.to_vec(), opt_list);
-        Ok(compiled_functions)
-    };
+    let quoted_symbols = quote(allocator, all_symbols_list)?;
+    let com_list = enlist(
+        allocator,
+        &[
+            com_atom,
+            quoted_lambda_expr,
+            macro_lookup_program,
+            quoted_symbols,
+        ],
+    )?;
+
+    let opt_list = enlist(allocator, &[opt_atom, com_list])?;
+    compile.functions.insert(name.to_vec(), opt_list);
+    compile.symbols_extra_info.insert(
+        name.to_vec(),
+        FunctionExtraInfo {
+            args: function_args,
+            has_constants_tree,
+        },
+    );
+
+    Ok(compile)
 }
 
 fn compile_functions(
@@ -554,25 +672,146 @@ fn compile_functions(
     macro_lookup_program: NodePtr,
     constants_symbol_table: &[(NodePtr, Vec<u8>)],
     args_root_node: &NodePath,
-) -> Result<HashMap<Vec<u8>, NodePtr>, EvalErr> {
-    let compiled_functions = HashMap::new();
+    has_constants_tree: bool,
+) -> Result<CompileOutput, EvalErr> {
+    let mut compiled: CompileOutput = Default::default();
 
-    return fold_m(
+    for (name, exp) in functions.iter() {
+        compiled.add_definitions(&add_one_function(
+            allocator,
+            args_root_node,
+            macro_lookup_program,
+            constants_symbol_table,
+            name,
+            *exp,
+            has_constants_tree,
+        )?);
+    }
+
+    Ok(compiled)
+}
+
+// Add an entry for main's arguments, named __chia__main_arguments in the
+// symbols, to the symbol list, placing it at the front for simplicity.
+fn add_main_args(
+    allocator: &mut Allocator,
+    args: NodePtr,
+    symbols: NodePtr,
+) -> Result<NodePtr, EvalErr> {
+    let entry_name = allocator.new_atom("__chia__main_arguments".as_bytes())?;
+    let entry_value_string = disassemble(allocator, args);
+    let entry_value = allocator.new_atom(entry_value_string.as_bytes())?;
+    let entry_cons = allocator.new_pair(entry_name, entry_value)?;
+    allocator.new_pair(entry_cons, symbols)
+}
+
+fn finish_compile_from_collection(
+    allocator: &mut Allocator,
+    args: NodePtr,
+    macro_lookup: NodePtr,
+    run_program: Rc<dyn TRunProgram>,
+    cr: &CollectionResult,
+    produce_extra_info: bool,
+) -> Result<NodePtr, EvalErr> {
+    let a_atom = allocator.new_atom(&[2])?;
+    let cons_atom = allocator.new_atom(&[4])?;
+    let opt_atom = allocator.new_atom("opt".as_bytes())?;
+
+    // move macros into the macro lookup
+    let macro_lookup_program =
+        build_macro_lookup_program(allocator, macro_lookup, &cr.macros, run_program.clone())?;
+
+    // get a list of all symbols that are possibly used
+    let all_constants_names =
+        build_used_constants_names(allocator, &cr.functions, &cr.constants, &cr.macros)?;
+
+    let has_constants_tree = !all_constants_names.is_empty();
+    // build defuns table, with function names as keys
+
+    let constants_tree = build_tree(allocator, &all_constants_names)?;
+
+    let constants_root_node = NodePath::new(None).first();
+    let args_root_node = if has_constants_tree {
+        NodePath::new(None).rest()
+    } else {
+        NodePath::new(None)
+    };
+
+    let constants_symbol_table =
+        symbol_table_for_tree(allocator, constants_tree, &constants_root_node)?;
+
+    let compiled = compile_functions(
         allocator,
-        &|allocator: &mut Allocator, compiled_functions, name_exp: (&Vec<u8>, &NodePtr)| {
-            add_one_function(
-                allocator,
-                args_root_node,
-                macro_lookup_program,
-                constants_symbol_table,
-                compiled_functions,
-                name_exp.0,
-                *name_exp.1,
-            )
-        },
-        compiled_functions,
-        &mut functions.iter(),
-    );
+        &cr.functions,
+        macro_lookup_program,
+        &constants_symbol_table,
+        &args_root_node,
+        has_constants_tree,
+    )?;
+
+    let main_path = compiled.functions[MAIN_NAME.as_bytes()];
+
+    if has_constants_tree {
+        let mut all_constants_lookup = HashMap::new();
+        for (k, v) in compiled.functions {
+            if all_constants_names.contains(&k) {
+                all_constants_lookup.insert(k, v);
+            }
+        }
+
+        for (k, v) in cr.constants.iter() {
+            all_constants_lookup.insert(k.to_vec(), *v);
+        }
+
+        let all_constants_list = all_constants_names
+            .iter()
+            .filter_map(|name| all_constants_lookup.get(name))
+            .copied()
+            .collect::<Vec<NodePtr>>();
+
+        let all_constants_tree_program = build_tree_program(allocator, &all_constants_list)?;
+        let top_atom = allocator.new_atom(NodePath::new(None).as_path().data())?;
+        let arg_tree = enlist(
+            allocator,
+            &[cons_atom, all_constants_tree_program, top_atom],
+        )?;
+
+        let apply_list = enlist(allocator, &[a_atom, main_path, arg_tree])?;
+
+        let quoted_apply_list = quote(allocator, apply_list)?;
+        let opt_list = enlist(allocator, &[opt_atom, quoted_apply_list])?;
+        let symbols_no_main = build_symbol_dump(
+            allocator,
+            &all_constants_lookup,
+            &compiled.symbols_extra_info,
+            run_program.clone(),
+            produce_extra_info,
+        )?;
+        let first_of_args = first(allocator, args)?;
+        let symbols = if produce_extra_info {
+            add_main_args(allocator, first_of_args, symbols_no_main)?
+        } else {
+            symbols_no_main
+        };
+
+        let to_run = assemble(
+            allocator,
+            if produce_extra_info {
+                "(_set_symbol_table (c (c (q . \"source_file\") (_get_source_file)) 1))"
+            } else {
+                "(_set_symbol_table 1)"
+            },
+        )?;
+
+        run_program.run_program(allocator, to_run, symbols, None)?;
+
+        Ok(opt_list)
+    } else {
+        let top_atom = allocator.new_atom(NodePath::new(None).as_path().data())?;
+        let apply_list = enlist(allocator, &[a_atom, main_path, top_atom])?;
+        let quoted_apply_list = quote(allocator, apply_list)?;
+        enlist(allocator, &[opt_atom, quoted_apply_list])
+    }
 }
 
 pub fn compile_mod(
@@ -584,126 +823,29 @@ pub fn compile_mod(
     _level: usize,
 ) -> Result<NodePtr, EvalErr> {
     // Deal with the "mod" keyword.
-    m! {
-        cr <- compile_mod_stage_1(allocator, args, run_program.clone());
-        a_atom <- allocator.new_atom(&[2]);
-        cons_atom <- allocator.new_atom(&[4]);
-        opt_atom <- allocator.new_atom("opt".as_bytes());
+    let produce_extra_info_prog = assemble(allocator, "(_symbols_extra_info)")?;
+    let produce_extra_info_null = allocator.null();
+    let extra_info_res = run_program.run_program(
+        allocator,
+        produce_extra_info_prog,
+        produce_extra_info_null,
+        None,
+    )?;
+    let produce_extra_info = non_nil(allocator, extra_info_res.1);
 
-        // move macros into the macro lookup
-        macro_lookup_program <- build_macro_lookup_program(
-            allocator, macro_lookup, &cr.macros, run_program.clone()
-        );
-
-        // get a list of all symbols that are possibly used
-        all_constants_names <- build_used_constants_names(
-            allocator, &cr.functions, &cr.constants, &cr.macros
-        );
-
-        let has_constants_tree = !all_constants_names.is_empty();
-        // build defuns table, with function names as keys
-
-        constants_tree <- build_tree(allocator, &all_constants_names);
-
-        let constants_root_node = NodePath::new(None).first();
-        let args_root_node =
-            if has_constants_tree {
-                NodePath::new(None).rest()
-            } else {
-                NodePath::new(None)
-            };
-
-        constants_symbol_table <- symbol_table_for_tree(
-            allocator, constants_tree, &constants_root_node
-        );
-
-        compiled_functions <- compile_functions(
-            allocator,
-            &cr.functions,
-            macro_lookup_program,
-            &constants_symbol_table,
-            &args_root_node,
-        );
-
-        let main_path = compiled_functions[MAIN_NAME.as_bytes()];
-
-        if has_constants_tree {
-            m! {
-                let mut all_constants_lookup = HashMap::new();
-                let _ = {
-                    for (k,v) in compiled_functions {
-                        if all_constants_names.contains(&k) {
-                            all_constants_lookup.insert(k, v);
-                        }
-                    }
-                };
-                let _ = {
-                    for (k,v) in cr.constants.iter() {
-                        all_constants_lookup.insert(k.to_vec(), *v);
-                    }
-                };
-
-                let all_constants_list =
-                    all_constants_names.iter().filter_map(
-                        |name| all_constants_lookup.get(name)
-                    ).copied().collect::<Vec<NodePtr>>();
-
-                all_constants_tree_program <-
-                    build_tree_program(allocator, &all_constants_list);
-
-                top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
-                arg_tree <-
-                    enlist(
-                        allocator,
-                        &[cons_atom, all_constants_tree_program, top_atom]
-                    );
-
-                apply_list <-
-                    enlist(
-                        allocator,
-                        &[a_atom, main_path, arg_tree]
-                    );
-                quoted_apply_list <- quote(allocator, apply_list);
-                opt_list <-
-                    enlist(
-                        allocator,
-                        &[opt_atom, quoted_apply_list]
-                    );
-
-                symbols <- build_symbol_dump(
-                    allocator,
-                    all_constants_lookup,
-                    run_program.clone()
-                );
-
-                to_run <- assemble(
-                    allocator,
-                    "(_set_symbol_table 1)"
-                );
-
-                _ <- run_program.run_program(
-                    allocator,
-                    to_run,
-                    symbols,
-                    None
-                );
-
-                Ok(opt_list)
-            }
-        } else {
-            m! {
-                top_atom <- allocator.new_atom(NodePath::new(None).as_path().data());
-                apply_list <-
-                    enlist(
-                        allocator,
-                        &[a_atom, main_path, top_atom]
-                    );
-                quoted_apply_list <- quote(allocator, apply_list);
-                enlist(
-                    allocator,
-                    &[opt_atom, quoted_apply_list]
-                )
-            }
-        }
-    }
+    let cr = compile_mod_stage_1(
+        allocator,
+        args,
+        macro_lookup,
+        run_program.clone(),
+        produce_extra_info,
+    )?;
+    finish_compile_from_collection(
+        allocator,
+        args,
+        macro_lookup,
+        run_program,
+        &cr,
+        produce_extra_info,
+    )
 }

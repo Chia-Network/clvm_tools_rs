@@ -20,10 +20,29 @@ use crate::compiler::srcloc::Srcloc;
 
 use crate::util::{number_from_u8, u8_from_number, Number};
 
+/// An object which contains the state of a running CLVM program in a compact
+/// form.
+///
+/// Being immutable, it can be preserved, examined and compared as desired.  The
+/// whole record of CLVM execution can be observed by collecting these until the
+/// program is in the Done state.
 #[derive(Clone, Debug)]
 pub enum RunStep {
+    /// The state of a program (or subprogram) that completed.
+    /// Contains a location taken from the operator that completed and the result
+    /// value.
     Done(Srcloc, Rc<SExp>),
+    /// An operator producing a result.  The operator has run and the result is
+    /// given.  The final argument is a refcounted pointer to a step that the
+    /// operator's result will be returned to if it stepped again.
     OpResult(Srcloc, Rc<SExp>, Rc<RunStep>),
+    /// An operator in flight.  The arguments are
+    /// - An operator
+    /// - The environment
+    /// - The tail of the expression if an operator, in progress.
+    /// - When present, a list of arguments remaining to evaluate, otherwise
+    ///   the expression is ready to run the operator on.
+    /// - The RunStep to which this step returns a value when complete.
     Op(
         Rc<SExp>,
         Rc<SExp>,
@@ -31,6 +50,8 @@ pub enum RunStep {
         Option<Vec<Rc<SExp>>>,
         Rc<RunStep>,
     ),
+    /// A step about to be taken.  Indicates a clvm expression and env, plus the
+    /// parent to which its value is returned.
     Step(Rc<SExp>, Rc<SExp>, Rc<RunStep>),
 }
 
@@ -41,6 +62,32 @@ impl RunStep {
             RunStep::OpResult(_, _, p) => Some(p.clone()),
             RunStep::Op(_, _, _, _, p) => Some(p.clone()),
             RunStep::Step(_, _, p) => Some(p.clone()),
+        }
+    }
+
+    pub fn sexp(&self) -> Rc<SExp> {
+        match self {
+            RunStep::Done(_, s) => s.clone(),
+            RunStep::OpResult(_, s, _) => s.clone(),
+            RunStep::Op(e, _, _, _, _) => e.clone(),
+            RunStep::Step(e, _, _) => e.clone(),
+        }
+    }
+
+    pub fn args(&self) -> Option<Rc<SExp>> {
+        match self {
+            RunStep::Step(_, a, _) => Some(a.clone()),
+            RunStep::Op(_, a, _, _, _) => Some(a.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn loc(&self) -> Srcloc {
+        match self {
+            RunStep::Done(l, _) => l.clone(),
+            RunStep::OpResult(l, _, _) => l.clone(),
+            RunStep::Op(e, _, _, _, _) => e.loc(),
+            RunStep::Step(e, _, _) => e.loc(),
         }
     }
 }
@@ -72,10 +119,7 @@ fn choose_path(
                 )
             }
 
-            _ => Err(RunFailure::RunErr(
-                l,
-                format!("bad path {} in {}", orig, all),
-            )),
+            _ => Err(RunFailure::RunErr(l, format!("bad path {orig} in {all}"))),
         }
     }
 }
@@ -117,10 +161,10 @@ fn translate_head(
             Some(v) => Ok(Rc::new(v.with_loc(l.clone()))),
         },
         SExp::Cons(_l, _a, nil) => match nil.borrow() {
-            SExp::Nil(_l1) => run(allocator, runner, prim_map, sexp.clone(), context),
+            SExp::Nil(_l1) => run(allocator, runner, prim_map, sexp.clone(), context, None),
             _ => Err(RunFailure::RunErr(
                 sexp.loc(),
-                format!("Unexpected head form in clvm {}", sexp),
+                format!("Unexpected head form in clvm {sexp}"),
             )),
         },
     }
@@ -156,13 +200,14 @@ fn eval_args(
             _ => {
                 return Err(RunFailure::RunErr(
                     sexp.loc(),
-                    format!("bad argument list {} {}", sexp_, context_),
+                    format!("bad argument list {sexp_} {context_}"),
                 ));
             }
         }
     }
 }
 
+/// Given an SExp, produce a clvmr style NodePtr in the given allocator.
 pub fn convert_to_clvm_rs(
     allocator: &mut Allocator,
     head: Rc<SExp>,
@@ -171,10 +216,10 @@ pub fn convert_to_clvm_rs(
         SExp::Nil(_) => Ok(allocator.null()),
         SExp::Atom(_l, x) => allocator
             .new_atom(x)
-            .map_err(|_e| RunFailure::RunErr(head.loc(), format!("failed to alloc atom {}", head))),
-        SExp::QuotedString(_, _, x) => allocator.new_atom(x).map_err(|_e| {
-            RunFailure::RunErr(head.loc(), format!("failed to alloc string {}", head))
-        }),
+            .map_err(|_e| RunFailure::RunErr(head.loc(), format!("failed to alloc atom {head}"))),
+        SExp::QuotedString(_, _, x) => allocator
+            .new_atom(x)
+            .map_err(|_e| RunFailure::RunErr(head.loc(), format!("failed to alloc string {head}"))),
         SExp::Integer(_, i) => {
             if *i == bi_zero() {
                 Ok(allocator.null())
@@ -182,20 +227,21 @@ pub fn convert_to_clvm_rs(
                 allocator
                     .new_atom(&u8_from_number(i.clone()))
                     .map_err(|_e| {
-                        RunFailure::RunErr(head.loc(), format!("failed to alloc integer {}", head))
+                        RunFailure::RunErr(head.loc(), format!("failed to alloc integer {head}"))
                     })
             }
         }
         SExp::Cons(_, a, b) => convert_to_clvm_rs(allocator, a.clone()).and_then(|head| {
             convert_to_clvm_rs(allocator, b.clone()).and_then(|tail| {
                 allocator.new_pair(head, tail).map_err(|_e| {
-                    RunFailure::RunErr(a.loc(), format!("failed to alloc cons {}", head))
+                    RunFailure::RunErr(a.loc(), format!("failed to alloc cons {head}"))
                 })
             })
         }),
     }
 }
 
+/// Given an allocator and clvmr NodePtr, produce an SExp which is equivalent.
 pub fn convert_from_clvm_rs(
     allocator: &mut Allocator,
     loc: Srcloc,
@@ -266,7 +312,7 @@ fn apply_op(
         .map_err(|e| {
             RunFailure::RunErr(
                 head.loc(),
-                format!("{} in {} {}", e.1, application, wrapped_args),
+                format!("{} in {application} {wrapped_args}", e.1),
             )
         })
         .and_then(|v| convert_from_clvm_rs(allocator, head.loc(), v.1))
@@ -280,11 +326,12 @@ fn atom_value(head: Rc<SExp>) -> Result<Number, RunFailure> {
         SExp::Atom(_, s) => Ok(number_from_u8(s)),
         SExp::Cons(l, _, _) => Err(RunFailure::RunErr(
             l.clone(),
-            format!("cons is not a number {}", head),
+            format!("cons is not a number {head}"),
         )),
     }
 }
 
+/// Tell how many parents are in the parent step chain until completion.
 pub fn get_history_len(step: Rc<RunStep>) -> usize {
     match step.borrow() {
         RunStep::Done(_, _) => 1,
@@ -294,11 +341,18 @@ pub fn get_history_len(step: Rc<RunStep>) -> usize {
     }
 }
 
+/// Generically determine whether a value is truthy.
 pub fn truthy(sexp: Rc<SExp>) -> bool {
     // Fails for cons, but cons is truthy
     atom_value(sexp).unwrap_or_else(|_| bi_one()) != bi_zero()
 }
 
+/// The second of the core run operations, combine determines how a recently
+/// completed step affects its parent to produce the next evaluation step.
+///
+/// For example, when a finished operation is combined with a parent that needs
+/// more arguments for its operator, one needed argument evaluation is removed
+/// and the step becomes closer to evaluation.
 pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
     match (a, b.borrow()) {
         (RunStep::Done(l, x), RunStep::Done(_, _)) => RunStep::Done(l.clone(), x.clone()),
@@ -327,6 +381,16 @@ pub fn flatten_signed_int(v: Number) -> Number {
     Number::from_signed_bytes_le(&sign_digits)
 }
 
+/// Given a RunStep, return a RunStep whose top operation returns <value>
+pub fn step_return_value(step: &RunStep, value: Rc<SExp>) -> RunStep {
+    step.parent()
+        .map(|p| RunStep::OpResult(value.loc(), value.clone(), p))
+        .unwrap_or_else(|| RunStep::Done(value.loc(), value.clone()))
+}
+
+/// The main operation to step the machine.  Given a RunStep, produce a new RunStep
+/// which is one step farther toward a result.  When complete, the result is a
+/// Done value.
 pub fn run_step(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -464,21 +528,21 @@ pub fn run_step(
             } else if aval == rest_atom {
                 "rest".to_string()
             } else {
-                format!("operator {}", aval)
+                format!("operator {aval}")
             };
 
             match tail.proper_list() {
                 None => {
                     return Err(RunFailure::RunErr(
                         tail.loc(),
-                        format!("Bad arguments given to cons {}", tail),
+                        format!("Bad arguments given to cons {tail}"),
                     ));
                 }
                 Some(l) => {
                     if wanted_args != -1 && l.len() as i32 != wanted_args {
                         return Err(RunFailure::RunErr(
                             tail.loc(),
-                            format!("Wrong number of parameters to {}: {}", op, tail),
+                            format!("Wrong number of parameters to {op}: {tail}"),
                         ));
                     }
 
@@ -520,7 +584,7 @@ pub fn run_step(
                             _ => {
                                 return Err(RunFailure::RunErr(
                                     tail.loc(),
-                                    format!("Cons expected for {}, got {}", op, tail),
+                                    format!("Cons expected for {op}, got {tail}"),
                                 ));
                             }
                         }
@@ -561,16 +625,25 @@ pub fn start_step(sexp_: Rc<SExp>, context_: Rc<SExp>) -> RunStep {
     )
 }
 
+/// Use the RunStep object to evaluate some clvm to completion.
 pub fn run(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     sexp_: Rc<SExp>,
     context_: Rc<SExp>,
+    iter_limit: Option<usize>,
 ) -> Result<Rc<SExp>, RunFailure> {
     let mut step = start_step(sexp_, context_);
+    let mut iters = 0;
 
     loop {
+        if let Some(limit) = &iter_limit {
+            if *limit <= iters {
+                return Err(RunFailure::RunErr(step.sexp().loc(), "timeout".to_string()));
+            }
+        }
+        iters += 1;
         step = run_step(allocator, runner.clone(), prim_map.clone(), &step)?;
         if let RunStep::Done(_, x) = step {
             return Ok(x);
@@ -578,12 +651,15 @@ pub fn run(
     }
 }
 
+/// A convenience function which, givne a text program, its arguments and filename,
+/// parses the clvm text and runs to completion.
 pub fn parse_and_run(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     file: &str,
     content: &str,
     args: &str,
+    step_limit: Option<usize>,
 ) -> Result<Rc<SExp>, RunFailure> {
     let code = parse_sexp(Srcloc::start(file), content.bytes())
         .map_err(|e| RunFailure::RunErr(e.0, e.1))?;
@@ -608,6 +684,7 @@ pub fn parse_and_run(
             prim_map,
             code[0].clone(),
             args[0].clone(),
+            step_limit,
         )
     }
 }
@@ -619,7 +696,7 @@ pub fn sha256tree_from_atom(v: &[u8]) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
-// sha256tree for modern style SExp
+/// sha256tree for modern style SExp
 pub fn sha256tree(s: Rc<SExp>) -> Vec<u8> {
     match s.borrow() {
         SExp::Cons(_l, a, b) => {
