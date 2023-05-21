@@ -134,7 +134,7 @@ impl Display for SExp {
                 formatter.write_str(&v.to_string())?;
             }
             SExp::QuotedString(_, q, s) => {
-                if printable(s) {
+                if printable(s, true) {
                     formatter.write_str("\"")?;
                     formatter.write_str(&escape_quote(*q, s))?;
                     formatter.write_str("\"")?;
@@ -151,7 +151,7 @@ impl Display for SExp {
             SExp::Atom(l, a) => {
                 if a.is_empty() {
                     formatter.write_str("()")?;
-                } else if printable(a) {
+                } else if printable(a, false) {
                     formatter.write_str(&decode_string(a))?;
                 } else {
                     formatter
@@ -357,14 +357,12 @@ pub fn decode_string(v: &[u8]) -> String {
     return String::from_utf8_lossy(v).as_ref().to_string();
 }
 
-fn printable(a: &[u8]) -> bool {
-    for ch in a.iter() {
-        if (*ch as char).is_control() || !(*ch as char).is_ascii() {
-            return false;
-        }
-    }
-
-    true
+fn printable(a: &[u8], quoted: bool) -> bool {
+    !a.iter().any(|ch| {
+        (*ch as char).is_control()
+            || !(*ch as char).is_ascii()
+            || (!quoted && ch.is_ascii_whitespace())
+    })
 }
 
 impl SExp {
