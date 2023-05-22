@@ -1098,8 +1098,8 @@ impl<'info> Evaluator {
                     &mut visited,
                     prog_args,
                     env,
-                    Rc::new(hoist_assign_form(&letdata)?),
-                    only_inline
+                    Rc::new(hoist_assign_form(letdata)?),
+                    only_inline,
                 )
             }
             BodyForm::Quoted(_) => Ok(body.clone()),

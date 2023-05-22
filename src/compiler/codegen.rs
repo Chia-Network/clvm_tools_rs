@@ -780,13 +780,14 @@ fn generate_let_args(_l: Srcloc, blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {
     blist.iter().map(|b| b.body.clone()).collect()
 }
 
-pub fn hoist_assign_form(
-    letdata: &LetData,
-) -> Result<BodyForm, CompileErr> {
+pub fn hoist_assign_form(letdata: &LetData) -> Result<BodyForm, CompileErr> {
     // Topological sort of bindings.
     let sorted_spec = toposort(
         &letdata.bindings,
-        CompileErr(letdata.loc.clone(), "deadlock resolving binding order".to_string()),
+        CompileErr(
+            letdata.loc.clone(),
+            "deadlock resolving binding order".to_string(),
+        ),
         // Needs: What this binding relies on.
         |possible, b| {
             let mut need_set = HashSet::new();
@@ -852,7 +853,7 @@ pub fn hoist_assign_form(
         LetFormKind::Parallel,
         Box::new(LetData {
             bindings: end_bindings,
-            .. letdata.clone()
+            ..letdata.clone()
         }),
     );
 
@@ -862,7 +863,7 @@ pub fn hoist_assign_form(
             Box::new(LetData {
                 bindings: binding_list,
                 body: Rc::new(output_let),
-                .. letdata.clone()
+                ..letdata.clone()
             }),
         )
     }
@@ -967,11 +968,7 @@ pub fn hoist_body_let_binding(
             Ok((out_defuns, Rc::new(final_call)))
         }
         BodyForm::Let(LetFormKind::Assign, letdata) => {
-            hoist_body_let_binding(
-                outer_context,
-                args,
-                Rc::new(hoist_assign_form(letdata)?)
-            )
+            hoist_body_let_binding(outer_context, args, Rc::new(hoist_assign_form(letdata)?))
         }
         BodyForm::Call(l, list) => {
             let mut vres = Vec::new();

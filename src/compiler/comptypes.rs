@@ -587,8 +587,7 @@ impl HelperForm {
 }
 
 fn compose_let(marker: &[u8], letdata: &LetData) -> Rc<SExp> {
-    let translated_bindings: Vec<Rc<SExp>> =
-        letdata.bindings.iter().map(|x| x.to_sexp()).collect();
+    let translated_bindings: Vec<Rc<SExp>> = letdata.bindings.iter().map(|x| x.to_sexp()).collect();
     let bindings_cons = list_to_cons(letdata.loc.clone(), &translated_bindings);
     let translated_body = letdata.body.to_sexp();
     let kw_loc = letdata.kw.clone().unwrap_or_else(|| letdata.loc.clone());
@@ -649,14 +648,14 @@ impl BodyForm {
         match self {
             BodyForm::Let(kind, letdata) => {
                 if matches!(kind, LetFormKind::Assign) {
-                    compose_assign(&letdata)
+                    compose_assign(letdata)
                 } else {
                     let marker = if matches!(kind, LetFormKind::Sequential) {
                         b"let*".to_vec()
                     } else {
                         b"let".to_vec()
                     };
-                    compose_let(&marker, &letdata)
+                    compose_let(&marker, letdata)
                 }
             }
             BodyForm::Quoted(body) => Rc::new(SExp::Cons(

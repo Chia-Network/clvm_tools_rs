@@ -930,8 +930,10 @@ fn test_assign_fancy_final_dot_rest() {
         "run".to_string(),
         "-i".to_string(),
         "resources/tests/chia-gaming".to_string(),
-        "resources/tests/chia-gaming/test-last.clsp".to_string()
+        "resources/tests/chia-gaming/test-last.clsp".to_string(),
     ]);
-    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "()".to_string()]).trim().to_string();
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "()".to_string()])
+        .trim()
+        .to_string();
     assert_eq!(result, "101");
 }

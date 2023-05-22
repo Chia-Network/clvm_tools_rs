@@ -236,10 +236,10 @@ fn make_let_bindings(
                     result.append(&mut rest_bindings);
                     Ok(result)
                 }
-                _ => err.clone()
+                _ => err.clone(),
             })
             .unwrap_or_else(|| err.clone()),
-        _ => err
+        _ => err,
     }
 }
 
@@ -312,11 +312,11 @@ fn handle_assign_form(
         LetFormKind::Assign,
         Box::new(LetData {
             loc: l.clone(),
-            kw: Some(l.clone()),
-            bindings: bindings,
-            inline_hint: inline_hint.clone(),
+            kw: Some(l),
+            bindings,
+            inline_hint,
             body: Rc::new(compiled_body),
-        })
+        }),
     ))
 }
 
