@@ -14,13 +14,13 @@ or via pip
 Note: `pip` installs a subset of the tools installed by `cargo`, including `brun`, `run`, `opc` and `opd`.
 
 
-The most current version of the language is in the rollup branch:
+The most current version of the language is in the nightly branch:
 
-    20221005-rollup
+    [nightly](https://github.com/Chia-Network/clvm_tools_rs/tree/nightly)
 
 To install from a specific branch:
 
-    cargo install --no-default-features --git 'https://github.com/Chia-Network/clvm_tools_rs' --branch 20221005-rollup
+    cargo install --no-default-features --git 'https://github.com/Chia-Network/clvm_tools_rs' --branch nightly
     
 To install a git checkout into your current python environment (must be in some kind of venv or conda environment):
 
