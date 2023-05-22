@@ -923,3 +923,15 @@ fn test_cost_reporting_0() {
         "cost = 1978\n0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9875"
     );
 }
+
+#[test]
+fn test_assign_fancy_final_dot_rest() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/chia-gaming".to_string(),
+        "resources/tests/chia-gaming/test-last.clsp".to_string()
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "()".to_string()]).trim().to_string();
+    assert_eq!(result, "101");
+}

@@ -1,6 +1,7 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::mem::swap;
 use std::rc::Rc;
 
 use num_bigint::ToBigInt;
@@ -19,7 +20,7 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
-use crate::compiler::frontend::compile_bodyform;
+use crate::compiler::frontend::{compile_bodyform, make_provides_set};
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
 use crate::compiler::optimize::optimize_expr;
@@ -27,7 +28,7 @@ use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::util::u8_from_number;
+use crate::util::{toposort, u8_from_number};
 
 const MACRO_TIME_LIMIT: usize = 1000000;
 const CONST_EVAL_LIMIT: usize = 1000000;
@@ -779,15 +780,105 @@ fn generate_let_args(_l: Srcloc, blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {
     blist.iter().map(|b| b.body.clone()).collect()
 }
 
+pub fn hoist_assign_form(
+    letdata: &LetData,
+) -> Result<BodyForm, CompileErr> {
+    // Topological sort of bindings.
+    let sorted_spec = toposort(
+        &letdata.bindings,
+        CompileErr(letdata.loc.clone(), "deadlock resolving binding order".to_string()),
+        // Needs: What this binding relies on.
+        |possible, b| {
+            let mut need_set = HashSet::new();
+            make_provides_set(&mut need_set, b.body.to_sexp());
+            let mut need_set_thats_possible = HashSet::new();
+            for need in need_set.intersection(possible) {
+                need_set_thats_possible.insert(need.clone());
+            }
+            Ok(need_set_thats_possible)
+        },
+        // Has: What this binding provides.
+        |b| match b.pattern.borrow() {
+            BindingPattern::Name(name) => HashSet::from([name.clone()]),
+            BindingPattern::Complex(sexp) => {
+                let mut result_set = HashSet::new();
+                make_provides_set(&mut result_set, sexp.clone());
+                result_set
+            }
+        },
+    )?;
+
+    // Break up into stages of parallel let forms.
+    // Track the needed bindings of this level.
+    // If this becomes broader in a way that doesn't
+    // match the existing provides, we need to break
+    // the let binding.
+    let mut current_provides = HashSet::new();
+    let mut binding_lists = Vec::new();
+    let mut this_round_bindings = Vec::new();
+    let mut new_provides: HashSet<Vec<u8>> = HashSet::new();
+
+    for spec in sorted_spec.iter() {
+        let mut new_needs = spec.needs.difference(&current_provides).cloned();
+        if new_needs.next().is_some() {
+            // Roll over the set we're accumulating to the finished version.
+            let mut empty_tmp: Vec<Rc<Binding>> = Vec::new();
+            swap(&mut empty_tmp, &mut this_round_bindings);
+            binding_lists.push(empty_tmp);
+            for provided in new_provides.iter() {
+                current_provides.insert(provided.clone());
+            }
+            new_provides.clear();
+        }
+        // Record what we can provide to the next round.
+        for p in spec.has.iter() {
+            new_provides.insert(p.clone());
+        }
+        this_round_bindings.push(letdata.bindings[spec.index].clone());
+    }
+
+    // Pick up the last ones that didn't add new needs.
+    if !this_round_bindings.is_empty() {
+        binding_lists.push(this_round_bindings);
+    }
+
+    binding_lists.reverse();
+
+    // Spill let forms as parallel sets to get the best stack we can.
+    let mut end_bindings = Vec::new();
+    swap(&mut end_bindings, &mut binding_lists[0]);
+
+    let mut output_let = BodyForm::Let(
+        LetFormKind::Parallel,
+        Box::new(LetData {
+            bindings: end_bindings,
+            .. letdata.clone()
+        }),
+    );
+
+    for binding_list in binding_lists.into_iter().skip(1) {
+        output_let = BodyForm::Let(
+            LetFormKind::Parallel,
+            Box::new(LetData {
+                bindings: binding_list,
+                body: Rc::new(output_let),
+                .. letdata.clone()
+            }),
+        )
+    }
+
+    Ok(output_let)
+}
+
 pub fn hoist_body_let_binding(
     outer_context: Option<Rc<SExp>>,
     args: Rc<SExp>,
     body: Rc<BodyForm>,
-) -> (Vec<HelperForm>, Rc<BodyForm>) {
+) -> Result<(Vec<HelperForm>, Rc<BodyForm>), CompileErr> {
     match body.borrow() {
         BodyForm::Let(LetFormKind::Sequential, letdata) => {
             if letdata.bindings.is_empty() {
-                return (vec![], letdata.body.clone());
+                return Ok((vec![], letdata.body.clone()));
             }
 
             // If we're here, we're in the middle of hoisting.
@@ -827,7 +918,7 @@ pub fn hoist_body_let_binding(
             let mut revised_bindings = Vec::new();
             for b in letdata.bindings.iter() {
                 let (mut new_helpers, new_binding) =
-                    hoist_body_let_binding(outer_context.clone(), args.clone(), b.body.clone());
+                    hoist_body_let_binding(outer_context.clone(), args.clone(), b.body.clone())?;
                 out_defuns.append(&mut new_helpers);
                 revised_bindings.push(Rc::new(Binding {
                     loc: b.loc.clone(),
@@ -873,24 +964,31 @@ pub fn hoist_body_let_binding(
             call_args.append(&mut let_args);
 
             let final_call = BodyForm::Call(letdata.loc.clone(), call_args);
-            (out_defuns, Rc::new(final_call))
+            Ok((out_defuns, Rc::new(final_call)))
+        }
+        BodyForm::Let(LetFormKind::Assign, letdata) => {
+            hoist_body_let_binding(
+                outer_context,
+                args,
+                Rc::new(hoist_assign_form(letdata)?)
+            )
         }
         BodyForm::Call(l, list) => {
             let mut vres = Vec::new();
             let mut new_call_list = vec![list[0].clone()];
             for i in list.iter().skip(1) {
                 let (new_helper, new_arg) =
-                    hoist_body_let_binding(outer_context.clone(), args.clone(), i.clone());
+                    hoist_body_let_binding(outer_context.clone(), args.clone(), i.clone())?;
                 new_call_list.push(new_arg);
                 vres.append(&mut new_helper.clone());
             }
-            (vres, Rc::new(BodyForm::Call(l.clone(), new_call_list)))
+            Ok((vres, Rc::new(BodyForm::Call(l.clone(), new_call_list))))
         }
-        _ => (Vec::new(), body.clone()),
+        _ => Ok((Vec::new(), body.clone())),
     }
 }
 
-pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Vec<HelperForm> {
+pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperForm>, CompileErr> {
     let mut result = helpers.to_owned();
     let mut i = 0;
 
@@ -903,7 +1001,7 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Vec<HelperForm> {
                     None
                 };
                 let helper_result =
-                    hoist_body_let_binding(context, defun.args.clone(), defun.body.clone());
+                    hoist_body_let_binding(context, defun.args.clone(), defun.body.clone())?;
                 let hoisted_helpers = helper_result.0;
                 let hoisted_body = helper_result.1.clone();
 
@@ -932,7 +1030,7 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Vec<HelperForm> {
         }
     }
 
-    result
+    Ok(result)
 }
 
 fn start_codegen(

@@ -10,7 +10,7 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::run;
-use crate::compiler::codegen::codegen;
+use crate::compiler::codegen::{codegen, hoist_assign_form};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LetData,
@@ -1087,6 +1087,20 @@ impl<'info> Evaluator {
                         only_inline,
                     )
                 }
+            }
+            BodyForm::Let(LetFormKind::Assign, letdata) => {
+                if eval_dont_expand_let(&letdata.inline_hint) && only_inline {
+                    return Ok(body.clone());
+                }
+
+                self.shrink_bodyform_visited(
+                    allocator,
+                    &mut visited,
+                    prog_args,
+                    env,
+                    Rc::new(hoist_assign_form(&letdata)?),
+                    only_inline
+                )
             }
             BodyForm::Quoted(_) => Ok(body.clone()),
             BodyForm::Value(SExp::Atom(l, name)) => {
