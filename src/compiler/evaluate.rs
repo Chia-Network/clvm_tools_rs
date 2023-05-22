@@ -9,7 +9,7 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::run;
-use crate::compiler::codegen::codegen;
+use crate::compiler::codegen::{codegen, hoist_assign_form};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData,
@@ -23,7 +23,7 @@ use crate::compiler::stackvisit::{HasDepthLimit, VisitedMarker};
 use crate::util::{number_from_u8, u8_from_number, Number};
 
 const PRIM_RUN_LIMIT: usize = 1000000;
-pub const EVAL_STACK_LIMIT: usize = 200;
+pub const EVAL_STACK_LIMIT: usize = 190;
 
 // Stack depth checker.
 #[derive(Clone, Debug, Default)]
@@ -1334,6 +1334,20 @@ impl<'info> Evaluator {
                         only_inline,
                     )
                 }
+            }
+            BodyForm::Let(LetFormKind::Assign, letdata) => {
+                if eval_dont_expand_let(&letdata.inline_hint) && only_inline {
+                    return Ok(body.clone());
+                }
+
+                self.shrink_bodyform_visited(
+                    allocator,
+                    &mut visited,
+                    prog_args,
+                    env,
+                    Rc::new(hoist_assign_form(letdata)?),
+                    only_inline,
+                )
             }
             BodyForm::Quoted(_) => Ok(body.clone()),
             BodyForm::Value(SExp::Atom(l, name)) => {

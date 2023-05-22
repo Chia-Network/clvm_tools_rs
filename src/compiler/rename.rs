@@ -297,6 +297,8 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
             )
         }
 
+        BodyForm::Let(LetFormKind::Assign, _letdata) => b.clone(),
+
         BodyForm::Quoted(e) => BodyForm::Quoted(e.clone()),
         BodyForm::Value(v) => BodyForm::Value(v.clone()),
 

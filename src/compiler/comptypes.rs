@@ -10,7 +10,7 @@ use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::{sha256tree, truthy};
-use crate::compiler::sexp::{decode_string, SExp};
+use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::typecheck::TheoryToSExp;
 use crate::compiler::types::ast::{Polytype, TypeVar};
@@ -136,6 +136,7 @@ pub struct Binding {
 pub enum LetFormKind {
     Parallel,
     Sequential,
+    Assign,
 }
 
 /// Information about a let form.  Encapsulates everything except whether it's
@@ -748,6 +749,49 @@ fn compose_lambda_serialized_form(ldata: &LambdaData) -> Rc<SExp> {
     ))
 }
 
+fn compose_let(marker: &[u8], letdata: &LetData) -> Rc<SExp> {
+    let translated_bindings: Vec<Rc<SExp>> = letdata.bindings.iter().map(|x| x.to_sexp()).collect();
+    let bindings_cons = list_to_cons(letdata.loc.clone(), &translated_bindings);
+    let translated_body = letdata.body.to_sexp();
+    let kw_loc = letdata.kw.clone().unwrap_or_else(|| letdata.loc.clone());
+    Rc::new(SExp::Cons(
+        letdata.loc.clone(),
+        Rc::new(SExp::Atom(kw_loc, marker.to_vec())),
+        Rc::new(SExp::Cons(
+            letdata.loc.clone(),
+            Rc::new(bindings_cons),
+            Rc::new(SExp::Cons(
+                letdata.loc.clone(),
+                translated_body,
+                Rc::new(SExp::Nil(letdata.loc.clone())),
+            )),
+        )),
+    ))
+}
+
+fn compose_assign(letdata: &LetData) -> Rc<SExp> {
+    let mut result = Vec::new();
+    let kw_loc = letdata.kw.clone().unwrap_or_else(|| letdata.loc.clone());
+    result.push(Rc::new(SExp::Atom(kw_loc, b"assign".to_vec())));
+    for b in letdata.bindings.iter() {
+        // Binding pattern
+        match &b.pattern {
+            BindingPattern::Name(v) => {
+                result.push(Rc::new(SExp::Atom(b.nl.clone(), v.to_vec())));
+            }
+            BindingPattern::Complex(c) => {
+                result.push(c.clone());
+            }
+        }
+
+        // Binding body.
+        result.push(b.body.to_sexp());
+    }
+
+    result.push(letdata.body.to_sexp());
+    Rc::new(enlist(letdata.loc.clone(), &result))
+}
+
 impl BodyForm {
     /// Get the general location of the BodyForm.
     pub fn loc(&self) -> Srcloc {
@@ -767,28 +811,16 @@ impl BodyForm {
     pub fn to_sexp(&self) -> Rc<SExp> {
         match self {
             BodyForm::Let(kind, letdata) => {
-                let translated_bindings: Vec<Rc<SExp>> =
-                    letdata.bindings.iter().map(|x| x.to_sexp()).collect();
-                let bindings_cons = list_to_cons(letdata.loc.clone(), &translated_bindings);
-                let translated_body = letdata.body.to_sexp();
-                let marker = match kind {
-                    LetFormKind::Parallel => "let",
-                    LetFormKind::Sequential => "let*",
-                };
-                let kw_loc = letdata.kw.clone().unwrap_or_else(|| letdata.loc.clone());
-                Rc::new(SExp::Cons(
-                    letdata.loc.clone(),
-                    Rc::new(SExp::atom_from_string(kw_loc, marker)),
-                    Rc::new(SExp::Cons(
-                        letdata.loc.clone(),
-                        Rc::new(bindings_cons),
-                        Rc::new(SExp::Cons(
-                            letdata.loc.clone(),
-                            translated_body,
-                            Rc::new(SExp::Nil(letdata.loc.clone())),
-                        )),
-                    )),
-                ))
+                if matches!(kind, LetFormKind::Assign) {
+                    compose_assign(letdata)
+                } else {
+                    let marker = if matches!(kind, LetFormKind::Sequential) {
+                        b"let*".to_vec()
+                    } else {
+                        b"let".to_vec()
+                    };
+                    compose_let(&marker, letdata)
+                }
             }
             BodyForm::Quoted(body) => Rc::new(SExp::Cons(
                 body.loc(),
