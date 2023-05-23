@@ -106,7 +106,7 @@ jobs:
         python -m venv venv
         cp venv/Scripts/activate .
         . ./activate
-        maturin build --no-sdist -i python --release --strip
+        maturin build --sdist -i python --release --strip
         # Find and install the newly built wheel
         python support/wheelname.py
 
