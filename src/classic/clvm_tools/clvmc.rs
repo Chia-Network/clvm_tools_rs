@@ -22,7 +22,7 @@ use crate::classic::platform::distutils::dep_util::newer;
 
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::compile_file;
-use crate::compiler::compiler::{DefaultCompilerOpts, run_optimizer};
+use crate::compiler::compiler::{run_optimizer, DefaultCompilerOpts};
 use crate::compiler::comptypes::{AcceptedDialect, CompileErr, CompilerOpts};
 use crate::compiler::runtypes::RunFailure;
 
