@@ -27,6 +27,10 @@ To install a git checkout into your current python environment (must be in some 
     git clone https://github.com/Chia-Network/clvm_tools_rs
     cd clvm_tools_rs
     maturin develop
+
+Install from PYPI:
+
+    pip install -i https://pypi.chia.net/nightlies/ clvm_tools_rs
     
 Most people still compile chialisp via python.  One way to set up compilation
 in that way is like this:
