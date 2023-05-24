@@ -1199,9 +1199,9 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .map(|a| matches!(a, ArgumentValue::ArgBool(true)))
         .unwrap_or(false);
 
-    let dialect = input_sexp.and_then(|i| detect_modern(&mut allocator, i));
+    let dialect = input_sexp.map(|i| detect_modern(&mut allocator, i));
     let mut stderr_output = |s: String| {
-        if dialect.is_some() {
+        if dialect.as_ref().and_then(|d| d.stepping).is_some() {
             eprintln!("{s}");
         } else {
             stdout.write_str(&s);
@@ -1254,7 +1254,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         })
         .unwrap_or_else(|| "main.sym".to_string());
 
-    if let Some(dialect) = dialect {
+    // In testing: short circuit for modern compilation.
+    if let Some(dialect) = dialect.and_then(|d| d.stepping) {
         let do_optimize = parsed_args
             .get("optimize")
             .map(|x| matches!(x, ArgumentValue::ArgBool(true)))

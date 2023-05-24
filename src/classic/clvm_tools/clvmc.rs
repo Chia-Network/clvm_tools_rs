@@ -22,13 +22,9 @@ use crate::classic::platform::distutils::dep_util::newer;
 
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::compile_file;
-use crate::compiler::compiler::run_optimizer;
-use crate::compiler::compiler::DefaultCompilerOpts;
-use crate::compiler::comptypes::CompileErr;
-use crate::compiler::comptypes::CompilerOpts;
+use crate::compiler::compiler::{DefaultCompilerOpts, run_optimizer};
+use crate::compiler::comptypes::{AcceptedDialect, CompileErr, CompilerOpts};
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::srcloc::Srcloc;
-use crate::compiler::untype::untype_code;
 
 fn include_dialect(
     allocator: &mut Allocator,
@@ -58,16 +54,20 @@ pub fn write_sym_output(
         .map(|_| ())
 }
 
-pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> Option<i32> {
+pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> AcceptedDialect {
     let mut dialects = HashMap::new();
     dialects.insert("*standard-cl-21*".as_bytes().to_vec(), 21);
     dialects.insert("*standard-cl-22*".as_bytes().to_vec(), 22);
     dialects.insert("*standard-cl-23*".as_bytes().to_vec(), 23);
 
-    proper_list(allocator, sexp, true).and_then(|l| {
+    let mut result = Default::default();
+
+    if let Some(l) = proper_list(allocator, sexp, true) {
         for elt in l.iter() {
-            if let Some(dialect) = detect_modern(allocator, *elt) {
-                return Some(dialect);
+            let detect_modern_result = detect_modern(allocator, *elt);
+            if detect_modern_result.stepping.is_some() {
+                result = detect_modern_result;
+                break;
             }
 
             match proper_list(allocator, *elt, true) {
@@ -81,14 +81,15 @@ pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> Option<i32> {
                     }
 
                     if let Some(dialect) = include_dialect(allocator, &dialects, &e) {
-                        return Some(dialect);
+                        result.stepping = Some(dialect);
+                        break;
                     }
                 }
             }
         }
+    }
 
-        None
-    })
+    result
 }
 
 pub fn compile_clvm_text_maybe_opt(
@@ -102,9 +103,8 @@ pub fn compile_clvm_text_maybe_opt(
 ) -> Result<NodePtr, EvalErr> {
     let ir_src = read_ir(text).map_err(|s| EvalErr(allocator.null(), s.to_string()))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
-    let untyped_sexp = untype_code(allocator, Srcloc::start(input_path), assembled_sexp)?;
-
-    if let Some(dialect) = detect_modern(allocator, untyped_sexp) {
+    let dialect = detect_modern(allocator, assembled_sexp);
+    if let Some(dialect) = dialect.stepping {
         let runner = Rc::new(DefaultProgramRunner::new());
         let opts = opts
             .set_optimize(do_optimize)

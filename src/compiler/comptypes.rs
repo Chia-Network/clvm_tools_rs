@@ -41,6 +41,13 @@ impl From<(Srcloc, String)> for CompileErr {
 #[derive(Clone, Debug)]
 pub struct CompiledCode(pub Srcloc, pub Rc<SExp>);
 
+/// Specifying how the language is spoken.
+#[derive(Clone, Debug, Default)]
+pub struct AcceptedDialect {
+    pub stepping: Option<i32>,
+    pub strict: bool,
+}
+
 /// A description of an inlined function for use during inline expansion.
 /// This is used only by PrimaryCodegen.
 #[derive(Clone, Debug)]
@@ -438,7 +445,7 @@ pub trait CompilerOpts {
     /// to carry this info across boundaries into a new context.
     fn code_generator(&self) -> Option<PrimaryCodegen>;
     /// Get the dialect declared in the toplevel program.
-    fn dialect(&self) -> Option<i32>;
+    fn dialect(&self) -> AcceptedDialect;
     /// Specifies whether code is being generated on behalf of an inner defun in
     /// the program.
     fn in_defun(&self) -> bool;
@@ -464,7 +471,7 @@ pub trait CompilerOpts {
     fn get_search_paths(&self) -> Vec<String>;
 
     /// Set the dialect.
-    fn set_dialect(&self, dialect: Option<i32>) -> Rc<dyn CompilerOpts>;
+    fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts>;
     /// Set search paths.
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts>;
     /// Set whether we're compiling on behalf of a defun.
