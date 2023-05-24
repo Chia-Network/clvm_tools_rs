@@ -14,7 +14,7 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
-    CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
+    AcceptedDialect, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
@@ -74,6 +74,7 @@ pub struct DefaultCompilerOpts {
     pub frontend_check_live: bool,
     pub start_env: Option<Rc<SExp>>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    pub dialect: AcceptedDialect,
 
     known_dialects: Rc<HashMap<String, String>>,
 }
@@ -228,6 +229,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn code_generator(&self) -> Option<PrimaryCodegen> {
         self.code_generator.clone()
     }
+    fn dialect(&self) -> AcceptedDialect {
+        self.dialect.clone()
+    }
     fn in_defun(&self) -> bool {
         self.in_defun
     }
@@ -253,6 +257,11 @@ impl CompilerOpts for DefaultCompilerOpts {
         self.include_dirs.clone()
     }
 
+    fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.dialect = dialect;
+        Rc::new(copy)
+    }
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.include_dirs = dirs.to_owned();
@@ -349,6 +358,7 @@ impl DefaultCompilerOpts {
             frontend_opt: false,
             frontend_check_live: true,
             start_env: None,
+            dialect: Default::default(),
             prim_map: create_prim_map(),
             known_dialects: Rc::new(KNOWN_DIALECTS.clone()),
         }

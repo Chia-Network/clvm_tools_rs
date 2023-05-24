@@ -17,7 +17,7 @@ use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file, read_file};
 
-use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
+use crate::compiler::comptypes::{AcceptedDialect, CompileErr, CompilerOpts, PrimaryCodegen};
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 
@@ -319,6 +319,9 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
     fn code_generator(&self) -> Option<PrimaryCodegen> {
         None
     }
+    fn dialect(&self) -> AcceptedDialect {
+        Default::default()
+    }
     fn in_defun(&self) -> bool {
         false
     }
@@ -342,6 +345,9 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
     }
     fn get_search_paths(&self) -> Vec<String> {
         vec![".".to_string()]
+    }
+    fn set_dialect(&self, _dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
+        Rc::new(self.clone())
     }
     fn set_search_paths(&self, _dirs: &[String]) -> Rc<dyn CompilerOpts> {
         Rc::new(self.clone())
