@@ -601,6 +601,7 @@ fn compile_defmacro(
             name,
             args: args.clone(),
             program: Rc::new(p),
+            advanced: false,
         })
     })
 }
@@ -1314,6 +1315,7 @@ fn frontend_start(
         ))
     } else {
         let l = pre_forms[0].loc();
+        eprintln!("pre_forms {}", pre_forms[0]);
         pre_forms[0]
             .proper_list()
             .map(|x| {

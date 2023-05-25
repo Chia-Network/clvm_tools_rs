@@ -10,7 +10,8 @@ use crate::classic::clvm_tools::stages::stage_0::{
 };
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs};
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
-use crate::compiler::comptypes::{AcceptedDialect, CompileErr, CompilerOpts};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;

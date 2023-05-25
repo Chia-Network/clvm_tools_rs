@@ -1,6 +1,8 @@
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering;
 
 use clvm_rs::allocator::Allocator;
 use num_bigint::ToBigInt;
@@ -17,13 +19,17 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::SExp;
+use crate::compiler::sexp::{enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::stackvisit::{HasDepthLimit, VisitedMarker};
 use crate::util::{number_from_u8, u8_from_number, Number};
 
 const PRIM_RUN_LIMIT: usize = 1000000;
-pub const EVAL_STACK_LIMIT: usize = 190;
+pub const EVAL_STACK_LIMIT: usize = 180;
+
+lazy_static! {
+    static ref INDENT: AtomicI32 = AtomicI32::new(0);
+}
 
 // Stack depth checker.
 #[derive(Clone, Debug, Default)]
@@ -436,18 +442,16 @@ pub fn dequote(l: Srcloc, exp: Rc<BodyForm>) -> Result<Rc<SExp>, CompileErr> {
     }
 }
 
-/*
 fn show_env(env: &HashMap<Vec<u8>, Rc<BodyForm>>) {
     let loc = Srcloc::start(&"*env*".to_string());
     for kv in env.iter() {
-        println!(
+        eprintln!(
             " - {}: {}",
             SExp::Atom(loc.clone(), kv.0.clone()).to_string(),
             kv.1.to_sexp().to_string()
         );
     }
 }
-*/
 
 pub fn first_of_alist(lst: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
     match lst.borrow() {
@@ -883,6 +887,7 @@ impl<'info> Evaluator {
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
+        eprintln!("{} invoke_primitive {}", INDENT.fetch_add(0, Ordering::SeqCst), body.to_sexp());
         let mut all_primitive = true;
         let mut target_vec: Vec<Rc<BodyForm>> = parts.to_owned();
         let mut visited = VisitedMarker::again(body.loc(), visited_)?;
@@ -895,23 +900,22 @@ impl<'info> Evaluator {
                 prog_args,
             ))))
         } else if call_name == "com".as_bytes() {
-            let mut end_of_list = Rc::new(SExp::Cons(
-                l.clone(),
-                arguments_to_convert[0].to_sexp(),
-                Rc::new(SExp::Nil(l.clone())),
-            ));
-
-            for h in self.helpers.iter() {
-                end_of_list = Rc::new(SExp::Cons(l.clone(), h.to_sexp(), end_of_list))
-            }
-
+            let mut helper_sexp_list: Vec<Rc<SExp>> = self.helpers.iter().map(|h| h.to_sexp()).collect();
+            helper_sexp_list.push(arguments_to_convert[0].to_sexp());
+            let end_of_list = enlist(l.clone(), &helper_sexp_list);
             let use_body = SExp::Cons(
                 l.clone(),
                 Rc::new(SExp::Atom(l.clone(), "mod".as_bytes().to_vec())),
-                Rc::new(SExp::Cons(l, prog_args, end_of_list)),
+                Rc::new(SExp::Cons(l, prog_args, Rc::new(end_of_list))),
             );
 
+            eprintln!("use_body {use_body}");
+
+            let com_nesting = INDENT.fetch_add(1, Ordering::SeqCst);
+            eprintln!("{com_nesting} running com on {use_body}");
             let compiled = self.compile_code(allocator, false, Rc::new(use_body))?;
+            let com_unnesting = INDENT.fetch_add(-1, Ordering::SeqCst);
+            eprintln!("{com_unnesting} com compiled {compiled}");
             let compiled_borrowed: &SExp = compiled.borrow();
             Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
         } else if let Some(prim) = self.lookup_prim(l.clone(), call_name) {
@@ -1142,17 +1146,31 @@ impl<'info> Evaluator {
         }
 
         let helper = select_helper(&self.helpers, call_name);
+        if let Some(h) = helper.as_ref() {
+            eprintln!("invoke {}", h.to_sexp());
+            show_env(env);
+        }
+
         match helper {
-            Some(HelperForm::Defmacro(mac)) => self.invoke_macro_expansion(
-                allocator,
-                visited,
-                mac.loc.clone(),
-                call_loc,
-                mac.program,
-                prog_args,
-                arguments_to_convert,
-                env,
-            ),
+            Some(HelperForm::Defmacro(mac)) => {
+                eprintln!("macro expansion with");
+                for a in arguments_to_convert.iter() {
+                    eprintln!("- {}", a.to_sexp());
+                }
+
+                let me = self.invoke_macro_expansion(
+                    allocator,
+                    visited,
+                    mac.loc.clone(),
+                    call_loc,
+                    mac.program,
+                    prog_args,
+                    arguments_to_convert,
+                    env,
+                )?;
+                eprintln!("macro expansion {}", me.to_sexp());
+                Ok(me)
+            },
             Some(HelperForm::Defun(inline, defun)) => {
                 if !inline && only_inline {
                     return Ok(body);
@@ -1192,6 +1210,8 @@ impl<'info> Evaluator {
                     argument_captures.insert(kv.0.clone(), shrunk.clone());
                 }
 
+                eprintln!("new argument captures");
+                show_env(&argument_captures);
                 self.shrink_bodyform_visited(
                     allocator,
                     visited,
@@ -1340,6 +1360,7 @@ impl<'info> Evaluator {
                     return Ok(body.clone());
                 }
 
+                eprintln!("eval let {}", body.to_sexp());
                 self.shrink_bodyform_visited(
                     allocator,
                     &mut visited,
@@ -1519,6 +1540,8 @@ impl<'info> Evaluator {
     ) -> Result<Rc<BodyForm>, CompileErr> {
         let mut new_helpers = Vec::new();
         let mut used_names = HashSet::new();
+
+        eprintln!("expand_macro {} {}", program.to_sexp(), args);
 
         let mut end_of_list = Rc::new(SExp::Cons(
             call_loc.clone(),
