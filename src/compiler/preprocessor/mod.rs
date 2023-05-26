@@ -233,6 +233,18 @@ impl Preprocessor {
     }
     */
 
+    fn add_helper(&mut self, h: HelperForm) {
+        for i in 0..=self.helpers.len() {
+            if i == self.helpers.len() {
+                self.helpers.push(h.clone());
+                break;
+            } else if self.helpers[i].name() == h.name() {
+                self.helpers[i] = h;
+                break;
+            }
+        }
+    }
+
     // Check for and apply preprocessor level macros.
     // This is maximally permissive.
     fn expand_macros(&mut self, body: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
@@ -328,7 +340,7 @@ impl Preprocessor {
                     if let Some(helpers) = compile_helperform(self.opts.clone(), target_defun)? {
                         for h in helpers.new_helpers.iter() {
                             self.evaluator.add_helper(h);
-                            self.helpers.push(h.clone());
+                            self.add_helper(h.clone());
                         }
                     } else {
                         return Err(CompileErr(
