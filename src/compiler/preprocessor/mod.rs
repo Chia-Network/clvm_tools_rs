@@ -25,6 +25,27 @@ struct Preprocessor {
     helpers: Vec<HelperForm>,
 }
 
+fn compose_defconst(loc: Srcloc, name: &[u8], sexp: Rc<SExp>) -> Rc<SExp> {
+    Rc::new(enlist(
+        loc.clone(),
+        vec![
+            Rc::new(SExp::Atom(loc.clone(), b"defconst".to_vec())),
+            Rc::new(SExp::Atom(loc.clone(), name.to_vec())),
+            Rc::new(SExp::Cons(
+                loc.clone(),
+                Rc::new(SExp::Atom(loc, vec![1])),
+                sexp,
+            )),
+        ],
+    ))
+}
+
+fn make_defmac_name(name: &[u8]) -> Vec<u8> {
+    let mut res = b"__chia__defmac__".to_vec();
+    res.append(&mut name.to_vec());
+    res
+}
+
 impl Preprocessor {
     pub fn new(opts: Rc<dyn CompilerOpts>) -> Self {
         let runner = Rc::new(DefaultProgramRunner::new());
@@ -166,11 +187,13 @@ impl Preprocessor {
                 NodeSel::Cons(Atom::Here(()), ThisNode::Here)
                     .select_nodes(new_self.clone().unwrap_or_else(|| body.clone()))
             {
+                let defmac_name = make_defmac_name(&name);
+
                 // See if it's a form that calls one of our macros.
                 for m in self.helpers.iter() {
                     if let HelperForm::Defun(_, mdata) = &m {
                         // We record upfront macros
-                        if mdata.name != name {
+                        if mdata.name != defmac_name {
                             continue;
                         }
 
@@ -243,7 +266,7 @@ impl Preprocessor {
                         Rc::new(SExp::atom_from_string(defmac_loc, "defun")),
                         Rc::new(SExp::Cons(
                             nl.clone(),
-                            Rc::new(SExp::Atom(nl, name)),
+                            Rc::new(SExp::Atom(nl, make_defmac_name(&name))),
                             Rc::new(SExp::Cons(args.loc(), args.clone(), body)),
                         )),
                     ));
