@@ -90,6 +90,56 @@ impl Preprocessor {
         Ok(())
     }
 
+    /*
+    fn recurse_dependencies(
+        &mut self,
+        includes: &mut Vec<IncludeDesc>,
+        desc: IncludeType,
+    ) -> Result<(), CompileErr> {
+        match desc {
+            IncludeType::Basic(desc) => {
+                let name_string = decode_string(&desc.name);
+                if KNOWN_DIALECTS.contains_key(&name_string) {
+                    return Ok(());
+                }
+
+                let (full_name, content) = self.opts.read_new_file(self.opts.filename(), name_string)?;
+                includes.push(IncludeDesc {
+                    name: full_name.as_bytes().to_vec(),
+                    ..desc
+                });
+
+                let parsed = parse_sexp(Srcloc::start(&full_name), content.iter().copied())?;
+                if parsed.is_empty() {
+                    return Ok(());
+                }
+
+                let program_form = parsed[0].clone();
+                if let Some(l) = program_form.proper_list() {
+                    for elt in l.iter() {
+                        self.process_pp_form(includes, Rc::new(elt.clone()))?;
+                    }
+                }
+
+                Ok(())
+            },
+            _ => { todo!() }
+        }
+    }
+    */
+
+    fn add_helper(&mut self, h: HelperForm) {
+        for i in 0..=self.helpers.len() {
+            if i == self.helpers.len() {
+                self.helpers.push(h);
+                break;
+            } else if self.helpers[i].name() == h.name() {
+                self.helpers[i] = h;
+                break;
+            }
+        }
+    }
+
     // Check for and apply preprocessor level macros.
     // This is maximally permissive.
     fn expand_macros(&mut self, body: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
@@ -184,7 +234,7 @@ impl Preprocessor {
                     ));
                     if let Some(helper) = compile_helperform(self.opts.clone(), target_defun)? {
                         self.evaluator.add_helper(&helper);
-                        self.helpers.push(helper);
+                        self.add_helper(helper.clone());
                     } else {
                         return Err(CompileErr(
                             definition.loc(),
