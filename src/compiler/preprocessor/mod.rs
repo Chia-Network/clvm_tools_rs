@@ -11,7 +11,7 @@ use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::clvm::convert_from_clvm_rs;
 
 use crate::compiler::cldb::hex_to_modern_sexp;
-use crate::compiler::compiler::KNOWN_DIALECTS;
+use crate::compiler::dialect::KNOWN_DIALECTS;
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompilerOpts, HelperForm, IncludeDesc, IncludeProcessType,
 };
