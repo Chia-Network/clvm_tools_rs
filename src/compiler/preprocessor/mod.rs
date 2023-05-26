@@ -217,6 +217,11 @@ impl Preprocessor {
                             self.helpers.clone(),
                         );
                         eval.add_extension(Rc::new(PreprocessorExtension::new()));
+                        eprintln!("expand macro {}", decode_string(&name));
+                        for (n,v) in macro_arg_env.iter() {
+                            eprintln!("- {} = {}", decode_string(n), v.to_sexp());
+                        }
+
                         let res = eval.shrink_bodyform(
                             &mut allocator,
                             mdata.args.clone(),
@@ -225,6 +230,8 @@ impl Preprocessor {
                             false,
                             None,
                         )?;
+
+                        eprintln!("expanded => {}", res.to_sexp());
 
                         if let Ok(unquoted) = dequote(body.loc(), res) {
                             return Ok(Some(unquoted));

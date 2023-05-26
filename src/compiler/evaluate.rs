@@ -17,7 +17,7 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::SExp;
+use crate::compiler::sexp::{enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::stackvisit::{HasDepthLimit, VisitedMarker};
 use crate::util::{number_from_u8, u8_from_number, Number};
@@ -700,6 +700,45 @@ impl<'info> Evaluator {
         }
     }
 
+    fn defmac_ordering(&self) -> bool {
+        let dialect = self.opts.dialect();
+        dialect.strict || dialect.stepping.unwrap_or(21) > 22
+    }
+
+    fn make_com_module(
+        &self,
+        l: &Srcloc,
+        prog_args: Rc<SExp>,
+        body: Rc<SExp>
+    ) -> Rc<SExp> {
+        let end_of_list =
+            if self.defmac_ordering() {
+                let mut mod_list: Vec<Rc<SExp>> = self.helpers.iter().map(|h| {
+                    h.to_sexp()
+                }).collect();
+                mod_list.push(body);
+                Rc::new(enlist(l.clone(), &mod_list))
+            } else {
+                let mut end_of_list = Rc::new(SExp::Cons(
+                    l.clone(),
+                    body,
+                    Rc::new(SExp::Nil(l.clone())),
+                ));
+
+                for h in self.helpers.iter() {
+                    end_of_list = Rc::new(SExp::Cons(l.clone(), h.to_sexp(), end_of_list));
+                }
+
+                end_of_list
+            };
+
+        Rc::new(SExp::Cons(
+            l.clone(),
+            Rc::new(SExp::Atom(l.clone(), "mod".as_bytes().to_vec())),
+            Rc::new(SExp::Cons(l.clone(), prog_args, end_of_list)),
+        ))
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn invoke_primitive(
         &self,
@@ -725,23 +764,9 @@ impl<'info> Evaluator {
                 prog_args,
             ))))
         } else if call_name == "com".as_bytes() {
-            let mut end_of_list = Rc::new(SExp::Cons(
-                l.clone(),
-                arguments_to_convert[0].to_sexp(),
-                Rc::new(SExp::Nil(l.clone())),
-            ));
-
-            for h in self.helpers.iter() {
-                end_of_list = Rc::new(SExp::Cons(l.clone(), h.to_sexp(), end_of_list))
-            }
-
-            let use_body = SExp::Cons(
-                l.clone(),
-                Rc::new(SExp::Atom(l.clone(), "mod".as_bytes().to_vec())),
-                Rc::new(SExp::Cons(l, prog_args, end_of_list)),
-            );
-
-            let compiled = self.compile_code(allocator, false, Rc::new(use_body))?;
+            let use_body = self.make_com_module(&l, prog_args.clone(), arguments_to_convert[0].to_sexp());
+            eprintln!("use_body {use_body}");
+            let compiled = self.compile_code(allocator, false, use_body)?;
             let compiled_borrowed: &SExp = compiled.borrow();
             Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
         } else {
