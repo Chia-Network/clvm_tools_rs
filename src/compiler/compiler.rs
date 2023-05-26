@@ -211,6 +211,7 @@ pub fn compile_pre_forms(
     pre_forms: &[Rc<SExp>],
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
+    eprintln!("compile_pre_forms {}", pre_forms[0]);
     if opts.frontend_opt() && opts.dialect().stepping.map(|d| d > 22).unwrap_or(false) {
         return do_optimization_23(allocator, runner, opts, pre_forms, symbol_table);
     }
