@@ -240,6 +240,7 @@ impl Preprocessor {
     */
 
     fn add_helper(&mut self, h: HelperForm) {
+        self.evaluator.add_helper(&h);
         for i in 0..=self.helpers.len() {
             if i == self.helpers.len() {
                 self.helpers.push(h.clone());
@@ -370,7 +371,6 @@ impl Preprocessor {
                     ));
                     if let Some(helpers) = compile_helperform(self.opts.clone(), target_defun)? {
                         for h in helpers.new_helpers.iter() {
-                            self.evaluator.add_helper(h);
                             self.add_helper(h.clone());
                         }
                     } else {
@@ -381,7 +381,7 @@ impl Preprocessor {
                     }
                 } else if let Some(helpers) = compile_helperform(self.opts.clone(), definition)? {
                     for h in helpers.new_helpers.iter() {
-                        self.evaluator.add_helper(h);
+                        self.add_helper(h.clone());
                     }
                 }
             }
