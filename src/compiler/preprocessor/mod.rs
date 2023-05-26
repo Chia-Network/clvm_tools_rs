@@ -25,6 +25,7 @@ struct Preprocessor {
     helpers: Vec<HelperForm>,
 }
 
+/*
 fn compose_defconst(loc: Srcloc, name: &[u8], sexp: Rc<SExp>) -> Rc<SExp> {
     Rc::new(enlist(
         loc.clone(),
@@ -39,6 +40,7 @@ fn compose_defconst(loc: Srcloc, name: &[u8], sexp: Rc<SExp>) -> Rc<SExp> {
         ],
     ))
 }
+*/
 
 fn make_defmac_name(name: &[u8]) -> Vec<u8> {
     let mut res = b"__chia__defmac__".to_vec();
@@ -150,6 +152,7 @@ impl Preprocessor {
     */
 
     fn add_helper(&mut self, h: HelperForm) {
+        self.evaluator.add_helper(&h);
         for i in 0..=self.helpers.len() {
             if i == self.helpers.len() {
                 self.helpers.push(h);
@@ -271,8 +274,7 @@ impl Preprocessor {
                         )),
                     ));
                     if let Some(helper) = compile_helperform(self.opts.clone(), target_defun)? {
-                        self.evaluator.add_helper(&helper);
-                        self.add_helper(helper.clone());
+                        self.add_helper(helper);
                     } else {
                         return Err(CompileErr(
                             definition.loc(),
@@ -280,7 +282,7 @@ impl Preprocessor {
                         ));
                     }
                 } else if let Some(helper) = compile_helperform(self.opts.clone(), definition)? {
-                    self.evaluator.add_helper(&helper);
+                    self.add_helper(helper);
                 }
             }
         }
