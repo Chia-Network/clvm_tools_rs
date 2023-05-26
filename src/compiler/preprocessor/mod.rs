@@ -6,7 +6,10 @@ use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
 
-use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use crate::classic::clvm_tools::clvmc::compile_clvm_text_maybe_opt;
+use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
+use crate::compiler::clvm::convert_from_clvm_rs;
+ne helper list and we control it from here.)
 
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, HelperForm, IncludeDesc};
 use crate::compiler::dialect::KNOWN_DIALECTS;
@@ -21,7 +24,7 @@ use crate::util::ErrInto;
 
 struct Preprocessor {
     opts: Rc<dyn CompilerOpts>,
-    evaluator: Evaluator,
+    runner: Rc<dyn TRunProgram>,
     helpers: Vec<HelperForm>,
 }
 
@@ -51,11 +54,9 @@ fn make_defmac_name(name: &[u8]) -> Vec<u8> {
 impl Preprocessor {
     pub fn new(opts: Rc<dyn CompilerOpts>) -> Self {
         let runner = Rc::new(DefaultProgramRunner::new());
-        let mut eval = Evaluator::new(opts.clone(), runner, Vec::new());
-        eval.add_extension(Rc::new(PreprocessorExtension::new()));
         Preprocessor {
             opts: opts.clone(),
-            evaluator: eval,
+            runner,
             helpers: Vec::new(),
         }
     }
@@ -152,7 +153,6 @@ impl Preprocessor {
     */
 
     fn add_helper(&mut self, h: HelperForm) {
-        self.evaluator.add_helper(&h);
         for i in 0..=self.helpers.len() {
             if i == self.helpers.len() {
                 self.helpers.push(h);
@@ -214,7 +214,9 @@ impl Preprocessor {
                             mdata.args.clone(),
                         )?;
 
-                        let res = self.evaluator.shrink_bodyform(
+                        let mut eval = Evaluator::new(self.opts.clone(), self.runner.clone(), self.helpers.clone());
+                        eval.add_extension(Rc::new(PreprocessorExtension::new()));
+                        let res = eval.shrink_bodyform(
                             &mut allocator,
                             mdata.args.clone(),
                             &macro_arg_env,
