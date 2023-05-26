@@ -6,12 +6,11 @@ use std::rc::Rc;
 
 use tempfile::NamedTempFile;
 
-use clvm_rs::allocator::{Allocator, NodePtr, SExp};
+use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::Stream;
 use crate::classic::clvm::serialize::sexp_to_stream;
-use crate::classic::clvm::sexp::proper_list;
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble};
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::stages::run;
@@ -23,24 +22,9 @@ use crate::classic::platform::distutils::dep_util::newer;
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::compile_file;
 use crate::compiler::compiler::{run_optimizer, DefaultCompilerOpts};
-use crate::compiler::comptypes::{AcceptedDialect, CompileErr, CompilerOpts};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::dialect::detect_modern;
 use crate::compiler::runtypes::RunFailure;
-
-fn include_dialect(
-    allocator: &mut Allocator,
-    dialects: &HashMap<Vec<u8>, i32>,
-    e: &[NodePtr],
-) -> Option<i32> {
-    if let (SExp::Atom(inc), SExp::Atom(name)) = (allocator.sexp(e[0]), allocator.sexp(e[1])) {
-        if allocator.buf(&inc) == "include".as_bytes().to_vec() {
-            if let Some(dialect) = dialects.get(allocator.buf(&name)) {
-                return Some(*dialect);
-            }
-        }
-    }
-
-    None
-}
 
 pub fn write_sym_output(
     compiled_lookup: &HashMap<String, String>,
@@ -54,44 +38,7 @@ pub fn write_sym_output(
         .map(|_| ())
 }
 
-pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> AcceptedDialect {
-    let mut dialects = HashMap::new();
-    dialects.insert("*standard-cl-21*".as_bytes().to_vec(), 21);
-    dialects.insert("*standard-cl-22*".as_bytes().to_vec(), 22);
-
-    let mut result = Default::default();
-
-    if let Some(l) = proper_list(allocator, sexp, true) {
-        for elt in l.iter() {
-            let detect_modern_result = detect_modern(allocator, *elt);
-            if detect_modern_result.stepping.is_some() {
-                result = detect_modern_result;
-                break;
-            }
-
-            match proper_list(allocator, *elt, true) {
-                None => {
-                    continue;
-                }
-
-                Some(e) => {
-                    if e.len() != 2 {
-                        continue;
-                    }
-
-                    if let Some(dialect) = include_dialect(allocator, &dialects, &e) {
-                        result.stepping = Some(dialect);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    result
-}
-
-pub fn compile_clvm_text(
+pub fn compile_clvm_text_maybe_opt(
     allocator: &mut Allocator,
     opts: Rc<dyn CompilerOpts>,
     symbol_table: &mut HashMap<String, String>,
@@ -102,9 +49,12 @@ pub fn compile_clvm_text(
     let ir_src = read_ir(text).map_err(|s| EvalErr(allocator.null(), s.to_string()))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
     let dialect = detect_modern(allocator, assembled_sexp);
-    if let Some(dialect) = dialect.stepping {
+    if let Some(stepping) = dialect.stepping {
         let runner = Rc::new(DefaultProgramRunner::new());
-        let opts = opts.set_optimize(true).set_frontend_opt(dialect > 21);
+        let opts = opts
+            .set_dialect(dialect)
+            .set_optimize(do_optimize)
+            .set_frontend_opt(stepping > 21);
 
         let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
         let res = unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)));

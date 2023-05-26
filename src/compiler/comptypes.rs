@@ -9,8 +9,9 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::sha256tree;
-use crate::compiler::sexp::{decode_string, SExp};
+use crate::compiler::clvm::{sha256tree, truthy};
+use crate::compiler::dialect::AcceptedDialect;
+use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 /// The basic error type.  It contains a Srcloc identifying coordinates of the
@@ -29,13 +30,6 @@ impl From<(Srcloc, String)> for CompileErr {
 /// chialisp input.  It's used by codegen.
 #[derive(Clone, Debug)]
 pub struct CompiledCode(pub Srcloc, pub Rc<SExp>);
-
-/// Specifying how the language is spoken.
-#[derive(Clone, Debug, Default)]
-pub struct AcceptedDialect {
-    pub stepping: Option<i32>,
-    pub strict: bool,
-}
 
 /// A description of an inlined function for use during inline expansion.
 /// This is used only by PrimaryCodegen.
@@ -192,6 +186,8 @@ pub struct DefmacData {
     pub args: Rc<SExp>,
     /// The program appearing in the macro definition.
     pub program: Rc<CompileForm>,
+    /// Whether this is an an advanced macro.
+    pub advanced: bool
 }
 
 /// Information from a constant definition.
@@ -494,6 +490,38 @@ impl CompileForm {
     }
 }
 
+pub fn generate_defmacro_sexp(mac: &DefmacData) -> Rc<SExp> {
+    if mac.advanced {
+        Rc::new(SExp::Cons(
+            mac.loc.clone(),
+            Rc::new(SExp::atom_from_string(mac.loc.clone(), "defmac")),
+            Rc::new(SExp::Cons(
+                mac.loc.clone(),
+                Rc::new(SExp::atom_from_vec(mac.nl.clone(), &mac.name)),
+                Rc::new(SExp::Cons(
+                    mac.loc.clone(),
+                    mac.args.clone(),
+                    Rc::new(SExp::Cons(
+                        mac.loc.clone(),
+                        mac.program.exp.to_sexp(),
+                        Rc::new(SExp::Nil(mac.loc.clone()))
+                    )),
+                )),
+            )),
+        ))
+    } else {
+        Rc::new(SExp::Cons(
+            mac.loc.clone(),
+            Rc::new(SExp::atom_from_string(mac.loc.clone(), "defmacro")),
+            Rc::new(SExp::Cons(
+                mac.loc.clone(),
+                Rc::new(SExp::atom_from_vec(mac.nl.clone(), &mac.name)),
+                mac.program.to_sexp(),
+            )),
+        ))
+    }
+}
+
 impl HelperForm {
     /// Get a reference to the HelperForm's name.
     pub fn name(&self) -> &Vec<u8> {
@@ -544,15 +572,7 @@ impl HelperForm {
                     ],
                 )),
             },
-            HelperForm::Defmacro(mac) => Rc::new(SExp::Cons(
-                mac.loc.clone(),
-                Rc::new(SExp::atom_from_string(mac.loc.clone(), "defmacro")),
-                Rc::new(SExp::Cons(
-                    mac.loc.clone(),
-                    Rc::new(SExp::atom_from_vec(mac.nl.clone(), &mac.name)),
-                    mac.program.to_sexp(),
-                )),
-            )),
+            HelperForm::Defmacro(mac) => generate_defmacro_sexp(&mac),
             HelperForm::Defun(inline, defun) => {
                 let di_string = "defun-inline".to_string();
                 let d_string = "defun".to_string();

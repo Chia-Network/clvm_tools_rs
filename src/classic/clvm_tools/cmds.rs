@@ -27,7 +27,7 @@ use crate::classic::clvm::keyword_from_atom;
 use crate::classic::clvm::serialize::{sexp_from_stream, sexp_to_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
-use crate::classic::clvm_tools::clvmc::{detect_modern, write_sym_output};
+use crate::classic::clvm_tools::clvmc::write_sym_output;
 use crate::classic::clvm_tools::debug::check_unused;
 use crate::classic::clvm_tools::debug::{
     program_hash_from_program_env_cons, start_log_after, trace_pre_eval, trace_to_table,
@@ -53,6 +53,8 @@ use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
+use crate::compiler::dialect::detect_modern;
+use crate::compiler::frontend::frontend;
 use crate::compiler::preprocessor::gather_dependencies;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
@@ -910,6 +912,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_type(Rc::new(PathJoin {}))
             .set_default(ArgumentValue::ArgString(None, "main.sym".to_string())),
     );
+    parser.add_argument(
+        vec!["--strict".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("For modern dialects, don't treat unknown names as constants".to_string()),
+    );
 
     if tool_name == "run" {
         parser.add_argument(
@@ -1183,7 +1191,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .unwrap_or_else(|| "main.sym".to_string());
 
     // In testing: short circuit for modern compilation.
-    if let Some(dialect) = dialect.and_then(|d| d.stepping) {
+    if let Some(stepping) = dialect.as_ref().and_then(|d| d.stepping) {
         let do_optimize = parsed_args
             .get("optimize")
             .map(|x| matches!(x, ArgumentValue::ArgBool(true)))
@@ -1191,9 +1199,10 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         let runner = Rc::new(DefaultProgramRunner::new());
         let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
+            .set_dialect(dialect.unwrap_or_else(|| Default::default()))
             .set_optimize(do_optimize)
             .set_search_paths(&search_paths)
-            .set_frontend_opt(dialect > 21);
+            .set_frontend_opt(stepping > 21);
         let mut symbol_table = HashMap::new();
 
         let unopt_res = compile_file(

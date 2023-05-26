@@ -8,8 +8,11 @@ use clvmr::allocator::Allocator;
 
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 
-use crate::compiler::compiler::KNOWN_DIALECTS;
-use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, HelperForm, IncludeDesc};
+use crate::compiler::cldb::hex_to_modern_sexp;
+use crate::compiler::dialect::KNOWN_DIALECTS;
+use crate::compiler::comptypes::{
+    BodyForm, CompileErr, CompilerOpts, HelperForm, IncludeDesc,
+};
 use crate::compiler::evaluate::{create_argument_captures, dequote, ArgInputs, Evaluator};
 use crate::compiler::frontend::compile_helperform;
 use crate::compiler::preprocessor::macros::PreprocessorExtension;
