@@ -1629,7 +1629,7 @@ impl<'info> Evaluator {
         // primitive.
         let updated_opts = self
             .opts
-            .set_stdenv(!in_defun)
+            .set_stdenv(!in_defun && !self.opts.dialect().strict)
             .set_in_defun(in_defun)
             .set_frontend_opt(false);
 
