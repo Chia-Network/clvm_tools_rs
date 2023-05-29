@@ -9,9 +9,9 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::{sha256tree, truthy};
+use crate::compiler::clvm::sha256tree;
 use crate::compiler::dialect::AcceptedDialect;
-use crate::compiler::sexp::{decode_string, enlist, SExp};
+use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 /// The basic error type.  It contains a Srcloc identifying coordinates of the
@@ -187,7 +187,7 @@ pub struct DefmacData {
     /// The program appearing in the macro definition.
     pub program: Rc<CompileForm>,
     /// Whether this is an an advanced macro.
-    pub advanced: bool
+    pub advanced: bool,
 }
 
 /// Information from a constant definition.
@@ -504,7 +504,7 @@ pub fn generate_defmacro_sexp(mac: &DefmacData) -> Rc<SExp> {
                     Rc::new(SExp::Cons(
                         mac.loc.clone(),
                         mac.program.exp.to_sexp(),
-                        Rc::new(SExp::Nil(mac.loc.clone()))
+                        Rc::new(SExp::Nil(mac.loc.clone())),
                     )),
                 )),
             )),
@@ -572,7 +572,7 @@ impl HelperForm {
                     ],
                 )),
             },
-            HelperForm::Defmacro(mac) => generate_defmacro_sexp(&mac),
+            HelperForm::Defmacro(mac) => generate_defmacro_sexp(mac),
             HelperForm::Defun(inline, defun) => {
                 let di_string = "defun-inline".to_string();
                 let d_string = "defun".to_string();

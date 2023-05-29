@@ -273,7 +273,6 @@ fn rename_in_helperform(namemap: &HashMap<Vec<u8>, Vec<u8>>, h: &HelperForm) -> 
         HelperForm::Defmacro(mac) => HelperForm::Defmacro(DefmacData {
             program: Rc::new(rename_in_compileform(namemap, mac.program.clone())),
             ..mac.clone()
-
         }),
         HelperForm::Defun(inline, defun) => HelperForm::Defun(
             *inline,
@@ -317,7 +316,7 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
                     &local_namemap,
                     Rc::new(local_renamed_body),
                 )),
-                .. mac.clone()
+                ..mac.clone()
             })
         }
         HelperForm::Defun(inline, defun) => {

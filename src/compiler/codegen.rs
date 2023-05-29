@@ -527,7 +527,13 @@ pub fn generate_expr_code(
                             .map(|f| Ok(CompiledCode(l.clone(), f)))
                             .unwrap_or_else(|_| {
                                 if opts.dialect().strict {
-                                    return Err(CompileErr(l.clone(), format!("Unbound use of {} as a variable name", decode_string(atom))));
+                                    return Err(CompileErr(
+                                        l.clone(),
+                                        format!(
+                                            "Unbound use of {} as a variable name",
+                                            decode_string(atom)
+                                        ),
+                                    ));
                                 }
 
                                 // Pass through atoms that don't look up on behalf of

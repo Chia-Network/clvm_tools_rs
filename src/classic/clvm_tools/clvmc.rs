@@ -40,6 +40,7 @@ pub fn write_sym_output(
 
 pub fn compile_clvm_text_maybe_opt(
     allocator: &mut Allocator,
+    do_optimize: bool,
     opts: Rc<dyn CompilerOpts>,
     symbol_table: &mut HashMap<String, String>,
     text: &str,
@@ -77,6 +78,25 @@ pub fn compile_clvm_text_maybe_opt(
             run_program.run_program(allocator, compile_invoke_code, input_sexp, None)?;
         Ok(run_program_output.1)
     }
+}
+
+pub fn compile_clvm_text(
+    allocator: &mut Allocator,
+    opts: Rc<dyn CompilerOpts>,
+    symbol_table: &mut HashMap<String, String>,
+    text: &str,
+    input_path: &str,
+    classic_with_opts: bool,
+) -> Result<NodePtr, EvalErr> {
+    compile_clvm_text_maybe_opt(
+        allocator,
+        true,
+        opts,
+        symbol_table,
+        text,
+        input_path,
+        classic_with_opts,
+    )
 }
 
 pub fn compile_clvm_inner(

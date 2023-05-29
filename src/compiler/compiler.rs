@@ -43,7 +43,6 @@ lazy_static! {
             "}
         .to_string()
     };
-
     pub static ref ADVANCED_MACROS: String = {
         indoc! {"(
             (defmac if (A B C)
@@ -319,12 +318,12 @@ impl CompilerOpts for DefaultCompilerOpts {
     ) -> Result<(String, String), CompileErr> {
         if filename == "*macros*" {
             if self.dialect().strict {
-                return Ok((filename, ADVANCED_MACROS.clone().as_bytes().to_vec()));
+                return Ok((filename, ADVANCED_MACROS.clone()));
             } else {
-                return Ok((filename, STANDARD_MACROS.clone().as_bytes().to_vec()));
+                return Ok((filename, STANDARD_MACROS.clone()));
             }
         } else if let Some(dialect) = KNOWN_DIALECTS.get(&filename) {
-            return Ok((filename, dialect.content.as_bytes().to_vec()));
+            return Ok((filename, dialect.content.clone()));
         }
 
         for dir in self.include_dirs.iter() {

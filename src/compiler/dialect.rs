@@ -18,65 +18,77 @@ pub struct AcceptedDialect {
 #[derive(Clone, Debug)]
 pub struct DialectDescription {
     pub accepted: AcceptedDialect,
-    pub content: String
+    pub content: String,
 }
 
 lazy_static! {
     pub static ref KNOWN_DIALECTS: HashMap<String, DialectDescription> = {
         let mut dialects: HashMap<String, DialectDescription> = HashMap::new();
         let dialect_list = [
-            ("*standard-cl-21*", DialectDescription {
-                accepted: AcceptedDialect {
-                    stepping: Some(21),
-                    .. Default::default()
-                },
-                content: indoc! {"(
+            (
+                "*standard-cl-21*",
+                DialectDescription {
+                    accepted: AcceptedDialect {
+                        stepping: Some(21),
+                        ..Default::default()
+                    },
+                    content: indoc! {"(
                     (defconstant *chialisp-version* 21)
-                )"}.to_string()
-            }),
-            ("*strict-cl-21*", DialectDescription {
-                accepted: AcceptedDialect {
-                    stepping: Some(21),
-                    strict: true
+                )"}
+                    .to_string(),
                 },
-                content: indoc! {"(
+            ),
+            (
+                "*strict-cl-21*",
+                DialectDescription {
+                    accepted: AcceptedDialect {
+                        stepping: Some(21),
+                        strict: true,
+                    },
+                    content: indoc! {"(
                     (defconstant *chialisp-version* 22)
-                )"}.to_string()
-            }),
-            ("*standard-cl-22*", DialectDescription {
-                accepted: AcceptedDialect {
-                    stepping: Some(22),
-                    strict: false
+                )"}
+                    .to_string(),
                 },
-                content: indoc! {"(
+            ),
+            (
+                "*standard-cl-22*",
+                DialectDescription {
+                    accepted: AcceptedDialect {
+                        stepping: Some(22),
+                        strict: false,
+                    },
+                    content: indoc! {"(
                     (defconstant *chialisp-version* 22)
-                )"}.to_string()
-            }),
-            ("*standard-cl-23*", DialectDescription {
-                accepted: AcceptedDialect {
-                    stepping: Some(23),
-                    strict: true
+                )"}
+                    .to_string(),
                 },
-                content: indoc! {"(
+            ),
+            (
+                "*standard-cl-23*",
+                DialectDescription {
+                    accepted: AcceptedDialect {
+                        stepping: Some(23),
+                        strict: true,
+                    },
+                    content: indoc! {"(
                     (defconstant *chialisp-version* 23)
-                )"}.to_string()
-            }),
+                )"}
+                    .to_string(),
+                },
+            ),
         ];
-        for (n,v) in dialect_list.iter() {
+        for (n, v) in dialect_list.iter() {
             dialects.insert(n.to_string(), v.clone());
         }
         dialects
     };
 }
 
-fn include_dialect(
-    allocator: &mut Allocator,
-    e: &[NodePtr],
-) -> Option<AcceptedDialect>
-{
+fn include_dialect(allocator: &mut Allocator, e: &[NodePtr]) -> Option<AcceptedDialect> {
     if let (SExp::Atom(inc), SExp::Atom(name)) = (allocator.sexp(e[0]), allocator.sexp(e[1])) {
         if allocator.buf(&inc) == "include".as_bytes().to_vec() {
-            if let Some(dialect) = KNOWN_DIALECTS.get(&decode_string(&allocator.buf(&name))) {
+            if let Some(dialect) = KNOWN_DIALECTS.get(&decode_string(allocator.buf(&name))) {
                 return Some(dialect.accepted.clone());
             }
         }

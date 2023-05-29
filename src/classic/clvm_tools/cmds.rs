@@ -54,7 +54,6 @@ use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
 use crate::compiler::dialect::detect_modern;
-use crate::compiler::frontend::frontend;
 use crate::compiler::preprocessor::gather_dependencies;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
@@ -1199,7 +1198,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         let runner = Rc::new(DefaultProgramRunner::new());
         let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
-            .set_dialect(dialect.unwrap_or_else(|| Default::default()))
+            .set_dialect(dialect.unwrap_or_default())
             .set_optimize(do_optimize)
             .set_search_paths(&search_paths)
             .set_frontend_opt(stepping > 21);
