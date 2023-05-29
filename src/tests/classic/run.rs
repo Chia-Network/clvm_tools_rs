@@ -896,16 +896,28 @@ fn test_strict_smoke_1() {
     assert_eq!(result, "15");
 }
 
-/*
 #[test]
 fn test_strict_list_fail() {
-    let result_prog = do_basic_run(&vec![
+    let result = do_basic_run(&vec![
         "run".to_string(),
         "-i".to_string(),
         "resources/tests/strict".to_string(),
         "resources/tests/strict/strict-list-fail.clsp".to_string(),
     ]);
-    eprintln!("result_prog {result_prog}");
-    todo!();
+    assert!(result.contains("Unbound"));
+    assert!(result.contains("X2"));
 }
-*/
+
+#[test]
+fn test_strict_list_pass() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-list-pass.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "(13)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "(strlen 14 15)");
+}
