@@ -344,6 +344,11 @@ impl CompilerOpts for DefaultCompilerOpts {
         copy.start_env = start_env;
         Rc::new(copy)
     }
+    fn set_prim_map(&self, prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.prim_map = prims;
+        Rc::new(copy)
+    }
 
     fn read_new_file(
         &self,

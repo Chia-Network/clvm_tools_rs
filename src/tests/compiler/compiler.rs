@@ -49,6 +49,7 @@ fn run_string_maybe_opt(
             Rc::new(HashMap::new()),
             Rc::new(x),
             sexp_args,
+            None,
             Some(TEST_TIMEOUT),
         )
         .map_err(|e| match e {
