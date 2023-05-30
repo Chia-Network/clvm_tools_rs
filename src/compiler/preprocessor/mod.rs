@@ -111,44 +111,6 @@ impl Preprocessor {
         Ok(())
     }
 
-    /*
-    fn recurse_dependencies(
-        &mut self,
-        includes: &mut Vec<IncludeDesc>,
-        desc: IncludeType,
-    ) -> Result<(), CompileErr> {
-        match desc {
-            IncludeType::Basic(desc) => {
-                let name_string = decode_string(&desc.name);
-                if KNOWN_DIALECTS.contains_key(&name_string) {
-                    return Ok(());
-                }
-
-                let (full_name, content) = self.opts.read_new_file(self.opts.filename(), name_string)?;
-                includes.push(IncludeDesc {
-                    name: full_name.as_bytes().to_vec(),
-                    ..desc
-                });
-
-                let parsed = parse_sexp(Srcloc::start(&full_name), content.iter().copied())?;
-                if parsed.is_empty() {
-                    return Ok(());
-                }
-
-                let program_form = parsed[0].clone();
-                if let Some(l) = program_form.proper_list() {
-                    for elt in l.iter() {
-                        self.process_pp_form(includes, Rc::new(elt.clone()))?;
-                    }
-                }
-
-                Ok(())
-            },
-            _ => { todo!() }
-        }
-    }
-    */
-
     fn add_helper(&mut self, h: HelperForm) {
         for i in 0..=self.helpers.len() {
             if i == self.helpers.len() {
@@ -217,11 +179,6 @@ impl Preprocessor {
                             self.helpers.clone(),
                         );
                         eval.add_extension(Rc::new(PreprocessorExtension::new()));
-                        eprintln!("expand macro {}", decode_string(&name));
-                        for (n, v) in macro_arg_env.iter() {
-                            eprintln!("- {} = {}", decode_string(n), v.to_sexp());
-                        }
-
                         let res = eval.shrink_bodyform(
                             &mut allocator,
                             mdata.args.clone(),
@@ -230,8 +187,6 @@ impl Preprocessor {
                             false,
                             None,
                         )?;
-
-                        eprintln!("expanded => {}", res.to_sexp());
 
                         if let Ok(unquoted) = dequote(body.loc(), res) {
                             return Ok(Some(unquoted));

@@ -1,10 +1,10 @@
-use std::rc::Rc;
-use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::compiler::DefaultCompilerOpts;
+use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::Srcloc;
+use std::rc::Rc;
 
 use crate::tests::compiler::compiler::run_string;
 
@@ -519,17 +519,15 @@ fn test_preprocess_basic_list() {
          (include *strict-cl-21*)
          (list 1 2 3)
     )"};
-    let parsed_forms = parse_sexp(Srcloc::start(file), input_form_set.bytes()).expect("should parse");
+    let parsed_forms =
+        parse_sexp(Srcloc::start(file), input_form_set.bytes()).expect("should parse");
     let opts: Rc<dyn CompilerOpts> =
         Rc::new(DefaultCompilerOpts::new(file)).set_dialect(AcceptedDialect {
             stepping: Some(21),
             strict: true,
         });
     let mut includes = Vec::new();
-    let pp = preprocess(
-        opts.clone(),
-        &mut includes,
-        parsed_forms[0].clone()
-    ).expect("should preprocess");
-    assert_eq!(pp[pp.len()-1].to_string(), "(4 1 (4 2 (4 3 ())))");
+    let pp = preprocess(opts.clone(), &mut includes, parsed_forms[0].clone())
+        .expect("should preprocess");
+    assert_eq!(pp[pp.len() - 1].to_string(), "(4 1 (4 2 (4 3 ())))");
 }

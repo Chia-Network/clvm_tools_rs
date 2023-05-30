@@ -753,8 +753,7 @@ impl<'info> Evaluator {
                 prog_args,
             ))))
         } else if call_name == "com".as_bytes() {
-            let use_body =
-                self.make_com_module(&l, prog_args, arguments_to_convert[0].to_sexp());
+            let use_body = self.make_com_module(&l, prog_args, arguments_to_convert[0].to_sexp());
             eprintln!("use_body {use_body}");
             let compiled = self.compile_code(allocator, false, use_body)?;
             let compiled_borrowed: &SExp = compiled.borrow();
