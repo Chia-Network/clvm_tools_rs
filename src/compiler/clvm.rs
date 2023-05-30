@@ -22,7 +22,12 @@ use crate::util::{number_from_u8, u8_from_number, Number};
 
 /// Provide a way of intercepting and running new primitives.
 pub trait PrimOverride {
-    fn try_handle(&self, head: Rc<SExp>, context: Rc<SExp>, tail: Rc<SExp>) -> Result<Option<Rc<SExp>>, RunFailure>;
+    fn try_handle(
+        &self,
+        head: Rc<SExp>,
+        context: Rc<SExp>,
+        tail: Rc<SExp>,
+    ) -> Result<Option<Rc<SExp>>, RunFailure>;
 }
 
 /// An object which contains the state of a running CLVM program in a compact
@@ -166,7 +171,15 @@ fn translate_head(
             Some(v) => Ok(Rc::new(v.with_loc(l.clone()))),
         },
         SExp::Cons(_l, _a, nil) => match nil.borrow() {
-            SExp::Nil(_l1) => run(allocator, runner, prim_map, sexp.clone(), context, None, None),
+            SExp::Nil(_l1) => run(
+                allocator,
+                runner,
+                prim_map,
+                sexp.clone(),
+                context,
+                None,
+                None,
+            ),
             _ => Err(RunFailure::RunErr(
                 sexp.loc(),
                 format!("Unexpected head form in clvm {sexp}"),
@@ -524,12 +537,8 @@ pub fn run_step(
             };
 
             if let Some(ovr) = prim_override {
-                if let Some(res) =
-                    ovr.try_handle(head.clone(), context.clone(), tail.clone())?
-                {
-                    return Ok(RunStep::OpResult(
-                        res.loc(), res.clone(), parent.clone()
-                    ));
+                if let Some(res) = ovr.try_handle(head.clone(), context.clone(), tail.clone())? {
+                    return Ok(RunStep::OpResult(res.loc(), res.clone(), parent.clone()));
                 }
             }
 
@@ -661,7 +670,13 @@ pub fn run(
             }
         }
         iters += 1;
-        step = run_step(allocator, runner.clone(), prim_map.clone(), &step, prim_override.clone())?;
+        step = run_step(
+            allocator,
+            runner.clone(),
+            prim_map.clone(),
+            &step,
+            prim_override,
+        )?;
         if let RunStep::Done(_, x) = step {
             return Ok(x);
         }

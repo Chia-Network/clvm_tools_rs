@@ -984,9 +984,13 @@ fn test_check_symbol_kinds_nested_if() {
         "resources/tests/strict".to_string(),
         "resources/tests/strict/strict-classify-expr-if.clsp".to_string(),
     ]);
-    let result_1 = do_basic_brun(&vec!["brun".to_string(), result_prog.clone(), "(1)".to_string()])
-        .trim()
-        .to_string();
+    let result_1 = do_basic_brun(&vec![
+        "brun".to_string(),
+        result_prog.clone(),
+        "(1)".to_string(),
+    ])
+    .trim()
+    .to_string();
     assert_eq!(result_1, "2");
     let result_0 = do_basic_brun(&vec!["brun".to_string(), result_prog, "(0)".to_string()])
         .trim()

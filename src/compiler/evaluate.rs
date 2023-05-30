@@ -9,7 +9,7 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::{PrimOverride, run};
+use crate::compiler::clvm::{run, PrimOverride};
 use crate::compiler::codegen::codegen;
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
@@ -136,42 +136,46 @@ pub struct Evaluator {
 
 fn compile_to_run_err(e: CompileErr) -> RunFailure {
     match e {
-        CompileErr(l, e) => {
-            RunFailure::RunErr(l.clone(), e.clone())
-        }
+        CompileErr(l, e) => RunFailure::RunErr(l, e),
     }
 }
 
 impl PrimOverride for Evaluator {
-    fn try_handle(&self, head: Rc<SExp>, _context: Rc<SExp>, tail: Rc<SExp>) -> Result<Option<Rc<SExp>>, RunFailure> {
-        let have_args: Vec<Rc<BodyForm>> =
-            if let Some(args_list) = tail
-            .proper_list() {
-                args_list
-                    .iter()
-                    .map(|e| Rc::new(BodyForm::Quoted(e.clone())))
-                    .collect()
-            } else {
-                return Ok(None);
-            };
+    fn try_handle(
+        &self,
+        head: Rc<SExp>,
+        _context: Rc<SExp>,
+        tail: Rc<SExp>,
+    ) -> Result<Option<Rc<SExp>>, RunFailure> {
+        let have_args: Vec<Rc<BodyForm>> = if let Some(args_list) = tail.proper_list() {
+            args_list
+                .iter()
+                .map(|e| Rc::new(BodyForm::Quoted(e.clone())))
+                .collect()
+        } else {
+            return Ok(None);
+        };
 
         if let SExp::Atom(hl, head_atom) = head.borrow() {
-            let mut call_args =
-                vec![Rc::new(BodyForm::Value(SExp::Atom(hl.clone(), head_atom.clone())))];
+            let mut call_args = vec![Rc::new(BodyForm::Value(SExp::Atom(
+                hl.clone(),
+                head_atom.clone(),
+            )))];
             call_args.append(&mut have_args.clone());
             let call_form = Rc::new(BodyForm::Call(head.loc(), call_args));
 
             for x in self.extensions.iter() {
-                if let Some(res) =
-                    x.try_eval(
+                if let Some(res) = x
+                    .try_eval(
                         self,
                         Rc::new(SExp::Nil(head.loc())),
                         &HashMap::new(),
                         &head.loc(),
-                        &head_atom,
+                        head_atom,
                         &have_args,
                         call_form.clone(),
-                    ).map_err(compile_to_run_err)?
+                    )
+                    .map_err(compile_to_run_err)?
                 {
                     return dequote(head.loc(), res)
                         .map_err(compile_to_run_err)
