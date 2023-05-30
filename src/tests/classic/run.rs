@@ -1286,3 +1286,55 @@ fn test_assign_fancy_final_dot_rest() {
         .to_string();
     assert_eq!(result, "101");
 }
+
+#[test]
+fn test_strict_smoke_0() {
+    let result = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-test-fail.clsp".to_string(),
+    ]);
+    assert!(result.contains("Unbound"));
+    assert!(result.contains("X1"));
+}
+
+#[test]
+fn test_strict_smoke_1() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-test-pass.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "(13)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "15");
+}
+
+#[test]
+fn test_strict_list_fail() {
+    let result = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-list-fail.clsp".to_string(),
+    ]);
+    assert!(result.contains("Unbound"));
+    assert!(result.contains("X2"));
+}
+
+#[test]
+fn test_strict_list_pass() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-list-pass.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "(13)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "(strlen 14 15)");
+}

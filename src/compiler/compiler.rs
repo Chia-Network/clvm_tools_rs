@@ -16,6 +16,7 @@ use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_l
 use crate::compiler::comptypes::{
     CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
+use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::{deinline_opt, finish_optimization};
@@ -26,31 +27,6 @@ use crate::compiler::srcloc::Srcloc;
 use crate::util::Number;
 
 lazy_static! {
-    pub static ref KNOWN_DIALECTS: HashMap<String, String> = {
-        let mut known_dialects: HashMap<String, String> = HashMap::new();
-        known_dialects.insert(
-            "*standard-cl-21*".to_string(),
-            indoc! {"(
-           (defconstant *chialisp-version* 21)
-        )"}
-            .to_string(),
-        );
-        known_dialects.insert(
-            "*standard-cl-22*".to_string(),
-            indoc! {"(
-           (defconstant *chialisp-version* 22)
-        )"}
-            .to_string(),
-        );
-        known_dialects.insert(
-            "*standard-cl-23*".to_string(),
-            indoc! {"(
-           (defconstant *chialisp-version* 23)
-        )"}
-            .to_string(),
-        );
-        known_dialects
-    };
     pub static ref STANDARD_MACROS: String = {
         indoc! {"(
             (defmacro if (A B C) (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @)))
@@ -63,6 +39,33 @@ lazy_static! {
                                        ()))
                             (compile-list ARGS)
                     )
+            (defun-inline / (A B) (f (divmod A B)))
+            (defun-inline c* (A B) (c A B))
+            (defun-inline a* (A B) (a A B))
+            (defun-inline coerce (X) : (Any -> Any) X)
+            (defun-inline explode (X) : (forall a ((Exec a) -> a)) X)
+            (defun-inline bless (X) : (forall a ((Pair a Unit) -> (Exec a))) (coerce X))
+            (defun-inline lift (X V) : (forall a (forall b ((Pair (Exec a) (Pair b Unit)) -> (Exec (Pair a b))))) (coerce X))
+            (defun-inline unlift (X) : (forall a (forall b ((Pair (Exec (Pair a b)) Unit) -> (Exec b)))) (coerce X))
+            )
+            "}
+        .to_string()
+    };
+    pub static ref ADVANCED_MACROS: String = {
+        indoc! {"(
+            (defmac if (A B C)
+              (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @))
+              )
+
+            (defun __chia__compile-list (args)
+              (if args
+                (c 4 (c (f args) (c (__chia__compile-list (r args)) ())))
+                ()
+                )
+              )
+
+            (defmac list ARGS (__chia__compile-list ARGS))
+
             (defun-inline / (A B) (f (divmod A B)))
             (defun-inline c* (A B) (c A B))
             (defun-inline a* (A B) (a A B))
@@ -89,9 +92,7 @@ pub struct DefaultCompilerOpts {
     pub frontend_check_live: bool,
     pub start_env: Option<Rc<SExp>>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
-    pub dialect: Option<i32>,
-
-    known_dialects: Rc<HashMap<String, String>>,
+    pub dialect: AcceptedDialect,
 }
 
 pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
@@ -209,7 +210,7 @@ pub fn compile_pre_forms(
     pre_forms: &[Rc<SExp>],
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
-    if opts.frontend_opt() && opts.dialect().map(|d| d > 22).unwrap_or(false) {
+    if opts.frontend_opt() && opts.dialect().stepping.map(|d| d > 22).unwrap_or(false) {
         return do_optimization_23(allocator, runner, opts, pre_forms, symbol_table);
     }
 
@@ -270,8 +271,8 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn code_generator(&self) -> Option<PrimaryCodegen> {
         self.code_generator.clone()
     }
-    fn dialect(&self) -> Option<i32> {
-        self.dialect
+    fn dialect(&self) -> AcceptedDialect {
+        self.dialect.clone()
     }
     fn in_defun(&self) -> bool {
         self.in_defun
@@ -298,7 +299,7 @@ impl CompilerOpts for DefaultCompilerOpts {
         self.include_dirs.clone()
     }
 
-    fn set_dialect(&self, dialect: Option<i32>) -> Rc<dyn CompilerOpts> {
+    fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.dialect = dialect;
         Rc::new(copy)
@@ -350,9 +351,13 @@ impl CompilerOpts for DefaultCompilerOpts {
         filename: String,
     ) -> Result<(String, Vec<u8>), CompileErr> {
         if filename == "*macros*" {
-            return Ok((filename, STANDARD_MACROS.clone().as_bytes().to_vec()));
-        } else if let Some(content) = self.known_dialects.get(&filename) {
-            return Ok((filename, content.as_bytes().to_vec()));
+            if self.dialect().strict {
+                return Ok((filename, ADVANCED_MACROS.as_bytes().to_vec()));
+            } else {
+                return Ok((filename, STANDARD_MACROS.as_bytes().to_vec()));
+            }
+        } else if let Some(dialect) = KNOWN_DIALECTS.get(&filename) {
+            return Ok((filename, dialect.content.as_bytes().to_vec()));
         }
 
         for dir in self.include_dirs.iter() {
@@ -399,9 +404,8 @@ impl DefaultCompilerOpts {
             frontend_opt: false,
             frontend_check_live: true,
             start_env: None,
-            dialect: None,
+            dialect: Default::default(),
             prim_map: create_prim_map(),
-            known_dialects: Rc::new(KNOWN_DIALECTS.clone()),
         }
     }
 }

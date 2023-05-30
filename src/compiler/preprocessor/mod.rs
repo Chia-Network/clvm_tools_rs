@@ -7,14 +7,14 @@ use std::rc::Rc;
 use clvmr::allocator::Allocator;
 
 use crate::classic::clvm_tools::clvmc::compile_clvm_text_maybe_opt;
-use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
-use crate::compiler::clvm::convert_from_clvm_rs;
+use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 
 use crate::compiler::cldb::hex_to_modern_sexp;
-use crate::compiler::compiler::KNOWN_DIALECTS;
+use crate::compiler::clvm::convert_from_clvm_rs;
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompilerOpts, HelperForm, IncludeDesc, IncludeProcessType,
 };
+use crate::compiler::dialect::KNOWN_DIALECTS;
 use crate::compiler::evaluate::{create_argument_captures, dequote, ArgInputs, Evaluator};
 use crate::compiler::frontend::compile_helperform;
 use crate::compiler::preprocessor::macros::PreprocessorExtension;
@@ -42,7 +42,7 @@ enum IncludeType {
 
 struct Preprocessor {
     opts: Rc<dyn CompilerOpts>,
-    evaluator: Evaluator,
+    runner: Rc<dyn TRunProgram>,
     helpers: Vec<HelperForm>,
 }
 
@@ -61,14 +61,18 @@ fn compose_defconst(loc: Srcloc, name: &[u8], sexp: Rc<SExp>) -> Rc<SExp> {
     ))
 }
 
+fn make_defmac_name(name: &[u8]) -> Vec<u8> {
+    let mut res = b"__chia__defmac__".to_vec();
+    res.append(&mut name.to_vec());
+    res
+}
+
 impl Preprocessor {
     pub fn new(opts: Rc<dyn CompilerOpts>) -> Self {
         let runner = Rc::new(DefaultProgramRunner::new());
-        let mut eval = Evaluator::new(opts.clone(), runner, Vec::new());
-        eval.add_extension(Rc::new(PreprocessorExtension::new()));
         Preprocessor {
             opts: opts.clone(),
-            evaluator: eval,
+            runner,
             helpers: Vec::new(),
         }
     }
@@ -195,60 +199,51 @@ impl Preprocessor {
         Ok(())
     }
 
-    /*
-    fn recurse_dependencies(
-        &mut self,
-        includes: &mut Vec<IncludeDesc>,
-        desc: IncludeType,
-    ) -> Result<(), CompileErr> {
-        match desc {
-            IncludeType::Basic(desc) => {
-                let name_string = decode_string(&desc.name);
-                if KNOWN_DIALECTS.contains_key(&name_string) {
-                    return Ok(());
-                }
-
-                let (full_name, content) = self.opts.read_new_file(self.opts.filename(), name_string)?;
-                includes.push(IncludeDesc {
-                    name: full_name.as_bytes().to_vec(),
-                    ..desc
-                });
-
-                let parsed = parse_sexp(Srcloc::start(&full_name), content.iter().copied())?;
-                if parsed.is_empty() {
-                    return Ok(());
-                }
-
-                let program_form = parsed[0].clone();
-                if let Some(l) = program_form.proper_list() {
-                    for elt in l.iter() {
-                        self.process_pp_form(includes, Rc::new(elt.clone()))?;
-                    }
-                }
-
-                Ok(())
-            },
-            _ => { todo!() }
+    fn add_helper(&mut self, h: HelperForm) {
+        for i in 0..=self.helpers.len() {
+            if i == self.helpers.len() {
+                self.helpers.push(h);
+                break;
+            } else if self.helpers[i].name() == h.name() {
+                self.helpers[i] = h;
+                break;
+            }
         }
     }
-    */
 
     // Check for and apply preprocessor level macros.
     // This is maximally permissive.
-    fn expand_macros(&mut self, body: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
+    fn expand_macros(
+        &mut self,
+        body: Rc<SExp>,
+        start: bool,
+    ) -> Result<Option<Rc<SExp>>, CompileErr> {
         if let SExp::Cons(l, f, r) = body.borrow() {
             // First expand inner macros.
-            let first_expanded = self.expand_macros(f.clone())?;
-            let rest_expanded = self.expand_macros(r.clone())?;
-            let new_self = Rc::new(SExp::Cons(l.clone(), first_expanded, rest_expanded));
+            let first_expanded = self.expand_macros(f.clone(), true)?;
+            let rest_expanded = self.expand_macros(r.clone(), false)?;
+            let new_self = match (first_expanded, rest_expanded) {
+                (None, None) => None,
+                (Some(f), None) => Some(Rc::new(SExp::Cons(l.clone(), f, r.clone()))),
+                (None, Some(r)) => Some(Rc::new(SExp::Cons(l.clone(), f.clone(), r))),
+                (Some(f), Some(r)) => Some(Rc::new(SExp::Cons(l.clone(), f, r))),
+            };
+
+            if !start {
+                return Ok(new_self);
+            }
+
             if let Ok(NodeSel::Cons((_, name), args)) =
-                NodeSel::Cons(Atom::Here(()), ThisNode::Here).select_nodes(new_self.clone())
+                NodeSel::Cons(Atom::Here(()), ThisNode::Here)
+                    .select_nodes(new_self.clone().unwrap_or_else(|| body.clone()))
             {
+                let defmac_name = make_defmac_name(&name);
+
                 // See if it's a form that calls one of our macros.
                 for m in self.helpers.iter() {
                     if let HelperForm::Defun(_, mdata) = &m {
                         // We record upfront macros
-                        if mdata.name != name {
+                        if mdata.name != defmac_name {
                             continue;
                         }
 
@@ -266,7 +261,13 @@ impl Preprocessor {
                             mdata.args.clone(),
                         )?;
 
-                        let res = self.evaluator.shrink_bodyform(
+                        let mut eval = Evaluator::new(
+                            self.opts.clone(),
+                            self.runner.clone(),
+                            self.helpers.clone(),
+                        );
+                        eval.add_extension(Rc::new(PreprocessorExtension::new()));
+                        let res = eval.shrink_bodyform(
                             &mut allocator,
                             mdata.args.clone(),
                             &macro_arg_env,
@@ -276,7 +277,7 @@ impl Preprocessor {
                         )?;
 
                         if let Ok(unquoted) = dequote(body.loc(), res) {
-                            return Ok(unquoted);
+                            return Ok(Some(unquoted));
                         } else {
                             return Err(CompileErr(
                                 body.loc(),
@@ -290,7 +291,7 @@ impl Preprocessor {
             return Ok(new_self);
         }
 
-        Ok(body)
+        Ok(None)
     }
 
     // If it's a defmac (preprocessor level macro), add it to the evaulator.
@@ -321,14 +322,13 @@ impl Preprocessor {
                         Rc::new(SExp::atom_from_string(defmac_loc, "defun")),
                         Rc::new(SExp::Cons(
                             nl.clone(),
-                            Rc::new(SExp::Atom(nl, name)),
+                            Rc::new(SExp::Atom(nl, make_defmac_name(&name))),
                             Rc::new(SExp::Cons(args.loc(), args.clone(), body)),
                         )),
                     ));
                     if let Some(helpers) = compile_helperform(self.opts.clone(), target_defun)? {
                         for h in helpers.new_helpers.iter() {
-                            self.evaluator.add_helper(h);
-                            self.helpers.push(h.clone());
+                            self.add_helper(h.clone());
                         }
                     } else {
                         return Err(CompileErr(
@@ -338,7 +338,7 @@ impl Preprocessor {
                     }
                 } else if let Some(helpers) = compile_helperform(self.opts.clone(), definition)? {
                     for h in helpers.new_helpers.iter() {
-                        self.evaluator.add_helper(h);
+                        self.add_helper(h.clone());
                     }
                 }
             }
@@ -353,7 +353,9 @@ impl Preprocessor {
         includes: &mut Vec<IncludeDesc>,
         unexpanded_body: Rc<SExp>,
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
-        let body = self.expand_macros(unexpanded_body)?;
+        let body = self
+            .expand_macros(unexpanded_body.clone(), true)?
+            .unwrap_or_else(|| unexpanded_body.clone());
         // Support using the preprocessor to collect dependencies recursively.
         let included: Option<IncludeType> = body
             .proper_list()

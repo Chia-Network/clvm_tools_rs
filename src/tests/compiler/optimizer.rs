@@ -11,6 +11,7 @@ use crate::classic::clvm_tools::stages::stage_0::{
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs};
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -72,7 +73,10 @@ fn run_string_get_program_and_output_with_includes(
     let srcloc = Srcloc::start(&"*test*".to_string());
     opts = opts
         .set_frontend_opt(fe_opt)
-        .set_dialect(Some(23))
+        .set_dialect(AcceptedDialect {
+            stepping: Some(23),
+            strict: false,
+        })
         .set_search_paths(include_dirs);
     let sexp_args =
         parse_sexp(srcloc.clone(), args.bytes()).map_err(|e| CompileErr(e.0, e.1))?[0].clone();

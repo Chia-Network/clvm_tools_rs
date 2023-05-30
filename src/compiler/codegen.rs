@@ -602,6 +602,16 @@ pub fn generate_expr_code(
                         create_name_lookup(compiler, l.clone(), atom, true)
                             .map(|f| Ok(CompiledCode(l.clone(), f)))
                             .unwrap_or_else(|_| {
+                                if opts.dialect().strict {
+                                    return Err(CompileErr(
+                                        l.clone(),
+                                        format!(
+                                            "Unbound use of {} as a variable name",
+                                            decode_string(atom)
+                                        ),
+                                    ));
+                                }
+
                                 // Pass through atoms that don't look up on behalf of
                                 // macros, as it's possible that a macro returned
                                 // something that's canonically a name in number form.
@@ -615,20 +625,32 @@ pub fn generate_expr_code(
                             })
                     }
                 }
-                // Since macros are in this language and the runtime has
-                // a very narrow data representation, we'll need to
-                // accomodate bare numbers coming back in place of identifiers.
-                // I'm considering ways to make this better.
-                SExp::Integer(l, i) => generate_expr_code(
-                    allocator,
-                    runner,
-                    opts,
-                    compiler,
-                    Rc::new(BodyForm::Value(SExp::Atom(
-                        l.clone(),
-                        u8_from_number(i.clone()),
-                    ))),
-                ),
+                SExp::Integer(l, i) => {
+                    if opts.dialect().strict {
+                        return generate_expr_code(
+                            allocator,
+                            runner,
+                            opts,
+                            compiler,
+                            Rc::new(BodyForm::Quoted(SExp::Integer(l.clone(), i.clone()))),
+                        );
+                    }
+
+                    // Since macros are in this language and the runtime has
+                    // a very narrow data representation, we'll need to
+                    // accomodate bare numbers coming back in place of identifiers,
+                    // but only in legacy non-strict mode.
+                    generate_expr_code(
+                        allocator,
+                        runner,
+                        opts,
+                        compiler,
+                        Rc::new(BodyForm::Value(SExp::Atom(
+                            l.clone(),
+                            u8_from_number(i.clone()),
+                        ))),
+                    )
+                }
                 _ => Ok(CompiledCode(
                     v.loc(),
                     Rc::new(primquote(v.loc(), Rc::new(v.clone()))),
