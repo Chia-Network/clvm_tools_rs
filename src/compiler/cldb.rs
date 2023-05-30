@@ -150,6 +150,7 @@ impl CldbRun {
                 self.runner.clone(),
                 self.prim_map.clone(),
                 &self.step,
+                None,
             ),
         };
 

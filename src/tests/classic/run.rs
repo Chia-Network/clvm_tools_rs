@@ -961,3 +961,35 @@ fn test_double_constant_fail() {
     assert!(result.contains("not a number given to only-integers"));
     assert!(result.contains("\"hithere\""));
 }
+
+#[test]
+fn test_double_constant_pass_in_function() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/double-constant-pass-in-function.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "(13)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "211");
+}
+
+#[test]
+fn test_check_symbol_kinds_nested_if() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-classify-expr-if.clsp".to_string(),
+    ]);
+    let result_1 = do_basic_brun(&vec!["brun".to_string(), result_prog.clone(), "(1)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result_1, "2");
+    let result_0 = do_basic_brun(&vec!["brun".to_string(), result_prog, "(0)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result_0, "(q 1 2 3 4 4)");
+}
