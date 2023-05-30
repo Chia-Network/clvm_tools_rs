@@ -218,7 +218,7 @@ impl Preprocessor {
                         );
                         eval.add_extension(Rc::new(PreprocessorExtension::new()));
                         eprintln!("expand macro {}", decode_string(&name));
-                        for (n,v) in macro_arg_env.iter() {
+                        for (n, v) in macro_arg_env.iter() {
                             eprintln!("- {} = {}", decode_string(n), v.to_sexp());
                         }
 

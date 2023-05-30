@@ -705,32 +705,21 @@ impl<'info> Evaluator {
         dialect.strict || dialect.stepping.unwrap_or(21) > 22
     }
 
-    fn make_com_module(
-        &self,
-        l: &Srcloc,
-        prog_args: Rc<SExp>,
-        body: Rc<SExp>
-    ) -> Rc<SExp> {
-        let end_of_list =
-            if self.defmac_ordering() {
-                let mut mod_list: Vec<Rc<SExp>> = self.helpers.iter().map(|h| {
-                    h.to_sexp()
-                }).collect();
-                mod_list.push(body);
-                Rc::new(enlist(l.clone(), &mod_list))
-            } else {
-                let mut end_of_list = Rc::new(SExp::Cons(
-                    l.clone(),
-                    body,
-                    Rc::new(SExp::Nil(l.clone())),
-                ));
+    fn make_com_module(&self, l: &Srcloc, prog_args: Rc<SExp>, body: Rc<SExp>) -> Rc<SExp> {
+        let end_of_list = if self.defmac_ordering() {
+            let mut mod_list: Vec<Rc<SExp>> = self.helpers.iter().map(|h| h.to_sexp()).collect();
+            mod_list.push(body);
+            Rc::new(enlist(l.clone(), mod_list))
+        } else {
+            let mut end_of_list =
+                Rc::new(SExp::Cons(l.clone(), body, Rc::new(SExp::Nil(l.clone()))));
 
-                for h in self.helpers.iter() {
-                    end_of_list = Rc::new(SExp::Cons(l.clone(), h.to_sexp(), end_of_list));
-                }
+            for h in self.helpers.iter() {
+                end_of_list = Rc::new(SExp::Cons(l.clone(), h.to_sexp(), end_of_list));
+            }
 
-                end_of_list
-            };
+            end_of_list
+        };
 
         Rc::new(SExp::Cons(
             l.clone(),
@@ -764,7 +753,8 @@ impl<'info> Evaluator {
                 prog_args,
             ))))
         } else if call_name == "com".as_bytes() {
-            let use_body = self.make_com_module(&l, prog_args.clone(), arguments_to_convert[0].to_sexp());
+            let use_body =
+                self.make_com_module(&l, prog_args, arguments_to_convert[0].to_sexp());
             eprintln!("use_body {use_body}");
             let compiled = self.compile_code(allocator, false, use_body)?;
             let compiled_borrowed: &SExp = compiled.borrow();
