@@ -754,7 +754,6 @@ impl<'info> Evaluator {
             ))))
         } else if call_name == "com".as_bytes() {
             let use_body = self.make_com_module(&l, prog_args, arguments_to_convert[0].to_sexp());
-            eprintln!("use_body {use_body}");
             let compiled = self.compile_code(allocator, false, use_body)?;
             let compiled_borrowed: &SExp = compiled.borrow();
             Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
