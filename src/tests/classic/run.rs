@@ -935,3 +935,29 @@ fn test_strict_nested_list_pass() {
         .to_string();
     assert_eq!(result, "(strlen (strlen) ((strlen)))");
 }
+
+#[test]
+fn test_double_constant_pass() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/double-constant-pass.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "198");
+}
+
+#[test]
+fn test_double_constant_fail() {
+    let result = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/double-constant-fail.clsp".to_string(),
+    ]);
+    assert!(result.contains("not a number given to only-integers"));
+    assert!(result.contains("\"hithere\""));
+}
