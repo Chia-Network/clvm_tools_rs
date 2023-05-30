@@ -142,37 +142,29 @@ impl Preprocessor {
 
     // Check for and apply preprocessor level macros.
     // This is maximally permissive.
-    fn expand_macros(&mut self, body: Rc<SExp>, start: bool) -> Result<Option<Rc<SExp>>, CompileErr> {
+    fn expand_macros(
+        &mut self,
+        body: Rc<SExp>,
+        start: bool,
+    ) -> Result<Option<Rc<SExp>>, CompileErr> {
         if let SExp::Cons(l, f, r) = body.borrow() {
             // First expand inner macros.
             let first_expanded = self.expand_macros(f.clone(), true)?;
             let rest_expanded = self.expand_macros(r.clone(), false)?;
-            let new_self =
-                match (first_expanded, rest_expanded) {
-                    (None, None) => None,
-                    (Some(f), None) => Some(Rc::new(SExp::Cons(
-                        l.clone(),
-                        f.clone(),
-                        r.clone()
-                    ))),
-                    (None, Some(r)) => Some(Rc::new(SExp::Cons(
-                        l.clone(),
-                        f.clone(),
-                        r.clone()
-                    ))),
-                    (Some(f),Some(r)) => Some(Rc::new(SExp::Cons(
-                        l.clone(),
-                        f.clone(),
-                        r.clone()
-                    )))
-                };
+            let new_self = match (first_expanded, rest_expanded) {
+                (None, None) => None,
+                (Some(f), None) => Some(Rc::new(SExp::Cons(l.clone(), f, r.clone()))),
+                (None, Some(r)) => Some(Rc::new(SExp::Cons(l.clone(), f.clone(), r))),
+                (Some(f), Some(r)) => Some(Rc::new(SExp::Cons(l.clone(), f, r))),
+            };
 
             if !start {
                 return Ok(new_self);
             }
 
             if let Ok(NodeSel::Cons((_, name), args)) =
-                NodeSel::Cons(Atom::Here(()), ThisNode::Here).select_nodes(new_self.clone().unwrap_or_else(|| body.clone()))
+                NodeSel::Cons(Atom::Here(()), ThisNode::Here)
+                    .select_nodes(new_self.clone().unwrap_or_else(|| body.clone()))
             {
                 // See if it's a form that calls one of our macros.
                 for m in self.helpers.iter() {
@@ -279,7 +271,9 @@ impl Preprocessor {
         includes: &mut Vec<IncludeDesc>,
         unexpanded_body: Rc<SExp>,
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
-        let body = self.expand_macros(unexpanded_body.clone(), true)?.unwrap_or_else(|| unexpanded_body.clone());
+        let body = self
+            .expand_macros(unexpanded_body.clone(), true)?
+            .unwrap_or_else(|| unexpanded_body.clone());
         // Support using the preprocessor to collect dependencies recursively.
         let included: Option<IncludeDesc> = body
             .proper_list()
