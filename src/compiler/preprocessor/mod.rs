@@ -261,12 +261,13 @@ impl Preprocessor {
                             mdata.args.clone(),
                         )?;
 
+                        let ppext = Rc::new(PreprocessorExtension::new());
                         let mut eval = Evaluator::new(
-                            self.opts.clone(),
+                            ppext.enrich_prims(self.opts.clone()),
                             self.runner.clone(),
                             self.helpers.clone(),
                         );
-                        eval.add_extension(Rc::new(PreprocessorExtension::new()));
+                        eval.add_extension(ppext);
                         let res = eval.shrink_bodyform(
                             &mut allocator,
                             mdata.args.clone(),

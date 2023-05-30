@@ -485,6 +485,8 @@ pub trait CompilerOpts {
     fn set_code_generator(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts>;
     /// Set the environment shape to assume.
     fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts>;
+    /// Set the primitive map in use so we can add custom primitives.
+    fn set_prim_map(&self, new_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts>;
 
     /// Using the search paths list we have, try to read a file by name,
     /// Returning the expanded path to the file and its content.

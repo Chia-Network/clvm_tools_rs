@@ -343,6 +343,7 @@ pub fn process_macro_call(
         opts.prim_map(),
         code,
         Rc::new(args_to_macro),
+        None,
         Some(MACRO_TIME_LIMIT),
     )
     .map_err(|e| match e {
@@ -1205,6 +1206,7 @@ fn start_codegen(
                         opts.prim_map(),
                         Rc::new(code),
                         Rc::new(SExp::Nil(defc.loc.clone())),
+                        None,
                         Some(CONST_EVAL_LIMIT),
                     )
                     .map_err(|r| {

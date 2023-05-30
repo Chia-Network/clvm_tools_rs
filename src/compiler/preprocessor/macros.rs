@@ -9,7 +9,7 @@ use num_traits::ToPrimitive;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 
 use crate::compiler::clvm::truthy;
-use crate::compiler::comptypes::{BodyForm, CompileErr};
+use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts};
 use crate::compiler::evaluate::{EvalExtension, Evaluator};
 use crate::compiler::preprocessor::dequote;
 use crate::compiler::sexp::{decode_string, SExp};
@@ -770,6 +770,20 @@ impl PreprocessorExtension {
         PreprocessorExtension {
             extfuns: HashMap::from(extfuns),
         }
+    }
+
+    /// Introduce new primitive names for the operators we use to bootstrap macros.
+    pub fn enrich_prims(&self, opts: Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts> {
+        let old_prim_map = opts.prim_map();
+        let old_prim_map_borrowed: &HashMap<Vec<u8>, Rc<SExp>> = old_prim_map.borrow();
+        let mut new_prim_map_cloned = old_prim_map_borrowed.clone();
+        let srcloc = Srcloc::start("*defmac*");
+
+        for (f, _) in self.extfuns.iter() {
+            new_prim_map_cloned.insert(f.clone(), Rc::new(SExp::Atom(srcloc.clone(), f.clone())));
+        }
+
+        opts.set_prim_map(Rc::new(new_prim_map_cloned))
     }
 }
 
