@@ -6,10 +6,7 @@ use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
 
-use crate::classic::clvm_tools::clvmc::compile_clvm_text_maybe_opt;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
-use crate::compiler::clvm::convert_from_clvm_rs;
-ne helper list and we control it from here.)
 
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, HelperForm, IncludeDesc};
 use crate::compiler::dialect::KNOWN_DIALECTS;
@@ -214,7 +211,11 @@ impl Preprocessor {
                             mdata.args.clone(),
                         )?;
 
-                        let mut eval = Evaluator::new(self.opts.clone(), self.runner.clone(), self.helpers.clone());
+                        let mut eval = Evaluator::new(
+                            self.opts.clone(),
+                            self.runner.clone(),
+                            self.helpers.clone(),
+                        );
                         eval.add_extension(Rc::new(PreprocessorExtension::new()));
                         let res = eval.shrink_bodyform(
                             &mut allocator,
