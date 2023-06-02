@@ -196,9 +196,7 @@ pub fn compile_clvm(
                 .write_all(target_data.as_bytes())
                 .map_err(translate_err)?;
 
-            temp_output_file
-                .write_all(b"\n")
-                .map_err(translate_err)?;
+            temp_output_file.write_all(b"\n").map_err(translate_err)?;
 
             temp_output_file.persist(output_path).map_err(|e| {
                 format!("error persisting temporary compiler output {output_path}: {e:?}")
