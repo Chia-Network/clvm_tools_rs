@@ -531,3 +531,17 @@ fn test_preprocess_basic_list() {
         .expect("should preprocess");
     assert_eq!(pp[pp.len() - 1].to_string(), "(4 1 (4 2 (4 3 ())))");
 }
+
+#[test]
+fn test_preprocess_expansion_makes_numeric_operators() {
+    let prog = indoc! {"
+      (mod ()
+         (include *strict-cl-21*)
+         (defmac G () (com (4 \"test\" ())))
+         (G)
+         )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"()".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(\"test\")");
+}
