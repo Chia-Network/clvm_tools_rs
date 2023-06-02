@@ -176,6 +176,12 @@ jobs:
         python support/wheelname.py
         (cd resources/tests && python check-recompiles.py)
 
+    - name: Verify recompilation follows date and modification rules
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      run: |
+        python support/wheelname.py
+        python resources/tests/test-clvm-recompile-behavior.py
+        
     - name: Run tests from clvm
       run: |
         . ./activate
