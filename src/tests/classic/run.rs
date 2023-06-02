@@ -1187,6 +1187,21 @@ fn test_lambda_without_capture_reproduces_bare_word_in_output() {
     assert!(compiled.contains("new_puzzle_hash"));
 }
 
+// Test that strict cl21 throws an error rather than compiling the above.
+#[test]
+fn test_lambda_without_capture_strict() {
+    let compiler_result = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/strict/rps-referee-uncaptured.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert!(compiler_result.contains("Unbound"));
+    assert!(compiler_result.contains("new_puzzle_hash"));
+}
+
 // Test that having a lambda capture captures all the associated words.
 #[test]
 fn test_lambda_with_capture_defines_word() {

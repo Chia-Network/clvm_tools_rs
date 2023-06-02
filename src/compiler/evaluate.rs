@@ -897,7 +897,7 @@ impl<'info> Evaluator {
         let reified_captures = self.shrink_bodyform_visited(
             allocator,
             visited,
-            prog_args.clone(),
+            prog_args,
             env,
             lapply.lambda.captures.clone(),
             only_inline,
@@ -916,7 +916,7 @@ impl<'info> Evaluator {
         self.shrink_bodyform_visited(
             allocator,
             visited,
-            prog_args,
+            lapply.lambda.args.clone(),
             &lambda_env,
             lapply.body.clone(),
             only_inline,
