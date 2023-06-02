@@ -206,7 +206,7 @@ fn eval_args(
                 return Ok(RunStep::Op(
                     head,
                     context_,
-                    sexp.clone(),
+                    sexp,
                     Some(eval_list),
                     parent,
                 ));
