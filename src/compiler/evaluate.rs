@@ -745,7 +745,7 @@ impl<'info> Evaluator {
         self.shrink_bodyform_visited(
             allocator,
             visited,
-            prog_args,
+            lapply.lambda.args.clone(),
             &lambda_env,
             lapply.body.clone(),
             only_inline,

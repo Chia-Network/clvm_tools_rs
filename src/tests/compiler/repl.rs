@@ -344,3 +344,49 @@ fn test_lambda_eval_5() {
         "(q . 13)"
     );
 }
+
+#[test]
+fn test_lambda_eval_6() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            indoc!{"
+(defun visit-atoms (fn acc mask path pattern)
+    (if (l pattern)
+      (visit-atoms
+        fn
+        (visit-atoms fn acc (* 2 mask) path (f pattern))
+        (* 2 mask)
+        (logior mask path)
+        (r pattern)
+        )
+
+      (a fn (list acc (logior path mask) pattern))
+      )
+    )
+"},
+            indoc!{"
+   (defun if-match (match)
+    (c 1
+      (visit-atoms
+        (lambda (cb path pat)
+          (if (l pat)
+            (list cb \"A\") ;; Unbound use of cb
+            (list cb \"B\")
+            )
+          )
+        ()
+        1
+        0
+        match
+        )
+      )
+    )
+
+"},
+            "(if-match (q test \"test\" t1 (t2 . t3)))"
+        ])
+            .unwrap()
+            .unwrap(),
+        "(q 1 (((((() B) B) B) B) B) B)"
+    );
+}
