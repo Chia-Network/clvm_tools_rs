@@ -349,7 +349,7 @@ fn test_lambda_eval_5() {
 fn test_lambda_eval_6() {
     assert_eq!(
         test_repl_outcome(vec![
-            indoc!{"
+            indoc! {"
 (defun visit-atoms (fn acc mask path pattern)
     (if (l pattern)
       (visit-atoms
@@ -364,7 +364,7 @@ fn test_lambda_eval_6() {
       )
     )
 "},
-            indoc!{"
+            indoc! {"
    (defun if-match (match)
     (c 1
       (visit-atoms
@@ -385,8 +385,8 @@ fn test_lambda_eval_6() {
 "},
             "(if-match (q test \"test\" t1 (t2 . t3)))"
         ])
-            .unwrap()
-            .unwrap(),
+        .unwrap()
+        .unwrap(),
         "(q 1 (((((() B) B) B) B) B) B)"
     );
 }
