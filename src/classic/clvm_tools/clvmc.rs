@@ -154,13 +154,36 @@ pub fn compile_clvm(
             false,
         )?;
 
-        let output_path_obj = Path::new(output_path);
-        let output_dir = output_path_obj
-            .parent()
-            .map(Ok)
-            .unwrap_or_else(|| Err("could not get parent of output path"))?;
-
         let target_data = result_stream.get_value().hex();
+
+        let write_file = |output_path: &str, target_data: &str| -> Result<(), String> {
+            let output_path_obj = Path::new(output_path);
+            let output_dir = output_path_obj
+                .parent()
+                .map(Ok)
+                .unwrap_or_else(|| Err("could not get parent of output path"))?;
+
+            // Make the contents appear atomically so that other test processes
+            // won't mistake an empty file for intended output.
+            let mut temp_output_file = NamedTempFile::new_in(output_dir).map_err(|e| {
+                format!("error creating temporary compiler output for {input_path}: {e:?}")
+            })?;
+
+            let err_text = format!("failed to write to {:?}", temp_output_file.path());
+            let translate_err = |_| err_text.clone();
+
+            temp_output_file
+                .write_all(target_data.as_bytes())
+                .map_err(translate_err)?;
+
+            temp_output_file.write_all(b"\n").map_err(translate_err)?;
+
+            temp_output_file.persist(output_path).map_err(|e| {
+                format!("error persisting temporary compiler output {output_path}: {e:?}")
+            })?;
+
+            Ok(())
+        };
 
         // Try to detect whether we'd put the same output in the output file.
         // Don't proceed if true.
@@ -168,24 +191,18 @@ pub fn compile_clvm(
             let prev_trimmed = prev_content.trim();
             let trimmed = target_data.trim();
             if prev_trimmed == trimmed {
+                // We should try to overwrite here, but not fail if it doesn't
+                // work.  This will accomodate both the read only scenario and
+                // the scenario where a target file is newer and people want the
+                // date to be updated.
+                write_file(output_path, &target_data).ok();
+
                 // It's the same program, bail regardless.
                 return Ok(output_path.to_string());
             }
         }
 
-        // Make the contents appear atomically so that other test processes
-        // won't mistake an empty file for intended output.
-        let mut temp_output_file = NamedTempFile::new_in(output_dir).map_err(|e| {
-            format!("error creating temporary compiler output for {input_path}: {e:?}")
-        })?;
-
-        temp_output_file
-            .write_all(target_data.as_bytes())
-            .map_err(|_| format!("failed to write to {:?}", temp_output_file.path()))?;
-
-        temp_output_file.persist(output_path).map_err(|e| {
-            format!("error persisting temporary compiler output {output_path}: {e:?}")
-        })?;
+        write_file(output_path, &target_data)?;
     }
 
     Ok(output_path.to_string())
