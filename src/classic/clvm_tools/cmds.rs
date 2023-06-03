@@ -1272,7 +1272,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_dialect(dialect.unwrap_or_default())
             .set_optimize(do_optimize)
             .set_search_paths(&search_paths)
-            .set_frontend_opt(stepping > 21);
+            .set_frontend_opt(stepping == 22);
         let mut symbol_table = HashMap::new();
 
         let unopt_res = compile_file(
