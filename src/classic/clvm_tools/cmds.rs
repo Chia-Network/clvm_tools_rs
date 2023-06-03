@@ -1270,7 +1270,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
             .set_dialect(dialect.unwrap_or_default())
-            .set_optimize(do_optimize)
+            .set_optimize(do_optimize && stepping < 23)
             .set_search_paths(&search_paths)
             .set_frontend_opt(stepping == 22);
         let mut symbol_table = HashMap::new();
