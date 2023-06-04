@@ -8,7 +8,6 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::CompileContextWrapper;
 use crate::compiler::codegen::{generate_expr_code, get_call_name, get_callable};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
@@ -18,6 +17,7 @@ use crate::compiler::comptypes::{
 use crate::compiler::optimize::NoOptimization;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::CompileContextWrapper;
 
 use crate::util::Number;
 
@@ -329,7 +329,7 @@ pub fn replace_in_inline(
             allocator,
             runner,
             &mut symbols,
-            Box::new(NoOptimization::new())
+            Box::new(NoOptimization::new()),
         );
         generate_expr_code(&mut context_wrapper.context, opts, compiler, x)
     })

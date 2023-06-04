@@ -36,10 +36,10 @@ pub mod types;
 pub mod untype;
 pub mod usecheck;
 
+use clvmr::allocator::Allocator;
 use std::collections::HashMap;
 use std::mem::swap;
 use std::rc::Rc;
-use clvmr::allocator::Allocator;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::optimize::Optimization;
@@ -57,8 +57,9 @@ trait CompileContext {
     fn allocator(&mut self) -> &mut Allocator;
     fn runner(&self) -> Rc<dyn TRunProgram>;
     fn symbols(&mut self) -> &mut HashMap<String, String>;
-    fn run_optimizer<F,R>(&mut self, f: F) -> R
-    where F: Fn(&mut dyn Optimization) -> R;
+    fn run_optimizer<F, R>(&mut self, f: F) -> R
+    where
+        F: Fn(&mut dyn Optimization) -> R;
 }
 
 impl CompileContext for BasicCompileContext {
@@ -71,8 +72,9 @@ impl CompileContext for BasicCompileContext {
     fn symbols(&mut self) -> &mut HashMap<String, String> {
         &mut self.symbols
     }
-    fn run_optimizer<F,R>(&mut self, f: F) -> R
-    where F: Fn(&mut dyn Optimization) -> R
+    fn run_optimizer<F, R>(&mut self, f: F) -> R
+    where
+        F: Fn(&mut dyn Optimization) -> R,
     {
         f(self.optimizer.as_mut())
     }
@@ -86,7 +88,10 @@ impl BasicCompileContext {
         optimizer: Box<dyn Optimization>,
     ) -> Self {
         BasicCompileContext {
-            allocator, runner, symbols, optimizer
+            allocator,
+            runner,
+            symbols,
+            optimizer,
         }
     }
 }
@@ -94,7 +99,7 @@ impl BasicCompileContext {
 struct CompileContextWrapper<'a> {
     allocator: &'a mut Allocator,
     symbols: &'a mut HashMap<String, String>,
-    context: BasicCompileContext
+    context: BasicCompileContext,
 }
 
 impl<'a> CompileContextWrapper<'a> {
@@ -106,9 +111,9 @@ impl<'a> CompileContextWrapper<'a> {
     ) -> Self {
         let bcc = BasicCompileContext {
             allocator: Allocator::new(),
-            runner: runner,
+            runner,
             symbols: HashMap::new(),
-            optimizer: optimizer
+            optimizer,
         };
         let mut wrapper = CompileContextWrapper {
             allocator,

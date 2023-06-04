@@ -13,7 +13,6 @@ use crate::classic::clvm::__type_compatibility__::bi_zero;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::BasicCompileContext;
 use crate::compiler::clvm::run;
 use crate::compiler::codegen::{codegen, get_callable};
 use crate::compiler::comptypes::{
@@ -24,6 +23,7 @@ use crate::compiler::comptypes::{
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::BasicCompileContext;
 use crate::util::u8_from_number;
 
 const CONST_FOLD_LIMIT: usize = 10000000;
@@ -41,7 +41,7 @@ pub struct CodegenOptimizationResult {
     /// was rewriten along with its new definition.
     pub revised_environment: Option<HashMap<Vec<u8>, Rc<SExp>>>,
     /// Final generated code if different.
-    pub code: Option<Rc<SExp>>
+    pub code: Option<Rc<SExp>>,
 }
 
 /// Make a formal interface that represents all kinds of optimization we can do.
@@ -80,10 +80,7 @@ pub struct CodegenOptimizationResult {
 ///
 pub trait Optimization {
     /// Represents frontend optimizations
-    fn frontend_optimization(
-        &mut self,
-        cf: CompileForm
-    ) -> Result<CompileForm, CompileErr>;
+    fn frontend_optimization(&mut self, cf: CompileForm) -> Result<CompileForm, CompileErr>;
 
     /// Represents start of codegen optimizations
     /// PrimaryCodegen has computed the environment it wants to use but hasn't
@@ -101,7 +98,7 @@ pub trait Optimization {
         &mut self,
         code_generator: &PrimaryCodegen,
         hf: Option<HelperForm>,
-        repr: Rc<SExp>
+        repr: Rc<SExp>,
     ) -> Result<CodegenOptimizationResult, CompileErr>;
 
     fn duplicate(&self) -> Box<dyn Optimization>;
@@ -109,17 +106,16 @@ pub trait Optimization {
 
 /// A basic implementation of Optimization that never transforms anything.
 #[derive(Default, Clone)]
-pub struct NoOptimization { }
+pub struct NoOptimization {}
 
 impl NoOptimization {
-    pub fn new() -> Self { NoOptimization { } }
+    pub fn new() -> Self {
+        NoOptimization {}
+    }
 }
 
 impl Optimization for NoOptimization {
-    fn frontend_optimization(
-        &mut self,
-        cf: CompileForm
-    ) -> Result<CompileForm, CompileErr> {
+    fn frontend_optimization(&mut self, cf: CompileForm) -> Result<CompileForm, CompileErr> {
         Ok(cf)
     }
 
@@ -132,14 +128,16 @@ impl Optimization for NoOptimization {
 
     fn function_codegen_optimization(
         &mut self,
-        code_generator: &PrimaryCodegen,
-        hf: Option<HelperForm>,
-        repr: Rc<SExp>
+        _code_generator: &PrimaryCodegen,
+        _hf: Option<HelperForm>,
+        _repr: Rc<SExp>,
     ) -> Result<CodegenOptimizationResult, CompileErr> {
         Ok(Default::default())
     }
 
-    fn duplicate(&self) -> Box<dyn Optimization> { Box::new(self.clone()) }
+    fn duplicate(&self) -> Box<dyn Optimization> {
+        Box::new(self.clone())
+    }
 }
 
 fn is_at_form(head: Rc<BodyForm>) -> bool {
@@ -358,11 +356,7 @@ pub fn deinline_opt(
     opts: Rc<dyn CompilerOpts>,
     mut compileform: CompileForm,
 ) -> Result<SExp, CompileErr> {
-    let mut generated_program = codegen(
-        context,
-        opts.clone(),
-        &compileform,
-    )?;
+    let mut generated_program = codegen(context, opts.clone(), &compileform)?;
     let mut metric = sexp_scale(&generated_program);
     let flip_helper = |h: &mut HelperForm| {
         if let HelperForm::Defun(inline, defun) = h {
@@ -385,11 +379,7 @@ pub fn deinline_opt(
                 continue;
             }
 
-            let maybe_smaller_program = codegen(
-                context,
-                opts.clone(),
-                &compileform,
-            )?;
+            let maybe_smaller_program = codegen(context, opts.clone(), &compileform)?;
             let new_metric = sexp_scale(&maybe_smaller_program);
 
             // Don't keep this change if it made things worse.

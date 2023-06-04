@@ -11,7 +11,6 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
-use crate::compiler::{BasicCompileContext, CompileContext, CompileContextWrapper};
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
@@ -25,6 +24,7 @@ use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::{BasicCompileContext, CompileContext, CompileContextWrapper};
 use crate::util::Number;
 
 lazy_static! {
@@ -191,11 +191,7 @@ fn do_optimization_23(
 ) -> Result<SExp, CompileErr> {
     let g = frontend(opts.clone(), pre_forms)?;
     let desugared = do_desugar(&g)?;
-    let deinlined = deinline_opt(
-        context,
-        opts.clone(),
-        desugared,
-    )?;
+    let deinlined = deinline_opt(context, opts.clone(), desugared)?;
     let generated = finish_optimization(&deinlined);
     Ok(generated)
 }
@@ -234,7 +230,12 @@ pub fn compile_file(
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), content.bytes())?;
-    let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table, Box::new(NoOptimization::new()));
+    let mut context_wrapper = CompileContextWrapper::new(
+        allocator,
+        runner,
+        symbol_table,
+        Box::new(NoOptimization::new()),
+    );
     compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
 }
 
@@ -389,7 +390,12 @@ impl CompilerOpts for DefaultCompilerOpts {
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
-        let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table, Box::new(NoOptimization::new()));
+        let mut context_wrapper = CompileContextWrapper::new(
+            allocator,
+            runner,
+            symbol_table,
+            Box::new(NoOptimization::new()),
+        );
         compile_pre_forms(&mut context_wrapper.context, me, &[sexp])
     }
 }

@@ -8,7 +8,6 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::CompileContextWrapper;
 use crate::compiler::clvm::{run, PrimOverride};
 use crate::compiler::codegen::{codegen, hoist_assign_form};
 use crate::compiler::compiler::is_at_capture;
@@ -22,6 +21,7 @@ use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::stackvisit::{HasDepthLimit, VisitedMarker};
+use crate::compiler::CompileContextWrapper;
 use crate::util::{number_from_u8, u8_from_number, Number};
 
 const PRIM_RUN_LIMIT: usize = 1000000;
@@ -1526,13 +1526,9 @@ impl<'info> Evaluator {
                     allocator,
                     self.runner.clone(),
                     &mut symbols,
-                    optimizer
+                    optimizer,
                 );
-                let code = codegen(
-                    &mut context_wrapper.context,
-                    self.opts.clone(),
-                    program,
-                )?;
+                let code = codegen(&mut context_wrapper.context, self.opts.clone(), program)?;
                 Ok(Rc::new(BodyForm::Quoted(code)))
             }
             BodyForm::Lambda(ldata) => self.enrich_lambda_site_info(

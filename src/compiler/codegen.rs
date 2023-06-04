@@ -11,7 +11,6 @@ use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 
-use crate::compiler::{BasicCompileContext, CompileContext, CompileContextWrapper};
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{is_at_capture, run_optimizer};
 use crate::compiler::comptypes::{
@@ -31,6 +30,7 @@ use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::{BasicCompileContext, CompileContext, CompileContextWrapper};
 use crate::util::{toposort, u8_from_number};
 
 const MACRO_TIME_LIMIT: usize = 1000000;
@@ -370,13 +370,8 @@ fn generate_args_code(
     } else {
         let mut compiled_args: Vec<Rc<SExp>> = Vec::new();
         for hd in list.iter() {
-            let generated = generate_expr_code(
-                context,
-                opts.clone(),
-                compiler,
-                hd.clone(),
-            )
-            .map(|x| x.1)?;
+            let generated =
+                generate_expr_code(context, opts.clone(), compiler, hd.clone()).map(|x| x.1)?;
             compiled_args.push(generated);
         }
         Ok(list_to_cons(l, &compiled_args))
@@ -455,14 +450,9 @@ fn compile_call(
             Rc::new(SExp::Atom(al.clone(), an.to_vec())),
         )
         .and_then(|calltype| match calltype {
-            Callable::CallMacro(l, code) => process_macro_call(
-                context,
-                opts.clone(),
-                compiler,
-                l,
-                tl,
-                Rc::new(code),
-            ),
+            Callable::CallMacro(l, code) => {
+                process_macro_call(context, opts.clone(), compiler, l, tl, Rc::new(code))
+            }
 
             Callable::CallInline(l, inline) => replace_in_inline(
                 context.allocator(),
@@ -476,8 +466,8 @@ fn compile_call(
             ),
 
             Callable::CallDefun(l, lookup) => {
-                generate_args_code(context, opts.clone(), compiler, l.clone(), &tl)
-                    .and_then(|args| {
+                generate_args_code(context, opts.clone(), compiler, l.clone(), &tl).and_then(
+                    |args| {
                         process_defun_call(
                             opts.clone(),
                             compiler,
@@ -485,14 +475,14 @@ fn compile_call(
                             Rc::new(args),
                             Rc::new(lookup),
                         )
-                    })
+                    },
+                )
             }
 
-            Callable::CallPrim(l, p) => {
-                generate_args_code(context, opts, compiler, l.clone(), &tl).map(|args| {
+            Callable::CallPrim(l, p) => generate_args_code(context, opts, compiler, l.clone(), &tl)
+                .map(|args| {
                     CompiledCode(l.clone(), Rc::new(SExp::Cons(l, Rc::new(p), Rc::new(args))))
-                })
-            }
+                }),
 
             Callable::EnvPath => {
                 if tl.len() == 1 {
@@ -1497,11 +1487,19 @@ pub fn codegen(
     let to_process = code_generator.to_process.clone();
 
     for f in to_process {
-        code_generator = codegen_(context.allocator(), runner.clone(), opts.clone(), &code_generator, &f)?;
+        code_generator = codegen_(
+            context.allocator(),
+            runner.clone(),
+            opts.clone(),
+            &code_generator,
+            &f,
+        )?;
     }
 
     *context.symbols() = code_generator.function_symbols.clone();
-    context.symbols().insert("source_file".to_string(), opts.filename());
+    context
+        .symbols()
+        .insert("source_file".to_string(), opts.filename());
 
     final_codegen(context, opts.clone(), &code_generator).and_then(|c| {
         let runner = context.runner();
@@ -1514,7 +1512,9 @@ pub fn codegen(
             )),
             Some(code) => {
                 // Capture symbols now that we have the final form of the produced code.
-                context.symbols().insert("__chia__main_arguments".to_string(), cmod.args.to_string());
+                context
+                    .symbols()
+                    .insert("__chia__main_arguments".to_string(), cmod.args.to_string());
 
                 if opts.in_defun() {
                     let final_code = primapply(
