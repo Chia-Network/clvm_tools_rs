@@ -11,6 +11,7 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
+use crate::compiler::{BasicCompileContext, CompileContext, CompileContextWrapper};
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
@@ -19,7 +20,7 @@ use crate::compiler::comptypes::{
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
-use crate::compiler::optimize::{deinline_opt, finish_optimization};
+use crate::compiler::optimize::{deinline_opt, finish_optimization, NoOptimization};
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
@@ -184,34 +185,28 @@ fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
 }
 
 fn do_optimization_23(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
+    context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>],
-    symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     let g = frontend(opts.clone(), pre_forms)?;
     let desugared = do_desugar(&g)?;
     let deinlined = deinline_opt(
-        allocator,
-        runner.clone(),
+        context,
         opts.clone(),
         desugared,
-        symbol_table,
     )?;
     let generated = finish_optimization(&deinlined);
     Ok(generated)
 }
 
 pub fn compile_pre_forms(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
+    context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>],
-    symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     if opts.frontend_opt() && opts.dialect().stepping.map(|d| d > 22).unwrap_or(false) {
-        return do_optimization_23(allocator, runner, opts, pre_forms, symbol_table);
+        return do_optimization_23(context, opts, pre_forms);
     }
 
     // Resolve includes, convert program source to lexemes
@@ -219,7 +214,8 @@ pub fn compile_pre_forms(
 
     let p1 = if opts.frontend_opt() {
         // Front end optimization
-        fe_opt(allocator, runner.clone(), opts.clone(), p0)?
+        let runner = context.runner();
+        fe_opt(context.allocator(), runner, opts.clone(), p0)?
     } else {
         p0
     };
@@ -227,7 +223,7 @@ pub fn compile_pre_forms(
     let p2 = do_desugar(&p1)?;
 
     // generate code from AST, optionally with optimization
-    codegen(allocator, runner, opts, &p2, symbol_table)
+    codegen(context, opts, &p2)
 }
 
 pub fn compile_file(
@@ -238,8 +234,8 @@ pub fn compile_file(
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), content.bytes())?;
-
-    compile_pre_forms(allocator, runner, opts, &pre_forms, symbol_table)
+    let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table, Box::new(NoOptimization::new()));
+    compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
 }
 
 pub fn run_optimizer(
@@ -393,7 +389,8 @@ impl CompilerOpts for DefaultCompilerOpts {
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
-        compile_pre_forms(allocator, runner, me, &[sexp], symbol_table)
+        let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table, Box::new(NoOptimization::new()));
+        compile_pre_forms(&mut context_wrapper.context, me, &[sexp])
     }
 }
 

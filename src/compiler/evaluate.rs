@@ -8,6 +8,7 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
+use crate::compiler::CompileContextWrapper;
 use crate::compiler::clvm::{run, PrimOverride};
 use crate::compiler::codegen::{codegen, hoist_assign_form};
 use crate::compiler::compiler::is_at_capture;
@@ -16,6 +17,7 @@ use crate::compiler::comptypes::{
     HelperForm, LambdaData, LetData, LetFormInlineHint, LetFormKind,
 };
 use crate::compiler::frontend::frontend;
+use crate::compiler::optimize::NoOptimization;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -1518,12 +1520,18 @@ impl<'info> Evaluator {
             }
             BodyForm::Mod(_, program) => {
                 // A mod form yields the compiled code.
-                let code = codegen(
+                let mut symbols = HashMap::new();
+                let optimizer = Box::new(NoOptimization::new());
+                let mut context_wrapper = CompileContextWrapper::new(
                     allocator,
                     self.runner.clone(),
+                    &mut symbols,
+                    optimizer
+                );
+                let code = codegen(
+                    &mut context_wrapper.context,
                     self.opts.clone(),
                     program,
-                    &mut HashMap::new(),
                 )?;
                 Ok(Rc::new(BodyForm::Quoted(code)))
             }

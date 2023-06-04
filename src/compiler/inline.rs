@@ -1,6 +1,6 @@
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
@@ -8,12 +8,14 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
+use crate::compiler::CompileContextWrapper;
 use crate::compiler::codegen::{generate_expr_code, get_call_name, get_callable};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     BodyForm, Callable, CompileErr, CompiledCode, CompilerOpts, InlineFunction, LambdaData,
     PrimaryCodegen,
 };
+use crate::compiler::optimize::NoOptimization;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 
@@ -321,5 +323,14 @@ pub fn replace_in_inline(
         callsite,
         inline.body.clone(),
     )
-    .and_then(|x| generate_expr_code(allocator, runner, opts, compiler, x))
+    .and_then(|x| {
+        let mut symbols = HashMap::new();
+        let mut context_wrapper = CompileContextWrapper::new(
+            allocator,
+            runner,
+            &mut symbols,
+            Box::new(NoOptimization::new())
+        );
+        generate_expr_code(&mut context_wrapper.context, opts, compiler, x)
+    })
 }

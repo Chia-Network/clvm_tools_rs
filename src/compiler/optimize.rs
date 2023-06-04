@@ -13,6 +13,7 @@ use crate::classic::clvm::__type_compatibility__::bi_zero;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
+use crate::compiler::BasicCompileContext;
 use crate::compiler::clvm::run;
 use crate::compiler::codegen::{codegen, get_callable};
 use crate::compiler::comptypes::{
@@ -26,6 +27,120 @@ use crate::compiler::srcloc::Srcloc;
 use crate::util::u8_from_number;
 
 const CONST_FOLD_LIMIT: usize = 10000000;
+
+/// Represents a code generator level optimization result.
+/// If revised_definition is different from the one we already have, the compiler
+/// must re-generate at least functions that depend on this one.
+#[derive(Default, Debug, Clone)]
+pub struct CodegenOptimizationResult {
+    /// Revised code generator object, if given.
+    pub revised_code_generator: Option<PrimaryCodegen>,
+    /// If present, the definition of the helperform, if provided, was changed.
+    pub revised_definition: Option<HelperForm>,
+    /// If present, each key represents the shatree of an environment part that
+    /// was rewriten along with its new definition.
+    pub revised_environment: Option<HashMap<Vec<u8>, Rc<SExp>>>,
+    /// Final generated code if different.
+    pub code: Option<Rc<SExp>>
+}
+
+/// Make a formal interface that represents all kinds of optimization we can do.
+/// This includes these possible things:
+///
+/// - Frontend:
+///   - Simplification
+///   - Constant folding
+///   - Inlining and deinlining
+///   - SSA optimizations
+///     - Deduplication
+///     - Constant term propogation
+///     - ... etc
+///   - Argument list changes which simplify code
+///   - Capture removal
+///   - Pattern based inlining in loops
+///
+/// - Start of codegen
+///   - Environment layout optimization
+///   - Dead code/constant elimination
+///   - Leaf function optimization
+///   - Leaf main optimization
+///
+/// - During codegen
+///   - Function level code optimizations
+///   - Constant compression
+///   - Nil and quote simplification
+///   - Constant folding
+///   - Path folding for (r and (f and composed paths
+///   - Cons simplification
+///   - Apply elision
+///
+/// Global optimization must be performed when the code generator is requesting
+/// optimizations on the main expression, therefore there is no post-code generator
+/// optimization in this scheme.
+///
+pub trait Optimization {
+    /// Represents frontend optimizations
+    fn frontend_optimization(
+        &mut self,
+        cf: CompileForm
+    ) -> Result<CompileForm, CompileErr>;
+
+    /// Represents start of codegen optimizations
+    /// PrimaryCodegen has computed the environment it wants to use but hasn't
+    /// generated any code that depends on it yet.
+    fn start_of_codegen_optimization(
+        &mut self,
+        code_generator: PrimaryCodegen,
+    ) -> Result<PrimaryCodegen, CompileErr>;
+
+    /// Represents optimization the code generator does on functions that have
+    /// been gerated but before emitting the function proper.  It has the ability
+    /// to ask the compiler to backtrack to functions that depend on this one.
+    /// hf is none if we're operating on the main expression.
+    fn function_codegen_optimization(
+        &mut self,
+        code_generator: &PrimaryCodegen,
+        hf: Option<HelperForm>,
+        repr: Rc<SExp>
+    ) -> Result<CodegenOptimizationResult, CompileErr>;
+
+    fn duplicate(&self) -> Box<dyn Optimization>;
+}
+
+/// A basic implementation of Optimization that never transforms anything.
+#[derive(Default, Clone)]
+pub struct NoOptimization { }
+
+impl NoOptimization {
+    pub fn new() -> Self { NoOptimization { } }
+}
+
+impl Optimization for NoOptimization {
+    fn frontend_optimization(
+        &mut self,
+        cf: CompileForm
+    ) -> Result<CompileForm, CompileErr> {
+        Ok(cf)
+    }
+
+    fn start_of_codegen_optimization(
+        &mut self,
+        code_generator: PrimaryCodegen,
+    ) -> Result<PrimaryCodegen, CompileErr> {
+        Ok(code_generator)
+    }
+
+    fn function_codegen_optimization(
+        &mut self,
+        code_generator: &PrimaryCodegen,
+        hf: Option<HelperForm>,
+        repr: Rc<SExp>
+    ) -> Result<CodegenOptimizationResult, CompileErr> {
+        Ok(Default::default())
+    }
+
+    fn duplicate(&self) -> Box<dyn Optimization> { Box::new(self.clone()) }
+}
 
 fn is_at_form(head: Rc<BodyForm>) -> bool {
     match head.borrow() {
@@ -239,18 +354,14 @@ pub fn finish_optimization(sexp: &SExp) -> SExp {
 
 // Should take a desugared program.
 pub fn deinline_opt(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
+    context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     mut compileform: CompileForm,
-    symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     let mut generated_program = codegen(
-        allocator,
-        runner.clone(),
+        context,
         opts.clone(),
         &compileform,
-        symbol_table,
     )?;
     let mut metric = sexp_scale(&generated_program);
     let flip_helper = |h: &mut HelperForm| {
@@ -275,11 +386,9 @@ pub fn deinline_opt(
             }
 
             let maybe_smaller_program = codegen(
-                allocator,
-                runner.clone(),
+                context,
                 opts.clone(),
                 &compileform,
-                symbol_table,
             )?;
             let new_metric = sexp_scale(&maybe_smaller_program);
 
