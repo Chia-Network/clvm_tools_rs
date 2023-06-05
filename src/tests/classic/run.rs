@@ -1436,16 +1436,10 @@ fn test_check_symbol_kinds_nested_if() {
 fn test_basic_deinlining_smoke_0() {
     let fname = "resources/tests/simple_deinline_case_23.clsp";
     let file_content = fs::read_to_string(fname).expect("should exist");
-    let result_prog = do_basic_run(&vec![
-        "run".to_string(),
-        fname.to_string(),
-    ]);
+    let result_prog = do_basic_run(&vec!["run".to_string(), fname.to_string()]);
     assert_eq!(result_prog.matches("1000000").count(), 1);
-    let old_prog = file_content.to_string().replace("23","21");
-    let result_prog_21 = do_basic_run(&vec![
-        "run".to_string(),
-        old_prog
-    ]);
+    let old_prog = file_content.to_string().replace("23", "21");
+    let result_prog_21 = do_basic_run(&vec!["run".to_string(), old_prog]);
     assert_eq!(result_prog_21.matches("1000000").count(), 6);
     assert!(result_prog.len() < result_prog_21.len());
 }
