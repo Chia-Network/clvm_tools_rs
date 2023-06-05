@@ -1,5 +1,10 @@
 # clvm_tools_rs Changelog
 
+## 0.1.34
+### Fixed
+- Fixed chialisp compilation issues
+
+
 ## 0.1.33
 ### Changed
 - Set macOS deployment target to 10.14
