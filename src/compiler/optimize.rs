@@ -12,19 +12,22 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm::__type_compatibility__::bi_zero;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
+use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
-use crate::compiler::clvm::run;
+use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, run};
 use crate::compiler::codegen::{codegen, get_callable};
-use crate::compiler::compiler::run_optimizer;
 use crate::compiler::comptypes::{
     BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm,
     PrimaryCodegen, SyntheticType,
 };
+use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
+use crate::compiler::runtypes::RunFailure;
 #[cfg(test)]
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::BasicCompileContext;
+use crate::compiler::CompileContextWrapper;
 use crate::util::u8_from_number;
 
 const CONST_FOLD_LIMIT: usize = 10000000;
@@ -81,7 +84,22 @@ pub struct CodegenOptimizationResult {
 ///
 pub trait Optimization {
     /// Represents frontend optimizations
-    fn frontend_optimization(&mut self, cf: CompileForm) -> Result<CompileForm, CompileErr>;
+    fn frontend_optimization(
+        &mut self,
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        opts: Rc<dyn CompilerOpts>,
+        cf: CompileForm,
+    ) -> Result<CompileForm, CompileErr>;
+
+    /// Represents optimization we should do after desugaring, such as deinlining
+    fn post_desugar_optimization(
+        &mut self,
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        opts: Rc<dyn CompilerOpts>,
+        cf: CompileForm,
+    ) -> Result<CompileForm, CompileErr>;
 
     /// Represents start of codegen optimizations
     /// PrimaryCodegen has computed the environment it wants to use but hasn't
@@ -136,6 +154,12 @@ pub trait Optimization {
         codegen: &PrimaryCodegen,
     ) -> Result<Rc<BodyForm>, CompileErr>;
 
+    fn post_codegen_output_optimize(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        generated: SExp,
+    ) -> Result<SExp, CompileErr>;
+
     fn duplicate(&self) -> Box<dyn Optimization>;
 }
 
@@ -150,8 +174,37 @@ impl NoOptimization {
 }
 
 impl Optimization for NoOptimization {
-    fn frontend_optimization(&mut self, cf: CompileForm) -> Result<CompileForm, CompileErr> {
-        Ok(cf)
+    fn frontend_optimization(
+        &mut self,
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        opts: Rc<dyn CompilerOpts>,
+        p0: CompileForm,
+    ) -> Result<CompileForm, CompileErr> {
+        // Not yet turned on for >22
+        if opts.frontend_opt() && !(opts.dialect().stepping.map(|d| d > 22).unwrap_or(false)) {
+            // Front end optimization
+            fe_opt(allocator, runner, opts.clone(), p0)
+        } else {
+            Ok(p0)
+        }
+    }
+
+    fn post_desugar_optimization(
+        &mut self,
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        opts: Rc<dyn CompilerOpts>,
+        cf: CompileForm,
+    ) -> Result<CompileForm, CompileErr> {
+        if opts.frontend_opt() && opts.dialect().stepping.map(|s| s > 22).unwrap_or(false) {
+            let mut symbols = HashMap::new();
+            let mut wrapper =
+                CompileContextWrapper::new(allocator, runner, &mut symbols, self.duplicate());
+            deinline_opt(&mut wrapper.context, opts.clone(), cf)
+        } else {
+            Ok(cf)
+        }
     }
 
     fn start_of_codegen_optimization(
@@ -245,6 +298,22 @@ impl Optimization for NoOptimization {
         };
 
         Ok(res)
+    }
+
+    fn post_codegen_output_optimize(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        generated: SExp,
+    ) -> Result<SExp, CompileErr> {
+        if opts.frontend_opt() && opts.dialect().stepping.map(|s| s > 22).unwrap_or(false) {
+            let (did_work, optimized) = null_optimization(Rc::new(generated.clone()), false);
+            if did_work {
+                let o_borrowed: &SExp = optimized.borrow();
+                return Ok(o_borrowed.clone());
+            }
+        }
+
+        Ok(generated)
     }
 
     fn duplicate(&self) -> Box<dyn Optimization> {
@@ -450,25 +519,14 @@ fn test_null_optimization_ok_not_doing_anything() {
     assert_eq!(optimized.to_string(), "(2 (1 (1) (1) (1)) (3))");
 }
 
-// Do final optimizations on the finished CLVM code.
-// These should be lightweight transformations that save space.
-pub fn finish_optimization(sexp: &SExp) -> SExp {
-    let (did_work, optimized) = null_optimization(Rc::new(sexp.clone()), false);
-    if did_work {
-        let o_borrowed: &SExp = optimized.borrow();
-        o_borrowed.clone()
-    } else {
-        sexp.clone()
-    }
-}
-
 // Should take a desugared program.
 pub fn deinline_opt(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     mut compileform: CompileForm,
-) -> Result<SExp, CompileErr> {
-    let mut generated_program = codegen(context, opts.clone(), &compileform)?;
+) -> Result<CompileForm, CompileErr> {
+    let mut best_compileform = compileform.clone();
+    let generated_program = codegen(context, opts.clone(), &best_compileform)?;
     let mut metric = sexp_scale(&generated_program);
     let flip_helper = |h: &mut HelperForm| {
         if let HelperForm::Defun(inline, defun) = h {
@@ -499,7 +557,7 @@ pub fn deinline_opt(
                 compileform.helpers[i] = old_helper;
             } else {
                 metric = new_metric;
-                generated_program = maybe_smaller_program;
+                best_compileform = compileform.clone();
             }
         }
 
@@ -508,5 +566,87 @@ pub fn deinline_opt(
         }
     }
 
-    Ok(generated_program)
+    Ok(best_compileform)
+}
+
+fn fe_opt(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    compileform: CompileForm,
+) -> Result<CompileForm, CompileErr> {
+    let evaluator = Evaluator::new(opts.clone(), runner.clone(), compileform.helpers.clone());
+    let mut optimized_helpers: Vec<HelperForm> = Vec::new();
+    for h in compileform.helpers.iter() {
+        match h {
+            HelperForm::Defun(inline, defun) => {
+                let mut env = HashMap::new();
+                build_reflex_captures(&mut env, defun.args.clone());
+                let body_rc = evaluator.shrink_bodyform(
+                    allocator,
+                    defun.args.clone(),
+                    &env,
+                    defun.body.clone(),
+                    true,
+                    Some(EVAL_STACK_LIMIT),
+                )?;
+                let new_helper = HelperForm::Defun(
+                    *inline,
+                    DefunData {
+                        loc: defun.loc.clone(),
+                        nl: defun.nl.clone(),
+                        kw: defun.kw.clone(),
+                        name: defun.name.clone(),
+                        args: defun.args.clone(),
+                        orig_args: defun.orig_args.clone(),
+                        synthetic: defun.synthetic.clone(),
+                        body: body_rc.clone(),
+                        ty: defun.ty.clone(),
+                    },
+                );
+                optimized_helpers.push(new_helper);
+            }
+            obj => {
+                optimized_helpers.push(obj.clone());
+            }
+        }
+    }
+    let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.clone());
+
+    let shrunk = new_evaluator.shrink_bodyform(
+        allocator,
+        Rc::new(SExp::Nil(compileform.args.loc())),
+        &HashMap::new(),
+        compileform.exp.clone(),
+        true,
+        Some(EVAL_STACK_LIMIT),
+    )?;
+
+    Ok(CompileForm {
+        helpers: optimized_helpers.clone(),
+        exp: shrunk,
+        ..compileform
+    })
+}
+
+pub fn run_optimizer(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    r: Rc<SExp>,
+) -> Result<Rc<SExp>, CompileErr> {
+    let to_clvm_rs = convert_to_clvm_rs(allocator, r.clone())
+        .map(|x| (r.loc(), x))
+        .map_err(|e| match e {
+            RunFailure::RunErr(l, e) => CompileErr(l, e),
+            RunFailure::RunExn(s, e) => CompileErr(s, format!("exception {e}\n")),
+        })?;
+
+    let optimized = optimize_sexp(allocator, to_clvm_rs.1, runner)
+        .map_err(|e| CompileErr(to_clvm_rs.0.clone(), e.1))
+        .map(|x| (to_clvm_rs.0, x))?;
+
+    convert_from_clvm_rs(allocator, optimized.0, optimized.1).map_err(|e| match e {
+        RunFailure::RunErr(l, e) => CompileErr(l, e),
+        RunFailure::RunExn(s, e) => CompileErr(s, format!("exception {e}\n")),
+    })
 }

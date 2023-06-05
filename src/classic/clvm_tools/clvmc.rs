@@ -21,9 +21,10 @@ use crate::classic::platform::distutils::dep_util::newer;
 
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::compile_file;
-use crate::compiler::compiler::{run_optimizer, DefaultCompilerOpts};
+use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::dialect::detect_modern;
+use crate::compiler::optimize::run_optimizer;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::untype::untype_code;

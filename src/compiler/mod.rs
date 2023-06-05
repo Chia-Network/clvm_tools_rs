@@ -21,7 +21,7 @@ pub mod frontend;
 pub mod gensym;
 mod inline;
 mod lambda;
-mod optimize;
+pub mod optimize;
 pub mod preprocessor;
 pub mod prims;
 pub mod rename;
@@ -42,7 +42,9 @@ use std::mem::swap;
 use std::rc::Rc;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
-use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, DefunData, PrimaryCodegen};
+use crate::compiler::comptypes::{
+    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, PrimaryCodegen,
+};
 use crate::compiler::optimize::Optimization;
 use crate::compiler::sexp::SExp;
 
@@ -64,6 +66,39 @@ impl BasicCompileContext {
     }
     fn symbols(&mut self) -> &mut HashMap<String, String> {
         &mut self.symbols
+    }
+
+    /// Called after frontend parsing and preprocessing when we have a complete
+    /// picture of the user's intended semantics.
+    fn frontend_optimization(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        cf: CompileForm,
+    ) -> Result<CompileForm, CompileErr> {
+        let runner = self.runner.clone();
+        self.optimizer
+            .frontend_optimization(&mut self.allocator, runner, opts, cf)
+    }
+
+    fn post_desugar_optimization(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        cf: CompileForm,
+    ) -> Result<CompileForm, CompileErr> {
+        let runner = self.runner.clone();
+        self.optimizer
+            .post_desugar_optimization(&mut self.allocator, runner, opts, cf)
+    }
+
+    /// Note: must take measures to ensure that the symbols are changed along
+    /// with any code that's changed.  It's likely better to do optimizations
+    /// at other stages, such as post_codegen_function_optimize.
+    fn post_codegen_output_optimize(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        generated: SExp,
+    ) -> Result<SExp, CompileErr> {
+        self.optimizer.post_codegen_output_optimize(opts, generated)
     }
 
     /// Called when a full macro program optimization is used.
