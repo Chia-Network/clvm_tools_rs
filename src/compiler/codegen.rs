@@ -724,11 +724,7 @@ fn codegen_(
                         defun.args.clone(),
                     )));
 
-                let opt = context.pre_codegen_function_optimize(
-                    opts.clone(),
-                    compiler,
-                    defun
-                )?;
+                let opt = context.pre_codegen_function_optimize(opts.clone(), compiler, defun)?;
 
                 let tocompile = SExp::Cons(
                     defun.loc.clone(),
@@ -754,9 +750,7 @@ fn codegen_(
                         &mut unused_symbol_table,
                     )
                     .and_then(|code| {
-                        context.post_codegen_function_optimize(
-                            opts.clone(), Rc::new(code)
-                        )
+                        context.post_codegen_function_optimize(opts.clone(), Rc::new(code))
                     })
                     .and_then(|code| {
                         fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)
@@ -1294,10 +1288,7 @@ fn final_codegen(
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
 ) -> Result<PrimaryCodegen, CompileErr> {
-    let runner = context.runner();
-    let opt_final_expr = context.pre_final_codegen_optimize(
-        opts.clone(), compiler
-    )?;
+    let opt_final_expr = context.pre_final_codegen_optimize(opts.clone(), compiler)?;
 
     generate_expr_code(context, opts, compiler, opt_final_expr).map(|code| {
         let mut final_comp = compiler.clone();

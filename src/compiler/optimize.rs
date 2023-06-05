@@ -17,8 +17,8 @@ use crate::compiler::clvm::run;
 use crate::compiler::codegen::{codegen, get_callable};
 use crate::compiler::compiler::run_optimizer;
 use crate::compiler::comptypes::{
-    BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
-    SyntheticType,
+    BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm,
+    PrimaryCodegen, SyntheticType,
 };
 #[cfg(test)]
 use crate::compiler::sexp::parse_sexp;
@@ -117,7 +117,7 @@ pub trait Optimization {
         runner: Rc<dyn TRunProgram>,
         opts: Rc<dyn CompilerOpts>,
         codegen: &PrimaryCodegen,
-        defun: &DefunData
+        defun: &DefunData,
     ) -> Result<Rc<BodyForm>, CompileErr>;
 
     fn post_codegen_function_optimize(
@@ -125,7 +125,7 @@ pub trait Optimization {
         allocator: &mut Allocator,
         runner: Rc<dyn TRunProgram>,
         opts: Rc<dyn CompilerOpts>,
-        code: Rc<SExp>
+        code: Rc<SExp>,
     ) -> Result<Rc<SExp>, CompileErr>;
 
     fn pre_final_codegen_optimize(
@@ -190,7 +190,7 @@ impl Optimization for NoOptimization {
         runner: Rc<dyn TRunProgram>,
         opts: Rc<dyn CompilerOpts>,
         codegen: &PrimaryCodegen,
-        defun: &DefunData
+        defun: &DefunData,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         let res = if opts.optimize() {
             // Run optimizer on frontend style forms.
@@ -201,8 +201,8 @@ impl Optimization for NoOptimization {
                 codegen,
                 defun.body.clone(),
             )
-                .map(|x| x.1)
-                .unwrap_or_else(|| defun.body.clone())
+            .map(|x| x.1)
+            .unwrap_or_else(|| defun.body.clone())
         } else {
             defun.body.clone()
         };
@@ -214,7 +214,7 @@ impl Optimization for NoOptimization {
         allocator: &mut Allocator,
         runner: Rc<dyn TRunProgram>,
         opts: Rc<dyn CompilerOpts>,
-        code: Rc<SExp>
+        code: Rc<SExp>,
     ) -> Result<Rc<SExp>, CompileErr> {
         if opts.optimize() {
             run_optimizer(allocator, runner, code)
@@ -238,8 +238,8 @@ impl Optimization for NoOptimization {
                 codegen,
                 codegen.final_expr.clone(),
             )
-                .map(|x| x.1)
-                .unwrap_or_else(|| codegen.final_expr.clone())
+            .map(|x| x.1)
+            .unwrap_or_else(|| codegen.final_expr.clone())
         } else {
             codegen.final_expr.clone()
         };

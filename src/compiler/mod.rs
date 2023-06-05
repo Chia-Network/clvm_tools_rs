@@ -82,14 +82,14 @@ impl BasicCompileContext {
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         codegen: &PrimaryCodegen,
-        defun: &DefunData
+        defun: &DefunData,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         self.optimizer.defun_body_optimization(
             &mut self.allocator,
             self.runner.clone(),
             opts,
             codegen,
-            defun
+            defun,
         )
     }
 
@@ -97,13 +97,13 @@ impl BasicCompileContext {
     fn post_codegen_function_optimize(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
-        code: Rc<SExp>
+        code: Rc<SExp>,
     ) -> Result<Rc<SExp>, CompileErr> {
         self.optimizer.post_codegen_function_optimize(
             &mut self.allocator,
             self.runner.clone(),
             opts,
-            code
+            code,
         )
     }
 
@@ -118,7 +118,7 @@ impl BasicCompileContext {
             &mut self.allocator,
             self.runner.clone(),
             opts,
-            codegen
+            codegen,
         )
     }
 
