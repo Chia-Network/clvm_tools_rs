@@ -15,7 +15,7 @@ use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_l
 use crate::compiler::comptypes::{CompileErr, CompileForm, CompilerOpts, PrimaryCodegen};
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::frontend;
-use crate::compiler::optimize::NoOptimization;
+use crate::compiler::optimize::get_optimizer;
 use crate::compiler::prims;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -148,12 +148,13 @@ pub fn compile_file(
     content: &str,
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
-    let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), content.bytes())?;
+    let srcloc = Srcloc::start(&opts.filename());
+    let pre_forms = parse_sexp(srcloc.clone(), content.bytes())?;
     let mut context_wrapper = CompileContextWrapper::new(
         allocator,
         runner,
         symbol_table,
-        Box::new(NoOptimization::new()),
+        get_optimizer(&srcloc, opts.clone())?,
     );
     compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
 }
@@ -291,7 +292,7 @@ impl CompilerOpts for DefaultCompilerOpts {
             allocator,
             runner,
             symbol_table,
-            Box::new(NoOptimization::new()),
+            get_optimizer(&sexp.loc(), me.clone())?,
         );
         compile_pre_forms(&mut context_wrapper.context, me, &[sexp])
     }
