@@ -17,7 +17,7 @@ use crate::compiler::clvm::run;
 use crate::compiler::codegen::{codegen, get_callable};
 use crate::compiler::compiler::run_optimizer;
 use crate::compiler::comptypes::{
-    BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen,
+    BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
     SyntheticType,
 };
 #[cfg(test)]
@@ -111,6 +111,31 @@ pub trait Optimization {
         code: Rc<SExp>,
     ) -> Result<Rc<SExp>, CompileErr>;
 
+    fn defun_body_optimization(
+        &mut self,
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        opts: Rc<dyn CompilerOpts>,
+        codegen: &PrimaryCodegen,
+        defun: &DefunData
+    ) -> Result<Rc<BodyForm>, CompileErr>;
+
+    fn post_codegen_function_optimize(
+        &mut self,
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        opts: Rc<dyn CompilerOpts>,
+        code: Rc<SExp>
+    ) -> Result<Rc<SExp>, CompileErr>;
+
+    fn pre_final_codegen_optimize(
+        &mut self,
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        opts: Rc<dyn CompilerOpts>,
+        codegen: &PrimaryCodegen,
+    ) -> Result<Rc<BodyForm>, CompileErr>;
+
     fn duplicate(&self) -> Box<dyn Optimization>;
 }
 
@@ -157,6 +182,69 @@ impl Optimization for NoOptimization {
         } else {
             Ok(code)
         }
+    }
+
+    fn defun_body_optimization(
+        &mut self,
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        opts: Rc<dyn CompilerOpts>,
+        codegen: &PrimaryCodegen,
+        defun: &DefunData
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        let res = if opts.optimize() {
+            // Run optimizer on frontend style forms.
+            optimize_expr(
+                allocator,
+                opts.clone(),
+                runner.clone(),
+                codegen,
+                defun.body.clone(),
+            )
+                .map(|x| x.1)
+                .unwrap_or_else(|| defun.body.clone())
+        } else {
+            defun.body.clone()
+        };
+        Ok(res)
+    }
+
+    fn post_codegen_function_optimize(
+        &mut self,
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        opts: Rc<dyn CompilerOpts>,
+        code: Rc<SExp>
+    ) -> Result<Rc<SExp>, CompileErr> {
+        if opts.optimize() {
+            run_optimizer(allocator, runner, code)
+        } else {
+            Ok(code)
+        }
+    }
+
+    fn pre_final_codegen_optimize(
+        &mut self,
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        opts: Rc<dyn CompilerOpts>,
+        codegen: &PrimaryCodegen,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        let res = if opts.optimize() {
+            optimize_expr(
+                allocator,
+                opts.clone(),
+                runner,
+                codegen,
+                codegen.final_expr.clone(),
+            )
+                .map(|x| x.1)
+                .unwrap_or_else(|| codegen.final_expr.clone())
+        } else {
+            codegen.final_expr.clone()
+        };
+
+        Ok(res)
     }
 
     fn duplicate(&self) -> Box<dyn Optimization> {

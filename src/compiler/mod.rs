@@ -42,7 +42,7 @@ use std::mem::swap;
 use std::rc::Rc;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
-use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, DefunData, PrimaryCodegen};
 use crate::compiler::optimize::Optimization;
 use crate::compiler::sexp::SExp;
 
@@ -65,6 +65,8 @@ impl BasicCompileContext {
     fn symbols(&mut self) -> &mut HashMap<String, String> {
         &mut self.symbols
     }
+
+    /// Called when a full macro program optimization is used.
     fn macro_optimization(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
@@ -72,6 +74,52 @@ impl BasicCompileContext {
     ) -> Result<Rc<SExp>, CompileErr> {
         self.optimizer
             .macro_optimization(&mut self.allocator, self.runner.clone(), opts, code)
+    }
+
+    /// Called to transform a defun before generating code from it.
+    /// Returns a new bodyform.
+    fn pre_codegen_function_optimize(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        codegen: &PrimaryCodegen,
+        defun: &DefunData
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        self.optimizer.defun_body_optimization(
+            &mut self.allocator,
+            self.runner.clone(),
+            opts,
+            codegen,
+            defun
+        )
+    }
+
+    /// Called to transform the function body after code generation.
+    fn post_codegen_function_optimize(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        code: Rc<SExp>
+    ) -> Result<Rc<SExp>, CompileErr> {
+        self.optimizer.post_codegen_function_optimize(
+            &mut self.allocator,
+            self.runner.clone(),
+            opts,
+            code
+        )
+    }
+
+    /// Call in final_codegen to get the final main bodyform to generate
+    /// code from.
+    fn pre_final_codegen_optimize(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        codegen: &PrimaryCodegen,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        self.optimizer.pre_final_codegen_optimize(
+            &mut self.allocator,
+            self.runner.clone(),
+            opts,
+            codegen
+        )
     }
 
     pub fn new(

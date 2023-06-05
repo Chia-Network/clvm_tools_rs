@@ -9,7 +9,7 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm::__type_compatibility__::bi_one;
 
 use crate::compiler::clvm::run;
-use crate::compiler::compiler::{is_at_capture, run_optimizer};
+use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, Callable,
     CompileErr, CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall, DefunData,
@@ -22,7 +22,6 @@ use crate::compiler::frontend::{compile_bodyform, make_provides_set};
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
 use crate::compiler::lambda::lambda_codegen;
-use crate::compiler::optimize::optimize_expr;
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
@@ -715,7 +714,6 @@ fn codegen_(
                     },
                 ))
             } else {
-                let runner = context.runner();
                 let updated_opts = opts
                     .set_code_generator(compiler.clone())
                     .set_in_defun(true)
@@ -726,20 +724,11 @@ fn codegen_(
                         defun.args.clone(),
                     )));
 
-                let opt = if opts.optimize() {
-                    // Run optimizer on frontend style forms.
-                    optimize_expr(
-                        context.allocator(),
-                        opts.clone(),
-                        runner.clone(),
-                        compiler,
-                        defun.body.clone(),
-                    )
-                    .map(|x| x.1)
-                    .unwrap_or_else(|| defun.body.clone())
-                } else {
-                    defun.body.clone()
-                };
+                let opt = context.pre_codegen_function_optimize(
+                    opts.clone(),
+                    compiler,
+                    defun
+                )?;
 
                 let tocompile = SExp::Cons(
                     defun.loc.clone(),
@@ -765,11 +754,9 @@ fn codegen_(
                         &mut unused_symbol_table,
                     )
                     .and_then(|code| {
-                        if opts.optimize() {
-                            run_optimizer(context.allocator(), runner, Rc::new(code))
-                        } else {
-                            Ok(Rc::new(code))
-                        }
+                        context.post_codegen_function_optimize(
+                            opts.clone(), Rc::new(code)
+                        )
                     })
                     .and_then(|code| {
                         fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)
@@ -1308,19 +1295,9 @@ fn final_codegen(
     compiler: &PrimaryCodegen,
 ) -> Result<PrimaryCodegen, CompileErr> {
     let runner = context.runner();
-    let opt_final_expr = if opts.optimize() {
-        optimize_expr(
-            context.allocator(),
-            opts.clone(),
-            runner,
-            compiler,
-            compiler.final_expr.clone(),
-        )
-        .map(|x| x.1)
-        .unwrap_or_else(|| compiler.final_expr.clone())
-    } else {
-        compiler.final_expr.clone()
-    };
+    let opt_final_expr = context.pre_final_codegen_optimize(
+        opts.clone(), compiler
+    )?;
 
     generate_expr_code(context, opts, compiler, opt_final_expr).map(|code| {
         let mut final_comp = compiler.clone();
