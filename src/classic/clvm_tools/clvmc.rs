@@ -58,7 +58,7 @@ pub fn compile_clvm_text_maybe_opt(
         let runner = Rc::new(DefaultProgramRunner::new());
         let opts = opts
             .set_dialect(dialect)
-            .set_optimize(do_optimize && stepping < 23)
+            .set_optimize(do_optimize || stepping > 22)
             .set_frontend_opt(stepping == 22);
 
         let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);

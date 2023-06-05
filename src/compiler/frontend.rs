@@ -488,7 +488,7 @@ fn compile_defconst(
         kind: ConstantKind::Complex,
         name: name.to_vec(),
         body: Rc::new(bf),
-        tabled: opts.frontend_opt(),
+        tabled: opts.frontend_opt() || opts.dialect().stepping.unwrap_or(0) > 22,
         ty: None,
     }))
 }

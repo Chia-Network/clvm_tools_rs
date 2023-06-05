@@ -332,6 +332,6 @@ fn test_optimizer_shrinks_repeated_lets_23() {
         &[],
         SPEC_23.clone(),
     )
-    .expect("should compile and run");
+        .expect("should compile and run");
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
 }

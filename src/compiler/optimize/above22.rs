@@ -33,7 +33,6 @@ impl Optimization for Strategy23 {
         _opts: Rc<dyn CompilerOpts>,
         p0: CompileForm,
     ) -> Result<CompileForm, CompileErr> {
-        // Not yet turned on for >22
         Ok(p0)
     }
 
@@ -44,14 +43,11 @@ impl Optimization for Strategy23 {
         opts: Rc<dyn CompilerOpts>,
         cf: CompileForm,
     ) -> Result<CompileForm, CompileErr> {
-        if opts.frontend_opt() && opts.dialect().stepping.map(|s| s > 22).unwrap_or(false) {
-            let mut symbols = HashMap::new();
-            let mut wrapper =
-                CompileContextWrapper::new(allocator, runner, &mut symbols, self.duplicate());
-            deinline_opt(&mut wrapper.context, opts.clone(), cf)
-        } else {
-            Ok(cf)
-        }
+        let mut symbols = HashMap::new();
+        let mut wrapper =
+            CompileContextWrapper::new(allocator, runner, &mut symbols, self.duplicate());
+        let res = deinline_opt(&mut wrapper.context, opts.clone(), cf)?;
+        Ok(res)
     }
 
     fn start_of_codegen_optimization(
