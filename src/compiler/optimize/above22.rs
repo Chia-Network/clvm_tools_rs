@@ -9,8 +9,8 @@ use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
 use crate::compiler::optimize::{
-    deinline_opt, optimize_expr, null_optimization, run_optimizer,
-    CodegenOptimizationResult, CompileContextWrapper, Optimization,
+    deinline_opt, null_optimization, optimize_expr, run_optimizer, CodegenOptimizationResult,
+    CompileContextWrapper, Optimization,
 };
 use crate::compiler::sexp::SExp;
 
@@ -71,7 +71,7 @@ impl Optimization for Strategy23 {
         if worked {
             return Ok(CodegenOptimizationResult {
                 code: Some(result),
-                .. Default::default()
+                ..Default::default()
             });
         }
 
@@ -104,8 +104,8 @@ impl Optimization for Strategy23 {
             codegen,
             defun.body.clone(),
         )
-            .map(|x| x.1)
-            .unwrap_or_else(|| defun.body.clone()))
+        .map(|x| x.1)
+        .unwrap_or_else(|| defun.body.clone()))
     }
 
     fn post_codegen_function_optimize(
@@ -132,8 +132,8 @@ impl Optimization for Strategy23 {
             codegen,
             codegen.final_expr.clone(),
         )
-            .map(|x| x.1)
-            .unwrap_or_else(|| codegen.final_expr.clone()))
+        .map(|x| x.1)
+        .unwrap_or_else(|| codegen.final_expr.clone()))
     }
 
     fn post_codegen_output_optimize(
