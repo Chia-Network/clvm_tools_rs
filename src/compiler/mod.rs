@@ -68,21 +68,10 @@ impl BasicCompileContext {
     fn macro_optimization(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
-        code: Rc<SExp>
+        code: Rc<SExp>,
     ) -> Result<Rc<SExp>, CompileErr> {
-        self.optimizer.macro_optimization(
-            &mut self.allocator,
-            self.runner.clone(),
-            opts,
-            code
-        )
-    }
-
-    fn run_optimizer<F, R>(&mut self, f: F) -> R
-    where
-        F: Fn(&mut BasicCompileContext) -> R,
-    {
-        f(self)
+        self.optimizer
+            .macro_optimization(&mut self.allocator, self.runner.clone(), opts, code)
     }
 
     pub fn new(

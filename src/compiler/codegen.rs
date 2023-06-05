@@ -451,15 +451,9 @@ fn compile_call(
                 process_macro_call(context, opts.clone(), compiler, l, tl, Rc::new(code))
             }
 
-            Callable::CallInline(l, inline) => replace_in_inline(
-                context,
-                opts.clone(),
-                compiler,
-                l.clone(),
-                &inline,
-                l,
-                &tl,
-            ),
+            Callable::CallInline(l, inline) => {
+                replace_in_inline(context, opts.clone(), compiler, l.clone(), &inline, l, &tl)
+            }
 
             Callable::CallDefun(l, lookup) => {
                 generate_args_code(context, opts.clone(), compiler, l.clone(), &tl).and_then(
@@ -1272,10 +1266,8 @@ fn start_codegen(
                     &mut HashMap::new(),
                 )?;
 
-                let optimized_code = context.macro_optimization(
-                    opts.clone(),
-                    Rc::new(code.clone())
-                )?;
+                let optimized_code =
+                    context.macro_optimization(opts.clone(), Rc::new(code.clone()))?;
 
                 code_generator.add_macro(&mac.name, optimized_code)
             }
@@ -1381,23 +1373,11 @@ fn finalize_env_(
             }
         }
 
-        SExp::Cons(l, h, r) => finalize_env_(
-            context,
-            opts.clone(),
-            c,
-            l.clone(),
-            h.clone(),
-        )
-        .and_then(|h| {
-            finalize_env_(
-                context,
-                opts.clone(),
-                c,
-                l.clone(),
-                r.clone(),
-            )
-            .map(|r| Rc::new(SExp::Cons(l.clone(), h.clone(), r)))
-        }),
+        SExp::Cons(l, h, r) => finalize_env_(context, opts.clone(), c, l.clone(), h.clone())
+            .and_then(|h| {
+                finalize_env_(context, opts.clone(), c, l.clone(), r.clone())
+                    .map(|r| Rc::new(SExp::Cons(l.clone(), h.clone(), r)))
+            }),
 
         _ => Ok(env.clone()),
     }
@@ -1409,13 +1389,7 @@ fn finalize_env(
     c: &PrimaryCodegen,
 ) -> Result<Rc<SExp>, CompileErr> {
     match c.env.borrow() {
-        SExp::Cons(l, h, _) => finalize_env_(
-            context,
-            opts.clone(),
-            c,
-            l.clone(),
-            h.clone(),
-        ),
+        SExp::Cons(l, h, _) => finalize_env_(context, opts.clone(), c, l.clone(), h.clone()),
         _ => Ok(c.env.clone()),
     }
 }
@@ -1466,21 +1440,12 @@ pub fn codegen(
     opts: Rc<dyn CompilerOpts>,
     cmod: &CompileForm,
 ) -> Result<SExp, CompileErr> {
-    let mut code_generator = dummy_functions(&start_codegen(
-        context,
-        opts.clone(),
-        cmod.clone(),
-    )?)?;
+    let mut code_generator = dummy_functions(&start_codegen(context, opts.clone(), cmod.clone())?)?;
 
     let to_process = code_generator.to_process.clone();
 
     for f in to_process {
-        code_generator = codegen_(
-            context,
-            opts.clone(),
-            &code_generator,
-            &f,
-        )?;
+        code_generator = codegen_(context, opts.clone(), &code_generator, &f)?;
     }
 
     *context.symbols() = code_generator.function_symbols.clone();

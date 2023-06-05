@@ -15,11 +15,11 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::run;
 use crate::compiler::codegen::{codegen, get_callable};
+use crate::compiler::compiler::run_optimizer;
 use crate::compiler::comptypes::{
     BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen,
     SyntheticType,
 };
-use crate::compiler::compiler::run_optimizer;
 #[cfg(test)]
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::sexp::SExp;
