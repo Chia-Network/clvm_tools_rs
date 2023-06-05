@@ -706,8 +706,7 @@ fn fail_if_present<T, R>(
 }
 
 fn codegen_(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
+    context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
     h: &HelperForm,
@@ -726,6 +725,7 @@ fn codegen_(
                     },
                 ))
             } else {
+                let runner = context.runner();
                 let updated_opts = opts
                     .set_code_generator(compiler.clone())
                     .set_in_defun(true)
@@ -739,7 +739,7 @@ fn codegen_(
                 let opt = if opts.optimize() {
                     // Run optimizer on frontend style forms.
                     optimize_expr(
-                        allocator,
+                        context.allocator(),
                         opts.clone(),
                         runner.clone(),
                         compiler,
@@ -766,16 +766,17 @@ fn codegen_(
                 );
 
                 let mut unused_symbol_table = HashMap::new();
+                let runner = context.runner();
                 updated_opts
                     .compile_program(
-                        allocator,
+                        context.allocator(),
                         runner.clone(),
                         Rc::new(tocompile),
                         &mut unused_symbol_table,
                     )
                     .and_then(|code| {
                         if opts.optimize() {
-                            run_optimizer(allocator, runner, Rc::new(code))
+                            run_optimizer(context.allocator(), runner, Rc::new(code))
                         } else {
                             Ok(Rc::new(code))
                         }
@@ -1157,8 +1158,7 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
 }
 
 fn start_codegen(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
+    context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     program: CompileForm,
 ) -> Result<PrimaryCodegen, CompileErr> {
@@ -1187,15 +1187,16 @@ fn start_codegen(
                         )),
                     );
                     let updated_opts = opts.set_code_generator(code_generator.clone());
+                    let runner = context.runner();
                     let code = updated_opts.compile_program(
-                        allocator,
+                        context.allocator(),
                         runner.clone(),
                         Rc::new(expand_program),
                         &mut HashMap::new(),
                     )?;
                     run(
-                        allocator,
-                        runner.clone(),
+                        context.allocator(),
+                        runner,
                         opts.prim_map(),
                         Rc::new(code),
                         Rc::new(SExp::Nil(defc.loc.clone())),
@@ -1224,9 +1225,9 @@ fn start_codegen(
                 }
                 ConstantKind::Complex => {
                     let evaluator =
-                        Evaluator::new(opts.clone(), runner.clone(), program.helpers.clone());
+                        Evaluator::new(opts.clone(), context.runner(), program.helpers.clone());
                     let constant_result = evaluator.shrink_bodyform(
-                        allocator,
+                        context.allocator(),
                         Rc::new(SExp::Nil(defc.loc.clone())),
                         &HashMap::new(),
                         defc.body.clone(),
@@ -1267,16 +1268,17 @@ fn start_codegen(
                     .set_start_env(None)
                     .set_frontend_opt(false);
 
+                let runner = context.runner();
                 updated_opts
                     .compile_program(
-                        allocator,
+                        context.allocator(),
                         runner.clone(),
                         macro_program,
                         &mut HashMap::new(),
                     )
                     .and_then(|code| {
                         if opts.optimize() {
-                            run_optimizer(allocator, runner.clone(), Rc::new(code))
+                            run_optimizer(context.allocator(), runner, Rc::new(code))
                         } else {
                             Ok(Rc::new(code))
                         }
@@ -1476,10 +1478,8 @@ pub fn codegen(
     opts: Rc<dyn CompilerOpts>,
     cmod: &CompileForm,
 ) -> Result<SExp, CompileErr> {
-    let runner = context.runner();
     let mut code_generator = dummy_functions(&start_codegen(
-        context.allocator(),
-        runner.clone(),
+        context,
         opts.clone(),
         cmod.clone(),
     )?)?;
@@ -1488,8 +1488,7 @@ pub fn codegen(
 
     for f in to_process {
         code_generator = codegen_(
-            context.allocator(),
-            runner.clone(),
+            context,
             opts.clone(),
             &code_generator,
             &f,
