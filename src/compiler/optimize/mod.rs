@@ -1,3 +1,6 @@
+pub mod cl21_unopt;
+pub mod none;
+
 #[cfg(test)]
 use num_bigint::ToBigInt;
 
@@ -21,13 +24,14 @@ use crate::compiler::comptypes::{
     PrimaryCodegen, SyntheticType,
 };
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
+use crate::compiler::optimize::cl21_unopt::CL21Unoptimized;
+use crate::compiler::optimize::none::NoOptimization;
 use crate::compiler::runtypes::RunFailure;
 #[cfg(test)]
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::BasicCompileContext;
-use crate::compiler::CompileContextWrapper;
 use crate::util::u8_from_number;
 
 const CONST_FOLD_LIMIT: usize = 10000000;
@@ -161,164 +165,6 @@ pub trait Optimization {
     ) -> Result<SExp, CompileErr>;
 
     fn duplicate(&self) -> Box<dyn Optimization>;
-}
-
-/// A basic implementation of Optimization that never transforms anything.
-#[derive(Default, Clone)]
-pub struct NoOptimization {}
-
-impl NoOptimization {
-    pub fn new() -> Self {
-        NoOptimization {}
-    }
-}
-
-impl Optimization for NoOptimization {
-    fn frontend_optimization(
-        &mut self,
-        allocator: &mut Allocator,
-        runner: Rc<dyn TRunProgram>,
-        opts: Rc<dyn CompilerOpts>,
-        p0: CompileForm,
-    ) -> Result<CompileForm, CompileErr> {
-        // Not yet turned on for >22
-        if opts.frontend_opt() && !(opts.dialect().stepping.map(|d| d > 22).unwrap_or(false)) {
-            // Front end optimization
-            fe_opt(allocator, runner, opts.clone(), p0)
-        } else {
-            Ok(p0)
-        }
-    }
-
-    fn post_desugar_optimization(
-        &mut self,
-        allocator: &mut Allocator,
-        runner: Rc<dyn TRunProgram>,
-        opts: Rc<dyn CompilerOpts>,
-        cf: CompileForm,
-    ) -> Result<CompileForm, CompileErr> {
-        if opts.frontend_opt() && opts.dialect().stepping.map(|s| s > 22).unwrap_or(false) {
-            let mut symbols = HashMap::new();
-            let mut wrapper =
-                CompileContextWrapper::new(allocator, runner, &mut symbols, self.duplicate());
-            deinline_opt(&mut wrapper.context, opts.clone(), cf)
-        } else {
-            Ok(cf)
-        }
-    }
-
-    fn start_of_codegen_optimization(
-        &mut self,
-        code_generator: PrimaryCodegen,
-    ) -> Result<PrimaryCodegen, CompileErr> {
-        Ok(code_generator)
-    }
-
-    fn function_codegen_optimization(
-        &mut self,
-        _code_generator: &PrimaryCodegen,
-        _hf: Option<HelperForm>,
-        _repr: Rc<SExp>,
-    ) -> Result<CodegenOptimizationResult, CompileErr> {
-        Ok(Default::default())
-    }
-
-    fn macro_optimization(
-        &mut self,
-        allocator: &mut Allocator,
-        runner: Rc<dyn TRunProgram>,
-        opts: Rc<dyn CompilerOpts>,
-        code: Rc<SExp>,
-    ) -> Result<Rc<SExp>, CompileErr> {
-        if opts.optimize() {
-            run_optimizer(allocator, runner, code)
-        } else {
-            Ok(code)
-        }
-    }
-
-    fn defun_body_optimization(
-        &mut self,
-        allocator: &mut Allocator,
-        runner: Rc<dyn TRunProgram>,
-        opts: Rc<dyn CompilerOpts>,
-        codegen: &PrimaryCodegen,
-        defun: &DefunData,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
-        let res = if opts.optimize() {
-            // Run optimizer on frontend style forms.
-            optimize_expr(
-                allocator,
-                opts.clone(),
-                runner.clone(),
-                codegen,
-                defun.body.clone(),
-            )
-            .map(|x| x.1)
-            .unwrap_or_else(|| defun.body.clone())
-        } else {
-            defun.body.clone()
-        };
-        Ok(res)
-    }
-
-    fn post_codegen_function_optimize(
-        &mut self,
-        allocator: &mut Allocator,
-        runner: Rc<dyn TRunProgram>,
-        opts: Rc<dyn CompilerOpts>,
-        code: Rc<SExp>,
-    ) -> Result<Rc<SExp>, CompileErr> {
-        if opts.optimize() {
-            run_optimizer(allocator, runner, code)
-        } else {
-            Ok(code)
-        }
-    }
-
-    fn pre_final_codegen_optimize(
-        &mut self,
-        allocator: &mut Allocator,
-        runner: Rc<dyn TRunProgram>,
-        opts: Rc<dyn CompilerOpts>,
-        codegen: &PrimaryCodegen,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
-        let res = if opts.optimize() {
-            optimize_expr(
-                allocator,
-                opts.clone(),
-                runner,
-                codegen,
-                codegen.final_expr.clone(),
-            )
-            .map(|x| x.1)
-            .unwrap_or_else(|| codegen.final_expr.clone())
-        } else {
-            codegen.final_expr.clone()
-        };
-
-        Ok(res)
-    }
-
-    fn post_codegen_output_optimize(
-        &mut self,
-        opts: Rc<dyn CompilerOpts>,
-        generated: SExp,
-    ) -> Result<SExp, CompileErr> {
-        if opts.frontend_opt() && opts.dialect().stepping.map(|s| s > 22).unwrap_or(false) {
-            let (did_work, optimized) = null_optimization(Rc::new(generated.clone()), false);
-            if did_work {
-                let o_borrowed: &SExp = optimized.borrow();
-                return Ok(o_borrowed.clone());
-            }
-        }
-
-        Ok(generated)
-    }
-
-    fn duplicate(&self) -> Box<dyn Optimization> {
-        Box::new(self.clone())
-    }
 }
 
 fn is_at_form(head: Rc<BodyForm>) -> bool {
@@ -649,4 +495,25 @@ pub fn run_optimizer(
         RunFailure::RunErr(l, e) => CompileErr(l, e),
         RunFailure::RunExn(s, e) => CompileErr(s, format!("exception {e}\n")),
     })
+}
+
+/// Produce the optimization strategy specified by the compiler opts we're given.
+pub fn get_optimizer(
+    loc: &Srcloc,
+    opts: Rc<dyn CompilerOpts>,
+) -> Result<Box<dyn Optimization>, CompileErr> {
+    if !opts.optimize() && !opts.frontend_opt() {
+        Ok(Box::new(NoOptimization::new()))
+    } else if let Some(n) = opts.dialect().stepping {
+        if n < 24 {
+            Ok(Box::new(CL21Unoptimized::new()))
+        } else {
+            Err(CompileErr(
+                loc.clone(),
+                format!("Unknown optimization strategy for language stepping {n}"),
+            ))
+        }
+    } else {
+        Ok(Box::new(CL21Unoptimized::new()))
+    }
 }

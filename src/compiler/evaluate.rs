@@ -16,7 +16,7 @@ use crate::compiler::comptypes::{
     HelperForm, LambdaData, LetData, LetFormInlineHint, LetFormKind,
 };
 use crate::compiler::frontend::frontend;
-use crate::compiler::optimize::NoOptimization;
+use crate::compiler::optimize::get_optimizer;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -1521,7 +1521,7 @@ impl<'info> Evaluator {
             BodyForm::Mod(_, program) => {
                 // A mod form yields the compiled code.
                 let mut symbols = HashMap::new();
-                let optimizer = Box::new(NoOptimization::new());
+                let optimizer = get_optimizer(&program.loc(), self.opts.clone())?;
                 let mut context_wrapper = CompileContextWrapper::new(
                     allocator,
                     self.runner.clone(),
