@@ -3,18 +3,16 @@ use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use clvm_rs::allocator::Allocator;
-
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
+use crate::compiler::{BasicCompileContext, CompileContext};
 use crate::compiler::codegen::{generate_expr_code, get_call_name, get_callable};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     BodyForm, Callable, CompileErr, CompiledCode, CompilerOpts, InlineFunction, LambdaData,
     PrimaryCodegen,
 };
-use crate::compiler::optimize::NoOptimization;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::CompileContextWrapper;
@@ -301,8 +299,7 @@ fn replace_inline_body(
 /// can be treated as a desugaring step that's subject to frontend optimization.
 #[allow(clippy::too_many_arguments)]
 pub fn replace_in_inline(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
+    context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
     loc: Srcloc,
@@ -314,7 +311,7 @@ pub fn replace_in_inline(
     visited.insert(inline.name.clone());
     replace_inline_body(
         &mut visited,
-        runner.clone(),
+        context.runner.clone(),
         opts.clone(),
         compiler,
         loc,
@@ -325,11 +322,13 @@ pub fn replace_in_inline(
     )
     .and_then(|x| {
         let mut symbols = HashMap::new();
+        let runner = context.runner();
+        let optimizer = context.optimizer.duplicate();
         let mut context_wrapper = CompileContextWrapper::new(
-            allocator,
+            context.allocator(),
             runner,
             &mut symbols,
-            Box::new(NoOptimization::new()),
+            optimizer,
         );
         generate_expr_code(&mut context_wrapper.context, opts, compiler, x)
     })

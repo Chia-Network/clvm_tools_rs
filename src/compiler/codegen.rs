@@ -6,9 +6,6 @@ use std::rc::Rc;
 
 use num_bigint::ToBigInt;
 
-use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
-use clvm_rs::allocator::Allocator;
-
 use crate::classic::clvm::__type_compatibility__::bi_one;
 
 use crate::compiler::clvm::run;
@@ -455,8 +452,7 @@ fn compile_call(
             }
 
             Callable::CallInline(l, inline) => replace_in_inline(
-                context.allocator(),
-                runner.clone(),
+                context,
                 opts.clone(),
                 compiler,
                 l.clone(),
@@ -1344,8 +1340,7 @@ fn final_codegen(
 }
 
 fn finalize_env_(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
+    context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     c: &PrimaryCodegen,
     _l: Srcloc,
@@ -1363,8 +1358,7 @@ fn finalize_env_(
 
             if let Some(res) = c.inlines.get(v) {
                 return replace_in_inline(
-                    allocator,
-                    runner.clone(),
+                    context,
                     opts.clone(),
                     c,
                     l.clone(),
@@ -1390,8 +1384,7 @@ fn finalize_env_(
         }
 
         SExp::Cons(l, h, r) => finalize_env_(
-            allocator,
-            runner.clone(),
+            context,
             opts.clone(),
             c,
             l.clone(),
@@ -1399,8 +1392,7 @@ fn finalize_env_(
         )
         .and_then(|h| {
             finalize_env_(
-                allocator,
-                runner.clone(),
+                context,
                 opts.clone(),
                 c,
                 l.clone(),
@@ -1414,15 +1406,13 @@ fn finalize_env_(
 }
 
 fn finalize_env(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
+    context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     c: &PrimaryCodegen,
 ) -> Result<Rc<SExp>, CompileErr> {
     match c.env.borrow() {
         SExp::Cons(l, h, _) => finalize_env_(
-            allocator,
-            runner.clone(),
+            context,
             opts.clone(),
             c,
             l.clone(),
@@ -1501,8 +1491,7 @@ pub fn codegen(
         .insert("source_file".to_string(), opts.filename());
 
     final_codegen(context, opts.clone(), &code_generator).and_then(|c| {
-        let runner = context.runner();
-        let final_env = finalize_env(context.allocator(), runner, opts.clone(), &c)?;
+        let final_env = finalize_env(context, opts.clone(), &c)?;
 
         match c.final_code {
             None => Err(CompileErr(
