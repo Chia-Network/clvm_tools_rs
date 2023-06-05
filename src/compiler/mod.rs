@@ -42,7 +42,9 @@ use std::mem::swap;
 use std::rc::Rc;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
+use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::optimize::Optimization;
+use crate::compiler::sexp::SExp;
 
 /// An object which represents the standard set of mutable items passed down the
 /// stack when compiling chialisp.
@@ -53,16 +55,7 @@ pub struct BasicCompileContext {
     pub optimizer: Box<dyn Optimization>,
 }
 
-trait CompileContext {
-    fn allocator(&mut self) -> &mut Allocator;
-    fn runner(&self) -> Rc<dyn TRunProgram>;
-    fn symbols(&mut self) -> &mut HashMap<String, String>;
-    fn run_optimizer<F, R>(&mut self, f: F) -> R
-    where
-        F: Fn(&mut dyn Optimization) -> R;
-}
-
-impl CompileContext for BasicCompileContext {
+impl BasicCompileContext {
     fn allocator(&mut self) -> &mut Allocator {
         &mut self.allocator
     }
@@ -72,15 +65,26 @@ impl CompileContext for BasicCompileContext {
     fn symbols(&mut self) -> &mut HashMap<String, String> {
         &mut self.symbols
     }
+    fn macro_optimization(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        code: Rc<SExp>
+    ) -> Result<Rc<SExp>, CompileErr> {
+        self.optimizer.macro_optimization(
+            &mut self.allocator,
+            self.runner.clone(),
+            opts,
+            code
+        )
+    }
+
     fn run_optimizer<F, R>(&mut self, f: F) -> R
     where
-        F: Fn(&mut dyn Optimization) -> R,
+        F: Fn(&mut BasicCompileContext) -> R,
     {
-        f(self.optimizer.as_mut())
+        f(self)
     }
-}
 
-impl BasicCompileContext {
     pub fn new(
         allocator: Allocator,
         runner: Rc<dyn TRunProgram>,

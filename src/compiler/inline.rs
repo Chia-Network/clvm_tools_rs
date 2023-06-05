@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::{BasicCompileContext, CompileContext};
+use crate::compiler::BasicCompileContext;
 use crate::compiler::codegen::{generate_expr_code, get_call_name, get_callable};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{

@@ -24,7 +24,7 @@ use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::{BasicCompileContext, CompileContext, CompileContextWrapper};
+use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::Number;
 
 lazy_static! {

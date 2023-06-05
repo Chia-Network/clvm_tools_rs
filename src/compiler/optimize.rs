@@ -19,6 +19,7 @@ use crate::compiler::comptypes::{
     BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, HelperForm, PrimaryCodegen,
     SyntheticType,
 };
+use crate::compiler::compiler::run_optimizer;
 #[cfg(test)]
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::sexp::SExp;
@@ -101,6 +102,15 @@ pub trait Optimization {
         repr: Rc<SExp>,
     ) -> Result<CodegenOptimizationResult, CompileErr>;
 
+    /// Optimize macro bodies.
+    fn macro_optimization(
+        &mut self,
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        opts: Rc<dyn CompilerOpts>,
+        code: Rc<SExp>,
+    ) -> Result<Rc<SExp>, CompileErr>;
+
     fn duplicate(&self) -> Box<dyn Optimization>;
 }
 
@@ -133,6 +143,20 @@ impl Optimization for NoOptimization {
         _repr: Rc<SExp>,
     ) -> Result<CodegenOptimizationResult, CompileErr> {
         Ok(Default::default())
+    }
+
+    fn macro_optimization(
+        &mut self,
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        opts: Rc<dyn CompilerOpts>,
+        code: Rc<SExp>,
+    ) -> Result<Rc<SExp>, CompileErr> {
+        if opts.optimize() {
+            run_optimizer(allocator, runner, code)
+        } else {
+            Ok(code)
+        }
     }
 
     fn duplicate(&self) -> Box<dyn Optimization> {

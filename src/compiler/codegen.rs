@@ -27,7 +27,7 @@ use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::{BasicCompileContext, CompileContext, CompileContextWrapper};
+use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::{toposort, u8_from_number};
 
 const MACRO_TIME_LIMIT: usize = 1000000;
@@ -1265,21 +1265,19 @@ fn start_codegen(
                     .set_frontend_opt(false);
 
                 let runner = context.runner();
-                updated_opts
-                    .compile_program(
-                        context.allocator(),
-                        runner.clone(),
-                        macro_program,
-                        &mut HashMap::new(),
-                    )
-                    .and_then(|code| {
-                        if opts.optimize() {
-                            run_optimizer(context.allocator(), runner, Rc::new(code))
-                        } else {
-                            Ok(Rc::new(code))
-                        }
-                    })
-                    .map(|code| code_generator.add_macro(&mac.name, code))?
+                let code = updated_opts.compile_program(
+                    context.allocator(),
+                    runner.clone(),
+                    macro_program,
+                    &mut HashMap::new(),
+                )?;
+
+                let optimized_code = context.macro_optimization(
+                    opts.clone(),
+                    Rc::new(code.clone())
+                )?;
+
+                code_generator.add_macro(&mac.name, optimized_code)
             }
             _ => code_generator,
         };
