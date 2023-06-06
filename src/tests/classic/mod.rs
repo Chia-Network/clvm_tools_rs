@@ -1,3 +1,4 @@
+mod bls;
 mod clvmc;
 mod optimize;
 pub mod run;
