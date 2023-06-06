@@ -143,7 +143,13 @@ pub fn compile_clvm_inner(
         filename,
         classic_with_opts,
     )
-    .map_err(|x| format!("error {} compiling {}", x.1, disassemble(allocator, x.0, opts.disassembly_ver())))?;
+    .map_err(|x| {
+        format!(
+            "error {} compiling {}",
+            x.1,
+            disassemble(allocator, x.0, opts.disassembly_ver())
+        )
+    })?;
     sexp_to_stream(allocator, result, result_stream);
     Ok(())
 }

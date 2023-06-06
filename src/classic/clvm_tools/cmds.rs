@@ -20,13 +20,13 @@ use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 use clvm_rs::run_program::PreEval;
 
-use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm::__type_compatibility__::{
     t, Bytes, BytesFromType, Stream, Tuple, UnvalidatedBytesFromType,
 };
 use crate::classic::clvm::keyword_from_atom;
 use crate::classic::clvm::serialize::{sexp_from_stream, sexp_to_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
+use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
 use crate::classic::clvm_tools::clvmc::{detect_modern, write_sym_output};
 use crate::classic::clvm_tools::debug::check_unused;
@@ -103,10 +103,7 @@ impl ArgumentValueConv for PathOrCodeConv {
 // }
 
 pub trait TConversion {
-    fn apply_args(
-        &mut self,
-        parsed_args: &HashMap<String, ArgumentValue>
-    );
+    fn apply_args(&mut self, parsed_args: &HashMap<String, ArgumentValue>);
 
     fn invoke(
         &self,
@@ -228,10 +225,7 @@ pub fn call_tool(
 pub struct OpcConversion {}
 
 impl TConversion for OpcConversion {
-    fn apply_args(
-        &mut self,
-        _args: &HashMap<String, ArgumentValue>
-    ) { }
+    fn apply_args(&mut self, _args: &HashMap<String, ArgumentValue>) {}
 
     fn invoke(
         &self,
@@ -249,14 +243,11 @@ impl TConversion for OpcConversion {
 
 #[derive(Debug)]
 pub struct OpdConversion {
-    pub op_version: Option<usize>
+    pub op_version: Option<usize>,
 }
 
 impl TConversion for OpdConversion {
-    fn apply_args(
-        &mut self,
-        args: &HashMap<String, ArgumentValue>
-    ) {
+    fn apply_args(&mut self, args: &HashMap<String, ArgumentValue>) {
         if let Some(ArgumentValue::ArgInt(i)) = args.get("operators_version") {
             self.op_version = Some(*i as usize);
         }
@@ -312,7 +303,9 @@ struct OperatorsVersion {}
 
 impl ArgumentValueConv for OperatorsVersion {
     fn convert(&self, arg: &str) -> Result<ArgumentValue, String> {
-        let ver = arg.parse::<i64>().map_err(|_| format!("expected number 0-1 found {arg}"))?;
+        let ver = arg
+            .parse::<i64>()
+            .map_err(|_| format!("expected number 0-1 found {arg}"))?;
         Ok(ArgumentValue::ArgInt(ver))
     }
 }
@@ -994,7 +987,9 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let empty_map = HashMap::new();
     let keywords = match parsed_args.get("no_keywords") {
         Some(ArgumentValue::ArgBool(_b)) => &empty_map,
-        _ => keyword_from_atom(get_disassembly_ver(&parsed_args).unwrap_or(OPERATORS_LATEST_VERSION)),
+        _ => {
+            keyword_from_atom(get_disassembly_ver(&parsed_args).unwrap_or(OPERATORS_LATEST_VERSION))
+        }
     };
 
     // If extra symbol output is desired (not all keys are hashes, but there's
@@ -1534,9 +1529,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 only_exn,
                 &log_content,
                 symbol_table,
-                &|allocator, p| {
-                    disassemble(allocator, p, disassembly_ver)
-                }
+                &|allocator, p| disassemble(allocator, p, disassembly_ver),
             );
         } else {
             stdout.write_str("\n");
@@ -1546,9 +1539,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 only_exn,
                 &log_content,
                 symbol_table,
-                &|allocator, p| {
-                    disassemble(allocator, p, disassembly_ver)
-                }
+                &|allocator, p| disassemble(allocator, p, disassembly_ver),
             );
         }
     }

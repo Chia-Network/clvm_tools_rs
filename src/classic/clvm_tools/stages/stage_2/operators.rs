@@ -5,14 +5,14 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
-use clvm_rs::chia_dialect::{ChiaDialect, NO_UNKNOWN_OPS, ENABLE_BLS_OPS};
+use clvm_rs::chia_dialect::{ChiaDialect, ENABLE_BLS_OPS, NO_UNKNOWN_OPS};
 use clvm_rs::cost::Cost;
 use clvm_rs::dialect::{Dialect, OperatorSet};
 use clvm_rs::reduction::{EvalErr, Reduction, Response};
 use clvm_rs::run_program::run_program_with_pre_eval;
 
-use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 
 use crate::classic::clvm::keyword_from_atom;
 use crate::classic::clvm::sexp::proper_list;
@@ -214,7 +214,12 @@ impl CompilerOperatorsInternal {
                     let filename_buf = allocator.buf(&filename_buf);
                     let filename_bytes =
                         Bytes::new(Some(BytesFromType::Raw(filename_buf.to_vec())));
-                    let ir = disassemble_to_ir_with_kw(allocator, data, keyword_from_atom(self.get_disassembly_ver()), true);
+                    let ir = disassemble_to_ir_with_kw(
+                        allocator,
+                        data,
+                        keyword_from_atom(self.get_disassembly_ver()),
+                        true,
+                    );
                     let mut stream = Stream::new(None);
                     write_ir_to_stream(Rc::new(ir), &mut stream);
                     return fs::write(filename_bytes.decode(), stream.get_value().decode())
@@ -333,9 +338,7 @@ impl Dialect for CompilerOperatorsInternal {
     // The softfork operator comes with an extension argument.
     fn softfork_extension(&self, ext: u32) -> OperatorSet {
         match ext {
-            0 => {
-                OperatorSet::BLS
-            }
+            0 => OperatorSet::BLS,
             // new extensions go here
             _ => OperatorSet::Default,
         }
@@ -347,7 +350,7 @@ impl Dialect for CompilerOperatorsInternal {
         op: NodePtr,
         sexp: NodePtr,
         max_cost: Cost,
-        _extension: OperatorSet
+        _extension: OperatorSet,
     ) -> Response {
         match allocator.sexp(op) {
             SExp::Atom(opname) => {
@@ -373,14 +376,19 @@ impl Dialect for CompilerOperatorsInternal {
                 } else if opbuf == "_get_source_file".as_bytes() {
                     self.get_source_file(allocator)
                 } else {
-                    self.base_dialect.op(allocator, op, sexp, max_cost, OperatorSet::BLS)
+                    self.base_dialect
+                        .op(allocator, op, sexp, max_cost, OperatorSet::BLS)
                 }
             }
-            _ => self.base_dialect.op(allocator, op, sexp, max_cost, OperatorSet::BLS),
+            _ => self
+                .base_dialect
+                .op(allocator, op, sexp, max_cost, OperatorSet::BLS),
         }
     }
 
-    fn allow_unknown_ops(&self) -> bool { false }
+    fn allow_unknown_ops(&self) -> bool {
+        false
+    }
 }
 
 impl CompilerOperatorsInternal {

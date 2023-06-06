@@ -45,7 +45,11 @@ fn large_odd_sized_neg_opc() {
     assert_eq!(result.rest(), "ff8afde1e61f36454dc0000180");
 }
 
-fn opd_conversion() -> OpdConversion { OpdConversion { op_version: Some(0) } }
+fn opd_conversion() -> OpdConversion {
+    OpdConversion {
+        op_version: Some(0),
+    }
+}
 
 #[test]
 fn large_odd_sized_neg_opd() {

@@ -7,8 +7,8 @@ use unicode_segmentation::UnicodeSegmentation;
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Record, Stream};
+use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
 use crate::classic::clvm_tools::ir::r#type::IRRepr;
 use crate::classic::clvm_tools::ir::reader::IRReader;
@@ -146,7 +146,11 @@ pub fn disassemble_with_kw(
 }
 
 pub fn disassemble(allocator: &mut Allocator, sexp: NodePtr, version: Option<usize>) -> String {
-    return disassemble_with_kw(allocator, sexp, keyword_from_atom(version.unwrap_or(OPERATORS_LATEST_VERSION)));
+    return disassemble_with_kw(
+        allocator,
+        sexp,
+        keyword_from_atom(version.unwrap_or(OPERATORS_LATEST_VERSION)),
+    );
 }
 
 pub fn assemble(allocator: &mut Allocator, s: &str) -> Result<NodePtr, EvalErr> {
