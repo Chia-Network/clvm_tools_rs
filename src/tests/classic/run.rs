@@ -29,7 +29,7 @@ use crate::util::{number_from_u8, Number};
 
 const NUM_GEN_ATOMS: usize = 16;
 
-fn do_basic_brun(args: &Vec<String>) -> String {
+pub fn do_basic_brun(args: &Vec<String>) -> String {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, &"run".to_string(), 0);
     return s.get_value().decode();
