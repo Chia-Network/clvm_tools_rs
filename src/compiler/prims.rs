@@ -137,7 +137,55 @@ pub fn prims() -> Vec<(Vec<u8>, SExp)> {
         ),
         (
             "softfork".as_bytes().to_vec(),
-            SExp::Integer(primloc, 36_u32.to_bigint().unwrap()),
+            SExp::Integer(primloc.clone(), 36_u32.to_bigint().unwrap()),
+        ),
+        (
+            "coinid".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 48_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_g1_subtract".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 49_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_g1_multiply".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 50_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_g1_negate".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 51_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_g2_add".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 52_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_g2_subtract".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 53_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_g2_multiply".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 54_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_g2_negate".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 55_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_map_to_g1".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 56_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_map_to_g2".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 57_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_pairing_identity".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 58_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_verify".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 59_u32.to_bigint().unwrap()),
         ),
     ]
 }

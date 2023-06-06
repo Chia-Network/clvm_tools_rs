@@ -4,6 +4,7 @@ use std::rc::Rc;
 use clvm_rs::allocator::{Allocator, AtomBuf, NodePtr, SExp};
 use clvm_rs::reduction::{EvalErr, Reduction, Response};
 
+use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm::sexp::{enlist, first, map_m, non_nil, proper_list, rest};
 use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
@@ -20,10 +21,10 @@ const DIAG_OUTPUT: bool = false;
 lazy_static! {
     static ref PASS_THROUGH_OPERATORS: HashSet<Vec<u8>> = {
         let mut result = HashSet::new();
-        for key in keyword_to_atom().keys() {
+        for key in keyword_to_atom(OPERATORS_LATEST_VERSION).keys() {
             result.insert(key.as_bytes().to_vec());
         }
-        for key in keyword_from_atom().keys() {
+        for key in keyword_from_atom(OPERATORS_LATEST_VERSION).keys() {
             result.insert(key.to_vec());
         }
         // added by optimize
@@ -94,7 +95,7 @@ fn com_qq(
     sexp: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
     if DIAG_OUTPUT {
-        println!("com_qq {} {}", ident, disassemble(allocator, sexp));
+        println!("com_qq {} {}", ident, disassemble(allocator, sexp, None));
     }
     do_com_prog(allocator, 110, sexp, macro_lookup, symbol_table, runner).map(|x| x.1)
 }
@@ -210,7 +211,7 @@ fn lower_quote_(allocator: &mut Allocator, prog: NodePtr) -> Result<NodePtr, Eva
             if allocator.buf(&q).to_vec() == "quote".as_bytes().to_vec() {
                 if qlist.len() != 2 {
                     // quoted list should be 2: "(quote arg)"
-                    return Err(EvalErr(prog, format!("Compilation error while compiling [{}]. quote takes exactly one argument.", disassemble(allocator, prog))));
+                    return Err(EvalErr(prog, format!("Compilation error while compiling [{}]. quote takes exactly one argument.", disassemble(allocator, prog, None))));
                 }
 
                 // Note: quote should have exactly one arg, so the length of
@@ -245,8 +246,8 @@ pub fn lower_quote(allocator: &mut Allocator, prog: NodePtr) -> Result<NodePtr, 
             .map(|x| {
                 println!(
                     "LOWER_QUOTE {} TO {}",
-                    disassemble(allocator, prog),
-                    disassemble(allocator, *x)
+                    disassemble(allocator, prog, None),
+                    disassemble(allocator, *x, None)
                 );
             })
             .unwrap_or_else(|_| ())
@@ -285,11 +286,11 @@ fn try_expand_macro_for_atom_(
             if DIAG_OUTPUT {
                 print!(
                     "TRY_EXPAND_MACRO {} WITH {} GIVES {} MACROS {} SYMBOLS {}",
-                    disassemble(allocator, macro_code),
-                    disassemble(allocator, prog_rest),
-                    disassemble(allocator, x),
-                    disassemble(allocator, macro_lookup),
-                    disassemble(allocator, symbol_table)
+                    disassemble(allocator, macro_code, None),
+                    disassemble(allocator, prog_rest, None),
+                    disassemble(allocator, x, None),
+                    disassemble(allocator, macro_lookup, None),
+                    disassemble(allocator, symbol_table, None)
                 );
             }
             Reduction(1, x)
@@ -425,7 +426,7 @@ fn compile_operator_atom(
                 allocator.new_atom(NodePath::new(None).as_path().data());
 
             let _ = if DIAG_OUTPUT {
-                print!("COMPILE_BINDINGS {}", disassemble(allocator, quoted_post_prog));
+                print!("COMPILE_BINDINGS {}", disassemble(allocator, quoted_post_prog, None));
             };
             evaluate(allocator, quoted_post_prog, top_atom).map(Some)
         };
@@ -495,7 +496,7 @@ fn compile_application(
         prog,
         format!(
             "can't compile {}, unknown operator",
-            disassemble(allocator, prog)
+            disassemble(allocator, prog, None)
         ),
     ));
 
@@ -585,9 +586,9 @@ pub fn do_com_prog(
         println!(
             "START COMPILE {}: {} MACRO {} SYMBOLS {}",
             from,
-            disassemble(allocator, prog),
-            disassemble(allocator, macro_lookup),
-            disassemble(allocator, symbol_table),
+            disassemble(allocator, prog, None),
+            disassemble(allocator, macro_lookup, None),
+            disassemble(allocator, symbol_table, None),
         );
     }
     do_com_prog_(allocator, prog, macro_lookup, symbol_table, run_program).map(|x| {
@@ -595,10 +596,10 @@ pub fn do_com_prog(
             println!(
                 "DO_COM_PROG {}: {} MACRO {} SYMBOLS {} RESULT {}",
                 from,
-                disassemble(allocator, prog),
-                disassemble(allocator, macro_lookup),
-                disassemble(allocator, symbol_table),
-                disassemble(allocator, x.1)
+                disassemble(allocator, prog, None),
+                disassemble(allocator, macro_lookup, None),
+                disassemble(allocator, symbol_table, None),
+                disassemble(allocator, x.1, None)
             );
         }
         x

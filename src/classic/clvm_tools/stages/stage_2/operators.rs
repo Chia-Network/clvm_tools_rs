@@ -5,12 +5,13 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
-use clvm_rs::chia_dialect::{ChiaDialect, NO_NEG_DIV, NO_UNKNOWN_OPS};
+use clvm_rs::chia_dialect::{ChiaDialect, NO_UNKNOWN_OPS, ENABLE_BLS_OPS};
 use clvm_rs::cost::Cost;
-use clvm_rs::dialect::Dialect;
+use clvm_rs::dialect::{Dialect, OperatorSet};
 use clvm_rs::reduction::{EvalErr, Reduction, Response};
-use clvm_rs::run_program::run_program;
+use clvm_rs::run_program::run_program_with_pre_eval;
 
+use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 
 use crate::classic::clvm::keyword_from_atom;
@@ -118,7 +119,7 @@ impl Drop for CompilerOperators {
 
 impl CompilerOperatorsInternal {
     pub fn new(source_file: &str, search_paths: Vec<String>, symbols_extra_info: bool) -> Self {
-        let base_dialect = Rc::new(ChiaDialect::new(NO_NEG_DIV | NO_UNKNOWN_OPS));
+        let base_dialect = Rc::new(ChiaDialect::new(NO_UNKNOWN_OPS | ENABLE_BLS_OPS));
         let base_runner = Rc::new(DefaultProgramRunner::new());
         CompilerOperatorsInternal {
             base_dialect,
@@ -213,7 +214,7 @@ impl CompilerOperatorsInternal {
                     let filename_buf = allocator.buf(&filename_buf);
                     let filename_bytes =
                         Bytes::new(Some(BytesFromType::Raw(filename_buf.to_vec())));
-                    let ir = disassemble_to_ir_with_kw(allocator, data, keyword_from_atom(), true);
+                    let ir = disassemble_to_ir_with_kw(allocator, data, keyword_from_atom(self.get_disassembly_ver()), true);
                     let mut stream = Stream::new(None);
                     write_ir_to_stream(Rc::new(ir), &mut stream);
                     return fs::write(filename_bytes.decode(), stream.get_value().decode())
@@ -306,10 +307,16 @@ impl CompilerOperatorsInternal {
 
         Ok(Reduction(1, allocator.null()))
     }
+
+    fn get_disassembly_ver(&self) -> usize {
+        self.get_compiler_opts()
+            .and_then(|o| o.disassembly_ver())
+            .unwrap_or(OPERATORS_LATEST_VERSION)
+    }
 }
 
 impl Dialect for CompilerOperatorsInternal {
-    fn val_stack_limit(&self) -> usize {
+    fn stack_limit(&self) -> usize {
         10000000
     }
     fn quote_kw(&self) -> &[u8] {
@@ -319,12 +326,28 @@ impl Dialect for CompilerOperatorsInternal {
         &[2]
     }
 
+    fn softfork_kw(&self) -> &[u8] {
+        &[36]
+    }
+
+    // The softfork operator comes with an extension argument.
+    fn softfork_extension(&self, ext: u32) -> OperatorSet {
+        match ext {
+            0 => {
+                OperatorSet::BLS
+            }
+            // new extensions go here
+            _ => OperatorSet::Default,
+        }
+    }
+
     fn op(
         &self,
         allocator: &mut Allocator,
         op: NodePtr,
         sexp: NodePtr,
         max_cost: Cost,
+        _extension: OperatorSet
     ) -> Response {
         match allocator.sexp(op) {
             SExp::Atom(opname) => {
@@ -350,12 +373,14 @@ impl Dialect for CompilerOperatorsInternal {
                 } else if opbuf == "_get_source_file".as_bytes() {
                     self.get_source_file(allocator)
                 } else {
-                    self.base_dialect.op(allocator, op, sexp, max_cost)
+                    self.base_dialect.op(allocator, op, sexp, max_cost, OperatorSet::BLS)
                 }
             }
-            _ => self.base_dialect.op(allocator, op, sexp, max_cost),
+            _ => self.base_dialect.op(allocator, op, sexp, max_cost, OperatorSet::BLS),
         }
     }
+
+    fn allow_unknown_ops(&self) -> bool { false }
 }
 
 impl CompilerOperatorsInternal {
@@ -383,7 +408,7 @@ impl TRunProgram for CompilerOperatorsInternal {
         option: Option<RunProgramOption>,
     ) -> Response {
         let max_cost = option.as_ref().and_then(|o| o.max_cost).unwrap_or(0);
-        run_program(
+        run_program_with_pre_eval(
             allocator,
             self,
             program,

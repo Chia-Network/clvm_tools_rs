@@ -106,7 +106,7 @@ pub fn constant_optimizer(
     if DIAG_OPTIMIZATIONS {
         println!(
             "COPT {} SC_R {} NN_R {}",
-            disassemble(allocator, r),
+            disassemble(allocator, r, None),
             sc_r,
             nn_r
         );
@@ -123,8 +123,8 @@ pub fn constant_optimizer(
             let _ = if DIAG_OPTIMIZATIONS {
                 println!(
                     "CONSTANT_OPTIMIZER {} TO {}",
-                    disassemble(allocator, r),
-                    disassemble(allocator, r1)
+                    disassemble(allocator, r, None),
+                    disassemble(allocator, r1, None)
                 );
             };
             quoted <- quote(allocator, r1);
@@ -311,7 +311,7 @@ pub fn var_change_optimizer_cons_eval(
             if DIAG_OPTIMIZATIONS {
                 println!(
                     "XXX ORIGINAL_ARGS {}",
-                    disassemble(allocator, *original_args)
+                    disassemble(allocator, *original_args, None)
                 );
             };
             let original_call = t1
@@ -321,7 +321,7 @@ pub fn var_change_optimizer_cons_eval(
             if DIAG_OPTIMIZATIONS {
                 println!(
                     "XXX ORIGINAL_CALL {}",
-                    disassemble(allocator, *original_call)
+                    disassemble(allocator, *original_call, None)
                 );
             };
 
@@ -330,8 +330,8 @@ pub fn var_change_optimizer_cons_eval(
             if DIAG_OPTIMIZATIONS {
                 println!(
                     "XXX new_eval_sexp_args {} ORIG {}",
-                    disassemble(allocator, new_eval_sexp_args),
-                    disassemble(allocator, *original_args)
+                    disassemble(allocator, new_eval_sexp_args, None),
+                    disassemble(allocator, *original_args, None)
                 );
             };
 
@@ -365,7 +365,7 @@ pub fn var_change_optimizer_cons_eval(
                                     println!(
                                         "XXX opt_operands {} {}",
                                         acc,
-                                        disassemble(allocator, val)
+                                        disassemble(allocator, val, None)
                                     );
                                 }
                                 let increment = match allocator.sexp(val) {
@@ -713,8 +713,8 @@ pub fn optimize_sexp_(
                     println!(
                         "OPT-{:?}[{}] => {}",
                         name,
-                        disassemble(allocator, start_r),
-                        disassemble(allocator, r)
+                        disassemble(allocator, start_r, None),
+                        disassemble(allocator, r, None)
                     );
                 }
             }
@@ -730,14 +730,14 @@ pub fn optimize_sexp(
     let optimized = RefCell::new(HashMap::new());
 
     if DIAG_OPTIMIZATIONS {
-        println!("START OPTIMIZE {}", disassemble(allocator, r));
+        println!("START OPTIMIZE {}", disassemble(allocator, r, None));
     }
     optimize_sexp_(allocator, &optimized, r, eval_f).map(|x| {
         if DIAG_OPTIMIZATIONS {
             println!(
                 "OPTIMIZE_SEXP {} GIVING {}",
-                disassemble(allocator, r),
-                disassemble(allocator, x)
+                disassemble(allocator, r, None),
+                disassemble(allocator, x, None)
             );
         }
         x

@@ -7,6 +7,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
+use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Record, Stream};
 use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
 use crate::classic::clvm_tools::ir::r#type::IRRepr;
@@ -39,7 +40,7 @@ pub fn assemble_from_ir(
                 s_real_name = stripped.to_string();
             }
 
-            match keyword_to_atom().get(&s_real_name) {
+            match keyword_to_atom(OPERATORS_LATEST_VERSION).get(&s_real_name) {
                 Some(v) => allocator.new_atom(v),
                 None => {
                     let v: Vec<u8> = s_real_name.as_bytes().to_vec();
@@ -144,8 +145,8 @@ pub fn disassemble_with_kw(
     write_ir(Rc::new(symbols))
 }
 
-pub fn disassemble(allocator: &mut Allocator, sexp: NodePtr) -> String {
-    return disassemble_with_kw(allocator, sexp, keyword_from_atom());
+pub fn disassemble(allocator: &mut Allocator, sexp: NodePtr, version: Option<usize>) -> String {
+    return disassemble_with_kw(allocator, sexp, keyword_from_atom(version.unwrap_or(OPERATORS_LATEST_VERSION)));
 }
 
 pub fn assemble(allocator: &mut Allocator, s: &str) -> Result<NodePtr, EvalErr> {

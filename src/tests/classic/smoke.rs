@@ -45,10 +45,12 @@ fn large_odd_sized_neg_opc() {
     assert_eq!(result.rest(), "ff8afde1e61f36454dc0000180");
 }
 
+fn opd_conversion() -> OpdConversion { OpdConversion { op_version: Some(0) } }
+
 #[test]
 fn large_odd_sized_neg_opd() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"ff8afde1e61f36454dc0000180".to_string())
         .unwrap();
     assert_eq!(result.rest(), "(0xfde1e61f36454dc00001)");
@@ -57,7 +59,7 @@ fn large_odd_sized_neg_opd() {
 #[test]
 fn mid_negative_value_opd_m1() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"81ff".to_string())
         .unwrap();
     assert_eq!(result.rest(), "-1");
@@ -66,7 +68,7 @@ fn mid_negative_value_opd_m1() {
 #[test]
 fn mid_negative_value_opd_m2() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"81fe".to_string())
         .unwrap();
     assert_eq!(result.rest(), "-2");
@@ -75,7 +77,7 @@ fn mid_negative_value_opd_m2() {
 #[test]
 fn mid_negative_value_opd_two_bytes() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"82ffff".to_string())
         .unwrap();
     assert_eq!(result.rest(), "0xffff");
@@ -84,7 +86,7 @@ fn mid_negative_value_opd_two_bytes() {
 #[test]
 fn mid_negative_value_opd_three_bytes() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"83ffffff".to_string())
         .unwrap();
     assert_eq!(result.rest(), "0xffffff");
@@ -93,7 +95,7 @@ fn mid_negative_value_opd_three_bytes() {
 #[test]
 fn mid_negative_value_opd_tricky_negative_2() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"82ff00".to_string())
         .unwrap();
     assert_eq!(result.rest(), "-256");
@@ -102,7 +104,7 @@ fn mid_negative_value_opd_tricky_negative_2() {
 #[test]
 fn mid_negative_value_opd_tricky_positive_2() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"8200ff".to_string())
         .unwrap();
     assert_eq!(result.rest(), "255");
@@ -111,7 +113,7 @@ fn mid_negative_value_opd_tricky_positive_2() {
 #[test]
 fn mid_negative_value_opd_tricky_negative_3() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"83ff0000".to_string())
         .unwrap();
     assert_eq!(result.rest(), "0xff0000");
@@ -120,7 +122,7 @@ fn mid_negative_value_opd_tricky_negative_3() {
 #[test]
 fn mid_negative_value_opd_tricky_positive_3() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"8300ffff".to_string())
         .unwrap();
     assert_eq!(result.rest(), "0x00ffff");
@@ -153,7 +155,7 @@ fn mid_negative_value_disassemble() {
     let nodeptr = allocator
         .new_atom(&[0xff, 0xff])
         .expect("should be able to make an atom");
-    assert_eq!(disassemble(&mut allocator, nodeptr), "0xffff");
+    assert_eq!(disassemble(&mut allocator, nodeptr, Some(0)), "0xffff");
 }
 
 #[test]
@@ -177,7 +179,7 @@ fn small_test_opc() {
 #[test]
 fn large_odd_sized_pos_opd() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"ff8700ffffffffffff80".to_string())
         .unwrap();
     assert_eq!(result.rest(), "(0x00ffffffffffff)");
@@ -186,7 +188,7 @@ fn large_odd_sized_pos_opd() {
 #[test]
 fn basic_opd() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"80".to_string())
         .unwrap();
     assert_eq!(result.rest(), "()");
@@ -195,7 +197,7 @@ fn basic_opd() {
 #[test]
 fn nil_in_list_opd() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"ff8080".to_string())
         .unwrap();
     assert_eq!(result.rest(), "(())");
@@ -217,7 +219,7 @@ fn big_decode_opd() {
         })
         .unwrap();
 
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &expected.first())
         .unwrap();
     assert_eq!(expected.rest(), result.rest());
@@ -246,7 +248,7 @@ fn compile_program<'a>(
     let input_sexp = allocator.new_pair(input_program, allocator.null()).unwrap();
     let res = runner.run_program(allocator, run_script, input_sexp, None);
 
-    return res.map(|x| disassemble(allocator, x.1));
+    return res.map(|x| disassemble(allocator, x.1, Some(0)));
 }
 
 #[test]
@@ -395,7 +397,7 @@ fn basic_opc_quoted_1() {
 #[test]
 fn test_simple_opd_conversion() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"ff0183666f6f".to_string())
         .unwrap();
     assert_eq!(result.rest(), "(q . \"foo\")");
@@ -625,6 +627,8 @@ fn pool_member_innerpuz() {
         &mut s,
         &vec![
             "run".to_string(),
+            "--operators-version".to_string(),
+            "0".to_string(),
             "-i".to_string(),
             testpath.into_os_string().into_string().unwrap(),
             program.to_string(),
@@ -702,20 +706,20 @@ fn test_fancy_destructuring_type_language() {
     // Use first
     let First::Here(kw) =
         assert_node_not_error(First::Here(ThisNode::Here).select_nodes(&mut allocator, code));
-    assert_eq!(disassemble(&mut allocator, kw), "\"defconst\"");
+    assert_eq!(disassemble(&mut allocator, kw, Some(0)), "\"defconst\"");
 
     // Use second of list
     let Rest::Here(First::Here(name)) = assert_node_not_error(
         Rest::Here(First::Here(ThisNode::Here)).select_nodes(&mut allocator, code),
     );
-    assert_eq!(disassemble(&mut allocator, name), "88");
+    assert_eq!(disassemble(&mut allocator, name, Some(0)), "88");
 
     let NodeSel::Cons((), NodeSel::Cons(name_by_cons, rest)) = assert_node_not_error(
         NodeSel::Cons((), NodeSel::Cons(ThisNode::Here, ThisNode::Here))
             .select_nodes(&mut allocator, code),
     );
-    assert_eq!(disassemble(&mut allocator, name_by_cons), "88");
-    assert_eq!(disassemble(&mut allocator, rest), "((+ 3 1))");
+    assert_eq!(disassemble(&mut allocator, name_by_cons, Some(0)), "88");
+    assert_eq!(disassemble(&mut allocator, rest, Some(0)), "((+ 3 1))");
 }
 
 #[test]

@@ -746,7 +746,7 @@ fn test_check_tricky_arg_path_random() {
             Rc::new(sexp::SExp::Atom(random_tree.loc(), k.clone())),
         )
         .unwrap();
-        let disassembled = disassemble(&mut allocator, converted);
+        let disassembled = disassemble(&mut allocator, converted, Some(0));
         eprintln!("run {} want {} have {}", program, disassembled, res);
         assert_eq!(disassembled, res);
     }
