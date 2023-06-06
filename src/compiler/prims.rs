@@ -185,7 +185,7 @@ pub fn prims() -> Vec<(Vec<u8>, SExp)> {
         ),
         (
             "bls_verify".as_bytes().to_vec(),
-            SExp::Integer(primloc.clone(), 59_u32.to_bigint().unwrap()),
+            SExp::Integer(primloc, 59_u32.to_bigint().unwrap()),
         ),
     ]
 }
