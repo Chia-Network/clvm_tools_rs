@@ -4,6 +4,8 @@ use bls12_381::{G1Affine, G1Projective};
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::tests::classic::run::{do_basic_brun, do_basic_run};
 
+const HASH_LEN: usize = 32;
+
 const MSG1: &[u8] = &[
     0x97, 0x90, 0x63, 0x5d, 0xe8, 0x74, 0x0e, 0x9a, 0x6a, 0x6b, 0x15, 0xfb, 0x6b, 0x72, 0xf3, 0xa1,
     0x6a, 0xfa, 0x09, 0x73, 0xd9, 0x71, 0x97, 0x9b, 0x6b, 0xa5, 0x47, 0x61, 0xd6, 0xe2, 0x50, 0x2c,
@@ -32,17 +34,68 @@ fn test_using_bls_operators_0() {
 }
 
 #[test]
-fn test_using_bls_operators_1() {
+fn test_using_bls_verify_signature_good_msg_classic() {
+    let right_msg = "(0x0102030405)";
+
     let expected_output = bls_map_to_g1(&MSG1);
     let prog = do_basic_run(&vec![
         "run".to_string(),
-        "resources/tests/bls/modern-bls-op-test-1.clsp".to_string(),
+        "resources/tests/bls/classic-bls-verify-signature.clsp".to_string(),
     ])
-    .trim()
-    .to_string();
-    let result = do_basic_brun(&vec!["brun".to_string(), prog])
+        .trim()
+        .to_string();
+    let result = do_basic_brun(&vec!["brun".to_string(), prog, right_msg.to_string()])
         .trim()
         .to_string();
     let hex = Bytes::new(Some(BytesFromType::Raw(expected_output.to_vec()))).hex();
-    assert_eq!(result, format!("0x{hex}"));
+    assert_eq!(result, format!("()"));
+}
+
+#[test]
+fn test_using_bls_verify_signature_bad_msg_classic() {
+    let wrong_msg = "(0x0102030415)";
+
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/bls/classic-bls-verify-signature.clsp".to_string(),
+    ])
+        .trim()
+        .to_string();
+    let result = do_basic_brun(&vec!["brun".to_string(), prog, wrong_msg.to_string()])
+        .trim()
+        .to_string();
+    assert!(result.starts_with("FAIL"));
+}
+#[test]
+fn test_using_bls_verify_signature_good_msg() {
+    let right_msg = "(0x0102030405)";
+
+    let expected_output = bls_map_to_g1(&MSG1);
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/bls/modern-bls-verify-signature.clsp".to_string(),
+    ])
+        .trim()
+        .to_string();
+    let result = do_basic_brun(&vec!["brun".to_string(), prog, right_msg.to_string()])
+        .trim()
+        .to_string();
+    let hex = Bytes::new(Some(BytesFromType::Raw(expected_output.to_vec()))).hex();
+    assert_eq!(result, format!("()"));
+}
+
+#[test]
+fn test_using_bls_verify_signature_bad_msg() {
+    let wrong_msg = "(0x0102030415)";
+
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/bls/modern-bls-verify-signature.clsp".to_string(),
+    ])
+        .trim()
+        .to_string();
+    let result = do_basic_brun(&vec!["brun".to_string(), prog, wrong_msg.to_string()])
+        .trim()
+        .to_string();
+    assert!(result.starts_with("FAIL"));
 }
