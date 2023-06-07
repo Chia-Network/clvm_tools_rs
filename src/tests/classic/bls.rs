@@ -42,8 +42,8 @@ fn test_using_bls_verify_signature_good_msg_classic() {
         "run".to_string(),
         "resources/tests/bls/classic-bls-verify-signature.clsp".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     let result = do_basic_brun(&vec!["brun".to_string(), prog, right_msg.to_string()])
         .trim()
         .to_string();
@@ -59,8 +59,8 @@ fn test_using_bls_verify_signature_bad_msg_classic() {
         "run".to_string(),
         "resources/tests/bls/classic-bls-verify-signature.clsp".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     let result = do_basic_brun(&vec!["brun".to_string(), prog, wrong_msg.to_string()])
         .trim()
         .to_string();
@@ -75,8 +75,8 @@ fn test_using_bls_verify_signature_good_msg() {
         "run".to_string(),
         "resources/tests/bls/modern-bls-verify-signature.clsp".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     let result = do_basic_brun(&vec!["brun".to_string(), prog, right_msg.to_string()])
         .trim()
         .to_string();
@@ -92,8 +92,8 @@ fn test_using_bls_verify_signature_bad_msg() {
         "run".to_string(),
         "resources/tests/bls/modern-bls-verify-signature.clsp".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     let result = do_basic_brun(&vec!["brun".to_string(), prog, wrong_msg.to_string()])
         .trim()
         .to_string();
