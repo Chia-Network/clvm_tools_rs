@@ -351,3 +351,20 @@ fn test_brief_path_optimization() {
     eprintln!("res.unopt.compiled {}", res.unopt.compiled);
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
 }
+
+// Tests the path optimizer on a tricky assign extraction.
+#[test]
+fn test_brief_path_optimization_assign() {
+    let program =
+        fs::read_to_string("resources/tests/test_assign_path_opt.clsp").expect("should exist");
+    let res = do_compile_and_run_opt_size_test_dialect(
+        &program,
+        "((_0 _1 _2 _3 _4 (_50 (_51 _52 _53 99))))",
+        &[],
+        SPEC_23.clone(),
+    )
+    .expect("should compile and run");
+    eprintln!("res.opt.compiled   {}", res.opt.compiled);
+    eprintln!("res.unopt.compiled {}", res.unopt.compiled);
+    assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
+}

@@ -750,11 +750,7 @@ fn codegen_(
                         &mut unused_symbol_table,
                     )
                     .and_then(|code| {
-                        context.post_codegen_function_optimize(
-                            opts.clone(),
-                            Some(h),
-                            Rc::new(code),
-                        )
+                        context.post_codegen_function_optimize(opts.clone(), Some(h), Rc::new(code))
                     })
                     .and_then(|code| {
                         fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)
