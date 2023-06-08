@@ -8,6 +8,7 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
+use crate::compiler::optimize::brief::brief_path_selection;
 use crate::compiler::optimize::{
     deinline_opt, null_optimization, optimize_expr, run_optimizer, CodegenOptimizationResult,
     CompileContextWrapper, Optimization,
@@ -106,12 +107,18 @@ impl Optimization for Strategy23 {
 
     fn post_codegen_function_optimize(
         &mut self,
-        allocator: &mut Allocator,
-        runner: Rc<dyn TRunProgram>,
+        _allocator: &mut Allocator,
+        _runner: Rc<dyn TRunProgram>,
         _opts: Rc<dyn CompilerOpts>,
+        _helper: Option<&HelperForm>,
         code: Rc<SExp>,
     ) -> Result<Rc<SExp>, CompileErr> {
-        run_optimizer(allocator, runner, code)
+        let (changed, result) = brief_path_selection(code.clone());
+        if changed {
+            Ok(result)
+        } else {
+            Ok(code)
+        }
     }
 
     fn pre_final_codegen_optimize(

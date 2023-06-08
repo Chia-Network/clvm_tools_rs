@@ -149,6 +149,7 @@ pub trait Optimization {
         allocator: &mut Allocator,
         runner: Rc<dyn TRunProgram>,
         opts: Rc<dyn CompilerOpts>,
+        helper: Option<&HelperForm>,
         code: Rc<SExp>,
     ) -> Result<Rc<SExp>, CompileErr>;
 

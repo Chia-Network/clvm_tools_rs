@@ -43,7 +43,7 @@ use std::rc::Rc;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, PrimaryCodegen,
+    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
 use crate::compiler::optimize::Optimization;
 use crate::compiler::sexp::SExp;
@@ -132,12 +132,14 @@ impl BasicCompileContext {
     fn post_codegen_function_optimize(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
+        helper: Option<&HelperForm>,
         code: Rc<SExp>,
     ) -> Result<Rc<SExp>, CompileErr> {
         self.optimizer.post_codegen_function_optimize(
             &mut self.allocator,
             self.runner.clone(),
             opts,
+            helper,
             code,
         )
     }

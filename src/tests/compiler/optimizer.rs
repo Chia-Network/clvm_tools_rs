@@ -20,7 +20,7 @@ const MAX_RUN_COST: u64 = 1000000;
 
 #[derive(Debug)]
 struct CompileRunResult {
-    // pub compiled: Rc<SExp>,
+    pub compiled: Rc<SExp>,
     pub compiled_hex: String,
     pub run_result: Rc<SExp>,
 }
@@ -54,7 +54,7 @@ fn run_with_cost(
         .map_err(|e| RunFailure::RunErr(sexp.loc(), format!("{} in {} {}", e.1, sexp, env)))
         .and_then(|reduction| {
             Ok(CompileRunResult {
-                // compiled: sexp.clone(),
+                compiled: sexp.clone(),
                 compiled_hex,
                 run_result: convert_from_clvm_rs(allocator, sexp.loc(), reduction.1)?,
             })
@@ -333,5 +333,21 @@ fn test_optimizer_shrinks_repeated_lets_23() {
         SPEC_23.clone(),
     )
     .expect("should compile and run");
+    assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
+}
+
+#[test]
+fn test_brief_path_optimization() {
+    let program =
+        fs::read_to_string("resources/tests/test_user_path_opt_0.clsp").expect("should exist");
+    let res = do_compile_and_run_opt_size_test_dialect(
+        &program,
+        "((1111111 ((((((987))))))))",
+        &[],
+        SPEC_23.clone(),
+    )
+    .expect("should compile and run");
+    eprintln!("res.opt.compiled   {}", res.opt.compiled);
+    eprintln!("res.unopt.compiled {}", res.unopt.compiled);
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
 }

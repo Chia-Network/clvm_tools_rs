@@ -1,6 +1,6 @@
+use num_bigint::ToBigInt;
 use std::borrow::Borrow;
 use std::rc::Rc;
-use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::node_path::compose_paths;
@@ -13,7 +13,7 @@ use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 
 fn is_quote_atom(a: &SExp) -> bool {
-    if let SExp::Atom(_,n) = a.atomize() {
+    if let SExp::Atom(_, n) = a.atomize() {
         return n.len() == 1 && n[0] == 1;
     }
 
@@ -21,7 +21,7 @@ fn is_quote_atom(a: &SExp) -> bool {
 }
 
 fn is_first_atom(a: &SExp) -> bool {
-    if let SExp::Atom(_,n) = a.atomize() {
+    if let SExp::Atom(_, n) = a.atomize() {
         return n.len() == 1 && n[0] == 5;
     }
 
@@ -29,7 +29,7 @@ fn is_first_atom(a: &SExp) -> bool {
 }
 
 fn is_rest_atom(a: &SExp) -> bool {
-    if let SExp::Atom(_,n) = a.atomize() {
+    if let SExp::Atom(_, n) = a.atomize() {
         return n.len() == 1 && n[0] == 6;
     }
 
@@ -46,12 +46,12 @@ fn brief_path_selection_single(mut body: Rc<SExp>) -> (bool, Rc<SExp>) {
 
     while let Some(lst) = body.proper_list() {
         if let [cmd, arg] = &lst[..] {
-            if is_quote_atom(&cmd) {
+            if is_quote_atom(cmd) {
                 break;
             }
 
-            let is_first = is_first_atom(&cmd);
-            if is_first || is_rest_atom(&cmd) {
+            let is_first = is_first_atom(cmd);
+            if is_first || is_rest_atom(cmd) {
                 found_stack += 1;
                 target_path *= 2_u32.to_bigint().unwrap();
                 if !is_first {
@@ -66,12 +66,11 @@ fn brief_path_selection_single(mut body: Rc<SExp>) -> (bool, Rc<SExp>) {
     }
 
     if found_stack > 0 {
-        let intval =
-            if let SExp::Integer(_l,i) = body.borrow() {
-                Some(i.clone())
-            } else {
-                None
-            };
+        let intval = if let SExp::Integer(_l, i) = body.borrow() {
+            Some(i.clone())
+        } else {
+            None
+        };
 
         if let Some(i) = intval {
             // The number to the left is "closer to the root".

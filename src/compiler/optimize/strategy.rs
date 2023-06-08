@@ -119,9 +119,10 @@ impl Optimization for ExistingStrategy {
         allocator: &mut Allocator,
         runner: Rc<dyn TRunProgram>,
         opts: Rc<dyn CompilerOpts>,
+        helper: Option<&HelperForm>,
         code: Rc<SExp>,
     ) -> Result<Rc<SExp>, CompileErr> {
-        if opts.optimize() {
+        if opts.optimize() && helper.is_some() {
             run_optimizer(allocator, runner, code)
         } else {
             Ok(code)

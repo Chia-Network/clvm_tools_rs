@@ -750,7 +750,11 @@ fn codegen_(
                         &mut unused_symbol_table,
                     )
                     .and_then(|code| {
-                        context.post_codegen_function_optimize(opts.clone(), Rc::new(code))
+                        context.post_codegen_function_optimize(
+                            opts.clone(),
+                            Some(h),
+                            Rc::new(code),
+                        )
                     })
                     .and_then(|code| {
                         fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)
@@ -1290,10 +1294,13 @@ fn final_codegen(
 ) -> Result<PrimaryCodegen, CompileErr> {
     let opt_final_expr = context.pre_final_codegen_optimize(opts.clone(), compiler)?;
 
-    generate_expr_code(context, opts, compiler, opt_final_expr).map(|code| {
+    let optimizer_opts = opts.clone();
+    generate_expr_code(context, opts, compiler, opt_final_expr).and_then(|code| {
         let mut final_comp = compiler.clone();
-        final_comp.final_code = Some(CompiledCode(code.0, code.1));
-        final_comp
+        let optimized_code =
+            context.post_codegen_function_optimize(optimizer_opts.clone(), None, code.1.clone())?;
+        final_comp.final_code = Some(CompiledCode(code.0, optimized_code));
+        Ok(final_comp)
     })
 }
 
