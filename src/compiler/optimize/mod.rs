@@ -1,4 +1,5 @@
 pub mod above22;
+pub mod brief;
 pub mod strategy;
 
 #[cfg(test)]
