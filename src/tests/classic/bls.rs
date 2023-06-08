@@ -93,3 +93,31 @@ fn test_using_bls_verify_signature_bad_msg() {
         .to_string();
     assert!(result.starts_with("FAIL"));
 }
+
+#[test]
+fn test_coinid_in_softfork_bad() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/bls/coinid-fail.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let result = do_basic_brun(&vec!["brun".to_string(), prog, "()".to_string()])
+        .trim()
+        .to_string();
+    assert!(result.starts_with("FAIL"));
+}
+
+#[test]
+fn test_coinid_in_softfork_good() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/bls/coinid-good.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let result = do_basic_brun(&vec!["brun".to_string(), prog, "()".to_string()])
+        .trim()
+        .to_string();
+    assert!(result.starts_with("()"));
+}
