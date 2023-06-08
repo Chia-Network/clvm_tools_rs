@@ -35,7 +35,6 @@ fn test_using_bls_operators_0() {
 fn test_using_bls_verify_signature_good_msg_classic() {
     let right_msg = "(0x0102030405)";
 
-    let expected_output = bls_map_to_g1(&MSG1);
     let prog = do_basic_run(&vec![
         "run".to_string(),
         "resources/tests/bls/classic-bls-verify-signature.clsp".to_string(),
@@ -45,7 +44,6 @@ fn test_using_bls_verify_signature_good_msg_classic() {
     let result = do_basic_brun(&vec!["brun".to_string(), prog, right_msg.to_string()])
         .trim()
         .to_string();
-    let hex = Bytes::new(Some(BytesFromType::Raw(expected_output.to_vec()))).hex();
     assert_eq!(result, format!("()"));
 }
 
@@ -68,7 +66,6 @@ fn test_using_bls_verify_signature_bad_msg_classic() {
 fn test_using_bls_verify_signature_good_msg() {
     let right_msg = "(0x0102030405)";
 
-    let expected_output = bls_map_to_g1(&MSG1);
     let prog = do_basic_run(&vec![
         "run".to_string(),
         "resources/tests/bls/modern-bls-verify-signature.clsp".to_string(),
@@ -78,7 +75,6 @@ fn test_using_bls_verify_signature_good_msg() {
     let result = do_basic_brun(&vec!["brun".to_string(), prog, right_msg.to_string()])
         .trim()
         .to_string();
-    let hex = Bytes::new(Some(BytesFromType::Raw(expected_output.to_vec()))).hex();
     assert_eq!(result, format!("()"));
 }
 
