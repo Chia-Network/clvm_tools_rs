@@ -195,7 +195,7 @@ where
     }
 
     let new_lambda_body =
-        replace_in_bodyform_subset(current_path, &pass_on_replacements, &inner_body, f);
+        replace_in_bodyform_subset(current_path, &pass_on_replacements, inner_body, f);
     current_path.truncate(path_idx);
     make_f(new_lambda_body)
 }
