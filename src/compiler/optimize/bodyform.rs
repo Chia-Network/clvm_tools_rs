@@ -13,8 +13,7 @@ use crate::compiler::comptypes::{Binding, BodyForm, CompileForm, LambdaData, Let
 pub enum BodyformPathArc {
     LetBinding(usize),   // In (let ((a 1) (b 2)) LetBinding(1) points to 2
     CallArgument(usize), // in (x0 x1 x2 x3 x4 x5) CallArgument(3) points to x3
-    LambdaBody,          // In the body of the lambda as opposed to the lambda itself.
-    ModBody,             // In the body of the mod.
+    BodyOf,              // In the body of a lambda, mod or let.
 }
 
 /// True if b is contained in a.
@@ -43,7 +42,7 @@ pub fn path_overlap(a: &[BodyformPathArc], b: &[BodyformPathArc]) -> bool {
     path_overlap_one_way(a, b) || path_overlap_one_way(b, a)
 }
 
-/// A single valid result from visit_detect_in_body_form noting the path to the
+/// A single valid result from visit_detect_in_bodyform noting the path to the
 /// bodyform, the form itself and the returned context from the visitor function.
 #[derive(Clone)]
 pub struct PathDetectVisitorResult<R> {
@@ -55,7 +54,7 @@ pub struct PathDetectVisitorResult<R> {
 /// Visit over a bodyform offering the path, original and current bodyforms to the
 /// visitor.  The vistor returns Ok(None) to just go on, Ok(Some(R)) to accept and
 /// record the path and can return error to abort.
-fn visit_detect_in_body_form_inner<F, R, E>(
+fn visit_detect_in_bodyform_inner<F, R, E>(
     path: &mut Vec<BodyformPathArc>,
     res: &mut Vec<PathDetectVisitorResult<R>>,
     f: &F,
@@ -70,25 +69,28 @@ where
         BodyForm::Call(_l, args) => {
             for (i, a) in args.iter().enumerate() {
                 path.push(BodyformPathArc::CallArgument(i));
-                visit_detect_in_body_form_inner(path, res, f, original, a)?;
+                visit_detect_in_bodyform_inner(path, res, f, original, a)?;
                 path.truncate(path_idx);
             }
         }
         BodyForm::Let(_k, b) => {
             for (i, a) in b.bindings.iter().enumerate() {
                 path.push(BodyformPathArc::LetBinding(i));
-                visit_detect_in_body_form_inner(path, res, f, original, a.body.borrow())?;
+                visit_detect_in_bodyform_inner(path, res, f, original, a.body.borrow())?;
                 path.truncate(path_idx);
             }
+            path.push(BodyformPathArc::BodyOf);
+            visit_detect_in_bodyform_inner(path, res, f, original, b.body.borrow())?;
+            path.truncate(path_idx);
         }
         BodyForm::Lambda(ldata) => {
-            path.push(BodyformPathArc::LambdaBody);
-            visit_detect_in_body_form_inner(path, res, f, original, ldata.body.borrow())?;
+            path.push(BodyformPathArc::BodyOf);
+            visit_detect_in_bodyform_inner(path, res, f, original, ldata.body.borrow())?;
             path.truncate(path_idx);
         }
         BodyForm::Mod(_, form) => {
-            path.push(BodyformPathArc::ModBody);
-            visit_detect_in_body_form_inner(path, res, f, original, form.exp.borrow())?;
+            path.push(BodyformPathArc::BodyOf);
+            visit_detect_in_bodyform_inner(path, res, f, original, form.exp.borrow())?;
             path.truncate(path_idx);
         }
         _ => {}
@@ -106,7 +108,7 @@ where
     Ok(())
 }
 
-pub fn visit_detect_in_body_form<F, R, E>(
+pub fn visit_detect_in_bodyform<F, R, E>(
     f: &F,
     bf: &BodyForm,
 ) -> Result<Vec<PathDetectVisitorResult<R>>, E>
@@ -115,7 +117,7 @@ where
 {
     let mut path = vec![];
     let mut res = vec![];
-    visit_detect_in_body_form_inner(&mut path, &mut res, f, bf, bf)?;
+    visit_detect_in_bodyform_inner(&mut path, &mut res, f, bf, bf)?;
     Ok(res)
 }
 
@@ -194,10 +196,10 @@ where
         return outer_body.clone();
     }
 
-    let new_lambda_body =
+    let new_binding_body =
         replace_in_bodyform_subset(current_path, &pass_on_replacements, inner_body, f);
     current_path.truncate(path_idx);
-    make_f(new_lambda_body)
+    make_f(new_binding_body)
 }
 
 /// For some partially matched subset of the replacement set at index idx in their
@@ -212,6 +214,7 @@ where
     R: Clone,
     F: Fn(&PathDetectVisitorResult<R>, &BodyForm) -> BodyForm,
 {
+    eprintln!("replace_in_bodyform_subset {}", bf.to_sexp());
     // We already checked for overlaps, so there'll be only one if any.
     let exact_match_replacements: Vec<PathDetectVisitorResult<R>> = replacements
         .iter()
@@ -235,34 +238,49 @@ where
             &|args| BodyForm::Call(l.clone(), args),
             f,
         ),
-        BodyForm::Let(k, b) => replace_in_bodyform_inner_list(
-            current_path,
-            replacements,
-            &b.bindings,
-            &BodyformPathArc::LetBinding,
-            &|e: &Rc<Binding>| &e.body,
-            &|w: &Rc<Binding>, b: BodyForm| {
-                let wb: &Binding = w.borrow();
-                Rc::new(Binding {
-                    body: Rc::new(b),
-                    ..wb.clone()
-                })
-            },
-            &|bindings| {
-                BodyForm::Let(
-                    k.clone(),
-                    Box::new(LetData {
-                        bindings,
-                        ..*b.clone()
-                    }),
-                )
-            },
-            f,
-        ),
+        BodyForm::Let(k, b) => {
+            let path_idx = current_path.len();
+            current_path.push(BodyformPathArc::BodyOf);
+            let pass_on_replacements: Vec<PathDetectVisitorResult<R>> = replacements
+                .iter()
+                .filter(|r| path_overlap(current_path, &r.path))
+                .cloned()
+                .collect();
+
+            let new_lambda_body = replace_in_bodyform_subset(current_path, &pass_on_replacements, b.body.borrow(), f);
+
+            current_path.truncate(path_idx);
+
+            replace_in_bodyform_inner_list(
+                current_path,
+                replacements,
+                &b.bindings,
+                &BodyformPathArc::LetBinding,
+                &|e: &Rc<Binding>| &e.body,
+                &|w: &Rc<Binding>, b: BodyForm| {
+                    let wb: &Binding = w.borrow();
+                    Rc::new(Binding {
+                        body: Rc::new(b),
+                        ..wb.clone()
+                    })
+                },
+                &|bindings| {
+                    BodyForm::Let(
+                        k.clone(),
+                        Box::new(LetData {
+                            bindings,
+                            body: Rc::new(new_lambda_body.clone()),
+                            ..*b.clone()
+                        }),
+                    )
+                },
+                f,
+            )
+        }
         BodyForm::Lambda(l) => replace_in_bodyform_inner_body(
             current_path,
             replacements,
-            BodyformPathArc::LambdaBody,
+            BodyformPathArc::BodyOf,
             bf,
             &l.body,
             &|b| {
@@ -276,7 +294,7 @@ where
         BodyForm::Mod(l, m) => replace_in_bodyform_inner_body(
             current_path,
             replacements,
-            BodyformPathArc::ModBody,
+            BodyformPathArc::BodyOf,
             bf,
             &m.exp,
             &|b| {
@@ -294,7 +312,7 @@ where
     }
 }
 
-/// Replace subexpressions in a bodyform given a set of PathDetectVisitor<_>.
+/// Replace subexpressions in a bodyform given a set of PathDetectVisitorResult<_>.
 pub fn replace_in_bodyform<F, R>(
     replacements: &[PathDetectVisitorResult<R>],
     bf: &BodyForm,
@@ -311,7 +329,7 @@ where
     // We should not have any overlapping paths... if we do, that seems like a
     // failure since a replacement would be lost.
     for (i, p) in replacements.iter().enumerate() {
-        for q in replacements.iter().skip(i) {
+        for q in replacements.iter().skip(i+1) {
             if path_overlap(&p.path, &q.path) {
                 return None; // An overlap
             }
@@ -326,4 +344,55 @@ where
         bf,
         f,
     ))
+}
+
+/// Retrieve bodyform by path
+pub fn retrieve_bodyform<F,R>(
+    path: &[BodyformPathArc],
+    mut found: &BodyForm,
+    f: &F
+) -> Option<R>
+where
+    F: Fn(&BodyForm) -> R
+{
+    for p in path.iter() {
+        match p {
+            BodyformPathArc::LetBinding(n) => {
+                if let BodyForm::Let(_, l) = found {
+                    if *n >= l.bindings.len() {
+                        return None;
+                    }
+                    found = l.bindings[*n].body.borrow();
+                } else {
+                    return None;
+                }
+            }
+            BodyformPathArc::CallArgument(n) => {
+                if let BodyForm::Call(_, a) = found {
+                    if *n >= a.len() {
+                        return None;
+                    }
+                    found = a[*n].borrow();
+                } else {
+                    return None;
+                }
+            }
+            BodyformPathArc::BodyOf => {
+                match found {
+                    BodyForm::Let(_, b) => {
+                        found = b.body.borrow();
+                    }
+                    BodyForm::Lambda(l) => {
+                        found = l.body.borrow();
+                    }
+                    BodyForm::Mod(_, m) => {
+                        found = m.exp.borrow();
+                    }
+                    _ => { return None; }
+                }
+            }
+        }
+    }
+
+    Some(f(found))
 }
