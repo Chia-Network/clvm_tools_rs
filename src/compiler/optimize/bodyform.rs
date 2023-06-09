@@ -247,7 +247,8 @@ where
                 .cloned()
                 .collect();
 
-            let new_lambda_body = replace_in_bodyform_subset(current_path, &pass_on_replacements, b.body.borrow(), f);
+            let new_lambda_body =
+                replace_in_bodyform_subset(current_path, &pass_on_replacements, b.body.borrow(), f);
 
             current_path.truncate(path_idx);
 
@@ -329,7 +330,7 @@ where
     // We should not have any overlapping paths... if we do, that seems like a
     // failure since a replacement would be lost.
     for (i, p) in replacements.iter().enumerate() {
-        for q in replacements.iter().skip(i+1) {
+        for q in replacements.iter().skip(i + 1) {
             if path_overlap(&p.path, &q.path) {
                 return None; // An overlap
             }
@@ -347,13 +348,9 @@ where
 }
 
 /// Retrieve bodyform by path
-pub fn retrieve_bodyform<F,R>(
-    path: &[BodyformPathArc],
-    mut found: &BodyForm,
-    f: &F
-) -> Option<R>
+pub fn retrieve_bodyform<F, R>(path: &[BodyformPathArc], mut found: &BodyForm, f: &F) -> Option<R>
 where
-    F: Fn(&BodyForm) -> R
+    F: Fn(&BodyForm) -> R,
 {
     for p in path.iter() {
         match p {
@@ -377,20 +374,20 @@ where
                     return None;
                 }
             }
-            BodyformPathArc::BodyOf => {
-                match found {
-                    BodyForm::Let(_, b) => {
-                        found = b.body.borrow();
-                    }
-                    BodyForm::Lambda(l) => {
-                        found = l.body.borrow();
-                    }
-                    BodyForm::Mod(_, m) => {
-                        found = m.exp.borrow();
-                    }
-                    _ => { return None; }
+            BodyformPathArc::BodyOf => match found {
+                BodyForm::Let(_, b) => {
+                    found = b.body.borrow();
                 }
-            }
+                BodyForm::Lambda(l) => {
+                    found = l.body.borrow();
+                }
+                BodyForm::Mod(_, m) => {
+                    found = m.exp.borrow();
+                }
+                _ => {
+                    return None;
+                }
+            },
         }
     }
 
