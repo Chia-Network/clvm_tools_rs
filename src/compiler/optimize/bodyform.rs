@@ -119,6 +119,7 @@ where
     Ok(res)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn replace_in_bodyform_inner_list<'a, L, P, F, F1, G, H, R>(
     current_path: &mut Vec<BodyformPathArc>,
     replacements: &[PathDetectVisitorResult<R>],
@@ -146,7 +147,7 @@ where
         // Continue only with potentially matching replacements.
         let pass_on_replacements: Vec<PathDetectVisitorResult<R>> = replacements
             .iter()
-            .filter(|r| path_overlap(&current_path, &r.path))
+            .filter(|r| path_overlap(current_path, &r.path))
             .cloned()
             .collect();
 
@@ -158,8 +159,8 @@ where
         }
 
         collection.push(compose_wrap(
-            &a,
-            replace_in_bodyform_subset(current_path, &pass_on_replacements, &extract_body(&a), f),
+            a,
+            replace_in_bodyform_subset(current_path, &pass_on_replacements, extract_body(a), f),
         ));
         current_path.truncate(path_idx);
     }
@@ -184,7 +185,7 @@ where
     current_path.push(new_path_elt);
     let pass_on_replacements: Vec<PathDetectVisitorResult<R>> = replacements
         .iter()
-        .filter(|r| path_overlap(&current_path, &r.path))
+        .filter(|r| path_overlap(current_path, &r.path))
         .cloned()
         .collect();
 
@@ -201,7 +202,7 @@ where
 
 /// For some partially matched subset of the replacement set at index idx in their
 /// paths, do the child replacements.
-fn replace_in_bodyform_subset<'a, F, R>(
+fn replace_in_bodyform_subset<F, R>(
     current_path: &mut Vec<BodyformPathArc>,
     replacements: &[PathDetectVisitorResult<R>],
     bf: &BodyForm,
@@ -227,8 +228,8 @@ where
         BodyForm::Call(l, args) => replace_in_bodyform_inner_list(
             current_path,
             replacements,
-            &args,
-            &|i| BodyformPathArc::CallArgument(i),
+            args,
+            &BodyformPathArc::CallArgument,
             &|e: &Rc<BodyForm>| e.borrow(),
             &|_w, b| Rc::new(b),
             &|args| BodyForm::Call(l.clone(), args),
@@ -238,7 +239,7 @@ where
             current_path,
             replacements,
             &b.bindings,
-            &|i| BodyformPathArc::LetBinding(i),
+            &BodyformPathArc::LetBinding,
             &|e: &Rc<Binding>| &e.body,
             &|w: &Rc<Binding>, b: BodyForm| {
                 let wb: &Binding = w.borrow();
@@ -260,9 +261,9 @@ where
         ),
         BodyForm::Lambda(l) => replace_in_bodyform_inner_body(
             current_path,
-            &replacements,
+            replacements,
             BodyformPathArc::LambdaBody,
-            &bf,
+            bf,
             &l.body,
             &|b| {
                 BodyForm::Lambda(Box::new(LambdaData {
@@ -276,7 +277,7 @@ where
             current_path,
             replacements,
             BodyformPathArc::ModBody,
-            &bf,
+            bf,
             &m.exp,
             &|b| {
                 BodyForm::Mod(
