@@ -210,10 +210,20 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
                 Rc::new(rename_in_bodyform(namemap, ldata.captures.clone()));
             let renamed_capture_outputs =
                 rename_in_cons(namemap, ldata.capture_args.clone(), false);
-            let renamed_body = rename_in_bodyform(namemap, ldata.body.clone());
+            // Rename the lambda's own arguments.
+            let arg_renames = invent_new_names_sexp(ldata.args.clone());
+            let mut arg_rename_map = HashMap::new();
+            let mut downstream_namemap = namemap.clone();
+            for (n, v) in arg_renames.into_iter() {
+                arg_rename_map.insert(n.clone(), v.clone());
+                downstream_namemap.insert(n, v);
+            }
+            let renamed_args = rename_in_cons(&arg_rename_map, ldata.args.clone(), false);
+            let renamed_body = rename_in_bodyform(&downstream_namemap, ldata.body.clone());
             BodyForm::Lambda(Box::new(LambdaData {
                 captures: renamed_capture_inputs,
                 capture_args: renamed_capture_outputs,
+                args: renamed_args,
                 body: Rc::new(renamed_body),
                 ..*ldata.clone()
             }))
