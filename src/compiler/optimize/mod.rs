@@ -1,8 +1,7 @@
 pub mod above22;
 pub mod bodyform;
 pub mod brief;
-// Turn on when a bit better developed.
-// pub mod cse;
+pub mod cse;
 pub mod strategy;
 
 #[cfg(test)]
