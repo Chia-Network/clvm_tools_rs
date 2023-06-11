@@ -214,7 +214,6 @@ where
     R: Clone,
     F: Fn(&PathDetectVisitorResult<R>, &BodyForm) -> BodyForm,
 {
-    eprintln!("replace_in_bodyform_subset {}", bf.to_sexp());
     // We already checked for overlaps, so there'll be only one if any.
     let exact_match_replacements: Vec<PathDetectVisitorResult<R>> = replacements
         .iter()

@@ -3,10 +3,14 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::compiler::clvm::sha256tree;
-use crate::compiler::comptypes::{Binding, BindingPattern, BodyForm, CompileErr, DefunData, HelperForm, LetFormInlineHint, LetFormKind, LetData};
+use crate::compiler::comptypes::{
+    Binding, BindingPattern, BodyForm, CompileErr, DefunData, HelperForm, LetData,
+    LetFormInlineHint, LetFormKind,
+};
 use crate::compiler::gensym::gensym;
 use crate::compiler::optimize::bodyform::{
-    path_overlap_one_way, visit_detect_in_bodyform, BodyformPathArc, PathDetectVisitorResult, retrieve_bodyform, replace_in_bodyform,
+    path_overlap_one_way, replace_in_bodyform, retrieve_bodyform, visit_detect_in_bodyform,
+    BodyformPathArc, PathDetectVisitorResult,
 };
 use crate::compiler::sexp::{decode_string, SExp};
 
@@ -161,10 +165,7 @@ fn sorted_cse_detections_by_applicability(
     detections_with_dependencies
 }
 
-pub fn cse_optimize_bodyform(
-    h: &HelperForm,
-    d: &DefunData,
-) -> Result<Rc<BodyForm>, CompileErr> {
+pub fn cse_optimize_bodyform(h: &HelperForm, d: &DefunData) -> Result<Rc<BodyForm>, CompileErr> {
     let cse_detections = cse_detect(d.body.clone())?;
     eprintln!("cse_detections {}", cse_detections.len());
 
@@ -214,11 +215,10 @@ pub fn cse_optimize_bodyform(
             //
             // These might have changed from when they were detected
             // because other common subexpressions were substuted.
-            let prototype_instance = if let Some(r) = retrieve_bodyform(
-                &d.instances[0].path,
-                &function_body,
-                &|b: &BodyForm| b.clone(),
-            ) {
+            let prototype_instance = if let Some(r) =
+                retrieve_bodyform(&d.instances[0].path, &function_body, &|b: &BodyForm| {
+                    b.clone()
+                }) {
                 r
             } else {
                 return Err(CompileErr(
@@ -256,14 +256,19 @@ pub fn cse_optimize_bodyform(
             ) {
                 function_body = Rc::new(res);
             } else {
-                return Err(CompileErr(h.loc(), format!("cse replacement failed in helper {}, which shouldn't be possible", decode_string(h.name()))));
+                return Err(CompileErr(
+                    h.loc(),
+                    format!(
+                        "cse replacement failed in helper {}, which shouldn't be possible",
+                        decode_string(h.name())
+                    ),
+                ));
             }
 
             // Put aside the definition in this binding set.
             binding_set.push((new_variable_name, prototype_instance));
 
-            detections_with_dependencies =
-                sorted_cse_detections_by_applicability(&keep_detections);
+            detections_with_dependencies = sorted_cse_detections_by_applicability(&keep_detections);
         }
 
         new_binding_stack.push(
