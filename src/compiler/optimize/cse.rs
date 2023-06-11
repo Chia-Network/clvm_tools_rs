@@ -4,8 +4,7 @@ use std::rc::Rc;
 
 use crate::compiler::clvm::sha256tree;
 use crate::compiler::comptypes::{
-    Binding, BindingPattern, BodyForm, CompileErr, DefunData, HelperForm, LetData,
-    LetFormInlineHint, LetFormKind,
+    Binding, BindingPattern, BodyForm, CompileErr, LetData, LetFormInlineHint, LetFormKind,
 };
 use crate::compiler::gensym::gensym;
 use crate::compiler::optimize::bodyform::{
@@ -13,6 +12,7 @@ use crate::compiler::optimize::bodyform::{
     BodyformPathArc, PathDetectVisitorResult,
 };
 use crate::compiler::sexp::{decode_string, SExp};
+use crate::compiler::srcloc::Srcloc;
 
 // Common subexpression elimintation.
 // catalog subexpressions of the given bodyform and
@@ -63,7 +63,7 @@ fn is_fully_dominated(cse: &CSEDetection, detections: &[CSEDetection]) -> bool {
     host_set.len() == 1
 }
 
-pub fn cse_detect(fe: Rc<BodyForm>) -> Result<Vec<CSEDetection>, CompileErr> {
+pub fn cse_detect(fe: &BodyForm) -> Result<Vec<CSEDetection>, CompileErr> {
     let found_exprs = visit_detect_in_bodyform(
         &|path, _original, form| {
             // The whole expression isn't a repeat.
@@ -159,21 +159,25 @@ fn sorted_cse_detections_by_applicability(
 ) -> Vec<(usize, CSEDetection)> {
     let mut detections_with_dependencies: Vec<(usize, CSEDetection)> = cse_detections
         .iter()
-        .map(|a| (number_of_overlaps(&cse_detections, a), a.clone()))
+        .map(|a| (number_of_overlaps(cse_detections, a), a.clone()))
         .collect();
     detections_with_dependencies.sort_by(|(a, _), (b, _)| a.cmp(b));
     detections_with_dependencies
 }
 
-pub fn cse_optimize_bodyform(h: &HelperForm, d: &DefunData) -> Result<Rc<BodyForm>, CompileErr> {
-    let cse_detections = cse_detect(d.body.clone())?;
+pub fn cse_optimize_bodyform(
+    loc: &Srcloc,
+    name: &[u8],
+    b: &BodyForm,
+) -> Result<BodyForm, CompileErr> {
+    let cse_detections = cse_detect(b)?;
     eprintln!("cse_detections {}", cse_detections.len());
 
     // While we have them, apply any detections that overlap no others.
     let mut detections_with_dependencies: Vec<(usize, CSEDetection)> =
         sorted_cse_detections_by_applicability(&cse_detections);
 
-    let mut function_body = d.body.clone();
+    let mut function_body = b.clone();
     let mut new_binding_stack = Vec::new();
 
     while !detections_with_dependencies.is_empty() {
@@ -193,11 +197,8 @@ pub fn cse_optimize_bodyform(h: &HelperForm, d: &DefunData) -> Result<Rc<BodyFor
         // looping.
         if detections_to_apply.is_empty() && !keep_detections.is_empty() {
             return Err(CompileErr(
-                h.loc(),
-                format!(
-                    "CSE optimization failed in helper {}",
-                    decode_string(h.name())
-                ),
+                loc.clone(),
+                format!("CSE optimization failed in helper {}", decode_string(name)),
             ));
         }
 
@@ -222,10 +223,10 @@ pub fn cse_optimize_bodyform(h: &HelperForm, d: &DefunData) -> Result<Rc<BodyFor
                 r
             } else {
                 return Err(CompileErr(
-                    h.loc(),
+                    loc.clone(),
                     format!(
                         "CSE Error in {}: could not find form to replace for path {:?}",
-                        decode_string(h.name()),
+                        decode_string(name),
                         d.instances[0].path
                     ),
                 ));
@@ -254,13 +255,13 @@ pub fn cse_optimize_bodyform(h: &HelperForm, d: &DefunData) -> Result<Rc<BodyFor
                 function_body.borrow(),
                 &|v: &PathDetectVisitorResult<()>, _b| v.subexp.clone(),
             ) {
-                function_body = Rc::new(res);
+                function_body = res;
             } else {
                 return Err(CompileErr(
-                    h.loc(),
+                    loc.clone(),
                     format!(
                         "cse replacement failed in helper {}, which shouldn't be possible",
-                        decode_string(h.name())
+                        decode_string(name)
                     ),
                 ));
             }
@@ -290,16 +291,16 @@ pub fn cse_optimize_bodyform(h: &HelperForm, d: &DefunData) -> Result<Rc<BodyFor
     // All CSE replacements are done.  We unwind the new bindings
     // into a stack of parallel let forms.
     for binding_list in new_binding_stack.into_iter() {
-        function_body = Rc::new(BodyForm::Let(
+        function_body = BodyForm::Let(
             LetFormKind::Parallel,
             Box::new(LetData {
                 loc: function_body.loc(),
                 kw: None,
-                inline_hint: Some(LetFormInlineHint::NonInline(h.loc())),
+                inline_hint: Some(LetFormInlineHint::NonInline(loc.clone())),
                 bindings: binding_list,
-                body: function_body,
+                body: Rc::new(function_body),
             }),
-        ));
+        );
     }
 
     Ok(function_body)
