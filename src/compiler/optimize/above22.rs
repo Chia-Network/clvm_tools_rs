@@ -13,8 +13,8 @@ use crate::compiler::optimize::brief::brief_path_selection;
 use crate::compiler::optimize::cse::cse_optimize_bodyform;
 use crate::compiler::optimize::double_apply::remove_double_apply;
 use crate::compiler::optimize::{
-    deinline_opt, null_optimization, optimize_expr, run_optimizer, CodegenOptimizationResult,
-    CompileContextWrapper, Optimization,
+    deinline_opt, null_optimization, optimize_expr, run_optimizer, CompileContextWrapper,
+    Optimization,
 };
 use crate::compiler::sexp::SExp;
 
@@ -51,10 +51,6 @@ impl Optimization for Strategy23 {
                     },
                 );
 
-                eprintln!(
-                    "rebuilt helper with CSE optimization: {}",
-                    new_helper.to_sexp()
-                );
                 rebuilt_helpers.push(new_helper);
             } else {
                 rebuilt_helpers.push(h.clone());
@@ -75,7 +71,6 @@ impl Optimization for Strategy23 {
         let mut symbols = HashMap::new();
         let mut wrapper =
             CompileContextWrapper::new(allocator, runner, &mut symbols, self.duplicate());
-        eprintln!("deinlining program {}", cf.to_sexp());
         let res = deinline_opt(&mut wrapper.context, opts.clone(), cf)?;
         Ok(res)
     }
@@ -85,15 +80,6 @@ impl Optimization for Strategy23 {
         code_generator: PrimaryCodegen,
     ) -> Result<PrimaryCodegen, CompileErr> {
         Ok(code_generator)
-    }
-
-    fn function_codegen_optimization(
-        &mut self,
-        _code_generator: &PrimaryCodegen,
-        _hf: Option<HelperForm>,
-        _repr: Rc<SExp>,
-    ) -> Result<CodegenOptimizationResult, CompileErr> {
-        Ok(Default::default())
     }
 
     fn macro_optimization(
@@ -167,7 +153,15 @@ impl Optimization for Strategy23 {
         _opts: Rc<dyn CompilerOpts>,
         generated: SExp,
     ) -> Result<SExp, CompileErr> {
-        Ok(generated)
+        let (null_worked, result) = null_optimization(Rc::new(generated.clone()), true);
+        let (double_worked, dbl_result) = remove_double_apply(result);
+        let (brief_worked, brief_result) = brief_path_selection(dbl_result.clone());
+        if null_worked || double_worked || brief_worked {
+            let borrowed: &SExp = brief_result.borrow();
+            Ok(borrowed.clone())
+        } else {
+            Ok(generated)
+        }
     }
 
     fn duplicate(&self) -> Box<dyn Optimization> {

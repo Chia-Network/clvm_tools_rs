@@ -10,8 +10,8 @@ use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
 use crate::compiler::optimize::{
-    deinline_opt, fe_opt, null_optimization, optimize_expr, run_optimizer,
-    CodegenOptimizationResult, CompileContextWrapper, Optimization,
+    deinline_opt, fe_opt, null_optimization, optimize_expr, run_optimizer, CompileContextWrapper,
+    Optimization,
 };
 use crate::compiler::sexp::SExp;
 
@@ -64,15 +64,6 @@ impl Optimization for ExistingStrategy {
         code_generator: PrimaryCodegen,
     ) -> Result<PrimaryCodegen, CompileErr> {
         Ok(code_generator)
-    }
-
-    fn function_codegen_optimization(
-        &mut self,
-        _code_generator: &PrimaryCodegen,
-        _hf: Option<HelperForm>,
-        _repr: Rc<SExp>,
-    ) -> Result<CodegenOptimizationResult, CompileErr> {
-        Ok(Default::default())
     }
 
     fn macro_optimization(

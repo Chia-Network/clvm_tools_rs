@@ -118,17 +118,6 @@ pub trait Optimization {
         code_generator: PrimaryCodegen,
     ) -> Result<PrimaryCodegen, CompileErr>;
 
-    /// Represents optimization the code generator does on functions that have
-    /// been gerated but before emitting the function proper.  It has the ability
-    /// to ask the compiler to backtrack to functions that depend on this one.
-    /// hf is none if we're operating on the main expression.
-    fn function_codegen_optimization(
-        &mut self,
-        code_generator: &PrimaryCodegen,
-        hf: Option<HelperForm>,
-        repr: Rc<SExp>,
-    ) -> Result<CodegenOptimizationResult, CompileErr>;
-
     /// Optimize macro bodies.
     fn macro_optimization(
         &mut self,
@@ -397,22 +386,17 @@ pub fn deinline_opt(
         for i in 0..compileform.helpers.len() {
             // Try flipped.
             let old_helper = compileform.helpers[i].clone();
-            eprintln!("try flipping {}", old_helper.to_sexp());
             if !flip_helper(&mut compileform.helpers[i]) {
                 continue;
             }
 
-            eprintln!("flipped to {}", compileform.helpers[i].to_sexp());
             let maybe_smaller_program = codegen(context, opts.clone(), &compileform)?;
-            eprintln!("result {}", maybe_smaller_program);
             let new_metric = sexp_scale(&maybe_smaller_program);
 
             // Don't keep this change if it made things worse.
             if new_metric >= metric {
-                eprintln!("NO  new metric {} vs {}", new_metric, metric);
                 compileform.helpers[i] = old_helper;
             } else {
-                eprintln!("YES new metric {} vs {}", new_metric, metric);
                 metric = new_metric;
                 best_compileform = compileform.clone();
             }

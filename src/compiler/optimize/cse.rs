@@ -387,8 +387,6 @@ pub fn cse_optimize_bodyform(
     let conditions = detect_conditions(b)?;
     let cse_raw_detections = cse_detect(b)?;
     let cse_detections = cse_classify_by_conditions(&conditions, &cse_raw_detections);
-    eprintln!("cse_detections {}", cse_detections.len());
-
     // While we have them, apply any detections that overlap no others.
     let mut detections_with_dependencies: Vec<(usize, CSEDetection)> =
         sorted_cse_detections_by_applicability(&cse_detections);
@@ -456,16 +454,18 @@ pub fn cse_optimize_bodyform(
                 new_variable_name.clone(),
             ));
 
-            let new_variable_bf =
-                if d.saturated {
-                    new_variable_bf_alone
-                } else {
-                    BodyForm::Call(b.loc(), vec![
+            let new_variable_bf = if d.saturated {
+                new_variable_bf_alone
+            } else {
+                BodyForm::Call(
+                    b.loc(),
+                    vec![
                         Rc::new(BodyForm::Value(SExp::Atom(b.loc(), vec![2]))),
                         Rc::new(new_variable_bf_alone),
-                        Rc::new(BodyForm::Value(SExp::Atom(b.loc(), vec![1])))
-                    ])
-                };
+                        Rc::new(BodyForm::Value(SExp::Atom(b.loc(), vec![1]))),
+                    ],
+                )
+            };
 
             let replacement_spec: Vec<PathDetectVisitorResult<()>> = d
                 .instances
