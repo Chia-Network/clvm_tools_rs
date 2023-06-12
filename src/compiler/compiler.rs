@@ -129,9 +129,15 @@ pub fn compile_pre_forms(
 
     let p1 = context.frontend_optimization(opts.clone(), p0)?;
 
+    eprintln!("p1 {}", p1.to_sexp());
+
     let p2 = do_desugar(&p1)?;
 
+    eprintln!("p2 {}", p2.to_sexp());
+
     let p3 = context.post_desugar_optimization(opts.clone(), p2)?;
+
+    eprintln!("p3 {}", p3.to_sexp());
 
     // generate code from AST, optionally with optimization
     let generated = codegen(context, opts.clone(), &p3)?;

@@ -2,6 +2,7 @@ pub mod above22;
 pub mod bodyform;
 pub mod brief;
 pub mod cse;
+pub mod double_apply;
 pub mod strategy;
 
 #[cfg(test)]
@@ -396,17 +397,22 @@ pub fn deinline_opt(
         for i in 0..compileform.helpers.len() {
             // Try flipped.
             let old_helper = compileform.helpers[i].clone();
+            eprintln!("try flipping {}", old_helper.to_sexp());
             if !flip_helper(&mut compileform.helpers[i]) {
                 continue;
             }
 
+            eprintln!("flipped to {}", compileform.helpers[i].to_sexp());
             let maybe_smaller_program = codegen(context, opts.clone(), &compileform)?;
+            eprintln!("result {}", maybe_smaller_program);
             let new_metric = sexp_scale(&maybe_smaller_program);
 
             // Don't keep this change if it made things worse.
             if new_metric >= metric {
+                eprintln!("NO  new metric {} vs {}", new_metric, metric);
                 compileform.helpers[i] = old_helper;
             } else {
+                eprintln!("YES new metric {} vs {}", new_metric, metric);
                 metric = new_metric;
                 best_compileform = compileform.clone();
             }

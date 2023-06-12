@@ -310,7 +310,7 @@ fn test_optimizer_stack_overflow_2() {
 const SPEC_23: OptimizationRunSpec = OptimizationRunSpec {
     dialect: AcceptedDialect {
         stepping: Some(23),
-        strict: false,
+        strict: true,
     },
     optimize: true,
     fe_opt: true,
@@ -364,6 +364,17 @@ fn test_brief_path_optimization_assign() {
         SPEC_23.clone(),
     )
     .expect("should compile and run");
+    eprintln!("res.opt.compiled   {}", res.opt.compiled);
+    eprintln!("res.unopt.compiled {}", res.unopt.compiled);
+    assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
+}
+
+#[test]
+fn test_subexp_elimination_smoke_0() {
+    let program =
+        fs::read_to_string("resources/tests/test_recursion_subexp.clsp").expect("should exist");
+    let res = do_compile_and_run_opt_size_test_dialect(&program, "(13 15)", &[], SPEC_23.clone())
+        .expect("should compile and run");
     eprintln!("res.opt.compiled   {}", res.opt.compiled);
     eprintln!("res.unopt.compiled {}", res.unopt.compiled);
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());

@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -9,6 +10,8 @@ use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
 use crate::compiler::optimize::brief::brief_path_selection;
+use crate::compiler::optimize::cse::cse_optimize_bodyform;
+use crate::compiler::optimize::double_apply::remove_double_apply;
 use crate::compiler::optimize::{
     deinline_opt, null_optimization, optimize_expr, run_optimizer, CodegenOptimizationResult,
     CompileContextWrapper, Optimization,
@@ -32,8 +35,33 @@ impl Optimization for Strategy23 {
         _allocator: &mut Allocator,
         _runner: Rc<dyn TRunProgram>,
         _opts: Rc<dyn CompilerOpts>,
-        p0: CompileForm,
+        mut p0: CompileForm,
     ) -> Result<CompileForm, CompileErr> {
+        let mut rebuilt_helpers = Vec::new();
+        for h in p0.helpers.iter() {
+            if let HelperForm::Defun(inline, d) = h {
+                let function_body = cse_optimize_bodyform(&h.loc(), h.name(), d.body.borrow())?;
+
+                // Ok we've got a body that is now a let stack.
+                let new_helper = HelperForm::Defun(
+                    *inline,
+                    DefunData {
+                        body: Rc::new(function_body),
+                        ..d.clone()
+                    },
+                );
+
+                eprintln!(
+                    "rebuilt helper with CSE optimization: {}",
+                    new_helper.to_sexp()
+                );
+                rebuilt_helpers.push(new_helper);
+            } else {
+                rebuilt_helpers.push(h.clone());
+            }
+        }
+
+        p0.helpers = rebuilt_helpers;
         Ok(p0)
     }
 
@@ -47,6 +75,7 @@ impl Optimization for Strategy23 {
         let mut symbols = HashMap::new();
         let mut wrapper =
             CompileContextWrapper::new(allocator, runner, &mut symbols, self.duplicate());
+        eprintln!("deinlining program {}", cf.to_sexp());
         let res = deinline_opt(&mut wrapper.context, opts.clone(), cf)?;
         Ok(res)
     }
@@ -62,16 +91,8 @@ impl Optimization for Strategy23 {
         &mut self,
         _code_generator: &PrimaryCodegen,
         _hf: Option<HelperForm>,
-        repr: Rc<SExp>,
+        _repr: Rc<SExp>,
     ) -> Result<CodegenOptimizationResult, CompileErr> {
-        let (worked, result) = null_optimization(repr, true);
-        if worked {
-            return Ok(CodegenOptimizationResult {
-                code: Some(result),
-                ..Default::default()
-            });
-        }
-
         Ok(Default::default())
     }
 
@@ -113,9 +134,11 @@ impl Optimization for Strategy23 {
         _helper: Option<&HelperForm>,
         code: Rc<SExp>,
     ) -> Result<Rc<SExp>, CompileErr> {
-        let (changed, result) = brief_path_selection(code.clone());
-        if changed {
-            Ok(result)
+        let (null_worked, result) = null_optimization(code.clone(), true);
+        let (double_worked, dbl_result) = remove_double_apply(result);
+        let (brief_worked, brief_result) = brief_path_selection(dbl_result.clone());
+        if null_worked || double_worked || brief_worked {
+            Ok(brief_result)
         } else {
             Ok(code)
         }
