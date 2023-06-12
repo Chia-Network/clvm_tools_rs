@@ -451,10 +451,21 @@ pub fn cse_optimize_bodyform(
             // We'll assign a fresh variable for each of the detections
             // that are applicable now.
             let new_variable_name = gensym(b"cse".to_vec());
-            let new_variable_bf = BodyForm::Value(SExp::Atom(
+            let new_variable_bf_alone = BodyForm::Value(SExp::Atom(
                 prototype_instance.loc(),
                 new_variable_name.clone(),
             ));
+
+            let new_variable_bf =
+                if d.saturated {
+                    new_variable_bf_alone
+                } else {
+                    BodyForm::Call(b.loc(), vec![
+                        Rc::new(BodyForm::Value(SExp::Atom(b.loc(), vec![2]))),
+                        Rc::new(new_variable_bf_alone),
+                        Rc::new(BodyForm::Value(SExp::Atom(b.loc(), vec![1])))
+                    ])
+                };
 
             let replacement_spec: Vec<PathDetectVisitorResult<()>> = d
                 .instances
