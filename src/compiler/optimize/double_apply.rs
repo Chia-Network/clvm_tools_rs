@@ -1,23 +1,24 @@
-use crate::compiler::prims::primapply;
 use crate::compiler::sexp::{AtomValue, NodeSel, SExp, SelectNode, ThisNode};
 use std::borrow::Borrow;
 use std::rc::Rc;
 
 // Turn:
 //
-// (a (q 2 X Y) 1)
+// (a (q any) 1)
 //
 // into
 //
-// (a X Y)
+// any
+//
+// I now realize this is exactly cons_q_a_optimizer from classic :-)
 pub fn change_double_to_single_apply(sexp: Rc<SExp>) -> (bool, Rc<SExp>) {
     if let Ok(NodeSel::Cons(
-        a_loc,
+        _,
         NodeSel::Cons(
             NodeSel::Cons(
                 // quoted program
                 _,
-                NodeSel::Cons(_, NodeSel::Cons(inner_program, NodeSel::Cons(inner_env, _))),
+                inner_program,
             ),
             NodeSel::Cons(_, _),
         ),
@@ -27,26 +28,14 @@ pub fn change_double_to_single_apply(sexp: Rc<SExp>) -> (bool, Rc<SExp>) {
             NodeSel::Cons(
                 // quoted program
                 AtomValue::Here(&[1]),
-                NodeSel::Cons(
-                    AtomValue::Here(&[2]),
-                    NodeSel::Cons(
-                        ThisNode::Here, // inner program
-                        NodeSel::Cons(
-                            ThisNode::Here, // inner env
-                            ThisNode::Here,
-                        ),
-                    ),
-                ),
+                ThisNode::Here
             ),
             NodeSel::Cons(AtomValue::Here(&[1]), ThisNode::Here),
         ),
     )
     .select_nodes(sexp.clone())
     {
-        return (
-            true,
-            Rc::new(primapply(a_loc.clone(), inner_program, inner_env)),
-        );
+        return (true, inner_program);
     }
 
     (false, sexp)
