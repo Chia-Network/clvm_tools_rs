@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -6,6 +7,7 @@ use crate::compiler::clvm::sha256tree;
 use crate::compiler::comptypes::{
     Binding, BindingPattern, BodyForm, CompileErr, LetData, LetFormInlineHint, LetFormKind,
 };
+use crate::compiler::evaluate::{is_apply_atom, is_i_atom};
 use crate::compiler::gensym::gensym;
 use crate::compiler::optimize::bodyform::{
     path_overlap_one_way, replace_in_bodyform, retrieve_bodyform, visit_detect_in_bodyform,
@@ -22,12 +24,42 @@ pub struct CSEInstance {
 }
 
 #[derive(Debug, Clone)]
-pub struct CSEDetection {
+pub struct CSEDetectionWithoutConditions {
     pub hash: Vec<u8>,
     pub subexp: BodyForm,
     pub instances: Vec<CSEInstance>,
 }
 
+#[derive(Debug, Clone)]
+pub struct CSEDetection {
+    pub hash: Vec<u8>,
+    pub root: Vec<BodyformPathArc>,
+    pub saturated: bool,
+    pub subexp: BodyForm,
+    pub instances: Vec<CSEInstance>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CSECondition {
+    pub path: Vec<BodyformPathArc>,
+    pub canonical: bool,
+}
+
+// in a chain of conditions:
+//
+// (if a *b *c) // Can precompute.
+//
+// (if a *b (if c (if d *e *f) h)) // Can't precompute; might not be safe in h.
+//
+// The question we have to ask for each condition is:
+// does every branch use the cse?
+//
+// If it is used in every branch of a condition, then it dominates that condition
+// and it can be computed definitely above the condition.
+//
+// If it is missing from some downstream elements of a condition, then we must
+// pass it on as a lambda that can be applied.
+//
 fn is_constant(bf: &BodyForm) -> bool {
     matches!(
         bf,
@@ -40,7 +72,7 @@ fn is_constant(bf: &BodyForm) -> bool {
 
 // A detection is fully dominated if every instance of it is used in the same
 // other detection.
-fn is_fully_dominated(cse: &CSEDetection, detections: &[CSEDetection]) -> bool {
+fn is_fully_dominated(cse: &CSEDetectionWithoutConditions, detections: &[CSEDetectionWithoutConditions]) -> bool {
     let mut host_set = HashSet::new();
 
     for i in cse.instances.iter() {
@@ -63,7 +95,7 @@ fn is_fully_dominated(cse: &CSEDetection, detections: &[CSEDetection]) -> bool {
     host_set.len() == 1
 }
 
-pub fn cse_detect(fe: &BodyForm) -> Result<Vec<CSEDetection>, CompileErr> {
+pub fn cse_detect(fe: &BodyForm) -> Result<Vec<CSEDetectionWithoutConditions>, CompileErr> {
     let found_exprs = visit_detect_in_bodyform(
         &|path, _original, form| {
             // The whole expression isn't a repeat.
@@ -103,7 +135,7 @@ pub fn cse_detect(fe: &BodyForm) -> Result<Vec<CSEDetection>, CompileErr> {
         }
     }
 
-    let detections: Vec<CSEDetection> = by_hash
+    let detections: Vec<CSEDetectionWithoutConditions> = by_hash
         .into_iter()
         .filter_map(|(k, v)| {
             if v.len() < 2 {
@@ -117,7 +149,7 @@ pub fn cse_detect(fe: &BodyForm) -> Result<Vec<CSEDetection>, CompileErr> {
                 .map(|item| CSEInstance { path: item.path })
                 .collect();
 
-            Some(CSEDetection {
+            Some(CSEDetectionWithoutConditions {
                 hash: k,
                 subexp,
                 instances,
@@ -165,12 +197,199 @@ fn sorted_cse_detections_by_applicability(
     detections_with_dependencies
 }
 
+fn is_one_env_ref(bf: &BodyForm) -> bool {
+    bf.to_sexp() == Rc::new(SExp::Atom(bf.loc(), vec![1]))
+}
+
+pub fn is_canonical_apply_parent(
+    p: &[BodyformPathArc],
+    root: &BodyForm,
+) -> Result<bool, CompileErr> {
+    if p.is_empty() {
+        return Ok(false);
+    }
+
+    let last_idx = p.len() - 1;
+    if p[last_idx] != BodyformPathArc::CallArgument(1) {
+        return Ok(false); // Not the right position in the parent.
+    }
+
+    let path_to_parent: Vec<BodyformPathArc> = p.iter().take(last_idx).cloned().collect();
+    let parent_exp =
+        if let Some(parent) = retrieve_bodyform(
+            &path_to_parent,
+            &root,
+            &|bf| bf.clone()
+        ) {
+            parent
+        } else {
+            return Err(CompileErr(root.loc(), "Impossible: could not retrieve parent of existing expression".to_string()));
+        };
+
+    if let BodyForm::Call(_, parts) = &parent_exp {
+        if parts.len() != 3 {
+            return Ok(false);
+        }
+
+        if !is_apply_atom(parts[0].to_sexp()) {
+            return Ok(false);
+        }
+
+        Ok(is_one_env_ref(&parts[2]))
+    } else {
+        Ok(false)
+    }
+}
+
+fn get_com_body(
+    bf: &BodyForm
+) -> Option<&BodyForm> {
+    if let BodyForm::Call(_, parts) = bf {
+        if parts.len() != 2 {
+            return None;
+        }
+
+        if parts[0].to_sexp() != Rc::new(SExp::Atom(bf.loc(), b"com".to_vec())) {
+            return None;
+        }
+
+        return Some(&parts[1]);
+    }
+
+    None
+}
+
+// Detect uses of the 'i' operator in chialisp code.
+// When written (a (i x (com A) (com B)) 1)
+// it is canonical.
+pub fn detect_conditions(
+    bf: &BodyForm,
+) -> Result<Vec<CSECondition>, CompileErr> {
+    let found_conditions = visit_detect_in_bodyform(
+        &|path, root, form| -> Result<Option<bool>, CompileErr> {
+            // Must have (a ... 1) surrounding it to be canonical.
+            if !is_canonical_apply_parent(path, root)? {
+                return Ok(None);
+            }
+
+            if let BodyForm::Call(_, parts) = form {
+                if parts.len() != 4 {
+                    return Ok(None);
+                }
+
+                if !is_i_atom(parts[0].to_sexp()) {
+                    return Ok(None);
+                }
+
+                // We're expecting (com A) and (com B) for the last two
+                // arguments.
+                // XXX also recognize a tree of (i ...) forms whose leaves
+                // are all (com X).
+                let a_body = get_com_body(parts[2].borrow());
+                let b_body = get_com_body(parts[3].borrow());
+                if let (Some(_), Some(_)) = (a_body, b_body) {
+                    return Ok(Some(true));
+                }
+
+                // It is a proper conditional expression, but not in the
+                // canonical form.
+                return Ok(Some(false));
+            }
+
+            Ok(None)
+        },
+        bf
+    )?;
+
+    let results = found_conditions.into_iter().map(|f| {
+        CSECondition {
+            path: f.path,
+            canonical: f.context
+        }
+    }).collect();
+
+    Ok(results)
+}
+
+// True if for some condition path c_path there are matching instance paths
+// for either c_path + [CallArgument(1)] or both
+// c_path + [CallArgument(2)] and c_path + [CallArgument(3)]
+fn cse_is_covering(
+    c_path: &[BodyformPathArc],
+    instances: &[CSEInstance],
+) -> bool {
+    let mut target_paths = vec![c_path.to_vec(),c_path.to_vec(),c_path.to_vec()];
+    target_paths[0].push(BodyformPathArc::CallArgument(1));
+    target_paths[1].push(BodyformPathArc::CallArgument(2));
+    target_paths[2].push(BodyformPathArc::CallArgument(3));
+
+    let have_targets: Vec<bool> = target_paths.iter().map(|t| {
+        instances.iter().any(|i| {
+            path_overlap_one_way(t, &i.path)
+        })
+    }).collect();
+
+    have_targets[0] || (have_targets[1] && have_targets[2])
+}
+
+pub fn cse_classify_by_conditions(
+    conditions: &[CSECondition],
+    detections: &[CSEDetectionWithoutConditions]
+) -> Vec<CSEDetection> {
+    detections.iter().filter_map(|d| {
+        // Detect the common root of all instanceees.
+        if d.instances.is_empty() {
+            return None;
+        }
+
+        let mut path_limit = 0;
+        let possible_root = d.instances[0].path.clone();
+        for i in d.instances.iter().skip(1) {
+            path_limit = min(path_limit, i.path.len());
+            for idx in 0..path_limit {
+                if i.path[idx] != possible_root[idx] {
+                    path_limit = idx;
+                    break;
+                }
+            }
+        }
+
+        // path_limit points to the common root of all instances of this
+        // cse detection.
+        //
+        // now find conditions that are downstream of the cse root.
+        let applicable_conditions: Vec<CSECondition> = conditions.iter().filter(|c| {
+            path_overlap_one_way(&possible_root, &c.path)
+        }).cloned().collect();
+
+        // We don't need to delay the CSE if 1) all conditions below it
+        // are canonical and 2) it appears downstream of all conditions
+        // it encloses.
+        let fully_canonical = applicable_conditions.iter().all(|c| {
+            c.canonical && cse_is_covering(&c.path, &d.instances)
+        });
+
+        Some(CSEDetection {
+            hash: d.hash.clone(),
+            subexp: d.subexp.clone(),
+            instances: d.instances.clone(),
+            saturated: fully_canonical,
+            root: possible_root,
+        })
+    }).collect()
+}
+
 pub fn cse_optimize_bodyform(
     loc: &Srcloc,
     name: &[u8],
     b: &BodyForm,
 ) -> Result<BodyForm, CompileErr> {
-    let cse_detections = cse_detect(b)?;
+    let conditions = detect_conditions(b)?;
+    let cse_raw_detections = cse_detect(b)?;
+    let cse_detections = cse_classify_by_conditions(
+        &conditions,
+        &cse_raw_detections
+    );
     eprintln!("cse_detections {}", cse_detections.len());
 
     // While we have them, apply any detections that overlap no others.
