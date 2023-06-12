@@ -72,7 +72,10 @@ fn is_constant(bf: &BodyForm) -> bool {
 
 // A detection is fully dominated if every instance of it is used in the same
 // other detection.
-fn is_fully_dominated(cse: &CSEDetectionWithoutConditions, detections: &[CSEDetectionWithoutConditions]) -> bool {
+fn is_fully_dominated(
+    cse: &CSEDetectionWithoutConditions,
+    detections: &[CSEDetectionWithoutConditions],
+) -> bool {
     let mut host_set = HashSet::new();
 
     for i in cse.instances.iter() {
@@ -216,14 +219,13 @@ pub fn is_canonical_apply_parent(
 
     let path_to_parent: Vec<BodyformPathArc> = p.iter().take(last_idx).cloned().collect();
     let parent_exp =
-        if let Some(parent) = retrieve_bodyform(
-            &path_to_parent,
-            &root,
-            &|bf| bf.clone()
-        ) {
+        if let Some(parent) = retrieve_bodyform(&path_to_parent, root, &|bf| bf.clone()) {
             parent
         } else {
-            return Err(CompileErr(root.loc(), "Impossible: could not retrieve parent of existing expression".to_string()));
+            return Err(CompileErr(
+                root.loc(),
+                "Impossible: could not retrieve parent of existing expression".to_string(),
+            ));
         };
 
     if let BodyForm::Call(_, parts) = &parent_exp {
@@ -241,9 +243,7 @@ pub fn is_canonical_apply_parent(
     }
 }
 
-fn get_com_body(
-    bf: &BodyForm
-) -> Option<&BodyForm> {
+fn get_com_body(bf: &BodyForm) -> Option<&BodyForm> {
     if let BodyForm::Call(_, parts) = bf {
         if parts.len() != 2 {
             return None;
@@ -262,9 +262,7 @@ fn get_com_body(
 // Detect uses of the 'i' operator in chialisp code.
 // When written (a (i x (com A) (com B)) 1)
 // it is canonical.
-pub fn detect_conditions(
-    bf: &BodyForm,
-) -> Result<Vec<CSECondition>, CompileErr> {
+pub fn detect_conditions(bf: &BodyForm) -> Result<Vec<CSECondition>, CompileErr> {
     let found_conditions = visit_detect_in_bodyform(
         &|path, root, form| -> Result<Option<bool>, CompileErr> {
             // Must have (a ... 1) surrounding it to be canonical.
@@ -298,15 +296,16 @@ pub fn detect_conditions(
 
             Ok(None)
         },
-        bf
+        bf,
     )?;
 
-    let results = found_conditions.into_iter().map(|f| {
-        CSECondition {
+    let results = found_conditions
+        .into_iter()
+        .map(|f| CSECondition {
             path: f.path,
-            canonical: f.context
-        }
-    }).collect();
+            canonical: f.context,
+        })
+        .collect();
 
     Ok(results)
 }
@@ -314,69 +313,70 @@ pub fn detect_conditions(
 // True if for some condition path c_path there are matching instance paths
 // for either c_path + [CallArgument(1)] or both
 // c_path + [CallArgument(2)] and c_path + [CallArgument(3)]
-fn cse_is_covering(
-    c_path: &[BodyformPathArc],
-    instances: &[CSEInstance],
-) -> bool {
-    let mut target_paths = vec![c_path.to_vec(),c_path.to_vec(),c_path.to_vec()];
+fn cse_is_covering(c_path: &[BodyformPathArc], instances: &[CSEInstance]) -> bool {
+    let mut target_paths = vec![c_path.to_vec(), c_path.to_vec(), c_path.to_vec()];
     target_paths[0].push(BodyformPathArc::CallArgument(1));
     target_paths[1].push(BodyformPathArc::CallArgument(2));
     target_paths[2].push(BodyformPathArc::CallArgument(3));
 
-    let have_targets: Vec<bool> = target_paths.iter().map(|t| {
-        instances.iter().any(|i| {
-            path_overlap_one_way(t, &i.path)
-        })
-    }).collect();
+    let have_targets: Vec<bool> = target_paths
+        .iter()
+        .map(|t| instances.iter().any(|i| path_overlap_one_way(t, &i.path)))
+        .collect();
 
     have_targets[0] || (have_targets[1] && have_targets[2])
 }
 
 pub fn cse_classify_by_conditions(
     conditions: &[CSECondition],
-    detections: &[CSEDetectionWithoutConditions]
+    detections: &[CSEDetectionWithoutConditions],
 ) -> Vec<CSEDetection> {
-    detections.iter().filter_map(|d| {
-        // Detect the common root of all instanceees.
-        if d.instances.is_empty() {
-            return None;
-        }
+    detections
+        .iter()
+        .filter_map(|d| {
+            // Detect the common root of all instanceees.
+            if d.instances.is_empty() {
+                return None;
+            }
 
-        let mut path_limit = 0;
-        let possible_root = d.instances[0].path.clone();
-        for i in d.instances.iter().skip(1) {
-            path_limit = min(path_limit, i.path.len());
-            for idx in 0..path_limit {
-                if i.path[idx] != possible_root[idx] {
-                    path_limit = idx;
-                    break;
+            let mut path_limit = 0;
+            let possible_root = d.instances[0].path.clone();
+            for i in d.instances.iter().skip(1) {
+                path_limit = min(path_limit, i.path.len());
+                for (idx, item) in possible_root.iter().take(path_limit).enumerate() {
+                    if &i.path[idx] != item {
+                        path_limit = idx;
+                        break;
+                    }
                 }
             }
-        }
 
-        // path_limit points to the common root of all instances of this
-        // cse detection.
-        //
-        // now find conditions that are downstream of the cse root.
-        let applicable_conditions: Vec<CSECondition> = conditions.iter().filter(|c| {
-            path_overlap_one_way(&possible_root, &c.path)
-        }).cloned().collect();
+            // path_limit points to the common root of all instances of this
+            // cse detection.
+            //
+            // now find conditions that are downstream of the cse root.
+            let applicable_conditions: Vec<CSECondition> = conditions
+                .iter()
+                .filter(|c| path_overlap_one_way(&possible_root, &c.path))
+                .cloned()
+                .collect();
 
-        // We don't need to delay the CSE if 1) all conditions below it
-        // are canonical and 2) it appears downstream of all conditions
-        // it encloses.
-        let fully_canonical = applicable_conditions.iter().all(|c| {
-            c.canonical && cse_is_covering(&c.path, &d.instances)
-        });
+            // We don't need to delay the CSE if 1) all conditions below it
+            // are canonical and 2) it appears downstream of all conditions
+            // it encloses.
+            let fully_canonical = applicable_conditions
+                .iter()
+                .all(|c| c.canonical && cse_is_covering(&c.path, &d.instances));
 
-        Some(CSEDetection {
-            hash: d.hash.clone(),
-            subexp: d.subexp.clone(),
-            instances: d.instances.clone(),
-            saturated: fully_canonical,
-            root: possible_root,
+            Some(CSEDetection {
+                hash: d.hash.clone(),
+                subexp: d.subexp.clone(),
+                instances: d.instances.clone(),
+                saturated: fully_canonical,
+                root: possible_root,
+            })
         })
-    }).collect()
+        .collect()
 }
 
 pub fn cse_optimize_bodyform(
@@ -386,10 +386,7 @@ pub fn cse_optimize_bodyform(
 ) -> Result<BodyForm, CompileErr> {
     let conditions = detect_conditions(b)?;
     let cse_raw_detections = cse_detect(b)?;
-    let cse_detections = cse_classify_by_conditions(
-        &conditions,
-        &cse_raw_detections
-    );
+    let cse_detections = cse_classify_by_conditions(&conditions, &cse_raw_detections);
     eprintln!("cse_detections {}", cse_detections.len());
 
     // While we have them, apply any detections that overlap no others.
