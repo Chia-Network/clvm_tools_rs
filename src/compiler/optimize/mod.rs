@@ -285,12 +285,12 @@ pub fn optimize_expr(
                                             ],
                                         )),
                                     };
-                                    let optimizer =
-                                        if let Ok(res) = get_optimizer(&l, opts.clone()) {
-                                            res
-                                        } else {
-                                            return None;
-                                        };
+                                    let optimizer = if let Ok(res) = get_optimizer(&l, opts.clone())
+                                    {
+                                        res
+                                    } else {
+                                        return None;
+                                    };
 
                                     let mut symbols = HashMap::new();
                                     let mut wrapper = CompileContextWrapper::new(
