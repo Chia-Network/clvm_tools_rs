@@ -23,6 +23,7 @@ struct Preprocessor {
     opts: Rc<dyn CompilerOpts>,
     runner: Rc<dyn TRunProgram>,
     helpers: Vec<HelperForm>,
+    strict: bool,
 }
 
 /*
@@ -55,6 +56,7 @@ impl Preprocessor {
             opts: opts.clone(),
             runner,
             helpers: Vec::new(),
+            strict: opts.dialect().strict,
         }
     }
 
@@ -69,7 +71,7 @@ impl Preprocessor {
 
         // Because we're also subsequently returning CompileErr later in the pipe,
         // this needs an explicit err map.
-        parse_sexp(start_of_file.clone(), content.bytes())
+        let parsed: Vec<Rc<SExp>> = parse_sexp(start_of_file.clone(), content.bytes())
             .err_into()
             .and_then(|x| match x[0].proper_list() {
                 None => Err(CompileErr(
@@ -77,7 +79,20 @@ impl Preprocessor {
                     "Includes should contain a list of forms".to_string(),
                 )),
                 Some(v) => Ok(v.iter().map(|x| Rc::new(x.clone())).collect()),
-            })
+            })?;
+
+        if self.strict {
+            let mut result = Vec::new();
+            for p in parsed.into_iter() {
+                if let Some(res) = self.expand_macros(p.clone(), true)? {
+                    result.push(res);
+                }
+            }
+
+            Ok(result)
+        } else {
+            Ok(parsed)
+        }
     }
 
     fn recurse_dependencies(
