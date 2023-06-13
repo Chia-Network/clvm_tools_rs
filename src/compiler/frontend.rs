@@ -1455,7 +1455,7 @@ pub fn frontend(
     Ok(CompileForm {
         include_forms: includes.to_vec(),
         helpers: live_helpers,
-        .. our_mod
+        ..our_mod
     })
 }
 
