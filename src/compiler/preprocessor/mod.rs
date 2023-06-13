@@ -44,6 +44,7 @@ struct Preprocessor {
     opts: Rc<dyn CompilerOpts>,
     runner: Rc<dyn TRunProgram>,
     helpers: Vec<HelperForm>,
+    strict: bool,
 }
 
 fn compose_defconst(loc: Srcloc, name: &[u8], sexp: Rc<SExp>) -> Rc<SExp> {
@@ -74,12 +75,14 @@ impl Preprocessor {
             opts: opts.clone(),
             runner,
             helpers: Vec::new(),
+            strict: opts.dialect().strict,
         }
     }
 
     /// Given a specification of an include file, load up the forms inside it and
     /// return them (or an error if the file couldn't be read or wasn't a list).
     pub fn process_include(&mut self, include: &IncludeDesc) -> Result<Vec<Rc<SExp>>, CompileErr> {
+        eprintln!("process_include {}", decode_string(&include.name));
         let filename_and_content = self
             .opts
             .read_new_file(self.opts.filename(), decode_string(&include.name))?;
@@ -88,7 +91,7 @@ impl Preprocessor {
 
         // Because we're also subsequently returning CompileErr later in the pipe,
         // this needs an explicit err map.
-        parse_sexp(start_of_file.clone(), content.iter().copied())
+        let parsed: Vec<Rc<SExp>> = parse_sexp(start_of_file.clone(), content.iter().copied())
             .err_into()
             .and_then(|x| match x[0].proper_list() {
                 None => Err(CompileErr(
@@ -96,7 +99,20 @@ impl Preprocessor {
                     "Includes should contain a list of forms".to_string(),
                 )),
                 Some(v) => Ok(v.iter().map(|x| Rc::new(x.clone())).collect()),
-            })
+            })?;
+
+        if self.strict {
+            let mut result = Vec::new();
+            for p in parsed.into_iter() {
+                if let Some(res) = self.expand_macros(p.clone(), true)? {
+                    result.push(res);
+                }
+            }
+
+            Ok(result)
+        } else {
+            Ok(parsed)
+        }
     }
 
     fn process_embed(
@@ -220,6 +236,7 @@ impl Preprocessor {
     ) -> Result<Option<Rc<SExp>>, CompileErr> {
         if let SExp::Cons(l, f, r) = body.borrow() {
             // First expand inner macros.
+            eprintln!("expand macro {body}");
             let first_expanded = self.expand_macros(f.clone(), true)?;
             let rest_expanded = self.expand_macros(r.clone(), false)?;
             let new_self = match (first_expanded, rest_expanded) {
@@ -354,6 +371,7 @@ impl Preprocessor {
         includes: &mut Vec<IncludeDesc>,
         unexpanded_body: Rc<SExp>,
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
+        eprintln!("process_pp_form {unexpanded_body}");
         let body = self
             .expand_macros(unexpanded_body.clone(), true)?
             .unwrap_or_else(|| unexpanded_body.clone());
@@ -461,6 +479,7 @@ impl Preprocessor {
                                 ));
                             } else {
                                 // Try to pick up helperforms.
+                                eprintln!("decode macro? {body}");
                                 if let Some(()) = self.decode_macro(body.clone())? {
                                     return Ok(None);
                                 }
@@ -476,12 +495,14 @@ impl Preprocessor {
         if let Some(()) = self.decode_macro(body.clone())? {
             Ok(vec![])
         } else if let Some(IncludeType::Basic(i)) = &included {
+            eprintln!("doing include {}", decode_string(&i.name));
             self.recurse_dependencies(includes, IncludeProcessType::Compiled, i.clone())?;
             self.process_include(i)
         } else if let Some(IncludeType::Processed(f, kind, name)) = &included {
             self.recurse_dependencies(includes, kind.clone(), f.clone())?;
             self.process_embed(body.loc(), &decode_string(&f.name), kind, name)
         } else {
+            eprintln!("returning from pp {body}");
             Ok(vec![body])
         }
     }
@@ -501,7 +522,9 @@ impl Preprocessor {
                 let mut v_clone: Vec<Rc<SExp>> = v.iter().map(|x| Rc::new(x.clone())).collect();
                 let include_copy: &SExp = include_form.borrow();
                 v_clone.insert(0, Rc::new(include_copy.clone()));
-                enlist(body.loc(), &v_clone)
+                let result = enlist(body.loc(), &v_clone);
+                eprintln!("injected std macro {result}");
+                result
             }
             _ => {
                 let body_clone: &SExp = body.borrow();
@@ -525,10 +548,16 @@ impl Preprocessor {
 
         while let SExp::Cons(_, f, r) = tocompile.borrow() {
             let mut lst = self.process_pp_form(includes, f.clone())?;
+            for l in lst.iter() {
+                eprintln!("got preprocessing result {l}");
+            }
             result.append(&mut lst);
             tocompile = r.clone();
         }
 
+        for r in result.iter() {
+            eprintln!("preprocessed {r}");
+        }
         Ok(result)
     }
 }
