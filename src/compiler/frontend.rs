@@ -1453,12 +1453,9 @@ pub fn frontend(
     let live_helpers = compute_live_helpers(opts.clone(), &our_mod.helpers, our_mod.exp.clone());
 
     Ok(CompileForm {
-        loc: our_mod.loc.clone(),
         include_forms: includes.to_vec(),
-        args: our_mod.args.clone(),
         helpers: live_helpers,
-        exp: our_mod.exp.clone(),
-        ty: our_mod.ty.clone(),
+        .. our_mod
     })
 }
 
