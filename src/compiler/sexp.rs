@@ -900,12 +900,12 @@ impl<const N: usize> SelectNode<Srcloc, (Srcloc, String)> for AtomValue<&[u8; N]
                 }
             }
             SExp::Atom(l, n) => {
-                if &n == name {
+                if n == name {
                     return Ok(l.clone());
                 }
             }
             SExp::QuotedString(l, _, n) => {
-                if &n == name {
+                if n == name {
                     return Ok(l.clone());
                 }
             }

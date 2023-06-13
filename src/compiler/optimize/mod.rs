@@ -286,7 +286,7 @@ pub fn optimize_expr(
                                         )),
                                     };
                                     let optimizer =
-                                        if let Ok(res) = get_optimizer(&l.clone(), opts.clone()) {
+                                        if let Ok(res) = get_optimizer(&l, opts.clone()) {
                                             res
                                         } else {
                                             return None;
@@ -322,7 +322,7 @@ pub fn optimize_expr(
                                 let new_body = BodyForm::Call(
                                     l.clone(),
                                     vec![
-                                        Rc::new(BodyForm::Value(SExp::Atom(l.clone(), vec![2]))),
+                                        Rc::new(BodyForm::Value(SExp::Atom(l, vec![2]))),
                                         Rc::new(BodyForm::Quoted(compiled_body)),
                                         Rc::new(BodyForm::Quoted(reified_args)),
                                     ],
