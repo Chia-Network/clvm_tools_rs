@@ -90,6 +90,18 @@ impl BasicCompileContext {
             .post_desugar_optimization(&mut self.allocator, runner, opts, cf)
     }
 
+    /// Shrink the program prior to generating the final environment map and
+    /// doing other codegen tasks.  This also serves as a tree-shaking pass.
+    fn start_of_codegen_optimization(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        to_optimize: StartOfCodegenOptimization,
+    ) -> Result<StartOfCodegenOptimization, CompileErr> {
+        let runner = self.runner.clone();
+        self.optimizer
+            .start_of_codegen_optimization(&mut self.allocator, runner, opts, to_optimize)
+    }
+
     /// Note: must take measures to ensure that the symbols are changed along
     /// with any code that's changed.  It's likely better to do optimizations
     /// at other stages, such as post_codegen_function_optimize.
@@ -212,4 +224,12 @@ impl<'a> Drop for CompileContextWrapper<'a> {
     fn drop(&mut self) {
         self.switch();
     }
+}
+
+/// Describes the unique inputs and outputs available at the start of code
+/// generation.
+#[derive(Debug, Clone)]
+pub struct StartOfCodegenOptimization {
+    program: CompileForm,
+    code_generator: PrimaryCodegen,
 }

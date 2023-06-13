@@ -14,6 +14,7 @@ use crate::compiler::optimize::{
     Optimization,
 };
 use crate::compiler::sexp::SExp;
+use crate::compiler::StartOfCodegenOptimization;
 
 /// Captures the existing strategy set for cl22 and below.
 #[derive(Default, Clone)]
@@ -61,9 +62,12 @@ impl Optimization for ExistingStrategy {
 
     fn start_of_codegen_optimization(
         &mut self,
-        code_generator: PrimaryCodegen,
-    ) -> Result<PrimaryCodegen, CompileErr> {
-        Ok(code_generator)
+        _allocator: &mut Allocator,
+        _runner: Rc<dyn TRunProgram>,
+        _opts: Rc<dyn CompilerOpts>,
+        to_optimize: StartOfCodegenOptimization,
+    ) -> Result<StartOfCodegenOptimization, CompileErr> {
+        Ok(to_optimize)
     }
 
     fn macro_optimization(

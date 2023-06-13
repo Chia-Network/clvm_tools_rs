@@ -1382,6 +1382,37 @@ fn frontend_start(
     }
 }
 
+/// Given the available helper list and the main expression, compute the list of
+/// reachable helpers.
+pub fn compute_live_helpers(
+    opts: Rc<dyn CompilerOpts>,
+    helper_list: &[HelperForm],
+    main_exp: Rc<BodyForm>,
+) -> Vec<HelperForm> {
+    let expr_names: HashSet<Vec<u8>> = collect_used_names_bodyform(main_exp.borrow())
+        .iter()
+        .map(|x| x.to_vec())
+        .collect();
+
+    let mut helper_map = HashMap::new();
+
+    for h in helper_list.iter() {
+        helper_map.insert(h.name().clone(), h.clone());
+    }
+
+    let helper_names = calculate_live_helpers(&HashSet::new(), &expr_names, &helper_map);
+
+    helper_list
+        .iter()
+        .filter(|h| {
+            matches!(h, HelperForm::Deftype(_))
+                || !opts.frontend_check_live()
+                || helper_names.contains(h.name())
+        })
+        .cloned()
+        .collect()
+}
+
 /// Entrypoint for compilation.  This yields a CompileForm which represents a full
 /// program.
 ///
@@ -1418,29 +1449,8 @@ pub fn frontend(
     };
 
     let our_mod = rename_children_compileform(&compiled?);
-    let expr_names: HashSet<Vec<u8>> = collect_used_names_bodyform(our_mod.exp.borrow())
-        .iter()
-        .map(|x| x.to_vec())
-        .collect();
 
-    let helper_list = our_mod.helpers.iter().map(|h| (h.name(), h));
-    let mut helper_map = HashMap::new();
-
-    for hpair in helper_list {
-        helper_map.insert(hpair.0.clone(), hpair.1.clone());
-    }
-
-    let helper_names = calculate_live_helpers(&HashSet::new(), &expr_names, &helper_map);
-
-    let mut live_helpers = Vec::new();
-    for h in our_mod.helpers {
-        if matches!(h, HelperForm::Deftype(_))
-            || !opts.frontend_check_live()
-            || helper_names.contains(h.name())
-        {
-            live_helpers.push(h);
-        }
-    }
+    let live_helpers = compute_live_helpers(opts.clone(), &our_mod.helpers, our_mod.exp.clone());
 
     Ok(CompileForm {
         loc: our_mod.loc.clone(),

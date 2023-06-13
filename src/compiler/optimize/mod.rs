@@ -37,6 +37,7 @@ use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::BasicCompileContext;
 use crate::compiler::CompileContextWrapper;
+use crate::compiler::StartOfCodegenOptimization;
 use crate::util::u8_from_number;
 
 const CONST_FOLD_LIMIT: usize = 10000000;
@@ -115,8 +116,11 @@ pub trait Optimization {
     /// generated any code that depends on it yet.
     fn start_of_codegen_optimization(
         &mut self,
-        code_generator: PrimaryCodegen,
-    ) -> Result<PrimaryCodegen, CompileErr>;
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        opts: Rc<dyn CompilerOpts>,
+        to_optimize: StartOfCodegenOptimization,
+    ) -> Result<StartOfCodegenOptimization, CompileErr>;
 
     /// Optimize macro bodies.
     fn macro_optimization(

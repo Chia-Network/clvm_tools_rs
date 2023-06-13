@@ -1468,3 +1468,35 @@ fn test_optimizer_fully_reduces_constant_outcome_sha256tree() {
         "(1 . -39425664269051251592384450451821132878837081010681666327853404714379049572411)"
     );
 }
+
+// Check for the optimizer to reduce a fully constant function call to a constant
+// and propogate through another expression.
+#[test]
+fn test_optimizer_fully_reduces_constant_outcome_sha256tree_1() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (+ (F 3) 1))".to_string(),
+    ]);
+    assert_eq!(
+        res,
+        "(1 . -39425664269051251592384450451821132878837081010681666327853404714379049572410)"
+    );
+}
+
+#[test]
+fn test_optimizer_fully_reduces_constant_outcome_let_0() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (A) (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (defun G (Q) (let ((R (F Q))) (+ R 1))) (+ A (G 3)))".to_string(),
+    ]);
+    // Tree shaking will remove the functions that became unused due to constant
+    // reduction.
+    assert_eq!(
+        res,
+        "(2 (1 16 5 (1 . -39425664269051251592384450451821132878837081010681666327853404714379049572410)) (4 () 1))"
+    );
+}

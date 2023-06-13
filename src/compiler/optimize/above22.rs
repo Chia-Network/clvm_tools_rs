@@ -9,6 +9,7 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
+use crate::compiler::frontend::compute_live_helpers;
 use crate::compiler::optimize::brief::brief_path_selection;
 use crate::compiler::optimize::cse::cse_optimize_bodyform;
 use crate::compiler::optimize::double_apply::remove_double_apply;
@@ -17,6 +18,7 @@ use crate::compiler::optimize::{
     Optimization,
 };
 use crate::compiler::sexp::SExp;
+use crate::compiler::StartOfCodegenOptimization;
 
 /// Captures the strategy for cl23 and above.
 /// Until formally released, we can take action in here.
@@ -71,15 +73,64 @@ impl Optimization for Strategy23 {
         let mut symbols = HashMap::new();
         let mut wrapper =
             CompileContextWrapper::new(allocator, runner, &mut symbols, self.duplicate());
-        let res = deinline_opt(&mut wrapper.context, opts.clone(), cf)?;
-        Ok(res)
+        deinline_opt(&mut wrapper.context, opts.clone(), cf)
     }
 
     fn start_of_codegen_optimization(
         &mut self,
-        code_generator: PrimaryCodegen,
-    ) -> Result<PrimaryCodegen, CompileErr> {
-        Ok(code_generator)
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        opts: Rc<dyn CompilerOpts>,
+        mut to_optimize: StartOfCodegenOptimization,
+    ) -> Result<StartOfCodegenOptimization, CompileErr> {
+        let new_helpers: Vec<HelperForm> = to_optimize
+            .program
+            .helpers
+            .iter()
+            .map(|h| {
+                if let HelperForm::Defun(inline, defun) = h {
+                    let new_body = optimize_expr(
+                        allocator,
+                        opts.clone(),
+                        runner.clone(),
+                        &to_optimize.code_generator,
+                        defun.body.clone(),
+                    )
+                    .map(|x| x.1)
+                    .unwrap_or_else(|| defun.body.clone());
+                    HelperForm::Defun(
+                        *inline,
+                        DefunData {
+                            body: new_body,
+                            ..defun.clone()
+                        },
+                    )
+                } else {
+                    h.clone()
+                }
+            })
+            .collect();
+
+        to_optimize.program.helpers = new_helpers;
+        to_optimize.program.exp = optimize_expr(
+            allocator,
+            opts.clone(),
+            runner.clone(),
+            &to_optimize.code_generator,
+            to_optimize.program.exp.clone(),
+        )
+        .map(|x| x.1)
+        .unwrap_or_else(|| to_optimize.program.exp.clone());
+
+        let used_helpers = compute_live_helpers(
+            opts,
+            &to_optimize.program.helpers,
+            to_optimize.program.exp.clone(),
+        );
+
+        to_optimize.program.helpers = used_helpers;
+
+        Ok(to_optimize)
     }
 
     fn macro_optimization(
