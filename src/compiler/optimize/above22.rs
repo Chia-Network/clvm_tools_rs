@@ -121,7 +121,7 @@ impl Optimization for Strategy23 {
         code: Rc<SExp>,
     ) -> Result<Rc<SExp>, CompileErr> {
         let (null_worked, result) = null_optimization(code.clone(), true);
-        let (double_worked, dbl_result) = remove_double_apply(result);
+        let (double_worked, dbl_result) = remove_double_apply(result, true);
         let (brief_worked, brief_result) = brief_path_selection(dbl_result.clone());
         if null_worked || double_worked || brief_worked {
             Ok(brief_result)
@@ -154,7 +154,7 @@ impl Optimization for Strategy23 {
         generated: SExp,
     ) -> Result<SExp, CompileErr> {
         let (null_worked, result) = null_optimization(Rc::new(generated.clone()), true);
-        let (double_worked, dbl_result) = remove_double_apply(result);
+        let (double_worked, dbl_result) = remove_double_apply(result, true);
         let (brief_worked, brief_result) = brief_path_selection(dbl_result.clone());
         if null_worked || double_worked || brief_worked {
             let borrowed: &SExp = brief_result.borrow();

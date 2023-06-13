@@ -27,7 +27,7 @@ use crate::compiler::comptypes::{
     BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm,
     PrimaryCodegen, SyntheticType,
 };
-use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
+use crate::compiler::evaluate::{build_reflex_captures, dequote, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::optimize::above22::Strategy23;
 use crate::compiler::optimize::strategy::ExistingStrategy;
 use crate::compiler::runtypes::RunFailure;
@@ -216,7 +216,7 @@ pub fn optimize_expr(
                 return None;
             }
 
-            let mut examine_call = |al: Srcloc, an: &Vec<u8>| {
+            let examine_call = |al: Srcloc, an: &Vec<u8>| {
                 get_callable(
                     opts.clone(),
                     compiler,
@@ -230,7 +230,118 @@ pub fn optimize_expr(
                     // A function is constant if its body is a constant
                     // expression or all its arguments are constant and
                     // its body doesn't include an environment reference.
-                    Callable::CallDefun(_l, _target) => None,
+                    Callable::CallDefun(l, _target) => {
+                        if let Some(res) = opts.dialect().stepping {
+                            if res >= 23 {
+                                let mut constant = true;
+                                let optimized_args: Vec<(bool, Rc<BodyForm>)> = forms
+                                    .iter()
+                                    .skip(1)
+                                    .map(|a| {
+                                        let optimized = optimize_expr(
+                                            allocator,
+                                            opts.clone(),
+                                            runner.clone(),
+                                            compiler,
+                                            a.clone(),
+                                        );
+                                        constant = constant
+                                            && optimized
+                                                .as_ref()
+                                                .map(|x| x.0)
+                                                .unwrap_or_else(|| false);
+                                        optimized
+                                            .map(|x| (x.0, x.1))
+                                            .unwrap_or_else(|| (false, a.clone()))
+                                    })
+                                    .collect();
+
+                                if !constant {
+                                    return None;
+                                }
+
+                                let compiled_body = {
+                                    let to_compile = CompileForm {
+                                        loc: l.clone(),
+                                        include_forms: Vec::new(),
+                                        ty: None,
+                                        helpers: compiler.original_helpers.clone(),
+                                        args: Rc::new(SExp::Atom(l.clone(), b"__ARGS__".to_vec())),
+                                        exp: Rc::new(BodyForm::Call(
+                                            l.clone(),
+                                            vec![
+                                                Rc::new(BodyForm::Value(SExp::Atom(
+                                                    l.clone(),
+                                                    vec![2],
+                                                ))),
+                                                Rc::new(BodyForm::Value(SExp::Atom(
+                                                    l.clone(),
+                                                    an.clone(),
+                                                ))),
+                                                Rc::new(BodyForm::Value(SExp::Atom(
+                                                    l.clone(),
+                                                    b"__ARGS__".to_vec(),
+                                                ))),
+                                            ],
+                                        )),
+                                    };
+                                    let optimizer =
+                                        if let Ok(res) = get_optimizer(&l.clone(), opts.clone()) {
+                                            res
+                                        } else {
+                                            return None;
+                                        };
+
+                                    let mut symbols = HashMap::new();
+                                    let mut wrapper = CompileContextWrapper::new(
+                                        allocator,
+                                        runner.clone(),
+                                        &mut symbols,
+                                        optimizer,
+                                    );
+
+                                    if let Ok(code) =
+                                        codegen(&mut wrapper.context, opts.clone(), &to_compile)
+                                    {
+                                        code
+                                    } else {
+                                        return None;
+                                    }
+                                };
+
+                                let mut reified_args = SExp::Nil(l.clone());
+                                for (_, v) in optimized_args.iter().rev() {
+                                    let unquoted = if let Ok(res) = dequote(l.clone(), v.clone()) {
+                                        res
+                                    } else {
+                                        return None;
+                                    };
+                                    reified_args =
+                                        SExp::Cons(l.clone(), unquoted, Rc::new(reified_args));
+                                }
+                                let new_body = BodyForm::Call(
+                                    l.clone(),
+                                    vec![
+                                        Rc::new(BodyForm::Value(SExp::Atom(l.clone(), vec![2]))),
+                                        Rc::new(BodyForm::Quoted(compiled_body)),
+                                        Rc::new(BodyForm::Quoted(reified_args)),
+                                    ],
+                                );
+
+                                return optimize_expr(
+                                    allocator,
+                                    opts,
+                                    runner,
+                                    compiler,
+                                    Rc::new(new_body),
+                                );
+                            }
+
+                            return None;
+                        }
+
+                        None
+                    }
                     // A primcall is constant if its arguments are constant
                     Callable::CallPrim(l, _) => {
                         let mut constant = true;

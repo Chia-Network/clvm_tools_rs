@@ -921,6 +921,30 @@ impl<const N: usize> SelectNode<Srcloc, (Srcloc, String)> for AtomValue<&[u8; N]
     }
 }
 
+impl SelectNode<(Srcloc, Vec<u8>), (Srcloc, String)> for AtomValue<()> {
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<(Srcloc, Vec<u8>), (Srcloc, String)> {
+        let AtomValue::Here(name) = self;
+        match s.borrow() {
+            SExp::Nil(l) => {
+                return Ok((l.clone(), vec![]));
+            }
+            SExp::Atom(l, n) => {
+                return Ok((l.clone(), n.clone()));
+            }
+            SExp::QuotedString(l, _, n) => {
+                return Ok((l.clone(), n.clone()));
+            }
+            SExp::Integer(l, i) => {
+                let u8_vec = u8_from_number(i.clone());
+                return Ok((l.clone(), u8_vec));
+            }
+            _ => {}
+        }
+
+        Err((s.loc(), format!("Not an atom with content {name:?}")))
+    }
+}
+
 impl<E> SelectNode<(), E> for () {
     fn select_nodes(&self, _n: Rc<SExp>) -> Result<(), E> {
         Ok(())

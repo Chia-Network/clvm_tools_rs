@@ -517,7 +517,7 @@ pub fn cse_optimize_bodyform(
 
     // All CSE replacements are done.  We unwind the new bindings
     // into a stack of parallel let forms.
-    for binding_list in new_binding_stack.into_iter() {
+    for binding_list in new_binding_stack.into_iter().rev() {
         function_body = BodyForm::Let(
             LetFormKind::Parallel,
             Box::new(LetData {

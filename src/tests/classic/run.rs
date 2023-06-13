@@ -1443,3 +1443,13 @@ fn test_basic_deinlining_smoke_0() {
     assert_eq!(result_prog_21.matches("1000000").count(), 6);
     assert!(result_prog.len() < result_prog_21.len());
 }
+
+// Check for the optimizer to reduce a fully constant program to a constant.
+#[test]
+fn test_optimizer_fully_reduces_constant_outcome() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "(mod () (include *standard-cl-23*) (defun F (X) (+ X 1)) (F 3))".to_string(),
+    ]);
+    assert_eq!(res, "(1 . 4)");
+}
