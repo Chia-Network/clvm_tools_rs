@@ -8,7 +8,7 @@ use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 
-use crate::compiler::clvm::run;
+use crate::compiler::clvm::{run, truthy};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, Callable,
@@ -66,6 +66,33 @@ fn cons_bodyform(loc: Srcloc, left: Rc<BodyForm>, right: Rc<BodyForm>) -> BodyFo
             right,
         ],
     )
+}
+
+fn empty_left_env(env: Rc<SExp>) -> Option<Rc<SExp>> {
+    if let SExp::Cons(_, l, r) = env.borrow() {
+        if truthy(l.clone()) {
+            None
+        } else {
+            Some(r.clone())
+        }
+    } else {
+        // It's an unusual env, so be conservative.
+        None
+    }
+}
+
+fn enable_nil_env_mode_for_stepping_23_or_greater(
+    opts: Rc<dyn CompilerOpts>,
+    code_generator: &mut PrimaryCodegen,
+) {
+    if let Some(s) = opts.dialect().stepping {
+        if s >= 23 && opts.optimize() {
+            if let Some(whole_env) = empty_left_env(code_generator.env.clone()) {
+                code_generator.left_env = false;
+                code_generator.env = whole_env;
+            }
+        }
+    }
 }
 
 /*
@@ -802,6 +829,7 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
         final_expr: Rc::new(BodyForm::Quoted(nil)),
         final_code: None,
         function_symbols: HashMap::new(),
+        left_env: true,
     }
 }
 
@@ -1361,7 +1389,13 @@ fn finalize_env(
     c: &PrimaryCodegen,
 ) -> Result<Rc<SExp>, CompileErr> {
     match c.env.borrow() {
-        SExp::Cons(l, h, _) => finalize_env_(context, opts.clone(), c, l.clone(), h.clone()),
+        SExp::Cons(l, h, _) => {
+            if c.left_env {
+                finalize_env_(context, opts.clone(), c, l.clone(), h.clone())
+            } else {
+                Ok(c.env.clone())
+            }
+        }
         _ => Ok(c.env.clone()),
     }
 }
@@ -1454,6 +1488,9 @@ pub fn codegen(
     let mut code_generator = start_of_codegen_optimization.code_generator;
     let to_process = code_generator.to_process.clone();
 
+    // If stepping 23 or greater, we support no-env mode.
+    enable_nil_env_mode_for_stepping_23_or_greater(opts.clone(), &mut code_generator);
+
     for f in to_process {
         code_generator = codegen_(context, opts.clone(), &code_generator, &f)?;
     }
@@ -1485,7 +1522,7 @@ pub fn codegen(
                     );
 
                     Ok(final_code)
-                } else {
+                } else if code_generator.left_env {
                     let final_code = primapply(
                         code.0.clone(),
                         Rc::new(primquote(code.0.clone(), code.1)),
@@ -1497,6 +1534,9 @@ pub fn codegen(
                     );
 
                     Ok(final_code)
+                } else {
+                    let code_borrowed: &SExp = code.1.borrow();
+                    Ok(code_borrowed.clone())
                 }
             }
         }

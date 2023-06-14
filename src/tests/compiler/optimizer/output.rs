@@ -192,6 +192,8 @@ fn smoke_test_optimizer() {
         "()",
     )
     .expect("should compile and run");
+    eprintln!("opt   {}", res.opt.compiled);
+    eprintln!("unopt {}", res.unopt.compiled);
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
 }
 
@@ -347,8 +349,6 @@ fn test_brief_path_optimization() {
         SPEC_23.clone(),
     )
     .expect("should compile and run");
-    eprintln!("res.opt.compiled   {}", res.opt.compiled);
-    eprintln!("res.unopt.compiled {}", res.unopt.compiled);
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
 }
 

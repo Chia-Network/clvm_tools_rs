@@ -1494,9 +1494,10 @@ fn test_optimizer_fully_reduces_constant_outcome_let_0() {
         "(mod (A) (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (defun G (Q) (let ((R (F Q))) (+ R 1))) (+ A (G 3)))".to_string(),
     ]);
     // Tree shaking will remove the functions that became unused due to constant
-    // reduction.
+    // reduction.  We now support suppressing the left env in stepping 23 and
+    // above.
     assert_eq!(
         res,
-        "(2 (1 16 5 (1 . -39425664269051251592384450451821132878837081010681666327853404714379049572410)) (4 () 1))"
+        "(16 2 (1 . -39425664269051251592384450451821132878837081010681666327853404714379049572410))"
     );
 }
