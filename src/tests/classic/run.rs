@@ -1501,3 +1501,43 @@ fn test_optimizer_fully_reduces_constant_outcome_let_0() {
         "(16 2 (1 . -39425664269051251592384450451821132878837081010681666327853404714379049572410))"
     );
 }
+
+// Test that the optimizer inverts (i (not x) a b) to (i x b a)
+#[test]
+fn test_not_inversion_body() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "(mod (X) (include *standard-cl-23*) (if (not X) (+ X 1) (* X 2)))".to_string(),
+    ]);
+    assert_eq!(res, "(2 (3 2 (1 18 2 (1 . 2)) (1 16 2 (1 . 1))) 1)");
+}
+
+// Test that we can test chialisp outcomes in chialisp.
+#[test]
+fn test_chialisp_in_chialisp_test_pos() {
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (X) (include *standard-cl-23*) (if (= (f (mod () (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (+ (F 3) 1))) 1) \"worked\" \"didnt work\"))".to_string(),
+    ]);
+    let res = do_basic_brun(&vec!["brun".to_string(), compiled, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(res, "\"worked\"");
+}
+
+// Test that we can test chialisp outcomes in chialisp.
+#[test]
+fn test_chialisp_in_chialisp_test_neg() {
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (X) (include *standard-cl-23*) (if (= (f (mod () (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ (list X) 1))) (+ (F 3) 1))) 1) \"worked\" \"didnt work\"))".to_string(),
+    ]);
+    let res = do_basic_brun(&vec!["brun".to_string(), compiled, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(res, "\"didnt work\"");
+}

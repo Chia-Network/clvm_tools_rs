@@ -27,7 +27,9 @@ use crate::compiler::comptypes::{
     BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm,
     PrimaryCodegen, SyntheticType,
 };
-use crate::compiler::evaluate::{build_reflex_captures, dequote, Evaluator, EVAL_STACK_LIMIT};
+use crate::compiler::evaluate::{
+    build_reflex_captures, dequote, is_i_atom, is_not_atom, Evaluator, EVAL_STACK_LIMIT,
+};
 use crate::compiler::optimize::above22::Strategy23;
 use crate::compiler::optimize::strategy::ExistingStrategy;
 use crate::compiler::runtypes::RunFailure;
@@ -202,6 +204,149 @@ fn test_sexp_scale_increases_with_atom_size() {
     );
 }
 
+fn is_not_condition(bf: &BodyForm) -> Option<Rc<BodyForm>> {
+    if let BodyForm::Call(_, parts) = bf {
+        if parts.len() != 2 {
+            return None;
+        }
+
+        if is_not_atom(parts[0].to_sexp()) {
+            return Some(parts[1].clone());
+        }
+    }
+
+    None
+}
+
+/// Changes (i (not c) a b) into (i c b a)
+fn condition_invert_optimize(
+    opts: Rc<dyn CompilerOpts>,
+    loc: &Srcloc,
+    forms: &[Rc<BodyForm>],
+) -> Option<BodyForm> {
+    if let Some(res) = opts.dialect().stepping {
+        // Only perform on chialisp above the appropriate stepping.
+        if res >= 23 {
+            if forms.len() != 4 {
+                return None;
+            }
+
+            if !is_i_atom(forms[0].to_sexp()) {
+                return None;
+            }
+
+            // We have a (not cond)
+            if let Some(condition) = is_not_condition(forms[1].borrow()) {
+                return Some(BodyForm::Call(
+                    loc.clone(),
+                    vec![
+                        forms[0].clone(),
+                        condition,
+                        forms[3].clone(),
+                        forms[2].clone(),
+                    ],
+                ));
+            }
+        }
+    }
+
+    None
+}
+
+/// If a function is called with all constant arguments, we compose the program
+/// that runs that function and run it.
+///
+/// The result is the constant result of invoking the function.
+fn constant_fun_result(
+    allocator: &mut Allocator,
+    opts: Rc<dyn CompilerOpts>,
+    runner: Rc<dyn TRunProgram>,
+    compiler: &PrimaryCodegen,
+    loc: &Srcloc,
+    an: &[u8],
+    forms: &[Rc<BodyForm>],
+) -> Option<Rc<BodyForm>> {
+    if let Some(res) = opts.dialect().stepping {
+        if res >= 23 {
+            let mut constant = true;
+            let optimized_args: Vec<(bool, Rc<BodyForm>)> = forms
+                .iter()
+                .skip(1)
+                .map(|a| {
+                    let optimized =
+                        optimize_expr(allocator, opts.clone(), runner.clone(), compiler, a.clone());
+                    constant = constant && optimized.as_ref().map(|x| x.0).unwrap_or_else(|| false);
+                    optimized
+                        .map(|x| (x.0, x.1))
+                        .unwrap_or_else(|| (false, a.clone()))
+                })
+                .collect();
+
+            if !constant {
+                return None;
+            }
+
+            let compiled_body = {
+                let to_compile = CompileForm {
+                    loc: loc.clone(),
+                    include_forms: Vec::new(),
+                    ty: None,
+                    helpers: compiler.original_helpers.clone(),
+                    args: Rc::new(SExp::Atom(loc.clone(), b"__ARGS__".to_vec())),
+                    exp: Rc::new(BodyForm::Call(
+                        loc.clone(),
+                        vec![
+                            Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), vec![2]))),
+                            Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), an.to_vec()))),
+                            Rc::new(BodyForm::Value(SExp::Atom(
+                                loc.clone(),
+                                b"__ARGS__".to_vec(),
+                            ))),
+                        ],
+                    )),
+                };
+                let optimizer = if let Ok(res) = get_optimizer(&loc, opts.clone()) {
+                    res
+                } else {
+                    return None;
+                };
+
+                let mut symbols = HashMap::new();
+                let mut wrapper =
+                    CompileContextWrapper::new(allocator, runner.clone(), &mut symbols, optimizer);
+
+                if let Ok(code) = codegen(&mut wrapper.context, opts.clone(), &to_compile) {
+                    code
+                } else {
+                    return None;
+                }
+            };
+
+            let mut reified_args = SExp::Nil(loc.clone());
+            for (_, v) in optimized_args.iter().rev() {
+                let unquoted = if let Ok(res) = dequote(loc.clone(), v.clone()) {
+                    res
+                } else {
+                    return None;
+                };
+                reified_args = SExp::Cons(loc.clone(), unquoted, Rc::new(reified_args));
+            }
+            let new_body = BodyForm::Call(
+                loc.clone(),
+                vec![
+                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), vec![2]))),
+                    Rc::new(BodyForm::Quoted(compiled_body)),
+                    Rc::new(BodyForm::Quoted(reified_args)),
+                ],
+            );
+
+            return Some(Rc::new(new_body));
+        }
+    }
+
+    None
+}
+
 /// At this point, very rudimentary constant folding on body expressions.
 pub fn optimize_expr(
     allocator: &mut Allocator,
@@ -235,113 +380,26 @@ pub fn optimize_expr(
                     // expression or all its arguments are constant and
                     // its body doesn't include an environment reference.
                     Callable::CallDefun(l, _target) => {
-                        if let Some(res) = opts.dialect().stepping {
-                            if res >= 23 {
-                                let mut constant = true;
-                                let optimized_args: Vec<(bool, Rc<BodyForm>)> = forms
-                                    .iter()
-                                    .skip(1)
-                                    .map(|a| {
-                                        let optimized = optimize_expr(
-                                            allocator,
-                                            opts.clone(),
-                                            runner.clone(),
-                                            compiler,
-                                            a.clone(),
-                                        );
-                                        constant = constant
-                                            && optimized
-                                                .as_ref()
-                                                .map(|x| x.0)
-                                                .unwrap_or_else(|| false);
-                                        optimized
-                                            .map(|x| (x.0, x.1))
-                                            .unwrap_or_else(|| (false, a.clone()))
-                                    })
-                                    .collect();
-
-                                if !constant {
-                                    return None;
-                                }
-
-                                let compiled_body = {
-                                    let to_compile = CompileForm {
-                                        loc: l.clone(),
-                                        include_forms: Vec::new(),
-                                        ty: None,
-                                        helpers: compiler.original_helpers.clone(),
-                                        args: Rc::new(SExp::Atom(l.clone(), b"__ARGS__".to_vec())),
-                                        exp: Rc::new(BodyForm::Call(
-                                            l.clone(),
-                                            vec![
-                                                Rc::new(BodyForm::Value(SExp::Atom(
-                                                    l.clone(),
-                                                    vec![2],
-                                                ))),
-                                                Rc::new(BodyForm::Value(SExp::Atom(
-                                                    l.clone(),
-                                                    an.clone(),
-                                                ))),
-                                                Rc::new(BodyForm::Value(SExp::Atom(
-                                                    l.clone(),
-                                                    b"__ARGS__".to_vec(),
-                                                ))),
-                                            ],
-                                        )),
-                                    };
-                                    let optimizer = if let Ok(res) = get_optimizer(&l, opts.clone())
-                                    {
-                                        res
-                                    } else {
-                                        return None;
-                                    };
-
-                                    let mut symbols = HashMap::new();
-                                    let mut wrapper = CompileContextWrapper::new(
-                                        allocator,
-                                        runner.clone(),
-                                        &mut symbols,
-                                        optimizer,
-                                    );
-
-                                    if let Ok(code) =
-                                        codegen(&mut wrapper.context, opts.clone(), &to_compile)
-                                    {
-                                        code
-                                    } else {
-                                        return None;
-                                    }
-                                };
-
-                                let mut reified_args = SExp::Nil(l.clone());
-                                for (_, v) in optimized_args.iter().rev() {
-                                    let unquoted = if let Ok(res) = dequote(l.clone(), v.clone()) {
-                                        res
-                                    } else {
-                                        return None;
-                                    };
-                                    reified_args =
-                                        SExp::Cons(l.clone(), unquoted, Rc::new(reified_args));
-                                }
-                                let new_body = BodyForm::Call(
-                                    l.clone(),
-                                    vec![
-                                        Rc::new(BodyForm::Value(SExp::Atom(l, vec![2]))),
-                                        Rc::new(BodyForm::Quoted(compiled_body)),
-                                        Rc::new(BodyForm::Quoted(reified_args)),
-                                    ],
-                                );
-
-                                return optimize_expr(
+                        if let Some(constant_invocation) = constant_fun_result(
+                            allocator,
+                            opts.clone(),
+                            runner.clone(),
+                            compiler,
+                            &l,
+                            an,
+                            forms,
+                        ) {
+                            return Some(
+                                optimize_expr(
                                     allocator,
-                                    opts,
+                                    opts.clone(),
                                     runner,
                                     compiler,
-                                    Rc::new(new_body),
-                                );
-                            }
-
-                            return None;
+                                    constant_invocation.clone(),
+                                )
+                                .map(|(_, optimize)| (true, optimize))
+                                .unwrap_or_else(|| (true, constant_invocation)),
+                            );
                         }
 
                         None
@@ -349,6 +407,22 @@ pub fn optimize_expr(
                     // A primcall is constant if its arguments are constant
                     Callable::CallPrim(l, _) => {
                         let mut constant = true;
+
+                        if let Some(not_invert) = condition_invert_optimize(opts.clone(), &l, forms)
+                        {
+                            return Some(
+                                optimize_expr(
+                                    allocator,
+                                    opts.clone(),
+                                    runner.clone(),
+                                    compiler,
+                                    Rc::new(not_invert.clone()),
+                                )
+                                .map(|(_, optimize)| (true, optimize))
+                                .unwrap_or_else(|| (true, Rc::new(not_invert))),
+                            );
+                        }
+
                         let optimized_args: Vec<(bool, Rc<BodyForm>)> = forms
                             .iter()
                             .skip(1)

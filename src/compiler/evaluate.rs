@@ -579,6 +579,10 @@ pub fn is_i_atom(h: Rc<SExp>) -> bool {
     match_atom_to_prim(vec![b'i'], 3, h)
 }
 
+pub fn is_not_atom(h: Rc<SExp>) -> bool {
+    match_atom_to_prim(b"not".to_vec(), 32, h)
+}
+
 fn is_cons_atom(h: Rc<SExp>) -> bool {
     match_atom_to_prim(vec![b'c'], 4, h)
 }
