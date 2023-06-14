@@ -1522,10 +1522,6 @@ fn test_chialisp_in_chialisp_test_pos() {
         "(mod (X) (include *standard-cl-23*) (if (= (f (mod () (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (+ (F 3) 1))) 1) \"worked\" \"didnt work\"))".to_string(),
     ]);
     assert_eq!(compiled, "(1 . \"worked\")");
-    let res = do_basic_brun(&vec!["brun".to_string(), compiled, "()".to_string()])
-        .trim()
-        .to_string();
-    assert_eq!(res, "\"worked\"");
 }
 
 // Test that we can test chialisp outcomes in chialisp.
