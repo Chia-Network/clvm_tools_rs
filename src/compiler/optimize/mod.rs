@@ -22,7 +22,7 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, run};
-use crate::compiler::codegen::{codegen, get_callable};
+use crate::compiler::codegen::{codegen, do_mod_codegen, get_callable};
 use crate::compiler::comptypes::{
     BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm,
     PrimaryCodegen, SyntheticType,
@@ -35,7 +35,7 @@ use crate::compiler::optimize::strategy::ExistingStrategy;
 use crate::compiler::runtypes::RunFailure;
 #[cfg(test)]
 use crate::compiler::sexp::parse_sexp;
-use crate::compiler::sexp::SExp;
+use crate::compiler::sexp::{AtomValue, NodeSel, SExp, SelectNode, ThisNode};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::BasicCompileContext;
 use crate::compiler::CompileContextWrapper;
@@ -305,7 +305,7 @@ fn constant_fun_result(
                         ],
                     )),
                 };
-                let optimizer = if let Ok(res) = get_optimizer(&loc, opts.clone()) {
+                let optimizer = if let Ok(res) = get_optimizer(loc, opts.clone()) {
                     res
                 } else {
                     return None;
@@ -485,6 +485,37 @@ pub fn optimize_expr(
             true,
             Rc::new(BodyForm::Quoted(SExp::Integer(l.clone(), i.clone()))),
         )),
+        BodyForm::Mod(l, cf) => {
+            if let Some(stepping) = opts.dialect().stepping {
+                if stepping >= 23 {
+                    let mut throwaway_symbols = HashMap::new();
+                    if let Ok(optimizer) = get_optimizer(l, opts.clone()) {
+                        let mut wrapper = CompileContextWrapper::new(
+                            allocator,
+                            runner,
+                            &mut throwaway_symbols,
+                            optimizer,
+                        );
+                        if let Ok(compiled) =
+                            do_mod_codegen(&mut wrapper.context, opts.clone(), cf)
+                        {
+                            if let Ok(NodeSel::Cons(_, body)) =
+                                NodeSel::Cons(AtomValue::Here(&[1]), ThisNode::Here)
+                                    .select_nodes(compiled.1)
+                            {
+                                let borrowed_body: &SExp = body.borrow();
+                                return Some((
+                                    true,
+                                    Rc::new(BodyForm::Quoted(borrowed_body.clone())),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+
+            None
+        }
         _ => None,
     }
 }

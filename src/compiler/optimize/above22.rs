@@ -152,15 +152,25 @@ impl Optimization for Strategy23 {
         defun: &DefunData,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         // Run optimizer on frontend style forms.
-        Ok(optimize_expr(
-            allocator,
-            opts.clone(),
-            runner.clone(),
-            codegen,
-            defun.body.clone(),
-        )
-        .map(|x| x.1)
-        .unwrap_or_else(|| defun.body.clone()))
+        let mut changed = true;
+        let mut new_body = defun.body.clone();
+
+        while changed {
+            if let Some((did_optimize, optimized_form)) = optimize_expr(
+                allocator,
+                opts.clone(),
+                runner.clone(),
+                codegen,
+                new_body.clone(),
+            ) {
+                changed = did_optimize && optimized_form.to_sexp() != new_body.to_sexp();
+                new_body = optimized_form;
+            } else {
+                changed = false;
+            }
+        }
+
+        Ok(new_body)
     }
 
     fn post_codegen_function_optimize(
@@ -188,15 +198,25 @@ impl Optimization for Strategy23 {
         opts: Rc<dyn CompilerOpts>,
         codegen: &PrimaryCodegen,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        Ok(optimize_expr(
-            allocator,
-            opts.clone(),
-            runner,
-            codegen,
-            codegen.final_expr.clone(),
-        )
-        .map(|x| x.1)
-        .unwrap_or_else(|| codegen.final_expr.clone()))
+        let mut changed = true;
+        let mut new_body = codegen.final_expr.clone();
+
+        while changed {
+            if let Some((did_optimize, optimized_form)) = optimize_expr(
+                allocator,
+                opts.clone(),
+                runner.clone(),
+                codegen,
+                new_body.clone(),
+            ) {
+                changed = did_optimize && optimized_form.to_sexp() != new_body.to_sexp();
+                new_body = optimized_form;
+            } else {
+                changed = false;
+            }
+        }
+
+        Ok(new_body)
     }
 
     fn post_codegen_output_optimize(

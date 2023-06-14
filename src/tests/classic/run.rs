@@ -1521,6 +1521,7 @@ fn test_chialisp_in_chialisp_test_pos() {
         "resources/tests".to_string(),
         "(mod (X) (include *standard-cl-23*) (if (= (f (mod () (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (+ (F 3) 1))) 1) \"worked\" \"didnt work\"))".to_string(),
     ]);
+    assert_eq!(compiled, "(1 . \"worked\")");
     let res = do_basic_brun(&vec!["brun".to_string(), compiled, "()".to_string()])
         .trim()
         .to_string();
@@ -1536,8 +1537,5 @@ fn test_chialisp_in_chialisp_test_neg() {
         "resources/tests".to_string(),
         "(mod (X) (include *standard-cl-23*) (if (= (f (mod () (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ (list X) 1))) (+ (F 3) 1))) 1) \"worked\" \"didnt work\"))".to_string(),
     ]);
-    let res = do_basic_brun(&vec!["brun".to_string(), compiled, "()".to_string()])
-        .trim()
-        .to_string();
-    assert_eq!(res, "\"didnt work\"");
+    assert_eq!(compiled, "(1 . \"didnt work\")");
 }

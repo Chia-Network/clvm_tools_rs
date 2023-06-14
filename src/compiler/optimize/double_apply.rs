@@ -1,3 +1,4 @@
+use crate::compiler::clvm::truthy;
 use crate::compiler::prims::primquote;
 use crate::compiler::sexp::{AtomValue, NodeSel, SExp, SelectNode, ThisNode};
 use std::borrow::Borrow;
@@ -73,75 +74,45 @@ fn change_apply_double_quote(sexp: Rc<SExp>) -> (bool, Rc<SExp>) {
     (false, sexp)
 }
 
-// Try to lift op out of apply.  We should take this optimization only if we've
-// reproduced the environment one or zero times after optimizing the children.
-// fn change_apply_op_outside(
-//     sexp: Rc<SExp>
-// ) -> (bool, Rc<SExp>) {
-//     if let Ok(NodeSel::Cons(
-//         _, // apply
-//         NodeSel::Cons(
-//             NodeSel::Cons(
-//                 _, // quote
-//                 NodeSel::Cons(
-//                     op, // op
-//                     args, // args (tail)
-//                 )
-//             ),
-//             NodeSel::Cons(
-//                 env,
-//                 _
-//             )
-//         )
-//     )) = NodeSel::Cons(
-//         AtomValue::Here(&[2]), // apply
-//         NodeSel::Cons(
-//             NodeSel::Cons(
-//                 AtomValue::Here(&[1]), // quote
-//                 NodeSel::Cons(
-//                     AtomValue::Here(()), // op
-//                     ThisNode::Here // args (tail)
-//                 )
-//             ),
-//             NodeSel::Cons(
-//                 ThisNode::Here,
-//                 ThisNode::Here
-//             )
-//         )
-//     ).select_nodes(sexp.clone()) {
-//         // No quote.
-//         if op.1 == vec![1] || op.1 == vec![b'q'] {
-//             return (false, sexp);
-//         }
+fn collapse_constant_condition(sexp: Rc<SExp>) -> (bool, Rc<SExp>) {
+    eprintln!("collapse_constant_condition {sexp}");
+    if let Ok(NodeSel::Cons(
+        _, // i
+        NodeSel::Cons(cond, NodeSel::Cons(a, NodeSel::Cons(b, _))),
+    )) = NodeSel::Cons(
+        AtomValue::Here(&[3]),
+        NodeSel::Cons(
+            ThisNode::Here,
+            NodeSel::Cons(
+                ThisNode::Here,
+                NodeSel::Cons(ThisNode::Here, ThisNode::Here),
+            ),
+        ),
+    )
+    .select_nodes(sexp.clone())
+    {
+        // There are two cases here we care about:
+        // Either cond is () or it's (1 . something)
+        // The following filters away a non-const condition and leaves
+        // the remaining as either Some(true) or Some(false), then
+        // chooses a wing based on that.
+        return NodeSel::Cons(AtomValue::Here(&[1]), ThisNode::Here)
+            .select_nodes(cond.clone())
+            .ok()
+            .map(|NodeSel::Cons(_, cond_quoted)| Some(truthy(cond_quoted)))
+            .unwrap_or_else(|| if !truthy(cond) { Some(false) } else { None })
+            .map(|use_cond| {
+                if use_cond {
+                    (true, a)
+                } else {
+                    (true, b)
+                }
+            })
+            .unwrap_or_else(|| (false, sexp));
+    }
 
-//         eprintln!("sexp {sexp} got op {} args {args} env {env}", decode_string(&op.1));
-//         let args_list =
-//             if let Some(alist) = args.proper_list() {
-//                 alist
-//             } else {
-//                 return (false, sexp);
-//             };
-
-//         let applied_ops: Vec<Rc<SExp>> =
-//             args_list.into_iter().map(|a| {
-//                 let child = Rc::new(primapply(a.loc(), Rc::new(primquote(a.loc(), Rc::new(a.clone()))), env.clone()));
-//                 let (_, opt_child) = remove_double_apply(child, true);
-//                 opt_child
-//             }).collect();
-
-//         let op_outside = Rc::new(SExp::Cons(
-//             sexp.loc(),
-//             Rc::new(SExp::Atom(op.0.clone(), op.1.clone())),
-//             Rc::new(enlist(sexp.loc(), &applied_ops))
-//         ));
-//         eprintln!("op outside {op_outside}");
-//         todo!();
-
-//         return (true, op_outside);
-//     }
-
-//     (false, sexp)
-// }
+    (false, sexp)
+}
 
 // Recognize some optimizations:
 //
@@ -170,11 +141,17 @@ pub fn remove_double_apply(mut sexp: Rc<SExp>, spine: bool) -> (bool, Rc<SExp>) 
             let result = Rc::new(SExp::Cons(l.clone(), new_a, new_b));
             if spine {
                 let (root_transformed_dq, result_dq) = change_apply_double_quote(result);
-                let (root_transformed_unapply, result_end) =
+                let (root_transformed_unapply, result_single_apply) =
                     change_double_to_single_apply(result_dq);
 
-                any_transformation =
-                    a_changed || b_changed || root_transformed_dq || root_transformed_unapply;
+                let (constant_collapse, result_end) =
+                    collapse_constant_condition(result_single_apply);
+
+                any_transformation = a_changed
+                    || b_changed
+                    || root_transformed_dq
+                    || root_transformed_unapply
+                    || constant_collapse;
                 was_transformed |= any_transformation;
                 sexp = result_end;
             } else {

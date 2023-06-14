@@ -576,6 +576,33 @@ fn compile_call(
     }
 }
 
+pub fn do_mod_codegen(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    program: &CompileForm,
+) -> Result<CompiledCode, CompileErr> {
+    // A mod form yields the compiled code.
+    let without_env = opts.set_start_env(None).set_in_defun(false);
+    let mut throwaway_symbols = HashMap::new();
+    let runner = context.runner();
+    let optimizer = context.optimizer.duplicate();
+    let mut context_wrapper = CompileContextWrapper::new(
+        context.allocator(),
+        runner.clone(),
+        &mut throwaway_symbols,
+        optimizer,
+    );
+    let code = codegen(&mut context_wrapper.context, without_env, program)?;
+    Ok(CompiledCode(
+        program.loc.clone(),
+        Rc::new(SExp::Cons(
+            program.loc.clone(),
+            Rc::new(SExp::Atom(program.loc.clone(), vec![1])),
+            Rc::new(code),
+        )),
+    ))
+}
+
 pub fn generate_expr_code(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
@@ -669,28 +696,7 @@ pub fn generate_expr_code(
                 compile_call(context, l.clone(), opts, compiler, list.to_vec())
             }
         }
-        BodyForm::Mod(_, program) => {
-            // A mod form yields the compiled code.
-            let without_env = opts.set_start_env(None).set_in_defun(false);
-            let mut throwaway_symbols = HashMap::new();
-            let runner = context.runner();
-            let optimizer = context.optimizer.duplicate();
-            let mut context_wrapper = CompileContextWrapper::new(
-                context.allocator(),
-                runner.clone(),
-                &mut throwaway_symbols,
-                optimizer,
-            );
-            let code = codegen(&mut context_wrapper.context, without_env, program)?;
-            Ok(CompiledCode(
-                program.loc.clone(),
-                Rc::new(SExp::Cons(
-                    program.loc.clone(),
-                    Rc::new(SExp::Atom(program.loc.clone(), vec![1])),
-                    Rc::new(code),
-                )),
-            ))
-        }
+        BodyForm::Mod(_, program) => do_mod_codegen(context, opts, program),
         _ => Err(CompileErr(
             expr.loc(),
             format!("don't know how to compile {}", expr.to_sexp()),
