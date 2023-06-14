@@ -75,7 +75,6 @@ fn change_apply_double_quote(sexp: Rc<SExp>) -> (bool, Rc<SExp>) {
 }
 
 fn collapse_constant_condition(sexp: Rc<SExp>) -> (bool, Rc<SExp>) {
-    eprintln!("collapse_constant_condition {sexp}");
     if let Ok(NodeSel::Cons(
         _, // i
         NodeSel::Cons(cond, NodeSel::Cons(a, NodeSel::Cons(b, _))),
@@ -101,13 +100,7 @@ fn collapse_constant_condition(sexp: Rc<SExp>) -> (bool, Rc<SExp>) {
             .ok()
             .map(|NodeSel::Cons(_, cond_quoted)| Some(truthy(cond_quoted)))
             .unwrap_or_else(|| if !truthy(cond) { Some(false) } else { None })
-            .map(|use_cond| {
-                if use_cond {
-                    (true, a)
-                } else {
-                    (true, b)
-                }
-            })
+            .map(|use_cond| if use_cond { (true, a) } else { (true, b) })
             .unwrap_or_else(|| (false, sexp));
     }
 

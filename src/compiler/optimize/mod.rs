@@ -496,8 +496,7 @@ pub fn optimize_expr(
                             &mut throwaway_symbols,
                             optimizer,
                         );
-                        if let Ok(compiled) =
-                            do_mod_codegen(&mut wrapper.context, opts.clone(), cf)
+                        if let Ok(compiled) = do_mod_codegen(&mut wrapper.context, opts.clone(), cf)
                         {
                             if let Ok(NodeSel::Cons(_, body)) =
                                 NodeSel::Cons(AtomValue::Here(&[1]), ThisNode::Here)
