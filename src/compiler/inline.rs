@@ -12,6 +12,7 @@ use crate::compiler::comptypes::{
     BodyForm, Callable, CompileErr, CompiledCode, CompilerOpts, InlineFunction, LambdaData,
     PrimaryCodegen,
 };
+use crate::compiler::lambda::make_cons;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::BasicCompileContext;
@@ -164,6 +165,14 @@ fn get_inline_callable(
     get_callable(opts, compiler, loc, name)
 }
 
+fn compiler_ge_23(opts: Rc<dyn CompilerOpts>) -> bool {
+    if let Some(stepping) = opts.dialect().stepping {
+        stepping >= 23
+    } else {
+        false
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn replace_inline_body(
     visited_inlines: &mut HashSet<Vec<u8>>,
@@ -265,7 +274,27 @@ fn replace_inline_body(
                 }
             }
         }
-        BodyForm::Value(SExp::Atom(_, a)) => {
+        BodyForm::Value(SExp::Atom(l, a)) => {
+            if a == b"@" && compiler_ge_23(opts.clone()) {
+                // Reify the environment as it looks from here.
+                let left_env = Rc::new(BodyForm::Call(
+                    l.clone(),
+                    vec![
+                        Rc::new(BodyForm::Value(SExp::Atom(l.clone(), b"@".to_vec()))),
+                        Rc::new(BodyForm::Value(SExp::Integer(
+                            l.clone(),
+                            2_u32.to_bigint().unwrap(),
+                        ))),
+                    ],
+                ));
+                let mut env = Rc::new(BodyForm::Quoted(SExp::Nil(l.clone())));
+                for arg in args.iter().rev() {
+                    env = Rc::new(make_cons(l.clone(), arg.clone(), env));
+                }
+                env = Rc::new(make_cons(l.clone(), left_env, env));
+                return Ok(env);
+            }
+
             let alookup = arg_lookup(callsite, inline.args.clone(), 0, args, a.clone())?
                 .unwrap_or_else(|| expr.clone());
             Ok(alookup)

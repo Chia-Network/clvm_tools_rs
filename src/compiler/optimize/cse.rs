@@ -5,10 +5,12 @@ use std::rc::Rc;
 
 use crate::compiler::clvm::sha256tree;
 use crate::compiler::comptypes::{
-    Binding, BindingPattern, BodyForm, CompileErr, LetData, LetFormInlineHint, LetFormKind,
+    Binding, BindingPattern, BodyForm, CompileErr, LambdaData, LetData, LetFormInlineHint,
+    LetFormKind,
 };
 use crate::compiler::evaluate::{is_apply_atom, is_i_atom};
 use crate::compiler::gensym::gensym;
+use crate::compiler::lambda::make_cons;
 use crate::compiler::optimize::bodyform::{
     path_overlap_one_way, replace_in_bodyform, retrieve_bodyform, visit_detect_in_bodyform,
     BodyformPathArc, PathDetectVisitorResult,
@@ -379,6 +381,53 @@ pub fn cse_classify_by_conditions(
         .collect()
 }
 
+// Finds lambdas that contain CSE detection instances from the provided list.
+fn find_affected_lambdas(
+    instances: &[CSEInstance],
+    bf: &BodyForm,
+) -> Result<Vec<PathDetectVisitorResult<()>>, CompileErr> {
+    visit_detect_in_bodyform(
+        &|path, _root, form| -> Result<Option<()>, CompileErr> {
+            if let BodyForm::Lambda(_) = form {
+                if instances
+                    .iter()
+                    .any(|i| path_overlap_one_way(path, &i.path))
+                {
+                    return Ok(Some(()));
+                }
+            }
+
+            Ok(None)
+        },
+        bf,
+    )
+}
+
+// Adds a new variable on the left of the lambda captures.
+// "x" + (lambda ((& a b) z) ...) -> (lambda ((& x a b) z) ...)
+fn add_variable_to_lambda_capture(vn: &[u8], bf: &BodyForm) -> BodyForm {
+    let new_var_sexp = SExp::Atom(bf.loc(), vn.to_vec());
+    if let BodyForm::Lambda(ldata) = bf {
+        let ldata_borrowed: &LambdaData = ldata.borrow();
+        let new_captures = Rc::new(make_cons(
+            bf.loc(),
+            Rc::new(BodyForm::Value(new_var_sexp.clone())),
+            ldata.captures.clone(),
+        ));
+        BodyForm::Lambda(Box::new(LambdaData {
+            capture_args: Rc::new(SExp::Cons(
+                bf.loc(),
+                Rc::new(new_var_sexp),
+                ldata.capture_args.clone(),
+            )),
+            captures: new_captures,
+            ..ldata_borrowed.clone()
+        }))
+    } else {
+        bf.clone()
+    }
+}
+
 pub fn cse_optimize_bodyform(
     loc: &Srcloc,
     name: &[u8],
@@ -476,6 +525,25 @@ pub fn cse_optimize_bodyform(
                     context: (),
                 })
                 .collect();
+
+            // Route the captured repeated subexpression into intervening lambdas.
+            // This means that the lambdas will gain a capture on the left side of
+            // their captures.
+            let affected_lambdas = find_affected_lambdas(&d.instances, b)?;
+            if let Some(res) = replace_in_bodyform(
+                &affected_lambdas,
+                function_body.borrow(),
+                &|_v: &PathDetectVisitorResult<()>, b| {
+                    add_variable_to_lambda_capture(&new_variable_name, b)
+                },
+            ) {
+                function_body = res;
+            } else {
+                return Err(CompileErr(
+                    loc.clone(),
+                    "error forwarding cse capture into lambda, which should work".to_string(),
+                ));
+            }
 
             if let Some(res) = replace_in_bodyform(
                 &replacement_spec,

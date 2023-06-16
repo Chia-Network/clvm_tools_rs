@@ -61,14 +61,14 @@ fn make_operator(loc: Srcloc, op: u8, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) ->
     BodyForm::Call(
         loc.clone(),
         vec![
-            Rc::new(BodyForm::Value(SExp::Atom(loc, vec![op]))),
+            Rc::new(BodyForm::Value(SExp::Integer(loc, op.to_bigint().unwrap()))),
             arg1,
             arg2,
         ],
     )
 }
 
-fn make_cons(loc: Srcloc, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) -> BodyForm {
+pub fn make_cons(loc: Srcloc, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) -> BodyForm {
     make_operator(loc, 4, arg1, arg2)
 }
 

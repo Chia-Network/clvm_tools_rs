@@ -1535,3 +1535,34 @@ fn test_chialisp_in_chialisp_test_neg() {
     ]);
     assert_eq!(compiled, "(1 . \"didnt work\")");
 }
+
+// Test CSE when detections are inside a lambda.  It's necessary to add a capture for
+// the replaced expression.
+#[test]
+fn test_cse_replacement_inside_lambda_0() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/more_exhaustive/lambda_cse_1.clsp".to_string(),
+    ]);
+    eprintln!("program {program}");
+    let res = do_basic_brun(&vec!["brun".to_string(), program, "(17 17)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(res, "0x15aa51");
+}
+
+#[test]
+fn test_cse_replacement_inside_lambda_test_desugared_form() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/more_exhaustive/lambda_cse_1_desugared_form.clsp".to_string(),
+    ]);
+    let res = do_basic_brun(&vec!["brun".to_string(), program, "(17 17)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(res, "0x15aa51");
+}
