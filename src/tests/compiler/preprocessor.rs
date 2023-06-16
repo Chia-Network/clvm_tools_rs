@@ -555,13 +555,14 @@ fn test_preprocessor_tours_includes_properly() {
         (include curry-and-treehash.clinc)
         ()
       )
-    "}.to_string();
+    "}
+    .to_string();
     let pname = "*test*";
     let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(pname))
         .set_search_paths(&["resources/tests".to_string()])
         .set_dialect(AcceptedDialect {
             stepping: Some(23),
-            strict: true
+            strict: true,
         });
     let parsed = parse_sexp(Srcloc::start(pname), prog.bytes()).expect("should parse");
     let mut includes = Vec::new();
