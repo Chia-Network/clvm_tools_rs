@@ -238,7 +238,7 @@ impl Preprocessor {
             let first_expanded = self.expand_macros(f.clone(), true)?;
             let rest_expanded = self.expand_macros(r.clone(), false)?;
             let new_self = match (first_expanded, rest_expanded) {
-                (None, None) => None,
+                (None, None) => Some(body.clone()),
                 (Some(f), None) => Some(Rc::new(SExp::Cons(l.clone(), f, r.clone()))),
                 (None, Some(r)) => Some(Rc::new(SExp::Cons(l.clone(), f.clone(), r))),
                 (Some(f), Some(r)) => Some(Rc::new(SExp::Cons(l.clone(), f, r))),
