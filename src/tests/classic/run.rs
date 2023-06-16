@@ -1546,11 +1546,18 @@ fn test_cse_replacement_inside_lambda_0() {
         "resources/tests".to_string(),
         "resources/tests/more_exhaustive/lambda_cse_1.clsp".to_string(),
     ]);
-    eprintln!("program {program}");
-    let res = do_basic_brun(&vec!["brun".to_string(), program, "(17 17)".to_string()])
+    let res = do_basic_brun(&vec!["brun".to_string(), program.clone(), "(17 17)".to_string()])
         .trim()
         .to_string();
     assert_eq!(res, "0x15aa51");
+    let res = do_basic_brun(&vec!["brun".to_string(), program.clone(), "(17 19)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(res, "0x1b1019");
+    let res = do_basic_brun(&vec!["brun".to_string(), program, "(19 17)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(res, "0x1e3f2b");
 }
 
 #[test]
