@@ -133,8 +133,6 @@ pub fn compile_pre_forms(
 
     let p3 = context.post_desugar_optimization(opts.clone(), p2)?;
 
-    eprintln!("generate code for {}", p3.to_sexp());
-
     // generate code from AST, optionally with optimization
     let generated = codegen(context, opts.clone(), &p3)?;
 
