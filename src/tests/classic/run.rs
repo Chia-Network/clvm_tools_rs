@@ -997,3 +997,28 @@ fn test_check_symbol_kinds_nested_if() {
         .to_string();
     assert_eq!(result_0, "(q 1 2 3 4 4)");
 }
+
+// Note: this program is intentionally made to properly preprocess but trigger
+// an error in strict compilation as a demonstration and test that the preprocessor
+// is a mechanically separate step from compilation.  Separating them like this
+// has the advantage that you can emit preprocessed compiler input on its own
+// and also that it internally untangles the stages and makes compilation simpler.
+#[test]
+fn test_defmac_if_smoke_preprocess() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "-E".to_string(),
+        "resources/tests/strict/defmac_if_smoke.clsp".to_string(),
+    ]);
+    assert_eq!(
+        result_prog,
+        "(mod () (include *strict-cl-21*) (a (i t1 (com t2) (com t3)) @))"
+    );
+    let result2 = do_basic_run(&vec!["run".to_string(), result_prog]);
+    assert!(result2.contains("Unbound use"));
+    // Ensure that we're identifying one of the actually misused variables, but
+    // do not make a claim about which one is identified first.
+    assert!(result2.contains("of t1") || result2.contains("of t2") || result2.contains("of t3"));
+}
