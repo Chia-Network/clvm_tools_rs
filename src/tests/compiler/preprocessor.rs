@@ -545,3 +545,70 @@ fn test_preprocess_expansion_makes_numeric_operators() {
     let res = run_string(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "(\"test\")");
 }
+
+#[test]
+fn test_preprocessor_tours_includes_properly() {
+    let prog = indoc! {"
+      ( ;; Note: preprocessing is run in the list of the body forms.
+        (include *standard-cl-23*)
+        (include condition_codes.clvm)
+        (include curry-and-treehash.clinc)
+        ()
+      )
+    "}
+    .to_string();
+    let pname = "*test*";
+    let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(pname))
+        .set_search_paths(&["resources/tests".to_string()])
+        .set_dialect(AcceptedDialect {
+            stepping: Some(23),
+            strict: true,
+        });
+    let parsed = parse_sexp(Srcloc::start(pname), prog.bytes()).expect("should parse");
+    let mut includes = Vec::new();
+    let res = preprocess(opts, &mut includes, parsed[0].clone()).expect("should preprocess");
+    let expected_lines = &[
+        "(defmac if (A B C) (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @)))",
+        "(defun __chia__compile-list (args) (a (i args (com (c 4 (c (f args) (c (__chia__compile-list (r args)) ())))) (com ())) @))",
+        "(defmac list ARGS (__chia__compile-list ARGS))",
+        "(defun-inline / (A B) (f (divmod A B)))",
+        "(defun-inline c* (A B) (c A B))",
+        "(defun-inline a* (A B) (a A B))",
+        "(defun-inline coerce (X) : (Any -> Any) X)",
+        "(defun-inline explode (X) : (forall a ((Exec a) -> a)) X)",
+        "(defun-inline bless (X) : (forall a ((Pair a Unit) -> (Exec a))) (coerce X))",
+        "(defun-inline lift (X V) : (forall a (forall b ((Pair (Exec a) (Pair b Unit)) -> (Exec (Pair a b))))) (coerce X))",
+        "(defun-inline unlift (X) : (forall a (forall b ((Pair (Exec (Pair a b)) Unit) -> (Exec b)))) (coerce X))",
+        "(defconstant *chialisp-version* 23)",
+        "(defconstant AGG_SIG_UNSAFE 49)",
+        "(defconstant AGG_SIG_ME 50)",
+        "(defconstant CREATE_COIN 51)",
+        "(defconstant RESERVE_FEE 52)",
+        "(defconstant CREATE_COIN_ANNOUNCEMENT 60)",
+        "(defconstant ASSERT_COIN_ANNOUNCEMENT 61)",
+        "(defconstant CREATE_PUZZLE_ANNOUNCEMENT 62)",
+        "(defconstant ASSERT_PUZZLE_ANNOUNCEMENT 63)",
+        "(defconstant ASSERT_MY_COIN_ID 70)",
+        "(defconstant ASSERT_MY_PARENT_ID 71)",
+        "(defconstant ASSERT_MY_PUZZLEHASH 72)",
+        "(defconstant ASSERT_MY_AMOUNT 73)",
+        "(defconstant ASSERT_SECONDS_RELATIVE 80)",
+        "(defconstant ASSERT_SECONDS_ABSOLUTE 81)",
+        "(defconstant ASSERT_HEIGHT_RELATIVE 82)",
+        "(defconstant ASSERT_HEIGHT_ABSOLUTE 83)",
+        "(defconstant ONE 1)",
+        "(defconstant TWO 2)",
+        "(defconstant A_KW 2)",
+        "(defconstant Q_KW 1)",
+        "(defconstant C_KW 4)",
+        "(defun-inline update-hash-for-parameter-hash (parameter-hash environment-hash) (sha256 TWO (sha256 ONE C_KW) (sha256 TWO (sha256 TWO (sha256 ONE Q_KW) parameter-hash) (sha256 TWO environment-hash (sha256 ONE ())))))",
+        "(defun build-curry-list (reversed-curry-parameter-hashes environment-hash) (a (i reversed-curry-parameter-hashes (com (build-curry-list (r reversed-curry-parameter-hashes) (update-hash-for-parameter-hash (f reversed-curry-parameter-hashes) environment-hash))) (com environment-hash)) @))",
+        "(defun-inline tree-hash-of-apply (function-hash environment-hash) (sha256 TWO (sha256 ONE A_KW) (sha256 TWO (sha256 TWO (sha256 ONE Q_KW) function-hash) (sha256 TWO environment-hash (sha256 ONE ())))))",
+        "(defun puzzle-hash-of-curried-function (function-hash . reversed-curry-parameter-hashes) (tree-hash-of-apply function-hash (build-curry-list reversed-curry-parameter-hashes (sha256 ONE ONE))))",
+        "()",
+    ];
+    for (i, r) in res.iter().enumerate() {
+        assert_eq!(r.to_string(), expected_lines[i]);
+    }
+    assert_eq!(res.len(), expected_lines.len());
+}
