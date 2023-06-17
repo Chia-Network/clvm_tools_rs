@@ -1,5 +1,6 @@
 use core::cell::RefCell;
 
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io;
@@ -810,6 +811,50 @@ fn fix_log(
     }
 }
 
+fn perform_preprocessing(
+    stdout: &mut Stream,
+    opts: Rc<dyn CompilerOpts>,
+    input_file: &str,
+    program_text: &str,
+) -> Result<(), CompileErr> {
+    let srcloc = Srcloc::start(input_file);
+    let parsed = parse_sexp(srcloc.clone(), program_text.bytes())?;
+    let stepping_form_text = match opts.dialect().stepping {
+        Some(21) => Some("(include *strict-cl-21*)".to_string()),
+        Some(n) => Some(format!("(include *standard-cl-{n}*)")),
+        _ => None,
+    };
+    let frontend = frontend(opts, &parsed)?;
+    let fe_sexp = frontend.to_sexp();
+    let with_stepping = if let Some(s) = stepping_form_text {
+        let parsed_stepping_form = parse_sexp(srcloc.clone(), s.bytes())?;
+        if let sexp::SExp::Cons(_, a, rest) = fe_sexp.borrow() {
+            Rc::new(sexp::SExp::Cons(
+                srcloc.clone(),
+                a.clone(),
+                Rc::new(sexp::SExp::Cons(
+                    srcloc.clone(),
+                    parsed_stepping_form[0].clone(),
+                    rest.clone(),
+                )),
+            ))
+        } else {
+            fe_sexp
+        }
+    } else {
+        fe_sexp
+    };
+
+    let whole_mod = sexp::SExp::Cons(
+        srcloc.clone(),
+        Rc::new(sexp::SExp::Atom(srcloc, b"mod".to_vec())),
+        with_stepping,
+    );
+
+    stdout.write_str(&format!("{}", whole_mod));
+    Ok(())
+}
+
 pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, default_stage: u32) {
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
@@ -959,6 +1004,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
             .set_help("For modern dialects, don't treat unknown names as constants".to_string()),
+    );
+    parser.add_argument(
+        vec!["-E".to_string(), "--preprocess".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("Perform strict mode preprocessing and show the result".to_string()),
     );
 
     if tool_name == "run" {
@@ -1275,6 +1326,14 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_search_paths(&search_paths)
             .set_frontend_opt(stepping == 22);
         let mut symbol_table = HashMap::new();
+
+        // Short circuit preprocessing display.
+        if parsed_args.get("preprocess").is_some() {
+            if let Err(e) = perform_preprocessing(stdout, opts, &use_filename, &input_program) {
+                stdout.write_str(&format!("{}: {}", e.0, e.1));
+            }
+            return;
+        }
 
         let unopt_res = compile_file(
             &mut allocator,

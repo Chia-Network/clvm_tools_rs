@@ -1581,3 +1581,63 @@ fn test_cse_replacement_inside_lambda_test_desugared_form() {
         .to_string();
     assert_eq!(res, "0x15aa51");
 }
+
+// Note: this program is intentionally made to properly preprocess but trigger
+// an error in strict compilation as a demonstration and test that the preprocessor
+// is a mechanically separate step from compilation.  Separating them like this
+// has the advantage that you can emit preprocessed compiler input on its own
+// and also that it internally untangles the stages and makes compilation simpler.
+#[test]
+fn test_defmac_if_smoke_preprocess() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "-E".to_string(),
+        "resources/tests/strict/defmac_if_smoke.clsp".to_string(),
+    ]);
+    assert_eq!(
+        result_prog,
+        "(mod () (include *strict-cl-21*) (a (i t1 (com t2) (com t3)) @))"
+    );
+    let result2 = do_basic_run(&vec!["run".to_string(), result_prog]);
+    assert!(result2.contains("Unbound use"));
+    // Ensure that we're identifying one of the actually misused variables, but
+    // do not make a claim about which one is identified first.
+    assert!(result2.contains("of t1") || result2.contains("of t2") || result2.contains("of t3"));
+}
+
+#[test]
+fn test_defmac_assert_smoke_preprocess() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "-E".to_string(),
+        "resources/tests/strict/assert.clsp".to_string(),
+    ]);
+    assert_eq!(
+        result_prog,
+        "(mod (A) (include *strict-cl-21*) (a (i 1 (com (a (i A (com 13) (com (x))) @)) (com (x))) @))"
+    );
+    let result_after_preproc = do_basic_run(&vec!["run".to_string(), result_prog]);
+    let result_with_preproc = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/assert.clsp".to_string(),
+    ]);
+    assert_eq!(result_after_preproc, result_with_preproc);
+    let run_result_true = do_basic_brun(&vec![
+        "brun".to_string(),
+        result_with_preproc.clone(),
+        "(15)".to_string(),
+    ]);
+    assert_eq!(run_result_true.trim(), "13");
+    let run_result_false = do_basic_brun(&vec![
+        "brun".to_string(),
+        result_with_preproc.clone(),
+        "(0)".to_string(),
+    ]);
+    assert_eq!(run_result_false.trim(), "FAIL: clvm raise ()");
+}

@@ -1,0 +1,3 @@
+(
+  (defmac if_ (C T E) (qq (if (unquote C) (unquote T) (unquote E))))
+)
