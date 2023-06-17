@@ -1047,13 +1047,13 @@ fn test_defmac_assert_smoke_preprocess() {
     let run_result_true = do_basic_brun(&vec![
         "brun".to_string(),
         result_with_preproc.clone(),
-        "(15)".to_string()
+        "(15)".to_string(),
     ]);
     assert_eq!(run_result_true.trim(), "13");
     let run_result_false = do_basic_brun(&vec![
         "brun".to_string(),
         result_with_preproc.clone(),
-        "(0)".to_string()
+        "(0)".to_string(),
     ]);
     assert_eq!(run_result_false.trim(), "FAIL: clvm raise ()");
 }
