@@ -1682,12 +1682,11 @@ impl<'info> Evaluator {
         // Com takes place in the current environment.
         // We can only reduce com if all bindings are
         // primitive.
-        let sub_optimize =
-            if is_stepping_23_or_above(self.opts.clone()) {
-                false
-            } else {
-                self.opts.optimize()
-            };
+        let sub_optimize = if is_stepping_23_or_above(self.opts.clone()) {
+            false
+        } else {
+            self.opts.optimize()
+        };
         let updated_opts = self
             .opts
             .set_stdenv(!in_defun && !self.opts.dialect().strict)
