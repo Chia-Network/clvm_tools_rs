@@ -751,6 +751,10 @@ pub fn eval_dont_expand_let(inline_hint: &Option<LetFormInlineHint>) -> bool {
     matches!(inline_hint, Some(LetFormInlineHint::NonInline(_)))
 }
 
+fn is_stepping_23_or_above(opts: Rc<dyn CompilerOpts>) -> bool {
+    opts.dialect().stepping.map(|s| s >= 23).unwrap_or(false)
+}
+
 impl<'info> Evaluator {
     pub fn new(
         opts: Rc<dyn CompilerOpts>,
@@ -1678,10 +1682,17 @@ impl<'info> Evaluator {
         // Com takes place in the current environment.
         // We can only reduce com if all bindings are
         // primitive.
+        let sub_optimize =
+            if is_stepping_23_or_above(self.opts.clone()) {
+                false
+            } else {
+                self.opts.optimize()
+            };
         let updated_opts = self
             .opts
             .set_stdenv(!in_defun && !self.opts.dialect().strict)
             .set_in_defun(in_defun)
+            .set_optimize(sub_optimize)
             .set_frontend_opt(false);
 
         let com_result = updated_opts.compile_program(
