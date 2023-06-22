@@ -40,7 +40,7 @@ jobs:
 
     - name: Install rust
       run: |
-        ./rustup-init -y
+        sudo ./rustup-init -y
         rm rustup-init checksum.txt
 
     - name: Build m1 wheels
