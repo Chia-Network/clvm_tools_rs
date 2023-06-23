@@ -751,10 +751,6 @@ pub fn eval_dont_expand_let(inline_hint: &Option<LetFormInlineHint>) -> bool {
     matches!(inline_hint, Some(LetFormInlineHint::NonInline(_)))
 }
 
-fn is_stepping_23_or_above(opts: Rc<dyn CompilerOpts>) -> bool {
-    opts.dialect().stepping.map(|s| s >= 23).unwrap_or(false)
-}
-
 impl<'info> Evaluator {
     pub fn new(
         opts: Rc<dyn CompilerOpts>,
@@ -979,7 +975,7 @@ impl<'info> Evaluator {
         let mut target_vec: Vec<Rc<BodyForm>> = parts.to_owned();
         let mut visited = VisitedMarker::again(body.loc(), visited_)?;
 
-        if call_name == "@".as_bytes() {
+        if call_name == "@".as_bytes() || call_name == "@*env*".as_bytes() {
             // Synthesize the environment for this function
             Ok(Rc::new(BodyForm::Quoted(SExp::Cons(
                 l.clone(),
@@ -1428,7 +1424,7 @@ impl<'info> Evaluator {
             }
             BodyForm::Quoted(_) => Ok(body.clone()),
             BodyForm::Value(SExp::Atom(l, name)) => {
-                if name == &"@".as_bytes().to_vec() {
+                if name == &"@".as_bytes().to_vec() || name == &"@*env*".as_bytes().to_vec() {
                     let literal_args = synthesize_args(prog_args.clone(), env)?;
                     self.shrink_bodyform_visited(
                         allocator,
@@ -1682,16 +1678,10 @@ impl<'info> Evaluator {
         // Com takes place in the current environment.
         // We can only reduce com if all bindings are
         // primitive.
-        let sub_optimize = if is_stepping_23_or_above(self.opts.clone()) {
-            false
-        } else {
-            self.opts.optimize()
-        };
         let updated_opts = self
             .opts
             .set_stdenv(!in_defun && !self.opts.dialect().strict)
             .set_in_defun(in_defun)
-            .set_optimize(sub_optimize)
             .set_frontend_opt(false);
 
         let com_result = updated_opts.compile_program(

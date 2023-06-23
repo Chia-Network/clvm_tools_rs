@@ -275,7 +275,7 @@ fn replace_inline_body(
             }
         }
         BodyForm::Value(SExp::Atom(l, a)) => {
-            if a == b"@" && compiler_ge_23(opts.clone()) {
+            if a == b"@" || a == b"@*env*" && compiler_ge_23(opts.clone()) {
                 // Reify the environment as it looks from here.
                 let left_env = Rc::new(BodyForm::Call(
                     l.clone(),
