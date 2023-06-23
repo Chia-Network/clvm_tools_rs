@@ -318,7 +318,8 @@ pub fn get_callable(
             let defun = create_name_lookup(compiler, l.clone(), name, false);
             let prim = get_prim(l.clone(), compiler.prims.clone(), name);
             let atom_is_com = *name == "com".as_bytes().to_vec();
-            let atom_is_at = *name == "@".as_bytes().to_vec() || *name == "@*env*".as_bytes().to_vec();
+            let atom_is_at =
+                *name == "@".as_bytes().to_vec() || *name == "@*env*".as_bytes().to_vec();
             match (macro_def, inline, defun, prim, atom_is_com, atom_is_at) {
                 (Some(macro_def), _, _, _, _, _) => {
                     let macro_def_clone: &SExp = macro_def.borrow();
