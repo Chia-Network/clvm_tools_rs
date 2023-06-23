@@ -2026,15 +2026,15 @@ fn test_rosetta_code_abc_example() {
         ("BOOK", false),
         ("COMMON", false),
         ("SQUAD", true),
-        ("CONFUSE", true)
+        ("CONFUSE", true),
     ];
     let prog_pp = do_basic_run(&vec![
         "run".to_string(),
-        "resources/tests/strict/rosetta_code_abc.clsp".to_string()
+        "resources/tests/strict/rosetta_code_abc.clsp".to_string(),
     ]);
     let prog_np = do_basic_run(&vec![
         "run".to_string(),
-        "resources/tests/strict/rosetta_code_abc_preprocessed.clsp".to_string()
+        "resources/tests/strict/rosetta_code_abc_preprocessed.clsp".to_string(),
     ]);
     eprintln!("{prog_pp}");
     assert_eq!(prog_pp, prog_np);
@@ -2043,8 +2043,10 @@ fn test_rosetta_code_abc_example() {
         let result = do_basic_brun(&vec![
             "brun".to_string(),
             prog_pp.clone(),
-            format!("({})", w)
-        ]).trim().to_string();
+            format!("({})", w),
+        ])
+        .trim()
+        .to_string();
         if *success {
             assert_eq!(result, "1");
         } else {
