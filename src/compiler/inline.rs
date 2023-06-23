@@ -165,14 +165,6 @@ fn get_inline_callable(
     get_callable(opts, compiler, loc, name)
 }
 
-fn compiler_ge_23(opts: Rc<dyn CompilerOpts>) -> bool {
-    if let Some(stepping) = opts.dialect().stepping {
-        stepping >= 23
-    } else {
-        false
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn replace_inline_body(
     visited_inlines: &mut HashSet<Vec<u8>>,
