@@ -352,13 +352,6 @@ pub fn replace_in_inline(
         let optimizer = context.optimizer.duplicate();
         let mut context_wrapper =
             CompileContextWrapper::new(context.allocator(), runner, &mut symbols, optimizer);
-        eprintln!(
-            "inline {} {} {}",
-            decode_string(&inline.name),
-            inline.args,
-            BodyForm::Call(x.loc(), args.to_vec()).to_sexp()
-        );
-        eprintln!("to     {}", x.to_sexp());
         generate_expr_code(&mut context_wrapper.context, opts, compiler, x)
     })
 }

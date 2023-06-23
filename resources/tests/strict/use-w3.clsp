@@ -1,10 +1,9 @@
 (mod (items)
   (include *standard-cl-23*)
 
-  (defun print (p X) (i (all "$print$" (list p X)) X X))
-  (defun assert_ (items_$_41) (letbinding_$_44 (print "rest" (r @*env*)) (f items_$_41)))
+  (defun assert_ (items_$_41) (letbinding_$_44 (r @*env*) (f items_$_41)))
   (defun letbinding_$_44 ((items_$_41) cse_$_43)
-    (a (com cse_$_43) (print "at-expansion" @))
+    (a (com cse_$_43) @)
     )
   (assert_ items)
   )
