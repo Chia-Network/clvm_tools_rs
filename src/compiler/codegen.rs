@@ -1059,7 +1059,7 @@ pub fn hoist_body_let_binding(
                             ))),
                             Rc::new(BodyForm::Value(SExp::Atom(
                                 letdata.loc.clone(),
-                                "@".as_bytes().to_vec(),
+                                "@*env*".as_bytes().to_vec(),
                             ))),
                         ],
                     )

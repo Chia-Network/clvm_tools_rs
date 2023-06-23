@@ -1539,7 +1539,7 @@ fn test_chialisp_in_chialisp_test_neg() {
 // Test CSE when detections are inside a lambda.  It's necessary to add a capture for
 // the replaced expression.
 #[test]
-fn test_cse_replacement_inside_lambda_0() {
+fn test_cse_replacement_inside_lambda_23_0() {
     let program = do_basic_run(&vec![
         "run".to_string(),
         "-i".to_string(),
@@ -1569,7 +1569,7 @@ fn test_cse_replacement_inside_lambda_0() {
 }
 
 #[test]
-fn test_cse_replacement_inside_lambda_test_desugared_form() {
+fn test_cse_replacement_inside_lambda_test_desugared_form_23() {
     let program = do_basic_run(&vec![
         "run".to_string(),
         "-i".to_string(),
@@ -1678,15 +1678,33 @@ fn test_defmac_assert_smoke_preprocess_23() {
 }
 
 #[test]
-fn test_smoke_inline_at_expansion_0() {
+fn test_smoke_inline_at_expansion_23_0() {
     let prog = do_basic_run(&vec![
         "run".to_string(),
         indoc!{"
           (mod (Y)
             (include *standard-cl-23*)
-            (defun A (X) (r @))
-            (defun B (X) (A (r @)))
-            (defun C (X) (B (r @)))
+            (defun A (X) (r @*env*)) ;; X = ((3)), returns (((3)))
+            (defun B (X) (A (r @*env*))) ;; X = (3)
+            (defun C (X) (B (r @*env*))) ;; X = 3
+            (C Y) ;; Y = 3
+            )
+        "}.to_string()
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_1() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc!{"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (X) (r @*env*))
+            (defun B (X) (A (r @*env*)))
+            (defun C (X) (B (r @*env*)))
             (C Y)
             )
         "}.to_string()
@@ -1696,15 +1714,15 @@ fn test_smoke_inline_at_expansion_0() {
 }
 
 #[test]
-fn test_smoke_inline_at_expansion_1() {
+fn test_smoke_inline_at_expansion_23_2() {
     let prog = do_basic_run(&vec![
         "run".to_string(),
         indoc!{"
           (mod (Y)
             (include *standard-cl-23*)
-            (defun-inline A (X) (r @))
-            (defun B (X) (A (r @)))
-            (defun C (X) (B (r @)))
+            (defun A (X) (r @*env*))
+            (defun-inline B (X) (A (r @*env*)))
+            (defun C (X) (B (r @*env*)))
             (C Y)
             )
         "}.to_string()
@@ -1714,15 +1732,15 @@ fn test_smoke_inline_at_expansion_1() {
 }
 
 #[test]
-fn test_smoke_inline_at_expansion_2() {
+fn test_smoke_inline_at_expansion_23_3() {
     let prog = do_basic_run(&vec![
         "run".to_string(),
         indoc!{"
           (mod (Y)
             (include *standard-cl-23*)
-            (defun A (X) (r @))
-            (defun-inline B (X) (A (r @)))
-            (defun C (X) (B (r @)))
+            (defun-inline A (X) (r @*env*))
+            (defun-inline B (X) (A (r @*env*)))
+            (defun C (X) (B (r @*env*)))
             (C Y)
             )
         "}.to_string()
@@ -1732,15 +1750,15 @@ fn test_smoke_inline_at_expansion_2() {
 }
 
 #[test]
-fn test_smoke_inline_at_expansion_3() {
+fn test_smoke_inline_at_expansion_23_4() {
     let prog = do_basic_run(&vec![
         "run".to_string(),
         indoc!{"
           (mod (Y)
             (include *standard-cl-23*)
-            (defun-inline A (X) (r @))
-            (defun-inline B (X) (A (r @)))
-            (defun C (X) (B (r @)))
+            (defun A (X) (r @*env*))
+            (defun B (X) (A (r @*env*)))
+            (defun-inline C (X) (B (r @*env*)))
             (C Y)
             )
         "}.to_string()
@@ -1750,15 +1768,15 @@ fn test_smoke_inline_at_expansion_3() {
 }
 
 #[test]
-fn test_smoke_inline_at_expansion_4() {
+fn test_smoke_inline_at_expansion_23_5() {
     let prog = do_basic_run(&vec![
         "run".to_string(),
         indoc!{"
           (mod (Y)
             (include *standard-cl-23*)
-            (defun A (X) (r @))
-            (defun B (X) (A (r @)))
-            (defun-inline C (X) (B (r @)))
+            (defun-inline A (X) (r @*env*))
+            (defun B (X) (A (r @*env*)))
+            (defun-inline C (X) (B (r @*env*)))
             (C Y)
             )
         "}.to_string()
@@ -1768,15 +1786,15 @@ fn test_smoke_inline_at_expansion_4() {
 }
 
 #[test]
-fn test_smoke_inline_at_expansion_5() {
+fn test_smoke_inline_at_expansion_23_6() {
     let prog = do_basic_run(&vec![
         "run".to_string(),
         indoc!{"
           (mod (Y)
             (include *standard-cl-23*)
-            (defun-inline A (X) (r @))
-            (defun B (X) (A (r @)))
-            (defun-inline C (X) (B (r @)))
+            (defun A (X) (r @*env*))
+            (defun-inline B (X) (A (r @*env*)))
+            (defun-inline C (X) (B (r @*env*)))
             (C Y)
             )
         "}.to_string()
@@ -1786,15 +1804,15 @@ fn test_smoke_inline_at_expansion_5() {
 }
 
 #[test]
-fn test_smoke_inline_at_expansion_6() {
+fn test_smoke_inline_at_expansion_23_7() {
     let prog = do_basic_run(&vec![
         "run".to_string(),
         indoc!{"
           (mod (Y)
             (include *standard-cl-23*)
-            (defun A (X) (r @))
-            (defun-inline B (X) (A (r @)))
-            (defun-inline C (X) (B (r @)))
+            (defun-inline A (X) (r @*env*))
+            (defun-inline B (X) (A (r @*env*)))
+            (defun-inline C (X) (B (r @*env*)))
             (C Y)
             )
         "}.to_string()
@@ -1804,33 +1822,15 @@ fn test_smoke_inline_at_expansion_6() {
 }
 
 #[test]
-fn test_smoke_inline_at_expansion_7() {
-    let prog = do_basic_run(&vec![
-        "run".to_string(),
-        indoc!{"
-          (mod (Y)
-            (include *standard-cl-23*)
-            (defun-inline A (X) (r @))
-            (defun-inline B (X) (A (r @)))
-            (defun-inline C (X) (B (r @)))
-            (C Y)
-            )
-        "}.to_string()
-    ]);
-    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
-    assert_eq!(run_result.trim(), "(((i)))");
-}
-
-#[test]
-fn test_smoke_inline_at_expansion_var_0() {
+fn test_smoke_inline_at_expansion_var_23_0() {
     let prog = do_basic_run(&vec![
         "run".to_string(),
         indoc!{"
           (mod (Y)
             (include *standard-cl-23*)
             (defun A (((PPX) PX) X) (list PPX PX X))
-            (defun B ((PX) X) (A (r @) (+ X 1)))
-            (defun C (X) (B (r @) (+ X 1)))
+            (defun B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun C (X) (B (r @*env*) (+ X 1)))
             (C Y)
             )
         "}.to_string()
@@ -1840,15 +1840,15 @@ fn test_smoke_inline_at_expansion_var_0() {
 }
 
 #[test]
-fn test_smoke_inline_at_expansion_var_1() {
+fn test_smoke_inline_at_expansion_var_23_1() {
     let prog = do_basic_run(&vec![
         "run".to_string(),
         indoc!{"
           (mod (Y)
             (include *standard-cl-23*)
             (defun-inline A (((PPX) PX) X) (list PPX PX X))
-            (defun B ((PX) X) (A (r @) (+ X 1)))
-            (defun C (X) (B (r @) (+ X 1)))
+            (defun B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun C (X) (B (r @*env*) (+ X 1)))
             (C Y)
             )
         "}.to_string()
@@ -1858,15 +1858,15 @@ fn test_smoke_inline_at_expansion_var_1() {
 }
 
 #[test]
-fn test_smoke_inline_at_expansion_var_2() {
+fn test_smoke_inline_at_expansion_var_23_2() {
     let prog = do_basic_run(&vec![
         "run".to_string(),
         indoc!{"
           (mod (Y)
             (include *standard-cl-23*)
             (defun A (((PPX) PX) X) (list PPX PX X))
-            (defun-inline B ((PX) X) (A (r @) (+ X 1)))
-            (defun C (X) (B (r @) (+ X 1)))
+            (defun-inline B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun C (X) (B (r @*env*) (+ X 1)))
             (C Y)
             )
         "}.to_string()
@@ -1876,15 +1876,15 @@ fn test_smoke_inline_at_expansion_var_2() {
 }
 
 #[test]
-fn test_smoke_inline_at_expansion_var_3() {
+fn test_smoke_inline_at_expansion_var_23_3() {
     let prog = do_basic_run(&vec![
         "run".to_string(),
         indoc!{"
           (mod (Y)
             (include *standard-cl-23*)
             (defun-inline A (((PPX) PX) X) (list PPX PX X))
-            (defun-inline B ((PX) X) (A (r @) (+ X 1)))
-            (defun C (X) (B (r @) (+ X 1)))
+            (defun-inline B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun C (X) (B (r @*env*) (+ X 1)))
             (C Y)
             )
         "}.to_string()
@@ -1894,15 +1894,15 @@ fn test_smoke_inline_at_expansion_var_3() {
 }
 
 #[test]
-fn test_smoke_inline_at_expansion_var_4() {
+fn test_smoke_inline_at_expansion_var_23_4() {
     let prog = do_basic_run(&vec![
         "run".to_string(),
         indoc!{"
           (mod (Y)
             (include *standard-cl-23*)
             (defun A (((PPX) PX) X) (list PPX PX X))
-            (defun B ((PX) X) (A (r @) (+ X 1)))
-            (defun-inline C (X) (B (r @) (+ X 1)))
+            (defun B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun-inline C (X) (B (r @*env*) (+ X 1)))
             (C Y)
             )
         "}.to_string()
@@ -1912,15 +1912,15 @@ fn test_smoke_inline_at_expansion_var_4() {
 }
 
 #[test]
-fn test_smoke_inline_at_expansion_var_5() {
+fn test_smoke_inline_at_expansion_var_23_5() {
     let prog = do_basic_run(&vec![
         "run".to_string(),
         indoc!{"
           (mod (Y)
             (include *standard-cl-23*)
             (defun-inline A (((PPX) PX) X) (list PPX PX X))
-            (defun B ((PX) X) (A (r @) (+ X 1)))
-            (defun-inline C (X) (B (r @) (+ X 1)))
+            (defun B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun-inline C (X) (B (r @*env*) (+ X 1)))
             (C Y)
             )
         "}.to_string()
@@ -1930,15 +1930,15 @@ fn test_smoke_inline_at_expansion_var_5() {
 }
 
 #[test]
-fn test_smoke_inline_at_expansion_var_6() {
+fn test_smoke_inline_at_expansion_var_23_6() {
     let prog = do_basic_run(&vec![
         "run".to_string(),
         indoc!{"
           (mod (Y)
             (include *standard-cl-23*)
             (defun A (((PPX) PX) X) (list PPX PX X))
-            (defun-inline B ((PX) X) (A (r @) (+ X 1)))
-            (defun-inline C (X) (B (r @) (+ X 1)))
+            (defun-inline B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun-inline C (X) (B (r @*env*) (+ X 1)))
             (C Y)
             )
         "}.to_string()
@@ -1948,15 +1948,15 @@ fn test_smoke_inline_at_expansion_var_6() {
 }
 
 #[test]
-fn test_smoke_inline_at_expansion_var_7() {
+fn test_smoke_inline_at_expansion_var_23_7() {
     let prog = do_basic_run(&vec![
         "run".to_string(),
         indoc!{"
           (mod (Y)
             (include *standard-cl-23*)
             (defun-inline A (((PPX) PX) X) (list PPX PX X))
-            (defun-inline B ((PX) X) (A (r @) (+ X 1)))
-            (defun-inline C (X) (B (r @) (+ X 1)))
+            (defun-inline B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun-inline C (X) (B (r @*env*) (+ X 1)))
             (C Y)
             )
         "}.to_string()
@@ -1975,7 +1975,7 @@ fn test_smoke_inline_at_expansion_var_7() {
 // cse_$_43_$_24 @ 11
 //
 #[test]
-fn test_inline_vs_deinline() {
+fn test_inline_vs_deinline_23() {
     eprintln!("=== W2 ===");
     let compiled_2 = do_basic_run(&vec![
         "run".to_string(),

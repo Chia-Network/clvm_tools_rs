@@ -268,6 +268,9 @@ fn replace_inline_body(
                         new_inline.body.clone(),
                     )
                 }
+                Callable::EnvPath => {
+                    todo!();
+                }
                 _ => {
                     let call = BodyForm::Call(l.clone(), new_args);
                     Ok(Rc::new(call))
@@ -275,7 +278,7 @@ fn replace_inline_body(
             }
         }
         BodyForm::Value(SExp::Atom(l, a)) => {
-            if a == b"@" || a == b"@*env*" && compiler_ge_23(opts.clone()) {
+            if a == b"@*env*" {
                 // Reify the environment as it looks from here.
                 let left_env = Rc::new(BodyForm::Call(
                     l.clone(),
@@ -293,6 +296,8 @@ fn replace_inline_body(
                 }
                 env = Rc::new(make_cons(l.clone(), left_env, env));
                 return Ok(env);
+            } else if a == b"@" {
+                return Ok(Rc::new(BodyForm::Value(SExp::Atom(l.clone(), b"@".to_vec()))));
             }
 
             let alookup = arg_lookup(callsite, inline.args.clone(), 0, args, a.clone())?
@@ -355,6 +360,8 @@ pub fn replace_in_inline(
         let optimizer = context.optimizer.duplicate();
         let mut context_wrapper =
             CompileContextWrapper::new(context.allocator(), runner, &mut symbols, optimizer);
+        eprintln!("inline {} {} {}", decode_string(&inline.name), inline.args, BodyForm::Call(x.loc(), args.to_vec()).to_sexp());
+        eprintln!("to     {}", x.to_sexp());
         generate_expr_code(&mut context_wrapper.context, opts, compiler, x)
     })
 }
