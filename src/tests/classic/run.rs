@@ -2054,3 +2054,14 @@ fn test_rosetta_code_abc_example() {
         }
     }
 }
+
+#[test]
+fn test_preprocess_dont_somehow_reproduce_classic_macros() {
+    let preprocessed = do_basic_run(&vec![
+        "run".to_string(),
+        "-E".to_string(),
+        "resources/tests/strict/rosetta_code_babbage_problem.clsp".to_string(),
+    ]);
+    assert!(!preprocessed.contains("FAIL"));
+    assert!(!preprocessed.contains("(defmacro list"));
+}

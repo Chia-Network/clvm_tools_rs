@@ -1107,6 +1107,7 @@ pub fn compile_helperform(
 
     if let Some(matched) = plist.and_then(|pl| match_op_name_4(&pl)) {
         let inline = matched.op_name == "defun-inline".as_bytes().to_vec();
+        let is_defmac = matched.op_name == "defmac".as_bytes().to_vec();
         if matched.op_name == "defconstant".as_bytes().to_vec() {
             let definition = compile_defconstant(
                 opts,
@@ -1134,7 +1135,14 @@ pub fn compile_helperform(
                 chia_type: None,
                 new_helpers: vec![definition],
             }))
-        } else if matched.op_name == b"defmacro" || matched.op_name == b"defmac" {
+        } else if matched.op_name == b"defmacro" || is_defmac {
+            if is_defmac {
+                return Ok(Some(HelperFormResult {
+                    chia_type: None,
+                    new_helpers: vec![],
+                }));
+            }
+
             let definition = compile_defmacro(
                 opts,
                 l,
