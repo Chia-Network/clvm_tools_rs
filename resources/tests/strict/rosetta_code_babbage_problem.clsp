@@ -50,7 +50,6 @@
       )
     )
 
-  ;; Loop defines arguments 'idx and 'myself.
   (loop 1
     (lambda ((& N) idx)
       (if (ends-with (digits (* idx idx)) (digits N))
