@@ -381,6 +381,39 @@ pub fn cse_classify_by_conditions(
         .collect()
 }
 
+fn detect_common_cse_root(
+    instances: &[CSEInstance],
+) -> Vec<BodyformPathArc> {
+    // No instances, we can choose the root.
+    let min_size =
+        if let Some(m) = instances.iter().map(|i| i.path.len()).min() {
+            m
+        } else {
+            return Vec::new();
+        };
+
+    let mut target_path = instances[0].path.clone();
+    for idx in 0..min_size {
+        for i in instances.iter() {
+            if i.path[idx] != instances[0].path[idx] {
+                // If we don't match here, then the common root is up to here.
+                target_path = instances[0].path.iter().take(idx).cloned().collect();
+                break;
+            }
+        }
+    }
+
+    // Back it up to the body of a let binding.
+    for (idx, f) in target_path.iter().enumerate().rev() {
+        if f == &BodyformPathArc::BodyOf {
+            return target_path.iter().take(idx+1).cloned().collect();
+        }
+    }
+
+    // No internal root if there was no let traversal.
+    return Vec::new();
+}
+
 // Finds lambdas that contain CSE detection instances from the provided list.
 fn find_affected_lambdas(
     instances: &[CSEInstance],
@@ -428,6 +461,27 @@ fn add_variable_to_lambda_capture(vn: &[u8], bf: &BodyForm) -> BodyForm {
     }
 }
 
+#[derive(Clone, Debug)]
+struct CSEBindingSite {
+    target_path: Vec<BodyformPathArc>,
+    binding: Binding
+}
+
+#[derive(Default, Debug)]
+struct CSEBindingInfo {
+    info: HashMap<Vec<BodyformPathArc>, Vec<CSEBindingSite>>,
+}
+
+impl CSEBindingInfo {
+    fn push(&mut self, site: CSEBindingSite) {
+        if let Some(reference) = self.info.get_mut(&site.target_path) {
+            reference.push(site.clone());
+        } else {
+            self.info.insert(site.target_path.clone(), vec![site]);
+        }
+    }
+}
+
 pub fn cse_optimize_bodyform(
     loc: &Srcloc,
     name: &[u8],
@@ -441,7 +495,7 @@ pub fn cse_optimize_bodyform(
         sorted_cse_detections_by_applicability(&cse_detections);
 
     let mut function_body = b.clone();
-    let mut new_binding_stack = Vec::new();
+    let mut new_binding_stack: Vec<(Vec<BodyformPathArc>, Vec<Rc<Binding>>)> = Vec::new();
 
     while !detections_with_dependencies.is_empty() {
         let detections_to_apply: Vec<CSEDetection> = detections_with_dependencies
@@ -465,7 +519,7 @@ pub fn cse_optimize_bodyform(
             ));
         }
 
-        let mut binding_set = Vec::new();
+        let mut binding_set: CSEBindingInfo = Default::default();
 
         for d in detections_to_apply.iter() {
             // If for some reason there are none to apply, we can
@@ -561,23 +615,30 @@ pub fn cse_optimize_bodyform(
                 ));
             }
 
-            // Put aside the definition in this binding set.
-            binding_set.push((new_variable_name, prototype_instance));
+            // Detect the root of the CSE as the innermost expression that covers
+            // all uses.
+            let replace_path = detect_common_cse_root(&d.instances);
 
             detections_with_dependencies = sorted_cse_detections_by_applicability(&keep_detections);
+            // Put aside the definition in this binding set.
+            let name_atom = SExp::Atom(prototype_instance.loc(), new_variable_name.clone());
+            binding_set.push(CSEBindingSite {
+                target_path: replace_path,
+                binding: Binding {
+                    loc: prototype_instance.loc(),
+                    nl: prototype_instance.loc(),
+                    pattern: BindingPattern::Complex(Rc::new(name_atom)),
+                    body: Rc::new(prototype_instance),
+                }
+            });
+
         }
 
-        new_binding_stack.push(
-            binding_set
-                .iter()
-                .map(|(name, body)| {
-                    let name_atom = SExp::Atom(body.loc(), name.clone());
-                    Rc::new(Binding {
-                        loc: body.loc(),
-                        nl: body.loc(),
-                        pattern: BindingPattern::Complex(Rc::new(name_atom)),
-                        body: Rc::new(body.clone()),
-                    })
+        new_binding_stack.append(
+            &mut binding_set.info.iter()
+                .map(|(target_path, sites)| {
+                    let bindings: Vec<Rc<Binding>> = sites.iter().map(|site| Rc::new(site.binding.clone())).collect();
+                    (target_path.clone(), bindings)
                 })
                 .collect(),
         );
@@ -585,17 +646,30 @@ pub fn cse_optimize_bodyform(
 
     // All CSE replacements are done.  We unwind the new bindings
     // into a stack of parallel let forms.
-    for binding_list in new_binding_stack.into_iter().rev() {
-        function_body = BodyForm::Let(
-            LetFormKind::Parallel,
-            Box::new(LetData {
-                loc: function_body.loc(),
-                kw: None,
-                inline_hint: Some(LetFormInlineHint::NonInline(loc.clone())),
-                bindings: binding_list,
-                body: Rc::new(function_body),
-            }),
-        );
+    for (target_path, binding_list) in new_binding_stack.into_iter().rev() {
+        let replacement_spec = &[PathDetectVisitorResult {
+            path: target_path.clone(),
+            subexp: function_body.clone(),
+            context: ()
+        }];
+        if let Some(res) = replace_in_bodyform(
+            replacement_spec,
+            function_body.borrow(),
+            &|_v: &PathDetectVisitorResult<()>, b| BodyForm::Let(
+                LetFormKind::Parallel,
+                Box::new(LetData {
+                    loc: function_body.loc(),
+                    kw: None,
+                    inline_hint: Some(LetFormInlineHint::NonInline(loc.clone())),
+                    bindings: binding_list.clone(),
+                    body: Rc::new(b.clone()),
+                }),
+            )
+        ) {
+            function_body = res;
+        } else {
+            return Err(CompileErr(function_body.loc(), format!("Could not find the target to replace for path {target_path:?} in {}", b.to_sexp())));
+        }
     }
 
     Ok(function_body)

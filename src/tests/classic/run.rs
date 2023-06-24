@@ -2056,12 +2056,22 @@ fn test_rosetta_code_abc_example() {
 }
 
 #[test]
-fn test_preprocess_dont_somehow_reproduce_classic_macros() {
+fn test_rosetta_code_babbage_problem() {
     let preprocessed = do_basic_run(&vec![
         "run".to_string(),
         "-E".to_string(),
         "resources/tests/strict/rosetta_code_babbage_problem.clsp".to_string(),
     ]);
-    assert!(!preprocessed.contains("FAIL"));
+    assert!(!preprocessed.contains("*macros*"));
     assert!(!preprocessed.contains("(defmacro list"));
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/rosetta_code_babbage_problem.clsp".to_string(),
+    ]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(269696)".to_string()
+    ]).trim().to_string();
+    assert_eq!(output, "25264");
 }
