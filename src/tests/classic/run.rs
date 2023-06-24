@@ -2068,10 +2068,8 @@ fn test_rosetta_code_babbage_problem() {
         "run".to_string(),
         "resources/tests/strict/rosetta_code_babbage_problem.clsp".to_string(),
     ]);
-    let output = do_basic_brun(&vec![
-        "brun".to_string(),
-        compiled,
-        "(269696)".to_string()
-    ]).trim().to_string();
+    let output = do_basic_brun(&vec!["brun".to_string(), compiled, "(269696)".to_string()])
+        .trim()
+        .to_string();
     assert_eq!(output, "25264");
 }

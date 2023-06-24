@@ -381,16 +381,13 @@ pub fn cse_classify_by_conditions(
         .collect()
 }
 
-fn detect_common_cse_root(
-    instances: &[CSEInstance],
-) -> Vec<BodyformPathArc> {
+fn detect_common_cse_root(instances: &[CSEInstance]) -> Vec<BodyformPathArc> {
     // No instances, we can choose the root.
-    let min_size =
-        if let Some(m) = instances.iter().map(|i| i.path.len()).min() {
-            m
-        } else {
-            return Vec::new();
-        };
+    let min_size = if let Some(m) = instances.iter().map(|i| i.path.len()).min() {
+        m
+    } else {
+        return Vec::new();
+    };
 
     let mut target_path = instances[0].path.clone();
     for idx in 0..min_size {
@@ -406,12 +403,12 @@ fn detect_common_cse_root(
     // Back it up to the body of a let binding.
     for (idx, f) in target_path.iter().enumerate().rev() {
         if f == &BodyformPathArc::BodyOf {
-            return target_path.iter().take(idx+1).cloned().collect();
+            return target_path.iter().take(idx + 1).cloned().collect();
         }
     }
 
     // No internal root if there was no let traversal.
-    return Vec::new();
+    Vec::new()
 }
 
 // Finds lambdas that contain CSE detection instances from the provided list.
@@ -464,7 +461,7 @@ fn add_variable_to_lambda_capture(vn: &[u8], bf: &BodyForm) -> BodyForm {
 #[derive(Clone, Debug)]
 struct CSEBindingSite {
     target_path: Vec<BodyformPathArc>,
-    binding: Binding
+    binding: Binding,
 }
 
 #[derive(Default, Debug)]
@@ -629,15 +626,19 @@ pub fn cse_optimize_bodyform(
                     nl: prototype_instance.loc(),
                     pattern: BindingPattern::Complex(Rc::new(name_atom)),
                     body: Rc::new(prototype_instance),
-                }
+                },
             });
-
         }
 
         new_binding_stack.append(
-            &mut binding_set.info.iter()
+            &mut binding_set
+                .info
+                .iter()
                 .map(|(target_path, sites)| {
-                    let bindings: Vec<Rc<Binding>> = sites.iter().map(|site| Rc::new(site.binding.clone())).collect();
+                    let bindings: Vec<Rc<Binding>> = sites
+                        .iter()
+                        .map(|site| Rc::new(site.binding.clone()))
+                        .collect();
                     (target_path.clone(), bindings)
                 })
                 .collect(),
@@ -650,25 +651,33 @@ pub fn cse_optimize_bodyform(
         let replacement_spec = &[PathDetectVisitorResult {
             path: target_path.clone(),
             subexp: function_body.clone(),
-            context: ()
+            context: (),
         }];
         if let Some(res) = replace_in_bodyform(
             replacement_spec,
             function_body.borrow(),
-            &|_v: &PathDetectVisitorResult<()>, b| BodyForm::Let(
-                LetFormKind::Parallel,
-                Box::new(LetData {
-                    loc: function_body.loc(),
-                    kw: None,
-                    inline_hint: Some(LetFormInlineHint::NonInline(loc.clone())),
-                    bindings: binding_list.clone(),
-                    body: Rc::new(b.clone()),
-                }),
-            )
+            &|_v: &PathDetectVisitorResult<()>, b| {
+                BodyForm::Let(
+                    LetFormKind::Parallel,
+                    Box::new(LetData {
+                        loc: function_body.loc(),
+                        kw: None,
+                        inline_hint: Some(LetFormInlineHint::NonInline(loc.clone())),
+                        bindings: binding_list.clone(),
+                        body: Rc::new(b.clone()),
+                    }),
+                )
+            },
         ) {
             function_body = res;
         } else {
-            return Err(CompileErr(function_body.loc(), format!("Could not find the target to replace for path {target_path:?} in {}", b.to_sexp())));
+            return Err(CompileErr(
+                function_body.loc(),
+                format!(
+                    "Could not find the target to replace for path {target_path:?} in {}",
+                    b.to_sexp()
+                ),
+            ));
         }
     }
 
