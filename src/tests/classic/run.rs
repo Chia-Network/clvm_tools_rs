@@ -9,6 +9,8 @@ use rand::Rng;
 #[cfg(test)]
 use rand_chacha::ChaChaRng;
 
+use regex::Regex;
+
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -2072,6 +2074,21 @@ fn test_rosetta_code_babbage_problem() {
         .trim()
         .to_string();
     assert_eq!(output, "25264");
+}
+
+#[test]
+fn test_desugar_output() {
+    let desugared = do_basic_run(&vec![
+        "run".to_string(),
+        "-D".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let re_def = r"(mod (X) (include [*]standard-cl-23[*]) (defun-inline letbinding_[$]_[0-9]+ ((X) Z_[$]_[0-9]+) ([*] ([+] Z_[$]_[0-9]+ 1) ([+] Z_[$]_[0-9]+ 1) ([+] Z_[$]_[0-9]+ 1))) (a (i X (com (letbinding_[$]_[0-9]+ (r [@][*]env[*]) X)) (com 17)) [@]))".replace("(", r"\(").replace(")", r"\)");
+    eprintln!("desugared {desugared}");
+    let re = Regex::new(&re_def).expect("should become a regex");
+    assert!(re.is_match(&desugared));
 }
 
 #[test]

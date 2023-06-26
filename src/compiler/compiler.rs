@@ -119,19 +119,25 @@ fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
     })
 }
 
+pub fn desugar_pre_forms(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    pre_forms: &[Rc<SExp>],
+) -> Result<CompileForm, CompileErr> {
+    let p0 = frontend(opts.clone(), pre_forms)?;
+
+    let p1 = context.frontend_optimization(opts.clone(), p0)?;
+
+    do_desugar(&p1)
+}
+
 pub fn compile_pre_forms(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>],
 ) -> Result<SExp, CompileErr> {
     // Resolve includes, convert program source to lexemes
-    let p0 = frontend(opts.clone(), pre_forms)?;
-
-    let p1 = context.frontend_optimization(opts.clone(), p0)?;
-
-    let p2 = do_desugar(&p1)?;
-
-    eprintln!("desugared {}", p2.to_sexp());
+    let p2 = desugar_pre_forms(context, opts.clone(), pre_forms)?;
 
     let p3 = context.post_desugar_optimization(opts.clone(), p2)?;
 
