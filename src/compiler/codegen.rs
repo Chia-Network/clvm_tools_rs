@@ -604,6 +604,30 @@ pub fn do_mod_codegen(
     ))
 }
 
+fn is_cons(bf: &BodyForm) -> bool {
+    if let BodyForm::Value(v) = bf {
+        if let SExp::Atom(_, vec) = v.atomize() {
+            return vec == [4] || vec == b"r";
+        }
+    }
+
+    false
+}
+
+fn is_at_env(bf: &BodyForm) -> bool {
+    if let BodyForm::Value(v) = bf {
+        if let SExp::Atom(_, vec) = v.atomize() {
+            return vec == b"@*env*";
+        }
+    }
+
+    false
+}
+
+fn addresses_user_env(call: &[Rc<BodyForm>]) -> bool {
+    call.len() == 2 && is_cons(call[0].borrow()) && is_at_env(call[1].borrow())
+}
+
 pub fn generate_expr_code(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
@@ -688,6 +712,13 @@ pub fn generate_expr_code(
             }
         }
         BodyForm::Call(l, list) => {
+            // Recognize attempts to get the input arguments.  They're paired with
+            // a left env in the usual case, but it can be omitted if there are no
+            // freestanding functions.  In that case, the user args are just the
+            // whole env.
+            if !compiler.left_env && addresses_user_env(list) {
+                return generate_expr_code(context, opts, compiler, list[1].clone());
+            }
             if list.is_empty() {
                 Err(CompileErr(
                     l.clone(),
@@ -1495,12 +1526,12 @@ pub fn codegen(
     let mut code_generator = start_of_codegen_optimization.code_generator;
     let to_process = code_generator.to_process.clone();
 
-    // If stepping 23 or greater, we support no-env mode.
-    enable_nil_env_mode_for_stepping_23_or_greater(opts.clone(), &mut code_generator);
-
     for f in to_process {
         code_generator = codegen_(context, opts.clone(), &code_generator, &f)?;
     }
+
+    // If stepping 23 or greater, we support no-env mode.
+    enable_nil_env_mode_for_stepping_23_or_greater(opts.clone(), &mut code_generator);
 
     *context.symbols() = code_generator.function_symbols.clone();
     context
