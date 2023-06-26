@@ -2175,3 +2175,15 @@ fn test_cse_not_dominating_conditions_with_superior_let_iodi() {
         .to_string();
     assert_eq!(outcome, "0x5c13d840"); // 34 * 34 * 34 * 34 * 34 * 34
 }
+
+#[test]
+fn test_chialisp_web_example() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/chialisp-web-example.clsp".to_string()
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(100)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "(306 (101 103))");
+}
