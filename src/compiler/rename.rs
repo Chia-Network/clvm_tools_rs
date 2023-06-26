@@ -165,7 +165,7 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             let new_vs = vs
                 .iter()
                 .enumerate()
-                .map(|(i,x)| {
+                .map(|(i, x)| {
                     if i == 0 {
                         x.clone()
                     } else {
