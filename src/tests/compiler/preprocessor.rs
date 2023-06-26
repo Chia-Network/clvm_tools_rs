@@ -455,7 +455,7 @@ fn test_defmac_string_to_number_0() {
     let prog = indoc! {"
       (mod (X_7)
         (defmac add-n-to (X)
-          (let
+          (let*
             ((stringified (symbol->string X))
              (slen (string-length stringified))
              (number-part (substring stringified (- slen 1) slen))

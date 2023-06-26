@@ -13,6 +13,7 @@ use crate::compiler::dialect::KNOWN_DIALECTS;
 use crate::compiler::evaluate::{create_argument_captures, dequote, ArgInputs, Evaluator};
 use crate::compiler::frontend::compile_helperform;
 use crate::compiler::preprocessor::macros::PreprocessorExtension;
+use crate::compiler::rename::rename_args_helperform;
 use crate::compiler::sexp::{
     decode_string, enlist, parse_sexp, Atom, NodeSel, SExp, SelectNode, ThisNode,
 };
@@ -255,7 +256,7 @@ impl Preprocessor {
                         )),
                     ));
                     if let Some(helper) = compile_helperform(self.opts.clone(), target_defun)? {
-                        self.add_helper(helper);
+                        self.add_helper(rename_args_helperform(&helper));
                     } else {
                         return Err(CompileErr(
                             definition.loc(),
@@ -263,7 +264,7 @@ impl Preprocessor {
                         ));
                     }
                 } else if let Some(helper) = compile_helperform(self.opts.clone(), definition)? {
-                    self.add_helper(helper);
+                    self.add_helper(rename_args_helperform(&helper));
                 }
             }
         }
