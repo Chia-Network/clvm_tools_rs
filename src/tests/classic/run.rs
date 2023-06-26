@@ -2139,3 +2139,42 @@ fn test_cse_not_dominating_conditions_with_superior_let_outside_in_inline() {
         .to_string();
     assert_eq!(outcome, "0x5c13d840"); // 34 * 34 * 34 * 34 * 34 * 34
 }
+
+#[test]
+fn test_cse_not_dominating_conditions_with_superior_let_outside_in_defun() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let_outside_in_defun.clsp"
+            .to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x5c13d840"); // 34 * 34 * 34 * 34 * 34 * 34
+}
+
+#[test]
+fn test_cse_not_dominating_conditions_with_superior_let_odi() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let_odi.clsp"
+            .to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x5c13d840"); // 34 * 34 * 34 * 34 * 34 * 34
+}
+
+#[test]
+fn test_cse_not_dominating_conditions_with_superior_let_iodi() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let_iodi.clsp"
+            .to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x5c13d840"); // 34 * 34 * 34 * 34 * 34 * 34
+}
