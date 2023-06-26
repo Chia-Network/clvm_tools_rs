@@ -818,7 +818,7 @@ fn parse_module_and_get_sigil(
     program_text: &str,
 ) -> Result<(Option<String>, Vec<Rc<sexp::SExp>>), CompileErr> {
     let srcloc = Srcloc::start(input_file);
-    let parsed = parse_sexp(srcloc.clone(), program_text.bytes())?;
+    let parsed = parse_sexp(srcloc, program_text.bytes())?;
     let stepping_form_text = match opts.dialect().stepping {
         Some(21) => Some("(include *strict-cl-21*)".to_string()),
         Some(n) => Some(format!("(include *standard-cl-{n}*)")),
