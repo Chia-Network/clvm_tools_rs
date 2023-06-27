@@ -2240,7 +2240,7 @@ fn test_chialisp_web_example_map_lambda() {
 }
 
 #[test]
-fn test_chialisp_web_exmaple_embed() {
+fn test_chialisp_web_example_embed() {
     let program = do_basic_run(&vec![
         "run".to_string(),
         "-i".to_string(),
