@@ -131,8 +131,8 @@ jobs:
         echo "installing clvm_tools for clvm tests"
 
         # Ensure clvm_tools is installed from its own repo.
-        arch -arm64 git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
-        arch -arm64 python -m pip install ./clvm_tools
+        git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
+        python -m pip install ./clvm_tools
 
     - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed
       run: |
