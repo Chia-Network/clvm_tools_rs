@@ -41,7 +41,7 @@ jobs:
     - name: Install rust
       run: |
         chmod +x rustup-init
-        ./rustup-init
+        ./rustup-init -y
         rm rustup-init checksum.txt
 
     - name: Build m1 wheels
