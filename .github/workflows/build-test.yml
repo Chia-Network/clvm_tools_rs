@@ -40,7 +40,7 @@ jobs:
     - name: Set up rust
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: 1.65
+        toolchain: stable
 
     - name: Install dependencies
       run: |
@@ -80,7 +80,7 @@ jobs:
             . ./activate && \
             pip install --upgrade pip
           '
-        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v0.13.1 build --release --strip --manylinux 2010
+        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.1.0 build --release --strip --manylinux 2014
         # Refresh in case any ownerships changed.
         mv target target.docker && cp -r target.docker target
         # Ensure an empty .cargo-lock file exists.
