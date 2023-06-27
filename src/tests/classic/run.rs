@@ -2238,3 +2238,17 @@ fn test_chialisp_web_example_map_lambda() {
         .to_string();
     assert_eq!(outcome, "(101 102 103)");
 }
+
+#[test]
+fn test_chialisp_web_exmaple_embed() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/embed.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(world)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x26c60a61d01db5836ca70fefd44a6a016620413c8ef5f259a6c5612d4f79d3b8");
+}
