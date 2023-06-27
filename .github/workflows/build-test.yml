@@ -189,6 +189,12 @@ jobs:
         pip install pytest pytest-asyncio
         pytest tests
 
+    - name: Run tests from clvm_tools
+      run: |
+        . ./activate
+        cd clvm_tools
+        python -m py.test
+
     - name: Run tests
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
       run: cargo test --no-default-features
