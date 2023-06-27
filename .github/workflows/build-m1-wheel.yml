@@ -76,6 +76,11 @@ jobs:
         arch -arm64 python -c 'import clvm_tools; print(clvm_tools.__file__)'
         arch -arm64 python -c 'import clvm_tools_rs; print(clvm_tools_rs.__file__)'
 
+     - name: Install pytest
+       run: |
+        . ./activate
+        pip install pytest pytest-asyncio
+
 # Cost tests are currently failing.
 #    - name: Run tests from clvm
 #      run: |

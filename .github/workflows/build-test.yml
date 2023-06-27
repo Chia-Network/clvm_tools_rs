@@ -184,11 +184,15 @@ jobs:
         python support/wheelname.py
         python resources/tests/test-clvm-recompile-behavior.py
 
+    - name: Install pytest
+      run: |
+        . ./activate
+        pip install pytest pytest-asyncio
+                
     - name: Run tests from clvm
       run: |
         . ./activate
         cd clvm
-        pip install pytest pytest-asyncio
         pytest tests
 
     - name: Run tests from clvm_tools
