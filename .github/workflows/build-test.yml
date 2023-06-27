@@ -40,7 +40,7 @@ jobs:
     - name: Set up rust
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: stable
+        toolchain: 1.65
 
     - name: Install dependencies
       run: |
