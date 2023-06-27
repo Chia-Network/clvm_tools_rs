@@ -90,16 +90,16 @@ pub fn process_embed_file(
             ));
         }
 
-        if let (SExp::Atom(name), SExp::Atom(kind), SExp::Atom(filename)) = (
+        if let (SExp::Atom(), SExp::Atom(), SExp::Atom()) = (
             allocator.sexp(l[0]),
             allocator.sexp(l[1]),
             allocator.sexp(l[2]),
         ) {
             // Note: we don't want to keep borrowing here because we
             // need the mutable borrow below.
-            let name_buf = allocator.buf(&name).to_vec();
-            let kind_buf = allocator.buf(&kind).to_vec();
-            let filename_buf = allocator.buf(&filename).to_vec();
+            let name_buf = allocator.atom(l[0]).to_vec();
+            let kind_buf = allocator.atom(l[1]);
+            let filename_buf = allocator.atom(l[2]).to_vec();
             let file_data = if kind_buf == b"bin" {
                 let file = read_file(
                     runner,
@@ -128,7 +128,7 @@ pub fn process_embed_file(
                 return Err(EvalErr(declaration_sexp, "no such embed kind".to_string()));
             };
 
-            Ok((name_buf, quote(allocator, file_data)?))
+            Ok((name_buf.to_vec(), quote(allocator, file_data)?))
         } else {
             Err(EvalErr(
                 declaration_sexp,

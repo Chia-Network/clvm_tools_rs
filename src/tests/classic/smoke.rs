@@ -1,5 +1,6 @@
 use num_bigint::ToBigInt;
 
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
@@ -20,9 +21,11 @@ use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemb
 use crate::classic::clvm_tools::ir::r#type::IRRepr;
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::node_path::NodePath;
+use crate::classic::clvm_tools::pattern_match::match_sexp;
 use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
+use crate::classic::clvm_tools::stages::stage_2::optimize::sub_args;
 use crate::classic::platform::argparse::{
     Argument, ArgumentParser, NArgsSpec, TArgumentParserProps,
 };
@@ -145,8 +148,8 @@ fn mid_negative_value_bin() {
         Box::new(SimpleCreateCLVMObject {}),
     )
     .expect("should be able to make nodeptr");
-    if let SExp::Atom(abuf) = allocator.sexp(atom.1) {
-        let res_bytes = allocator.buf(&abuf);
+    if let SExp::Atom() = allocator.sexp(atom.1) {
+        let res_bytes = allocator.atom(atom.1);
         assert_eq!(res_bytes, &[0xff, 0xff]);
     } else {
         assert!(false);
@@ -273,8 +276,8 @@ fn can_run_from_source_nil() {
     let mut allocator = Allocator::new();
     let res = run_from_source(&mut allocator, "()".to_string());
     match allocator.sexp(res) {
-        SExp::Atom(b) => {
-            let res_bytes = allocator.buf(&b).to_vec();
+        SExp::Atom() => {
+            let res_bytes = allocator.atom(res);
             assert_eq!(res_bytes.len(), 0);
         }
         _ => {
@@ -288,8 +291,8 @@ fn can_echo_quoted_nil() {
     let mut allocator = Allocator::new();
     let res = run_from_source(&mut allocator, "(1)".to_string());
     match allocator.sexp(res) {
-        SExp::Atom(b) => {
-            let res_bytes = allocator.buf(&b).to_vec();
+        SExp::Atom() => {
+            let res_bytes = allocator.atom(res);
             assert_eq!(res_bytes.len(), 0);
         }
         _ => {
@@ -319,8 +322,8 @@ fn can_echo_quoted_atom() {
     let mut allocator = Allocator::new();
     let res = run_from_source(&mut allocator, "(1 . 3)".to_string());
     match allocator.sexp(res) {
-        SExp::Atom(b) => {
-            let res_bytes = allocator.buf(&b).to_vec();
+        SExp::Atom() => {
+            let res_bytes = allocator.atom(res);
             assert_eq!(res_bytes.len(), 1);
             assert_eq!(res_bytes[0], 3);
         }
@@ -335,8 +338,8 @@ fn can_do_operations() {
     let mut allocator = Allocator::new();
     let res = run_from_source(&mut allocator, "(16 (1 . 3) (1 . 5))".to_string());
     match allocator.sexp(res) {
-        SExp::Atom(b) => {
-            let res_bytes = allocator.buf(&b).to_vec();
+        SExp::Atom() => {
+            let res_bytes = allocator.atom(res);
             assert_eq!(res_bytes.len(), 1);
             assert_eq!(res_bytes[0], 8);
         }
@@ -351,8 +354,8 @@ fn can_do_operations_kw() {
     let mut allocator = Allocator::new();
     let res = run_from_source(&mut allocator, "(+ (q . 3) (q . 5))".to_string());
     match allocator.sexp(res) {
-        SExp::Atom(b) => {
-            let res_bytes = allocator.buf(&b).to_vec();
+        SExp::Atom() => {
+            let res_bytes = allocator.atom(res);
             assert_eq!(res_bytes.len(), 1);
             assert_eq!(res_bytes[0], 8);
         }
@@ -777,4 +780,35 @@ fn test_bytes_to_pybytes_repr_0() {
         pybytes_repr(b, false),
         "b'\\x11\\x01abc\\r\\ntest\\ttest\\r\\n'"
     );
+}
+
+#[test]
+fn test_pattern_match_dollar_for_dollar() {
+    let mut allocator = Allocator::new();
+    let pattern = assemble(&mut allocator, "($ . $)").expect("should assemble");
+    let target_expr = assemble(&mut allocator, "$").expect("should assemble");
+    let empty_map = HashMap::new();
+    let matched = match_sexp(&mut allocator, pattern, target_expr, empty_map.clone());
+    // Returns empty map.
+    assert_eq!(Some(empty_map), matched);
+}
+
+#[test]
+fn test_pattern_match_colon_for_colon() {
+    let mut allocator = Allocator::new();
+    let pattern = assemble(&mut allocator, "(: . :)").expect("should assemble");
+    let target_expr = assemble(&mut allocator, ":").expect("should assemble");
+    let empty_map = HashMap::new();
+    let matched = match_sexp(&mut allocator, pattern, target_expr, empty_map.clone());
+    // Returns empty map.
+    assert_eq!(Some(empty_map), matched);
+}
+
+#[test]
+fn test_sub_args() {
+    let mut allocator = Allocator::new();
+    let expr_sexp = assemble(&mut allocator, "(body 2 5)").expect("should assemble");
+    let new_args = assemble(&mut allocator, "(test1 test2)").expect("should assemble");
+    let result = sub_args(&mut allocator, expr_sexp, new_args).expect("should run");
+    assert_eq!(disassemble(&mut allocator, result, None), "(\"body\" (f (\"test1\" \"test2\")) (f (r (\"test1\" \"test2\"))))");
 }
