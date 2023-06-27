@@ -2202,3 +2202,15 @@ fn test_chialisp_web_example_defconst() {
         "0xf60efb25b9e6e3587acd9cf01c332707bb771801bdb5e4f50ea957a29c8dde89"
     );
 }
+
+#[test]
+fn test_chialisp_web_example_big_maybe() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/big-maybe.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(((3 5)))".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "8");
+}
