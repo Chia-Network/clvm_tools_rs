@@ -199,7 +199,7 @@ jobs:
       run: |
         . ./activate
         cd clvm_tools
-        python -m py.test
+        pytest tests
 
     - name: Run tests
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
