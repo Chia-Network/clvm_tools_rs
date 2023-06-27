@@ -139,7 +139,8 @@ pub fn compile_qq(
                         run_list <- enlist(allocator, &[cons_atom, op, consed]);
                         com_qq(allocator, "qq sexp pair".to_string(), macro_lookup, symbol_table, runner, run_list)
                     };
-                } else if allocator.atom(op).to_vec() == unquote_atom() { // opbuf
+                } else if allocator.atom(op).to_vec() == unquote_atom() {
+                    // opbuf
                     if level == 1 {
                         // (qq (unquote X)) => X
                         return m! {
@@ -775,7 +776,8 @@ pub fn get_compile_filename(
 ) -> Result<Option<String>, EvalErr> {
     let cvt_prog = assemble(allocator, "(_get_compile_filename)")?;
 
-    let Reduction(_, cvt_prog_result) = runner.run_program(allocator, cvt_prog, allocator.null(), None)?;
+    let Reduction(_, cvt_prog_result) =
+        runner.run_program(allocator, cvt_prog, allocator.null(), None)?;
 
     if cvt_prog_result == allocator.null() {
         return Ok(None);
@@ -806,7 +808,9 @@ pub fn get_search_paths(
         for elt in l.iter().copied() {
             if let SExp::Atom() = allocator.sexp(elt) {
                 // Only elt in scope.
-                res.push(Bytes::new(Some(BytesFromType::Raw(allocator.atom(elt).to_vec()))).decode());
+                res.push(
+                    Bytes::new(Some(BytesFromType::Raw(allocator.atom(elt).to_vec()))).decode(),
+                );
             }
         }
     }

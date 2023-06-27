@@ -238,15 +238,15 @@ const KW_PAIRS: [KwAtomPair; 46] = [
         version: 1,
     },
     KwAtomPair {
-        v: &[0x13,0xd6,0x1f,0x00],
+        v: &[0x13, 0xd6, 0x1f, 0x00],
         n: "secp256k1_verify",
         version: 1,
     },
     KwAtomPair {
-        v: &[0x1c,0x3a,0x8f,0x00],
+        v: &[0x1c, 0x3a, 0x8f, 0x00],
         n: "secp256r1_verify",
         version: 1,
-    }
+    },
 ];
 
 lazy_static! {

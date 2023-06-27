@@ -61,9 +61,11 @@ pub fn match_sexp(
         }
         (SExp::Pair(pleft, pright), _) => match (allocator.sexp(pleft), allocator.sexp(pright)) {
             (SExp::Atom(), SExp::Atom()) => {
+                let pright_atom = allocator.atom(pright).to_vec();
                 match allocator.sexp(sexp) {
                     SExp::Atom() => {
                         // Expression is ($ . $), sexp is '$', result: no capture.
+                        // Avoid double borrow.
                         if allocator.atom(pleft) == ATOM_MATCH {
                             if allocator.atom(pright) == ATOM_MATCH {
                                 if allocator.atom(sexp) == ATOM_MATCH {
@@ -72,12 +74,7 @@ pub fn match_sexp(
                                 return None;
                             }
 
-                            return unify_bindings(
-                                allocator,
-                                known_bindings,
-                                &allocator.atom(pright).to_vec(),
-                                sexp,
-                            );
+                            return unify_bindings(allocator, known_bindings, &pright_atom, sexp);
                         }
                         if allocator.atom(pleft) == SEXP_MATCH {
                             if allocator.atom(pright) == SEXP_MATCH
@@ -90,7 +87,7 @@ pub fn match_sexp(
                                 allocator,
                                 known_bindings,
                                 // pat_right_bytes
-                                &allocator.atom(pright).to_vec(),
+                                &pright_atom,
                                 sexp,
                             );
                         }
@@ -105,7 +102,7 @@ pub fn match_sexp(
                                 allocator,
                                 known_bindings,
                                 // pat_right_bytes
-                                &allocator.atom(pright).to_vec(),
+                                &pright_atom,
                                 sexp,
                             );
                         }

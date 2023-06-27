@@ -810,5 +810,8 @@ fn test_sub_args() {
     let expr_sexp = assemble(&mut allocator, "(body 2 5)").expect("should assemble");
     let new_args = assemble(&mut allocator, "(test1 test2)").expect("should assemble");
     let result = sub_args(&mut allocator, expr_sexp, new_args).expect("should run");
-    assert_eq!(disassemble(&mut allocator, result, None), "(\"body\" (f (\"test1\" \"test2\")) (f (r (\"test1\" \"test2\"))))");
+    assert_eq!(
+        disassemble(&mut allocator, result, None),
+        "(\"body\" (f (\"test1\" \"test2\")) (f (r (\"test1\" \"test2\"))))"
+    );
 }
