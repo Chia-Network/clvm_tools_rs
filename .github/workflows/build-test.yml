@@ -129,8 +129,10 @@ jobs:
         pip install clvm_rs
 
         echo "installing clvm_tools for clvm tests"
-        # clvm tools is required to run the tests is clvm
-        python -m pip install clvm_tools
+
+        # Ensure clvm_tools is installed from its own repo.
+        arch -arm64 git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
+        arch -arm64 python -m pip install ./clvm_tools
 
     - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed
       run: |
