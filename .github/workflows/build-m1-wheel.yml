@@ -41,7 +41,7 @@ jobs:
     - name: Install rust
       run: |
         chmod +x rustup-init
-        ./rustup-init -y ./rustup-init.sh -y || (echo "Rust is already installed. Exiting..." && exit 2)
+        ./rustup-init -y || (echo "Rust is already installed. Exiting..." && exit 2)
         rm rustup-init checksum.txt
 
     - name: Build m1 wheels
