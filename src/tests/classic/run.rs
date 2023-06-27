@@ -2226,3 +2226,15 @@ fn test_chialisp_web_example_map() {
         .to_string();
     assert_eq!(outcome, "(a 3 4)");
 }
+
+#[test]
+fn test_chialisp_web_example_map_lambda() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/map-example.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "((100 101 102))".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "(101 102 103)");
+}
