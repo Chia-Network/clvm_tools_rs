@@ -21,9 +21,10 @@ use crate::classic::platform::distutils::dep_util::newer;
 
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::compile_file;
-use crate::compiler::compiler::{run_optimizer, DefaultCompilerOpts};
+use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::dialect::detect_modern;
+use crate::compiler::optimize::run_optimizer;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::untype::untype_code;
@@ -57,8 +58,8 @@ pub fn compile_clvm_text_maybe_opt(
         let runner = Rc::new(DefaultProgramRunner::new());
         let opts = opts
             .set_dialect(dialect)
-            .set_optimize(do_optimize)
-            .set_frontend_opt(stepping > 21);
+            .set_optimize(do_optimize || stepping > 22)
+            .set_frontend_opt(stepping == 22);
 
         let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
         let res = if do_optimize {

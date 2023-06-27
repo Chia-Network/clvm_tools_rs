@@ -20,7 +20,7 @@ const MAX_RUN_COST: u64 = 1000000;
 
 #[derive(Debug)]
 struct CompileRunResult {
-    // pub compiled: Rc<SExp>,
+    pub compiled: Rc<SExp>,
     pub compiled_hex: String,
     pub run_result: Rc<SExp>,
 }
@@ -54,29 +54,34 @@ fn run_with_cost(
         .map_err(|e| RunFailure::RunErr(sexp.loc(), format!("{} in {} {}", e.1, sexp, env)))
         .and_then(|reduction| {
             Ok(CompileRunResult {
-                // compiled: sexp.clone(),
+                compiled: sexp.clone(),
                 compiled_hex,
                 run_result: convert_from_clvm_rs(allocator, sexp.loc(), reduction.1)?,
             })
         })
 }
 
-fn run_string_get_program_and_output_with_includes(
+#[derive(Clone, Debug)]
+struct OptimizationRunSpec {
+    dialect: AcceptedDialect,
+    optimize: bool,
+    fe_opt: bool,
+}
+
+fn run_string_get_program_and_output_dialect(
     content: &str,
     args: &str,
     include_dirs: &[String],
-    fe_opt: bool,
+    spec: OptimizationRunSpec,
 ) -> Result<CompileRunResult, CompileErr> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
     let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let srcloc = Srcloc::start(&"*test*".to_string());
     opts = opts
-        .set_frontend_opt(fe_opt)
-        .set_dialect(AcceptedDialect {
-            stepping: Some(23),
-            strict: false,
-        })
+        .set_optimize(spec.optimize)
+        .set_frontend_opt(spec.fe_opt)
+        .set_dialect(spec.dialect)
         .set_search_paths(include_dirs);
     let sexp_args =
         parse_sexp(srcloc.clone(), args.bytes()).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
@@ -96,6 +101,27 @@ fn run_string_get_program_and_output_with_includes(
     })
 }
 
+fn run_string_get_program_and_output_with_includes(
+    content: &str,
+    args: &str,
+    include_dirs: &[String],
+    fe_opt: bool,
+) -> Result<CompileRunResult, CompileErr> {
+    run_string_get_program_and_output_dialect(
+        content,
+        args,
+        include_dirs,
+        OptimizationRunSpec {
+            dialect: AcceptedDialect {
+                stepping: Some(23),
+                strict: false,
+            },
+            optimize: false,
+            fe_opt,
+        },
+    )
+}
+
 fn do_compile_and_run_opt_size_test_with_includes(
     prog: &str,
     env: &str,
@@ -103,6 +129,26 @@ fn do_compile_and_run_opt_size_test_with_includes(
 ) -> Result<OptRunResult, CompileErr> {
     let unopt_run = run_string_get_program_and_output_with_includes(prog, env, includes, false)?;
     let opt_run = run_string_get_program_and_output_with_includes(prog, env, includes, true)?;
+
+    // Ensure the runs had the same output.
+    assert_eq!(unopt_run.run_result, opt_run.run_result);
+
+    Ok(OptRunResult {
+        unopt: unopt_run,
+        opt: opt_run,
+    })
+}
+
+fn do_compile_and_run_opt_size_test_dialect(
+    prog: &str,
+    env: &str,
+    includes: &[String],
+    mut dialect: OptimizationRunSpec,
+) -> Result<OptRunResult, CompileErr> {
+    let opt_run = run_string_get_program_and_output_dialect(prog, env, includes, dialect.clone())?;
+    dialect.optimize = false;
+    dialect.fe_opt = false;
+    let unopt_run = run_string_get_program_and_output_dialect(prog, env, includes, dialect)?;
 
     // Ensure the runs had the same output.
     assert_eq!(unopt_run.run_result, opt_run.run_result);
@@ -146,6 +192,8 @@ fn smoke_test_optimizer() {
         "()",
     )
     .expect("should compile and run");
+    eprintln!("opt   {}", res.opt.compiled);
+    eprintln!("unopt {}", res.unopt.compiled);
     assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
 }
 
@@ -259,4 +307,75 @@ fn test_optimizer_stack_overflow_2() {
     } else {
         assert!(false);
     }
+}
+
+const SPEC_23: OptimizationRunSpec = OptimizationRunSpec {
+    dialect: AcceptedDialect {
+        stepping: Some(23),
+        strict: true,
+    },
+    optimize: true,
+    fe_opt: true,
+};
+
+#[test]
+fn test_optimizer_shrinks_repeated_lets_23() {
+    let res = do_compile_and_run_opt_size_test_dialect(
+        indoc! {"
+    (mod (X)
+     (include *standard-cl-22*)
+     (defconstant Z 1000000)
+     (let
+      ((X1 (+ X Z)))
+      (+ X1 X1 X1 X1 X1 X1)
+     )
+    )"},
+        "(3)",
+        &[],
+        SPEC_23.clone(),
+    )
+    .expect("should compile and run");
+    assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
+}
+
+#[test]
+fn test_brief_path_optimization() {
+    let program =
+        fs::read_to_string("resources/tests/test_user_path_opt_0.clsp").expect("should exist");
+    let res = do_compile_and_run_opt_size_test_dialect(
+        &program,
+        "((1111111 ((((((987))))))))",
+        &[],
+        SPEC_23.clone(),
+    )
+    .expect("should compile and run");
+    assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
+}
+
+// Tests the path optimizer on a tricky assign extraction.
+#[test]
+fn test_brief_path_optimization_assign() {
+    let program =
+        fs::read_to_string("resources/tests/test_assign_path_opt.clsp").expect("should exist");
+    let res = do_compile_and_run_opt_size_test_dialect(
+        &program,
+        "((_0 _1 _2 _3 _4 (_50 (_51 _52 _53 99))))",
+        &[],
+        SPEC_23.clone(),
+    )
+    .expect("should compile and run");
+    eprintln!("res.opt.compiled   {}", res.opt.compiled);
+    eprintln!("res.unopt.compiled {}", res.unopt.compiled);
+    assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
+}
+
+#[test]
+fn test_subexp_elimination_smoke_0() {
+    let program =
+        fs::read_to_string("resources/tests/test_recursion_subexp.clsp").expect("should exist");
+    let res = do_compile_and_run_opt_size_test_dialect(&program, "(13 15)", &[], SPEC_23.clone())
+        .expect("should compile and run");
+    eprintln!("res.opt.compiled   {}", res.opt.compiled);
+    eprintln!("res.unopt.compiled {}", res.unopt.compiled);
+    assert!(res.opt.compiled_hex.len() < res.unopt.compiled_hex.len());
 }

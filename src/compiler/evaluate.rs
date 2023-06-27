@@ -16,10 +16,12 @@ use crate::compiler::comptypes::{
     HelperForm, LambdaData, LetData, LetFormInlineHint, LetFormKind,
 };
 use crate::compiler::frontend::frontend;
+use crate::compiler::optimize::get_optimizer;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::stackvisit::{HasDepthLimit, VisitedMarker};
+use crate::compiler::CompileContextWrapper;
 use crate::util::{number_from_u8, u8_from_number, Number};
 
 const PRIM_RUN_LIMIT: usize = 1000000;
@@ -569,12 +571,16 @@ fn is_quote_atom(h: Rc<SExp>) -> bool {
     match_atom_to_prim(vec![b'q'], 1, h)
 }
 
-fn is_apply_atom(h: Rc<SExp>) -> bool {
+pub fn is_apply_atom(h: Rc<SExp>) -> bool {
     match_atom_to_prim(vec![b'a'], 2, h)
 }
 
-fn is_i_atom(h: Rc<SExp>) -> bool {
+pub fn is_i_atom(h: Rc<SExp>) -> bool {
     match_atom_to_prim(vec![b'i'], 3, h)
+}
+
+pub fn is_not_atom(h: Rc<SExp>) -> bool {
+    match_atom_to_prim(b"not".to_vec(), 32, h)
 }
 
 fn is_cons_atom(h: Rc<SExp>) -> bool {
@@ -969,7 +975,7 @@ impl<'info> Evaluator {
         let mut target_vec: Vec<Rc<BodyForm>> = parts.to_owned();
         let mut visited = VisitedMarker::again(body.loc(), visited_)?;
 
-        if call_name == "@".as_bytes() {
+        if call_name == "@".as_bytes() || call_name == "@*env*".as_bytes() {
             // Synthesize the environment for this function
             Ok(Rc::new(BodyForm::Quoted(SExp::Cons(
                 l.clone(),
@@ -1418,7 +1424,7 @@ impl<'info> Evaluator {
             }
             BodyForm::Quoted(_) => Ok(body.clone()),
             BodyForm::Value(SExp::Atom(l, name)) => {
-                if name == &"@".as_bytes().to_vec() {
+                if name == &"@".as_bytes().to_vec() || name == &"@*env*".as_bytes().to_vec() {
                     let literal_args = synthesize_args(prog_args.clone(), env)?;
                     self.shrink_bodyform_visited(
                         allocator,
@@ -1518,13 +1524,15 @@ impl<'info> Evaluator {
             }
             BodyForm::Mod(_, program) => {
                 // A mod form yields the compiled code.
-                let code = codegen(
+                let mut symbols = HashMap::new();
+                let optimizer = get_optimizer(&program.loc(), self.opts.clone())?;
+                let mut context_wrapper = CompileContextWrapper::new(
                     allocator,
                     self.runner.clone(),
-                    self.opts.clone(),
-                    program,
-                    &mut HashMap::new(),
-                )?;
+                    &mut symbols,
+                    optimizer,
+                );
+                let code = codegen(&mut context_wrapper.context, self.opts.clone(), program)?;
                 Ok(Rc::new(BodyForm::Quoted(code)))
             }
             BodyForm::Lambda(ldata) => self.enrich_lambda_site_info(

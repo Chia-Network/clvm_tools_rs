@@ -1,6 +1,10 @@
 use std::borrow::Borrow;
 use std::rc::Rc;
 
+use num_bigint::ToBigInt;
+
+use crate::classic::clvm::__type_compatibility__::bi_one;
+
 use crate::compiler::clvm::truthy;
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, LambdaData};
 use crate::compiler::evaluate::make_operator2;
@@ -57,14 +61,14 @@ fn make_operator(loc: Srcloc, op: u8, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) ->
     BodyForm::Call(
         loc.clone(),
         vec![
-            Rc::new(BodyForm::Value(SExp::Atom(loc, vec![op]))),
+            Rc::new(BodyForm::Value(SExp::Integer(loc, op.to_bigint().unwrap()))),
             arg1,
             arg2,
         ],
     )
 }
 
-fn make_cons(loc: Srcloc, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) -> BodyForm {
+pub fn make_cons(loc: Srcloc, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) -> BodyForm {
     make_operator(loc, 4, arg1, arg2)
 }
 
@@ -96,9 +100,9 @@ fn make_list(loc: Srcloc, args: &[BodyForm]) -> BodyForm {
 //
 pub fn lambda_codegen(name: &[u8], ldata: &LambdaData) -> Result<BodyForm, CompileErr> {
     // Code to retrieve and quote the captures.
-    let quote_atom = BodyForm::Value(SExp::Atom(ldata.loc.clone(), vec![1]));
-    let apply_atom = BodyForm::Value(SExp::Atom(ldata.loc.clone(), vec![2]));
-    let cons_atom = BodyForm::Value(SExp::Atom(ldata.loc.clone(), vec![4]));
+    let quote_atom = BodyForm::Value(SExp::Integer(ldata.loc.clone(), bi_one()));
+    let apply_atom = BodyForm::Value(SExp::Integer(ldata.loc.clone(), 2_u32.to_bigint().unwrap()));
+    let cons_atom = BodyForm::Value(SExp::Integer(ldata.loc.clone(), 4_u32.to_bigint().unwrap()));
     let whole_env = quote_atom.clone();
 
     let compose_captures = make_cons(

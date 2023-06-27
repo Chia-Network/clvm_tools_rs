@@ -1,9 +1,7 @@
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-
-use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
@@ -14,8 +12,11 @@ use crate::compiler::comptypes::{
     BodyForm, Callable, CompileErr, CompiledCode, CompilerOpts, InlineFunction, LambdaData,
     PrimaryCodegen,
 };
+use crate::compiler::lambda::make_cons;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::BasicCompileContext;
+use crate::compiler::CompileContextWrapper;
 
 use crate::util::Number;
 
@@ -265,7 +266,32 @@ fn replace_inline_body(
                 }
             }
         }
-        BodyForm::Value(SExp::Atom(_, a)) => {
+        BodyForm::Value(SExp::Atom(l, a)) => {
+            if a == b"@*env*" {
+                // Reify the environment as it looks from here.
+                let left_env = Rc::new(BodyForm::Call(
+                    l.clone(),
+                    vec![
+                        Rc::new(BodyForm::Value(SExp::Atom(l.clone(), b"@".to_vec()))),
+                        Rc::new(BodyForm::Value(SExp::Integer(
+                            l.clone(),
+                            2_u32.to_bigint().unwrap(),
+                        ))),
+                    ],
+                ));
+                let mut env = Rc::new(BodyForm::Quoted(SExp::Nil(l.clone())));
+                for arg in args.iter().rev() {
+                    env = Rc::new(make_cons(l.clone(), arg.clone(), env));
+                }
+                env = Rc::new(make_cons(l.clone(), left_env, env));
+                return Ok(env);
+            } else if a == b"@" {
+                return Ok(Rc::new(BodyForm::Value(SExp::Atom(
+                    l.clone(),
+                    b"@".to_vec(),
+                ))));
+            }
+
             let alookup = arg_lookup(callsite, inline.args.clone(), 0, args, a.clone())?
                 .unwrap_or_else(|| expr.clone());
             Ok(alookup)
@@ -299,8 +325,7 @@ fn replace_inline_body(
 /// can be treated as a desugaring step that's subject to frontend optimization.
 #[allow(clippy::too_many_arguments)]
 pub fn replace_in_inline(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
+    context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
     loc: Srcloc,
@@ -312,7 +337,7 @@ pub fn replace_in_inline(
     visited.insert(inline.name.clone());
     replace_inline_body(
         &mut visited,
-        runner.clone(),
+        context.runner.clone(),
         opts.clone(),
         compiler,
         loc,
@@ -321,5 +346,12 @@ pub fn replace_in_inline(
         callsite,
         inline.body.clone(),
     )
-    .and_then(|x| generate_expr_code(allocator, runner, opts, compiler, x))
+    .and_then(|x| {
+        let mut symbols = HashMap::new();
+        let runner = context.runner();
+        let optimizer = context.optimizer.duplicate();
+        let mut context_wrapper =
+            CompileContextWrapper::new(context.allocator(), runner, &mut symbols, optimizer);
+        generate_expr_code(&mut context_wrapper.context, opts, compiler, x)
+    })
 }
