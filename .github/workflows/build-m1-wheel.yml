@@ -33,14 +33,15 @@ jobs:
 
     - name: Set up rust
       run: |
-        curl https://static.rust-lang.org/rustup/dist/aarch64-apple-darwin/rustup-init.sha256 | awk '{print $1 " *rustup-init"}' > checksum.txt
+        curl https://static.rust-lang.org/rustup/dist/aarch64-apple-darwin/rustup-init.sha256 | awk '{print $1 " *    rustup-init"}' > checksum.txt
         curl -O https://static.rust-lang.org/rustup/dist/aarch64-apple-darwin/rustup-init
         cat checksum.txt
         shasum -a 256 checksum.txt
 
     - name: Install rust
       run: |
-        sudo ./rustup-init -y
+        chmod +x rustup-init
+        ./rustup-init
         rm rustup-init checksum.txt
 
     - name: Build m1 wheels
