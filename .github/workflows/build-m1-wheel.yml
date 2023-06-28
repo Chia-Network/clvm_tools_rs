@@ -78,7 +78,7 @@ jobs:
 
     - name: Install pytest
       run: |
-        . ./activate
+        . ./venv/bin/activate
         pip install pytest pytest-asyncio
 
 # Cost tests are currently failing.
