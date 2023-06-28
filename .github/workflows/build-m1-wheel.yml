@@ -76,9 +76,9 @@ jobs:
         arch -arm64 python -c 'import clvm_tools; print(clvm_tools.__file__)'
         arch -arm64 python -c 'import clvm_tools_rs; print(clvm_tools_rs.__file__)'
 
-     - name: Install pytest
-       run: |
-        . ./activate
+    - name: Install pytest
+      run: |
+        . ./venv/bin/activate
         pip install pytest pytest-asyncio
 
 # Cost tests are currently failing.
@@ -92,7 +92,7 @@ jobs:
       run: |
         . ./venv/bin/activate
         cd clvm_tools
-        arch -arm64 python -m py.test 
+        arch -arm64 pytest
 
     - name: Upload wheels
       uses: actions/upload-artifact@v3
