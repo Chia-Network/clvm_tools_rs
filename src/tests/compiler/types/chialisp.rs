@@ -4,7 +4,8 @@ use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::compiler::DefaultCompilerOpts;
-use crate::compiler::comptypes::CompileErr;
+use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::frontend::frontend;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::{HasLoc, Srcloc};
@@ -121,12 +122,18 @@ fn test_chialisp_program_typecheck(s: &str, flatten: bool) -> Result<Polytype, C
     let testname = "*test*".to_string();
     let loc = Srcloc::start(&testname);
     let context = standard_type_context();
-    let opts = DefaultCompilerOpts::new(&testname);
+    let opts = Rc::new(DefaultCompilerOpts::new(&testname));
+    let opts23 = opts.set_dialect(AcceptedDialect {
+        stepping: Some(23),
+        strict: true,
+    });
     let pre_forms = parse_sexp(loc.clone(), s.bytes()).map_err(|e| CompileErr(e.0, e.1))?;
-    let compileform = frontend(Rc::new(opts), &pre_forms)?;
+    let compileform = frontend(opts.clone(), &pre_forms)?;
+    let compileform23 = frontend(opts23.clone(), &pre_forms)?;
     let mut fcount: usize = 0;
     let mut held = HashMap::new();
-    let target_type = context.typecheck_chialisp_program(&compileform)?;
+    let target_type = context.typecheck_chialisp_program(opts.clone(), &compileform)?;
+    let target_type = context.typecheck_chialisp_program(opts23.clone(), &compileform23)?;
     if flatten {
         Ok(flatten_exists(
             &context.reify(&target_type, None),
