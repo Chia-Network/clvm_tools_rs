@@ -125,7 +125,7 @@ fn test_chialisp_program_typecheck(s: &str, flatten: bool) -> Result<Polytype, C
     let opts = Rc::new(DefaultCompilerOpts::new(&testname));
     let opts23 = opts.set_dialect(AcceptedDialect {
         stepping: Some(23),
-        strict: true
+        strict: true,
     });
     let pre_forms = parse_sexp(loc.clone(), s.bytes()).map_err(|e| CompileErr(e.0, e.1))?;
     let compileform = frontend(opts.clone(), &pre_forms)?;

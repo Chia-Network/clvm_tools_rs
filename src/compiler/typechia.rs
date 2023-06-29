@@ -640,7 +640,8 @@ fn chialisp_to_expr(
             let file_borrowed: &String = letdata.loc.file.borrow();
             let opts = Rc::new(DefaultCompilerOpts::new(file_borrowed));
             let runner = Rc::new(DefaultProgramRunner::new());
-            let evaluator = Evaluator::new(opts.clone(), runner, program.helpers.clone()).disable_calls();
+            let evaluator =
+                Evaluator::new(opts.clone(), runner, program.helpers.clone()).disable_calls();
             let beta_reduced = evaluator.shrink_bodyform(
                 &mut allocator,
                 Rc::new(SExp::Nil(letdata.loc.clone())),
@@ -653,8 +654,9 @@ fn chialisp_to_expr(
         }
         BodyForm::Call(l, lst) => {
             let mut arg_expr = Expr::EUnit(l.clone());
-            for (i,e) in lst.iter().enumerate().rev().take(lst.len()-1) {
-                let new_expr = chialisp_to_expr(opts.clone(), program, form_args.clone(), e.clone())?;
+            for (_i, e) in lst.iter().enumerate().rev().take(lst.len() - 1) {
+                let new_expr =
+                    chialisp_to_expr(opts.clone(), program, form_args.clone(), e.clone())?;
 
                 arg_expr = Expr::EApp(
                     Rc::new(Expr::EApp(
@@ -700,7 +702,7 @@ fn chialisp_to_expr(
                     if op_borrowed == v {
                         return Ok(Expr::EApp(
                             Rc::new(Expr::EVar(Var(decode_string(op_name), v.loc()))),
-                            Rc::new(arg_expr)
+                            Rc::new(arg_expr),
                         ));
                     }
                 }
@@ -754,7 +756,11 @@ fn handle_function_type(
 
 // Given a compileform, typecheck
 impl Context {
-    pub fn typecheck_chialisp_program(&self, opts: Rc<dyn CompilerOpts>, comp: &CompileForm) -> Result<Polytype, CompileErr> {
+    pub fn typecheck_chialisp_program(
+        &self,
+        opts: Rc<dyn CompilerOpts>,
+        comp: &CompileForm,
+    ) -> Result<Polytype, CompileErr> {
         let mut context = self.clone();
 
         // Extract type definitions
@@ -832,7 +838,6 @@ impl Context {
         let (context_with_args, result_ty) =
             handle_function_type(&context, comp.exp.loc(), comp.args.clone(), &ty)?;
         let clexpr = chialisp_to_expr(opts, comp, comp.args.clone(), comp.exp.clone())?;
-        eprintln!("clexpr {}", clexpr.to_sexp());
         typecheck_chialisp_body_with_context(
             &context_with_args,
             &Expr::EAnno(Rc::new(clexpr), result_ty),
