@@ -711,7 +711,7 @@ impl Context {
                     Err(CompileErr(
                         expr.loc(),
                         format!(
-                            "typesynth: not in scope {} in context {}",
+                            "typesynth: not in scope {:?} in context {}",
                             expr.to_sexp(),
                             self.to_sexp()
                         ),
