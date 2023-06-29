@@ -1,5 +1,5 @@
 # Taken from clvm_rs' version.
-name: Build crate
+name: Extensive tests
 
 on:
   push:
@@ -13,8 +13,8 @@ on:
       - '**'
 
 jobs:
-  build_crate:
-    name: Crate
+  extensive_tests:
+    name: Extensive tests
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
