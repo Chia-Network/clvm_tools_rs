@@ -2266,15 +2266,33 @@ fn test_chialisp_types_23() {
         "run".to_string(),
         "resources/tests/strict/typesmoke.clsp".to_string(),
     ])
-    .trim()
-    .to_string();
+        .trim()
+        .to_string();
     let program2 = do_basic_run(&vec![
         "run".to_string(),
         "--typecheck".to_string(),
         "resources/tests/strict/typesmoke.clsp".to_string(),
     ])
-    .trim()
-    .to_string();
+        .trim()
+        .to_string();
     assert_eq!(program, program2);
     assert_eq!(program, "(2 (1 . 2) (4 2 ()))");
+}
+
+#[test]
+fn test_chialisp_type_lambda_23() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/typesmoke-lambda.clsp".to_string(),
+    ])
+        .trim()
+        .to_string();
+    let program2 = do_basic_run(&vec![
+        "run".to_string(),
+        "--typecheck".to_string(),
+        "resources/tests/strict/typesmoke-lambda.clsp".to_string(),
+    ])
+        .trim()
+        .to_string();
+    assert_eq!(program, program2);
 }
