@@ -95,7 +95,8 @@ jobs:
     - name: Run tests from clvm_tools
       run: |
         . ./venv/bin/activate
-        (cd clvm_tools && arch -arm64 pytest)
+        cd clvm_tools
+        arch -arm64 pytest
 
     - name: Upload wheels
       uses: actions/upload-artifact@v3
