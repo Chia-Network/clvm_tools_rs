@@ -12,7 +12,9 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 
 use crate::compiler::compiler::{is_at_capture, DefaultCompilerOpts};
-use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LetData, LetFormKind};
+use crate::compiler::comptypes::{
+    BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, LetData, LetFormKind,
+};
 use crate::compiler::evaluate::{build_argument_captures, dequote, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
 use crate::compiler::gensym::gensym;
@@ -721,17 +723,16 @@ fn chialisp_to_expr(
             let lambda_arg_name = gensym(b"lambda_arg".to_vec());
             let lambda_evar = Var(decode_string(&lambda_arg_name), l.loc.clone());
             let lambda_bindings = form_lambda_bindings(&lambda_arg_name, l.args.clone());
-            let lambda_body_let =
-                BodyForm::Let(
-                    LetFormKind::Parallel,
-                    Box::new(LetData {
-                        loc: l.loc.clone(),
-                        kw: None,
-                        bindings: lambda_bindings,
-                        body: l.body.clone(),
-                        inline_hint: None,
-                    })
-                );
+            let lambda_body_let = BodyForm::Let(
+                LetFormKind::Parallel,
+                Box::new(LetData {
+                    loc: l.loc.clone(),
+                    kw: None,
+                    bindings: lambda_bindings,
+                    body: l.body.clone(),
+                    inline_hint: None,
+                }),
+            );
 
             // Produce a type side lambda with a single argument (all clvm
             // functions are typewise unary) and a let form inside it which
@@ -739,7 +740,12 @@ fn chialisp_to_expr(
             // be fine not to repeat bindings for the other variables in scope.
             let lambda_expr = Expr::EAbs(
                 lambda_evar,
-                Rc::new(chialisp_to_expr(opts, program, form_args, Rc::new(lambda_body_let))?)
+                Rc::new(chialisp_to_expr(
+                    opts,
+                    program,
+                    form_args,
+                    Rc::new(lambda_body_let),
+                )?),
             );
             Ok(lambda_expr)
         }

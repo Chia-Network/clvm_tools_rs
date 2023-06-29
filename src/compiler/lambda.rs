@@ -7,7 +7,9 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 
 use crate::compiler::clvm::truthy;
 use crate::compiler::compiler::is_at_capture;
-use crate::compiler::comptypes::{Binding, BindingPattern, BodyForm, CompileErr, CompilerOpts, LambdaData};
+use crate::compiler::comptypes::{
+    Binding, BindingPattern, BodyForm, CompileErr, CompilerOpts, LambdaData,
+};
 use crate::compiler::evaluate::make_operator2;
 use crate::compiler::frontend::compile_bodyform;
 use crate::compiler::sexp::SExp;
@@ -162,27 +164,32 @@ pub fn handle_lambda(
 // the single unary argument of the lambda to extract a specific binding.
 fn generate_get_from_var(mask: Number, target_path: Number, arg: Rc<BodyForm>) -> Rc<BodyForm> {
     let two = 2_u32.to_bigint().unwrap();
-    if mask.clone() * two.clone() > target_path.clone() {
+    if mask.clone() * two.clone() > target_path {
         // Found where we're going
         return arg;
     }
     let is_right = mask.clone() & target_path.clone() != bi_zero();
     let new_op = if is_right { b"r" } else { b"f" };
-    let new_body = Rc::new(BodyForm::Call(arg.loc(), vec![
-        Rc::new(BodyForm::Value(SExp::Atom(arg.loc(), new_op.to_vec()))),
-        arg.clone()
-    ]));
-    generate_get_from_var(
-        mask.clone() * two,
-        target_path.clone(),
-        new_body
-    )
+    let new_body = Rc::new(BodyForm::Call(
+        arg.loc(),
+        vec![
+            Rc::new(BodyForm::Value(SExp::Atom(arg.loc(), new_op.to_vec()))),
+            arg.clone(),
+        ],
+    ));
+    generate_get_from_var(mask * two, target_path, new_body)
 }
 
 // Recurse over the argument bindings of a lambda and generate Binding objects
 // for a let form which binds the multiple destructured arguments (virtually)
 // from the literal unary argument.
-fn form_lambda_bindings_inner(bindings: &mut Vec<Rc<Binding>>, arg: Rc<SExp>, mask: Number, path: Number, args: Rc<SExp>) {
+fn form_lambda_bindings_inner(
+    bindings: &mut Vec<Rc<Binding>>,
+    arg: Rc<SExp>,
+    mask: Number,
+    path: Number,
+    args: Rc<SExp>,
+) {
     match args.borrow() {
         SExp::Cons(_, l, r) => {
             if let Some((name, farther)) = is_at_capture(l.clone(), r.clone()) {
@@ -191,34 +198,32 @@ fn form_lambda_bindings_inner(bindings: &mut Vec<Rc<Binding>>, arg: Rc<SExp>, ma
                     arg.clone(),
                     mask.clone(),
                     path.clone(),
-                    Rc::new(SExp::Atom(args.loc(), name.to_vec()))
+                    Rc::new(SExp::Atom(args.loc(), name.to_vec())),
                 );
-                form_lambda_bindings_inner(
-                    bindings,
-                    arg.clone(),
-                    mask,
-                    path,
-                    farther
-                );
+                form_lambda_bindings_inner(bindings, arg, mask, path, farther);
                 return;
             }
             let right_path = path.clone() | mask.clone();
             let new_mask = mask * 2_u32.to_bigint().unwrap();
             form_lambda_bindings_inner(bindings, arg.clone(), new_mask.clone(), path, l.clone());
-            form_lambda_bindings_inner(bindings, arg.clone(), new_mask, right_path, r.clone());
+            form_lambda_bindings_inner(bindings, arg, new_mask, right_path, r.clone());
         }
         SExp::Atom(l, _a) => {
             let target_path = path | mask;
             let arg_borrowed: &SExp = arg.borrow();
-            let body = generate_get_from_var(bi_one(), target_path, Rc::new(BodyForm::Value(arg_borrowed.clone())));
+            let body = generate_get_from_var(
+                bi_one(),
+                target_path,
+                Rc::new(BodyForm::Value(arg_borrowed.clone())),
+            );
             bindings.push(Rc::new(Binding {
                 nl: l.clone(),
                 loc: l.clone(),
                 pattern: BindingPattern::Complex(args),
-                body
+                body,
             }));
         }
-        _ => { }
+        _ => {}
     }
 }
 
