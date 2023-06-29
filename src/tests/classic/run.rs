@@ -2259,3 +2259,22 @@ fn test_chialisp_web_example_embed() {
         "0x26c60a61d01db5836ca70fefd44a6a016620413c8ef5f259a6c5612d4f79d3b8"
     );
 }
+
+#[test]
+fn test_chialisp_types_23() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/typesmoke.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let program2 = do_basic_run(&vec![
+        "run".to_string(),
+        "--typecheck".to_string(),
+        "resources/tests/strict/typesmoke.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(program, program2);
+    assert_eq!(program, "(2 (1 . 2) (4 2 ()))");
+}
