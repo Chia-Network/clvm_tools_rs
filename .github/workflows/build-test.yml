@@ -66,8 +66,8 @@ jobs:
     - name: Build Linux in manylinux2010 with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'ubuntu')
       run: |
-        podman run --rm=true \
-          -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
+        docker run --rm \
+          -v ${{ github.workspace }}:/ws --workdir=/ws \
           ghcr.io/chia-network/build-images/centos-pypa-rust-x86_64 \
           bash -exc '\
             yum -y install libc6 openssl-devel && \
@@ -137,8 +137,10 @@ jobs:
         pip install clvm_rs
 
         echo "installing clvm_tools for clvm tests"
-        # clvm tools is required to run the tests is clvm
-        python -m pip install clvm_tools
+
+        # Ensure clvm_tools is installed from its own repo.
+        git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
+        python -m pip install ./clvm_tools
 
     - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed
       run: |
@@ -200,12 +202,22 @@ jobs:
       run: |
         python support/wheelname.py
         python resources/tests/test-clvm-recompile-behavior.py
-        
+
+    - name: Install pytest
+      run: |
+        . ./activate
+        pip install pytest pytest-asyncio
+                
     - name: Run tests from clvm
       run: |
         . ./activate
         cd clvm
-        pip install pytest pytest-asyncio
+        pytest tests
+
+    - name: Run tests from clvm_tools
+      run: |
+        . ./activate
+        cd clvm_tools
         pytest tests
 
     - name: Run tests
