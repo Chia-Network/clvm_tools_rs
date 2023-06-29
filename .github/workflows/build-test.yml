@@ -6,7 +6,6 @@ on:
     branches:
       - base
       - dev
-      - nightly
     tags:
         - '**'
   pull_request:
@@ -188,7 +187,7 @@ jobs:
       run: |
         . ./activate
         pip install pytest pytest-asyncio
-                
+
     - name: Run tests from clvm
       run: |
         . ./activate
@@ -255,8 +254,8 @@ jobs:
         TWINE_PASSWORD: ${{ secrets.test_pypi_password }}
       run: twine upload --non-interactive --skip-existing --verbose 'target/wheels/*'
 
-    - name: Publish Nightlies
-      if: steps.check_secrets.outputs.HAS_AWS_SECRET && github.ref == 'refs/heads/nightly'
+    - name: Publish Dev
+      if: steps.check_secrets.outputs.HAS_AWS_SECRET && github.ref == 'refs/heads/dev'
       shell: bash
       working-directory: ./target/wheels
       env:
@@ -267,7 +266,7 @@ jobs:
         FILES=$(find . -type f -name '*.whl')
         while IFS= read -r file; do
           filename=$(basename $file)
-          aws --no-progress s3 cp "$file" "s3://download.chia.net/nightlies/clvm-tools-rs/$filename"
+          aws --no-progress s3 cp "$file" "s3://download.chia.net/simple-dev/clvm-tools-rs/$filename"
         done <<< "$FILES"
 
   fmt:
