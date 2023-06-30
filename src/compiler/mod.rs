@@ -186,10 +186,10 @@ impl BasicCompileContext {
     }
 }
 
-struct CompileContextWrapper<'a> {
-    allocator: &'a mut Allocator,
-    symbols: &'a mut HashMap<String, String>,
-    context: BasicCompileContext,
+pub struct CompileContextWrapper<'a> {
+    pub allocator: &'a mut Allocator,
+    pub symbols: &'a mut HashMap<String, String>,
+    pub context: BasicCompileContext,
 }
 
 impl<'a> CompileContextWrapper<'a> {
