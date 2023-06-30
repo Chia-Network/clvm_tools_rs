@@ -1345,10 +1345,7 @@ fn frontend_start(
                         let mut ty: Option<TypeAnnoKind> = None;
 
                         if x.len() < 3 {
-                            return Err(CompileErr(
-                                x[0].loc(),
-                                "incomplete mod form".to_string()
-                            ));
+                            return Err(CompileErr(x[0].loc(), "incomplete mod form".to_string()));
                         }
 
                         if let SExp::Atom(_, colon) = &x[2].atomize() {
