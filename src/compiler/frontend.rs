@@ -1338,7 +1338,7 @@ fn frontend_start(
                         ));
                     }
 
-                    if *mod_atom == b"mod" {
+                    if *mod_atom == b"mod" && x.len() >= 3 {
                         let args = Rc::new(x[1].atomize());
                         let mut skip_idx = 2;
                         let mut ty: Option<TypeAnnoKind> = None;
