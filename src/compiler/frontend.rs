@@ -1093,6 +1093,7 @@ fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
     ))
 }
 
+#[derive(Debug, Clone)]
 pub struct HelperFormResult {
     pub chia_type: Option<ChiaType>,
     pub new_helpers: Vec<HelperForm>,
