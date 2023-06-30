@@ -1339,10 +1339,17 @@ fn frontend_start(
                         ));
                     }
 
-                    if *mod_atom == b"mod" && x.len() >= 3 {
+                    if *mod_atom == b"mod" {
                         let args = Rc::new(x[1].atomize());
                         let mut skip_idx = 2;
                         let mut ty: Option<TypeAnnoKind> = None;
+
+                        if x.len() < 3 {
+                            return Err(CompileErr(
+                                x[0].loc(),
+                                "incomplete mod form".to_string()
+                            ));
+                        }
 
                         if let SExp::Atom(_, colon) = &x[2].atomize() {
                             if *colon == vec![b':'] && x.len() > 3 {
