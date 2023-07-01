@@ -5,7 +5,6 @@ on:
     branches:
       - main
       - dev
-      - nightly
     tags:
         - '**'
   pull_request:
@@ -144,8 +143,8 @@ jobs:
         TWINE_PASSWORD: ${{ secrets.test_pypi_password }}
       run: arch -arm64 twine upload --non-interactive --skip-existing --verbose 'target/wheels/*'
 
-    - name: Publish Nightlies
-      if: steps.check_secrets.outputs.HAS_AWS_SECRET && github.ref == 'refs/heads/nightly'
+    - name: Publish Dev
+      if: steps.check_secrets.outputs.HAS_AWS_SECRET && github.ref == 'refs/heads/dev'
       env:
         AWS_ACCESS_KEY_ID: "${{ secrets.INSTALLER_UPLOAD_KEY }}"
         AWS_SECRET_ACCESS_KEY: "${{ secrets.INSTALLER_UPLOAD_SECRET }}"
@@ -154,5 +153,5 @@ jobs:
         FILES=$(find ${{ github.workspace }}/target/wheels -type f -name '*.whl')
         while IFS= read -r file; do
           filename=$(basename $file)
-          aws --no-progress s3 cp "$file" "s3://download.chia.net/nightlies/clvm-tools-rs/$filename"
+          aws --no-progress s3 cp "$file" "s3://download.chia.net/simple-dev/clvm-tools-rs/$filename"
         done <<< "$FILES"
