@@ -738,15 +738,22 @@ fn chialisp_to_expr(
             // functions are typewise unary) and a let form inside it which
             // destructures the argument.  Closures are assumed so it should
             // be fine not to repeat bindings for the other variables in scope.
-            let lambda_expr = Expr::EAbs(
-                lambda_evar,
-                Rc::new(chialisp_to_expr(
-                    opts,
-                    program,
-                    form_args,
-                    Rc::new(lambda_body_let),
-                )?),
+            //
+            // We can use com^ to transform it into an Exec, which is the
+            // right type for apply.  Do that by constructing a bless invocation.
+            let lambda_expr = Expr::EApp(
+                Rc::new(Expr::EVar(Var("com^".to_string(), l.loc.clone()))),
+                Rc::new(Expr::EAbs(
+                    lambda_evar,
+                    Rc::new(chialisp_to_expr(
+                        opts,
+                        program,
+                        form_args,
+                        Rc::new(lambda_body_let),
+                    )?),
+                )),
             );
+
             Ok(lambda_expr)
         }
         _ => Err(CompileErr(

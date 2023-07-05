@@ -2296,3 +2296,21 @@ fn test_chialisp_type_lambda_23() {
     .to_string();
     assert_eq!(program, program2);
 }
+
+#[test]
+fn test_chialisp_type_lambda_23_anno() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/typesmoke-lambda-anno.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let program2 = do_basic_run(&vec![
+        "run".to_string(),
+        "--typecheck".to_string(),
+        "resources/tests/strict/typesmoke-lambda-anno.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(program, program2);
+}
