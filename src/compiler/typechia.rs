@@ -740,7 +740,7 @@ fn chialisp_to_expr(
             // be fine not to repeat bindings for the other variables in scope.
             //
             // We can use com^ to transform it into an Exec, which is the
-            // right type for apply.  Do that by constructing a bless invocation.
+            // right type for apply.  Do that by constructing an invocation.
             let lambda_expr = Expr::EApp(
                 Rc::new(Expr::EVar(Var("com^".to_string(), l.loc.clone()))),
                 Rc::new(Expr::EAbs(
