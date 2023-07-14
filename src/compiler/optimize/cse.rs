@@ -391,12 +391,18 @@ fn detect_common_cse_root(instances: &[CSEInstance]) -> Vec<BodyformPathArc> {
 
     let mut target_path = instances[0].path.clone();
     for idx in 0..min_size {
+        let mut moved_root = false;
         for i in instances.iter() {
             if i.path[idx] != instances[0].path[idx] {
                 // If we don't match here, then the common root is up to here.
                 target_path = instances[0].path.iter().take(idx).cloned().collect();
+                let tpsmaller: Vec<BodyformPathArc> = target_path.iter().take(idx + 1).cloned().collect();
+                moved_root = true;
                 break;
             }
+        }
+        if moved_root {
+            break;
         }
     }
 
@@ -414,10 +420,15 @@ fn detect_common_cse_root(instances: &[CSEInstance]) -> Vec<BodyformPathArc> {
 // Finds lambdas that contain CSE detection instances from the provided list.
 fn find_affected_lambdas(
     instances: &[CSEInstance],
+    common_root: &[BodyformPathArc],
     bf: &BodyForm,
 ) -> Result<Vec<PathDetectVisitorResult<()>>, CompileErr> {
     visit_detect_in_bodyform(
         &|path, _root, form| -> Result<Option<()>, CompileErr> {
+            // The common root is inside this lambda.
+            if path_overlap_one_way(path, common_root) {
+                return Ok(None);
+            }
             if let BodyForm::Lambda(_) = form {
                 if instances
                     .iter()
@@ -493,6 +504,7 @@ pub fn cse_optimize_bodyform(
 
     let mut function_body = b.clone();
     let mut new_binding_stack: Vec<(Vec<BodyformPathArc>, Vec<Rc<Binding>>)> = Vec::new();
+    let have_detections = !cse_detections.is_empty();
 
     while !detections_with_dependencies.is_empty() {
         let detections_to_apply: Vec<CSEDetection> = detections_with_dependencies
@@ -553,6 +565,7 @@ pub fn cse_optimize_bodyform(
                 prototype_instance.loc(),
                 new_variable_name.clone(),
             ));
+            eprintln!("CSE detection {} for {}", new_variable_bf_alone.to_sexp(), prototype_instance.to_sexp());
 
             let new_variable_bf = if d.saturated {
                 new_variable_bf_alone
@@ -577,10 +590,21 @@ pub fn cse_optimize_bodyform(
                 })
                 .collect();
 
+            // Detect the root of the CSE as the innermost expression that covers
+            // all uses.
+            let replace_path = detect_common_cse_root(&d.instances);
+            let target_of_replacement = retrieve_bodyform(&replace_path, &function_body, &|b: &BodyForm| b.clone()).expect("should have something at the replacement root");
+
+            eprintln!("CSE replace   {}", prototype_instance.to_sexp());
+            eprintln!("CSE root expr {}", target_of_replacement.to_sexp());
+            eprintln!("CSE replace @ {replace_path:?}");
+
             // Route the captured repeated subexpression into intervening lambdas.
             // This means that the lambdas will gain a capture on the left side of
             // their captures.
-            let affected_lambdas = find_affected_lambdas(&d.instances, b)?;
+            //
+            // Ensure that lambdas above replace_path aren't targeted.
+            let affected_lambdas = find_affected_lambdas(&d.instances, &replace_path, b)?;
             if let Some(res) = replace_in_bodyform(
                 &affected_lambdas,
                 function_body.borrow(),
@@ -599,7 +623,15 @@ pub fn cse_optimize_bodyform(
             if let Some(res) = replace_in_bodyform(
                 &replacement_spec,
                 function_body.borrow(),
-                &|v: &PathDetectVisitorResult<()>, _b| v.subexp.clone(),
+                &|v: &PathDetectVisitorResult<()>, b| {
+                    eprintln!(
+                        "CSE: Replace instance of {} at {:?} with {}",
+                        b.to_sexp(),
+                        v.path,
+                        v.subexp.to_sexp()
+                    );
+                    v.subexp.clone()
+                }
             ) {
                 function_body = res;
             } else {
@@ -611,10 +643,6 @@ pub fn cse_optimize_bodyform(
                     ),
                 ));
             }
-
-            // Detect the root of the CSE as the innermost expression that covers
-            // all uses.
-            let replace_path = detect_common_cse_root(&d.instances);
 
             detections_with_dependencies = sorted_cse_detections_by_applicability(&keep_detections);
             // Put aside the definition in this binding set.
@@ -629,6 +657,8 @@ pub fn cse_optimize_bodyform(
                 },
             });
         }
+
+        eprintln!("CSE: binding_set {binding_set:?}");
 
         new_binding_stack.append(
             &mut binding_set
@@ -645,6 +675,22 @@ pub fn cse_optimize_bodyform(
         );
     }
 
+    assert!(!have_detections || !new_binding_stack.is_empty());
+
+    // We might not have completely sorted sites anymore due to joining up each
+    // site set under a common target path (which themselves need sorting).
+    if new_binding_stack.is_empty() {
+        return Ok(function_body);
+    }
+
+    eprintln!("CSE: have {} replacements", new_binding_stack.len());
+    for (target_path, binding_list) in new_binding_stack.iter().rev() {
+        eprintln!("CSE: do replacement {target_path:?}");
+        for b in binding_list.iter() {
+            eprintln!("CSE - {}", b.to_sexp());
+        }
+    }
+
     // All CSE replacements are done.  We unwind the new bindings
     // into a stack of parallel let forms.
     for (target_path, binding_list) in new_binding_stack.into_iter().rev() {
@@ -657,6 +703,7 @@ pub fn cse_optimize_bodyform(
             replacement_spec,
             function_body.borrow(),
             &|_v: &PathDetectVisitorResult<()>, b| {
+                eprintln!("CSE REPLACE onto {}", b.to_sexp());
                 BodyForm::Let(
                     LetFormKind::Parallel,
                     Box::new(LetData {
@@ -669,6 +716,9 @@ pub fn cse_optimize_bodyform(
                 )
             },
         ) {
+            eprintln!("CSE: update function body");
+            eprintln!("CSE from {}", function_body.to_sexp());
+            eprintln!("CSE  to  {}", res.to_sexp());
             function_body = res;
         } else {
             return Err(CompileErr(
@@ -680,6 +730,9 @@ pub fn cse_optimize_bodyform(
             ));
         }
     }
+
+    eprintln!("CSE START {}", b.to_sexp());
+    eprintln!("CSE DONE  {}", function_body.to_sexp());
 
     Ok(function_body)
 }
