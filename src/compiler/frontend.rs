@@ -7,7 +7,6 @@ use log::debug;
 use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
-use crate::compiler::codegen::toposort_assign_bindings;
 use crate::compiler::comptypes::{
     list_to_cons, Binding, BindingPattern, BodyForm, ChiaType, CompileErr, CompileForm,
     CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData, HelperForm,
@@ -289,10 +288,25 @@ fn handle_assign_form(
     }
 
     let mut bindings = Vec::new();
+    let mut check_duplicates = HashSet::new();
 
     for idx in (0..(v.len() - 1) / 2).map(|idx| idx * 2) {
         let destructure_pattern = Rc::new(v[idx].clone());
         let binding_body = compile_bodyform(opts.clone(), Rc::new(v[idx + 1].clone()))?;
+        // Ensure bindings aren't duplicated as we won't be able to
+        // guarantee their order during toposort.
+        let mut this_provides = HashSet::new();
+        make_provides_set(&mut this_provides, destructure_pattern.clone());
+
+        for item in this_provides.iter() {
+            if check_duplicates.contains(item) {
+                return Err(CompileErr(
+                    destructure_pattern.loc(),
+                    format!("Duplicate binding {}", decode_string(item)),
+                ));
+            }
+            check_duplicates.insert(item.clone());
+        }
 
         bindings.push(Rc::new(Binding {
             loc: v[idx].loc().ext(&v[idx + 1].loc()),
@@ -313,9 +327,6 @@ fn handle_assign_form(
         let (new_compiled_body, new_bindings) = rename_assign_bindings(&l, &mut bindings, Rc::new(compiled_body))?;
         compiled_body = new_compiled_body;
         bindings = new_bindings;
-    } else {
-        // We continue with the unordered spec.  This is a duplicate check.
-        toposort_assign_bindings(&l, &bindings)?;
     };
 
     // Return a precise representation of this assign while storing up the work

@@ -1383,6 +1383,7 @@ fn test_assign_detect_multiple_definition() {
     .to_string();
     if let Err(CompileErr(l, e)) = run_string(&prog, &"(11)".to_string()) {
         assert_eq!(l.line, 17);
+        eprintln!("error {e}");
         assert!(e.starts_with("Duplicate"));
     } else {
         assert!(false);
