@@ -390,19 +390,15 @@ fn detect_common_cse_root(instances: &[CSEInstance]) -> Vec<BodyformPathArc> {
     };
 
     let mut target_path = instances[0].path.clone();
+    let mut last_match = min_size;
     for idx in 0..min_size {
-        let mut moved_root = false;
         for i in instances.iter() {
             if i.path[idx] != instances[0].path[idx] {
                 // If we don't match here, then the common root is up to here.
-                target_path = instances[0].path.iter().take(idx).cloned().collect();
-                let tpsmaller: Vec<BodyformPathArc> = target_path.iter().take(idx + 1).cloned().collect();
-                moved_root = true;
+                last_match = last_match.min(idx);
+                target_path = instances[0].path.iter().take(last_match).cloned().collect();
                 break;
             }
-        }
-        if moved_root {
-            break;
         }
     }
 
