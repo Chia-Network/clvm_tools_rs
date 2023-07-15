@@ -4,8 +4,8 @@ use std::rc::Rc;
 
 use crate::compiler::codegen::toposort_assign_bindings;
 use crate::compiler::comptypes::{
-    Binding, BindingPattern, BodyForm, CompileErr, CompileForm, DefconstData, DefmacData, DefunData,
-    HelperForm, LambdaData, LetData, LetFormKind,
+    Binding, BindingPattern, BodyForm, CompileErr, CompileForm, DefconstData, DefmacData,
+    DefunData, HelperForm, LambdaData, LetData, LetFormKind,
 };
 use crate::compiler::gensym::gensym;
 use crate::compiler::sexp::SExp;
@@ -156,27 +156,37 @@ fn make_binding_unique(b: &Binding) -> InnerRenameList {
     }
 }
 
-pub fn rename_assign_bindings(l: &Srcloc, bindings: &Vec<Rc<Binding>>, body: Rc<BodyForm>) -> Result<(BodyForm, Vec<Rc<Binding>>), CompileErr> {
+pub fn rename_assign_bindings(
+    l: &Srcloc,
+    bindings: &[Rc<Binding>],
+    body: Rc<BodyForm>,
+) -> Result<(BodyForm, Vec<Rc<Binding>>), CompileErr> {
     // Order the bindings.
     let sorted_bindings = toposort_assign_bindings(l, bindings)?;
     let mut renames = HashMap::new();
-    let renamed_bindings = sorted_bindings.iter().rev().map(|item| {
-        let b: &Binding = bindings[item.index].borrow();
-        if let BindingPattern::Complex(p) = &b.pattern {
-            let new_names = invent_new_names_sexp(p.clone());
-            for (name, renamed) in new_names.iter() {
-                renames.insert(name.clone(), renamed.clone());
+    let renamed_bindings = sorted_bindings
+        .iter()
+        .rev()
+        .map(|item| {
+            let b: &Binding = bindings[item.index].borrow();
+            if let BindingPattern::Complex(p) = &b.pattern {
+                let new_names = invent_new_names_sexp(p.clone());
+                for (name, renamed) in new_names.iter() {
+                    renames.insert(name.clone(), renamed.clone());
+                }
+                Binding {
+                    pattern: BindingPattern::Complex(rename_in_cons(&renames, p.clone(), false)),
+                    body: Rc::new(rename_in_bodyform(&renames, b.body.clone())),
+                    ..b.clone()
+                }
+            } else {
+                b.clone()
             }
-            Binding {
-                pattern: BindingPattern::Complex(rename_in_cons(&renames, p.clone(), false)),
-                body: Rc::new(rename_in_bodyform(&renames, b.body.clone())),
-                .. b.clone()
-            }
-        } else {
-            b.clone()
-        }
-    }).rev().map(Rc::new).collect();
-    Ok((rename_in_bodyform(&renames, body.clone()), renamed_bindings))
+        })
+        .rev()
+        .map(Rc::new)
+        .collect();
+    Ok((rename_in_bodyform(&renames, body), renamed_bindings))
 }
 
 fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> BodyForm {

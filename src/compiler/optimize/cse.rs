@@ -561,7 +561,6 @@ pub fn cse_optimize_bodyform(
                 prototype_instance.loc(),
                 new_variable_name.clone(),
             ));
-            eprintln!("CSE detection {} for {}", new_variable_bf_alone.to_sexp(), prototype_instance.to_sexp());
 
             let new_variable_bf = if d.saturated {
                 new_variable_bf_alone
@@ -589,11 +588,6 @@ pub fn cse_optimize_bodyform(
             // Detect the root of the CSE as the innermost expression that covers
             // all uses.
             let replace_path = detect_common_cse_root(&d.instances);
-            let target_of_replacement = retrieve_bodyform(&replace_path, &function_body, &|b: &BodyForm| b.clone()).expect("should have something at the replacement root");
-
-            eprintln!("CSE replace   {}", prototype_instance.to_sexp());
-            eprintln!("CSE root expr {}", target_of_replacement.to_sexp());
-            eprintln!("CSE replace @ {replace_path:?}");
 
             // Route the captured repeated subexpression into intervening lambdas.
             // This means that the lambdas will gain a capture on the left side of
@@ -619,15 +613,7 @@ pub fn cse_optimize_bodyform(
             if let Some(res) = replace_in_bodyform(
                 &replacement_spec,
                 function_body.borrow(),
-                &|v: &PathDetectVisitorResult<()>, b| {
-                    eprintln!(
-                        "CSE: Replace instance of {} at {:?} with {}",
-                        b.to_sexp(),
-                        v.path,
-                        v.subexp.to_sexp()
-                    );
-                    v.subexp.clone()
-                }
+                &|v: &PathDetectVisitorResult<()>, _b| v.subexp.clone(),
             ) {
                 function_body = res;
             } else {
@@ -654,8 +640,6 @@ pub fn cse_optimize_bodyform(
             });
         }
 
-        eprintln!("CSE: binding_set {binding_set:?}");
-
         new_binding_stack.append(
             &mut binding_set
                 .info
@@ -679,14 +663,6 @@ pub fn cse_optimize_bodyform(
         return Ok(function_body);
     }
 
-    eprintln!("CSE: have {} replacements", new_binding_stack.len());
-    for (target_path, binding_list) in new_binding_stack.iter().rev() {
-        eprintln!("CSE: do replacement {target_path:?}");
-        for b in binding_list.iter() {
-            eprintln!("CSE - {}", b.to_sexp());
-        }
-    }
-
     // All CSE replacements are done.  We unwind the new bindings
     // into a stack of parallel let forms.
     for (target_path, binding_list) in new_binding_stack.into_iter().rev() {
@@ -699,7 +675,6 @@ pub fn cse_optimize_bodyform(
             replacement_spec,
             function_body.borrow(),
             &|_v: &PathDetectVisitorResult<()>, b| {
-                eprintln!("CSE REPLACE onto {}", b.to_sexp());
                 BodyForm::Let(
                     LetFormKind::Parallel,
                     Box::new(LetData {
@@ -712,9 +687,6 @@ pub fn cse_optimize_bodyform(
                 )
             },
         ) {
-            eprintln!("CSE: update function body");
-            eprintln!("CSE from {}", function_body.to_sexp());
-            eprintln!("CSE  to  {}", res.to_sexp());
             function_body = res;
         } else {
             return Err(CompileErr(
@@ -726,9 +698,6 @@ pub fn cse_optimize_bodyform(
             ));
         }
     }
-
-    eprintln!("CSE START {}", b.to_sexp());
-    eprintln!("CSE DONE  {}", function_body.to_sexp());
 
     Ok(function_body)
 }

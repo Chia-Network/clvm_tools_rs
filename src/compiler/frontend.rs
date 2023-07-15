@@ -15,7 +15,7 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::lambda::handle_lambda;
 use crate::compiler::preprocessor::preprocess;
-use crate::compiler::rename::{rename_children_compileform, rename_assign_bindings};
+use crate::compiler::rename::{rename_assign_bindings, rename_children_compileform};
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::{HasLoc, Srcloc};
 use crate::compiler::typecheck::{parse_type_sexp, parse_type_var};
@@ -316,15 +316,15 @@ fn handle_assign_form(
         }));
     }
 
-    let mut compiled_body =
-        compile_bodyform(opts.clone(), Rc::new(v[v.len() - 1].clone()))?;
+    let mut compiled_body = compile_bodyform(opts.clone(), Rc::new(v[v.len() - 1].clone()))?;
     // We don't need to do much if there were no bindings.
     if bindings.is_empty() {
         return Ok(compiled_body);
     }
 
     if at_or_above_23(opts) {
-        let (new_compiled_body, new_bindings) = rename_assign_bindings(&l, &mut bindings, Rc::new(compiled_body))?;
+        let (new_compiled_body, new_bindings) =
+            rename_assign_bindings(&l, &bindings, Rc::new(compiled_body))?;
         compiled_body = new_compiled_body;
         bindings = new_bindings;
     };
