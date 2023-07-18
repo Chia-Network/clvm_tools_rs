@@ -35,7 +35,7 @@ impl ClvmHamt {
         let opts = Rc::new(DefaultCompilerOpts::new(program_name)).set_dialect(AcceptedDialect {
             stepping: Some(23),
             strict: true
-        });
+        }).set_optimize(true);
         let mut prim_map = HashMap::new();
         for p in prims::prims().iter() {
             prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
