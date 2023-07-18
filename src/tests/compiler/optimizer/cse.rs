@@ -35,27 +35,20 @@ fn smoke_test_cse_optimization() {
 #[test]
 fn test_cse_tricky() {
     let filename = "resources/tests/strict/cse-complex-1.clsp";
-    let program = do_basic_run(&vec![
-        "run".to_string(),
-        filename.to_string()
-    ])
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
         .trim()
         .to_string();
 
     let run_result_11 = do_basic_brun(&vec![
         "brun".to_string(),
         program.clone(),
-        "(11)".to_string()
+        "(11)".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     assert_eq!(run_result_11, "506");
 
-    let run_result_41 = do_basic_brun(&vec![
-        "brun".to_string(),
-        program,
-        "(41)".to_string()
-    ])
+    let run_result_41 = do_basic_brun(&vec!["brun".to_string(), program, "(41)".to_string()])
         .trim()
         .to_string();
     assert_eq!(run_result_41, "15375");
@@ -64,36 +57,29 @@ fn test_cse_tricky() {
 #[test]
 fn test_cse_tricky_lambda() {
     let filename = "resources/tests/strict/cse-complex-1-lambda.clsp";
-    let program = do_basic_run(&vec![
-        "run".to_string(),
-        filename.to_string()
-    ])
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
         .trim()
         .to_string();
 
     let run_result_11 = do_basic_brun(&vec![
         "brun".to_string(),
         program.clone(),
-        "(11)".to_string()
+        "(11)".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     assert_eq!(run_result_11, "5566");
 
     let run_result_41 = do_basic_brun(&vec![
         "brun".to_string(),
         program.clone(),
-        "(41)".to_string()
+        "(41)".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     assert_eq!(run_result_41, "0x099e67");
 
-    let run_result_5 = do_basic_brun(&vec![
-        "brun".to_string(),
-        program,
-        "(5)".to_string()
-    ])
+    let run_result_5 = do_basic_brun(&vec!["brun".to_string(), program, "(5)".to_string()])
         .trim()
         .to_string();
     assert_eq!(run_result_5, "240");

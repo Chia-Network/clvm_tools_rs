@@ -6,16 +6,14 @@ use clvmr::allocator::Allocator;
 use num_bigint::ToBigInt;
 
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
-use crate::compiler::cldb::{CldbNoOverride, CldbRunEnv, CldbRun};
+use crate::compiler::cldb::{CldbNoOverride, CldbRun, CldbRunEnv};
 use crate::compiler::clvm::start_step;
-use crate::compiler::compiler::{DefaultCompilerOpts, compile_file};
+use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::prims;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
-
-use crate::tests::compiler::cldb::{DoesntWatchCldb, run_clvm_in_cldb};
 
 pub struct ClvmHamt {
     runner: Rc<dyn TRunProgram>,
@@ -32,10 +30,12 @@ impl ClvmHamt {
         let program_text = fs::read_to_string(program_name).expect("should exist");
         let mut allocator = Allocator::new();
         let runner = Rc::new(DefaultProgramRunner::new());
-        let opts = Rc::new(DefaultCompilerOpts::new(program_name)).set_dialect(AcceptedDialect {
-            stepping: Some(23),
-            strict: true
-        }).set_optimize(true);
+        let opts = Rc::new(DefaultCompilerOpts::new(program_name))
+            .set_dialect(AcceptedDialect {
+                stepping: Some(23),
+                strict: true,
+            })
+            .set_optimize(true);
         let mut prim_map = HashMap::new();
         for p in prims::prims().iter() {
             prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
@@ -48,7 +48,8 @@ impl ClvmHamt {
             opts,
             &program_text,
             &mut symbols,
-        ).expect("should compile");
+        )
+        .expect("should compile");
         eprintln!("compiled");
         let program_lines: Vec<String> = program_text.lines().map(|x| x.to_string()).collect();
 
@@ -64,11 +65,7 @@ impl ClvmHamt {
             hamt: nil.clone(),
         };
 
-        let start_args = Rc::new(SExp::Cons(
-            loc.clone(),
-            nil.clone(),
-            nil.clone()
-        ));
+        let start_args = Rc::new(SExp::Cons(loc.clone(), nil.clone(), nil.clone()));
         let start_hamt = instance.run_with_args(start_args);
         eprintln!("started");
         instance.hamt = start_hamt;
@@ -84,8 +81,8 @@ impl ClvmHamt {
             Rc::new(SExp::Cons(
                 self.program.loc(),
                 Rc::new(SExp::Integer(self.program.loc(), idx.to_bigint().unwrap())),
-                nil.clone()
-            ))
+                nil.clone(),
+            )),
         ));
         eprintln!("getting {idx}");
         let res = self.run_with_args(args);
@@ -101,12 +98,8 @@ impl ClvmHamt {
             Rc::new(SExp::Cons(
                 self.program.loc(),
                 Rc::new(SExp::Integer(self.program.loc(), idx.to_bigint().unwrap())),
-                Rc::new(SExp::Cons(
-                    self.program.loc(),
-                    elt.clone(),
-                    nil.clone()
-                ))
-            ))
+                Rc::new(SExp::Cons(self.program.loc(), elt.clone(), nil.clone())),
+            )),
         ));
         eprintln!("putting {idx} {elt}");
         let new_hamt = self.run_with_args(args);
@@ -122,7 +115,12 @@ impl ClvmHamt {
             self.program_lines.clone(),
             Box::new(CldbNoOverride::new_symbols(self.symbols.clone())),
         );
-        let mut cldbrun = CldbRun::new(self.runner.clone(), self.prim_map.clone(), Box::new(cldbenv), step);
+        let mut cldbrun = CldbRun::new(
+            self.runner.clone(),
+            self.prim_map.clone(),
+            Box::new(cldbenv),
+            step,
+        );
 
         loop {
             if cldbrun.is_ended() {
@@ -142,9 +140,9 @@ impl ClvmHamt {
 #[ignore]
 fn test_hamt_update_and_retrieve() {
     let mut hamt = ClvmHamt::load("resources/tests/strict/hamt.clsp");
-    let test_array: Vec<Rc<SExp>> = (0..40).map(|i| {
-        Rc::new(SExp::Integer(hamt.program.loc(), i.to_bigint().unwrap()))
-    }).collect();
+    let test_array: Vec<Rc<SExp>> = (0..40)
+        .map(|i| Rc::new(SExp::Integer(hamt.program.loc(), i.to_bigint().unwrap())))
+        .collect();
     // Check that every element of the hamt is nil.
     let nil = Rc::new(SExp::Nil(hamt.program.loc()));
     for i in 0..20 {
