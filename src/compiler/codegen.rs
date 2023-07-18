@@ -119,7 +119,7 @@ fn helper_atom(h: &HelperForm) -> SExp {
 
 fn build_tree(l: Srcloc, s: usize, e: usize, helper_array: &[HelperForm]) -> SExp {
     if e - s == 1 {
-        helper_atom(helper_array[s].borrow())
+        helper_atom(&helper_array[s])
     } else {
         let mid = (e + s) / 2;
         let car = build_tree(l.clone(), s, mid, helper_array);
@@ -887,7 +887,7 @@ fn generate_let_defun(
 ) -> HelperForm {
     let new_arguments: Vec<Rc<SExp>> = bindings
         .iter()
-        .map(|b| match b.pattern.borrow() {
+        .map(|b| match &b.pattern {
             BindingPattern::Name(name) => Rc::new(SExp::Atom(l.clone(), name.clone())),
             BindingPattern::Complex(sexp) => sexp.clone(),
         })
@@ -938,7 +938,7 @@ pub fn hoist_assign_form(letdata: &LetData) -> Result<BodyForm, CompileErr> {
             Ok(need_set_thats_possible)
         },
         // Has: What this binding provides.
-        |b| match b.pattern.borrow() {
+        |b| match &b.pattern {
             BindingPattern::Name(name) => HashSet::from([name.clone()]),
             BindingPattern::Complex(sexp) => {
                 let mut result_set = HashSet::new();
