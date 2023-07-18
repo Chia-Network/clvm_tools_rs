@@ -441,7 +441,7 @@ impl CldbRunEnv {
             .and_then(|coords| {
                 let use_line = coords.0;
                 let use_col = coords.1;
-                let mut end_col = coords.2;
+                let end_col = coords.2;
 
                 if use_line >= self.program_lines.len() {
                     None
@@ -449,11 +449,14 @@ impl CldbRunEnv {
                     let line_text = self.program_lines[use_line].to_string();
                     if use_col >= line_text.len() {
                         None
-                    } else if end_col >= line_text.len() {
-                        end_col = line_text.len();
-                        Some(line_text[use_col..end_col].to_string())
                     } else {
-                        Some(line_text[use_col..end_col].to_string())
+                        Some(
+                            line_text
+                                .chars()
+                                .take(end_col)
+                                .skip(use_col)
+                                .collect::<String>(),
+                        )
                     }
                 }
             })
