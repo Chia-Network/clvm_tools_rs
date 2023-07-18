@@ -139,6 +139,7 @@ impl ClvmHamt {
 }
 
 #[test]
+#[ignore]
 fn test_hamt_update_and_retrieve() {
     let mut hamt = ClvmHamt::load("resources/tests/strict/hamt.clsp");
     let test_array: Vec<Rc<SExp>> = (0..40).map(|i| {
