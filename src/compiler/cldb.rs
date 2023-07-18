@@ -450,7 +450,13 @@ impl CldbRunEnv {
                     if use_col >= line_text.len() {
                         None
                     } else {
-                        Some(line_text.chars().take(end_col).skip(use_col).collect::<String>())
+                        Some(
+                            line_text
+                                .chars()
+                                .take(end_col)
+                                .skip(use_col)
+                                .collect::<String>(),
+                        )
                     }
                 }
             })
