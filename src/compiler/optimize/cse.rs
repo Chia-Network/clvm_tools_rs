@@ -597,7 +597,7 @@ pub fn cse_optimize_bodyform(
             let affected_lambdas = find_affected_lambdas(&d.instances, &replace_path, b)?;
             if let Some(res) = replace_in_bodyform(
                 &affected_lambdas,
-                function_body.borrow(),
+                &function_body,
                 &|_v: &PathDetectVisitorResult<()>, b| {
                     add_variable_to_lambda_capture(&new_variable_name, b)
                 },
@@ -612,7 +612,7 @@ pub fn cse_optimize_bodyform(
 
             if let Some(res) = replace_in_bodyform(
                 &replacement_spec,
-                function_body.borrow(),
+                &function_body,
                 &|v: &PathDetectVisitorResult<()>, _b| v.subexp.clone(),
             ) {
                 function_body = res;
@@ -673,7 +673,7 @@ pub fn cse_optimize_bodyform(
         }];
         if let Some(res) = replace_in_bodyform(
             replacement_spec,
-            function_body.borrow(),
+            &function_body,
             &|_v: &PathDetectVisitorResult<()>, b| {
                 BodyForm::Let(
                     LetFormKind::Parallel,

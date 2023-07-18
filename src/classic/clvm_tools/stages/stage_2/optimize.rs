@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::mem::swap;
@@ -635,7 +634,7 @@ pub fn optimize_sexp_(
     // pass and need to cache the result.
     {
         let memo_ref: Ref<HashMap<AllocatorRefOrTreeHash, NodePtr>> = memo.borrow();
-        let memo: &HashMap<AllocatorRefOrTreeHash, NodePtr> = memo_ref.borrow();
+        let memo: &HashMap<AllocatorRefOrTreeHash, NodePtr> = &memo_ref;
         if let Some(res) = memo.get(&AllocatorRefOrTreeHash::new_from_nodeptr(r_)) {
             return Ok(*res);
         }
@@ -645,7 +644,7 @@ pub fn optimize_sexp_(
     let footprint = AllocatorRefOrTreeHash::new_from_sexp(allocator, r_);
     {
         let memo_ref: Ref<HashMap<AllocatorRefOrTreeHash, NodePtr>> = memo.borrow();
-        let memo: &HashMap<AllocatorRefOrTreeHash, NodePtr> = memo_ref.borrow();
+        let memo: &HashMap<AllocatorRefOrTreeHash, NodePtr> = &memo_ref;
         if let Some(res) = memo.get(&footprint) {
             return Ok(*res);
         }

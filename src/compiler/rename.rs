@@ -119,7 +119,7 @@ struct InnerRenameList {
 }
 
 fn make_binding_unique(b: &Binding) -> InnerRenameList {
-    match b.pattern.borrow() {
+    match &b.pattern {
         BindingPattern::Name(name) => {
             let mut single_name_map = HashMap::new();
             let new_name = gensym(name.clone());
