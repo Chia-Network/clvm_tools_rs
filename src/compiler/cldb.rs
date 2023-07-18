@@ -453,7 +453,7 @@ impl CldbRunEnv {
                         end_col = line_text.len();
                         Some(line_text[use_col..end_col].to_string())
                     } else {
-                        Some(line_text[use_col..end_col].to_string())
+                        Some(line_text.to_string())
                     }
                 }
             })

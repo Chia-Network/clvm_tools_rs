@@ -251,7 +251,7 @@
                        )
 
                       (new_SubhashBuilder
-                       (get_SubhashBuilder_colliding-segs acc)
+                       new-shb
                        1
                        new-subhash-node
                        )
