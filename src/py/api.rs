@@ -258,7 +258,7 @@ fn start_clvm_program(
 
         let step = start_step(program, args);
         let cldbenv = CldbRunEnv::new(None, Rc::new(vec![]), Box::new(override_runnable));
-        let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
+        let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), Box::new(Default::default()), step);
         loop {
             match cmd_input.recv() {
                 Ok(end_run) => {

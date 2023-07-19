@@ -209,6 +209,7 @@ impl HierarchialRunner {
                 program_lines.clone(),
                 Box::new(CldbNoOverride::new()),
             )),
+            Box::new(Default::default()),
             step,
         );
 
@@ -275,6 +276,7 @@ impl HierarchialRunner {
                 self.program_lines.clone(),
                 Box::new(CldbNoOverride::new()),
             )),
+            Box::new(Default::default()),
             arg_step,
         );
 
@@ -314,6 +316,7 @@ impl HierarchialRunner {
                 self.program_lines.clone(),
                 Box::new(CldbNoOverride::new()),
             )),
+            Box::new(Default::default()),
             step,
         );
 
@@ -377,6 +380,7 @@ impl HierarchialRunner {
                     self.program_lines.clone(),
                     Box::new(CldbNoOverride::new()),
                 )),
+                Box::new(Default::default()),
                 step,
             );
 

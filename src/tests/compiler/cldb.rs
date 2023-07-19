@@ -66,7 +66,7 @@ where
         program_lines,
         Box::new(CldbNoOverride::new_symbols(symbols)),
     );
-    let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
+    let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), Box::new(Default::default()), step);
     let mut output: BTreeMap<String, String> = BTreeMap::new();
 
     loop {

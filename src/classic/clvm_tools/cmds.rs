@@ -709,7 +709,13 @@ pub fn cldb(args: &[String]) {
     }
 
     let step = start_step(program, args);
-    let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
+    let mut cldbrun = CldbRun::new(
+        runner,
+        Rc::new(prim_map),
+        Box::new(cldbenv),
+        Default::default(),
+        step
+    );
     let print_tree = |output: &mut Vec<_>, result: &BTreeMap<String, String>| {
         let mut cvt_subtree = BTreeMap::new();
         for (k, v) in result.iter() {

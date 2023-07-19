@@ -119,6 +119,7 @@ impl ClvmHamt {
             self.runner.clone(),
             self.prim_map.clone(),
             Box::new(cldbenv),
+            Box::new(Default::default()),
             step,
         );
 

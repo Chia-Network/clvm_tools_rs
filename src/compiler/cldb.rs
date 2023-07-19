@@ -86,6 +86,177 @@ pub trait CldbEnvironment {
     fn get_override(&self, s: &RunStep) -> Option<Result<RunStep, RunFailure>>;
 }
 
+pub trait CldbOutputGenerator {
+    type Item;
+
+    fn produce_op_result_output(
+        &mut self,
+        l: &Srcloc,
+        x: Rc<SExp>,
+        p: Rc<RunStep>
+    ) -> Option<Self::Item>;
+
+    fn produce_op_done(
+        &mut self,
+        l: &Srcloc,
+        x: Rc<SExp>
+    ) -> Option<Self::Item>;
+
+    fn produce_op(
+        &mut self,
+        env: &dyn CldbEnvironment,
+        sexp: Rc<SExp>,
+        c: Rc<SExp>,
+        a: Rc<SExp>,
+        vec: &Option<Vec<Rc<SExp>>>,
+        p: Rc<RunStep>
+    ) -> Option<Self::Item>;
+
+    fn produce_exn(
+        &mut self,
+        l: &Srcloc,
+        s: Rc<SExp>
+    ) -> Option<Self::Item>;
+
+    fn produce_err(
+        &mut self,
+        l: &Srcloc,
+        s: &str
+    ) -> Option<Self::Item>;
+}
+
+#[derive(Default)]
+pub struct CldbDefaultOutputGenerator {
+    to_print: BTreeMap<String, String>,
+    in_expr: bool,
+    row: usize,
+    outputs_to_step: HashMap<Number, PriorResult>,
+}
+
+impl CldbDefaultOutputGenerator {
+    fn produce_output(&mut self) -> BTreeMap<String, String> {
+        let mut result = BTreeMap::new();
+        swap(&mut self.to_print, &mut result);
+        self.row += 1;
+        result
+    }
+}
+
+impl CldbOutputGenerator for CldbDefaultOutputGenerator {
+    type Item = BTreeMap<String, String>;
+
+    fn produce_op_result_output(
+        &mut self,
+        l: &Srcloc,
+        x: Rc<SExp>,
+        p: Rc<RunStep>
+    ) -> Option<Self::Item> {
+        if self.in_expr {
+            self.to_print
+                .insert("Result-Location".to_string(), l.to_string());
+            self.to_print.insert("Value".to_string(), x.to_string());
+            self.to_print
+                .insert("Row".to_string(), self.row.to_string());
+
+            if let Ok(n) = x.get_number() {
+                self.outputs_to_step.insert(
+                    n,
+                    PriorResult {
+                        reference: self.row,
+                        // value: x.clone(), // for future
+                    },
+                );
+            }
+            self.in_expr = false;
+
+            return Some(self.produce_output());
+        }
+
+        None
+    }
+
+    fn produce_op_done(
+        &mut self,
+        l: &Srcloc,
+        x: Rc<SExp>
+    ) -> Option<Self::Item> {
+        self.to_print
+            .insert("Final-Location".to_string(), l.to_string());
+        self.to_print.insert("Final".to_string(), x.to_string());
+
+        return Some(self.produce_output());
+    }
+
+    fn produce_op(
+        &mut self,
+        env: &dyn CldbEnvironment,
+        sexp: Rc<SExp>,
+        c: Rc<SExp>,
+        a: Rc<SExp>,
+        vec: &Option<Vec<Rc<SExp>>>,
+        p: Rc<RunStep>
+    ) -> Option<Self::Item> {
+        env.add_context(
+            sexp.borrow(),
+            c.borrow(),
+            Some(a.clone()),
+            &mut self.to_print,
+        );
+        env.add_function(&sexp, &mut self.to_print);
+
+        self.to_print
+            .insert("Operator-Location".to_string(), a.loc().to_string());
+        self.to_print
+            .insert("Operator".to_string(), sexp.to_string());
+
+        self.in_expr = true;
+
+        if let Ok(v) = sexp.get_number() {
+            if v == 11_u32.to_bigint().unwrap() {
+                // Build source tree for hashes.
+                let arg_associations =
+                    get_arg_associations(&self.outputs_to_step, a.clone());
+                let args = format_arg_inputs(&arg_associations);
+                self.to_print.insert("Argument-Refs".to_string(), args);
+            } else if v == 34_u32.to_bigint().unwrap() {
+                #[cfg(feature = "debug-print")]
+                // Handle diagnostic output.
+                if let Some((loc, outputs)) = is_print_request(&a) {
+                    self.to_print
+                        .insert("Print-Location".to_string(), loc.to_string());
+                    self.to_print
+                        .insert("Print".to_string(), outputs.to_string());
+                    return Some(self.produce_output());
+                }
+            }
+        }
+
+        None
+    }
+
+    fn produce_exn(
+        &mut self,
+        l: &Srcloc,
+        s: Rc<SExp>
+    ) -> Option<Self::Item> {
+        self.to_print
+            .insert("Throw-Location".to_string(), l.to_string());
+        self.to_print.insert("Throw".to_string(), s.to_string());
+        return Some(self.produce_output());
+    }
+
+    fn produce_err(
+        &mut self,
+        l: &Srcloc,
+        s: &str
+    ) -> Option<Self::Item> {
+        self.to_print
+            .insert("Failure-Location".to_string(), l.to_string());
+        self.to_print.insert("Failure".to_string(), s.to_string());
+        return Some(self.produce_output());
+    }
+}
+
 /// CldbRun is the main object used to run CLVM code in a stepwise way.  The main
 /// advantage of CldbRun over clvmr's runner is that the caller observes a new
 /// step being returned after it asks for each step to be run.  The progress of
@@ -98,21 +269,19 @@ pub trait CldbEnvironment {
 ///
 /// The result is a map of key value pairs indicating various information about
 /// the run.
-pub struct CldbRun {
+pub struct CldbRunGeneric<OutputGenerator> where OutputGenerator: CldbOutputGenerator {
     runner: Rc<dyn TRunProgram>,
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     env: Box<dyn CldbEnvironment>,
+    output_gen: Box<OutputGenerator>,
 
     step: RunStep,
 
     ended: bool,
     final_result: Option<Rc<SExp>>,
-    to_print: BTreeMap<String, String>,
-    in_expr: bool,
-    row: usize,
-
-    outputs_to_step: HashMap<Number, PriorResult>,
 }
+
+pub type CldbRun = CldbRunGeneric<CldbDefaultOutputGenerator>;
 
 #[cfg(feature = "debug-print")]
 fn humanize(a: Rc<SExp>) -> Rc<SExp> {
@@ -146,7 +315,7 @@ fn is_print_request(a: &SExp) -> Option<(Srcloc, Rc<SExp>)> {
     None
 }
 
-impl CldbRun {
+impl<OutputGenerator> CldbRunGeneric<OutputGenerator> where OutputGenerator: CldbOutputGenerator {
     /// Create a new CldbRun for running a program.
     /// Takes an CldbEnvironment and a prepared RunStep, which will be stepped
     /// through.  The CldbEnvironment specifies places where the consumer has the
@@ -155,19 +324,17 @@ impl CldbRun {
         runner: Rc<dyn TRunProgram>,
         prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
         env: Box<dyn CldbEnvironment>,
+        output_gen: Box<OutputGenerator>,
         step: RunStep,
     ) -> Self {
-        CldbRun {
+        CldbRunGeneric {
             runner,
             prim_map,
             env,
+            output_gen,
             step,
             ended: false,
             final_result: None,
-            to_print: BTreeMap::new(),
-            in_expr: false,
-            row: 0,
-            outputs_to_step: HashMap::<Number, PriorResult>::new(),
         }
     }
 
@@ -179,9 +346,9 @@ impl CldbRun {
         self.final_result.clone()
     }
 
-    pub fn step(&mut self, allocator: &mut Allocator) -> Option<BTreeMap<String, String>> {
+    pub fn step(&mut self, allocator: &mut Allocator) -> Option<OutputGenerator::Item> {
         let mut produce_result = false;
-        let mut result = BTreeMap::new();
+        let mut result = None;
         let new_step = match self.env.get_override(&self.step) {
             Some(v) => v,
             _ => run_step(
@@ -196,99 +363,32 @@ impl CldbRun {
         // Allow overrides by consumers.
 
         match &new_step {
-            Ok(RunStep::OpResult(l, x, _p)) => {
-                if self.in_expr {
-                    self.to_print
-                        .insert("Result-Location".to_string(), l.to_string());
-                    self.to_print.insert("Value".to_string(), x.to_string());
-                    self.to_print
-                        .insert("Row".to_string(), self.row.to_string());
-                    if let Ok(n) = x.get_number() {
-                        self.outputs_to_step.insert(
-                            n,
-                            PriorResult {
-                                reference: self.row,
-                                // value: x.clone(), // for future
-                            },
-                        );
-                    }
-                    self.in_expr = false;
-                    swap(&mut self.to_print, &mut result);
-                    produce_result = true;
-                }
+            Ok(RunStep::OpResult(l, x, p)) => {
+                result = self.output_gen.produce_op_result_output(l, x.clone(), p.clone());
             }
             Ok(RunStep::Done(l, x)) => {
-                self.to_print
-                    .insert("Final-Location".to_string(), l.to_string());
-                self.to_print.insert("Final".to_string(), x.to_string());
-
                 self.ended = true;
                 self.final_result = Some(x.clone());
-                swap(&mut self.to_print, &mut result);
-                produce_result = true;
+                result = self.output_gen.produce_op_done(l, x.clone());
             }
             Ok(RunStep::Step(_sexp, _c, _p)) => {}
-            Ok(RunStep::Op(sexp, c, a, None, _p)) => {
-                self.to_print
-                    .insert("Operator-Location".to_string(), a.loc().to_string());
-                self.to_print
-                    .insert("Operator".to_string(), sexp.to_string());
-                if let Ok(v) = sexp.get_number() {
-                    if v == 11_u32.to_bigint().unwrap() {
-                        // Build source tree for hashes.
-                        let arg_associations =
-                            get_arg_associations(&self.outputs_to_step, a.clone());
-                        let args = format_arg_inputs(&arg_associations);
-                        self.to_print.insert("Argument-Refs".to_string(), args);
-                    } else if v == 34_u32.to_bigint().unwrap() {
-                        #[cfg(feature = "debug-print")]
-                        // Handle diagnostic output.
-                        if let Some((loc, outputs)) = is_print_request(a) {
-                            self.to_print
-                                .insert("Print-Location".to_string(), loc.to_string());
-                            self.to_print
-                                .insert("Print".to_string(), outputs.to_string());
-                        }
-                    }
-                }
-                self.env.add_context(
-                    sexp.borrow(),
-                    c.borrow(),
-                    Some(a.clone()),
-                    &mut self.to_print,
-                );
-                self.env.add_function(sexp, &mut self.to_print);
-                self.in_expr = true;
+            Ok(RunStep::Op(sexp, c, a, None, p)) => {
+                result = self.output_gen.produce_op(self.env.borrow(), sexp.clone(), c.clone(), a.clone(), &None, p.clone());
             }
             Ok(RunStep::Op(_sexp, _c, _a, Some(_v), _p)) => {}
             Err(RunFailure::RunExn(l, s)) => {
-                self.to_print
-                    .insert("Throw-Location".to_string(), l.to_string());
-                self.to_print.insert("Throw".to_string(), s.to_string());
-
-                swap(&mut self.to_print, &mut result);
                 self.ended = true;
-                produce_result = true;
+                result = self.output_gen.produce_exn(l, s.clone());
             }
             Err(RunFailure::RunErr(l, s)) => {
-                self.to_print
-                    .insert("Failure-Location".to_string(), l.to_string());
-                self.to_print.insert("Failure".to_string(), s.to_string());
-
-                swap(&mut self.to_print, &mut result);
                 self.ended = true;
-                produce_result = true;
+                result = self.output_gen.produce_err(l, &s);
             }
         }
 
         self.step = new_step.unwrap_or_else(|_| self.step.clone());
 
-        if produce_result {
-            self.row += 1;
-            Some(result)
-        } else {
-            None
-        }
+        result
     }
 
     pub fn current_step(&self) -> RunStep {
