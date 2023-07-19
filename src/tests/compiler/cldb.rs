@@ -36,13 +36,13 @@ fn yaml_to_yamlelement(yaml: &BTreeMap<String, YamlElement>) -> YamlElement {
     YamlElement::Subtree(yaml.clone())
 }
 
-pub trait StepOfCldbViewer {
+trait StepOfCldbViewer {
     fn show(&mut self, _step: &RunStep, _output: Option<BTreeMap<String, String>>) -> bool {
         true
     }
 }
 
-pub fn run_clvm_in_cldb<V>(
+fn run_clvm_in_cldb<V>(
     program_name: &str,
     program_lines: Rc<Vec<String>>,
     program: Rc<SExp>,
@@ -83,7 +83,7 @@ where
     }
 }
 
-pub struct DoesntWatchCldb {}
+struct DoesntWatchCldb {}
 
 impl StepOfCldbViewer for DoesntWatchCldb {}
 
