@@ -28,7 +28,7 @@ use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::StartOfCodegenOptimization;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
-use crate::util::{toposort, u8_from_number};
+use crate::util::{toposort, u8_from_number, TopoSortItem};
 
 const MACRO_TIME_LIMIT: usize = 1000000;
 const CONST_EVAL_LIMIT: usize = 1000000;
@@ -919,14 +919,14 @@ fn generate_let_args(_l: Srcloc, blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {
     blist.iter().map(|b| b.body.clone()).collect()
 }
 
-pub fn hoist_assign_form(letdata: &LetData) -> Result<BodyForm, CompileErr> {
+pub fn toposort_assign_bindings(
+    loc: &Srcloc,
+    bindings: &[Rc<Binding>],
+) -> Result<Vec<TopoSortItem<Vec<u8>>>, CompileErr> {
     // Topological sort of bindings.
-    let sorted_spec = toposort(
-        &letdata.bindings,
-        CompileErr(
-            letdata.loc.clone(),
-            "deadlock resolving binding order".to_string(),
-        ),
+    toposort(
+        bindings,
+        CompileErr(loc.clone(), "deadlock resolving binding order".to_string()),
         // Needs: What this binding relies on.
         |possible, b| {
             let mut need_set = HashSet::new();
@@ -946,7 +946,11 @@ pub fn hoist_assign_form(letdata: &LetData) -> Result<BodyForm, CompileErr> {
                 result_set
             }
         },
-    )?;
+    )
+}
+
+pub fn hoist_assign_form(letdata: &LetData) -> Result<BodyForm, CompileErr> {
+    let sorted_spec = toposort_assign_bindings(&letdata.loc, &letdata.bindings)?;
 
     // Break up into stages of parallel let forms.
     // Track the needed bindings of this level.

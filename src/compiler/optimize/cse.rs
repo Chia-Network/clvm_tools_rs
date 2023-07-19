@@ -390,11 +390,13 @@ fn detect_common_cse_root(instances: &[CSEInstance]) -> Vec<BodyformPathArc> {
     };
 
     let mut target_path = instances[0].path.clone();
+    let mut last_match = min_size;
     for idx in 0..min_size {
         for i in instances.iter() {
             if i.path[idx] != instances[0].path[idx] {
                 // If we don't match here, then the common root is up to here.
-                target_path = instances[0].path.iter().take(idx).cloned().collect();
+                last_match = last_match.min(idx);
+                target_path = instances[0].path.iter().take(last_match).cloned().collect();
                 break;
             }
         }
@@ -414,10 +416,15 @@ fn detect_common_cse_root(instances: &[CSEInstance]) -> Vec<BodyformPathArc> {
 // Finds lambdas that contain CSE detection instances from the provided list.
 fn find_affected_lambdas(
     instances: &[CSEInstance],
+    common_root: &[BodyformPathArc],
     bf: &BodyForm,
 ) -> Result<Vec<PathDetectVisitorResult<()>>, CompileErr> {
     visit_detect_in_bodyform(
         &|path, _root, form| -> Result<Option<()>, CompileErr> {
+            // The common root is inside this lambda.
+            if path_overlap_one_way(path, common_root) {
+                return Ok(None);
+            }
             if let BodyForm::Lambda(_) = form {
                 if instances
                     .iter()
@@ -493,6 +500,7 @@ pub fn cse_optimize_bodyform(
 
     let mut function_body = b.clone();
     let mut new_binding_stack: Vec<(Vec<BodyformPathArc>, Vec<Rc<Binding>>)> = Vec::new();
+    let have_detections = !cse_detections.is_empty();
 
     while !detections_with_dependencies.is_empty() {
         let detections_to_apply: Vec<CSEDetection> = detections_with_dependencies
@@ -577,10 +585,16 @@ pub fn cse_optimize_bodyform(
                 })
                 .collect();
 
+            // Detect the root of the CSE as the innermost expression that covers
+            // all uses.
+            let replace_path = detect_common_cse_root(&d.instances);
+
             // Route the captured repeated subexpression into intervening lambdas.
             // This means that the lambdas will gain a capture on the left side of
             // their captures.
-            let affected_lambdas = find_affected_lambdas(&d.instances, b)?;
+            //
+            // Ensure that lambdas above replace_path aren't targeted.
+            let affected_lambdas = find_affected_lambdas(&d.instances, &replace_path, b)?;
             if let Some(res) = replace_in_bodyform(
                 &affected_lambdas,
                 &function_body,
@@ -612,10 +626,6 @@ pub fn cse_optimize_bodyform(
                 ));
             }
 
-            // Detect the root of the CSE as the innermost expression that covers
-            // all uses.
-            let replace_path = detect_common_cse_root(&d.instances);
-
             detections_with_dependencies = sorted_cse_detections_by_applicability(&keep_detections);
             // Put aside the definition in this binding set.
             let name_atom = SExp::Atom(prototype_instance.loc(), new_variable_name.clone());
@@ -643,6 +653,14 @@ pub fn cse_optimize_bodyform(
                 })
                 .collect(),
         );
+    }
+
+    assert!(!have_detections || !new_binding_stack.is_empty());
+
+    // We might not have completely sorted sites anymore due to joining up each
+    // site set under a common target path (which themselves need sorting).
+    if new_binding_stack.is_empty() {
+        return Ok(function_body);
     }
 
     // All CSE replacements are done.  We unwind the new bindings

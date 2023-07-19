@@ -126,3 +126,6 @@ jobs:
         cp support/test-game-referee.sh .
         sh test-game-referee.sh
 
+    - name: Large HAMT structure test
+      run: |
+        cargo test -- --ignored --nocapture hamt
