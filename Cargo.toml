@@ -40,19 +40,21 @@ yaml-rust = "0.4"
 linked-hash-map = "0.5.6"
 serde = { version = "1.0", features = ["derive", "rc"] }
 regex = "1.8.4"
+rand = { version = "0.8.5", optional = true }
+rand_chacha = { version = "0.3.1", optional = true }
+random_lfsr_256_galois = { version = "22.10.0", optional = true }
 
 [dev-dependencies]
-rand = "0.8.5"
-rand_chacha = "0.3.1"
 
 [lib]
 name = "clvm_tools_rs"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-extension-module = ["pyo3"]
+extension-module = ["dep:pyo3"]
 debug-print = []
-default = ["debug-print", "extension-module"]
+fuzzer = ["dep:rand", "dep:rand_chacha", "dep:random_lfsr_256_galois"]
+default = ["debug-print", "extension-module", "fuzzer"]
 
 [target.'cfg(target_family="wasm")'.dependencies]
 wasm-bindgen = { version = "0.2.80", features = ["serde-serialize"] }

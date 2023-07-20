@@ -1,8 +1,8 @@
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzer"))]
 use rand::distributions::Standard;
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzer"))]
 use rand::prelude::Distribution;
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzer"))]
 use rand::Rng;
 
 use std::borrow::Borrow;
@@ -45,11 +45,11 @@ pub enum SExp {
     Atom(Srcloc, Vec<u8>),
 }
 
-#[cfg(test)]
-pub fn random_atom_name<R: Rng + ?Sized>(rng: &mut R, min_size: usize) -> Vec<u8> {
+#[cfg(any(test, feature = "fuzzer"))]
+pub fn random_atom_name<R: Rng + ?Sized>(rng: &mut R, min_size: usize, max_size: usize) -> Vec<u8> {
     let mut bytevec: Vec<u8> = Vec::new();
     let mut len = 0;
-    loop {
+    while bytevec.len() < max_size {
         let mut n: u8 = rng.gen();
         n %= 40;
         len += 1;
@@ -62,20 +62,39 @@ pub fn random_atom_name<R: Rng + ?Sized>(rng: &mut R, min_size: usize) -> Vec<u8
     bytevec
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzer"))]
 pub fn random_atom<R: Rng + ?Sized>(rng: &mut R) -> SExp {
-    SExp::Atom(Srcloc::start("*rng*"), random_atom_name(rng, 1))
+    SExp::Atom(Srcloc::start("*rng*"), random_atom_name(rng, 1, 8))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzer"))]
+pub fn random_quoted_string<R: Rng + ?Sized>(rng: &mut R, min_size: u8) -> SExp {
+    let mut bytevec: Vec<u8> = Vec::new();
+    let mut len = 0;
+    loop {
+        len += 1;
+        if len < min_size || rng.gen() {
+            bytevec.push(rng.gen());
+        } else {
+            break;
+        }
+    }
+    SExp::QuotedString(Srcloc::start("*rng*"), b'"', bytevec)
+}
+
+#[cfg(any(test, feature = "fuzzer"))]
 pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
     if remaining < 2 {
         random_atom(rng)
     } else {
         let loc = || Srcloc::start("*rng*");
-        let alternative: usize = rng.gen_range(0..=2);
+        let alternative: usize = rng.gen_range(0..=3);
         match alternative {
             0 => {
+                // nil
+                SExp::Nil(loc())
+            }
+            1 => {
                 // list
                 let length = rng.gen_range(1..=remaining);
                 let costs = vec![remaining / length; length];
@@ -85,7 +104,7 @@ pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
                     .collect();
                 enlist(loc(), &collected_list)
             }
-            1 => {
+            2 => {
                 // cons
                 let left_cost = rng.gen_range(1..=remaining);
                 let right_cost = remaining - left_cost;
@@ -97,14 +116,23 @@ pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
             }
             _ => {
                 // atom
-                random_atom(rng)
+                let atom_kind: u8 = rng.gen();
+                if atom_kind >= 0xa0 {
+                    let mut min_len = rng.gen_range(0..=8);
+                    if min_len == 8 {
+                        min_len = rng.gen_range(0..=129);
+                    }
+                    random_quoted_string(rng, min_len)
+                } else {
+                    random_atom(rng)
+                }
             }
         }
     }
 }
 
 // Thanks: https://stackoverflow.com/questions/48490049/how-do-i-choose-a-random-value-from-an-enum
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzer"))]
 impl Distribution<SExp> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SExp {
         random_sexp(rng, MAX_SEXP_COST)

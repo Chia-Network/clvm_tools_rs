@@ -23,6 +23,9 @@ pub mod util;
 pub mod classic;
 pub mod compiler;
 
+#[cfg(any(test, feature = "fuzzer"))]
+pub mod fuzzing;
+
 // Python impl
 #[cfg(all(not(test), not(target_family = "wasm"), feature = "extension-module"))]
 mod py;

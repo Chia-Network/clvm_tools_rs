@@ -28,7 +28,7 @@ use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::StartOfCodegenOptimization;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
-use crate::util::{toposort, u8_from_number, TopoSortItem};
+use crate::util::{Number, toposort, u8_from_number, TopoSortItem};
 
 const MACRO_TIME_LIMIT: usize = 1000000;
 const CONST_EVAL_LIMIT: usize = 1000000;
@@ -145,16 +145,16 @@ fn compute_env_shape(l: Srcloc, args: Rc<SExp>, helpers: &[HelperForm]) -> SExp 
     SExp::Cons(l, Rc::new(car), cdr)
 }
 
-fn create_name_lookup_(
+pub fn create_name_lookup_(
     l: Srcloc,
     name: &[u8],
     env: Rc<SExp>,
     find: Rc<SExp>,
-) -> Result<u64, CompileErr> {
+) -> Result<Number, CompileErr> {
     match find.borrow() {
         SExp::Atom(l, a) => {
             if *a == *name {
-                Ok(1_u64)
+                Ok(bi_one())
             } else {
                 Err(CompileErr(
                     l.clone(),
@@ -169,7 +169,7 @@ fn create_name_lookup_(
         SExp::Integer(l, i) => {
             let a = u8_from_number(i.clone());
             if a == *name {
-                Ok(1_u64)
+                Ok(bi_one())
             } else {
                 Err(CompileErr(
                     l.clone(),
@@ -182,17 +182,18 @@ fn create_name_lookup_(
             }
         }
         SExp::Cons(l, head, rest) => {
+            let two = 2_u32.to_bigint().unwrap();
             if let Some((capture, substructure)) = is_at_capture(head.clone(), rest.clone()) {
                 if *capture == *name {
-                    Ok(1_u64)
+                    Ok(bi_one())
                 } else {
                     create_name_lookup_(l.clone(), name, env, substructure)
                 }
             } else {
                 create_name_lookup_(l.clone(), name, env.clone(), head.clone())
-                    .map(|v| Ok(2 * v))
+                    .map(|v| Ok(two.clone() * v))
                     .unwrap_or_else(|_| {
-                        create_name_lookup_(l.clone(), name, env, rest.clone()).map(|v| 2 * v + 1)
+                        create_name_lookup_(l.clone(), name, env, rest.clone()).map(|v| two * v + 1)
                     })
             }
         }
