@@ -48,7 +48,7 @@ use crate::classic::platform::argparse::{
     TArgOptionAction, TArgumentParserProps,
 };
 
-use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
+use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbOutputGenerator, CldbPrintOutputGenerator, CldbRun, CldbRunGeneric, CldbRunEnv};
 use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
 use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, desugar_pre_forms, DefaultCompilerOpts};
@@ -469,6 +469,33 @@ pub fn cldb_hierarchy(
     result
 }
 
+fn run_cldb<Output>(
+    allocator: &mut Allocator,
+    output: &mut Vec<BTreeMap<String, YamlElement>>,
+    cldbrun: &mut CldbRunGeneric<Output>
+)
+where
+    Output: CldbOutputGenerator<Item = BTreeMap<String, String>>
+{
+    let print_tree = |output: &mut Vec<_>, result: &BTreeMap<String, String>| {
+        let mut cvt_subtree = BTreeMap::new();
+        for (k, v) in result.iter() {
+            cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
+        }
+        output.push(cvt_subtree);
+    };
+
+    loop {
+        if cldbrun.is_ended() {
+            return;
+        }
+
+        if let Some(result) = cldbrun.step(allocator) {
+            print_tree(output, &result);
+        }
+    }
+}
+
 pub fn cldb(args: &[String]) {
     env_logger::init();
 
@@ -709,46 +736,30 @@ pub fn cldb(args: &[String]) {
     }
 
     let step = start_step(program, args);
-    let mut cldbrun = CldbRun::new(
-        runner,
-        Rc::new(prim_map),
-        Box::new(cldbenv),
-        Default::default(),
-        step
-    );
-    let print_tree = |output: &mut Vec<_>, result: &BTreeMap<String, String>| {
-        let mut cvt_subtree = BTreeMap::new();
-        for (k, v) in result.iter() {
-            cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
-        }
-        output.push(cvt_subtree);
-    };
 
-    loop {
-        if cldbrun.is_ended() {
-            println!("{}", yamlette_string(&output));
-            return;
-        }
+    if only_print {
+        let mut cldbrun = CldbRunGeneric::<CldbPrintOutputGenerator>::new(
+            runner,
+            Rc::new(prim_map),
+            Box::new(cldbenv),
+            Default::default(),
+            step
+        );
 
-        if let Some(result) = cldbrun.step(&mut allocator) {
-            if only_print {
-                if let Some(p) = result.get("Print") {
-                    let mut only_print = BTreeMap::new();
-                    only_print.insert("Print".to_string(), YamlElement::String(p.clone()));
-                    output.push(only_print);
-                } else {
-                    let is_final = result.get("Final").is_some();
-                    let is_throw = result.get("Throw").is_some();
-                    let is_failure = result.get("Failure").is_some();
-                    if is_final || is_throw || is_failure {
-                        print_tree(&mut output, &result);
-                    }
-                }
-            } else {
-                print_tree(&mut output, &result);
-            }
-        }
+        run_cldb(&mut allocator, &mut output, &mut cldbrun);
+    } else {
+        let mut cldbrun = CldbRun::new(
+            runner,
+            Rc::new(prim_map),
+            Box::new(cldbenv),
+            Default::default(),
+            step
+        );
+
+        run_cldb(&mut allocator, &mut output, &mut cldbrun);
     }
+
+    println!("{}", yamlette_string(&output));
 }
 
 struct RunLog<T> {

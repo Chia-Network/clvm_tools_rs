@@ -184,7 +184,7 @@ impl CldbOutputGenerator for CldbDefaultOutputGenerator {
             .insert("Final-Location".to_string(), l.to_string());
         self.to_print.insert("Final".to_string(), x.to_string());
 
-        return Some(self.produce_output());
+        Some(self.produce_output())
     }
 
     fn produce_op(
@@ -242,7 +242,7 @@ impl CldbOutputGenerator for CldbDefaultOutputGenerator {
         self.to_print
             .insert("Throw-Location".to_string(), l.to_string());
         self.to_print.insert("Throw".to_string(), s.to_string());
-        return Some(self.produce_output());
+        Some(self.produce_output())
     }
 
     fn produce_err(
@@ -253,7 +253,82 @@ impl CldbOutputGenerator for CldbDefaultOutputGenerator {
         self.to_print
             .insert("Failure-Location".to_string(), l.to_string());
         self.to_print.insert("Failure".to_string(), s.to_string());
-        return Some(self.produce_output());
+        Some(self.produce_output())
+    }
+}
+
+#[derive(Default)]
+pub struct CldbPrintOutputGenerator { }
+
+impl CldbOutputGenerator for CldbPrintOutputGenerator {
+    type Item = BTreeMap<String, String>;
+
+    fn produce_op_result_output(
+        &mut self,
+        l: &Srcloc,
+        x: Rc<SExp>,
+        p: Rc<RunStep>
+    ) -> Option<Self::Item> {
+        None
+    }
+
+    fn produce_op_done(
+        &mut self,
+        l: &Srcloc,
+        x: Rc<SExp>
+    ) -> Option<Self::Item> {
+        let mut to_print = BTreeMap::new();
+        to_print
+            .insert("Final-Location".to_string(), l.to_string());
+        to_print.insert("Final".to_string(), x.to_string());
+
+        Some(to_print)
+    }
+
+    fn produce_op(
+        &mut self,
+        env: &dyn CldbEnvironment,
+        sexp: Rc<SExp>,
+        c: Rc<SExp>,
+        a: Rc<SExp>,
+        vec: &Option<Vec<Rc<SExp>>>,
+        p: Rc<RunStep>
+    ) -> Option<Self::Item> {
+        // Handle diagnostic output.
+        if let Some((loc, outputs)) = is_print_request(&a) {
+            let mut to_print = BTreeMap::new();
+            to_print
+                .insert("Print-Location".to_string(), loc.to_string());
+            to_print
+                .insert("Print".to_string(), outputs.to_string());
+            return Some(to_print);
+        }
+
+        None
+    }
+
+    fn produce_exn(
+        &mut self,
+        l: &Srcloc,
+        s: Rc<SExp>
+    ) -> Option<Self::Item> {
+        let mut to_print = BTreeMap::new();
+        to_print
+            .insert("Throw-Location".to_string(), l.to_string());
+        to_print.insert("Throw".to_string(), s.to_string());
+        Some(to_print)
+    }
+
+    fn produce_err(
+        &mut self,
+        l: &Srcloc,
+        s: &str
+    ) -> Option<Self::Item> {
+        let mut to_print = BTreeMap::new();
+        to_print
+            .insert("Failure-Location".to_string(), l.to_string());
+        to_print.insert("Failure".to_string(), s.to_string());
+        Some(to_print)
     }
 }
 
