@@ -410,13 +410,13 @@ fn generate_args_code(
                 generate_expr_code(context, opts.clone(), compiler, hd.clone())?.1;
             if with_primcons {
                 compiled_args = Rc::new(primcons(
-                    l.clone(),
+                    generated.loc(),
                     generated.clone(),
                     compiled_args
                 ));
             } else {
                 compiled_args = Rc::new(SExp::Cons(
-                    l.clone(),
+                    generated.loc(),
                     generated.clone(),
                     compiled_args
                 ));
