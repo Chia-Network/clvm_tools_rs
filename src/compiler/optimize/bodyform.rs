@@ -66,15 +66,17 @@ where
 {
     let path_idx = path.len();
     match bf {
-        BodyForm::Call(_l, args, None) => {
+        BodyForm::Call(_l, args, tail) => {
             for (i, a) in args.iter().enumerate() {
                 path.push(BodyformPathArc::CallArgument(i));
                 visit_detect_in_bodyform_inner(path, res, f, original, a)?;
                 path.truncate(path_idx);
             }
-        }
-        BodyForm::Call(_l, args, Some(_)) => {
-            todo!();
+            if let Some(t) = tail.as_ref() {
+                path.push(BodyformPathArc::CallArgument(args.len()));
+                visit_detect_in_bodyform_inner(path, res, f, original, t)?;
+                path.truncate(path_idx);
+            }
         }
         BodyForm::Let(_k, b) => {
             for (i, a) in b.bindings.iter().enumerate() {

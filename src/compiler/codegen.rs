@@ -393,26 +393,17 @@ fn generate_args_code(
     tail: Option<Rc<BodyForm>>,
     with_primcons: bool,
 ) -> Result<Rc<SExp>, CompileErr> {
-    if list.is_empty() {
+    if list.is_empty() && tail.is_none() {
         Ok(Rc::new(SExp::Nil(l)))
     } else {
-        // let mut compiled_args: Vec<Rc<SExp>> = Vec::new();
-        // for hd in list.iter() {
-        //     let generated =
-        //         generate_expr_code(context, opts.clone(), compiler, hd.clone()).map(|x| x.1)?;
-        //     compiled_args.push(generated);
-        // }
-
-        // let result_code = Rc::new(list_to_cons(l, &compiled_args));
-        // eprintln!("generate_args_code: {result_code}");
-        // Ok(result_code)
-
         let mut compiled_args: Rc<SExp> =
             if let Some(t) = tail.as_ref() {
                 generate_expr_code(context, opts.clone(), compiler, t.clone())?.1
             } else {
                 Rc::new(SExp::Nil(l.clone()))
             };
+
+        eprintln!("compiled_args (post tail) {compiled_args}");
 
         for hd in list.iter().rev() {
             let generated =
@@ -513,9 +504,10 @@ fn compile_call(
             }
 
             Callable::CallDefun(l, lookup) => {
+                eprintln!("call defun {} tail {}", list[0].to_sexp(), tail.is_some());
                 generate_args_code(context, opts.clone(), compiler, l.clone(), &tl, tail, true).and_then(
                     |args| {
-                        process_defun_call(
+                         process_defun_call(
                             opts.clone(),
                             compiler,
                             l.clone(),
