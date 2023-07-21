@@ -231,7 +231,7 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             _ => BodyForm::Value(atom.clone()),
         },
 
-        BodyForm::Call(l, vs) => {
+        BodyForm::Call(l, vs, tail) => {
             let new_vs = vs
                 .iter()
                 .enumerate()
@@ -243,7 +243,10 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
                     }
                 })
                 .collect();
-            BodyForm::Call(l.clone(), new_vs)
+            let new_tail = tail.as_ref().map(|t| {
+                Rc::new(rename_in_bodyform(namemap, t.clone()))
+            });
+            BodyForm::Call(l.clone(), new_vs, new_tail)
         }
 
         BodyForm::Mod(l, prog) => BodyForm::Mod(l.clone(), prog.clone()),
@@ -354,12 +357,15 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
         BodyForm::Quoted(e) => BodyForm::Quoted(e.clone()),
         BodyForm::Value(v) => BodyForm::Value(v.clone()),
 
-        BodyForm::Call(l, vs) => {
+        BodyForm::Call(l, vs, tail) => {
             let new_vs = vs
                 .iter()
                 .map(|a| Rc::new(rename_args_bodyform(a)))
                 .collect();
-            BodyForm::Call(l.clone(), new_vs)
+            let new_tail = tail.as_ref().map(|t| {
+                Rc::new(rename_args_bodyform(t.borrow()))
+            });
+            BodyForm::Call(l.clone(), new_vs, new_tail)
         }
         BodyForm::Mod(l, program) => BodyForm::Mod(l.clone(), program.clone()),
         BodyForm::Lambda(ldata) => BodyForm::Lambda(ldata.clone()),

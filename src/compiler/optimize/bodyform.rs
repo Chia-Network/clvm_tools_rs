@@ -66,12 +66,15 @@ where
 {
     let path_idx = path.len();
     match bf {
-        BodyForm::Call(_l, args) => {
+        BodyForm::Call(_l, args, None) => {
             for (i, a) in args.iter().enumerate() {
                 path.push(BodyformPathArc::CallArgument(i));
                 visit_detect_in_bodyform_inner(path, res, f, original, a)?;
                 path.truncate(path_idx);
             }
+        }
+        BodyForm::Call(_l, args, Some(_)) => {
+            todo!();
         }
         BodyForm::Let(_k, b) => {
             for (i, a) in b.bindings.iter().enumerate() {
@@ -126,6 +129,7 @@ fn replace_in_bodyform_inner_list<'a, L, P, F, F1, G, H, R>(
     current_path: &mut Vec<BodyformPathArc>,
     replacements: &[PathDetectVisitorResult<R>],
     list_of: &'a [L],
+    tail_of: &'a Option<L>,
     make_path_comp: &P,
     extract_body: &G,
     compose_wrap: &H,
@@ -136,14 +140,20 @@ where
     R: Clone,
     L: Clone + 'a,
     P: Fn(usize) -> BodyformPathArc,
-    F1: Fn(Vec<L>) -> BodyForm,
+    F1: Fn(Vec<L>, Option<L>) -> BodyForm,
     G: Fn(&'a L) -> &'a BodyForm,
     H: Fn(&'a L, BodyForm) -> L,
     F: Fn(&PathDetectVisitorResult<R>, &BodyForm) -> BodyForm,
 {
     let mut collection = vec![];
     let path_idx = current_path.len();
-    for (i, a) in list_of.iter().enumerate() {
+    let list_len = list_of.len();
+    let mut replacement_list: Vec<(usize, &L)> = list_of.into_iter().enumerate().collect();
+    let mut maybe_tail: Option<L> = None;
+    if let Some(t) = tail_of.as_ref() {
+        replacement_list.push((list_len, t));
+    }
+    for (i, a) in replacement_list.into_iter() {
         current_path.push(make_path_comp(i));
 
         // Continue only with potentially matching replacements.
@@ -155,18 +165,29 @@ where
 
         // No replacements down this argument.
         if pass_on_replacements.is_empty() {
-            collection.push(a.clone());
+            if i == list_len {
+                maybe_tail = Some(a.clone());
+            } else {
+                collection.push(a.clone());
+            }
             current_path.truncate(path_idx);
             continue;
         }
 
-        collection.push(compose_wrap(
+        let wrapper = compose_wrap(
             a,
             replace_in_bodyform_subset(current_path, &pass_on_replacements, extract_body(a), f),
-        ));
+        );
+        if i == list_of.len() {
+            maybe_tail = Some(wrapper);
+        } else {
+            collection.push(wrapper);
+        }
+
         current_path.truncate(path_idx);
     }
-    make_f(collection)
+
+    make_f(collection, maybe_tail)
 }
 
 fn replace_in_bodyform_inner_body<F, F1, R>(
@@ -227,16 +248,19 @@ where
     }
 
     match bf {
-        BodyForm::Call(l, args) => replace_in_bodyform_inner_list(
-            current_path,
-            replacements,
-            args,
-            &BodyformPathArc::CallArgument,
-            &|e: &Rc<BodyForm>| e.borrow(),
-            &|_w, b| Rc::new(b),
-            &|args| BodyForm::Call(l.clone(), args),
-            f,
-        ),
+        BodyForm::Call(l, args, tail) => {
+            replace_in_bodyform_inner_list(
+                current_path,
+                replacements,
+                args,
+                tail,
+                &BodyformPathArc::CallArgument,
+                &|e: &Rc<BodyForm>| e.borrow(),
+                &|_w, b| Rc::new(b),
+                &|args, tail| BodyForm::Call(l.clone(), args, tail),
+                f,
+            )
+        }
         BodyForm::Let(k, b) => {
             let path_idx = current_path.len();
             current_path.push(BodyformPathArc::BodyOf);
@@ -255,6 +279,7 @@ where
                 current_path,
                 replacements,
                 &b.bindings,
+                &None,
                 &BodyformPathArc::LetBinding,
                 &|e: &Rc<Binding>| &e.body,
                 &|w: &Rc<Binding>, b: BodyForm| {
@@ -264,7 +289,7 @@ where
                         ..wb.clone()
                     })
                 },
-                &|bindings| {
+                &|bindings, _| {
                     BodyForm::Let(
                         k.clone(),
                         Box::new(LetData {
@@ -364,8 +389,13 @@ where
                 }
             }
             BodyformPathArc::CallArgument(n) => {
-                if let BodyForm::Call(_, a) = found {
-                    if *n >= a.len() {
+                if let BodyForm::Call(_, a, tail) = found {
+                    if *n == a.len() {
+                        if let Some(t) = tail {
+                            found = t.borrow();
+                        }
+                        return None;
+                    } else if *n >= a.len() {
                         return None;
                     }
                     found = a[*n].borrow();

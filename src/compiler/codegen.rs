@@ -65,6 +65,7 @@ fn cons_bodyform(loc: Srcloc, left: Rc<BodyForm>, right: Rc<BodyForm>) -> BodyFo
             left,
             right,
         ],
+        None
     )
 }
 
@@ -711,7 +712,7 @@ pub fn generate_expr_code(
                 )),
             }
         }
-        BodyForm::Call(l, list) => {
+        BodyForm::Call(l, list, None) => {
             // Recognize attempts to get the input arguments.  They're paired with
             // a left env in the usual case, but it can be omitted if there are no
             // freestanding functions.  In that case, the user args are just the
@@ -727,6 +728,9 @@ pub fn generate_expr_code(
             } else {
                 compile_call(context, l.clone(), opts, compiler, list.to_vec())
             }
+        }
+        BodyForm::Call(l, list, Some(tail)) => {
+            todo!();
         }
         BodyForm::Mod(_, program) => do_mod_codegen(context, opts, program),
         _ => Err(CompileErr(
@@ -1098,6 +1102,7 @@ pub fn hoist_body_let_binding(
                                 "@*env*".as_bytes().to_vec(),
                             ))),
                         ],
+                        None
                     )
                 });
 
@@ -1107,13 +1112,13 @@ pub fn hoist_body_let_binding(
             ];
             call_args.append(&mut let_args);
 
-            let final_call = BodyForm::Call(letdata.loc.clone(), call_args);
+            let final_call = BodyForm::Call(letdata.loc.clone(), call_args, None);
             Ok((out_defuns, Rc::new(final_call)))
         }
         BodyForm::Let(LetFormKind::Assign, letdata) => {
             hoist_body_let_binding(outer_context, args, Rc::new(hoist_assign_form(letdata)?))
         }
-        BodyForm::Call(l, list) => {
+        BodyForm::Call(l, list, None) => {
             let mut vres = Vec::new();
             let mut new_call_list = vec![list[0].clone()];
             for i in list.iter().skip(1) {
@@ -1122,7 +1127,10 @@ pub fn hoist_body_let_binding(
                 new_call_list.push(new_arg);
                 vres.append(&mut new_helper.clone());
             }
-            Ok((vres, Rc::new(BodyForm::Call(l.clone(), new_call_list))))
+            Ok((vres, Rc::new(BodyForm::Call(l.clone(), new_call_list, None))))
+        }
+        BodyForm::Call(l, list, Some(_)) => {
+            todo!();
         }
         BodyForm::Lambda(letdata) => {
             let new_function_args = Rc::new(SExp::Cons(

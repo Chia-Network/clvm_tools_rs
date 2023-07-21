@@ -205,7 +205,8 @@ fn test_sexp_scale_increases_with_atom_size() {
 }
 
 fn is_not_condition(bf: &BodyForm) -> Option<Rc<BodyForm>> {
-    if let BodyForm::Call(_, parts) = bf {
+    // Checking for a primitive so no tail.
+    if let BodyForm::Call(_, parts, None) = bf {
         if parts.len() != 2 {
             return None;
         }
@@ -245,6 +246,7 @@ fn condition_invert_optimize(
                         forms[3].clone(),
                         forms[2].clone(),
                     ],
+                    None,
                 ));
             }
         }
@@ -265,6 +267,7 @@ fn constant_fun_result(
     loc: &Srcloc,
     an: &[u8],
     forms: &[Rc<BodyForm>],
+    tail: Option<Rc<BodyForm>>
 ) -> Option<Rc<BodyForm>> {
     if let Some(res) = opts.dialect().stepping {
         if res >= 23 {
@@ -281,6 +284,15 @@ fn constant_fun_result(
                         .unwrap_or_else(|| (false, a.clone()))
                 })
                 .collect();
+
+            let optimized_tail: Option<(bool, Rc<BodyForm>)> = tail.map(|t| {
+                let optimized =
+                    optimize_expr(allocator, opts.clone(), runner.clone(), compiler, t.clone());
+                constant = constant && optimized.as_ref().map(|x| x.0).unwrap_or_else(|| false);
+                optimized
+                    .map(|x| (x.0, x.1))
+                    .unwrap_or_else(|| (false, t.clone()))
+            });
 
             if !constant {
                 return None;
@@ -303,6 +315,9 @@ fn constant_fun_result(
                                 b"__ARGS__".to_vec(),
                             ))),
                         ],
+                        // Proper call: we're calling 'a' on behalf of our
+                        // single capture argument.
+                        None
                     )),
                 };
                 let optimizer = if let Ok(res) = get_optimizer(loc, opts.clone()) {
@@ -322,22 +337,36 @@ fn constant_fun_result(
                 }
             };
 
-            let mut reified_args = SExp::Nil(loc.clone());
+            // Reified args reflect the actual ABI shape with a tail if any.
+            let mut reified_args =
+                if let Some((_, t)) = optimized_tail {
+                    if let Ok(res) = dequote(loc.clone(), t.clone()) {
+                        res
+                    } else {
+                        return None;
+                    }
+                } else {
+                    Rc::new(SExp::Nil(loc.clone()))
+                };
             for (_, v) in optimized_args.iter().rev() {
                 let unquoted = if let Ok(res) = dequote(loc.clone(), v.clone()) {
                     res
                 } else {
                     return None;
                 };
-                reified_args = SExp::Cons(loc.clone(), unquoted, Rc::new(reified_args));
+                reified_args = Rc::new(SExp::Cons(loc.clone(), unquoted, reified_args));
             }
+            let borrowed_args: &SExp = reified_args.borrow();
             let new_body = BodyForm::Call(
                 loc.clone(),
                 vec![
                     Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), vec![2]))),
                     Rc::new(BodyForm::Quoted(compiled_body)),
-                    Rc::new(BodyForm::Quoted(reified_args)),
+                    Rc::new(BodyForm::Quoted(borrowed_args.clone())),
                 ],
+                // The constructed call is proper because we're feeding something
+                // we constructed above.
+                None
             );
 
             return Some(Rc::new(new_body));
@@ -357,7 +386,7 @@ pub fn optimize_expr(
 ) -> Option<(bool, Rc<BodyForm>)> {
     match body.borrow() {
         BodyForm::Quoted(_) => Some((true, body)),
-        BodyForm::Call(l, forms) => {
+        BodyForm::Call(l, forms, None) => {
             // () evaluates to ()
             if forms.is_empty() {
                 return Some((true, body));
@@ -388,6 +417,8 @@ pub fn optimize_expr(
                             &l,
                             an,
                             forms,
+                            // XXX reflect Some(tail) when fixed.
+                            None,
                         ) {
                             return Some(
                                 optimize_expr(
@@ -446,7 +477,8 @@ pub fn optimize_expr(
                         let mut replaced_args =
                             optimized_args.iter().map(|x| x.1.clone()).collect();
                         result_list.append(&mut replaced_args);
-                        let code = BodyForm::Call(l.clone(), result_list);
+                        // Primitive call: no tail.
+                        let code = BodyForm::Call(l.clone(), result_list, None);
 
                         if constant {
                             run(
@@ -480,6 +512,9 @@ pub fn optimize_expr(
                 BodyForm::Value(SExp::Atom(al, an)) => examine_call(al.clone(), an),
                 _ => None,
             }
+        }
+        BodyForm::Call(l, forms, Some(_)) => {
+            todo!();
         }
         BodyForm::Value(SExp::Integer(l, i)) => Some((
             true,

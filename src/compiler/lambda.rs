@@ -69,6 +69,8 @@ fn make_operator(loc: Srcloc, op: u8, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) ->
             arg1,
             arg2,
         ],
+        // Tail safe: creates a primitive.
+        None,
     )
 }
 
@@ -83,6 +85,8 @@ fn make_list(loc: Srcloc, args: &[BodyForm]) -> BodyForm {
         res = BodyForm::Call(
             loc.clone(),
             vec![Rc::new(cons_atom.clone()), Rc::new(a.clone()), Rc::new(res)],
+            // Tail safe: creating a list with primitives.
+            None,
         );
     }
     res
@@ -176,6 +180,8 @@ fn generate_get_from_var(mask: Number, target_path: Number, arg: Rc<BodyForm>) -
             Rc::new(BodyForm::Value(SExp::Atom(arg.loc(), new_op.to_vec()))),
             arg.clone(),
         ],
+        // Tail safe: generating a primitive.
+        None,
     ));
     generate_get_from_var(mask * two, target_path, new_body)
 }

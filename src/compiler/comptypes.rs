@@ -189,7 +189,7 @@ pub enum BodyForm {
     ///
     /// So tail improper calls aren't allowed.  In real lisp, (apply ...) can
     /// generate them if needed.
-    Call(Srcloc, Vec<Rc<BodyForm>>),
+    Call(Srcloc, Vec<Rc<BodyForm>>, Option<Rc<BodyForm>>),
     /// (mod ...) can be used in chialisp as an expression, in which it returns
     /// the compiled code.  Here, it contains a CompileForm, which represents
     /// the full significant input of a program (yielded by frontend()).
@@ -828,7 +828,7 @@ impl BodyForm {
         match self {
             BodyForm::Let(_, letdata) => letdata.loc.clone(),
             BodyForm::Quoted(a) => a.loc(),
-            BodyForm::Call(loc, _) => loc.clone(),
+            BodyForm::Call(loc, _, _) => loc.clone(),
             BodyForm::Value(a) => a.loc(),
             BodyForm::Mod(kl, program) => kl.ext(&program.loc),
             BodyForm::Lambda(ldata) => ldata.loc.ext(&ldata.body.loc()),
@@ -858,9 +858,12 @@ impl BodyForm {
                 Rc::new(body.clone()),
             )),
             BodyForm::Value(body) => Rc::new(body.clone()),
-            BodyForm::Call(loc, exprs) => {
+            BodyForm::Call(loc, exprs, None) => {
                 let converted: Vec<Rc<SExp>> = exprs.iter().map(|x| x.to_sexp()).collect();
                 Rc::new(list_to_cons(loc.clone(), &converted))
+            }
+            BodyForm::Call(loc, exprs, Some(_)) => {
+                todo!();
             }
             BodyForm::Mod(loc, program) => Rc::new(SExp::Cons(
                 loc.clone(),

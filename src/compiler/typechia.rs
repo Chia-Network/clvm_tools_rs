@@ -656,8 +656,10 @@ fn chialisp_to_expr(
             )?;
             chialisp_to_expr(opts, program, form_args, beta_reduced)
         }
-        BodyForm::Call(l, lst) => {
-            let mut arg_expr = Expr::EUnit(l.clone());
+        BodyForm::Call(l, lst, tail) => {
+            let mut arg_expr = tail.as_ref().map(|t| {
+                todo!();
+            }).unwrap_or_else(|| Expr::EUnit(l.clone()));
             for (_i, e) in lst.iter().enumerate().rev().take(lst.len() - 1) {
                 let new_expr =
                     chialisp_to_expr(opts.clone(), program, form_args.clone(), e.clone())?;

@@ -27,6 +27,8 @@ fn apply_fn(loc: Srcloc, name: String, expr: Rc<BodyForm>) -> Rc<BodyForm> {
             Rc::new(BodyForm::Value(SExp::atom_from_string(loc, &name))),
             expr,
         ],
+        // Tail safe because it's always applying primitives or special forms.
+        None,
     ))
 }
 
@@ -56,22 +58,24 @@ pub fn synthesize_args(arg_: Rc<SExp>) -> Vec<Rc<BodyForm>> {
     }
 }
 
-fn enlist_remaining_args(loc: Srcloc, arg_choice: usize, args: &[Rc<BodyForm>]) -> Rc<BodyForm> {
-    let mut result_body = BodyForm::Value(SExp::Nil(loc.clone()));
+fn enlist_remaining_args(loc: Srcloc, arg_choice: usize, args: &[Rc<BodyForm>], tail: Option<Rc<BodyForm>>) -> Rc<BodyForm> {
+    let mut result_body =
+        tail.map(|t| t.clone()).unwrap_or_else(|| Rc::new(BodyForm::Value(SExp::Nil(loc.clone()))));
 
     for i_reverse in arg_choice..args.len() {
         let i = args.len() - i_reverse - 1;
-        result_body = BodyForm::Call(
+        result_body = Rc::new(BodyForm::Call(
             loc.clone(),
             vec![
                 Rc::new(BodyForm::Value(SExp::atom_from_string(loc.clone(), "c"))),
                 args[i].clone(),
-                Rc::new(result_body),
+                result_body,
             ],
-        );
+            None
+        ));
     }
 
-    Rc::new(result_body)
+    result_body
 }
 
 fn pick_value_from_arg_element(
@@ -124,6 +128,7 @@ fn arg_lookup(
     match_args: Rc<SExp>,
     arg_choice: usize,
     args: &[Rc<BodyForm>],
+    tail: Option<Rc<BodyForm>>,
     name: Vec<u8>,
 ) -> Result<Option<Rc<BodyForm>>, CompileErr> {
     match match_args.borrow() {
@@ -142,12 +147,12 @@ fn arg_lookup(
                 name.clone(),
             ) {
                 Some(x) => Ok(Some(x)),
-                None => arg_lookup(callsite, r.clone(), arg_choice + 1, args, name),
+                None => arg_lookup(callsite, r.clone(), arg_choice + 1, args, tail, name),
             }
         }
         _ => Ok(pick_value_from_arg_element(
             match_args.clone(),
-            enlist_remaining_args(match_args.loc(), arg_choice, args),
+            enlist_remaining_args(match_args.loc(), arg_choice, args, tail),
             &|x: Rc<BodyForm>| x,
             name,
         )),
@@ -182,7 +187,7 @@ fn replace_inline_body(
             loc,
             "let binding should have been hoisted before optimization".to_string(),
         )),
-        BodyForm::Call(l, call_args) => {
+        BodyForm::Call(l, call_args, None) => {
             let mut new_args = Vec::new();
             // Ensure that we don't count branched invocations when checking
             // each call downstream of the main expr is recursive.
@@ -261,10 +266,14 @@ fn replace_inline_body(
                     )
                 }
                 _ => {
-                    let call = BodyForm::Call(l.clone(), new_args);
+                    // XXX Deal with tail.
+                    let call = BodyForm::Call(l.clone(), new_args, None);
                     Ok(Rc::new(call))
                 }
             }
+        }
+        BodyForm::Call(l, call_args, Some(_)) => {
+            todo!();
         }
         BodyForm::Value(SExp::Atom(l, a)) => {
             if a == b"@*env*" {
@@ -278,6 +287,7 @@ fn replace_inline_body(
                             2_u32.to_bigint().unwrap(),
                         ))),
                     ],
+                    None,
                 ));
                 let mut env = Rc::new(BodyForm::Quoted(SExp::Nil(l.clone())));
                 for arg in args.iter().rev() {
@@ -292,7 +302,7 @@ fn replace_inline_body(
                 ))));
             }
 
-            let alookup = arg_lookup(callsite, inline.args.clone(), 0, args, a.clone())?
+            let alookup = arg_lookup(callsite, inline.args.clone(), 0, args, None, a.clone())?
                 .unwrap_or_else(|| expr.clone());
             Ok(alookup)
         }

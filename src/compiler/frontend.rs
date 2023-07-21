@@ -63,11 +63,15 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
             }
             _ => Vec::new(),
         },
-        BodyForm::Call(_l, vs) => {
+        BodyForm::Call(_l, vs, tail) => {
             let mut result = Vec::new();
             for a in vs {
                 let mut argnames = collect_used_names_bodyform(a);
                 result.append(&mut argnames);
+            }
+            if let Some(t) = tail {
+                let mut tail_names = collect_used_names_bodyform(t);
+                result.append(&mut tail_names);
             }
             result
         }
@@ -187,7 +191,7 @@ fn qq_to_expression_list(
                     )),
                     Rc::new(f_qq),
                     Rc::new(r_qq)
-                )))
+                ), None))
             }
         }
         SExp::Nil(l) => Ok(BodyForm::Quoted(SExp::Nil(l.clone()))),
@@ -201,18 +205,19 @@ fn qq_to_expression_list(
 fn args_to_expression_list(
     opts: Rc<dyn CompilerOpts>,
     body: Rc<SExp>,
-) -> Result<Vec<Rc<BodyForm>>, CompileErr> {
+) -> Result<(Vec<Rc<BodyForm>>, Option<Rc<BodyForm>>), CompileErr> {
     if body.nilp() {
-        Ok(vec![])
+        Ok((vec![], None))
     } else {
         match body.borrow() {
             SExp::Cons(_l, first, rest) => {
                 let mut result_list = Vec::new();
                 let f_compiled = compile_bodyform(opts.clone(), first.clone())?;
                 result_list.push(Rc::new(f_compiled));
-                let mut args = args_to_expression_list(opts, rest.clone())?;
+                let (mut args, mut tail) =
+                    args_to_expression_list(opts, rest.clone())?;
                 result_list.append(&mut args);
-                Ok(result_list)
+                Ok((result_list, tail))
             }
             _ => Err(CompileErr(
                 body.loc(),
@@ -350,7 +355,7 @@ pub fn compile_bodyform(
     match body.borrow() {
         SExp::Cons(l, op, tail) => {
             let application = || {
-                args_to_expression_list(opts.clone(), tail.clone()).and_then(|args| {
+                args_to_expression_list(opts.clone(), tail.clone()).and_then(|(args, tail)| {
                     compile_bodyform(opts.clone(), op.clone()).map(|func| {
                         let mut result_call = vec![Rc::new(func)];
                         let mut args_clone = args.to_vec();
@@ -360,7 +365,7 @@ pub fn compile_bodyform(
                             args[args.len() - 1].loc().ending()
                         };
                         result_call.append(&mut args_clone);
-                        BodyForm::Call(l.ext(&ending), result_call)
+                        BodyForm::Call(l.ext(&ending), result_call, tail)
                     })
                 })
             };
@@ -918,6 +923,7 @@ fn create_constructor_code(sdef: &StructDef, proto: Rc<SExp>) -> BodyForm {
                 Rc::new(create_constructor_code(sdef, a)),
                 Rc::new(create_constructor_code(sdef, b)),
             ],
+            None,
         ),
         _ => BodyForm::Quoted(SExp::Nil(sdef.loc.clone())),
     }
@@ -1030,6 +1036,7 @@ pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
                                     ))),
                                     Rc::new(BodyForm::Value(SExp::Atom(m.loc.clone(), vec![b'S']))),
                                 ],
+                                None
                             )),
                             synthetic: Some(SyntheticType::NoInlinePreference),
                             ty: Some(funty),

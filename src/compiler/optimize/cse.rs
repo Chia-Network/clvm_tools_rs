@@ -230,7 +230,8 @@ pub fn is_canonical_apply_parent(
             ));
         };
 
-    if let BodyForm::Call(_, parts) = &parent_exp {
+    // Checking for a primitive, so no tail.
+    if let BodyForm::Call(_, parts, None) = &parent_exp {
         if parts.len() != 3 {
             return Ok(false);
         }
@@ -246,7 +247,8 @@ pub fn is_canonical_apply_parent(
 }
 
 fn get_com_body(bf: &BodyForm) -> Option<&BodyForm> {
-    if let BodyForm::Call(_, parts) = bf {
+    // Checking for com so no tail.
+    if let BodyForm::Call(_, parts, None) = bf {
         if parts.len() != 2 {
             return None;
         }
@@ -272,7 +274,8 @@ pub fn detect_conditions(bf: &BodyForm) -> Result<Vec<CSECondition>, CompileErr>
                 return Ok(None);
             }
 
-            if let BodyForm::Call(_, parts) = form {
+            // Checking for a primitive so no tail.
+            if let BodyForm::Call(_, parts, None) = form {
                 if parts.len() != 4 {
                     return Ok(None);
                 }
@@ -572,6 +575,7 @@ pub fn cse_optimize_bodyform(
                         Rc::new(new_variable_bf_alone),
                         Rc::new(BodyForm::Value(SExp::Atom(b.loc(), vec![1]))),
                     ],
+                    None,
                 )
             };
 
