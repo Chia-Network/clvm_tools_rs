@@ -392,15 +392,17 @@ where
             }
             BodyformPathArc::CallArgument(n) => {
                 if let BodyForm::Call(_, a, tail) = found {
-                    if *n == a.len() {
+                    if *n > a.len() {
+                        return None;
+                    } else if *n == a.len() {
                         if let Some(t) = tail {
                             found = t.borrow();
+                        } else {
+                            return None;
                         }
-                        return None;
-                    } else if *n >= a.len() {
-                        return None;
+                    } else {
+                        found = a[*n].borrow();
                     }
-                    found = a[*n].borrow();
                 } else {
                     return None;
                 }

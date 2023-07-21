@@ -1837,7 +1837,7 @@ fn test_inline_in_assign_not_actually_recursive() {
 #[test]
 fn test_simple_rest_call_0() {
     let prog = indoc! {"
-(mod (X)
+(mod X
   (include *standard-cl-23*)
 
   (defun F Xs

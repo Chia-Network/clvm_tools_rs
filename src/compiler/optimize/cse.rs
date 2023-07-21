@@ -220,13 +220,14 @@ pub fn is_canonical_apply_parent(
     }
 
     let path_to_parent: Vec<BodyformPathArc> = p.iter().take(last_idx).cloned().collect();
+    eprintln!("path_to_parent {path_to_parent:?} in {}", root.to_sexp());
     let parent_exp =
         if let Some(parent) = retrieve_bodyform(&path_to_parent, root, &|bf| bf.clone()) {
             parent
         } else {
             return Err(CompileErr(
                 root.loc(),
-                "Impossible: could not retrieve parent of existing expression".to_string(),
+                format!("Impossible: could not retrieve parent of existing expression (root {})", root.to_sexp()),
             ));
         };
 

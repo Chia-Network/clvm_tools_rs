@@ -386,7 +386,7 @@ pub fn optimize_expr(
 ) -> Option<(bool, Rc<BodyForm>)> {
     match body.borrow() {
         BodyForm::Quoted(_) => Some((true, body)),
-        BodyForm::Call(l, forms, None) => {
+        BodyForm::Call(l, forms, tail) => {
             // () evaluates to ()
             if forms.is_empty() {
                 return Some((true, body));
@@ -417,8 +417,7 @@ pub fn optimize_expr(
                             &l,
                             an,
                             forms,
-                            // XXX reflect Some(tail) when fixed.
-                            None,
+                            tail.clone(),
                         ) {
                             return Some(
                                 optimize_expr(
