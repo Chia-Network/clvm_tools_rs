@@ -211,6 +211,24 @@ fn args_to_expression_list(
     } else {
         match body.borrow() {
             SExp::Cons(_l, first, rest) => {
+                if let SExp::Atom(fl, fname) = first.borrow() {
+                    if fname == b"&rest" {
+                        // Rest is a list containing one item that becomes the
+                        // tail.
+                        let (mut args, no_tail) =
+                            args_to_expression_list(opts, rest.clone())?;
+
+                        if args.len() != 1 {
+                            return Err(CompileErr(
+                                body.loc(),
+                                format!("&rest specified with bad tail"),
+                            ));
+                        }
+
+                        // Return a tail.
+                        return Ok((vec![], Some(args[0].clone())));
+                    }
+                }
                 let mut result_list = Vec::new();
                 let f_compiled = compile_bodyform(opts.clone(), first.clone())?;
                 result_list.push(Rc::new(f_compiled));
@@ -221,7 +239,7 @@ fn args_to_expression_list(
             }
             _ => Err(CompileErr(
                 body.loc(),
-                "Bad arg list tail ".to_string() + &body.to_string(),
+                format!("Bad arg list tail {body}"),
             )),
         }
     }

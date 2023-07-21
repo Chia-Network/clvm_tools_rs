@@ -858,12 +858,13 @@ impl BodyForm {
                 Rc::new(body.clone()),
             )),
             BodyForm::Value(body) => Rc::new(body.clone()),
-            BodyForm::Call(loc, exprs, None) => {
-                let converted: Vec<Rc<SExp>> = exprs.iter().map(|x| x.to_sexp()).collect();
+            BodyForm::Call(loc, exprs, tail) => {
+                let mut converted: Vec<Rc<SExp>> = exprs.iter().map(|x| x.to_sexp()).collect();
+                if let Some(t) = tail.as_ref() {
+                    converted.push(Rc::new(SExp::Atom(t.loc(), "&rest".as_bytes().to_vec())));
+                    converted.push(t.to_sexp());
+                }
                 Rc::new(list_to_cons(loc.clone(), &converted))
-            }
-            BodyForm::Call(loc, exprs, Some(_)) => {
-                todo!();
             }
             BodyForm::Mod(loc, program) => Rc::new(SExp::Cons(
                 loc.clone(),

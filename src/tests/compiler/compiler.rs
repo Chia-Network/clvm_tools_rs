@@ -1833,3 +1833,23 @@ fn test_inline_in_assign_not_actually_recursive() {
     let res = run_string(&prog, &"()".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "9999");
 }
+
+#[test]
+fn test_simple_rest_call_0() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-23*)
+
+  (defun F Xs
+    (if Xs
+      (+ (f Xs) (F &rest (r Xs)))
+      ()
+      )
+    )
+
+  (F &rest X)
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(13 99 144)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "256");
+}
