@@ -1853,3 +1853,25 @@ fn test_simple_rest_call_0() {
     let res = run_string(&prog, &"(13 99 144)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "256");
 }
+
+#[test]
+fn test_simple_rest_call_inline() {
+    let prog = indoc! {"
+(mod X
+  (include *standard-cl-23*)
+
+  (defun sum (Xs)
+    (if Xs
+      (+ (f Xs) (sum (r Xs)))
+      ()
+      )
+    )
+
+  (defun-inline F (A1 . A2) (* A1 (sum A2)))
+
+  (F 3 &rest X)
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(13 99 144)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "768");
+}

@@ -500,7 +500,7 @@ fn compile_call(
             }
 
             Callable::CallInline(l, inline) => {
-                replace_in_inline(context, opts.clone(), compiler, l.clone(), &inline, l, &tl)
+                replace_in_inline(context, opts.clone(), compiler, l.clone(), &inline, l, &tl, tail)
             }
 
             Callable::CallDefun(l, lookup) => {
@@ -1421,6 +1421,8 @@ fn finalize_env_(
             }
 
             if let Some(res) = c.inlines.get(v) {
+                let (arg_list, arg_tail) =
+                    synthesize_args(res.args.clone());
                 return replace_in_inline(
                     context,
                     opts.clone(),
@@ -1428,7 +1430,8 @@ fn finalize_env_(
                     l.clone(),
                     res,
                     res.args.loc(),
-                    &synthesize_args(res.args.clone()),
+                    &arg_list,
+                    arg_tail
                 )
                 .map(|x| x.1);
             }
