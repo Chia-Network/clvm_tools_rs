@@ -512,9 +512,6 @@ pub fn optimize_expr(
                 _ => None,
             }
         }
-        BodyForm::Call(l, forms, Some(_)) => {
-            todo!();
-        }
         BodyForm::Value(SExp::Integer(l, i)) => Some((
             true,
             Rc::new(BodyForm::Quoted(SExp::Integer(l.clone(), i.clone()))),
