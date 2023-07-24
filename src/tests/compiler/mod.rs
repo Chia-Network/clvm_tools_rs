@@ -11,6 +11,7 @@ mod evaluate;
 mod optimizer;
 mod preprocessor;
 mod repl;
+mod restargs;
 mod runtypes;
 mod singleton;
 mod srcloc;

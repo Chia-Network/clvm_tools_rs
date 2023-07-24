@@ -70,13 +70,12 @@ fn enlist_remaining_args(loc: Srcloc, arg_choice: usize, args: &[Rc<BodyForm>], 
     let mut result_body =
         tail.unwrap_or_else(|| Rc::new(BodyForm::Value(SExp::Nil(loc.clone()))));
 
-    for i_reverse in arg_choice..args.len() {
-        let i = args.len() - i_reverse - 1;
+    for (i, arg) in args.iter().enumerate().skip(arg_choice).rev() {
         result_body = Rc::new(BodyForm::Call(
             loc.clone(),
             vec![
                 Rc::new(BodyForm::Value(SExp::Integer(loc.clone(), 4_u32.to_bigint().unwrap()))),
-                args[i].clone(),
+                arg.clone(),
                 result_body,
             ],
             // Ok: applying cons.
@@ -173,6 +172,7 @@ fn arg_lookup(
 ) -> Result<Option<Rc<BodyForm>>, CompileErr> {
     match match_args.borrow() {
         SExp::Cons(_l, f, r) => {
+            eprintln!("arg tree {f}");
             match pick_value_from_arg_element(
                 f.clone(),
                 choose_arg_from_list_or_tail(&callsite, args, tail.clone(), arg_choice)?,
@@ -183,12 +183,17 @@ fn arg_lookup(
                 None => arg_lookup(callsite, r.clone(), arg_choice + 1, args, tail, name),
             }
         }
-        _ => Ok(pick_value_from_arg_element(
-            match_args.clone(),
-            enlist_remaining_args(match_args.loc(), arg_choice, args, tail),
-            &|x: Rc<BodyForm>| x,
-            name,
-        )),
+        _ => {
+            let tail_list =
+                enlist_remaining_args(match_args.loc(), arg_choice, args, tail);
+            eprintln!("arg tree tail {match_args} tail {}", tail_list.to_sexp());
+            Ok(pick_value_from_arg_element(
+                match_args.clone(),
+                tail_list,
+                &|x: Rc<BodyForm>| x,
+                name,
+            ))
+        }
     }
 }
 
@@ -278,6 +283,8 @@ fn replace_inline_body(
     callsite: Srcloc,
     expr: Rc<BodyForm>,
 ) -> Result<Rc<BodyForm>, CompileErr> {
+    show_inline_expansion("replace_inline_body", &inline.name, args, tail.clone());
+
     match expr.borrow() {
         BodyForm::Let(_, _) => Err(CompileErr(
             loc,
@@ -330,8 +337,10 @@ fn replace_inline_body(
             // determine whether an inline is the next level.
             //
             // It's an inline, so we need to fulfill its arguments.
+            eprintln!("make a call {}", expr.to_sexp());
             match get_inline_callable(opts.clone(), compiler, l.clone(), call_args[0].clone())? {
                 Callable::CallInline(l, new_inline) => {
+                    show_inline_expansion("call translated", &new_inline.name, &new_args, replaced_tail.clone());
                     if visited_inlines.contains(&new_inline.name) {
                         return Err(CompileErr(
                             l,
@@ -360,6 +369,8 @@ fn replace_inline_body(
                     )
                 }
                 _ => {
+                    show_inline_expansion("call translated (defun)", &inline.name, &new_args, replaced_tail.clone());
+
                     // Tail passes through to a normal call form.
                     let call = BodyForm::Call(l.clone(), new_args, replaced_tail);
                     Ok(Rc::new(call))
@@ -420,6 +431,21 @@ fn replace_inline_body(
     }
 }
 
+fn show_inline_expansion(
+    source: &str,
+    name: &[u8],
+    args: &[Rc<BodyForm>],
+    tail: Option<Rc<BodyForm>>
+) {
+    let arglist: Vec<String> =
+        args.iter().map(|a| a.to_sexp().to_string()).collect();
+    if let Some(t) = tail {
+        eprintln!("{}: {} {:?} {}", source, decode_string(name), arglist, t.to_sexp());
+    } else {
+        eprintln!("{}: {} {:?}", source, decode_string(name), arglist);
+    }
+}
+
 /// Given an inline function and a list of arguments, return compiled code that
 /// stands in for the inline expansion.  Along the way, generate code for the
 /// expressions in the argument list.
@@ -447,6 +473,8 @@ pub fn replace_in_inline(
     args: &[Rc<BodyForm>],
     tail: Option<Rc<BodyForm>>
 ) -> Result<CompiledCode, CompileErr> {
+    show_inline_expansion("replace_in_inline", &inline.name, args, tail.clone());
+
     let mut visited = HashSet::new();
     visited.insert(inline.name.clone());
     replace_inline_body(
