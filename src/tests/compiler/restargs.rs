@@ -318,7 +318,7 @@ fn test_simple_inline_exact_toofew_improper_tail_17() {
 }
 
 #[test]
-fn test_simple_inline_exact_toofew_tail_18() {
+fn test_inline_inline_exact_toofew_tail_18() {
     let prog = indoc! {"
 (mod (X Y Z)
   (include *standard-cl-23*)
@@ -331,6 +331,26 @@ fn test_simple_inline_exact_toofew_tail_18() {
   )"}.to_string();
     let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 101)");
+}
+
+#[test]
+fn test_inline_inline_exact_toofew_improper_no_tail_19() {
+    let prog = indoc! {"
+(mod (X Y)
+  (include *standard-cl-23*)
+
+  (defun-inline F (A B C . D) (list A B C (f D)))
+
+  (defun-inline G (X Y) (F X Y))
+
+  (G X Y)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7)".to_string());
+    if let Err(e) = res {
+        assert!(e.1.contains("Lookup for argument 3"));
+    } else {
+        assert!(false);
+    }
 }
 
 #[test]
