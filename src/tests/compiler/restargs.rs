@@ -752,20 +752,34 @@ fn test_repl_01() {
     );
 }
 
-#[test]
-fn test_repl_02() {
-    assert_eq!(
-        test_repl_outcome(vec![
-            indoc!{"
+const repl_test_sum: &'static str = indoc!{"
 (defun sum (Xs)
     (if Xs
       (+ (f Xs) (sum (r Xs)))
       ()
       )
-    )"},
+    )"};
+
+#[test]
+fn test_repl_02() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            repl_test_sum,
             "(defun-inline F (A B . C) (* A B (sum C)))",
             "(F 5 7 99 101 &rest (list 301 313))"
         ]).unwrap().unwrap(),
         "(q . 28490)"
+    );
+}
+
+#[test]
+fn test_repl_03() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            repl_test_sum,
+            "(defun-inline F (A B . C) (* A B (sum C)))",
+            "(F 5 7 99 101)"
+        ]).unwrap().unwrap(),
+        "(q . 7000)"
     );
 }
