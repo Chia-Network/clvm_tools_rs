@@ -220,7 +220,6 @@ pub fn is_canonical_apply_parent(
     }
 
     let path_to_parent: Vec<BodyformPathArc> = p.iter().take(last_idx).cloned().collect();
-    eprintln!("path_to_parent {path_to_parent:?} in {}", root.to_sexp());
     let parent_exp =
         if let Some(parent) = retrieve_bodyform(&path_to_parent, root, &|bf| bf.clone()) {
             parent

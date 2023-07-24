@@ -403,8 +403,6 @@ fn generate_args_code(
                 Rc::new(SExp::Nil(l.clone()))
             };
 
-        eprintln!("compiled_args (post tail) {compiled_args}");
-
         for hd in list.iter().rev() {
             let generated =
                 generate_expr_code(context, opts.clone(), compiler, hd.clone())?.1;
@@ -422,8 +420,6 @@ fn generate_args_code(
                 ));
             }
         }
-
-        eprintln!("generate_args_code: {compiled_args}");
 
         Ok(compiled_args)
     }
@@ -504,7 +500,6 @@ fn compile_call(
             }
 
             Callable::CallDefun(l, lookup) => {
-                eprintln!("call defun {} tail {}", list[0].to_sexp(), tail.is_some());
                 generate_args_code(context, opts.clone(), compiler, l.clone(), &tl, tail, true).and_then(
                     |args| {
                          process_defun_call(

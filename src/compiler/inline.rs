@@ -49,7 +49,6 @@ pub fn synthesize_args(arg_: Rc<SExp>) -> (Vec<Rc<BodyForm>>, Option<Rc<BodyForm
     let mut result = Vec::new();
     let mut arg = arg_;
     loop {
-        eprintln!("synthesize_args {arg} start {start} tail {tail}");
         match arg.borrow() {
             SExp::Cons(l, _, b) => {
                 result.push(at_form(l.clone(), start.clone()));
@@ -144,7 +143,6 @@ fn choose_arg_from_list_or_tail(
         if let Some(t) = tail {
             let target_shift = index - args.len();
             let target_path = (two.clone() << target_shift) | (((two << target_shift) - bi_one()) >> 2);
-            eprintln!("have tail argument {}: shift {target_shift} path {target_path} with tail {}", index - args.len(), t.to_sexp());
             return Ok(Rc::new(BodyForm::Call(
                 callsite.clone(),
                 vec![
@@ -179,7 +177,6 @@ fn arg_lookup(
     loop {
         match match_args.borrow() {
             SExp::Cons(_l, f, r) => {
-                eprintln!("arg tree {f}");
                 if let Some(x) = pick_value_from_arg_element(
                     f.clone(),
                     choose_arg_from_list_or_tail(&callsite, args, tail.clone(), arg_choice)?,
@@ -198,7 +195,7 @@ fn arg_lookup(
                     let underflow = arg_choice - args.len();
                     let tail_path = (two.clone() << underflow) - bi_one();
                     tail = tail.map(|t| {
-                        let new_tail = Rc::new(BodyForm::Call(
+                        Rc::new(BodyForm::Call(
                             t.loc(),
                             vec![
                                 Rc::new(BodyForm::Value(SExp::Integer(t.loc(), two.clone()))),
@@ -206,15 +203,12 @@ fn arg_lookup(
                                 t.clone()
                             ],
                             None
-                        ));
-                        eprintln!("underflow in args changed tail to {} (shift {underflow})", new_tail.to_sexp());
-                        new_tail
+                        ))
                     });
                 }
 
                 let tail_list =
                     enlist_remaining_args(match_args.loc(), arg_choice, args, tail);
-                eprintln!("arg tree tail {match_args} tail {}", tail_list.to_sexp());
                 return Ok(pick_value_from_arg_element(
                     match_args.clone(),
                     tail_list,
@@ -312,8 +306,6 @@ fn replace_inline_body(
     callsite: Srcloc,
     expr: Rc<BodyForm>,
 ) -> Result<Rc<BodyForm>, CompileErr> {
-    show_inline_expansion("replace_inline_body", &inline.name, args, tail.clone());
-
     match expr.borrow() {
         BodyForm::Let(_, _) => Err(CompileErr(
             loc,
@@ -366,10 +358,8 @@ fn replace_inline_body(
             // determine whether an inline is the next level.
             //
             // It's an inline, so we need to fulfill its arguments.
-            eprintln!("make a call {}", expr.to_sexp());
             match get_inline_callable(opts.clone(), compiler, l.clone(), call_args[0].clone())? {
                 Callable::CallInline(l, new_inline) => {
-                    show_inline_expansion("call translated", &new_inline.name, &new_args, replaced_tail.clone());
                     if visited_inlines.contains(&new_inline.name) {
                         return Err(CompileErr(
                             l,
@@ -398,8 +388,6 @@ fn replace_inline_body(
                     )
                 }
                 _ => {
-                    show_inline_expansion("call translated (defun)", &inline.name, &new_args, replaced_tail.clone());
-
                     // Tail passes through to a normal call form.
                     let call = BodyForm::Call(l.clone(), new_args, replaced_tail);
                     Ok(Rc::new(call))
@@ -460,21 +448,6 @@ fn replace_inline_body(
     }
 }
 
-fn show_inline_expansion(
-    source: &str,
-    name: &[u8],
-    args: &[Rc<BodyForm>],
-    tail: Option<Rc<BodyForm>>
-) {
-    let arglist: Vec<String> =
-        args.iter().map(|a| a.to_sexp().to_string()).collect();
-    if let Some(t) = tail {
-        eprintln!("{}: {} {:?} {}", source, decode_string(name), arglist, t.to_sexp());
-    } else {
-        eprintln!("{}: {} {:?}", source, decode_string(name), arglist);
-    }
-}
-
 /// Given an inline function and a list of arguments, return compiled code that
 /// stands in for the inline expansion.  Along the way, generate code for the
 /// expressions in the argument list.
@@ -502,8 +475,6 @@ pub fn replace_in_inline(
     args: &[Rc<BodyForm>],
     tail: Option<Rc<BodyForm>>
 ) -> Result<CompiledCode, CompileErr> {
-    show_inline_expansion("replace_in_inline", &inline.name, args, tail.clone());
-
     let mut visited = HashSet::new();
     visited.insert(inline.name.clone());
     replace_inline_body(
