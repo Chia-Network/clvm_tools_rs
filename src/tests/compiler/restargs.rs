@@ -783,3 +783,79 @@ fn test_repl_03() {
         "(q . 7000)"
     );
 }
+
+#[test]
+fn test_repl_04() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun F (A B) (* A B))",
+            "(F 5 7)"
+        ]).unwrap().unwrap(),
+        "(q . 35)"
+    );
+}
+
+#[test]
+fn test_repl_05() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun F (A B . C) (* A B C))",
+            "(F 5 7 &rest 9)"
+        ]).unwrap().unwrap(),
+        "(q . 315)"
+    );
+}
+
+#[test]
+fn test_repl_06() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun F (A B . C) (+ A B C))",
+            "(F 5 7)"
+        ]).unwrap().unwrap(),
+        "(q . 12)"
+    );
+}
+
+#[test]
+fn test_repl_07() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun F (A B C . D) (list A B C (f D)))",
+            "(F 5 7 &rest (list 101 103))"
+        ]).unwrap().unwrap(),
+        "(q 5 7 101 103)"
+    );
+}
+
+#[test]
+fn test_repl_08() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun F (A B C) (list A B C))",
+            "(F 5 7 &rest (list 101 103))"
+        ]).unwrap().unwrap(),
+        "(q 5 7 101)"
+    );
+}
+
+#[test]
+fn test_repl_09() {
+    assert!(
+        test_repl_outcome(vec![
+            "(defun F (A B C . D) (list A B C (f D)))",
+            "(F 5 7)"
+        ]).is_err()
+    );
+}
+
+#[test]
+fn test_repl_10() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun F (A B C) (list A B C))",
+            "(F 5 7 &rest (list 101 103))"
+        ]).unwrap().unwrap(),
+        "(q 5 7 101)"
+    );
+}
