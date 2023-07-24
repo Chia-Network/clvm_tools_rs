@@ -108,6 +108,94 @@ fn test_simple_inline_toomany_args_improper_no_tail_03() {
 }
 
 #[test]
+fn test_simple_inline_exact_no_tails_04() {
+    let prog = indoc! {"
+(mod (X Y)
+  (include *standard-cl-23*)
+
+  (defun-inline F (A B) (* A B))
+
+  (F X Y)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "35");
+}
+
+#[test]
+fn test_simple_inline_exact_improper_tail_05() {
+    let prog = indoc! {"
+(mod (X Y Z)
+  (include *standard-cl-23*)
+
+  (defun-inline F (A B . C) (* A B C))
+
+  (F X Y &rest Z)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7 9)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "315");
+}
+
+#[test]
+fn test_simple_inline_exact_improper_no_tail_06() {
+    let prog = indoc! {"
+(mod (X Y)
+  (include *standard-cl-23*)
+
+  (defun-inline F (A B . C) (+ A B C))
+
+  (F X Y)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "12");
+}
+
+#[test]
+fn test_simple_inline_exact_toofew_improper_tail_07() {
+    let prog = indoc! {"
+(mod (X Y Z)
+  (include *standard-cl-23*)
+
+  (defun-inline F (A B C . D) (list A B C (f D)))
+
+  (F X Y &rest Z)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "(5 7 101 103)");
+}
+
+#[test]
+fn test_simple_inline_exact_toofew_tail_08() {
+    let prog = indoc! {"
+(mod (X Y Z)
+  (include *standard-cl-23*)
+
+  (defun-inline F (A B C) (list A B C))
+
+  (F X Y &rest Z)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "(5 7 101)");
+}
+
+#[test]
+fn test_simple_inline_exact_toofew_improper_no_tail_09() {
+    let prog = indoc! {"
+(mod (X Y)
+  (include *standard-cl-23*)
+
+  (defun-inline F (A B C . D) (list A B C (f D)))
+
+  (F X Y)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7)".to_string());
+    if let Err(e) = res {
+        assert!(e.1.contains("Lookup for argument 3"));
+    } else {
+        assert!(false);
+    }
+}
+
+#[test]
 fn test_simple_rest_call_27() {
     let prog = indoc! {"
 (mod X

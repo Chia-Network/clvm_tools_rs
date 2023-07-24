@@ -49,6 +49,7 @@ pub fn synthesize_args(arg_: Rc<SExp>) -> (Vec<Rc<BodyForm>>, Option<Rc<BodyForm
     let mut result = Vec::new();
     let mut arg = arg_;
     loop {
+        eprintln!("synthesize_args {arg} start {start} tail {tail}");
         match arg.borrow() {
             SExp::Cons(l, _, b) => {
                 result.push(at_form(l.clone(), start.clone()));
@@ -137,10 +138,13 @@ fn choose_arg_from_list_or_tail(
     tail: Option<Rc<BodyForm>>,
     index: usize
 ) -> Result<Rc<BodyForm>, CompileErr> {
+    let two = 2_i32.to_bigint().unwrap();
+
     if index >= args.len() {
         if let Some(t) = tail {
-            let target_shift = (1 + index - args.len()).to_bigint().unwrap();
-            let target_path = target_shift - bi_one();
+            let target_shift = index - args.len();
+            let target_path = (two.clone() << target_shift) | (((two << target_shift) - bi_one()) >> 2);
+            eprintln!("have tail argument {}: shift {target_shift} path {target_path} with tail {}", index - args.len(), t.to_sexp());
             return Ok(Rc::new(BodyForm::Call(
                 callsite.clone(),
                 vec![
@@ -164,35 +168,60 @@ fn choose_arg_from_list_or_tail(
 
 fn arg_lookup(
     callsite: Srcloc,
-    match_args: Rc<SExp>,
-    arg_choice: usize,
+    mut match_args: Rc<SExp>,
     args: &[Rc<BodyForm>],
-    tail: Option<Rc<BodyForm>>,
+    mut tail: Option<Rc<BodyForm>>,
     name: Vec<u8>,
 ) -> Result<Option<Rc<BodyForm>>, CompileErr> {
-    match match_args.borrow() {
-        SExp::Cons(_l, f, r) => {
-            eprintln!("arg tree {f}");
-            match pick_value_from_arg_element(
-                f.clone(),
-                choose_arg_from_list_or_tail(&callsite, args, tail.clone(), arg_choice)?,
-                &|x| x,
-                name.clone(),
-            ) {
-                Some(x) => Ok(Some(x)),
-                None => arg_lookup(callsite, r.clone(), arg_choice + 1, args, tail, name),
+    let two = 2_i32.to_bigint().unwrap();
+    let mut arg_choice = 0;
+
+    loop {
+        match match_args.borrow() {
+            SExp::Cons(_l, f, r) => {
+                eprintln!("arg tree {f}");
+                if let Some(x) = pick_value_from_arg_element(
+                    f.clone(),
+                    choose_arg_from_list_or_tail(&callsite, args, tail.clone(), arg_choice)?,
+                    &|x| x,
+                    name.clone(),
+                ) {
+                    return Ok(Some(x));
+                } else {
+                    arg_choice += 1;
+                    match_args = r.clone();
+                    continue;
+                }
             }
-        }
-        _ => {
-            let tail_list =
-                enlist_remaining_args(match_args.loc(), arg_choice, args, tail);
-            eprintln!("arg tree tail {match_args} tail {}", tail_list.to_sexp());
-            Ok(pick_value_from_arg_element(
-                match_args.clone(),
-                tail_list,
-                &|x: Rc<BodyForm>| x,
-                name,
-            ))
+            _ => {
+                if arg_choice > args.len() {
+                    let underflow = arg_choice - args.len();
+                    let tail_path = (two.clone() << underflow) - bi_one();
+                    tail = tail.map(|t| {
+                        let new_tail = Rc::new(BodyForm::Call(
+                            t.loc(),
+                            vec![
+                                Rc::new(BodyForm::Value(SExp::Integer(t.loc(), two.clone()))),
+                                Rc::new(BodyForm::Value(SExp::Integer(t.loc(), tail_path))),
+                                t.clone()
+                            ],
+                            None
+                        ));
+                        eprintln!("underflow in args changed tail to {} (shift {underflow})", new_tail.to_sexp());
+                        new_tail
+                    });
+                }
+
+                let tail_list =
+                    enlist_remaining_args(match_args.loc(), arg_choice, args, tail);
+                eprintln!("arg tree tail {match_args} tail {}", tail_list.to_sexp());
+                return Ok(pick_value_from_arg_element(
+                    match_args.clone(),
+                    tail_list,
+                    &|x: Rc<BodyForm>| x,
+                    name,
+                ));
+            }
         }
     }
 }
@@ -405,7 +434,7 @@ fn replace_inline_body(
                 ))));
             }
 
-            let alookup = arg_lookup(callsite, inline.args.clone(), 0, args, tail.clone(), a.clone())?
+            let alookup = arg_lookup(callsite, inline.args.clone(), args, tail.clone(), a.clone())?
                 .unwrap_or_else(|| expr.clone());
             Ok(alookup)
         }
