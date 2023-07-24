@@ -206,6 +206,86 @@ fn test_simple_inline_exact_toofew_tail_10() {
 }
 
 #[test]
+fn test_inline_inline_toomany_args_11() {
+    let prog = indoc! {"
+(mod (X Y Z)
+  (include *standard-cl-23*)
+
+  (defun-inline F (A B) (+ A B))
+
+  (defun-inline G (X Y Z) (F X Y Z))
+
+  (G X Y Z)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7 9)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "12");
+}
+
+#[test]
+fn test_inline_inline_toomany_args_improper_tail_12() {
+    let prog = indoc! {"
+(mod (X Y Z)
+  (include *standard-cl-23*)
+
+  (defun-inline return-list (Xs) Xs)
+
+  (defun-inline F (A B . C) (list A B (return-list C)))
+
+  (F X Y 99 101 &rest Z)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7 (301 313))".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "(5 7 (c e 301 313))");
+}
+
+#[test]
+fn test_simple_inline_toomany_args_improper_no_tail_13() {
+    let prog = indoc! {"
+(mod (X Y)
+  (include *standard-cl-23*)
+
+  (defun-inline return-list (Xs) Xs)
+
+  (defun-inline F (A B . C) (list A B (return-list C)))
+
+  (F X Y 99 101)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "(5 7 (c e))");
+}
+
+#[test]
+fn test_inline_inline_exact_no_tails_14() {
+    let prog = indoc! {"
+(mod (X Y)
+  (include *standard-cl-23*)
+
+  (defun-inline F (A B) (* A B))
+
+  (defun-inline G (A B) (F A B))
+
+  (G X Y)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "35");
+}
+
+#[test]
+fn test_inline_inline_exact_improper_tail_15() {
+    let prog = indoc! {"
+(mod (X Y Z)
+  (include *standard-cl-23*)
+
+  (defun-inline F (A B . C) (* A B C))
+
+  (defun-inline G (X Y Z) (F X Y &rest Z))
+
+  (G X Y Z)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7 9)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "315");
+}
+
+#[test]
 fn test_simple_rest_call_25() {
     let prog = indoc! {"
 (mod X
