@@ -286,6 +286,54 @@ fn test_inline_inline_exact_improper_tail_15() {
 }
 
 #[test]
+fn test_inline_inline_exact_improper_no_tail_16() {
+    let prog = indoc! {"
+(mod (X Y)
+  (include *standard-cl-23*)
+
+  (defun-inline F (A B . C) (+ A B C))
+
+  (defun-inline G (X Y) (F X Y))
+
+  (G X Y)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "12");
+}
+
+#[test]
+fn test_simple_inline_exact_toofew_improper_tail_17() {
+    let prog = indoc! {"
+(mod (X Y Z)
+  (include *standard-cl-23*)
+
+  (defun-inline F (A B C . D) (list A B C (f D)))
+
+  (defun-inline G (X Y Z) (F X Y &rest Z))
+
+  (G X Y Z)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "(5 7 101 103)");
+}
+
+#[test]
+fn test_simple_inline_exact_toofew_tail_18() {
+    let prog = indoc! {"
+(mod (X Y Z)
+  (include *standard-cl-23*)
+
+  (defun-inline F (A B C) (list A B C))
+
+  (defun-inline G (X Y Z) (F X Y &rest Z))
+
+  (G X Y Z)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "(5 7 101)");
+}
+
+#[test]
 fn test_simple_rest_call_25() {
     let prog = indoc! {"
 (mod X
