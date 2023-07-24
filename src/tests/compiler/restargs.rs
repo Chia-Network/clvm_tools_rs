@@ -1,4 +1,5 @@
 use crate::tests::compiler::compiler::run_string;
+use crate::tests::compiler::repl::test_repl_outcome;
 
 // All tests needed for rest calls:
 //
@@ -738,4 +739,33 @@ fn test_inline_ni_exact_toofew_tail_40() {
   )"}.to_string();
     let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 101)");
+}
+
+#[test]
+fn test_repl_01() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun-inline F (A B) (+ A B))",
+            "(F 5 7 9)"
+        ]).unwrap().unwrap(),
+        "(q . 12)"
+    );
+}
+
+#[test]
+fn test_repl_02() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            indoc!{"
+(defun sum (Xs)
+    (if Xs
+      (+ (f Xs) (sum (r Xs)))
+      ()
+      )
+    )"},
+            "(defun-inline F (A B . C) (* A B (sum C)))",
+            "(F 5 7 99 101 &rest (list 301 313))"
+        ]).unwrap().unwrap(),
+        "(q . 28490)"
+    );
 }

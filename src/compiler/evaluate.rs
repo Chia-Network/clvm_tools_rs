@@ -435,9 +435,11 @@ fn arg_inputs_primitive(arginputs: Rc<ArgInputs>) -> bool {
 pub fn build_argument_captures(
     l: &Srcloc,
     arguments_to_convert: &[Rc<BodyForm>],
+    tail: Option<Rc<BodyForm>>,
     args: Rc<SExp>,
 ) -> Result<HashMap<Vec<u8>, Rc<BodyForm>>, CompileErr> {
-    let mut formed_arguments = ArgInputs::Whole(Rc::new(BodyForm::Quoted(SExp::Nil(l.clone()))));
+    let formed_tail = tail.unwrap_or_else(|| Rc::new(BodyForm::Quoted(SExp::Nil(l.clone()))));
+    let mut formed_arguments = ArgInputs::Whole(formed_tail);
 
     for i_reverse in 0..arguments_to_convert.len() {
         let i = arguments_to_convert.len() - i_reverse - 1;
@@ -1227,16 +1229,21 @@ impl<'info> Evaluator {
 
         let helper = select_helper(&self.helpers, call.name);
         match helper {
-            Some(HelperForm::Defmacro(mac)) => self.invoke_macro_expansion(
-                allocator,
-                visited,
-                mac.loc.clone(),
-                call.loc.clone(),
-                mac.program,
-                prog_args,
-                arguments_to_convert,
-                env,
-            ),
+            Some(HelperForm::Defmacro(mac)) => {
+                if call.tail.is_some() {
+                    todo!();
+                }
+                self.invoke_macro_expansion(
+                    allocator,
+                    visited,
+                    mac.loc.clone(),
+                    call.loc.clone(),
+                    mac.program,
+                    prog_args,
+                    arguments_to_convert,
+                    env,
+                )
+            }
             Some(HelperForm::Defun(inline, defun)) => {
                 if !inline && only_inline {
                     return Ok(call.original.clone());
@@ -1258,7 +1265,7 @@ impl<'info> Evaluator {
                 }
 
                 let argument_captures_untranslated =
-                    build_argument_captures(&call.loc, arguments_to_convert, defun.args.clone())?;
+                    build_argument_captures(&call.loc, arguments_to_convert, call.tail.clone(), defun.args.clone())?;
 
                 let mut argument_captures = HashMap::new();
                 // Do this to protect against misalignment
@@ -1481,7 +1488,7 @@ impl<'info> Evaluator {
                 }
             }
             BodyForm::Value(v) => Ok(Rc::new(BodyForm::Quoted(v.clone()))),
-            BodyForm::Call(l, parts, None) => {
+            BodyForm::Call(l, parts, tail) => {
                 if parts.is_empty() {
                     return Err(CompileErr(
                         l.clone(),
@@ -1504,7 +1511,7 @@ impl<'info> Evaluator {
                             name: call_name,
                             args: parts,
                             original: body.clone(),
-                            tail: None
+                            tail: tail.clone(),
                         },
                         prog_args,
                         &arguments_to_convert,
@@ -1531,9 +1538,6 @@ impl<'info> Evaluator {
                         format!("Don't know how to call {}", head_expr.to_sexp()),
                     )),
                 }
-            }
-            BodyForm::Call(l, parts, Some(_)) => {
-                todo!();
             }
             BodyForm::Mod(_, program) => {
                 // A mod form yields the compiled code.

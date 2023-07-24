@@ -530,6 +530,7 @@ fn handle_macro(
     form: Rc<CompileForm>,
     loc: Srcloc,
     provided_args: &[Rc<BodyForm>],
+    tail: Option<Rc<BodyForm>>
 ) -> Result<Expr, CompileErr> {
     // It is a macro, we need to interpret it in our way:
     // We'll compile and run the code itself on a
@@ -562,7 +563,7 @@ fn handle_macro(
         ev.add_helper(h);
     }
     let mut allocator = Allocator::new();
-    let arg_env = build_argument_captures(&loc, &call_args, form.args.clone())?;
+    let arg_env = build_argument_captures(&loc, &call_args, tail.clone(), form.args.clone())?;
     let result = ev.shrink_bodyform(
         &mut allocator,
         Rc::new(SExp::Nil(loc.clone())),
@@ -684,6 +685,7 @@ fn chialisp_to_expr(
                                 defm.program.clone(),
                                 body.loc(),
                                 lst,
+                                tail.clone(),
                             );
                         }
                     }
