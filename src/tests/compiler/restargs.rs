@@ -13,43 +13,39 @@ use crate::tests::compiler::compiler::run_string;
 // 08 - Too few arguments, &rest, no tail.
 // 09 - Too few arguments, no &rest, tail. (error)
 // 10 - Too few arguments, &rest, no tail.
-// 11 - Too few arguments, &rest, tail.
 // Call from inline to inline
-// 12 - Too many arguments, no tail position argument to absorb.
-// 13 - Too many arguments, tail position argument to absorb, &rest.
-// 14 - Too many arguments, tail position argument to absorb, no &rest.
-// 15 - Exact number of arguments, no tail position argument.
-// 16 - Exact number of arguments, tail position argument, &rest.
-// 17 - Exact number of arguments, tail position argument, no &rest.
-// 18 - Too few arguments, &rest, tail.
-// 19 - Too few arguments, &rest, no tail.
-// 20 - Too few arguments, no &rest, tail. (error)
-// 21 - Too few arguments, &rest, no tail.
-// 22 - Too few arguments, &rest, tail.
+// 11 - Too many arguments, no tail position argument to absorb.
+// 12 - Too many arguments, tail position argument to absorb, &rest.
+// 13 - Too many arguments, tail position argument to absorb, no &rest.
+// 14 - Exact number of arguments, no tail position argument.
+// 15 - Exact number of arguments, tail position argument, &rest.
+// 16 - Exact number of arguments, tail position argument, no &rest.
+// 17 - Too few arguments, &rest, tail.
+// 18 - Too few arguments, &rest, no tail.
+// 19 - Too few arguments, no &rest, tail. (error)
+// 20 - Too few arguments, &rest, no tail.
 // Call from non-inline to non-inline
-// 23 - Too many arguments, no tail position argument to absorb.
-// 24 - Too many arguments, tail position argument to absorb, &rest.
-// 25 - Too many arguments, tail position argument to absorb, no &rest.
-// 26 - Exact number of arguments, no tail position argument.
-// 27 - Exact number of arguments, tail position argument, &rest.
-// 28 - Exact number of arguments, tail position argument, no &rest.
-// 29 - Too few arguments, &rest, tail.
+// 21 - Too many arguments, no tail position argument to absorb.
+// 22 - Too many arguments, tail position argument to absorb, &rest.
+// 23 - Too many arguments, tail position argument to absorb, no &rest.
+// 24 - Exact number of arguments, no tail position argument.
+// 25 - Exact number of arguments, tail position argument, &rest.
+// 26 - Exact number of arguments, tail position argument, no &rest.
+// 27 - Too few arguments, &rest, tail.
+// 28 - Too few arguments, &rest, no tail.
+// 29 - Too few arguments, no &rest, tail. (not error)
 // 30 - Too few arguments, &rest, no tail.
-// 31 - Too few arguments, no &rest, tail. (not error)
-// 32 - Too few arguments, &rest, no tail.
-// 33 - Too few arguments, &rest, tail.
 // Call from inline to non-inline
-// 34 - Too many arguments, no tail position argument to absorb.
-// 35 - Too many arguments, tail position argument to absorb, &rest.
-// 36 - Too many arguments, tail position argument to absorb, no &rest.
-// 37 - Exact number of arguments, no tail position argument.
-// 38 - Exact number of arguments, tail position argument, &rest.
-// 39 - Exact number of arguments, tail position argument, no &rest.
-// 40 - Too few arguments, &rest, tail.
-// 41 - Too few arguments, &rest, no tail.
-// 42 - Too few arguments, no &rest, tail. (not error)
-// 43 - Too few arguments, &rest, no tail.
-// 44 - Too few arguments, &rest, tail.
+// 31 - Too many arguments, no tail position argument to absorb.
+// 32 - Too many arguments, tail position argument to absorb, &rest.
+// 33 - Too many arguments, tail position argument to absorb, no &rest.
+// 34 - Exact number of arguments, no tail position argument.
+// 35 - Exact number of arguments, tail position argument, &rest.
+// 36 - Exact number of arguments, tail position argument, no &rest.
+// 37 - Too few arguments, &rest, tail.
+// 38 - Too few arguments, &rest, no tail.
+// 39 - Too few arguments, no &rest, tail. (not error)
+// 40 - Too few arguments, &rest, no tail.
 //
 #[test]
 fn test_simple_inline_toomany_args_01() {
@@ -196,7 +192,21 @@ fn test_simple_inline_exact_toofew_improper_no_tail_09() {
 }
 
 #[test]
-fn test_simple_rest_call_27() {
+fn test_simple_inline_exact_toofew_tail_10() {
+    let prog = indoc! {"
+(mod (X Y Z)
+  (include *standard-cl-23*)
+
+  (defun-inline F (A B C) (list A B C))
+
+  (F X Y &rest Z)
+  )"}.to_string();
+    let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "(5 7 101)");
+}
+
+#[test]
+fn test_simple_rest_call_25() {
     let prog = indoc! {"
 (mod X
   (include *standard-cl-23*)
@@ -216,7 +226,7 @@ fn test_simple_rest_call_27() {
 }
 
 #[test]
-fn test_simple_rest_call_inline_38() {
+fn test_simple_rest_call_inline_35() {
     let prog = indoc! {"
 (mod X
   (include *standard-cl-23*)
