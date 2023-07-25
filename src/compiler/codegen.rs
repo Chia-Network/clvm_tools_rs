@@ -91,7 +91,7 @@ fn helper_atom(h: &HelperForm) -> SExp {
 
 fn build_tree(l: Srcloc, s: usize, e: usize, helper_array: &[HelperForm]) -> SExp {
     if e - s == 1 {
-        helper_atom(helper_array[s].borrow())
+        helper_atom(&helper_array[s])
     } else {
         let mid = (e + s) / 2;
         let car = build_tree(l.clone(), s, mid, helper_array);
