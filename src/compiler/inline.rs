@@ -9,8 +9,8 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::codegen::{generate_expr_code, get_call_name, get_callable};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
-    BodyForm, Callable, CompileErr, CompiledCode, CompilerOpts, InlineFunction, LambdaData,
-    PrimaryCodegen,
+    ArgsAndTail, BodyForm, CallSpec, Callable, CompileErr, CompiledCode, CompilerOpts,
+    InlineFunction, LambdaData, PrimaryCodegen,
 };
 use crate::compiler::lambda::make_cons;
 use crate::compiler::sexp::{decode_string, SExp};
@@ -52,12 +52,12 @@ pub fn synthesize_args(arg_: Rc<SExp>) -> (Vec<Rc<BodyForm>>, Option<Rc<BodyForm
         match arg.borrow() {
             SExp::Cons(l, _, b) => {
                 result.push(at_form(l.clone(), start.clone()));
-                tail = bi_one() | two.clone() * tail;
+                tail = bi_one() | (two.clone() * tail);
                 start = bi_one() + start.clone() * two.clone();
                 arg = b.clone();
             }
             SExp::Atom(l, _) => {
-                return (result, Some(at_form(l.clone(), tail.clone())));
+                return (result, Some(at_form(l.clone(), tail)));
             }
             _ => {
                 return (result, None);
@@ -247,20 +247,20 @@ fn make_args_for_call_from_inline(
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
     inline: &InlineFunction,
-    args: &[Rc<BodyForm>],
-    tail: Option<Rc<BodyForm>>,
-    callsite: Srcloc,
-    call_args: &[Rc<BodyForm>],
-    call_tail: Option<Rc<BodyForm>>,
-) -> Result<(Vec<Rc<BodyForm>>, Option<Rc<BodyForm>>), CompileErr> {
-    if call_args.len() == 0 {
+    incoming_spec: &CallSpec,
+    call_spec: &CallSpec,
+) -> Result<ArgsAndTail, CompileErr> {
+    if call_spec.args.is_empty() {
         // This is a nil.
-        return Ok((vec![], call_tail));
+        return Ok(ArgsAndTail {
+            args: vec![],
+            tail: call_spec.tail.clone(),
+        });
     }
 
     let mut new_args = Vec::new();
 
-    for (i, arg) in call_args.iter().enumerate() {
+    for (i, arg) in call_spec.args.iter().enumerate() {
         if i == 0 {
             new_args.push(arg.clone());
             continue;
@@ -274,16 +274,16 @@ fn make_args_for_call_from_inline(
             compiler,
             arg.loc(),
             inline,
-            args,
-            tail.clone(),
-            callsite.clone(),
+            incoming_spec.args,
+            incoming_spec.tail.clone(),
+            call_spec.loc.clone(),
             arg.clone(),
         )?;
         new_args.push(replaced);
     }
 
     let mut new_visited = visited_inlines.clone();
-    let replaced_tail = if let Some(t) = call_tail {
+    let replaced_tail = if let Some(t) = call_spec.tail.as_ref() {
         Some(replace_inline_body(
             &mut new_visited,
             runner,
@@ -291,15 +291,19 @@ fn make_args_for_call_from_inline(
             compiler,
             t.loc(),
             inline,
-            args,
-            tail,
-            callsite.clone(),
+            incoming_spec.args,
+            incoming_spec.tail.clone(),
+            call_spec.loc.clone(),
             t.clone(),
         )?)
     } else {
         None
     };
-    Ok((new_args, replaced_tail))
+
+    Ok(ArgsAndTail {
+        args: new_args,
+        tail: replaced_tail,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -344,17 +348,26 @@ fn replace_inline_body(
             // Recursion only happens when the same stack encounters an inline
             // twice.
             //
-            let (new_args, replaced_tail) = make_args_for_call_from_inline(
+            let args_and_tail = make_args_for_call_from_inline(
                 visited_inlines,
                 runner.clone(),
                 opts.clone(),
                 compiler,
                 inline,
-                args,
-                tail.clone(),
-                callsite.clone(),
-                &call_args,
-                call_tail.clone(),
+                &CallSpec {
+                    loc: callsite.clone(),
+                    name: &inline.name,
+                    args,
+                    tail,
+                    original: expr.clone(),
+                },
+                &CallSpec {
+                    loc: callsite.clone(),
+                    name: &inline.name,
+                    args: call_args,
+                    tail: call_tail.clone(),
+                    original: expr.clone(),
+                },
             )?;
 
             // If the called function is an inline, we'll expand it here.
@@ -381,7 +394,7 @@ fn replace_inline_body(
                     visited_inlines.insert(new_inline.name.clone());
 
                     let pass_on_args: Vec<Rc<BodyForm>> =
-                        new_args.iter().skip(1).cloned().collect();
+                        args_and_tail.args.iter().skip(1).cloned().collect();
                     replace_inline_body(
                         visited_inlines,
                         runner,
@@ -390,14 +403,14 @@ fn replace_inline_body(
                         l, // clippy update since 1.59
                         &new_inline,
                         &pass_on_args,
-                        replaced_tail,
+                        args_and_tail.tail,
                         callsite,
                         new_inline.body.clone(),
                     )
                 }
                 _ => {
                     // Tail passes through to a normal call form.
-                    let call = BodyForm::Call(l.clone(), new_args, replaced_tail);
+                    let call = BodyForm::Call(l.clone(), args_and_tail.args, args_and_tail.tail);
                     Ok(Rc::new(call))
                 }
             }
@@ -430,7 +443,7 @@ fn replace_inline_body(
                 ))));
             }
 
-            let alookup = arg_lookup(callsite, inline.args.clone(), args, tail.clone(), a.clone())?
+            let alookup = arg_lookup(callsite, inline.args.clone(), args, tail, a.clone())?
                 .unwrap_or_else(|| expr.clone());
             Ok(alookup)
         }
@@ -443,7 +456,7 @@ fn replace_inline_body(
                 loc,
                 inline,
                 args,
-                tail.clone(),
+                tail,
                 callsite,
                 ldata.captures.clone(),
             )?;
@@ -493,7 +506,7 @@ pub fn replace_in_inline(
         loc,
         inline,
         args,
-        tail.clone(),
+        tail,
         callsite,
         inline.body.clone(),
     )

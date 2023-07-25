@@ -8,10 +8,10 @@ use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
-    list_to_cons, Binding, BindingPattern, BodyForm, ChiaType, CompileErr, CompileForm,
-    CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData, HelperForm,
-    IncludeDesc, LetData, LetFormInlineHint, LetFormKind, ModAccum, StructDef, StructMember,
-    SyntheticType, TypeAnnoKind,
+    list_to_cons, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType, CompileErr,
+    CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData,
+    HelperForm, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, ModAccum, StructDef,
+    StructMember, SyntheticType, TypeAnnoKind,
 };
 use crate::compiler::lambda::handle_lambda;
 use crate::compiler::preprocessor::preprocess;
@@ -205,9 +205,9 @@ fn qq_to_expression_list(
 fn args_to_expression_list(
     opts: Rc<dyn CompilerOpts>,
     body: Rc<SExp>,
-) -> Result<(Vec<Rc<BodyForm>>, Option<Rc<BodyForm>>), CompileErr> {
+) -> Result<ArgsAndTail, CompileErr> {
     if body.nilp() {
-        Ok((vec![], None))
+        Ok(Default::default())
     } else {
         match body.borrow() {
             SExp::Cons(_l, first, rest) => {
@@ -215,32 +215,38 @@ fn args_to_expression_list(
                     if fname == b"&rest" {
                         // Rest is a list containing one item that becomes the
                         // tail.
-                        let (args, no_tail) = args_to_expression_list(opts, rest.clone())?;
+                        let args_no_tail = args_to_expression_list(opts, rest.clone())?;
 
-                        if no_tail.is_some() {
+                        if args_no_tail.tail.is_some() {
                             return Err(CompileErr(
                                 rest.loc(),
-                                format!("only one use of &rest is allowed"),
+                                "only one use of &rest is allowed".to_string(),
                             ));
                         }
 
-                        if args.len() != 1 {
+                        if args_no_tail.args.len() != 1 {
                             return Err(CompileErr(
                                 body.loc(),
-                                format!("&rest specified with bad tail"),
+                                "&rest specified with bad tail".to_string(),
                             ));
                         }
 
                         // Return a tail.
-                        return Ok((vec![], Some(args[0].clone())));
+                        return Ok(ArgsAndTail {
+                            args: vec![],
+                            tail: Some(args_no_tail.args[0].clone()),
+                        });
                     }
                 }
                 let mut result_list = Vec::new();
                 let f_compiled = compile_bodyform(opts.clone(), first.clone())?;
                 result_list.push(Rc::new(f_compiled));
-                let (mut args, tail) = args_to_expression_list(opts, rest.clone())?;
-                result_list.append(&mut args);
-                Ok((result_list, tail))
+                let mut args_and_tail = args_to_expression_list(opts, rest.clone())?;
+                result_list.append(&mut args_and_tail.args);
+                Ok(ArgsAndTail {
+                    args: result_list,
+                    tail: args_and_tail.tail,
+                })
             }
             _ => Err(CompileErr(body.loc(), format!("Bad arg list tail {body}"))),
         }
@@ -375,17 +381,17 @@ pub fn compile_bodyform(
     match body.borrow() {
         SExp::Cons(l, op, tail) => {
             let application = || {
-                args_to_expression_list(opts.clone(), tail.clone()).and_then(|(args, tail)| {
+                args_to_expression_list(opts.clone(), tail.clone()).and_then(|atail| {
                     compile_bodyform(opts.clone(), op.clone()).map(|func| {
                         let mut result_call = vec![Rc::new(func)];
-                        let mut args_clone = args.to_vec();
-                        let ending = if args.is_empty() {
+                        let mut args_clone = atail.args.to_vec();
+                        let ending = if atail.args.is_empty() {
                             l.ending()
                         } else {
-                            args[args.len() - 1].loc().ending()
+                            atail.args[atail.args.len() - 1].loc().ending()
                         };
                         result_call.append(&mut args_clone);
-                        BodyForm::Call(l.ext(&ending), result_call, tail)
+                        BodyForm::Call(l.ext(&ending), result_call, atail.tail)
                     })
                 })
             };

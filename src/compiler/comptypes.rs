@@ -518,6 +518,23 @@ pub struct ModAccum {
     pub exp_form: Option<CompileForm>,
 }
 
+/// A specification of a function call including elements useful for evaluation.
+#[derive(Debug, Clone)]
+pub struct CallSpec<'a> {
+    pub loc: Srcloc,
+    pub name: &'a [u8],
+    pub args: &'a [Rc<BodyForm>],
+    pub tail: Option<Rc<BodyForm>>,
+    pub original: Rc<BodyForm>,
+}
+
+/// A pair of arguments and an optional tail for function calls.
+#[derive(Debug, Default, Clone)]
+pub struct ArgsAndTail {
+    pub args: Vec<Rc<BodyForm>>,
+    pub tail: Option<Rc<BodyForm>>,
+}
+
 impl ModAccum {
     pub fn set_final(&self, c: &CompileForm) -> Self {
         ModAccum {

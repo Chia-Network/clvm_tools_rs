@@ -24,7 +24,7 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, run};
 use crate::compiler::codegen::{codegen, do_mod_codegen, get_callable};
 use crate::compiler::comptypes::{
-    BodyForm, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm,
+    BodyForm, CallSpec, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm,
     PrimaryCodegen, SyntheticType,
 };
 use crate::compiler::evaluate::{
@@ -264,15 +264,13 @@ fn constant_fun_result(
     opts: Rc<dyn CompilerOpts>,
     runner: Rc<dyn TRunProgram>,
     compiler: &PrimaryCodegen,
-    loc: &Srcloc,
-    an: &[u8],
-    forms: &[Rc<BodyForm>],
-    tail: Option<Rc<BodyForm>>,
+    call_spec: &CallSpec,
 ) -> Option<Rc<BodyForm>> {
     if let Some(res) = opts.dialect().stepping {
         if res >= 23 {
             let mut constant = true;
-            let optimized_args: Vec<(bool, Rc<BodyForm>)> = forms
+            let optimized_args: Vec<(bool, Rc<BodyForm>)> = call_spec
+                .args
                 .iter()
                 .skip(1)
                 .map(|a| {
@@ -285,7 +283,7 @@ fn constant_fun_result(
                 })
                 .collect();
 
-            let optimized_tail: Option<(bool, Rc<BodyForm>)> = tail.map(|t| {
+            let optimized_tail: Option<(bool, Rc<BodyForm>)> = call_spec.tail.as_ref().map(|t| {
                 let optimized =
                     optimize_expr(allocator, opts.clone(), runner.clone(), compiler, t.clone());
                 constant = constant && optimized.as_ref().map(|x| x.0).unwrap_or_else(|| false);
@@ -300,18 +298,21 @@ fn constant_fun_result(
 
             let compiled_body = {
                 let to_compile = CompileForm {
-                    loc: loc.clone(),
+                    loc: call_spec.loc.clone(),
                     include_forms: Vec::new(),
                     ty: None,
                     helpers: compiler.original_helpers.clone(),
-                    args: Rc::new(SExp::Atom(loc.clone(), b"__ARGS__".to_vec())),
+                    args: Rc::new(SExp::Atom(call_spec.loc.clone(), b"__ARGS__".to_vec())),
                     exp: Rc::new(BodyForm::Call(
-                        loc.clone(),
+                        call_spec.loc.clone(),
                         vec![
-                            Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), vec![2]))),
-                            Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), an.to_vec()))),
+                            Rc::new(BodyForm::Value(SExp::Atom(call_spec.loc.clone(), vec![2]))),
                             Rc::new(BodyForm::Value(SExp::Atom(
-                                loc.clone(),
+                                call_spec.loc.clone(),
+                                call_spec.name.to_vec(),
+                            ))),
+                            Rc::new(BodyForm::Value(SExp::Atom(
+                                call_spec.loc.clone(),
                                 b"__ARGS__".to_vec(),
                             ))),
                         ],
@@ -320,7 +321,7 @@ fn constant_fun_result(
                         None,
                     )),
                 };
-                let optimizer = if let Ok(res) = get_optimizer(loc, opts.clone()) {
+                let optimizer = if let Ok(res) = get_optimizer(&call_spec.loc, opts.clone()) {
                     res
                 } else {
                     return None;
@@ -339,27 +340,27 @@ fn constant_fun_result(
 
             // Reified args reflect the actual ABI shape with a tail if any.
             let mut reified_args = if let Some((_, t)) = optimized_tail {
-                if let Ok(res) = dequote(loc.clone(), t.clone()) {
+                if let Ok(res) = dequote(call_spec.loc.clone(), t) {
                     res
                 } else {
                     return None;
                 }
             } else {
-                Rc::new(SExp::Nil(loc.clone()))
+                Rc::new(SExp::Nil(call_spec.loc.clone()))
             };
             for (_, v) in optimized_args.iter().rev() {
-                let unquoted = if let Ok(res) = dequote(loc.clone(), v.clone()) {
+                let unquoted = if let Ok(res) = dequote(call_spec.loc.clone(), v.clone()) {
                     res
                 } else {
                     return None;
                 };
-                reified_args = Rc::new(SExp::Cons(loc.clone(), unquoted, reified_args));
+                reified_args = Rc::new(SExp::Cons(call_spec.loc.clone(), unquoted, reified_args));
             }
             let borrowed_args: &SExp = reified_args.borrow();
             let new_body = BodyForm::Call(
-                loc.clone(),
+                call_spec.loc.clone(),
                 vec![
-                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), vec![2]))),
+                    Rc::new(BodyForm::Value(SExp::Atom(call_spec.loc.clone(), vec![2]))),
                     Rc::new(BodyForm::Quoted(compiled_body)),
                     Rc::new(BodyForm::Quoted(borrowed_args.clone())),
                 ],
@@ -413,10 +414,13 @@ pub fn optimize_expr(
                             opts.clone(),
                             runner.clone(),
                             compiler,
-                            &l,
-                            an,
-                            forms,
-                            tail.clone(),
+                            &CallSpec {
+                                loc: l,
+                                name: an,
+                                args: forms,
+                                tail: tail.clone(),
+                                original: body.clone(),
+                            },
                         ) {
                             return Some(
                                 optimize_expr(

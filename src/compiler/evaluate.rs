@@ -12,7 +12,7 @@ use crate::compiler::clvm::{run, PrimOverride};
 use crate::compiler::codegen::{codegen, hoist_assign_form};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
-    Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData,
+    Binding, BindingPattern, BodyForm, CallSpec, CompileErr, CompileForm, CompilerOpts, DefunData,
     HelperForm, LambdaData, LetData, LetFormInlineHint, LetFormKind,
 };
 use crate::compiler::frontend::frontend;
@@ -757,14 +757,6 @@ fn flatten_expression_to_names(expr: Rc<SExp>) -> Rc<BodyForm> {
 
 pub fn eval_dont_expand_let(inline_hint: &Option<LetFormInlineHint>) -> bool {
     matches!(inline_hint, Some(LetFormInlineHint::NonInline(_)))
-}
-
-struct CallSpec<'a> {
-    loc: Srcloc,
-    name: &'a [u8],
-    args: &'a [Rc<BodyForm>],
-    tail: Option<Rc<BodyForm>>,
-    original: Rc<BodyForm>,
 }
 
 impl<'info> Evaluator {

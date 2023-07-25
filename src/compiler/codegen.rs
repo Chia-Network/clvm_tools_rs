@@ -399,7 +399,7 @@ fn generate_args_code(
         let mut compiled_args: Rc<SExp> = if let Some(t) = tail.as_ref() {
             generate_expr_code(context, opts.clone(), compiler, t.clone())?.1
         } else {
-            Rc::new(SExp::Nil(l.clone()))
+            Rc::new(SExp::Nil(l))
         };
 
         for hd in list.iter().rev() {
@@ -736,7 +736,7 @@ pub fn generate_expr_code(
                     "created a call with no forms".to_string(),
                 ))
             } else {
-                compile_call(context, l.clone(), opts, compiler, &list, tail.clone())
+                compile_call(context, l.clone(), opts, compiler, list, tail.clone())
             }
         }
         BodyForm::Mod(_, program) => do_mod_codegen(context, opts, program),
@@ -1135,9 +1135,9 @@ pub fn hoist_body_let_binding(
                 vres.append(&mut new_helper.clone());
             }
             let new_tail = if let Some(t) = tail.as_ref() {
-                let (new_helper, new_tail_elt) =
-                    hoist_body_let_binding(outer_context.clone(), args.clone(), t.clone())?;
-                vres.append(&mut new_helper.clone());
+                let (mut new_helper, new_tail_elt) =
+                    hoist_body_let_binding(outer_context, args, t.clone())?;
+                vres.append(&mut new_helper);
                 Some(new_tail_elt)
             } else {
                 None

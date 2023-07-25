@@ -563,7 +563,7 @@ fn handle_macro(
         ev.add_helper(h);
     }
     let mut allocator = Allocator::new();
-    let arg_env = build_argument_captures(&loc, &call_args, tail.clone(), form.args.clone())?;
+    let arg_env = build_argument_captures(&loc, &call_args, tail, form.args.clone())?;
     let result = ev.shrink_bodyform(
         &mut allocator,
         Rc::new(SExp::Nil(loc.clone())),

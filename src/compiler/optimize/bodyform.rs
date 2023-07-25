@@ -1,5 +1,5 @@
 use std::borrow::Borrow;
-use std::cmp::min;
+use std::cmp::{min, Ordering};
 use std::rc::Rc;
 
 use crate::compiler::comptypes::{Binding, BodyForm, CompileForm, LambdaData, LetData};
@@ -150,7 +150,7 @@ where
     let mut collection = vec![];
     let path_idx = current_path.len();
     let list_len = list_of.len();
-    let mut replacement_list: Vec<(usize, &L)> = list_of.into_iter().enumerate().collect();
+    let mut replacement_list: Vec<(usize, &L)> = list_of.iter().enumerate().collect();
     let mut maybe_tail: Option<L> = None;
     if let Some(t) = tail_of.as_ref() {
         replacement_list.push((list_len, t));
@@ -390,16 +390,20 @@ where
             }
             BodyformPathArc::CallArgument(n) => {
                 if let BodyForm::Call(_, a, tail) = found {
-                    if *n > a.len() {
-                        return None;
-                    } else if *n == a.len() {
-                        if let Some(t) = tail {
-                            found = t.borrow();
-                        } else {
+                    match n.cmp(&a.len()) {
+                        Ordering::Greater => {
                             return None;
                         }
-                    } else {
-                        found = a[*n].borrow();
+                        Ordering::Equal => {
+                            if let Some(t) = tail {
+                                found = t.borrow();
+                            } else {
+                                return None;
+                            }
+                        }
+                        _ => {
+                            found = a[*n].borrow();
+                        }
                     }
                 } else {
                     return None;
