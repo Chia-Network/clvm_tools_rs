@@ -184,18 +184,14 @@ fn test_replace_in_bodyform() {
 fn make_test_case_for_visitor(program: &str) -> CompileForm {
     let progfile = "*test*";
     let srcloc = Srcloc::start(progfile);
-    let parsed = parse_sexp(
-        srcloc.clone(),
-        program.bytes()
-    ).expect("should parse");
+    let parsed = parse_sexp(srcloc.clone(), program.bytes()).expect("should parse");
     let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(progfile));
     frontend(opts.clone(), &parsed).expect("should fe")
 }
 
 #[test]
 fn test_visitor_0() {
-    let compiled = make_test_case_for_visitor(
-        indoc! {"
+    let compiled = make_test_case_for_visitor(indoc! {"
 (mod ()
   (call1
     (let ((A 99) (B test)) (+ A B))
@@ -245,7 +241,7 @@ fn test_visitor_0() {
         },
         compiled.exp.borrow(),
     )
-        .unwrap();
+    .unwrap();
     assert_eq!(res.len(), 2);
     assert_eq!(res[0].subexp.to_sexp().to_string(), "99");
     assert_eq!(
@@ -268,7 +264,7 @@ fn test_visitor_0() {
 
 #[test]
 fn test_visitor_rest_alone() {
-    let compiled = make_test_case_for_visitor(indoc!{"
+    let compiled = make_test_case_for_visitor(indoc! {"
         (mod (X)
           (F &rest X)
           )
@@ -284,14 +280,14 @@ fn test_visitor_rest_alone() {
         },
         compiled.exp.borrow(),
     )
-        .unwrap();
+    .unwrap();
     assert_eq!(res.len(), 1);
     assert_eq!(res[0].path, vec![BodyformPathArc::CallArgument(1)]);
 }
 
 #[test]
 fn test_visitor_rest_with_list() {
-    let compiled = make_test_case_for_visitor(indoc!{"
+    let compiled = make_test_case_for_visitor(indoc! {"
         (mod (X)
           (F X &rest (F &rest X))
           )
@@ -307,8 +303,14 @@ fn test_visitor_rest_with_list() {
         },
         compiled.exp.borrow(),
     )
-        .unwrap();
+    .unwrap();
     assert_eq!(res.len(), 2);
     assert_eq!(res[0].path, vec![BodyformPathArc::CallArgument(1)]);
-    assert_eq!(res[1].path, vec![BodyformPathArc::CallArgument(2), BodyformPathArc::CallArgument(1)]);
+    assert_eq!(
+        res[1].path,
+        vec![
+            BodyformPathArc::CallArgument(2),
+            BodyformPathArc::CallArgument(1)
+        ]
+    );
 }

@@ -250,19 +250,17 @@ where
     }
 
     match bf {
-        BodyForm::Call(l, args, tail) => {
-            replace_in_bodyform_inner_list(
-                current_path,
-                replacements,
-                args,
-                tail,
-                &BodyformPathArc::CallArgument,
-                &|e: &Rc<BodyForm>| e.borrow(),
-                &|_w, b| Rc::new(b),
-                &|args, tail| BodyForm::Call(l.clone(), args, tail),
-                f,
-            )
-        }
+        BodyForm::Call(l, args, tail) => replace_in_bodyform_inner_list(
+            current_path,
+            replacements,
+            args,
+            tail,
+            &BodyformPathArc::CallArgument,
+            &|e: &Rc<BodyForm>| e.borrow(),
+            &|_w, b| Rc::new(b),
+            &|args, tail| BodyForm::Call(l.clone(), args, tail),
+            f,
+        ),
         BodyForm::Let(k, b) => {
             let path_idx = current_path.len();
             current_path.push(BodyformPathArc::BodyOf);

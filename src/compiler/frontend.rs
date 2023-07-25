@@ -211,12 +211,18 @@ fn args_to_expression_list(
     } else {
         match body.borrow() {
             SExp::Cons(_l, first, rest) => {
-                if let SExp::Atom(fl, fname) = first.borrow() {
+                if let SExp::Atom(_fl, fname) = first.borrow() {
                     if fname == b"&rest" {
                         // Rest is a list containing one item that becomes the
                         // tail.
-                        let (mut args, no_tail) =
-                            args_to_expression_list(opts, rest.clone())?;
+                        let (args, no_tail) = args_to_expression_list(opts, rest.clone())?;
+
+                        if no_tail.is_some() {
+                            return Err(CompileErr(
+                                rest.loc(),
+                                format!("only one use of &rest is allowed"),
+                            ));
+                        }
 
                         if args.len() != 1 {
                             return Err(CompileErr(
@@ -232,15 +238,11 @@ fn args_to_expression_list(
                 let mut result_list = Vec::new();
                 let f_compiled = compile_bodyform(opts.clone(), first.clone())?;
                 result_list.push(Rc::new(f_compiled));
-                let (mut args, mut tail) =
-                    args_to_expression_list(opts, rest.clone())?;
+                let (mut args, tail) = args_to_expression_list(opts, rest.clone())?;
                 result_list.append(&mut args);
                 Ok((result_list, tail))
             }
-            _ => Err(CompileErr(
-                body.loc(),
-                format!("Bad arg list tail {body}"),
-            )),
+            _ => Err(CompileErr(body.loc(), format!("Bad arg list tail {body}"))),
         }
     }
 }
@@ -1054,7 +1056,7 @@ pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
                                     ))),
                                     Rc::new(BodyForm::Value(SExp::Atom(m.loc.clone(), vec![b'S']))),
                                 ],
-                                None
+                                None,
                             )),
                             synthetic: Some(SyntheticType::NoInlinePreference),
                             ty: Some(funty),

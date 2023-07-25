@@ -530,7 +530,7 @@ fn handle_macro(
     form: Rc<CompileForm>,
     loc: Srcloc,
     provided_args: &[Rc<BodyForm>],
-    tail: Option<Rc<BodyForm>>
+    tail: Option<Rc<BodyForm>>,
 ) -> Result<Expr, CompileErr> {
     // It is a macro, we need to interpret it in our way:
     // We'll compile and run the code itself on a
@@ -658,9 +658,12 @@ fn chialisp_to_expr(
             chialisp_to_expr(opts, program, form_args, beta_reduced)
         }
         BodyForm::Call(l, lst, tail) => {
-            let mut arg_expr = tail.as_ref().map(|t| {
-                todo!();
-            }).unwrap_or_else(|| Expr::EUnit(l.clone()));
+            let mut arg_expr = if let Some(t) = tail.as_ref() {
+                chialisp_to_expr(opts.clone(), program, form_args.clone(), t.clone())?
+            } else {
+                Expr::EUnit(l.clone())
+            };
+
             for (_i, e) in lst.iter().enumerate().rev().take(lst.len() - 1) {
                 let new_expr =
                     chialisp_to_expr(opts.clone(), program, form_args.clone(), e.clone())?;

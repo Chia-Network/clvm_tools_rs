@@ -226,7 +226,10 @@ pub fn is_canonical_apply_parent(
         } else {
             return Err(CompileErr(
                 root.loc(),
-                format!("Impossible: could not retrieve parent of existing expression (root {})", root.to_sexp()),
+                format!(
+                    "Impossible: could not retrieve parent of existing expression (root {})",
+                    root.to_sexp()
+                ),
             ));
         };
 

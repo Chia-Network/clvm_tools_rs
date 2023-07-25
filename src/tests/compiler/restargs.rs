@@ -1,5 +1,6 @@
 use crate::tests::compiler::compiler::run_string;
 use crate::tests::compiler::repl::test_repl_outcome;
+use crate::tests::compiler::types::chialisp::test_chialisp_program_typecheck;
 
 // All tests needed for rest calls:
 //
@@ -57,7 +58,8 @@ fn test_simple_inline_toomany_args_01() {
   (defun-inline F (A B) (+ A B))
 
   (F X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 9)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "12");
 }
@@ -78,7 +80,8 @@ fn test_simple_inline_toomany_args_improper_tail_02() {
   (defun-inline F (A B . C) (* A B (sum C)))
 
   (F X Y 99 101 &rest Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (301 313))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "28490");
 }
@@ -99,7 +102,8 @@ fn test_simple_inline_toomany_args_improper_no_tail_03() {
   (defun-inline F (A B . C) (* A B (sum C)))
 
   (F X Y 99 101)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "7000");
 }
@@ -113,7 +117,8 @@ fn test_simple_inline_exact_no_tails_04() {
   (defun-inline F (A B) (* A B))
 
   (F X Y)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "35");
 }
@@ -127,7 +132,8 @@ fn test_simple_inline_exact_improper_tail_05() {
   (defun-inline F (A B . C) (* A B C))
 
   (F X Y &rest Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 9)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "315");
 }
@@ -141,7 +147,8 @@ fn test_simple_inline_exact_improper_no_tail_06() {
   (defun-inline F (A B . C) (+ A B C))
 
   (F X Y)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "12");
 }
@@ -155,7 +162,8 @@ fn test_simple_inline_exact_toofew_improper_tail_07() {
   (defun-inline F (A B C . D) (list A B C (f D)))
 
   (F X Y &rest Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 101 103)");
 }
@@ -169,7 +177,8 @@ fn test_simple_inline_exact_toofew_tail_08() {
   (defun-inline F (A B C) (list A B C))
 
   (F X Y &rest Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 101)");
 }
@@ -183,7 +192,8 @@ fn test_simple_inline_exact_toofew_improper_no_tail_09() {
   (defun-inline F (A B C . D) (list A B C (f D)))
 
   (F X Y)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string());
     if let Err(e) = res {
         assert!(e.1.contains("Lookup for argument 3"));
@@ -201,7 +211,8 @@ fn test_simple_inline_exact_toofew_tail_10() {
   (defun-inline F (A B C) (list A B C))
 
   (F X Y &rest Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 101)");
 }
@@ -217,7 +228,8 @@ fn test_inline_inline_toomany_args_11() {
   (defun-inline G (X Y Z) (F X Y Z))
 
   (G X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 9)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "12");
 }
@@ -233,7 +245,8 @@ fn test_inline_inline_toomany_args_improper_tail_12() {
   (defun-inline F (A B . C) (list A B (return-list C)))
 
   (F X Y 99 101 &rest Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (301 313))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 (c e 301 313))");
 }
@@ -249,7 +262,8 @@ fn test_simple_inline_toomany_args_improper_no_tail_13() {
   (defun-inline F (A B . C) (list A B (return-list C)))
 
   (F X Y 99 101)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 (c e))");
 }
@@ -265,7 +279,8 @@ fn test_inline_inline_exact_no_tails_14() {
   (defun-inline G (A B) (F A B))
 
   (G X Y)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "35");
 }
@@ -281,7 +296,8 @@ fn test_inline_inline_exact_improper_tail_15() {
   (defun-inline G (X Y Z) (F X Y &rest Z))
 
   (G X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 9)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "315");
 }
@@ -297,7 +313,8 @@ fn test_inline_inline_exact_improper_no_tail_16() {
   (defun-inline G (X Y) (F X Y))
 
   (G X Y)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "12");
 }
@@ -313,7 +330,8 @@ fn test_simple_inline_exact_toofew_improper_tail_17() {
   (defun-inline G (X Y Z) (F X Y &rest Z))
 
   (G X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 101 103)");
 }
@@ -329,7 +347,8 @@ fn test_inline_inline_exact_toofew_tail_18() {
   (defun-inline G (X Y Z) (F X Y &rest Z))
 
   (G X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 101)");
 }
@@ -345,7 +364,8 @@ fn test_inline_inline_exact_toofew_improper_no_tail_19() {
   (defun-inline G (X Y) (F X Y))
 
   (G X Y)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string());
     if let Err(e) = res {
         assert!(e.1.contains("Lookup for argument 3"));
@@ -365,7 +385,8 @@ fn test_simple_inline_exact_toofew_tail_20() {
   (defun-inline G (X Y Z) (F X Y &rest Z))
 
   (G X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 101)");
 }
@@ -381,7 +402,8 @@ fn test_ni_ni_toomany_args_21() {
   (defun G (X Y Z) (F X Y Z))
 
   (G X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 9)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "12");
 }
@@ -397,7 +419,8 @@ fn test_ni_ni_toomany_args_improper_tail_22() {
   (defun F (A B . C) (list A B (return-list C)))
 
   (F X Y 99 101 &rest Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (301 313))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 (c e 301 313))");
 }
@@ -413,7 +436,8 @@ fn test_simple_inline_toomany_args_improper_no_tail_23() {
   (defun F (A B . C) (list A B (return-list C)))
 
   (F X Y 99 101)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 (c e))");
 }
@@ -429,7 +453,8 @@ fn test_ni_ni_exact_no_tails_24() {
   (defun G (A B) (F A B))
 
   (G X Y)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "35");
 }
@@ -445,7 +470,8 @@ fn test_ni_ni_exact_improper_tail_25() {
   (defun G (X Y Z) (F X Y &rest Z))
 
   (G X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 9)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "315");
 }
@@ -481,7 +507,8 @@ fn test_ni_ni_exact_improper_no_tail_26() {
   (defun G (X Y) (F X Y))
 
   (G X Y)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "12");
 }
@@ -497,7 +524,8 @@ fn test_simple_inline_exact_toofew_improper_tail_27() {
   (defun G (X Y Z) (F X Y &rest Z))
 
   (G X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 101 103)");
 }
@@ -513,7 +541,8 @@ fn test_ni_ni_exact_toofew_tail_28() {
   (defun G (X Y Z) (F X Y &rest Z))
 
   (G X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 101)");
 }
@@ -529,7 +558,8 @@ fn test_ni_ni_exact_toofew_improper_no_tail_29() {
   (defun G (X Y) (F X Y))
 
   (G X Y)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string());
     if let Err(e) = res {
         assert!(e.1.contains("bad path"));
@@ -549,7 +579,8 @@ fn test_ni_ni_exact_toofew_tail_30() {
   (defun G (X Y Z) (F X Y &rest Z))
 
   (G X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 101)");
 }
@@ -565,7 +596,8 @@ fn test_inline_ni_toomany_args_31() {
   (defun-inline G (X Y Z) (F X Y Z))
 
   (G X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 9)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "12");
 }
@@ -581,7 +613,8 @@ fn test_inline_ni_toomany_args_improper_tail_32() {
   (defun F (A B . C) (list A B (return-list C)))
 
   (F X Y 99 101 &rest Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (301 313))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 (c e 301 313))");
 }
@@ -597,7 +630,8 @@ fn test_simple_inline_toomany_args_improper_no_tail_33() {
   (defun F (A B . C) (list A B (return-list C)))
 
   (F X Y 99 101)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 (c e))");
 }
@@ -613,7 +647,8 @@ fn test_inline_ni_exact_no_tails_34() {
   (defun-inline G (A B) (F A B))
 
   (G X Y)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "35");
 }
@@ -629,7 +664,8 @@ fn test_inline_ni_exact_improper_tail_35() {
   (defun-inline G (X Y Z) (F X Y &rest Z))
 
   (G X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 9)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "315");
 }
@@ -656,7 +692,6 @@ fn test_simple_rest_call_inline_35() {
     assert_eq!(res.to_string(), "768");
 }
 
-
 #[test]
 fn test_inline_ni_exact_improper_no_tail_36() {
     let prog = indoc! {"
@@ -668,7 +703,8 @@ fn test_inline_ni_exact_improper_no_tail_36() {
   (defun-inline G (X Y) (F X Y))
 
   (G X Y)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "12");
 }
@@ -684,7 +720,8 @@ fn test_simple_inline_exact_toofew_improper_tail_37() {
   (defun-inline G (X Y Z) (F X Y &rest Z))
 
   (G X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 101 103)");
 }
@@ -700,7 +737,8 @@ fn test_inline_ni_exact_toofew_tail_38() {
   (defun-inline G (X Y Z) (F X Y &rest Z))
 
   (G X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 101)");
 }
@@ -716,7 +754,8 @@ fn test_inline_ni_exact_toofew_improper_no_tail_39() {
   (defun-inline G (X Y) (F X Y))
 
   (G X Y)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7)".to_string());
     if let Err(e) = res {
         assert!(e.1.contains("bad path"));
@@ -736,7 +775,8 @@ fn test_inline_ni_exact_toofew_tail_40() {
   (defun-inline G (X Y Z) (F X Y &rest Z))
 
   (G X Y Z)
-  )"}.to_string();
+  )"}
+    .to_string();
     let res = run_string(&prog, &"(5 7 (101 103))".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "(5 7 101)");
 }
@@ -744,15 +784,14 @@ fn test_inline_ni_exact_toofew_tail_40() {
 #[test]
 fn test_repl_01() {
     assert_eq!(
-        test_repl_outcome(vec![
-            "(defun-inline F (A B) (+ A B))",
-            "(F 5 7 9)"
-        ]).unwrap().unwrap(),
+        test_repl_outcome(vec!["(defun-inline F (A B) (+ A B))", "(F 5 7 9)"])
+            .unwrap()
+            .unwrap(),
         "(q . 12)"
     );
 }
 
-const repl_test_sum: &'static str = indoc!{"
+const REPL_TEST_SUM: &'static str = indoc! {"
 (defun sum (Xs)
     (if Xs
       (+ (f Xs) (sum (r Xs)))
@@ -764,10 +803,12 @@ const repl_test_sum: &'static str = indoc!{"
 fn test_repl_02() {
     assert_eq!(
         test_repl_outcome(vec![
-            repl_test_sum,
+            REPL_TEST_SUM,
             "(defun-inline F (A B . C) (* A B (sum C)))",
             "(F 5 7 99 101 &rest (list 301 313))"
-        ]).unwrap().unwrap(),
+        ])
+        .unwrap()
+        .unwrap(),
         "(q . 28490)"
     );
 }
@@ -776,10 +817,12 @@ fn test_repl_02() {
 fn test_repl_03() {
     assert_eq!(
         test_repl_outcome(vec![
-            repl_test_sum,
+            REPL_TEST_SUM,
             "(defun-inline F (A B . C) (* A B (sum C)))",
             "(F 5 7 99 101)"
-        ]).unwrap().unwrap(),
+        ])
+        .unwrap()
+        .unwrap(),
         "(q . 7000)"
     );
 }
@@ -787,10 +830,9 @@ fn test_repl_03() {
 #[test]
 fn test_repl_04() {
     assert_eq!(
-        test_repl_outcome(vec![
-            "(defun F (A B) (* A B))",
-            "(F 5 7)"
-        ]).unwrap().unwrap(),
+        test_repl_outcome(vec!["(defun F (A B) (* A B))", "(F 5 7)"])
+            .unwrap()
+            .unwrap(),
         "(q . 35)"
     );
 }
@@ -798,10 +840,9 @@ fn test_repl_04() {
 #[test]
 fn test_repl_05() {
     assert_eq!(
-        test_repl_outcome(vec![
-            "(defun F (A B . C) (* A B C))",
-            "(F 5 7 &rest 9)"
-        ]).unwrap().unwrap(),
+        test_repl_outcome(vec!["(defun F (A B . C) (* A B C))", "(F 5 7 &rest 9)"])
+            .unwrap()
+            .unwrap(),
         "(q . 315)"
     );
 }
@@ -809,10 +850,9 @@ fn test_repl_05() {
 #[test]
 fn test_repl_06() {
     assert_eq!(
-        test_repl_outcome(vec![
-            "(defun F (A B . C) (+ A B C))",
-            "(F 5 7)"
-        ]).unwrap().unwrap(),
+        test_repl_outcome(vec!["(defun F (A B . C) (+ A B C))", "(F 5 7)"])
+            .unwrap()
+            .unwrap(),
         "(q . 12)"
     );
 }
@@ -823,7 +863,9 @@ fn test_repl_07() {
         test_repl_outcome(vec![
             "(defun F (A B C . D) (list A B C (f D)))",
             "(F 5 7 &rest (list 101 103))"
-        ]).unwrap().unwrap(),
+        ])
+        .unwrap()
+        .unwrap(),
         "(q 5 7 101 103)"
     );
 }
@@ -834,7 +876,9 @@ fn test_repl_08() {
         test_repl_outcome(vec![
             "(defun F (A B C) (list A B C))",
             "(F 5 7 &rest (list 101 103))"
-        ]).unwrap().unwrap(),
+        ])
+        .unwrap()
+        .unwrap(),
         "(q 5 7 101)"
     );
 }
@@ -842,10 +886,7 @@ fn test_repl_08() {
 #[test]
 fn test_repl_09() {
     assert!(
-        test_repl_outcome(vec![
-            "(defun F (A B C . D) (list A B C (f D)))",
-            "(F 5 7)"
-        ]).is_err()
+        test_repl_outcome(vec!["(defun F (A B C . D) (list A B C (f D)))", "(F 5 7)"]).is_err()
     );
 }
 
@@ -855,7 +896,48 @@ fn test_repl_10() {
         test_repl_outcome(vec![
             "(defun F (A B C) (list A B C))",
             "(F 5 7 &rest (list 101 103))"
-        ]).unwrap().unwrap(),
+        ])
+        .unwrap()
+        .unwrap(),
         "(q 5 7 101)"
     );
+}
+
+#[test]
+fn test_rest_type_good() {
+    let prog_good = indoc! {"
+(mod (X)
+  (include *standard-cl-23*)
+
+  (defun F (A B . C) : ((Pair Atom (Pair Atom (List Atom))) -> Atom) (* A B (f C)))
+
+  (F 5 7 &rest (list 9))
+  )"}
+    .to_string();
+
+    let typecheck_result = test_chialisp_program_typecheck(&prog_good, true);
+
+    // Good result
+    assert!(typecheck_result.is_ok());
+}
+
+#[test]
+fn test_rest_type_bad() {
+    let prog_bad = indoc! {"
+(mod (X)
+  (include *standard-cl-23*)
+
+  (deftype Foo ())
+
+  (defun F (A B . C) : ((Pair Atom (Pair Atom (List Foo))) -> Atom) (* A B (f C)))
+
+  (F 5 7 &rest (list 9))
+  )"}
+    .to_string();
+
+    let typecheck_result = test_chialisp_program_typecheck(&prog_bad, true);
+
+    // Bad result
+    eprintln!("tc {typecheck_result:?}");
+    assert!(typecheck_result.is_err());
 }

@@ -267,7 +267,7 @@ fn constant_fun_result(
     loc: &Srcloc,
     an: &[u8],
     forms: &[Rc<BodyForm>],
-    tail: Option<Rc<BodyForm>>
+    tail: Option<Rc<BodyForm>>,
 ) -> Option<Rc<BodyForm>> {
     if let Some(res) = opts.dialect().stepping {
         if res >= 23 {
@@ -317,7 +317,7 @@ fn constant_fun_result(
                         ],
                         // Proper call: we're calling 'a' on behalf of our
                         // single capture argument.
-                        None
+                        None,
                     )),
                 };
                 let optimizer = if let Ok(res) = get_optimizer(loc, opts.clone()) {
@@ -338,16 +338,15 @@ fn constant_fun_result(
             };
 
             // Reified args reflect the actual ABI shape with a tail if any.
-            let mut reified_args =
-                if let Some((_, t)) = optimized_tail {
-                    if let Ok(res) = dequote(loc.clone(), t.clone()) {
-                        res
-                    } else {
-                        return None;
-                    }
+            let mut reified_args = if let Some((_, t)) = optimized_tail {
+                if let Ok(res) = dequote(loc.clone(), t.clone()) {
+                    res
                 } else {
-                    Rc::new(SExp::Nil(loc.clone()))
-                };
+                    return None;
+                }
+            } else {
+                Rc::new(SExp::Nil(loc.clone()))
+            };
             for (_, v) in optimized_args.iter().rev() {
                 let unquoted = if let Ok(res) = dequote(loc.clone(), v.clone()) {
                     res
@@ -366,7 +365,7 @@ fn constant_fun_result(
                 ],
                 // The constructed call is proper because we're feeding something
                 // we constructed above.
-                None
+                None,
             );
 
             return Some(Rc::new(new_body));

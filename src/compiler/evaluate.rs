@@ -300,7 +300,7 @@ pub fn make_operator1(l: &Srcloc, op: String, arg: Rc<BodyForm>) -> BodyForm {
             Rc::new(BodyForm::Value(SExp::atom_from_string(l.clone(), &op))),
             arg,
         ],
-        None
+        None,
     )
 }
 
@@ -312,7 +312,7 @@ pub fn make_operator2(l: &Srcloc, op: String, arg1: Rc<BodyForm>, arg2: Rc<BodyF
             arg1,
             arg2,
         ],
-        None
+        None,
     )
 }
 
@@ -545,7 +545,7 @@ fn synthesize_args(
                         synthesize_args(f.clone(), env)?,
                         synthesize_args(r.clone(), env)?,
                     ],
-                    None
+                    None,
                 )))
             }
         }
@@ -663,7 +663,7 @@ fn choose_from_env_by_path(path_: Number, args_program: Rc<BodyForm>) -> Rc<Body
                     ))),
                     result_form,
                 ],
-                None
+                None,
             ));
         }
     }
@@ -764,7 +764,7 @@ struct CallSpec<'a> {
     name: &'a [u8],
     args: &'a [Rc<BodyForm>],
     tail: Option<Rc<BodyForm>>,
-    original: Rc<BodyForm>
+    original: Rc<BodyForm>,
 }
 
 impl<'info> Evaluator {
@@ -996,7 +996,8 @@ impl<'info> Evaluator {
                 prog_args,
             ))))
         } else if call.name == b"com" {
-            let use_body = self.make_com_module(&call.loc, prog_args, arguments_to_convert[0].to_sexp());
+            let use_body =
+                self.make_com_module(&call.loc, prog_args, arguments_to_convert[0].to_sexp());
             let compiled = self.compile_code(allocator, false, use_body)?;
             let compiled_borrowed: &SExp = compiled.borrow();
             Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
@@ -1021,7 +1022,8 @@ impl<'info> Evaluator {
                     all_primitive = false;
                 }
 
-                converted_args = SExp::Cons(call.loc.clone(), shrunk.to_sexp(), Rc::new(converted_args));
+                converted_args =
+                    SExp::Cons(call.loc.clone(), shrunk.to_sexp(), Rc::new(converted_args));
             }
 
             if all_primitive {
@@ -1034,7 +1036,11 @@ impl<'info> Evaluator {
                     Ok(res) => Ok(res),
                     Err(e) => {
                         if only_inline || self.ignore_exn {
-                            Ok(Rc::new(BodyForm::Call(call.loc.clone(), target_vec.clone(), None)))
+                            Ok(Rc::new(BodyForm::Call(
+                                call.loc.clone(),
+                                target_vec.clone(),
+                                None,
+                            )))
                         } else {
                             Err(e)
                         }
@@ -1057,7 +1063,8 @@ impl<'info> Evaluator {
                     only_inline,
                 )
             } else {
-                let reformed = BodyForm::Call(call.loc.clone(), target_vec.clone(), call.tail.clone());
+                let reformed =
+                    BodyForm::Call(call.loc.clone(), target_vec.clone(), call.tail.clone());
                 self.chase_apply(allocator, &mut visited, Rc::new(reformed))
             }
         } else {
@@ -1132,7 +1139,7 @@ impl<'info> Evaluator {
                 Rc::new(BodyForm::Call(
                     iftrue.loc(),
                     vec![apply_head.clone(), iftrue.clone(), env.clone()],
-                    None
+                    None,
                 )),
             );
 
@@ -1142,7 +1149,7 @@ impl<'info> Evaluator {
                 Rc::new(BodyForm::Call(
                     iffalse.loc(),
                     vec![apply_head, iffalse.clone(), env],
-                    None
+                    None,
                 )),
             );
 
@@ -1158,7 +1165,7 @@ impl<'info> Evaluator {
                     flatten_expression_to_names(surrogate_apply_true?.to_sexp()),
                     flatten_expression_to_names(surrogate_apply_false?.to_sexp()),
                 ],
-                None
+                None,
             ));
 
             return Ok(res);
@@ -1231,7 +1238,10 @@ impl<'info> Evaluator {
         match helper {
             Some(HelperForm::Defmacro(mac)) => {
                 if call.tail.is_some() {
-                    todo!();
+                    return Err(CompileErr(
+                        call.loc.clone(),
+                        "Macros cannot use runtime rest arguments".to_string(),
+                    ));
                 }
                 self.invoke_macro_expansion(
                     allocator,
@@ -1261,11 +1271,19 @@ impl<'info> Evaluator {
                             only_inline,
                         )?);
                     }
-                    return Ok(Rc::new(BodyForm::Call(call.loc.clone(), call_vec, call.tail.clone())));
+                    return Ok(Rc::new(BodyForm::Call(
+                        call.loc.clone(),
+                        call_vec,
+                        call.tail.clone(),
+                    )));
                 }
 
-                let argument_captures_untranslated =
-                    build_argument_captures(&call.loc, arguments_to_convert, call.tail.clone(), defun.args.clone())?;
+                let argument_captures_untranslated = build_argument_captures(
+                    &call.loc,
+                    arguments_to_convert,
+                    call.tail.clone(),
+                    defun.args.clone(),
+                )?;
 
                 let mut argument_captures = HashMap::new();
                 // Do this to protect against misalignment
@@ -1503,7 +1521,7 @@ impl<'info> Evaluator {
                     parts.iter().skip(1).cloned().collect();
 
                 match head_expr.borrow() {
-                    BodyForm::Value(SExp::Atom(call_loc, call_name)) => self.handle_invoke(
+                    BodyForm::Value(SExp::Atom(_call_loc, call_name)) => self.handle_invoke(
                         allocator,
                         &mut visited,
                         &CallSpec {
@@ -1518,7 +1536,7 @@ impl<'info> Evaluator {
                         env,
                         only_inline,
                     ),
-                    BodyForm::Value(SExp::Integer(call_loc, call_int)) => self.handle_invoke(
+                    BodyForm::Value(SExp::Integer(_call_loc, call_int)) => self.handle_invoke(
                         allocator,
                         &mut visited,
                         &CallSpec {
@@ -1526,7 +1544,7 @@ impl<'info> Evaluator {
                             name: &u8_from_number(call_int.clone()),
                             args: parts,
                             original: body.clone(),
-                            tail: None
+                            tail: None,
                         },
                         prog_args,
                         &arguments_to_convert,

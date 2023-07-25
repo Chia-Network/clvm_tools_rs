@@ -24,7 +24,7 @@ use crate::compiler::inline::{replace_in_inline, synthesize_args};
 use crate::compiler::lambda::lambda_codegen;
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::{decode_string, enlist, SExp};
+use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::StartOfCodegenOptimization;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
@@ -65,7 +65,7 @@ fn cons_bodyform(loc: Srcloc, left: Rc<BodyForm>, right: Rc<BodyForm>) -> BodyFo
             left,
             right,
         ],
-        None
+        None,
     )
 }
 
@@ -396,27 +396,22 @@ fn generate_args_code(
     if list.is_empty() && tail.is_none() {
         Ok(Rc::new(SExp::Nil(l)))
     } else {
-        let mut compiled_args: Rc<SExp> =
-            if let Some(t) = tail.as_ref() {
-                generate_expr_code(context, opts.clone(), compiler, t.clone())?.1
-            } else {
-                Rc::new(SExp::Nil(l.clone()))
-            };
+        let mut compiled_args: Rc<SExp> = if let Some(t) = tail.as_ref() {
+            generate_expr_code(context, opts.clone(), compiler, t.clone())?.1
+        } else {
+            Rc::new(SExp::Nil(l.clone()))
+        };
 
         for hd in list.iter().rev() {
-            let generated =
-                generate_expr_code(context, opts.clone(), compiler, hd.clone())?.1;
+            let generated = generate_expr_code(context, opts.clone(), compiler, hd.clone())?.1;
             if with_primcons {
-                compiled_args = Rc::new(primcons(
-                    generated.loc(),
-                    generated.clone(),
-                    compiled_args
-                ));
+                compiled_args =
+                    Rc::new(primcons(generated.loc(), generated.clone(), compiled_args));
             } else {
                 compiled_args = Rc::new(SExp::Cons(
                     generated.loc(),
                     generated.clone(),
-                    compiled_args
+                    compiled_args,
                 ));
             }
         }
@@ -466,7 +461,7 @@ fn compile_call(
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
     list: &[Rc<BodyForm>],
-    tail: Option<Rc<BodyForm>>
+    tail: Option<Rc<BodyForm>>,
 ) -> Result<CompiledCode, CompileErr> {
     let arg_string_list: Vec<Vec<u8>> = list
         .iter()
@@ -495,28 +490,28 @@ fn compile_call(
                 process_macro_call(context, opts.clone(), compiler, l, tl, Rc::new(code))
             }
 
-            Callable::CallInline(l, inline) => {
-                replace_in_inline(context, opts.clone(), compiler, l.clone(), &inline, l, &tl, tail)
-            }
+            Callable::CallInline(l, inline) => replace_in_inline(
+                context,
+                opts.clone(),
+                compiler,
+                l.clone(),
+                &inline,
+                l,
+                &tl,
+                tail,
+            ),
 
             Callable::CallDefun(l, lookup) => {
-                generate_args_code(context, opts.clone(), compiler, l.clone(), &tl, tail, true).and_then(
-                    |args| {
-                         process_defun_call(
-                            opts.clone(),
-                            compiler,
-                            l.clone(),
-                            args,
-                            Rc::new(lookup),
-                        )
-                    },
-                )
+                generate_args_code(context, opts.clone(), compiler, l.clone(), &tl, tail, true)
+                    .and_then(|args| {
+                        process_defun_call(opts.clone(), compiler, l.clone(), args, Rc::new(lookup))
+                    })
             }
 
-            Callable::CallPrim(l, p) => generate_args_code(context, opts, compiler, l.clone(), &tl, None, false)
-                .map(|args| {
-                    CompiledCode(l.clone(), Rc::new(SExp::Cons(l, Rc::new(p), args)))
-                }),
+            Callable::CallPrim(l, p) => {
+                generate_args_code(context, opts, compiler, l.clone(), &tl, None, false)
+                    .map(|args| CompiledCode(l.clone(), Rc::new(SExp::Cons(l, Rc::new(p), args))))
+            }
 
             Callable::EnvPath => {
                 if tl.len() == 1 {
@@ -1114,7 +1109,7 @@ pub fn hoist_body_let_binding(
                                 "@*env*".as_bytes().to_vec(),
                             ))),
                         ],
-                        None
+                        None,
                     )
                 });
 
@@ -1139,17 +1134,19 @@ pub fn hoist_body_let_binding(
                 new_call_list.push(new_arg);
                 vres.append(&mut new_helper.clone());
             }
-            let new_tail =
-                if let Some(t) = tail.as_ref() {
-                    let (new_helper, new_tail_elt) =
-                        hoist_body_let_binding(outer_context.clone(), args.clone(), t.clone())?;
-                    vres.append(&mut new_helper.clone());
-                    Some(new_tail_elt)
-                } else {
-                    None
-                };
+            let new_tail = if let Some(t) = tail.as_ref() {
+                let (new_helper, new_tail_elt) =
+                    hoist_body_let_binding(outer_context.clone(), args.clone(), t.clone())?;
+                vres.append(&mut new_helper.clone());
+                Some(new_tail_elt)
+            } else {
+                None
+            };
 
-            Ok((vres, Rc::new(BodyForm::Call(l.clone(), new_call_list, new_tail))))
+            Ok((
+                vres,
+                Rc::new(BodyForm::Call(l.clone(), new_call_list, new_tail)),
+            ))
         }
         BodyForm::Lambda(letdata) => {
             let new_function_args = Rc::new(SExp::Cons(
@@ -1416,8 +1413,7 @@ fn finalize_env_(
             }
 
             if let Some(res) = c.inlines.get(v) {
-                let (arg_list, arg_tail) =
-                    synthesize_args(res.args.clone());
+                let (arg_list, arg_tail) = synthesize_args(res.args.clone());
                 return replace_in_inline(
                     context,
                     opts.clone(),
@@ -1426,7 +1422,7 @@ fn finalize_env_(
                     res,
                     res.args.loc(),
                     &arg_list,
-                    arg_tail
+                    arg_tail,
                 )
                 .map(|x| x.1);
             }

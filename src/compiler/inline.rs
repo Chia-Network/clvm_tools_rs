@@ -66,15 +66,22 @@ pub fn synthesize_args(arg_: Rc<SExp>) -> (Vec<Rc<BodyForm>>, Option<Rc<BodyForm
     }
 }
 
-fn enlist_remaining_args(loc: Srcloc, arg_choice: usize, args: &[Rc<BodyForm>], tail: Option<Rc<BodyForm>>) -> Rc<BodyForm> {
-    let mut result_body =
-        tail.unwrap_or_else(|| Rc::new(BodyForm::Value(SExp::Nil(loc.clone()))));
+fn enlist_remaining_args(
+    loc: Srcloc,
+    arg_choice: usize,
+    args: &[Rc<BodyForm>],
+    tail: Option<Rc<BodyForm>>,
+) -> Rc<BodyForm> {
+    let mut result_body = tail.unwrap_or_else(|| Rc::new(BodyForm::Value(SExp::Nil(loc.clone()))));
 
-    for (i, arg) in args.iter().enumerate().skip(arg_choice).rev() {
+    for arg in args.iter().skip(arg_choice).rev() {
         result_body = Rc::new(BodyForm::Call(
             loc.clone(),
             vec![
-                Rc::new(BodyForm::Value(SExp::Integer(loc.clone(), 4_u32.to_bigint().unwrap()))),
+                Rc::new(BodyForm::Value(SExp::Integer(
+                    loc.clone(),
+                    4_u32.to_bigint().unwrap(),
+                ))),
                 arg.clone(),
                 result_body,
             ],
@@ -135,23 +142,27 @@ fn choose_arg_from_list_or_tail(
     callsite: &Srcloc,
     args: &[Rc<BodyForm>],
     tail: Option<Rc<BodyForm>>,
-    index: usize
+    index: usize,
 ) -> Result<Rc<BodyForm>, CompileErr> {
     let two = 2_i32.to_bigint().unwrap();
 
     if index >= args.len() {
         if let Some(t) = tail {
             let target_shift = index - args.len();
-            let target_path = (two.clone() << target_shift) | (((two << target_shift) - bi_one()) >> 2);
+            let target_path =
+                (two.clone() << target_shift) | (((two << target_shift) - bi_one()) >> 2);
             return Ok(Rc::new(BodyForm::Call(
                 callsite.clone(),
                 vec![
-                    Rc::new(BodyForm::Value(SExp::Integer(t.loc(), 2_u32.to_bigint().unwrap()))),
+                    Rc::new(BodyForm::Value(SExp::Integer(
+                        t.loc(),
+                        2_u32.to_bigint().unwrap(),
+                    ))),
                     Rc::new(BodyForm::Value(SExp::Integer(t.loc(), target_path))),
-                    t.clone()
+                    t.clone(),
                 ],
                 // Applying a primitive.
-                None
+                None,
             )));
         }
 
@@ -200,15 +211,14 @@ fn arg_lookup(
                             vec![
                                 Rc::new(BodyForm::Value(SExp::Integer(t.loc(), two.clone()))),
                                 Rc::new(BodyForm::Value(SExp::Integer(t.loc(), tail_path))),
-                                t.clone()
+                                t.clone(),
                             ],
-                            None
+                            None,
                         ))
                     });
                 }
 
-                let tail_list =
-                    enlist_remaining_args(match_args.loc(), arg_choice, args, tail);
+                let tail_list = enlist_remaining_args(match_args.loc(), arg_choice, args, tail);
                 return Ok(pick_value_from_arg_element(
                     match_args.clone(),
                     tail_list,
@@ -241,7 +251,7 @@ fn make_args_for_call_from_inline(
     tail: Option<Rc<BodyForm>>,
     callsite: Srcloc,
     call_args: &[Rc<BodyForm>],
-    call_tail: Option<Rc<BodyForm>>
+    call_tail: Option<Rc<BodyForm>>,
 ) -> Result<(Vec<Rc<BodyForm>>, Option<Rc<BodyForm>>), CompileErr> {
     if call_args.len() == 0 {
         // This is a nil.
@@ -273,23 +283,22 @@ fn make_args_for_call_from_inline(
     }
 
     let mut new_visited = visited_inlines.clone();
-    let replaced_tail =
-        if let Some(t) = call_tail {
-            Some(replace_inline_body(
-                &mut new_visited,
-                runner,
-                opts,
-                compiler,
-                t.loc(),
-                inline,
-                args,
-                tail,
-                callsite.clone(),
-                t.clone(),
-            )?)
-        } else {
-            None
-        };
+    let replaced_tail = if let Some(t) = call_tail {
+        Some(replace_inline_body(
+            &mut new_visited,
+            runner,
+            opts,
+            compiler,
+            t.loc(),
+            inline,
+            args,
+            tail,
+            callsite.clone(),
+            t.clone(),
+        )?)
+    } else {
+        None
+    };
     Ok((new_args, replaced_tail))
 }
 
@@ -335,19 +344,18 @@ fn replace_inline_body(
             // Recursion only happens when the same stack encounters an inline
             // twice.
             //
-            let (new_args, replaced_tail) =
-                make_args_for_call_from_inline(
-                    visited_inlines,
-                    runner.clone(),
-                    opts.clone(),
-                    compiler,
-                    inline,
-                    args,
-                    tail.clone(),
-                    callsite.clone(),
-                    &call_args,
-                    call_tail.clone()
-                )?;
+            let (new_args, replaced_tail) = make_args_for_call_from_inline(
+                visited_inlines,
+                runner.clone(),
+                opts.clone(),
+                compiler,
+                inline,
+                args,
+                tail.clone(),
+                callsite.clone(),
+                &call_args,
+                call_tail.clone(),
+            )?;
 
             // If the called function is an inline, we'll expand it here.
             // This is so we can preserve the context of argument expressions
@@ -473,7 +481,7 @@ pub fn replace_in_inline(
     inline: &InlineFunction,
     callsite: Srcloc,
     args: &[Rc<BodyForm>],
-    tail: Option<Rc<BodyForm>>
+    tail: Option<Rc<BodyForm>>,
 ) -> Result<CompiledCode, CompileErr> {
     let mut visited = HashSet::new();
     visited.insert(inline.name.clone());
