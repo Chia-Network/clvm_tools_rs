@@ -141,7 +141,7 @@ impl Display for SExp {
                 } else {
                     let vlen = s.len() * 2;
                     let mut outbuf = vec![0; vlen];
-                    bin2hex(s, &mut outbuf).map_err(|_e| std::fmt::Error::default())?;
+                    bin2hex(s, &mut outbuf).map_err(|_e| std::fmt::Error)?;
                     formatter.write_str("0x")?;
                     formatter.write_str(
                         std::str::from_utf8(&outbuf).expect("only hex digits expected"),
@@ -779,7 +779,7 @@ where
     for this_char in s {
         let next_location = start.clone().advance(this_char);
 
-        match parse_sexp_step(start.clone(), parse_state.borrow(), this_char) {
+        match parse_sexp_step(start.clone(), &parse_state, this_char) {
             SExpParseResult::Error(l, e) => {
                 return Err((l, e));
             }

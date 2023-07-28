@@ -762,7 +762,7 @@ pub fn frontend(
             "mod must end on an expression".to_string(),
         )),
         Some(v) => {
-            let compiled_val: &CompileForm = v.borrow();
+            let compiled_val: &CompileForm = &v;
             Ok(compiled_val.clone())
         }
     };

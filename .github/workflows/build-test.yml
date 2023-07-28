@@ -47,6 +47,8 @@ jobs:
 
     - name: Build MacOs with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'macos')
+      env:
+        MACOSX_DEPLOYMENT_TARGET: '10.14'
       run: |
         python -m venv venv
         ln -s venv/bin/activate
@@ -56,12 +58,10 @@ jobs:
     - name: Build Linux in manylinux2010 with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'ubuntu')
       run: |
-        podman run --rm=true \
-          -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
-          quay.io/pypa/manylinux2010_x86_64 \
+        docker run --rm \
+          -v ${{ github.workspace }}:/ws --workdir=/ws \
+          ghcr.io/chia-network/build-images/centos-pypa-rust-x86_64 \
           bash -exc '\
-            curl -L https://sh.rustup.rs > rustup-init.sh && \
-            sh rustup-init.sh -y && \
             yum -y install libc6 openssl-devel && \
             source $HOME/.cargo/env && \
             rustup target add x86_64-unknown-linux-musl && \
@@ -79,7 +79,7 @@ jobs:
             . ./activate && \
             pip install --upgrade pip
           '
-        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v0.13.1 build --release --strip --manylinux 2010
+        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.1.0 build --release --strip --manylinux 2014
         # Refresh in case any ownerships changed.
         mv target target.docker && cp -r target.docker target
         # Ensure an empty .cargo-lock file exists.
@@ -128,8 +128,10 @@ jobs:
         pip install clvm_rs
 
         echo "installing clvm_tools for clvm tests"
-        # clvm tools is required to run the tests is clvm
-        python -m pip install clvm_tools
+
+        # Ensure clvm_tools is installed from its own repo.
+        git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
+        python -m pip install ./clvm_tools
 
     - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed
       run: |
@@ -175,11 +177,27 @@ jobs:
         python support/wheelname.py
         (cd resources/tests && python check-recompiles.py)
 
+    - name: Verify recompilation follows date and modification rules
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      run: |
+        python support/wheelname.py
+        python resources/tests/test-clvm-recompile-behavior.py
+
+    - name: Install pytest
+      run: |
+        . ./activate
+        pip install pytest pytest-asyncio
+
     - name: Run tests from clvm
       run: |
         . ./activate
         cd clvm
-        pip install pytest pytest-asyncio
+        pytest tests
+
+    - name: Run tests from clvm_tools
+      run: |
+        . ./activate
+        cd clvm_tools
         pytest tests
 
     - name: Run tests
@@ -207,10 +225,17 @@ jobs:
       shell: bash
       run: |
         unset HAS_SECRET
+        unset HAS_AWS_SECRET
+
         if [ -n "$SECRET" ]; then HAS_SECRET='true' ; fi
         echo "HAS_SECRET=${HAS_SECRET}" >>$GITHUB_OUTPUT
+
+        if [ -n "$AWS_SECRET" ]; then HAS_AWS_SECRET='true' ; fi
+        echo HAS_AWS_SECRET=${HAS_AWS_SECRET} >>$GITHUB_OUTPUT
+
       env:
         SECRET: "${{ secrets.test_pypi_password }}"
+        AWS_SECRET: "${{ secrets.INSTALLER_UPLOAD_KEY }}"
 
     - name: publish (PyPi)
       if: startsWith(github.event.ref, 'refs/tags') && steps.check_secrets.outputs.HAS_SECRET
@@ -228,6 +253,21 @@ jobs:
         TWINE_NON_INTERACTIVE: 1
         TWINE_PASSWORD: ${{ secrets.test_pypi_password }}
       run: twine upload --non-interactive --skip-existing --verbose 'target/wheels/*'
+
+    - name: Publish Dev
+      if: steps.check_secrets.outputs.HAS_AWS_SECRET && github.ref == 'refs/heads/dev'
+      shell: bash
+      working-directory: ./target/wheels
+      env:
+        AWS_ACCESS_KEY_ID: "${{ secrets.INSTALLER_UPLOAD_KEY }}"
+        AWS_SECRET_ACCESS_KEY: "${{ secrets.INSTALLER_UPLOAD_SECRET }}"
+        AWS_REGION: us-west-2
+      run: |
+        FILES=$(find . -type f -name '*.whl')
+        while IFS= read -r file; do
+          filename=$(basename $file)
+          aws --no-progress s3 cp "$file" "s3://download.chia.net/simple-dev/clvm-tools-rs/$filename"
+        done <<< "$FILES"
 
   fmt:
     runs-on: ubuntu-20.04
@@ -276,3 +316,21 @@ jobs:
       - name: cargo test
         run: cargo test
 
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: nightly
+      - name: Install tarpaulin
+        run: cargo +nightly install cargo-tarpaulin
+      - name: Run tarpaulin
+        run: cargo tarpaulin --no-dead-code --engine llvm --workspace --all-features --ignore-panics --out Lcov
+      - name: Upload to Coveralls
+        uses: coverallsapp/github-action@v2
+        if: always()
+        env:
+          COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
+        with:
+          path-to-lcov: './lcov.info'

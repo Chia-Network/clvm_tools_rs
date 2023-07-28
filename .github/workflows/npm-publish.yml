@@ -30,7 +30,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: install wasm-pack
-        run: cargo install wasm-pack
+        run: cargo install --version 0.11.1 wasm-pack
 
       - name: wasm-pack build and pack
         run: wasm-pack build --release --target=nodejs wasm && wasm-pack pack wasm

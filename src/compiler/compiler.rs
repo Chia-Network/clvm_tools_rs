@@ -472,7 +472,7 @@ pub fn extract_program_and_env(program: Rc<SExp>) -> Option<(Rc<SExp>, Rc<SExp>)
                 return None;
             }
 
-            match (is_apply(&lst[0]), lst[1].borrow(), lst[2].proper_list()) {
+            match (is_apply(&lst[0]), &lst[1], lst[2].proper_list()) {
                 (true, real_program, Some(cexp)) => {
                     if cexp.len() != 3 || !is_cons(&cexp[0]) || !is_whole_env(&cexp[2]) {
                         None
@@ -492,7 +492,7 @@ pub fn is_at_capture(head: Rc<SExp>, rest: Rc<SExp>) -> Option<(Vec<u8>, Rc<SExp
         if l.len() != 2 {
             return None;
         }
-        if let (SExp::Atom(_, a), SExp::Atom(_, cap)) = (head.borrow(), l[0].borrow()) {
+        if let (SExp::Atom(_, a), SExp::Atom(_, cap)) = (head.borrow(), &l[0]) {
             if a == &vec![b'@'] {
                 return Some((cap.clone(), Rc::new(l[1].clone())));
             }
