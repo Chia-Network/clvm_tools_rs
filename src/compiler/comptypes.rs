@@ -231,8 +231,11 @@ pub enum HelperForm {
 /// To what purpose is the file included.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum IncludeProcessType {
+    /// Include the bytes on disk as an atom.
     Bin,
+    /// Parse the hex on disk and present it as a clvm value.
     Hex,
+    /// Read clvm in s-expression form as a clvm value.
     SExpression,
 }
 
