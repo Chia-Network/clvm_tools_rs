@@ -164,6 +164,10 @@ fn process_pp_form(
                     }
                 }
 
+                // Accepted forms:
+                // (embed-file varname bin file.dat)
+                // (embed-file varname sexp file.clvm)
+                // (embed-file varname hex file.hex)
                 [SExp::Atom(kl, embed_file), SExp::Atom(_, name), SExp::Atom(_, kind), SExp::Atom(nl, fname)] => {
                     if embed_file == b"embed-file" {
                         if kind == b"hex" {
