@@ -34,10 +34,10 @@ fn include_dialect(
     e: &[NodePtr],
 ) -> Option<i32> {
     // Propogated names from let capture to labeled nodes.
-    let inc_node = e[0];
+    let include_keyword_node = e[0];
     let name_node = e[1];
-    if let (SExp::Atom(), SExp::Atom()) = (allocator.sexp(inc_node), allocator.sexp(name_node)) {
-        if allocator.atom(inc_node) == "include".as_bytes().to_vec() {
+    if let (SExp::Atom(), SExp::Atom()) = (allocator.sexp(include_keyword_node), allocator.sexp(name_node)) {
+        if allocator.atom(include_keyword_node) == "include".as_bytes().to_vec() {
             if let Some(dialect) = dialects.get(allocator.atom(name_node)) {
                 return Some(*dialect);
             }
