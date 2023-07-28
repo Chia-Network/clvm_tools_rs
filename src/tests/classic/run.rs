@@ -577,10 +577,10 @@ fn test_embed_file_5() {
     ])
     .trim()
     .to_string();
-    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+    let run_result = do_basic_brun(&vec!["brun".to_string(), "-n".to_string(), program, "()".to_string()])
         .trim()
         .to_string();
-    assert_eq!(run_result, "(lsh 24 25)");
+    assert_eq!(run_result, "(23 24 25)");
 }
 
 #[test]
