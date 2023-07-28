@@ -305,7 +305,7 @@ impl ArgumentValueConv for OperatorsVersion {
     fn convert(&self, arg: &str) -> Result<ArgumentValue, String> {
         let ver = arg
             .parse::<i64>()
-            .map_err(|_| format!("expected number 0-1 found {arg}"))?;
+            .map_err(|_| format!("expected number 0-{OPERATORS_LATEST_VERSION} but found {arg}"))?;
         Ok(ArgumentValue::ArgInt(ver))
     }
 }
