@@ -36,7 +36,10 @@ fn include_dialect(
     // Propogated names from let capture to labeled nodes.
     let include_keyword_node = e[0];
     let name_node = e[1];
-    if let (SExp::Atom(), SExp::Atom()) = (allocator.sexp(include_keyword_node), allocator.sexp(name_node)) {
+    if let (SExp::Atom(), SExp::Atom()) = (
+        allocator.sexp(include_keyword_node),
+        allocator.sexp(name_node),
+    ) {
         if allocator.atom(include_keyword_node) == "include".as_bytes().to_vec() {
             if let Some(dialect) = dialects.get(allocator.atom(name_node)) {
                 return Some(*dialect);
