@@ -328,6 +328,7 @@ impl Dialect for CompilerOperatorsInternal {
     fn quote_kw(&self) -> &[u8] {
         &[1]
     }
+
     fn apply_kw(&self) -> &[u8] {
         &[2]
     }

@@ -6,7 +6,6 @@ on:
     branches:
       - base
       - dev
-      - nightly
     tags:
         - '**'
   pull_request:
@@ -59,8 +58,8 @@ jobs:
     - name: Build Linux in manylinux2010 with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'ubuntu')
       run: |
-        podman run --rm=true \
-          -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
+        docker run --rm \
+          -v ${{ github.workspace }}:/ws --workdir=/ws \
           ghcr.io/chia-network/build-images/centos-pypa-rust-x86_64 \
           bash -exc '\
             yum -y install libc6 openssl-devel && \
@@ -129,8 +128,10 @@ jobs:
         pip install clvm_rs
 
         echo "installing clvm_tools for clvm tests"
-        # clvm tools is required to run the tests is clvm
-        python -m pip install clvm_tools
+
+        # Ensure clvm_tools is installed from its own repo.
+        git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
+        python -m pip install ./clvm_tools
 
     - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed
       run: |
@@ -181,12 +182,22 @@ jobs:
       run: |
         python support/wheelname.py
         python resources/tests/test-clvm-recompile-behavior.py
-        
+
+    - name: Install pytest
+      run: |
+        . ./activate
+        pip install pytest pytest-asyncio
+
     - name: Run tests from clvm
       run: |
         . ./activate
         cd clvm
-        pip install pytest pytest-asyncio
+        pytest tests
+
+    - name: Run tests from clvm_tools
+      run: |
+        . ./activate
+        cd clvm_tools
         pytest tests
 
     - name: Run tests
@@ -243,8 +254,8 @@ jobs:
         TWINE_PASSWORD: ${{ secrets.test_pypi_password }}
       run: twine upload --non-interactive --skip-existing --verbose 'target/wheels/*'
 
-    - name: Publish Nightlies
-      if: steps.check_secrets.outputs.HAS_AWS_SECRET && github.ref == 'refs/heads/nightly'
+    - name: Publish Dev
+      if: steps.check_secrets.outputs.HAS_AWS_SECRET && github.ref == 'refs/heads/dev'
       shell: bash
       working-directory: ./target/wheels
       env:
@@ -255,7 +266,7 @@ jobs:
         FILES=$(find . -type f -name '*.whl')
         while IFS= read -r file; do
           filename=$(basename $file)
-          aws --no-progress s3 cp "$file" "s3://download.chia.net/nightlies/clvm-tools-rs/$filename"
+          aws --no-progress s3 cp "$file" "s3://download.chia.net/simple-dev/clvm-tools-rs/$filename"
         done <<< "$FILES"
 
   fmt:
