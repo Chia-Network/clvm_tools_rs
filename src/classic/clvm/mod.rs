@@ -8,6 +8,10 @@ pub mod serialize;
 pub mod sexp;
 pub mod syntax_error;
 
+/// This specifies the latest "version" of the operator set.  This will increase
+/// each time a new set of operators is included in the primitive set in clvm.
+/// We keep track of what was added when so users can specify what version of the
+/// tools' output they're expecting when it matters.
 pub const OPERATORS_LATEST_VERSION: usize = 1;
 
 struct KwAtomPair {
