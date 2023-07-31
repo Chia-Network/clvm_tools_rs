@@ -57,7 +57,7 @@ js-sys = "0.3.58"
 getrandom = { version = "0.2", features = ["js"] }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
-pyo3 = { version = "0.14.2", features = ["abi3-py37", "extension-module"], optional = true }
+pyo3 = { version = "0.14.2", features = ["abi3-py38", "extension-module"], optional = true }
 getrandom = { version = "0.2" }
 
 [build-dependencies]
