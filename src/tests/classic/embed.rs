@@ -40,18 +40,16 @@ fn test_embed_exhaustive() {
     for exists in 0..=1 {
         for (include_kind, include_file, want_hash) in include_list.iter() {
             for modern in 0..=1 {
-                let modern_sigil =
-                    if modern > 0 {
-                        "(include *standard-cl-21*)"
-                    } else {
-                        ""
-                    };
-                let filename =
-                    if exists > 0 {
-                        include_file
-                    } else {
-                        EMBED_NOT_EXIST
-                    };
+                let modern_sigil = if modern > 0 {
+                    "(include *standard-cl-21*)"
+                } else {
+                    ""
+                };
+                let filename = if exists > 0 {
+                    include_file
+                } else {
+                    EMBED_NOT_EXIST
+                };
 
                 let program = format!("(mod () {modern_sigil} (include sha256tree.clib) (embed-file embedded-data {include_kind} {filename}) (sha256tree embedded-data))");
                 let compiled = do_basic_run(&vec![
@@ -62,11 +60,10 @@ fn test_embed_exhaustive() {
                 ]);
 
                 if exists > 0 {
-                    let output = do_basic_brun(&vec![
-                        "brun".to_string(),
-                        compiled,
-                        "()".to_string()
-                    ]).trim().to_string();
+                    let output =
+                        do_basic_brun(&vec!["brun".to_string(), compiled, "()".to_string()])
+                            .trim()
+                            .to_string();
                     assert_eq!(want_hash, &output);
                 } else {
                     if modern > 0 {
