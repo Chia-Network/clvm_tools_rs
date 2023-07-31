@@ -64,6 +64,7 @@ fn cons_bodyform(loc: Srcloc, left: Rc<BodyForm>, right: Rc<BodyForm>) -> BodyFo
             left,
             right,
         ],
+        None,
     )
 }
 
@@ -329,7 +330,7 @@ fn process_defun_call(
     let env = primcons(
         l.clone(),
         Rc::new(SExp::Integer(l.clone(), 2_u32.to_bigint().unwrap())),
-        cons_up(args),
+        args,
     );
     Ok(CompiledCode(
         l.clone(),
@@ -360,7 +361,8 @@ fn compile_call(
     l: Srcloc,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
-    list: Vec<Rc<BodyForm>>,
+    list: &[Rc<BodyForm>],
+    tail: Option<Rc<BodyForm>>,
 ) -> Result<CompiledCode, CompileErr> {
     let arg_string_list: Vec<Vec<u8>> = list
         .iter()
@@ -403,6 +405,7 @@ fn compile_call(
                 &inline,
                 l,
                 &tl,
+                tail.clone()
             ),
 
             Callable::CallDefun(l, lookup) => {
@@ -559,14 +562,14 @@ pub fn generate_expr_code(
                 )),
             }
         }
-        BodyForm::Call(l, list) => {
+        BodyForm::Call(l, list, tail) => {
             if list.is_empty() {
                 Err(CompileErr(
                     l.clone(),
                     "created a call with no forms".to_string(),
                 ))
             } else {
-                compile_call(allocator, runner, l.clone(), opts, compiler, list.to_vec())
+                compile_call(allocator, runner, l.clone(), opts, compiler, &list, tail.clone())
             }
         }
         BodyForm::Mod(_, program) => {
@@ -857,6 +860,7 @@ pub fn hoist_body_let_binding(
                                 "@".as_bytes().to_vec(),
                             ))),
                         ],
+                        None,
                     )
                 });
 
@@ -866,19 +870,28 @@ pub fn hoist_body_let_binding(
             ];
             call_args.append(&mut let_args);
 
-            let final_call = BodyForm::Call(letdata.loc.clone(), call_args);
+            // Calling desugared let so we decide what the tail looks like.
+            let final_call = BodyForm::Call(letdata.loc.clone(), call_args, None);
             (out_defuns, Rc::new(final_call))
         }
-        BodyForm::Call(l, list) => {
+        BodyForm::Call(l, list, tail) => {
             let mut vres = Vec::new();
             let mut new_call_list = vec![list[0].clone()];
             for i in list.iter().skip(1) {
-                let (new_helper, new_arg) =
+                let (mut new_helpers, new_arg) =
                     hoist_body_let_binding(outer_context.clone(), args.clone(), i.clone());
                 new_call_list.push(new_arg);
-                vres.append(&mut new_helper.clone());
+                vres.append(&mut new_helpers);
             }
-            (vres, Rc::new(BodyForm::Call(l.clone(), new_call_list)))
+
+            let new_tail = tail.as_ref().map(|t| {
+                let (mut new_tail_helpers, new_tail) =
+                    hoist_body_let_binding(outer_context.clone(), args.clone(), t.clone());
+                vres.append(&mut new_tail_helpers);
+                new_tail
+            });
+
+            (vres, Rc::new(BodyForm::Call(l.clone(), new_call_list, new_tail)))
         }
         _ => (Vec::new(), body.clone()),
     }
@@ -1119,17 +1132,21 @@ fn finalize_env_(
                 Some(res) => Ok(res.code.clone()),
                 None => {
                     match c.inlines.get(v) {
-                        Some(res) => replace_in_inline(
-                            allocator,
-                            runner.clone(),
-                            opts.clone(),
-                            c,
-                            l.clone(),
-                            res,
-                            res.args.loc(),
-                            &synthesize_args(res.args.clone()),
-                        )
-                        .map(|x| x.1),
+                        Some(res) => {
+                            let (arg_list, arg_tail) = synthesize_args(res.args.clone());
+                            return replace_in_inline(
+                                allocator,
+                                runner.clone(),
+                                opts.clone(),
+                                c,
+                                l.clone(),
+                                res,
+                                res.args.loc(),
+                                &arg_list,
+                                arg_tail,
+                            )
+                                .map(|x| x.1);
+                        }
                         None => {
                             /* Parentfns are functions in progress in the parent */
                             if c.parentfns.get(v).is_some() {
