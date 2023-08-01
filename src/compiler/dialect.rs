@@ -86,9 +86,14 @@ lazy_static! {
 }
 
 fn include_dialect(allocator: &mut Allocator, e: &[NodePtr]) -> Option<AcceptedDialect> {
-    if let (SExp::Atom(inc), SExp::Atom(name)) = (allocator.sexp(e[0]), allocator.sexp(e[1])) {
-        if allocator.buf(&inc) == "include".as_bytes().to_vec() {
-            if let Some(dialect) = KNOWN_DIALECTS.get(&decode_string(allocator.buf(&name))) {
+    let include_keyword_sexp = e[0];
+    let name_sexp = e[1];
+    if let (SExp::Atom(), SExp::Atom()) = (
+        allocator.sexp(include_keyword_sexp),
+        allocator.sexp(name_sexp),
+    ) {
+        if allocator.atom(include_keyword_sexp) == "include".as_bytes().to_vec() {
+            if let Some(dialect) = KNOWN_DIALECTS.get(&decode_string(allocator.atom(name_sexp))) {
                 return Some(dialect.accepted.clone());
             }
         }
