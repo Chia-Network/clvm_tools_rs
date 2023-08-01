@@ -896,8 +896,8 @@ fn test_repl_10() {
             "(defun F (A B C) (list A B C))",
             "(F 5 7 &rest (list 101 103))"
         ])
-            .unwrap()
-            .unwrap(),
+        .unwrap()
+        .unwrap(),
         "(q 5 7 101)"
     );
 }
@@ -943,8 +943,8 @@ fn test_repl_tail_let() {
             "(defun F (A B C D) (list A B C D))",
             "(F 5 7 &rest (let ((Q (list 101 103))) (c 99 Q)))"
         ])
-            .unwrap()
-            .unwrap(),
+        .unwrap()
+        .unwrap(),
         "(q 5 7 99 101)"
     );
 }
