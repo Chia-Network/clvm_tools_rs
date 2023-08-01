@@ -1210,7 +1210,7 @@ fn test_inline_in_assign_not_actually_recursive() {
 fn test_simple_rest_call_0() {
     let prog = indoc! {"
 (mod X
-  (include *standard-cl-23*)
+  (include *standard-cl-21*)
 
   (defun F Xs
     (if Xs
@@ -1230,7 +1230,7 @@ fn test_simple_rest_call_0() {
 fn test_simple_rest_call_inline() {
     let prog = indoc! {"
 (mod X
-  (include *standard-cl-23*)
+  (include *standard-cl-21*)
 
   (defun sum (Xs)
     (if Xs

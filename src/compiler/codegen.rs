@@ -13,7 +13,7 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{is_at_capture, run_optimizer};
 use crate::compiler::comptypes::{
-    fold_m, join_vecs_to_string, list_to_cons, Binding, BodyForm, Callable, CompileErr,
+    fold_m, join_vecs_to_string, list_to_cons, Binding, BodyForm, CallSpec, Callable, CompileErr,
     CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall, DefunData, HelperForm,
     InlineFunction, LetData, LetFormKind, PrimaryCodegen,
 };
@@ -291,32 +291,39 @@ fn generate_args_code(
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
-    l: Srcloc,
-    list: &[Rc<BodyForm>],
-) -> Result<SExp, CompileErr> {
-    if list.is_empty() {
-        Ok(SExp::Nil(l))
+    call: &CallSpec,
+    with_primcons: bool,
+) -> Result<Rc<SExp>, CompileErr> {
+    if call.args.is_empty() && call.tail.is_none() {
+        Ok(Rc::new(SExp::Nil(call.loc.clone())))
     } else {
-        let mut compiled_args: Vec<Rc<SExp>> = Vec::new();
-        for hd in list.iter() {
+        let mut compiled_args: Rc<SExp> = if let Some(t) = call.tail.as_ref() {
+            generate_expr_code(allocator, runner.clone(), opts.clone(), compiler, t.clone())?.1
+        } else {
+            Rc::new(SExp::Nil(call.loc.clone()))
+        };
+
+        for hd in call.args.iter().rev() {
             let generated = generate_expr_code(
                 allocator,
                 runner.clone(),
                 opts.clone(),
                 compiler,
                 hd.clone(),
-            )
-            .map(|x| x.1)?;
-            compiled_args.push(generated);
+            )?
+            .1;
+            if with_primcons {
+                compiled_args =
+                    Rc::new(primcons(generated.loc(), generated.clone(), compiled_args));
+            } else {
+                compiled_args = Rc::new(SExp::Cons(
+                    generated.loc(),
+                    generated.clone(),
+                    compiled_args,
+                ));
+            }
         }
-        Ok(list_to_cons(l, &compiled_args))
-    }
-}
-
-fn cons_up(at: Rc<SExp>) -> Rc<SExp> {
-    match at.borrow() {
-        SExp::Cons(l, h, r) => Rc::new(primcons(l.clone(), h.clone(), cons_up(r.clone()))),
-        _ => at,
+        Ok(compiled_args)
     }
 }
 
@@ -405,27 +412,42 @@ fn compile_call(
                 &inline,
                 l,
                 &tl,
-                tail.clone()
+                tail,
             ),
 
-            Callable::CallDefun(l, lookup) => {
-                generate_args_code(allocator, runner, opts.clone(), compiler, l.clone(), &tl)
-                    .and_then(|args| {
-                        process_defun_call(
-                            opts.clone(),
-                            compiler,
-                            l.clone(),
-                            Rc::new(args),
-                            Rc::new(lookup),
-                        )
-                    })
-            }
+            Callable::CallDefun(l, lookup) => generate_args_code(
+                allocator,
+                runner,
+                opts.clone(),
+                compiler,
+                &CallSpec {
+                    loc: l.clone(),
+                    name: an,
+                    args: &tl,
+                    tail,
+                    original: Rc::new(BodyForm::Value(SExp::Nil(l.clone()))),
+                },
+                true,
+            )
+            .and_then(|args| {
+                process_defun_call(opts.clone(), compiler, l.clone(), args, Rc::new(lookup))
+            }),
 
-            Callable::CallPrim(l, p) => {
-                generate_args_code(allocator, runner, opts, compiler, l.clone(), &tl).map(|args| {
-                    CompiledCode(l.clone(), Rc::new(SExp::Cons(l, Rc::new(p), Rc::new(args))))
-                })
-            }
+            Callable::CallPrim(l, p) => generate_args_code(
+                allocator,
+                runner.clone(),
+                opts,
+                compiler,
+                &CallSpec {
+                    loc: l.clone(),
+                    name: an,
+                    args: &tl,
+                    tail: None,
+                    original: Rc::new(BodyForm::Value(SExp::Nil(l.clone()))),
+                },
+                false,
+            )
+            .map(|args| CompiledCode(l.clone(), Rc::new(SExp::Cons(l, Rc::new(p), args)))),
 
             Callable::EnvPath => {
                 if tl.len() == 1 {
@@ -569,7 +591,15 @@ pub fn generate_expr_code(
                     "created a call with no forms".to_string(),
                 ))
             } else {
-                compile_call(allocator, runner, l.clone(), opts, compiler, &list, tail.clone())
+                compile_call(
+                    allocator,
+                    runner,
+                    l.clone(),
+                    opts,
+                    compiler,
+                    list,
+                    tail.clone(),
+                )
             }
         }
         BodyForm::Mod(_, program) => {
@@ -891,7 +921,10 @@ pub fn hoist_body_let_binding(
                 new_tail
             });
 
-            (vres, Rc::new(BodyForm::Call(l.clone(), new_call_list, new_tail)))
+            (
+                vres,
+                Rc::new(BodyForm::Call(l.clone(), new_call_list, new_tail)),
+            )
         }
         _ => (Vec::new(), body.clone()),
     }
@@ -1134,7 +1167,7 @@ fn finalize_env_(
                     match c.inlines.get(v) {
                         Some(res) => {
                             let (arg_list, arg_tail) = synthesize_args(res.args.clone());
-                            return replace_in_inline(
+                            replace_in_inline(
                                 allocator,
                                 runner.clone(),
                                 opts.clone(),
@@ -1145,7 +1178,7 @@ fn finalize_env_(
                                 &arg_list,
                                 arg_tail,
                             )
-                                .map(|x| x.1);
+                            .map(|x| x.1)
                         }
                         None => {
                             /* Parentfns are functions in progress in the parent */

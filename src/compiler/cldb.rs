@@ -157,6 +157,7 @@ impl CldbRun {
 
         match &new_step {
             Ok(RunStep::OpResult(l, x, _p)) => {
+                eprintln!("OpResult {x}");
                 if self.in_expr {
                     self.to_print
                         .insert("Result-Location".to_string(), l.to_string());

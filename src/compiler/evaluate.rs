@@ -13,7 +13,8 @@ use crate::compiler::clvm::run;
 use crate::compiler::codegen::codegen;
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
-    ArgsAndTail, Binding, BodyForm, CallSpec, CompileErr, CompileForm, CompilerOpts, HelperForm, LetData, LetFormKind,
+    Binding, BodyForm, CallSpec, CompileErr, CompileForm, CompilerOpts, HelperForm, LetData,
+    LetFormKind,
 };
 use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
@@ -710,7 +711,7 @@ impl<'info> Evaluator {
             Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
         } else {
             let pres = self
-                .lookup_prim(call.loc.clone(), &call.name)
+                .lookup_prim(call.loc.clone(), call.name)
                 .map(|prim| {
                     // Reduce all arguments.
                     let mut converted_args = SExp::Nil(call.loc.clone());
@@ -746,7 +747,11 @@ impl<'info> Evaluator {
                             Ok(res) => Ok(res),
                             Err(e) => {
                                 if only_inline || self.ignore_exn {
-                                    Ok(Rc::new(BodyForm::Call(call.loc.clone(), target_vec.clone(), None)))
+                                    Ok(Rc::new(BodyForm::Call(
+                                        call.loc.clone(),
+                                        target_vec.clone(),
+                                        None,
+                                    )))
                                 } else {
                                     Err(e)
                                 }
@@ -754,7 +759,8 @@ impl<'info> Evaluator {
                         }
                     } else {
                         // Since this is a primitive, there's no tail transform.
-                        let reformed = BodyForm::Call(call.loc.clone(), target_vec.clone(), call.tail.clone());
+                        let reformed =
+                            BodyForm::Call(call.loc.clone(), target_vec.clone(), call.tail.clone());
                         self.chase_apply(allocator, visited, Rc::new(reformed))
                     }
                 })
@@ -901,7 +907,7 @@ impl<'info> Evaluator {
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        let helper = select_helper(&self.helpers, &call.name);
+        let helper = select_helper(&self.helpers, call.name);
         match helper {
             Some(HelperForm::Defmacro(mac)) => {
                 if call.tail.is_some() {
@@ -926,8 +932,12 @@ impl<'info> Evaluator {
                     return Ok(call.original.clone());
                 }
 
-                let argument_captures_untranslated =
-                    build_argument_captures(&call.loc.clone(), arguments_to_convert, call.tail.clone(), defun.args.clone())?;
+                let argument_captures_untranslated = build_argument_captures(
+                    &call.loc.clone(),
+                    arguments_to_convert,
+                    call.tail.clone(),
+                    defun.args.clone(),
+                )?;
 
                 let mut argument_captures = HashMap::new();
                 // Do this to protect against misalignment

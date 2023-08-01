@@ -11,7 +11,8 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::codegen::{generate_expr_code, get_call_name, get_callable};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
-    ArgsAndTail, BodyForm, Callable, CallSpec, CompileErr, CompiledCode, CompilerOpts, InlineFunction, PrimaryCodegen,
+    ArgsAndTail, BodyForm, CallSpec, Callable, CompileErr, CompiledCode, CompilerOpts,
+    InlineFunction, PrimaryCodegen,
 };
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -414,7 +415,7 @@ fn replace_inline_body(
             }
         }
         BodyForm::Value(SExp::Atom(_, a)) => {
-            let alookup = arg_lookup(callsite, inline.args.clone(), args, tail.clone(), a.clone())?
+            let alookup = arg_lookup(callsite, inline.args.clone(), args, tail, a.clone())?
                 .unwrap_or_else(|| expr.clone());
             Ok(alookup)
         }
