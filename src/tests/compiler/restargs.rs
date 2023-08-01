@@ -941,3 +941,50 @@ fn test_rest_type_bad() {
     eprintln!("tc {typecheck_result:?}");
     assert!(typecheck_result.is_err());
 }
+
+#[test]
+fn test_compiler_tail_let_inline() {
+    let prog = indoc! {"
+(mod (X Y)
+  (include *standard-cl-21*)
+
+  (defun F (A B C) (list A B C))
+
+  (defun-inline G (X Y) (F X &rest (let ((Q (+ Y 1))) (list Y Q))))
+
+  (G X Y)
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "(5 7 8)");
+}
+
+#[test]
+fn test_compiler_tail_let_ni() {
+    let prog = indoc! {"
+(mod (X Y)
+  (include *standard-cl-21*)
+
+  (defun F (A B C) (list A B C))
+
+  (defun G (X Y) (F X &rest (let ((Q (+ Y 1))) (list Y Q))))
+
+  (G X Y)
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(5 7)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "(5 7 8)");
+}
+
+#[test]
+fn test_repl_tail_let() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun F (A B C D) (list A B C D))",
+            "(F 5 7 &rest (let ((Q (list 101 103))) (c 99 Q)))"
+        ])
+        .unwrap()
+        .unwrap(),
+        "(q 5 7 99 101)"
+    );
+}

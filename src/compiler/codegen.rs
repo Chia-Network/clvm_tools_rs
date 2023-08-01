@@ -1129,11 +1129,12 @@ pub fn hoist_body_let_binding(
             let mut vres = Vec::new();
             let mut new_call_list = vec![list[0].clone()];
             for i in list.iter().skip(1) {
-                let (new_helper, new_arg) =
+                let (mut new_helpers, new_arg) =
                     hoist_body_let_binding(outer_context.clone(), args.clone(), i.clone())?;
                 new_call_list.push(new_arg);
-                vres.append(&mut new_helper.clone());
+                vres.append(&mut new_helpers);
             }
+
             let new_tail = if let Some(t) = tail.as_ref() {
                 let (mut new_helper, new_tail_elt) =
                     hoist_body_let_binding(outer_context, args, t.clone())?;
