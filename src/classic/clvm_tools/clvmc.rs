@@ -118,7 +118,7 @@ pub fn compile_clvm_inner(
 ) -> Result<(), String> {
     let result = compile_clvm_text(
         allocator,
-        opts,
+        opts.clone(),
         symbol_table,
         text,
         filename,

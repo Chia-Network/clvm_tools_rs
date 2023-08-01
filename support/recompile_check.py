@@ -50,7 +50,6 @@ recompile_list = [
     pools('pool_member_innerpuz.clsp'),
     pools('pool_waitingroom_innerpuz.clsp'),
     consensus('rom_bootstrap_generator.clsp'),
-    'calculate_synthetic_public_key.clsp',
     'p2_conditions.clsp',
     'p2_delegated_conditions.clsp',
     'p2_delegated_puzzle.clsp',
@@ -60,7 +59,6 @@ recompile_list = [
     'p2_singleton.clsp',
     'p2_singleton_or_delayed_puzhash.clsp',
     'settlement_payments.clsp',
-    'sha256tree_module.clsp',
     'singleton_launcher.clsp',
     'singleton_top_layer.clsp',
     'singleton_top_layer_v1_1.clsp',
@@ -68,14 +66,15 @@ recompile_list = [
     gentest('test_multiple_generator_input_arguments.clsp')
 ]
 
-for fname in recompile_list:
-    if 'dirname' in fname and 'fname' in fname:
-        dirname = fname['dirname']
-        fname = fname['fname']
+for recompile_entry in recompile_list:
+    if 'dirname' in recompile_entry and 'fname' in recompile_entry:
+        dirname = recompile_entry['dirname']
+        filename = recompile_entry['fname']
     else:
+        filename = recompile_entry
         dirname = 'chia/wallet/puzzles'
 
-    srcfile = str(Path(dirname) / Path(fname))
+    srcfile = str(Path(dirname) / Path(filename))
     hexfile = f'{str(srcfile)}.hex'
     hexdata = open(hexfile).read().strip()
     os.unlink(hexfile)
