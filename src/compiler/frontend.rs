@@ -207,7 +207,7 @@ fn args_to_expression_list(
     body: Rc<SExp>,
 ) -> Result<ArgsAndTail, CompileErr> {
     if body.nilp() {
-        Ok(Default::default())
+        Ok(ArgsAndTail::default())
     } else {
         match body.borrow() {
             SExp::Cons(_l, first, rest) => {
@@ -215,6 +215,11 @@ fn args_to_expression_list(
                     if fname == b"&rest" {
                         // Rest is a list containing one item that becomes the
                         // tail.
+                        //
+                        // Downstream, we'll use the tail instead of a nil as the
+                        // final element of a call form.  In the inline case, this
+                        // means that argument references will be generated into
+                        // the runtime tail expression when appropriate.
                         let args_no_tail = args_to_expression_list(opts, rest.clone())?;
 
                         if args_no_tail.tail.is_some() {
@@ -385,6 +390,9 @@ pub fn compile_bodyform(
                     compile_bodyform(opts.clone(), op.clone()).map(|func| {
                         let mut result_call = vec![Rc::new(func)];
                         let mut args_clone = atail.args.to_vec();
+                        // Ensure that the full extent of the call expression
+                        // in the source file becomes the Srcloc given to the
+                        // call itself.
                         let ending = if atail.args.is_empty() {
                             l.ending()
                         } else {
