@@ -1206,6 +1206,7 @@ impl<'info> Evaluator {
         &self,
         allocator: &mut Allocator,
         visited: &'_ mut VisitedMarker<'info, VisitedInfo>,
+        head_expr: Rc<BodyForm>,
         call: &CallSpec,
         prog_args: Rc<SExp>,
         arguments_to_convert: &[Rc<BodyForm>],
@@ -1252,7 +1253,7 @@ impl<'info> Evaluator {
                 }
 
                 if self.disable_calls {
-                    let mut call_vec = vec![call.args[0].clone()];
+                    let mut call_vec = vec![head_expr];
                     for a in arguments_to_convert.iter() {
                         call_vec.push(self.shrink_bodyform_visited(
                             allocator,
@@ -1263,10 +1264,24 @@ impl<'info> Evaluator {
                             only_inline,
                         )?);
                     }
+
+                    let converted_tail = if let Some(t) = call.tail.as_ref() {
+                        Some(self.shrink_bodyform_visited(
+                            allocator,
+                            visited,
+                            prog_args,
+                            env,
+                            t.clone(),
+                            only_inline,
+                        )?)
+                    } else {
+                        None
+                    };
+
                     return Ok(Rc::new(BodyForm::Call(
                         call.loc.clone(),
                         call_vec,
-                        call.tail.clone(),
+                        converted_tail,
                     )));
                 }
 
@@ -1516,6 +1531,7 @@ impl<'info> Evaluator {
                     BodyForm::Value(SExp::Atom(_call_loc, call_name)) => self.handle_invoke(
                         allocator,
                         &mut visited,
+                        head_expr.clone(),
                         &CallSpec {
                             loc: l.clone(),
                             name: call_name,
@@ -1531,6 +1547,7 @@ impl<'info> Evaluator {
                     BodyForm::Value(SExp::Integer(_call_loc, call_int)) => self.handle_invoke(
                         allocator,
                         &mut visited,
+                        head_expr.clone(),
                         &CallSpec {
                             loc: l.clone(),
                             name: &u8_from_number(call_int.clone()),
