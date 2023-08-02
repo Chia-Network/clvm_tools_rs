@@ -39,12 +39,11 @@ jobs:
         /opt/python/cp38-cp38/bin/python -m venv venv
         if [ ! -f "activate" ]; then ln -s venv/bin/activate; fi
         . ./activate
-        pip install maturin==0.12.20
+        pip install maturin==1.1.0
         pip install tomlkit
         USE_FEATURES=$(./support/feature-fishing.py)
         echo "USE_FEATURES=${USE_FEATURES}" >> "$GITHUB_ENV"
-        export
-        CC=gcc maturin build --release --strip --manylinux 2014 --no-sdist --cargo-extra-args="--features=${USE_FEATURES}"
+        CC=gcc maturin build --release --strip --manylinux 2014 --cargo-extra-args="--features=${USE_FEATURES}"
     - name: Upload artifacts
       uses: actions/upload-artifact@v3
       with:
