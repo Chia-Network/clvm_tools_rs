@@ -637,8 +637,7 @@ fn chialisp_to_expr(
             let file_borrowed: &String = letdata.loc.file.borrow();
             let opts = Rc::new(DefaultCompilerOpts::new(file_borrowed));
             let runner = Rc::new(DefaultProgramRunner::new());
-            let evaluator =
-                Evaluator::new(opts, runner, program.helpers.clone()).disable_calls();
+            let evaluator = Evaluator::new(opts, runner, program.helpers.clone()).disable_calls();
             let beta_reduced = evaluator.shrink_bodyform(
                 &mut allocator,
                 Rc::new(SExp::Nil(letdata.loc.clone())),
