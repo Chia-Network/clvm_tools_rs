@@ -142,7 +142,7 @@ pub enum BodyForm {
     ///
     /// So tail improper calls aren't allowed.  In real lisp, (apply ...) can
     /// generate them if needed.
-    Call(Srcloc, Vec<Rc<BodyForm>>),
+    Call(Srcloc, Vec<Rc<BodyForm>>, Option<Rc<BodyForm>>),
     /// (mod ...) can be used in chialisp as an expression, in which it returns
     /// the compiled code.  Here, it contains a CompileForm, which represents
     /// the full significant input of a program (yielded by frontend()).
@@ -379,6 +379,33 @@ pub struct ModAccum {
     pub exp_form: Option<CompileForm>,
 }
 
+/// A specification of a function call including elements useful for evaluation.
+#[derive(Debug, Clone)]
+pub struct CallSpec<'a> {
+    pub loc: Srcloc,
+    pub name: &'a [u8],
+    pub args: &'a [Rc<BodyForm>],
+    pub tail: Option<Rc<BodyForm>>,
+    pub original: Rc<BodyForm>,
+}
+
+/// Raw callspec for use in codegen.
+#[derive(Debug, Clone)]
+pub struct RawCallSpec<'a> {
+    pub loc: Srcloc,
+    pub args: &'a [Rc<BodyForm>],
+    pub tail: Option<Rc<BodyForm>>,
+    pub original: Rc<BodyForm>,
+}
+
+/// A pair of arguments and an optional tail for function calls.  The tail is
+/// a function tail given by a final &rest argument.
+#[derive(Debug, Default, Clone)]
+pub struct ArgsAndTail {
+    pub args: Vec<Rc<BodyForm>>,
+    pub tail: Option<Rc<BodyForm>>,
+}
+
 impl ModAccum {
     pub fn set_final(&self, c: &CompileForm) -> Self {
         ModAccum {
@@ -568,7 +595,7 @@ impl BodyForm {
         match self {
             BodyForm::Let(_, letdata) => letdata.loc.clone(),
             BodyForm::Quoted(a) => a.loc(),
-            BodyForm::Call(loc, _) => loc.clone(),
+            BodyForm::Call(loc, _, _) => loc.clone(),
             BodyForm::Value(a) => a.loc(),
             BodyForm::Mod(kl, program) => kl.ext(&program.loc),
         }
@@ -609,8 +636,12 @@ impl BodyForm {
                 Rc::new(body.clone()),
             )),
             BodyForm::Value(body) => Rc::new(body.clone()),
-            BodyForm::Call(loc, exprs) => {
-                let converted: Vec<Rc<SExp>> = exprs.iter().map(|x| x.to_sexp()).collect();
+            BodyForm::Call(loc, exprs, tail) => {
+                let mut converted: Vec<Rc<SExp>> = exprs.iter().map(|x| x.to_sexp()).collect();
+                if let Some(t) = tail.as_ref() {
+                    converted.push(Rc::new(SExp::Atom(t.loc(), "&rest".as_bytes().to_vec())));
+                    converted.push(t.to_sexp());
+                }
                 Rc::new(list_to_cons(loc.clone(), &converted))
             }
             BodyForm::Mod(loc, program) => Rc::new(SExp::Cons(
