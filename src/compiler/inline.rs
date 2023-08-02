@@ -65,6 +65,17 @@ pub fn synthesize_args(arg_: Rc<SExp>) -> (Vec<Rc<BodyForm>>, Option<Rc<BodyForm
     }
 }
 
+/// Given arguments that didn't correspond to major list positions in the argument
+/// list of the inline function being compiled, and the optional tail argument of
+/// the call expression, form an expression which gives the list of unpaired
+/// incoming arguments followed by the tail or nil.
+///
+/// Imagining that a function (defun-inline F (A B . C) ...) is called as
+/// (F 3 5 7 11 &rest (list 13 17))
+/// In the body, A = 3, B = 5 and C = (list 7 11 13 17)
+/// The C argument is populated by creating a list whose tail is the contents
+/// of the rest argument and which contains conses of each other proper position
+/// argument (in this case, 7 and 11).
 fn enlist_remaining_args(
     loc: Srcloc,
     arg_choice: usize,
@@ -137,6 +148,11 @@ fn pick_value_from_arg_element(
     }
 }
 
+/// Given the arguments, a tail and an argument index, return the expression that
+/// would in a normal function call correspond to the given argument number.  If
+/// positional arguments run out and no tail is specified, a short circuit error
+/// is given, otherwise the search generates a path into the tail argument's
+/// value.
 fn choose_arg_from_list_or_tail(
     callsite: &Srcloc,
     args: &[Rc<BodyForm>],
@@ -240,6 +256,11 @@ fn get_inline_callable(
     get_callable(opts, compiler, loc, name)
 }
 
+/// Given a call to an inline function in incoming_spec from an inline function,
+/// generate a list of expressions and optional tail expression that convert the
+/// given argument expressions into their reified forms that inline the
+/// expressions given in the ultimate original call.  This allows inline functions
+/// to seem to call each other as long as there's no cycle.
 fn make_args_for_call_from_inline(
     visited_inlines: &mut HashSet<Vec<u8>>,
     runner: Rc<dyn TRunProgram>,
@@ -265,6 +286,8 @@ fn make_args_for_call_from_inline(
             continue;
         }
 
+        // Since we're going into an argument, pass on a new copy of the visited
+        // set.
         let mut new_visited = visited_inlines.clone();
         let replaced = replace_inline_body(
             &mut new_visited,
@@ -281,6 +304,7 @@ fn make_args_for_call_from_inline(
         new_args.push(replaced);
     }
 
+    // Now that there are tail arguments, the tail gets a new visited set as well.
     let mut new_visited = visited_inlines.clone();
     let replaced_tail = if let Some(t) = call_spec.tail.as_ref() {
         Some(replace_inline_body(
@@ -305,6 +329,9 @@ fn make_args_for_call_from_inline(
     })
 }
 
+// The main workhorse of inlining, given a bodyform and the elements specifying
+// how the inline function was called, generate an expansion of the expression
+// that relies on the incoming argument expressions.
 #[allow(clippy::too_many_arguments)]
 fn replace_inline_body(
     visited_inlines: &mut HashSet<Vec<u8>>,

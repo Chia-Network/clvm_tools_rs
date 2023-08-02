@@ -389,7 +389,17 @@ pub struct CallSpec<'a> {
     pub original: Rc<BodyForm>,
 }
 
-/// A pair of arguments and an optional tail for function calls.
+/// Raw callspec for use in codegen.
+#[derive(Debug, Clone)]
+pub struct RawCallSpec<'a> {
+    pub loc: Srcloc,
+    pub args: &'a [Rc<BodyForm>],
+    pub tail: Option<Rc<BodyForm>>,
+    pub original: Rc<BodyForm>,
+}
+
+/// A pair of arguments and an optional tail for function calls.  The tail is
+/// a function tail given by a final &rest argument.
 #[derive(Debug, Default, Clone)]
 pub struct ArgsAndTail {
     pub args: Vec<Rc<BodyForm>>,

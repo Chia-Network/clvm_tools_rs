@@ -15,7 +15,7 @@ use crate::compiler::compiler::{is_at_capture, run_optimizer};
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BodyForm, CallSpec, Callable, CompileErr,
     CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall, DefunData, HelperForm,
-    InlineFunction, LetData, LetFormKind, PrimaryCodegen,
+    InlineFunction, LetData, LetFormKind, PrimaryCodegen, RawCallSpec,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
@@ -294,37 +294,44 @@ fn generate_args_code(
     call: &CallSpec,
     with_primcons: bool,
 ) -> Result<Rc<SExp>, CompileErr> {
+    // Early return for the case where there are no provided arguments and no tail.
     if call.args.is_empty() && call.tail.is_none() {
-        Ok(Rc::new(SExp::Nil(call.loc.clone())))
-    } else {
-        let mut compiled_args: Rc<SExp> = if let Some(t) = call.tail.as_ref() {
-            generate_expr_code(allocator, runner.clone(), opts.clone(), compiler, t.clone())?.1
-        } else {
-            Rc::new(SExp::Nil(call.loc.clone()))
-        };
-
-        for hd in call.args.iter().rev() {
-            let generated = generate_expr_code(
-                allocator,
-                runner.clone(),
-                opts.clone(),
-                compiler,
-                hd.clone(),
-            )?
-            .1;
-            if with_primcons {
-                compiled_args =
-                    Rc::new(primcons(generated.loc(), generated.clone(), compiled_args));
-            } else {
-                compiled_args = Rc::new(SExp::Cons(
-                    generated.loc(),
-                    generated.clone(),
-                    compiled_args,
-                ));
-            }
-        }
-        Ok(compiled_args)
+        return Ok(Rc::new(SExp::Nil(call.loc.clone())));
     }
+
+    // Ensure we start with either the specified tail or nil.
+    let mut compiled_args: Rc<SExp> = if let Some(t) = call.tail.as_ref() {
+        generate_expr_code(allocator, runner.clone(), opts.clone(), compiler, t.clone())?.1
+    } else {
+        Rc::new(SExp::Nil(call.loc.clone()))
+    };
+
+    // Now that we have the tail, generate the code for each argument in reverse
+    // order to cons on.
+    for hd in call.args.iter().rev() {
+        let generated = generate_expr_code(
+            allocator,
+            runner.clone(),
+            opts.clone(),
+            compiler,
+            hd.clone(),
+        )?
+        .1;
+
+        // This function is now reused for purposes that make a simple list of the
+        // converted arguments, or generate valid code with primitive conses.
+        if with_primcons {
+            compiled_args = Rc::new(primcons(generated.loc(), generated.clone(), compiled_args));
+        } else {
+            compiled_args = Rc::new(SExp::Cons(
+                generated.loc(),
+                generated.clone(),
+                compiled_args,
+            ));
+        }
+    }
+
+    Ok(compiled_args)
 }
 
 fn process_defun_call(
@@ -365,19 +372,18 @@ pub fn get_call_name(l: Srcloc, body: BodyForm) -> Result<Rc<SExp>, CompileErr> 
 fn compile_call(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
-    l: Srcloc,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
-    list: &[Rc<BodyForm>],
-    tail: Option<Rc<BodyForm>>,
+    call: &RawCallSpec,
 ) -> Result<CompiledCode, CompileErr> {
-    let arg_string_list: Vec<Vec<u8>> = list
+    let arg_string_list: Vec<Vec<u8>> = call
+        .args
         .iter()
         .map(|v| v.to_sexp().to_string().as_bytes().to_vec())
         .collect();
 
     let error = Err(CompileErr(
-        l.clone(),
+        call.loc.clone(),
         format!(
             "wierdly formed compile request: {}",
             join_vecs_to_string(";".as_bytes().to_vec(), &arg_string_list)
@@ -385,11 +391,11 @@ fn compile_call(
     ));
 
     let compile_atom_head = |al: Srcloc, an: &Vec<u8>| {
-        let tl = list.iter().skip(1).cloned().collect();
+        let tl = call.args.iter().skip(1).cloned().collect();
         get_callable(
             opts.clone(),
             compiler,
-            l.clone(),
+            call.loc.clone(),
             Rc::new(SExp::Atom(al.clone(), an.to_vec())),
         )
         .and_then(|calltype| match calltype {
@@ -412,7 +418,7 @@ fn compile_call(
                 &inline,
                 l,
                 &tl,
-                tail,
+                call.tail.clone(),
             ),
 
             Callable::CallDefun(l, lookup) => generate_args_code(
@@ -420,12 +426,14 @@ fn compile_call(
                 runner,
                 opts.clone(),
                 compiler,
+                // A callspec is a way to collect some info about a call, mainly
+                // to reduce the number of arguments to pass through.
                 &CallSpec {
                     loc: l.clone(),
                     name: an,
                     args: &tl,
-                    tail,
-                    original: Rc::new(BodyForm::Value(SExp::Nil(l.clone()))),
+                    tail: call.tail.clone(),
+                    original: call.original.clone(),
                 },
                 true,
             )
@@ -470,7 +478,7 @@ fn compile_call(
             }
 
             Callable::RunCompiler => {
-                if list.len() >= 2 {
+                if call.args.len() >= 2 {
                     let updated_opts = opts
                         .set_stdenv(false)
                         .set_in_defun(true)
@@ -478,15 +486,15 @@ fn compile_call(
                         .set_code_generator(compiler.clone());
 
                     let use_body = SExp::Cons(
-                        l.clone(),
-                        Rc::new(SExp::Atom(l.clone(), "mod".as_bytes().to_vec())),
+                        call.loc.clone(),
+                        Rc::new(SExp::Atom(call.loc.clone(), "mod".as_bytes().to_vec())),
                         Rc::new(SExp::Cons(
-                            l.clone(),
-                            Rc::new(SExp::Nil(l.clone())),
+                            call.loc.clone(),
+                            Rc::new(SExp::Nil(call.loc.clone())),
                             Rc::new(SExp::Cons(
-                                list[1].loc(),
-                                list[1].to_sexp(),
-                                Rc::new(SExp::Nil(l.clone())),
+                                call.args[1].loc(),
+                                call.args[1].to_sexp(),
+                                Rc::new(SExp::Nil(call.loc.clone())),
                             )),
                         )),
                     );
@@ -500,7 +508,10 @@ fn compile_call(
                             &mut unused_symbol_table,
                         )
                         .map(|code| {
-                            CompiledCode(l.clone(), Rc::new(primquote(l.clone(), Rc::new(code))))
+                            CompiledCode(
+                                call.loc.clone(),
+                                Rc::new(primquote(call.loc.clone(), Rc::new(code))),
+                            )
                         })
                 } else {
                     error.clone()
@@ -509,7 +520,7 @@ fn compile_call(
         })
     };
 
-    match list[0].borrow() {
+    match call.args[0].borrow() {
         BodyForm::Value(SExp::Integer(al, an)) => {
             compile_atom_head(al.clone(), &u8_from_number(an.clone()))
         }
@@ -594,11 +605,15 @@ pub fn generate_expr_code(
                 compile_call(
                     allocator,
                     runner,
-                    l.clone(),
                     opts,
                     compiler,
-                    list,
-                    tail.clone(),
+                    // This is a partial callspec.
+                    &RawCallSpec {
+                        loc: l.clone(),
+                        args: list,
+                        tail: tail.clone(),
+                        original: expr.clone(),
+                    },
                 )
             }
         }
@@ -914,6 +929,7 @@ pub fn hoist_body_let_binding(
                 vres.append(&mut new_helpers);
             }
 
+            // Ensure that we hoist a let occupying the &rest tail.
             let new_tail = tail.as_ref().map(|t| {
                 let (mut new_tail_helpers, new_tail) =
                     hoist_body_let_binding(outer_context.clone(), args.clone(), t.clone());
