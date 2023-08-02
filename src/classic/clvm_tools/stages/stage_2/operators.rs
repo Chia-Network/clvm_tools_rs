@@ -171,13 +171,15 @@ impl CompilerOperatorsInternal {
 
     fn get_operators_version(&self) -> Option<usize> {
         let borrow: Ref<'_, Option<usize>> = self.operators_version.borrow();
-        borrow.clone()
+        *borrow
     }
 
     // Return the extension operator system to use while compiling based on user
     // preference.
     fn get_operators_extension(&self) -> OperatorSet {
-        let ops_version = self.get_operators_version().unwrap_or(OPERATORS_LATEST_VERSION);
+        let ops_version = self
+            .get_operators_version()
+            .unwrap_or(OPERATORS_LATEST_VERSION);
         if ops_version == 0 {
             OperatorSet::Default
         } else {
@@ -410,13 +412,22 @@ impl Dialect for CompilerOperatorsInternal {
                 } else if opbuf == "_get_source_file".as_bytes() {
                     self.get_source_file(allocator)
                 } else {
-                    self.base_dialect
-                        .op(allocator, op, sexp, max_cost, extensions_to_clvmr_during_compile)
+                    self.base_dialect.op(
+                        allocator,
+                        op,
+                        sexp,
+                        max_cost,
+                        extensions_to_clvmr_during_compile,
+                    )
                 }
             }
-            _ => self
-                .base_dialect
-                .op(allocator, op, sexp, max_cost, extensions_to_clvmr_during_compile),
+            _ => self.base_dialect.op(
+                allocator,
+                op,
+                sexp,
+                max_cost,
+                extensions_to_clvmr_during_compile,
+            ),
         }
     }
 
