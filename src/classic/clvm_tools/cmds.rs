@@ -1072,6 +1072,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     let special_runner =
         run_program_for_search_paths(&reported_input_file, &search_paths, extra_symbol_info);
+    // Ensure we know the user's wishes about the disassembly version here.
+    special_runner.set_operators_version(get_disassembly_ver(&parsed_args));
     let dpr = special_runner.clone();
     let run_program = special_runner;
 

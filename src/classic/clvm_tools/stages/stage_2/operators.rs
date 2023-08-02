@@ -56,6 +56,8 @@ pub struct CompilerOperatorsInternal {
     // A compiler opts as in the modern compiler.  If present, try using its
     // file system interface to read files.
     compiler_opts: RefCell<Option<Rc<dyn CompilerOpts>>>,
+    // The version of the operators selected by the user.  version 1 includes bls.
+    operators_version: RefCell<Option<usize>>,
 }
 
 /// Given a list of search paths, find a full path to a file whose partial name
@@ -132,6 +134,7 @@ impl CompilerOperatorsInternal {
             runner: RefCell::new(base_runner),
             opt_memo: RefCell::new(HashMap::new()),
             compiler_opts: RefCell::new(None),
+            operators_version: RefCell::new(None),
         }
     }
 
@@ -164,6 +167,26 @@ impl CompilerOperatorsInternal {
     fn get_compiler_opts(&self) -> Option<Rc<dyn CompilerOpts>> {
         let borrow: Ref<'_, Option<Rc<dyn CompilerOpts>>> = self.compiler_opts.borrow();
         borrow.clone()
+    }
+
+    fn get_operators_version(&self) -> Option<usize> {
+        let borrow: Ref<'_, Option<usize>> = self.operators_version.borrow();
+        borrow.clone()
+    }
+
+    // Return the extension operator system to use while compiling based on user
+    // preference.
+    fn get_operators_extension(&self) -> OperatorSet {
+        let ops_version = self.get_operators_version().unwrap_or(OPERATORS_LATEST_VERSION);
+        if ops_version == 0 {
+            OperatorSet::Default
+        } else {
+            OperatorSet::BLS
+        }
+    }
+
+    fn set_operators_version(&self, ver: Option<usize>) {
+        self.operators_version.replace(ver);
     }
 
     fn read(&self, allocator: &mut Allocator, sexp: NodePtr) -> Response {
@@ -352,8 +375,16 @@ impl Dialect for CompilerOperatorsInternal {
         op: NodePtr,
         sexp: NodePtr,
         max_cost: Cost,
-        extension: OperatorSet,
+        _extension: OperatorSet,
     ) -> Response {
+        // Ensure we have at least the bls extensions available.
+        // The extension passed in above is based on the state of whether
+        // we're approaching from within softfork...  As the compiler author
+        // we're overriding this so the user can specify these in the compile
+        // context...  Even when compiling code to go inside softfork, the
+        // compiler doesn't itself run in a softfork.
+        let extensions_to_clvmr_during_compile = self.get_operators_extension();
+
         match allocator.sexp(op) {
             SExp::Atom() => {
                 // use of op obvious.
@@ -380,12 +411,12 @@ impl Dialect for CompilerOperatorsInternal {
                     self.get_source_file(allocator)
                 } else {
                     self.base_dialect
-                        .op(allocator, op, sexp, max_cost, extension)
+                        .op(allocator, op, sexp, max_cost, extensions_to_clvmr_during_compile)
                 }
             }
             _ => self
                 .base_dialect
-                .op(allocator, op, sexp, max_cost, extension),
+                .op(allocator, op, sexp, max_cost, extensions_to_clvmr_during_compile),
         }
     }
 
@@ -407,6 +438,10 @@ impl CompilerOperators {
 
     pub fn set_compiler_opts(&self, opts: Option<Rc<dyn CompilerOpts>>) {
         self.parent.set_compiler_opts(opts);
+    }
+
+    pub fn set_operators_version(&self, ver: Option<usize>) {
+        self.parent.set_operators_version(ver);
     }
 }
 
