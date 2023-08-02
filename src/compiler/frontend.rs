@@ -194,7 +194,7 @@ fn args_to_expression_list(
     body: Rc<SExp>,
 ) -> Result<ArgsAndTail, CompileErr> {
     if body.nilp() {
-        Ok(Default::default())
+        Ok(ArgsAndTail::default())
     } else {
         match body.borrow() {
             SExp::Cons(_l, first, rest) => {
