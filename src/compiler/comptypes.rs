@@ -228,6 +228,17 @@ pub enum HelperForm {
     Defun(bool, DefunData),
 }
 
+/// To what purpose is the file included.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub enum IncludeProcessType {
+    /// Include the bytes on disk as an atom.
+    Bin,
+    /// Parse the hex on disk and present it as a clvm value.
+    Hex,
+    /// Read clvm in s-expression form as a clvm value.
+    SExpression,
+}
+
 /// A description of an include form.  Here, records the locations of the various
 /// parts of the include so they can be marked in the language server and be
 /// subject to other kind of reporting if desired.
@@ -239,6 +250,7 @@ pub struct IncludeDesc {
     pub nl: Srcloc,
     /// The relative path to a target or a special directive name.
     pub name: Vec<u8>,
+    pub kind: Option<IncludeProcessType>,
 }
 
 impl IncludeDesc {
@@ -357,7 +369,7 @@ pub trait CompilerOpts {
         &self,
         inc_from: String,
         filename: String,
-    ) -> Result<(String, String), CompileErr>;
+    ) -> Result<(String, Vec<u8>), CompileErr>;
 
     /// Given a parsed SExp, compile it as an independent program based on the
     /// settings given here.  The result is bare generated code.
