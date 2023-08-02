@@ -43,7 +43,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-          python -m pip install maturin==0.12.20
+          python -m pip install maturin==1.1.0
 
     - name: Build MacOs with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'macos')
@@ -97,7 +97,7 @@ jobs:
         python -m venv venv
         echo ". .\venv\Scripts\Activate.ps1" > activate.ps1
         . ./activate
-        maturin build --no-sdist -i python --release --strip
+        maturin build -i python --release --strip
         # Find and install the newly built wheel
         python support/wheelname.py
 
