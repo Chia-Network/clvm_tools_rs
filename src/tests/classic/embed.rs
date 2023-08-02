@@ -1,6 +1,6 @@
 use crate::tests::classic::run::{do_basic_brun, do_basic_run};
 
-const EMBED_BIN_FILE: &str = "hello.bin";
+const EMBED_BIN_FILE: &str = "a-binary-file-called-hello.dat";
 const EMBED_HEX_FILE: &str = "hex-embed-01.hex";
 const EMBED_SEXP_FILE: &str = "embed.sexp";
 const EMBED_NOT_EXIST: &str = "not-exist.txt";
