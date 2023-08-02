@@ -31,7 +31,7 @@ where
     res.map(|r| r.map(|r| r.to_sexp().to_string()))
 }
 
-fn test_repl_outcome<S>(inputs: Vec<S>) -> Result<Option<String>, CompileErr>
+pub fn test_repl_outcome<S>(inputs: Vec<S>) -> Result<Option<String>, CompileErr>
 where
     S: ToString,
 {

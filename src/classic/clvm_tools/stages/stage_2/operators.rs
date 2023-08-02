@@ -352,7 +352,7 @@ impl Dialect for CompilerOperatorsInternal {
         op: NodePtr,
         sexp: NodePtr,
         max_cost: Cost,
-        _extension: OperatorSet,
+        extension: OperatorSet,
     ) -> Response {
         match allocator.sexp(op) {
             SExp::Atom() => {
@@ -380,12 +380,12 @@ impl Dialect for CompilerOperatorsInternal {
                     self.get_source_file(allocator)
                 } else {
                     self.base_dialect
-                        .op(allocator, op, sexp, max_cost, OperatorSet::BLS)
+                        .op(allocator, op, sexp, max_cost, extension)
                 }
             }
             _ => self
                 .base_dialect
-                .op(allocator, op, sexp, max_cost, OperatorSet::BLS),
+                .op(allocator, op, sexp, max_cost, extension),
         }
     }
 
