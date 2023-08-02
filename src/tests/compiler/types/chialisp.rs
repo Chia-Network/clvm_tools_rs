@@ -117,7 +117,7 @@ fn test_chialisp_context_from_args_and_type_single_arg_with_pair_type() {
     check_expression_against_type_with_context(&context, "X", "Atom", false);
 }
 
-fn test_chialisp_program_typecheck(s: &str, flatten: bool) -> Result<Polytype, CompileErr> {
+pub fn test_chialisp_program_typecheck(s: &str, flatten: bool) -> Result<Polytype, CompileErr> {
     let testname = "*test*".to_string();
     let loc = Srcloc::start(&testname);
     let context = standard_type_context();

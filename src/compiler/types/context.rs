@@ -180,7 +180,7 @@ impl Context {
                 return if let Type::TAbs(v, t) = solved {
                     let tpoly = polytype(t.borrow());
                     let new_tvar = fresh_tvar(v.loc());
-                    let finished_type_rec = type_subst(t2.borrow(), &v, tpoly.borrow());
+                    let finished_type_rec = type_subst(t2.borrow(), &v, &tpoly);
                     unrecurse(&new_tvar, t1, t2, &finished_type_rec)
                         .and_then(|finished_type| monotype(&finished_type))
                         .map(|tmono| {

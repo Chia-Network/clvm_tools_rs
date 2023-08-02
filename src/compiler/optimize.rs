@@ -31,7 +31,7 @@ pub fn optimize_expr(
 ) -> Option<(bool, Rc<BodyForm>)> {
     match body.borrow() {
         BodyForm::Quoted(_) => Some((true, body)),
-        BodyForm::Call(l, forms) => {
+        BodyForm::Call(l, forms, None) => {
             // () evaluates to ()
             if forms.is_empty() {
                 return Some((true, body));
@@ -80,7 +80,8 @@ pub fn optimize_expr(
                         let mut replaced_args =
                             optimized_args.iter().map(|x| x.1.clone()).collect();
                         result_list.append(&mut replaced_args);
-                        let code = BodyForm::Call(l.clone(), result_list);
+                        // Calling a primitive.
+                        let code = BodyForm::Call(l.clone(), result_list, None);
 
                         if constant {
                             run(
@@ -114,6 +115,7 @@ pub fn optimize_expr(
                 _ => None,
             }
         }
+        BodyForm::Call(_l, _forms, Some(_)) => None,
         BodyForm::Value(SExp::Integer(l, i)) => Some((
             true,
             Rc::new(BodyForm::Quoted(SExp::Integer(l.clone(), i.clone()))),

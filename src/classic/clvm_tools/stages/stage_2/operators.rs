@@ -5,11 +5,11 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
-use clvm_rs::chia_dialect::{ChiaDialect, NO_NEG_DIV, NO_UNKNOWN_OPS};
+use clvm_rs::chia_dialect::{ChiaDialect, ENABLE_BLS_OPS, ENABLE_SECP_OPS, NO_UNKNOWN_OPS};
 use clvm_rs::cost::Cost;
-use clvm_rs::dialect::Dialect;
+use clvm_rs::dialect::{Dialect, OperatorSet};
 use clvm_rs::reduction::{EvalErr, Reduction, Response};
-use clvm_rs::run_program::run_program;
+use clvm_rs::run_program::run_program_with_pre_eval;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 
@@ -118,7 +118,9 @@ impl Drop for CompilerOperators {
 
 impl CompilerOperatorsInternal {
     pub fn new(source_file: &str, search_paths: Vec<String>, symbols_extra_info: bool) -> Self {
-        let base_dialect = Rc::new(ChiaDialect::new(NO_NEG_DIV | NO_UNKNOWN_OPS));
+        let base_dialect = Rc::new(ChiaDialect::new(
+            NO_UNKNOWN_OPS | ENABLE_BLS_OPS | ENABLE_SECP_OPS,
+        ));
         let base_runner = Rc::new(DefaultProgramRunner::new());
         CompilerOperatorsInternal {
             base_dialect,
@@ -176,9 +178,9 @@ impl CompilerOperatorsInternal {
 
         match allocator.sexp(sexp) {
             SExp::Pair(f, _) => match allocator.sexp(f) {
-                SExp::Atom(b) => {
+                SExp::Atom() => {
                     let filename =
-                        Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
+                        Bytes::new(Some(BytesFromType::Raw(allocator.atom(f).to_vec()))).decode();
                     // Use the read interface in CompilerOpts if we have one.
                     if let Some(opts) = self.get_compiler_opts() {
                         if let Ok((_, content)) =
@@ -209,8 +211,8 @@ impl CompilerOperatorsInternal {
     fn write(&self, allocator: &mut Allocator, sexp: NodePtr) -> Response {
         if let SExp::Pair(filename_sexp, r) = allocator.sexp(sexp) {
             if let SExp::Pair(data, _) = allocator.sexp(r) {
-                if let SExp::Atom(filename_buf) = allocator.sexp(filename_sexp) {
-                    let filename_buf = allocator.buf(&filename_buf);
+                if let SExp::Atom() = allocator.sexp(filename_sexp) {
+                    let filename_buf = allocator.atom(filename_sexp);
                     let filename_bytes =
                         Bytes::new(Some(BytesFromType::Raw(filename_buf.to_vec())));
                     let ir = disassemble_to_ir_with_kw(allocator, data, keyword_from_atom(), true);
@@ -251,9 +253,10 @@ impl CompilerOperatorsInternal {
         };
 
         if let SExp::Pair(l, _r) = allocator.sexp(sexp) {
-            if let SExp::Atom(b) = allocator.sexp(l) {
+            if let SExp::Atom() = allocator.sexp(l) {
+                // l most relevant in scope.
                 let filename =
-                    Bytes::new(Some(BytesFromType::Raw(allocator.buf(&b).to_vec()))).decode();
+                    Bytes::new(Some(BytesFromType::Raw(allocator.atom(l).to_vec()))).decode();
                 // If we have a compiler opts injected, let that handle reading
                 // files.  The name will bubble up to the _read function.
                 if self.get_compiler_opts().is_some() {
@@ -284,14 +287,15 @@ impl CompilerOperatorsInternal {
         {
             for kv in symtable.iter() {
                 if let SExp::Pair(hash, name) = allocator.sexp(*kv) {
-                    if let (SExp::Atom(hash), SExp::Atom(name)) =
+                    if let (SExp::Atom(), SExp::Atom()) =
                         (allocator.sexp(hash), allocator.sexp(name))
                     {
+                        // hash and name in scope.
                         let hash_text =
-                            Bytes::new(Some(BytesFromType::Raw(allocator.buf(&hash).to_vec())))
+                            Bytes::new(Some(BytesFromType::Raw(allocator.atom(hash).to_vec())))
                                 .decode();
                         let name_text =
-                            Bytes::new(Some(BytesFromType::Raw(allocator.buf(&name).to_vec())))
+                            Bytes::new(Some(BytesFromType::Raw(allocator.atom(name).to_vec())))
                                 .decode();
 
                         self.compile_outcomes.replace_with(|co| {
@@ -309,14 +313,25 @@ impl CompilerOperatorsInternal {
 }
 
 impl Dialect for CompilerOperatorsInternal {
-    fn val_stack_limit(&self) -> usize {
-        10000000
-    }
     fn quote_kw(&self) -> &[u8] {
         &[1]
     }
+
     fn apply_kw(&self) -> &[u8] {
         &[2]
+    }
+
+    fn softfork_kw(&self) -> &[u8] {
+        &[36]
+    }
+
+    // The softfork operator comes with an extension argument.
+    fn softfork_extension(&self, ext: u32) -> OperatorSet {
+        match ext {
+            0 => OperatorSet::BLS,
+            // new extensions go here
+            _ => OperatorSet::Default,
+        }
     }
 
     fn op(
@@ -325,10 +340,12 @@ impl Dialect for CompilerOperatorsInternal {
         op: NodePtr,
         sexp: NodePtr,
         max_cost: Cost,
+        extension: OperatorSet,
     ) -> Response {
         match allocator.sexp(op) {
-            SExp::Atom(opname) => {
-                let opbuf = allocator.buf(&opname);
+            SExp::Atom() => {
+                // use of op obvious.
+                let opbuf = allocator.atom(op);
                 if opbuf == "_read".as_bytes() {
                     self.read(allocator, sexp)
                 } else if opbuf == "_write".as_bytes() {
@@ -350,11 +367,18 @@ impl Dialect for CompilerOperatorsInternal {
                 } else if opbuf == "_get_source_file".as_bytes() {
                     self.get_source_file(allocator)
                 } else {
-                    self.base_dialect.op(allocator, op, sexp, max_cost)
+                    self.base_dialect
+                        .op(allocator, op, sexp, max_cost, extension)
                 }
             }
-            _ => self.base_dialect.op(allocator, op, sexp, max_cost),
+            _ => self
+                .base_dialect
+                .op(allocator, op, sexp, max_cost, extension),
         }
+    }
+
+    fn allow_unknown_ops(&self) -> bool {
+        false
     }
 }
 
@@ -383,7 +407,7 @@ impl TRunProgram for CompilerOperatorsInternal {
         option: Option<RunProgramOption>,
     ) -> Response {
         let max_cost = option.as_ref().and_then(|o| o.max_cost).unwrap_or(0);
-        run_program(
+        run_program_with_pre_eval(
             allocator,
             self,
             program,

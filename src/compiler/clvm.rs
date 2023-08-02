@@ -185,13 +185,7 @@ fn eval_args(
     loop {
         match sexp.borrow() {
             SExp::Nil(_l) => {
-                return Ok(RunStep::Op(
-                    head,
-                    context_,
-                    sexp.clone(),
-                    Some(eval_list),
-                    parent,
-                ));
+                return Ok(RunStep::Op(head, context_, sexp, Some(eval_list), parent));
             }
             SExp::Cons(_l, a, b) => {
                 eval_list.push(a.clone());
@@ -248,11 +242,11 @@ pub fn convert_from_clvm_rs(
     head: NodePtr,
 ) -> Result<Rc<SExp>, RunFailure> {
     match allocator.sexp(head) {
-        allocator::SExp::Atom(h) => {
-            if h.is_empty() {
+        allocator::SExp::Atom() => {
+            let atom_data = allocator.atom(head);
+            if atom_data.is_empty() {
                 Ok(Rc::new(SExp::Nil(loc)))
             } else {
-                let atom_data = allocator.buf(&h);
                 let integer = number_from_u8(atom_data);
                 // Ensure that atom values that don't evaluate equal to integers
                 // are represented faithfully as atoms.

@@ -558,7 +558,7 @@ fn handle_macro(
         ev.add_helper(h);
     }
     let mut allocator = Allocator::new();
-    let arg_env = build_argument_captures(&loc, &call_args, form.args.clone())?;
+    let arg_env = build_argument_captures(&loc, &call_args, None, form.args.clone())?;
     let result = ev.shrink_bodyform(
         &mut allocator,
         Rc::new(SExp::Nil(loc.clone())),
@@ -637,7 +637,8 @@ fn chialisp_to_expr(
             let file_borrowed: &String = letdata.loc.file.borrow();
             let opts = Rc::new(DefaultCompilerOpts::new(file_borrowed));
             let runner = Rc::new(DefaultProgramRunner::new());
-            let evaluator = Evaluator::new(opts, runner, program.helpers.clone()).disable_calls();
+            let evaluator =
+                Evaluator::new(opts, runner, program.helpers.clone()).disable_calls();
             let beta_reduced = evaluator.shrink_bodyform(
                 &mut allocator,
                 Rc::new(SExp::Nil(letdata.loc.clone())),
@@ -648,8 +649,13 @@ fn chialisp_to_expr(
             )?;
             chialisp_to_expr(program, form_args, beta_reduced)
         }
-        BodyForm::Call(l, lst) => {
-            let mut arg_expr = Expr::EUnit(l.clone());
+        BodyForm::Call(l, lst, tail) => {
+            let mut arg_expr = if let Some(t) = tail.as_ref() {
+                chialisp_to_expr(program, form_args.clone(), t.clone())?
+            } else {
+                Expr::EUnit(l.clone())
+            };
+
             for i_rev in 0..lst.len() - 1 {
                 let i = lst.len() - i_rev - 1;
                 let new_expr = chialisp_to_expr(program, form_args.clone(), lst[i].clone())?;
