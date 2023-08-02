@@ -5,8 +5,9 @@ use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::comptypes::{
-    list_to_cons, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts, ConstantKind,
-    DefconstData, DefmacData, DefunData, HelperForm, IncludeDesc, LetData, LetFormKind, ModAccum,
+    list_to_cons, ArgsAndTail, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts,
+    ConstantKind, DefconstData, DefmacData, DefunData, HelperForm, IncludeDesc, LetData,
+    LetFormKind, ModAccum,
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
@@ -55,11 +56,15 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
             }
             _ => Vec::new(),
         },
-        BodyForm::Call(_l, vs) => {
+        BodyForm::Call(_l, vs, tail) => {
             let mut result = Vec::new();
             for a in vs {
                 let mut argnames = collect_used_names_bodyform(a);
                 result.append(&mut argnames);
+            }
+            if let Some(t) = tail {
+                let mut tail_names = collect_used_names_bodyform(t);
+                result.append(&mut tail_names);
             }
             result
         }
@@ -173,7 +178,7 @@ fn qq_to_expression_list(
                     )),
                     Rc::new(f_qq),
                     Rc::new(r_qq)
-                )))
+                ), None))
             }
         }
         SExp::Nil(l) => Ok(BodyForm::Quoted(SExp::Nil(l.clone()))),
@@ -187,23 +192,55 @@ fn qq_to_expression_list(
 fn args_to_expression_list(
     opts: Rc<dyn CompilerOpts>,
     body: Rc<SExp>,
-) -> Result<Vec<Rc<BodyForm>>, CompileErr> {
+) -> Result<ArgsAndTail, CompileErr> {
     if body.nilp() {
-        Ok(vec![])
+        Ok(ArgsAndTail::default())
     } else {
         match body.borrow() {
             SExp::Cons(_l, first, rest) => {
+                if let SExp::Atom(_fl, fname) = first.borrow() {
+                    if fname == b"&rest" {
+                        // Rest is a list containing one item that becomes the
+                        // tail.
+                        //
+                        // Downstream, we'll use the tail instead of a nil as the
+                        // final element of a call form.  In the inline case, this
+                        // means that argument references will be generated into
+                        // the runtime tail expression when appropriate.
+                        let args_no_tail = args_to_expression_list(opts, rest.clone())?;
+
+                        if args_no_tail.tail.is_some() {
+                            return Err(CompileErr(
+                                rest.loc(),
+                                "only one use of &rest is allowed".to_string(),
+                            ));
+                        }
+
+                        if args_no_tail.args.len() != 1 {
+                            return Err(CompileErr(
+                                body.loc(),
+                                "&rest specified with bad tail".to_string(),
+                            ));
+                        }
+
+                        // Return a tail.
+                        return Ok(ArgsAndTail {
+                            args: vec![],
+                            tail: Some(args_no_tail.args[0].clone()),
+                        });
+                    }
+                }
                 let mut result_list = Vec::new();
                 let f_compiled = compile_bodyform(opts.clone(), first.clone())?;
                 result_list.push(Rc::new(f_compiled));
-                let mut args = args_to_expression_list(opts, rest.clone())?;
-                result_list.append(&mut args);
-                Ok(result_list)
+                let mut args_and_tail = args_to_expression_list(opts, rest.clone())?;
+                result_list.append(&mut args_and_tail.args);
+                Ok(ArgsAndTail {
+                    args: result_list,
+                    tail: args_and_tail.tail,
+                })
             }
-            _ => Err(CompileErr(
-                body.loc(),
-                "Bad arg list tail ".to_string() + &body.to_string(),
-            )),
+            _ => Err(CompileErr(body.loc(), format!("Bad arg list tail {body}"))),
         }
     }
 }
@@ -248,17 +285,20 @@ pub fn compile_bodyform(
     match body.borrow() {
         SExp::Cons(l, op, tail) => {
             let application = || {
-                args_to_expression_list(opts.clone(), tail.clone()).and_then(|args| {
+                args_to_expression_list(opts.clone(), tail.clone()).and_then(|atail| {
                     compile_bodyform(opts.clone(), op.clone()).map(|func| {
                         let mut result_call = vec![Rc::new(func)];
-                        let mut args_clone = args.to_vec();
-                        let ending = if args.is_empty() {
+                        let mut args_clone = atail.args.to_vec();
+                        // Ensure that the full extent of the call expression
+                        // in the source file becomes the Srcloc given to the
+                        // call itself.
+                        let ending = if atail.args.is_empty() {
                             l.ending()
                         } else {
-                            args[args.len() - 1].loc().ending()
+                            atail.args[atail.args.len() - 1].loc().ending()
                         };
                         result_call.append(&mut args_clone);
-                        BodyForm::Call(l.ext(&ending), result_call)
+                        BodyForm::Call(l.ext(&ending), result_call, atail.tail)
                     })
                 })
             };
@@ -762,7 +802,7 @@ pub fn frontend(
             "mod must end on an expression".to_string(),
         )),
         Some(v) => {
-            let compiled_val: &CompileForm = v.borrow();
+            let compiled_val: &CompileForm = &v;
             Ok(compiled_val.clone())
         }
     };

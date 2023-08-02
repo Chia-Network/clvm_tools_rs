@@ -6,7 +6,6 @@ on:
     branches:
       - base
       - dev
-      - nightly
     tags:
         - '**'
   pull_request:
@@ -21,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
-        python: [3.7, 3.8, 3.9, '3.10']
+        python: [3.8, 3.9, '3.10', 3.11]
 
     steps:
     - uses: actions/checkout@v3
@@ -44,12 +43,12 @@ jobs:
 
     - name: Install dependencies
       run: |
-          python -m pip install maturin==0.12.20
+          python -m pip install maturin==1.1.0
 
     - name: Build MacOs with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'macos')
       env:
-        MACOSX_DEPLOYMENT_TARGET: '10.14'
+        MACOSX_DEPLOYMENT_TARGET: '11.0'
       run: |
         python -m venv venv
         ln -s venv/bin/activate
@@ -59,8 +58,8 @@ jobs:
     - name: Build Linux in manylinux2010 with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'ubuntu')
       run: |
-        podman run --rm=true \
-          -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
+        docker run --rm \
+          -v ${{ github.workspace }}:/ws --workdir=/ws \
           ghcr.io/chia-network/build-images/centos-pypa-rust-x86_64 \
           bash -exc '\
             yum -y install libc6 openssl-devel && \
@@ -80,14 +79,14 @@ jobs:
             . ./activate && \
             pip install --upgrade pip
           '
-        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v0.13.1 build --release --strip --manylinux 2010
+        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.1.0 build --release --strip --manylinux 2014
         # Refresh in case any ownerships changed.
         mv target target.docker && cp -r target.docker target
         # Ensure an empty .cargo-lock file exists.
         touch target/release/.cargo-lock
 
     - name: Build alpine wheel via docker
-      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
         cd resources/alpine && docker build -t clvm-tools-rs-alpine .
         docker run -v ${GITHUB_WORKSPACE}:/root/clvm_tools_rs -t clvm-tools-rs-alpine sh /root/build-alpine.sh
@@ -98,7 +97,7 @@ jobs:
         python -m venv venv
         echo ". .\venv\Scripts\Activate.ps1" > activate.ps1
         . ./activate
-        maturin build --no-sdist -i python --release --strip
+        maturin build -i python --release --strip
         # Find and install the newly built wheel
         python support/wheelname.py
 
@@ -129,8 +128,10 @@ jobs:
         pip install clvm_rs
 
         echo "installing clvm_tools for clvm tests"
-        # clvm tools is required to run the tests is clvm
-        python -m pip install clvm_tools
+
+        # Ensure clvm_tools is installed from its own repo.
+        git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
+        python -m pip install ./clvm_tools
 
     - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed
       run: |
@@ -141,7 +142,7 @@ jobs:
         python -c 'import clvm_tools_rs; print(clvm_tools_rs.__file__)'
 
     - name: Verify recompilation of old sources match
-      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
         . ./activate
         # Build cmd line tools
@@ -156,7 +157,7 @@ jobs:
         (cd chia-blockchain && python recompile_check.py)
 
     - name: Test Classic command line tools with pytest
-      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
         python -m pip install pytest
         # This script installs the wheel built during this workflow.
@@ -165,7 +166,7 @@ jobs:
         (cd resources/tests/cmdline/tests && py.test cmds_test.py )
 
     - name: Verify recompilation of cl21 sources
-      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
         . ./activate
         # We need chia-rs for the following.
@@ -176,19 +177,35 @@ jobs:
         python support/wheelname.py
         (cd resources/tests && python check-recompiles.py)
 
+    - name: Verify recompilation follows date and modification rules
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
+      run: |
+        python support/wheelname.py
+        python resources/tests/test-clvm-recompile-behavior.py
+
+    - name: Install pytest
+      run: |
+        . ./activate
+        pip install pytest pytest-asyncio
+
     - name: Run tests from clvm
       run: |
         . ./activate
         cd clvm
-        pip install pytest pytest-asyncio
+        pytest tests
+
+    - name: Run tests from clvm_tools
+      run: |
+        . ./activate
+        cd clvm_tools
         pytest tests
 
     - name: Run tests
-      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: cargo test --no-default-features
 
     - name: Check coverage
-      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.7')
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
         cargo install grcov
         rustup component add llvm-tools-preview
@@ -237,8 +254,8 @@ jobs:
         TWINE_PASSWORD: ${{ secrets.test_pypi_password }}
       run: twine upload --non-interactive --skip-existing --verbose 'target/wheels/*'
 
-    - name: Publish Nightlies
-      if: steps.check_secrets.outputs.HAS_AWS_SECRET && github.ref == 'refs/heads/nightly'
+    - name: Publish Dev
+      if: steps.check_secrets.outputs.HAS_AWS_SECRET && github.ref == 'refs/heads/dev'
       shell: bash
       working-directory: ./target/wheels
       env:
@@ -249,7 +266,7 @@ jobs:
         FILES=$(find . -type f -name '*.whl')
         while IFS= read -r file; do
           filename=$(basename $file)
-          aws --no-progress s3 cp "$file" "s3://download.chia.net/nightlies/clvm-tools-rs/$filename"
+          aws --no-progress s3 cp "$file" "s3://download.chia.net/simple-dev/clvm-tools-rs/$filename"
         done <<< "$FILES"
 
   fmt:
