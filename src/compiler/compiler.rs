@@ -320,21 +320,21 @@ impl CompilerOpts for DefaultCompilerOpts {
         &self,
         inc_from: String,
         filename: String,
-    ) -> Result<(String, String), CompileErr> {
+    ) -> Result<(String, Vec<u8>), CompileErr> {
         if filename == "*macros*" {
             if self.dialect().strict {
-                return Ok((filename, ADVANCED_MACROS.clone()));
+                return Ok((filename, ADVANCED_MACROS.bytes().collect()));
             } else {
-                return Ok((filename, STANDARD_MACROS.clone()));
+                return Ok((filename, STANDARD_MACROS.bytes().collect()));
             }
         } else if let Some(dialect) = KNOWN_DIALECTS.get(&filename) {
-            return Ok((filename, dialect.content.clone()));
+            return Ok((filename, dialect.content.bytes().collect()));
         }
 
         for dir in self.include_dirs.iter() {
             let mut p = PathBuf::from(dir);
             p.push(filename.clone());
-            match fs::read_to_string(p.clone()) {
+            match fs::read(p.clone()) {
                 Err(_e) => {
                     continue;
                 }
@@ -498,7 +498,7 @@ pub fn extract_program_and_env(program: Rc<SExp>) -> Option<(Rc<SExp>, Rc<SExp>)
                 return None;
             }
 
-            match (is_apply(&lst[0]), lst[1].borrow(), lst[2].proper_list()) {
+            match (is_apply(&lst[0]), &lst[1], lst[2].proper_list()) {
                 (true, real_program, Some(cexp)) => {
                     if cexp.len() != 3 || !is_cons(&cexp[0]) || !is_whole_env(&cexp[2]) {
                         None
@@ -518,7 +518,7 @@ pub fn is_at_capture(head: Rc<SExp>, rest: Rc<SExp>) -> Option<(Vec<u8>, Rc<SExp
         if l.len() != 2 {
             return None;
         }
-        if let (SExp::Atom(_, a), SExp::Atom(_, cap)) = (head.borrow(), l[0].borrow()) {
+        if let (SExp::Atom(_, a), SExp::Atom(_, cap)) = (head.borrow(), &l[0]) {
             if a == &vec![b'@'] {
                 return Some((cap.clone(), Rc::new(l[1].clone())));
             }

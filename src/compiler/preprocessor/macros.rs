@@ -538,6 +538,8 @@ impl ExtensionFunction for List {
                     a.clone(),
                     res,
                 ],
+                // Calls primitive 'c' so no tail.
+                None,
             ));
         }
         evaluator.shrink_bodyform(&mut allocator, prog_args, env, res, false, None)

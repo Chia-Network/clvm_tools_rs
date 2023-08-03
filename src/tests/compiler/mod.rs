@@ -10,6 +10,7 @@ mod compiler;
 mod evaluate;
 mod preprocessor;
 mod repl;
+mod restargs;
 mod runtypes;
 mod srcloc;
 mod usecheck;

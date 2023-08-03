@@ -79,13 +79,11 @@ pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
                 // list
                 let length = rng.gen_range(1..=remaining);
                 let costs = vec![remaining / length; length];
-                enlist(
-                    loc(),
-                    costs
-                        .iter()
-                        .map(|c| Rc::new(random_sexp(rng, *c)))
-                        .collect(),
-                )
+                let collected_list: Vec<Rc<SExp>> = costs
+                    .iter()
+                    .map(|c| Rc::new(random_sexp(rng, *c)))
+                    .collect();
+                enlist(loc(), &collected_list)
             }
             1 => {
                 // cons
@@ -143,7 +141,7 @@ impl Display for SExp {
                 } else {
                     let vlen = s.len() * 2;
                     let mut outbuf = vec![0; vlen];
-                    bin2hex(s, &mut outbuf).map_err(|_e| std::fmt::Error::default())?;
+                    bin2hex(s, &mut outbuf).map_err(|_e| std::fmt::Error)?;
                     formatter.write_str("0x")?;
                     formatter.write_str(
                         std::str::from_utf8(&outbuf).expect("only hex digits expected"),
@@ -309,7 +307,7 @@ fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
     }
 }
 
-pub fn enlist(l: Srcloc, v: Vec<Rc<SExp>>) -> SExp {
+pub fn enlist(l: Srcloc, v: &[Rc<SExp>]) -> SExp {
     let mut result = SExp::Nil(l);
     for i_reverse in 0..v.len() {
         let i = v.len() - i_reverse - 1;
@@ -622,7 +620,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                     list_content.to_vec(),
                 )),
                 (')', SExpParseState::Empty) => emit(
-                    Rc::new(enlist(pl.ext(&loc), list_content.to_vec())),
+                    Rc::new(enlist(pl.clone(), list_content)),
                     SExpParseState::Empty,
                 ),
                 (')', SExpParseState::Bareword(l, t)) => {
@@ -630,7 +628,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                     let mut updated_list = list_content.to_vec();
                     updated_list.push(Rc::new(parsed_atom));
                     emit(
-                        Rc::new(enlist(pl.ext(&loc), updated_list)),
+                        Rc::new(enlist(pl.clone(), &updated_list)),
                         SExpParseState::Empty,
                     )
                 }
@@ -722,7 +720,7 @@ fn parse_sexp_step(loc: Srcloc, p: &SExpParseState, this_char: u8) -> SExpParseR
                         emit(list_content[0].clone(), SExpParseState::Empty)
                     } else {
                         emit(
-                            Rc::new(enlist(pl.ext(&loc), list_content.to_vec())),
+                            Rc::new(enlist(pl.ext(&loc), list_content)),
                             SExpParseState::Empty,
                         )
                     }
@@ -781,7 +779,7 @@ where
     for this_char in s {
         let next_location = start.clone().advance(this_char);
 
-        match parse_sexp_step(start.clone(), parse_state.borrow(), this_char) {
+        match parse_sexp_step(start.clone(), &parse_state, this_char) {
             SExpParseResult::Error(l, e) => {
                 return Err((l, e));
             }

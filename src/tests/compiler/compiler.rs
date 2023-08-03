@@ -1206,3 +1206,45 @@ fn test_inline_in_assign_not_actually_recursive() {
     let res = run_string(&prog, &"()".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "9999");
 }
+
+#[test]
+fn test_simple_rest_call_0() {
+    let prog = indoc! {"
+(mod X
+  (include *standard-cl-21*)
+
+  (defun F Xs
+    (if Xs
+      (+ (f Xs) (F &rest (r Xs)))
+      ()
+      )
+    )
+
+  (F &rest X)
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(13 99 144)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "256");
+}
+
+#[test]
+fn test_simple_rest_call_inline() {
+    let prog = indoc! {"
+(mod X
+  (include *standard-cl-21*)
+
+  (defun sum (Xs)
+    (if Xs
+      (+ (f Xs) (sum (r Xs)))
+      ()
+      )
+    )
+
+  (defun-inline F (A1 . A2) (* A1 (sum A2)))
+
+  (F 3 &rest X)
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(13 99 144)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "768");
+}

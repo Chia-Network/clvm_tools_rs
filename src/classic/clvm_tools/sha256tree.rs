@@ -34,9 +34,10 @@ pub fn sha256tree(allocator: &mut Allocator, v: NodePtr) -> Bytes {
                     .concat(&right),
             )
         }
-        SExp::Atom(a) => sha256(
+        SExp::Atom() => sha256(
             Bytes::new(Some(BytesFromType::Raw(vec![1]))).concat(&Bytes::new(Some(
-                BytesFromType::Raw(allocator.buf(&a).to_vec()),
+                // only v in scope.
+                BytesFromType::Raw(allocator.atom(v).to_vec()),
             ))),
         ),
     }

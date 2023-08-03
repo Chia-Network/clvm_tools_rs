@@ -143,7 +143,7 @@ pub enum BodyForm {
     ///
     /// So tail improper calls aren't allowed.  In real lisp, (apply ...) can
     /// generate them if needed.
-    Call(Srcloc, Vec<Rc<BodyForm>>),
+    Call(Srcloc, Vec<Rc<BodyForm>>, Option<Rc<BodyForm>>),
     /// (mod ...) can be used in chialisp as an expression, in which it returns
     /// the compiled code.  Here, it contains a CompileForm, which represents
     /// the full significant input of a program (yielded by frontend()).
@@ -231,6 +231,23 @@ pub enum HelperForm {
     Defun(bool, DefunData),
 }
 
+/// To what purpose is the file included.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub enum IncludeProcessType {
+    /// Include the bytes on disk as an atom.
+    Bin,
+    /// Parse the hex on disk and present it as a clvm value.
+    Hex,
+    /// Read clvm in s-expression form as a clvm value.
+    SExpression,
+    /// Pointing to a chialisp program, Compiled specifies that we want
+    /// the compiled form of the program as a clvm value.  It's possible
+    /// because chialisp programs self-identify how they're compiled and
+    /// the form they take is promised to be stable for released versions
+    /// of the language.
+    Compiled,
+}
+
 /// A description of an include form.  Here, records the locations of the various
 /// parts of the include so they can be marked in the language server and be
 /// subject to other kind of reporting if desired.
@@ -242,6 +259,7 @@ pub struct IncludeDesc {
     pub nl: Srcloc,
     /// The relative path to a target or a special directive name.
     pub name: Vec<u8>,
+    pub kind: Option<IncludeProcessType>,
 }
 
 impl IncludeDesc {
@@ -366,7 +384,7 @@ pub trait CompilerOpts {
         &self,
         inc_from: String,
         filename: String,
-    ) -> Result<(String, String), CompileErr>;
+    ) -> Result<(String, Vec<u8>), CompileErr>;
 
     /// Given a parsed SExp, compile it as an independent program based on the
     /// settings given here.  The result is bare generated code.
@@ -386,6 +404,33 @@ pub struct ModAccum {
     pub includes: Vec<IncludeDesc>,
     pub helpers: Vec<HelperForm>,
     pub exp_form: Option<CompileForm>,
+}
+
+/// A specification of a function call including elements useful for evaluation.
+#[derive(Debug, Clone)]
+pub struct CallSpec<'a> {
+    pub loc: Srcloc,
+    pub name: &'a [u8],
+    pub args: &'a [Rc<BodyForm>],
+    pub tail: Option<Rc<BodyForm>>,
+    pub original: Rc<BodyForm>,
+}
+
+/// Raw callspec for use in codegen.
+#[derive(Debug, Clone)]
+pub struct RawCallSpec<'a> {
+    pub loc: Srcloc,
+    pub args: &'a [Rc<BodyForm>],
+    pub tail: Option<Rc<BodyForm>>,
+    pub original: Rc<BodyForm>,
+}
+
+/// A pair of arguments and an optional tail for function calls.  The tail is
+/// a function tail given by a final &rest argument.
+#[derive(Debug, Default, Clone)]
+pub struct ArgsAndTail {
+    pub args: Vec<Rc<BodyForm>>,
+    pub tail: Option<Rc<BodyForm>>,
 }
 
 impl ModAccum {
@@ -601,7 +646,7 @@ impl BodyForm {
         match self {
             BodyForm::Let(_, letdata) => letdata.loc.clone(),
             BodyForm::Quoted(a) => a.loc(),
-            BodyForm::Call(loc, _) => loc.clone(),
+            BodyForm::Call(loc, _, _) => loc.clone(),
             BodyForm::Value(a) => a.loc(),
             BodyForm::Mod(kl, program) => kl.ext(&program.loc),
         }
@@ -642,8 +687,12 @@ impl BodyForm {
                 Rc::new(body.clone()),
             )),
             BodyForm::Value(body) => Rc::new(body.clone()),
-            BodyForm::Call(loc, exprs) => {
-                let converted: Vec<Rc<SExp>> = exprs.iter().map(|x| x.to_sexp()).collect();
+            BodyForm::Call(loc, exprs, tail) => {
+                let mut converted: Vec<Rc<SExp>> = exprs.iter().map(|x| x.to_sexp()).collect();
+                if let Some(t) = tail.as_ref() {
+                    converted.push(Rc::new(SExp::Atom(t.loc(), "&rest".as_bytes().to_vec())));
+                    converted.push(t.to_sexp());
+                }
                 Rc::new(list_to_cons(loc.clone(), &converted))
             }
             BodyForm::Mod(loc, program) => Rc::new(SExp::Cons(
