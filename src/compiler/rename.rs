@@ -145,7 +145,7 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             )
         }
 
-        BodyForm::Quoted(atom) => match atom.borrow() {
+        BodyForm::Quoted(atom) => match atom {
             SExp::Atom(l, n) => match namemap.get(n) {
                 Some(named) => BodyForm::Quoted(SExp::Atom(l.clone(), named.to_vec())),
                 None => BodyForm::Quoted(atom.clone()),
@@ -153,7 +153,7 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             _ => BodyForm::Quoted(atom.clone()),
         },
 
-        BodyForm::Value(atom) => match atom.borrow() {
+        BodyForm::Value(atom) => match atom {
             SExp::Atom(l, n) => match namemap.get(n) {
                 Some(named) => BodyForm::Value(SExp::Atom(l.clone(), named.to_vec())),
                 None => BodyForm::Value(atom.clone()),
@@ -161,12 +161,15 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             _ => BodyForm::Value(atom.clone()),
         },
 
-        BodyForm::Call(l, vs) => {
+        BodyForm::Call(l, vs, tail) => {
             let new_vs = vs
                 .iter()
                 .map(|x| Rc::new(rename_in_bodyform(namemap, x.clone())))
                 .collect();
-            BodyForm::Call(l.clone(), new_vs)
+            let new_tail = tail
+                .as_ref()
+                .map(|t| Rc::new(rename_in_bodyform(namemap, t.clone())));
+            BodyForm::Call(l.clone(), new_vs, new_tail)
         }
 
         BodyForm::Mod(l, prog) => BodyForm::Mod(l.clone(), prog.clone()),
@@ -199,7 +202,7 @@ pub fn desugar_sequential_let_bindings(
 }
 
 fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
-    match b.borrow() {
+    match b {
         BodyForm::Let(LetFormKind::Sequential, letdata) => {
             // Renaming a sequential let is exactly as if the bindings were
             // nested in separate parallel lets.
@@ -249,12 +252,15 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
         BodyForm::Quoted(e) => BodyForm::Quoted(e.clone()),
         BodyForm::Value(v) => BodyForm::Value(v.clone()),
 
-        BodyForm::Call(l, vs) => {
+        BodyForm::Call(l, vs, tail) => {
             let new_vs = vs
                 .iter()
                 .map(|a| Rc::new(rename_args_bodyform(a)))
                 .collect();
-            BodyForm::Call(l.clone(), new_vs)
+            let new_tail = tail
+                .as_ref()
+                .map(|t| Rc::new(rename_args_bodyform(t.borrow())));
+            BodyForm::Call(l.clone(), new_vs, new_tail)
         }
         BodyForm::Mod(l, program) => BodyForm::Mod(l.clone(), program.clone()),
     }
