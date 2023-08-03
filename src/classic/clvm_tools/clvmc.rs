@@ -29,7 +29,7 @@ use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::runtypes::RunFailure;
 
 fn include_dialect(
-    allocator: &mut Allocator,
+    allocator: &Allocator,
     dialects: &HashMap<Vec<u8>, i32>,
     e: &[NodePtr],
 ) -> Option<i32> {

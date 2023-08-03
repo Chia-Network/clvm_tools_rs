@@ -28,6 +28,7 @@ use crate::classic::clvm_tools::stages::stage_2::compile::do_com_prog_for_dialec
 use crate::classic::clvm_tools::stages::stage_2::optimize::do_optimize;
 
 use crate::compiler::comptypes::CompilerOpts;
+use crate::compiler::sexp::decode_string;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AllocatorRefOrTreeHash {
@@ -212,7 +213,7 @@ impl CompilerOperatorsInternal {
                         if let Ok((_, content)) =
                             opts.read_new_file(self.source_file.clone(), filename.clone())
                         {
-                            return parse_file_content(allocator, &content);
+                            return parse_file_content(allocator, &decode_string(&content));
                         }
                     }
 
@@ -234,7 +235,7 @@ impl CompilerOperatorsInternal {
         }
     }
 
-    fn write(&self, allocator: &mut Allocator, sexp: NodePtr) -> Response {
+    fn write(&self, allocator: &Allocator, sexp: NodePtr) -> Response {
         if let SExp::Pair(filename_sexp, r) = allocator.sexp(sexp) {
             if let SExp::Pair(data, _) = allocator.sexp(r) {
                 if let SExp::Atom() = allocator.sexp(filename_sexp) {
@@ -310,7 +311,7 @@ impl CompilerOperatorsInternal {
 
     pub fn set_symbol_table(
         &self,
-        allocator: &mut Allocator,
+        allocator: &Allocator,
         table: NodePtr,
     ) -> Result<Reduction, EvalErr> {
         if let Some(symtable) =

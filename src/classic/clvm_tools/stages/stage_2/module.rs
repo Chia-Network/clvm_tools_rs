@@ -20,6 +20,7 @@ use crate::classic::clvm_tools::stages::stage_2::inline::{
     formulate_path_selections_for_destructuring, is_at_capture, is_inline_destructure,
 };
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
+use crate::classic::clvm_tools::stages::stage_2::reader::process_embed_file;
 
 lazy_static! {
     pub static ref MAIN_NAME: String = "".to_string();
@@ -129,7 +130,7 @@ fn build_used_constants_names(
         new_names = HashSet::new();
 
         for name in iterate_names {
-            let functions_and_macros = vec![functions.get(&name), macro_as_dict.get(&name)];
+            let functions_and_macros = [functions.get(&name), macro_as_dict.get(&name)];
 
             let matching_names_1 = functions_and_macros
                 .iter()
@@ -345,6 +346,11 @@ fn parse_mod_sexp(
             macros,
             run_program.clone(),
         )
+    } else if op == "embed-file".as_bytes() {
+        let (name, constant) =
+            process_embed_file(allocator, run_program.clone(), declaration_sexp)?;
+        constants.insert(name, constant);
+        Ok(())
     } else if namespace.contains(&name) {
         Err(EvalErr(
             declaration_sexp,

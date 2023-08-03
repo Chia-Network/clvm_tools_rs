@@ -377,9 +377,9 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
         &self,
         inc_from: String,
         filename: String,
-    ) -> Result<(String, String), CompileErr> {
+    ) -> Result<(String, Vec<u8>), CompileErr> {
         if let Some(content) = self.files.get(&filename) {
-            return Ok((filename.clone(), content.clone()));
+            return Ok((filename.clone(), content.bytes().collect()));
         }
 
         Err(CompileErr(

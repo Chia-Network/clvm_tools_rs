@@ -112,7 +112,7 @@ pub fn ir_for_atom(
  * (2 2 (2) (2 3 4)) => (a 2 (a) (a 3 4))
  */
 pub fn disassemble_to_ir_with_kw(
-    allocator: &mut Allocator,
+    allocator: &Allocator,
     sexp: NodePtr,
     keyword_from_atom: &Record<Vec<u8>, String>,
     mut allow_keyword: bool,
@@ -137,7 +137,7 @@ pub fn disassemble_to_ir_with_kw(
 }
 
 pub fn disassemble_with_kw(
-    allocator: &mut Allocator,
+    allocator: &Allocator,
     sexp: NodePtr,
     keyword_from_atom: &Record<Vec<u8>, String>,
 ) -> String {
@@ -146,12 +146,12 @@ pub fn disassemble_with_kw(
     write_ir(Rc::new(symbols))
 }
 
-pub fn disassemble(allocator: &mut Allocator, sexp: NodePtr, version: Option<usize>) -> String {
-    return disassemble_with_kw(
+pub fn disassemble(allocator: &Allocator, sexp: NodePtr, version: Option<usize>) -> String {
+    disassemble_with_kw(
         allocator,
         sexp,
         keyword_from_atom(version.unwrap_or(OPERATORS_LATEST_VERSION)),
-    );
+    )
 }
 
 pub fn assemble(allocator: &mut Allocator, s: &str) -> Result<NodePtr, EvalErr> {

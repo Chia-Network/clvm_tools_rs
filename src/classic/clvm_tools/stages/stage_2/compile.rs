@@ -322,7 +322,7 @@ pub fn try_expand_macro_for_atom(
 }
 
 fn get_macro_program(
-    allocator: &mut Allocator,
+    allocator: &Allocator,
     operator: &[u8],
     macro_lookup: NodePtr,
 ) -> Result<Option<NodePtr>, EvalErr> {
@@ -449,7 +449,7 @@ enum SymbolResult {
 }
 
 fn find_symbol_match(
-    allocator: &mut Allocator,
+    allocator: &Allocator,
     opname: &[u8],
     r: NodePtr,
     symbol_table: NodePtr,
