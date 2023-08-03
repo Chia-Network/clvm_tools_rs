@@ -44,7 +44,7 @@ jobs:
         USE_FEATURES=$(./support/feature-fishing.py)
         echo "USE_FEATURES=${USE_FEATURES}" >> "$GITHUB_ENV"
         export
-        CC=gcc maturin build --release --strip --manylinux 2014 "--features=${USE_FEATURES}"
+        CC=gcc maturin build --release --strip --manylinux 2014 "--features=extension-module,${USE_FEATURES}"
     - name: Upload artifacts
       uses: actions/upload-artifact@v3
       with:
