@@ -602,7 +602,7 @@ fn match_op_name_4(pl: &[SExp]) -> Option<OpName4Match> {
                         opl: l.clone(),
                         name: name.clone(),
                         args: Rc::new(pl[2].clone()),
-                        body: Rc::new(enlist(l.clone(), tail_list)),
+                        body: Rc::new(enlist(l.clone(), &tail_list)),
                         orig: pl.to_owned(),
                         ty: type_anno,
                     })
@@ -1281,12 +1281,12 @@ fn frontend_start(
                         }
                         let (stripped_args, parsed_type) = augment_fun_type_with_args(args, ty)?;
 
-                        let body_vec = x
+                        let body_vec: Vec<Rc<SExp>> = x
                             .iter()
                             .skip(skip_idx)
                             .map(|s| Rc::new(s.clone()))
                             .collect();
-                        let body = Rc::new(enlist(pre_forms[0].loc(), body_vec));
+                        let body = Rc::new(enlist(pre_forms[0].loc(), &body_vec));
 
                         let ls = preprocess(opts.clone(), includes, body)?;
                         let mut ma = ModAccum::new(l.clone());

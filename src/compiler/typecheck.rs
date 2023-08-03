@@ -234,7 +234,8 @@ impl<const A: usize> TheoryToSExp for ContextElim<A> {
 impl<const A: usize> TheoryToSExp for GContext<A> {
     fn to_sexp(&self) -> SExp {
         let thloc = Srcloc::start("*gcontext*");
-        enlist(thloc, self.0.iter().map(|x| Rc::new(x.to_sexp())).collect())
+        let self_list: Vec<Rc<SExp>> = self.0.iter().map(|x| Rc::new(x.to_sexp())).collect();
+        enlist(thloc, &self_list)
     }
 }
 

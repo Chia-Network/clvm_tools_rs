@@ -194,7 +194,7 @@ fn untype_definition(
         converted[converted.len() - 1].clone(),
     ));
 
-    Ok(Some(Rc::new(enlist(loc, output_list))))
+    Ok(Some(Rc::new(enlist(loc, &output_list))))
 }
 
 fn matches_mod(
