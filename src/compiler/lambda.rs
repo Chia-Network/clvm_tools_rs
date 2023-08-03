@@ -61,6 +61,8 @@ fn make_operator(loc: Srcloc, op: u8, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) ->
             arg1,
             arg2,
         ],
+        // Calling a primitive, no tail.
+        None,
     )
 }
 
@@ -75,6 +77,8 @@ fn make_list(loc: Srcloc, args: &[BodyForm]) -> BodyForm {
         res = BodyForm::Call(
             loc.clone(),
             vec![Rc::new(cons_atom.clone()), Rc::new(a.clone()), Rc::new(res)],
+            // Calling a primitive, no tail.
+            None,
         );
     }
     res
