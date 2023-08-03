@@ -130,7 +130,7 @@ fn build_used_constants_names(
         new_names = HashSet::new();
 
         for name in iterate_names {
-            let functions_and_macros = vec![functions.get(&name), macro_as_dict.get(&name)];
+            let functions_and_macros = [functions.get(&name), macro_as_dict.get(&name)];
 
             let matching_names_1 = functions_and_macros
                 .iter()

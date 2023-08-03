@@ -209,7 +209,7 @@ impl CompilerOperatorsInternal {
         }
     }
 
-    fn write(&self, allocator: &mut Allocator, sexp: NodePtr) -> Response {
+    fn write(&self, allocator: &Allocator, sexp: NodePtr) -> Response {
         if let SExp::Pair(filename_sexp, r) = allocator.sexp(sexp) {
             if let SExp::Pair(data, _) = allocator.sexp(r) {
                 if let SExp::Atom() = allocator.sexp(filename_sexp) {
@@ -280,7 +280,7 @@ impl CompilerOperatorsInternal {
 
     pub fn set_symbol_table(
         &self,
-        allocator: &mut Allocator,
+        allocator: &Allocator,
         table: NodePtr,
     ) -> Result<Reduction, EvalErr> {
         if let Some(symtable) =

@@ -1493,7 +1493,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 ));
             }
 
-            let mut run_output = disassemble_with_kw(&mut allocator, result, keywords);
+            let mut run_output = disassemble_with_kw(&allocator, result, keywords);
             if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("dump") {
                 let mut f = Stream::new(None);
                 sexp_to_stream(&mut allocator, result, &mut f);
@@ -1509,7 +1509,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         format!(
             "FAIL: {} {}",
             ex.1,
-            disassemble_with_kw(&mut allocator, ex.0, keywords)
+            disassemble_with_kw(&allocator, ex.0, keywords)
         )
     }));
 
@@ -1545,7 +1545,9 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 only_exn,
                 &log_content,
                 symbol_table,
-                &disassemble,
+                // Clippy: disassemble no longer requires mutability,
+                // but this callback interface delivers it.
+                &|a: &mut Allocator, sexp: NodePtr| disassemble(a, sexp),
             );
         } else {
             stdout.write_str("\n");
@@ -1555,7 +1557,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 only_exn,
                 &log_content,
                 symbol_table,
-                &disassemble,
+                // Same as above.
+                &|a: &mut Allocator, sexp: NodePtr| disassemble(a, sexp),
             );
         }
     }

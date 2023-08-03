@@ -136,7 +136,7 @@ pub fn constant_optimizer(
     Ok(r)
 }
 
-pub fn is_args_call(allocator: &mut Allocator, r: NodePtr) -> bool {
+pub fn is_args_call(allocator: &Allocator, r: NodePtr) -> bool {
     if let SExp::Atom() = allocator.sexp(r) {
         // Only r in scope.
         let buf = allocator.atom(r);
