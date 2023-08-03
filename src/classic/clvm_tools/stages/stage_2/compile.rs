@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use clvm_rs::allocator::{Allocator, AtomBuf, NodePtr, SExp};
+use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::{EvalErr, Reduction, Response};
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
@@ -127,13 +127,14 @@ pub fn compile_qq(
     };
 
     match allocator.sexp(sexp) {
-        SExp::Atom(_) => {
+        SExp::Atom() => {
             // (qq ATOM) => (q . ATOM)
             quote(allocator, sexp)
         }
         SExp::Pair(op, sexp_rest) => {
-            if let SExp::Atom(opbuf) = allocator.sexp(op) {
-                if allocator.buf(&opbuf).to_vec() == qq_atom() {
+            if let SExp::Atom() = allocator.sexp(op) {
+                // opbuf => op
+                if allocator.atom(op).to_vec() == qq_atom() {
                     return m! {
                         cons_atom <- allocator.new_atom(&[4]);
                         subexp <-
@@ -143,7 +144,8 @@ pub fn compile_qq(
                         run_list <- enlist(allocator, &[cons_atom, op, consed]);
                         com_qq(allocator, "qq sexp pair".to_string(), macro_lookup, symbol_table, runner, run_list)
                     };
-                } else if allocator.buf(&opbuf).to_vec() == unquote_atom() {
+                } else if allocator.atom(op).to_vec() == unquote_atom() {
+                    // opbuf
                     if level == 1 {
                         // (qq (unquote X)) => X
                         return m! {
@@ -212,8 +214,10 @@ fn lower_quote_(allocator: &mut Allocator, prog: NodePtr) -> Result<NodePtr, Eva
             return Ok(prog);
         }
 
-        if let SExp::Atom(q) = allocator.sexp(qlist[0]) {
-            if allocator.buf(&q).to_vec() == "quote".as_bytes().to_vec() {
+        // quote_node was Atom(q)
+        let quote_node = qlist[0];
+        if let SExp::Atom() = allocator.sexp(quote_node) {
+            if allocator.atom(quote_node) == "quote".as_bytes() {
                 if qlist.len() != 2 {
                     // quoted list should be 2: "(quote arg)"
                     return Err(EvalErr(prog, format!("Compilation error while compiling [{}]. quote takes exactly one argument.", disassemble(allocator, prog))));
@@ -342,8 +346,10 @@ fn get_macro_program(
                     };
 
                     match allocator.sexp(mp_list[0]) {
-                        SExp::Atom(macro_name) => {
-                            if allocator.buf(&macro_name).to_vec() == *operator {
+                        SExp::Atom() => {
+                            // was macro_name, but it's singular and probably
+                            // not useful to rename.
+                            if allocator.atom(mp_list[0]) == operator {
                                 return Ok(Some(value));
                             }
                         }
@@ -362,10 +368,10 @@ fn get_macro_program(
 fn transform_program_atom(
     allocator: &mut Allocator,
     prog: NodePtr,
-    a: &AtomBuf,
+    a: &[u8],
     symbol_table: NodePtr,
 ) -> Response {
-    if allocator.buf(a).to_vec() == "@".as_bytes().to_vec() {
+    if a == b"@" {
         return allocator
             .new_atom(NodePath::new(None).as_path().data())
             .map(|x| Reduction(1, x));
@@ -384,8 +390,10 @@ fn transform_program_atom(
                         let value = if v.len() > 1 { v[1] } else { allocator.null() };
 
                         match allocator.sexp(v[0]) {
-                            SExp::Atom(s) => {
-                                if allocator.buf(&s).to_vec() == allocator.buf(a).to_vec() {
+                            SExp::Atom() => {
+                                // v[0] is close by, and probably not useful to
+                                // rename here.
+                                if allocator.atom(v[0]) == a {
                                     return Ok(Reduction(1, value));
                                 }
                             }
@@ -459,7 +467,7 @@ fn find_symbol_match(
                 }
 
                 match allocator.sexp(symdef[0]) {
-                    SExp::Atom(symptr) => {
+                    SExp::Atom() => {
                         let symbol = symdef[0];
                         let value = if symdef.len() == 1 {
                             allocator.null()
@@ -467,10 +475,10 @@ fn find_symbol_match(
                             symdef[1]
                         };
 
-                        let symbuf = allocator.buf(&symptr).to_vec();
-                        if vec![b'*'] == symbuf {
+                        let symbuf = allocator.atom(symdef[0]);
+                        if b"*" == symbuf {
                             return Ok(Some(SymbolResult::Direct(r)));
-                        } else if *opname == symbuf {
+                        } else if opname == symbuf {
                             return Ok(Some(SymbolResult::Matched(symbol, value)));
                         }
                     }
@@ -635,18 +643,21 @@ fn do_com_prog_(
 
         // quote atoms
         match allocator.sexp(prog) {
-            SExp::Atom(a) => {
+            SExp::Atom() => {
+                // Note: can't co-borrow with allocator below.
+                let prog_bytes = allocator.atom(prog).to_vec();
                 transform_program_atom(
                     allocator,
                     prog,
-                    &a,
+                    &prog_bytes,
                     symbol_table
                 )
             },
             SExp::Pair(operator,prog_rest) => {
                 match allocator.sexp(operator) {
-                    SExp::Atom(a) => {
-                        let opbuf = allocator.buf(&a).to_vec();
+                    SExp::Atom() => {
+                        // Note: can't co-borrow with allocator below.
+                        let opbuf = allocator.atom(operator).to_vec();
                         get_macro_program(allocator, &opbuf, macro_lookup).
                             and_then(|x| match x {
                                 Some(value) => {
@@ -770,14 +781,16 @@ pub fn get_compile_filename(
 ) -> Result<Option<String>, EvalErr> {
     let cvt_prog = assemble(allocator, "(_get_compile_filename)")?;
 
-    let cvt_prog_result = runner.run_program(allocator, cvt_prog, allocator.null(), None)?;
+    let Reduction(_, cvt_prog_result) =
+        runner.run_program(allocator, cvt_prog, allocator.null(), None)?;
 
-    if cvt_prog_result.1 == allocator.null() {
+    if cvt_prog_result == allocator.null() {
         return Ok(None);
     }
 
-    if let SExp::Atom(buf) = allocator.sexp(cvt_prog_result.1) {
-        let abuf = allocator.buf(&buf).to_vec();
+    if let SExp::Atom() = allocator.sexp(cvt_prog_result) {
+        // only cvt_prog_result in scope.
+        let abuf = allocator.atom(cvt_prog_result).to_vec();
         return Ok(Some(Bytes::new(Some(BytesFromType::Raw(abuf))).decode()));
     }
 
@@ -797,10 +810,12 @@ pub fn get_search_paths(
 
     let mut res = Vec::new();
     if let Some(l) = proper_list(allocator, search_path_result.1, true) {
-        for elt in l.iter() {
-            if let SExp::Atom(buf) = allocator.sexp(*elt) {
-                let abuf = allocator.buf(&buf).to_vec();
-                res.push(Bytes::new(Some(BytesFromType::Raw(abuf))).decode());
+        for elt in l.iter().copied() {
+            if let SExp::Atom() = allocator.sexp(elt) {
+                // Only elt in scope.
+                res.push(
+                    Bytes::new(Some(BytesFromType::Raw(allocator.atom(elt).to_vec()))).decode(),
+                );
             }
         }
     }
@@ -878,8 +893,9 @@ pub fn process_compile_file(
     let r_of_declaration = rest(allocator, declaration_sexp)?;
     let rr_of_declaration = rest(allocator, r_of_declaration)?;
     let frr_of_declaration = first(allocator, rr_of_declaration)?;
-    if let SExp::Atom(b) = allocator.sexp(frr_of_declaration) {
-        let b_name = allocator.buf(&b).to_vec();
+    if let SExp::Atom() = allocator.sexp(frr_of_declaration) {
+        // Referenced above.
+        let b_name = allocator.atom(frr_of_declaration).to_vec();
         let compiled_output = compile_file(
             runner,
             allocator,

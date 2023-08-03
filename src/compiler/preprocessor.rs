@@ -102,7 +102,10 @@ fn process_embed(
             let parsed = parse_sexp(Srcloc::start(&full_name), content.iter().copied())
                 .map_err(|e| CompileErr(e.0, e.1))?;
             if parsed.len() != 1 {
-                return Err(CompileErr(loc, format!("More than one form in {fname}")));
+                return Err(CompileErr(
+                    loc,
+                    format!("More than one form (or empty data) in {fname}"),
+                ));
             }
 
             parsed[0].clone()
@@ -204,6 +207,10 @@ fn process_pp_form(
                     }
                 }
 
+                // Accepted forms:
+                // (embed-file varname bin file.dat)
+                // (embed-file varname sexp file.clvm)
+                // (embed-file varname hex file.hex)
                 [SExp::Atom(kl, embed_file), SExp::Atom(_, name), SExp::Atom(_, kind), SExp::Atom(nl, fname)] => {
                     if embed_file == b"embed-file" {
                         if kind == b"hex" {

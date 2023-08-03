@@ -30,13 +30,13 @@ use crate::util::{number_from_u8, Number};
 
 const NUM_GEN_ATOMS: usize = 16;
 
-fn do_basic_brun(args: &Vec<String>) -> String {
+pub fn do_basic_brun(args: &Vec<String>) -> String {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, &"run".to_string(), 0);
     return s.get_value().decode();
 }
 
-fn do_basic_run(args: &Vec<String>) -> String {
+pub fn do_basic_run(args: &Vec<String>) -> String {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, &"run".to_string(), 2);
     return s.get_value().decode();
@@ -612,10 +612,15 @@ fn test_embed_file_5() {
     ])
     .trim()
     .to_string();
-    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
-        .trim()
-        .to_string();
-    assert_eq!(run_result, "(lsh 24 25)");
+    let run_result = do_basic_brun(&vec![
+        "brun".to_string(),
+        "-n".to_string(),
+        program,
+        "()".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(run_result, "(23 24 25)");
 }
 
 #[test]
@@ -641,7 +646,7 @@ fn test_embed_file_7() {
         "run".to_string(),
         "-i".to_string(),
         "resources/tests".to_string(),
-        "(mod () (embed-file hello bin hello.bin) hello)".to_string(),
+        "(mod () (embed-file hello bin a-binary-file-called-hello.dat) hello)".to_string(),
     ])
     .trim()
     .to_string();
@@ -657,7 +662,7 @@ fn test_embed_file_8() {
         "run".to_string(),
         "-i".to_string(),
         "resources/tests".to_string(),
-        "(mod () (include *standard-cl-21*) (embed-file hello bin hello.bin) hello)".to_string(),
+        "(mod () (include *standard-cl-21*) (embed-file hello bin a-binary-file-called-hello.dat) hello)".to_string(),
     ])
     .trim()
     .to_string();
@@ -673,7 +678,7 @@ fn test_embed_file_9() {
         "run".to_string(),
         "-i".to_string(),
         "resources/tests".to_string(),
-        "(mod () (include *standard-cl-21*) (embed-file hello bin hello.bin) (sha256 (sha256 hello)))".to_string(),
+        "(mod () (include *standard-cl-21*) (embed-file hello bin a-binary-file-called-hello.dat) (sha256 (sha256 hello)))".to_string(),
     ])
         .trim()
         .to_string();
