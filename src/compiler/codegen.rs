@@ -14,9 +14,10 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{is_at_capture, run_optimizer};
 use crate::compiler::comptypes::{
-    fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, Callable,
-    CompileErr, CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall, DefunData,
-    HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind, PrimaryCodegen,
+    fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, CallSpec,
+    Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall,
+    DefunData, HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind, PrimaryCodegen,
+    RawCallSpec,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
@@ -65,6 +66,7 @@ fn cons_bodyform(loc: Srcloc, left: Rc<BodyForm>, right: Rc<BodyForm>) -> BodyFo
             left,
             right,
         ],
+        None,
     )
 }
 
@@ -92,7 +94,7 @@ fn helper_atom(h: &HelperForm) -> SExp {
 
 fn build_tree(l: Srcloc, s: usize, e: usize, helper_array: &[HelperForm]) -> SExp {
     if e - s == 1 {
-        helper_atom(helper_array[s].borrow())
+        helper_atom(&helper_array[s])
     } else {
         let mid = (e + s) / 2;
         let car = build_tree(l.clone(), s, mid, helper_array);
@@ -291,33 +293,47 @@ fn generate_args_code(
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
-    l: Srcloc,
-    list: &[Rc<BodyForm>],
-) -> Result<SExp, CompileErr> {
-    if list.is_empty() {
-        Ok(SExp::Nil(l))
-    } else {
-        let mut compiled_args: Vec<Rc<SExp>> = Vec::new();
-        for hd in list.iter() {
-            let generated = generate_expr_code(
-                allocator,
-                runner.clone(),
-                opts.clone(),
-                compiler,
-                hd.clone(),
-            )
-            .map(|x| x.1)?;
-            compiled_args.push(generated);
-        }
-        Ok(list_to_cons(l, &compiled_args))
+    call: &CallSpec,
+    with_primcons: bool,
+) -> Result<Rc<SExp>, CompileErr> {
+    // Early return for the case where there are no provided arguments and no tail.
+    if call.args.is_empty() && call.tail.is_none() {
+        return Ok(Rc::new(SExp::Nil(call.loc.clone())));
     }
-}
 
-fn cons_up(at: Rc<SExp>) -> Rc<SExp> {
-    match at.borrow() {
-        SExp::Cons(l, h, r) => Rc::new(primcons(l.clone(), h.clone(), cons_up(r.clone()))),
-        _ => at,
+    // Ensure we start with either the specified tail or nil.
+    let mut compiled_args: Rc<SExp> = if let Some(t) = call.tail.as_ref() {
+        generate_expr_code(allocator, runner.clone(), opts.clone(), compiler, t.clone())?.1
+    } else {
+        Rc::new(SExp::Nil(call.loc.clone()))
+    };
+
+    // Now that we have the tail, generate the code for each argument in reverse
+    // order to cons on.
+    for hd in call.args.iter().rev() {
+        let generated = generate_expr_code(
+            allocator,
+            runner.clone(),
+            opts.clone(),
+            compiler,
+            hd.clone(),
+        )?
+        .1;
+
+        // This function is now reused for purposes that make a simple list of the
+        // converted arguments, or generate valid code with primitive conses.
+        if with_primcons {
+            compiled_args = Rc::new(primcons(generated.loc(), generated.clone(), compiled_args));
+        } else {
+            compiled_args = Rc::new(SExp::Cons(
+                generated.loc(),
+                generated.clone(),
+                compiled_args,
+            ));
+        }
     }
+
+    Ok(compiled_args)
 }
 
 fn process_defun_call(
@@ -330,7 +346,7 @@ fn process_defun_call(
     let env = primcons(
         l.clone(),
         Rc::new(SExp::Integer(l.clone(), 2_u32.to_bigint().unwrap())),
-        cons_up(args),
+        args,
     );
     Ok(CompiledCode(
         l.clone(),
@@ -358,18 +374,18 @@ pub fn get_call_name(l: Srcloc, body: BodyForm) -> Result<Rc<SExp>, CompileErr> 
 fn compile_call(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
-    l: Srcloc,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
-    list: Vec<Rc<BodyForm>>,
+    call: &RawCallSpec,
 ) -> Result<CompiledCode, CompileErr> {
-    let arg_string_list: Vec<Vec<u8>> = list
+    let arg_string_list: Vec<Vec<u8>> = call
+        .args
         .iter()
         .map(|v| v.to_sexp().to_string().as_bytes().to_vec())
         .collect();
 
     let error = Err(CompileErr(
-        l.clone(),
+        call.loc.clone(),
         format!(
             "wierdly formed compile request: {}",
             join_vecs_to_string(";".as_bytes().to_vec(), &arg_string_list)
@@ -377,11 +393,11 @@ fn compile_call(
     ));
 
     let compile_atom_head = |al: Srcloc, an: &Vec<u8>| {
-        let tl = list.iter().skip(1).cloned().collect();
+        let tl = call.args.iter().skip(1).cloned().collect();
         get_callable(
             opts.clone(),
             compiler,
-            l.clone(),
+            call.loc.clone(),
             Rc::new(SExp::Atom(al.clone(), an.to_vec())),
         )
         .and_then(|calltype| match calltype {
@@ -404,26 +420,44 @@ fn compile_call(
                 &inline,
                 l,
                 &tl,
+                call.tail.clone(),
             ),
 
-            Callable::CallDefun(l, lookup) => {
-                generate_args_code(allocator, runner, opts.clone(), compiler, l.clone(), &tl)
-                    .and_then(|args| {
-                        process_defun_call(
-                            opts.clone(),
-                            compiler,
-                            l.clone(),
-                            Rc::new(args),
-                            Rc::new(lookup),
-                        )
-                    })
-            }
+            Callable::CallDefun(l, lookup) => generate_args_code(
+                allocator,
+                runner,
+                opts.clone(),
+                compiler,
+                // A callspec is a way to collect some info about a call, mainly
+                // to reduce the number of arguments to pass through.
+                &CallSpec {
+                    loc: l.clone(),
+                    name: an,
+                    args: &tl,
+                    tail: call.tail.clone(),
+                    original: call.original.clone(),
+                },
+                true,
+            )
+            .and_then(|args| {
+                process_defun_call(opts.clone(), compiler, l.clone(), args, Rc::new(lookup))
+            }),
 
-            Callable::CallPrim(l, p) => {
-                generate_args_code(allocator, runner, opts, compiler, l.clone(), &tl).map(|args| {
-                    CompiledCode(l.clone(), Rc::new(SExp::Cons(l, Rc::new(p), Rc::new(args))))
-                })
-            }
+            Callable::CallPrim(l, p) => generate_args_code(
+                allocator,
+                runner.clone(),
+                opts,
+                compiler,
+                &CallSpec {
+                    loc: l.clone(),
+                    name: an,
+                    args: &tl,
+                    tail: None,
+                    original: Rc::new(BodyForm::Value(SExp::Nil(l.clone()))),
+                },
+                false,
+            )
+            .map(|args| CompiledCode(l.clone(), Rc::new(SExp::Cons(l, Rc::new(p), args)))),
 
             Callable::EnvPath => {
                 if tl.len() == 1 {
@@ -446,7 +480,7 @@ fn compile_call(
             }
 
             Callable::RunCompiler => {
-                if list.len() >= 2 {
+                if call.args.len() >= 2 {
                     let updated_opts = opts
                         .set_stdenv(false)
                         .set_in_defun(true)
@@ -454,15 +488,15 @@ fn compile_call(
                         .set_code_generator(compiler.clone());
 
                     let use_body = SExp::Cons(
-                        l.clone(),
-                        Rc::new(SExp::Atom(l.clone(), "mod".as_bytes().to_vec())),
+                        call.loc.clone(),
+                        Rc::new(SExp::Atom(call.loc.clone(), "mod".as_bytes().to_vec())),
                         Rc::new(SExp::Cons(
-                            l.clone(),
-                            Rc::new(SExp::Nil(l.clone())),
+                            call.loc.clone(),
+                            Rc::new(SExp::Nil(call.loc.clone())),
                             Rc::new(SExp::Cons(
-                                list[1].loc(),
-                                list[1].to_sexp(),
-                                Rc::new(SExp::Nil(l.clone())),
+                                call.args[1].loc(),
+                                call.args[1].to_sexp(),
+                                Rc::new(SExp::Nil(call.loc.clone())),
                             )),
                         )),
                     );
@@ -476,7 +510,10 @@ fn compile_call(
                             &mut unused_symbol_table,
                         )
                         .map(|code| {
-                            CompiledCode(l.clone(), Rc::new(primquote(l.clone(), Rc::new(code))))
+                            CompiledCode(
+                                call.loc.clone(),
+                                Rc::new(primquote(call.loc.clone(), Rc::new(code))),
+                            )
                         })
                 } else {
                     error.clone()
@@ -485,7 +522,7 @@ fn compile_call(
         })
     };
 
-    match list[0].borrow() {
+    match call.args[0].borrow() {
         BodyForm::Value(SExp::Integer(al, an)) => {
             compile_atom_head(al.clone(), &u8_from_number(an.clone()))
         }
@@ -560,14 +597,26 @@ pub fn generate_expr_code(
                 )),
             }
         }
-        BodyForm::Call(l, list) => {
+        BodyForm::Call(l, list, tail) => {
             if list.is_empty() {
                 Err(CompileErr(
                     l.clone(),
                     "created a call with no forms".to_string(),
                 ))
             } else {
-                compile_call(allocator, runner, l.clone(), opts, compiler, list.to_vec())
+                compile_call(
+                    allocator,
+                    runner,
+                    opts,
+                    compiler,
+                    // This is a partial callspec.
+                    &RawCallSpec {
+                        loc: l.clone(),
+                        args: list,
+                        tail: tail.clone(),
+                        original: expr.clone(),
+                    },
+                )
             }
         }
         BodyForm::Mod(_, program) => {
@@ -750,7 +799,7 @@ fn generate_let_defun(
 ) -> HelperForm {
     let new_arguments: Vec<Rc<SExp>> = bindings
         .iter()
-        .map(|b| match b.pattern.borrow() {
+        .map(|b| match &b.pattern {
             BindingPattern::Name(name) => Rc::new(SExp::Atom(l.clone(), name.clone())),
             BindingPattern::Complex(sexp) => sexp.clone(),
         })
@@ -799,7 +848,7 @@ pub fn hoist_assign_form(letdata: &LetData) -> Result<BodyForm, CompileErr> {
             Ok(need_set_thats_possible)
         },
         // Has: What this binding provides.
-        |b| match b.pattern.borrow() {
+        |b| match &b.pattern {
             BindingPattern::Name(name) => HashSet::from([name.clone()]),
             BindingPattern::Complex(sexp) => {
                 let mut result_set = HashSet::new();
@@ -955,6 +1004,7 @@ pub fn hoist_body_let_binding(
                                 "@".as_bytes().to_vec(),
                             ))),
                         ],
+                        None,
                     )
                 });
 
@@ -964,22 +1014,36 @@ pub fn hoist_body_let_binding(
             ];
             call_args.append(&mut let_args);
 
-            let final_call = BodyForm::Call(letdata.loc.clone(), call_args);
+            let final_call = BodyForm::Call(letdata.loc.clone(), call_args, None);
             Ok((out_defuns, Rc::new(final_call)))
         }
         BodyForm::Let(LetFormKind::Assign, letdata) => {
             hoist_body_let_binding(outer_context, args, Rc::new(hoist_assign_form(letdata)?))
         }
-        BodyForm::Call(l, list) => {
+        BodyForm::Call(l, list, tail) => {
             let mut vres = Vec::new();
             let mut new_call_list = vec![list[0].clone()];
             for i in list.iter().skip(1) {
-                let (new_helper, new_arg) =
+                let (mut new_helpers, new_arg) =
                     hoist_body_let_binding(outer_context.clone(), args.clone(), i.clone())?;
                 new_call_list.push(new_arg);
-                vres.append(&mut new_helper.clone());
+                vres.append(&mut new_helpers);
             }
-            Ok((vres, Rc::new(BodyForm::Call(l.clone(), new_call_list))))
+
+            // Ensure that we hoist a let occupying the &rest tail.
+            let new_tail = if let Some(t) = tail.as_ref() {
+                let (mut new_tail_helpers, new_tail) =
+                    hoist_body_let_binding(outer_context, args, t.clone())?;
+                vres.append(&mut new_tail_helpers);
+                Some(new_tail)
+            } else {
+                None
+            };
+
+            Ok((
+                vres,
+                Rc::new(BodyForm::Call(l.clone(), new_call_list, new_tail)),
+            ))
         }
         _ => Ok((Vec::new(), body.clone())),
     }
@@ -1220,17 +1284,21 @@ fn finalize_env_(
                 Some(res) => Ok(res.code.clone()),
                 None => {
                     match c.inlines.get(v) {
-                        Some(res) => replace_in_inline(
-                            allocator,
-                            runner.clone(),
-                            opts.clone(),
-                            c,
-                            l.clone(),
-                            res,
-                            res.args.loc(),
-                            &synthesize_args(res.args.clone()),
-                        )
-                        .map(|x| x.1),
+                        Some(res) => {
+                            let (arg_list, arg_tail) = synthesize_args(res.args.clone());
+                            replace_in_inline(
+                                allocator,
+                                runner.clone(),
+                                opts.clone(),
+                                c,
+                                l.clone(),
+                                res,
+                                res.args.loc(),
+                                &arg_list,
+                                arg_tail,
+                            )
+                            .map(|x| x.1)
+                        }
                         None => {
                             /* Parentfns are functions in progress in the parent */
                             if c.parentfns.get(v).is_some() {
