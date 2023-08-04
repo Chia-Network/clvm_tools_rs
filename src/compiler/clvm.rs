@@ -192,6 +192,9 @@ fn eval_args(
                 sexp = b.clone();
             }
             _ => {
+                // This change was moved to:
+                // https://github.com/Chia-Network/clvm_tools_rs/pull/205
+                // and will be removed when that's in.
                 if !truthy(sexp.clone()) {
                     return Ok(RunStep::Op(head, context_, sexp, Some(eval_list), parent));
                 } else {
