@@ -375,11 +375,7 @@ fn test_clvm_operator_with_weird_tail() {
     let filename = "test-weird-tail.clvm";
     let loc = Srcloc::start(filename);
     let program = "(+ (q . 3) (q . 5) . \"\")";
-    let parsed = parse_sexp(
-        loc.clone(),
-        program.as_bytes().iter().copied(),
-    )
-        .expect("should parse");
+    let parsed = parse_sexp(loc.clone(), program.as_bytes().iter().copied()).expect("should parse");
     let args = Rc::new(SExp::Nil(loc));
     let program_lines = Rc::new(vec![program.to_string()]);
 
