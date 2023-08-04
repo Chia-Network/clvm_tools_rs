@@ -369,3 +369,29 @@ fn test_cldb_explicit_throw() {
 
     assert!(watcher.correct_result());
 }
+
+#[test]
+fn test_clvm_operator_with_weird_tail() {
+    let filename = "test-weird-tail.clvm";
+    let loc = Srcloc::start(filename);
+    let program = "(+ (q . 3) (q . 5) . \"\")";
+    let parsed = parse_sexp(
+        loc.clone(),
+        program.as_bytes().iter().copied(),
+    )
+        .expect("should parse");
+    let args = Rc::new(SExp::Nil(loc));
+    let program_lines = Rc::new(vec![program.to_string()]);
+
+    assert_eq!(
+        run_clvm_in_cldb(
+            filename,
+            program_lines,
+            parsed[0].clone(),
+            HashMap::new(),
+            args,
+            &mut DoesntWatchCldb {},
+        ),
+        Some("8".to_string())
+    );
+}
