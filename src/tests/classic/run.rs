@@ -1204,9 +1204,14 @@ fn test_secp256r1_verify_classic_fail() {
 fn test_classic_obeys_operator_choice_at_compile_time_no_version() {
     let compiled = do_basic_run(&vec![
         "run".to_string(),
-        "(mod () (coinid (sha256 99) (sha256 99) 1))".to_string()
-    ]).trim().to_string();
-    assert_eq!(compiled, "(q . 0x97c3f14ced4dfc280611fd8d9b158163e8981b3bce4d1bb6dd0bcc679a2e2455)");
+        "(mod () (coinid (sha256 99) (sha256 99) 1))".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        compiled,
+        "(q . 0x97c3f14ced4dfc280611fd8d9b158163e8981b3bce4d1bb6dd0bcc679a2e2455)"
+    );
 }
 
 #[test]
@@ -1215,9 +1220,14 @@ fn test_classic_obeys_operator_choice_at_compile_time_version_1() {
         "run".to_string(),
         "--operators-version".to_string(),
         "1".to_string(),
-        "(mod () (coinid (sha256 99) (sha256 99) 1))".to_string()
-    ]).trim().to_string();
-    assert_eq!(compiled, "(q . 0x97c3f14ced4dfc280611fd8d9b158163e8981b3bce4d1bb6dd0bcc679a2e2455)");
+        "(mod () (coinid (sha256 99) (sha256 99) 1))".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        compiled,
+        "(q . 0x97c3f14ced4dfc280611fd8d9b158163e8981b3bce4d1bb6dd0bcc679a2e2455)"
+    );
 }
 
 #[test]
@@ -1226,7 +1236,9 @@ fn test_classic_obeys_operator_choice_at_compile_time_version_0() {
         "run".to_string(),
         "--operators-version".to_string(),
         "0".to_string(),
-        "(mod () (coinid (sha256 99) (sha256 99) 1))".to_string()
-    ]).trim().to_string();
+        "(mod () (coinid (sha256 99) (sha256 99) 1))".to_string(),
+    ])
+    .trim()
+    .to_string();
     assert_eq!(compiled, "FAIL: unimplemented operator 48");
 }
