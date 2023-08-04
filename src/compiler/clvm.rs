@@ -351,7 +351,7 @@ pub fn truthy(sexp: Rc<SExp>) -> bool {
 /// more arguments for its operator, one needed argument evaluation is removed
 /// and the step becomes closer to evaluation.
 pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
-    match (a, b.borrow()) {
+    match (a, b) {
         (RunStep::Done(l, x), RunStep::Done(_, _)) => RunStep::Done(l.clone(), x.clone()),
         (RunStep::Done(l, x), RunStep::Op(head, context, args, Some(remain), parent)) => {
             RunStep::Op(
