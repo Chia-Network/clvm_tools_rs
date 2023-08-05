@@ -182,8 +182,11 @@ fn create_name_lookup_(
     }
 }
 
+// Tell whether there's a non-inline defun called 'name' in this program.
+// If so, the reference to this name is a reference to a function, which
+// will make variable references to it capture the program's function
+// environment.
 fn is_defun_in_codegen(compiler: &PrimaryCodegen, name: &[u8]) -> bool {
-    // Check for an input defun that matches the name.
     for h in compiler.original_helpers.iter() {
         if matches!(h, HelperForm::Defun(false, _)) && h.name() == name {
             return true;
@@ -193,6 +196,8 @@ fn is_defun_in_codegen(compiler: &PrimaryCodegen, name: &[u8]) -> bool {
     false
 }
 
+// At the CLVM level, given a list of clvm expressios, make an expression
+// that contains that list using conses.
 fn make_list(loc: Srcloc, elements: Vec<Rc<SExp>>) -> Rc<SExp> {
     let mut res = Rc::new(SExp::Nil(loc.clone()));
     for e in elements.iter().rev() {
@@ -202,7 +207,12 @@ fn make_list(loc: Srcloc, elements: Vec<Rc<SExp>>) -> Rc<SExp> {
 }
 
 //
-// Write an expression that conses the left env.
+// Get the clvm expression that represents the indicated function as a
+// callable value using the CLVM a operator.  This value can be returned
+// and even passed to another program because it carries the required
+// environment to call functions it depends on from the call site.
+//
+// To do this, it writes an expression that conses the left env.
 //
 // (list (q . 2) (c (q . 1) n) (list (q . 4) (c (q . 1) 2) (q . 1)))
 //
@@ -243,6 +253,11 @@ fn create_name_lookup(
     compiler: &PrimaryCodegen,
     l: Srcloc,
     name: &[u8],
+    // If the lookup is in head position, then it is a lookup as a callable,
+    // otherwise it's a lookup as a variable, which means that if a function
+    // is named, it will be built into an expression that allows it to be
+    // called by a CLVM 'a' operator as one would expect, regardless of how
+    // it integrates with the rest of the program it lives in.
     as_variable: bool,
 ) -> Result<Rc<SExp>, CompileErr> {
     compiler
@@ -256,6 +271,8 @@ fn create_name_lookup(
                     // callable like a lambda by repeating the left env into it.
                     let find_program = Rc::new(SExp::Integer(l.clone(), i.to_bigint().unwrap()));
                     if as_variable && is_defun_in_codegen(compiler, name) {
+                        // It's a defun.  Harden the result so it is callable
+                        // directly by the CLVM 'a' operator.
                         lambda_for_defun(l.clone(), find_program)
                     } else {
                         find_program
