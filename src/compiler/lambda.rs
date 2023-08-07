@@ -110,7 +110,7 @@ pub fn lambda_codegen(name: &[u8], ldata: &LambdaData) -> BodyForm {
         ldata.captures.clone(),
     );
 
-    let lambda_output = make_list(
+    make_list(
         ldata.loc.clone(),
         &[
             apply_atom,
@@ -124,9 +124,7 @@ pub fn lambda_codegen(name: &[u8], ldata: &LambdaData) -> BodyForm {
             ),
             make_list(ldata.loc.clone(), &[cons_atom, compose_captures, whole_env]),
         ],
-    );
-
-    lambda_output
+    )
 }
 
 pub fn handle_lambda(
