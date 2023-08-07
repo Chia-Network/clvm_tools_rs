@@ -1664,3 +1664,33 @@ fn test_lambda_in_lambda() {
     let res = run_string(&prog, &"(13 51)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "663");
 }
+
+#[test]
+fn test_let_in_rest_0() {
+    let prog = indoc! {"
+(mod (Z X)
+  (include *standard-cl-21*)
+
+  (defun F (X) (+ X 3))
+
+  (F &rest (list (let ((Q (* X Z))) (+ Q 99))))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(3 2)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "108");
+}
+
+#[test]
+fn test_let_in_rest_1() {
+    let prog = indoc! {"
+(mod (Z X)
+  (include *standard-cl-21*)
+
+  (defun F (X) (+ X 3))
+
+  (F &rest (let ((Q (* X Z))) (list (+ Q 99))))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(3 2)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "108");
+}
