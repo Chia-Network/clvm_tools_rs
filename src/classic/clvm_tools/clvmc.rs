@@ -73,7 +73,7 @@ pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> AcceptedDialec
     dialects.insert("*standard-cl-22*".as_bytes().to_vec(), 22);
 
     // Start with an empty definition of the dialect (classic).
-    let mut result = Default::default();
+    let mut result = AcceptedDialect::default();
 
     // For each form in the source file, try to find a sigil at the top level of
     // the list it forms to find a sigil.
