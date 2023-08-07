@@ -30,6 +30,20 @@ impl From<(Srcloc, String)> for CompileErr {
 #[derive(Clone, Debug)]
 pub struct CompiledCode(pub Srcloc, pub Rc<SExp>);
 
+/// Specifying how the language is spoken.
+///
+/// This object will eventually contain more information about the specifics of
+/// the requested dialect.  Initially, this includes a 'strict' setting in the
+/// modern macros PR which allows us to begin with the *strict-cl-21* sigil to
+/// include a more modern macro system and the ability to turn on strict variable
+/// name use.  This is a feature that's been widely requested and a first step
+/// toward it is to make the object that specifies how chialisp is compiled be
+/// able to carry more information.
+#[derive(Clone, Debug, Default)]
+pub struct AcceptedDialect {
+    pub stepping: Option<i32>,
+}
+
 /// A description of an inlined function for use during inline expansion.
 /// This is used only by PrimaryCodegen.
 #[derive(Clone, Debug)]
@@ -321,6 +335,8 @@ pub trait CompilerOpts {
     /// complex constants, and into (com ...) forms.  This allows the CompilerOpts
     /// to carry this info across boundaries into a new context.
     fn code_generator(&self) -> Option<PrimaryCodegen>;
+    /// Get the dialect declared in the toplevel program.
+    fn dialect(&self) -> AcceptedDialect;
     /// Disassembly version (for disassembly style serialization)
     fn disassembly_ver(&self) -> Option<usize>;
     /// Specifies whether code is being generated on behalf of an inner defun in
@@ -347,6 +363,8 @@ pub trait CompilerOpts {
     /// Specifies the search paths we're carrying.
     fn get_search_paths(&self) -> Vec<String>;
 
+    /// Set the dialect.
+    fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts>;
     /// Set search paths.
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts>;
     /// Set disassembly version for.
