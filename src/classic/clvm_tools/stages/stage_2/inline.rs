@@ -11,7 +11,7 @@ use std::collections::HashMap;
 // (@ name substructure)
 // then return name and substructure.
 pub fn is_at_capture(
-    allocator: &mut Allocator,
+    allocator: &Allocator,
     tree_first: NodePtr,
     tree_rest: NodePtr,
 ) -> Option<(NodePtr, NodePtr)> {

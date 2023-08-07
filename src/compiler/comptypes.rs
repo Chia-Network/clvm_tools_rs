@@ -31,6 +31,14 @@ impl From<(Srcloc, String)> for CompileErr {
 pub struct CompiledCode(pub Srcloc, pub Rc<SExp>);
 
 /// Specifying how the language is spoken.
+///
+/// This object will eventually contain more information about the specifics of
+/// the requested dialect.  Initially, this includes a 'strict' setting in the
+/// modern macros PR which allows us to begin with the *strict-cl-21* sigil to
+/// include a more modern macro system and the ability to turn on strict variable
+/// name use.  This is a feature that's been widely requested and a first step
+/// toward it is to make the object that specifies how chialisp is compiled be
+/// able to carry more information.
 #[derive(Clone, Debug, Default)]
 pub struct AcceptedDialect {
     pub stepping: Option<i32>,
@@ -234,6 +242,17 @@ pub enum HelperForm {
     Defun(bool, DefunData),
 }
 
+/// To what purpose is the file included.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub enum IncludeProcessType {
+    /// Include the bytes on disk as an atom.
+    Bin,
+    /// Parse the hex on disk and present it as a clvm value.
+    Hex,
+    /// Read clvm in s-expression form as a clvm value.
+    SExpression,
+}
+
 /// A description of an include form.  Here, records the locations of the various
 /// parts of the include so they can be marked in the language server and be
 /// subject to other kind of reporting if desired.
@@ -245,6 +264,7 @@ pub struct IncludeDesc {
     pub nl: Srcloc,
     /// The relative path to a target or a special directive name.
     pub name: Vec<u8>,
+    pub kind: Option<IncludeProcessType>,
 }
 
 impl IncludeDesc {
@@ -317,6 +337,8 @@ pub trait CompilerOpts {
     fn code_generator(&self) -> Option<PrimaryCodegen>;
     /// Get the dialect declared in the toplevel program.
     fn dialect(&self) -> AcceptedDialect;
+    /// Disassembly version (for disassembly style serialization)
+    fn disassembly_ver(&self) -> Option<usize>;
     /// Specifies whether code is being generated on behalf of an inner defun in
     /// the program.
     fn in_defun(&self) -> bool;
@@ -345,6 +367,8 @@ pub trait CompilerOpts {
     fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts>;
     /// Set search paths.
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts>;
+    /// Set disassembly version for.
+    fn set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts>;
     /// Set whether we're compiling on behalf of a defun.
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts>;
     /// Set whether to inject the standard environment.
@@ -367,7 +391,7 @@ pub trait CompilerOpts {
         &self,
         inc_from: String,
         filename: String,
-    ) -> Result<(String, String), CompileErr>;
+    ) -> Result<(String, Vec<u8>), CompileErr>;
 
     /// Given a parsed SExp, compile it as an independent program based on the
     /// settings given here.  The result is bare generated code.

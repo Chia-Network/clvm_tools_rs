@@ -46,7 +46,7 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
             result
         }
         BodyForm::Quoted(_) => vec![],
-        BodyForm::Value(atom) => match atom.borrow() {
+        BodyForm::Value(atom) => match atom {
             SExp::Atom(_l, v) => vec![v.to_vec()],
             SExp::Cons(_l, f, r) => {
                 let mut first_names = collect_used_names_sexp(f.clone());
@@ -89,7 +89,7 @@ fn collect_used_names_helperform(body: &HelperForm) -> Vec<Vec<u8>> {
 fn collect_used_names_compileform(body: &CompileForm) -> Vec<Vec<u8>> {
     let mut result = Vec::new();
     for h in body.helpers.iter() {
-        let mut helper_list = collect_used_names_helperform(h.borrow());
+        let mut helper_list = collect_used_names_helperform(h);
         result.append(&mut helper_list);
     }
 
@@ -562,7 +562,7 @@ fn match_op_name_4(pl: &[SExp]) -> Option<OpName4Match> {
                         nl: ll.clone(),
                         name: name.clone(),
                         args: Rc::new(pl[2].clone()),
-                        body: Rc::new(enlist(l.clone(), tail_list)),
+                        body: Rc::new(enlist(l.clone(), &tail_list)),
                     })
                 }
                 _ => Some(OpName4Match {
@@ -754,7 +754,7 @@ fn frontend_start(
                         let args = Rc::new(x[1].clone());
                         let body_vec: Vec<Rc<SExp>> =
                             x.iter().skip(2).map(|s| Rc::new(s.clone())).collect();
-                        let body = Rc::new(enlist(pre_forms[0].loc(), body_vec));
+                        let body = Rc::new(enlist(pre_forms[0].loc(), &body_vec));
 
                         let ls = preprocess(opts.clone(), includes, body)?;
                         return compile_mod_(

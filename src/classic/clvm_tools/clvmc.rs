@@ -27,15 +27,18 @@ use crate::compiler::comptypes::{AcceptedDialect, CompileErr, CompilerOpts};
 use crate::compiler::runtypes::RunFailure;
 
 fn include_dialect(
-    allocator: &mut Allocator,
+    allocator: &Allocator,
     dialects: &HashMap<Vec<u8>, i32>,
     e: &[NodePtr],
 ) -> Option<i32> {
     // Propogated names from let capture to labeled nodes.
-    let inc_node = e[0];
+    let include_keyword_node = e[0];
     let name_node = e[1];
-    if let (SExp::Atom(), SExp::Atom()) = (allocator.sexp(inc_node), allocator.sexp(name_node)) {
-        if allocator.atom(inc_node) == "include".as_bytes().to_vec() {
+    if let (SExp::Atom(), SExp::Atom()) = (
+        allocator.sexp(include_keyword_node),
+        allocator.sexp(name_node),
+    ) {
+        if allocator.atom(include_keyword_node) == "include".as_bytes().to_vec() {
             if let Some(dialect) = dialects.get(allocator.atom(name_node)) {
                 return Some(*dialect);
             }
@@ -57,17 +60,28 @@ pub fn write_sym_output(
         .map(|_| ())
 }
 
+// Now return more parameters about the "modern" dialect, including in the future,
+// strictness.  This will allow us to support the transition to modern macros which
+// in turn allow us to turn on strictness in variable naming.  Often multiple moves
+// are needed to get from one point to another and there's a tension between
+// unitary changes and smaller PRs which do fewer things by themselves.  This is
+// part of a broader narrative, which many requested that sets us on the path of
+// being able to include more information in the dialect result.
 pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> AcceptedDialect {
     let mut dialects = HashMap::new();
     dialects.insert("*standard-cl-21*".as_bytes().to_vec(), 21);
     dialects.insert("*standard-cl-22*".as_bytes().to_vec(), 22);
 
+    // Start with an empty definition of the dialect (classic).
     let mut result = Default::default();
 
+    // For each form in the source file, try to find a sigil at the top level of
+    // the list it forms to find a sigil.
     if let Some(l) = proper_list(allocator, sexp, true) {
         for elt in l.iter() {
             let detect_modern_result = detect_modern(allocator, *elt);
             if detect_modern_result.stepping.is_some() {
+                // We found a dialect directive.
                 result = detect_modern_result;
                 break;
             }
@@ -83,6 +97,7 @@ pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> AcceptedDialec
                     }
 
                     if let Some(dialect) = include_dialect(allocator, &dialects, &e) {
+                        // We found a sigl.
                         result.stepping = Some(dialect);
                         break;
                     }
@@ -91,6 +106,7 @@ pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> AcceptedDialec
         }
     }
 
+    // Return whatever we found or the default.
     result
 }
 
@@ -106,6 +122,8 @@ pub fn compile_clvm_text(
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
 
     let dialect = detect_modern(allocator, assembled_sexp);
+    // Now the stepping is optional (None for classic) but we may communicate
+    // other information in dialect as well.
     if let Some(dialect) = dialect.stepping {
         let runner = Rc::new(DefaultProgramRunner::new());
         let opts = opts.set_optimize(true).set_frontend_opt(dialect > 21);
@@ -150,7 +168,13 @@ pub fn compile_clvm_inner(
         filename,
         classic_with_opts,
     )
-    .map_err(|x| format!("error {} compiling {}", x.1, disassemble(allocator, x.0)))?;
+    .map_err(|x| {
+        format!(
+            "error {} compiling {}",
+            x.1,
+            disassemble(allocator, x.0, opts.disassembly_ver())
+        )
+    })?;
     sexp_to_stream(allocator, result, result_stream);
     Ok(())
 }
