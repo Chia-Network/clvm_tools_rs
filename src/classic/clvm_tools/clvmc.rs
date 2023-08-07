@@ -97,7 +97,7 @@ pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> AcceptedDialec
                     }
 
                     if let Some(dialect) = include_dialect(allocator, &dialects, &e) {
-                        // We found a sigl.
+                        // We found a sigil.
                         result.stepping = Some(dialect);
                         break;
                     }
