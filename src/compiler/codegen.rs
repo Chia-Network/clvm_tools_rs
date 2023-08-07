@@ -710,8 +710,7 @@ pub fn generate_expr_code(
         }
         BodyForm::Mod(_, program) => {
             // A mod form yields the compiled code.
-            let without_env = opts.set_start_env(None).set_in_defun(false);
-            let code = codegen(allocator, runner, without_env, program, &mut HashMap::new())?;
+            let code = codegen(allocator, runner, opts, program, &mut HashMap::new())?;
             Ok(CompiledCode(
                 program.loc.clone(),
                 Rc::new(SExp::Cons(
