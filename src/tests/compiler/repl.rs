@@ -404,3 +404,35 @@ fn test_eval_new_bls_operator() {
         "(q)"
     );
 }
+
+#[test]
+fn test_repl_base_lambda_case() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defun F (X F) (a F (list X)))".to_string(),
+                "(F 3 (lambda (Y) (+ Y 9)))".to_string(),
+            ],
+            None
+        )
+        .unwrap()
+        .unwrap(),
+        "(q . 12)"
+    );
+}
+
+#[test]
+fn test_repl_rest_lambda_case() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defun F (X F) (a F (list X)))".to_string(),
+                "(F &rest (list 3 (lambda (Y) (+ Y 9))))".to_string()
+            ],
+            None
+        )
+        .unwrap()
+        .unwrap(),
+        "(q . 12)"
+    );
+}

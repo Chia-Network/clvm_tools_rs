@@ -273,6 +273,19 @@ fn arg_inputs_primitive(arginputs: Rc<ArgInputs>) -> bool {
     }
 }
 
+fn decons_args(
+    l: &Srcloc,
+    formed_tail: Rc<BodyForm>,
+) -> ArgInputs {
+    if let Some((head, tail)) = match_cons(formed_tail.clone()) {
+        let arg_head = decons_args(l, head.clone());
+        let arg_tail = decons_args(l, tail.clone());
+        ArgInputs::Pair(Rc::new(arg_head), Rc::new(arg_tail))
+    } else {
+        ArgInputs::Whole(formed_tail)
+    }
+}
+
 fn build_argument_captures(
     l: &Srcloc,
     arguments_to_convert: &[Rc<BodyForm>],
@@ -280,7 +293,7 @@ fn build_argument_captures(
     args: Rc<SExp>,
 ) -> Result<HashMap<Vec<u8>, Rc<BodyForm>>, CompileErr> {
     let formed_tail = tail.unwrap_or_else(|| Rc::new(BodyForm::Quoted(SExp::Nil(l.clone()))));
-    let mut formed_arguments = ArgInputs::Whole(formed_tail);
+    let mut formed_arguments = decons_args(l, formed_tail);
 
     for i_reverse in 0..arguments_to_convert.len() {
         let i = arguments_to_convert.len() - i_reverse - 1;
@@ -1041,10 +1054,24 @@ impl<'info> Evaluator {
                     return Ok(call.original.clone());
                 }
 
+                let translated_tail =
+                    if let Some(t) = call.tail.as_ref() {
+                        Some(self.shrink_bodyform_visited(
+                            allocator,
+                            visited,
+                            prog_args.clone(),
+                            env,
+                            t.clone(),
+                            only_inline
+                        )?)
+                    } else {
+                        None
+                    };
+
                 let argument_captures_untranslated = build_argument_captures(
                     &call.loc.clone(),
                     arguments_to_convert,
-                    call.tail.clone(),
+                    translated_tail.clone(),
                     defun.args.clone(),
                 )?;
 
