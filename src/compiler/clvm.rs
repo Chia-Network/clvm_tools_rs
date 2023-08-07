@@ -201,20 +201,23 @@ fn eval_args(
     let mut eval_list: Vec<Rc<SExp>> = Vec::new();
 
     loop {
-        match sexp.borrow() {
-            SExp::Nil(_l) => {
-                return Ok(RunStep::Op(head, context_, sexp, Some(eval_list), parent));
-            }
-            SExp::Cons(_l, a, b) => {
-                eval_list.push(a.clone());
-                sexp = b.clone();
-            }
-            _ => {
-                return Err(RunFailure::RunErr(
-                    sexp.loc(),
-                    format!("bad argument list {sexp_} {context_}"),
-                ));
-            }
+        // A list of the following forms:
+        //   (x y . 0)
+        //   (x y . "")
+        // Are properly terminated lists and disassemble to (x y).
+        //
+        // This recognizes that our broader value space has more ways
+        // of expressing nil.
+        if let SExp::Cons(_l, a, b) = sexp.borrow() {
+            eval_list.push(a.clone());
+            sexp = b.clone();
+        } else if !truthy(sexp.clone()) {
+            return Ok(RunStep::Op(head, context_, sexp, Some(eval_list), parent));
+        } else {
+            return Err(RunFailure::RunErr(
+                sexp.loc(),
+                format!("bad argument list {sexp_} {context_}"),
+            ));
         }
     }
 }
