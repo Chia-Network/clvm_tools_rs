@@ -49,6 +49,7 @@ fn run_clvm_in_cldb<V>(
     symbols: HashMap<String, String>,
     args: Rc<SExp>,
     viewer: &mut V,
+    jit: bool,
 ) -> Option<String>
 where
     V: StepOfCldbViewer,
@@ -67,6 +68,7 @@ where
         Box::new(CldbNoOverride::new_symbols(symbols)),
     );
     let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
+    cldbrun.set_use_jit(jit);
     let mut output: BTreeMap<String, String> = BTreeMap::new();
 
     loop {
@@ -104,7 +106,7 @@ fn test_run_clvm_in_cldb() {
         &program_code,
         &mut symbols,
     )
-    .expect("should compile");
+        .expect("should compile");
 
     let program_lines: Vec<String> = program_code.lines().map(|x| x.to_string()).collect();
 
@@ -116,6 +118,7 @@ fn test_run_clvm_in_cldb() {
             symbols,
             args,
             &mut DoesntWatchCldb {},
+            false,
         ),
         Some("120".to_string())
     );
@@ -284,7 +287,7 @@ fn test_cldb_hierarchy_mode() {
 fn test_execute_program_and_capture_arguments() {
     let compiled_symbols_text =
         fs::read_to_string("resources/tests/cldb_tree/pool_member_innerpuz_extra.sym")
-            .expect("should exist");
+        .expect("should exist");
     let compiled_symbols: HashMap<String, String> =
         serde_json::from_str(&compiled_symbols_text).expect("should decode");
     let result = run_program_as_tree_from_hex(
@@ -362,10 +365,46 @@ fn test_cldb_explicit_throw() {
             program,
             HashMap::new(),
             args,
-            &mut watcher
+            &mut watcher,
+            false,
         ),
         None
     );
 
     assert!(watcher.correct_result());
+}
+
+#[test]
+fn test_cldb_run_with_jit_smoke() {
+    let program_name = "fact.clsp";
+    let program_code = "(mod (X) (include *standard-cl-21*) (defun fact (X) (if (> X 1) (* X (fact (- X 1))) 1)) (fact X))";
+    let mut allocator = Allocator::new();
+    let runner = Rc::new(DefaultProgramRunner::new());
+    let opts = Rc::new(DefaultCompilerOpts::new(program_name));
+    let mut symbols = HashMap::new();
+    let args = parse_sexp(Srcloc::start("*args*"), "(5)".bytes()).expect("should parse")[0].clone();
+
+    let program = compile_file(
+        &mut allocator,
+        runner.clone(),
+        opts,
+        &program_code,
+        &mut symbols,
+    )
+        .expect("should compile");
+
+    let program_lines: Vec<String> = program_code.lines().map(|x| x.to_string()).collect();
+
+    assert_eq!(
+        run_clvm_in_cldb(
+            program_name,
+            Rc::new(program_lines),
+            Rc::new(program),
+            symbols,
+            args,
+            &mut DoesntWatchCldb {},
+            true,
+        ),
+        Some("120".to_string())
+    );
 }

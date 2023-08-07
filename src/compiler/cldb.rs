@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::mem::swap;
 use std::rc::Rc;
@@ -17,18 +18,20 @@ use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm;
-use crate::compiler::clvm::{convert_from_clvm_rs, run_step, RunStep};
+use crate::compiler::clvm::{apply_op, choose_path, convert_from_clvm_rs, PrimOverride, run_step, RunStep, truthy};
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::SExp;
+use crate::compiler::sexp::{First, SExp, NodeSel, SelectNode, ThisNode};
 use crate::compiler::srcloc::Srcloc;
 #[cfg(feature = "debug-print")]
-use crate::util::u8_from_number;
+use crate::util::{u8_from_number, number_from_u8};
 use crate::util::Number;
 
 #[cfg(feature = "debug-print")]
 fn print_atom() -> SExp {
     SExp::Atom(Srcloc::start("*print*"), b"$print$".to_vec())
 }
+
+type JitMap = HashMap<(u64, u64), ClvmShortCircuit>;
 
 #[derive(Clone, Debug)]
 pub struct PriorResult {
@@ -72,6 +75,23 @@ pub trait CldbRunnable {
     fn replace_step(&self, step: &RunStep) -> Option<Result<RunStep, RunFailure>>;
 }
 
+#[derive(Debug, Clone)]
+pub enum ClvmLinearInstruction {
+    Error(RunFailure),
+    Literal(Rc<SExp>),
+    Operator(Vec<u8>, usize), // Operator, number of arguments
+    Path(Vec<u8>),
+    PushEnv,
+    PopEnv,
+    Swap,
+    Apply,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ClvmShortCircuit {
+    pub instructions: Vec<ClvmLinearInstruction>
+}
+
 /// A CldbEnvironment is a container for a function-oriented view of clvm programs
 /// when running in Cldb.
 pub trait CldbEnvironment {
@@ -112,6 +132,8 @@ pub struct CldbRun {
     row: usize,
 
     outputs_to_step: HashMap<Number, PriorResult>,
+    perform_jit: bool,
+    stored_jit: RefCell<JitMap>,
 }
 
 #[cfg(feature = "debug-print")]
@@ -146,6 +168,113 @@ fn is_print_request(a: &SExp) -> Option<(Srcloc, Rc<SExp>)> {
     None
 }
 
+fn jit_generate_tail(jit_mut: &mut JitMap, jitted: &mut ClvmShortCircuit, num_args: &mut usize, tail: Rc<SExp>) {
+    eprintln!("jit_generate_tail {} {}", num_args, tail);
+    if let SExp::Cons(_, here, farther_tail) = tail.borrow() {
+        jit_generate_tail(jit_mut, jitted, num_args, farther_tail.clone());
+
+        *num_args += 1;
+        jit_sexp(jit_mut, jitted, here.clone());
+    } else if truthy(tail.clone()) {
+        jitted.instructions.push(ClvmLinearInstruction::Error(RunFailure::RunErr(tail.loc(), "improper tail in operator".to_string())));
+    }
+}
+
+fn is_quote_atom(expr: Rc<SExp>) -> bool {
+    *expr == SExp::Atom(expr.loc(), vec![1])
+}
+
+fn is_apply_atom(expr: Rc<SExp>, tail: Rc<SExp>) -> Result<(Rc<SExp>, Rc<SExp>), ()> {
+    if let NodeSel::Cons(h, First::Here(t)) =
+        NodeSel::Cons(ThisNode::Here, First::Here(ThisNode::Here)).select_nodes(tail).map_err(|_: (Srcloc, String)| ())?
+    {
+        if *expr == SExp::Atom(expr.loc(), vec![2]) {
+            return Ok((h.clone(), t.clone()));
+        }
+    }
+
+    Err(())
+}
+
+fn jit_sexp(jit_mut: &mut JitMap, jitted: &mut ClvmShortCircuit, expr: Rc<SExp>) {
+    if let SExp::Cons(_, ahead, atail) = expr.borrow() {
+        jit_generate(jit_mut, jitted, ahead.clone(), atail.clone());
+    } else if let SExp::Atom(_, v) = expr.atomize() { // Path or nil-like
+        if v.is_empty() {
+            jitted.instructions.push(ClvmLinearInstruction::Literal(expr.clone()));
+        } else {
+            jitted.instructions.push(ClvmLinearInstruction::Path(v.clone()));
+        }
+    } else {
+        jitted.instructions.push(ClvmLinearInstruction::Literal(expr.clone()));
+    }
+}
+
+fn jit_generate(jit_mut: &mut JitMap, jitted: &mut ClvmShortCircuit, head: Rc<SExp>, tail: Rc<SExp>) {
+    if is_quote_atom(head.clone()) {
+        jitted.instructions.push(ClvmLinearInstruction::Literal(tail.clone()));
+    } else if let Ok((apply_code, apply_env)) = is_apply_atom(head.clone(), tail.clone()) {
+        jit_sexp(jit_mut, jitted, apply_env);
+        jit_sexp(jit_mut, jitted, apply_code);
+
+        jitted.instructions.push(ClvmLinearInstruction::Swap);
+        jitted.instructions.push(ClvmLinearInstruction::PushEnv);
+        jitted.instructions.push(ClvmLinearInstruction::Apply);
+        jitted.instructions.push(ClvmLinearInstruction::PopEnv);
+    } else {
+        let mut num_args = 0;
+
+        jit_generate_tail(jit_mut, jitted, &mut num_args, tail.clone());
+
+        if let SExp::Atom(_, v) = head.atomize().borrow() {
+            eprintln!("jit_generate_tail for operator {head}");
+            jitted.instructions.push(ClvmLinearInstruction::Operator(v.clone(), num_args));
+        } else {
+            eprintln!("jit_generate failed operator {head}");
+            jitted.instructions.push(ClvmLinearInstruction::Error(RunFailure::RunErr(tail.loc(), "improper operator".to_string())));
+}
+    }
+}
+
+impl PrimOverride for CldbRun {
+    fn try_handle(
+        &self,
+        head: Rc<SExp>,
+        context: Rc<SExp>,
+        tail: Rc<SExp>,
+    ) -> Result<Option<Rc<SExp>>, RunFailure> {
+        if !self.perform_jit {
+            return Ok(None);
+        }
+
+        let jit_mut: &mut JitMap = &mut self.stored_jit.borrow_mut();
+        if let Some(l) = tail.proper_list() {
+            let mut recombined_tail = Rc::new(SExp::Nil(tail.loc()));
+            let quote_atom = Rc::new(SExp::Atom(tail.loc(), vec![1]));
+            for item in l.iter().rev() {
+                let quoted_item = Rc::new(SExp::Cons(
+                    item.loc(),
+                    quote_atom.clone(),
+                    Rc::new(item.clone())
+                ));
+                recombined_tail = Rc::new(SExp::Cons(
+                    item.loc(),
+                    quoted_item,
+                    recombined_tail
+                ));
+            }
+            let res = self.jit_compile_and_run(jit_mut, head, context, recombined_tail);
+            match res.as_ref() {
+                Err(e) => eprintln!("jit error {e:?}"),
+                Ok(r) => eprintln!("jit ok {r}")
+            }
+            res.map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 impl CldbRun {
     /// Create a new CldbRun for running a program.
     /// Takes an CldbEnvironment and a prepared RunStep, which will be stepped
@@ -168,7 +297,13 @@ impl CldbRun {
             in_expr: false,
             row: 0,
             outputs_to_step: HashMap::<Number, PriorResult>::new(),
+            perform_jit: false,
+            stored_jit: RefCell::new(HashMap::new()),
         }
+    }
+
+    pub fn set_use_jit(&mut self, use_jit: bool) {
+        self.perform_jit = use_jit;
     }
 
     pub fn is_ended(&self) -> bool {
@@ -189,7 +324,7 @@ impl CldbRun {
                 self.runner.clone(),
                 self.prim_map.clone(),
                 &self.step,
-                None,
+                Some(self),
             ),
         };
 
@@ -293,6 +428,126 @@ impl CldbRun {
 
     pub fn current_step(&self) -> RunStep {
         self.step.clone()
+    }
+
+    fn jit_run(&self, jit_mut: &mut JitMap, jit_code: &ClvmShortCircuit, env: Rc<SExp>) -> Result<Rc<SExp>, RunFailure> {
+        let mut val_stack: Vec<Rc<SExp>> = Vec::new();
+        let mut env_stack = vec![env.clone()];
+
+        eprintln!("jit_run");
+        for inst in jit_code.instructions.iter() {
+            eprintln!("- {inst:?}");
+        }
+        eprintln!("running");
+        for inst in jit_code.instructions.iter() {
+            for v in val_stack.iter().rev() {
+                eprintln!(" * {v}");
+            }
+            eprintln!("* {inst:?}");
+            let end_env = env_stack[env_stack.len()-1].clone();
+            match inst {
+                ClvmLinearInstruction::Swap => {
+                    let vslen = val_stack.len();
+                    if vslen < 2 {
+                        // XXX fix loc.
+                        return Err(RunFailure::RunErr(end_env.loc(), format!("{inst:?} {end_env}")));
+                    }
+
+                    let tmp = val_stack[vslen-1].clone();
+                    val_stack[vslen-1] = val_stack[vslen-2].clone();
+                    val_stack[vslen-2] = tmp;
+                },
+                ClvmLinearInstruction::Path(v) => {
+                    let the_path = number_from_u8(&v);
+                    val_stack.push(choose_path(
+                        end_env.loc(),
+                        the_path.clone(),
+                        the_path,
+                        end_env.clone(),
+                        end_env
+                    )?);
+                },
+                ClvmLinearInstruction::Literal(v) => {
+                    val_stack.push(v.clone());
+                },
+                ClvmLinearInstruction::Operator(o, n) => {
+                    let mut rest = Rc::new(SExp::Nil(end_env.loc()));
+                    for arg in val_stack.iter().rev().take(*n).rev().cloned() {
+                        rest = Rc::new(SExp::Cons(
+                            end_env.loc(),
+                            arg.clone(),
+                            rest.clone()
+                        ));
+                    }
+                    val_stack.truncate(val_stack.len() - n);
+                    let mut allocator = Allocator::new();
+                    let head = Rc::new(SExp::Atom(env.loc(), o.clone()));
+                    eprintln!("apply_op {head} {rest}");
+                    val_stack.push(apply_op(
+                        &mut allocator,
+                        self.runner.clone(),
+                        end_env.loc(),
+                        head,
+                        rest
+                    )?);
+                },
+                ClvmLinearInstruction::PushEnv => {
+                    if let Some(v) = val_stack.pop() {
+                        env_stack.push(v.clone());
+                    } else {
+                        return Err(RunFailure::RunErr(env.loc(), "empty val stack in pushenv".to_string()));
+                    }
+                },
+                ClvmLinearInstruction::PopEnv => {
+                    env_stack.pop();
+                }
+                ClvmLinearInstruction::Apply => {
+                    if let Some(program) = val_stack.pop() {
+                        let key_expr = Rc::as_ptr(&program);
+                        let key = (0, key_expr as u64);
+                        if let SExp::Cons(_, head, tail) = program.borrow() {
+                            val_stack.push(self.jit_compile_and_run(jit_mut, head.clone(), end_env.clone(), tail.clone())?);
+                        } else if let Some(res) = jit_mut.get(&key).cloned() {
+                            val_stack.push(self.jit_run(jit_mut, &res, end_env)?);
+                        } else {
+                            let mut new_jit = ClvmShortCircuit::default();
+                            jit_sexp(jit_mut, &mut new_jit, program);
+                            jit_mut.insert(key, new_jit.clone());
+                            val_stack.push(self.jit_run(jit_mut, &new_jit, end_env)?);
+                        }
+                    } else {
+                        return Err(RunFailure::RunErr(env.loc(), "empty val stack in apply".to_string()));
+                    }
+                },
+                _ => todo!()
+            }
+        }
+
+        assert_eq!(val_stack.len(), 1);
+        if let Some(v) = val_stack.pop() {
+            return Ok(v.clone());
+        }
+
+        Err(RunFailure::RunErr(env.loc(), "val stack empty".to_string()))
+    }
+
+    fn jit_compile_and_run(&self, jit_mut: &mut JitMap, head: Rc<SExp>, context: Rc<SExp>, tail: Rc<SExp>) -> Result<Rc<SExp>, RunFailure> {
+        let head_index = Rc::as_ptr(&head) as u64;
+        let tail_index = Rc::as_ptr(&context) as u64;
+        let idx = (head_index, tail_index);
+
+        if let Some(res) = jit_mut.get(&idx).cloned() {
+            // There's a previous just expression.
+            eprintln!("have a jit for {} {}", head, tail);
+            return self.jit_run(jit_mut, &res, context);
+        }
+
+        eprintln!("jit {} {}", head, tail);
+        let mut jit_code = ClvmShortCircuit::default();
+        jit_generate(jit_mut, &mut jit_code, head, tail);
+        jit_mut.insert(idx, jit_code.clone());
+        let res = self.jit_run(jit_mut, &jit_code, context)?;
+        Ok(res)
     }
 }
 

@@ -102,7 +102,7 @@ impl RunStep {
     }
 }
 
-fn choose_path(
+pub fn choose_path(
     l: Srcloc,
     orig: Number,
     p: Number,
@@ -303,7 +303,7 @@ fn generate_argument_refs(start: Number, sexp: Rc<SExp>) -> Rc<SExp> {
     }
 }
 
-fn apply_op(
+pub fn apply_op(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     l: Srcloc,
