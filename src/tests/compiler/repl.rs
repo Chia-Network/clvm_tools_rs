@@ -453,3 +453,19 @@ fn test_repl_lambda_with_captures_rest() {
         "(q 102 104 106)"
     );
 }
+
+#[test]
+fn test_repl_lambda_with_captures_out_of_own_function() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defun F (X) (lambda ((& X) Y) (+ X Y)))".to_string(),
+                "(a (F 3) (list 4))".to_string(),
+            ],
+            None
+        )
+        .unwrap()
+        .unwrap(),
+        "(q . 7)"
+    );
+}
