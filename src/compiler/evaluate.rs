@@ -273,10 +273,7 @@ fn arg_inputs_primitive(arginputs: Rc<ArgInputs>) -> bool {
     }
 }
 
-fn decons_args(
-    l: &Srcloc,
-    formed_tail: Rc<BodyForm>,
-) -> ArgInputs {
+fn decons_args(l: &Srcloc, formed_tail: Rc<BodyForm>) -> ArgInputs {
     if let Some((head, tail)) = match_cons(formed_tail.clone()) {
         let arg_head = decons_args(l, head.clone());
         let arg_tail = decons_args(l, tail.clone());
@@ -1054,19 +1051,18 @@ impl<'info> Evaluator {
                     return Ok(call.original.clone());
                 }
 
-                let translated_tail =
-                    if let Some(t) = call.tail.as_ref() {
-                        Some(self.shrink_bodyform_visited(
-                            allocator,
-                            visited,
-                            prog_args.clone(),
-                            env,
-                            t.clone(),
-                            only_inline
-                        )?)
-                    } else {
-                        None
-                    };
+                let translated_tail = if let Some(t) = call.tail.as_ref() {
+                    Some(self.shrink_bodyform_visited(
+                        allocator,
+                        visited,
+                        prog_args.clone(),
+                        env,
+                        t.clone(),
+                        only_inline,
+                    )?)
+                } else {
+                    None
+                };
 
                 let argument_captures_untranslated = build_argument_captures(
                     &call.loc.clone(),
