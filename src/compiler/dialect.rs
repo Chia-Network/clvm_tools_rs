@@ -102,6 +102,13 @@ fn include_dialect(allocator: &Allocator, e: &[NodePtr]) -> Option<AcceptedDiale
     None
 }
 
+// Now return more parameters about the "modern" dialect, including in the future,
+// strictness.  This will allow us to support the transition to modern macros which
+// in turn allow us to turn on strictness in variable naming.  Often multiple moves
+// are needed to get from one point to another and there's a tension between
+// unitary changes and smaller PRs which do fewer things by themselves.  This is
+// part of a broader narrative, which many requested that sets us on the path of
+// being able to include more information in the dialect result.
 pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> AcceptedDialect {
     let mut result = Default::default();
 
