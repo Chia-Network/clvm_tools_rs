@@ -636,6 +636,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                     updated_list.push(Rc::new(parsed_atom));
                     emit(
                         Rc::new(enlist(srcloc.clone(), &updated_list)),
+                        SExpParseState::Empty,
                     )
                 }
                 (_, _) => match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {  //
