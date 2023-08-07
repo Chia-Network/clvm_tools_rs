@@ -436,3 +436,20 @@ fn test_repl_rest_lambda_case() {
         "(q . 12)"
     );
 }
+
+#[test]
+fn test_repl_lambda_with_captures_rest() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defun map (F L) (if L (c (a F (list (f L))) (map F (r L))) ()))".to_string(),
+                "(defun F (X L) (map &rest (list (lambda ((& X) Y) (+ X Y)) L)))".to_string(),
+                "(F 3 (list 99 101 103))".to_string()
+            ],
+            None
+        )
+        .unwrap()
+        .unwrap(),
+        "(q 102 104 106)"
+    );
+}
