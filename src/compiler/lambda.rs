@@ -3,16 +3,15 @@ use std::rc::Rc;
 
 use crate::compiler::clvm::truthy;
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, LambdaData};
-use crate::compiler::evaluate::make_operator2;
 use crate::compiler::frontend::compile_bodyform;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 
 fn make_captures(opts: Rc<dyn CompilerOpts>, sexp: Rc<SExp>) -> Result<Rc<BodyForm>, CompileErr> {
     if let SExp::Cons(l, f, r) = sexp.borrow() {
-        Ok(Rc::new(make_operator2(
-            l,
-            "c".to_string(),
+        Ok(Rc::new(make_operator(
+            l.clone(),
+            4,
             make_captures(opts.clone(), f.clone())?,
             make_captures(opts, r.clone())?,
         )))

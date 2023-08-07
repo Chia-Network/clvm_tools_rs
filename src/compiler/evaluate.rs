@@ -134,7 +134,7 @@ pub fn is_primitive(expr: &BodyForm) -> bool {
     )
 }
 
-pub fn make_operator1(l: &Srcloc, op: String, arg: Rc<BodyForm>) -> BodyForm {
+fn make_operator1(l: &Srcloc, op: String, arg: Rc<BodyForm>) -> BodyForm {
     BodyForm::Call(
         l.clone(),
         vec![
@@ -145,7 +145,7 @@ pub fn make_operator1(l: &Srcloc, op: String, arg: Rc<BodyForm>) -> BodyForm {
     )
 }
 
-pub fn make_operator2(l: &Srcloc, op: String, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) -> BodyForm {
+fn make_operator2(l: &Srcloc, op: String, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) -> BodyForm {
     BodyForm::Call(
         l.clone(),
         vec![

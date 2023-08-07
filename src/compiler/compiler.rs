@@ -174,7 +174,7 @@ pub fn compile_pre_forms(
     // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later stages
     let mut combined_helpers = p1.helpers.clone();
     combined_helpers.append(&mut new_helpers);
-    let combined_helpers = process_helper_let_bindings(&combined_helpers)?;
+    let combined_helpers = process_helper_let_bindings(&combined_helpers);
 
     let p2 = CompileForm {
         loc: p1.loc.clone(),

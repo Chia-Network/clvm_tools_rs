@@ -1021,14 +1021,12 @@ pub fn hoist_body_let_binding(
             }
 
             // Ensure that we hoist a let occupying the &rest tail.
-            let new_tail = if let Some(t) = tail.as_ref() {
+            let new_tail = tail.as_ref().map(|t| {
                 let (mut new_tail_helpers, new_tail) =
                     hoist_body_let_binding(outer_context, args, t.clone());
                 vres.append(&mut new_tail_helpers);
-                Some(new_tail)
-            } else {
-                None
-            };
+                new_tail
+            });
 
             (
                 vres,
@@ -1036,6 +1034,15 @@ pub fn hoist_body_let_binding(
             )
         }
         BodyForm::Lambda(letdata) => {
+            // A lambda is exactly the same as
+            // 1) A function whose argument list is the captures plus the
+            //    non-capture arguments.
+            // 2) A call site which includes a reference to the function
+            //    surrounded with a structure that curries on the capture
+            //    arguments.
+
+            // Compose the function and return it as a desugared function.
+            // The functions desugared here also come from let bindings.
             let new_function_args = Rc::new(SExp::Cons(
                 letdata.loc.clone(),
                 letdata.capture_args.clone(),
@@ -1047,12 +1054,11 @@ pub fn hoist_body_let_binding(
                 new_function_args.clone(),
                 letdata.body.clone(),
             );
-            let new_expr = lambda_codegen(&new_function_name, letdata);
             let function = HelperForm::Defun(
                 false,
                 DefunData {
                     loc: letdata.loc.clone(),
-                    name: new_function_name,
+                    name: new_function_name.clone(),
                     kw: letdata.kw.clone(),
                     nl: letdata.args.loc(),
                     orig_args: new_function_args.clone(),
@@ -1061,13 +1067,18 @@ pub fn hoist_body_let_binding(
                 },
             );
             new_helpers_from_body.push(function);
+
+            // new_expr is the generated code at the call site.  The reference
+            // to the actual function additionally is enriched by a left-env
+            // reference that gives it access to the program.
+            let new_expr = lambda_codegen(&new_function_name, letdata);
             (new_helpers_from_body, Rc::new(new_expr))
         }
         _ => (Vec::new(), body.clone()),
     }
 }
 
-pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperForm>, CompileErr> {
+pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Vec<HelperForm> {
     let mut result = helpers.to_owned();
     let mut i = 0;
 
@@ -1109,7 +1120,7 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
         }
     }
 
-    Ok(result)
+    result
 }
 
 fn start_codegen(
