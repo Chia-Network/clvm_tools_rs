@@ -167,7 +167,7 @@ pub fn compile_pre_forms(
     };
 
     // Transform let bindings, merging nested let scopes with the top namespace
-    let hoisted_bindings = hoist_body_let_binding(None, p1.args.clone(), p1.exp.clone())?;
+    let hoisted_bindings = hoist_body_let_binding(None, p1.args.clone(), p1.exp.clone());
     let mut new_helpers = hoisted_bindings.0;
     let expr = hoisted_bindings.1; // expr is the let-hoisted program
 

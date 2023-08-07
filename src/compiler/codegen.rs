@@ -306,6 +306,8 @@ pub fn get_callable(
         SExp::Atom(l, name) => {
             let macro_def = compiler.macros.get(name);
             let inline = compiler.inlines.get(name);
+            // We're getting a callable, so the access requested is not as
+            // a variable.
             let defun = create_name_lookup(compiler, l.clone(), name, false);
             let prim = get_prim(l.clone(), compiler.prims.clone(), name);
             let atom_is_com = *name == "com".as_bytes().to_vec();
@@ -645,6 +647,9 @@ pub fn generate_expr_code(
                             Rc::new(SExp::Integer(l.clone(), bi_one())),
                         ))
                     } else {
+                        // This is as a variable access, given that we've got
+                        // a Value bodyform containing an Atom, so if a defun
+                        // is returned, it should be a packaged callable.
                         create_name_lookup(compiler, l.clone(), atom, true)
                             .map(|f| Ok(CompiledCode(l.clone(), f)))
                             .unwrap_or_else(|_| {
@@ -909,11 +914,11 @@ pub fn hoist_body_let_binding(
     outer_context: Option<Rc<SExp>>,
     args: Rc<SExp>,
     body: Rc<BodyForm>,
-) -> Result<(Vec<HelperForm>, Rc<BodyForm>), CompileErr> {
+) -> (Vec<HelperForm>, Rc<BodyForm>) {
     match body.borrow() {
         BodyForm::Let(LetFormKind::Sequential, letdata) => {
             if letdata.bindings.is_empty() {
-                return Ok((vec![], letdata.body.clone()));
+                return (vec![], letdata.body.clone());
             }
 
             // If we're here, we're in the middle of hoisting.
@@ -956,7 +961,7 @@ pub fn hoist_body_let_binding(
             let mut revised_bindings = Vec::new();
             for b in letdata.bindings.iter() {
                 let (mut new_helpers, new_binding) =
-                    hoist_body_let_binding(outer_context.clone(), args.clone(), b.body.clone())?;
+                    hoist_body_let_binding(outer_context.clone(), args.clone(), b.body.clone());
                 out_defuns.append(&mut new_helpers);
                 revised_bindings.push(Rc::new(Binding {
                     loc: b.loc.clone(),
@@ -1004,14 +1009,14 @@ pub fn hoist_body_let_binding(
 
             // Calling desugared let so we decide what the tail looks like.
             let final_call = BodyForm::Call(letdata.loc.clone(), call_args, None);
-            Ok((out_defuns, Rc::new(final_call)))
+            (out_defuns, Rc::new(final_call))
         }
         BodyForm::Call(l, list, tail) => {
             let mut vres = Vec::new();
             let mut new_call_list = vec![list[0].clone()];
             for i in list.iter().skip(1) {
                 let (mut new_helpers, new_arg) =
-                    hoist_body_let_binding(outer_context.clone(), args.clone(), i.clone())?;
+                    hoist_body_let_binding(outer_context.clone(), args.clone(), i.clone());
                 new_call_list.push(new_arg);
                 vres.append(&mut new_helpers);
             }
@@ -1019,17 +1024,17 @@ pub fn hoist_body_let_binding(
             // Ensure that we hoist a let occupying the &rest tail.
             let new_tail = if let Some(t) = tail.as_ref() {
                 let (mut new_tail_helpers, new_tail) =
-                    hoist_body_let_binding(outer_context, args, t.clone())?;
+                    hoist_body_let_binding(outer_context, args, t.clone());
                 vres.append(&mut new_tail_helpers);
                 Some(new_tail)
             } else {
                 None
             };
 
-            Ok((
+            (
                 vres,
                 Rc::new(BodyForm::Call(l.clone(), new_call_list, new_tail)),
-            ))
+            )
         }
         BodyForm::Lambda(letdata) => {
             let new_function_args = Rc::new(SExp::Cons(
@@ -1042,8 +1047,8 @@ pub fn hoist_body_let_binding(
                 Some(new_function_args.clone()),
                 new_function_args.clone(),
                 letdata.body.clone(),
-            )?;
-            let new_expr = lambda_codegen(&new_function_name, letdata)?;
+            );
+            let new_expr = lambda_codegen(&new_function_name, letdata);
             let function = HelperForm::Defun(
                 false,
                 DefunData {
@@ -1057,9 +1062,9 @@ pub fn hoist_body_let_binding(
                 },
             );
             new_helpers_from_body.push(function);
-            Ok((new_helpers_from_body, Rc::new(new_expr)))
+            (new_helpers_from_body, Rc::new(new_expr))
         }
-        _ => Ok((Vec::new(), body.clone())),
+        _ => (Vec::new(), body.clone()),
     }
 }
 
@@ -1076,7 +1081,7 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
                     None
                 };
                 let helper_result =
-                    hoist_body_let_binding(context, defun.args.clone(), defun.body.clone())?;
+                    hoist_body_let_binding(context, defun.args.clone(), defun.body.clone());
                 let hoisted_helpers = helper_result.0;
                 let hoisted_body = helper_result.1.clone();
 

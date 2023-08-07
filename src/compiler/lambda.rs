@@ -98,7 +98,7 @@ fn make_list(loc: Srcloc, args: &[BodyForm]) -> BodyForm {
 //    (list 4 (list 4 (c 1 compose_captures) @))
 //    )
 //
-pub fn lambda_codegen(name: &[u8], ldata: &LambdaData) -> Result<BodyForm, CompileErr> {
+pub fn lambda_codegen(name: &[u8], ldata: &LambdaData) -> BodyForm {
     // Code to retrieve and quote the captures.
     let quote_atom = BodyForm::Value(SExp::Atom(ldata.loc.clone(), vec![1]));
     let apply_atom = BodyForm::Value(SExp::Atom(ldata.loc.clone(), vec![2]));
@@ -126,7 +126,8 @@ pub fn lambda_codegen(name: &[u8], ldata: &LambdaData) -> Result<BodyForm, Compi
             make_list(ldata.loc.clone(), &[cons_atom, compose_captures, whole_env]),
         ],
     );
-    Ok(lambda_output)
+
+    lambda_output
 }
 
 pub fn handle_lambda(
