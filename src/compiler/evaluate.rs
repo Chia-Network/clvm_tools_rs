@@ -273,10 +273,10 @@ fn arg_inputs_primitive(arginputs: Rc<ArgInputs>) -> bool {
     }
 }
 
-fn decons_args(l: &Srcloc, formed_tail: Rc<BodyForm>) -> ArgInputs {
+fn decons_args(formed_tail: Rc<BodyForm>) -> ArgInputs {
     if let Some((head, tail)) = match_cons(formed_tail.clone()) {
-        let arg_head = decons_args(l, head.clone());
-        let arg_tail = decons_args(l, tail.clone());
+        let arg_head = decons_args(head.clone());
+        let arg_tail = decons_args(tail.clone());
         ArgInputs::Pair(Rc::new(arg_head), Rc::new(arg_tail))
     } else {
         ArgInputs::Whole(formed_tail)
@@ -290,7 +290,7 @@ fn build_argument_captures(
     args: Rc<SExp>,
 ) -> Result<HashMap<Vec<u8>, Rc<BodyForm>>, CompileErr> {
     let formed_tail = tail.unwrap_or_else(|| Rc::new(BodyForm::Quoted(SExp::Nil(l.clone()))));
-    let mut formed_arguments = decons_args(l, formed_tail);
+    let mut formed_arguments = decons_args(formed_tail);
 
     for i_reverse in 0..arguments_to_convert.len() {
         let i = arguments_to_convert.len() - i_reverse - 1;
