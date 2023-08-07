@@ -1634,3 +1634,18 @@ fn test_simple_rest_call_inline() {
     let res = run_string(&prog, &"(13 99 144)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "768");
 }
+
+#[test]
+fn test_simple_rest_lambda() {
+    let prog = indoc! {"
+(mod (Z X)
+  (include *standard-cl-21*)
+
+  (defun silly-lambda-consumer (Q F) (a F (list Q)))
+
+  (silly-lambda-consumer &rest (list X (lambda ((& Z) X) (* Z X))))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(13 51)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "663");
+}
