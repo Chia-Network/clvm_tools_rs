@@ -29,13 +29,19 @@ use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::runtypes::RunFailure;
 
 fn include_dialect(
-    allocator: &mut Allocator,
+    allocator: &Allocator,
     dialects: &HashMap<Vec<u8>, i32>,
     e: &[NodePtr],
 ) -> Option<i32> {
-    if let (SExp::Atom(inc), SExp::Atom(name)) = (allocator.sexp(e[0]), allocator.sexp(e[1])) {
-        if allocator.buf(&inc) == "include".as_bytes().to_vec() {
-            if let Some(dialect) = dialects.get(allocator.buf(&name)) {
+    // Propogated names from let capture to labeled nodes.
+    let include_keyword_node = e[0];
+    let name_node = e[1];
+    if let (SExp::Atom(), SExp::Atom()) = (
+        allocator.sexp(include_keyword_node),
+        allocator.sexp(name_node),
+    ) {
+        if allocator.atom(include_keyword_node) == "include".as_bytes().to_vec() {
+            if let Some(dialect) = dialects.get(allocator.atom(name_node)) {
                 return Some(*dialect);
             }
         }
@@ -137,13 +143,19 @@ pub fn compile_clvm_inner(
 ) -> Result<(), String> {
     let result = compile_clvm_text(
         allocator,
-        opts,
+        opts.clone(),
         symbol_table,
         text,
         filename,
         classic_with_opts,
     )
-    .map_err(|x| format!("error {} compiling {}", x.1, disassemble(allocator, x.0)))?;
+    .map_err(|x| {
+        format!(
+            "error {} compiling {}",
+            x.1,
+            disassemble(allocator, x.0, opts.disassembly_ver())
+        )
+    })?;
     sexp_to_stream(allocator, result, result_stream);
     Ok(())
 }

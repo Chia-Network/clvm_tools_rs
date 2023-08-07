@@ -183,20 +183,23 @@ fn eval_args(
     let mut eval_list: Vec<Rc<SExp>> = Vec::new();
 
     loop {
-        match sexp.borrow() {
-            SExp::Nil(_l) => {
-                return Ok(RunStep::Op(head, context_, sexp, Some(eval_list), parent));
-            }
-            SExp::Cons(_l, a, b) => {
-                eval_list.push(a.clone());
-                sexp = b.clone();
-            }
-            _ => {
-                return Err(RunFailure::RunErr(
-                    sexp.loc(),
-                    format!("bad argument list {sexp_} {context_}"),
-                ));
-            }
+        // A list of the following forms:
+        //   (x y . 0)
+        //   (x y . "")
+        // Are properly terminated lists and disassemble to (x y).
+        //
+        // This recognizes that our broader value space has more ways
+        // of expressing nil.
+        if let SExp::Cons(_l, a, b) = sexp.borrow() {
+            eval_list.push(a.clone());
+            sexp = b.clone();
+        } else if !truthy(sexp.clone()) {
+            return Ok(RunStep::Op(head, context_, sexp, Some(eval_list), parent));
+        } else {
+            return Err(RunFailure::RunErr(
+                sexp.loc(),
+                format!("bad argument list {sexp_} {context_}"),
+            ));
         }
     }
 }
@@ -242,11 +245,11 @@ pub fn convert_from_clvm_rs(
     head: NodePtr,
 ) -> Result<Rc<SExp>, RunFailure> {
     match allocator.sexp(head) {
-        allocator::SExp::Atom(h) => {
-            if h.is_empty() {
+        allocator::SExp::Atom() => {
+            let atom_data = allocator.atom(head);
+            if atom_data.is_empty() {
                 Ok(Rc::new(SExp::Nil(loc)))
             } else {
-                let atom_data = allocator.buf(&h);
                 let integer = number_from_u8(atom_data);
                 // Ensure that atom values that don't evaluate equal to integers
                 // are represented faithfully as atoms.
@@ -348,7 +351,7 @@ pub fn truthy(sexp: Rc<SExp>) -> bool {
 /// more arguments for its operator, one needed argument evaluation is removed
 /// and the step becomes closer to evaluation.
 pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
-    match (a, b.borrow()) {
+    match (a, b) {
         (RunStep::Done(l, x), RunStep::Done(_, _)) => RunStep::Done(l.clone(), x.clone()),
         (RunStep::Done(l, x), RunStep::Op(head, context, args, Some(remain), parent)) => {
             RunStep::Op(

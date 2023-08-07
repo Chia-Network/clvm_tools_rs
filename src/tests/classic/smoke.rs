@@ -1,5 +1,6 @@
 use num_bigint::ToBigInt;
 
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
@@ -20,9 +21,11 @@ use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemb
 use crate::classic::clvm_tools::ir::r#type::IRRepr;
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::node_path::NodePath;
+use crate::classic::clvm_tools::pattern_match::match_sexp;
 use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
+use crate::classic::clvm_tools::stages::stage_2::optimize::sub_args;
 use crate::classic::platform::argparse::{
     Argument, ArgumentParser, NArgsSpec, TArgumentParserProps,
 };
@@ -45,10 +48,16 @@ fn large_odd_sized_neg_opc() {
     assert_eq!(result.rest(), "ff8afde1e61f36454dc0000180");
 }
 
+fn opd_conversion() -> OpdConversion {
+    OpdConversion {
+        op_version: Some(0),
+    }
+}
+
 #[test]
 fn large_odd_sized_neg_opd() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"ff8afde1e61f36454dc0000180".to_string())
         .unwrap();
     assert_eq!(result.rest(), "(0xfde1e61f36454dc00001)");
@@ -57,7 +66,7 @@ fn large_odd_sized_neg_opd() {
 #[test]
 fn mid_negative_value_opd_m1() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"81ff".to_string())
         .unwrap();
     assert_eq!(result.rest(), "-1");
@@ -66,7 +75,7 @@ fn mid_negative_value_opd_m1() {
 #[test]
 fn mid_negative_value_opd_m2() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"81fe".to_string())
         .unwrap();
     assert_eq!(result.rest(), "-2");
@@ -75,7 +84,7 @@ fn mid_negative_value_opd_m2() {
 #[test]
 fn mid_negative_value_opd_two_bytes() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"82ffff".to_string())
         .unwrap();
     assert_eq!(result.rest(), "0xffff");
@@ -84,7 +93,7 @@ fn mid_negative_value_opd_two_bytes() {
 #[test]
 fn mid_negative_value_opd_three_bytes() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"83ffffff".to_string())
         .unwrap();
     assert_eq!(result.rest(), "0xffffff");
@@ -93,7 +102,7 @@ fn mid_negative_value_opd_three_bytes() {
 #[test]
 fn mid_negative_value_opd_tricky_negative_2() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"82ff00".to_string())
         .unwrap();
     assert_eq!(result.rest(), "-256");
@@ -102,7 +111,7 @@ fn mid_negative_value_opd_tricky_negative_2() {
 #[test]
 fn mid_negative_value_opd_tricky_positive_2() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"8200ff".to_string())
         .unwrap();
     assert_eq!(result.rest(), "255");
@@ -111,7 +120,7 @@ fn mid_negative_value_opd_tricky_positive_2() {
 #[test]
 fn mid_negative_value_opd_tricky_negative_3() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"83ff0000".to_string())
         .unwrap();
     assert_eq!(result.rest(), "0xff0000");
@@ -120,7 +129,7 @@ fn mid_negative_value_opd_tricky_negative_3() {
 #[test]
 fn mid_negative_value_opd_tricky_positive_3() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"8300ffff".to_string())
         .unwrap();
     assert_eq!(result.rest(), "0x00ffff");
@@ -139,8 +148,8 @@ fn mid_negative_value_bin() {
         Box::new(SimpleCreateCLVMObject {}),
     )
     .expect("should be able to make nodeptr");
-    if let SExp::Atom(abuf) = allocator.sexp(atom.1) {
-        let res_bytes = allocator.buf(&abuf);
+    if let SExp::Atom() = allocator.sexp(atom.1) {
+        let res_bytes = allocator.atom(atom.1);
         assert_eq!(res_bytes, &[0xff, 0xff]);
     } else {
         assert!(false);
@@ -153,7 +162,7 @@ fn mid_negative_value_disassemble() {
     let nodeptr = allocator
         .new_atom(&[0xff, 0xff])
         .expect("should be able to make an atom");
-    assert_eq!(disassemble(&mut allocator, nodeptr), "0xffff");
+    assert_eq!(disassemble(&mut allocator, nodeptr, Some(0)), "0xffff");
 }
 
 #[test]
@@ -177,7 +186,7 @@ fn small_test_opc() {
 #[test]
 fn large_odd_sized_pos_opd() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"ff8700ffffffffffff80".to_string())
         .unwrap();
     assert_eq!(result.rest(), "(0x00ffffffffffff)");
@@ -186,7 +195,7 @@ fn large_odd_sized_pos_opd() {
 #[test]
 fn basic_opd() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"80".to_string())
         .unwrap();
     assert_eq!(result.rest(), "()");
@@ -195,7 +204,7 @@ fn basic_opd() {
 #[test]
 fn nil_in_list_opd() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"ff8080".to_string())
         .unwrap();
     assert_eq!(result.rest(), "(())");
@@ -217,7 +226,7 @@ fn big_decode_opd() {
         })
         .unwrap();
 
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &expected.first())
         .unwrap();
     assert_eq!(expected.rest(), result.rest());
@@ -246,7 +255,7 @@ fn compile_program<'a>(
     let input_sexp = allocator.new_pair(input_program, allocator.null()).unwrap();
     let res = runner.run_program(allocator, run_script, input_sexp, None);
 
-    return res.map(|x| disassemble(allocator, x.1));
+    return res.map(|x| disassemble(allocator, x.1, Some(0)));
 }
 
 #[test]
@@ -267,8 +276,8 @@ fn can_run_from_source_nil() {
     let mut allocator = Allocator::new();
     let res = run_from_source(&mut allocator, "()".to_string());
     match allocator.sexp(res) {
-        SExp::Atom(b) => {
-            let res_bytes = allocator.buf(&b).to_vec();
+        SExp::Atom() => {
+            let res_bytes = allocator.atom(res);
             assert_eq!(res_bytes.len(), 0);
         }
         _ => {
@@ -282,8 +291,8 @@ fn can_echo_quoted_nil() {
     let mut allocator = Allocator::new();
     let res = run_from_source(&mut allocator, "(1)".to_string());
     match allocator.sexp(res) {
-        SExp::Atom(b) => {
-            let res_bytes = allocator.buf(&b).to_vec();
+        SExp::Atom() => {
+            let res_bytes = allocator.atom(res);
             assert_eq!(res_bytes.len(), 0);
         }
         _ => {
@@ -313,8 +322,8 @@ fn can_echo_quoted_atom() {
     let mut allocator = Allocator::new();
     let res = run_from_source(&mut allocator, "(1 . 3)".to_string());
     match allocator.sexp(res) {
-        SExp::Atom(b) => {
-            let res_bytes = allocator.buf(&b).to_vec();
+        SExp::Atom() => {
+            let res_bytes = allocator.atom(res);
             assert_eq!(res_bytes.len(), 1);
             assert_eq!(res_bytes[0], 3);
         }
@@ -329,8 +338,8 @@ fn can_do_operations() {
     let mut allocator = Allocator::new();
     let res = run_from_source(&mut allocator, "(16 (1 . 3) (1 . 5))".to_string());
     match allocator.sexp(res) {
-        SExp::Atom(b) => {
-            let res_bytes = allocator.buf(&b).to_vec();
+        SExp::Atom() => {
+            let res_bytes = allocator.atom(res);
             assert_eq!(res_bytes.len(), 1);
             assert_eq!(res_bytes[0], 8);
         }
@@ -345,8 +354,8 @@ fn can_do_operations_kw() {
     let mut allocator = Allocator::new();
     let res = run_from_source(&mut allocator, "(+ (q . 3) (q . 5))".to_string());
     match allocator.sexp(res) {
-        SExp::Atom(b) => {
-            let res_bytes = allocator.buf(&b).to_vec();
+        SExp::Atom() => {
+            let res_bytes = allocator.atom(res);
             assert_eq!(res_bytes.len(), 1);
             assert_eq!(res_bytes[0], 8);
         }
@@ -395,7 +404,7 @@ fn basic_opc_quoted_1() {
 #[test]
 fn test_simple_opd_conversion() {
     let mut allocator = Allocator::new();
-    let result = OpdConversion {}
+    let result = opd_conversion()
         .invoke(&mut allocator, &"ff0183666f6f".to_string())
         .unwrap();
     assert_eq!(result.rest(), "(q . \"foo\")");
@@ -625,6 +634,8 @@ fn pool_member_innerpuz() {
         &mut s,
         &vec![
             "run".to_string(),
+            "--operators-version".to_string(),
+            "0".to_string(),
             "-i".to_string(),
             testpath.into_os_string().into_string().unwrap(),
             program.to_string(),
@@ -702,20 +713,20 @@ fn test_fancy_destructuring_type_language() {
     // Use first
     let First::Here(kw) =
         assert_node_not_error(First::Here(ThisNode::Here).select_nodes(&mut allocator, code));
-    assert_eq!(disassemble(&mut allocator, kw), "\"defconst\"");
+    assert_eq!(disassemble(&mut allocator, kw, Some(0)), "\"defconst\"");
 
     // Use second of list
     let Rest::Here(First::Here(name)) = assert_node_not_error(
         Rest::Here(First::Here(ThisNode::Here)).select_nodes(&mut allocator, code),
     );
-    assert_eq!(disassemble(&mut allocator, name), "88");
+    assert_eq!(disassemble(&mut allocator, name, Some(0)), "88");
 
     let NodeSel::Cons((), NodeSel::Cons(name_by_cons, rest)) = assert_node_not_error(
         NodeSel::Cons((), NodeSel::Cons(ThisNode::Here, ThisNode::Here))
             .select_nodes(&mut allocator, code),
     );
-    assert_eq!(disassemble(&mut allocator, name_by_cons), "88");
-    assert_eq!(disassemble(&mut allocator, rest), "((+ 3 1))");
+    assert_eq!(disassemble(&mut allocator, name_by_cons, Some(0)), "88");
+    assert_eq!(disassemble(&mut allocator, rest, Some(0)), "((+ 3 1))");
 }
 
 #[test]
@@ -768,5 +779,39 @@ fn test_bytes_to_pybytes_repr_0() {
     assert_eq!(
         pybytes_repr(b, false),
         "b'\\x11\\x01abc\\r\\ntest\\ttest\\r\\n'"
+    );
+}
+
+#[test]
+fn test_pattern_match_dollar_for_dollar() {
+    let mut allocator = Allocator::new();
+    let pattern = assemble(&mut allocator, "($ . $)").expect("should assemble");
+    let target_expr = assemble(&mut allocator, "$").expect("should assemble");
+    let empty_map = HashMap::new();
+    let matched = match_sexp(&mut allocator, pattern, target_expr, empty_map.clone());
+    // Returns empty map.
+    assert_eq!(Some(empty_map), matched);
+}
+
+#[test]
+fn test_pattern_match_colon_for_colon() {
+    let mut allocator = Allocator::new();
+    let pattern = assemble(&mut allocator, "(: . :)").expect("should assemble");
+    let target_expr = assemble(&mut allocator, ":").expect("should assemble");
+    let empty_map = HashMap::new();
+    let matched = match_sexp(&mut allocator, pattern, target_expr, empty_map.clone());
+    // Returns empty map.
+    assert_eq!(Some(empty_map), matched);
+}
+
+#[test]
+fn test_sub_args() {
+    let mut allocator = Allocator::new();
+    let expr_sexp = assemble(&mut allocator, "(body 2 5)").expect("should assemble");
+    let new_args = assemble(&mut allocator, "(test1 test2)").expect("should assemble");
+    let result = sub_args(&mut allocator, expr_sexp, new_args).expect("should run");
+    assert_eq!(
+        disassemble(&mut allocator, result, None),
+        "(\"body\" (f (\"test1\" \"test2\")) (f (r (\"test1\" \"test2\"))))"
     );
 }

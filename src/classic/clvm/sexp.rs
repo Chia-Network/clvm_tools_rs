@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::rc::Rc;
 use std::string::String;
 
-use clvm_rs::allocator::{Allocator, AtomBuf, NodePtr, SExp};
+use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
 use bls12_381::G1Affine;
@@ -150,7 +150,7 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
                                 }
                             }
                         }
-                        SExp::Atom(_) => {
+                        SExp::Atom() => {
                             return Err(EvalErr(
                                 *target_value,
                                 "attempt to set_pair in atom".to_string(),
@@ -224,7 +224,7 @@ pub fn sexp_as_bin(allocator: &mut Allocator, sexp: NodePtr) -> Bytes {
     f.get_value()
 }
 
-pub fn bool_sexp(allocator: &mut Allocator, b: bool) -> NodePtr {
+pub fn bool_sexp(allocator: &Allocator, b: bool) -> NodePtr {
     if b {
         allocator.one()
     } else {
@@ -332,40 +332,41 @@ pub fn bool_sexp(allocator: &mut Allocator, b: bool) -> NodePtr {
 //   ;
 // }
 
-pub fn non_nil(allocator: &mut Allocator, sexp: NodePtr) -> bool {
+pub fn non_nil(allocator: &Allocator, sexp: NodePtr) -> bool {
     match allocator.sexp(sexp) {
         SExp::Pair(_, _) => true,
-        SExp::Atom(b) => !b.is_empty(),
+        // sexp is the only node in scope, was !is_empty
+        SExp::Atom() => allocator.atom_len(sexp) != 0,
     }
 }
 
-pub fn first(allocator: &mut Allocator, sexp: NodePtr) -> Result<NodePtr, EvalErr> {
+pub fn first(allocator: &Allocator, sexp: NodePtr) -> Result<NodePtr, EvalErr> {
     match allocator.sexp(sexp) {
         SExp::Pair(f, _) => Ok(f),
         _ => Err(EvalErr(sexp, "first of non-cons".to_string())),
     }
 }
 
-pub fn rest(allocator: &mut Allocator, sexp: NodePtr) -> Result<NodePtr, EvalErr> {
+pub fn rest(allocator: &Allocator, sexp: NodePtr) -> Result<NodePtr, EvalErr> {
     match allocator.sexp(sexp) {
         SExp::Pair(_, r) => Ok(r),
         _ => Err(EvalErr(sexp, "rest of non-cons".to_string())),
     }
 }
 
-pub fn atom(allocator: &mut Allocator, sexp: NodePtr) -> Result<AtomBuf, EvalErr> {
+pub fn atom(allocator: &Allocator, sexp: NodePtr) -> Result<Vec<u8>, EvalErr> {
     match allocator.sexp(sexp) {
-        SExp::Atom(abuf) => Ok(abuf),
+        SExp::Atom() => Ok(allocator.atom(sexp).to_vec()), // only sexp in scope
         _ => Err(EvalErr(sexp, "not an atom".to_string())),
     }
 }
 
-pub fn proper_list(allocator: &mut Allocator, sexp: NodePtr, store: bool) -> Option<Vec<NodePtr>> {
+pub fn proper_list(allocator: &Allocator, sexp: NodePtr, store: bool) -> Option<Vec<NodePtr>> {
     let mut args = vec![];
     let mut args_sexp = sexp;
     loop {
         match allocator.sexp(args_sexp) {
-            SExp::Atom(_) => {
+            SExp::Atom() => {
                 if !non_nil(allocator, args_sexp) {
                     return Some(args);
                 } else {
@@ -453,10 +454,9 @@ pub fn equal_to(allocator: &mut Allocator, first_: NodePtr, second_: NodePtr) ->
             return true;
         }
         match (allocator.sexp(first), allocator.sexp(second)) {
-            (SExp::Atom(fbuf), SExp::Atom(sbuf)) => {
-                let fvec = allocator.buf(&fbuf);
-                let svec = allocator.buf(&sbuf);
-                return fvec == svec;
+            (SExp::Atom(), SExp::Atom()) => {
+                // two atoms in scope, both are used
+                return allocator.atom(first) == allocator.atom(second);
             }
             (SExp::Pair(ff, fr), SExp::Pair(rf, rr)) => {
                 if !equal_to(allocator, ff, rf) {
@@ -477,7 +477,7 @@ pub fn flatten(allocator: &mut Allocator, tree_: NodePtr, res: &mut Vec<NodePtr>
 
     loop {
         match allocator.sexp(tree) {
-            SExp::Atom(_) => {
+            SExp::Atom() => {
                 if non_nil(allocator, tree) {
                     res.push(tree);
                 }

@@ -126,7 +126,7 @@ pub fn build_symbol_dump(
             let args_name_atom = allocator.new_atom(&args_atom)?;
             let left_env_name_atom = allocator.new_atom(&left_env_atom)?;
 
-            let serialized_args = disassemble(allocator, extra.args);
+            let serialized_args = disassemble(allocator, extra.args, Some(0));
             let serialized_args_atom = allocator.new_atom(serialized_args.as_bytes())?;
 
             let left_env_value = allocator.new_atom(&[extra.has_constants_tree as u8])?;
@@ -180,7 +180,7 @@ fn table_trace(
 ) {
     let (sexp, args) = match allocator.sexp(form) {
         SExp::Pair(sexp, args) => (sexp, args),
-        SExp::Atom(_) => (form, allocator.null()),
+        SExp::Atom() => (form, allocator.null()),
     };
 
     stdout.write_str(&format!("exp: {}\n", disassemble_f(allocator, sexp)));

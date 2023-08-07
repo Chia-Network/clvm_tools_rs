@@ -31,7 +31,7 @@ where
     res.map(|r| r.map(|r| r.to_sexp().to_string()))
 }
 
-fn test_repl_outcome<S>(inputs: Vec<S>) -> Result<Option<String>, CompileErr>
+pub fn test_repl_outcome<S>(inputs: Vec<S>) -> Result<Option<String>, CompileErr>
 where
     S: ToString,
 {
@@ -299,5 +299,19 @@ fn test_eval_list_partially_evaluated_xyz() {
             .unwrap()
             .unwrap(),
         "(c x (c y (c z (q))))"
+    );
+}
+
+#[test]
+fn test_eval_new_bls_operator() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(vec![indoc!{
+            "(softfork
+               (q . 196005)
+               (q . 0)
+               (q #g1_map (1 . 0x9790635de8740e9a6a6b15fb6b72f3a16afa0973d971979b6ba54761d6e2502c50db76f4d26143f05459a42cfd520d44)) ()
+               )"}.to_string()
+        ], None).unwrap().unwrap(),
+        "(q)"
     );
 }
