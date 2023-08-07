@@ -183,27 +183,23 @@ fn eval_args(
     let mut eval_list: Vec<Rc<SExp>> = Vec::new();
 
     loop {
-        match sexp.borrow() {
-            SExp::Nil(_l) => {
-                return Ok(RunStep::Op(head, context_, sexp, Some(eval_list), parent));
-            }
-            SExp::Cons(_l, a, b) => {
-                eval_list.push(a.clone());
-                sexp = b.clone();
-            }
-            _ => {
-                // This change was moved to:
-                // https://github.com/Chia-Network/clvm_tools_rs/pull/205
-                // and will be removed when that's in.
-                if !truthy(sexp.clone()) {
-                    return Ok(RunStep::Op(head, context_, sexp, Some(eval_list), parent));
-                } else {
-                    return Err(RunFailure::RunErr(
-                        sexp.loc(),
-                        format!("bad argument list {sexp_} {context_}"),
-                    ));
-                }
-            }
+        // A list of the following forms:
+        //   (x y . 0)
+        //   (x y . "")
+        // Are properly terminated lists and disassemble to (x y).
+        //
+        // This recognizes that our broader value space has more ways
+        // of expressing nil.
+        if let SExp::Cons(_l, a, b) = sexp.borrow() {
+            eval_list.push(a.clone());
+            sexp = b.clone();
+        } else if !truthy(sexp.clone()) {
+            return Ok(RunStep::Op(head, context_, sexp, Some(eval_list), parent));
+        } else {
+            return Err(RunFailure::RunErr(
+                sexp.loc(),
+                format!("bad argument list {sexp_} {context_}"),
+            ));
         }
     }
 }
@@ -355,7 +351,7 @@ pub fn truthy(sexp: Rc<SExp>) -> bool {
 /// more arguments for its operator, one needed argument evaluation is removed
 /// and the step becomes closer to evaluation.
 pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
-    match (a, b.borrow()) {
+    match (a, b) {
         (RunStep::Done(l, x), RunStep::Done(_, _)) => RunStep::Done(l.clone(), x.clone()),
         (RunStep::Done(l, x), RunStep::Op(head, context, args, Some(remain), parent)) => {
             RunStep::Op(

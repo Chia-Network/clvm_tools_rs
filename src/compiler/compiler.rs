@@ -73,6 +73,7 @@ pub struct DefaultCompilerOpts {
     pub frontend_opt: bool,
     pub frontend_check_live: bool,
     pub start_env: Option<Rc<SExp>>,
+    pub disassembly_ver: Option<usize>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
 
     known_dialects: Rc<HashMap<String, String>>,
@@ -249,6 +250,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
         self.prim_map.clone()
     }
+    fn disassembly_ver(&self) -> Option<usize> {
+        self.disassembly_ver
+    }
     fn get_search_paths(&self) -> Vec<String> {
         self.include_dirs.clone()
     }
@@ -256,6 +260,11 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.include_dirs = dirs.to_owned();
+        Rc::new(copy)
+    }
+    fn set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.disassembly_ver = ver;
         Rc::new(copy)
     }
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts> {
@@ -350,6 +359,7 @@ impl DefaultCompilerOpts {
             frontend_check_live: true,
             start_env: None,
             prim_map: create_prim_map(),
+            disassembly_ver: None,
             known_dialects: Rc::new(KNOWN_DIALECTS.clone()),
         }
     }

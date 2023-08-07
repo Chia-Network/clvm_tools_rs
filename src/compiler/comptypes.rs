@@ -351,6 +351,8 @@ pub trait CompilerOpts {
     /// complex constants, and into (com ...) forms.  This allows the CompilerOpts
     /// to carry this info across boundaries into a new context.
     fn code_generator(&self) -> Option<PrimaryCodegen>;
+    /// Disassembly version (for disassembly style serialization)
+    fn disassembly_ver(&self) -> Option<usize>;
     /// Specifies whether code is being generated on behalf of an inner defun in
     /// the program.
     fn in_defun(&self) -> bool;
@@ -377,6 +379,8 @@ pub trait CompilerOpts {
 
     /// Set search paths.
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts>;
+    /// Set disassembly version for.
+    fn set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts>;
     /// Set whether we're compiling on behalf of a defun.
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts>;
     /// Set whether to inject the standard environment.

@@ -19,7 +19,7 @@ fn test_cons_q_a(src: String) -> String {
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths("*test*", &vec![".".to_string()], false);
     let optimized = cons_q_a_optimizer(&mut allocator, &memo, assembled, runner.clone()).unwrap();
-    disassemble(&mut allocator, optimized)
+    disassemble(&mut allocator, optimized, Some(0))
 }
 
 fn test_children_optimizer(src: String) -> String {
@@ -29,7 +29,7 @@ fn test_children_optimizer(src: String) -> String {
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths("*test*", &vec![".".to_string()], false);
     let optimized = children_optimizer(&mut allocator, &memo, assembled, runner.clone()).unwrap();
-    disassemble(&mut allocator, optimized)
+    disassemble(&mut allocator, optimized, Some(0))
 }
 
 fn test_constant_optimizer(src: String) -> String {
@@ -40,7 +40,7 @@ fn test_constant_optimizer(src: String) -> String {
     let runner = run_program_for_search_paths("*test*", &vec![".".to_string()], false);
     let optimized =
         constant_optimizer(&mut allocator, &memo, assembled, 0, runner.clone()).unwrap();
-    disassemble(&mut allocator, optimized)
+    disassemble(&mut allocator, optimized, Some(0))
 }
 
 fn test_optimizer(src: String) -> String {
@@ -49,7 +49,7 @@ fn test_optimizer(src: String) -> String {
     let assembled = assemble_from_ir(&mut allocator, Rc::new(input_ir)).unwrap();
     let runner = run_program_for_search_paths("*test*", &vec![".".to_string()], false);
     let optimized = optimize_sexp(&mut allocator, assembled, runner.clone()).unwrap();
-    disassemble(&mut allocator, optimized)
+    disassemble(&mut allocator, optimized, Some(0))
 }
 
 fn test_sub_args(src: String) -> String {
@@ -59,7 +59,7 @@ fn test_sub_args(src: String) -> String {
     match allocator.sexp(assembled) {
         SExp::Pair(a, b) => {
             let optimized = sub_args(&mut allocator, a, b).unwrap();
-            disassemble(&mut allocator, optimized)
+            disassemble(&mut allocator, optimized, Some(0))
         }
         _ => {
             panic!("assembled a list got an atom");

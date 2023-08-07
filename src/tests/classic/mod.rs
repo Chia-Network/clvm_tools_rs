@@ -1,3 +1,4 @@
+mod bls;
 mod clvmc;
 mod embed;
 mod optimize;
