@@ -367,7 +367,7 @@ impl DefaultCompilerOpts {
             frontend_opt: false,
             frontend_check_live: true,
             start_env: None,
-            dialect: Default::default(),
+            dialect: AcceptedDialect::default(),
             prim_map: create_prim_map(),
             disassembly_ver: None,
             known_dialects: Rc::new(KNOWN_DIALECTS.clone()),

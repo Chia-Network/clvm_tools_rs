@@ -320,7 +320,7 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
         None
     }
     fn dialect(&self) -> AcceptedDialect {
-        Default::default()
+        AcceptedDialect::default()
     }
     fn in_defun(&self) -> bool {
         false
