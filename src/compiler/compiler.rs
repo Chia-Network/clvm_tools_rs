@@ -14,8 +14,9 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
-    AcceptedDialect, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
+    CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
+use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
 use crate::compiler::prims;
