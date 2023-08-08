@@ -28,7 +28,7 @@ use crate::classic::clvm::serialize::{sexp_from_stream, sexp_to_stream, SimpleCr
 use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
 use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
-use crate::classic::clvm_tools::clvmc::{detect_modern, write_sym_output};
+use crate::classic::clvm_tools::clvmc::write_sym_output;
 use crate::classic::clvm_tools::debug::check_unused;
 use crate::classic::clvm_tools::debug::{
     program_hash_from_program_env_cons, start_log_after, trace_pre_eval, trace_to_table,
@@ -42,6 +42,7 @@ use crate::classic::clvm_tools::stages::stage_0::{
 };
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::platform::PathJoin;
+use crate::compiler::dialect::detect_modern;
 
 use crate::classic::platform::argparse::{
     Argument, ArgumentParser, ArgumentValue, ArgumentValueConv, IntConversion, NArgsSpec,
@@ -1195,9 +1196,10 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .map(|a| matches!(a, ArgumentValue::ArgBool(true)))
         .unwrap_or(false);
 
-    let dialect = input_sexp.and_then(|i| detect_modern(&mut allocator, i));
+    // Dialect is now not overall optional.
+    let dialect = input_sexp.map(|i| detect_modern(&mut allocator, i));
     let mut stderr_output = |s: String| {
-        if dialect.is_some() {
+        if dialect.as_ref().and_then(|d| d.stepping).is_some() {
             eprintln!("{s}");
         } else {
             stdout.write_str(&s);
@@ -1233,7 +1235,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .unwrap_or_else(|| "main.sym".to_string());
 
     // In testing: short circuit for modern compilation.
-    if let Some(dialect) = dialect {
+    // Now stepping is the optional part.
+    if let Some(dialect) = dialect.and_then(|d| d.stepping) {
         let do_optimize = parsed_args
             .get("optimize")
             .map(|x| matches!(x, ArgumentValue::ArgBool(true)))
