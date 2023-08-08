@@ -29,7 +29,6 @@ lazy_static! {
                 DialectDescription {
                     accepted: AcceptedDialect {
                         stepping: Some(21),
-                        ..AcceptedDialect::default()
                     },
                     content: indoc! {"(
                     (defconstant *chialisp-version* 21)
