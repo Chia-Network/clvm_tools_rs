@@ -24,3 +24,9 @@ Skipped
 - hierarchial debug was added.
 - clvm command linetools: supported more command line features in both compiler front-ends.
 
+## 0.1.35 
+
+- embed-file was added.
+- &rest arguments.
+- new bls and sec256 operators.
+
