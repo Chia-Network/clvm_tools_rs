@@ -808,6 +808,14 @@ fn fix_log(
     }
 }
 
+// A function which performs preprocessing on a whole program and renders the
+// output to the user.
+//
+// This is used in the same way as cc -E in a C compiler; to see what
+// preprocessing did to the source so you can debug and improve your macros.
+//
+// Without this, it's difficult for some to visualize how macro are functioning
+// and what forms they output.
 fn perform_preprocessing(
     stdout: &mut Stream,
     opts: Rc<dyn CompilerOpts>,
@@ -815,7 +823,19 @@ fn perform_preprocessing(
     program_text: &str,
 ) -> Result<(), CompileErr> {
     let srcloc = Srcloc::start(input_file);
+    // Parse the source file.
     let parsed = parse_sexp(srcloc.clone(), program_text.bytes())?;
+    // Get the detected dialect and compose a sigil that matches.
+    // Classic preprocessing (also shared by standard sigil 21 and 21) does macro
+    // expansion during the compile process, making all macros available to all
+    // code regardless of its lexical order and therefore isn't rendered in a
+    // unified way (for example, 'com' and 'mod' forms invoke macros when
+    // encountered and expanded.  By contrast strict mode reads the macros and
+    // evaluates them in that order (as in C).
+    //
+    // The result is fully rendered before the next stage of compilation so that
+    // it can be inspected and so that the execution environment for macros is
+    // fully and cleanly separated from compile time.
     let stepping_form_text = match opts.dialect().stepping {
         Some(21) => Some("(include *strict-cl-21*)".to_string()),
         Some(n) => Some(format!("(include *standard-cl-{n}*)")),
