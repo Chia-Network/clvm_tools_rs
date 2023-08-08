@@ -553,7 +553,7 @@ pub fn generate_expr_code(
             ))
         }
         BodyForm::Value(v) => {
-            match v.borrow() {
+            match v {
                 SExp::Atom(l, atom) => {
                     if *atom == "@".as_bytes().to_vec() {
                         Ok(CompiledCode(
@@ -1108,7 +1108,7 @@ fn start_codegen(
 
     // Start compiler with all macros and constants
     for h in program.helpers.iter() {
-        code_generator = match h.borrow() {
+        code_generator = match h {
             HelperForm::Defconstant(defc) => match defc.kind {
                 ConstantKind::Simple => {
                     let expand_program = SExp::Cons(

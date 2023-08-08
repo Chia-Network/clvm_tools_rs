@@ -10,6 +10,7 @@ use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::sha256tree;
+use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 
@@ -345,6 +346,10 @@ pub trait CompilerOpts {
     /// complex constants, and into (com ...) forms.  This allows the CompilerOpts
     /// to carry this info across boundaries into a new context.
     fn code_generator(&self) -> Option<PrimaryCodegen>;
+    /// Get the dialect declared in the toplevel program.
+    fn dialect(&self) -> AcceptedDialect;
+    /// Disassembly version (for disassembly style serialization)
+    fn disassembly_ver(&self) -> Option<usize>;
     /// Specifies whether code is being generated on behalf of an inner defun in
     /// the program.
     fn in_defun(&self) -> bool;
@@ -369,8 +374,12 @@ pub trait CompilerOpts {
     /// Specifies the search paths we're carrying.
     fn get_search_paths(&self) -> Vec<String>;
 
+    /// Set the dialect.
+    fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts>;
     /// Set search paths.
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts>;
+    /// Set disassembly version for.
+    fn set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts>;
     /// Set whether we're compiling on behalf of a defun.
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts>;
     /// Set whether to inject the standard environment.
