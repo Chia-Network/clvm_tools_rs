@@ -212,7 +212,7 @@ enum SExpParseState {  // The types of state that the Rust pre-forms can take
     TermList(
         Srcloc,
         TermListCommentState,
-        Option<Rc<SExp>>,
+        Option<Rc<SExp>>,  // this is the second value in the dot expression
         Rc<SExpParseState>,  // used for inner parsing
         Vec<Rc<SExp>>,
     ),
