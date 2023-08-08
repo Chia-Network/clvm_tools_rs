@@ -10,6 +10,7 @@ use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::sha256tree;
+use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 
@@ -29,20 +30,6 @@ impl From<(Srcloc, String)> for CompileErr {
 /// chialisp input.  It's used by codegen.
 #[derive(Clone, Debug)]
 pub struct CompiledCode(pub Srcloc, pub Rc<SExp>);
-
-/// Specifying how the language is spoken.
-///
-/// This object will eventually contain more information about the specifics of
-/// the requested dialect.  Initially, this includes a 'strict' setting in the
-/// modern macros PR which allows us to begin with the *strict-cl-21* sigil to
-/// include a more modern macro system and the ability to turn on strict variable
-/// name use.  This is a feature that's been widely requested and a first step
-/// toward it is to make the object that specifies how chialisp is compiled be
-/// able to carry more information.
-#[derive(Clone, Debug, Default)]
-pub struct AcceptedDialect {
-    pub stepping: Option<i32>,
-}
 
 /// A description of an inlined function for use during inline expansion.
 /// This is used only by PrimaryCodegen.
