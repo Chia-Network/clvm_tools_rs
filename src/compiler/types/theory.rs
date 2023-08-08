@@ -829,7 +829,7 @@ impl Context {
         self.checkwftype(typ)?;
 
         let resolve_inner_type = |t: &Polytype, delta: &Context| {
-            if let Type::TExists(tv) = t.borrow() {
+            if let Type::TExists(tv) = t {
                 if let Some(tau) = delta.find_solved(tv).as_ref().map(polytype) {
                     return Some(tau);
                 }

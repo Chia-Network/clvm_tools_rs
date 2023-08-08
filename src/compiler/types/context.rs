@@ -175,12 +175,12 @@ impl Context {
         t1: &Polytype,
         t2: &Polytype,
     ) -> Option<(Type<A>, Context)> {
-        if let Type::TVar(v) = t1.borrow() {
+        if let Type::TVar(v) = t1 {
             if let Some(solved) = self.find_solved(v) {
                 return if let Type::TAbs(v, t) = solved {
                     let tpoly = polytype(t.borrow());
                     let new_tvar = fresh_tvar(v.loc());
-                    let finished_type_rec = type_subst(t2.borrow(), &v, &tpoly);
+                    let finished_type_rec = type_subst(t2, &v, &tpoly);
                     unrecurse(&new_tvar, t1, t2, &finished_type_rec)
                         .and_then(|finished_type| monotype(&finished_type))
                         .map(|tmono| {
