@@ -30,7 +30,7 @@ lazy_static! {
                 DialectDescription {
                     accepted: AcceptedDialect {
                         stepping: Some(21),
-                        ..Default::default()
+                        ..AcceptedDialect::default()
                     },
                     content: indoc! {"(
                     (defconstant *chialisp-version* 21)
@@ -110,7 +110,7 @@ fn include_dialect(allocator: &Allocator, e: &[NodePtr]) -> Option<AcceptedDiale
 // part of a broader narrative, which many requested that sets us on the path of
 // being able to include more information in the dialect result.
 pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> AcceptedDialect {
-    let mut result = Default::default();
+    let mut result = AcceptedDialect::default();
 
     if let Some(l) = proper_list(allocator, sexp, true) {
         for elt in l.iter() {
