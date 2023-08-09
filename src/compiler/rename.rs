@@ -215,7 +215,7 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             )
         }
 
-        BodyForm::Quoted(atom) => match atom.borrow() {
+        BodyForm::Quoted(atom) => match atom {
             SExp::Atom(l, n) => match namemap.get(n) {
                 Some(named) => BodyForm::Quoted(SExp::Atom(l.clone(), named.to_vec())),
                 None => BodyForm::Quoted(atom.clone()),
@@ -223,7 +223,7 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             _ => BodyForm::Quoted(atom.clone()),
         },
 
-        BodyForm::Value(atom) => match atom.borrow() {
+        BodyForm::Value(atom) => match atom {
             SExp::Atom(l, n) => match namemap.get(n) {
                 Some(named) => BodyForm::Value(SExp::Atom(l.clone(), named.to_vec())),
                 None => BodyForm::Value(atom.clone()),
@@ -276,6 +276,8 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
     }
 }
 
+/// Given a set of sequential bindings, create a stack of let forms that have
+/// the same meaning.  This is used to propogate renaming.
 pub fn desugar_sequential_let_bindings(
     bindings: &[Rc<Binding>],
     body: &BodyForm,
@@ -303,7 +305,7 @@ pub fn desugar_sequential_let_bindings(
 }
 
 fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
-    match b.borrow() {
+    match b {
         BodyForm::Let(LetFormKind::Sequential, letdata) => {
             // Renaming a sequential let is exactly as if the bindings were
             // nested in separate parallel lets.
@@ -456,6 +458,8 @@ fn rename_in_compileform(namemap: &HashMap<Vec<u8>, Vec<u8>>, c: Rc<CompileForm>
     }
 }
 
+/// For all the HelperForms in a CompileForm, do renaming in them so that all
+/// unique variable bindings in the program have unique names.
 pub fn rename_children_compileform(c: &CompileForm) -> CompileForm {
     let local_renamed_helpers = c.helpers.iter().map(rename_args_helperform).collect();
     let local_renamed_body = rename_args_bodyform(c.exp.borrow());
@@ -469,6 +473,12 @@ pub fn rename_children_compileform(c: &CompileForm) -> CompileForm {
     }
 }
 
+/// Given a compileform, perform renaming in descendants so that every variable
+/// name that lives in a different scope has a unique name.  This allows
+/// compilation to treat identical forms as equivalent and ensures that forms
+/// that look the same but refer to different variables are different.  It also
+/// ensures that future tricky variable name uses decide on one binding from their
+/// lexical scope.
 pub fn rename_args_compileform(c: &CompileForm) -> CompileForm {
     let new_names = invent_new_names_sexp(c.args.clone());
     let mut local_namemap = HashMap::new();

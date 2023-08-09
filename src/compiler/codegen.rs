@@ -686,7 +686,7 @@ pub fn generate_expr_code(
             ))
         }
         BodyForm::Value(v) => {
-            match v.borrow() {
+            match v {
                 SExp::Atom(l, atom) => {
                     if *atom == "@".as_bytes().to_vec() || *atom == "@*env*".as_bytes().to_vec() {
                         Ok(CompiledCode(
@@ -697,6 +697,16 @@ pub fn generate_expr_code(
                         create_name_lookup(compiler, l.clone(), atom, true)
                             .map(|f| Ok(CompiledCode(l.clone(), f)))
                             .unwrap_or_else(|_| {
+                                // Finally enable strictness for variable names.
+                                // This is possible because the modern macro system
+                                // takes great care to preserve as much information
+                                // from the source code as possible.
+                                //
+                                // When we come here in strict mode, we have
+                                // a string, integer or atom depending on the
+                                // user's desire and the explicitly generated
+                                // result from the macro, therefore we can return
+                                // an error if this atom didn't have a binding.
                                 if opts.dialect().strict {
                                     return Err(CompileErr(
                                         l.clone(),
@@ -720,6 +730,10 @@ pub fn generate_expr_code(
                     }
                 }
                 SExp::Integer(l, i) => {
+                    // This code can assume that an integer is an integer because
+                    // strict mode closes the necessary loophole below.  Values
+                    // intended as variable names are never crushed into integer
+                    // like values from modern macros.
                     if opts.dialect().strict {
                         return generate_expr_code(
                             context,
@@ -1276,7 +1290,7 @@ fn start_codegen(
 
     // Start compiler with all macros and constants
     for h in program.helpers.iter() {
-        code_generator = match h.borrow() {
+        code_generator = match h {
             HelperForm::Defconstant(defc) => match defc.kind {
                 ConstantKind::Simple => {
                     let expand_program = SExp::Cons(

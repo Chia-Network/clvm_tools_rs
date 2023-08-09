@@ -30,7 +30,7 @@ lazy_static! {
                 DialectDescription {
                     accepted: AcceptedDialect {
                         stepping: Some(21),
-                        ..Default::default()
+                        ..AcceptedDialect::default()
                     },
                     content: indoc! {"(
                     (defconstant *chialisp-version* 21)
@@ -85,7 +85,7 @@ lazy_static! {
     };
 }
 
-fn include_dialect(allocator: &mut Allocator, e: &[NodePtr]) -> Option<AcceptedDialect> {
+fn include_dialect(allocator: &Allocator, e: &[NodePtr]) -> Option<AcceptedDialect> {
     let include_keyword_sexp = e[0];
     let name_sexp = e[1];
     if let (SExp::Atom(), SExp::Atom()) = (
@@ -102,8 +102,15 @@ fn include_dialect(allocator: &mut Allocator, e: &[NodePtr]) -> Option<AcceptedD
     None
 }
 
+// Now return more parameters about the "modern" dialect, including in the future,
+// strictness.  This will allow us to support the transition to modern macros which
+// in turn allow us to turn on strictness in variable naming.  Often multiple moves
+// are needed to get from one point to another and there's a tension between
+// unitary changes and smaller PRs which do fewer things by themselves.  This is
+// part of a broader narrative, which many requested that sets us on the path of
+// being able to include more information in the dialect result.
 pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> AcceptedDialect {
-    let mut result = Default::default();
+    let mut result = AcceptedDialect::default();
 
     if let Some(l) = proper_list(allocator, sexp, true) {
         for elt in l.iter() {

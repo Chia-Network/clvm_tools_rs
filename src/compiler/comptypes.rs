@@ -349,9 +349,17 @@ pub enum HelperForm {
 /// To what purpose is the file included.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum IncludeProcessType {
+    /// Include the bytes on disk as an atom.
     Bin,
+    /// Parse the hex on disk and present it as a clvm value.
     Hex,
+    /// Read clvm in s-expression form as a clvm value.
     SExpression,
+    /// Pointing to a chialisp program, Compiled specifies that we want
+    /// the compiled form of the program as a clvm value.  It's possible
+    /// because chialisp programs self-identify how they're compiled and
+    /// the form they take is promised to be stable for released versions
+    /// of the language.
     Compiled,
 }
 
@@ -443,6 +451,8 @@ pub trait CompilerOpts {
     fn code_generator(&self) -> Option<PrimaryCodegen>;
     /// Get the dialect declared in the toplevel program.
     fn dialect(&self) -> AcceptedDialect;
+    /// Disassembly version (for disassembly style serialization)
+    fn disassembly_ver(&self) -> Option<usize>;
     /// Specifies whether code is being generated on behalf of an inner defun in
     /// the program.
     fn in_defun(&self) -> bool;
@@ -471,6 +481,8 @@ pub trait CompilerOpts {
     fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts>;
     /// Set search paths.
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts>;
+    /// Set disassembly version for.
+    fn set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts>;
     /// Set whether we're compiling on behalf of a defun.
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts>;
     /// Set whether to inject the standard environment.

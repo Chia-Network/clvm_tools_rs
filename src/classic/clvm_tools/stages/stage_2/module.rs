@@ -131,7 +131,7 @@ fn build_used_constants_names(
         new_names = HashSet::new();
 
         for name in iterate_names {
-            let functions_and_macros = vec![functions.get(&name), macro_as_dict.get(&name)];
+            let functions_and_macros = [functions.get(&name), macro_as_dict.get(&name)];
 
             let matching_names_1 = functions_and_macros
                 .iter()
@@ -716,7 +716,7 @@ fn add_main_args(
     symbols: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
     let entry_name = allocator.new_atom("__chia__main_arguments".as_bytes())?;
-    let entry_value_string = disassemble(allocator, args);
+    let entry_value_string = disassemble(allocator, args, None);
     let entry_value = allocator.new_atom(entry_value_string.as_bytes())?;
     let entry_cons = allocator.new_pair(entry_name, entry_value)?;
     allocator.new_pair(entry_cons, symbols)

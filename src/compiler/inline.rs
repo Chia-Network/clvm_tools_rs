@@ -263,7 +263,7 @@ fn get_inline_callable(
 /// expressions given in the ultimate original call.  This allows inline functions
 /// to seem to call each other as long as there's no cycle.
 fn make_args_for_call_from_inline(
-    visited_inlines: &mut HashSet<Vec<u8>>,
+    visited_inlines: &HashSet<Vec<u8>>,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,

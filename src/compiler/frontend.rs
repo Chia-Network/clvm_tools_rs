@@ -52,7 +52,7 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
             result
         }
         BodyForm::Quoted(_) => vec![],
-        BodyForm::Value(atom) => match atom.borrow() {
+        BodyForm::Value(atom) => match atom {
             SExp::Atom(_l, v) => vec![v.to_vec()],
             SExp::Cons(_l, f, r) => {
                 let mut first_names = collect_used_names_sexp(f.clone());
@@ -101,7 +101,7 @@ fn collect_used_names_helperform(body: &HelperForm) -> Vec<Vec<u8>> {
 fn collect_used_names_compileform(body: &CompileForm) -> Vec<Vec<u8>> {
     let mut result = Vec::new();
     for h in body.helpers.iter() {
-        let mut helper_list = collect_used_names_helperform(h.borrow());
+        let mut helper_list = collect_used_names_helperform(h);
         result.append(&mut helper_list);
     }
 
@@ -263,8 +263,9 @@ fn make_let_bindings(
 ) -> Result<Vec<Rc<Binding>>, CompileErr> {
     let err = Err(CompileErr(
         body.loc(),
-        "Bad binding tail ".to_string() + &body.to_string(),
+        format!("Bad binding tail {body:?}")
     ));
+    eprintln!("make_let_bindings {body}");
     match body.borrow() {
         SExp::Nil(_) => Ok(vec![]),
         SExp::Cons(_, head, tl) => head
@@ -284,7 +285,10 @@ fn make_let_bindings(
                     result.append(&mut rest_bindings);
                     Ok(result)
                 }
-                _ => err.clone(),
+                _ => {
+                    eprintln!("crap {body:?}");
+                    err.clone()
+                }
             })
             .unwrap_or_else(|| err.clone()),
         _ => err,

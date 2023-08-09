@@ -9,14 +9,18 @@ use clvmr::allocator::Allocator;
 use crate::classic::clvm_tools::clvmc::compile_clvm_text_maybe_opt;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 
+use crate::compiler::BasicCompileContext;
 use crate::compiler::cldb::hex_to_modern_sexp;
-use crate::compiler::clvm::convert_from_clvm_rs;
+use crate::compiler::clvm;
+use crate::compiler::clvm::{convert_from_clvm_rs, truthy};
+use crate::compiler::compiler::compile_from_compileform;
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompilerOpts, HelperForm, IncludeDesc, IncludeProcessType,
+    BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, IncludeDesc, IncludeProcessType,
 };
 use crate::compiler::dialect::KNOWN_DIALECTS;
-use crate::compiler::evaluate::{create_argument_captures, dequote, ArgInputs, Evaluator};
+use crate::compiler::evaluate::{create_argument_captures, ArgInputs};
 use crate::compiler::frontend::compile_helperform;
+use crate::compiler::optimize::get_optimizer;
 use crate::compiler::preprocessor::macros::PreprocessorExtension;
 use crate::compiler::rename::rename_args_helperform;
 use crate::compiler::runtypes::RunFailure;
@@ -67,6 +71,22 @@ fn make_defmac_name(name: &[u8]) -> Vec<u8> {
     let mut res = b"__chia__defmac__".to_vec();
     res.append(&mut name.to_vec());
     res
+}
+
+fn nilize(v: Rc<SExp>) -> Rc<SExp> {
+    if let SExp::Cons(l,a,b) = v.borrow() {
+        let a_conv = nilize(a.clone());
+        let b_conv = nilize(b.clone());
+        if Rc::as_ptr(&a_conv) == Rc::as_ptr(&a) && Rc::as_ptr(&b_conv) == Rc::as_ptr(&b) {
+            v.clone()
+        } else {
+            Rc::new(SExp::Cons(l.clone(), a_conv, b_conv))
+        }
+    } else if !truthy(v.clone()) {
+        Rc::new(SExp::Nil(v.loc()))
+    } else {
+        v
+    }
 }
 
 impl Preprocessor {
@@ -265,7 +285,16 @@ impl Preprocessor {
 
                         // as inline defuns because they're closest to that
                         // semantically.
-                        let mut allocator = Allocator::new();
+                        let optimizer = get_optimizer(
+                            &body.loc(),
+                            self.opts.clone()
+                        )?;
+                        let mut context = BasicCompileContext::new(
+                            Allocator::new(),
+                            self.runner.clone(),
+                            HashMap::new(),
+                            optimizer,
+                        );
                         // The name matched, try calling it.
 
                         // Form argument env.
@@ -278,29 +307,33 @@ impl Preprocessor {
                         )?;
 
                         let ppext = Rc::new(PreprocessorExtension::new());
-                        let mut eval = Evaluator::new(
-                            ppext.enrich_prims(self.opts.clone()),
-                            self.runner.clone(),
-                            self.helpers.clone(),
-                        );
-                        eval.add_extension(ppext);
-                        let res = eval.shrink_bodyform(
-                            &mut allocator,
-                            mdata.args.clone(),
-                            &macro_arg_env,
-                            mdata.body.clone(),
-                            false,
-                            None,
+                        let extension: &PreprocessorExtension = ppext.borrow();
+                        let opts_prims = extension.enrich_prims(self.opts.clone());
+                        let new_program = CompileForm {
+                            loc: body.loc(),
+                            args: mdata.args.clone(),
+                            include_forms: vec![],
+                            helpers: self.helpers.clone(),
+                            exp: mdata.body.clone(),
+                            ty: None,
+                        };
+                        let compiled_program = compile_from_compileform(
+                            &mut context,
+                            opts_prims.clone(),
+                            new_program,
                         )?;
+                        let res = clvm::run(
+                            context.allocator(),
+                            self.runner.clone(),
+                            opts_prims.prim_map(),
+                            Rc::new(compiled_program),
+                            args.clone(),
+                            Some(extension),
+                            None,
+                        ).map(nilize).map_err(|e| CompileErr::from(e))?;
 
-                        if let Ok(unquoted) = dequote(body.loc(), res) {
-                            return Ok(Some(unquoted));
-                        } else {
-                            return Err(CompileErr(
-                                body.loc(),
-                                "Failed to fully evaluate macro".to_string(),
-                            ));
-                        }
+                        eprintln!("macro {} {args} => {res}", decode_string(&name));
+                        return Ok(Some(res));
                     }
                 }
             }

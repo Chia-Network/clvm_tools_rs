@@ -137,7 +137,63 @@ pub fn prims() -> Vec<(Vec<u8>, SExp)> {
         ),
         (
             "softfork".as_bytes().to_vec(),
-            SExp::Integer(primloc, 36_u32.to_bigint().unwrap()),
+            SExp::Integer(primloc.clone(), 36_u32.to_bigint().unwrap()),
+        ),
+        (
+            "coinid".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 48_u32.to_bigint().unwrap()),
+        ),
+        (
+            "g1_subtract".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 49_u32.to_bigint().unwrap()),
+        ),
+        (
+            "g1_multiply".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 50_u32.to_bigint().unwrap()),
+        ),
+        (
+            "g1_negate".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 51_u32.to_bigint().unwrap()),
+        ),
+        (
+            "g2_add".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 52_u32.to_bigint().unwrap()),
+        ),
+        (
+            "g2_subtract".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 53_u32.to_bigint().unwrap()),
+        ),
+        (
+            "g2_multiply".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 54_u32.to_bigint().unwrap()),
+        ),
+        (
+            "g2_negate".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 55_u32.to_bigint().unwrap()),
+        ),
+        (
+            "g1_map".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 56_u32.to_bigint().unwrap()),
+        ),
+        (
+            "g2_map".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 57_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_pairing_identity".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 58_u32.to_bigint().unwrap()),
+        ),
+        (
+            "bls_verify".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 59_u32.to_bigint().unwrap()),
+        ),
+        (
+            "secp256k1_verify".as_bytes().to_vec(),
+            SExp::Integer(primloc.clone(), 0x13d61f00.to_bigint().unwrap()),
+        ),
+        (
+            "secp256r1_verify".as_bytes().to_vec(),
+            SExp::Integer(primloc, 0x1c3a8f00.to_bigint().unwrap()),
         ),
     ]
 }

@@ -13,7 +13,7 @@ pub struct TConvertOption {
 }
 
 pub fn int_from_bytes(
-    allocator: &mut Allocator,
+    allocator: &Allocator,
     b: Bytes,
     option: Option<TConvertOption>,
 ) -> Result<u64, EvalErr> {

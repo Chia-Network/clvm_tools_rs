@@ -54,6 +54,8 @@ pub fn compile_clvm_text_maybe_opt(
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
     let untyped_sexp = untype_code(allocator, Srcloc::start(input_path), assembled_sexp)?;
     let dialect = detect_modern(allocator, untyped_sexp);
+    // Now the stepping is optional (None for classic) but we may communicate
+    // other information in dialect as well.
     if let Some(stepping) = dialect.stepping {
         let runner = Rc::new(DefaultProgramRunner::new());
         let opts = opts
@@ -124,7 +126,13 @@ pub fn compile_clvm_inner(
         filename,
         classic_with_opts,
     )
-    .map_err(|x| format!("error {} compiling {}", x.1, disassemble(allocator, x.0)))?;
+    .map_err(|x| {
+        format!(
+            "error {} compiling {}",
+            x.1,
+            disassemble(allocator, x.0, opts.disassembly_ver())
+        )
+    })?;
     sexp_to_stream(allocator, result, result_stream);
     Ok(())
 }

@@ -87,6 +87,7 @@ pub struct DefaultCompilerOpts {
     pub frontend_opt: bool,
     pub frontend_check_live: bool,
     pub start_env: Option<Rc<SExp>>,
+    pub disassembly_ver: Option<usize>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     pub dialect: AcceptedDialect,
 }
@@ -101,7 +102,7 @@ pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
     Rc::new(prim_map)
 }
 
-fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
+pub fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
     // Transform let bindings, merging nested let scopes with the top namespace
     let hoisted_bindings = hoist_body_let_binding(None, program.args.clone(), program.exp.clone())?;
     let mut new_helpers = hoisted_bindings.0;
@@ -119,25 +120,15 @@ fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
     })
 }
 
-pub fn desugar_pre_forms(
+pub fn compile_from_compileform(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
-    pre_forms: &[Rc<SExp>],
-) -> Result<CompileForm, CompileErr> {
-    let p0 = frontend(opts.clone(), pre_forms)?;
-
+    p0: CompileForm,
+) -> Result<SExp, CompileErr> {
     let p1 = context.frontend_optimization(opts.clone(), p0)?;
 
-    do_desugar(&p1)
-}
-
-pub fn compile_pre_forms(
-    context: &mut BasicCompileContext,
-    opts: Rc<dyn CompilerOpts>,
-    pre_forms: &[Rc<SExp>],
-) -> Result<SExp, CompileErr> {
     // Resolve includes, convert program source to lexemes
-    let p2 = desugar_pre_forms(context, opts.clone(), pre_forms)?;
+    let p2 = do_desugar(&p1)?;
 
     let p3 = context.post_desugar_optimization(opts.clone(), p2)?;
 
@@ -147,6 +138,20 @@ pub fn compile_pre_forms(
     let g2 = context.post_codegen_output_optimize(opts, generated)?;
 
     Ok(g2)
+}
+
+pub fn compile_pre_forms(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    pre_forms: &[Rc<SExp>],
+) -> Result<SExp, CompileErr> {
+    let p0 = frontend(opts.clone(), pre_forms)?;
+
+    compile_from_compileform(
+        context,
+        opts,
+        p0,
+    )
 }
 
 pub fn compile_file(
@@ -198,6 +203,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
         self.prim_map.clone()
     }
+    fn disassembly_ver(&self) -> Option<usize> {
+        self.disassembly_ver
+    }
     fn get_search_paths(&self) -> Vec<String> {
         self.include_dirs.clone()
     }
@@ -210,6 +218,11 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.include_dirs = dirs.to_owned();
+        Rc::new(copy)
+    }
+    fn set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.disassembly_ver = ver;
         Rc::new(copy)
     }
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts> {
@@ -260,12 +273,12 @@ impl CompilerOpts for DefaultCompilerOpts {
     ) -> Result<(String, Vec<u8>), CompileErr> {
         if filename == "*macros*" {
             if self.dialect().strict {
-                return Ok((filename, ADVANCED_MACROS.as_bytes().to_vec()));
+                return Ok((filename, ADVANCED_MACROS.bytes().collect()));
             } else {
-                return Ok((filename, STANDARD_MACROS.as_bytes().to_vec()));
+                return Ok((filename, STANDARD_MACROS.bytes().collect()));
             }
         } else if let Some(dialect) = KNOWN_DIALECTS.get(&filename) {
-            return Ok((filename, dialect.content.as_bytes().to_vec()));
+            return Ok((filename, dialect.content.bytes().collect()));
         }
 
         for dir in self.include_dirs.iter() {
@@ -318,8 +331,9 @@ impl DefaultCompilerOpts {
             frontend_opt: false,
             frontend_check_live: true,
             start_env: None,
-            dialect: Default::default(),
+            dialect: AcceptedDialect::default(),
             prim_map: create_prim_map(),
+            disassembly_ver: None,
         }
     }
 }
