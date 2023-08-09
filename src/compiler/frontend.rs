@@ -251,8 +251,9 @@ fn make_let_bindings(
 ) -> Result<Vec<Rc<Binding>>, CompileErr> {
     let err = Err(CompileErr(
         body.loc(),
-        "Bad binding tail ".to_string() + &body.to_string(),
+        format!("Bad binding tail {body:?}")
     ));
+    eprintln!("make_let_bindings {body}");
     match body.borrow() {
         SExp::Nil(_) => Ok(vec![]),
         SExp::Cons(_, head, tl) => head
@@ -271,7 +272,10 @@ fn make_let_bindings(
                     result.append(&mut rest_bindings);
                     Ok(result)
                 }
-                _ => err.clone(),
+                _ => {
+                    eprintln!("crap {body:?}");
+                    err.clone()
+                }
             })
             .unwrap_or_else(|| err.clone()),
         _ => err,

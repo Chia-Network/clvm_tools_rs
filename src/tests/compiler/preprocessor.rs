@@ -325,7 +325,7 @@ fn test_defmac_create_match_form() {
         (match X
           ((16 x y) (c 1 (+ x y)))
           ((3 () b c) c)
-          ((3 (q . 1) b c) b)
+          ((3 1 b c) b)
           (x x)
           )
         )

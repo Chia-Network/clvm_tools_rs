@@ -158,16 +158,13 @@ fn fe_opt(
     })
 }
 
-pub fn compile_pre_forms(
+pub fn compile_from_compileform(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
-    pre_forms: &[Rc<SExp>],
+    p0: CompileForm,
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
-    // Resolve includes, convert program source to lexemes
-    let p0 = frontend(opts.clone(), pre_forms)?;
-
     let p1 = if opts.frontend_opt() {
         // Front end optimization
         fe_opt(allocator, runner.clone(), opts.clone(), p0)?
@@ -195,6 +192,25 @@ pub fn compile_pre_forms(
 
     // generate code from AST, optionally with optimization
     codegen(allocator, runner, opts, &p2, symbol_table)
+}
+
+pub fn compile_pre_forms(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    pre_forms: &[Rc<SExp>],
+    symbol_table: &mut HashMap<String, String>,
+) -> Result<SExp, CompileErr> {
+    // Resolve includes, convert program source to lexemes
+    let p0 = frontend(opts.clone(), pre_forms)?;
+
+    compile_from_compileform(
+        allocator,
+        runner,
+        opts,
+        p0,
+        symbol_table
+    )
 }
 
 pub fn compile_file(

@@ -361,7 +361,7 @@ pub fn decode_string(v: &[u8]) -> String {
     return String::from_utf8_lossy(v).as_ref().to_string();
 }
 
-fn printable(a: &[u8]) -> bool {
+pub fn printable(a: &[u8]) -> bool {
     for ch in a.iter() {
         if (*ch as char).is_control() || !(*ch as char).is_ascii() {
             return false;
