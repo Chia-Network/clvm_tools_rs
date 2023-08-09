@@ -198,8 +198,8 @@ fn make_cons(a: Rc<SExp>, b: Rc<SExp>) -> SExp {
 enum SExpParseState {
     // The types of state that the Rust pre-forms can take
     Empty,
-    CommentText(Srcloc, Vec<u8>), //srcloc contains the file, line, column and length for the captured form
-    Bareword(Srcloc, Vec<u8>),
+    CommentText,
+    Bareword(Srcloc, Vec<u8>), //srcloc contains the file, line, column and length for the captured form
     QuotedText(Srcloc, u8, Vec<u8>),
     QuotedEscaped(Srcloc, u8, Vec<u8>),
     OpenList(Srcloc),
@@ -540,7 +540,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
             // we are not currently in a list
             '(' => resume(SExpParseState::OpenList(loc)), // move to OpenList state
             '\n' => resume(SExpParseState::Empty),        // new line, same state
-            ';' => resume(SExpParseState::CommentText(loc, Vec::new())),
+            ';' => resume(SExpParseState::CommentText),
             ')' => error(loc, "Too many close parens"),
             '"' => resume(SExpParseState::QuotedText(loc, b'"', Vec::new())), // match on "
             '\'' => resume(SExpParseState::QuotedText(loc, b'\'', Vec::new())), // match on '
@@ -553,13 +553,10 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
             }
         },
         // t is a Vec of the previous characters in this comment string
-        SExpParseState::CommentText(srcloc, t) => match this_char as char {
-            '\r' => resume(SExpParseState::CommentText(srcloc.clone(), t.to_vec())),
+        SExpParseState::CommentText => match this_char as char {
             '\n' => resume(SExpParseState::Empty),
             _ => {
-                let mut tcopy = t.to_vec();
-                tcopy.push(this_char);
-                resume(SExpParseState::CommentText(srcloc.ext(&loc), tcopy))
+                resume(SExpParseState::CommentText)
             }
         },
         // we currently processing a new word
@@ -721,14 +718,13 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                 resume(SExpParseState::TermList(
                     loc.clone(),
                     Some(parsed.clone()), // assert parsed_object is not None and then store it in parsed_list
-                    Rc::new(SExpParseState::CommentText(loc.clone(), Vec::new())),
+                    Rc::new(SExpParseState::CommentText),
                     list_content.clone(),
                 ))
             } else {
                 match pp.as_ref() {
-                    SExpParseState::CommentText(comment_loc, comment_text) => {
+                    SExpParseState::CommentText => {
                         match this_char as char {
-                            '\r' => resume(SExpParseState::CommentText(comment_loc.clone(), comment_text.to_vec())),
                             '\n' => resume(SExpParseState::TermList(
                                 loc.clone(),
                                 Some(parsed.clone()),
@@ -736,12 +732,10 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                                 list_content.clone(),
                             )),
                             _ => {
-                                let mut tcopy = comment_text.to_vec();
-                                tcopy.push(this_char);
                                 resume(SExpParseState::TermList(
                                     loc.clone(),
                                     Some(parsed.clone()),
-                                    Rc::new(SExpParseState::CommentText(srcloc.ext(&loc), tcopy)),
+                                    Rc::new(SExpParseState::CommentText),
                                     list_content.clone(),
                                 ))
                             }
@@ -861,7 +855,7 @@ where
     match parse_state {
         SExpParseState::Empty => Ok(res),
         SExpParseState::Bareword(l, t) => Ok(vec![Rc::new(make_atom(l, t))]),
-        SExpParseState::CommentText(_, _) => Ok(res),
+        SExpParseState::CommentText => Ok(res),
         SExpParseState::QuotedText(l, _, _) => Err((l, "unterminated quoted string".to_string())),
         SExpParseState::QuotedEscaped(l, _, _) => {
             Err((l, "unterminated quoted string with escape".to_string()))
