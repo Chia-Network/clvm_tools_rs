@@ -194,12 +194,6 @@ fn make_cons(a: Rc<SExp>, b: Rc<SExp>) -> SExp {
     SExp::Cons(a.loc().ext(&b.loc()), a.clone(), b.clone())
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum TermListCommentState {
-    InComment,
-    Empty,
-}
-
 #[derive(Debug)]
 enum SExpParseState {
     // The types of state that the Rust pre-forms can take
@@ -212,10 +206,9 @@ enum SExpParseState {
     ParsingList(Srcloc, Rc<SExpParseState>, Vec<Rc<SExp>>),
     TermList(
         Srcloc,
-        TermListCommentState,
         Option<Rc<SExp>>,   // this is the second value in the dot expression
         Rc<SExpParseState>, // used for inner parsing
-        Vec<Rc<SExp>>,
+        Vec<Rc<SExp>>,  // list content
     ),
 }
 
@@ -639,7 +632,6 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                 ('.', SExpParseState::Empty) => resume(SExpParseState::TermList(
                     // dot notation showing cons cell
                     srcloc.ext(&loc),
-                    TermListCommentState::Empty, // we are not inside a comment
                     None,
                     Rc::new(SExpParseState::Empty), // nested state is empty
                     list_content.to_vec(),
@@ -683,31 +675,10 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                 },
             }
         }
-        // if we're in a comment then just check for newline or carriage return otherwise stay in InComment state
-        SExpParseState::TermList(
-            srcloc,
-            TermListCommentState::InComment,
-            parsed,
-            pp,
-            list_content,
-        ) => {
-            let end_comment = if this_char as char == '\n' || this_char as char == '\r' {
-                TermListCommentState::Empty
-            } else {
-                TermListCommentState::InComment
-            };
-            resume(SExpParseState::TermList(
-                srcloc.clone(),
-                end_comment, // store the new commentstate
-                parsed.clone(),
-                pp.clone(),
-                list_content.clone(),
-            ))
-        }
+
         // if we're not in a comment and have already found a parsed second word for this dot expression
         SExpParseState::TermList(
             srcloc,
-            TermListCommentState::Empty,
             Some(parsed),
             pp,
             list_content,
@@ -716,7 +687,6 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                 // ignore whitespace after second word
                 resume(SExpParseState::TermList(
                     srcloc.ext(&loc),
-                    TermListCommentState::Empty,
                     Some(parsed.clone()),
                     pp.clone(),
                     list_content.to_vec(),
@@ -741,23 +711,54 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                 }
             } else if this_char == b';' {
                 // entering a comment
+                // resume(SExpParseState::TermList(
+                //     srcloc.clone(),
+                //     TermListCommentState::InComment,
+                //     Some(parsed.clone()),
+                //     pp.clone(),
+                //     list_content.clone(),
+                // ))
                 resume(SExpParseState::TermList(
-                    srcloc.clone(),
-                    TermListCommentState::InComment,
-                    Some(parsed.clone()),
-                    pp.clone(),
+                    loc.clone(),
+                    Some(parsed.clone()), // assert parsed_object is not None and then store it in parsed_list
+                    Rc::new(SExpParseState::CommentText(loc.clone(), Vec::new())),
                     list_content.clone(),
                 ))
             } else {
-                // we don't want to see any more characters after we've concluded a dot expression
-                error(
-                    srcloc.clone(),
-                    &format!("unexpected character {}", this_char as char),
-                )
+                match pp.as_ref() {
+                    SExpParseState::CommentText(comment_loc, comment_text) => {
+                        match this_char as char {
+                            '\r' => resume(SExpParseState::CommentText(comment_loc.clone(), comment_text.to_vec())),
+                            '\n' => resume(SExpParseState::TermList(
+                                loc.clone(),
+                                Some(parsed.clone()),
+                                Rc::new(SExpParseState::Empty),
+                                list_content.clone(),
+                            )),
+                            _ => {
+                                let mut tcopy = comment_text.to_vec();
+                                tcopy.push(this_char);
+                                resume(SExpParseState::TermList(
+                                    loc.clone(),
+                                    Some(parsed.clone()),
+                                    Rc::new(SExpParseState::CommentText(srcloc.ext(&loc), tcopy)),
+                                    list_content.clone(),
+                                ))
+                            }
+                        }
+                    },
+                    _ => {
+                        // we don't want to see any more characters after we've concluded a dot expression
+                        error(
+                            srcloc.clone(),
+                            &format!("unexpected character {}", this_char as char),
+                        )
+                    }
+                }
             }
         }
         // we are passing a dot-expression (x . y) and not in a comment and don't have an object already discovered
-        SExpParseState::TermList(srcloc, TermListCommentState::Empty, None, pp, list_content) => {
+        SExpParseState::TermList(srcloc, None, pp, list_content) => {
             // pp is the inner parsestate inside the dot-expressions
             match (this_char as char, pp.borrow()) {
                 //match based on current character and inner state
@@ -800,16 +801,14 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                     SExpParseResult::Emit(parsed_object, _current_state) => {
                         resume(SExpParseState::TermList(
                             loc,
-                            TermListCommentState::Empty,
                             Some(parsed_object), // assert parsed_object is not None and then store it in parsed_list
-                            pp.clone(),
+                            Rc::new(SExpParseState::Empty),
                             list_content.clone(),
                         ))
                     }
                     // resume means it didn't finish parsing yet, so store inner state and keep going
                     SExpParseResult::Resume(current_state) => resume(SExpParseState::TermList(
                         srcloc.ext(&loc),
-                        TermListCommentState::Empty,
                         None,
                         Rc::new(current_state), // store our partial inner parsestate in pp
                         list_content.to_vec(),
@@ -869,7 +868,7 @@ where
         }
         SExpParseState::OpenList(l) => Err((l, "Unterminated list (empty)".to_string())),
         SExpParseState::ParsingList(l, _, _) => Err((l, "Unterminated mid list".to_string())),
-        SExpParseState::TermList(l, _, _, _, _) => Err((l, "Unterminated tail list".to_string())),
+        SExpParseState::TermList(l, _, _, _) => Err((l, "Unterminated tail list".to_string())),
     }
 }
 
