@@ -5,6 +5,7 @@
       "module": "esnext",
       "target": "es5",
       "allowJs": true,
+      "checkJs": false,
       "sourceMap": true,
       "declaration": true,
       "emitDeclarationOnly": true,
