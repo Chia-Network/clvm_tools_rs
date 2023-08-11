@@ -1,6 +1,9 @@
 use js_sys;
 use js_sys::JSON::stringify;
 use js_sys::{Array, BigInt, Object};
+
+use num_bigint::ToBigInt;
+
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -158,6 +161,9 @@ pub fn sexp_from_js_object(sstart: Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
             .and_then(|v| v.to_string(10).ok())
             .and_then(|v| v.as_string())
             .and_then(|v| v.parse::<Number>().ok())
+            .map(|x| Rc::new(SExp::Integer(sstart.clone(), x)))
+    } else if let Some(fval) = v.as_f64() {
+        (fval as i64).to_bigint()
             .map(|x| Rc::new(SExp::Integer(sstart.clone(), x)))
     } else if Array::is_array(v) {
         let a = Array::from(v);

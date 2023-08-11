@@ -153,6 +153,7 @@ dependencies = [
  "clvm_tools_rs",
  "clvmr",
  "js-sys",
+ "num-bigint",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]
