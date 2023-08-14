@@ -17,6 +17,8 @@ use num_traits::{zero, Num};
 use serde::Serialize;
 
 use crate::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType};
+#[cfg(test)]
+use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes_clvm, TConvertOption};
 use crate::compiler::prims::prims;
 use crate::compiler::srcloc::Srcloc;
@@ -194,7 +196,7 @@ fn make_cons(a: Rc<SExp>, b: Rc<SExp>) -> SExp {
     SExp::Cons(a.loc().ext(&b.loc()), a.clone(), b.clone())
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum SExpParseState {
     // The types of state that the Rust pre-forms can take
     Empty,
@@ -212,7 +214,7 @@ enum SExpParseState {
     ),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum SExpParseResult {
     // the result of a call to parse an SExp
     Resume(SExpParseState),
@@ -726,9 +728,8 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                 ))
             } else {
                 match pp.as_ref() {
-                    SExpParseState::CommentText(comment_loc, comment_text) => {
+                    SExpParseState::CommentText(_, comment_text) => {
                         match this_char as char {
-                            '\r' => resume(SExpParseState::CommentText(comment_loc.clone(), comment_text.to_vec())),
                             '\n' => resume(SExpParseState::TermList(
                                 loc.clone(),
                                 Some(parsed.clone()),
@@ -820,56 +821,85 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
     }
 }
 
-fn parse_sexp_inner<I>(
-    mut start: Srcloc,
-    mut parse_state: SExpParseState,
-    s: I,
-) -> Result<Vec<Rc<SExp>>, (Srcloc, String)>
-where
-    I: Iterator<Item = u8>,
-{
+#[derive(Debug, PartialEq, Eq)]
+pub struct ParsePartialResult {
     // we support compiling multiple things at once, keep these in a Vec
     // at the moment this will almost certainly only return 1 thing
-    let mut res = Vec::new();
+    res: Vec<Rc<SExp>>,
+    srcloc: Srcloc,
+    parse_state: SExpParseState,
+}
 
-    // Loop through all the characters
-    for this_char in s {
-        let next_location = start.clone().advance(this_char);
+impl ParsePartialResult {
+    pub fn new(srcloc: Srcloc) -> Self {
+        ParsePartialResult {
+            res: Default::default(),
+            srcloc: srcloc,
+            parse_state: SExpParseState::Empty
+        }
+    }
+    pub fn push(
+        &mut self,
+        this_char: u8
+    ) -> Result<(), (Srcloc, String)>
+    {
+        let next_location = self.srcloc.clone().advance(this_char);
 
         // call parse_sexp_step for current character
         // it will return a ParseResult which contains the new ParseState
-        match parse_sexp_step(start.clone(), &parse_state, this_char) {
+        match parse_sexp_step(self.srcloc.clone(), &self.parse_state, this_char) {
             // catch error and propagate itupwards
             SExpParseResult::Error(l, e) => {
                 return Err((l, e));
             }
             // Keep parsing
             SExpParseResult::Resume(new_parse_state) => {
-                start = next_location;
-                parse_state = new_parse_state;
+                self.srcloc = next_location;
+                self.parse_state = new_parse_state;
             }
             // End of list (top level compile object), but not necessarily end of file
             SExpParseResult::Emit(o, new_parse_state) => {
-                start = next_location;
-                parse_state = new_parse_state;
-                res.push(o);
+                self.srcloc = next_location;
+                self.parse_state = new_parse_state;
+                self.res.push(o);
             }
         }
+
+        Ok(())
     }
 
-    // depending on the state when we finished return Ok or Err enums
-    match parse_state {
-        SExpParseState::Empty => Ok(res),
-        SExpParseState::Bareword(l, t) => Ok(vec![Rc::new(make_atom(l, t))]),
-        SExpParseState::CommentText(_, _) => Ok(res),
-        SExpParseState::QuotedText(l, _, _) => Err((l, "unterminated quoted string".to_string())),
-        SExpParseState::QuotedEscaped(l, _, _) => {
-            Err((l, "unterminated quoted string with escape".to_string()))
+    pub fn finalize(self) -> Result<Vec<Rc<SExp>>, (Srcloc, String)> {
+        // depending on the state when we finished return Ok or Err enums
+        match self.parse_state {
+            SExpParseState::Empty => Ok(self.res),
+            SExpParseState::Bareword(l, t) => Ok(vec![Rc::new(make_atom(l, t))]),
+            SExpParseState::CommentText(_, _) => Ok(self.res),
+            SExpParseState::QuotedText(l, _, _) => Err((l, "unterminated quoted string".to_string())),
+            SExpParseState::QuotedEscaped(l, _, _) => {
+                Err((l, "unterminated quoted string with escape".to_string()))
+            }
+            SExpParseState::OpenList(l) => Err((l, "Unterminated list (empty)".to_string())),
+            SExpParseState::ParsingList(l, _, _) => Err((l, "Unterminated mid list".to_string())),
+            SExpParseState::TermList(l, _, _, _) => Err((l, "Unterminated tail list".to_string())),
         }
-        SExpParseState::OpenList(l) => Err((l, "Unterminated list (empty)".to_string())),
-        SExpParseState::ParsingList(l, _, _) => Err((l, "Unterminated mid list".to_string())),
-        SExpParseState::TermList(l, _, _, _) => Err((l, "Unterminated tail list".to_string())),
     }
+}
+
+fn parse_sexp_inner<I>(
+    start: Srcloc,
+    s: I,
+) -> Result<Vec<Rc<SExp>>, (Srcloc, String)>
+where
+    I: Iterator<Item = u8>,
+{
+    let mut partial_result = ParsePartialResult::new(start);
+
+    // Loop through all the characters
+    for this_char in s {
+        partial_result.push(this_char)?;
+    }
+
+    partial_result.finalize()
 }
 
 ///
@@ -882,5 +912,105 @@ pub fn parse_sexp<I>(start: Srcloc, input: I) -> Result<Vec<Rc<SExp>>, (Srcloc, 
 where
     I: Iterator<Item = u8>,
 {
-    parse_sexp_inner(start, SExpParseState::Empty, input)
+    parse_sexp_inner(start, input)
+}
+
+#[cfg(test)]
+fn check_parser_for_intermediate_result(parser: &mut ParsePartialResult, s: &str, desired: SExpParseState) {
+    for this_char in s.bytes() {
+        parser.push(this_char).unwrap();
+    }
+    assert_eq!(parser.parse_state, desired);
+}
+
+#[cfg(test)]
+fn srcloc_range(name: &Rc<String>, start: usize, end: usize) -> Srcloc {
+    Srcloc::new(name.clone(), 1, start).ext(&Srcloc::new(name.clone(), 1, end))
+}
+
+#[test]
+fn test_tricky_parser_tail_01() {
+    let testname = Rc::new("*test*".to_string());
+    let loc = Srcloc::start(&testname);
+    let mut parser = ParsePartialResult::new(loc.clone());
+    check_parser_for_intermediate_result(
+        &mut parser,
+        "(1 . x",
+        SExpParseState::TermList(
+            srcloc_range(&testname, 1, 6),
+            None,
+            Rc::new(SExpParseState::Bareword(srcloc_range(&testname, 6, 6), vec![b'x'])),
+            vec![Rc::new(SExp::Integer(srcloc_range(&testname, 2, 3), bi_one()))]
+        )
+    );
+
+    parser.push(b')').expect("should complete");
+    assert_eq!(
+        parser.finalize(),
+        Ok(vec![
+            Rc::new(SExp::Cons(
+                srcloc_range(&testname, 1, 7),
+                Rc::new(SExp::Integer(srcloc_range(&testname, 2, 3), bi_one())),
+                Rc::new(SExp::Atom(srcloc_range(&testname, 6, 7), b"x".to_vec()))
+            ))
+        ])
+    );
+}
+
+#[test]
+fn test_tricky_parser_tail_02() {
+    let testname = Rc::new("*test*".to_string());
+    let loc = Srcloc::start(&testname);
+    let mut parser = ParsePartialResult::new(loc.clone());
+    check_parser_for_intermediate_result(
+        &mut parser,
+        "(1 . ()",
+        SExpParseState::TermList(
+            srcloc_range(&testname, 7, 7),
+            Some(Rc::new(SExp::Nil(srcloc_range(&testname, 6, 7)))),
+            Rc::new(SExpParseState::Empty),
+            vec![Rc::new(SExp::Integer(srcloc_range(&testname, 2, 2), bi_one()))]
+        )
+    );
+
+    parser.push(b')').expect("should complete");
+    assert_eq!(
+        parser.finalize(),
+        Ok(vec![
+            Rc::new(SExp::Cons(
+                srcloc_range(&testname, 1, 7),
+                Rc::new(SExp::Integer(srcloc_range(&testname, 2, 3), bi_one())),
+                Rc::new(SExp::Nil(srcloc_range(&testname, 6, 7)))
+            ))
+        ])
+    );
+}
+
+#[test]
+fn test_tricky_parser_tail_03() {
+    let testname = Rc::new("*test*".to_string());
+    let loc = Srcloc::start(&testname);
+    let mut parser = ParsePartialResult::new(loc.clone());
+    check_parser_for_intermediate_result(
+        &mut parser,
+        "(1 . () ;; Test\n",
+        SExpParseState::TermList(
+            srcloc_range(&testname, 7, 7),
+            Some(Rc::new(SExp::Nil(srcloc_range(&testname, 6, 7)))),
+            Rc::new(SExpParseState::Empty),
+            vec![Rc::new(SExp::Integer(srcloc_range(&testname, 2, 2), bi_one()))]
+        )
+    );
+
+    parser.push(b')').expect("should complete");
+    assert_eq!(
+        parser.finalize(),
+        Ok(vec![
+            Rc::new(SExp::Cons(
+                srcloc_range(&testname, 1, 7),
+                Rc::new(SExp::Integer(srcloc_range(&testname, 2, 3), bi_one())),
+                Rc::new(SExp::Nil(srcloc_range(&testname, 6, 7)))
+            ))
+        ])
+    );
 }
