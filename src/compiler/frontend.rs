@@ -10,7 +10,7 @@ use crate::compiler::comptypes::{
     LetData, LetFormInlineHint, LetFormKind, ModAccum,
 };
 use crate::compiler::preprocessor::preprocess;
-use crate::compiler::rename::rename_children_compileform;
+use crate::compiler::rename::{rename_assign_bindings, rename_children_compileform};
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::u8_from_number;
@@ -293,6 +293,10 @@ pub fn make_provides_set(provides_set: &mut HashSet<Vec<u8>>, body_sexp: Rc<SExp
     }
 }
 
+fn at_or_above_23(opts: Rc<dyn CompilerOpts>) -> bool {
+    opts.dialect().stepping.unwrap_or(0) > 22
+}
+
 fn handle_assign_form(
     opts: Rc<dyn CompilerOpts>,
     l: Srcloc,
@@ -336,11 +340,18 @@ fn handle_assign_form(
         }));
     }
 
-    let compiled_body = compile_bodyform(opts, Rc::new(v[v.len() - 1].clone()))?;
+    let mut compiled_body = compile_bodyform(opts.clone(), Rc::new(v[v.len() - 1].clone()))?;
     // We don't need to do much if there were no bindings.
     if bindings.is_empty() {
         return Ok(compiled_body);
     }
+
+    if at_or_above_23(opts.clone()) {
+        let (new_compiled_body, new_bindings) =
+            rename_assign_bindings(&l, &bindings, Rc::new(compiled_body))?;
+        compiled_body = new_compiled_body;
+        bindings = new_bindings;
+    };
 
     // Return a precise representation of this assign while storing up the work
     // we did breaking it down.
