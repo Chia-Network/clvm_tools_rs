@@ -193,7 +193,7 @@ impl Hash for SExp {
 }
 
 fn make_cons(a: Rc<SExp>, b: Rc<SExp>) -> SExp {
-    SExp::Cons(a.loc().ext(&b.loc()), a.clone(), b.clone())
+    SExp::Cons(a.loc().ext(&b.loc()), Rc::clone(&a), Rc::clone(&b))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -308,7 +308,7 @@ pub fn enlist(l: Srcloc, v: &[Rc<SExp>]) -> SExp {
     let mut result = SExp::Nil(l);
     for i_reverse in 0..v.len() {
         let i = v.len() - i_reverse - 1;
-        result = make_cons(v[i].clone(), Rc::new(result));
+        result = make_cons(Rc::clone(&v[i]), Rc::new(result));
     }
     result
 }
@@ -416,14 +416,14 @@ impl SExp {
 
     pub fn cons_fst(&self) -> Rc<SExp> {
         match self {
-            SExp::Cons(_, a, _) => a.clone(),
+            SExp::Cons(_, a, _) => Rc::clone(a),
             _ => Rc::new(SExp::Nil(self.loc())),
         }
     }
 
     pub fn cons_snd(&self) -> Rc<SExp> {
         match self {
-            SExp::Cons(_, _, b) => b.clone(),
+            SExp::Cons(_, _, b) => Rc::clone(b),
             _ => Rc::new(SExp::Nil(self.loc())),
         }
     }
@@ -671,7 +671,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                     SExpParseResult::Error(l, e) => SExpParseResult::Error(l, e), // propagate error upwards
                 },
             }
-        }
+        },
 
         // if we're not in a comment and have already found a parsed second word for this dot expression
         SExpParseState::TermList(srcloc, Some(parsed), pp, list_content) => {
@@ -681,13 +681,13 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                     let mut list_copy = list_content.to_vec();
                     match list_copy.pop() {
                         Some(v) => {
-                            let new_tail = make_cons(v, parsed.clone());
+                            let new_tail = make_cons(v, Rc::clone(&parsed));
                             if list_copy.is_empty() {
                                 emit(Rc::new(new_tail), SExpParseState::Empty)
                             } else {
                                 let mut result_list = new_tail;
                                 for item in list_copy.iter().rev() {
-                                    result_list = make_cons(item.clone(), Rc::new(result_list));
+                                    result_list = make_cons(Rc::clone(item), Rc::new(result_list));
                                 }
                                 emit(Rc::new(result_list), SExpParseState::Empty)
                                 // emit the resultant list
@@ -718,7 +718,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                     SExpParseResult::Error(l, e) => SExpParseResult::Error(l, e),
                 },
             }
-        }
+        },
         // we are passing a dot-expression (x . y) and not in a comment and don't have an object already discovered
         SExpParseState::TermList(srcloc, None, pp, list_content) => {
             // pp is the inner parsestate inside the dot-expressions
@@ -731,7 +731,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                 (')', SExpParseState::Empty) => {
                     // attempt to close the list
                     if list_content.len() == 1 {
-                        emit(list_content[0].clone(), SExpParseState::Empty)
+                        emit(Rc::clone(&list_content[0]), SExpParseState::Empty)
                     } else {
                         emit(
                             Rc::new(enlist(srcloc.ext(&loc), list_content)),
@@ -750,7 +750,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                             } else {
                                 let mut result_list = new_tail;
                                 for item in list_copy.iter().rev() {
-                                    result_list = make_cons(item.clone(), Rc::new(result_list));
+                                    result_list = make_cons(Rc::clone(item), Rc::new(result_list));
                                 }
                                 emit(Rc::new(result_list), SExpParseState::Empty)
                             }
