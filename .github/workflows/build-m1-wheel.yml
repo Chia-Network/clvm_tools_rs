@@ -102,7 +102,6 @@ jobs:
     - name: Run tests from clvm_tools
       run: |
         . ./venv/bin/activate
-        cd clvm_tools_rs
         arch -arm64 cargo test --features="extension-module,${USE_FEATURES}"
 
     - name: Upload wheels
