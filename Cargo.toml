@@ -1,6 +1,6 @@
 [package]
 name = "clvm_tools_rs"
-version = "0.1.30"
+version = "0.1.35"
 edition = "2018"
 authors = ["Art Yerkes <art.yerkes@gmail.com>"]
 description = "tools for working with chialisp language; compiler, repl, python and wasm bindings"
@@ -11,12 +11,15 @@ license = "Apache-2.0"
 keywords = ["chia", "chialisp", "clvm"]
 categories = ["command-line-utilities"]
 
+[package.metadata.maturin]
+python-source = "python"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 hex = "0.4.3"
-num-bigint = "0.4.0"
-bls12_381 = "0.7.0"
+num-bigint = { version = "0.4.0", features = ["serde"] }
+bls12_381 = { version = "=0.8.0", features = ["experimental"] }
 bytestream = "0.4.1"
 num-traits = "0.2.14"
 lazy_static = "1.4.0"
@@ -30,12 +33,18 @@ serde_json = "1.0"
 sha2 = "0.9.5"
 rand = "0.8.5"
 tempfile = "3.3.0"
-clvmr = "0.1.24"
+clvmr = { version = "0.2.6", features = ["pre-eval"] }
 binascii = "0.1.4"
 yaml-rust = "0.4"
 linked-hash-map = "0.5.6"
 rand_chacha = "0.3.1"
 random_lfsr_256_galois = "22.10.0"
+serde = { version = "1.0", features = ["derive", "rc"] }
+
+[dependencies.pyo3]
+version = "0.14.2"
+features = ["abi3-py38", "extension-module"]
+optional = true
 
 [dev-dependencies]
 rand = "0.8.5"
@@ -46,9 +55,9 @@ name = "clvm_tools_rs"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-extension-module = ["pyo3"]
 fuzzer = []
-default = ["extension-module"]
+extension-module = ["dep:pyo3"]
+default = []
 
 [target.'cfg(target_family="wasm")'.dependencies]
 wasm-bindgen = { version = "0.2.80", features = ["serde-serialize"] }
@@ -57,7 +66,6 @@ js-sys = "0.3.58"
 getrandom = { version = "0.2", features = ["js"] }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
-pyo3 = { version = "0.14.2", features = ["abi3-py37", "extension-module"], optional = true }
 getrandom = { version = "0.2" }
 
 [build-dependencies]
@@ -86,6 +94,10 @@ path = "src/classic/bins/cldb.rs"
 [[bin]]
 name = "shrink"
 path = "src/classic/bins/shrink.rs"
+
+[[bin]]
+name = "clisp_to_json"
+path = "src/classic/bins/clisp_to_json.rs"
 
 [[bin]]
 name = "repl"

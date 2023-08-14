@@ -8,6 +8,7 @@ use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Record, Stream};
+use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
 use crate::classic::clvm_tools::ir::r#type::IRRepr;
 use crate::classic::clvm_tools::ir::reader::IRReader;
@@ -39,7 +40,7 @@ pub fn assemble_from_ir(
                 s_real_name = stripped.to_string();
             }
 
-            match keyword_to_atom().get(&s_real_name) {
+            match keyword_to_atom(OPERATORS_LATEST_VERSION).get(&s_real_name) {
                 Some(v) => allocator.new_atom(v),
                 None => {
                     let v: Vec<u8> = s_real_name.as_bytes().to_vec();
@@ -77,7 +78,11 @@ fn has_oversized_sign_extension(atom: &Bytes) -> bool {
     false
 }
 
-pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
+pub fn ir_for_atom(
+    atom: &Bytes,
+    allow_keyword: bool,
+    keyword_from_atom: &Record<Vec<u8>, String>,
+) -> IRRepr {
     if atom.length() == 0 {
         return IRRepr::Null;
     }
@@ -89,7 +94,7 @@ pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
         }
     } else {
         if allow_keyword {
-            if let Some(kw) = keyword_from_atom().get(atom.data()) {
+            if let Some(kw) = keyword_from_atom.get(atom.data()) {
                 return IRRepr::Symbol(kw.to_string());
             }
         }
@@ -107,13 +112,9 @@ pub fn ir_for_atom(atom: &Bytes, allow_keyword: bool) -> IRRepr {
  * (2 2 (2) (2 3 4)) => (a 2 (a) (a 3 4))
  */
 pub fn disassemble_to_ir_with_kw(
-    allocator: &mut Allocator,
+    allocator: &Allocator,
     sexp: NodePtr,
-    // Due to an oversight in the original port, the user's
-    // kw_from_atom settings weren't honored, however they're
-    // never non-default in this code.  This deserves looking
-    // at, but isn't pressing at the moment.
-    _keyword_from_atom: &Record<Vec<u8>, String>,
+    keyword_from_atom: &Record<Vec<u8>, String>,
     mut allow_keyword: bool,
 ) -> IRRepr {
     match allocator.sexp(sexp) {
@@ -122,30 +123,35 @@ pub fn disassemble_to_ir_with_kw(
                 allow_keyword = true;
             }
 
-            let v0 = disassemble_to_ir_with_kw(allocator, l, _keyword_from_atom, allow_keyword);
-            let v1 = disassemble_to_ir_with_kw(allocator, r, _keyword_from_atom, false);
+            let v0 = disassemble_to_ir_with_kw(allocator, l, keyword_from_atom, allow_keyword);
+            let v1 = disassemble_to_ir_with_kw(allocator, r, keyword_from_atom, false);
             IRRepr::Cons(Rc::new(v0), Rc::new(v1))
         }
 
-        SExp::Atom(a) => {
-            let bytes = Bytes::new(Some(BytesFromType::Raw(allocator.buf(&a).to_vec())));
-            ir_for_atom(&bytes, allow_keyword)
+        SExp::Atom() => {
+            // sexp is the only node in scope.
+            let bytes = Bytes::new(Some(BytesFromType::Raw(allocator.atom(sexp).to_vec())));
+            ir_for_atom(&bytes, allow_keyword, keyword_from_atom)
         }
     }
 }
 
 pub fn disassemble_with_kw(
-    allocator: &mut Allocator,
+    allocator: &Allocator,
     sexp: NodePtr,
     keyword_from_atom: &Record<Vec<u8>, String>,
 ) -> String {
-    let with_keywords = !matches!(allocator.sexp(sexp), SExp::Atom(_));
+    let with_keywords = !matches!(allocator.sexp(sexp), SExp::Atom());
     let symbols = disassemble_to_ir_with_kw(allocator, sexp, keyword_from_atom, with_keywords);
     write_ir(Rc::new(symbols))
 }
 
-pub fn disassemble(allocator: &mut Allocator, sexp: NodePtr) -> String {
-    return disassemble_with_kw(allocator, sexp, keyword_from_atom());
+pub fn disassemble(allocator: &Allocator, sexp: NodePtr, version: Option<usize>) -> String {
+    disassemble_with_kw(
+        allocator,
+        sexp,
+        keyword_from_atom(version.unwrap_or(OPERATORS_LATEST_VERSION)),
+    )
 }
 
 pub fn assemble(allocator: &mut Allocator, s: &str) -> Result<NodePtr, EvalErr> {
@@ -154,6 +160,6 @@ pub fn assemble(allocator: &mut Allocator, s: &str) -> Result<NodePtr, EvalErr> 
     let mut reader = IRReader::new(stream);
     reader
         .read_expr()
-        .map_err(|e| EvalErr(allocator.null(), e))
+        .map_err(|e| EvalErr(allocator.null(), e.to_string()))
         .and_then(|ir| assemble_from_ir(allocator, Rc::new(ir)))
 }

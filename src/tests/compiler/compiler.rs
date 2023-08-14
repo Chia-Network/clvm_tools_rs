@@ -58,7 +58,7 @@ fn run_string_maybe_opt(
     })
 }
 
-fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
+pub fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
     run_string_maybe_opt(content, args, false)
 }
 
@@ -1150,6 +1150,32 @@ fn test_defconstant_tree() {
 }
 
 #[test]
+fn test_assign_dont_detect_unrelated_inlines_as_recursive() {
+    let prog = indoc! {"
+(mod (A) ;; 11
+  (include *standard-cl-22*)
+  (defun-inline <= (A B) (not (> A B)))
+  (let
+    ((foo (<= 2 A))
+     (bar (<= 1 A)))
+
+    (let
+      ((baz (<= foo bar)))
+
+      (let
+        ((yorgle (<= baz bar)))
+
+        (<= yorgle foo)
+        )
+      )
+    )
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(2)".to_string()).expect("should compile");
+    assert_eq!(res.to_string(), "1");
+}
+
+#[test]
 fn test_inline_out_of_bounds_diagnostic() {
     let prog = indoc! {"
 (mod ()
@@ -1165,4 +1191,59 @@ fn test_inline_out_of_bounds_diagnostic() {
     } else {
         assert!(false);
     }
+}
+
+#[test]
+fn test_inline_in_assign_not_actually_recursive() {
+    let prog = indoc! {"
+(mod (POINT)
+  (include *standard-cl-21*)
+  (defun-inline no-op (V) V)
+  (let ((TU 100)) (let ((TI1 (no-op TU)) (TU2 (no-op TU))) 9999))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"()".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "9999");
+}
+
+#[test]
+fn test_simple_rest_call_0() {
+    let prog = indoc! {"
+(mod X
+  (include *standard-cl-21*)
+
+  (defun F Xs
+    (if Xs
+      (+ (f Xs) (F &rest (r Xs)))
+      ()
+      )
+    )
+
+  (F &rest X)
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(13 99 144)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "256");
+}
+
+#[test]
+fn test_simple_rest_call_inline() {
+    let prog = indoc! {"
+(mod X
+  (include *standard-cl-21*)
+
+  (defun sum (Xs)
+    (if Xs
+      (+ (f Xs) (sum (r Xs)))
+      ()
+      )
+    )
+
+  (defun-inline F (A1 . A2) (* A1 (sum A2)))
+
+  (F 3 &rest X)
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(13 99 144)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "768");
 }

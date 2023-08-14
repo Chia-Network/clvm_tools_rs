@@ -29,13 +29,13 @@ use crate::util::{number_from_u8, Number};
 
 const NUM_GEN_ATOMS: usize = 16;
 
-fn do_basic_brun(args: &Vec<String>) -> String {
+pub fn do_basic_brun(args: &Vec<String>) -> String {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, &"run".to_string(), 0);
     return s.get_value().decode();
 }
 
-fn do_basic_run(args: &Vec<String>) -> String {
+pub fn do_basic_run(args: &Vec<String>) -> String {
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, &"run".to_string(), 2);
     return s.get_value().decode();
@@ -535,6 +535,128 @@ fn test_treehash_constant_embedded_modern_loop() {
 }
 
 #[test]
+fn test_embed_file_2() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (embed-file testhex hex hex-embed-01.hex) testhex)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(run_result, "(65 66 67)");
+}
+
+#[test]
+fn test_embed_file_4() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (include *standard-cl-21*) (embed-file testhex hex hex-embed-01.hex) testhex)"
+            .to_string(),
+    ])
+    .trim()
+    .to_string();
+    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(run_result, "(65 66 67)");
+}
+
+#[test]
+fn test_embed_file_5() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (embed-file testsexp sexp embed.sexp) testsexp)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let run_result = do_basic_brun(&vec![
+        "brun".to_string(),
+        "-n".to_string(),
+        program,
+        "()".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(run_result, "(23 24 25)");
+}
+
+#[test]
+fn test_embed_file_6() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (include *standard-cl-21*) (embed-file testsexp sexp embed.sexp) testsexp)"
+            .to_string(),
+    ])
+    .trim()
+    .to_string();
+    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(run_result, "(lsh 24 25)");
+}
+
+#[test]
+fn test_embed_file_7() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (embed-file hello bin a-binary-file-called-hello.dat) hello)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(run_result, "\"hello\"");
+}
+
+#[test]
+fn test_embed_file_8() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (include *standard-cl-21*) (embed-file hello bin a-binary-file-called-hello.dat) hello)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(run_result, "\"hello\"");
+}
+
+#[test]
+fn test_embed_file_9() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (include *standard-cl-21*) (embed-file hello bin a-binary-file-called-hello.dat) (sha256 (sha256 hello)))".to_string(),
+    ])
+        .trim()
+        .to_string();
+    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(
+        run_result,
+        "0x9595c9df90075148eb06860365df33584b75bff782a510c6cd4883a419833d50"
+    );
+}
+
+#[test]
 fn test_num_encoding_just_less_than_5_bytes() {
     let res = do_basic_run(&vec!["run".to_string(), "4281419728".to_string()])
         .trim()
@@ -746,10 +868,54 @@ fn test_check_tricky_arg_path_random() {
             Rc::new(sexp::SExp::Atom(random_tree.loc(), k.clone())),
         )
         .unwrap();
-        let disassembled = disassemble(&mut allocator, converted);
-        eprintln!("run {} want {} have {}", program, disassembled, res);
+        let disassembled = disassemble(&mut allocator, converted, Some(0));
         assert_eq!(disassembled, res);
     }
+}
+
+pub fn read_json_from_file(fname: &str) -> HashMap<String, String> {
+    let extra_symbols_text = fs::read_to_string(fname).expect("should have dropped main.sym");
+    eprintln!("est {extra_symbols_text}");
+    serde_json::from_str(&extra_symbols_text).expect("should be real json")
+}
+
+#[test]
+fn test_generate_extra_symbols() {
+    // Verify that extra symbols are generated.
+    // These include ..._arguments: "(A B C)" <-- arguments of the function
+    //               ..._left_env: "1" <-- specifies whether left env is used
+    let _ = do_basic_run(&vec![
+        "run".to_string(),
+        "-g".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "-i".to_string(),
+        "resources/tests/usecheck-work".to_string(),
+        "--symbol-output-file".to_string(),
+        "/tmp/pmi_extra_symbols.sym".to_string(),
+        "resources/tests/cldb_tree/pool_member_innerpuz.cl".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let syms_with_extras = read_json_from_file("/tmp/pmi_extra_symbols.sym");
+    let syms_want_extras =
+        read_json_from_file("resources/tests/cldb_tree/pool_member_innerpuz_extra.sym");
+    assert_eq!(syms_with_extras, syms_want_extras);
+    let _ = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "-i".to_string(),
+        "resources/tests/usecheck-work".to_string(),
+        "--symbol-output-file".to_string(),
+        "/tmp/pmi_normal_symbols.sym".to_string(),
+        "resources/tests/cldb_tree/pool_member_innerpuz.cl".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let syms_normal = read_json_from_file("/tmp/pmi_normal_symbols.sym");
+    let want_normal = read_json_from_file("resources/tests/cldb_tree/pool_member_innerpuz_ref.sym");
+    assert_eq!(syms_normal, want_normal);
 }
 
 #[test]
@@ -806,4 +972,273 @@ fn test_modern_sets_source_file_in_symbols() {
         decoded_symbol_file.get("source_file").cloned(),
         Some("resources/tests/steprun/fact.cl".to_string())
     );
+}
+
+#[test]
+fn test_cost_reporting_0() {
+    let program = "(2 (1 2 6 (4 2 (4 (1 . 1) ()))) (4 (1 (2 (1 2 (3 (7 5) (1 2 (1 11 (1 . 2) (2 4 (4 2 (4 (5 5) ()))) (2 4 (4 2 (4 (6 5) ())))) 1) (1 2 (1 11 (1 . 1) 5) 1)) 1) 1) 2 (1 16 5 (1 . 50565442356047746631413349885570059132562040184787699607120092457326103992436)) 1) 1))";
+    let result = do_basic_brun(&vec![
+        "brun".to_string(),
+        "-c".to_string(),
+        program.to_string(),
+        "()".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        result,
+        "cost = 1978\n0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9875"
+    );
+}
+
+#[test]
+fn test_g1_map_op_modern() {
+    let program = "(mod (S) (include *standard-cl-21*) (g1_map S \"BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_AUG_\"))";
+    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(abcdef0123456789)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        output,
+        "0x88e7302bf1fa8fcdecfb96f6b81475c3564d3bcaf552ccb338b1c48b9ba18ab7195c5067fe94fb216478188c0a3bef4a"
+    );
+}
+
+#[test]
+fn test_g1_map_op_classic() {
+    let program = "(mod (S) (g1_map S \"BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_AUG_\"))";
+    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(abcdef0123456789)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        output,
+        "0x88e7302bf1fa8fcdecfb96f6b81475c3564d3bcaf552ccb338b1c48b9ba18ab7195c5067fe94fb216478188c0a3bef4a"
+    );
+}
+
+#[test]
+fn test_g2_map_op_modern() {
+    let program = "(mod (S) (include *standard-cl-21*) (g2_map S \"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_AUG_\"))";
+    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(0x21473dab7ad0136f7488128d44247b04fa58a9c6b4fab6ef4d)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        output,
+        "0x879584f6c205b4492abca2be331fc2875596b08c7fbd958fb8d5e725a479d1794b85add1266fb5d410de5c416ce12305166b1c3e2e5d5ae2720a058169b057520d8f2a315f6097c774f659ce5619a070e1cbc8212fb460758e459498d0e598d6"
+    );
+}
+
+#[test]
+fn test_g2_map_op_classic() {
+    let program = "(mod (S) (g2_map S \"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_AUG_\"))";
+    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(0x21473dab7ad0136f7488128d44247b04fa58a9c6b4fab6ef4d)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        output,
+        "0x879584f6c205b4492abca2be331fc2875596b08c7fbd958fb8d5e725a479d1794b85add1266fb5d410de5c416ce12305166b1c3e2e5d5ae2720a058169b057520d8f2a315f6097c774f659ce5619a070e1cbc8212fb460758e459498d0e598d6"
+    );
+}
+
+#[test]
+fn test_secp256k1_verify_modern_succeed() {
+    let program = "(mod (S) (include *standard-cl-21*) (secp256k1_verify S 0x85932e4d075615be881398cc765f9f78204033f0ef5f832ac37e732f5f0cbda2 0x481477e62a1d02268127ae89cc58929e09ad5d30229721965ae35965d098a5f630205a7e69f4cb8084f16c7407ed7312994ffbf87ba5eb1aee16682dd324943e))";
+    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(0x02390b19842e100324163334b16947f66125b76d4fa4a11b9ccdde9b7398e64076)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(output, "()");
+}
+
+#[test]
+fn test_secp256k1_verify_modern_fail() {
+    let program = "(mod (S) (include *standard-cl-21*) (secp256k1_verify S 0x935d863e2d28d8e5d399ea8af7393ef11fdffc7d862dcc6b5217a8ef15fb5442 0xbbf0712cc0a283a842011c19682629a5381c5f7ead576defcf12a9a19378e23b087cd0be730dbe78722dcfc81543fca17a30e41070ca2e5b3ae77ccec2cca935))";
+    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(0x0215043e969dcf616fabe8e8d6b61ddcf6e274c5b04fce957b086dbeb7e899ac63)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert!(output.starts_with("FAIL: secp256k1_verify failed"));
+}
+
+#[test]
+fn test_secp256k1_verify_classic_succeed() {
+    let program = "(mod (S) (secp256k1_verify S 0x85932e4d075615be881398cc765f9f78204033f0ef5f832ac37e732f5f0cbda2 0x481477e62a1d02268127ae89cc58929e09ad5d30229721965ae35965d098a5f630205a7e69f4cb8084f16c7407ed7312994ffbf87ba5eb1aee16682dd324943e))";
+    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(0x02390b19842e100324163334b16947f66125b76d4fa4a11b9ccdde9b7398e64076)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(output, "()");
+}
+
+#[test]
+fn test_secp256k1_verify_classic_fail() {
+    let program = "(mod (S) (secp256k1_verify S 0x935d863e2d28d8e5d399ea8af7393ef11fdffc7d862dcc6b5217a8ef15fb5442 0xbbf0712cc0a283a842011c19682629a5381c5f7ead576defcf12a9a19378e23b087cd0be730dbe78722dcfc81543fca17a30e41070ca2e5b3ae77ccec2cca935))";
+    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(0x0215043e969dcf616fabe8e8d6b61ddcf6e274c5b04fce957b086dbeb7e899ac63)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert!(output.starts_with("FAIL: secp256k1_verify failed"));
+}
+
+#[test]
+fn test_secp256k1_verify_modern_int_succeed() {
+    // Ensure that even if translated to integer (for example via classic unhygenic macro invocation), this works.
+    let program = "(mod (S) (if S (332799744 S 0x85932e4d075615be881398cc765f9f78204033f0ef5f832ac37e732f5f0cbda2 0x481477e62a1d02268127ae89cc58929e09ad5d30229721965ae35965d098a5f630205a7e69f4cb8084f16c7407ed7312994ffbf87ba5eb1aee16682dd324943e) \"empty-secp\"))";
+    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(0x02390b19842e100324163334b16947f66125b76d4fa4a11b9ccdde9b7398e64076)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(output, "()");
+}
+
+#[test]
+fn test_secp256k1_verify_modern_int_fail() {
+    let program = "(mod (S) (include *standard-cl-21*) (if S (332799744 S 0x935d863e2d28d8e5d399ea8af7393ef11fdffc7d862dcc6b5217a8ef15fb5442 0xbbf0712cc0a283a842011c19682629a5381c5f7ead576defcf12a9a19378e23b087cd0be730dbe78722dcfc81543fca17a30e41070ca2e5b3ae77ccec2cca935) \"empty-secp\"))";
+    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(0x0215043e969dcf616fabe8e8d6b61ddcf6e274c5b04fce957b086dbeb7e899ac63)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert!(output.starts_with("FAIL: secp256k1_verify failed"));
+}
+
+#[test]
+fn test_secp256r1_verify_modern_succeed() {
+    let program = "(mod (S) (include *standard-cl-21*) (secp256r1_verify S 0x85932e4d075615be881398cc765f9f78204033f0ef5f832ac37e732f5f0cbda2 0xeae2f488080919bd0a7069c24cdd9c6ce2db423861b0c9d4236cdadbd0005f6d8f3709e6eb19249fd9c8bea664aba35218e67ea4b0f2239488dc3147f336e1e6))";
+    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(0x033e1a1b2ccbc35883c60fdfc3f4a02175096ade6271fe85517ca5772594bbd0dc)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(output, "()");
+}
+
+#[test]
+fn test_secp256r1_verify_modern_fail() {
+    let program = "(mod (S) (include *standard-cl-21*) (secp256r1_verify S 0x935d863e2d28d8e5d399ea8af7393ef11fdffc7d862dcc6b5217a8ef15fb5442 0xecef274a7408e6cb0196eac64d2ae32fc54c2537f8a9efd5b75a4e8a53b0b156c64564306f38bade4adceac1073d464e4db3d0332141a7203dfd113ad36e393d))";
+    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(0x025195db74b1902d53758a62ccd9dd01837aa5ae755e878eb0aeccbe8fe477c543)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert!(output.starts_with("FAIL: secp256r1_verify failed"));
+}
+
+#[test]
+fn test_secp256r1_verify_classic_succeed() {
+    let program = "(mod (S) (secp256r1_verify S 0x85932e4d075615be881398cc765f9f78204033f0ef5f832ac37e732f5f0cbda2 0xeae2f488080919bd0a7069c24cdd9c6ce2db423861b0c9d4236cdadbd0005f6d8f3709e6eb19249fd9c8bea664aba35218e67ea4b0f2239488dc3147f336e1e6))";
+    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(0x033e1a1b2ccbc35883c60fdfc3f4a02175096ade6271fe85517ca5772594bbd0dc)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(output, "()");
+}
+
+#[test]
+fn test_secp256r1_verify_classic_fail() {
+    let program = "(mod (S) (secp256r1_verify S 0x935d863e2d28d8e5d399ea8af7393ef11fdffc7d862dcc6b5217a8ef15fb5442 0xecef274a7408e6cb0196eac64d2ae32fc54c2537f8a9efd5b75a4e8a53b0b156c64564306f38bade4adceac1073d464e4db3d0332141a7203dfd113ad36e393d))";
+    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(0x025195db74b1902d53758a62ccd9dd01837aa5ae755e878eb0aeccbe8fe477c543)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert!(output.starts_with("FAIL: secp256r1_verify failed"));
+}
+
+#[test]
+fn test_classic_obeys_operator_choice_at_compile_time_no_version() {
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "(mod () (coinid (sha256 99) (sha256 99) 1))".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        compiled,
+        "(q . 0x97c3f14ced4dfc280611fd8d9b158163e8981b3bce4d1bb6dd0bcc679a2e2455)"
+    );
+}
+
+#[test]
+fn test_classic_obeys_operator_choice_at_compile_time_version_1() {
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "--operators-version".to_string(),
+        "1".to_string(),
+        "(mod () (coinid (sha256 99) (sha256 99) 1))".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        compiled,
+        "(q . 0x97c3f14ced4dfc280611fd8d9b158163e8981b3bce4d1bb6dd0bcc679a2e2455)"
+    );
+}
+
+#[test]
+fn test_classic_obeys_operator_choice_at_compile_time_version_0() {
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "--operators-version".to_string(),
+        "0".to_string(),
+        "(mod () (coinid (sha256 99) (sha256 99) 1))".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(compiled, "FAIL: unimplemented operator 48");
 }

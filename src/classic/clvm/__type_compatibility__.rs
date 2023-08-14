@@ -13,6 +13,8 @@ use sha2::Digest;
 use sha2::Sha256;
 
 use crate::util::Number;
+//use crate::classic::clvm::__type_compatibility__::SyntaxErr;
+use crate::classic::clvm::syntax_error::SyntaxErr;
 
 pub fn to_hexstr(r: &[u8]) -> String {
     hex::encode(r)
@@ -81,8 +83,11 @@ pub fn pybytes_repr(r: &[u8], dquoted: bool) -> String {
     s
 }
 
-pub enum BytesFromType {
+pub enum UnvalidatedBytesFromType {
     Hex(String),
+}
+
+pub enum BytesFromType {
     Raw(Vec<u8>),
     String(String),
     G1Element(G1Affine),
@@ -117,7 +122,15 @@ impl Bytes {
                 }
                 Bytes::new(Some(BytesFromType::Raw(bvec)))
             }
-            Some(BytesFromType::Hex(hstr)) => {
+            Some(BytesFromType::G1Element(g1)) => Bytes {
+                _b: g1.to_uncompressed().to_vec(),
+            },
+        }
+    }
+
+    pub fn new_validated(value: Option<UnvalidatedBytesFromType>) -> Result<Self, SyntaxErr> {
+        match value {
+            Some(UnvalidatedBytesFromType::Hex(hstr)) => {
                 #[allow(clippy::single_char_pattern)]
                 let hex_stripped = hstr
                     .replace(" ", "")
@@ -125,14 +138,14 @@ impl Bytes {
                     .replace("\r", "")
                     .replace("\n", "");
 
-                match hex::decode(hex_stripped) {
-                    Ok(d) => Bytes { _b: d },
-                    _ => Bytes { _b: vec![] },
+                match hex::decode(&hex_stripped) {
+                    Ok(d) => Ok(Bytes { _b: d }),
+                    Err(e) => Err(SyntaxErr {
+                        msg: format!("{e} in '{hex_stripped}'"),
+                    }),
                 }
             }
-            Some(BytesFromType::G1Element(g1)) => Bytes {
-                _b: g1.to_uncompressed().to_vec(),
-            },
+            None => Ok(Bytes { _b: vec![] }),
         }
     }
 
@@ -157,34 +170,16 @@ impl Bytes {
         Bytes::new(Some(BytesFromType::Raw(concat_bin)))
     }
 
-    pub fn slice(&self, start: usize, length: Option<usize>) -> Self {
-        let len = match length {
-            Some(x) => {
-                if self._b.len() > start + x {
-                    x
-                } else {
-                    self._b.len() - start
-                }
-            }
-            None => self._b.len() - start,
-        };
-        let mut ui8_clone = Vec::<u8>::with_capacity(len);
-        for i in start..start + len - 1 {
-            ui8_clone.push(self._b[i]);
-        }
-        Bytes::new(Some(BytesFromType::Raw(ui8_clone)))
-    }
-
-    pub fn subarray(&self, start: usize, length: Option<usize>) -> Self {
-        self.slice(start, length)
-    }
-
     pub fn data(&self) -> &Vec<u8> {
         &self._b
     }
 
     pub fn to_formal_string(&self) -> String {
         pybytes_repr(&self._b, true)
+    }
+
+    pub fn pybytes(&self) -> String {
+        pybytes_repr(&self._b, false)
     }
 
     pub fn hex(&self) -> String {
@@ -212,51 +207,6 @@ impl Bytes {
             }
         }
         true
-    }
-
-    pub fn equal_to(&self, b: &Bytes) -> bool {
-        let slen = self._b.len();
-        let blen = b.length();
-        if slen != blen {
-            return false;
-        } else {
-            for i in 0..slen {
-                if b.at(i) != self._b[i] {
-                    return false;
-                }
-            }
-        }
-        true
-    }
-
-    /**
-     * Returns:
-     *   +1 if argument is smaller
-     *   0 if this and argument is the same
-     *   -1 if argument is larger
-     * @param other
-     */
-    pub fn compare(&self, other: Bytes) -> Ordering {
-        let slen = min(self._b.len(), other.length());
-
-        for i in 0..slen - 1 {
-            let diff: i32 = other.at(i) as i32 - self._b[i] as i32;
-            match (diff < 0, diff > 0) {
-                (true, _) => {
-                    return Ordering::Less;
-                }
-                (_, true) => {
-                    return Ordering::Greater;
-                }
-                _ => {}
-            }
-        }
-        if self._b.len() < slen {
-            return Ordering::Less;
-        } else if slen < other.length() {
-            return Ordering::Greater;
-        }
-        Ordering::Equal
     }
 }
 

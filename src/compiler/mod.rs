@@ -1,10 +1,21 @@
+/// Chialisp debugging.
 pub mod cldb;
+pub mod cldb_hierarchy;
+/// CLVM running.
 pub mod clvm;
 mod codegen;
+/// CompilerOpts which is the main holder of toplevel compiler state.
 #[allow(clippy::module_inception)]
 pub mod compiler;
+/// Types used by compilation, mainly frontend directed, including.
+/// - BodyForm - The type of frontend expressions.
+/// - CompileErr - The type of errors from compilation.
+/// - CompileForm - The type of finished (mod ) forms before code generation.
+/// - HelperForm - The type of declarations like macros, constants and functions.
 pub mod comptypes;
 pub mod debug;
+/// Utilities for chialisp dialect choice
+pub mod dialect;
 pub mod evaluate;
 pub mod frontend;
 #[cfg(any(test, feature = "fuzzer"))]

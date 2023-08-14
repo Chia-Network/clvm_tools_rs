@@ -20,10 +20,29 @@ use crate::compiler::srcloc::Srcloc;
 
 use crate::util::{number_from_u8, u8_from_number, Number};
 
+/// An object which contains the state of a running CLVM program in a compact
+/// form.
+///
+/// Being immutable, it can be preserved, examined and compared as desired.  The
+/// whole record of CLVM execution can be observed by collecting these until the
+/// program is in the Done state.
 #[derive(Clone, Debug)]
 pub enum RunStep {
+    /// The state of a program (or subprogram) that completed.
+    /// Contains a location taken from the operator that completed and the result
+    /// value.
     Done(Srcloc, Rc<SExp>),
+    /// An operator producing a result.  The operator has run and the result is
+    /// given.  The final argument is a refcounted pointer to a step that the
+    /// operator's result will be returned to if it stepped again.
     OpResult(Srcloc, Rc<SExp>, Rc<RunStep>),
+    /// An operator in flight.  The arguments are
+    /// - An operator
+    /// - The environment
+    /// - The tail of the expression if an operator, in progress.
+    /// - When present, a list of arguments remaining to evaluate, otherwise
+    ///   the expression is ready to run the operator on.
+    /// - The RunStep to which this step returns a value when complete.
     Op(
         Rc<SExp>,
         Rc<SExp>,
@@ -31,6 +50,8 @@ pub enum RunStep {
         Option<Vec<Rc<SExp>>>,
         Rc<RunStep>,
     ),
+    /// A step about to be taken.  Indicates a clvm expression and env, plus the
+    /// parent to which its value is returned.
     Step(Rc<SExp>, Rc<SExp>, Rc<RunStep>),
 }
 
@@ -48,8 +69,25 @@ impl RunStep {
         match self {
             RunStep::Done(_, s) => s.clone(),
             RunStep::OpResult(_, s, _) => s.clone(),
-            RunStep::Op(s, _, _, _, _) => s.clone(),
-            RunStep::Step(s, _, _) => s.clone(),
+            RunStep::Op(e, _, _, _, _) => e.clone(),
+            RunStep::Step(e, _, _) => e.clone(),
+        }
+    }
+
+    pub fn args(&self) -> Option<Rc<SExp>> {
+        match self {
+            RunStep::Step(_, a, _) => Some(a.clone()),
+            RunStep::Op(_, a, _, _, _) => Some(a.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn loc(&self) -> Srcloc {
+        match self {
+            RunStep::Done(l, _) => l.clone(),
+            RunStep::OpResult(l, _, _) => l.clone(),
+            RunStep::Op(e, _, _, _, _) => e.loc(),
+            RunStep::Step(e, _, _) => e.loc(),
         }
     }
 }
@@ -145,30 +183,28 @@ fn eval_args(
     let mut eval_list: Vec<Rc<SExp>> = Vec::new();
 
     loop {
-        match sexp.borrow() {
-            SExp::Nil(_l) => {
-                return Ok(RunStep::Op(
-                    head,
-                    context_,
-                    sexp.clone(),
-                    Some(eval_list),
-                    parent,
-                ));
-            }
-            SExp::Cons(_l, a, b) => {
-                eval_list.push(a.clone());
-                sexp = b.clone();
-            }
-            _ => {
-                return Err(RunFailure::RunErr(
-                    sexp.loc(),
-                    format!("bad argument list {sexp_} {context_}"),
-                ));
-            }
+        // A list of the following forms:
+        //   (x y . 0)
+        //   (x y . "")
+        // Are properly terminated lists and disassemble to (x y).
+        //
+        // This recognizes that our broader value space has more ways
+        // of expressing nil.
+        if let SExp::Cons(_l, a, b) = sexp.borrow() {
+            eval_list.push(a.clone());
+            sexp = b.clone();
+        } else if !truthy(sexp.clone()) {
+            return Ok(RunStep::Op(head, context_, sexp, Some(eval_list), parent));
+        } else {
+            return Err(RunFailure::RunErr(
+                sexp.loc(),
+                format!("bad argument list {sexp_} {context_}"),
+            ));
         }
     }
 }
 
+/// Given an SExp, produce a clvmr style NodePtr in the given allocator.
 pub fn convert_to_clvm_rs(
     allocator: &mut Allocator,
     head: Rc<SExp>,
@@ -202,17 +238,18 @@ pub fn convert_to_clvm_rs(
     }
 }
 
+/// Given an allocator and clvmr NodePtr, produce an SExp which is equivalent.
 pub fn convert_from_clvm_rs(
     allocator: &mut Allocator,
     loc: Srcloc,
     head: NodePtr,
 ) -> Result<Rc<SExp>, RunFailure> {
     match allocator.sexp(head) {
-        allocator::SExp::Atom(h) => {
-            if h.is_empty() {
+        allocator::SExp::Atom() => {
+            let atom_data = allocator.atom(head);
+            if atom_data.is_empty() {
                 Ok(Rc::new(SExp::Nil(loc)))
             } else {
-                let atom_data = allocator.buf(&h);
                 let integer = number_from_u8(atom_data);
                 // Ensure that atom values that don't evaluate equal to integers
                 // are represented faithfully as atoms.
@@ -291,6 +328,7 @@ fn atom_value(head: Rc<SExp>) -> Result<Number, RunFailure> {
     }
 }
 
+/// Tell how many parents are in the parent step chain until completion.
 pub fn get_history_len(step: Rc<RunStep>) -> usize {
     match step.borrow() {
         RunStep::Done(_, _) => 1,
@@ -300,13 +338,20 @@ pub fn get_history_len(step: Rc<RunStep>) -> usize {
     }
 }
 
+/// Generically determine whether a value is truthy.
 pub fn truthy(sexp: Rc<SExp>) -> bool {
     // Fails for cons, but cons is truthy
     atom_value(sexp).unwrap_or_else(|_| bi_one()) != bi_zero()
 }
 
+/// The second of the core run operations, combine determines how a recently
+/// completed step affects its parent to produce the next evaluation step.
+///
+/// For example, when a finished operation is combined with a parent that needs
+/// more arguments for its operator, one needed argument evaluation is removed
+/// and the step becomes closer to evaluation.
 pub fn combine(a: &RunStep, b: &RunStep) -> RunStep {
-    match (a, b.borrow()) {
+    match (a, b) {
         (RunStep::Done(l, x), RunStep::Done(_, _)) => RunStep::Done(l.clone(), x.clone()),
         (RunStep::Done(l, x), RunStep::Op(head, context, args, Some(remain), parent)) => {
             RunStep::Op(
@@ -333,6 +378,16 @@ pub fn flatten_signed_int(v: Number) -> Number {
     Number::from_signed_bytes_le(&sign_digits)
 }
 
+/// Given a RunStep, return a RunStep whose top operation returns <value>
+pub fn step_return_value(step: &RunStep, value: Rc<SExp>) -> RunStep {
+    step.parent()
+        .map(|p| RunStep::OpResult(value.loc(), value.clone(), p))
+        .unwrap_or_else(|| RunStep::Done(value.loc(), value.clone()))
+}
+
+/// The main operation to step the machine.  Given a RunStep, produce a new RunStep
+/// which is one step farther toward a result.  When complete, the result is a
+/// Done value.
 pub fn run_step(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -567,6 +622,7 @@ pub fn start_step(sexp_: Rc<SExp>, context_: Rc<SExp>) -> RunStep {
     )
 }
 
+/// Use the RunStep object to evaluate some clvm to completion.
 pub fn run(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -592,6 +648,8 @@ pub fn run(
     }
 }
 
+/// A convenience function which, givne a text program, its arguments and filename,
+/// parses the clvm text and runs to completion.
 pub fn parse_and_run(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -635,7 +693,7 @@ pub fn sha256tree_from_atom(v: &[u8]) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
-// sha256tree for modern style SExp
+/// sha256tree for modern style SExp
 pub fn sha256tree(s: Rc<SExp>) -> Vec<u8> {
     match s.borrow() {
         SExp::Cons(_l, a, b) => {

@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::mem::swap;
@@ -42,7 +41,7 @@ pub fn seems_constant_tail(allocator: &mut Allocator, sexp_: NodePtr) -> bool {
 
                 sexp = r;
             }
-            SExp::Atom(_) => {
+            SExp::Atom() => {
                 return sexp == allocator.null();
             }
         }
@@ -51,13 +50,14 @@ pub fn seems_constant_tail(allocator: &mut Allocator, sexp_: NodePtr) -> bool {
 
 pub fn seems_constant(allocator: &mut Allocator, sexp: NodePtr) -> bool {
     match allocator.sexp(sexp) {
-        SExp::Atom(_b) => {
+        SExp::Atom() => {
             return sexp == allocator.null();
         }
         SExp::Pair(operator, r) => {
             match allocator.sexp(operator) {
-                SExp::Atom(b) => {
-                    let atom = allocator.buf(&b);
+                SExp::Atom() => {
+                    // Was buf of operator.
+                    let atom = allocator.atom(operator);
                     if atom.len() == 1 && atom[0] == 1 {
                         return true;
                     } else if atom.len() == 1 && atom[0] == 8 {
@@ -92,8 +92,9 @@ pub fn constant_optimizer(
      * return the quoted result.
      */
     if let SExp::Pair(first, _) = allocator.sexp(r) {
-        if let SExp::Atom(b) = allocator.sexp(first) {
-            let buf = allocator.buf(&b);
+        // first relevant in scope.
+        if let SExp::Atom() = allocator.sexp(first) {
+            let buf = allocator.atom(first);
             if buf.len() == 1 && buf[0] == 1 {
                 // Short circuit already quoted expression.
                 return Ok(r);
@@ -106,7 +107,7 @@ pub fn constant_optimizer(
     if DIAG_OPTIMIZATIONS {
         println!(
             "COPT {} SC_R {} NN_R {}",
-            disassemble(allocator, r),
+            disassemble(allocator, r, None),
             sc_r,
             nn_r
         );
@@ -123,8 +124,8 @@ pub fn constant_optimizer(
             let _ = if DIAG_OPTIMIZATIONS {
                 println!(
                     "CONSTANT_OPTIMIZER {} TO {}",
-                    disassemble(allocator, r),
-                    disassemble(allocator, r1)
+                    disassemble(allocator, r, None),
+                    disassemble(allocator, r1, None)
                 );
             };
             quoted <- quote(allocator, r1);
@@ -135,9 +136,10 @@ pub fn constant_optimizer(
     Ok(r)
 }
 
-pub fn is_args_call(allocator: &mut Allocator, r: NodePtr) -> bool {
-    if let SExp::Atom(b) = allocator.sexp(r) {
-        let buf = allocator.buf(&b);
+pub fn is_args_call(allocator: &Allocator, r: NodePtr) -> bool {
+    if let SExp::Atom() = allocator.sexp(r) {
+        // Only r in scope.
+        let buf = allocator.atom(r);
         buf.len() == 1 && buf[0] == 1
     } else {
         false
@@ -218,8 +220,9 @@ fn path_from_args(
     new_args: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
     match allocator.sexp(sexp) {
-        SExp::Atom(v_buf) => {
-            let v = number_from_u8(allocator.buf(&v_buf));
+        SExp::Atom() => {
+            // Only sexp in scope.
+            let v = number_from_u8(allocator.atom(sexp));
             if v <= bi_one() {
                 Ok(new_args)
             } else {
@@ -243,7 +246,7 @@ pub fn sub_args(
     new_args: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
     match allocator.sexp(sexp) {
-        SExp::Atom(_) => path_from_args(allocator, sexp, new_args),
+        SExp::Atom() => path_from_args(allocator, sexp, new_args),
         SExp::Pair(first_pre, rest) => {
             let first;
 
@@ -251,8 +254,9 @@ pub fn sub_args(
                 SExp::Pair(_, _) => {
                     first = sub_args(allocator, first_pre, new_args)?;
                 }
-                SExp::Atom(b) => {
-                    let atom = allocator.buf(&b);
+                SExp::Atom() => {
+                    // Atom is a reflection of first_pre.
+                    let atom = allocator.atom(first_pre);
                     if atom.len() == 1 && atom[0] == 1 {
                         return Ok(sexp);
                     } else {
@@ -311,7 +315,7 @@ pub fn var_change_optimizer_cons_eval(
             if DIAG_OPTIMIZATIONS {
                 println!(
                     "XXX ORIGINAL_ARGS {}",
-                    disassemble(allocator, *original_args)
+                    disassemble(allocator, *original_args, None)
                 );
             };
             let original_call = t1
@@ -321,7 +325,7 @@ pub fn var_change_optimizer_cons_eval(
             if DIAG_OPTIMIZATIONS {
                 println!(
                     "XXX ORIGINAL_CALL {}",
-                    disassemble(allocator, *original_call)
+                    disassemble(allocator, *original_call, None)
                 );
             };
 
@@ -330,8 +334,8 @@ pub fn var_change_optimizer_cons_eval(
             if DIAG_OPTIMIZATIONS {
                 println!(
                     "XXX new_eval_sexp_args {} ORIG {}",
-                    disassemble(allocator, new_eval_sexp_args),
-                    disassemble(allocator, *original_args)
+                    disassemble(allocator, new_eval_sexp_args, None),
+                    disassemble(allocator, *original_args, None)
                 );
             };
 
@@ -365,13 +369,14 @@ pub fn var_change_optimizer_cons_eval(
                                     println!(
                                         "XXX opt_operands {} {}",
                                         acc,
-                                        disassemble(allocator, val)
+                                        disassemble(allocator, val, None)
                                     );
                                 }
                                 let increment = match allocator.sexp(val) {
                                     SExp::Pair(val_first, _) => match allocator.sexp(val_first) {
-                                        SExp::Atom(b) => {
-                                            let vf_buf = allocator.buf(&b);
+                                        SExp::Atom() => {
+                                            // Atom reflects val_first.
+                                            let vf_buf = allocator.atom(val_first);
                                             (vf_buf.len() != 1 || vf_buf[0] != 1) as i32
                                         }
                                         _ => 0,
@@ -414,8 +419,8 @@ pub fn children_optimizer(
             if list.is_empty() {
                 return Ok(r);
             }
-            if let SExp::Atom(op_buf) = allocator.sexp(list[0]) {
-                if allocator.buf(&op_buf).to_vec() == vec![1] {
+            if let SExp::Atom() = allocator.sexp(list[0]) {
+                if allocator.atom(list[0]).to_vec() == vec![1] {
                     return Ok(r);
                 }
             }
@@ -519,7 +524,7 @@ fn path_optimizer(
                 match first.
                     get("atom").
                     and_then(|a| atom(allocator, *a).ok()).
-                    map(|atom| number_from_u8(allocator.buf(&atom)))
+                    map(|atom| number_from_u8(&atom))
                 {
                     Some(atom) => {
                         let node =
@@ -534,7 +539,7 @@ fn path_optimizer(
                 match rest.
                     get("atom").
                     and_then(|a| atom(allocator, *a).ok()).
-                    map(|atom| number_from_u8(allocator.buf(&atom)))
+                    map(|atom| number_from_u8(&atom))
                 {
                     Some(atom) => {
                         let node =
@@ -635,7 +640,7 @@ pub fn optimize_sexp_(
     // pass and need to cache the result.
     {
         let memo_ref: Ref<HashMap<AllocatorRefOrTreeHash, NodePtr>> = memo.borrow();
-        let memo: &HashMap<AllocatorRefOrTreeHash, NodePtr> = memo_ref.borrow();
+        let memo: &HashMap<AllocatorRefOrTreeHash, NodePtr> = &memo_ref;
         if let Some(res) = memo.get(&AllocatorRefOrTreeHash::new_from_nodeptr(r_)) {
             return Ok(*res);
         }
@@ -645,7 +650,7 @@ pub fn optimize_sexp_(
     let footprint = AllocatorRefOrTreeHash::new_from_sexp(allocator, r_);
     {
         let memo_ref: Ref<HashMap<AllocatorRefOrTreeHash, NodePtr>> = memo.borrow();
-        let memo: &HashMap<AllocatorRefOrTreeHash, NodePtr> = memo_ref.borrow();
+        let memo: &HashMap<AllocatorRefOrTreeHash, NodePtr> = &memo_ref;
         if let Some(res) = memo.get(&footprint) {
             return Ok(*res);
         }
@@ -678,7 +683,7 @@ pub fn optimize_sexp_(
         let mut name = "".to_string();
 
         match allocator.sexp(r) {
-            SExp::Atom(_) => {
+            SExp::Atom() => {
                 return Ok(r);
             }
             SExp::Pair(_, _) => {
@@ -713,8 +718,8 @@ pub fn optimize_sexp_(
                     println!(
                         "OPT-{:?}[{}] => {}",
                         name,
-                        disassemble(allocator, start_r),
-                        disassemble(allocator, r)
+                        disassemble(allocator, start_r, None),
+                        disassemble(allocator, r, None)
                     );
                 }
             }
@@ -730,14 +735,14 @@ pub fn optimize_sexp(
     let optimized = RefCell::new(HashMap::new());
 
     if DIAG_OPTIMIZATIONS {
-        println!("START OPTIMIZE {}", disassemble(allocator, r));
+        println!("START OPTIMIZE {}", disassemble(allocator, r, None));
     }
     optimize_sexp_(allocator, &optimized, r, eval_f).map(|x| {
         if DIAG_OPTIMIZATIONS {
             println!(
                 "OPTIMIZE_SEXP {} GIVING {}",
-                disassemble(allocator, r),
-                disassemble(allocator, x)
+                disassemble(allocator, r, None),
+                disassemble(allocator, x, None)
             );
         }
         x

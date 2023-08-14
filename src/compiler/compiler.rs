@@ -1,6 +1,6 @@
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -12,10 +12,11 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
-use crate::compiler::codegen::codegen;
+use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
     CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
+use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
 use crate::compiler::prims;
@@ -66,14 +67,16 @@ lazy_static! {
 pub struct DefaultCompilerOpts {
     pub include_dirs: Vec<String>,
     pub filename: String,
-    pub compiler: Option<PrimaryCodegen>,
+    pub code_generator: Option<PrimaryCodegen>,
     pub in_defun: bool,
     pub stdenv: bool,
     pub optimize: bool,
     pub frontend_opt: bool,
     pub frontend_check_live: bool,
     pub start_env: Option<Rc<SExp>>,
+    pub disassembly_ver: Option<usize>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    pub dialect: AcceptedDialect,
 
     known_dialects: Rc<HashMap<String, String>>,
 }
@@ -94,29 +97,9 @@ fn fe_opt(
     opts: Rc<dyn CompilerOpts>,
     compileform: CompileForm,
 ) -> Result<CompileForm, CompileErr> {
-    let mut compiler_helpers = compileform.helpers.clone();
-    let mut used_names = HashSet::new();
-
-    if !opts.in_defun() {
-        for c in compileform.helpers.iter() {
-            used_names.insert(c.name().clone());
-        }
-
-        for helper in (opts
-            .compiler()
-            .map(|c| c.orig_help)
-            .unwrap_or_else(Vec::new))
-        .iter()
-        {
-            if !used_names.contains(helper.name()) {
-                compiler_helpers.push(helper.clone());
-            }
-        }
-    }
-
-    let evaluator = Evaluator::new(opts.clone(), runner.clone(), compiler_helpers.clone());
+    let evaluator = Evaluator::new(opts.clone(), runner.clone(), compileform.helpers.clone());
     let mut optimized_helpers: Vec<HelperForm> = Vec::new();
-    for h in compiler_helpers.iter() {
+    for h in compileform.helpers.iter() {
         match h {
             HelperForm::Defun(inline, defun) => {
                 let mut env = HashMap::new();
@@ -137,6 +120,7 @@ fn fe_opt(
                         kw: defun.kw.clone(),
                         name: defun.name.clone(),
                         args: defun.args.clone(),
+                        orig_args: defun.orig_args.clone(),
                         body: body_rc.clone(),
                     },
                 );
@@ -174,19 +158,36 @@ pub fn compile_pre_forms(
     pre_forms: &[Rc<SExp>],
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
-    let g = frontend(opts.clone(), pre_forms)?;
-    let compileform = if opts.frontend_opt() {
-        fe_opt(allocator, runner.clone(), opts.clone(), g)?
+    // Resolve includes, convert program source to lexemes
+    let p0 = frontend(opts.clone(), pre_forms)?;
+
+    let p1 = if opts.frontend_opt() {
+        // Front end optimization
+        fe_opt(allocator, runner.clone(), opts.clone(), p0)?
     } else {
-        CompileForm {
-            loc: g.loc.clone(),
-            include_forms: g.include_forms.clone(),
-            args: g.args.clone(),
-            helpers: g.helpers.clone(), // optimized_helpers.clone(),
-            exp: g.exp,
-        }
+        p0
     };
-    codegen(allocator, runner, opts.clone(), &compileform, symbol_table)
+
+    // Transform let bindings, merging nested let scopes with the top namespace
+    let hoisted_bindings = hoist_body_let_binding(None, p1.args.clone(), p1.exp.clone());
+    let mut new_helpers = hoisted_bindings.0;
+    let expr = hoisted_bindings.1; // expr is the let-hoisted program
+
+    // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later stages
+    let mut combined_helpers = p1.helpers.clone();
+    combined_helpers.append(&mut new_helpers);
+    let combined_helpers = process_helper_let_bindings(&combined_helpers);
+
+    let p2 = CompileForm {
+        loc: p1.loc.clone(),
+        include_forms: p1.include_forms.clone(),
+        args: p1.args,
+        helpers: combined_helpers,
+        exp: expr,
+    };
+
+    // generate code from AST, optionally with optimization
+    codegen(allocator, runner, opts, &p2, symbol_table)
 }
 
 pub fn compile_file(
@@ -227,8 +228,11 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn filename(&self) -> String {
         self.filename.clone()
     }
-    fn compiler(&self) -> Option<PrimaryCodegen> {
-        self.compiler.clone()
+    fn code_generator(&self) -> Option<PrimaryCodegen> {
+        self.code_generator.clone()
+    }
+    fn dialect(&self) -> AcceptedDialect {
+        self.dialect.clone()
     }
     fn in_defun(&self) -> bool {
         self.in_defun
@@ -251,13 +255,26 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
         self.prim_map.clone()
     }
+    fn disassembly_ver(&self) -> Option<usize> {
+        self.disassembly_ver
+    }
     fn get_search_paths(&self) -> Vec<String> {
         self.include_dirs.clone()
     }
 
+    fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.dialect = dialect;
+        Rc::new(copy)
+    }
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.include_dirs = dirs.to_owned();
+        Rc::new(copy)
+    }
+    fn set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.disassembly_ver = ver;
         Rc::new(copy)
     }
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts> {
@@ -285,9 +302,9 @@ impl CompilerOpts for DefaultCompilerOpts {
         copy.frontend_check_live = check;
         Rc::new(copy)
     }
-    fn set_compiler(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
+    fn set_code_generator(&self, new_code_generator: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
-        copy.compiler = Some(new_compiler);
+        copy.code_generator = Some(new_code_generator);
         Rc::new(copy)
     }
     fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts> {
@@ -300,17 +317,17 @@ impl CompilerOpts for DefaultCompilerOpts {
         &self,
         inc_from: String,
         filename: String,
-    ) -> Result<(String, String), CompileErr> {
+    ) -> Result<(String, Vec<u8>), CompileErr> {
         if filename == "*macros*" {
-            return Ok((filename, STANDARD_MACROS.clone()));
+            return Ok((filename, STANDARD_MACROS.clone().as_bytes().to_vec()));
         } else if let Some(content) = self.known_dialects.get(&filename) {
-            return Ok((filename, content.to_string()));
+            return Ok((filename, content.as_bytes().to_vec()));
         }
 
         for dir in self.include_dirs.iter() {
             let mut p = PathBuf::from(dir);
             p.push(filename.clone());
-            match fs::read_to_string(p.clone()) {
+            match fs::read(p.clone()) {
                 Err(_e) => {
                     continue;
                 }
@@ -344,14 +361,16 @@ impl DefaultCompilerOpts {
         DefaultCompilerOpts {
             include_dirs: vec![".".to_string()],
             filename: filename.to_string(),
-            compiler: None,
+            code_generator: None,
             in_defun: false,
             stdenv: true,
             optimize: false,
             frontend_opt: false,
             frontend_check_live: true,
             start_env: None,
+            dialect: AcceptedDialect::default(),
             prim_map: create_prim_map(),
+            disassembly_ver: None,
             known_dialects: Rc::new(KNOWN_DIALECTS.clone()),
         }
     }
@@ -474,7 +493,7 @@ pub fn extract_program_and_env(program: Rc<SExp>) -> Option<(Rc<SExp>, Rc<SExp>)
                 return None;
             }
 
-            match (is_apply(&lst[0]), lst[1].borrow(), lst[2].proper_list()) {
+            match (is_apply(&lst[0]), &lst[1], lst[2].proper_list()) {
                 (true, real_program, Some(cexp)) => {
                     if cexp.len() != 3 || !is_cons(&cexp[0]) || !is_whole_env(&cexp[2]) {
                         None
@@ -494,7 +513,7 @@ pub fn is_at_capture(head: Rc<SExp>, rest: Rc<SExp>) -> Option<(Vec<u8>, Rc<SExp
         if l.len() != 2 {
             return None;
         }
-        if let (SExp::Atom(_, a), SExp::Atom(_, cap)) = (head.borrow(), l[0].borrow()) {
+        if let (SExp::Atom(_, a), SExp::Atom(_, cap)) = (head.borrow(), &l[0]) {
             if a == &vec![b'@'] {
                 return Some((cap.clone(), Rc::new(l[1].clone())));
             }

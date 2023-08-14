@@ -145,7 +145,7 @@ fn rewrite_identifiers_bodyform(in_scope: &Vec<Vec<u8>>, body_form: &BodyForm) -
                 BodyForm::Value(SExp::Atom(l.clone(), n.clone()))
             }
         }
-        BodyForm::Call(l, args) => {
+        BodyForm::Call(l, args, tail) => {
             let new_args = args
                 .iter()
                 .enumerate()
@@ -157,7 +157,10 @@ fn rewrite_identifiers_bodyform(in_scope: &Vec<Vec<u8>>, body_form: &BodyForm) -
                     }
                 })
                 .collect();
-            BodyForm::Call(l.clone(), new_args)
+            let new_tail = tail.as_ref().map(|t| {
+                Rc::new(rewrite_identifiers_bodyform(in_scope, t.borrow()))
+            });
+            BodyForm::Call(l.clone(), new_args, new_tail)
         }
         _ => body_form.clone(),
     }
@@ -307,6 +310,7 @@ impl CollectProgramStructure {
                     use_then,
                     use_else,
                 ],
+                None
             ))
         } else if selector == 8 {
             let choice_of_a = b >> 3;
@@ -320,6 +324,7 @@ impl CollectProgramStructure {
                     use_a,
                     use_b,
                 ],
+                None
             ))
         } else if selector == 9 {
             let choice_of_a = b >> 3;
@@ -333,6 +338,7 @@ impl CollectProgramStructure {
                     use_a,
                     use_b,
                 ],
+                None
             ))
         } else if selector == 10 {
             let choice_of_a = b >> 3;
@@ -346,6 +352,7 @@ impl CollectProgramStructure {
                     use_a,
                     use_b,
                 ],
+                None
             ))
         } else if selector == 11 {
             // Synthesize a let form.
@@ -425,7 +432,7 @@ impl CollectProgramStructure {
                     &helper_name,
                 ))),
             );
-            Rc::new(BodyForm::Call(loc.clone(), call_args))
+            Rc::new(BodyForm::Call(loc.clone(), call_args, None))
         }
     }
 
@@ -467,6 +474,7 @@ impl CollectProgramStructure {
                     name: helper_name,
                     kw: None,
                     nl: loc.clone(),
+                    orig_args: arguments.clone(),
                     args: arguments,
                     body,
                 },

@@ -9,6 +9,8 @@ use crate::compiler::comptypes::{
 use crate::compiler::gensym::gensym;
 use crate::compiler::sexp::SExp;
 
+/// Rename in a qq form.  This searches for (unquote ...) forms inside and performs
+/// rename inside them, leaving the rest of the qq form as is.
 fn rename_in_qq(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SExp> {
     body.proper_list()
         .and_then(|x| {
@@ -143,7 +145,7 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             )
         }
 
-        BodyForm::Quoted(atom) => match atom.borrow() {
+        BodyForm::Quoted(atom) => match atom {
             SExp::Atom(l, n) => match namemap.get(n) {
                 Some(named) => BodyForm::Quoted(SExp::Atom(l.clone(), named.to_vec())),
                 None => BodyForm::Quoted(atom.clone()),
@@ -151,7 +153,7 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             _ => BodyForm::Quoted(atom.clone()),
         },
 
-        BodyForm::Value(atom) => match atom.borrow() {
+        BodyForm::Value(atom) => match atom {
             SExp::Atom(l, n) => match namemap.get(n) {
                 Some(named) => BodyForm::Value(SExp::Atom(l.clone(), named.to_vec())),
                 None => BodyForm::Value(atom.clone()),
@@ -159,12 +161,15 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             _ => BodyForm::Value(atom.clone()),
         },
 
-        BodyForm::Call(l, vs) => {
+        BodyForm::Call(l, vs, tail) => {
             let new_vs = vs
                 .iter()
                 .map(|x| Rc::new(rename_in_bodyform(namemap, x.clone())))
                 .collect();
-            BodyForm::Call(l.clone(), new_vs)
+            let new_tail = tail
+                .as_ref()
+                .map(|t| Rc::new(rename_in_bodyform(namemap, t.clone())));
+            BodyForm::Call(l.clone(), new_vs, new_tail)
         }
 
         BodyForm::Mod(l, prog) => BodyForm::Mod(l.clone(), prog.clone()),
@@ -197,7 +202,7 @@ pub fn desugar_sequential_let_bindings(
 }
 
 fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
-    match b.borrow() {
+    match b {
         BodyForm::Let(LetFormKind::Sequential, letdata) => {
             // Renaming a sequential let is exactly as if the bindings were
             // nested in separate parallel lets.
@@ -247,12 +252,15 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
         BodyForm::Quoted(e) => BodyForm::Quoted(e.clone()),
         BodyForm::Value(v) => BodyForm::Value(v.clone()),
 
-        BodyForm::Call(l, vs) => {
+        BodyForm::Call(l, vs, tail) => {
             let new_vs = vs
                 .iter()
                 .map(|a| Rc::new(rename_args_bodyform(a)))
                 .collect();
-            BodyForm::Call(l.clone(), new_vs)
+            let new_tail = tail
+                .as_ref()
+                .map(|t| Rc::new(rename_args_bodyform(t.borrow())));
+            BodyForm::Call(l.clone(), new_vs, new_tail)
         }
         BodyForm::Mod(l, program) => BodyForm::Mod(l.clone(), program.clone()),
     }
@@ -283,6 +291,7 @@ fn rename_in_helperform(namemap: &HashMap<Vec<u8>, Vec<u8>>, h: &HelperForm) -> 
                 kw: defun.kw.clone(),
                 nl: defun.nl.clone(),
                 name: defun.name.to_vec(),
+                orig_args: defun.orig_args.clone(),
                 args: defun.args.clone(),
                 body: Rc::new(rename_in_bodyform(namemap, defun.body.clone())),
             },
@@ -338,6 +347,7 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
                     nl: defun.nl.clone(),
                     kw: defun.kw.clone(),
                     name: defun.name.clone(),
+                    orig_args: defun.orig_args.clone(),
                     args: local_renamed_arg,
                     body: Rc::new(rename_in_bodyform(
                         &local_namemap,

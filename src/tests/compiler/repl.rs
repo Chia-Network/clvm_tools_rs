@@ -31,7 +31,7 @@ where
     res.map(|r| r.map(|r| r.to_sexp().to_string()))
 }
 
-fn test_repl_outcome<S>(inputs: Vec<S>) -> Result<Option<String>, CompileErr>
+pub fn test_repl_outcome<S>(inputs: Vec<S>) -> Result<Option<String>, CompileErr>
 where
     S: ToString,
 {
@@ -228,13 +228,90 @@ fn test_eval_less_than_forever_recursive() {
     assert_eq!(
         test_repl_outcome_with_stack_limit(
             vec![
-        "(defun tricky (N) (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ N 1)))))))))))))))))",
-        "(tricky 3)"
-    ],
+                "(defun tricky (N) (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ N 1)))))))))))))))))",
+                "(tricky 3)"
+            ],
+            Some(50)
+        )
+            .unwrap()
+            .unwrap(),
+        "(q . 4)"
+    );
+}
+
+// This shows partial evaluation.  Use of certain constant names such as 'a' and
+// 'c' disrupts this process, which I intend to fix in a separate pr.
+#[test]
+fn test_eval_list_with_constants_z() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(vec!["(defconstant z 3)", "(list x y z)"], Some(50))
+            .unwrap()
+            .unwrap(),
+        "(c x (c y (q 3)))"
+    );
+}
+
+#[test]
+fn test_eval_list_with_constants_yz() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec!["(defconstant y 2)", "(defconstant z 3)", "(list x y z)"],
             Some(50)
         )
         .unwrap()
         .unwrap(),
-        "(q . 4)"
+        "(c x (q 2 3))"
+    );
+}
+
+#[test]
+fn test_eval_list_with_constants_xyz() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defconstant x 1)",
+                "(defconstant y 2)",
+                "(defconstant z 3)",
+                "(list x y z)"
+            ],
+            Some(50)
+        )
+        .unwrap()
+        .unwrap(),
+        "(q 1 2 3)"
+    );
+}
+
+#[test]
+fn test_eval_list_partially_evaluated_abc() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(vec!["(list a b c)"], Some(50))
+            .unwrap()
+            .unwrap(),
+        "(c a (c b (c c (q))))"
+    );
+}
+
+#[test]
+fn test_eval_list_partially_evaluated_xyz() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(vec!["(list x y z)"], Some(50))
+            .unwrap()
+            .unwrap(),
+        "(c x (c y (c z (q))))"
+    );
+}
+
+#[test]
+fn test_eval_new_bls_operator() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(vec![indoc!{
+            "(softfork
+               (q . 196005)
+               (q . 0)
+               (q #g1_map (1 . 0x9790635de8740e9a6a6b15fb6b72f3a16afa0973d971979b6ba54761d6e2502c50db76f4d26143f05459a42cfd520d44)) ()
+               )"}.to_string()
+        ], None).unwrap().unwrap(),
+        "(q)"
     );
 }
