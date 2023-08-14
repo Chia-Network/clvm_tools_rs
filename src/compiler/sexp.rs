@@ -16,9 +16,9 @@ use num_traits::{zero, Num};
 
 use serde::Serialize;
 
-use crate::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType};
 #[cfg(test)]
 use crate::classic::clvm::__type_compatibility__::bi_one;
+use crate::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType};
 use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes_clvm, TConvertOption};
 use crate::compiler::prims::prims;
 use crate::compiler::srcloc::Srcloc;
@@ -210,7 +210,7 @@ enum SExpParseState {
         Srcloc,
         Option<Rc<SExp>>,   // this is the second value in the dot expression
         Rc<SExpParseState>, // used for inner parsing
-        Vec<Rc<SExp>>,  // list content
+        Vec<Rc<SExp>>,      // list content
     ),
 }
 
@@ -557,9 +557,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
         // t is a Vec of the previous characters in this comment string
         SExpParseState::CommentText => match this_char as char {
             '\n' => resume(SExpParseState::Empty),
-            _ => {
-                resume(SExpParseState::CommentText)
-            }
+            _ => resume(SExpParseState::CommentText),
         },
         // we currently processing a new word
         SExpParseState::Bareword(srcloc, word_so_far) => {
@@ -676,12 +674,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
         }
 
         // if we're not in a comment and have already found a parsed second word for this dot expression
-        SExpParseState::TermList(
-            srcloc,
-            Some(parsed),
-            pp,
-            list_content,
-        ) => {
+        SExpParseState::TermList(srcloc, Some(parsed), pp, list_content) => {
             match (this_char as char, pp.borrow()) {
                 (')', SExpParseState::Empty) => {
                     // if we see a `)` then we're ready to close this list
@@ -696,15 +689,18 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                                 for item in list_copy.iter().rev() {
                                     result_list = make_cons(item.clone(), Rc::new(result_list));
                                 }
-                                emit(Rc::new(result_list), SExpParseState::Empty) // emit the resultant list
+                                emit(Rc::new(result_list), SExpParseState::Empty)
+                                // emit the resultant list
                             }
                         }
                         None => error(loc, "Dot as first element of list?"),
                     }
-                },
+                }
                 _ => match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
                     // nothing should be emitted as we're a term list with an object found
-                    SExpParseResult::Emit(_, _current_state) => error(loc, "found object during termlist"),
+                    SExpParseResult::Emit(_, _current_state) => {
+                        error(loc, "found object during termlist")
+                    }
                     // resume means it didn't finish parsing yet, so store inner state and keep going
                     SExpParseResult::Resume(current_state) => {
                         match current_state {
@@ -715,10 +711,10 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                                     Rc::new(current_state), // store our partial inner parsestate in pp
                                     list_content.to_vec(),
                                 ))
-                            },
-                            _ => error(loc, "Illegal state during term list.")
+                            }
+                            _ => error(loc, "Illegal state during term list."),
                         }
-                    },
+                    }
                     SExpParseResult::Error(l, e) => SExpParseResult::Error(l, e),
                 },
             }
@@ -799,15 +795,11 @@ impl ParsePartialResult {
     pub fn new(srcloc: Srcloc) -> Self {
         ParsePartialResult {
             res: Default::default(),
-            srcloc: srcloc,
-            parse_state: SExpParseState::Empty
+            srcloc,
+            parse_state: SExpParseState::Empty,
         }
     }
-    pub fn push(
-        &mut self,
-        this_char: u8
-    ) -> Result<(), (Srcloc, String)>
-    {
+    pub fn push(&mut self, this_char: u8) -> Result<(), (Srcloc, String)> {
         let next_location = self.srcloc.clone().advance(this_char);
 
         // call parse_sexp_step for current character
@@ -839,7 +831,9 @@ impl ParsePartialResult {
             SExpParseState::Empty => Ok(self.res),
             SExpParseState::Bareword(l, t) => Ok(vec![Rc::new(make_atom(l, t))]),
             SExpParseState::CommentText => Ok(self.res),
-            SExpParseState::QuotedText(l, _, _) => Err((l, "unterminated quoted string".to_string())),
+            SExpParseState::QuotedText(l, _, _) => {
+                Err((l, "unterminated quoted string".to_string()))
+            }
             SExpParseState::QuotedEscaped(l, _, _) => {
                 Err((l, "unterminated quoted string with escape".to_string()))
             }
@@ -850,10 +844,7 @@ impl ParsePartialResult {
     }
 }
 
-fn parse_sexp_inner<I>(
-    start: Srcloc,
-    s: I,
-) -> Result<Vec<Rc<SExp>>, (Srcloc, String)>
+fn parse_sexp_inner<I>(start: Srcloc, s: I) -> Result<Vec<Rc<SExp>>, (Srcloc, String)>
 where
     I: Iterator<Item = u8>,
 {
@@ -881,7 +872,11 @@ where
 }
 
 #[cfg(test)]
-fn check_parser_for_intermediate_result(parser: &mut ParsePartialResult, s: &str, desired: SExpParseState) {
+fn check_parser_for_intermediate_result(
+    parser: &mut ParsePartialResult,
+    s: &str,
+    desired: SExpParseState,
+) {
     for this_char in s.bytes() {
         parser.push(this_char).unwrap();
     }
@@ -904,21 +899,25 @@ fn test_tricky_parser_tail_01() {
         SExpParseState::TermList(
             srcloc_range(&testname, 1, 6),
             None,
-            Rc::new(SExpParseState::Bareword(srcloc_range(&testname, 6, 6), vec![b'x'])),
-            vec![Rc::new(SExp::Integer(srcloc_range(&testname, 2, 2), bi_one()))]
-        )
+            Rc::new(SExpParseState::Bareword(
+                srcloc_range(&testname, 6, 6),
+                vec![b'x'],
+            )),
+            vec![Rc::new(SExp::Integer(
+                srcloc_range(&testname, 2, 2),
+                bi_one(),
+            ))],
+        ),
     );
 
     parser.push(b')').expect("should complete");
     assert_eq!(
         parser.finalize(),
-        Ok(vec![
-            Rc::new(SExp::Cons(
-                srcloc_range(&testname, 1, 7),
-                Rc::new(SExp::Integer(srcloc_range(&testname, 2, 2), bi_one())),
-                Rc::new(SExp::Atom(srcloc_range(&testname, 6, 7), b"x".to_vec()))
-            ))
-        ])
+        Ok(vec![Rc::new(SExp::Cons(
+            srcloc_range(&testname, 1, 7),
+            Rc::new(SExp::Integer(srcloc_range(&testname, 2, 2), bi_one())),
+            Rc::new(SExp::Atom(srcloc_range(&testname, 6, 7), b"x".to_vec()))
+        ))])
     );
 }
 
@@ -934,20 +933,21 @@ fn test_tricky_parser_tail_02() {
             srcloc_range(&testname, 7, 7),
             Some(Rc::new(SExp::Nil(srcloc_range(&testname, 6, 7)))),
             Rc::new(SExpParseState::Empty),
-            vec![Rc::new(SExp::Integer(srcloc_range(&testname, 2, 2), bi_one()))]
-        )
+            vec![Rc::new(SExp::Integer(
+                srcloc_range(&testname, 2, 2),
+                bi_one(),
+            ))],
+        ),
     );
 
     parser.push(b')').expect("should complete");
     assert_eq!(
         parser.finalize(),
-        Ok(vec![
-            Rc::new(SExp::Cons(
-                srcloc_range(&testname, 1, 7),
-                Rc::new(SExp::Integer(srcloc_range(&testname, 2, 2), bi_one())),
-                Rc::new(SExp::Nil(srcloc_range(&testname, 6, 7)))
-            ))
-        ])
+        Ok(vec![Rc::new(SExp::Cons(
+            srcloc_range(&testname, 1, 7),
+            Rc::new(SExp::Integer(srcloc_range(&testname, 2, 2), bi_one())),
+            Rc::new(SExp::Nil(srcloc_range(&testname, 6, 7)))
+        ))])
     );
 }
 
@@ -963,19 +963,20 @@ fn test_tricky_parser_tail_03() {
             srcloc_range(&testname, 7, 16),
             Some(Rc::new(SExp::Nil(srcloc_range(&testname, 6, 7)))),
             Rc::new(SExpParseState::Empty),
-            vec![Rc::new(SExp::Integer(srcloc_range(&testname, 2, 2), bi_one()))]
-        )
+            vec![Rc::new(SExp::Integer(
+                srcloc_range(&testname, 2, 2),
+                bi_one(),
+            ))],
+        ),
     );
 
     parser.push(b')').expect("should complete");
     assert_eq!(
         parser.finalize(),
-        Ok(vec![
-            Rc::new(SExp::Cons(
-                srcloc_range(&testname, 1, 7),
-                Rc::new(SExp::Integer(srcloc_range(&testname, 2, 2), bi_one())),
-                Rc::new(SExp::Nil(srcloc_range(&testname, 6, 7)))
-            ))
-        ])
+        Ok(vec![Rc::new(SExp::Cons(
+            srcloc_range(&testname, 1, 7),
+            Rc::new(SExp::Integer(srcloc_range(&testname, 2, 2), bi_one())),
+            Rc::new(SExp::Nil(srcloc_range(&testname, 6, 7)))
+        ))])
     );
 }
