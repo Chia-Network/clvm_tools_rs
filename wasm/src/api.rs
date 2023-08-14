@@ -491,6 +491,7 @@ pub fn repl_run_string(repl_id: i32, input: String) -> JsValue {
 #[wasm_bindgen]
 pub fn sexp_to_string(v: &JsValue) -> JsValue {
     let loc = Srcloc::start(&"*val*".to_string());
+
     sexp_from_js_object(loc, v)
         .map(|s| JsValue::from_str(&s.to_string()))
         .unwrap_or_else(|| create_clvm_runner_err("unable to convert to value".to_string()))
@@ -506,7 +507,7 @@ impl Program {
     #[wasm_bindgen(static_method_of = Program)]
     pub fn to(input: &JsValue) -> Result<Program, JsValue> {
         let loc = Srcloc::start(&"*val*".to_string());
-        let sexp = sexp_from_js_object(loc, input).map(Ok).unwrap_or_else(|| Err(create_clvm_runner_err("unable to convert to value".to_string())))?;
+        let sexp = sexp_from_js_object(loc, input).map(Ok).unwrap_or_else(|| Err(create_clvm_runner_err(format!("unable to convert to value"))))?;
         let new_id = get_next_id();
         let result = Program { internal: new_id };
 
@@ -520,11 +521,6 @@ impl Program {
         });
 
         Ok(result)
-    }
-
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> String {
-        self.to_string_impl()
     }
 
     #[wasm_bindgen(js_name = toString)]
