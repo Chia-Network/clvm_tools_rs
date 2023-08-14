@@ -29,7 +29,7 @@ use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::util::{TopoSortItem, toposort, u8_from_number};
+use crate::util::{toposort, u8_from_number, TopoSortItem};
 
 const MACRO_TIME_LIMIT: usize = 1000000;
 const CONST_EVAL_LIMIT: usize = 1000000;

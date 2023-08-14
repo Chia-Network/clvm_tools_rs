@@ -2,11 +2,11 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::compiler::comptypes::{
-    Binding, BindingPattern, BodyForm, CompileErr, CompileForm, DefconstData, DefmacData, DefunData,
-    HelperForm, LetData, LetFormKind,
-};
 use crate::compiler::codegen::toposort_assign_bindings;
+use crate::compiler::comptypes::{
+    Binding, BindingPattern, BodyForm, CompileErr, CompileForm, DefconstData, DefmacData,
+    DefunData, HelperForm, LetData, LetFormKind,
+};
 use crate::compiler::gensym::gensym;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
