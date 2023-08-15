@@ -124,7 +124,7 @@ pub struct LetData {
 #[derive(Clone, Debug, Serialize)]
 pub enum BodyForm {
     /// A let or let* form (depending on LetFormKind).
-    Let(LetFormKind, LetData),
+    Let(LetFormKind, Box<LetData>),
     /// An explicitly quoted constant of some kind.
     Quoted(SExp),
     /// An undiferentiated "value" of some kind in the source language.

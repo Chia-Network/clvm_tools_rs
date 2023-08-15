@@ -342,12 +342,12 @@ pub fn compile_bodyform(
                                 let compiled_body = compile_bodyform(opts, Rc::new(body))?;
                                 Ok(BodyForm::Let(
                                     kind,
-                                    LetData {
+                                    Box::new(LetData {
                                         loc: l.clone(),
                                         kw: Some(l.clone()),
                                         bindings: let_bindings,
                                         body: Rc::new(compiled_body),
-                                    },
+                                    }),
                                 ))
                             } else if *atom_name == "quote".as_bytes().to_vec() {
                                 if v.len() != 1 {
