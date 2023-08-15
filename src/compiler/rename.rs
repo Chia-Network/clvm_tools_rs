@@ -208,9 +208,16 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             BodyForm::Let(
                 kind.clone(),
                 Box::new(LetData {
+<<<<<<< HEAD
                     bindings: new_bindings,
                     body: Rc::new(new_body),
                     ..*letdata.clone()
+=======
+                    loc: letdata.loc.clone(),
+                    kw: letdata.kw.clone(),
+                    bindings: new_bindings,
+                    body: Rc::new(new_body),
+>>>>>>> chia/base
                 }),
             )
         }
