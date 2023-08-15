@@ -793,6 +793,11 @@ fn generate_let_defun(
     kwl: Option<Srcloc>,
     name: &[u8],
     args: Rc<SExp>,
+    // Tells what the user's preference is for inlining.  It can be set to None,
+    // which means use the form's default.
+    // Some(LetFormInlineHint::NoPreference), meaning the system should choose the
+    // best inlining strategy,
+    // Some(LetFormInlineHint::Inline(_)) or Some(LetFormInlineHint::NonInline(_))
     inline_hint: &Option<LetFormInlineHint>,
     bindings: Vec<Rc<Binding>>,
     body: Rc<BodyForm>,
@@ -800,7 +805,10 @@ fn generate_let_defun(
     let new_arguments: Vec<Rc<SExp>> = bindings
         .iter()
         .map(|b| match &b.pattern {
+            // This is the classic let form.  It doesn't support destructuring.
             BindingPattern::Name(name) => Rc::new(SExp::Atom(l.clone(), name.clone())),
+            // The assign form, which supports destructuring and signals newer
+            // handling.
             BindingPattern::Complex(sexp) => sexp.clone(),
         })
         .collect();
@@ -812,6 +820,9 @@ fn generate_let_defun(
     ));
 
     HelperForm::Defun(
+        // Some forms will be inlined and some as separate functions based on
+        // binary size, when permitted.  Sometimes the user will signal a
+        // preference.
         should_inline_let(inline_hint),
         DefunData {
             loc: l.clone(),
@@ -829,6 +840,38 @@ fn generate_let_args(_l: Srcloc, blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {
     blist.iter().map(|b| b.body.clone()).collect()
 }
 
+/// Assign arranges its variable names via need and split into batches that don't
+/// add additional dependencies.  To illustrate:
+///
+/// (assign
+///   (X . Y) (F A W)
+///   W (G A)
+///   Z (H X Y W)
+///   Next (H2 X Y W)
+///   (doit Y Next)
+///
+/// In this case, we have the following dependencies:
+/// W depends on A (external)
+/// X and Y depend on A (external) and W
+/// Z depends on X Y and W
+/// Next depends on X Y and W
+/// The body depends on Y and Next.
+///
+/// So we sort this:
+/// W (G A)
+/// --- X and Y add a dependency on W ---
+/// (X . Y) (F A W)
+/// --- Z and Next depend on X Y and W
+/// Z (H X Y W)
+/// Next (H2 X Y W)
+/// --- done sorting, the body has access to all bindings ---
+///
+/// We return TopoSortItem<Vec<u8>> (bytewise names), which is used in the
+/// generic toposort function in util.
+///
+/// This is used by facilities that need to know the order of the assignments.
+///
+/// A good number of languages support reorderable assignment (haskell, elm).
 pub fn toposort_assign_bindings(
     loc: &Srcloc,
     bindings: &[Rc<Binding>],
@@ -859,6 +902,15 @@ pub fn toposort_assign_bindings(
     )
 }
 
+/// Let forms are "hoisted" (promoted) from being body forms to being functions
+/// in the program (either defun or defun-inline).  The arguments given are bound
+/// in the downstream code, allowing the code generator to re-use functions to
+/// allow the inner body forms to use the variable names defined in the assign.
+/// This is isolated here from hoist_body_let_binding because it has its own
+/// complexity that's separate from the original let features.
+///
+/// In the future, things such as lambdas will also desugar along these same
+/// routes.
 pub fn hoist_assign_form(letdata: &LetData) -> Result<BodyForm, CompileErr> {
     let sorted_spec = toposort_assign_bindings(&letdata.loc, &letdata.bindings)?;
 
@@ -902,6 +954,7 @@ pub fn hoist_assign_form(letdata: &LetData) -> Result<BodyForm, CompileErr> {
     let mut end_bindings = Vec::new();
     swap(&mut end_bindings, &mut binding_lists[0]);
 
+    // build a stack of let forms starting with the inner most bindings.
     let mut output_let = BodyForm::Let(
         LetFormKind::Parallel,
         Box::new(LetData {
@@ -910,6 +963,7 @@ pub fn hoist_assign_form(letdata: &LetData) -> Result<BodyForm, CompileErr> {
         }),
     );
 
+    // build rest of the stack.
     for binding_list in binding_lists.into_iter().skip(1) {
         output_let = BodyForm::Let(
             LetFormKind::Parallel,
@@ -924,6 +978,13 @@ pub fn hoist_assign_form(letdata: &LetData) -> Result<BodyForm, CompileErr> {
     Ok(output_let)
 }
 
+/// The main function that, when encountering something that needs to desugar to
+/// a function, returns the functions that result (because things inside it may
+/// also need to desugar) and rewrites the expression to incorporate that
+/// function.
+///
+/// We add result here in case something needs extra processing, such as assign
+/// form sorting, which can fail if a workable order can't be solved.
 pub fn hoist_body_let_binding(
     outer_context: Option<Rc<SExp>>,
     args: Rc<SExp>,
@@ -1021,6 +1082,7 @@ pub fn hoist_body_let_binding(
             let final_call = BodyForm::Call(letdata.loc.clone(), call_args, None);
             Ok((out_defuns, Rc::new(final_call)))
         }
+        // New alternative for assign forms.
         BodyForm::Let(LetFormKind::Assign, letdata) => {
             hoist_body_let_binding(outer_context, args, Rc::new(hoist_assign_form(letdata)?))
         }
@@ -1053,6 +1115,10 @@ pub fn hoist_body_let_binding(
     }
 }
 
+/// Turn the helpers for a program into the fully desugared set of helpers for
+/// that program.  This expands and re-processes the helper set until all
+/// desugarable body forms have been transformed to a state where no more
+/// desugaring is needed.
 pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperForm>, CompileErr> {
     let mut result = helpers.to_owned();
     let mut i = 0;

@@ -677,6 +677,16 @@ fn compose_assign(letdata: &LetData) -> Rc<SExp> {
     Rc::new(enlist(letdata.loc.clone(), &result))
 }
 
+fn get_let_marker_text(kind: &LetFormKind, letdata: &LetData) -> Vec<u8> {
+    match (kind, letdata.inline_hint.as_ref()) {
+        (LetFormKind::Sequential, _) => b"let*".to_vec(),
+        (LetFormKind::Parallel, _) => b"let".to_vec(),
+        (LetFormKind::Assign, Some(LetFormInlineHint::Inline(_))) => b"assign-inline".to_vec(),
+        (LetFormKind::Assign, Some(LetFormInlineHint::NonInline(_))) => b"assign-lambda".to_vec(),
+        (LetFormKind::Assign, _) => b"assign".to_vec()
+    }
+}
+
 impl BodyForm {
     /// Get the general location of the BodyForm.
     pub fn loc(&self) -> Srcloc {
@@ -694,17 +704,12 @@ impl BodyForm {
     /// afterward.
     pub fn to_sexp(&self) -> Rc<SExp> {
         match self {
+            BodyForm::Let(LetFormKind::Assign, letdata) => {
+                compose_assign(letdata)
+            }
             BodyForm::Let(kind, letdata) => {
-                if matches!(kind, LetFormKind::Assign) {
-                    compose_assign(letdata)
-                } else {
-                    let marker = if matches!(kind, LetFormKind::Sequential) {
-                        b"let*".to_vec()
-                    } else {
-                        b"let".to_vec()
-                    };
-                    compose_let(&marker, letdata)
-                }
+                let marker = get_let_marker_text(kind, letdata);
+                compose_let(&marker, letdata)
             }
             BodyForm::Quoted(body) => Rc::new(SExp::Cons(
                 body.loc(),
