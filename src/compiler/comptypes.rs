@@ -683,7 +683,7 @@ fn get_let_marker_text(kind: &LetFormKind, letdata: &LetData) -> Vec<u8> {
         (LetFormKind::Parallel, _) => b"let".to_vec(),
         (LetFormKind::Assign, Some(LetFormInlineHint::Inline(_))) => b"assign-inline".to_vec(),
         (LetFormKind::Assign, Some(LetFormInlineHint::NonInline(_))) => b"assign-lambda".to_vec(),
-        (LetFormKind::Assign, _) => b"assign".to_vec()
+        (LetFormKind::Assign, _) => b"assign".to_vec(),
     }
 }
 
@@ -704,9 +704,7 @@ impl BodyForm {
     /// afterward.
     pub fn to_sexp(&self) -> Rc<SExp> {
         match self {
-            BodyForm::Let(LetFormKind::Assign, letdata) => {
-                compose_assign(letdata)
-            }
+            BodyForm::Let(LetFormKind::Assign, letdata) => compose_assign(letdata),
             BodyForm::Let(kind, letdata) => {
                 let marker = get_let_marker_text(kind, letdata);
                 compose_let(&marker, letdata)
