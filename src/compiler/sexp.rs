@@ -681,7 +681,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                     let mut list_copy = list_content.to_vec();
                     match list_copy.pop() {
                         Some(v) => {
-                            let new_tail = make_cons(v, Rc::clone(&parsed));
+                            let new_tail = make_cons(v, Rc::clone(parsed));
                             if list_copy.is_empty() {
                                 emit(Rc::new(new_tail), SExpParseState::Empty)
                             } else {
