@@ -671,7 +671,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                     SExpParseResult::Error(l, e) => SExpParseResult::Error(l, e), // propagate error upwards
                 },
             }
-        },
+        }
 
         // if we're not in a comment and have already found a parsed second word for this dot expression
         SExpParseState::TermList(srcloc, Some(parsed), pp, list_content) => {
@@ -718,7 +718,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                     SExpParseResult::Error(l, e) => SExpParseResult::Error(l, e),
                 },
             }
-        },
+        }
         // we are passing a dot-expression (x . y) and not in a comment and don't have an object already discovered
         SExpParseState::TermList(srcloc, None, pp, list_content) => {
             // pp is the inner parsestate inside the dot-expressions
