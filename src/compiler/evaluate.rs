@@ -1025,12 +1025,12 @@ impl<'info> Evaluator {
                         &updated_bindings,
                         Rc::new(BodyForm::Let(
                             LetFormKind::Sequential,
-                            LetData {
+                            Box::new(LetData {
                                 loc: letdata.loc.clone(),
                                 kw: letdata.kw.clone(),
                                 bindings: rest_of_bindings,
                                 body: letdata.body.clone(),
-                            },
+                            }),
                         )),
                         only_inline,
                     )

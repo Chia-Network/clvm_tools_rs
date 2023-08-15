@@ -136,12 +136,12 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             let new_body = rename_in_bodyform(namemap, letdata.body.clone());
             BodyForm::Let(
                 kind.clone(),
-                LetData {
+                Box::new(LetData {
                     loc: letdata.loc.clone(),
                     kw: letdata.kw.clone(),
                     bindings: new_bindings,
                     body: Rc::new(new_body),
-                },
+                }),
             )
         }
 
@@ -189,12 +189,12 @@ pub fn desugar_sequential_let_bindings(
             bindings,
             &BodyForm::Let(
                 LetFormKind::Parallel,
-                LetData {
+                Box::new(LetData {
                     loc: want_binding.loc(),
                     kw: None,
                     bindings: vec![want_binding],
                     body: Rc::new(body.clone()),
-                },
+                }),
             ),
             n - 1,
         )
@@ -240,12 +240,12 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
             let locally_renamed_body = rename_in_bodyform(&local_namemap, letdata.body.clone());
             BodyForm::Let(
                 LetFormKind::Parallel,
-                LetData {
+                Box::new(LetData {
                     loc: letdata.loc.clone(),
                     kw: letdata.kw.clone(),
                     bindings: new_bindings,
                     body: Rc::new(locally_renamed_body),
-                },
+                }),
             )
         }
 
