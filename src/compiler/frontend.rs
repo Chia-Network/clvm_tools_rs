@@ -10,7 +10,8 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
     list_to_cons, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType, CompileErr,
     CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData,
-    HelperForm, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, ModAccum, StructDef, StructMember, SyntheticType, TypeAnnoKind,
+    HelperForm, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, ModAccum, StructDef,
+    StructMember, SyntheticType, TypeAnnoKind,
 };
 use crate::compiler::lambda::handle_lambda;
 use crate::compiler::preprocessor::preprocess;
@@ -52,7 +53,7 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
             result
         }
         BodyForm::Quoted(_) => vec![],
-        BodyForm::Value(atom) => match atom.borrow() {
+        BodyForm::Value(atom) => match atom {
             SExp::Atom(_l, v) => vec![v.to_vec()],
             SExp::Cons(_l, f, r) => {
                 let mut first_names = collect_used_names_sexp(f.clone());
@@ -101,7 +102,7 @@ fn collect_used_names_helperform(body: &HelperForm) -> Vec<Vec<u8>> {
 fn collect_used_names_compileform(body: &CompileForm) -> Vec<Vec<u8>> {
     let mut result = Vec::new();
     for h in body.helpers.iter() {
-        let mut helper_list = collect_used_names_helperform(h.borrow());
+        let mut helper_list = collect_used_names_helperform(h);
         result.append(&mut helper_list);
     }
 

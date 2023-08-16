@@ -1154,7 +1154,7 @@ fn test_assign_form_0() {
     let prog = indoc! {"
 (mod (X)
   (assign
-    X1 (+ X 1) ;; 14
+    X1 (+ X 1) ;; X1 is 14 if X is 13.
     X1
     )
   )"}
@@ -1168,6 +1168,7 @@ fn test_assign_form_1() {
     let prog = indoc! {"
 (mod (X)
   (assign
+    ;; A lot of forms in order.
     X1 (+ X 1) ;; 14
     X2 (+ X1 1) ;; 15
     X3 (+ X2 1) ;; 16
@@ -1336,6 +1337,10 @@ fn test_assign_simple_with_reodering() {
   (include *standard-cl-21*)
   (defun tup (a b) (c a b))
   (assign
+    ;; This exercises reordering in assign.
+    ;; Each set os grouped with a tier that will be taken together.
+    ;; The tiers are numbered in order, but given out of order.
+
     ;; Tier 1
     (X0 . X1) (tup (+ A 1) (- A 1)) ;; 12 10
 

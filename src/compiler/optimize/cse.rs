@@ -127,7 +127,7 @@ pub fn cse_detect(fe: &BodyForm) -> Result<Vec<CSEDetectionWithoutConditions>, C
             let res: Result<Option<Vec<u8>>, CompileErr> = Ok(Some(hash_of));
             res
         },
-        fe.borrow(),
+        fe,
     )?;
 
     // Group them by hash since we've renamed variables.

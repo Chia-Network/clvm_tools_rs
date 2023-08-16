@@ -12,6 +12,10 @@ on:
     branches:
       - '**'
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   build_wheels:
     name: Wheel on ${{ matrix.os }} py-${{ matrix.python }}
@@ -223,6 +227,10 @@ jobs:
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: cargo test --no-default-features
 
+    - name: Exhaustive assign tests
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
+      run: cargo test -- --include-ignored assign
+
     - name: Check coverage
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
@@ -251,10 +259,9 @@ jobs:
 
         if [ -n "$AWS_SECRET" ]; then HAS_AWS_SECRET='true' ; fi
         echo HAS_AWS_SECRET=${HAS_AWS_SECRET} >>$GITHUB_OUTPUT
-
       env:
         SECRET: "${{ secrets.test_pypi_password }}"
-        AWS_SECRET: "${{ secrets.INSTALLER_UPLOAD_KEY }}"
+        AWS_SECRET: "${{ secrets.CHIA_AWS_ACCOUNT_ID }}"
 
     - name: publish (PyPi)
       if: startsWith(github.event.ref, 'refs/tags') && steps.check_secrets.outputs.HAS_SECRET
@@ -273,14 +280,16 @@ jobs:
         TWINE_PASSWORD: ${{ secrets.test_pypi_password }}
       run: twine upload --non-interactive --skip-existing --verbose 'target/wheels/*'
 
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: arn:aws:iam::${{ secrets.CHIA_AWS_ACCOUNT_ID }}:role/installer-upload
+        aws-region: us-west-2
+
     - name: Publish Dev
       if: steps.check_secrets.outputs.HAS_AWS_SECRET && github.ref == 'refs/heads/dev'
       shell: bash
       working-directory: ./target/wheels
-      env:
-        AWS_ACCESS_KEY_ID: "${{ secrets.INSTALLER_UPLOAD_KEY }}"
-        AWS_SECRET_ACCESS_KEY: "${{ secrets.INSTALLER_UPLOAD_SECRET }}"
-        AWS_REGION: us-west-2
       run: |
         FILES=$(find . -type f -name '*.whl' -o -name '*.tar.gz')
         while IFS= read -r file; do

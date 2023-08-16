@@ -27,6 +27,7 @@ use crate::classic::clvm::__type_compatibility__::{
 use crate::classic::clvm::keyword_from_atom;
 use crate::classic::clvm::serialize::{sexp_from_stream, sexp_to_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
+use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
 use crate::classic::clvm_tools::clvmc::write_sym_output;
 use crate::classic::clvm_tools::debug::check_unused;
@@ -85,7 +86,7 @@ fn get_tool_description(tool_name: &str) -> Option<ConversionDesc> {
     } else if tool_name == "opd" {
         Some(ConversionDesc {
             desc: "Disassemble a compiled clvm script from hex.",
-            conv: Box::new(OpdConversion {}),
+            conv: Box::new(OpdConversion { op_version: None }),
         })
     } else {
         None
@@ -110,6 +111,8 @@ impl ArgumentValueConv for PathOrCodeConv {
 // }
 
 pub trait TConversion {
+    fn apply_args(&mut self, parsed_args: &HashMap<String, ArgumentValue>);
+
     fn invoke(
         &self,
         allocator: &mut Allocator,
@@ -138,7 +141,7 @@ pub fn call_tool(
     tool_name: &str,
     input_args: &[String],
 ) -> Result<(), String> {
-    let task =
+    let mut task =
         get_tool_description(tool_name).ok_or_else(|| format!("unknown tool {tool_name}"))?;
     let props = TArgumentParserProps {
         description: task.desc.to_string(),
@@ -159,6 +162,12 @@ pub fn call_tool(
             .set_help("Show only sha256 tree hash of program".to_string()),
     );
     parser.add_argument(
+        vec!["--operators-version".to_string()],
+        Argument::new()
+            .set_type(Rc::new(OperatorsVersion {}))
+            .set_default(ArgumentValue::ArgInt(OPERATORS_LATEST_VERSION as i64)),
+    );
+    parser.add_argument(
         vec!["path_or_code".to_string()],
         Argument::new()
             .set_n_args(NArgsSpec::KleeneStar)
@@ -175,6 +184,8 @@ pub fn call_tool(
             return Ok(());
         }
     };
+
+    task.conv.apply_args(&args);
 
     if args.contains_key("version") {
         let version = version();
@@ -222,6 +233,8 @@ pub fn call_tool(
 pub struct OpcConversion {}
 
 impl TConversion for OpcConversion {
+    fn apply_args(&mut self, _args: &HashMap<String, ArgumentValue>) {}
+
     fn invoke(
         &self,
         allocator: &mut Allocator,
@@ -236,9 +249,18 @@ impl TConversion for OpcConversion {
     }
 }
 
-pub struct OpdConversion {}
+#[derive(Debug)]
+pub struct OpdConversion {
+    pub op_version: Option<usize>,
+}
 
 impl TConversion for OpdConversion {
+    fn apply_args(&mut self, args: &HashMap<String, ArgumentValue>) {
+        if let Some(ArgumentValue::ArgInt(i)) = args.get("operators_version") {
+            self.op_version = Some(*i as usize);
+        }
+    }
+
     fn invoke(
         &self,
         allocator: &mut Allocator,
@@ -254,7 +276,7 @@ impl TConversion for OpdConversion {
         sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
             .map_err(|e| e.1)
             .map(|sexp| {
-                let disassembled = disassemble(allocator, sexp.1);
+                let disassembled = disassemble(allocator, sexp.1, self.op_version);
                 t(sexp.1, disassembled)
             })
     }
@@ -282,6 +304,17 @@ impl ArgumentValueConv for StageImport {
             return Ok(ArgumentValue::ArgInt(2));
         }
         Err(format!("Unknown stage: {arg}"))
+    }
+}
+
+struct OperatorsVersion {}
+
+impl ArgumentValueConv for OperatorsVersion {
+    fn convert(&self, arg: &str) -> Result<ArgumentValue, String> {
+        let ver = arg
+            .parse::<i64>()
+            .map_err(|_| format!("expected number 0-{OPERATORS_LATEST_VERSION} but found {arg}"))?;
+        Ok(ArgumentValue::ArgInt(ver))
     }
 }
 
@@ -898,6 +931,14 @@ fn perform_desugaring(
     Ok(())
 }
 
+fn get_disassembly_ver(p: &HashMap<String, ArgumentValue>) -> Option<usize> {
+    if let Some(ArgumentValue::ArgInt(x)) = p.get("operators_version") {
+        return Some(*x as usize);
+    }
+
+    None
+}
+
 pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, default_stage: u32) {
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
@@ -1043,12 +1084,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_default(ArgumentValue::ArgString(None, "main.sym".to_string())),
     );
     parser.add_argument(
-        vec!["--strict".to_string()],
-        Argument::new()
-            .set_action(TArgOptionAction::StoreTrue)
-            .set_help("For modern dialects, don't treat unknown names as constants".to_string()),
-    );
-    parser.add_argument(
         vec!["-E".to_string(), "--preprocess".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
@@ -1062,6 +1097,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 "Perform desugaring and output a program made up exclusively of helper forms"
                     .to_string(),
             ),
+    );
+    parser.add_argument(
+        vec!["--operators-version".to_string()],
+        Argument::new()
+            .set_type(Rc::new(OperatorsVersion {}))
+            .set_default(ArgumentValue::ArgInt(OPERATORS_LATEST_VERSION as i64)),
     );
 
     if tool_name == "run" {
@@ -1092,9 +1133,10 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     let empty_map = HashMap::new();
     let keywords = match parsed_args.get("no_keywords") {
-        None => keyword_from_atom(),
         Some(ArgumentValue::ArgBool(_b)) => &empty_map,
-        _ => keyword_from_atom(),
+        _ => {
+            keyword_from_atom(get_disassembly_ver(&parsed_args).unwrap_or(OPERATORS_LATEST_VERSION))
+        }
     };
 
     // If extra symbol output is desired (not all keys are hashes, but there's
@@ -1178,6 +1220,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     let special_runner =
         run_program_for_search_paths(&reported_input_file, &search_paths, extra_symbol_info);
+    // Ensure we know the user's wishes about the disassembly version here.
+    special_runner.set_operators_version(get_disassembly_ver(&parsed_args));
     let dpr = special_runner.clone();
     let run_program = special_runner;
 
@@ -1310,6 +1354,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .map(|a| matches!(a, ArgumentValue::ArgBool(true)))
         .unwrap_or(false);
 
+    // Dialect is now not overall optional.
     let dialect = input_sexp.map(|i| detect_modern(&mut allocator, i));
     let mut stderr_output = |s: String| {
         if dialect.as_ref().and_then(|d| d.stepping).is_some() {
@@ -1366,6 +1411,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         })
         .unwrap_or_else(|| "main.sym".to_string());
 
+    // In testing: short circuit for modern compilation.
+    // Now stepping is the optional part.
     if let Some(stepping) = dialect.as_ref().and_then(|d| d.stepping) {
         let do_optimize = parsed_args
             .get("optimize")
@@ -1377,7 +1424,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_dialect(dialect.unwrap_or_default())
             .set_optimize(do_optimize || stepping > 22)
             .set_search_paths(&search_paths)
-            .set_frontend_opt(stepping == 22);
+            .set_frontend_opt(stepping > 21)
+            .set_disassembly_ver(get_disassembly_ver(&parsed_args));
         let mut symbol_table = HashMap::new();
 
         // Short circuit preprocessing display.
@@ -1626,7 +1674,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 ));
             }
 
-            let mut run_output = disassemble_with_kw(&mut allocator, result, keywords);
+            let mut run_output = disassemble_with_kw(&allocator, result, keywords);
             if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("dump") {
                 let mut f = Stream::new(None);
                 sexp_to_stream(&mut allocator, result, &mut f);
@@ -1642,9 +1690,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         format!(
             "FAIL: {} {}",
             ex.1,
-            disassemble_with_kw(&mut allocator, ex.0, keywords)
+            disassemble_with_kw(&allocator, ex.0, keywords)
         )
     }));
+
+    // Get the disassembly ver we're using based on the user's request.
+    let disassembly_ver = get_disassembly_ver(&parsed_args);
 
     let compile_sym_out = dpr.get_compiles();
     if !compile_sym_out.is_empty() {
@@ -1678,7 +1729,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 only_exn,
                 &log_content,
                 symbol_table,
-                &disassemble,
+                &|allocator, p| disassemble(allocator, p, disassembly_ver),
             );
         } else {
             stdout.write_str("\n");
@@ -1688,7 +1739,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 only_exn,
                 &log_content,
                 symbol_table,
-                &disassemble,
+                &|allocator, p| disassemble(allocator, p, disassembly_ver),
             );
         }
     }

@@ -349,9 +349,13 @@ pub enum HelperForm {
 /// To what purpose is the file included.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum IncludeProcessType {
+    /// Include the bytes on disk as an atom.
     Bin,
+    /// Parse the hex on disk and present it as a clvm value.
     Hex,
+    /// Read clvm in s-expression form as a clvm value.
     SExpression,
+    /// Compile a full program and return its representation.
     Compiled,
 }
 
@@ -443,6 +447,8 @@ pub trait CompilerOpts {
     fn code_generator(&self) -> Option<PrimaryCodegen>;
     /// Get the dialect declared in the toplevel program.
     fn dialect(&self) -> AcceptedDialect;
+    /// Disassembly version (for disassembly style serialization)
+    fn disassembly_ver(&self) -> Option<usize>;
     /// Specifies whether code is being generated on behalf of an inner defun in
     /// the program.
     fn in_defun(&self) -> bool;
@@ -471,6 +477,8 @@ pub trait CompilerOpts {
     fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts>;
     /// Set search paths.
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts>;
+    /// Set disassembly version for.
+    fn set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts>;
     /// Set whether we're compiling on behalf of a defun.
     fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts>;
     /// Set whether to inject the standard environment.
@@ -849,6 +857,16 @@ fn compose_assign(letdata: &LetData) -> Rc<SExp> {
     Rc::new(enlist(letdata.loc.clone(), &result))
 }
 
+fn get_let_marker_text(kind: &LetFormKind, letdata: &LetData) -> Vec<u8> {
+    match (kind, letdata.inline_hint.as_ref()) {
+        (LetFormKind::Sequential, _) => b"let*".to_vec(),
+        (LetFormKind::Parallel, _) => b"let".to_vec(),
+        (LetFormKind::Assign, Some(LetFormInlineHint::Inline(_))) => b"assign-inline".to_vec(),
+        (LetFormKind::Assign, Some(LetFormInlineHint::NonInline(_))) => b"assign-lambda".to_vec(),
+        (LetFormKind::Assign, _) => b"assign".to_vec(),
+    }
+}
+
 impl BodyForm {
     /// Get the general location of the BodyForm.
     pub fn loc(&self) -> Srcloc {
@@ -867,17 +885,10 @@ impl BodyForm {
     /// afterward.
     pub fn to_sexp(&self) -> Rc<SExp> {
         match self {
+            BodyForm::Let(LetFormKind::Assign, letdata) => compose_assign(letdata),
             BodyForm::Let(kind, letdata) => {
-                if matches!(kind, LetFormKind::Assign) {
-                    compose_assign(letdata)
-                } else {
-                    let marker = if matches!(kind, LetFormKind::Sequential) {
-                        b"let*".to_vec()
-                    } else {
-                        b"let".to_vec()
-                    };
-                    compose_let(&marker, letdata)
-                }
+                let marker = get_let_marker_text(kind, letdata);
+                compose_let(&marker, letdata)
             }
             BodyForm::Quoted(body) => Rc::new(SExp::Cons(
                 body.loc(),

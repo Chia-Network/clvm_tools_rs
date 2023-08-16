@@ -45,7 +45,7 @@ fn test_expand_macro(
         symbols_source,
     )
     .unwrap();
-    disassemble(allocator, exp_res.1)
+    disassemble(allocator, exp_res.1, Some(0))
 }
 
 fn test_inner_expansion(
@@ -58,7 +58,7 @@ fn test_inner_expansion(
     let prog_ir = read_ir(&prog_rest).unwrap();
     let prog_source = assemble_from_ir(allocator, Rc::new(prog_ir)).unwrap();
     let exp_res = brun(allocator, macro_source, prog_source).unwrap();
-    disassemble(allocator, exp_res)
+    disassemble(allocator, exp_res, Some(0))
 }
 
 fn test_do_com_prog(
@@ -75,7 +75,7 @@ fn test_do_com_prog(
     let sym_ir = read_ir(&symbol_table_src).unwrap();
     let symbol_table = assemble_from_ir(allocator, Rc::new(sym_ir)).unwrap();
     let result = do_com_prog(allocator, 849, program, macro_lookup, symbol_table, runner).unwrap();
-    disassemble(allocator, result.1)
+    disassemble(allocator, result.1, Some(0))
 }
 
 #[test]
@@ -152,7 +152,7 @@ fn test_stage_2_quote() {
     let mut allocator = Allocator::new();
     let assembled = assemble(&mut allocator, "(1 2 3)").unwrap();
     let quoted = quote(&mut allocator, assembled).unwrap();
-    assert_eq!(disassemble(&mut allocator, quoted), "(q 1 2 3)");
+    assert_eq!(disassemble(&mut allocator, quoted, Some(0)), "(q 1 2 3)");
 }
 
 #[test]
@@ -162,7 +162,7 @@ fn test_stage_2_evaluate() {
     let args = assemble(&mut allocator, "(q 9 15)").unwrap();
     let to_eval = evaluate(&mut allocator, prog, args).unwrap();
     assert_eq!(
-        disassemble(&mut allocator, to_eval),
+        disassemble(&mut allocator, to_eval, Some(0)),
         "(a (q 16 2 3) (q 9 15))"
     );
 }
@@ -174,7 +174,7 @@ fn test_stage_2_run() {
     let macro_lookup_throw = assemble(&mut allocator, "(q 9)").unwrap();
     let to_eval = run(&mut allocator, prog, macro_lookup_throw).unwrap();
     assert_eq!(
-        disassemble(&mut allocator, to_eval),
+        disassemble(&mut allocator, to_eval, Some(0)),
         "(a (\"com\" (q 16 2 3) (q 1 9)) 1)"
     );
 }
@@ -218,8 +218,8 @@ fn test_process_embed_file_as_sexp() {
     let (name, content) =
         process_embed_file(&mut allocator, runner, declaration_sexp).expect("should work");
     assert_eq!(
-        disassemble(&mut allocator, want_exp),
-        disassemble(&mut allocator, content)
+        disassemble(&mut allocator, want_exp, Some(0)),
+        disassemble(&mut allocator, content, Some(0))
     );
     assert_eq!(name, b"test-embed");
 }
@@ -294,7 +294,7 @@ fn test_process_embed_file_as_hex() {
     )
     .expect("should work");
     assert_eq!(
-        disassemble(&mut allocator, matching_part_of_decl),
+        disassemble(&mut allocator, matching_part_of_decl, Some(0)),
         decode_string(outstream.get_value().data())
     );
     assert_eq!(name, b"test-embed-from-hex");
@@ -321,7 +321,7 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
         None
     }
     fn dialect(&self) -> AcceptedDialect {
-        Default::default()
+        AcceptedDialect::default()
     }
     fn in_defun(&self) -> bool {
         false
@@ -339,6 +339,9 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
         false
     }
     fn start_env(&self) -> Option<Rc<SExp>> {
+        None
+    }
+    fn disassembly_ver(&self) -> Option<usize> {
         None
     }
     fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
@@ -377,13 +380,16 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
     fn set_prim_map(&self, _prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts> {
         Rc::new(self.clone())
     }
+    fn set_disassembly_ver(&self, _ver: Option<usize>) -> Rc<dyn CompilerOpts> {
+        Rc::new(self.clone())
+    }
     fn read_new_file(
         &self,
         inc_from: String,
         filename: String,
     ) -> Result<(String, Vec<u8>), CompileErr> {
         if let Some(content) = self.files.get(&filename) {
-            return Ok((filename.clone(), content.as_bytes().to_vec()));
+            return Ok((filename.clone(), content.bytes().collect()));
         }
 
         Err(CompileErr(
@@ -436,7 +442,7 @@ fn test_classic_compiler_with_compiler_opts() {
     )
     .expect("should compile and find the content");
     assert_eq!(
-        disassemble(&mut allocator, result),
+        disassemble(&mut allocator, result, Some(0)),
         "(a (q 2 2 (c 2 (c 5 ()))) (c (q 16 5 (q . 1)) 1))"
     );
     // Verify lack of injection

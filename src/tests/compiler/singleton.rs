@@ -48,7 +48,7 @@ lazy_static! {
             Box::new(SimpleCreateCLVMObject {}),
         )
         .expect("should be able to parse binary");
-        disassemble(&mut allocator, code.1)
+        disassemble(&mut allocator, code.1, Some(0))
     };
 }
 
@@ -254,6 +254,8 @@ fn test_singleton_top_layer_23() {
     let launcher_solution = launch.launcher_solution();
     let bootstrap_singleton = do_basic_brun(&vec![
         "brun".to_string(),
+        "--operators-version".to_string(),
+        "0".to_string(),
         SINGLETON_LAUNCHER.to_string(),
         launcher_solution.to_string(),
     ])
@@ -285,6 +287,8 @@ fn test_singleton_top_layer_23() {
         launch.solution_for_singleton(&lineage_proof, inner_solution.clone());
     let singleton_eve_run = do_basic_brun(&vec![
         "brun".to_string(),
+        "--operators-version".to_string(),
+        "0".to_string(),
         launch.curried_singleton.to_string(),
         solution_for_singleton.to_string(),
     ])
@@ -298,6 +302,8 @@ fn test_singleton_top_layer_23() {
         launch.solution_for_singleton(&next_lineage_proof, inner_solution.clone());
     let singleton_next_run = do_basic_brun(&vec![
         "brun".to_string(),
+        "--operators-version".to_string(),
+        "0".to_string(),
         launch.curried_singleton.to_string(),
         solution_for_next_singleton.to_string(),
     ])
