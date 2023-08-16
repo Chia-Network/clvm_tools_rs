@@ -2,12 +2,14 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::compiler::codegen::toposort_assign_bindings;
 use crate::compiler::comptypes::{
-    Binding, BodyForm, CompileForm, DefconstData, DefmacData, DefunData, HelperForm, LambdaData,
-    LetData, LetFormKind,
+    Binding, BindingPattern, BodyForm, CompileErr, CompileForm, DefconstData, DefmacData,
+    DefunData, HelperForm, LambdaData, LetData, LetFormKind,
 };
 use crate::compiler::gensym::gensym;
 use crate::compiler::sexp::SExp;
+use crate::compiler::srcloc::Srcloc;
 
 /// Rename in a qq form.  This searches for (unquote ...) forms inside and performs
 /// rename inside them, leaving the rest of the qq form as is.
@@ -16,7 +18,7 @@ fn rename_in_qq(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SExp>
         .and_then(|x| {
             if let [SExp::Atom(_, q), body] = &x[..] {
                 if q == b"unquote" {
-                    return Some(rename_in_cons(namemap, Rc::new(body.clone())));
+                    return Some(rename_in_cons(namemap, Rc::new(body.clone()), true));
                 }
             }
 
@@ -33,7 +35,11 @@ fn rename_in_qq(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SExp>
 }
 
 /* Given a cons cell, rename occurrences of oldname to newname */
-fn rename_in_cons(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SExp> {
+fn rename_in_cons(
+    namemap: &HashMap<Vec<u8>, Vec<u8>>,
+    body: Rc<SExp>,
+    qq_handling: bool,
+) -> Rc<SExp> {
     match body.borrow() {
         SExp::Atom(l, name) => match namemap.get(name) {
             Some(v) => Rc::new(SExp::Atom(l.clone(), v.to_vec())),
@@ -63,7 +69,7 @@ fn rename_in_cons(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SEx
                             _ => body.clone(),
                         })
                         .unwrap_or_else(|| body.clone());
-                } else if *q == "qq".as_bytes().to_vec() {
+                } else if *q == "qq".as_bytes().to_vec() && qq_handling {
                     return r
                         .proper_list()
                         .map(|x| match &x[..] {
@@ -76,8 +82,8 @@ fn rename_in_cons(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SEx
 
             Rc::new(SExp::Cons(
                 l.clone(),
-                rename_in_cons(namemap, f.clone()),
-                rename_in_cons(namemap, r.clone()),
+                rename_in_cons(namemap, f.clone(), qq_handling),
+                rename_in_cons(namemap, r.clone(), qq_handling),
             ))
         }
         _ => body.clone(),
@@ -106,16 +112,81 @@ fn invent_new_names_sexp(body: Rc<SExp>) -> Vec<(Vec<u8>, Vec<u8>)> {
     }
 }
 
-fn make_binding_unique(b: &Binding) -> (Vec<u8>, Binding) {
-    (
-        b.name.to_vec(),
-        Binding {
-            loc: b.loc.clone(),
-            nl: b.nl.clone(),
-            name: gensym(b.name.clone()),
-            body: b.body.clone(),
-        },
-    )
+#[derive(Debug, Clone)]
+struct InnerRenameList {
+    bindings: HashMap<Vec<u8>, Vec<u8>>,
+    from_wing: Binding,
+}
+
+fn make_binding_unique(b: &Binding) -> InnerRenameList {
+    match &b.pattern {
+        BindingPattern::Name(name) => {
+            let mut single_name_map = HashMap::new();
+            let new_name = gensym(name.clone());
+            single_name_map.insert(name.to_vec(), new_name.clone());
+            InnerRenameList {
+                bindings: single_name_map,
+                from_wing: Binding {
+                    loc: b.loc.clone(),
+                    nl: b.nl.clone(),
+                    pattern: BindingPattern::Name(new_name),
+                    body: b.body.clone(),
+                },
+            }
+        }
+        BindingPattern::Complex(pat) => {
+            let new_names_vec = invent_new_names_sexp(pat.clone());
+            let mut new_names = HashMap::new();
+
+            for (n, v) in new_names_vec.iter() {
+                new_names.insert(n.clone(), v.clone());
+            }
+
+            let renamed_pattern = rename_in_cons(&new_names, pat.clone(), false);
+            InnerRenameList {
+                bindings: new_names,
+                from_wing: Binding {
+                    loc: b.loc.clone(),
+                    nl: b.nl.clone(),
+                    pattern: BindingPattern::Complex(renamed_pattern),
+                    body: b.body.clone(),
+                },
+            }
+        }
+    }
+}
+
+pub fn rename_assign_bindings(
+    l: &Srcloc,
+    bindings: &[Rc<Binding>],
+    body: Rc<BodyForm>,
+) -> Result<(BodyForm, Vec<Rc<Binding>>), CompileErr> {
+    // Order the bindings.
+    let sorted_bindings = toposort_assign_bindings(l, bindings)?;
+    let mut renames = HashMap::new();
+    let renamed_bindings = sorted_bindings
+        .iter()
+        .rev()
+        .map(|item| {
+            let b: &Binding = bindings[item.index].borrow();
+            if let BindingPattern::Complex(p) = &b.pattern {
+                let new_names = invent_new_names_sexp(p.clone());
+                for (name, renamed) in new_names.iter() {
+                    renames.insert(name.clone(), renamed.clone());
+                }
+                Binding {
+                    pattern: BindingPattern::Complex(rename_in_cons(&renames, p.clone(), false)),
+                    body: Rc::new(rename_in_bodyform(&renames, b.body.clone())),
+                    ..b.clone()
+                }
+            } else {
+                b.clone()
+            }
+        })
+        .rev()
+        .map(Rc::new)
+        .collect();
+    Ok((rename_in_bodyform(&renames, body), renamed_bindings))
 }
 
 fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> BodyForm {
@@ -128,7 +199,7 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
                     Rc::new(Binding {
                         loc: b.loc(),
                         nl: b.nl.clone(),
-                        name: b.name.clone(),
+                        pattern: b.pattern.clone(),
                         body: Rc::new(rename_in_bodyform(namemap, b.body.clone())),
                     })
                 })
@@ -136,12 +207,11 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
             let new_body = rename_in_bodyform(namemap, letdata.body.clone());
             BodyForm::Let(
                 kind.clone(),
-                LetData {
-                    loc: letdata.loc.clone(),
-                    kw: letdata.kw.clone(),
+                Box::new(LetData {
                     bindings: new_bindings,
                     body: Rc::new(new_body),
-                },
+                    ..*letdata.clone()
+                }),
             )
         }
 
@@ -177,7 +247,8 @@ fn rename_in_bodyform(namemap: &HashMap<Vec<u8>, Vec<u8>>, b: Rc<BodyForm>) -> B
         BodyForm::Lambda(ldata) => {
             let renamed_capture_inputs =
                 Rc::new(rename_in_bodyform(namemap, ldata.captures.clone()));
-            let renamed_capture_outputs = rename_in_cons(namemap, ldata.capture_args.clone());
+            let renamed_capture_outputs =
+                rename_in_cons(namemap, ldata.capture_args.clone(), false);
             let renamed_body = rename_in_bodyform(namemap, ldata.body.clone());
             BodyForm::Lambda(Box::new(LambdaData {
                 captures: renamed_capture_inputs,
@@ -202,12 +273,13 @@ pub fn desugar_sequential_let_bindings(
             bindings,
             &BodyForm::Let(
                 LetFormKind::Parallel,
-                LetData {
+                Box::new(LetData {
                     loc: want_binding.loc(),
                     kw: None,
                     bindings: vec![want_binding],
+                    inline_hint: None,
                     body: Rc::new(body.clone()),
-                },
+                }),
             ),
             n - 1,
         )
@@ -227,17 +299,20 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
         }
 
         BodyForm::Let(LetFormKind::Parallel, letdata) => {
-            let renames: Vec<(Vec<u8>, Binding)> = letdata
+            let renames: Vec<InnerRenameList> = letdata
                 .bindings
                 .iter()
                 .map(|x| make_binding_unique(x.borrow()))
                 .collect();
-            let new_renamed_bindings: Vec<Rc<Binding>> =
-                renames.iter().map(|(_, x)| Rc::new(x.clone())).collect();
+            let new_renamed_bindings: Vec<Rc<Binding>> = renames
+                .iter()
+                .map(|ir| Rc::new(ir.from_wing.clone()))
+                .collect();
             let mut local_namemap = HashMap::new();
-            for x in renames.iter() {
-                let (oldname, binding) = x;
-                local_namemap.insert(oldname.to_vec(), binding.name.clone());
+            for ir in renames.iter() {
+                for (oldname, binding_name) in ir.bindings.iter() {
+                    local_namemap.insert(oldname.to_vec(), binding_name.clone());
+                }
             }
             let new_bindings = new_renamed_bindings
                 .iter()
@@ -245,7 +320,7 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
                     Rc::new(Binding {
                         loc: x.loc.clone(),
                         nl: x.nl.clone(),
-                        name: x.name.clone(),
+                        pattern: x.pattern.clone(),
                         body: Rc::new(rename_args_bodyform(&x.body)),
                     })
                 })
@@ -253,14 +328,15 @@ fn rename_args_bodyform(b: &BodyForm) -> BodyForm {
             let locally_renamed_body = rename_in_bodyform(&local_namemap, letdata.body.clone());
             BodyForm::Let(
                 LetFormKind::Parallel,
-                LetData {
-                    loc: letdata.loc.clone(),
-                    kw: letdata.kw.clone(),
+                Box::new(LetData {
                     bindings: new_bindings,
                     body: Rc::new(locally_renamed_body),
-                },
+                    ..*letdata.clone()
+                }),
             )
         }
+
+        BodyForm::Let(LetFormKind::Assign, _letdata) => b.clone(),
 
         BodyForm::Quoted(e) => BodyForm::Quoted(e.clone()),
         BodyForm::Value(v) => BodyForm::Value(v.clone()),
@@ -332,7 +408,7 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
             for x in new_names.iter() {
                 local_namemap.insert(x.0.to_vec(), x.1.to_vec());
             }
-            let local_renamed_arg = rename_in_cons(&local_namemap, mac.args.clone());
+            let local_renamed_arg = rename_in_cons(&local_namemap, mac.args.clone(), true);
             let local_renamed_body = rename_args_compileform(mac.program.borrow());
             HelperForm::Defmacro(DefmacData {
                 loc: mac.loc.clone(),
@@ -352,7 +428,7 @@ fn rename_args_helperform(h: &HelperForm) -> HelperForm {
             for x in new_names.iter() {
                 local_namemap.insert(x.0.clone(), x.1.clone());
             }
-            let local_renamed_arg = rename_in_cons(&local_namemap, defun.args.clone());
+            let local_renamed_arg = rename_in_cons(&local_namemap, defun.args.clone(), true);
             let local_renamed_body = rename_args_bodyform(defun.body.borrow());
             HelperForm::Defun(
                 *inline,
@@ -405,7 +481,7 @@ pub fn rename_args_compileform(c: &CompileForm) -> CompileForm {
     for x in new_names.iter() {
         local_namemap.insert(x.0.clone(), x.1.clone());
     }
-    let local_renamed_arg = rename_in_cons(&local_namemap, c.args.clone());
+    let local_renamed_arg = rename_in_cons(&local_namemap, c.args.clone(), true);
     let local_renamed_helpers: Vec<HelperForm> =
         c.helpers.iter().map(rename_args_helperform).collect();
     let local_renamed_body = rename_args_bodyform(c.exp.borrow());
