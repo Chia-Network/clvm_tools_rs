@@ -10,11 +10,11 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::run;
-use crate::compiler::codegen::codegen;
+use crate::compiler::codegen::{codegen, hoist_assign_form};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
-    Binding, BodyForm, CallSpec, CompileErr, CompileForm, CompilerOpts, HelperForm, LetData,
-    LetFormKind,
+    Binding, BindingPattern, BodyForm, CallSpec, CompileErr, CompileForm, CompilerOpts, HelperForm,
+    LetData, LetFormInlineHint, LetFormKind,
 };
 use crate::compiler::frontend::frontend;
 use crate::compiler::runtypes::RunFailure;
@@ -106,13 +106,74 @@ fn select_helper(bindings: &[HelperForm], name: &[u8]) -> Option<HelperForm> {
     None
 }
 
+fn compute_paths_of_destructure(
+    bindings: &mut Vec<(Vec<u8>, Rc<BodyForm>)>,
+    structure: Rc<SExp>,
+    path: Number,
+    mask: Number,
+    bodyform: Rc<BodyForm>,
+) {
+    match structure.atomize() {
+        SExp::Cons(_, a, b) => {
+            let next_mask = mask.clone() * 2_u32.to_bigint().unwrap();
+            let next_right_path = mask + path.clone();
+            compute_paths_of_destructure(bindings, a, path, next_mask.clone(), bodyform.clone());
+            compute_paths_of_destructure(bindings, b, next_right_path, next_mask, bodyform);
+        }
+        SExp::Atom(_, name) => {
+            let mut produce_path = path.clone() | mask;
+            let mut output_form = bodyform.clone();
+
+            while produce_path > bi_one() {
+                if path.clone() & produce_path.clone() != bi_zero() {
+                    // Right path
+                    output_form = Rc::new(make_operator1(
+                        &bodyform.loc(),
+                        "r".to_string(),
+                        output_form,
+                    ));
+                } else {
+                    // Left path
+                    output_form = Rc::new(make_operator1(
+                        &bodyform.loc(),
+                        "f".to_string(),
+                        output_form,
+                    ));
+                }
+
+                produce_path /= 2_u32.to_bigint().unwrap();
+            }
+
+            bindings.push((name, output_form));
+        }
+        _ => {}
+    }
+}
+
 fn update_parallel_bindings(
     bindings: &HashMap<Vec<u8>, Rc<BodyForm>>,
     have_bindings: &[Rc<Binding>],
 ) -> HashMap<Vec<u8>, Rc<BodyForm>> {
     let mut new_bindings = bindings.clone();
     for b in have_bindings.iter() {
-        new_bindings.insert(b.name.clone(), b.body.clone());
+        match &b.pattern {
+            BindingPattern::Name(name) => {
+                new_bindings.insert(name.clone(), b.body.clone());
+            }
+            BindingPattern::Complex(structure) => {
+                let mut computed_getters = Vec::new();
+                compute_paths_of_destructure(
+                    &mut computed_getters,
+                    structure.clone(),
+                    bi_zero(),
+                    bi_one(),
+                    b.body.clone(),
+                );
+                for (name, p) in computed_getters.iter() {
+                    new_bindings.insert(name.clone(), p.clone());
+                }
+            }
+        }
     }
     new_bindings
 }
@@ -586,6 +647,10 @@ fn flatten_expression_to_names(expr: Rc<SExp>) -> Rc<BodyForm> {
     Rc::new(BodyForm::Call(expr.loc(), call_vec, None))
 }
 
+pub fn eval_dont_expand_let(inline_hint: &Option<LetFormInlineHint>) -> bool {
+    matches!(inline_hint, Some(LetFormInlineHint::NonInline(_)))
+}
+
 impl<'info> Evaluator {
     pub fn new(
         opts: Rc<dyn CompilerOpts>,
@@ -991,6 +1056,10 @@ impl<'info> Evaluator {
         let mut visited = VisitedMarker::again(body.loc(), visited_)?;
         match body.borrow() {
             BodyForm::Let(LetFormKind::Parallel, letdata) => {
+                if eval_dont_expand_let(&letdata.inline_hint) && only_inline {
+                    return Ok(body.clone());
+                }
+
                 let updated_bindings = update_parallel_bindings(env, &letdata.bindings);
                 self.shrink_bodyform_visited(
                     allocator,
@@ -1002,6 +1071,10 @@ impl<'info> Evaluator {
                 )
             }
             BodyForm::Let(LetFormKind::Sequential, letdata) => {
+                if eval_dont_expand_let(&letdata.inline_hint) && only_inline {
+                    return Ok(body.clone());
+                }
+
                 if letdata.bindings.is_empty() {
                     self.shrink_bodyform_visited(
                         allocator,
@@ -1026,15 +1099,27 @@ impl<'info> Evaluator {
                         Rc::new(BodyForm::Let(
                             LetFormKind::Sequential,
                             Box::new(LetData {
-                                loc: letdata.loc.clone(),
-                                kw: letdata.kw.clone(),
                                 bindings: rest_of_bindings,
-                                body: letdata.body.clone(),
+                                ..*letdata.clone()
                             }),
                         )),
                         only_inline,
                     )
                 }
+            }
+            BodyForm::Let(LetFormKind::Assign, letdata) => {
+                if eval_dont_expand_let(&letdata.inline_hint) && only_inline {
+                    return Ok(body.clone());
+                }
+
+                self.shrink_bodyform_visited(
+                    allocator,
+                    &mut visited,
+                    prog_args,
+                    env,
+                    Rc::new(hoist_assign_form(letdata)?),
+                    only_inline,
+                )
             }
             BodyForm::Quoted(_) => Ok(body.clone()),
             BodyForm::Value(SExp::Atom(l, name)) => {

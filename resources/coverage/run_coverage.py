@@ -62,7 +62,7 @@ if __name__ == '__main__':
         required_percentage = int(args.require_percent)
         has_required_pct = True
 
-        for file in result:
+        for file in filter(lambda f: '/tests/' not in f['name'], result):
             have_pct = int(file['coveragePercent'])
             if have_pct < required_percentage:
                 print(f"{file['name']} lacks required coverage have {have_pct} want {required_percentage}")

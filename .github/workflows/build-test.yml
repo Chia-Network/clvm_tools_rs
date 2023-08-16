@@ -208,6 +208,10 @@ jobs:
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: cargo test --no-default-features
 
+    - name: Exhaustive assign tests
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
+      run: cargo test -- --include-ignored assign
+
     - name: Check coverage
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
