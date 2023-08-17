@@ -115,20 +115,14 @@ jobs:
       id: check_secrets
       shell: bash
       run: |
-        unset HAS_SECRET
         unset HAS_AWS_SECRET
-
-        if [ -n "$SECRET" ]; then HAS_SECRET='true' ; fi
-        echo "HAS_SECRET=${HAS_SECRET}" >>$GITHUB_OUTPUT
 
         if [ -n "$AWS_SECRET" ]; then HAS_AWS_SECRET='true' ; fi
         echo HAS_AWS_SECRET=${HAS_AWS_SECRET} >>$GITHUB_OUTPUT
       env:
-        SECRET: "${{ secrets.GITHUB_TOKEN }}"
         AWS_SECRET: "${{ secrets.CHIA_AWS_ACCOUNT_ID }}"
 
     - name: Set Env
-      if: steps.check_secrets.outputs.HAS_SECRET
       uses: Chia-Network/actions/setjobenv@main
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
