@@ -127,7 +127,7 @@ impl ObjectCache {
     }
 }
 
-static WRAPPED_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
+static PROGRAM_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
     FunctionWrapperDesc {
         export_name: "toString",
         member_name: "to_string_internal",
@@ -170,11 +170,19 @@ static WRAPPED_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
     },
 ];
 
+static TUPLE_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
+    FunctionWrapperDesc {
+        export_name: "to_program",
+        member_name: "tuple_to_program_internal",
+    },
+];
+
 thread_local! {
     static OBJECT_CACHE: RefCell<ObjectCache> = {
         return RefCell::new(ObjectCache::default());
     };
     static PROGRAM_PROTOTYPE: RefCell<Option<JsValue>> = RefCell::new(None);
+    static TUPLE_PROTOTYPE: RefCell<Option<JsValue>> = RefCell::new(None);
     static SRCLOC: Srcloc = Srcloc::start("*var*");
 }
 
@@ -234,9 +242,8 @@ fn get_program_prototype() -> Result<JsValue, JsValue> {
 
     let prototype = js_sys::Object::new();
 
-    // toString function.
     let program_self = js_sys::eval("Program")?;
-    for func_wrapper_desc in WRAPPED_FUNCTIONS.iter() {
+    for func_wrapper_desc in PROGRAM_FUNCTIONS.iter() {
         let to_string_fun = js_sys::Function::new_with_args(
             "",
             &format!("const t = this; return function() {{ let args = Array.prototype.slice.call(arguments); args.unshift(this); return t.{}.apply(null, args); }}", func_wrapper_desc.member_name)
@@ -251,6 +258,35 @@ fn get_program_prototype() -> Result<JsValue, JsValue> {
     }
 
     PROGRAM_PROTOTYPE.with(|pp| {
+        pp.replace(Some(prototype.clone().into()));
+    });
+
+    Ok(prototype.into())
+}
+
+fn get_tuple_prototype() -> Result<JsValue, JsValue> {
+    if let Some(pp) = TUPLE_PROTOTYPE.with(|pp| pp.borrow().clone()) {
+        return Ok(pp);
+    }
+
+    let prototype = js_sys::Object::new();
+
+    let program_self = js_sys::eval("Program")?;
+    for func_wrapper_desc in TUPLE_FUNCTIONS.iter() {
+        let to_string_fun = js_sys::Function::new_with_args(
+            "",
+            &format!("const t = this; return function() {{ let args = Array.prototype.slice.call(arguments); args.unshift(this); return t.{}.apply(null, args); }}", func_wrapper_desc.member_name)
+        );
+
+        let to_string_final = to_string_fun.call0(&program_self)?;
+        js_sys::Reflect::set(
+            &prototype,
+            &js_sys::JsString::from(func_wrapper_desc.export_name),
+            &to_string_final,
+        )?;
+    }
+
+    TUPLE_PROTOTYPE.with(|pp| {
         pp.replace(Some(prototype.clone().into()));
     });
 
@@ -327,8 +363,10 @@ impl Program {
 
     #[wasm_bindgen]
     pub fn as_pair_internal(obj: &JsValue) -> Result<JsValue, JsValue> {
+        let prototype = get_tuple_prototype()?;
         let cacheval = js_cache_value_from_js(obj)?;
         let cached = find_cached_sexp(cacheval.entry, &cacheval.content)?;
+
         if let SExp::Cons(_, a, b) = cached.modern.borrow() {
             let id_a = get_next_id();
             let new_cached_a = create_cached_sexp(id_a, a.clone())?;
@@ -347,6 +385,10 @@ impl Program {
                 &result_value,
                 &JsString::from("1"),
                 &object_b,
+            )?;
+            Reflect::set_prototype_of(
+                &result_value,
+                &prototype
             )?;
             return Ok(result_value.into());
         }
@@ -471,5 +513,18 @@ impl Program {
         let result_id = get_next_id();
         let new_cached_result = create_cached_sexp(result_id, modern_result)?;
         finish_new_object(result_id, &new_cached_result)
+    }
+
+    #[wasm_bindgen]
+    pub fn tuple_to_program_internal(obj: &JsValue) -> Result<JsValue, JsValue> {
+        let a = js_sys::Reflect::get(
+            obj,
+            &JsString::from("0"),
+        )?;
+        let b = js_sys::Reflect::get(
+            obj,
+            &JsString::from("1"),
+        )?;
+        Program::cons_internal(&a, &b)
     }
 }

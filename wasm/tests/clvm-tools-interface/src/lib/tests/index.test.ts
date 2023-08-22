@@ -107,7 +107,7 @@ it('Has the t function', async () => {
     let p2 = Program.to(9);
     let tuple = t(p1, p2);
     let consed = p1.cons(p2);
-    assert.equal(tuple.toString(), consed.toString());
+    assert.equal(Program.to(tuple).toString(), consed.toString());
 });
 
 it('Has run', async () => {

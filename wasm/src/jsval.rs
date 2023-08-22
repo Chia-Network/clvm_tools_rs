@@ -181,6 +181,17 @@ pub fn detect_serializable(loc: &Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
     })
 }
 
+pub fn detect_convertible(v: &JsValue) -> Result<Rc<SExp>, JsValue> {
+    let convert_key = JsValue::from_str("to_program");
+    let to_program = js_sys::Reflect::get(v, &convert_key)?;
+    let call_args = js_sys::Array::new();
+    call_args.push(v);
+    let call_result = Reflect::apply(to_program.unchecked_ref(), v, &call_args)?;
+    let cacheval = js_cache_value_from_js(&call_result)?;
+    let cached = find_cached_sexp(cacheval.entry, &cacheval.content)?;
+    Ok(cached.modern.clone())
+}
+
 pub fn sexp_from_js_object(sstart: Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
     // Already converted value.
     if let Ok(res) = js_cache_value_from_js(v) {
@@ -199,6 +210,8 @@ pub fn sexp_from_js_object(sstart: Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
             .map(|x| Rc::new(SExp::Integer(sstart.clone(), x)))
     } else if let Some(g1_bytes) = detect_serializable(&sstart, v) {
         Some(g1_bytes)
+    } else if let Some(converted) = detect_convertible(v).ok() {
+        Some(converted)
     } else if Array::is_array(v) {
         let a = Array::from(v);
         let mut result_value = Rc::new(SExp::Nil(Srcloc::start(&"*js*".to_string())));

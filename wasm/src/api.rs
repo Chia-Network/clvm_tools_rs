@@ -503,5 +503,5 @@ pub fn h(v: String) -> Result<Vec<u8>, JsValue> {
 
 #[wasm_bindgen]
 pub fn t(a: &JsValue, b: &JsValue) -> Result<JsValue, JsValue> {
-    Program::cons_internal(a, b)
+    Program::as_pair_internal(&Program::cons_internal(a, b)?)
 }
