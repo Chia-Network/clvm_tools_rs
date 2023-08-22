@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as bls_loader from 'bls-signatures';
-const {h, Program} = require('../../../../../pkg/clvm_tools_wasm');
+const {h, t, Program} = require('../../../../../pkg/clvm_tools_wasm');
 
 it('Has BLS signatures support', async () => {
     let bls = await bls_loader.default();
@@ -100,6 +100,14 @@ it('Has cons', async () => {
     let consed = test_1.cons(test_2);
     let test_3 = Program.to([7,8,9,10]);
     assert.equal(consed.toString(), test_3.toString());
+});
+
+it('Has the t function', async () => {
+    let p1 = Program.to(7);
+    let p2 = Program.to(9);
+    let tuple = t(p1, p2);
+    let consed = p1.cons(p2);
+    assert.equal(tuple.toString(), consed.toString());
 });
 
 it('Has run', async () => {

@@ -34,6 +34,7 @@ use crate::jsval::{
     btreemap_to_object, get_property, js_object_from_sexp, js_pair, object_to_value,
     read_string_to_string_map, sexp_from_js_object,
 };
+use crate::objects::Program;
 
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
@@ -498,4 +499,9 @@ pub fn sexp_to_string(v: &JsValue) -> JsValue {
 pub fn h(v: String) -> Result<Vec<u8>, JsValue> {
     let hex_data = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(v))).map_err(|_| js_sys::JsString::from("bad hex input"))?;
     Ok(hex_data.data().clone())
+}
+
+#[wasm_bindgen]
+pub fn t(a: &JsValue, b: &JsValue) -> Result<JsValue, JsValue> {
+    Program::cons_internal(a, b)
 }
