@@ -59,12 +59,9 @@ thread_local! {
     static REPLS: RefCell<HashMap<i32, JsRepl>> = {
         return RefCell::new(HashMap::new());
     };
-    static OBJECTS: RefCell<HashMap<i32, Rc<SExp>>> = {
-        return RefCell::new(HashMap::new());
-    };
 }
 
-fn get_next_id() -> i32 {
+pub fn get_next_id() -> i32 {
     NEXT_ID.with(|n| n.fetch_add(1, Ordering::SeqCst) as i32)
 }
 
@@ -111,7 +108,7 @@ where
     result
 }
 
-fn create_clvm_runner_err(error: String) -> JsValue {
+pub fn create_clvm_runner_err(error: String) -> JsValue {
     let array = js_sys::Array::new();
     array.set(
         0,
@@ -389,7 +386,7 @@ pub fn compose_run_function(
         },
         Ok(x) => x,
     };
-    
+
     let function_path = match path_to_function(main_env.1.clone(), &hash_bytes.data().clone()) {
         Some(p) => p,
         _ => {
@@ -497,37 +494,8 @@ pub fn sexp_to_string(v: &JsValue) -> JsValue {
         .unwrap_or_else(|| create_clvm_runner_err("unable to convert to value".to_string()))
 }
 
-#[wasm_bindgen(inspectable)]
-pub struct Program {
-    internal: i32
-}
-
 #[wasm_bindgen]
-impl Program {
-    #[wasm_bindgen(static_method_of = Program)]
-    pub fn to(input: &JsValue) -> Result<Program, JsValue> {
-        let loc = Srcloc::start(&"*val*".to_string());
-        let sexp = sexp_from_js_object(loc, input).map(Ok).unwrap_or_else(|| Err(create_clvm_runner_err(format!("unable to convert to value"))))?;
-        let new_id = get_next_id();
-        let result = Program { internal: new_id };
-
-        OBJECTS.with(|objects| {
-            objects.replace_with(|objects| {
-                let mut work_objects = HashMap::new();
-                swap(&mut work_objects, objects);
-                work_objects.insert(new_id, sexp);
-                work_objects
-            })
-        });
-
-        Ok(result)
-    }
-
-    #[wasm_bindgen(js_name = toString)]
-    pub fn to_string_impl(&self) -> String {
-        OBJECTS.with(|objects| {
-            let objects = objects.borrow();
-            objects.get(&self.internal).map(|o| o.to_string()).unwrap_or_else(|| "".to_string())
-        })
-    }
+pub fn h(v: String) -> Result<Vec<u8>, JsValue> {
+    let hex_data = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(v))).map_err(|_| js_sys::JsString::from("bad hex input"))?;
+    Ok(hex_data.data().clone())
 }
