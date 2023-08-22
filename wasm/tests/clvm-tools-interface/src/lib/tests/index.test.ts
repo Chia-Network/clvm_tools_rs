@@ -101,3 +101,9 @@ it('Has cons', async () => {
     let test_3 = Program.to([7,8,9,10]);
     assert.equal(consed.toString(), test_3.toString());
 });
+
+it('Has run', async () => {
+    let program = Program.from_hex('ff12ffff10ff02ffff010180ffff11ff02ffff01018080');
+    let args = Program.to([13]);
+    assert.equal(program.run(args).toString(), '8200a8');
+});

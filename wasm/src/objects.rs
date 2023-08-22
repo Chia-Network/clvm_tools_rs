@@ -10,6 +10,7 @@ use wasm_bindgen::prelude::*;
 use clvmr::Allocator;
 use clvm_tools_rs::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
 use clvm_tools_rs::classic::clvm::serialize::{SimpleCreateCLVMObject, sexp_to_stream, sexp_from_stream};
+use clvm_tools_rs::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 use clvm_tools_rs::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree, truthy};
 use clvm_tools_rs::compiler::sexp::SExp;
 use clvm_tools_rs::compiler::srcloc::Srcloc;
@@ -162,7 +163,11 @@ static WRAPPED_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
     FunctionWrapperDesc {
         export_name: "cons",
         member_name: "cons_internal",
-    }
+    },
+    FunctionWrapperDesc {
+        export_name: "run",
+        member_name: "run_internal",
+    },
 ];
 
 thread_local! {
@@ -291,6 +296,13 @@ impl Program {
     }
 
     #[wasm_bindgen]
+    pub fn from_hex(input: &str) -> Result<JsValue, JsValue> {
+        let new_id = get_next_id();
+        let obj = finish_new_object(new_id, input)?;
+        Program::to(&obj)
+    }
+
+    #[wasm_bindgen]
     pub fn null() -> Result<JsValue, JsValue> {
         let new_id = get_next_id();
         let encoded = create_cached_sexp(new_id, Rc::new(SExp::Nil(get_srcloc())))?;
@@ -398,6 +410,7 @@ impl Program {
         Err(JsString::from("not a cons").into())
     }
 
+    #[wasm_bindgen]
     pub fn cons_internal(obj: &JsValue, other: &JsValue) -> Result<JsValue, JsValue> {
         let cacheval = js_cache_value_from_js(obj)?;
         let cached = find_cached_sexp(cacheval.entry, &cacheval.content)?;
@@ -409,5 +422,54 @@ impl Program {
         let new_sexp = Rc::new(SExp::Cons(get_srcloc(), cached.modern.clone(), other_cache.modern.clone()));
         let new_cached = create_cached_sexp(new_id, new_sexp)?;
         finish_new_object(new_id, &new_cached)
+    }
+
+    #[wasm_bindgen]
+    pub fn run_internal(obj: &JsValue, args: &JsValue) -> Result<JsValue, JsValue> {
+        let progval = js_cache_value_from_js(obj)?;
+        let prog_cache = find_cached_sexp(progval.entry, &progval.content)?;
+
+        let argval = js_cache_value_from_js(args)?;
+        let arg_cache = find_cached_sexp(argval.entry, &argval.content)?;
+
+        let mut allocator = Allocator::new();
+        let prog_classic = convert_to_clvm_rs(
+            &mut allocator,
+            prog_cache.modern.clone()
+        ).map_err(|_| {
+            let err: JsValue = JsString::from("error converting program").into();
+            err
+        })?;
+        let arg_classic = convert_to_clvm_rs(
+            &mut allocator,
+            arg_cache.modern.clone()
+        ).map_err(|_| {
+            let err: JsValue = JsString::from("error converting args").into();
+            err
+        })?;
+
+        let runner = DefaultProgramRunner::default();
+        let run_result =
+            runner.run_program(
+                &mut allocator,
+                prog_classic,
+                arg_classic,
+                None
+            ).map_err(|e| {
+                let err_str: &str = &e.1;
+                let err: JsValue = JsString::from(err_str).into();
+                err
+            })?;
+        let modern_result = convert_from_clvm_rs(
+            &mut allocator,
+            get_srcloc(),
+            run_result.1
+        ).map_err(|_| {
+            let err: JsValue = JsString::from("error converting result").into();
+            err
+        })?;
+        let result_id = get_next_id();
+        let new_cached_result = create_cached_sexp(result_id, modern_result)?;
+        finish_new_object(result_id, &new_cached_result)
     }
 }
