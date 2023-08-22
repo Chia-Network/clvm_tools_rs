@@ -134,6 +134,15 @@ it('Has equal_to', async () => {
     assert.ok(!p2.equal_to(p3));
 });
 
+it('Has as_javascript', async () => {
+    let tuple = t(9,10);
+    let original = [7,8,tuple,11];
+    let p1 = Program.to(original);
+    let p1_as_js = p1.as_javascript();
+    console.log(p1_as_js);
+    assert.equal(original.toString(), p1_as_js.toString());
+});
+
 it('Has run', async () => {
     let program = Program.from_hex('ff12ffff10ff02ffff010180ffff11ff02ffff01018080');
     let args = Program.to([13]);

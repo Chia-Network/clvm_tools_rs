@@ -18,6 +18,7 @@ use clvm_tools_rs::util::Number;
 
 use wasm_bindgen::prelude::*;
 
+use crate::api::t;
 use crate::objects::{find_cached_sexp, js_cache_value_from_js};
 
 pub fn array_to_value(v: Array) -> JsValue {
@@ -37,77 +38,27 @@ pub fn js_pair(a: JsValue, b: JsValue) -> JsValue {
     array_to_value(pair_array)
 }
 
-pub fn js_from_location(l: Srcloc) -> JsValue {
-    let loc_array = Array::new();
-    let file_copy: &String = l.file.borrow();
-    loc_array.set(
-        0,
-        js_pair(JsValue::from_str("file"), JsValue::from_str(&file_copy)),
-    );
-    loc_array.set(
-        1,
-        js_pair(JsValue::from_str("line"), JsValue::from_f64(l.line as f64)),
-    );
-    loc_array.set(
-        2,
-        js_pair(JsValue::from_str("col"), JsValue::from_f64(l.col as f64)),
-    );
-    match l.until {
-        Some(u) => {
-            let til_array = Array::new();
-            til_array.set(
-                0,
-                js_pair(JsValue::from_str("line"), JsValue::from_f64(u.line as f64)),
-            );
-            til_array.set(
-                1,
-                js_pair(JsValue::from_str("col"), JsValue::from_f64(u.col as f64)),
-            );
-            loc_array.set(
-                3,
-                object_to_value(Object::from_entries(&til_array).as_ref().unwrap()),
-            );
-        }
-        _ => {}
-    }
-    object_to_value(Object::from_entries(&loc_array).as_ref().unwrap())
-}
-
-pub fn js_object_from_sexp(v: Rc<SExp>) -> JsValue {
+pub fn js_object_from_sexp(v: Rc<SExp>) -> Result<JsValue, JsValue> {
     match v.borrow() {
-        SExp::Nil(_) => JsValue::null(),
-        SExp::Integer(_, i) => JsValue::bigint_from_str(&i.to_string()),
+        SExp::Nil(_) => Ok(JsValue::null()),
+        SExp::Integer(_, i) => Ok(JsValue::bigint_from_str(&i.to_string())),
         SExp::QuotedString(_, _, q) => {
-            JsValue::from_str(&Bytes::new(Some(BytesFromType::Raw(q.clone()))).decode())
+            Ok(JsValue::from_str(&Bytes::new(Some(BytesFromType::Raw(q.clone()))).decode()))
         }
         SExp::Atom(_, q) => {
-            JsValue::from_str(&Bytes::new(Some(BytesFromType::Raw(q.clone()))).decode())
+            Ok(JsValue::from_str(&Bytes::new(Some(BytesFromType::Raw(q.clone()))).decode()))
         }
-        SExp::Cons(l, a, b) => v
-            .proper_list()
-            .map(|lst| {
+        SExp::Cons(_, a, b) => {
+            if let Some(lst) = v.proper_list() {
                 let array = Array::new();
                 for i in 0..lst.len() {
-                    array.set(i as u32, js_object_from_sexp(Rc::new(lst[i].clone())));
+                    array.set(i as u32, js_object_from_sexp(Rc::new(lst[i].clone())).unwrap_or_else(|e| e));
                 }
-                array_to_value(array)
-            })
-            .unwrap_or_else(|| {
-                let array = Array::new();
-                array.set(
-                    0,
-                    js_pair(JsValue::from_str("location"), js_from_location(l.clone())),
-                );
-                let pair: JsValue = js_pair(
-                    JsValue::from_str("pair"),
-                    js_pair(
-                        js_object_from_sexp(a.clone()),
-                        js_object_from_sexp(b.clone()),
-                    ),
-                );
-                array.set(1, pair);
-                object_to_value(&Object::from_entries(&array).unwrap())
-            }),
+                Ok(array_to_value(array))
+            } else {
+                t(&js_object_from_sexp(a.clone())?, &js_object_from_sexp(b.clone())?)
+            }
+        }
     }
 }
 

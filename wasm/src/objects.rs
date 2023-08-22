@@ -16,7 +16,7 @@ use clvm_tools_rs::compiler::sexp::SExp;
 use clvm_tools_rs::compiler::srcloc::Srcloc;
 
 use crate::api::{create_clvm_runner_err, get_next_id};
-use crate::jsval::sexp_from_js_object;
+use crate::jsval::{js_object_from_sexp, sexp_from_js_object};
 
 const DEFAULT_CACHE_ENTRIES: usize = 1024;
 
@@ -179,7 +179,11 @@ static PROGRAM_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
     FunctionWrapperDesc {
         export_name: "equal_to",
         member_name: "equal_to_internal",
-    }
+    },
+    FunctionWrapperDesc {
+        export_name: "as_javascript",
+        member_name: "as_javascript_internal",
+    },
 ];
 
 static TUPLE_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
@@ -388,15 +392,13 @@ impl Program {
             let object_b = finish_new_object(id_b, &new_cached_b)?;
 
             let result_value = Array::new();
+            result_value.set(0, object_a);
+            result_value.set(1, object_b);
+            // Support reading as a classic clvm input.
             Reflect::set(
                 &result_value,
-                &JsString::from("0"),
-                &object_a,
-            )?;
-            Reflect::set(
+                &JsString::from("pair"),
                 &result_value,
-                &JsString::from("1"),
-                &object_b,
             )?;
             Reflect::set_prototype_of(
                 &result_value,
@@ -578,5 +580,12 @@ impl Program {
             return Ok(true);
         }
         Ok(a_cached.modern == b_cached.modern)
+    }
+
+    #[wasm_bindgen]
+    pub fn as_javascript_internal(obj: &JsValue) -> Result<JsValue, JsValue> {
+        let cacheval = js_cache_value_from_js(obj)?;
+        let cached = find_cached_sexp(cacheval.entry, &cacheval.content)?;
+        js_object_from_sexp(cached.modern.clone())
     }
 }

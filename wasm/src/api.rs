@@ -147,7 +147,7 @@ impl CldbSingleBespokeOverride for JsBespokeOverride {
     // When the user returns, try to convert the result back to sexp.
     fn get_override(&self, env: Rc<SExp>) -> Result<Rc<SExp>, RunFailure> {
         let args = js_sys::Array::new();
-        args.set(0, js_object_from_sexp(env.clone()));
+        args.set(0, js_object_from_sexp(env.clone()).map_err(|_| RunFailure::RunErr(env.loc(), "error converting override value".to_string()))?);
         self.fun
             .apply(&JsValue::null(), &args)
             .map_err(|e| {
@@ -253,7 +253,7 @@ pub fn create_clvm_runner(
 #[wasm_bindgen]
 pub fn final_value(runner: i32) -> JsValue {
     with_runner(runner, |r| {
-        r.cldbrun.final_result().map(|v| js_object_from_sexp(v))
+        r.cldbrun.final_result().map(|v| js_object_from_sexp(v).unwrap_or_else(|e| e))
     })
     .unwrap_or_else(|| JsValue::null())
 }
@@ -475,7 +475,7 @@ pub fn repl_run_string(repl_id: i32, input: String) -> JsValue {
                 ))
             }
         })
-        .map(|v| v.map(|v| js_object_from_sexp(v.to_sexp())))
+        .map(|v| v.map(|v| js_object_from_sexp(v.to_sexp()).unwrap_or_else(|e| e)))
         .unwrap_or_else(|e| {
             Some(create_clvm_runner_err(format!(
                 "{}: {}",
@@ -503,5 +503,5 @@ pub fn h(v: String) -> Result<Vec<u8>, JsValue> {
 
 #[wasm_bindgen]
 pub fn t(a: &JsValue, b: &JsValue) -> Result<JsValue, JsValue> {
-    Program::as_pair_internal(&Program::cons_internal(a, b)?)
+    Program::as_pair_internal(&Program::cons_internal(&Program::to(a)?, &Program::to(b)?)?)
 }
