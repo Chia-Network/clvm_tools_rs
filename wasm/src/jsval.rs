@@ -18,6 +18,8 @@ use clvm_tools_rs::util::Number;
 
 use wasm_bindgen::prelude::*;
 
+use crate::objects::{find_cached_sexp, js_cache_value_from_js};
+
 const G1_ELEMENT_LENGTH: u32 = 48;
 
 pub fn array_to_value(v: Array) -> JsValue {
@@ -185,7 +187,12 @@ pub fn detect_g1(loc: &Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
 }
 
 pub fn sexp_from_js_object(sstart: Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
-    if v.is_bigint() {
+    // Already converted value.
+    if let Ok(res) = js_cache_value_from_js(v) {
+        find_cached_sexp(res.entry, &res.content).map(|result| {
+            result.modern.clone()
+        }).ok()
+    } else if v.is_bigint() {
         BigInt::new(v)
             .ok()
             .and_then(|v| v.to_string(10).ok())
