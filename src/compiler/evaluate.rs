@@ -1354,7 +1354,7 @@ impl<'info> Evaluator {
         body: Rc<BodyForm>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        let mut visited = VisitedMarker::again(body.loc(), visited_)?;
+        let mut visited = VisitedMarker::again(body.loc(), visited_)?;  // create a new marker at current depth, referencing prev marker
         match body.borrow() {
             BodyForm::Let(LetFormKind::Parallel, letdata) => {
                 if eval_dont_expand_let(&letdata.inline_hint) && only_inline {

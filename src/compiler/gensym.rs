@@ -6,6 +6,8 @@ lazy_static! {
 }
 
 /// As (gensym ...) in lisp.
+// generates a unique non-clashing name
+// form is "name_$_amountCalled"
 pub fn gensym(name: Vec<u8>) -> Vec<u8> {
     let count = ARGNAME_CTR.fetch_add(1, Ordering::SeqCst);
     let mut result_vec = name;

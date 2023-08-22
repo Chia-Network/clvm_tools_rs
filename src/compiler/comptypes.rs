@@ -167,6 +167,8 @@ pub struct LambdaData {
     pub body: Rc<BodyForm>,
 }
 
+// BodyForms live inside Defun and Defconst and give information about what specific kind of defun / defconst it is.
+// Remember all of these expressions eventually boil down to `(a *code* *environment*)`
 #[derive(Clone, Debug, Serialize)]
 pub enum BodyForm {
     /// A let or let* form (depending on LetFormKind).
@@ -343,6 +345,7 @@ pub enum HelperForm {
     /// A macro definition (see DefmacData).
     Defmacro(DefmacData),
     /// A function definition (see DefunData).
+    /// the bool is is_inline
     Defun(bool, DefunData),
 }
 

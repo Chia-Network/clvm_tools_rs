@@ -580,7 +580,7 @@ fn compile_call(
 pub fn do_mod_codegen(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
-    program: &CompileForm,
+    program: &CompileForm,  // contents inside a (mod )
 ) -> Result<CompiledCode, CompileErr> {
     // A mod form yields the compiled code.
     let without_env = opts.set_start_env(None).set_in_defun(false);
@@ -588,8 +588,8 @@ pub fn do_mod_codegen(
     let runner = context.runner();
     let optimizer = context.optimizer.duplicate();
     let mut context_wrapper = CompileContextWrapper::new(
-        context.allocator(),
-        runner.clone(),
+        context.allocator(),  // returns a mutable reference to the Allocator
+        runner.clone(),  // returns a mutable reference to the Runner
         &mut throwaway_symbols,
         optimizer,
     );
@@ -915,9 +915,9 @@ fn generate_let_defun(
     )
 }
 
-fn generate_let_args(_l: Srcloc, blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {
-    blist.iter().map(|b| b.body.clone()).collect()
-}
+// fn generate_let_args(blist: Vec<Rc<Binding>>) -> Vec<Rc<BodyForm>> {
+//     blist.iter().map(|b| b.body.clone()).collect()  // return a vec of bodys from a vec of bindings
+// }
 
 pub fn hoist_assign_form(letdata: &LetData) -> Result<BodyForm, CompileErr> {
     // Topological sort of bindings.
@@ -1010,6 +1010,15 @@ pub fn hoist_assign_form(letdata: &LetData) -> Result<BodyForm, CompileErr> {
     Ok(output_let)
 }
 
+
+// this function processes let bindings and returns them as a HelperForm
+// this will turn:
+// (defun F (X Y) (let ((A (+ X Y))) (do-something A X Y)))
+// into:
+// (defun letbinding_$_99 ((X Y) A) (do-something A X Y))
+// (defun F (X Y) (letbinding_$_99 (r @*env*) (+ X Y))
+
+// This function returns [new_helpers_from_body, new_body]
 pub fn hoist_body_let_binding(
     outer_context: Option<Rc<SExp>>,
     args: Rc<SExp>,
@@ -1018,7 +1027,7 @@ pub fn hoist_body_let_binding(
     match body.borrow() {
         BodyForm::Let(LetFormKind::Sequential, letdata) => {
             if letdata.bindings.is_empty() {
-                return Ok((vec![], letdata.body.clone()));
+                return Ok((vec![], letdata.body.clone()));  // body is processed so return as is
             }
 
             // If we're here, we're in the middle of hoisting.
@@ -1027,7 +1036,7 @@ pub fn hoist_body_let_binding(
                 // There is one binding, so we just need to put body below
                 letdata.body.clone()
             } else {
-                // Slice other bindings
+                // there other bindings, so let's slice them
                 let sub_bindings = letdata.bindings.iter().skip(1).cloned().collect();
                 Rc::new(BodyForm::Let(
                     LetFormKind::Sequential,
@@ -1038,11 +1047,12 @@ pub fn hoist_body_let_binding(
                 ))
             };
 
-            hoist_body_let_binding(
+            hoist_body_let_binding(  // recursively call self with the rest of the let expression
                 outer_context,
                 args,
                 Rc::new(BodyForm::Let(
-                    LetFormKind::Parallel,
+                    LetFormKind::Parallel,  // TODO: how do we know that they aren't Sequential?
+                    // parallel means the let expressions don't depend on each other
                     Box::new(LetData {
                         bindings: vec![letdata.bindings[0].clone()],
                         body: new_sub_expr,
@@ -1053,21 +1063,23 @@ pub fn hoist_body_let_binding(
         }
         BodyForm::Let(LetFormKind::Parallel, letdata) => {
             let mut out_defuns = Vec::new();
-            let defun_name = gensym("letbinding".as_bytes().to_vec());
+            let defun_name = gensym("letbinding".as_bytes().to_vec());  // generate a unique non-clashing name
 
             let mut revised_bindings = Vec::new();
-            for b in letdata.bindings.iter() {
+            let mut body_vec = Vec::new();
+            for b in letdata.bindings.iter() {  // process each binding individually
                 let (mut new_helpers, new_binding) =
                     hoist_body_let_binding(outer_context.clone(), args.clone(), b.body.clone())?;
                 out_defuns.append(&mut new_helpers);
-                revised_bindings.push(Rc::new(Binding {
+                revised_bindings.push(Rc::new(Binding {  // add to revised bindings
                     loc: b.loc.clone(),
                     nl: b.nl.clone(),
                     pattern: b.pattern.clone(),
-                    body: new_binding,
+                    body: new_binding.clone(),
                 }));
+                body_vec.push(new_binding);
             }
-            let generated_defun = generate_let_defun(
+            let generated_defun = generate_let_defun(  // turn individual lets into a defun
                 letdata.loc.clone(),
                 None,
                 &defun_name,
@@ -1076,14 +1088,15 @@ pub fn hoist_body_let_binding(
                 revised_bindings.to_vec(),
                 letdata.body.clone(),
             );
-            out_defuns.push(generated_defun);
+            out_defuns.push(generated_defun);  // add defun to output vec
 
-            let mut let_args = generate_let_args(letdata.loc.clone(), revised_bindings.to_vec());
+            // let mut let_args = generate_let_args(revised_bindings.to_vec());  // extract bodys from forms
+
             let pass_env = outer_context
-                .map(create_let_env_expression)
+                .map(create_let_env_expression)  // maps outer_context using the create_let_env_expression function
                 .unwrap_or_else(|| {
                     BodyForm::Call(
-                        letdata.loc.clone(),
+                        letdata.loc.clone(),  //srcloc
                         vec![
                             Rc::new(BodyForm::Value(SExp::Atom(
                                 letdata.loc.clone(),
@@ -1100,8 +1113,8 @@ pub fn hoist_body_let_binding(
             let mut call_args = vec![
                 Rc::new(BodyForm::Value(SExp::Atom(letdata.loc.clone(), defun_name))),
                 Rc::new(pass_env),
-            ];
-            call_args.append(&mut let_args);
+            ];  // (func_name environment)
+            call_args.append(&mut body_vec);  // (func_name environment let_bindings)
 
             let final_call = BodyForm::Call(letdata.loc.clone(), call_args);
             Ok((out_defuns, Rc::new(final_call)))
@@ -1160,14 +1173,14 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
 
     while i < result.len() {
         match result[i].clone() {
-            HelperForm::Defun(inline, defun) => {
+            HelperForm::Defun(inline, defun_data) => {
                 let context = if inline {
-                    Some(defun.args.clone())
+                    Some(defun_data.args.clone())
                 } else {
-                    None
+                    None  // inline functions have no additional arguments / context
                 };
                 let helper_result =
-                    hoist_body_let_binding(context, defun.args.clone(), defun.body.clone())?;
+                    hoist_body_let_binding(context, defun_data.args.clone(), defun_data.body.clone())?;
                 let hoisted_helpers = helper_result.0;
                 let hoisted_body = helper_result.1.clone();
 
@@ -1175,8 +1188,7 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
                     inline,
                     DefunData {
                         body: hoisted_body,
-                        ty: defun.ty.clone(),
-                        ..defun.clone()
+                        ..defun_data.clone()  // copy the rest of the data fields from the existing defun_data
                     },
                 );
 
@@ -1195,10 +1207,11 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
     Ok(result)
 }
 
+// this function returns a PrimaryCodegen which is a struct that contains a information about the code overall
 fn start_codegen(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
-    program: CompileForm,
+    program: CompileForm,  // CompileForm is what's inside a (mod )
 ) -> Result<PrimaryCodegen, CompileErr> {
     // Choose code generator configuration
     let mut code_generator = match opts.code_generator() {
@@ -1207,11 +1220,12 @@ fn start_codegen(
     };
 
     // Start compiler with all macros and constants
-    for h in program.helpers.iter() {
+    for h in program.helpers.iter() {  // for each helper (defun, defmacro, defconst, let, etc.)
         code_generator = match h.borrow() {
+            // we're looking for defconstants, and defmacros at this step
             HelperForm::Defconstant(defc) => match defc.kind {
                 ConstantKind::Simple => {
-                    let expand_program = SExp::Cons(
+                    let expand_program = SExp::Cons(  // creates: (mod () (q . *body*))
                         defc.loc.clone(),
                         Rc::new(SExp::Atom(defc.loc.clone(), "mod".as_bytes().to_vec())),
                         Rc::new(SExp::Cons(
@@ -1226,13 +1240,14 @@ fn start_codegen(
                     );
                     let updated_opts = opts.set_code_generator(code_generator.clone());
                     let runner = context.runner();
+                    // call compiler::compile_program, which calls compiler::compile_pre_forms
                     let code = updated_opts.compile_program(
                         context.allocator(),
                         runner.clone(),
                         Rc::new(expand_program),
                         &mut HashMap::new(),
-                    )?;
-                    run(
+                    )?;  // (q . *body*)
+                    run(  // evaluate constant using current context and runner
                         context.allocator(),
                         runner,
                         opts.prim_map(),
@@ -1245,7 +1260,7 @@ fn start_codegen(
                         CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
                     })
                     .and_then(|res| {
-                        fail_if_present(
+                        fail_if_present(  // check for name collisions between constants and defc.name
                             defc.loc.clone(),
                             &code_generator.constants,
                             &defc.name,
@@ -1253,11 +1268,11 @@ fn start_codegen(
                         )
                     })
                     .map(|res| {
-                        if defc.tabled {
-                            code_generator.add_tabled_constant(&defc.name, res)
+                        if defc.tabled {  // is it inline or added into environment (tabled)
+                            code_generator.add_tabled_constant(&defc.name, res)  // add name & value to tabled_constants hashmap in PrimaryCodegen
                         } else {
                             let quoted = primquote(defc.loc.clone(), res);
-                            code_generator.add_constant(&defc.name, Rc::new(quoted))
+                            code_generator.add_constant(&defc.name, Rc::new(quoted))  // add name & value to constants hashmap in PrimaryCodegen
                         }
                     })?
                 }
@@ -1482,7 +1497,7 @@ fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileE
 pub fn codegen(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
-    cmod: &CompileForm,
+    cmod: &CompileForm,  // expression inside a (mod )
 ) -> Result<SExp, CompileErr> {
     let mut start_of_codegen_optimization = StartOfCodegenOptimization {
         program: cmod.clone(),
