@@ -176,6 +176,10 @@ static PROGRAM_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
         export_name: "list_len",
         member_name: "list_len_internal",
     },
+    FunctionWrapperDesc {
+        export_name: "equal_to",
+        member_name: "equal_to_internal",
+    }
 ];
 
 static TUPLE_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
@@ -561,5 +565,18 @@ impl Program {
             }
         }
         Ok(count)
+    }
+
+    #[wasm_bindgen]
+    pub fn equal_to_internal(a: &JsValue, b: &JsValue) -> Result<bool, JsValue> {
+        let a_cacheval = js_cache_value_from_js(a)?;
+        let a_cached = find_cached_sexp(a_cacheval.entry, &a_cacheval.content)?;
+        let b_cacheval = js_cache_value_from_js(b)?;
+        let b_cached = find_cached_sexp(b_cacheval.entry, &b_cacheval.content)?;
+        // Short circuit address equality.
+        if Rc::as_ptr(&a_cached.modern) == Rc::as_ptr(&b_cached.modern) {
+            return Ok(true);
+        }
+        Ok(a_cached.modern == b_cached.modern)
     }
 }

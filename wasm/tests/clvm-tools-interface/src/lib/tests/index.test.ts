@@ -59,7 +59,7 @@ it('Has as_int', async () => {
     assert.equal(int_value, 7);
     try {
         non_int_value = Program.to([7,13]).as_int();
-        assert.that(false);
+        assert.fail();
     } catch (e) {
         assert.equal(e.toString(), "not a number");
     }
@@ -70,7 +70,7 @@ it('Has as_bigint', async () => {
     assert.equal(int_value, 10000000000000000000000n);
     try {
         non_int_value = Program.to([7,13]).as_bigint();
-        assert.that(false);
+        assert.fail();
     } catch (e) {
         assert.equal(e.toString(), "not a number");
     }
@@ -82,13 +82,13 @@ it('Has first and rest', async () => {
     assert.equal(test_list.rest().toString(), 'ff0dff11ff1780');
     try {
         Program.to([]).first();
-        assert.that(false);
+        assert.fail();
     } catch (e) {
         assert.equal(e.toString(), "not a cons");
     }
     try {
         Program.to([]).rest();
-        assert.that(false);
+        assert.fail();
     } catch (e) {
         assert.equal(e.toString(), "not a cons");
     }
@@ -123,6 +123,15 @@ it('Has list_len', async () => {
     let not_list = Program.to(16);
     let not_list_len = not_list.list_len();
     assert.equal(not_list_len, 0);
+});
+
+it('Has equal_to', async () => {
+    let p1 = Program.to([7,8,[9,10],11]);
+    let p2 = Program.from_hex('ff07ff08ffff09ff0a80ff0b80');
+    let p3 = Program.to([7,8,[9,11],11]);
+    assert.ok(p1.equal_to(p2));
+    assert.ok(!p1.equal_to(p3));
+    assert.ok(!p2.equal_to(p3));
 });
 
 it('Has run', async () => {
