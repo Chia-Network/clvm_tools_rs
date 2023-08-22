@@ -153,6 +153,10 @@ static PROGRAM_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
         member_name: "as_bigint_internal",
     },
     FunctionWrapperDesc {
+        export_name: "as_bin",
+        member_name: "as_bin_internal",
+    },
+    FunctionWrapperDesc {
         export_name: "first",
         member_name: "first_internal",
     },
@@ -526,5 +530,15 @@ impl Program {
             &JsString::from("1"),
         )?;
         Program::cons_internal(&a, &b)
+    }
+
+    #[wasm_bindgen]
+    pub fn as_bin_internal(obj: &JsValue) -> Result<Vec<u8>, JsValue> {
+        let convert = Reflect::get(
+            obj,
+            &JsString::from("content"),
+        )?.as_string().ok_or(JsString::from("content wasn't a hex string"))?;
+        let bytes = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(convert))).map_err(|_| JsString::from("could not convert to binary data"))?;
+        Ok(bytes.data().clone())
     }
 }

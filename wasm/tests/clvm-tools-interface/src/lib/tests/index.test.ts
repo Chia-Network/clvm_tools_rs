@@ -110,6 +110,12 @@ it('Has the t function', async () => {
     assert.equal(Program.to(tuple).toString(), consed.toString());
 });
 
+it('Has as_bin', async() => {
+    let test_data = Program.to([7,8,9,10]);
+    let as_bin = test_data.as_bin();
+    assert.equal([255,7,255,8,255,9,255,10,128].toString(), as_bin.toString());
+});
+
 it('Has run', async () => {
     let program = Program.from_hex('ff12ffff10ff02ffff010180ffff11ff02ffff01018080');
     let args = Program.to([13]);
