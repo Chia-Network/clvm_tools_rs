@@ -110,10 +110,19 @@ it('Has the t function', async () => {
     assert.equal(Program.to(tuple).toString(), consed.toString());
 });
 
-it('Has as_bin', async() => {
+it('Has as_bin', async () => {
     let test_data = Program.to([7,8,9,10]);
     let as_bin = test_data.as_bin();
     assert.equal([255,7,255,8,255,9,255,10,128].toString(), as_bin.toString());
+});
+
+it('Has list_len', async () => {
+    let list_data = Program.to([7,8,9,10]);
+    let list_len = list_data.list_len();
+    assert.equal(list_len, 4);
+    let not_list = Program.to(16);
+    let not_list_len = not_list.list_len();
+    assert.equal(not_list_len, 0);
 });
 
 it('Has run', async () => {

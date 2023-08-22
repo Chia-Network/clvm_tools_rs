@@ -172,6 +172,10 @@ static PROGRAM_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
         export_name: "run",
         member_name: "run_internal",
     },
+    FunctionWrapperDesc {
+        export_name: "list_len",
+        member_name: "list_len_internal",
+    },
 ];
 
 static TUPLE_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
@@ -540,5 +544,22 @@ impl Program {
         )?.as_string().ok_or(JsString::from("content wasn't a hex string"))?;
         let bytes = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(convert))).map_err(|_| JsString::from("could not convert to binary data"))?;
         Ok(bytes.data().clone())
+    }
+
+    #[wasm_bindgen]
+    pub fn list_len_internal(obj: &JsValue) -> Result<i32, JsValue> {
+        let cacheval = js_cache_value_from_js(obj)?;
+        let cached = find_cached_sexp(cacheval.entry, &cacheval.content)?;
+        let mut val_ref = cached.modern.clone();
+        let mut count: i32 = 0;
+        loop {
+            if let SExp::Cons(_, _, b) = val_ref.borrow() {
+                val_ref = b.clone();
+                count += 1;
+            } else {
+                break;
+            }
+        }
+        Ok(count)
     }
 }
