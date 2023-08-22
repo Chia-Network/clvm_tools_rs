@@ -20,8 +20,6 @@ use wasm_bindgen::prelude::*;
 
 use crate::objects::{find_cached_sexp, js_cache_value_from_js};
 
-const G1_ELEMENT_LENGTH: u32 = 48;
-
 pub fn array_to_value(v: Array) -> JsValue {
     let jref: &JsValue = v.as_ref();
     jref.clone()
@@ -160,15 +158,12 @@ fn location(o: &Object) -> Option<Srcloc> {
         })
 }
 
-pub fn detect_g1(loc: &Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
+pub fn detect_serializable(loc: &Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
     let serialize_key = JsValue::from_str("serialize");
     js_sys::Reflect::get(v, &serialize_key).ok().and_then(|serialize| {
         Reflect::apply(serialize.unchecked_ref(), v, &js_sys::Array::new()).ok().and_then(|array| {
             Array::try_from(array).ok().and_then(|array| {
                 let mut bytes_array: Vec<u8> = vec![];
-                if array.length() != G1_ELEMENT_LENGTH {
-                    return None;
-                }
                 for item in array.iter() {
                     if let Some(n) = item.as_f64() {
                         if n < 0.0 || n > 255.0 {
@@ -202,7 +197,7 @@ pub fn sexp_from_js_object(sstart: Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
     } else if let Some(fval) = v.as_f64() {
         (fval as i64).to_bigint()
             .map(|x| Rc::new(SExp::Integer(sstart.clone(), x)))
-    } else if let Some(g1_bytes) = detect_g1(&sstart, v) {
+    } else if let Some(g1_bytes) = detect_serializable(&sstart, v) {
         Some(g1_bytes)
     } else if Array::is_array(v) {
         let a = Array::from(v);
