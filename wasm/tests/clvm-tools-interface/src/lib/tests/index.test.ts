@@ -135,11 +135,10 @@ it('Has equal_to', async () => {
 });
 
 it('Has as_javascript', async () => {
-    let tuple = t(9,10);
-    let original = [7,8,tuple,11];
+    let tuple = t(9,(t(10,11)));
+    let original = [7,8,tuple,12];
     let p1 = Program.to(original);
     let p1_as_js = p1.as_javascript();
-    console.log(p1_as_js);
     assert.equal(original.toString(), p1_as_js.toString());
 });
 
