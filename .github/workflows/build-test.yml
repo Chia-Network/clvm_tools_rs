@@ -120,7 +120,7 @@ jobs:
       run: |
         . ./activate
         python -m pip install pytest
-        python -m pip install blspy 
+        python -m pip install blspy
 
     - name: install clvm & clvm_tools
       run: |
@@ -144,6 +144,8 @@ jobs:
         python -c 'import clvm; print(clvm.__file__)'
         python -c 'import clvm_rs; print(clvm_rs.__file__)'
         python -c 'import clvm_tools_rs; print(clvm_tools_rs.__file__)'
+	echo "CLVM_TOOLS_RS_VERSION=$(python -c 'import clvm_tools_rs; print(clvm_tools_rs.get_version())')" >> "$GITHUB_ENV"
+
 
     - name: Verify recompilation of old sources match
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
@@ -157,7 +159,8 @@ jobs:
         git clone https://github.com/Chia-Network/chia-blockchain
 
         # Check that recompiling deployed puzzles match with their deployed hashes
-        (cd chia-blockchain && pip install .\[dev\] &&./activated.py python tools/manage_clvm.py check)
+        cp support/install_deps.sh support/verify_compiler_version.sh chia-blockchain
+        (cd chia-blockchain && pip install .\[dev\] && ./install_deps.sh && ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && ./activated.py python tools/manage_clvm.py check)
 
     - name: Test Classic command line tools with pytest
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
