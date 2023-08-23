@@ -120,7 +120,7 @@ jobs:
       run: |
         . ./activate
         python -m pip install pytest
-        python -m pip install blspy      
+        python -m pip install blspy 
 
     - name: install clvm & clvm_tools
       run: |
@@ -156,9 +156,8 @@ jobs:
         rm -rf chia-blockchain
         git clone https://github.com/Chia-Network/chia-blockchain
 
-        # Check recompiles
-        cp support/recompile_check.py chia-blockchain
-        (cd chia-blockchain && python recompile_check.py)
+        # Check that recompiling deployed puzzles match with their deployed hashes
+        (cd chia-blockchain && pip install .\[dev\] &&./activated.py python tools/manage_clvm.py check)
 
     - name: Test Classic command line tools with pytest
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
