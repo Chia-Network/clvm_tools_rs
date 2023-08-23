@@ -3,7 +3,7 @@
 # This script is called from $GIT_ROOT/.github/workflows/build-test.yml
 # This script is called while in $GIT_ROOT/chia-blockchain of clvm_tools_rs
 
-. ./activate
+. ./venv/bin/activate
 
 python -m pip uninstall clvm clvm_rs clvm_tools clvm_tools_rs
 
