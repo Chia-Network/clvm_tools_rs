@@ -156,6 +156,7 @@ jobs:
         # Check that recompiling deployed puzzles match with their deployed hashes
         cp support/install_deps.sh support/verify_compiler_version.sh chia-blockchain
         (cd chia-blockchain && python -m venv venv && . venv/bin/activate && pip install --upgrade pip \
+          python -m pip install maturin==1.1.0 && \
           cd .. && python support/wheelname.py && \
           cd chia-blockchain && \
           pip install click typing_extensions && \
