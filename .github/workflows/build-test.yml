@@ -141,7 +141,7 @@ jobs:
         echo "CLVM_TOOLS_RS_VERSION=$(python -c 'import clvm_tools_rs; print(clvm_tools_rs.get_version())')" >> "$GITHUB_ENV"
 
 
-    - name: Verify recompilation of old sources match
+    - name: Verify recompilation of old sources match with new compiler
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
         . ./activate
@@ -157,7 +157,7 @@ jobs:
         (cd chia-blockchain && python -m venv venv && . venv/bin/activate && \
           cd .. && python support/wheelname.py && \
           cd chia-blockchain && \
-          pip install .\[dev\] && \
+          #pip install .\[dev\] && \
           ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && ./activated.py python tools/manage_clvm.py check)
 
     - name: Test Classic command line tools with pytest
