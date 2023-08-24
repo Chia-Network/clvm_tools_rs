@@ -144,6 +144,7 @@ jobs:
     - name: Verify recompilation of old sources match with new compiler
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
+        set -x
         . ./activate
         # Build cmd line tools
         PYO3_PYTHON=`which python` cargo build --no-default-features --release
