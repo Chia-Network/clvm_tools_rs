@@ -160,6 +160,7 @@ jobs:
           cd .. && python support/wheelname.py && \
           cd chia-blockchain && \
           pip install click typing_extensions && \
+          export PYTHONPATH=${PYTHONPATH}:$(pwd) && \
           ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && ./activated.py python tools/manage_clvm.py check)
 
     - name: Test Classic command line tools with pytest
