@@ -54,10 +54,10 @@ jobs:
           . ./venv/bin/activate
           export PATH=~/.cargo/bin:$PATH
           pip install tomlkit
-          USE_FEATURES=$(./support/feature-fishing.py)
+          USE_FEATURES=$(python3 ./support/feature-fishing.py)
           echo "USE_FEATURES=${USE_FEATURES}" >> "$GITHUB_ENV"
-          pip install maturin==1.1.0
-          maturin build -i python --release --strip "--features=extension-module,${USE_FEATURES}"
+          pip3 install maturin==1.1.0
+          maturin build -i python3 --release --strip "--features=extension-module,${USE_FEATURES}"
           echo "cargo test using features: ${USE_FEATURES}"
           cargo test --features="${USE_FEATURES}"
 
