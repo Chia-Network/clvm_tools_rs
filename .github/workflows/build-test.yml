@@ -157,7 +157,7 @@ jobs:
         (cd chia-blockchain && python -m venv venv && . venv/bin/activate && \
           cd .. && python support/wheelname.py && \
           cd chia-blockchain && \
-          #pip install .\[dev\] && \
+          pip install click typing_extensions && \
           ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && ./activated.py python tools/manage_clvm.py check)
 
     - name: Test Classic command line tools with pytest
