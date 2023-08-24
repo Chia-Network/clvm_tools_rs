@@ -48,18 +48,19 @@ jobs:
         rm rustup-init checksum.txt
 
     - name: Build m1 wheels
-      shell: arch -arm64 sh
       run: |
-        python3 -m venv venv
-        . ./venv/bin/activate
-        export PATH=~/.cargo/bin:$PATH
-        pip install tomlkit
-        USE_FEATURES=$(./support/feature-fishing.py)
-        echo "USE_FEATURES=${USE_FEATURES}" >> "$GITHUB_ENV"
-        pip install maturin==1.1.0
-        maturin build -i python --release --strip "--features=extension-module,${USE_FEATURES}"
-        echo "cargo test using features: ${USE_FEATURES}"
-        cargo test --features="${USE_FEATURES}"
+        arch -arm64 sh -s <<EOF
+          python3 -m venv venv
+          . ./venv/bin/activate
+          export PATH=~/.cargo/bin:$PATH
+          pip install tomlkit
+          USE_FEATURES=$(./support/feature-fishing.py)
+          echo "USE_FEATURES=${USE_FEATURES}" >> "$GITHUB_ENV"
+          pip install maturin==1.1.0
+          maturin build -i python --release --strip "--features=extension-module,${USE_FEATURES}"
+          echo "cargo test using features: ${USE_FEATURES}"
+          cargo test --features="${USE_FEATURES}"
+          EOF
 
     - name: Install clvm_tools_rs wheel
       run: |
