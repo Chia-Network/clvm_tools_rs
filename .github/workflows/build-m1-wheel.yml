@@ -60,7 +60,6 @@ jobs:
           maturin build -i python --release --strip "--features=extension-module,${USE_FEATURES}"
           echo "cargo test using features: ${USE_FEATURES}"
           cargo test --features="${USE_FEATURES}"
-          EOF
 
     - name: Install clvm_tools_rs wheel
       run: |
