@@ -1,10 +1,11 @@
-#!/bin/bash
+#!/bin/bash -x
 
 # This script is called from $GIT_ROOT/.github/workflows/build-test.yml
 # This script is called while in $GIT_ROOT/chia-blockchain of clvm_tools_rs
 
 . ./venv/bin/activate
 
+python -m pip install --upgrade pip
 python -m pip uninstall clvm clvm_rs clvm_tools clvm_tools_rs
 
 git clone https://github.com/Chia-Network/clvm.git --branch=main --single-branch

@@ -155,9 +155,9 @@ jobs:
         # Check that recompiling deployed puzzles match with their deployed hashes
         cp support/install_deps.sh support/verify_compiler_version.sh chia-blockchain
         (cd chia-blockchain && python -m venv venv && . venv/bin/activate && \
-          python -m pip install maturin==1.1.0 && \
-          ./install_deps.sh && \
-          pip install .\[dev\] &&  \
+          cd .. && python support/wheelname.py && \
+          cd chia-blockchain && \
+          pip install .\[dev\] && \
           ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && ./activated.py python tools/manage_clvm.py check)
 
     - name: Test Classic command line tools with pytest
