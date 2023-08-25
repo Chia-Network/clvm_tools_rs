@@ -43,6 +43,10 @@ jobs:
       - name: Test wasm
         run: node wasm/tests/index.js
 
+      - name: Test clvm-js like wasm interface
+        run: |
+          cd wasm/tests/clvm-tools-interface && npm install && yarn test
+
       - name: Upload npm pkg artifacts
         uses: actions/upload-artifact@v3
         with:

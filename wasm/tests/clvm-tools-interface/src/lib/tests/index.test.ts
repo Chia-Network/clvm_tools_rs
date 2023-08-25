@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import { resolve } from 'path';
 import * as assert from 'assert';
 import * as bls_loader from 'bls-signatures';
 const {h, t, Program} = require('../../../../../pkg/clvm_tools_wasm');
@@ -59,7 +61,7 @@ it('Has as_int', async () => {
     assert.equal(int_value, 7);
     try {
         non_int_value = Program.to([7,13]).as_int();
-        assert.fail();
+        assert.fail(true);
     } catch (e) {
         assert.equal(e.toString(), "not a number");
     }
@@ -70,7 +72,7 @@ it('Has as_bigint', async () => {
     assert.equal(int_value, 10000000000000000000000n);
     try {
         non_int_value = Program.to([7,13]).as_bigint();
-        assert.fail();
+        assert.fail(true);
     } catch (e) {
         assert.equal(e.toString(), "not a number");
     }
@@ -82,13 +84,13 @@ it('Has first and rest', async () => {
     assert.equal(test_list.rest().toString(), 'ff0dff11ff1780');
     try {
         Program.to([]).first();
-        assert.fail();
+        assert.fail(true);
     } catch (e) {
         assert.equal(e.toString(), "not a cons");
     }
     try {
         Program.to([]).rest();
-        assert.fail();
+        assert.fail(true);
     } catch (e) {
         assert.equal(e.toString(), "not a cons");
     }
@@ -145,5 +147,40 @@ it('Has as_javascript', async () => {
 it('Has run', async () => {
     let program = Program.from_hex('ff12ffff10ff02ffff010180ffff11ff02ffff01018080');
     let args = Program.to([13]);
-    assert.equal(program.run(args).toString(), '8200a8');
+    const [cost, run_result] = program.run(args);
+    assert.equal(run_result.toString(), '8200a8');
+    assert.equal(cost, 2658);
+});
+
+it('Has curry', async () => {
+    let program = Program.from_hex('ff12ffff10ff02ffff010180ffff11ff02ffff01018080');
+    let program_with_arg = program.curry(Program.to(13));
+    const [cost, run_result] = program_with_arg.run(Program.to([]));
+    assert.equal(run_result.toString(), '8200a8');
+    assert.equal(cost, 2884);
+});
+
+export class ChiaExample {
+    constructor(MOD) {
+        this.MOD = MOD;
+    }
+    public puzzle_for_synthetic_public_key(synthetic_public_key: G1Element): Program {
+        return this.MOD.curry(synthetic_public_key);
+    }
+}
+
+it('works as expected in context', async () => {
+    let bls = await bls_loader.default();
+    const program_text = fs.readFileSync(resolve(__dirname, '../../../content/p2_delegated_puzzle_or_hidden_puzzle.clvm.hex'),'utf-8');
+    const MOD: Program = Program.from_hex(program_text);
+    let ce = new ChiaExample(MOD);
+    let sk = bls.AugSchemeMPL.key_gen([
+        0, 50, 6, 244, 24, 199, 1, 25, 52, 88, 192, 19, 18, 12, 89, 6, 220,
+        18, 102, 58, 209, 82, 12, 62, 89, 110, 182, 9, 44, 20, 254, 22
+    ]);
+    let pk = bls.AugSchemeMPL.sk_to_g1(sk);
+    // pk bytes 86243290bbcbfd9ae75bdece7981965350208eb5e99b04d5cd24e955ada961f8c0a162dee740be7bdc6c3c0613ba2eb1
+    // Expected puzzle hash = 30cdae3d54778db5eba21584c452cfb1a278136b2ec352ba44a52078efea7507
+    let target_puzzle = ce.puzzle_for_synthetic_public_key(pk);
+    assert.equal(target_puzzle.sha256tree().toString(), h('30cdae3d54778db5eba21584c452cfb1a278136b2ec352ba44a52078efea7507').toString());
 });

@@ -8,10 +8,11 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 
 use clvmr::Allocator;
-use clvm_tools_rs::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
+use clvm_tools_rs::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType, bi_one};
 use clvm_tools_rs::classic::clvm::serialize::{SimpleCreateCLVMObject, sexp_to_stream, sexp_from_stream};
 use clvm_tools_rs::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 use clvm_tools_rs::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree, truthy};
+use clvm_tools_rs::compiler::prims::{primapply, primcons, primquote};
 use clvm_tools_rs::compiler::sexp::SExp;
 use clvm_tools_rs::compiler::srcloc::Srcloc;
 
@@ -23,6 +24,7 @@ const DEFAULT_CACHE_ENTRIES: usize = 1024;
 struct FunctionWrapperDesc {
     export_name: &'static str,
     member_name: &'static str,
+    varargs: bool,
 }
 
 #[derive(Clone)]
@@ -131,65 +133,90 @@ static PROGRAM_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
     FunctionWrapperDesc {
         export_name: "toString",
         member_name: "to_string_internal",
+        varargs: false,
     },
     FunctionWrapperDesc {
         export_name: "as_pair",
         member_name: "as_pair_internal",
+        varargs: false,
     },
     FunctionWrapperDesc {
         export_name: "listp",
         member_name: "listp_internal",
+        varargs: false,
     },
     FunctionWrapperDesc {
         export_name: "nullp",
         member_name: "nullp_internal",
+        varargs: false,
     },
     FunctionWrapperDesc {
         export_name: "as_int",
         member_name: "as_int_internal",
+        varargs: false,
     },
     FunctionWrapperDesc {
         export_name: "as_bigint",
         member_name: "as_bigint_internal",
+        varargs: false,
     },
     FunctionWrapperDesc {
         export_name: "as_bin",
         member_name: "as_bin_internal",
+        varargs: false,
     },
     FunctionWrapperDesc {
         export_name: "first",
         member_name: "first_internal",
+        varargs: false,
     },
     FunctionWrapperDesc {
         export_name: "rest",
         member_name: "rest_internal",
+        varargs: false,
     },
     FunctionWrapperDesc {
         export_name: "cons",
         member_name: "cons_internal",
+        varargs: false,
     },
     FunctionWrapperDesc {
         export_name: "run",
         member_name: "run_internal",
+        varargs: false,
     },
     FunctionWrapperDesc {
         export_name: "list_len",
         member_name: "list_len_internal",
+        varargs: false,
     },
     FunctionWrapperDesc {
         export_name: "equal_to",
         member_name: "equal_to_internal",
+        varargs: false,
     },
     FunctionWrapperDesc {
         export_name: "as_javascript",
         member_name: "as_javascript_internal",
+        varargs: false,
     },
+    FunctionWrapperDesc {
+        export_name: "curry",
+        member_name: "curry_internal",
+        varargs: true,
+    },
+    FunctionWrapperDesc {
+        export_name: "sha256tree",
+        member_name: "sha256tree_internal",
+        varargs: false,
+    }
 ];
 
 static TUPLE_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
     FunctionWrapperDesc {
         export_name: "to_program",
         member_name: "tuple_to_program_internal",
+        varargs: false
     },
 ];
 
@@ -260,9 +287,15 @@ fn get_program_prototype() -> Result<JsValue, JsValue> {
 
     let program_self = js_sys::eval("Program")?;
     for func_wrapper_desc in PROGRAM_FUNCTIONS.iter() {
+        let pass_on_args =
+            if func_wrapper_desc.varargs {
+                "[args]"
+            } else {
+                "args"
+            };
         let to_string_fun = js_sys::Function::new_with_args(
             "",
-            &format!("const t = this; return function() {{ let args = Array.prototype.slice.call(arguments); args.unshift(this); return t.{}.apply(null, args); }}", func_wrapper_desc.member_name)
+            &format!("const t = this; return function() {{ let args = Array.prototype.slice.call(arguments); let apply_args = {pass_on_args}; apply_args.unshift(this); return t.{}.apply(null, apply_args); }}", func_wrapper_desc.member_name)
         );
 
         let to_string_final = to_string_fun.call0(&program_self)?;
@@ -526,7 +559,11 @@ impl Program {
         })?;
         let result_id = get_next_id();
         let new_cached_result = create_cached_sexp(result_id, modern_result)?;
-        finish_new_object(result_id, &new_cached_result)
+        let result_object = finish_new_object(result_id, &new_cached_result)?;
+        let cost_and_result_array = Array::new();
+        cost_and_result_array.push(&JsValue::from_f64(run_result.0 as f64));
+        cost_and_result_array.push(&result_object);
+        Ok(cost_and_result_array.into())
     }
 
     #[wasm_bindgen]
@@ -587,5 +624,54 @@ impl Program {
         let cacheval = js_cache_value_from_js(obj)?;
         let cached = find_cached_sexp(cacheval.entry, &cacheval.content)?;
         js_object_from_sexp(cached.modern.clone())
+    }
+
+    // Ported from chia.types.blockchain_format.program in chia-blockchain.
+    //
+    // original comment:
+    //
+    // Replicates the curry function from clvm_tools, taking advantage of *args
+    // being a list.  We iterate through args in reverse building the code to
+    // create a clvm list.
+    //
+    // Given arguments to a function addressable by the '1' reference in clvm
+    //
+    // fixed_args = 1
+    //
+    // Each arg is prepended as fixed_args = (c (q . arg) fixed_args)
+    //
+    // The resulting argument list is interpreted with apply (2)
+    //
+    // (2 (1 . self) rest)
+    //
+    // Resulting in a function which places its own arguments after those
+    // curried in in the form of a proper list.
+    #[wasm_bindgen]
+    pub fn curry_internal(obj: &JsValue, args: Vec<JsValue>) -> Result<JsValue, JsValue> {
+        let program_val = Program::to(obj)?;
+        let cacheval = js_cache_value_from_js(&program_val)?;
+        let program = find_cached_sexp(cacheval.entry, &cacheval.content)?;
+        let mut fixed_args = Rc::new(SExp::Integer(get_srcloc(), bi_one()));
+
+        for a in args.iter().rev() {
+            let argval = Program::to(a)?;
+            let a_cacheval = js_cache_value_from_js(&argval)?;
+            let a_cached = find_cached_sexp(a_cacheval.entry, &a_cacheval.content)?;
+            fixed_args = Rc::new(primcons(
+                get_srcloc(),
+                Rc::new(primquote(get_srcloc(), a_cached.modern.clone())),
+                fixed_args
+            ));
+        }
+
+        let result = Rc::new(primapply(
+            get_srcloc(),
+            Rc::new(primquote(get_srcloc(), program.modern.clone())),
+            fixed_args
+        ));
+
+        let new_id = get_next_id();
+        let new_cached = create_cached_sexp(new_id, result)?;
+        finish_new_object(new_id, &new_cached)
     }
 }
