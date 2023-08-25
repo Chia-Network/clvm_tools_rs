@@ -159,7 +159,8 @@ jobs:
           python -m pip install maturin==1.1.0 && \
           cd .. && python support/wheelname.py && \
           cd chia-blockchain && \
-          pip install click typing_extensions && \
+          # deps for manage_clvm.py
+          pip install click typing_extensions chia_rs clvm && \
           export PYTHONPATH=${PYTHONPATH}:$(pwd) && \
           ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && ./activated.py python tools/manage_clvm.py check)
 
