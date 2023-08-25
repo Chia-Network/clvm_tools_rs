@@ -47,6 +47,13 @@ jobs:
         with:
           node-version: '16.x'
 
+      # Cargo.toml won't allow an "@" in the name, so we just update the package name this way for NPM
+      - name: Update package name for npm
+        working-directory: ${{ github.workspace }}/wasm/pkg
+        run: |
+          cp package.json package.json.orig
+          jq '.name="@chia/chialisp"' package.json > temp.json && mv temp.json package.json
+
       - name: Test wasm
         run: node wasm/tests/index.js
 
@@ -56,8 +63,18 @@ jobs:
           name: npm-pkg
           path: ./wasm/pkg/clvm_tools_wasm-*.tgz
 
+      - name: Test for secrets access
+        id: check_secrets
+        shell: bash
+        run: |
+          unset HAS_SECRET
+          if [ -n "$SECRET" ]; then HAS_SECRET='true' ; fi
+          echo "HAS_SECRET=${HAS_SECRET}" >>$GITHUB_OUTPUT
+        env:
+          SECRET: "${{ secrets.NPM_TOKEN }}"
+
       - name: Publish wasm
-        if: env.FULL_RELEASE == 'true'
+        if: env.FULL_RELEASE == 'true' && steps.check_secrets.HAS_SECRET
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         working-directory: ${{ github.workspace }}/wasm/pkg
