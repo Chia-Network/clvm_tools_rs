@@ -301,10 +301,10 @@ jobs:
           override: true
       - name: clippy
         run: cargo clippy --all -- -D warnings
-      - uses: actions-rs/clippy-check@v1
+      - uses: giraffate/clippy-action@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features
+          reporter: 'github-pr-review'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
   unit_tests:
     runs-on: ubuntu-20.04
