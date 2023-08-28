@@ -492,6 +492,8 @@ impl CSEBindingInfo {
     }
 }
 
+type CSEReplacementTargetAndBindings<'a> = Vec<&'a (Vec<BodyformPathArc>, Vec<Rc<Binding>>)>;
+
 pub fn cse_optimize_bodyform(
     loc: &Srcloc,
     name: &[u8],
@@ -676,21 +678,20 @@ pub fn cse_optimize_bodyform(
     // replacements.
     //
     // Sort the target paths so we put in deeper paths before outer ones.
-    let mut sorted_bindings: Vec<(Vec<BodyformPathArc>, Vec<Rc<Binding>>)> =
-        Vec::new();
+    let mut sorted_bindings: Vec<(Vec<BodyformPathArc>, Vec<Rc<Binding>>)> = Vec::new();
 
     // We'll do this by finding bindings that are not dominated and processing
     // them last.
     while !new_binding_stack.is_empty() {
-        let (still_dominated, not_dominated):
-        (Vec<&(Vec<BodyformPathArc>, Vec<Rc<Binding>>)>,
-         Vec<&(Vec<BodyformPathArc>, Vec<Rc<Binding>>)>) =
-            new_binding_stack.iter().partition(|(t, _)| {
-                new_binding_stack.iter().any(|(t_other, _)| {
-                    // t is dominated if t_other contains it.
-                    t_other != t && path_overlap_one_way(t_other, t)
-                })
-            });
+        let (still_dominated, not_dominated): (
+            CSEReplacementTargetAndBindings<'_>,
+            CSEReplacementTargetAndBindings<'_>
+        ) = new_binding_stack.iter().partition(|(t, _)| {
+            new_binding_stack.iter().any(|(t_other, _)| {
+                // t is dominated if t_other contains it.
+                t_other != t && path_overlap_one_way(t_other, t)
+            })
+        });
         let mut not_dominated_vec: Vec<(Vec<BodyformPathArc>, Vec<Rc<Binding>>)> =
             not_dominated.into_iter().cloned().collect();
         sorted_bindings.append(&mut not_dominated_vec);

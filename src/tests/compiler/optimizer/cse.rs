@@ -98,9 +98,9 @@ fn test_cse_dominace_sorting() {
         "brun".to_string(),
         "-n".to_string(),
         program,
-        "(((3 3) (2 1 13 19) (5 5) (7 7)))".to_string()
+        "(((3 3) (2 1 13 19) (5 5) (7 7)))".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     assert_eq!(run_result, "(13 19)");
 }
