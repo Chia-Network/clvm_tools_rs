@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 use std::cmp::min;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::rc::Rc;
 
 use crate::compiler::clvm::sha256tree;
@@ -131,7 +131,7 @@ pub fn cse_detect(fe: &BodyForm) -> Result<Vec<CSEDetectionWithoutConditions>, C
     )?;
 
     // Group them by hash since we've renamed variables.
-    let mut by_hash: HashMap<Vec<u8>, Vec<PathDetectVisitorResult<Vec<u8>>>> = HashMap::new();
+    let mut by_hash: BTreeMap<Vec<u8>, Vec<PathDetectVisitorResult<Vec<u8>>>> = BTreeMap::new();
     for expr in found_exprs.iter() {
         if let Some(lst) = by_hash.get_mut(&expr.context) {
             lst.push(expr.clone());
@@ -479,7 +479,7 @@ struct CSEBindingSite {
 
 #[derive(Default, Debug)]
 struct CSEBindingInfo {
-    info: HashMap<Vec<BodyformPathArc>, Vec<CSEBindingSite>>,
+    info: BTreeMap<Vec<BodyformPathArc>, Vec<CSEBindingSite>>,
 }
 
 impl CSEBindingInfo {
@@ -651,6 +651,7 @@ pub fn cse_optimize_bodyform(
             &mut binding_set
                 .info
                 .iter()
+                .rev()
                 .map(|(target_path, sites)| {
                     let bindings: Vec<Rc<Binding>> = sites
                         .iter()
@@ -670,9 +671,37 @@ pub fn cse_optimize_bodyform(
         return Ok(function_body);
     }
 
+    // We need to topologically sort the CSE insertions by dominance otherwise
+    // The inserted let bindings farther up the tree will disrupt lower down
+    // replacements.
+    //
+    // Sort the target paths so we put in deeper paths before outer ones.
+    let mut sorted_bindings: Vec<(Vec<BodyformPathArc>, Vec<Rc<Binding>>)> =
+        Vec::new();
+
+    // We'll do this by finding bindings that are not dominated and processing
+    // them last.
+    while !new_binding_stack.is_empty() {
+        let (still_dominated, not_dominated):
+        (Vec<&(Vec<BodyformPathArc>, Vec<Rc<Binding>>)>,
+         Vec<&(Vec<BodyformPathArc>, Vec<Rc<Binding>>)>) =
+            new_binding_stack.iter().partition(|(t, _)| {
+                new_binding_stack.iter().any(|(t_other, _)| {
+                    // t is dominated if t_other contains it.
+                    t_other != t && path_overlap_one_way(t_other, t)
+                })
+            });
+        let mut not_dominated_vec: Vec<(Vec<BodyformPathArc>, Vec<Rc<Binding>>)> =
+            not_dominated.into_iter().cloned().collect();
+        sorted_bindings.append(&mut not_dominated_vec);
+        let still_dominated_vec: Vec<(Vec<BodyformPathArc>, Vec<Rc<Binding>>)> =
+            still_dominated.into_iter().cloned().collect();
+        new_binding_stack = still_dominated_vec;
+    }
+
     // All CSE replacements are done.  We unwind the new bindings
     // into a stack of parallel let forms.
-    for (target_path, binding_list) in new_binding_stack.into_iter().rev() {
+    for (target_path, binding_list) in sorted_bindings.into_iter().rev() {
         let replacement_spec = &[PathDetectVisitorResult {
             path: target_path.clone(),
             subexp: function_body.clone(),
@@ -694,6 +723,7 @@ pub fn cse_optimize_bodyform(
                 )
             },
         ) {
+            assert!(res.to_sexp() != function_body.to_sexp());
             function_body = res;
         } else {
             return Err(CompileErr(

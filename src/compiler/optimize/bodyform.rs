@@ -9,7 +9,7 @@ use crate::compiler::comptypes::{Binding, BodyForm, CompileForm, LambdaData, Let
 
 /// A path in a bodyform.  Allows us to find and potentially replace the bodyform
 /// in a larger expression.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum BodyformPathArc {
     LetBinding(usize),   // In (let ((a 1) (b 2)) LetBinding(1) points to 2
     CallArgument(usize), // in (x0 x1 x2 x3 x4 x5) CallArgument(3) points to x3
