@@ -84,3 +84,23 @@ fn test_cse_tricky_lambda() {
         .to_string();
     assert_eq!(run_result_5, "240");
 }
+
+// Ensure that we're sorting CSE rounds to apply by dominance so we do inner
+// replacements before outer ones.  Any that aren't dominated don't have an
+// order that matters.
+#[test]
+fn test_cse_dominace_sorting() {
+    let filename = "resources/tests/strict/cse-test-no-dom.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+    let run_result = do_basic_brun(&vec![
+        "brun".to_string(),
+        "-n".to_string(),
+        program,
+        "(((3 3) (2 1 13 19) (5 5) (7 7)))".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(run_result, "(13 19)");
+}
