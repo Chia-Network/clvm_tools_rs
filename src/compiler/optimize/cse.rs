@@ -685,7 +685,7 @@ pub fn cse_optimize_bodyform(
     while !new_binding_stack.is_empty() {
         let (still_dominated, not_dominated): (
             CSEReplacementTargetAndBindings<'_>,
-            CSEReplacementTargetAndBindings<'_>
+            CSEReplacementTargetAndBindings<'_>,
         ) = new_binding_stack.iter().partition(|(t, _)| {
             new_binding_stack.iter().any(|(t_other, _)| {
                 // t is dominated if t_other contains it.
