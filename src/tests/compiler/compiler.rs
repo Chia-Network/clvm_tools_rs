@@ -1938,3 +1938,46 @@ fn test_let_in_rest_1() {
     let res = run_string(&prog, &"(3 2)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "108");
 }
+
+#[test]
+fn test_lambda_override_name_arg_let_capture() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden)))
+      (lambda ((& overridden) z) (+ overridden z))
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "50");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_let_in_lambda() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden)))
+      (lambda ((& overridden) z)
+        (let
+          ((z (+ 123 z)))
+          (+ overridden z)
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "167");
+}

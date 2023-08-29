@@ -667,6 +667,27 @@ pub fn eval_dont_expand_let(inline_hint: &Option<LetFormInlineHint>) -> bool {
     matches!(inline_hint, Some(LetFormInlineHint::NonInline(_)))
 }
 
+fn build_capture_bindings(
+    capture_args: Rc<SExp>,
+    capture_data: Rc<BodyForm>,
+) -> Result<Vec<Rc<Binding>>, CompileErr> {
+    let mut capture_map = HashMap::new();
+    let formed_args = decons_args(capture_data.clone());
+    create_argument_captures(
+        &mut capture_map,
+        &formed_args,
+        capture_args
+    )?;
+    Ok(capture_map.into_iter().map(|(k,v)| {
+        Rc::new(Binding {
+            loc: capture_data.loc(),
+            nl: capture_data.loc(),
+            pattern: BindingPattern::Name(k),
+            body: v
+        })
+    }).collect())
+}
+
 impl<'info> Evaluator {
     pub fn new(
         opts: Rc<dyn CompilerOpts>,
@@ -1194,11 +1215,39 @@ impl<'info> Evaluator {
             only_inline,
         )?;
 
+        // Perform replacements by wrapping the body in a let binding for all
+        // the captures.
+        let capture_bindings = build_capture_bindings(
+            ldata.capture_args.clone(),
+            new_captures,
+        )?;
+
+        if capture_bindings.is_empty() {
+            return Ok(Rc::new(BodyForm::Lambda(Box::new(ldata.clone()))));
+        }
+
+        let new_lambda_body =
+            Rc::new(BodyForm::Let(
+                LetFormKind::Parallel,
+                Box::new(LetData {
+                    loc: ldata.loc.clone(),
+                    kw: None,
+                    inline_hint: None,
+                    bindings: capture_bindings,
+                    body: ldata.body.clone(),
+                })
+            ));
+
         // This is the first part of eta-conversion.
-        Ok(Rc::new(BodyForm::Lambda(Box::new(LambdaData {
-            captures: new_captures,
+        let reified_lambda = Rc::new(BodyForm::Lambda(Box::new(LambdaData {
+            args: ldata.args.clone(),
+            capture_args: Rc::new(SExp::Nil(ldata.loc.clone())),
+            captures: Rc::new(BodyForm::Value(SExp::Nil(ldata.loc.clone()))),
+            body: new_lambda_body,
             ..ldata.clone()
-        }))))
+        })));
+
+        Ok(reified_lambda)
     }
 
     fn get_function(&self, name: &[u8]) -> Option<Box<DefunData>> {
