@@ -205,7 +205,7 @@ enum SExpParseState {
     QuotedText(Srcloc, u8, Vec<u8>),
     QuotedEscaped(Srcloc, u8, Vec<u8>),
     OpenList(Srcloc, bool),
-    ParsingList(Srcloc, Rc<SExpParseState>, Vec<Rc<SExp>>, bool),  // Rc<SExpParseState> is for the inner state of the list, bool is is_structured
+    ParsingList(Srcloc, Rc<SExpParseState>, Vec<Rc<SExp>>, bool), // Rc<SExpParseState> is for the inner state of the list, bool is is_structured
     TermList(
         Srcloc,
         Option<Rc<SExp>>,   // this is the second value in the dot expression
@@ -542,12 +542,12 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
         SExpParseState::Empty => match this_char as char {
             // we are not currently in a list
             '(' => resume(SExpParseState::OpenList(loc, false)), // move to OpenList state
-            '\n' => resume(SExpParseState::Empty),        // new line, same state
+            '\n' => resume(SExpParseState::Empty),               // new line, same state
             ';' => resume(SExpParseState::CommentText),
             ')' => error(loc, "Too many close parens"),
             '"' => resume(SExpParseState::QuotedText(loc, b'"', Vec::new())), // match on "
             '\'' => resume(SExpParseState::QuotedText(loc, b'\'', Vec::new())), // match on '
-            '#' => resume(SExpParseState::StartStructuredList(loc)),  // initiating a structured list
+            '#' => resume(SExpParseState::StartStructuredList(loc)), // initiating a structured list
             ch => {
                 if char::is_whitespace(ch) {
                     resume(SExpParseState::Empty)
@@ -637,7 +637,9 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                     Rc::new(SExpParseState::Empty), // nested state is empty
                     list_content.to_vec(),
                 )),
-                ('.', SExpParseState::Empty, true) => error(loc, "Dot expressions disallowed in structured lists"),
+                ('.', SExpParseState::Empty, true) => {
+                    error(loc, "Dot expressions disallowed in structured lists")
+                }
                 (')', SExpParseState::Empty, _) => emit(
                     // close list and emit it upwards as a complete entity
                     Rc::new(enlist(srcloc.clone(), list_content)),
@@ -785,7 +787,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                     SExpParseResult::Error(l, e) => SExpParseResult::Error(l, e),
                 },
             }
-        },
+        }
         SExpParseState::StartStructuredList(l) => {
             let new_srcloc = l.ext(&loc);
             match this_char as char {
@@ -796,9 +798,13 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                     Vec::new(),
                     true,
                 )),
-                _ => error(loc, "Expected '(' after '#'."),
+                _ => parse_sexp_step(
+                    loc.clone(),
+                    &SExpParseState::Bareword(loc, vec![b'#']),
+                    this_char,
+                ),
             }
-        },
+        }
         // SExpParseState::StartStructuredList(_) => error(loc, "Missing srcloc"),
     }
 }
@@ -859,9 +865,13 @@ impl ParsePartialResult {
                 Err((l, "unterminated quoted string with escape".to_string()))
             }
             SExpParseState::OpenList(l, _) => Err((l, "Unterminated list (empty)".to_string())),
-            SExpParseState::ParsingList(l, _, _, _) => Err((l, "Unterminated mid list".to_string())),
+            SExpParseState::ParsingList(l, _, _, _) => {
+                Err((l, "Unterminated mid list".to_string()))
+            }
             SExpParseState::TermList(l, _, _, _) => Err((l, "Unterminated tail list".to_string())),
-            SExpParseState::StartStructuredList(l) => Err((l, "Unclosed structured list".to_string())),
+            SExpParseState::StartStructuredList(l) => {
+                Err((l, "Unclosed structured list".to_string()))
+            }
         }
     }
 }
