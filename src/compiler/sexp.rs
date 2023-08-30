@@ -792,20 +792,20 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
             let new_srcloc = l.ext(&loc);
             match this_char as char {
                 '(' => resume(SExpParseState::ParsingList(
-                    // we aren't finished reading in our nested state
+                    // go into a ParsingList
                     new_srcloc,
-                    Rc::new(SExpParseState::Empty), // store the returned state from parse_sexp_step in pp
+                    Rc::new(SExpParseState::Empty), // we have no inner state
                     Vec::new(),
-                    true,
+                    true, // note that this is a special StructuredList to be processed later
                 )),
                 _ => parse_sexp_step(
+                    // if we don't see a '(' then process it as if the preceding '#' was part of a bareword
                     loc.clone(),
                     &SExpParseState::Bareword(loc, vec![b'#']),
                     this_char,
                 ),
             }
-        }
-        // SExpParseState::StartStructuredList(_) => error(loc, "Missing srcloc"),
+        } // SExpParseState::StartStructuredList(_) => error(loc, "Missing srcloc"),
     }
 }
 
