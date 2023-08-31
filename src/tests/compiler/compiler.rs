@@ -1979,5 +1979,5 @@ fn test_lambda_override_name_arg_let_with_let_in_lambda() {
   )"}
     .to_string();
     let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
-    assert_eq!(res.to_string(), "167");
+    assert_eq!(res.to_string(), "173");
 }

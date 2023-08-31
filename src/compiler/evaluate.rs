@@ -9,7 +9,7 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::run;
+use crate::compiler::clvm::{run, truthy};
 use crate::compiler::codegen::{codegen, hoist_assign_form};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
@@ -667,25 +667,25 @@ pub fn eval_dont_expand_let(inline_hint: &Option<LetFormInlineHint>) -> bool {
     matches!(inline_hint, Some(LetFormInlineHint::NonInline(_)))
 }
 
-fn build_capture_bindings(
-    capture_args: Rc<SExp>,
-    capture_data: Rc<BodyForm>,
-) -> Result<Vec<Rc<Binding>>, CompileErr> {
-    let mut capture_map = HashMap::new();
-    let formed_args = decons_args(capture_data.clone());
-    create_argument_captures(
-        &mut capture_map,
-        &formed_args,
-        capture_args
-    )?;
-    Ok(capture_map.into_iter().map(|(k,v)| {
-        Rc::new(Binding {
-            loc: capture_data.loc(),
-            nl: capture_data.loc(),
-            pattern: BindingPattern::Name(k),
-            body: v
-        })
-    }).collect())
+pub fn filter_capture_args(args: Rc<SExp>, name_map: &HashMap<Vec<u8>, Rc<BodyForm>>) -> Rc<SExp> {
+    match args.borrow() {
+        SExp::Cons(l,a,b) => {
+            let a_filtered = filter_capture_args(a.clone(), name_map);
+            let b_filtered = filter_capture_args(b.clone(), name_map);
+            if !truthy(a_filtered.clone()) && !truthy(b_filtered.clone()) {
+                return Rc::new(SExp::Nil(l.clone()));
+            }
+            Rc::new(SExp::Cons(l.clone(),a_filtered,b_filtered))
+        }
+        SExp::Atom(l,n) => {
+            if name_map.contains_key(n) {
+                Rc::new(SExp::Nil(l.clone()))
+            } else {
+                args
+            }
+        }
+        _ => Rc::new(SExp::Nil(args.loc()))
+    }
 }
 
 impl<'info> Evaluator {
@@ -819,6 +819,7 @@ impl<'info> Evaluator {
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
         let mut lambda_env = env.clone();
+
         // Finish eta-expansion.
 
         // We're carrying an enriched environment which we can use to enrich
@@ -1205,49 +1206,67 @@ impl<'info> Evaluator {
         ldata: &LambdaData,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
+        if !truthy(ldata.capture_args.clone()) {
+            return Ok(Rc::new(BodyForm::Lambda(Box::new(ldata.clone()))));
+        }
+
         // Rewrite the captures based on what we know at the call site.
         let new_captures = self.shrink_bodyform_visited(
             allocator,
             visited,
-            prog_args,
+            prog_args.clone(),
             env,
             ldata.captures.clone(),
             only_inline,
         )?;
 
-        // Perform replacements by wrapping the body in a let binding for all
-        // the captures.
-        let capture_bindings = build_capture_bindings(
-            ldata.capture_args.clone(),
-            new_captures,
+        // Break up and make binding map.
+        let deconsed_args = decons_args(new_captures.clone());
+        let mut arg_captures = HashMap::new();
+        create_argument_captures(
+            &mut arg_captures,
+            &deconsed_args,
+            ldata.capture_args.clone()
         )?;
 
-        if capture_bindings.is_empty() {
-            return Ok(Rc::new(BodyForm::Lambda(Box::new(ldata.clone()))));
+        // Filter out elements that are not interpretable yet.
+        let mut interpretable_captures = HashMap::new();
+        for (n,v) in arg_captures.iter() {
+            if let Ok(_) = dequote(v.loc(), v.clone()) {
+                // This capture has already been made into a literal.
+                // We will substitute it in the lambda body and remove it
+                // from the capture set.
+                interpretable_captures.insert(n.clone(), v.clone());
+            }
         }
 
-        let new_lambda_body =
-            Rc::new(BodyForm::Let(
-                LetFormKind::Parallel,
-                Box::new(LetData {
-                    loc: ldata.loc.clone(),
-                    kw: None,
-                    inline_hint: None,
-                    bindings: capture_bindings,
-                    body: ldata.body.clone(),
-                })
-            ));
+        let combined_args = Rc::new(SExp::Cons(
+            ldata.loc.clone(),
+            ldata.capture_args.clone(),
+            ldata.args.clone()
+        ));
 
-        // This is the first part of eta-conversion.
-        let reified_lambda = Rc::new(BodyForm::Lambda(Box::new(LambdaData {
+        // Eliminate the captures via beta substituion.
+        let simplified_body = self.shrink_bodyform_visited(
+            allocator,
+            visited,
+            combined_args.clone(),
+            &interpretable_captures,
+            ldata.body.clone(),
+            only_inline
+        )?;
+
+        let new_capture_args = filter_capture_args(
+            ldata.capture_args.clone(),
+            &interpretable_captures,
+        );
+        Ok(Rc::new(BodyForm::Lambda(Box::new(LambdaData {
             args: ldata.args.clone(),
-            capture_args: Rc::new(SExp::Nil(ldata.loc.clone())),
-            captures: Rc::new(BodyForm::Value(SExp::Nil(ldata.loc.clone()))),
-            body: new_lambda_body,
+            capture_args: new_capture_args,
+            captures: new_captures,
+            body: simplified_body,
             ..ldata.clone()
-        })));
-
-        Ok(reified_lambda)
+        }))))
     }
 
     fn get_function(&self, name: &[u8]) -> Option<Box<DefunData>> {
