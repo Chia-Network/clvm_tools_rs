@@ -228,6 +228,21 @@ fn compile_test_14() {
     );
 }
 
+// use structured list in solution
+#[test]
+fn compile_test_15() {
+    let result = run_string_maybe_opt(
+        &"(mod #(a b c) (- (+ a c) b))".to_string(),
+        &"(100 20 . 10)".to_string(),
+        true,
+    )
+    .unwrap();
+    assert_eq!(
+        result.to_string(),
+        "90".to_string()
+    );
+}
+
 fn run_test_1_maybe_opt(opt: bool) {
     let result = run_string_maybe_opt(
         &"(mod () (defun f (a b) (+ (* a a) b)) (f 3 1))".to_string(),
