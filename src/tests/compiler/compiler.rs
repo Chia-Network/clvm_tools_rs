@@ -157,6 +157,15 @@ fn compile_test_6() {
     );
 }
 
+#[test]
+fn compile_test_8() {
+    let result = compile_string(&"(mod (S) (c S (q . #(2000 3000 4000 5000 6000 7000 8000))))".to_string()).unwrap();
+    assert_eq!(
+        result,
+        "(2 (1 4 5 (1 (2000 3000 . 4000) (5000 . 6000) 7000 . 8000)) (4 (1) 1))".to_string()
+    );
+}
+
 fn run_test_1_maybe_opt(opt: bool) {
     let result = run_string_maybe_opt(
         &"(mod () (defun f (a b) (+ (* a a) b)) (f 3 1))".to_string(),

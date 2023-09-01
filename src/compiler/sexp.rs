@@ -536,6 +536,28 @@ impl SExp {
     }
 }
 
+fn restructure_list(mut this_list: Vec<Rc<SExp>>, srcloc: Srcloc) -> Rc<SExp> {
+    // Check if the vector is empty
+    if this_list.len() == 3 {
+        return Rc::new(make_cons(Rc::clone(&this_list[0]), Rc::new(make_cons(Rc::clone(&this_list[1]), Rc::clone(&this_list[2])))));
+    }
+    if this_list.len() == 2 {
+        return Rc::new(make_cons(Rc::clone(&this_list[0]), Rc::clone(&this_list[1])));
+    }
+    if this_list.len() == 1 {
+        return Rc::clone(&this_list[0]);
+    }
+    if this_list.len() == 0 {
+        return Rc::new(SExp::Nil(srcloc.clone()));
+    }
+    // Remove and get the middle element as the root
+    let mid_index = this_list.len() / 2;
+    let left_subtree = restructure_list(this_list.drain(..mid_index).collect(), srcloc.clone());
+    let right_subtree = restructure_list(this_list, srcloc.clone());
+
+    Rc::new(make_cons(left_subtree, right_subtree))
+}
+
 fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -> SExpParseResult {
     // switch on our state
     match current_state {
@@ -640,20 +662,41 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                 ('.', SExpParseState::Empty, true) => {
                     error(loc, "Dot expressions disallowed in structured lists")
                 }
-                (')', SExpParseState::Empty, _) => emit(
-                    // close list and emit it upwards as a complete entity
-                    Rc::new(enlist(srcloc.clone(), list_content)),
-                    SExpParseState::Empty,
-                ),
+                (')', SExpParseState::Empty, _) => {
+                    if *is_structured {
+                        emit(
+                            // close list and emit it upwards as a complete entity
+                            restructure_list(list_content.to_vec(), srcloc.clone()),
+                            SExpParseState::Empty,
+                        )
+                    } else {
+                        emit(
+                            // close list and emit it upwards as a complete entity
+                            Rc::new(enlist(srcloc.clone(), list_content)),
+                            SExpParseState::Empty,
+                        )
+                    }
+
+                },
                 (')', SExpParseState::Bareword(l, t), _) => {
                     // you've reached the end of the word AND the end of the list, close list and emit upwards
+                    // TODO: check bool and rearrange here
                     let parsed_atom = make_atom(l.clone(), t.to_vec());
                     let mut updated_list = list_content.to_vec();
                     updated_list.push(Rc::new(parsed_atom));
-                    emit(
-                        Rc::new(enlist(srcloc.clone(), &updated_list)),
-                        SExpParseState::Empty,
-                    )
+                    if *is_structured {
+                        emit(
+                            // close list and emit it upwards as a complete entity
+                            restructure_list(updated_list, srcloc.clone()),
+                            SExpParseState::Empty,
+                        )
+                    } else {
+                        emit(
+                            // close list and emit it upwards as a complete entity
+                            Rc::new(enlist(srcloc.clone(), &updated_list)),
+                            SExpParseState::Empty,
+                        )
+                    }
                 }
                 // analyze this character using the mock "inner state" stored in pp
                 (_, _, _) => match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
