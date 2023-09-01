@@ -670,8 +670,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                             SExpParseState::Empty,
                         )
                     }
-
-                },
+                }
                 (')', SExpParseState::Bareword(l, t), _) => {
                     // you've reached the end of the word AND the end of the list, close list and emit upwards
                     // TODO: check bool and rearrange here
