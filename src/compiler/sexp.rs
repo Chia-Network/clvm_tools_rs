@@ -538,12 +538,6 @@ impl SExp {
 
 fn restructure_list(mut this_list: Vec<Rc<SExp>>, srcloc: Srcloc) -> Rc<SExp> {
     // Check if the vector is empty
-    if this_list.len() == 3 {
-        return Rc::new(make_cons(Rc::clone(&this_list[0]), Rc::new(make_cons(Rc::clone(&this_list[1]), Rc::clone(&this_list[2])))));
-    }
-    if this_list.len() == 2 {
-        return Rc::new(make_cons(Rc::clone(&this_list[0]), Rc::clone(&this_list[1])));
-    }
     if this_list.len() == 1 {
         return Rc::clone(&this_list[0]);
     }
