@@ -916,7 +916,7 @@ pub fn frontend(
         }
     };
 
-    let our_mod = rename_children_compileform(&compiled?);
+    let our_mod = rename_children_compileform(&compiled?)?;
 
     let expr_names: HashSet<Vec<u8>> = collect_used_names_bodyform(our_mod.exp.borrow())
         .iter()
