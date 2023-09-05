@@ -541,7 +541,7 @@ fn restructure_list(mut this_list: Vec<Rc<SExp>>, srcloc: Srcloc) -> Rc<SExp> {
     if this_list.len() == 1 {
         return Rc::clone(&this_list[0]);
     }
-    if this_list.len() == 0 {
+    if this_list.is_empty() {
         return Rc::new(SExp::Nil(srcloc.clone()));
     }
     // Remove and get the middle element as the root
