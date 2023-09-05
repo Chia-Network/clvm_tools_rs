@@ -840,7 +840,7 @@ pub fn cons_of_string_map<X>(
 
 pub fn map_m<T, U, E, F>(mut f: F, list: &[T]) -> Result<Vec<U>, E>
 where
-    F: FnMut(&T) -> Result<U, E>
+    F: FnMut(&T) -> Result<U, E>,
 {
     let mut result = Vec::new();
     for e in list {
@@ -852,7 +852,7 @@ where
 
 pub fn map_m_reverse<T, U, E, F>(mut f: F, list: &[T]) -> Result<Vec<U>, E>
 where
-    F: FnMut(&T) -> Result<U, E>
+    F: FnMut(&T) -> Result<U, E>,
 {
     let mut result = Vec::new();
     for e in list {
