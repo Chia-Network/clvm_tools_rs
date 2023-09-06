@@ -2054,6 +2054,29 @@ fn test_lambda_override_name_arg_let_with_assign_in_lambda_1() {
 }
 
 #[test]
+fn test_lambda_override_name_arg_let_with_let_in_lambda_3() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) z) ;; overridden = 33
+        (let ((overridden (+ 123 z))) ;; overridden = 17 + 123 = 140
+          (+ overridden z) ;; 157
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "157");
+}
+
+#[test]
 fn test_lambda_override_name_arg_let_with_assign_twice_in_lambda() {
     let prog = indoc! {"
 (mod (X)
@@ -2065,6 +2088,57 @@ fn test_lambda_override_name_arg_let_with_assign_twice_in_lambda() {
         (assign
           overridden (+ 123 z) ;; overridden = 123 + 17 = 140
           y (+ 191 z overridden) ;; y = 191 + 17 + 140 = 348
+          (+ overridden z y) ;; 505
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 13 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "505");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_let_twice_in_lambda() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) y z) ;; overridden = 33
+        (let
+          ((overridden (+ 123 z))) ;; overridden = 123 + 17 = 140
+          (let ((y (+ 191 z overridden))) ;; y = 191 + 17 + 140 = 348
+            (+ overridden z y) ;; 505
+            )
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 13 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "505");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_let_star_twice_in_lambda() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) y z) ;; overridden = 33
+        (let*
+          ((overridden (+ 123 z)) ;; overridden = 123 + 17 = 140
+           (y (+ 191 z overridden))) ;; y = 191 + 17 + 140 = 348
           (+ overridden z y) ;; 505
           )
         )
