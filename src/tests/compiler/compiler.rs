@@ -1959,7 +1959,7 @@ fn test_lambda_override_name_arg_let_capture() {
 }
 
 #[test]
-fn test_lambda_override_name_arg_let_with_let_in_lambda() {
+fn test_lambda_override_name_arg_let_with_let_in_lambda_1() {
     let prog = indoc! {"
 (mod (X)
   (include *standard-cl-21*)
@@ -1980,4 +1980,75 @@ fn test_lambda_override_name_arg_let_with_let_in_lambda() {
     .to_string();
     let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "173");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_let_in_lambda_2() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden)))
+      (lambda ((& overridden) z)
+        (let
+          ((overridden (+ 123 overridden)))
+          (+ overridden z)
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "173");
+}
+
+#[test]
+fn test_lambda_override_name_arg_assign_with_assign_in_lambda_1() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (Z)
+    (assign overridden (* 3 Z)
+      (lambda ((& overridden) z)
+        (let
+          ((z (+ 123 z)))
+          (+ overridden z)
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "173");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_assign_in_lambda_1() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) z) ;; overridden = 33
+        (assign overridden (+ 123 z) ;; overridden = 17 + 123 = 140
+          (+ overridden z) ;; 157
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "157");
 }

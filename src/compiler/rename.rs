@@ -8,7 +8,7 @@ use crate::compiler::comptypes::{
     DefmacData, DefunData, HelperForm, LambdaData, LetData, LetFormKind,
 };
 use crate::compiler::gensym::gensym;
-use crate::compiler::sexp::SExp;
+use crate::compiler::sexp::{SExp, decode_string};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::TopoSortItem;
 
@@ -166,7 +166,7 @@ pub fn rename_assign_bindings(
     let sorted_bindings = toposort_assign_bindings(l, bindings)?;
     let mut renames = HashMap::new();
     // Process in reverse order so we rename from inner to outer.
-    let bindings_to_rename: Vec<TopoSortItem<_>> = sorted_bindings.iter().rev().cloned().collect();
+    let bindings_to_rename: Vec<TopoSortItem<_>> = sorted_bindings.iter().cloned().collect();
     let renamed_bindings = map_m_reverse(
         |item: &TopoSortItem<_>| -> Result<Rc<Binding>, CompileErr> {
             let b: &Binding = bindings[item.index].borrow();
@@ -175,6 +175,9 @@ pub fn rename_assign_bindings(
                 for (name, renamed) in new_names.iter() {
                     renames.insert(name.clone(), renamed.clone());
                 }
+                let renames_vec: Vec<_> = renames.iter().map(|(k,v)| (decode_string(k), decode_string(v))).collect();
+                eprintln!("renames from here {}: {:?}", p, renames_vec);
+                eprintln!("this binding {}", b.to_sexp());
                 Ok(Rc::new(Binding {
                     pattern: BindingPattern::Complex(rename_in_cons(&renames, p.clone(), false)),
                     body: Rc::new(rename_in_bodyform(&renames, b.body.clone())?),
@@ -343,7 +346,19 @@ fn rename_args_bodyform(b: &BodyForm) -> Result<BodyForm, CompileErr> {
             ))
         }
 
-        BodyForm::Let(LetFormKind::Assign, _letdata) => Ok(b.clone()),
+        BodyForm::Let(LetFormKind::Assign, letdata) => {
+            let (new_compiled_body, new_bindings) =
+                rename_assign_bindings(&letdata.loc, &letdata.bindings, letdata.body.clone())?;
+            for b in new_bindings.iter() {
+                eprintln!("- {}", b.to_sexp());
+            }
+            eprintln!("new_compiled {}", new_compiled_body.to_sexp());
+            Ok(BodyForm::Let(LetFormKind::Assign, Box::new(LetData {
+                body: Rc::new(new_compiled_body),
+                bindings: new_bindings,
+                ..*letdata.clone()
+            })))
+        }
 
         BodyForm::Quoted(e) => Ok(BodyForm::Quoted(e.clone())),
         BodyForm::Value(v) => Ok(BodyForm::Value(v.clone())),
@@ -363,7 +378,13 @@ fn rename_args_bodyform(b: &BodyForm) -> Result<BodyForm, CompileErr> {
             Ok(BodyForm::Call(l.clone(), new_vs, new_tail))
         }
         BodyForm::Mod(l, program) => Ok(BodyForm::Mod(l.clone(), program.clone())),
-        BodyForm::Lambda(ldata) => Ok(BodyForm::Lambda(ldata.clone())),
+        BodyForm::Lambda(ldata) => {
+            let new_body = rename_args_bodyform(ldata.body.borrow())?;
+            Ok(BodyForm::Lambda(Box::new(LambdaData {
+                body: Rc::new(new_body),
+                ..*ldata.clone()
+            })))
+        },
     }
 }
 
@@ -479,13 +500,15 @@ fn rename_in_compileform(
 pub fn rename_children_compileform(c: &CompileForm) -> Result<CompileForm, CompileErr> {
     let local_renamed_helpers = map_m(&rename_args_helperform, &c.helpers)?;
     let local_renamed_body = rename_args_bodyform(c.exp.borrow())?;
-    Ok(CompileForm {
+    let res = CompileForm {
         loc: c.loc.clone(),
         args: c.args.clone(),
         include_forms: c.include_forms.clone(),
         helpers: local_renamed_helpers,
         exp: Rc::new(local_renamed_body),
-    })
+    };
+    eprintln!("rename {}", res.to_sexp());
+    Ok(res)
 }
 
 pub fn rename_args_compileform(c: &CompileForm) -> Result<CompileForm, CompileErr> {
