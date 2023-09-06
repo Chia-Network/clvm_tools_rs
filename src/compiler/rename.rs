@@ -166,7 +166,7 @@ pub fn rename_assign_bindings(
     let sorted_bindings = toposort_assign_bindings(l, bindings)?;
     let mut renames = HashMap::new();
     // Process in reverse order so we rename from inner to outer.
-    let bindings_to_rename: Vec<TopoSortItem<_>> = sorted_bindings.iter().cloned().collect();
+    let bindings_to_rename: Vec<TopoSortItem<_>> = sorted_bindings.to_vec();
     let renamed_bindings = map_m_reverse(
         |item: &TopoSortItem<_>| -> Result<Rc<Binding>, CompileErr> {
             let b: &Binding = bindings[item.index].borrow();
@@ -346,11 +346,14 @@ fn rename_args_bodyform(b: &BodyForm) -> Result<BodyForm, CompileErr> {
         BodyForm::Let(LetFormKind::Assign, letdata) => {
             let (new_compiled_body, new_bindings) =
                 rename_assign_bindings(&letdata.loc, &letdata.bindings, letdata.body.clone())?;
-            Ok(BodyForm::Let(LetFormKind::Assign, Box::new(LetData {
-                body: Rc::new(new_compiled_body),
-                bindings: new_bindings,
-                ..*letdata.clone()
-            })))
+            Ok(BodyForm::Let(
+                LetFormKind::Assign,
+                Box::new(LetData {
+                    body: Rc::new(new_compiled_body),
+                    bindings: new_bindings,
+                    ..*letdata.clone()
+                }),
+            ))
         }
 
         BodyForm::Quoted(e) => Ok(BodyForm::Quoted(e.clone())),
