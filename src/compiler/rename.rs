@@ -166,7 +166,7 @@ pub fn rename_assign_bindings(
     let sorted_bindings = toposort_assign_bindings(l, bindings)?;
     let mut renames = HashMap::new();
     // Process in reverse order so we rename from inner to outer.
-    let bindings_to_rename: Vec<TopoSortItem<_>> = sorted_bindings.iter().rev().cloned().collect();
+    let bindings_to_rename: Vec<TopoSortItem<_>> = sorted_bindings.to_vec();
     let renamed_bindings = map_m_reverse(
         |item: &TopoSortItem<_>| -> Result<Rc<Binding>, CompileErr> {
             let b: &Binding = bindings[item.index].borrow();
