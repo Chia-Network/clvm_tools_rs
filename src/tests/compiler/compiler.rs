@@ -2151,3 +2151,27 @@ fn test_lambda_override_name_arg_let_with_let_star_twice_in_lambda() {
     let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "505");
 }
+
+#[test]
+fn test_lambda_let_override_in_binding() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) y z) ;; overridden = 33
+        (let
+          ((y (+ 191 z (let ((overridden (+ 123 z))) overridden)))) ;; overridden = 123 + 17 = 140, y = 191 + 17 + 140 = 348
+          (+ overridden z y) ;; 33 + 17 + 348 = 398
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 13 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "398");
+}
