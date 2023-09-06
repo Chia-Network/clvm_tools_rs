@@ -176,8 +176,6 @@ pub fn rename_assign_bindings(
                     renames.insert(name.clone(), renamed.clone());
                 }
                 let renames_vec: Vec<_> = renames.iter().map(|(k,v)| (decode_string(k), decode_string(v))).collect();
-                eprintln!("renames from here {}: {:?}", p, renames_vec);
-                eprintln!("this binding {}", b.to_sexp());
                 Ok(Rc::new(Binding {
                     pattern: BindingPattern::Complex(rename_in_cons(&renames, p.clone(), false)),
                     body: Rc::new(rename_in_bodyform(&renames, b.body.clone())?),
@@ -349,10 +347,6 @@ fn rename_args_bodyform(b: &BodyForm) -> Result<BodyForm, CompileErr> {
         BodyForm::Let(LetFormKind::Assign, letdata) => {
             let (new_compiled_body, new_bindings) =
                 rename_assign_bindings(&letdata.loc, &letdata.bindings, letdata.body.clone())?;
-            for b in new_bindings.iter() {
-                eprintln!("- {}", b.to_sexp());
-            }
-            eprintln!("new_compiled {}", new_compiled_body.to_sexp());
             Ok(BodyForm::Let(LetFormKind::Assign, Box::new(LetData {
                 body: Rc::new(new_compiled_body),
                 bindings: new_bindings,
@@ -500,15 +494,13 @@ fn rename_in_compileform(
 pub fn rename_children_compileform(c: &CompileForm) -> Result<CompileForm, CompileErr> {
     let local_renamed_helpers = map_m(&rename_args_helperform, &c.helpers)?;
     let local_renamed_body = rename_args_bodyform(c.exp.borrow())?;
-    let res = CompileForm {
+    Ok(CompileForm {
         loc: c.loc.clone(),
         args: c.args.clone(),
         include_forms: c.include_forms.clone(),
         helpers: local_renamed_helpers,
         exp: Rc::new(local_renamed_body),
-    };
-    eprintln!("rename {}", res.to_sexp());
-    Ok(res)
+    })
 }
 
 pub fn rename_args_compileform(c: &CompileForm) -> Result<CompileForm, CompileErr> {
