@@ -8,7 +8,7 @@ use crate::compiler::comptypes::{
     DefmacData, DefunData, HelperForm, LambdaData, LetData, LetFormKind,
 };
 use crate::compiler::gensym::gensym;
-use crate::compiler::sexp::{SExp, decode_string};
+use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::TopoSortItem;
 
@@ -175,7 +175,6 @@ pub fn rename_assign_bindings(
                 for (name, renamed) in new_names.iter() {
                     renames.insert(name.clone(), renamed.clone());
                 }
-                let renames_vec: Vec<_> = renames.iter().map(|(k,v)| (decode_string(k), decode_string(v))).collect();
                 Ok(Rc::new(Binding {
                     pattern: BindingPattern::Complex(rename_in_cons(&renames, p.clone(), false)),
                     body: Rc::new(rename_in_bodyform(&renames, b.body.clone())?),

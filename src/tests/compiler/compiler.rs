@@ -2052,3 +2052,28 @@ fn test_lambda_override_name_arg_let_with_assign_in_lambda_1() {
     let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "157");
 }
+
+#[test]
+fn test_lambda_override_name_arg_let_with_assign_twice_in_lambda() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) y z) ;; overridden = 33
+        (assign
+          overridden (+ 123 z) ;; overridden = 123 + 17 = 140
+          y (+ 191 z overridden) ;; y = 191 + 17 + 140 = 348
+          (+ overridden z y) ;; 505
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 13 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "505");
+}
