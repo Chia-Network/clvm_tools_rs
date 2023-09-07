@@ -36,7 +36,7 @@ fn rename_in_qq(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SExp>
 }
 
 /* Given a cons cell, rename occurrences of oldname to newname */
-fn rename_in_cons(
+pub fn rename_in_cons(
     namemap: &HashMap<Vec<u8>, Vec<u8>>,
     body: Rc<SExp>,
     qq_handling: bool,
@@ -377,9 +377,16 @@ fn rename_args_bodyform(b: &BodyForm) -> Result<BodyForm, CompileErr> {
         }
         BodyForm::Mod(l, program) => Ok(BodyForm::Mod(l.clone(), program.clone())),
         BodyForm::Lambda(ldata) => {
+            let mut own_args = HashMap::new();
+            for (n,v) in invent_new_names_sexp(ldata.args.clone()).iter() {
+                own_args.insert(n.clone(), v.clone());
+            }
+            let new_args = rename_in_cons(&own_args, ldata.args.clone(), false);
             let new_body = rename_args_bodyform(ldata.body.borrow())?;
+            let renamed_with_own_args = rename_in_bodyform(&own_args, Rc::new(new_body))?;
             Ok(BodyForm::Lambda(Box::new(LambdaData {
-                body: Rc::new(new_body),
+                args: new_args,
+                body: Rc::new(renamed_with_own_args),
                 ..*ldata.clone()
             })))
         },
