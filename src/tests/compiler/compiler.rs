@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
@@ -7,8 +7,10 @@ use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::frontend::{collect_used_names_sexp, frontend};
+use crate::compiler::rename::rename_in_cons;
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::{parse_sexp, SExp};
+use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 const TEST_TIMEOUT: usize = 1000000;
@@ -60,6 +62,38 @@ fn run_string_maybe_opt(
 
 pub fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
     run_string_maybe_opt(content, args, false)
+}
+
+// Given some renaming that leaves behind gensym style names with _$_<n> in them,
+// order them and use a locally predictable renaming scheme to give them a final
+// test checkable value.
+pub fn squash_name_differences(in_sexp: Rc<SExp>) -> Result<Rc<SExp>, String> {
+    let found_names_set: BTreeSet<_> = collect_used_names_sexp(in_sexp.clone())
+        .into_iter()
+        .filter(|n| n.contains(&b'$'))
+        .collect();
+    let mut found_names_progression = b'A';
+    let mut replacement_map = HashMap::new();
+    for found_name in found_names_set.iter() {
+        if let Some(located_dollar_part) = found_name.iter().position(|x| *x == b'$') {
+            let mut new_name: Vec<u8> = found_name
+                .iter()
+                .take(located_dollar_part + 2)
+                .copied()
+                .collect();
+            new_name.push(found_names_progression);
+            found_names_progression += 1;
+            replacement_map.insert(found_name.clone(), new_name);
+        } else {
+            return Err(decode_string(&found_name));
+        }
+    }
+    if replacement_map.len() != found_names_set.len() {
+        return Err(format!(
+            "mismatched lengths {replacement_map:?} vs {found_names_set:?}"
+        ));
+    }
+    Ok(rename_in_cons(&replacement_map, in_sexp, false))
 }
 
 /* // Upcoming support for extra optimization (WIP)
@@ -1438,6 +1472,393 @@ fn test_inline_out_of_bounds_diagnostic() {
 }
 
 #[test]
+fn test_lambda_without_capture_from_function() {
+    let prog = indoc! {"
+(mod (A B)
+  (include *standard-cl-21*)
+  (defun FOO () (lambda (X Y) (+ X Y)))
+  (a (FOO) (list A B))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(3 4)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "7");
+}
+
+#[test]
+fn test_lambda_without_capture() {
+    let prog = indoc! {"
+(mod (A B)
+  (include *standard-cl-21*)
+  (a (lambda (X Y) (+ X Y)) (list A B))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(3 4)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "7");
+}
+
+#[test]
+fn test_lambda_with_capture_from_function() {
+    let prog = indoc! {"
+(mod (A B)
+  (include *standard-cl-21*)
+  (defun FOO (Z) (lambda ((& Z) X) (- X Z)))
+  (a (FOO A) (list B))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(5 19)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "14");
+}
+
+#[test]
+fn test_lambda_with_capture() {
+    let prog = indoc! {"
+(mod (A B)
+  (include *standard-cl-21*)
+  (a (lambda ((& A) Y) (- Y A)) (list B))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(5 19)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "14");
+}
+
+#[test]
+fn test_lambda_in_let_0() {
+    let prog = indoc! {"
+(mod (A)
+  (include *standard-cl-21*)
+  (defun FOO (Z)
+    (let ((Q (* 2 Z)))
+      (lambda ((& Q)) (- 100 Q))
+      )
+    )
+  (a (FOO A) ())
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(5)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "90");
+}
+
+#[test]
+fn test_lambda_in_let_1() {
+    let prog = indoc! {"
+(mod (A B)
+  (include *standard-cl-21*)
+  (defun FOO (Z)
+    (let ((Q (* 2 Z)))
+      (lambda ((& Q) X) (- X Q))
+      )
+    )
+  (a (FOO A) (list B))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(5 19)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "9");
+}
+
+#[test]
+fn test_lambda_in_map() {
+    let prog = indoc! {"
+(mod (add-number L)
+
+  (include *standard-cl-21*)
+
+  (defun map (F L)
+    (if L
+      (c (a F (list (f L))) (map F (r L)))
+      ()
+      )
+    )
+
+  (map
+    (lambda ((& add-number) number) (+ add-number number))
+    L
+    )
+  )
+"}
+    .to_string();
+    let res = run_string(&prog, &"(5 (1 2 3 4))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(6 7 8 9)");
+}
+
+#[test]
+fn test_lambda_in_map_with_let_surrounding() {
+    let prog = indoc! {"
+(mod (add-number L)
+
+  (include *standard-cl-21*)
+
+  (defun map (F L)
+    (if L
+      (c (a F (list (f L))) (map F (r L)))
+      ()
+      )
+    )
+
+  (map
+    (let ((A (* add-number 2)))
+      (lambda ((& A) number) (+ A number))
+      )
+    L
+    )
+  )
+"}
+    .to_string();
+    let res = run_string(&prog, &"(5 (1 2 3 4))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(11 12 13 14)");
+}
+
+#[test]
+fn test_map_with_lambda_function_from_env_and_bindings() {
+    let prog = indoc! {"
+    (mod (add-number L)
+
+     (include *standard-cl-21*)
+
+     (defun map (F L)
+      (if L
+       (c (a F (list (f L))) (map F (r L)))
+       ()
+      )
+     )
+
+     (defun add-twice (X Y) (+ (* 2 X) Y))
+
+     (map
+      (lambda ((& add-number) number) (add-twice add-number number))
+      L
+     )
+    )"}
+    .to_string();
+    let res = run_string(&prog, &"(5 (1 2 3 4))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(11 12 13 14)");
+}
+
+#[test]
+fn test_map_with_lambda_function_from_env_no_bindings() {
+    let prog = indoc! {"
+    (mod (L)
+
+     (include *standard-cl-21*)
+
+     (defun map (F L)
+      (if L
+       (c (a F (list (f L))) (map F (r L)))
+       ()
+      )
+     )
+
+     (defun sum-list (L)
+       (if L
+         (+ (f L) (sum-list (r L)))
+         ()
+         )
+       )
+
+     (map
+      (lambda (lst) (sum-list lst))
+      L
+     )
+    )"}
+    .to_string();
+    let res = run_string(&prog, &"(((5 10 15) (2 4 8) (3 6 9)))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(30 14 18)");
+}
+
+#[test]
+fn test_lambda_using_let() {
+    let prog = indoc! {"
+    (mod (P L)
+
+     (include *standard-cl-21*)
+
+     (defun map (F L)
+      (if L
+       (c (a F (list (f L))) (map F (r L)))
+       ()
+      )
+     )
+
+     (map
+      (lambda ((& P) item) (let ((composed (c P item))) composed))
+      L
+     )
+    )"}
+    .to_string();
+    let res = run_string(&prog, &"(1 (10 20 30))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "((1 . 10) (1 . 20) (1 . 30))");
+}
+
+#[test]
+fn test_lambda_using_macro() {
+    let prog = indoc! {"
+    (mod (P L)
+
+     (include *standard-cl-21*)
+
+     (defun map (F L)
+      (if L
+       (c (a F (list (f L))) (map F (r L)))
+       ()
+      )
+     )
+
+     (map
+      (lambda ((& P) item) (list P item))
+      L
+     )
+    )"}
+    .to_string();
+    let res = run_string(&prog, &"(1 (10 20 30))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "((1 10) (1 20) (1 30))");
+}
+
+#[test]
+fn test_lambda_reduce() {
+    let prog = indoc! {"
+    (mod (LST)
+     (include *standard-cl-21*)
+     (defun reduce (fun lst init)
+      (if lst
+       (reduce fun (r lst) (a fun (list (f lst) init)))
+       init
+       )
+      )
+
+     (let
+      ((capture 100))
+      (reduce (lambda ((& capture) (X Y) ACC) (+ (* X Y) ACC capture)) LST 0)
+      )
+     )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(((2 3) (4 9)))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "242");
+}
+
+#[test]
+fn test_lambda_as_let_binding() {
+    let prog = indoc! {"
+    (mod (P L)
+      (defun map (F L)
+        (if L (c (a F (list (f L))) (map F (r L))) ())
+        )
+      (defun x2 (N) (* 2 N))
+      (defun x3p1 (N) (+ 1 (* 3 N)))
+      (let* ((H (lambda (N) (x2 N)))
+             (G (lambda (N) (x3p1 N)))
+             (F (if P G H)))
+        (map F L)
+        )
+      )
+    "}
+    .to_string();
+    let res0 = run_string(&prog, &"(0 (1 2 3))".to_string()).unwrap();
+    assert_eq!(res0.to_string(), "(2 4 6)");
+    let res1 = run_string(&prog, &"(1 (1 2 3))".to_string()).unwrap();
+    assert_eq!(res1.to_string(), "(4 7 10)");
+}
+
+#[test]
+fn test_lambda_mixed_let_binding() {
+    let prog = indoc! {"
+    (mod (P L)
+      (defun map (F L)
+        (if L (c (a F (list (f L))) (map F (r L))) ())
+        )
+      (defun x2 (N) (* 2 N))
+      (defun x3p1 (N) (+ 1 (* 3 N)))
+      (let* ((G (lambda (N) (x3p1 N)))
+             (F (if P G (lambda (N) (x2 N)))))
+        (map F L)
+        )
+      )
+    "}
+    .to_string();
+    let res0 = run_string(&prog, &"(0 (1 2 3))".to_string()).unwrap();
+    assert_eq!(res0.to_string(), "(2 4 6)");
+    let res1 = run_string(&prog, &"(1 (1 2 3))".to_string()).unwrap();
+    assert_eq!(res1.to_string(), "(4 7 10)");
+}
+
+#[test]
+fn test_lambda_hof_1() {
+    let prog = indoc! {"
+    (mod (P)
+      (a (a (lambda ((& P) X) (lambda ((& P X)) (+ P X))) (list 3)) ())
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(1)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "4");
+}
+
+#[test]
+fn test_lambda_as_argument_to_macro() {
+    let prog = indoc! {"
+    (mod (P)
+      (defun map-f (A L)
+        (if L (c (a (f L) A) (map-f A (r L))) ())
+        )
+      (let ((Fs (list (lambda (X) (- X 1)) (lambda (X) (+ X 1)) (lambda (X) (* 2 X))))
+            (args (list P)))
+        (map-f args Fs)
+        )
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(10)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(9 11 20)");
+}
+
+#[test]
+fn test_lambda_as_argument_to_macro_with_inner_let() {
+    let prog = indoc! {"
+    (mod (P)
+      (defun map-f (A L)
+        (if L (c (a (f L) A) (map-f A (r L))) ())
+        )
+      (let ((Fs (list (lambda (X) (let ((N (* X 3))) N)) (lambda (X) (+ X 1)) (lambda (X) (* 2 X))))
+            (args (list P)))
+        (map-f args Fs)
+        )
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(10)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(30 11 20)");
+}
+
+#[test]
+fn test_treat_function_name_as_value() {
+    let prog = indoc! {"
+(mod (X)
+ (include *standard-cl-21*)
+ (defun G (X) (* 2 X))
+ (defun F (X) (G (+ 1 X)))
+ (a F (list X))
+)
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(99)".to_string()).expect("should compile");
+    assert_eq!(res.to_string(), "200");
+}
+
+#[test]
+fn test_treat_function_name_as_value_filter() {
+    let prog = indoc! {"
+    (mod L
+     (include *standard-cl-21*)
+     (defun greater-than-3 (X) (> X 3))
+     (defun filter (F L) (let ((rest (filter F (r L)))) (if L (if (a F (list (f L))) (c (f L) rest) rest) ())))
+     (filter greater-than-3 L)
+    )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(1 2 3 4 5)".to_string()).expect("should compile");
+    assert_eq!(res.to_string(), "(4 5)");
+}
+
+#[test]
 fn test_inline_in_assign_not_actually_recursive() {
     let prog = indoc! {"
 (mod (POINT)
@@ -1490,4 +1911,123 @@ fn test_simple_rest_call_inline() {
     .to_string();
     let res = run_string(&prog, &"(13 99 144)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "768");
+}
+
+#[test]
+fn test_simple_rest_lambda() {
+    let prog = indoc! {"
+(mod (Z X)
+  (include *standard-cl-21*)
+
+  (defun silly-lambda-consumer (Q F) (a F (list Q)))
+
+  (silly-lambda-consumer &rest (list X (lambda ((& Z) X) (* Z X))))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(13 51)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "663");
+}
+
+#[test]
+fn test_lambda_in_lambda() {
+    let prog = indoc! {"
+(mod (Z X)
+  (include *standard-cl-21*)
+
+  (defun silly-lambda-consumer (Q F) (a F (list Q)))
+
+  (a (silly-lambda-consumer X (lambda ((& Z) X) (lambda ((& Z X)) (* Z X)))) ())
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(13 51)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "663");
+}
+
+#[test]
+fn test_let_in_rest_0() {
+    let prog = indoc! {"
+(mod (Z X)
+  (include *standard-cl-21*)
+
+  (defun F (X) (+ X 3))
+
+  (F &rest (list (let ((Q (* X Z))) (+ Q 99))))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(3 2)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "108");
+}
+
+#[test]
+fn test_let_in_rest_1() {
+    let prog = indoc! {"
+(mod (Z X)
+  (include *standard-cl-21*)
+
+  (defun F (X) (+ X 3))
+
+  (F &rest (let ((Q (* X Z))) (list (+ Q 99))))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(3 2)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "108");
+}
+
+#[test]
+fn test_rename_in_compileform_run() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F overridden
+    (let
+      ((overridden (* 3 (f overridden))) ;; overridden = 33
+       (y (f (r overridden))) ;; y = 13
+       (z (f (r (r overridden))))) ;; z = 17
+      (+ overridden z y) ;; 33 + 13 + 17 = 63
+      )
+    )
+
+  (F X 13 17)
+  )"}
+    .to_string();
+
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "63");
+}
+
+#[test]
+fn test_rename_in_compileform_simple() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F overridden
+    (let
+      ((overridden (* 3 (f overridden))) ;; overridden = 33
+       (y (f (r overridden))) ;; y = 11
+       (z (f (r (r overridden))))) ;; z = 17
+      (+ overridden z y) ;; 33 11 17
+      )
+    )
+
+  (F X 13 17)
+  )"}
+    .to_string();
+    // Note: renames use gensym so they're unique but not spot predictable.
+    //
+    // We'll rename them in detection order to a specific set of names and should
+    // get for F:
+    //
+    let desired_outcome = "(defun F overridden_$_A (let ((overridden_$_B (* 3 (f overridden_$_A))) (y_$_C (f (r overridden_$_A))) (z_$_D (f (r (r overridden_$_A))))) (+ overridden_$_B z_$_D y_$_C)))";
+    let parsed = parse_sexp(Srcloc::start("*test*"), prog.bytes()).expect("should parse");
+    let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
+    let compiled = frontend(opts, &parsed).expect("should compile");
+    let helper_f: Vec<_> = compiled
+        .helpers
+        .iter()
+        .filter(|f| f.name() == b"F")
+        .collect();
+    let renamed_helperform = squash_name_differences(helper_f[0].to_sexp()).expect("should rename");
+    assert_eq!(renamed_helperform.to_string(), desired_outcome);
 }
