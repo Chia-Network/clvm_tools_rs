@@ -302,7 +302,7 @@ fn rename_args_bodyform(b: &BodyForm) -> Result<BodyForm, CompileErr> {
                 &letdata.bindings,
                 letdata.body.borrow(),
                 letdata.bindings.len(),
-            )
+            ))
         }
 
         BodyForm::Let(LetFormKind::Parallel, letdata) => {
