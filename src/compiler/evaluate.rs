@@ -669,22 +669,22 @@ pub fn eval_dont_expand_let(inline_hint: &Option<LetFormInlineHint>) -> bool {
 
 pub fn filter_capture_args(args: Rc<SExp>, name_map: &HashMap<Vec<u8>, Rc<BodyForm>>) -> Rc<SExp> {
     match args.borrow() {
-        SExp::Cons(l,a,b) => {
+        SExp::Cons(l, a, b) => {
             let a_filtered = filter_capture_args(a.clone(), name_map);
             let b_filtered = filter_capture_args(b.clone(), name_map);
             if !truthy(a_filtered.clone()) && !truthy(b_filtered.clone()) {
                 return Rc::new(SExp::Nil(l.clone()));
             }
-            Rc::new(SExp::Cons(l.clone(),a_filtered,b_filtered))
+            Rc::new(SExp::Cons(l.clone(), a_filtered, b_filtered))
         }
-        SExp::Atom(l,n) => {
+        SExp::Atom(l, n) => {
             if name_map.contains_key(n) {
                 Rc::new(SExp::Nil(l.clone()))
             } else {
                 args
             }
         }
-        _ => Rc::new(SExp::Nil(args.loc()))
+        _ => Rc::new(SExp::Nil(args.loc())),
     }
 }
 
@@ -1226,13 +1226,13 @@ impl<'info> Evaluator {
         create_argument_captures(
             &mut arg_captures,
             &deconsed_args,
-            ldata.capture_args.clone()
+            ldata.capture_args.clone(),
         )?;
 
         // Filter out elements that are not interpretable yet.
         let mut interpretable_captures = HashMap::new();
-        for (n,v) in arg_captures.iter() {
-            if let Ok(_) = dequote(v.loc(), v.clone()) {
+        for (n, v) in arg_captures.iter() {
+            if dequote(v.loc(), v.clone()).is_ok() {
                 // This capture has already been made into a literal.
                 // We will substitute it in the lambda body and remove it
                 // from the capture set.
@@ -1243,7 +1243,7 @@ impl<'info> Evaluator {
         let combined_args = Rc::new(SExp::Cons(
             ldata.loc.clone(),
             ldata.capture_args.clone(),
-            ldata.args.clone()
+            ldata.args.clone(),
         ));
 
         // Eliminate the captures via beta substituion.
@@ -1253,13 +1253,11 @@ impl<'info> Evaluator {
             combined_args.clone(),
             &interpretable_captures,
             ldata.body.clone(),
-            only_inline
+            only_inline,
         )?;
 
-        let new_capture_args = filter_capture_args(
-            ldata.capture_args.clone(),
-            &interpretable_captures,
-        );
+        let new_capture_args =
+            filter_capture_args(ldata.capture_args.clone(), &interpretable_captures);
         Ok(Rc::new(BodyForm::Lambda(Box::new(LambdaData {
             args: ldata.args.clone(),
             capture_args: new_capture_args,

@@ -68,12 +68,19 @@ pub fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileEr
 // order them and use a locally predictable renaming scheme to give them a final
 // test checkable value.
 pub fn squash_name_differences(in_sexp: Rc<SExp>) -> Result<Rc<SExp>, String> {
-    let found_names_set: BTreeSet<_> = collect_used_names_sexp(in_sexp.clone()).into_iter().filter(|n| n.contains(&b'$')).collect();
+    let found_names_set: BTreeSet<_> = collect_used_names_sexp(in_sexp.clone())
+        .into_iter()
+        .filter(|n| n.contains(&b'$'))
+        .collect();
     let mut found_names_progression = b'A';
     let mut replacement_map = HashMap::new();
     for found_name in found_names_set.iter() {
         if let Some(located_dollar_part) = found_name.iter().position(|x| *x == b'$') {
-            let mut new_name: Vec<u8> = found_name.iter().take(located_dollar_part + 2).copied().collect();
+            let mut new_name: Vec<u8> = found_name
+                .iter()
+                .take(located_dollar_part + 2)
+                .copied()
+                .collect();
             new_name.push(found_names_progression);
             found_names_progression += 1;
             replacement_map.insert(found_name.clone(), new_name);
@@ -82,7 +89,9 @@ pub fn squash_name_differences(in_sexp: Rc<SExp>) -> Result<Rc<SExp>, String> {
         }
     }
     if replacement_map.len() != found_names_set.len() {
-        return Err(format!("mismatched lengths {replacement_map:?} vs {found_names_set:?}"));
+        return Err(format!(
+            "mismatched lengths {replacement_map:?} vs {found_names_set:?}"
+        ));
     }
     Ok(rename_in_cons(&replacement_map, in_sexp, false))
 }
@@ -2231,7 +2240,11 @@ fn test_rename_in_compileform_simple() {
     let parsed = parse_sexp(Srcloc::start("*test*"), prog.bytes()).expect("should parse");
     let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let compiled = frontend(opts, &parsed).expect("should compile");
-    let helper_f: Vec<_> = compiled.helpers.iter().filter(|f| f.name() == b"F").collect();
+    let helper_f: Vec<_> = compiled
+        .helpers
+        .iter()
+        .filter(|f| f.name() == b"F")
+        .collect();
     let renamed_helperform = squash_name_differences(helper_f[0].to_sexp()).expect("should rename");
     assert_eq!(renamed_helperform.to_string(), desired_outcome);
 }

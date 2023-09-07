@@ -38,7 +38,8 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
             );
         })?;
 
-    let result_sexp = squash_name_differences(result.to_sexp()).map_err(|e| CompileErr(loc.clone(), e))?;
+    let result_sexp =
+        squash_name_differences(result.to_sexp()).map_err(|e| CompileErr(loc.clone(), e))?;
     Ok(result_sexp.to_string())
 }
 
@@ -125,7 +126,6 @@ fn test_simple_fe_opt_compile_1() {
 
 #[test]
 fn test_lambda_eval_1() {
-
     assert_eq!(
         shrink_expr_from_string("(lambda (X) (+ X 1))".to_string()).unwrap(),
         "(lambda (X_$_A) (+ X_$_A 1))".to_string()

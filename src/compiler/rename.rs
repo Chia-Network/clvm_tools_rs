@@ -378,7 +378,7 @@ fn rename_args_bodyform(b: &BodyForm) -> Result<BodyForm, CompileErr> {
         BodyForm::Mod(l, program) => Ok(BodyForm::Mod(l.clone(), program.clone())),
         BodyForm::Lambda(ldata) => {
             let mut own_args = HashMap::new();
-            for (n,v) in invent_new_names_sexp(ldata.args.clone()).iter() {
+            for (n, v) in invent_new_names_sexp(ldata.args.clone()).iter() {
                 own_args.insert(n.clone(), v.clone());
             }
             let new_args = rename_in_cons(&own_args, ldata.args.clone(), false);
@@ -389,7 +389,7 @@ fn rename_args_bodyform(b: &BodyForm) -> Result<BodyForm, CompileErr> {
                 body: Rc::new(renamed_with_own_args),
                 ..*ldata.clone()
             })))
-        },
+        }
     }
 }
 
