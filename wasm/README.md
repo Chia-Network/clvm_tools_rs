@@ -30,3 +30,86 @@ Prerequisite:
 # Make sure you're at <clvm_tools_rs root>/wasm
 node ./tests/index.js
 ```
+
+Program
+===
+
+Program is exported by ```clvm_tools_rs``` and contains a ```to``` function
+among a few others.  Its use is very like Program.to in the python code and
+similar to chiaminejp's ```clvm_tools``` library.  It produces a value that
+can be used together with other such values, can be curried (and uncurried)
+converted to the hex representation and run.
+
+```Program.to```
+
+Converts javascript values to SExp objects which can be used together and run
+as CLVM programs or used as program arguments.  This conversion follows simple
+conventions that were established in ```clvm_tools```.
+
+- There's a tuple object returned by the ```t``` function (2 arguments) which
+produces a cons.
+
+- javascript arrays are treated as linear proper lists.  Each element appears
+as the first of a cons with the rest of the converted list as its tail.  The
+list is terminated by a nil.
+
+- an object which has a serialize method treats the result of ```o.serialize()```
+as an array-like object which specifies the byte values of the object's atom
+representation.  This covers bls primitives such as G1Element and G2Element.
+
+- javascript numbers, bignums, strings and bools are treated as atoms.
+
+- javascript objects which contain an array-like ```pair``` member are treated
+the same as tuple objects above.
+
+```Program.from_hex```
+
+Converts a string of pairs of hex digits into the CLVM deserialized form of the
+object.
+
+```Program.null```
+
+Returns a null object.
+
+The returned objects have these methods:
+
+```SExp.toString()```
+
+Convert the object to its hex representation.
+
+```SExp.as_pair()```
+
+If it is a cons, return a tuple-compatible object containing a ```pair``` array
+with 2 elements, otherwise null.
+
+```SExp.listp()```
+
+Return true if the object is a cons.
+
+```SExp.nullp()```
+
+Return true if the object is falsey.
+
+```SExp.as_int()```
+
+Returns a javascript number that fits within the 32-bit integers representing the object's atom value, or throw.
+
+```SExp.as_bigint()```
+
+Returns a javascript big number representing the value of the given atom or throw.
+
+```SExp.first()```
+
+If the object is a cons, return its first or left component, or throw if not.
+
+```SExp.rest()```
+
+If the object is a cons, return its rest or right component, or throw if not.
+
+```SExp.cons(other)```
+
+Creates an SExp which is a cons of this sexp and other.
+
+```SExp.run(env)```
+
+Runs the indicated SExp as a program with the given environment.
