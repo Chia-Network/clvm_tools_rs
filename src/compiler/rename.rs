@@ -288,7 +288,6 @@ fn rename_args_bodyform(b: &BodyForm) -> Result<BodyForm, CompileErr> {
                 letdata.body.borrow(),
                 letdata.bindings.len(),
             ))?;
-            eprintln!("sequentialized rename {}", res.to_sexp());
             Ok(res)
         }
 
@@ -329,7 +328,6 @@ fn rename_args_bodyform(b: &BodyForm) -> Result<BodyForm, CompileErr> {
                     ..*letdata.clone()
                 }),
             );
-            eprintln!("{} renamed to {}", b.to_sexp(), new_form.to_sexp());
             Ok(new_form)
         }
 
