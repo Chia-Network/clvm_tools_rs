@@ -40,7 +40,7 @@ similar to chiaminejp's ```clvm_tools``` library.  It produces a value that
 can be used together with other such values, can be curried (and uncurried)
 converted to the hex representation and run.
 
-```Program.to```
+```Program.to(javascript_value)```
 
 Converts javascript values to SExp objects which can be used together and run
 as CLVM programs or used as program arguments.  This conversion follows simple
@@ -62,16 +62,19 @@ representation.  This covers bls primitives such as G1Element and G2Element.
 - javascript objects which contain an array-like ```pair``` member are treated
 the same as tuple objects above.
 
-```Program.from_hex```
+```Program.from_hex(hex_str)```
 
 Converts a string of pairs of hex digits into the CLVM deserialized form of the
 object.
 
-```Program.null```
+```Program.null()```
 
 Returns a null object.
 
 The returned objects have these methods:
+
+SExp methods
+===
 
 ```SExp.toString()```
 
@@ -113,3 +116,24 @@ Creates an SExp which is a cons of this sexp and other.
 ```SExp.run(env)```
 
 Runs the indicated SExp as a program with the given environment.
+
+```SExp.as_bin()```
+
+Serialize the object into an array of byte values.
+
+```SExp.list_len()```
+
+Give the number of conses one needs to traverse until reaching a non-cons rest.
+For a proper list, this gives the list's length.
+
+```SExp.as_javascript()```
+
+Return a javascript value that allows the given SExp to be inspected via
+javascript.
+
+```SExp.curry(a, b, c ...)```
+
+Given a number of positional arguments, build a curried application that provides
+values for the left arguments of some runnable CLVM code, giving code that can
+be correctly called with fewer arguments.  This is common for providing values to
+the upper case parameters of chialisp programs, such as coin puzzles.
