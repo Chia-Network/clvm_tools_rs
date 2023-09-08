@@ -137,3 +137,11 @@ Given a number of positional arguments, build a curried application that provide
 values for the left arguments of some runnable CLVM code, giving code that can
 be correctly called with fewer arguments.  This is common for providing values to
 the upper case parameters of chialisp programs, such as coin puzzles.
+
+```SExp.uncurry(program) -> [inner_program, [args...]]```
+```SExp.uncurry_error(program)```
+
+Uncurry returns an array with the inner program and the retrievable arguments
+separated out, or the original program and null.  uncurry_error throws instead
+of returning a value if the object wasn't a curried program.
+
