@@ -15,7 +15,7 @@ use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::u8_from_number;
 
-fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
+pub fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
     match body.borrow() {
         SExp::Atom(_, name) => vec![name.to_vec()],
         SExp::Cons(_, head, tail) => {

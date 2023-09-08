@@ -36,7 +36,7 @@ fn rename_in_qq(namemap: &HashMap<Vec<u8>, Vec<u8>>, body: Rc<SExp>) -> Rc<SExp>
 }
 
 /* Given a cons cell, rename occurrences of oldname to newname */
-fn rename_in_cons(
+pub fn rename_in_cons(
     namemap: &HashMap<Vec<u8>, Vec<u8>>,
     body: Rc<SExp>,
     qq_handling: bool,
