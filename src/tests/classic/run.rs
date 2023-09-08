@@ -1017,6 +1017,60 @@ fn test_modern_sets_source_file_in_symbols() {
 }
 
 #[test]
+fn test_assign_lambda_code_generation() {
+    let tname = "test_assign_lambda_code_generation.sym".to_string();
+    do_basic_run(&vec![
+        "run".to_string(),
+        "--extra-syms".to_string(),
+        "--symbol-output-file".to_string(),
+        tname.clone(),
+        "(mod (A) (include *standard-cl-21*) (defun F (X) (+ X 1)) (assign-lambda X (F A) X))"
+            .to_string(),
+    ]);
+    let read_in_file = fs::read_to_string(&tname).expect("should have dropped symbols");
+    fs::remove_file(&tname).expect("should have existed");
+    let decoded_symbol_file: HashMap<String, String> =
+        serde_json::from_str(&read_in_file).expect("should decode");
+    let found_wanted_symbols: Vec<String> = decoded_symbol_file
+        .iter()
+        .filter(|(_, v)| *v == "F" || v.starts_with("letbinding"))
+        .map(|(k, _)| k.clone())
+        .collect();
+    assert_eq!(found_wanted_symbols.len(), 2);
+    // We should have these two functions.
+    assert!(found_wanted_symbols
+        .contains(&"ccd5be506752cebf01f9930b4c108fe18058c65e1ab57a72ca0a00d9788c7ca6".to_string()));
+    assert!(found_wanted_symbols
+        .contains(&"0a5af5ae61fae2e53cb309d4d9c2c64baf0261824823008b9cf2b21b09221e44".to_string()));
+}
+
+#[test]
+fn test_assign_lambda_code_generation_normally_inlines() {
+    let tname = "test_assign_inline_code_generation.sym".to_string();
+    do_basic_run(&vec![
+        "run".to_string(),
+        "--extra-syms".to_string(),
+        "--symbol-output-file".to_string(),
+        tname.clone(),
+        "(mod (A) (include *standard-cl-21*) (defun F (X) (+ X 1)) (assign-inline X (F A) X))"
+            .to_string(),
+    ]);
+    let read_in_file = fs::read_to_string(&tname).expect("should have dropped symbols");
+    fs::remove_file(&tname).expect("should have existed");
+    let decoded_symbol_file: HashMap<String, String> =
+        serde_json::from_str(&read_in_file).expect("should decode");
+    let found_wanted_symbols: Vec<String> = decoded_symbol_file
+        .iter()
+        .filter(|(_, v)| *v == "F" || v.starts_with("letbinding"))
+        .map(|(k, _)| k.clone())
+        .collect();
+    assert_eq!(found_wanted_symbols.len(), 1);
+    // We should have these two functions.
+    assert!(found_wanted_symbols
+        .contains(&"ccd5be506752cebf01f9930b4c108fe18058c65e1ab57a72ca0a00d9788c7ca6".to_string()));
+}
+
+#[test]
 fn test_cost_reporting_0() {
     let program = "(2 (1 2 6 (4 2 (4 (1 . 1) ()))) (4 (1 (2 (1 2 (3 (7 5) (1 2 (1 11 (1 . 2) (2 4 (4 2 (4 (5 5) ()))) (2 4 (4 2 (4 (6 5) ())))) 1) (1 2 (1 11 (1 . 1) 5) 1)) 1) 1) 2 (1 16 5 (1 . 50565442356047746631413349885570059132562040184787699607120092457326103992436)) 1) 1))";
     let result = do_basic_brun(&vec![
@@ -1031,6 +1085,20 @@ fn test_cost_reporting_0() {
         result,
         "cost = 1978\n0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9875"
     );
+}
+
+#[test]
+fn test_assign_fancy_final_dot_rest() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/chia-gaming".to_string(),
+        "resources/tests/chia-gaming/test-last.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "101");
 }
 
 #[test]
