@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
@@ -7,8 +7,10 @@ use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::frontend::{collect_used_names_sexp, frontend};
+use crate::compiler::rename::rename_in_cons;
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::{parse_sexp, SExp};
+use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 const TEST_TIMEOUT: usize = 1000000;
@@ -60,6 +62,38 @@ fn run_string_maybe_opt(
 
 pub fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
     run_string_maybe_opt(content, args, false)
+}
+
+// Given some renaming that leaves behind gensym style names with _$_<n> in them,
+// order them and use a locally predictable renaming scheme to give them a final
+// test checkable value.
+pub fn squash_name_differences(in_sexp: Rc<SExp>) -> Result<Rc<SExp>, String> {
+    let found_names_set: BTreeSet<_> = collect_used_names_sexp(in_sexp.clone())
+        .into_iter()
+        .filter(|n| n.contains(&b'$'))
+        .collect();
+    let mut found_names_progression = b'A';
+    let mut replacement_map = HashMap::new();
+    for found_name in found_names_set.iter() {
+        if let Some(located_dollar_part) = found_name.iter().position(|x| *x == b'$') {
+            let mut new_name: Vec<u8> = found_name
+                .iter()
+                .take(located_dollar_part + 2)
+                .copied()
+                .collect();
+            new_name.push(found_names_progression);
+            found_names_progression += 1;
+            replacement_map.insert(found_name.clone(), new_name);
+        } else {
+            return Err(decode_string(&found_name));
+        }
+    }
+    if replacement_map.len() != found_names_set.len() {
+        return Err(format!(
+            "mismatched lengths {replacement_map:?} vs {found_names_set:?}"
+        ));
+    }
+    Ok(rename_in_cons(&replacement_map, in_sexp, false))
 }
 
 /* // Upcoming support for extra optimization (WIP)
@@ -1490,4 +1524,93 @@ fn test_simple_rest_call_inline() {
     .to_string();
     let res = run_string(&prog, &"(13 99 144)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "768");
+}
+
+#[test]
+fn test_let_in_rest_0() {
+    let prog = indoc! {"
+(mod (Z X)
+  (include *standard-cl-21*)
+
+  (defun F (X) (+ X 3))
+
+  (F &rest (list (let ((Q (* X Z))) (+ Q 99))))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(3 2)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "108");
+}
+
+#[test]
+fn test_let_in_rest_1() {
+    let prog = indoc! {"
+(mod (Z X)
+  (include *standard-cl-21*)
+
+  (defun F (X) (+ X 3))
+
+  (F &rest (let ((Q (* X Z))) (list (+ Q 99))))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(3 2)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "108");
+}
+
+#[test]
+fn test_rename_in_compileform_run() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F overridden
+    (let
+      ((overridden (* 3 (f overridden))) ;; overridden = 33
+       (y (f (r overridden))) ;; y = 13
+       (z (f (r (r overridden))))) ;; z = 17
+      (+ overridden z y) ;; 33 + 13 + 17 = 63
+      )
+    )
+
+  (F X 13 17)
+  )"}
+    .to_string();
+
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "63");
+}
+
+#[test]
+fn test_rename_in_compileform_simple() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F overridden
+    (let
+      ((overridden (* 3 (f overridden))) ;; overridden = 33
+       (y (f (r overridden))) ;; y = 11
+       (z (f (r (r overridden))))) ;; z = 17
+      (+ overridden z y) ;; 33 11 17
+      )
+    )
+
+  (F X 13 17)
+  )"}
+    .to_string();
+    // Note: renames use gensym so they're unique but not spot predictable.
+    //
+    // We'll rename them in detection order to a specific set of names and should
+    // get for F:
+    //
+    let desired_outcome = "(defun F overridden_$_A (let ((overridden_$_B (* 3 (f overridden_$_A))) (y_$_C (f (r overridden_$_A))) (z_$_D (f (r (r overridden_$_A))))) (+ overridden_$_B z_$_D y_$_C)))";
+    let parsed = parse_sexp(Srcloc::start("*test*"), prog.bytes()).expect("should parse");
+    let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
+    let compiled = frontend(opts, &parsed).expect("should compile");
+    let helper_f: Vec<_> = compiled
+        .helpers
+        .iter()
+        .filter(|f| f.name() == b"F")
+        .collect();
+    let renamed_helperform = squash_name_differences(helper_f[0].to_sexp()).expect("should rename");
+    assert_eq!(renamed_helperform.to_string(), desired_outcome);
 }
