@@ -9,9 +9,10 @@ use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
-    list_to_cons, ArgsAndTail, Binding, BodyForm, ChiaType, BindingPattern, CompileErr, CompileForm, CompilerOpts,
-    ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData, HelperForm, IncludeDesc,
-    LetData, LetFormKind, LetFormInlineHint, ModAccum, StructDef, StructMember, TypeAnnoKind,
+    list_to_cons, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType, CompileErr,
+    CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData,
+    HelperForm, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, ModAccum, StructDef,
+    StructMember, TypeAnnoKind,
 };
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::{rename_assign_bindings, rename_children_compileform};
