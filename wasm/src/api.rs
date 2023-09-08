@@ -97,11 +97,8 @@ where
         runcell.replace_with(|coll| {
             let mut work_collection = HashMap::new();
             swap(coll, &mut work_collection);
-            match work_collection.get_mut(&this_id) {
-                Some(r_ref) => {
-                    result = f(r_ref);
-                }
-                _ => {}
+            if let Some(r_ref) = work_collection.get_mut(&this_id) {
+                result = f(r_ref);
             }
             work_collection
         });
@@ -115,16 +112,16 @@ pub fn create_clvm_runner_err(error: String) -> JsValue {
         0,
         js_pair(JsValue::from_str("error"), JsValue::from_str(&error)),
     );
-    return object_to_value(&js_sys::Object::from_entries(&array).unwrap());
+    object_to_value(&js_sys::Object::from_entries(&array).unwrap())
 }
 
 fn create_clvm_runner_run_failure(err: &RunFailure) -> JsValue {
     match err {
         RunFailure::RunErr(l, e) => {
-            return create_clvm_runner_err(format!("{}: Error {}", l.to_string(), e));
+            create_clvm_runner_err(format!("{}: Error {}", l, e))
         }
         RunFailure::RunExn(l, e) => {
-            return create_clvm_runner_err(format!("{}: Exn {}", l.to_string(), e.to_string()))
+            create_clvm_runner_err(format!("{}: Exn {}", l, e))
         }
     }
 }
@@ -132,7 +129,7 @@ fn create_clvm_runner_run_failure(err: &RunFailure) -> JsValue {
 fn create_clvm_compile_failure(err: &CompileErr) -> JsValue {
     match err {
         CompileErr(l, e) => {
-            return create_clvm_runner_err(format!("{}: Error {}", l.to_string(), e));
+            create_clvm_runner_err(format!("{}: Error {}", l, e))
         }
     }
 }
@@ -159,7 +156,7 @@ impl CldbSingleBespokeOverride for JsBespokeOverride {
             })
             .and_then(|v| {
                 sexp_from_js_object(env.loc(), &v)
-                    .map(|s| Ok(s))
+                    .map(Ok)
                     .unwrap_or_else(|| {
                         Err(RunFailure::RunErr(
                             env.loc(),
@@ -183,8 +180,8 @@ pub fn create_clvm_runner(
 ) -> JsValue {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
-    let args_srcloc = Srcloc::start(&"*args*".to_string());
-    let prog_srcloc = Srcloc::start(&"*program*".to_string());
+    let args_srcloc = Srcloc::start("*args*");
+    let prog_srcloc = Srcloc::start("*program*");
     let mut prim_map = HashMap::new();
     let mut override_funs: HashMap<String, Box<dyn CldbSingleBespokeOverride>> = HashMap::new();
 
@@ -208,14 +205,11 @@ pub fn create_clvm_runner(
         }
     };
 
-    for ent in js_sys::Object::keys(&overrides).values() {
+    for ent in js_sys::Object::keys(overrides).values() {
         let key = ent.unwrap().as_string().unwrap();
-        let val = get_property(&overrides, &key).unwrap();
-        match val.dyn_ref::<js_sys::Function>() {
-            Some(f) => {
-                override_funs.insert(key, Box::new(JsBespokeOverride { fun: f.clone() }));
-            }
-            _ => {}
+        let val = get_property(overrides, &key).unwrap();
+        if let Some(f) = val.dyn_ref::<js_sys::Function>() {
+            override_funs.insert(key, Box::new(JsBespokeOverride { fun: f.clone() }));
         }
     }
 
@@ -247,7 +241,7 @@ pub fn create_clvm_runner(
     let this_id = get_next_id();
     insert_runner(this_id, JsRunStep { allocator, cldbrun });
 
-    return JsValue::from(this_id);
+    JsValue::from(this_id)
 }
 
 #[wasm_bindgen]
@@ -255,7 +249,7 @@ pub fn final_value(runner: i32) -> JsValue {
     with_runner(runner, |r| {
         r.cldbrun.final_result().map(|v| js_object_from_sexp(v).unwrap_or_else(|e| e))
     })
-    .unwrap_or_else(|| JsValue::null())
+    .unwrap_or_else(JsValue::null)
 }
 
 #[wasm_bindgen]
@@ -274,7 +268,7 @@ pub fn run_step(runner: i32) -> JsValue {
         r.cldbrun.step(&mut r.allocator)
     })
     .map(|result_hash| btreemap_to_object(result_hash.iter()))
-    .unwrap_or_else(|| JsValue::null())
+    .unwrap_or_else(JsValue::null)
 }
 
 fn make_compile_output(result_stream: &Stream, symbol_table: &HashMap<String, String>) -> JsValue {
@@ -285,10 +279,8 @@ fn make_compile_output(result_stream: &Stream, symbol_table: &HashMap<String, St
         js_pair(JsValue::from_str("hex"), JsValue::from_str(&output_hex)),
     );
     let symbol_array = js_sys::Array::new();
-    let mut idx = 0;
-    for (k, v) in symbol_table.iter() {
-        symbol_array.set(idx, js_pair(JsValue::from_str(&k), JsValue::from_str(&v)));
-        idx += 1;
+    for (idx, (k, v)) in symbol_table.iter().enumerate() {
+        symbol_array.set(idx as u32, js_pair(JsValue::from_str(k), JsValue::from_str(v)));
     }
     let symbol_object = object_to_value(&js_sys::Object::from_entries(&symbol_array).unwrap());
     array.set(1, js_pair(JsValue::from_str("symbols"), symbol_object));
@@ -347,7 +339,7 @@ pub fn compose_run_function(
     function_name: String,
 ) -> JsValue {
     let mut allocator = Allocator::new();
-    let loc = Srcloc::start(&"*js*".to_string());
+    let loc = Srcloc::start("*js*");
     let symbol_table = match read_string_to_string_map(symbol_table_js) {
         Ok(s) => s,
         Err(e) => {
@@ -417,7 +409,7 @@ pub fn compose_run_function(
 #[wasm_bindgen]
 pub fn create_repl() -> i32 {
     let allocator = Allocator::new();
-    let opts = Rc::new(DefaultCompilerOpts::new(&"*repl*".to_string()));
+    let opts = Rc::new(DefaultCompilerOpts::new("*repl*"));
     let runner = Rc::new(DefaultProgramRunner::new());
     let repl = Repl::new(opts, runner.clone());
     let new_id = get_next_id();
@@ -470,7 +462,7 @@ pub fn repl_run_string(repl_id: i32, input: String) -> JsValue {
                 r.process_line(a, input)
             } else {
                 Err(CompileErr(
-                    Srcloc::start(&"*repl*".to_string()),
+                    Srcloc::start("*repl*"),
                     "no such repl".to_string(),
                 ))
             }
@@ -483,12 +475,12 @@ pub fn repl_run_string(repl_id: i32, input: String) -> JsValue {
                 e.1
             )))
         })
-        .unwrap_or_else(|| JsValue::null())
+        .unwrap_or_else(JsValue::null)
 }
 
 #[wasm_bindgen]
 pub fn sexp_to_string(v: &JsValue) -> JsValue {
-    let loc = Srcloc::start(&"*val*".to_string());
+    let loc = Srcloc::start("*val*");
 
     sexp_from_js_object(loc, v)
         .map(|s| JsValue::from_str(&s.to_string()))

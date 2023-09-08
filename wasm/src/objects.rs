@@ -129,7 +129,7 @@ impl ObjectCache {
     }
 }
 
-static PROGRAM_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
+static PROGRAM_FUNCTIONS: &[FunctionWrapperDesc] = &[
     FunctionWrapperDesc {
         export_name: "toString",
         member_name: "to_string_internal",
@@ -209,10 +209,20 @@ static PROGRAM_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
         export_name: "sha256tree",
         member_name: "sha256tree_internal",
         varargs: false,
-    }
+    },
+    FunctionWrapperDesc {
+        export_name: "uncurry_error",
+        member_name: "uncurry_error_internal",
+        varargs: false,
+    },
+    FunctionWrapperDesc {
+        export_name: "uncurry",
+        member_name: "uncurry_internal",
+        varargs: false,
+    },
 ];
 
-static TUPLE_FUNCTIONS: &'static [FunctionWrapperDesc] = &[
+static TUPLE_FUNCTIONS: &[FunctionWrapperDesc] = &[
     FunctionWrapperDesc {
         export_name: "to_program",
         member_name: "tuple_to_program_internal",
@@ -363,6 +373,40 @@ pub fn finish_new_object(id: i32, encoded_hex: &str) -> Result<JsValue, JsValue>
     )?;
 
     Ok(new_object.into())
+}
+
+// Return a vector of arguments if the given SExp is the expected operator
+// and has the required number of arguments.
+fn match_op(opcode: u8, expected_args: usize, opname: &str, program: Rc<SExp>) -> Result<Vec<Rc<SExp>>, JsValue> {
+    let plist =
+        if let Some(plist) = program.proper_list() {
+            plist
+        } else {
+            // Not a list so can't be an apply.
+            return Err(JsValue::from_str(&format!("program wasn't a list representing an {opname} op: {program}")));
+        };
+
+    // Not the right length
+    if plist.len() != expected_args + 1 {
+        return Err(JsValue::from_str(&format!("program list wasn't a list of {} representing an {opname} op: {program}", expected_args + 1)));
+    }
+
+    // Not an apply
+    if plist[0] != SExp::Atom(plist[0].loc(), vec![opcode]) {
+        return Err(JsValue::from_str("program isn't an {opname} op: {program}"));
+    }
+
+    Ok(plist.into_iter().skip(1).map(Rc::new).collect())
+}
+
+fn cache_and_accumulate_arg(array: &Array, prog: Rc<SExp>) -> Result<(), JsValue> {
+    let arg_id = get_next_id();
+    let new_cached_arg = create_cached_sexp(arg_id, prog)?;
+    let arg_js = finish_new_object(arg_id, &new_cached_arg)?;
+
+    array.push(&arg_js);
+
+    Ok(())
 }
 
 #[wasm_bindgen]
@@ -595,13 +639,9 @@ impl Program {
         let cached = find_cached_sexp(cacheval.entry, &cacheval.content)?;
         let mut val_ref = cached.modern.clone();
         let mut count: i32 = 0;
-        loop {
-            if let SExp::Cons(_, _, b) = val_ref.borrow() {
-                val_ref = b.clone();
-                count += 1;
-            } else {
-                break;
-            }
+        while let SExp::Cons(_, _, b) = val_ref.borrow() {
+            val_ref = b.clone();
+            count += 1;
         }
         Ok(count)
     }
@@ -673,5 +713,59 @@ impl Program {
         let new_id = get_next_id();
         let new_cached = create_cached_sexp(new_id, result)?;
         finish_new_object(new_id, &new_cached)
+    }
+
+    #[wasm_bindgen]
+    pub fn uncurry_error_internal(obj: &JsValue) -> Result<JsValue, JsValue> {
+        let program_val = Program::to(obj)?;
+        let cacheval = js_cache_value_from_js(&program_val)?;
+        let program = find_cached_sexp(cacheval.entry, &cacheval.content)?;
+
+        let apply_args = match_op(2, 2, "apply", program.modern.clone())?;
+        // Not used in code, but detects a quoted program.
+        let quoted_prog = match_op(1, 1, "quote", apply_args[0].clone())?;
+
+        let retrieved_args = Array::new();
+        let mut cons_expr = match_op(4, 2, "cons", apply_args[1].clone())?;
+        cache_and_accumulate_arg(&retrieved_args, cons_expr[0].clone())?;
+        let mut next_cons = cons_expr[1].clone();
+        while matches!(next_cons.borrow(), SExp::Cons(_, _, _)) {
+            cons_expr = match_op(4, 2, "cons", next_cons)?;
+
+            // Convert to the external js form and insert into cache so we can
+            // forego conversion if still cached.
+            cache_and_accumulate_arg(&retrieved_args, cons_expr[0].clone())?;
+
+            // Move on to the tail that's being built.
+            next_cons = cons_expr[1].clone();
+        }
+
+        // Verify that we're at a 1 env ref.
+        let borrowed_next: &SExp = next_cons.borrow();
+        if borrowed_next != &SExp::Atom(next_cons.loc(), vec![1]) {
+            return Err(JsValue::from_str("curry didn't end with 1 env ref"));
+        }
+
+        // Make a cache slot for the program.
+        let mod_id = get_next_id();
+        let new_cached_mod = create_cached_sexp(mod_id, quoted_prog[0].clone())?;
+        let mod_js = finish_new_object(mod_id, &new_cached_mod)?;
+
+        let res = Array::new();
+        res.push(&mod_js);
+        res.push(&retrieved_args);
+        Ok(res.into())
+    }
+
+    #[wasm_bindgen]
+    pub fn uncurry_internal(obj: &JsValue) -> JsValue {
+        if let Ok(res) = Program::uncurry_error_internal(obj) {
+            res
+        } else {
+            let res = Array::new();
+            res.push(obj);
+            res.push(&JsValue::null());
+            res.into()
+        }
     }
 }
