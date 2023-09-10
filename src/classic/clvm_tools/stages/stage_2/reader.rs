@@ -90,7 +90,7 @@ pub fn process_embed_file(
             ));
         }
 
-        if let (SExp::Atom(), SExp::Atom(), SExp::Atom()) = (
+        if let (SExp::Atom, SExp::Atom, SExp::Atom) = (
             allocator.sexp(l[0]),
             allocator.sexp(l[1]),
             allocator.sexp(l[2]),

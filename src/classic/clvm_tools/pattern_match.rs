@@ -51,7 +51,7 @@ pub fn match_sexp(
      */
 
     match (allocator.sexp(pattern), allocator.sexp(sexp)) {
-        (SExp::Atom(), SExp::Atom()) => {
+        (SExp::Atom, SExp::Atom) => {
             // Two nodes in scope, both used.
             if allocator.atom(pattern) == allocator.atom(sexp) {
                 Some(known_bindings)
@@ -60,10 +60,10 @@ pub fn match_sexp(
             }
         }
         (SExp::Pair(pleft, pright), _) => match (allocator.sexp(pleft), allocator.sexp(pright)) {
-            (SExp::Atom(), SExp::Atom()) => {
+            (SExp::Atom, SExp::Atom) => {
                 let pright_atom = allocator.atom(pright).to_vec();
                 match allocator.sexp(sexp) {
-                    SExp::Atom() => {
+                    SExp::Atom => {
                         // Expression is ($ . $), sexp is '$', result: no capture.
                         // Avoid double borrow.
                         if allocator.atom(pleft) == ATOM_MATCH {
@@ -114,11 +114,11 @@ pub fn match_sexp(
                 }
             }
             _ => match allocator.sexp(sexp) {
-                SExp::Atom() => None,
+                SExp::Atom => None,
                 SExp::Pair(sleft, sright) => match_sexp(allocator, pleft, sleft, known_bindings)
                     .and_then(|new_bindings| match_sexp(allocator, pright, sright, new_bindings)),
             },
         },
-        (SExp::Atom(), _) => None,
+        (SExp::Atom, _) => None,
     }
 }
