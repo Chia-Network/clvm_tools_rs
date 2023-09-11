@@ -448,13 +448,15 @@ impl CldbRun {
             let cached_a = self.cache_sexp_conversion(allocator, jit_stored, a.clone())?;
             let cached_b = self.cache_sexp_conversion(allocator, jit_stored, b.clone())?;
             let new_cons = allocator.new_pair(cached_a, cached_b).map_err(|_| RunFailure::RunErr(value.loc(), "Failed to alloc cons".to_string()))?;
-            jit_stored.insert(ConvKey::NodePtr(new_cons), (value.clone(), new_cons));
-            jit_stored.insert(ptr, (value, new_cons));
+            let pair = (value.clone(), new_cons);
+            jit_stored.insert(ConvKey::NodePtr(new_cons), pair.clone());
+            jit_stored.insert(ptr, pair);
             Ok(new_cons)
         } else {
             let converted_val = convert_to_clvm_rs(allocator, value.clone())?;
-            jit_stored.insert(ConvKey::NodePtr(converted_val), (value.clone(), converted_val));
-            jit_stored.insert(ptr, (value, converted_val));
+            let pair = (value.clone(), converted_val);
+            jit_stored.insert(ConvKey::NodePtr(converted_val), pair.clone());
+            jit_stored.insert(ptr, pair);
             Ok(converted_val)
         }
     }
@@ -464,21 +466,21 @@ impl CldbRun {
             return Ok(res.clone());
         }
 
-        if let allocator::SExp::Pair(a, b) = allocator.sexp(value) {
-            let back_a = self.cache_node_conversion(allocator, jit_stored, loc.clone(), a)?;
-            let back_b = self.cache_node_conversion(allocator, jit_stored, loc.clone(), b)?;
-            let new_cons = Rc::new(SExp::Cons(loc.clone(), back_a, back_b));
-            let new_ptr = ConvKey::SExpPtr(Rc::as_ptr(&new_cons) as u64);
-            jit_stored.insert(new_ptr, (new_cons.clone(), value));
-            jit_stored.insert(ConvKey::NodePtr(value), (new_cons.clone(), value));
-            Ok(new_cons)
-        } else {
-            let converted = convert_from_clvm_rs(allocator, loc, value)?;
-            let new_ptr = ConvKey::SExpPtr(Rc::as_ptr(&converted) as u64);
-            jit_stored.insert(new_ptr, (converted.clone(), value));
-            jit_stored.insert(ConvKey::NodePtr(value), (converted.clone(), value));
-            Ok(converted)
-        }
+        let converted =
+            convert_from_clvm_rs(allocator, loc, value)?;
+
+            // if let allocator::SExp::Pair(a, b) = allocator.sexp(value) {
+            //     let back_a = self.cache_node_conversion(allocator, jit_stored, loc.clone(), a)?;
+            //     let back_b = self.cache_node_conversion(allocator, jit_stored, loc.clone(), b)?;
+            //     Rc::new(SExp::Cons(loc.clone(), back_a, back_b))
+            // } else {
+            //     convert_from_clvm_rs(allocator, loc, value)?
+            // };
+
+        let new_ptr = ConvKey::SExpPtr(Rc::as_ptr(&converted) as u64);
+        jit_stored.insert(new_ptr, (converted.clone(), value));
+        jit_stored.insert(ConvKey::NodePtr(value), (converted.clone(), value));
+        Ok(converted)
     }
 
     fn jit_apply_op(&self, allocator: &mut Allocator, jit_mut: &mut JitMap, jit_stored: &mut ConvMap, runner: Rc<dyn TRunProgram>, end_env: Srcloc, head: Rc<SExp>, rest: Rc<SExp>) -> Result<Rc<SExp>, RunFailure> {
@@ -496,7 +498,7 @@ impl CldbRun {
         let converted_app = self.cache_sexp_conversion(allocator, jit_stored, application.clone())?;
         let converted_args = self.cache_sexp_conversion(allocator, jit_stored, wrapped_args.clone())?;
 
-        match
+        let out_node =
             runner
             .run_program(allocator, converted_app, converted_args, None)
             .map_err(|e| {
@@ -504,11 +506,10 @@ impl CldbRun {
                     head.loc(),
                     format!("{} in {application} {wrapped_args}", e.1),
                 )
-            })
-        {
-            Ok(v) => self.cache_node_conversion(allocator, jit_stored, head.loc(), v.1),
-            Err(e) => Err(e)
-        }
+            })?;
+
+        // convert_from_clvm_rs(allocator, head.loc(), out_node.1)
+        self.cache_node_conversion(allocator, jit_stored, head.loc(), out_node.1)
     }
 
     fn jit_run(&self, allocator: &mut Allocator, jit_mut: &mut JitMap, jit_stored: &mut ConvMap, jit_code: &ClvmShortCircuit, env: Rc<SExp>) -> Result<Rc<SExp>, RunFailure> {
