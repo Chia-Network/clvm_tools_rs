@@ -288,7 +288,7 @@ pub fn convert_from_clvm_rs(
     }
 }
 
-fn generate_argument_refs(start: Number, sexp: Rc<SExp>) -> Rc<SExp> {
+pub fn generate_argument_refs(start: Number, sexp: Rc<SExp>) -> Rc<SExp> {
     match sexp.borrow() {
         SExp::Cons(l, a, b) => {
             let next_index = bi_one() + 2_i32.to_bigint().unwrap() * start.clone();

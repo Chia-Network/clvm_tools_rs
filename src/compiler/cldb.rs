@@ -18,9 +18,9 @@ use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm;
-use crate::compiler::clvm::{apply_op, choose_path, convert_from_clvm_rs, PrimOverride, run_step, RunStep, truthy};
+use crate::compiler::clvm::{apply_op, choose_path, convert_from_clvm_rs, convert_to_clvm_rs, PrimOverride, run_step, RunStep, truthy, generate_argument_refs};
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::{First, SExp, NodeSel, SelectNode, ThisNode};
+use crate::compiler::sexp::{First, SExp, NodeSel, SelectNode, ThisNode, enlist};
 use crate::compiler::srcloc::Srcloc;
 #[cfg(feature = "debug-print")]
 use crate::util::{u8_from_number, number_from_u8};
@@ -32,6 +32,13 @@ fn print_atom() -> SExp {
 }
 
 type JitMap = HashMap<(u64, u64), ClvmShortCircuit>;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum ConvKey {
+    SExpPtr(u64),
+    NodePtr(NodePtr)
+}
+type ConvMap = HashMap<ConvKey, (Rc<SExp>, NodePtr)>;
 
 #[derive(Clone, Debug)]
 pub struct PriorResult {
@@ -132,7 +139,10 @@ pub struct CldbRun {
     row: usize,
 
     outputs_to_step: HashMap<Number, PriorResult>,
+
     perform_jit: bool,
+    allocator: RefCell<Allocator>,
+    stored_conversions: RefCell<ConvMap>,
     stored_jit: RefCell<JitMap>,
 }
 
@@ -169,7 +179,6 @@ fn is_print_request(a: &SExp) -> Option<(Srcloc, Rc<SExp>)> {
 }
 
 fn jit_generate_tail(jit_mut: &mut JitMap, jitted: &mut ClvmShortCircuit, num_args: &mut usize, tail: Rc<SExp>) {
-    eprintln!("jit_generate_tail {} {}", num_args, tail);
     if let SExp::Cons(_, here, farther_tail) = tail.borrow() {
         jit_generate_tail(jit_mut, jitted, num_args, farther_tail.clone());
 
@@ -227,10 +236,8 @@ fn jit_generate(jit_mut: &mut JitMap, jitted: &mut ClvmShortCircuit, head: Rc<SE
         jit_generate_tail(jit_mut, jitted, &mut num_args, tail.clone());
 
         if let SExp::Atom(_, v) = head.atomize().borrow() {
-            eprintln!("jit_generate_tail for operator {head}");
             jitted.instructions.push(ClvmLinearInstruction::Operator(v.clone(), num_args));
         } else {
-            eprintln!("jit_generate failed operator {head}");
             jitted.instructions.push(ClvmLinearInstruction::Error(RunFailure::RunErr(tail.loc(), "improper operator".to_string())));
 }
     }
@@ -247,7 +254,10 @@ impl PrimOverride for CldbRun {
             return Ok(None);
         }
 
+        let allocator: &mut Allocator = &mut self.allocator.borrow_mut();
         let jit_mut: &mut JitMap = &mut self.stored_jit.borrow_mut();
+        let jit_stored: &mut ConvMap = &mut self.stored_conversions.borrow_mut();
+
         if let Some(l) = tail.proper_list() {
             let mut recombined_tail = Rc::new(SExp::Nil(tail.loc()));
             let quote_atom = Rc::new(SExp::Atom(tail.loc(), vec![1]));
@@ -263,11 +273,7 @@ impl PrimOverride for CldbRun {
                     recombined_tail
                 ));
             }
-            let res = self.jit_compile_and_run(jit_mut, head, context, recombined_tail);
-            match res.as_ref() {
-                Err(e) => eprintln!("jit error {e:?}"),
-                Ok(r) => eprintln!("jit ok {r}")
-            }
+            let res = self.jit_compile_and_run(allocator, jit_mut, jit_stored, head, context, recombined_tail);
             res.map(Some)
         } else {
             Ok(None)
@@ -298,7 +304,9 @@ impl CldbRun {
             row: 0,
             outputs_to_step: HashMap::<Number, PriorResult>::new(),
             perform_jit: false,
+            allocator: RefCell::new(Allocator::new()),
             stored_jit: RefCell::new(HashMap::new()),
+            stored_conversions: RefCell::new(HashMap::new()),
         }
     }
 
@@ -430,20 +438,84 @@ impl CldbRun {
         self.step.clone()
     }
 
-    fn jit_run(&self, jit_mut: &mut JitMap, jit_code: &ClvmShortCircuit, env: Rc<SExp>) -> Result<Rc<SExp>, RunFailure> {
+    fn cache_sexp_conversion(&self, allocator: &mut Allocator, jit_stored: &mut ConvMap, value: Rc<SExp>) -> Result<NodePtr, RunFailure> {
+        let ptr = ConvKey::SExpPtr(Rc::as_ptr(&value) as u64);
+        if let Some((_, res)) = jit_stored.get(&ptr) {
+            return Ok(*res);
+        }
+
+        if let SExp::Cons(_, a, b) = value.borrow() {
+            let cached_a = self.cache_sexp_conversion(allocator, jit_stored, a.clone())?;
+            let cached_b = self.cache_sexp_conversion(allocator, jit_stored, b.clone())?;
+            let new_cons = allocator.new_pair(cached_a, cached_b).map_err(|_| RunFailure::RunErr(value.loc(), "Failed to alloc cons".to_string()))?;
+            jit_stored.insert(ConvKey::NodePtr(new_cons), (value.clone(), new_cons));
+            jit_stored.insert(ptr, (value, new_cons));
+            Ok(new_cons)
+        } else {
+            let converted_val = convert_to_clvm_rs(allocator, value.clone())?;
+            jit_stored.insert(ConvKey::NodePtr(converted_val), (value.clone(), converted_val));
+            jit_stored.insert(ptr, (value, converted_val));
+            Ok(converted_val)
+        }
+    }
+
+    fn cache_node_conversion(&self, allocator: &mut Allocator, jit_stored: &mut ConvMap, loc: Srcloc, value: NodePtr) -> Result<Rc<SExp>, RunFailure> {
+        if let Some((res, _)) = jit_stored.get(&ConvKey::NodePtr(value)) {
+            return Ok(res.clone());
+        }
+
+        if let allocator::SExp::Pair(a, b) = allocator.sexp(value) {
+            let back_a = self.cache_node_conversion(allocator, jit_stored, loc.clone(), a)?;
+            let back_b = self.cache_node_conversion(allocator, jit_stored, loc.clone(), b)?;
+            let new_cons = Rc::new(SExp::Cons(loc.clone(), back_a, back_b));
+            let new_ptr = ConvKey::SExpPtr(Rc::as_ptr(&new_cons) as u64);
+            jit_stored.insert(new_ptr, (new_cons.clone(), value));
+            jit_stored.insert(ConvKey::NodePtr(value), (new_cons.clone(), value));
+            Ok(new_cons)
+        } else {
+            let converted = convert_from_clvm_rs(allocator, loc, value)?;
+            let new_ptr = ConvKey::SExpPtr(Rc::as_ptr(&converted) as u64);
+            jit_stored.insert(new_ptr, (converted.clone(), value));
+            jit_stored.insert(ConvKey::NodePtr(value), (converted.clone(), value));
+            Ok(converted)
+        }
+    }
+
+    fn jit_apply_op(&self, allocator: &mut Allocator, jit_mut: &mut JitMap, jit_stored: &mut ConvMap, runner: Rc<dyn TRunProgram>, end_env: Srcloc, head: Rc<SExp>, rest: Rc<SExp>) -> Result<Rc<SExp>, RunFailure> {
+        let wrapped_args = Rc::new(SExp::Cons(
+            end_env.clone(),
+            Rc::new(SExp::Nil(end_env.clone())),
+            rest.clone(),
+        ));
+        let application = Rc::new(SExp::Cons(
+            end_env,
+            head.clone(),
+            generate_argument_refs(5_i32.to_bigint().unwrap(), rest),
+        ));
+
+        let converted_app = self.cache_sexp_conversion(allocator, jit_stored, application.clone())?;
+        let converted_args = self.cache_sexp_conversion(allocator, jit_stored, wrapped_args.clone())?;
+
+        match
+            runner
+            .run_program(allocator, converted_app, converted_args, None)
+            .map_err(|e| {
+                RunFailure::RunErr(
+                    head.loc(),
+                    format!("{} in {application} {wrapped_args}", e.1),
+                )
+            })
+        {
+            Ok(v) => self.cache_node_conversion(allocator, jit_stored, head.loc(), v.1),
+            Err(e) => Err(e)
+        }
+    }
+
+    fn jit_run(&self, allocator: &mut Allocator, jit_mut: &mut JitMap, jit_stored: &mut ConvMap, jit_code: &ClvmShortCircuit, env: Rc<SExp>) -> Result<Rc<SExp>, RunFailure> {
         let mut val_stack: Vec<Rc<SExp>> = Vec::new();
         let mut env_stack = vec![env.clone()];
 
-        eprintln!("jit_run");
         for inst in jit_code.instructions.iter() {
-            eprintln!("- {inst:?}");
-        }
-        eprintln!("running");
-        for inst in jit_code.instructions.iter() {
-            for v in val_stack.iter().rev() {
-                eprintln!(" * {v}");
-            }
-            eprintln!("* {inst:?}");
             let end_env = env_stack[env_stack.len()-1].clone();
             match inst {
                 ClvmLinearInstruction::Swap => {
@@ -480,11 +552,19 @@ impl CldbRun {
                         ));
                     }
                     val_stack.truncate(val_stack.len() - n);
-                    let mut allocator = Allocator::new();
                     let head = Rc::new(SExp::Atom(env.loc(), o.clone()));
-                    eprintln!("apply_op {head} {rest}");
-                    val_stack.push(apply_op(
-                        &mut allocator,
+
+                    if o == &[34] {
+                        // Handle diagnostic output.
+                        if let Some((loc, outputs)) = is_print_request(rest.borrow()) {
+                            eprintln!("Print: {outputs}");
+                        }
+                    }
+
+                    val_stack.push(self.jit_apply_op(
+                        allocator,
+                        jit_mut,
+                        jit_stored,
                         self.runner.clone(),
                         end_env.loc(),
                         head,
@@ -506,14 +586,14 @@ impl CldbRun {
                         let key_expr = Rc::as_ptr(&program);
                         let key = (0, key_expr as u64);
                         if let SExp::Cons(_, head, tail) = program.borrow() {
-                            val_stack.push(self.jit_compile_and_run(jit_mut, head.clone(), end_env.clone(), tail.clone())?);
+                            val_stack.push(self.jit_compile_and_run(allocator, jit_mut, jit_stored, head.clone(), end_env.clone(), tail.clone())?);
                         } else if let Some(res) = jit_mut.get(&key).cloned() {
-                            val_stack.push(self.jit_run(jit_mut, &res, end_env)?);
+                            val_stack.push(self.jit_run(allocator, jit_mut, jit_stored, &res, end_env)?);
                         } else {
                             let mut new_jit = ClvmShortCircuit::default();
                             jit_sexp(jit_mut, &mut new_jit, program);
                             jit_mut.insert(key, new_jit.clone());
-                            val_stack.push(self.jit_run(jit_mut, &new_jit, end_env)?);
+                            val_stack.push(self.jit_run(allocator, jit_mut, jit_stored, &new_jit, end_env)?);
                         }
                     } else {
                         return Err(RunFailure::RunErr(env.loc(), "empty val stack in apply".to_string()));
@@ -531,22 +611,20 @@ impl CldbRun {
         Err(RunFailure::RunErr(env.loc(), "val stack empty".to_string()))
     }
 
-    fn jit_compile_and_run(&self, jit_mut: &mut JitMap, head: Rc<SExp>, context: Rc<SExp>, tail: Rc<SExp>) -> Result<Rc<SExp>, RunFailure> {
+    fn jit_compile_and_run(&self, allocator: &mut Allocator, jit_mut: &mut JitMap, jit_stored: &mut ConvMap, head: Rc<SExp>, context: Rc<SExp>, tail: Rc<SExp>) -> Result<Rc<SExp>, RunFailure> {
         let head_index = Rc::as_ptr(&head) as u64;
         let tail_index = Rc::as_ptr(&context) as u64;
         let idx = (head_index, tail_index);
 
         if let Some(res) = jit_mut.get(&idx).cloned() {
             // There's a previous just expression.
-            eprintln!("have a jit for {} {}", head, tail);
-            return self.jit_run(jit_mut, &res, context);
+            return self.jit_run(allocator, jit_mut, jit_stored, &res, context);
         }
 
-        eprintln!("jit {} {}", head, tail);
         let mut jit_code = ClvmShortCircuit::default();
         jit_generate(jit_mut, &mut jit_code, head, tail);
         jit_mut.insert(idx, jit_code.clone());
-        let res = self.jit_run(jit_mut, &jit_code, context)?;
+        let res = self.jit_run(allocator, jit_mut, jit_stored, &jit_code, context)?;
         Ok(res)
     }
 }
