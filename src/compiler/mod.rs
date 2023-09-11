@@ -37,10 +37,6 @@ use std::mem::swap;
 use std::rc::Rc;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
-use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
-};
-use crate::compiler::sexp::SExp;
 
 /// An object which represents the standard set of mutable items passed down the
 /// stack when compiling chialisp.
@@ -110,12 +106,4 @@ impl<'a> Drop for CompileContextWrapper<'a> {
     fn drop(&mut self) {
         self.switch();
     }
-}
-
-/// Describes the unique inputs and outputs available at the start of code
-/// generation.
-#[derive(Debug, Clone)]
-pub struct StartOfCodegenOptimization {
-    program: CompileForm,
-    code_generator: PrimaryCodegen,
 }
