@@ -205,7 +205,7 @@ impl CompilerOperatorsInternal {
 
         match allocator.sexp(sexp) {
             SExp::Pair(f, _) => match allocator.sexp(f) {
-                SExp::Atom() => {
+                SExp::Atom => {
                     let filename =
                         Bytes::new(Some(BytesFromType::Raw(allocator.atom(f).to_vec()))).decode();
                     // Use the read interface in CompilerOpts if we have one.
@@ -238,7 +238,7 @@ impl CompilerOperatorsInternal {
     fn write(&self, allocator: &Allocator, sexp: NodePtr) -> Response {
         if let SExp::Pair(filename_sexp, r) = allocator.sexp(sexp) {
             if let SExp::Pair(data, _) = allocator.sexp(r) {
-                if let SExp::Atom() = allocator.sexp(filename_sexp) {
+                if let SExp::Atom = allocator.sexp(filename_sexp) {
                     let filename_buf = allocator.atom(filename_sexp);
                     let filename_bytes =
                         Bytes::new(Some(BytesFromType::Raw(filename_buf.to_vec())));
@@ -285,7 +285,7 @@ impl CompilerOperatorsInternal {
         };
 
         if let SExp::Pair(l, _r) = allocator.sexp(sexp) {
-            if let SExp::Atom() = allocator.sexp(l) {
+            if let SExp::Atom = allocator.sexp(l) {
                 // l most relevant in scope.
                 let filename =
                     Bytes::new(Some(BytesFromType::Raw(allocator.atom(l).to_vec()))).decode();
@@ -319,9 +319,7 @@ impl CompilerOperatorsInternal {
         {
             for kv in symtable.iter() {
                 if let SExp::Pair(hash, name) = allocator.sexp(*kv) {
-                    if let (SExp::Atom(), SExp::Atom()) =
-                        (allocator.sexp(hash), allocator.sexp(name))
-                    {
+                    if let (SExp::Atom, SExp::Atom) = (allocator.sexp(hash), allocator.sexp(name)) {
                         // hash and name in scope.
                         let hash_text =
                             Bytes::new(Some(BytesFromType::Raw(allocator.atom(hash).to_vec())))
@@ -389,7 +387,7 @@ impl Dialect for CompilerOperatorsInternal {
         let extensions_to_clvmr_during_compile = self.get_operators_extension();
 
         match allocator.sexp(op) {
-            SExp::Atom() => {
+            SExp::Atom => {
                 // use of op obvious.
                 let opbuf = allocator.atom(op);
                 if opbuf == "_read".as_bytes() {

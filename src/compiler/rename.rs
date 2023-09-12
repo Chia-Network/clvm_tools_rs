@@ -298,11 +298,12 @@ fn rename_args_bodyform(b: &BodyForm) -> Result<BodyForm, CompileErr> {
         BodyForm::Let(LetFormKind::Sequential, letdata) => {
             // Renaming a sequential let is exactly as if the bindings were
             // nested in separate parallel lets.
-            rename_args_bodyform(&desugar_sequential_let_bindings(
+            let res = rename_args_bodyform(&desugar_sequential_let_bindings(
                 &letdata.bindings,
                 letdata.body.borrow(),
                 letdata.bindings.len(),
-            ))
+            ))?;
+            Ok(res)
         }
 
         BodyForm::Let(LetFormKind::Parallel, letdata) => {
