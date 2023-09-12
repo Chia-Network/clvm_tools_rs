@@ -2211,23 +2211,44 @@ fn test_lambda_let_override_in_binding() {
 }
 
 #[test]
+fn test_rename_in_compileform_run() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F overridden
+    (let
+      ((overridden (* 3 (f overridden))) ;; overridden = 33
+       (y (f (r overridden))) ;; y = 13
+       (z (f (r (r overridden))))) ;; z = 17
+      (+ overridden z y) ;; 33 + 13 + 17 = 63
+      )
+    )
+
+  (F X 13 17)
+  )"}
+    .to_string();
+
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "63");
+}
+
+#[test]
 fn test_rename_in_compileform_simple() {
     let prog = indoc! {"
 (mod (X)
   (include *standard-cl-21*)
 
-  (defun F (overridden)
-    (let ((overridden (* 3 overridden))) ;; overridden = 33
-      (lambda ((& overridden) y z) ;; overridden = 33
-        (let
-          ((y (+ 191 z (let ((overridden (+ 123 z))) overridden)))) ;; overridden = 123 + 17 = 140, y = 191 + 17 + 140 = 348
-          (+ overridden z y) ;; 33 + 17 + 348 = 398
-          )
-        )
+  (defun F overridden
+    (let
+      ((overridden (* 3 (f overridden))) ;; overridden = 33
+       (y (f (r overridden))) ;; y = 11
+       (z (f (r (r overridden))))) ;; z = 17
+      (+ overridden z y) ;; 33 11 17
       )
     )
 
-  (a (F X) (list 13 17))
+  (F X 13 17)
   )"}
     .to_string();
     // Note: renames use gensym so they're unique but not spot predictable.
@@ -2235,8 +2256,7 @@ fn test_rename_in_compileform_simple() {
     // We'll rename them in detection order to a specific set of names and should
     // get for F:
     //
-    let desired_outcome = "(defun F (overridden_$_A) (let ((overridden_$_B (* 3 overridden_$_A))) (lambda ((& overridden_$_B) y_$_D z_$_F) (let ((y_$_E (+ 191 z_$_F (let ((overridden_$_C (+ 123 z_$_F))) overridden_$_C)))) (+ overridden_$_B z_$_F y_$_E)))))";
-    //
+    let desired_outcome = "(defun F overridden_$_A (let ((overridden_$_B (* 3 (f overridden_$_A))) (y_$_C (f (r overridden_$_A))) (z_$_D (f (r (r overridden_$_A))))) (+ overridden_$_B z_$_D y_$_C)))";
     let parsed = parse_sexp(Srcloc::start("*test*"), prog.bytes()).expect("should parse");
     let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let compiled = frontend(opts, &parsed).expect("should compile");
