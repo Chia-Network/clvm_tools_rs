@@ -180,7 +180,7 @@ fn table_trace(
 ) {
     let (sexp, args) = match allocator.sexp(form) {
         SExp::Pair(sexp, args) => (sexp, args),
-        SExp::Atom() => (form, allocator.null()),
+        SExp::Atom => (form, allocator.null()),
     };
 
     stdout.write_str(&format!("exp: {}\n", disassemble_f(allocator, sexp)));
