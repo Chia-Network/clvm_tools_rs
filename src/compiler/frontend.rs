@@ -852,8 +852,7 @@ fn frontend_start(
                         ));
                     }
 
-                    let is_capture_mod = *mod_atom == b"mod+";
-                    if is_capture_mod || *mod_atom == b"mod" {
+                    if *mod_atom == b"mod" {
                         let args = Rc::new(x[1].clone());
                         let body_vec: Vec<Rc<SExp>> =
                             x.iter().skip(2).map(|s| Rc::new(s.clone())).collect();
@@ -861,7 +860,7 @@ fn frontend_start(
 
                         let ls = preprocess(opts.clone(), includes, body)?;
                         return compile_mod_(
-                            &ModAccum::new(l.clone(), is_capture_mod),
+                            &ModAccum::new(l.clone()),
                             opts.clone(),
                             args,
                             Rc::new(list_to_cons(l, &ls)),
