@@ -319,9 +319,7 @@ impl CompilerOperatorsInternal {
         {
             for kv in symtable.iter() {
                 if let SExp::Pair(hash, name) = allocator.sexp(*kv) {
-                    if let (SExp::Atom, SExp::Atom) =
-                        (allocator.sexp(hash), allocator.sexp(name))
-                    {
+                    if let (SExp::Atom, SExp::Atom) = (allocator.sexp(hash), allocator.sexp(name)) {
                         // hash and name in scope.
                         let hash_text =
                             Bytes::new(Some(BytesFromType::Raw(allocator.atom(hash).to_vec())))
