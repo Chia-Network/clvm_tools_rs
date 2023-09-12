@@ -45,9 +45,18 @@ lazy_static! {
     };
     pub static ref ADVANCED_MACROS: String = {
         indoc! {"(
-            (defmac if (A B C)
+            (defmac __chia__primitive__if (A B C)
               (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @))
               )
+
+            (defun __chia__if (ARGS)
+              (__chia__primitive__if (r (r (r ARGS)))
+                (qq (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (unquote (__chia__if (r (r ARGS))))))
+                (qq (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (com (unquote (f (r (r ARGS)))))))
+                )
+              )
+
+            (defmac if ARGS (qq (a (unquote (__chia__if ARGS)) @)))
 
             (defun __chia__compile-list (args)
               (if args

@@ -1430,3 +1430,33 @@ fn test_classic_obeys_operator_choice_at_compile_time_version_0() {
     .to_string();
     assert_eq!(compiled, "FAIL: unimplemented operator 48");
 }
+
+#[test]
+fn test_continued_if() {
+    let prog = indoc! {"
+(mod X
+  (include *strict-cl-21*)
+
+  (defun bigatom (Xs Ys)
+    (if
+      Xs (concat (f Xs) (bigatom (r Xs) Ys))
+      Ys (concat (f Ys) (bigatom (r Ys) ()))
+      ()
+      )
+    )
+
+  (bigatom (q . (3 4 5)) X)
+  )"}
+    .to_string();
+    let compiled = do_basic_run(&vec!["run".to_string(), prog])
+        .trim()
+        .to_string();
+    let res = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(13 99 144)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(res.to_string(), "0x0304050d630090");
+}
