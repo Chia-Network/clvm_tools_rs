@@ -98,7 +98,7 @@ impl<'a> Iterator for SExpToBytesIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.state.pop().and_then(|step| match step {
             SExpToByteOp::Object(x) => match self.allocator.sexp(x) {
-                SExp::Atom() => {
+                SExp::Atom => {
                     // The only node we have in scope is x, so this atom
                     // capture is trivial.
                     let buf = self.allocator.atom(x).to_vec();

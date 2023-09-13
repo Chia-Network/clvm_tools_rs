@@ -283,11 +283,12 @@ fn rename_args_bodyform(b: &BodyForm) -> Result<BodyForm, CompileErr> {
         BodyForm::Let(LetFormKind::Sequential, letdata) => {
             // Renaming a sequential let is exactly as if the bindings were
             // nested in separate parallel lets.
-            rename_args_bodyform(&desugar_sequential_let_bindings(
+            let res = rename_args_bodyform(&desugar_sequential_let_bindings(
                 &letdata.bindings,
                 letdata.body.borrow(),
                 letdata.bindings.len(),
-            ))
+            ))?;
+            Ok(res)
         }
 
         BodyForm::Let(LetFormKind::Parallel, letdata) => {
@@ -317,18 +318,31 @@ fn rename_args_bodyform(b: &BodyForm) -> Result<BodyForm, CompileErr> {
                 },
                 &new_renamed_bindings,
             )?;
-            let locally_renamed_body = rename_in_bodyform(&local_namemap, letdata.body.clone())?;
-            Ok(BodyForm::Let(
+            let args_renamed = rename_args_bodyform(letdata.body.borrow())?;
+            let locally_renamed_body = rename_in_bodyform(&local_namemap, Rc::new(args_renamed))?;
+            let new_form = BodyForm::Let(
                 LetFormKind::Parallel,
                 Box::new(LetData {
                     bindings: new_bindings,
                     body: Rc::new(locally_renamed_body),
                     ..*letdata.clone()
                 }),
-            ))
+            );
+            Ok(new_form)
         }
 
-        BodyForm::Let(LetFormKind::Assign, _letdata) => Ok(b.clone()),
+        BodyForm::Let(LetFormKind::Assign, letdata) => {
+            let (new_compiled_body, new_bindings) =
+                rename_assign_bindings(&letdata.loc, &letdata.bindings, letdata.body.clone())?;
+            Ok(BodyForm::Let(
+                LetFormKind::Assign,
+                Box::new(LetData {
+                    body: Rc::new(new_compiled_body),
+                    bindings: new_bindings,
+                    ..*letdata.clone()
+                }),
+            ))
+        }
 
         BodyForm::Quoted(e) => Ok(BodyForm::Quoted(e.clone())),
         BodyForm::Value(v) => Ok(BodyForm::Value(v.clone())),
