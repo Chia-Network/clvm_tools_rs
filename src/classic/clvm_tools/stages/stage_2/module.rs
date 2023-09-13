@@ -147,7 +147,7 @@ fn build_used_constants_names(
 
             let matching_names = matching_names_1.iter().filter_map(|v| {
                 // Only v usefully in scope.
-                if let SExp::Atom() = allocator.sexp(*v) {
+                if let SExp::Atom = allocator.sexp(*v) {
                     Some(allocator.atom(*v).to_vec())
                 } else {
                     None
@@ -225,7 +225,7 @@ fn unquote_args(
     matches: &HashMap<Vec<u8>, NodePtr>,
 ) -> Result<NodePtr, EvalErr> {
     match allocator.sexp(code) {
-        SExp::Atom() => {
+        SExp::Atom => {
             // Only code in scope.
             let code_atom = allocator.atom(code);
             let matching_args = args
@@ -287,7 +287,7 @@ fn defun_inline_to_macro(
     let arg_name_list = arg_atom_list
         .iter()
         .filter_map(|x| {
-            if let SExp::Atom() = allocator.sexp(*x) {
+            if let SExp::Atom = allocator.sexp(*x) {
                 // only x usefully in scope.
                 Some(allocator.atom(*x))
             } else {
@@ -327,12 +327,12 @@ fn parse_mod_sexp(
 
     let op = match allocator.sexp(op_node) {
         // op_node in use.
-        SExp::Atom() => allocator.atom(op_node).to_vec(),
+        SExp::Atom => allocator.atom(op_node).to_vec(),
         _ => Vec::new(),
     };
     let name = match allocator.sexp(name_node) {
         // name_node in use.
-        SExp::Atom() => allocator.atom(name_node).to_vec(),
+        SExp::Atom => allocator.atom(name_node).to_vec(),
         _ => Vec::new(),
     };
 
@@ -557,7 +557,7 @@ fn symbol_table_for_tree(
     }
 
     match allocator.sexp(tree) {
-        SExp::Atom() => Ok(vec![(tree, root_node.as_path().data().to_vec())]),
+        SExp::Atom => Ok(vec![(tree, root_node.as_path().data().to_vec())]),
         SExp::Pair(_, _) => {
             let left_bytes = NodePath::new(None).first();
             let right_bytes = NodePath::new(None).rest();

@@ -345,7 +345,7 @@ impl Preprocessor {
                     ));
                     if let Some(helpers) = compile_helperform(self.opts.clone(), target_defun)? {
                         for h in helpers.new_helpers.iter() {
-                            self.add_helper(rename_args_helperform(h));
+                            self.add_helper(rename_args_helperform(h)?);
                         }
                     } else {
                         return Err(CompileErr(
@@ -355,7 +355,7 @@ impl Preprocessor {
                     }
                 } else if let Some(helpers) = compile_helperform(self.opts.clone(), definition)? {
                     for h in helpers.new_helpers.iter() {
-                        self.add_helper(rename_args_helperform(h));
+                        self.add_helper(rename_args_helperform(h)?);
                     }
                 }
             }

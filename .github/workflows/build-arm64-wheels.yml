@@ -5,8 +5,8 @@ on:
     branches:
       - main
       - dev
-    tags:
-        - '**'
+  release:
+    types: [published]
   pull_request:
     branches:
       - '**'

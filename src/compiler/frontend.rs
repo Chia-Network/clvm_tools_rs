@@ -22,7 +22,7 @@ use crate::compiler::typecheck::{parse_type_sexp, parse_type_var};
 use crate::compiler::types::ast::{Polytype, Type, TypeVar};
 use crate::util::{u8_from_number, Number};
 
-fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
+pub fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
     match body.borrow() {
         SExp::Atom(_, name) => vec![name.to_vec()],
         SExp::Cons(_, head, tail) => {
@@ -1513,7 +1513,7 @@ pub fn frontend(
         }
     };
 
-    let our_mod = rename_children_compileform(&compiled?);
+    let our_mod = rename_children_compileform(&compiled?)?;
 
     let live_helpers = compute_live_helpers(opts.clone(), &our_mod.helpers, our_mod.exp.clone());
 

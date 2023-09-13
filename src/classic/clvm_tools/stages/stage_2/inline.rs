@@ -15,7 +15,7 @@ pub fn is_at_capture(
     tree_first: NodePtr,
     tree_rest: NodePtr,
 ) -> Option<(NodePtr, NodePtr)> {
-    if let (SExp::Atom(), Some(spec)) = (
+    if let (SExp::Atom, Some(spec)) = (
         allocator.sexp(tree_first),
         proper_list(allocator, tree_rest, true),
     ) {
@@ -88,7 +88,7 @@ fn formulate_path_selections_for_destructuring_arg(
         SExp::Pair(a, b) => {
             let next_depth = arg_depth.clone() * 2_u32.to_bigint().unwrap();
             if let Some((capture, substructure)) = is_at_capture(allocator, a, b) {
-                if let SExp::Atom() = allocator.sexp(capture) {
+                if let SExp::Atom = allocator.sexp(capture) {
                     let (new_arg_path, new_arg_depth, tail) =
                         if let Some(prev_ref) = referenced_from {
                             (arg_path, arg_depth, prev_ref)
@@ -147,7 +147,7 @@ fn formulate_path_selections_for_destructuring_arg(
                 )
             }
         }
-        SExp::Atom() => {
+        SExp::Atom => {
             // Note: can't co-borrow with allocator below.
             let buf = allocator.atom(arg_sexp).to_vec();
             if !buf.is_empty() {
@@ -225,7 +225,7 @@ pub fn formulate_path_selections_for_destructuring(
 ) -> Result<NodePtr, EvalErr> {
     if let SExp::Pair(a, b) = allocator.sexp(args_sexp) {
         if let Some((capture, substructure)) = is_at_capture(allocator, a, b) {
-            if let SExp::Atom() = allocator.sexp(capture) {
+            if let SExp::Atom = allocator.sexp(capture) {
                 let quoted_arg_list = wrap_in_unquote(allocator, capture)?;
                 let tail = wrap_in_compile_time_list(allocator, quoted_arg_list)?;
                 // Was: cbuf from capture.

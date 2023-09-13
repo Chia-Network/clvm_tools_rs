@@ -1050,13 +1050,28 @@ pub fn cons_of_string_map<X>(
     list_to_cons(l, &sorted_converted)
 }
 
-pub fn map_m<T, U, E>(f: &dyn Fn(&T) -> Result<U, E>, list: &[T]) -> Result<Vec<U>, E> {
+pub fn map_m<T, U, E, F>(mut f: F, list: &[T]) -> Result<Vec<U>, E>
+where
+    F: FnMut(&T) -> Result<U, E>,
+{
     let mut result = Vec::new();
     for e in list {
         let val = f(e)?;
         result.push(val);
     }
     Ok(result)
+}
+
+pub fn map_m_reverse<T, U, E, F>(mut f: F, list: &[T]) -> Result<Vec<U>, E>
+where
+    F: FnMut(&T) -> Result<U, E>,
+{
+    let mut result = Vec::new();
+    for e in list {
+        let val = f(e)?;
+        result.push(val);
+    }
+    Ok(result.into_iter().rev().collect())
 }
 
 pub fn fold_m<R, T, E>(f: &dyn Fn(&R, &T) -> Result<R, E>, start: R, list: &[T]) -> Result<R, E> {

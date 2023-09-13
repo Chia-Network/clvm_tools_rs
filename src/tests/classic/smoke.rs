@@ -148,7 +148,7 @@ fn mid_negative_value_bin() {
         Box::new(SimpleCreateCLVMObject {}),
     )
     .expect("should be able to make nodeptr");
-    if let SExp::Atom() = allocator.sexp(atom.1) {
+    if let SExp::Atom = allocator.sexp(atom.1) {
         let res_bytes = allocator.atom(atom.1);
         assert_eq!(res_bytes, &[0xff, 0xff]);
     } else {
@@ -276,7 +276,7 @@ fn can_run_from_source_nil() {
     let mut allocator = Allocator::new();
     let res = run_from_source(&mut allocator, "()".to_string());
     match allocator.sexp(res) {
-        SExp::Atom() => {
+        SExp::Atom => {
             let res_bytes = allocator.atom(res);
             assert_eq!(res_bytes.len(), 0);
         }
@@ -291,7 +291,7 @@ fn can_echo_quoted_nil() {
     let mut allocator = Allocator::new();
     let res = run_from_source(&mut allocator, "(1)".to_string());
     match allocator.sexp(res) {
-        SExp::Atom() => {
+        SExp::Atom => {
             let res_bytes = allocator.atom(res);
             assert_eq!(res_bytes.len(), 0);
         }
@@ -322,7 +322,7 @@ fn can_echo_quoted_atom() {
     let mut allocator = Allocator::new();
     let res = run_from_source(&mut allocator, "(1 . 3)".to_string());
     match allocator.sexp(res) {
-        SExp::Atom() => {
+        SExp::Atom => {
             let res_bytes = allocator.atom(res);
             assert_eq!(res_bytes.len(), 1);
             assert_eq!(res_bytes[0], 3);
@@ -338,7 +338,7 @@ fn can_do_operations() {
     let mut allocator = Allocator::new();
     let res = run_from_source(&mut allocator, "(16 (1 . 3) (1 . 5))".to_string());
     match allocator.sexp(res) {
-        SExp::Atom() => {
+        SExp::Atom => {
             let res_bytes = allocator.atom(res);
             assert_eq!(res_bytes.len(), 1);
             assert_eq!(res_bytes[0], 8);
@@ -354,7 +354,7 @@ fn can_do_operations_kw() {
     let mut allocator = Allocator::new();
     let res = run_from_source(&mut allocator, "(+ (q . 3) (q . 5))".to_string());
     match allocator.sexp(res) {
-        SExp::Atom() => {
+        SExp::Atom => {
             let res_bytes = allocator.atom(res);
             assert_eq!(res_bytes.len(), 1);
             assert_eq!(res_bytes[0], 8);

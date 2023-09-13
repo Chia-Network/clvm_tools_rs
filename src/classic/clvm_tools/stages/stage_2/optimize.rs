@@ -41,7 +41,7 @@ pub fn seems_constant_tail(allocator: &mut Allocator, sexp_: NodePtr) -> bool {
 
                 sexp = r;
             }
-            SExp::Atom() => {
+            SExp::Atom => {
                 return sexp == allocator.null();
             }
         }
@@ -50,12 +50,12 @@ pub fn seems_constant_tail(allocator: &mut Allocator, sexp_: NodePtr) -> bool {
 
 pub fn seems_constant(allocator: &mut Allocator, sexp: NodePtr) -> bool {
     match allocator.sexp(sexp) {
-        SExp::Atom() => {
+        SExp::Atom => {
             return sexp == allocator.null();
         }
         SExp::Pair(operator, r) => {
             match allocator.sexp(operator) {
-                SExp::Atom() => {
+                SExp::Atom => {
                     // Was buf of operator.
                     let atom = allocator.atom(operator);
                     if atom.len() == 1 && atom[0] == 1 {
@@ -93,7 +93,7 @@ pub fn constant_optimizer(
      */
     if let SExp::Pair(first, _) = allocator.sexp(r) {
         // first relevant in scope.
-        if let SExp::Atom() = allocator.sexp(first) {
+        if let SExp::Atom = allocator.sexp(first) {
             let buf = allocator.atom(first);
             if buf.len() == 1 && buf[0] == 1 {
                 // Short circuit already quoted expression.
@@ -137,7 +137,7 @@ pub fn constant_optimizer(
 }
 
 pub fn is_args_call(allocator: &Allocator, r: NodePtr) -> bool {
-    if let SExp::Atom() = allocator.sexp(r) {
+    if let SExp::Atom = allocator.sexp(r) {
         // Only r in scope.
         let buf = allocator.atom(r);
         buf.len() == 1 && buf[0] == 1
@@ -220,7 +220,7 @@ fn path_from_args(
     new_args: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
     match allocator.sexp(sexp) {
-        SExp::Atom() => {
+        SExp::Atom => {
             // Only sexp in scope.
             let v = number_from_u8(allocator.atom(sexp));
             if v <= bi_one() {
@@ -246,7 +246,7 @@ pub fn sub_args(
     new_args: NodePtr,
 ) -> Result<NodePtr, EvalErr> {
     match allocator.sexp(sexp) {
-        SExp::Atom() => path_from_args(allocator, sexp, new_args),
+        SExp::Atom => path_from_args(allocator, sexp, new_args),
         SExp::Pair(first_pre, rest) => {
             let first;
 
@@ -254,7 +254,7 @@ pub fn sub_args(
                 SExp::Pair(_, _) => {
                     first = sub_args(allocator, first_pre, new_args)?;
                 }
-                SExp::Atom() => {
+                SExp::Atom => {
                     // Atom is a reflection of first_pre.
                     let atom = allocator.atom(first_pre);
                     if atom.len() == 1 && atom[0] == 1 {
@@ -374,7 +374,7 @@ pub fn var_change_optimizer_cons_eval(
                                 }
                                 let increment = match allocator.sexp(val) {
                                     SExp::Pair(val_first, _) => match allocator.sexp(val_first) {
-                                        SExp::Atom() => {
+                                        SExp::Atom => {
                                             // Atom reflects val_first.
                                             let vf_buf = allocator.atom(val_first);
                                             (vf_buf.len() != 1 || vf_buf[0] != 1) as i32
@@ -419,7 +419,7 @@ pub fn children_optimizer(
             if list.is_empty() {
                 return Ok(r);
             }
-            if let SExp::Atom() = allocator.sexp(list[0]) {
+            if let SExp::Atom = allocator.sexp(list[0]) {
                 if allocator.atom(list[0]).to_vec() == vec![1] {
                     return Ok(r);
                 }
@@ -683,7 +683,7 @@ pub fn optimize_sexp_(
         let mut name = "".to_string();
 
         match allocator.sexp(r) {
-            SExp::Atom() => {
+            SExp::Atom => {
                 return Ok(r);
             }
             SExp::Pair(_, _) => {
