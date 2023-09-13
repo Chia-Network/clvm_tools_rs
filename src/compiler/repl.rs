@@ -92,7 +92,7 @@ impl Repl {
         let loc = Srcloc::start(&opts.filename());
         let mut toplevel_forms = HashSet::new();
 
-        for w in vec!["defun", "defun-inline", "defconstant", "defmacro"].iter() {
+        for w in ["defun", "defun-inline", "defconstant", "defmacro"].iter() {
             toplevel_forms.insert(w.to_string());
         }
 
