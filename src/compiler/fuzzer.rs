@@ -157,9 +157,9 @@ fn rewrite_identifiers_bodyform(in_scope: &Vec<Vec<u8>>, body_form: &BodyForm) -
                     }
                 })
                 .collect();
-            let new_tail = tail.as_ref().map(|t| {
-                Rc::new(rewrite_identifiers_bodyform(in_scope, t.borrow()))
-            });
+            let new_tail = tail
+                .as_ref()
+                .map(|t| Rc::new(rewrite_identifiers_bodyform(in_scope, t.borrow())));
             BodyForm::Call(l.clone(), new_args, new_tail)
         }
         _ => body_form.clone(),
@@ -310,7 +310,7 @@ impl CollectProgramStructure {
                     use_then,
                     use_else,
                 ],
-                None
+                None,
             ))
         } else if selector == 8 {
             let choice_of_a = b >> 3;
@@ -324,7 +324,7 @@ impl CollectProgramStructure {
                     use_a,
                     use_b,
                 ],
-                None
+                None,
             ))
         } else if selector == 9 {
             let choice_of_a = b >> 3;
@@ -338,7 +338,7 @@ impl CollectProgramStructure {
                     use_a,
                     use_b,
                 ],
-                None
+                None,
             ))
         } else if selector == 10 {
             let choice_of_a = b >> 3;
@@ -352,7 +352,7 @@ impl CollectProgramStructure {
                     use_a,
                     use_b,
                 ],
-                None
+                None,
             ))
         } else if selector == 11 {
             // Synthesize a let form.
