@@ -253,12 +253,11 @@ fn make_let_bindings(
         body.loc(),
         "Bad binding tail ".to_string() + &body.to_string(),
     ));
-    let do_atomize =
-        if opts.dialect().strict {
-            |a: &SExp| -> SExp { a.atomize() }
-        } else {
-            |a: &SExp| -> SExp { a.clone() }
-        };
+    let do_atomize = if opts.dialect().strict {
+        |a: &SExp| -> SExp { a.atomize() }
+    } else {
+        |a: &SExp| -> SExp { a.clone() }
+    };
     match body.borrow() {
         SExp::Nil(_) => Ok(vec![]),
         SExp::Cons(_, head, tl) => head
