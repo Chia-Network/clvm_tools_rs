@@ -185,14 +185,14 @@ pub fn compile_pre_forms(
     };
 
     // Transform let bindings, merging nested let scopes with the top namespace
-    let hoisted_bindings = hoist_body_let_binding(None, p1.args.clone(), p1.exp.clone());
+    let hoisted_bindings = hoist_body_let_binding(None, p1.args.clone(), p1.exp.clone())?;
     let mut new_helpers = hoisted_bindings.0;
     let expr = hoisted_bindings.1; // expr is the let-hoisted program
 
     // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later stages
     let mut combined_helpers = p1.helpers.clone();
     combined_helpers.append(&mut new_helpers);
-    let combined_helpers = process_helper_let_bindings(&combined_helpers);
+    let combined_helpers = process_helper_let_bindings(&combined_helpers)?;
 
     let p2 = CompileForm {
         loc: p1.loc.clone(),

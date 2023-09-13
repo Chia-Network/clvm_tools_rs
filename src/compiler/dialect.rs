@@ -88,7 +88,7 @@ lazy_static! {
 fn include_dialect(allocator: &Allocator, e: &[NodePtr]) -> Option<AcceptedDialect> {
     let include_keyword_sexp = e[0];
     let name_sexp = e[1];
-    if let (SExp::Atom(), SExp::Atom()) = (
+    if let (SExp::Atom, SExp::Atom) = (
         allocator.sexp(include_keyword_sexp),
         allocator.sexp(name_sexp),
     ) {
