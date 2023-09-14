@@ -40,6 +40,10 @@ yaml-rust = "0.4"
 linked-hash-map = "0.5.6"
 serde = { version = "1.0", features = ["derive", "rc"] }
 regex = "1.8.4"
+wasmi = "0.31.0"
+wapc = "1.1.0"
+wasmtime = "12.0.1"
+wasmtime-provider = "1.9.0"
 
 [dependencies.pyo3]
 version = "0.14.2"
@@ -106,3 +110,7 @@ path = "src/classic/bins/repl.rs"
 [[bin]]
 name = "typetest"
 path = "src/classic/bins/typetest.rs"
+
+[[bin]]
+name = "fastbrun"
+path = "src/classic/bins/fastbrun.rs"
