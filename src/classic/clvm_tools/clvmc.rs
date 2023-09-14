@@ -38,9 +38,8 @@ pub fn write_sym_output(
         .map(|_| ())
 }
 
-pub fn compile_clvm_text_maybe_opt(
+pub fn compile_clvm_text(
     allocator: &mut Allocator,
-    do_optimize: bool,
     opts: Rc<dyn CompilerOpts>,
     symbol_table: &mut HashMap<String, String>,
     text: &str,
@@ -53,19 +52,15 @@ pub fn compile_clvm_text_maybe_opt(
     let dialect = detect_modern(allocator, assembled_sexp);
     // Now the stepping is optional (None for classic) but we may communicate
     // other information in dialect as well.
+    //
+    // I think stepping is a good name for the number below as dialect is going
+    // to get more members that are somewhat independent.
     if let Some(stepping) = dialect.stepping {
         let runner = Rc::new(DefaultProgramRunner::new());
-        let opts = opts
-            .set_dialect(dialect)
-            .set_optimize(do_optimize || stepping > 22)
-            .set_frontend_opt(stepping == 22);
+        let opts = opts.set_optimize(true).set_frontend_opt(stepping > 21);
 
         let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
-        let res = if do_optimize {
-            unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)))
-        } else {
-            unopt_res.map(Rc::new)
-        };
+        let res = unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)));
 
         res.and_then(|x| {
             convert_to_clvm_rs(allocator, x).map_err(|r| match r {
@@ -85,25 +80,6 @@ pub fn compile_clvm_text_maybe_opt(
             run_program.run_program(allocator, compile_invoke_code, input_sexp, None)?;
         Ok(run_program_output.1)
     }
-}
-
-pub fn compile_clvm_text(
-    allocator: &mut Allocator,
-    opts: Rc<dyn CompilerOpts>,
-    symbol_table: &mut HashMap<String, String>,
-    text: &str,
-    input_path: &str,
-    classic_with_opts: bool,
-) -> Result<NodePtr, EvalErr> {
-    compile_clvm_text_maybe_opt(
-        allocator,
-        true,
-        opts,
-        symbol_table,
-        text,
-        input_path,
-        classic_with_opts,
-    )
 }
 
 pub fn compile_clvm_inner(
