@@ -662,7 +662,23 @@ impl HelperForm {
                 ))
             }
             HelperForm::Defalias(alias) => {
-                
+                let alias_kw =
+                    Rc::new(SExp::Atom(
+                        alias.kw.as_ref().cloned().unwrap_or_else(|| alias.loc.clone()),
+                        b"defalias".to_vec(),
+                    ));
+                let name_atom =
+                    Rc::new(SExp::Atom(
+                        alias.name_loc.clone(),
+                        alias.name.clone(),
+                    ));
+                let target_atom =
+                    Rc::new(SExp::Atom(
+                        alias.target_loc.as_ref().cloned().unwrap_or_else(|| alias.loc.clone()),
+                        alias.target.clone(),
+                    ));
+                let list = &[alias_kw, name_atom, target_atom];
+                Rc::new(enlist(alias.loc.clone(), list))
             }
         }
     }
