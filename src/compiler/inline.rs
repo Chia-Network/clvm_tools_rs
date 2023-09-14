@@ -3,8 +3,6 @@ use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use clvm_rs::allocator::Allocator;
-
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
@@ -16,6 +14,7 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::BasicCompileContext;
 
 use crate::util::Number;
 
@@ -468,8 +467,7 @@ fn replace_inline_body(
 ///    tail argument if one exists.  If not, then they're discarded.
 #[allow(clippy::too_many_arguments)]
 pub fn replace_in_inline(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
+    context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
     loc: Srcloc,
@@ -479,6 +477,7 @@ pub fn replace_in_inline(
     tail: Option<Rc<BodyForm>>,
 ) -> Result<CompiledCode, CompileErr> {
     let mut visited = HashSet::new();
+    let runner = context.runner();
     visited.insert(inline.name.clone());
     replace_inline_body(
         &mut visited,
@@ -492,5 +491,5 @@ pub fn replace_in_inline(
         callsite,
         inline.body.clone(),
     )
-    .and_then(|x| generate_expr_code(allocator, runner, opts, compiler, x))
+    .and_then(|x| generate_expr_code(context, opts, compiler, x))
 }
