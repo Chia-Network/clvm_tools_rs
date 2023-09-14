@@ -23,6 +23,7 @@ use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::Number;
 
 lazy_static! {
@@ -92,11 +93,11 @@ pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
 }
 
 fn fe_opt(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
+    context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     compileform: CompileForm,
 ) -> Result<CompileForm, CompileErr> {
+    let runner = context.runner();
     let evaluator = Evaluator::new(opts.clone(), runner.clone(), compileform.helpers.clone());
     let mut optimized_helpers: Vec<HelperForm> = Vec::new();
     for h in compileform.helpers.iter() {
@@ -105,7 +106,7 @@ fn fe_opt(
                 let mut env = HashMap::new();
                 build_reflex_captures(&mut env, defun.args.clone());
                 let body_rc = evaluator.shrink_bodyform(
-                    allocator,
+                    context.allocator(),
                     defun.args.clone(),
                     &env,
                     defun.body.clone(),
@@ -134,7 +135,7 @@ fn fe_opt(
     let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.clone());
 
     let shrunk = new_evaluator.shrink_bodyform(
-        allocator,
+        context.allocator(),
         Rc::new(SExp::Nil(compileform.args.loc())),
         &HashMap::new(),
         compileform.exp.clone(),
@@ -152,18 +153,16 @@ fn fe_opt(
 }
 
 pub fn compile_pre_forms(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
+    context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>],
-    symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     // Resolve includes, convert program source to lexemes
     let p0 = frontend(opts.clone(), pre_forms)?;
 
     let p1 = if opts.frontend_opt() {
         // Front end optimization
-        fe_opt(allocator, runner.clone(), opts.clone(), p0)?
+        fe_opt(context, opts.clone(), p0)?
     } else {
         p0
     };
@@ -187,7 +186,7 @@ pub fn compile_pre_forms(
     };
 
     // generate code from AST, optionally with optimization
-    codegen(allocator, runner, opts, &p2, symbol_table)
+    codegen(context, opts, &p2)
 }
 
 pub fn compile_file(
@@ -198,8 +197,8 @@ pub fn compile_file(
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), content.bytes())?;
-
-    compile_pre_forms(allocator, runner, opts, &pre_forms, symbol_table)
+    let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table);
+    compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
 }
 
 pub fn run_optimizer(
@@ -355,7 +354,8 @@ impl CompilerOpts for DefaultCompilerOpts {
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
-        compile_pre_forms(allocator, runner, me, &[sexp], symbol_table)
+        let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table);
+        compile_pre_forms(&mut context_wrapper.context, me, &[sexp])
     }
 }
 
