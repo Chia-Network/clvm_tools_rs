@@ -52,7 +52,6 @@ jobs:
         python3 -m venv venv
         . ./venv/bin/activate
         export PATH=~/.cargo/bin:$PATH
-<<<<<<< HEAD
         arch -arm64 pip install tomlkit
         USE_FEATURES=$(arch -arm64 ./support/feature-fishing.py)
         echo "USE_FEATURES=${USE_FEATURES}" >> "$GITHUB_ENV"
@@ -60,11 +59,6 @@ jobs:
         arch -arm64 maturin build -i python --release --strip "--features=extension-module,${USE_FEATURES}"
         echo "cargo test using features: ${USE_FEATURES}"
         arch -arm64 cargo test --features="${USE_FEATURES}"
-=======
-        pip install maturin==1.1.0
-        maturin build -i python --release --strip
-        cargo test
->>>>>>> chia/base
 
     - name: Install clvm_tools_rs wheel
       run: |
