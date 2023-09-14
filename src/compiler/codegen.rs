@@ -479,7 +479,6 @@ fn compile_call(
         ),
     ));
 
-    let runner = context.runner();
     let compile_atom_head = |al: Srcloc, an: &Vec<u8>| {
         let tl = call.args.iter().skip(1).cloned().collect();
         get_callable(
@@ -585,6 +584,7 @@ fn compile_call(
                     );
 
                     let mut unused_symbol_table = HashMap::new();
+                    let runner = context.runner();
                     updated_opts
                         .compile_program(
                             context.allocator(),

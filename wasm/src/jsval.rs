@@ -1,8 +1,13 @@
 use js_sys;
 use js_sys::JSON::stringify;
-use js_sys::{Array, BigInt, Object};
+use js_sys::{Array, BigInt, Object, Reflect};
+use wasm_bindgen::JsCast;
+
+use num_bigint::ToBigInt;
+
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::rc::Rc;
 use std::str::FromStr;
 
@@ -12,6 +17,9 @@ use clvm_tools_rs::compiler::srcloc::{Srcloc, Until};
 use clvm_tools_rs::util::Number;
 
 use wasm_bindgen::prelude::*;
+
+use crate::api::t;
+use crate::objects::{find_cached_sexp, js_cache_value_from_js};
 
 pub fn array_to_value(v: Array) -> JsValue {
     let jref: &JsValue = v.as_ref();
@@ -30,77 +38,27 @@ pub fn js_pair(a: JsValue, b: JsValue) -> JsValue {
     array_to_value(pair_array)
 }
 
-pub fn js_from_location(l: Srcloc) -> JsValue {
-    let loc_array = Array::new();
-    let file_copy: &String = l.file.borrow();
-    loc_array.set(
-        0,
-        js_pair(JsValue::from_str("file"), JsValue::from_str(&file_copy)),
-    );
-    loc_array.set(
-        1,
-        js_pair(JsValue::from_str("line"), JsValue::from_f64(l.line as f64)),
-    );
-    loc_array.set(
-        2,
-        js_pair(JsValue::from_str("col"), JsValue::from_f64(l.col as f64)),
-    );
-    match l.until {
-        Some(u) => {
-            let til_array = Array::new();
-            til_array.set(
-                0,
-                js_pair(JsValue::from_str("line"), JsValue::from_f64(u.line as f64)),
-            );
-            til_array.set(
-                1,
-                js_pair(JsValue::from_str("col"), JsValue::from_f64(u.col as f64)),
-            );
-            loc_array.set(
-                3,
-                object_to_value(Object::from_entries(&til_array).as_ref().unwrap()),
-            );
-        }
-        _ => {}
-    }
-    object_to_value(Object::from_entries(&loc_array).as_ref().unwrap())
-}
-
-pub fn js_object_from_sexp(v: Rc<SExp>) -> JsValue {
+pub fn js_object_from_sexp(v: Rc<SExp>) -> Result<JsValue, JsValue> {
     match v.borrow() {
-        SExp::Nil(_) => JsValue::null(),
-        SExp::Integer(_, i) => JsValue::bigint_from_str(&i.to_string()),
+        SExp::Nil(_) => Ok(JsValue::null()),
+        SExp::Integer(_, i) => Ok(JsValue::bigint_from_str(&i.to_string())),
         SExp::QuotedString(_, _, q) => {
-            JsValue::from_str(&Bytes::new(Some(BytesFromType::Raw(q.clone()))).decode())
+            Ok(JsValue::from_str(&Bytes::new(Some(BytesFromType::Raw(q.clone()))).decode()))
         }
         SExp::Atom(_, q) => {
-            JsValue::from_str(&Bytes::new(Some(BytesFromType::Raw(q.clone()))).decode())
+            Ok(JsValue::from_str(&Bytes::new(Some(BytesFromType::Raw(q.clone()))).decode()))
         }
-        SExp::Cons(l, a, b) => v
-            .proper_list()
-            .map(|lst| {
+        SExp::Cons(_, a, b) => {
+            if let Some(lst) = v.proper_list() {
                 let array = Array::new();
                 for i in 0..lst.len() {
-                    array.set(i as u32, js_object_from_sexp(Rc::new(lst[i].clone())));
+                    array.set(i as u32, js_object_from_sexp(Rc::new(lst[i].clone())).unwrap_or_else(|e| e));
                 }
-                array_to_value(array)
-            })
-            .unwrap_or_else(|| {
-                let array = Array::new();
-                array.set(
-                    0,
-                    js_pair(JsValue::from_str("location"), js_from_location(l.clone())),
-                );
-                let pair: JsValue = js_pair(
-                    JsValue::from_str("pair"),
-                    js_pair(
-                        js_object_from_sexp(a.clone()),
-                        js_object_from_sexp(b.clone()),
-                    ),
-                );
-                array.set(1, pair);
-                object_to_value(&Object::from_entries(&array).unwrap())
-            }),
+                Ok(array_to_value(array))
+            } else {
+                t(&js_object_from_sexp(a.clone())?, &js_object_from_sexp(b.clone())?)
+            }
+        }
     }
 }
 
@@ -151,14 +109,60 @@ fn location(o: &Object) -> Option<Srcloc> {
         })
 }
 
+pub fn detect_serializable(loc: &Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
+    let serialize_key = JsValue::from_str("serialize");
+    js_sys::Reflect::get(v, &serialize_key).ok().and_then(|serialize| {
+        Reflect::apply(serialize.unchecked_ref(), v, &js_sys::Array::new()).ok().and_then(|array| {
+            Array::try_from(array).ok().and_then(|array| {
+                let mut bytes_array: Vec<u8> = vec![];
+                for item in array.iter() {
+                    if let Some(n) = item.as_f64() {
+                        if n < 0.0 || n > 255.0 {
+                            return None;
+                        }
+                        bytes_array.push(n as u8);
+                    } else {
+                        return None;
+                    }
+                }
+
+                return Some(Rc::new(SExp::QuotedString(loc.clone(), b'x', bytes_array)));
+            })
+        })
+    })
+}
+
+pub fn detect_convertible(v: &JsValue) -> Result<Rc<SExp>, JsValue> {
+    let convert_key = JsValue::from_str("to_program");
+    let to_program = js_sys::Reflect::get(v, &convert_key)?;
+    let call_args = js_sys::Array::new();
+    call_args.push(v);
+    let call_result = Reflect::apply(to_program.unchecked_ref(), v, &call_args)?;
+    let cacheval = js_cache_value_from_js(&call_result)?;
+    let cached = find_cached_sexp(cacheval.entry, &cacheval.content)?;
+    Ok(cached.modern.clone())
+}
+
 pub fn sexp_from_js_object(sstart: Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
-    if v.is_bigint() {
+    // Already converted value.
+    if let Ok(res) = js_cache_value_from_js(v) {
+        find_cached_sexp(res.entry, &res.content).map(|result| {
+            result.modern.clone()
+        }).ok()
+    } else if v.is_bigint() {
         BigInt::new(v)
             .ok()
             .and_then(|v| v.to_string(10).ok())
             .and_then(|v| v.as_string())
             .and_then(|v| v.parse::<Number>().ok())
             .map(|x| Rc::new(SExp::Integer(sstart.clone(), x)))
+    } else if let Some(fval) = v.as_f64() {
+        (fval as i64).to_bigint()
+            .map(|x| Rc::new(SExp::Integer(sstart.clone(), x)))
+    } else if let Some(g1_bytes) = detect_serializable(&sstart, v) {
+        Some(g1_bytes)
+    } else if let Some(converted) = detect_convertible(v).ok() {
+        Some(converted)
     } else if Array::is_array(v) {
         let a = Array::from(v);
         let mut result_value = Rc::new(SExp::Nil(Srcloc::start(&"*js*".to_string())));
