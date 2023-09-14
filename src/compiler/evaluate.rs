@@ -21,6 +21,7 @@ use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::stackvisit::{HasDepthLimit, VisitedMarker};
+use crate::compiler::CompileContextWrapper;
 use crate::util::{number_from_u8, u8_from_number, Number};
 
 const PRIM_RUN_LIMIT: usize = 1000000;
@@ -1346,13 +1347,10 @@ impl<'info> Evaluator {
             }
             BodyForm::Mod(_, program) => {
                 // A mod form yields the compiled code.
-                let code = codegen(
-                    allocator,
-                    self.runner.clone(),
-                    self.opts.clone(),
-                    program,
-                    &mut HashMap::new(),
-                )?;
+                let mut symbols = HashMap::new();
+                let mut context_wrapper =
+                    CompileContextWrapper::new(allocator, self.runner.clone(), &mut symbols);
+                let code = codegen(&mut context_wrapper.context, self.opts.clone(), program)?;
                 Ok(Rc::new(BodyForm::Quoted(code)))
             }
         }
