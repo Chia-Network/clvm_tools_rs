@@ -55,9 +55,12 @@ pub fn compile_clvm_text(
     let dialect = detect_modern(allocator, assembled_sexp);
     // Now the stepping is optional (None for classic) but we may communicate
     // other information in dialect as well.
-    if let Some(dialect) = dialect.stepping {
+    //
+    // I think stepping is a good name for the number below as dialect is going
+    // to get more members that are somewhat independent.
+    if let Some(stepping) = dialect.stepping {
         let runner = Rc::new(DefaultProgramRunner::new());
-        let opts = opts.set_optimize(true).set_frontend_opt(dialect > 21);
+        let opts = opts.set_optimize(true).set_frontend_opt(stepping > 21);
 
         let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
         let res = unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)));
