@@ -240,7 +240,9 @@ fn rename_in_bodyform(
                 },
                 vs,
             )?;
-            // First element of call is the function, which is not renamed.
+            // Ensure that we haven't renamed the 0th element of a call
+            // They exist in a separate (global) namespace of callables
+            // and aren't in the variable scope stack.
             if !vs.is_empty() {
                 new_vs[0] = vs[0].clone();
             }
