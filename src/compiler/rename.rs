@@ -234,12 +234,18 @@ fn rename_in_bodyform(
         },
 
         BodyForm::Call(l, vs, tail) => {
-            let new_vs = map_m(
+            let mut new_vs = map_m(
                 &|x: &Rc<BodyForm>| -> Result<Rc<BodyForm>, CompileErr> {
                     Ok(Rc::new(rename_in_bodyform(namemap, x.clone())?))
                 },
                 vs,
             )?;
+            // Ensure that we haven't renamed the 0th element of a call
+            // They exist in a separate (global) namespace of callables
+            // and aren't in the variable scope stack.
+            if !vs.is_empty() {
+                new_vs[0] = vs[0].clone();
+            }
             let new_tail = if let Some(t) = tail.as_ref() {
                 Some(Rc::new(rename_in_bodyform(namemap, t.clone())?))
             } else {
