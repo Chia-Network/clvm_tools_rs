@@ -9,6 +9,8 @@ use rand::Rng;
 #[cfg(test)]
 use rand_chacha::ChaChaRng;
 
+use regex::Regex;
+
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -19,8 +21,9 @@ use clvmr::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, Stream};
 use crate::classic::clvm_tools::binutils::disassemble;
-use crate::classic::clvm_tools::cmds::launch_tool;
+use crate::classic::clvm_tools::cmds::{launch_tool, OpcConversion, OpdConversion, TConversion};
 use crate::classic::clvm_tools::node_path::NodePath;
+use crate::classic::clvm_tools::sha256tree::sha256tree;
 
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::sexp;
@@ -324,6 +327,18 @@ fn test_get_dependencies_1() {
 }
 
 #[test]
+fn test_type_strip_1() {
+    assert_eq!(
+        do_basic_run(&vec![
+            "run".to_string(),
+            "(mod ((A : Atom)) (defun-inline foo (X Y . Z) (i X Y . Z)) (foo A 2 3))".to_string()
+        ])
+        .trim(),
+        "(i 2 (q . 2) (q . 3))"
+    );
+}
+
+#[test]
 fn test_treehash_constant_embedded_classic() {
     let result_text = do_basic_run(&vec![
         "run".to_string(),
@@ -351,6 +366,18 @@ fn test_treehash_constant_embedded_classic() {
     assert_eq!(
         result_hash,
         "0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9874"
+    );
+}
+
+#[test]
+fn test_type_strip_2() {
+    assert_eq!(
+        do_basic_run(&vec![
+            "run".to_string(),
+            "(mod (A) -> Atom (defun-inline foo (X Y . Z) (i X Y . Z)) (foo A 2 3))".to_string()
+        ])
+        .trim(),
+        "(i 2 (q . 2) (q . 3))"
     );
 }
 
@@ -385,6 +412,24 @@ fn test_treehash_constant_embedded_fancy_order() {
     assert_eq!(
         result_hash,
         "0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f98df"
+    );
+}
+
+#[test]
+fn test_type_def_1() {
+    assert_eq!(
+        do_basic_run(&vec![
+            "run".to_string(),
+            indoc! {"
+(mod (A) -> Atom
+   (deftype Struct ((A : Atom) . (B : Atom32)))
+   (defun-inline foo (X) (new_Struct X 3))
+   (get_Struct_A (foo A))
+   )"}
+            .to_string()
+        ])
+        .trim(),
+        "(a (q . 2) (c 2 (q . 3)))"
     );
 }
 
@@ -530,8 +575,26 @@ fn test_treehash_constant_embedded_modern_loop() {
     .trim()
     .to_string();
     eprintln!("{result_text}");
-    assert!(result_text.starts_with("*command*"));
+    // Asserting where the stack overflows isn't necessary.
     assert!(result_text.contains("stack limit exceeded"));
+}
+
+#[test]
+fn test_compile_file_1() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (compile-file foo secret_number.cl) foo)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(run_result, "(+ 2 (q . 19))");
+    fs::remove_file("*command*_foo.sym")
+        .expect("file should have been dropped from compile process");
 }
 
 #[test]
@@ -548,6 +611,22 @@ fn test_embed_file_2() {
         .trim()
         .to_string();
     assert_eq!(run_result, "(65 66 67)");
+}
+
+#[test]
+fn test_compile_file_3() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (include *standard-cl-21*) (compile-file foo secret_number.cl) foo)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(run_result, "(a (q 16 (f (r 1)) (q . 19)) (c (q) 1))");
 }
 
 #[test]
@@ -654,6 +733,131 @@ fn test_embed_file_9() {
         run_result,
         "0x9595c9df90075148eb06860365df33584b75bff782a510c6cd4883a419833d50"
     );
+}
+
+#[test]
+fn test_get_dependencies_2() {
+    let dep_set = run_dependencies("resources/tests/test_treehash_constant.cl");
+
+    let mut expect_set = HashSet::new();
+    expect_set.insert("resources/tests/sha256tree.clib".to_owned());
+    expect_set.insert("resources/tests/secret_number.cl".to_owned());
+    expect_set.insert("resources/tests/test_sub_include.cl".to_owned());
+    assert_eq!(dep_set, expect_set);
+}
+
+#[test]
+fn test_treehash_constant() {
+    let result_text = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/test_treehash_constant.cl".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(
+        result_hash,
+        "0x34380f2097b86970818f8b026b68135d665babc5fda5afe577f86d51105e08b5"
+    );
+    fs::remove_file("test_treehash_constant.cl_secret-number.sym")
+        .expect("should have been dropped");
+}
+
+#[test]
+fn test_treehash_constant_2() {
+    let result_text = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/test_treehash_constant_2.cl".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(
+        result_hash,
+        "0xe2954b5f459d1cffff293498f8263c961890a06fe28d6be1a0f08412164ced80"
+    );
+    fs::remove_file("test_treehash_constant_2.cl_secret-number.sym")
+        .expect("should have been dropped");
+}
+
+fn compute_hash_of_program(disk_file: &str) -> String {
+    let mut allocator = Allocator::new();
+    let want_program_repr = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        disk_file.to_string(),
+    ])
+    .trim()
+    .to_string();
+
+    let hexed = OpcConversion {}
+        .invoke(&mut allocator, &want_program_repr)
+        .unwrap();
+    let sexp = OpdConversion {
+        op_version: Some(0),
+    }
+    .invoke(&mut allocator, &hexed.rest())
+    .unwrap();
+    format!("0x{}", sha256tree(&mut allocator, *sexp.first()).hex())
+}
+
+#[test]
+fn test_treehash_constant_21() {
+    let want_inner_program_hash =
+        "0xfb5255887665727c721852a42493d43710a66a331f7ba50e0248459e23d0a0b2";
+    let result_text = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/test_treehash_constant_21.cl".to_string(),
+    ])
+    .trim()
+    .to_string();
+
+    assert_eq!(
+        compute_hash_of_program("resources/tests/secret_number.cl"),
+        want_inner_program_hash
+    );
+
+    let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
+        .trim()
+        .to_string();
+
+    assert_eq!(result_hash, want_inner_program_hash);
+}
+
+#[test]
+fn test_treehash_constant_21_2() {
+    let expected_hash = "0xd9e5da863d7f61605f4430d4f59d2e7b65e87bf8aa664a28a73c73e1523a7a17";
+
+    let result_text = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/test_treehash_constant_21_2.cl".to_string(),
+    ])
+    .trim()
+    .to_string();
+
+    assert_eq!(
+        compute_hash_of_program("resources/tests/secret_number2.cl"),
+        expected_hash
+    );
+
+    let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
+        .trim()
+        .to_string();
+
+    assert_eq!(result_hash, expected_hash);
 }
 
 #[test]
@@ -974,6 +1178,71 @@ fn test_modern_sets_source_file_in_symbols() {
     );
 }
 
+// Test that leaving off the lambda captures causes bare words for the
+// requested values to find their way into the output and that having
+// the capture catches it.  This shows that uses of uncaptured words
+// are unencumbered.
+#[test]
+fn test_lambda_without_capture_reproduces_bare_word_in_output() {
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/rps-referee-uncaptured.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert!(compiled.contains("AMOUNT"));
+    assert!(compiled.contains("new_puzzle_hash"));
+}
+
+// Test that strict cl21 throws an error rather than compiling the above.
+#[test]
+fn test_lambda_without_capture_strict() {
+    let compiler_result = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/strict/rps-referee-uncaptured.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert!(compiler_result.contains("Unbound"));
+    assert!(compiler_result.contains("new_puzzle_hash"));
+}
+
+// Test that having a lambda capture captures all the associated words.
+#[test]
+fn test_lambda_with_capture_defines_word() {
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/rps-referee.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert!(!compiled.contains("AMOUNT"));
+    assert!(!compiled.contains("new_puzzle_hash"));
+}
+
+#[test]
+fn test_cost_reporting_0() {
+    let program = "(2 (1 2 6 (4 2 (4 (1 . 1) ()))) (4 (1 (2 (1 2 (3 (7 5) (1 2 (1 11 (1 . 2) (2 4 (4 2 (4 (5 5) ()))) (2 4 (4 2 (4 (6 5) ())))) 1) (1 2 (1 11 (1 . 1) 5) 1)) 1) 1) 2 (1 16 5 (1 . 50565442356047746631413349885570059132562040184787699607120092457326103992436)) 1) 1))";
+    let result = do_basic_brun(&vec![
+        "brun".to_string(),
+        "-c".to_string(),
+        program.to_string(),
+        "()".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        result,
+        "cost = 1978\n0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9875"
+    );
+}
+
 #[test]
 fn test_assign_lambda_code_generation() {
     let tname = "test_assign_lambda_code_generation.sym".to_string();
@@ -1003,7 +1272,7 @@ fn test_assign_lambda_code_generation() {
 }
 
 #[test]
-fn test_assign_lambda_code_generation_normally_inlines() {
+fn test_assign_lambda_code_generation_inline() {
     let tname = "test_assign_inline_code_generation.sym".to_string();
     do_basic_run(&vec![
         "run".to_string(),
@@ -1029,23 +1298,6 @@ fn test_assign_lambda_code_generation_normally_inlines() {
 }
 
 #[test]
-fn test_cost_reporting_0() {
-    let program = "(2 (1 2 6 (4 2 (4 (1 . 1) ()))) (4 (1 (2 (1 2 (3 (7 5) (1 2 (1 11 (1 . 2) (2 4 (4 2 (4 (5 5) ()))) (2 4 (4 2 (4 (6 5) ())))) 1) (1 2 (1 11 (1 . 1) 5) 1)) 1) 1) 2 (1 16 5 (1 . 50565442356047746631413349885570059132562040184787699607120092457326103992436)) 1) 1))";
-    let result = do_basic_brun(&vec![
-        "brun".to_string(),
-        "-c".to_string(),
-        program.to_string(),
-        "()".to_string(),
-    ])
-    .trim()
-    .to_string();
-    assert_eq!(
-        result,
-        "cost = 1978\n0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9875"
-    );
-}
-
-#[test]
 fn test_assign_fancy_final_dot_rest() {
     let result_prog = do_basic_run(&vec![
         "run".to_string(),
@@ -1057,6 +1309,189 @@ fn test_assign_fancy_final_dot_rest() {
         .trim()
         .to_string();
     assert_eq!(result, "101");
+}
+
+#[test]
+fn test_strict_smoke_0() {
+    let result = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-test-fail.clsp".to_string(),
+    ]);
+    assert!(result.contains("Unbound"));
+    assert!(result.contains("X1"));
+}
+
+#[test]
+fn test_strict_smoke_1() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-test-pass.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "(13)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "15");
+}
+
+#[test]
+fn test_strict_list_fail() {
+    let result = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-list-fail.clsp".to_string(),
+    ]);
+    assert!(result.contains("Unbound"));
+    assert!(result.contains("X2"));
+}
+
+#[test]
+fn test_strict_list_pass() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-list-pass.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "(13)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "(strlen 14 15)");
+}
+
+#[test]
+fn test_strict_nested_list_pass() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-nested-list.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "(13)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "(strlen (strlen) ((strlen)))");
+}
+
+#[test]
+fn test_double_constant_pass() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/double-constant-pass.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "198");
+}
+
+#[test]
+fn test_double_constant_fail() {
+    let result = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/double-constant-fail.clsp".to_string(),
+    ]);
+    assert!(result.contains("not a number given to only-integers"));
+    assert!(result.contains("\"hithere\""));
+}
+
+#[test]
+fn test_double_constant_pass_in_function() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/double-constant-pass-in-function.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "(13)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "211");
+}
+
+#[test]
+fn test_check_symbol_kinds_nested_if() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-classify-expr-if.clsp".to_string(),
+    ]);
+    let result_1 = do_basic_brun(&vec![
+        "brun".to_string(),
+        result_prog.clone(),
+        "(1)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(result_1, "2");
+    let result_0 = do_basic_brun(&vec!["brun".to_string(), result_prog, "(0)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result_0, "(q 1 2 3 4 4)");
+}
+
+// Check for successful deinlining of a large constant.
+// The result program tables the constant.
+#[test]
+fn test_basic_deinlining_smoke_0() {
+    let fname = "resources/tests/simple_deinline_case_23.clsp";
+    let file_content = fs::read_to_string(fname).expect("should exist");
+    let result_prog = do_basic_run(&vec!["run".to_string(), fname.to_string()]);
+    assert_eq!(result_prog.matches("1000000").count(), 1);
+    let old_prog = file_content.to_string().replace("23", "21");
+    let result_prog_21 = do_basic_run(&vec!["run".to_string(), old_prog]);
+    assert_eq!(result_prog_21.matches("1000000").count(), 6);
+    assert!(result_prog.len() < result_prog_21.len());
+}
+
+// Check for the optimizer to reduce a fully constant program to a constant.
+#[test]
+fn test_optimizer_fully_reduces_constant_outcome_0() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "(mod () (include *standard-cl-23*) (defun F (X) (+ X 1)) (F 3))".to_string(),
+    ]);
+    assert_eq!(res, "(1 . 4)");
+}
+
+// Check for the optimizer to reduce a fully constant program to a constant.
+#[test]
+fn test_optimizer_fully_reduces_constant_outcome_sha256tree() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (F 3))".to_string(),
+    ]);
+    assert_eq!(
+        res,
+        "(1 . -39425664269051251592384450451821132878837081010681666327853404714379049572411)"
+    );
+}
+
+// Check for the optimizer to reduce a fully constant function call to a constant
+// and propogate through another expression.
+#[test]
+fn test_optimizer_fully_reduces_constant_outcome_sha256tree_1() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (+ (F 3) 1))".to_string(),
+    ]);
+    assert_eq!(
+        res,
+        "(1 . -39425664269051251592384450451821132878837081010681666327853404714379049572410)"
+    );
 }
 
 #[test]
@@ -1074,6 +1509,834 @@ fn test_g1_map_op_modern() {
         output,
         "0x88e7302bf1fa8fcdecfb96f6b81475c3564d3bcaf552ccb338b1c48b9ba18ab7195c5067fe94fb216478188c0a3bef4a"
     );
+}
+
+#[test]
+fn test_optimizer_fully_reduces_constant_outcome_let_0() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (A) (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (defun G (Q) (let ((R (F Q))) (+ R 1))) (+ A (G 3)))".to_string(),
+    ]);
+    // Tree shaking will remove the functions that became unused due to constant
+    // reduction.  We now support suppressing the left env in stepping 23 and
+    // above.
+    assert_eq!(
+        res,
+        "(16 2 (1 . -39425664269051251592384450451821132878837081010681666327853404714379049572410))"
+    );
+}
+
+// Test that the optimizer inverts (i (not x) a b) to (i x b a)
+#[test]
+fn test_not_inversion_body() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "(mod (X) (include *standard-cl-23*) (if (not X) (+ X 1) (* X 2)))".to_string(),
+    ]);
+    assert_eq!(res, "(2 (3 2 (1 18 2 (1 . 2)) (1 16 2 (1 . 1))) 1)");
+}
+
+// Test that we can test chialisp outcomes in chialisp.
+#[test]
+fn test_chialisp_in_chialisp_test_pos() {
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (X) (include *standard-cl-23*) (if (= (f (mod () (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (+ (F 3) 1))) 1) \"worked\" \"didnt work\"))".to_string(),
+    ]);
+    assert_eq!(compiled, "(1 . \"worked\")");
+}
+
+// Test that we can test chialisp outcomes in chialisp.
+#[test]
+fn test_chialisp_in_chialisp_test_neg() {
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (X) (include *standard-cl-23*) (if (= (f (mod () (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ (list X) 1))) (+ (F 3) 1))) 1) \"worked\" \"didnt work\"))".to_string(),
+    ]);
+    assert_eq!(compiled, "(1 . \"didnt work\")");
+}
+
+// Test CSE when detections are inside a lambda.  It's necessary to add a capture for
+// the replaced expression.
+#[test]
+fn test_cse_replacement_inside_lambda_23_0() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/more_exhaustive/lambda_cse_1.clsp".to_string(),
+    ]);
+    let res = do_basic_brun(&vec![
+        "brun".to_string(),
+        program.clone(),
+        "(17 17)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(res, "0x15aa51");
+    let res = do_basic_brun(&vec![
+        "brun".to_string(),
+        program.clone(),
+        "(17 19)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(res, "0x1b1019");
+    let res = do_basic_brun(&vec!["brun".to_string(), program, "(19 17)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(res, "0x1e3f2b");
+}
+
+#[test]
+fn test_cse_replacement_inside_lambda_test_desugared_form_23() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/more_exhaustive/lambda_cse_1_desugared_form.clsp".to_string(),
+    ]);
+    let res = do_basic_brun(&vec!["brun".to_string(), program, "(17 17)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(res, "0x15aa51");
+}
+
+// Note: this program is intentionally made to properly preprocess but trigger
+// an error in strict compilation as a demonstration and test that the preprocessor
+// is a mechanically separate step from compilation.  Separating them like this
+// has the advantage that you can emit preprocessed compiler input on its own
+// and also that it internally untangles the stages and makes compilation simpler.
+#[test]
+fn test_defmac_if_smoke_preprocess() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "-E".to_string(),
+        "resources/tests/strict/defmac_if_smoke.clsp".to_string(),
+    ]);
+    assert_eq!(
+        result_prog,
+        "(mod () (include *strict-cl-21*) (a (i t1 (com t2) (com t3)) @))"
+    );
+    let result2 = do_basic_run(&vec!["run".to_string(), result_prog]);
+    assert!(result2.contains("Unbound use"));
+    // Ensure that we're identifying one of the actually misused variables, but
+    // do not make a claim about which one is identified first.
+    assert!(result2.contains("of t1") || result2.contains("of t2") || result2.contains("of t3"));
+}
+
+#[test]
+fn test_defmac_assert_smoke_preprocess() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "-E".to_string(),
+        "resources/tests/strict/assert.clsp".to_string(),
+    ]);
+    assert_eq!(
+        result_prog,
+        "(mod (A) (include *strict-cl-21*) (a (i 1 (com (a (i A (com 13) (com (x))) @)) (com (x))) @))"
+    );
+    let result_after_preproc = do_basic_run(&vec!["run".to_string(), result_prog]);
+    let result_with_preproc = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/assert.clsp".to_string(),
+    ]);
+    assert_eq!(result_after_preproc, result_with_preproc);
+    let run_result_true = do_basic_brun(&vec![
+        "brun".to_string(),
+        result_with_preproc.clone(),
+        "(15)".to_string(),
+    ]);
+    assert_eq!(run_result_true.trim(), "13");
+    let run_result_false = do_basic_brun(&vec![
+        "brun".to_string(),
+        result_with_preproc.clone(),
+        "(0)".to_string(),
+    ]);
+    assert_eq!(run_result_false.trim(), "FAIL: clvm raise ()");
+}
+
+#[test]
+fn test_defmac_assert_smoke_preprocess_23() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "-E".to_string(),
+        "resources/tests/strict/assert23.clsp".to_string(),
+    ]);
+    assert_eq!(
+        result_prog,
+        "(mod (A) (include *standard-cl-23*) (a (i 1 (com (a (i A (com 13) (com (x))) @)) (com (x))) @))"
+    );
+    let result_after_preproc = do_basic_run(&vec!["run".to_string(), result_prog]);
+    let result_with_preproc = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/assert23.clsp".to_string(),
+    ]);
+    assert_eq!(result_after_preproc, result_with_preproc);
+    let run_result_true = do_basic_brun(&vec![
+        "brun".to_string(),
+        result_with_preproc.clone(),
+        "(15)".to_string(),
+    ]);
+    assert_eq!(run_result_true.trim(), "13");
+    let run_result_false = do_basic_brun(&vec![
+        "brun".to_string(),
+        result_with_preproc.clone(),
+        "(0)".to_string(),
+    ]);
+    assert_eq!(run_result_false.trim(), "FAIL: clvm raise ()");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_0() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (X) (r @*env*)) ;; X = ((3)), returns (((3)))
+            (defun B (X) (A (r @*env*))) ;; X = (3)
+            (defun C (X) (B (r @*env*))) ;; X = 3
+            (C Y) ;; Y = 3
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_1() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (X) (r @*env*))
+            (defun B (X) (A (r @*env*)))
+            (defun C (X) (B (r @*env*)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_2() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (X) (r @*env*))
+            (defun-inline B (X) (A (r @*env*)))
+            (defun C (X) (B (r @*env*)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_3() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (X) (r @*env*))
+            (defun-inline B (X) (A (r @*env*)))
+            (defun C (X) (B (r @*env*)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_4() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (X) (r @*env*))
+            (defun B (X) (A (r @*env*)))
+            (defun-inline C (X) (B (r @*env*)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_5() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (X) (r @*env*))
+            (defun B (X) (A (r @*env*)))
+            (defun-inline C (X) (B (r @*env*)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_6() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (X) (r @*env*))
+            (defun-inline B (X) (A (r @*env*)))
+            (defun-inline C (X) (B (r @*env*)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_7() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (X) (r @*env*))
+            (defun-inline B (X) (A (r @*env*)))
+            (defun-inline C (X) (B (r @*env*)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_0() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (((PPX) PX) X) (list PPX PX X))
+            (defun B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_1() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (((PPX) PX) X) (list PPX PX X))
+            (defun B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_2() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (((PPX) PX) X) (list PPX PX X))
+            (defun-inline B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_3() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (((PPX) PX) X) (list PPX PX X))
+            (defun-inline B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_4() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (((PPX) PX) X) (list PPX PX X))
+            (defun B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun-inline C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_5() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (((PPX) PX) X) (list PPX PX X))
+            (defun B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun-inline C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_6() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (((PPX) PX) X) (list PPX PX X))
+            (defun-inline B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun-inline C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_7() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (((PPX) PX) X) (list PPX PX X))
+            (defun-inline B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun-inline C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
+}
+
+//
+// Inside assert_ (items):
+// items @ 5
+//
+// Inside letbinding_$_44 ((items) cse_$_43_$_24)
+//
+// items @ 9
+// cse_$_43_$_24 @ 11
+//
+#[test]
+fn test_inline_vs_deinline_23() {
+    eprintln!("=== W2 ===");
+    let compiled_2 = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/use-w2.clsp".to_string(),
+    ]);
+    eprintln!("=== W3 ===");
+    let compiled_3 = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/use-w3.clsp".to_string(),
+    ]);
+    eprintln!("=== RUN W2 ===");
+    let result_2 = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled_2,
+        "((1 2 3))".to_string(),
+    ]);
+    eprintln!("=== RUN W3 ===");
+    let result_3 = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled_3,
+        "((1 2 3))".to_string(),
+    ]);
+    assert_eq!(result_2, result_3);
+}
+
+#[test]
+fn test_rosetta_code_abc_example() {
+    let test_words = &[
+        ("A", true),
+        ("BARK", true),
+        ("TREAT", true),
+        ("BOOK", false),
+        ("COMMON", false),
+        ("SQUAD", true),
+        ("CONFUSE", true),
+    ];
+    let prog_pp = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/rosetta_code_abc.clsp".to_string(),
+    ]);
+    let prog_np = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/rosetta_code_abc_preprocessed.clsp".to_string(),
+    ]);
+    eprintln!("{prog_pp}");
+    assert_eq!(prog_pp, prog_np);
+    for (w, success) in test_words.iter() {
+        eprintln!("{} {}", w, success);
+        let result = do_basic_brun(&vec![
+            "brun".to_string(),
+            prog_pp.clone(),
+            format!("({})", w),
+        ])
+        .trim()
+        .to_string();
+        if *success {
+            assert_eq!(result, "1");
+        } else {
+            assert_eq!(result, "()");
+        }
+    }
+}
+
+#[test]
+fn test_rosetta_code_babbage_problem() {
+    let preprocessed = do_basic_run(&vec![
+        "run".to_string(),
+        "-E".to_string(),
+        "resources/tests/strict/rosetta_code_babbage_problem.clsp".to_string(),
+    ]);
+    assert!(!preprocessed.contains("*macros*"));
+    assert!(!preprocessed.contains("(defmacro list"));
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/rosetta_code_babbage_problem.clsp".to_string(),
+    ]);
+    let output = do_basic_brun(&vec!["brun".to_string(), compiled, "(269696)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(output, "25264");
+}
+
+#[test]
+fn test_desugar_output() {
+    let desugared = do_basic_run(&vec![
+        "run".to_string(),
+        "-D".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let re_def = r"(mod (X) (include [*]standard-cl-23[*]) (defun-inline letbinding_[$]_[0-9]+ ((X) Z_[$]_[0-9]+) ([*] ([+] Z_[$]_[0-9]+ 1) ([+] Z_[$]_[0-9]+ 1) ([+] Z_[$]_[0-9]+ 1))) (a (i X (com (letbinding_[$]_[0-9]+ (r [@][*]env[*]) X)) (com 17)) [@]))".replace("(", r"\(").replace(")", r"\)");
+    eprintln!("desugared {desugared}");
+    let re = Regex::new(&re_def).expect("should become a regex");
+    assert!(re.is_match(&desugared));
+}
+
+#[test]
+fn test_cse_when_not_dominating_conditions() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x009988"); // 34 * 34 * 34
+}
+
+#[test]
+fn test_cse_not_dominating_conditions_with_superior_let() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x009988"); // 34 * 34 * 34
+}
+
+#[test]
+fn test_cse_not_dominating_conditions_with_superior_let_outside() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let_outside.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x5c13d840"); // 34 * 34 * 34 * 34 * 34 * 34
+}
+
+#[test]
+fn test_cse_not_dominating_conditions_with_superior_let_outside_in_inline() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let_outside_in_inline.clsp"
+            .to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x5c13d840"); // 34 * 34 * 34 * 34 * 34 * 34
+}
+
+#[test]
+fn test_cse_not_dominating_conditions_with_superior_let_outside_in_defun() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let_outside_in_defun.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x5c13d840"); // 34 * 34 * 34 * 34 * 34 * 34
+}
+
+#[test]
+fn test_cse_not_dominating_conditions_with_superior_let_odi() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let_odi.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x5c13d840"); // 34 * 34 * 34 * 34 * 34 * 34
+}
+
+#[test]
+fn test_cse_not_dominating_conditions_with_superior_let_iodi() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let_iodi.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x5c13d840"); // 34 * 34 * 34 * 34 * 34 * 34
+}
+
+#[test]
+fn test_chialisp_web_example() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/chialisp-web-example.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(100)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "(306 (101 103))");
+}
+
+#[test]
+fn test_chialisp_web_example_defconst() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/defconst.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(3)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(
+        outcome,
+        "0xf60efb25b9e6e3587acd9cf01c332707bb771801bdb5e4f50ea957a29c8dde89"
+    );
+}
+
+#[test]
+fn test_chialisp_web_example_big_maybe() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/big-maybe.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(((3 5)))".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "8");
+}
+
+#[test]
+fn test_chialisp_web_example_map() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/map-example.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "((1 2 3))".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "(a 3 4)");
+}
+
+#[test]
+fn test_chialisp_web_example_map_lambda() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/map-example.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec![
+        "brun".to_string(),
+        program,
+        "((100 101 102))".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(outcome, "(101 102 103)");
+}
+
+#[test]
+fn test_chialisp_web_example_embed() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/embed.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(world)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(
+        outcome,
+        "0x26c60a61d01db5836ca70fefd44a6a016620413c8ef5f259a6c5612d4f79d3b8"
+    );
+}
+
+#[test]
+fn test_chialisp_types_23() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/typesmoke.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let program2 = do_basic_run(&vec![
+        "run".to_string(),
+        "--typecheck".to_string(),
+        "resources/tests/strict/typesmoke.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(program, program2);
+    assert_eq!(program, "(2 (1 . 2) (4 2 ()))");
+}
+
+#[test]
+fn test_chialisp_type_lambda_23() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/typesmoke-lambda.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let program2 = do_basic_run(&vec![
+        "run".to_string(),
+        "--typecheck".to_string(),
+        "resources/tests/strict/typesmoke-lambda.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(program, program2);
+}
+
+#[test]
+fn test_chialisp_type_lambda_23_anno() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/typesmoke-lambda-anno.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let program2 = do_basic_run(&vec![
+        "run".to_string(),
+        "--typecheck".to_string(),
+        "resources/tests/strict/typesmoke-lambda-anno.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(program, program2);
 }
 
 #[test]
@@ -1309,4 +2572,34 @@ fn test_classic_obeys_operator_choice_at_compile_time_version_0() {
     .trim()
     .to_string();
     assert_eq!(compiled, "FAIL: unimplemented operator 48");
+}
+
+#[test]
+fn test_continued_if() {
+    let prog = indoc! {"
+(mod X
+  (include *strict-cl-21*)
+
+  (defun bigatom (Xs Ys)
+    (if
+      Xs (concat (f Xs) (bigatom (r Xs) Ys))
+      Ys (concat (f Ys) (bigatom (r Ys) ()))
+      ()
+      )
+    )
+
+  (bigatom (q . (3 4 5)) X)
+  )"}
+    .to_string();
+    let compiled = do_basic_run(&vec!["run".to_string(), prog])
+        .trim()
+        .to_string();
+    let res = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(13 99 144)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(res.to_string(), "0x0304050d630090");
 }

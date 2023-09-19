@@ -10,6 +10,7 @@ use crate::compiler::sexp::decode_string;
 #[derive(Clone, Debug, Default)]
 pub struct AcceptedDialect {
     pub stepping: Option<i32>,
+    pub strict: bool,
 }
 
 /// A package containing the content we should insert when a dialect include is
@@ -27,7 +28,10 @@ lazy_static! {
             (
                 "*standard-cl-21*",
                 DialectDescription {
-                    accepted: AcceptedDialect { stepping: Some(21) },
+                    accepted: AcceptedDialect {
+                        stepping: Some(21),
+                        ..AcceptedDialect::default()
+                    },
                     content: indoc! {"(
                     (defconstant *chialisp-version* 21)
                 )"}
@@ -35,11 +39,40 @@ lazy_static! {
                 },
             ),
             (
-                "*standard-cl-22*",
+                "*strict-cl-21*",
                 DialectDescription {
-                    accepted: AcceptedDialect { stepping: Some(22) },
+                    accepted: AcceptedDialect {
+                        stepping: Some(21),
+                        strict: true,
+                    },
                     content: indoc! {"(
                     (defconstant *chialisp-version* 22)
+                )"}
+                    .to_string(),
+                },
+            ),
+            (
+                "*standard-cl-22*",
+                DialectDescription {
+                    accepted: AcceptedDialect {
+                        stepping: Some(22),
+                        strict: false,
+                    },
+                    content: indoc! {"(
+                    (defconstant *chialisp-version* 22)
+                )"}
+                    .to_string(),
+                },
+            ),
+            (
+                "*standard-cl-23*",
+                DialectDescription {
+                    accepted: AcceptedDialect {
+                        stepping: Some(23),
+                        strict: true,
+                    },
+                    content: indoc! {"(
+                    (defconstant *chialisp-version* 23)
                 )"}
                     .to_string(),
                 },

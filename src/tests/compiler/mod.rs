@@ -5,14 +5,18 @@ use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::{Srcloc, Until};
 
 mod assign;
-mod cldb;
+pub mod cldb;
 mod clvm;
 mod compiler;
 mod evaluate;
+mod optimizer;
+mod preprocessor;
 mod repl;
 mod restargs;
 mod runtypes;
+mod singleton;
 mod srcloc;
+mod types;
 mod usecheck;
 
 #[test]

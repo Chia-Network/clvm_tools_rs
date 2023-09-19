@@ -1,5 +1,6 @@
 use crate::tests::compiler::compiler::run_string;
 use crate::tests::compiler::repl::test_repl_outcome;
+use crate::tests::compiler::types::chialisp::test_chialisp_program_typecheck;
 
 // All tests needed for rest calls:
 //
@@ -52,7 +53,7 @@ use crate::tests::compiler::repl::test_repl_outcome;
 fn test_simple_inline_toomany_args_01() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B) (+ A B))
 
@@ -67,7 +68,7 @@ fn test_simple_inline_toomany_args_01() {
 fn test_simple_inline_toomany_args_improper_tail_02() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun sum (Xs)
     (if Xs
@@ -89,7 +90,7 @@ fn test_simple_inline_toomany_args_improper_tail_02() {
 fn test_simple_inline_toomany_args_improper_no_tail_03() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun sum (Xs)
     (if Xs
@@ -111,7 +112,7 @@ fn test_simple_inline_toomany_args_improper_no_tail_03() {
 fn test_simple_inline_exact_no_tails_04() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B) (* A B))
 
@@ -126,7 +127,7 @@ fn test_simple_inline_exact_no_tails_04() {
 fn test_simple_inline_exact_improper_tail_05() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B . C) (* A B C))
 
@@ -141,7 +142,7 @@ fn test_simple_inline_exact_improper_tail_05() {
 fn test_simple_inline_exact_improper_no_tail_06() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B . C) (+ A B C))
 
@@ -156,7 +157,7 @@ fn test_simple_inline_exact_improper_no_tail_06() {
 fn test_simple_inline_exact_toofew_improper_tail_07() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B C . D) (list A B C (f D)))
 
@@ -171,7 +172,7 @@ fn test_simple_inline_exact_toofew_improper_tail_07() {
 fn test_simple_inline_exact_toofew_tail_08() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B C) (list A B C))
 
@@ -186,7 +187,7 @@ fn test_simple_inline_exact_toofew_tail_08() {
 fn test_simple_inline_exact_toofew_improper_no_tail_09() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B C . D) (list A B C (f D)))
 
@@ -205,7 +206,7 @@ fn test_simple_inline_exact_toofew_improper_no_tail_09() {
 fn test_simple_inline_exact_toofew_tail_10() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B C) (list A B C))
 
@@ -220,7 +221,7 @@ fn test_simple_inline_exact_toofew_tail_10() {
 fn test_inline_inline_toomany_args_11() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B) (+ A B))
 
@@ -237,7 +238,7 @@ fn test_inline_inline_toomany_args_11() {
 fn test_inline_inline_toomany_args_improper_tail_12() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline return-list (Xs) Xs)
 
@@ -254,7 +255,7 @@ fn test_inline_inline_toomany_args_improper_tail_12() {
 fn test_simple_inline_toomany_args_improper_no_tail_13() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline return-list (Xs) Xs)
 
@@ -271,7 +272,7 @@ fn test_simple_inline_toomany_args_improper_no_tail_13() {
 fn test_inline_inline_exact_no_tails_14() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B) (* A B))
 
@@ -288,7 +289,7 @@ fn test_inline_inline_exact_no_tails_14() {
 fn test_inline_inline_exact_improper_tail_15() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B . C) (* A B C))
 
@@ -305,7 +306,7 @@ fn test_inline_inline_exact_improper_tail_15() {
 fn test_inline_inline_exact_improper_no_tail_16() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B . C) (+ A B C))
 
@@ -322,7 +323,7 @@ fn test_inline_inline_exact_improper_no_tail_16() {
 fn test_simple_inline_exact_toofew_improper_tail_17() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B C . D) (list A B C (f D)))
 
@@ -339,7 +340,7 @@ fn test_simple_inline_exact_toofew_improper_tail_17() {
 fn test_inline_inline_exact_toofew_tail_18() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B C) (list A B C))
 
@@ -356,7 +357,7 @@ fn test_inline_inline_exact_toofew_tail_18() {
 fn test_inline_inline_exact_toofew_improper_no_tail_19() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B C . D) (list A B C (f D)))
 
@@ -377,7 +378,7 @@ fn test_inline_inline_exact_toofew_improper_no_tail_19() {
 fn test_simple_inline_exact_toofew_tail_20() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun-inline F (A B C) (list A B C))
 
@@ -394,7 +395,7 @@ fn test_simple_inline_exact_toofew_tail_20() {
 fn test_ni_ni_toomany_args_21() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B) (+ A B))
 
@@ -411,7 +412,7 @@ fn test_ni_ni_toomany_args_21() {
 fn test_ni_ni_toomany_args_improper_tail_22() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun return-list (Xs) Xs)
 
@@ -428,7 +429,7 @@ fn test_ni_ni_toomany_args_improper_tail_22() {
 fn test_simple_inline_toomany_args_improper_no_tail_23() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun return-list (Xs) Xs)
 
@@ -445,7 +446,7 @@ fn test_simple_inline_toomany_args_improper_no_tail_23() {
 fn test_ni_ni_exact_no_tails_24() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B) (* A B))
 
@@ -462,7 +463,7 @@ fn test_ni_ni_exact_no_tails_24() {
 fn test_ni_ni_exact_improper_tail_25() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B . C) (* A B C))
 
@@ -479,7 +480,7 @@ fn test_ni_ni_exact_improper_tail_25() {
 fn test_ni_ni_rest_call_25() {
     let prog = indoc! {"
 (mod X
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F Xs
     (if Xs
@@ -499,7 +500,7 @@ fn test_ni_ni_rest_call_25() {
 fn test_ni_ni_exact_improper_no_tail_26() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B . C) (+ A B C))
 
@@ -516,7 +517,7 @@ fn test_ni_ni_exact_improper_no_tail_26() {
 fn test_simple_inline_exact_toofew_improper_tail_27() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B C . D) (list A B C (f D)))
 
@@ -533,7 +534,7 @@ fn test_simple_inline_exact_toofew_improper_tail_27() {
 fn test_ni_ni_exact_toofew_tail_28() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B C) (list A B C))
 
@@ -550,7 +551,7 @@ fn test_ni_ni_exact_toofew_tail_28() {
 fn test_ni_ni_exact_toofew_improper_no_tail_29() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B C . D) (list A B C (f D)))
 
@@ -571,7 +572,7 @@ fn test_ni_ni_exact_toofew_improper_no_tail_29() {
 fn test_ni_ni_exact_toofew_tail_30() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B C) (list A B C))
 
@@ -588,7 +589,7 @@ fn test_ni_ni_exact_toofew_tail_30() {
 fn test_inline_ni_toomany_args_31() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B) (+ A B))
 
@@ -605,7 +606,7 @@ fn test_inline_ni_toomany_args_31() {
 fn test_inline_ni_toomany_args_improper_tail_32() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun return-list (Xs) Xs)
 
@@ -622,7 +623,7 @@ fn test_inline_ni_toomany_args_improper_tail_32() {
 fn test_simple_inline_toomany_args_improper_no_tail_33() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun return-list (Xs) Xs)
 
@@ -639,7 +640,7 @@ fn test_simple_inline_toomany_args_improper_no_tail_33() {
 fn test_inline_ni_exact_no_tails_34() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B) (* A B))
 
@@ -656,7 +657,7 @@ fn test_inline_ni_exact_no_tails_34() {
 fn test_inline_ni_exact_improper_tail_35() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B . C) (* A B C))
 
@@ -673,7 +674,7 @@ fn test_inline_ni_exact_improper_tail_35() {
 fn test_simple_rest_call_inline_35() {
     let prog = indoc! {"
 (mod X
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun sum (Xs)
     (if Xs
@@ -695,7 +696,7 @@ fn test_simple_rest_call_inline_35() {
 fn test_inline_ni_exact_improper_no_tail_36() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B . C) (+ A B C))
 
@@ -712,7 +713,7 @@ fn test_inline_ni_exact_improper_no_tail_36() {
 fn test_simple_inline_exact_toofew_improper_tail_37() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B C . D) (list A B C (f D)))
 
@@ -729,7 +730,7 @@ fn test_simple_inline_exact_toofew_improper_tail_37() {
 fn test_inline_ni_exact_toofew_tail_38() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B C) (list A B C))
 
@@ -746,7 +747,7 @@ fn test_inline_ni_exact_toofew_tail_38() {
 fn test_inline_ni_exact_toofew_improper_no_tail_39() {
     let prog = indoc! {"
 (mod (X Y)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B C . D) (list A B C (f D)))
 
@@ -767,7 +768,7 @@ fn test_inline_ni_exact_toofew_improper_no_tail_39() {
 fn test_inline_ni_exact_toofew_tail_40() {
     let prog = indoc! {"
 (mod (X Y Z)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F (A B C) (list A B C))
 
@@ -900,6 +901,45 @@ fn test_repl_10() {
         .unwrap(),
         "(q 5 7 101)"
     );
+}
+
+#[test]
+fn test_rest_type_good() {
+    let prog_good = indoc! {"
+(mod (X)
+  (include *standard-cl-23*)
+
+  (defun F (A B . C) : ((Pair Atom (Pair Atom (List Atom))) -> Atom) (* A B (f C)))
+
+  (F 5 7 &rest (list 9))
+  )"}
+    .to_string();
+
+    let typecheck_result = test_chialisp_program_typecheck(&prog_good, true);
+
+    // Good result
+    assert!(typecheck_result.is_ok());
+}
+
+#[test]
+fn test_rest_type_bad() {
+    let prog_bad = indoc! {"
+(mod (X)
+  (include *standard-cl-23*)
+
+  (deftype Foo ())
+
+  (defun F (A B . C) : ((Pair Atom (Pair Atom (List Foo))) -> Atom) (* A B (f C)))
+
+  (F 5 7 &rest (list 9))
+  )"}
+    .to_string();
+
+    let typecheck_result = test_chialisp_program_typecheck(&prog_bad, true);
+
+    // Bad result
+    eprintln!("tc {typecheck_result:?}");
+    assert!(typecheck_result.is_err());
 }
 
 #[test]

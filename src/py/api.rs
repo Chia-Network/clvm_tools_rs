@@ -206,12 +206,13 @@ impl CldbSingleBespokeOverride for CldbSinglePythonOverride {
     }
 }
 
-#[pyfunction(arg4 = "None")]
+#[pyfunction(arg4 = "None", arg5 = "None")]
 fn start_clvm_program(
     hex_prog: String,
     hex_args: String,
     symbol_table: Option<HashMap<String, String>>,
     overrides: Option<HashMap<String, Py<PyAny>>>,
+    _options: Option<HashMap<String, Py<PyAny>>>,
 ) -> PyResult<PythonRunStep> {
     let (command_tx, command_rx) = mpsc::channel();
     let (result_tx, result_rx) = mpsc::channel();

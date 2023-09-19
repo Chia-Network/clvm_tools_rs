@@ -1,0 +1,7 @@
+(mod (X)
+  (include *strict-cl-21*)
+  (if X
+    (+ X 2)
+    5
+    )
+  )

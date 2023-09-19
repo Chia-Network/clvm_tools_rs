@@ -1,5 +1,6 @@
 use core::cell::RefCell;
 
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io;
@@ -42,7 +43,6 @@ use crate::classic::clvm_tools::stages::stage_0::{
 };
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::platform::PathJoin;
-use crate::compiler::dialect::detect_modern;
 
 use crate::classic::platform::argparse::{
     Argument, ArgumentParser, ArgumentValue, ArgumentValueConv, IntConversion, NArgsSpec,
@@ -52,15 +52,22 @@ use crate::classic::platform::argparse::{
 use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
 use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
 use crate::compiler::clvm::start_step;
-use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts};
-use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::compiler::{compile_file, desugar_pre_forms, DefaultCompilerOpts};
+use crate::compiler::comptypes::{CompileErr, CompileForm, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
+use crate::compiler::dialect::detect_modern;
+use crate::compiler::frontend::frontend;
+use crate::compiler::optimize::{get_optimizer, run_optimizer};
 use crate::compiler::preprocessor::gather_dependencies;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp;
 use crate::compiler::sexp::{decode_string, parse_sexp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::typechia::standard_type_context;
+use crate::compiler::types::theory::TypeTheory;
+use crate::compiler::untype::untype_code;
+use crate::compiler::BasicCompileContext;
 
 use crate::util::collapse;
 use crate::util::version;
@@ -312,6 +319,8 @@ impl ArgumentValueConv for OperatorsVersion {
 }
 
 pub fn run(args: &[String]) {
+    env_logger::init();
+
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, "run", 2);
     io::stdout()
@@ -494,6 +503,8 @@ pub fn cldb_hierarchy(
 }
 
 pub fn cldb(args: &[String]) {
+    env_logger::init();
+
     let tool_name = "cldb".to_string();
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
@@ -527,6 +538,13 @@ pub fn cldb(args: &[String]) {
         Argument::new()
             .set_type(Rc::new(PathOrCodeConv {}))
             .set_help("path to symbol file".to_string()),
+    );
+    #[cfg(feature = "debug-print")]
+    parser.add_argument(
+        vec!["-p".to_string(), "--only-print".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("only show printing from the program".to_string()),
     );
     parser.add_argument(
         vec!["-t".to_string(), "--tree".to_string()],
@@ -595,6 +613,8 @@ pub fn cldb(args: &[String]) {
             }
             _ => None,
         });
+
+    let only_print = parsed_args.get("only_print").map(|_| true).unwrap_or(false);
 
     let do_optimize = parsed_args
         .get("optimize")
@@ -723,6 +743,14 @@ pub fn cldb(args: &[String]) {
 
     let step = start_step(program, args);
     let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
+    let print_tree = |output: &mut Vec<_>, result: &BTreeMap<String, String>| {
+        let mut cvt_subtree = BTreeMap::new();
+        for (k, v) in result.iter() {
+            cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
+        }
+        output.push(cvt_subtree);
+    };
+
     loop {
         if cldbrun.is_ended() {
             println!("{}", yamlette_string(&output));
@@ -730,11 +758,22 @@ pub fn cldb(args: &[String]) {
         }
 
         if let Some(result) = cldbrun.step(&mut allocator) {
-            let mut cvt_subtree = BTreeMap::new();
-            for (k, v) in result.iter() {
-                cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
+            if only_print {
+                if let Some(p) = result.get("Print") {
+                    let mut only_print = BTreeMap::new();
+                    only_print.insert("Print".to_string(), YamlElement::String(p.clone()));
+                    output.push(only_print);
+                } else {
+                    let is_final = result.get("Final").is_some();
+                    let is_throw = result.get("Throw").is_some();
+                    let is_failure = result.get("Failure").is_some();
+                    if is_final || is_throw || is_failure {
+                        print_tree(&mut output, &result);
+                    }
+                }
+            } else {
+                print_tree(&mut output, &result);
             }
-            output.push(cvt_subtree);
         }
     }
 }
@@ -804,6 +843,92 @@ fn fix_log(
             })
         });
     }
+}
+
+fn parse_module_and_get_sigil(
+    opts: Rc<dyn CompilerOpts>,
+    input_file: &str,
+    program_text: &str,
+) -> Result<(Option<String>, Vec<Rc<sexp::SExp>>), CompileErr> {
+    let srcloc = Srcloc::start(input_file);
+    let parsed = parse_sexp(srcloc, program_text.bytes())?;
+    let stepping_form_text = match opts.dialect().stepping {
+        Some(21) => Some("(include *strict-cl-21*)".to_string()),
+        Some(n) => Some(format!("(include *standard-cl-{n}*)")),
+        _ => None,
+    };
+    Ok((stepping_form_text, parsed))
+}
+
+fn render_mod_with_sigil(
+    input_file: &str,
+    stepping_form_text: &Option<String>,
+    frontend: &CompileForm,
+) -> Result<sexp::SExp, CompileErr> {
+    let srcloc = Srcloc::start(input_file);
+    let fe_sexp = frontend.to_sexp();
+    let with_stepping = if let Some(s) = stepping_form_text {
+        let parsed_stepping_form = parse_sexp(srcloc.clone(), s.bytes())?;
+        if let sexp::SExp::Cons(_, a, rest) = fe_sexp.borrow() {
+            Rc::new(sexp::SExp::Cons(
+                srcloc.clone(),
+                a.clone(),
+                Rc::new(sexp::SExp::Cons(
+                    srcloc.clone(),
+                    parsed_stepping_form[0].clone(),
+                    rest.clone(),
+                )),
+            ))
+        } else {
+            fe_sexp
+        }
+    } else {
+        fe_sexp
+    };
+
+    Ok(sexp::SExp::Cons(
+        srcloc.clone(),
+        Rc::new(sexp::SExp::Atom(srcloc, b"mod".to_vec())),
+        with_stepping,
+    ))
+}
+
+fn perform_preprocessing(
+    stdout: &mut Stream,
+    opts: Rc<dyn CompilerOpts>,
+    input_file: &str,
+    program_text: &str,
+) -> Result<(), CompileErr> {
+    let (stepping_form_text, parsed) =
+        parse_module_and_get_sigil(opts.clone(), input_file, program_text)?;
+    let frontend = frontend(opts, &parsed)?;
+    let whole_mod = render_mod_with_sigil(input_file, &stepping_form_text, &frontend)?;
+
+    stdout.write_str(&format!("{}", whole_mod));
+    Ok(())
+}
+
+fn perform_desugaring(
+    runner: Rc<dyn TRunProgram>,
+    stdout: &mut Stream,
+    opts: Rc<dyn CompilerOpts>,
+    input_file: &str,
+    program_text: &str,
+) -> Result<(), CompileErr> {
+    let (stepping_form_text, parsed) =
+        parse_module_and_get_sigil(opts.clone(), input_file, program_text)?;
+    let srcloc = Srcloc::start(input_file);
+    let mut context = BasicCompileContext::new(
+        Allocator::new(),
+        runner.clone(),
+        HashMap::new(),
+        get_optimizer(&srcloc, opts.clone())?,
+    );
+    let frontend = desugar_pre_forms(&mut context, opts, &parsed)?;
+    let whole_mod = render_mod_with_sigil(input_file, &stepping_form_text, &frontend)?;
+
+    stdout.write_str(&format!("{}", whole_mod));
+    Ok(())
 }
 
 fn get_disassembly_ver(p: &HashMap<String, ArgumentValue>) -> Option<usize> {
@@ -929,6 +1054,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_help("run optimizer".to_string()),
     );
     parser.add_argument(
+        vec!["--typecheck".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("type check".to_string()),
+    );
+    parser.add_argument(
         vec!["--only-exn".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
@@ -951,6 +1082,21 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         Argument::new()
             .set_type(Rc::new(PathJoin {}))
             .set_default(ArgumentValue::ArgString(None, "main.sym".to_string())),
+    );
+    parser.add_argument(
+        vec!["-E".to_string(), "--preprocess".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("Perform strict mode preprocessing and show the result".to_string()),
+    );
+    parser.add_argument(
+        vec!["-D".to_string(), "--desugar".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help(
+                "Perform desugaring and output a program made up exclusively of helper forms"
+                    .to_string(),
+            ),
     );
     parser.add_argument(
         vec!["--operators-version".to_string()],
@@ -1036,6 +1182,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let time_start = SystemTime::now();
     let mut time_read_hex = SystemTime::now();
     let mut time_assemble = SystemTime::now();
+    let typecheck = parsed_args.get("typecheck").map(|_| true).unwrap_or(false);
 
     let mut input_args = "()".to_string();
 
@@ -1147,6 +1294,17 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             }
 
             let assembled_sexp = assemble_from_ir(&mut allocator, Rc::new(src_sexp)).unwrap();
+            let use_filename = input_file
+                .clone()
+                .unwrap_or_else(|| "*command*".to_string());
+
+            let untyped_sexp_err =
+                untype_code(&mut allocator, Srcloc::start(&use_filename), assembled_sexp);
+            if let Err(e) = untyped_sexp_err {
+                stdout.write_str(&format!("{}: failed to strip type annotations", e.1));
+                return;
+            }
+            let untyped_sexp = untyped_sexp_err.unwrap();
             let mut parsed_args_result = "()".to_string();
 
             if let Some(ArgumentValue::ArgString(_f, s)) = parsed_args.get("env") {
@@ -1157,7 +1315,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             let env = assemble_from_ir(&mut allocator, Rc::new(env_ir)).unwrap();
             time_assemble = SystemTime::now();
 
-            input_sexp = allocator.new_pair(assembled_sexp, env).ok();
+            input_sexp = allocator.new_pair(untyped_sexp, env).ok();
         }
     }
 
@@ -1206,17 +1364,36 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         }
     };
 
-    if do_check_unused {
+    if do_check_unused || typecheck {
         let opts =
             Rc::new(DefaultCompilerOpts::new(&reported_input_file)).set_search_paths(&search_paths);
-        match check_unused(opts, &input_program) {
-            Ok((success, output)) => {
-                stderr_output(output);
-                if !success {
+        if do_check_unused {
+            match check_unused(opts.clone(), &input_program) {
+                Ok((success, output)) => {
+                    stderr_output(output);
+                    if !success {
+                        return;
+                    }
+                }
+                Err(e) => {
+                    stderr_output(format!("{}: {}\n", e.0, e.1));
                     return;
                 }
             }
-            Err(e) => {
+        }
+
+        if typecheck {
+            let loc = Srcloc::start(&reported_input_file);
+            if let Err(e) = parse_sexp(loc, input_program.bytes())
+                .map_err(|e| CompileErr(e.0.clone(), e.1))
+                .and_then(|pre_forms| {
+                    let context = standard_type_context();
+                    let compileform = frontend(opts.clone(), &pre_forms)?;
+                    let target_type =
+                        context.typecheck_chialisp_program(opts.clone(), &compileform)?;
+                    Ok(context.reify(&target_type, None))
+                })
+            {
                 stderr_output(format!("{}: {}\n", e.0, e.1));
                 return;
             }
@@ -1236,7 +1413,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     // In testing: short circuit for modern compilation.
     // Now stepping is the optional part.
-    if let Some(dialect) = dialect.and_then(|d| d.stepping) {
+    if let Some(stepping) = dialect.as_ref().and_then(|d| d.stepping) {
         let do_optimize = parsed_args
             .get("optimize")
             .map(|x| matches!(x, ArgumentValue::ArgBool(true)))
@@ -1244,11 +1421,29 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         let runner = Rc::new(DefaultProgramRunner::new());
         let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
-            .set_optimize(do_optimize)
+            .set_dialect(dialect.unwrap_or_default())
+            .set_optimize(do_optimize || stepping > 22)
             .set_search_paths(&search_paths)
-            .set_frontend_opt(dialect > 21)
+            .set_frontend_opt(stepping > 21)
             .set_disassembly_ver(get_disassembly_ver(&parsed_args));
         let mut symbol_table = HashMap::new();
+
+        // Short circuit preprocessing display.
+        if parsed_args.get("preprocess").is_some() {
+            if let Err(e) = perform_preprocessing(stdout, opts, &use_filename, &input_program) {
+                stdout.write_str(&format!("{}: {}", e.0, e.1));
+            }
+            return;
+        }
+
+        // Short circuit desguaring display.
+        if parsed_args.get("desugar").is_some() {
+            if let Err(e) = perform_desugaring(runner, stdout, opts, &use_filename, &input_program)
+            {
+                stdout.write_str(&format!("{}: {}", e.0, e.1));
+            }
+            return;
+        }
 
         let unopt_res = compile_file(
             &mut allocator,

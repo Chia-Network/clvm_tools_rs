@@ -136,7 +136,7 @@ impl Display for SExp {
                 formatter.write_str(&v.to_string())?;
             }
             SExp::QuotedString(_, q, s) => {
-                if printable(s) {
+                if printable(s, true) {
                     formatter.write_str("\"")?;
                     formatter.write_str(&escape_quote(*q, s))?;
                     formatter.write_str("\"")?;
@@ -153,7 +153,7 @@ impl Display for SExp {
             SExp::Atom(l, a) => {
                 if a.is_empty() {
                     formatter.write_str("()")?;
-                } else if printable(a) {
+                } else if printable(a, false) {
                     formatter.write_str(&decode_string(a))?;
                 } else {
                     formatter
@@ -272,10 +272,10 @@ fn normalize_int(v: Vec<u8>, base: u32) -> Number {
 fn from_hex(l: Srcloc, v: &[u8]) -> SExp {
     let mut result = vec![0; (v.len() - 2) / 2];
     hex2bin(&v[2..], &mut result).expect("should convert from hex");
-    SExp::QuotedString(l, b'"', result)
+    SExp::QuotedString(l, b'x', result)
 }
 
-fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
+pub fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
     let alen = v.len();
     if alen > 1 && v[0] == b'#' {
         // Search prims for appropriate primitive
@@ -356,14 +356,12 @@ pub fn decode_string(v: &[u8]) -> String {
     return String::from_utf8_lossy(v).as_ref().to_string();
 }
 
-fn printable(a: &[u8]) -> bool {
-    for ch in a.iter() {
-        if (*ch as char).is_control() || !(*ch as char).is_ascii() {
-            return false;
-        }
-    }
-
-    true
+fn printable(a: &[u8], quoted: bool) -> bool {
+    !a.iter().any(|ch| {
+        (*ch as char).is_control()
+            || !(*ch as char).is_ascii()
+            || (!quoted && ch.is_ascii_whitespace())
+    })
 }
 
 impl SExp {
@@ -490,7 +488,7 @@ impl SExp {
                 (SExp::Cons(_, r, s), SExp::Cons(_, t, u)) => r.equal_to(t) && s.equal_to(u),
                 (SExp::Cons(_, _, _), _) => false,
                 (_, SExp::Cons(_, _, _)) => false,
-                (SExp::Integer(l, a), b) => SExp::Atom(l.clone(), u8_from_number(a.clone())) == *b,
+                (SExp::Integer(_, _), b) => self.atomize() == *b,
                 (SExp::QuotedString(l, _, a), b) => SExp::Atom(l.clone(), a.clone()) == *b,
                 (SExp::Nil(l), b) => SExp::Atom(l.clone(), Vec::new()) == *b,
                 (SExp::Atom(_, _), SExp::Integer(_, _)) => other == self,
@@ -979,4 +977,178 @@ fn test_tricky_parser_tail_03() {
             Rc::new(SExp::Nil(srcloc_range(&testname, 6, 7)))
         ))])
     );
+}
+
+// This is a trait that generates a haskell-like ad-hoc type from the user's
+// construction of NodeSel and ThisNode.
+// the result is transformed into a NodeSel tree of NodePtr if it can be.
+// The type of the result is an ad-hoc shape derived from the shape of the
+// original request.
+//
+// This mirrors code in src/classic/clvm/sexp.rs
+//
+// It's a nicer way of modelling matches that will overtake bespoke code for a lot
+// of things.
+#[derive(Debug, Clone)]
+pub enum NodeSel<T, U> {
+    Cons(T, U),
+}
+
+#[derive(Debug, Clone)]
+pub enum First<T> {
+    Here(T),
+}
+
+#[derive(Debug, Clone)]
+pub enum Rest<T> {
+    Here(T),
+}
+
+#[derive(Debug, Clone)]
+pub enum ThisNode {
+    Here,
+}
+
+pub enum Atom<T> {
+    Here(T),
+}
+
+pub enum AtomValue<T> {
+    Here(T),
+}
+
+pub trait SelectNode<T, E> {
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<T, E>;
+}
+
+impl<E> SelectNode<Rc<SExp>, E> for ThisNode {
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<Rc<SExp>, E> {
+        Ok(s)
+    }
+}
+
+impl SelectNode<(Srcloc, Vec<u8>), (Srcloc, String)> for Atom<()> {
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<(Srcloc, Vec<u8>), (Srcloc, String)> {
+        if let SExp::Atom(loc, name) = s.borrow() {
+            return Ok((loc.clone(), name.clone()));
+        }
+
+        Err((s.loc(), "Not an atom".to_string()))
+    }
+}
+
+impl SelectNode<Srcloc, (Srcloc, String)> for Atom<&str> {
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<Srcloc, (Srcloc, String)> {
+        let Atom::Here(name) = self;
+        if let Ok((l, n)) = Atom::Here(()).select_nodes(s.clone()) {
+            if n == name.as_bytes() {
+                return Ok(l);
+            }
+        }
+
+        Err((s.loc(), format!("Not an atom named {name}")))
+    }
+}
+
+impl<const N: usize> SelectNode<Srcloc, (Srcloc, String)> for AtomValue<&[u8; N]> {
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<Srcloc, (Srcloc, String)> {
+        let AtomValue::Here(name) = self;
+        match s.borrow() {
+            SExp::Nil(l) => {
+                if name.is_empty() {
+                    return Ok(l.clone());
+                }
+            }
+            SExp::Atom(l, n) => {
+                if n == name {
+                    return Ok(l.clone());
+                }
+            }
+            SExp::QuotedString(l, _, n) => {
+                if n == name {
+                    return Ok(l.clone());
+                }
+            }
+            SExp::Integer(l, i) => {
+                if &u8_from_number(i.clone()) == name {
+                    return Ok(l.clone());
+                }
+            }
+            _ => {}
+        }
+
+        Err((s.loc(), format!("Not an atom with content {name:?}")))
+    }
+}
+
+impl SelectNode<(Srcloc, Vec<u8>), (Srcloc, String)> for AtomValue<()> {
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<(Srcloc, Vec<u8>), (Srcloc, String)> {
+        let AtomValue::Here(name) = self;
+        match s.borrow() {
+            SExp::Nil(l) => {
+                return Ok((l.clone(), vec![]));
+            }
+            SExp::Atom(l, n) => {
+                return Ok((l.clone(), n.clone()));
+            }
+            SExp::QuotedString(l, _, n) => {
+                return Ok((l.clone(), n.clone()));
+            }
+            SExp::Integer(l, i) => {
+                let u8_vec = u8_from_number(i.clone());
+                return Ok((l.clone(), u8_vec));
+            }
+            _ => {}
+        }
+
+        Err((s.loc(), format!("Not an atom with content {name:?}")))
+    }
+}
+
+impl<E> SelectNode<(), E> for () {
+    fn select_nodes(&self, _n: Rc<SExp>) -> Result<(), E> {
+        Ok(())
+    }
+}
+
+impl<R, T, E> SelectNode<First<T>, E> for First<R>
+where
+    R: SelectNode<T, E> + Clone,
+    E: From<(Srcloc, String)>,
+{
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<First<T>, E> {
+        let First::Here(f) = &self;
+        let NodeSel::Cons(first, ()) = NodeSel::Cons(f.clone(), ()).select_nodes(s)?;
+        Ok(First::Here(first))
+    }
+}
+
+impl<R, T, E> SelectNode<Rest<T>, E> for Rest<R>
+where
+    R: SelectNode<T, E> + Clone,
+    E: From<(Srcloc, String)>,
+{
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<Rest<T>, E> {
+        let Rest::Here(f) = &self;
+        let NodeSel::Cons((), rest) = NodeSel::Cons((), f.clone()).select_nodes(s)?;
+        Ok(Rest::Here(rest))
+    }
+}
+
+impl<R, S, T, U, E> SelectNode<NodeSel<T, U>, E> for NodeSel<R, S>
+where
+    R: SelectNode<T, E>,
+    S: SelectNode<U, E>,
+    E: From<(Srcloc, String)>,
+{
+    fn select_nodes(&self, s: Rc<SExp>) -> Result<NodeSel<T, U>, E> {
+        let NodeSel::Cons(my_left, my_right) = &self;
+        if let SExp::Cons(_, l, r) = s.borrow() {
+            let first = my_left.select_nodes(l.clone())?;
+            let rest = my_right.select_nodes(r.clone())?;
+            Ok(NodeSel::Cons(first, rest))
+        } else {
+            Err(E::from((s.loc(), "not a cons".to_string())))
+        }
+    }
 }

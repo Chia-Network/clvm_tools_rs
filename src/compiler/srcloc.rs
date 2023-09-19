@@ -240,3 +240,7 @@ fn combine_src_location(a: &Srcloc, b: &Srcloc) -> Srcloc {
         _ => add_onto(b, a),
     }
 }
+
+pub trait HasLoc {
+    fn loc(&self) -> Srcloc;
+}
