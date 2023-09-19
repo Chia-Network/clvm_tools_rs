@@ -21,7 +21,7 @@ use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::{compile_bodyform, make_provides_set};
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
-use crate::compiler::optimize::optimize_expr;
+use crate::compiler::optimize::{get_optimizer, optimize_expr};
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
@@ -523,7 +523,7 @@ pub fn do_mod_codegen(
     let mut throwaway_symbols = HashMap::new();
     let runner = context.runner();
     let mut context_wrapper =
-        CompileContextWrapper::new(context.allocator(), runner.clone(), &mut throwaway_symbols);
+        CompileContextWrapper::new(context.allocator(), runner.clone(), &mut throwaway_symbols, get_optimizer(&program.loc, opts.clone()));
     let code = codegen(&mut context_wrapper.context, without_env, program)?;
     Ok(CompiledCode(
         program.loc.clone(),

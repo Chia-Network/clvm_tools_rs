@@ -19,6 +19,7 @@ use crate::compiler::comptypes::{
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
+use crate::compiler::optimize::get_optimizer;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
@@ -197,7 +198,12 @@ pub fn compile_file(
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), content.bytes())?;
-    let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table);
+    let srcloc = if pre_forms.is_empty() {
+        Srcloc::start(&opts.filename())
+    } else {
+        pre_forms[0].loc()
+    };
+    let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table, get_optimizer(&srcloc, opts.clone()));
     compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
 }
 
@@ -351,7 +357,7 @@ impl CompilerOpts for DefaultCompilerOpts {
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
-        let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table);
+        let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table, get_optimizer(&sexp.loc(), opts.clone()));
         compile_pre_forms(&mut context_wrapper.context, me, &[sexp])
     }
 }
