@@ -14,14 +14,14 @@ use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, CallSpec,
     Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall,
     DefunData, HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind, PrimaryCodegen,
-    RawCallSpec,
+    RawCallSpec, SyntheticType,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::{compile_bodyform, make_provides_set};
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
-use crate::compiler::optimize::optimize_expr;
+use crate::compiler::optimize::{get_optimizer, optimize_expr};
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
@@ -522,8 +522,9 @@ pub fn do_mod_codegen(
     let without_env = opts.set_start_env(None).set_in_defun(false);
     let mut throwaway_symbols = HashMap::new();
     let runner = context.runner();
+    let optimizer = get_optimizer(&program.loc, opts.clone())?;
     let mut context_wrapper =
-        CompileContextWrapper::new(context.allocator(), runner.clone(), &mut throwaway_symbols);
+        CompileContextWrapper::new(context.allocator(), runner.clone(), &mut throwaway_symbols, optimizer);
     let code = codegen(&mut context_wrapper.context, without_env, program)?;
     Ok(CompiledCode(
         program.loc.clone(),
@@ -813,7 +814,7 @@ fn generate_let_defun(
         // binary size, when permitted.  Sometimes the user will signal a
         // preference.
         should_inline_let(inline_hint),
-        DefunData {
+        Box::new(DefunData {
             loc: l.clone(),
             nl: l,
             kw: kwl,
@@ -821,7 +822,8 @@ fn generate_let_defun(
             orig_args: inner_function_args.clone(),
             args: inner_function_args,
             body,
-        },
+            synthetic: Some(SyntheticType::NoInlinePreference),
+        }),
     )
 }
 
@@ -1127,15 +1129,11 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
 
                 result[i] = HelperForm::Defun(
                     inline,
-                    DefunData {
-                        loc: defun.loc.clone(),
-                        nl: defun.nl.clone(),
-                        kw: defun.kw.clone(),
-                        name: defun.name.clone(),
-                        args: defun.args.clone(),
+                    Box::new(DefunData {
                         orig_args: defun.orig_args.clone(),
                         body: hoisted_body,
-                    },
+                        ..*defun.clone()
+                    }),
                 );
 
                 i += 1;

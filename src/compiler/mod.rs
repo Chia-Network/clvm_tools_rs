@@ -37,6 +37,8 @@ use std::mem::swap;
 use std::rc::Rc;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
+use crate::compiler::comptypes::{CompileForm, PrimaryCodegen};
+use crate::compiler::optimize::Optimization;
 
 /// An object which represents the standard set of mutable items passed down the
 /// stack when compiling chialisp.
@@ -44,6 +46,7 @@ pub struct BasicCompileContext {
     pub allocator: Allocator,
     pub runner: Rc<dyn TRunProgram>,
     pub symbols: HashMap<String, String>,
+    pub optimizer: Box<dyn Optimization>,
 }
 
 impl BasicCompileContext {
@@ -81,11 +84,13 @@ impl BasicCompileContext {
         allocator: Allocator,
         runner: Rc<dyn TRunProgram>,
         symbols: HashMap<String, String>,
+        optimizer: Box<dyn Optimization>,
     ) -> Self {
         BasicCompileContext {
             allocator,
             runner,
             symbols,
+            optimizer,
         }
     }
 }
@@ -123,11 +128,13 @@ impl<'a> CompileContextWrapper<'a> {
         allocator: &'a mut Allocator,
         runner: Rc<dyn TRunProgram>,
         symbols: &'a mut HashMap<String, String>,
+        optimizer: Box<dyn Optimization>,
     ) -> Self {
         let bcc = BasicCompileContext {
             allocator: Allocator::new(),
             runner,
             symbols: HashMap::new(),
+            optimizer,
         };
         let mut wrapper = CompileContextWrapper {
             allocator,
@@ -155,4 +162,12 @@ impl<'a> Drop for CompileContextWrapper<'a> {
     fn drop(&mut self) {
         self.switch();
     }
+}
+
+/// Describes the unique inputs and outputs available at the start of code
+/// generation.
+#[derive(Debug, Clone)]
+pub struct StartOfCodegenOptimization {
+    program: CompileForm,
+    code_generator: PrimaryCodegen,
 }

@@ -19,6 +19,7 @@ use crate::compiler::comptypes::{
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
+use crate::compiler::optimize::get_optimizer;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
@@ -115,15 +116,11 @@ fn fe_opt(
                 )?;
                 let new_helper = HelperForm::Defun(
                     *inline,
-                    DefunData {
-                        loc: defun.loc.clone(),
-                        nl: defun.nl.clone(),
-                        kw: defun.kw.clone(),
-                        name: defun.name.clone(),
-                        args: defun.args.clone(),
+                    Box::new(DefunData {
                         orig_args: defun.orig_args.clone(),
                         body: body_rc.clone(),
-                    },
+                        ..*defun.clone()
+                    }),
                 );
                 optimized_helpers.push(new_helper);
             }
@@ -196,8 +193,10 @@ pub fn compile_file(
     content: &str,
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
-    let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), content.bytes())?;
-    let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table);
+    let loc = Srcloc::start(&opts.filename());
+    let optimizer = get_optimizer(&loc, opts.clone())?;
+    let pre_forms = parse_sexp(loc, content.bytes())?;
+    let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table, optimizer);
     compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
 }
 
@@ -351,7 +350,8 @@ impl CompilerOpts for DefaultCompilerOpts {
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
-        let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table);
+        let optimizer = get_optimizer(&sexp.loc(), me.clone())?;
+        let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table, optimizer);
         compile_pre_forms(&mut context_wrapper.context, me, &[sexp])
     }
 }

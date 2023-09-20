@@ -591,7 +591,7 @@ fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun) -> Result<Helpe
     compile_bodyform(opts, take_form).map(|bf| {
         HelperForm::Defun(
             data.inline,
-            DefunData {
+            Box::new(DefunData {
                 loc: data.l,
                 nl: data.nl,
                 kw: data.kwl,
@@ -599,7 +599,8 @@ fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun) -> Result<Helpe
                 args: data.args.clone(),
                 orig_args: data.args,
                 body: Rc::new(bf),
-            },
+                synthetic: None,
+            }),
         )
     })
 }
