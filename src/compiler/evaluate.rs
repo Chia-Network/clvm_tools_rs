@@ -743,7 +743,7 @@ impl<'info> Evaluator {
     fn invoke_primitive(
         &self,
         allocator: &mut Allocator,
-        visited: &mut VisitedMarker<'info, VisitedInfo>,
+        visited_: &'_ mut VisitedMarker<'info, VisitedInfo>,
         call: &CallSpec,
         prog_args: Rc<SExp>,
         arguments_to_convert: &[Rc<BodyForm>],
@@ -752,6 +752,7 @@ impl<'info> Evaluator {
     ) -> Result<Rc<BodyForm>, CompileErr> {
         let mut all_primitive = true;
         let mut target_vec: Vec<Rc<BodyForm>> = call.args.to_owned();
+        let mut visited = VisitedMarker::again(call.loc.clone(), visited_)?;
 
         if call.name == "@".as_bytes() {
             // Synthesize the environment for this function
@@ -791,7 +792,7 @@ impl<'info> Evaluator {
                         let i = arguments_to_convert.len() - i_reverse - 1;
                         let shrunk = self.shrink_bodyform_visited(
                             allocator,
-                            visited,
+                            &mut visited,
                             prog_args.clone(),
                             env,
                             arguments_to_convert[i].clone(),
@@ -832,7 +833,7 @@ impl<'info> Evaluator {
                         // Since this is a primitive, there's no tail transform.
                         let reformed =
                             BodyForm::Call(call.loc.clone(), target_vec.clone(), call.tail.clone());
-                        self.chase_apply(allocator, visited, Rc::new(reformed))
+                        self.chase_apply(allocator, &mut visited, Rc::new(reformed))
                     }
                 })
                 .unwrap_or_else(|| {
