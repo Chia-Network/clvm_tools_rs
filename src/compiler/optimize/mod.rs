@@ -621,7 +621,7 @@ pub fn maybe_finalize_program_via_classic_optimizer(
     // to consider opts in the future when required.
     opt_flag: bool, // Command line flag and other features control this in oldest
     // versions
-    unopt_res: &SExp
+    unopt_res: &SExp,
 ) -> Result<Rc<SExp>, CompileErr> {
     if opt_flag {
         run_optimizer(allocator, runner, Rc::new(unopt_res.clone()))

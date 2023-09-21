@@ -636,7 +636,7 @@ pub fn cldb(args: &[String]) {
                     runner.clone(),
                     opts,
                     false,
-                    &x
+                    &x,
                 )
             })
         }

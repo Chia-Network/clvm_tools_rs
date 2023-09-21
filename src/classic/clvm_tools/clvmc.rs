@@ -66,13 +66,7 @@ pub fn compile_clvm_text_maybe_opt(
 
         let unopt_res = compile_file(allocator, runner.clone(), opts.clone(), text, symbol_table);
         let res = unopt_res.and_then(|x| {
-            maybe_finalize_program_via_classic_optimizer(
-                allocator,
-                runner,
-                opts,
-                do_optimize,
-                &x,
-            )
+            maybe_finalize_program_via_classic_optimizer(allocator, runner, opts, do_optimize, &x)
         });
 
         res.and_then(|x| {
