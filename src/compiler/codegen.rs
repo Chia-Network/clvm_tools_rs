@@ -9,6 +9,7 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm::__type_compatibility__::bi_one;
 
 use crate::compiler::clvm::run;
+use crate::compiler::StartOfCodegenOptimization;
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, CallSpec,
@@ -21,7 +22,6 @@ use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::{compile_bodyform, make_provides_set};
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
-use crate::compiler::optimize::optimize_expr;
 use crate::compiler::lambda::lambda_codegen;
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
@@ -1542,7 +1542,45 @@ pub fn codegen(
     opts: Rc<dyn CompilerOpts>,
     cmod: &CompileForm,
 ) -> Result<SExp, CompileErr> {
-    let mut code_generator = dummy_functions(&start_codegen(context, opts.clone(), cmod.clone())?)?;
+    let mut start_of_codegen_optimization = StartOfCodegenOptimization {
+        program: cmod.clone(),
+        code_generator: dummy_functions(&start_codegen(context, opts.clone(), cmod.clone())?)?,
+    };
+
+    // This is a tree-shaking loop.  It results in the minimum number of emitted
+    // helpers in the environment by taking only those still alive after each
+    // optimization pass.  If a function is constant at all call sites, then
+    // then the function will be constant reduced and won't appear when we do
+    // the live calculation again, which can also remove the last reference to
+    // other helpers.
+    loop {
+        // We should not modify the environment if we're here on behalf of a
+        // function in a program, only the toplevel program itself.
+        if opts.in_defun() {
+            break;
+        }
+
+        let newly_optimized_start = context
+            .start_of_codegen_optimization(opts.clone(), start_of_codegen_optimization.clone())?;
+
+        // We got back the same program, so nothing will change anymore.
+        if newly_optimized_start.program.to_sexp()
+            == start_of_codegen_optimization.program.to_sexp()
+        {
+            break;
+        }
+        // Reset the optimization struct so we can go again.
+        // The maximum number of iterations should be about (N+1) * M where N is
+        // the number of functions and M is the largest number of parameters in
+        // any called function or operator.
+        let program = newly_optimized_start.program;
+        start_of_codegen_optimization = StartOfCodegenOptimization {
+            program: program.clone(),
+            code_generator: dummy_functions(&start_codegen(context, opts.clone(), program)?)?,
+        };
+    }
+
+    let mut code_generator = start_of_codegen_optimization.code_generator;
 
     let to_process = code_generator.to_process.clone();
 
