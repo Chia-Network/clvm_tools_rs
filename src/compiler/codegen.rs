@@ -22,6 +22,7 @@ use crate::compiler::frontend::{compile_bodyform, make_provides_set};
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
 use crate::compiler::optimize::{get_optimizer, optimize_expr};
+use crate::compiler::lambda::lambda_codegen;
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
@@ -181,18 +182,103 @@ fn create_name_lookup_(
     }
 }
 
+// Tell whether there's a non-inline defun called 'name' in this program.
+// If so, the reference to this name is a reference to a function, which
+// will make variable references to it capture the program's function
+// environment.
+fn is_defun_in_codegen(compiler: &PrimaryCodegen, name: &[u8]) -> bool {
+    for h in compiler.original_helpers.iter() {
+        if matches!(h, HelperForm::Defun(false, _)) && h.name() == name {
+            return true;
+        }
+    }
+
+    false
+}
+
+// At the CLVM level, given a list of clvm expressios, make an expression
+// that contains that list using conses.
+fn make_list(loc: Srcloc, elements: Vec<Rc<SExp>>) -> Rc<SExp> {
+    let mut res = Rc::new(SExp::Nil(loc.clone()));
+    for e in elements.iter().rev() {
+        res = Rc::new(primcons(loc.clone(), e.clone(), res));
+    }
+    res
+}
+
+//
+// Get the clvm expression that represents the indicated function as a
+// callable value using the CLVM a operator.  This value can be returned
+// and even passed to another program because it carries the required
+// environment to call functions it depends on from the call site.
+//
+// To do this, it writes an expression that conses the left env.
+//
+// (list (q . 2) (c (q . 1) n) (list (q . 4) (c (q . 1) 2) (q . 1)))
+//
+// Something like:
+//   (apply (quoted (expanded n)) (cons (quoted (expanded 2)) given-args))
+//
+fn lambda_for_defun(loc: Srcloc, lookup: Rc<SExp>) -> Rc<SExp> {
+    let one_atom = Rc::new(SExp::Atom(loc.clone(), vec![1]));
+    let two_atom = Rc::new(SExp::Atom(loc.clone(), vec![2]));
+    let apply_atom = two_atom.clone();
+    let cons_atom = Rc::new(SExp::Atom(loc.clone(), vec![4]));
+    make_list(
+        loc.clone(),
+        vec![
+            Rc::new(primquote(loc.clone(), apply_atom)),
+            Rc::new(primcons(
+                loc.clone(),
+                Rc::new(primquote(loc.clone(), one_atom.clone())),
+                lookup,
+            )),
+            make_list(
+                loc.clone(),
+                vec![
+                    Rc::new(primquote(loc.clone(), cons_atom)),
+                    Rc::new(primcons(
+                        loc.clone(),
+                        Rc::new(primquote(loc.clone(), one_atom.clone())),
+                        two_atom,
+                    )),
+                    Rc::new(primquote(loc, one_atom)),
+                ],
+            ),
+        ],
+    )
+}
+
 fn create_name_lookup(
     compiler: &PrimaryCodegen,
     l: Srcloc,
     name: &[u8],
+    // If the lookup is in head position, then it is a lookup as a callable,
+    // otherwise it's a lookup as a variable, which means that if a function
+    // is named, it will be built into an expression that allows it to be
+    // called by a CLVM 'a' operator as one would expect, regardless of how
+    // it integrates with the rest of the program it lives in.
+    as_variable: bool,
 ) -> Result<Rc<SExp>, CompileErr> {
     compiler
         .constants
         .get(name)
         .map(|x| Ok(x.clone()))
         .unwrap_or_else(|| {
-            create_name_lookup_(l.clone(), name, compiler.env.clone(), compiler.env.clone())
-                .map(|i| Rc::new(SExp::Integer(l.clone(), i.to_bigint().unwrap())))
+            create_name_lookup_(l.clone(), name, compiler.env.clone(), compiler.env.clone()).map(
+                |i| {
+                    // Determine if it's a defun.  If so we can ensure that it's
+                    // callable like a lambda by repeating the left env into it.
+                    let find_program = Rc::new(SExp::Integer(l.clone(), i.to_bigint().unwrap()));
+                    if as_variable && is_defun_in_codegen(compiler, name) {
+                        // It's a defun.  Harden the result so it is callable
+                        // directly by the CLVM 'a' operator.
+                        lambda_for_defun(l.clone(), find_program)
+                    } else {
+                        find_program
+                    }
+                },
+            )
         })
 }
 
@@ -220,7 +306,9 @@ pub fn get_callable(
         SExp::Atom(l, name) => {
             let macro_def = compiler.macros.get(name);
             let inline = compiler.inlines.get(name);
-            let defun = create_name_lookup(compiler, l.clone(), name);
+            // We're getting a callable, so the access requested is not as
+            // a variable.
+            let defun = create_name_lookup(compiler, l.clone(), name, false);
             let prim = get_prim(l.clone(), compiler.prims.clone(), name);
             let atom_is_com = *name == "com".as_bytes().to_vec();
             let atom_is_at = *name == "@".as_bytes().to_vec();
@@ -568,7 +656,10 @@ pub fn generate_expr_code(
                             Rc::new(SExp::Integer(l.clone(), bi_one())),
                         ))
                     } else {
-                        create_name_lookup(compiler, l.clone(), atom)
+                        // This is as a variable access, given that we've got
+                        // a Value bodyform containing an Atom, so if a defun
+                        // is returned, it should be a packaged callable.
+                        create_name_lookup(compiler, l.clone(), atom, true)
                             .map(|f| Ok(CompiledCode(l.clone(), f)))
                             .unwrap_or_else(|_| {
                                 // Pass through atoms that don't look up on behalf of
@@ -1106,6 +1197,48 @@ pub fn hoist_body_let_binding(
                 Rc::new(BodyForm::Call(l.clone(), new_call_list, new_tail)),
             ))
         }
+        BodyForm::Lambda(letdata) => {
+            // A lambda is exactly the same as
+            // 1) A function whose argument list is the captures plus the
+            //    non-capture arguments.
+            // 2) A call site which includes a reference to the function
+            //    surrounded with a structure that curries on the capture
+            //    arguments.
+
+            // Compose the function and return it as a desugared function.
+            // The functions desugared here also come from let bindings.
+            let new_function_args = Rc::new(SExp::Cons(
+                letdata.loc.clone(),
+                letdata.capture_args.clone(),
+                letdata.args.clone(),
+            ));
+            let new_function_name = gensym(b"lambda".to_vec());
+            let (mut new_helpers_from_body, new_body) = hoist_body_let_binding(
+                Some(new_function_args.clone()),
+                new_function_args.clone(),
+                letdata.body.clone(),
+            )?;
+            let function = HelperForm::Defun(
+                false,
+                Box::new(DefunData {
+                    loc: letdata.loc.clone(),
+                    name: new_function_name.clone(),
+                    kw: letdata.kw.clone(),
+                    nl: letdata.args.loc(),
+                    orig_args: new_function_args.clone(),
+                    args: new_function_args,
+                    body: new_body,
+                    synthetic: Some(SyntheticType::WantNonInline),
+                }),
+            );
+            new_helpers_from_body.push(function);
+
+            // new_expr is the generated code at the call site.  The reference
+            // to the actual function additionally is enriched by a left-env
+            // reference that gives it access to the program.
+            let new_expr = lambda_codegen(&new_function_name, letdata);
+            Ok((new_helpers_from_body, Rc::new(new_expr)))
+        }
         _ => Ok((Vec::new(), body.clone())),
     }
 }
@@ -1259,6 +1392,7 @@ fn start_codegen(
                     .set_code_generator(code_generator.clone())
                     .set_in_defun(false)
                     .set_stdenv(false)
+                    .set_start_env(None)
                     .set_frontend_opt(false);
 
                 let runner = context.runner();
@@ -1299,7 +1433,11 @@ fn start_codegen(
     };
 
     code_generator.to_process = program.helpers.clone();
-    code_generator.original_helpers = program.helpers.clone();
+    // Ensure that we have the synthesis of the previous codegen's helpers and
+    // The ones provided with the new form if any.
+    let mut combined_helpers_for_codegen = program.helpers.clone();
+    combined_helpers_for_codegen.append(&mut code_generator.original_helpers);
+    code_generator.original_helpers = combined_helpers_for_codegen;
     code_generator.final_expr = program.exp;
 
     Ok(code_generator)

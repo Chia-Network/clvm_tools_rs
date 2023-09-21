@@ -20,6 +20,7 @@ pub mod evaluate;
 pub mod frontend;
 pub mod gensym;
 mod inline;
+mod lambda;
 pub mod optimize;
 pub mod preprocessor;
 pub mod prims;
@@ -37,7 +38,8 @@ use std::mem::swap;
 use std::rc::Rc;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
-use crate::compiler::comptypes::{CompileForm, PrimaryCodegen};
+use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen};
+use crate::compiler::sexp::SExp;
 use crate::compiler::optimize::Optimization;
 
 /// An object which represents the standard set of mutable items passed down the
