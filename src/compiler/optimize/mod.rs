@@ -17,19 +17,17 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, run};
-use crate::compiler::codegen::{codegen, do_mod_codegen, get_callable};
+use crate::compiler::codegen::{codegen, get_callable};
 use crate::compiler::comptypes::{
     BodyForm, CallSpec, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm,
     PrimaryCodegen, SyntheticType,
 };
-use crate::compiler::evaluate::{
-    build_reflex_captures, dequote, is_i_atom, is_not_atom, Evaluator, EVAL_STACK_LIMIT,
-};
+use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::optimize::strategy::ExistingStrategy;
 use crate::compiler::runtypes::RunFailure;
-#[cfg(test)]
-use crate::compiler::sexp::parse_sexp;
 use crate::compiler::sexp::SExp;
+#[cfg(test)]
+use crate::compiler::sexp::{enlist, parse_sexp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::BasicCompileContext;
 use crate::compiler::CompileContextWrapper;
@@ -169,17 +167,6 @@ fn is_at_form(head: Rc<BodyForm>) -> bool {
     }
 }
 
-fn get_primitive_quoted_value(form: Rc<SExp>) -> Option<Rc<SExp>> {
-    if let SExp::Cons(l, a, b) = form.borrow() {
-        let a_borrowed: &SExp = a.borrow();
-        if a_borrowed == &SExp::Atom(l.clone(), vec![1]) {
-            return Some(b.clone());
-        }
-    }
-
-    None
-}
-
 // Return a score for sexp size.
 pub fn sexp_scale(sexp: &SExp) -> u64 {
     match sexp {
@@ -209,51 +196,28 @@ fn test_sexp_scale_increases_with_atom_size() {
     );
 }
 
-fn is_not_condition(bf: &BodyForm) -> Option<Rc<BodyForm>> {
-    // Checking for a primitive so no tail.
-    if let BodyForm::Call(_, parts, None) = bf {
-        if parts.len() != 2 {
-            return None;
-        }
-
-        if is_not_atom(parts[0].to_sexp()) {
-            return Some(parts[1].clone());
-        }
-    }
-
-    None
+#[test]
+fn test_sexp_scale_increases_with_list_of_atoms() {
+    let l = Srcloc::start("*test*");
+    let one_atom = Rc::new(SExp::Integer(l.clone(), bi_one()));
+    let target_scale = 4 + 3 * sexp_scale(one_atom.borrow());
+    let list_of_atom = enlist(
+        l.clone(),
+        &[one_atom.clone(), one_atom.clone(), one_atom.clone()],
+    );
+    assert_eq!(target_scale, sexp_scale(&list_of_atom));
 }
 
 /// Changes (i (not c) a b) into (i c b a)
 fn condition_invert_optimize(
     opts: Rc<dyn CompilerOpts>,
-    loc: &Srcloc,
-    forms: &[Rc<BodyForm>],
+    _loc: &Srcloc,
+    _forms: &[Rc<BodyForm>],
 ) -> Option<BodyForm> {
     if let Some(res) = opts.dialect().stepping {
-        // Only perform on chialisp above the appropriate stepping.
-        if res >= 23 {
-            if forms.len() != 4 {
-                return None;
-            }
-
-            if !is_i_atom(forms[0].to_sexp()) {
-                return None;
-            }
-
-            // We have a (not cond)
-            if let Some(condition) = is_not_condition(forms[1].borrow()) {
-                return Some(BodyForm::Call(
-                    loc.clone(),
-                    vec![
-                        forms[0].clone(),
-                        condition,
-                        forms[3].clone(),
-                        forms[2].clone(),
-                    ],
-                    None,
-                ));
-            }
+        // Only perform on chialisp above stepping 23.
+        if res < 23 {
+            return None;
         }
     }
 
@@ -265,115 +229,15 @@ fn condition_invert_optimize(
 ///
 /// The result is the constant result of invoking the function.
 fn constant_fun_result(
-    allocator: &mut Allocator,
+    _allocator: &mut Allocator,
     opts: Rc<dyn CompilerOpts>,
-    runner: Rc<dyn TRunProgram>,
-    compiler: &PrimaryCodegen,
-    call_spec: &CallSpec,
+    _runner: Rc<dyn TRunProgram>,
+    _compiler: &PrimaryCodegen,
+    _call_spec: &CallSpec,
 ) -> Option<Rc<BodyForm>> {
     if let Some(res) = opts.dialect().stepping {
-        if res >= 23 {
-            let mut constant = true;
-            let optimized_args: Vec<(bool, Rc<BodyForm>)> = call_spec
-                .args
-                .iter()
-                .skip(1)
-                .map(|a| {
-                    let optimized =
-                        optimize_expr(allocator, opts.clone(), runner.clone(), compiler, a.clone());
-                    constant = constant && optimized.as_ref().map(|x| x.0).unwrap_or_else(|| false);
-                    optimized
-                        .map(|x| (x.0, x.1))
-                        .unwrap_or_else(|| (false, a.clone()))
-                })
-                .collect();
-
-            let optimized_tail: Option<(bool, Rc<BodyForm>)> = call_spec.tail.as_ref().map(|t| {
-                let optimized =
-                    optimize_expr(allocator, opts.clone(), runner.clone(), compiler, t.clone());
-                constant = constant && optimized.as_ref().map(|x| x.0).unwrap_or_else(|| false);
-                optimized
-                    .map(|x| (x.0, x.1))
-                    .unwrap_or_else(|| (false, t.clone()))
-            });
-
-            if !constant {
-                return None;
-            }
-
-            let compiled_body = {
-                let to_compile = CompileForm {
-                    loc: call_spec.loc.clone(),
-                    include_forms: Vec::new(),
-                    helpers: compiler.original_helpers.clone(),
-                    args: Rc::new(SExp::Atom(call_spec.loc.clone(), b"__ARGS__".to_vec())),
-                    exp: Rc::new(BodyForm::Call(
-                        call_spec.loc.clone(),
-                        vec![
-                            Rc::new(BodyForm::Value(SExp::Atom(call_spec.loc.clone(), vec![2]))),
-                            Rc::new(BodyForm::Value(SExp::Atom(
-                                call_spec.loc.clone(),
-                                call_spec.name.to_vec(),
-                            ))),
-                            Rc::new(BodyForm::Value(SExp::Atom(
-                                call_spec.loc.clone(),
-                                b"__ARGS__".to_vec(),
-                            ))),
-                        ],
-                        // Proper call: we're calling 'a' on behalf of our
-                        // single capture argument.
-                        None,
-                    )),
-                };
-                let optimizer = if let Ok(res) = get_optimizer(&call_spec.loc, opts.clone()) {
-                    res
-                } else {
-                    return None;
-                };
-
-                let mut symbols = HashMap::new();
-                let mut wrapper =
-                    CompileContextWrapper::new(allocator, runner.clone(), &mut symbols, optimizer);
-
-                if let Ok(code) = codegen(&mut wrapper.context, opts.clone(), &to_compile) {
-                    code
-                } else {
-                    return None;
-                }
-            };
-
-            // Reified args reflect the actual ABI shape with a tail if any.
-            let mut reified_args = if let Some((_, t)) = optimized_tail {
-                if let Ok(res) = dequote(call_spec.loc.clone(), t) {
-                    res
-                } else {
-                    return None;
-                }
-            } else {
-                Rc::new(SExp::Nil(call_spec.loc.clone()))
-            };
-            for (_, v) in optimized_args.iter().rev() {
-                let unquoted = if let Ok(res) = dequote(call_spec.loc.clone(), v.clone()) {
-                    res
-                } else {
-                    return None;
-                };
-                reified_args = Rc::new(SExp::Cons(call_spec.loc.clone(), unquoted, reified_args));
-            }
-            let borrowed_args: &SExp = reified_args.borrow();
-            let new_body = BodyForm::Call(
-                call_spec.loc.clone(),
-                vec![
-                    Rc::new(BodyForm::Value(SExp::Atom(call_spec.loc.clone(), vec![2]))),
-                    Rc::new(BodyForm::Quoted(compiled_body)),
-                    Rc::new(BodyForm::Quoted(borrowed_args.clone())),
-                ],
-                // The constructed call is proper because we're feeding something
-                // we constructed above.
-                None,
-            );
-
-            return Some(Rc::new(new_body));
+        if res < 23 {
+            return None;
         }
     }
 
@@ -522,28 +386,10 @@ pub fn optimize_expr(
             true,
             Rc::new(BodyForm::Quoted(SExp::Integer(l.clone(), i.clone()))),
         )),
-        BodyForm::Mod(l, cf) => {
+        BodyForm::Mod(_l, _cf) => {
             if let Some(stepping) = opts.dialect().stepping {
-                if stepping >= 23 {
-                    let mut throwaway_symbols = HashMap::new();
-                    if let Ok(optimizer) = get_optimizer(l, opts.clone()) {
-                        let mut wrapper = CompileContextWrapper::new(
-                            allocator,
-                            runner,
-                            &mut throwaway_symbols,
-                            optimizer,
-                        );
-                        if let Ok(compiled) = do_mod_codegen(&mut wrapper.context, opts.clone(), cf)
-                        {
-                            if let Some(body) = get_primitive_quoted_value(compiled.1) {
-                                let borrowed_body: &SExp = body.borrow();
-                                return Some((
-                                    true,
-                                    Rc::new(BodyForm::Quoted(borrowed_body.clone())),
-                                ));
-                            }
-                        }
-                    }
+                if stepping < 23 {
+                    return None;
                 }
             }
 
