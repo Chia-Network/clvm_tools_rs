@@ -568,7 +568,7 @@ fn fe_opt(
     })
 }
 
-pub fn run_optimizer(
+fn run_optimizer(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     r: Rc<SExp>,
@@ -610,4 +610,22 @@ pub fn get_optimizer(
     }
 
     Ok(Box::new(ExistingStrategy::new()))
+}
+
+/// This small interface takes care of various scenarios that have existed
+/// regarding mixing modern chialisp output with classic's optimizer.
+pub fn maybe_finalize_program_via_classic_optimizer(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    _opts: Rc<dyn CompilerOpts>, // Currently unused but I want this interface
+    // to consider opts in the future when required.
+    opt_flag: bool, // Command line flag and other features control this in oldest
+    // versions
+    unopt_res: &SExp
+) -> Result<Rc<SExp>, CompileErr> {
+    if opt_flag {
+        run_optimizer(allocator, runner, Rc::new(unopt_res.clone()))
+    } else {
+        Ok(Rc::new(unopt_res.clone()))
+    }
 }

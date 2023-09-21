@@ -55,7 +55,7 @@ use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
-use crate::compiler::optimize::run_optimizer;
+use crate::compiler::optimize::maybe_finalize_program_via_classic_optimizer;
 use crate::compiler::preprocessor::gather_dependencies;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
@@ -630,11 +630,15 @@ pub fn cldb(args: &[String]) {
                 &input_program,
                 &mut use_symbol_table,
             );
-            if do_optimize {
-                unopt_res.and_then(|x| run_optimizer(&mut allocator, runner.clone(), Rc::new(x)))
-            } else {
-                unopt_res.map(Rc::new)
-            }
+            unopt_res.and_then(|x| {
+                maybe_finalize_program_via_classic_optimizer(
+                    &mut allocator,
+                    runner.clone(),
+                    opts,
+                    false,
+                    &x
+                )
+            })
         }
     };
 
@@ -1258,11 +1262,15 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             &input_program,
             &mut symbol_table,
         );
-        let res = if do_optimize {
-            unopt_res.and_then(|x| run_optimizer(&mut allocator, runner, Rc::new(x)))
-        } else {
-            unopt_res.map(Rc::new)
-        };
+        let res = unopt_res.and_then(|x| {
+            maybe_finalize_program_via_classic_optimizer(
+                &mut allocator,
+                runner,
+                opts,
+                do_optimize,
+                &x,
+            )
+        });
 
         match res {
             Ok(r) => {
