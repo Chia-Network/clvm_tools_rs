@@ -775,21 +775,7 @@ fn codegen_(
                         defun.args.clone(),
                     )));
 
-                let runner = context.runner();
-                let opt = if opts.optimize() {
-                    // Run optimizer on frontend style forms.
-                    optimize_expr(
-                        context.allocator(),
-                        opts.clone(),
-                        runner,
-                        compiler,
-                        defun.body.clone(),
-                    )
-                    .map(|x| x.1)
-                    .unwrap_or_else(|| defun.body.clone())
-                } else {
-                    defun.body.clone()
-                };
+                let opt = context.pre_codegen_function_optimize(opts.clone(), compiler, defun)?;
 
                 let tocompile = SExp::Cons(
                     defun.loc.clone(),
