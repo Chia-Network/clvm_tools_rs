@@ -196,7 +196,8 @@ pub fn compile_file(
     let loc = Srcloc::start(&opts.filename());
     let optimizer = get_optimizer(&loc, opts.clone())?;
     let pre_forms = parse_sexp(loc, content.bytes())?;
-    let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table, optimizer);
+    let mut context_wrapper =
+        CompileContextWrapper::new(allocator, runner, symbol_table, optimizer);
     compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
 }
 
@@ -351,7 +352,8 @@ impl CompilerOpts for DefaultCompilerOpts {
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
         let optimizer = get_optimizer(&sexp.loc(), me.clone())?;
-        let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table, optimizer);
+        let mut context_wrapper =
+            CompileContextWrapper::new(allocator, runner, symbol_table, optimizer);
         compile_pre_forms(&mut context_wrapper.context, me, &[sexp])
     }
 }

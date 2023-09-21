@@ -1,6 +1,6 @@
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
@@ -14,7 +14,7 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::BasicCompileContext;
+use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 
 use crate::util::Number;
 
@@ -491,5 +491,12 @@ pub fn replace_in_inline(
         callsite,
         inline.body.clone(),
     )
-    .and_then(|x| generate_expr_code(context, opts, compiler, x))
+    .and_then(|x| {
+        let mut symbols = HashMap::new();
+        let runner = context.runner();
+        let optimizer = context.optimizer.duplicate();
+        let mut context_wrapper =
+            CompileContextWrapper::new(context.allocator(), runner, &mut symbols, optimizer);
+        generate_expr_code(&mut context_wrapper.context, opts, compiler, x)
+    })
 }

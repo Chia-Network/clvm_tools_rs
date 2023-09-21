@@ -523,8 +523,12 @@ pub fn do_mod_codegen(
     let mut throwaway_symbols = HashMap::new();
     let runner = context.runner();
     let optimizer = get_optimizer(&program.loc, opts.clone())?;
-    let mut context_wrapper =
-        CompileContextWrapper::new(context.allocator(), runner.clone(), &mut throwaway_symbols, optimizer);
+    let mut context_wrapper = CompileContextWrapper::new(
+        context.allocator(),
+        runner.clone(),
+        &mut throwaway_symbols,
+        optimizer,
+    );
     let code = codegen(&mut context_wrapper.context, without_env, program)?;
     Ok(CompiledCode(
         program.loc.clone(),

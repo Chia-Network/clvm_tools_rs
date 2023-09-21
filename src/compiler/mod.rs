@@ -76,6 +76,109 @@ impl BasicCompileContext {
         &mut self.symbols
     }
 
+    /// Called after frontend parsing and preprocessing when we have a complete
+    /// picture of the user's intended semantics.
+    fn frontend_optimization(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        cf: CompileForm,
+    ) -> Result<CompileForm, CompileErr> {
+        let runner = self.runner.clone();
+        self.optimizer
+            .frontend_optimization(&mut self.allocator, runner, opts, cf)
+    }
+
+    fn post_desugar_optimization(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        cf: CompileForm,
+    ) -> Result<CompileForm, CompileErr> {
+        let runner = self.runner.clone();
+        self.optimizer
+            .post_desugar_optimization(&mut self.allocator, runner, opts, cf)
+    }
+
+    /// Shrink the program prior to generating the final environment map and
+    /// doing other codegen tasks.  This also serves as a tree-shaking pass.
+    fn start_of_codegen_optimization(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        to_optimize: StartOfCodegenOptimization,
+    ) -> Result<StartOfCodegenOptimization, CompileErr> {
+        let runner = self.runner.clone();
+        self.optimizer
+            .start_of_codegen_optimization(&mut self.allocator, runner, opts, to_optimize)
+    }
+
+    /// Note: must take measures to ensure that the symbols are changed along
+    /// with any code that's changed.  It's likely better to do optimizations
+    /// at other stages, such as post_codegen_function_optimize.
+    fn post_codegen_output_optimize(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        generated: SExp,
+    ) -> Result<SExp, CompileErr> {
+        self.optimizer.post_codegen_output_optimize(opts, generated)
+    }
+
+    /// Called when a full macro program optimization is used.
+    fn macro_optimization(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        code: Rc<SExp>,
+    ) -> Result<Rc<SExp>, CompileErr> {
+        self.optimizer
+            .macro_optimization(&mut self.allocator, self.runner.clone(), opts, code)
+    }
+
+    /// Called to transform a defun before generating code from it.
+    /// Returns a new bodyform.
+    fn pre_codegen_function_optimize(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        codegen: &PrimaryCodegen,
+        defun: &DefunData,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        self.optimizer.defun_body_optimization(
+            &mut self.allocator,
+            self.runner.clone(),
+            opts,
+            codegen,
+            defun,
+        )
+    }
+
+    /// Called to transform the function body after code generation.
+    fn post_codegen_function_optimize(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        helper: Option<&HelperForm>,
+        code: Rc<SExp>,
+    ) -> Result<Rc<SExp>, CompileErr> {
+        self.optimizer.post_codegen_function_optimize(
+            &mut self.allocator,
+            self.runner.clone(),
+            opts,
+            helper,
+            code,
+        )
+    }
+
+    /// Call in final_codegen to get the final main bodyform to generate
+    /// code from.
+    fn pre_final_codegen_optimize(
+        &mut self,
+        opts: Rc<dyn CompilerOpts>,
+        codegen: &PrimaryCodegen,
+    ) -> Result<Rc<BodyForm>, CompileErr> {
+        self.optimizer.pre_final_codegen_optimize(
+            &mut self.allocator,
+            self.runner.clone(),
+            opts,
+            codegen,
+        )
+    }
+
     /// Given allocator, runner and symbols, move the mutable objects into this
     /// BasicCompileContext so it can own them and pass a single mutable
     /// reference to itself down the stack. This allows these objects to be
