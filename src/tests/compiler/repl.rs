@@ -303,6 +303,95 @@ fn test_eval_list_partially_evaluated_xyz() {
 }
 
 #[test]
+fn test_defun_value_in_repl_0() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun greater-than-3 (X) (> X 3))",
+            "(a greater-than-3 (list 5))"
+        ])
+        .unwrap()
+        .unwrap(),
+        "(q . 1)"
+    );
+}
+
+#[test]
+fn test_defun_value_repl_map() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            "(defun greater-than-3 (X) (> X 3))",
+            "(defun map (F L) (if L (c (a F (list (f L))) (map F (r L))) ()))",
+            "(map greater-than-3 (list 1 2 3 4 5))"
+        ])
+        .unwrap()
+        .unwrap(),
+        "(q () () () 1 1)"
+    );
+}
+
+#[test]
+fn test_lambda_eval_5() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defun GetFun (L) (lambda ((& L) X) (+ X L)))",
+                "(a (GetFun 10) (list 3))"
+            ],
+            None
+        )
+        .unwrap()
+        .unwrap(),
+        "(q . 13)"
+    );
+}
+
+#[test]
+fn test_lambda_eval_6() {
+    assert_eq!(
+        test_repl_outcome(vec![
+            indoc! {"
+(defun visit-atoms (fn acc mask path pattern)
+    (if (l pattern)
+      (visit-atoms
+        fn
+        (visit-atoms fn acc (* 2 mask) path (f pattern))
+        (* 2 mask)
+        (logior mask path)
+        (r pattern)
+        )
+
+      (a fn (list acc (logior path mask) pattern))
+      )
+    )
+"},
+            indoc! {"
+   (defun if-match (match)
+    (c 1
+      (visit-atoms
+        (lambda (cb path pat)
+          (if (l pat)
+            (list cb \"A\") ;; Unbound use of cb
+            (list cb \"B\")
+            )
+          )
+        ()
+        1
+        0
+        match
+        )
+      )
+    )
+
+"},
+            "(if-match (q test \"test\" t1 (t2 . t3)))"
+        ])
+        .unwrap()
+        .unwrap(),
+        "(q 1 (((((() B) B) B) B) B) B)"
+    );
+}
+
+#[test]
 fn test_eval_new_bls_operator() {
     assert_eq!(
         test_repl_outcome_with_stack_limit(vec![indoc!{
@@ -313,5 +402,70 @@ fn test_eval_new_bls_operator() {
                )"}.to_string()
         ], None).unwrap().unwrap(),
         "(q)"
+    );
+}
+
+#[test]
+fn test_repl_base_lambda_case() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defun F (X F) (a F (list X)))".to_string(),
+                "(F 3 (lambda (Y) (+ Y 9)))".to_string(),
+            ],
+            None
+        )
+        .unwrap()
+        .unwrap(),
+        "(q . 12)"
+    );
+}
+
+#[test]
+fn test_repl_rest_lambda_case() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defun F (X F) (a F (list X)))".to_string(),
+                "(F &rest (list 3 (lambda (Y) (+ Y 9))))".to_string()
+            ],
+            None
+        )
+        .unwrap()
+        .unwrap(),
+        "(q . 12)"
+    );
+}
+
+#[test]
+fn test_repl_lambda_with_captures_rest() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defun map (F L) (if L (c (a F (list (f L))) (map F (r L))) ()))".to_string(),
+                "(defun F (X L) (map &rest (list (lambda ((& X) Y) (+ X Y)) L)))".to_string(),
+                "(F 3 (list 99 101 103))".to_string()
+            ],
+            None
+        )
+        .unwrap()
+        .unwrap(),
+        "(q 102 104 106)"
+    );
+}
+
+#[test]
+fn test_repl_lambda_with_captures_out_of_own_function() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defun F (X) (lambda ((& X) Y) (+ X Y)))".to_string(),
+                "(a (F 3) (list 4))".to_string(),
+            ],
+            None
+        )
+        .unwrap()
+        .unwrap(),
+        "(q . 7)"
     );
 }

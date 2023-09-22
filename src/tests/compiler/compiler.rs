@@ -1472,6 +1472,393 @@ fn test_inline_out_of_bounds_diagnostic() {
 }
 
 #[test]
+fn test_lambda_without_capture_from_function() {
+    let prog = indoc! {"
+(mod (A B)
+  (include *standard-cl-21*)
+  (defun FOO () (lambda (X Y) (+ X Y)))
+  (a (FOO) (list A B))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(3 4)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "7");
+}
+
+#[test]
+fn test_lambda_without_capture() {
+    let prog = indoc! {"
+(mod (A B)
+  (include *standard-cl-21*)
+  (a (lambda (X Y) (+ X Y)) (list A B))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(3 4)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "7");
+}
+
+#[test]
+fn test_lambda_with_capture_from_function() {
+    let prog = indoc! {"
+(mod (A B)
+  (include *standard-cl-21*)
+  (defun FOO (Z) (lambda ((& Z) X) (- X Z)))
+  (a (FOO A) (list B))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(5 19)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "14");
+}
+
+#[test]
+fn test_lambda_with_capture() {
+    let prog = indoc! {"
+(mod (A B)
+  (include *standard-cl-21*)
+  (a (lambda ((& A) Y) (- Y A)) (list B))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(5 19)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "14");
+}
+
+#[test]
+fn test_lambda_in_let_0() {
+    let prog = indoc! {"
+(mod (A)
+  (include *standard-cl-21*)
+  (defun FOO (Z)
+    (let ((Q (* 2 Z)))
+      (lambda ((& Q)) (- 100 Q))
+      )
+    )
+  (a (FOO A) ())
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(5)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "90");
+}
+
+#[test]
+fn test_lambda_in_let_1() {
+    let prog = indoc! {"
+(mod (A B)
+  (include *standard-cl-21*)
+  (defun FOO (Z)
+    (let ((Q (* 2 Z)))
+      (lambda ((& Q) X) (- X Q))
+      )
+    )
+  (a (FOO A) (list B))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(5 19)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "9");
+}
+
+#[test]
+fn test_lambda_in_map() {
+    let prog = indoc! {"
+(mod (add-number L)
+
+  (include *standard-cl-21*)
+
+  (defun map (F L)
+    (if L
+      (c (a F (list (f L))) (map F (r L)))
+      ()
+      )
+    )
+
+  (map
+    (lambda ((& add-number) number) (+ add-number number))
+    L
+    )
+  )
+"}
+    .to_string();
+    let res = run_string(&prog, &"(5 (1 2 3 4))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(6 7 8 9)");
+}
+
+#[test]
+fn test_lambda_in_map_with_let_surrounding() {
+    let prog = indoc! {"
+(mod (add-number L)
+
+  (include *standard-cl-21*)
+
+  (defun map (F L)
+    (if L
+      (c (a F (list (f L))) (map F (r L)))
+      ()
+      )
+    )
+
+  (map
+    (let ((A (* add-number 2)))
+      (lambda ((& A) number) (+ A number))
+      )
+    L
+    )
+  )
+"}
+    .to_string();
+    let res = run_string(&prog, &"(5 (1 2 3 4))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(11 12 13 14)");
+}
+
+#[test]
+fn test_map_with_lambda_function_from_env_and_bindings() {
+    let prog = indoc! {"
+    (mod (add-number L)
+
+     (include *standard-cl-21*)
+
+     (defun map (F L)
+      (if L
+       (c (a F (list (f L))) (map F (r L)))
+       ()
+      )
+     )
+
+     (defun add-twice (X Y) (+ (* 2 X) Y))
+
+     (map
+      (lambda ((& add-number) number) (add-twice add-number number))
+      L
+     )
+    )"}
+    .to_string();
+    let res = run_string(&prog, &"(5 (1 2 3 4))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(11 12 13 14)");
+}
+
+#[test]
+fn test_map_with_lambda_function_from_env_no_bindings() {
+    let prog = indoc! {"
+    (mod (L)
+
+     (include *standard-cl-21*)
+
+     (defun map (F L)
+      (if L
+       (c (a F (list (f L))) (map F (r L)))
+       ()
+      )
+     )
+
+     (defun sum-list (L)
+       (if L
+         (+ (f L) (sum-list (r L)))
+         ()
+         )
+       )
+
+     (map
+      (lambda (lst) (sum-list lst))
+      L
+     )
+    )"}
+    .to_string();
+    let res = run_string(&prog, &"(((5 10 15) (2 4 8) (3 6 9)))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(30 14 18)");
+}
+
+#[test]
+fn test_lambda_using_let() {
+    let prog = indoc! {"
+    (mod (P L)
+
+     (include *standard-cl-21*)
+
+     (defun map (F L)
+      (if L
+       (c (a F (list (f L))) (map F (r L)))
+       ()
+      )
+     )
+
+     (map
+      (lambda ((& P) item) (let ((composed (c P item))) composed))
+      L
+     )
+    )"}
+    .to_string();
+    let res = run_string(&prog, &"(1 (10 20 30))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "((1 . 10) (1 . 20) (1 . 30))");
+}
+
+#[test]
+fn test_lambda_using_macro() {
+    let prog = indoc! {"
+    (mod (P L)
+
+     (include *standard-cl-21*)
+
+     (defun map (F L)
+      (if L
+       (c (a F (list (f L))) (map F (r L)))
+       ()
+      )
+     )
+
+     (map
+      (lambda ((& P) item) (list P item))
+      L
+     )
+    )"}
+    .to_string();
+    let res = run_string(&prog, &"(1 (10 20 30))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "((1 10) (1 20) (1 30))");
+}
+
+#[test]
+fn test_lambda_reduce() {
+    let prog = indoc! {"
+    (mod (LST)
+     (include *standard-cl-21*)
+     (defun reduce (fun lst init)
+      (if lst
+       (reduce fun (r lst) (a fun (list (f lst) init)))
+       init
+       )
+      )
+
+     (let
+      ((capture 100))
+      (reduce (lambda ((& capture) (X Y) ACC) (+ (* X Y) ACC capture)) LST 0)
+      )
+     )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(((2 3) (4 9)))".to_string()).unwrap();
+    assert_eq!(res.to_string(), "242");
+}
+
+#[test]
+fn test_lambda_as_let_binding() {
+    let prog = indoc! {"
+    (mod (P L)
+      (defun map (F L)
+        (if L (c (a F (list (f L))) (map F (r L))) ())
+        )
+      (defun x2 (N) (* 2 N))
+      (defun x3p1 (N) (+ 1 (* 3 N)))
+      (let* ((H (lambda (N) (x2 N)))
+             (G (lambda (N) (x3p1 N)))
+             (F (if P G H)))
+        (map F L)
+        )
+      )
+    "}
+    .to_string();
+    let res0 = run_string(&prog, &"(0 (1 2 3))".to_string()).unwrap();
+    assert_eq!(res0.to_string(), "(2 4 6)");
+    let res1 = run_string(&prog, &"(1 (1 2 3))".to_string()).unwrap();
+    assert_eq!(res1.to_string(), "(4 7 10)");
+}
+
+#[test]
+fn test_lambda_mixed_let_binding() {
+    let prog = indoc! {"
+    (mod (P L)
+      (defun map (F L)
+        (if L (c (a F (list (f L))) (map F (r L))) ())
+        )
+      (defun x2 (N) (* 2 N))
+      (defun x3p1 (N) (+ 1 (* 3 N)))
+      (let* ((G (lambda (N) (x3p1 N)))
+             (F (if P G (lambda (N) (x2 N)))))
+        (map F L)
+        )
+      )
+    "}
+    .to_string();
+    let res0 = run_string(&prog, &"(0 (1 2 3))".to_string()).unwrap();
+    assert_eq!(res0.to_string(), "(2 4 6)");
+    let res1 = run_string(&prog, &"(1 (1 2 3))".to_string()).unwrap();
+    assert_eq!(res1.to_string(), "(4 7 10)");
+}
+
+#[test]
+fn test_lambda_hof_1() {
+    let prog = indoc! {"
+    (mod (P)
+      (a (a (lambda ((& P) X) (lambda ((& P X)) (+ P X))) (list 3)) ())
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(1)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "4");
+}
+
+#[test]
+fn test_lambda_as_argument_to_macro() {
+    let prog = indoc! {"
+    (mod (P)
+      (defun map-f (A L)
+        (if L (c (a (f L) A) (map-f A (r L))) ())
+        )
+      (let ((Fs (list (lambda (X) (- X 1)) (lambda (X) (+ X 1)) (lambda (X) (* 2 X))))
+            (args (list P)))
+        (map-f args Fs)
+        )
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(10)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(9 11 20)");
+}
+
+#[test]
+fn test_lambda_as_argument_to_macro_with_inner_let() {
+    let prog = indoc! {"
+    (mod (P)
+      (defun map-f (A L)
+        (if L (c (a (f L) A) (map-f A (r L))) ())
+        )
+      (let ((Fs (list (lambda (X) (let ((N (* X 3))) N)) (lambda (X) (+ X 1)) (lambda (X) (* 2 X))))
+            (args (list P)))
+        (map-f args Fs)
+        )
+      )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(10)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(30 11 20)");
+}
+
+#[test]
+fn test_treat_function_name_as_value() {
+    let prog = indoc! {"
+(mod (X)
+ (include *standard-cl-21*)
+ (defun G (X) (* 2 X))
+ (defun F (X) (G (+ 1 X)))
+ (a F (list X))
+)
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(99)".to_string()).expect("should compile");
+    assert_eq!(res.to_string(), "200");
+}
+
+#[test]
+fn test_treat_function_name_as_value_filter() {
+    let prog = indoc! {"
+    (mod L
+     (include *standard-cl-21*)
+     (defun greater-than-3 (X) (> X 3))
+     (defun filter (F L) (let ((rest (filter F (r L)))) (if L (if (a F (list (f L))) (c (f L) rest) rest) ())))
+     (filter greater-than-3 L)
+    )
+    "}
+    .to_string();
+    let res = run_string(&prog, &"(1 2 3 4 5)".to_string()).expect("should compile");
+    assert_eq!(res.to_string(), "(4 5)");
+}
+
+#[test]
 fn test_inline_in_assign_not_actually_recursive() {
     let prog = indoc! {"
 (mod (POINT)
@@ -1527,6 +1914,36 @@ fn test_simple_rest_call_inline() {
 }
 
 #[test]
+fn test_simple_rest_lambda() {
+    let prog = indoc! {"
+(mod (Z X)
+  (include *standard-cl-21*)
+
+  (defun silly-lambda-consumer (Q F) (a F (list Q)))
+
+  (silly-lambda-consumer &rest (list X (lambda ((& Z) X) (* Z X))))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(13 51)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "663");
+}
+
+#[test]
+fn test_lambda_in_lambda() {
+    let prog = indoc! {"
+(mod (Z X)
+  (include *standard-cl-21*)
+
+  (defun silly-lambda-consumer (Q F) (a F (list Q)))
+
+  (a (silly-lambda-consumer X (lambda ((& Z) X) (lambda ((& Z X)) (* Z X)))) ())
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(13 51)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "663");
+}
+
+#[test]
 fn test_let_in_rest_0() {
     let prog = indoc! {"
 (mod (Z X)
@@ -1554,6 +1971,243 @@ fn test_let_in_rest_1() {
     .to_string();
     let res = run_string(&prog, &"(3 2)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "108");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_capture() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden)))
+      (lambda ((& overridden) z) (+ overridden z))
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "50");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_let_in_lambda_1() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden)))
+      (lambda ((& overridden) z)
+        (let
+          ((z (+ 123 z)))
+          (+ overridden z)
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "173");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_let_in_lambda_2() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden)))
+      (lambda ((& overridden) z)
+        (let
+          ((overridden (+ 123 overridden)))
+          (+ overridden z)
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "173");
+}
+
+#[test]
+fn test_lambda_override_name_arg_assign_with_assign_in_lambda_1() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (Z)
+    (assign overridden (* 3 Z)
+      (lambda ((& overridden) z)
+        (let
+          ((z (+ 123 z)))
+          (+ overridden z)
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "173");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_assign_in_lambda_1() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) z) ;; overridden = 33
+        (assign overridden (+ 123 z) ;; overridden = 17 + 123 = 140
+          (+ overridden z) ;; 157
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "157");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_let_in_lambda_3() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) z) ;; overridden = 33
+        (let ((overridden (+ 123 z))) ;; overridden = 17 + 123 = 140
+          (+ overridden z) ;; 157
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "157");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_assign_twice_in_lambda() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) y z) ;; overridden = 33
+        (assign
+          overridden (+ 123 z) ;; overridden = 123 + 17 = 140
+          y (+ 191 z overridden) ;; y = 191 + 17 + 140 = 348
+          (+ overridden z y) ;; 505
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 13 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "505");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_let_twice_in_lambda() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) y z) ;; overridden = 33
+        (let
+          ((overridden (+ 123 z))) ;; overridden = 123 + 17 = 140
+          (let ((y (+ 191 z overridden))) ;; y = 191 + 17 + 140 = 348
+            (+ overridden z y) ;; 505
+            )
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 13 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "505");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_let_star_twice_in_lambda() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) y z) ;; overridden = 33
+        (let*
+          ((overridden (+ 123 z)) ;; overridden = 123 + 17 = 140
+           (y (+ 191 z overridden))) ;; y = 191 + 17 + 140 = 348
+          (+ overridden z y) ;; 505
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 13 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "505");
+}
+
+#[test]
+fn test_lambda_let_override_in_binding() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) y z) ;; overridden = 33
+        (let
+          ((y (+ 191 z (let ((overridden (+ 123 z))) overridden)))) ;; overridden = 123 + 17 = 140, y = 191 + 17 + 140 = 348
+          (+ overridden z y) ;; 33 + 17 + 348 = 398
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 13 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "398");
 }
 
 #[test]
