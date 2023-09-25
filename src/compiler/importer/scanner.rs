@@ -392,6 +392,15 @@ fn test_recognized_import_directive_6() {
     assert_eq!(res.spec.to_sexp().to_string(), "(from std.hash import foo as bar exposing baz)");
 }
 
+#[test]
+fn test_recognized_import_directive_7() {
+    let loc = Srcloc::start("*test*");
+    let address_from = ImportLongName::from_ident(loc.clone(), b"program").expect("Should parse");
+    let parsed = parse_sexp(loc.clone(), b"(from std.hash import foo as bar exposing baz hiding yadda)".iter().copied()).expect("should parse");
+    let res = recognize_import_directive(&address_from, parsed[0].clone()).expect("should have worked").expect("should have an import directive");
+    assert_eq!(res.spec.to_sexp().to_string(), "(from std.hash import foo as bar hiding yadda exposing baz)");
+}
+
 fn compose_fully_qualified_name(source: &ImportLongName, target: &ImportLongName) -> ImportLongName {
     let mut segments: Vec<String> = source.iter().collect();
     segments.append(&mut target.prefix_components.clone());
