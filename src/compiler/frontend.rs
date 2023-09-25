@@ -29,11 +29,11 @@ pub fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
     }
 }
 
-fn collect_used_names_binding(aliases: &HashMap<Vec<u8>, Vec<u8>>, body: &Binding) -> Vec<Vec<u8>> {
-    collect_used_names_bodyform(aliases, body.body.borrow())
+fn collect_used_names_binding(body: &Binding) -> Vec<Vec<u8>> {
+    collect_used_names_bodyform(body.body.borrow())
 }
 
-fn collect_used_names_bodyform(aliases: &HashMap<Vec<u8>, Vec<u8>>, body: &BodyForm) -> Vec<Vec<u8>> {
+fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
     match body {
         BodyForm::Let(_, letdata) => {
             let mut result = Vec::new();
@@ -42,7 +42,7 @@ fn collect_used_names_bodyform(aliases: &HashMap<Vec<u8>, Vec<u8>>, body: &BodyF
                 result.append(&mut new_binding_names);
             }
 
-            let mut body_names = collect_used_names_bodyform(alises, letdata.body.borrow());
+            let mut body_names = collect_used_names_bodyform(letdata.body.borrow());
             result.append(&mut body_names);
             result
         }
@@ -50,8 +50,8 @@ fn collect_used_names_bodyform(aliases: &HashMap<Vec<u8>, Vec<u8>>, body: &BodyF
         BodyForm::Value(atom) => match atom {
             SExp::Atom(_l, v) => vec![v.to_vec()],
             SExp::Cons(_l, f, r) => {
-                let mut first_names = collect_used_names_sexp(aliases, f.clone());
-                let mut rest_names = collect_used_names_sexp(aliases, r.clone());
+                let mut first_names = collect_used_names_sexp(f.clone());
+                let mut rest_names = collect_used_names_sexp(r.clone());
                 first_names.append(&mut rest_names);
                 first_names
             }
@@ -60,11 +60,11 @@ fn collect_used_names_bodyform(aliases: &HashMap<Vec<u8>, Vec<u8>>, body: &BodyF
         BodyForm::Call(_l, vs, tail) => {
             let mut result = Vec::new();
             for a in vs {
-                let mut argnames = collect_used_names_bodyform(alises, a);
+                let mut argnames = collect_used_names_bodyform(a);
                 result.append(&mut argnames);
             }
             if let Some(t) = tail {
-                let mut tail_names = collect_used_names_bodyform(aliases, t);
+                let mut tail_names = collect_used_names_bodyform(t);
                 result.append(&mut tail_names);
             }
             result
@@ -78,15 +78,7 @@ fn collect_used_names_bodyform(aliases: &HashMap<Vec<u8>, Vec<u8>>, body: &BodyF
     }
 }
 
-fn add_aliases(aliases: &mut HashMap<Vec<u8>, Vec<u8>>, forms: &[HelperForm]) {
-    for h in forms.iter() {
-        if let HelperForm::Defalias(a) = h {
-            aliases.insert(a.name.clone(), a.target.clone());
-        }
-    }
-}
-
-fn collect_used_names_helperform(aliases: &HashMap<Vec<u8>, Vec<u8>>, body: &HelperForm) -> Vec<Vec<u8>> {
+fn collect_used_names_helperform(body: &HelperForm) -> Vec<Vec<u8>> {
     match body {
         HelperForm::Defconstant(defc) => collect_used_names_bodyform(defc.body.borrow()),
         HelperForm::Defmacro(mac) => {
@@ -97,15 +89,13 @@ fn collect_used_names_helperform(aliases: &HashMap<Vec<u8>, Vec<u8>>, body: &Hel
             res
         }
         HelperForm::Defun(_, defun) => collect_used_names_bodyform(&defun.body),
-        HelperForm::Defalias(defalias) => vec![]
     }
 }
 
 fn collect_used_names_compileform(body: &CompileForm) -> Vec<Vec<u8>> {
-    let mut aliases = HashMap::new();
     let mut result = Vec::new();
     for h in body.helpers.iter() {
-        let mut helper_list = collect_used_names_helperform(&mut aliases, h);
+        let mut helper_list = collect_used_names_helperform(h);
         result.append(&mut helper_list);
     }
 
@@ -115,7 +105,6 @@ fn collect_used_names_compileform(body: &CompileForm) -> Vec<Vec<u8>> {
 }
 
 fn calculate_live_helpers(
-    aliases: &HashMap<Vec<u8>, Vec<u8>>,
     last_names: &HashSet<Vec<u8>>,
     names: &HashSet<Vec<u8>>,
     helper_map: &HashMap<Vec<u8>, HelperForm>,
@@ -129,7 +118,7 @@ fn calculate_live_helpers(
 
         for name in new_names {
             if let Some(new_helper) = helper_map.get(&name) {
-                let even_newer_names: HashSet<Vec<u8>> = collect_used_names_helperform(aliases, new_helper)
+                let even_newer_names: HashSet<Vec<u8>> = collect_used_names_helperform(new_helper)
                     .iter()
                     .map(|x| x.to_vec())
                     .collect();
@@ -140,7 +129,7 @@ fn calculate_live_helpers(
             }
         }
 
-        calculate_live_helpers(aliases, names, &needed_helpers, helper_map)
+        calculate_live_helpers(names, &needed_helpers, helper_map)
     }
 }
 
@@ -909,7 +898,7 @@ pub fn frontend(
         started.add_include(i.clone());
     }
 
-    let compiled: CompileForm = match started.exp_form {
+    let compiled: Result<CompileForm, CompileErr> = match started.exp_form {
         None => Err(CompileErr(
             started.loc,
             "mod must end on an expression".to_string(),
@@ -918,13 +907,11 @@ pub fn frontend(
             let compiled_val: &CompileForm = &v;
             Ok(compiled_val.clone())
         }
-    }?;
+    };
 
-    let mut aliases = HashMap::new();
-    add_aliases(&mut aliases, &compiled.helpers);
-    let our_mod = rename_children_compileform(&compiled)?;
+    let our_mod = rename_children_compileform(&compiled?)?;
 
-    let expr_names: HashSet<Vec<u8>> = collect_used_names_bodyform(&aliases, our_mod.exp.borrow())
+    let expr_names: HashSet<Vec<u8>> = collect_used_names_bodyform(our_mod.exp.borrow())
         .iter()
         .map(|x| x.to_vec())
         .collect();

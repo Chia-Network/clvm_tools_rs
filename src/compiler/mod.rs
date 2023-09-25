@@ -19,6 +19,7 @@ pub mod dialect;
 pub mod evaluate;
 pub mod frontend;
 pub mod gensym;
+pub mod importer;
 mod inline;
 mod lambda;
 pub mod optimize;

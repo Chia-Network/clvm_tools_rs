@@ -269,32 +269,6 @@ pub enum ConstantKind {
     Simple,
 }
 
-/// Specifies an alias which tells the compiler to try an alternate name if
-/// the first one isn't found.
-#[derive(Clone, Debug, Serialize)]
-pub struct AliasData {
-    /// The location of the whole form.
-    pub loc: Srcloc,
-    /// Srcloc of the 'defalias' keyword if this alias comes from user input
-    /// with an identifiable keyword.
-    pub kw: Option<Srcloc>,
-    /// Srcloc of the name or something that can be thought of similarly.
-    pub name_loc: Srcloc,
-    /// Srcloc of the target if the alias comes from user input with an
-    /// identifiable target.
-    pub target_loc: Option<Srcloc>,
-
-    /// Name of the alias (the new name defined by the alias).
-    pub name: Vec<u8>,
-    /// Name of the target(the name of the original thing that can now be called
-    /// by the new name).
-    pub target: Vec<u8>,
-
-    /// This object is synthetic if it isn't traceable to and individual user
-    /// form somewhere in the input.
-    pub synthetic: bool
-}
-
 /// HelperForm is a toplevel binding of some kind.
 /// Helpers are the (defconst ...) (defun ...) (defun-inline ...) (defmacro ...)
 /// forms from the source code and "help" the program do its job.  They're
@@ -307,8 +281,6 @@ pub enum HelperForm {
     Defmacro(DefmacData),
     /// A function definition (see DefunData).
     Defun(bool, DefunData),
-    /// An alias that allows for better name resolution (see AliasData).
-    Defalias(AliasData),
 }
 
 /// To what purpose is the file included.
@@ -620,7 +592,6 @@ impl HelperForm {
             HelperForm::Defconstant(defc) => &defc.name,
             HelperForm::Defmacro(mac) => &mac.name,
             HelperForm::Defun(_, defun) => &defun.name,
-            HelperForm::Defalias(alias) => &alias.name,
         }
     }
 
@@ -630,7 +601,6 @@ impl HelperForm {
             HelperForm::Defconstant(defc) => &defc.nl,
             HelperForm::Defmacro(mac) => &mac.nl,
             HelperForm::Defun(_, defun) => &defun.nl,
-            HelperForm::Defalias(alias) => &alias.name_loc,
         }
     }
 
@@ -640,7 +610,6 @@ impl HelperForm {
             HelperForm::Defconstant(defc) => defc.loc.clone(),
             HelperForm::Defmacro(mac) => mac.loc.clone(),
             HelperForm::Defun(_, defun) => defun.loc.clone(),
-            HelperForm::Defalias(alias) => alias.loc.clone(),
         }
     }
 
@@ -690,25 +659,6 @@ impl HelperForm {
                         defun.body.to_sexp(),
                     ],
                 ))
-            }
-            HelperForm::Defalias(alias) => {
-                let alias_kw =
-                    Rc::new(SExp::Atom(
-                        alias.kw.as_ref().cloned().unwrap_or_else(|| alias.loc.clone()),
-                        b"defalias".to_vec(),
-                    ));
-                let name_atom =
-                    Rc::new(SExp::Atom(
-                        alias.name_loc.clone(),
-                        alias.name.clone(),
-                    ));
-                let target_atom =
-                    Rc::new(SExp::Atom(
-                        alias.target_loc.as_ref().cloned().unwrap_or_else(|| alias.loc.clone()),
-                        alias.target.clone(),
-                    ));
-                let list = &[alias_kw, name_atom, target_atom];
-                Rc::new(enlist(alias.loc.clone(), list))
             }
         }
     }
