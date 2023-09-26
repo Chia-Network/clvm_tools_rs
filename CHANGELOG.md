@@ -30,3 +30,7 @@ Skipped
 - &rest arguments.
 - new bls and sec256 operators.
 
+## 0.1.36
+
+- modern lambda added
+- updated some internal data strucutres and call interfaces to support env variable renaming at during closure generation / lambda capture, or any step during transformation.
