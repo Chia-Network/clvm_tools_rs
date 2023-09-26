@@ -74,6 +74,15 @@ impl ImportLongName {
             last_component: decode_string(&word),
         })
     }
+
+    pub fn join(self: &ImportLongName, target: &ImportLongName) -> ImportLongName {
+        let mut segments: Vec<String> = self.iter().collect();
+        segments.append(&mut target.prefix_components.clone());
+        ImportLongName {
+            prefix_components: segments,
+            last_component: target.last_component.clone(),
+        }
+    }
 }
 
 #[test]
@@ -181,7 +190,14 @@ fn finish_import_directive(
 
     let mut state = ParseImportRenameClauseState::Empty;
 
-    let target_name = ImportLongName::from_ident(loc.clone(), name_atom)?;
+    let target_name =
+        if relative {
+            let target = ImportLongName::from_ident(loc.clone(), name_atom)?;
+            source.join(&target)
+        } else {
+            ImportLongName::from_ident(loc.clone(), name_atom)?
+        };
+
     let mut spec = ImportRenameSpec {
         loc: loc.clone(),
         nl: name_loc.clone(),
@@ -401,13 +417,22 @@ fn test_recognized_import_directive_7() {
     assert_eq!(res.spec.to_sexp().to_string(), "(from std.hash import foo as bar hiding yadda exposing baz)");
 }
 
-fn compose_fully_qualified_name(source: &ImportLongName, target: &ImportLongName) -> ImportLongName {
-    let mut segments: Vec<String> = source.iter().collect();
-    segments.append(&mut target.prefix_components.clone());
-    ImportLongName {
-        prefix_components: segments,
-        last_component: target.last_component.clone(),
-    }
+#[test]
+fn test_recognized_import_directive_8() {
+    let loc = Srcloc::start("*test*");
+    let address_from = ImportLongName::from_ident(loc.clone(), b"program").expect("Should parse");
+    let parsed = parse_sexp(loc.clone(), b"(import std.hash exposing baz hiding yadda)".iter().copied()).expect("should parse");
+    let res = recognize_import_directive(&address_from, parsed[0].clone()).expect("should have worked").expect("should have an import directive");
+    assert_eq!(res.spec.to_sexp().to_string(), "(import std.hash hiding yadda exposing baz)");
+}
+
+#[test]
+fn test_recognized_import_directive_relative_1() {
+    let loc = Srcloc::start("*test*");
+    let address_from = ImportLongName::from_ident(loc.clone(), b"std").expect("Should parse");
+    let parsed = parse_sexp(loc.clone(), b"(import relative hash exposing baz hiding yadda)".iter().copied()).expect("should parse");
+    let res = recognize_import_directive(&address_from, parsed[0].clone()).expect("should have worked").expect("should have an import directive");
+    assert_eq!(res.spec.to_sexp().to_string(), "(import std.hash hiding yadda exposing baz)");
 }
 
 /// Rewrite names from qualified to path names so we can resolve them to filenames.
