@@ -5,7 +5,7 @@ use std::rc::Rc;
 use crate::compiler::codegen::toposort_assign_bindings;
 use crate::compiler::comptypes::{
     map_m, map_m_reverse, Binding, BindingPattern, BodyForm, CompileErr, CompileForm, DefconstData,
-    DefmacData, DefunData, HelperForm, LetData, LetFormKind,
+    DefmacData, DefunData, HelperForm, LambdaData, LetData, LetFormKind,
 };
 use crate::compiler::gensym::gensym;
 use crate::compiler::sexp::SExp;
@@ -256,6 +256,21 @@ fn rename_in_bodyform(
         }
 
         BodyForm::Mod(l, prog) => Ok(BodyForm::Mod(l.clone(), prog.clone())),
+        // Rename lambda arguments down the lexical scope.
+        BodyForm::Lambda(ldata) => {
+            let renamed_capture_inputs =
+                Rc::new(rename_in_bodyform(namemap, ldata.captures.clone())?);
+            let renamed_capture_outputs =
+                rename_in_cons(namemap, ldata.capture_args.clone(), false);
+            let renamed_body = Rc::new(rename_args_bodyform(ldata.body.borrow())?);
+            let outer_renamed_body = rename_in_bodyform(namemap, renamed_body)?;
+            Ok(BodyForm::Lambda(Box::new(LambdaData {
+                captures: renamed_capture_inputs,
+                capture_args: renamed_capture_outputs,
+                body: Rc::new(outer_renamed_body),
+                ..*ldata.clone()
+            })))
+        }
     }
 }
 
@@ -371,6 +386,20 @@ fn rename_args_bodyform(b: &BodyForm) -> Result<BodyForm, CompileErr> {
             Ok(BodyForm::Call(l.clone(), new_vs, new_tail))
         }
         BodyForm::Mod(l, program) => Ok(BodyForm::Mod(l.clone(), program.clone())),
+        BodyForm::Lambda(ldata) => {
+            let mut own_args = HashMap::new();
+            for (n, v) in invent_new_names_sexp(ldata.args.clone()).iter() {
+                own_args.insert(n.clone(), v.clone());
+            }
+            let new_args = rename_in_cons(&own_args, ldata.args.clone(), false);
+            let new_body = rename_args_bodyform(ldata.body.borrow())?;
+            let renamed_with_own_args = rename_in_bodyform(&own_args, Rc::new(new_body))?;
+            Ok(BodyForm::Lambda(Box::new(LambdaData {
+                args: new_args,
+                body: Rc::new(renamed_with_own_args),
+                ..*ldata.clone()
+            })))
+        }
     }
 }
 
