@@ -122,7 +122,7 @@ fn fe_opt(
                 )?;
                 let new_helper = HelperForm::Defun(
                     *inline,
-                    DefunData {
+                    Box::new(DefunData {
                         loc: defun.loc.clone(),
                         nl: defun.nl.clone(),
                         kw: defun.kw.clone(),
@@ -131,7 +131,7 @@ fn fe_opt(
                         orig_args: defun.orig_args.clone(),
                         body: body_rc.clone(),
                         ty: defun.ty.clone(),
-                    },
+                    }),
                 );
                 optimized_helpers.push(new_helper);
             }
