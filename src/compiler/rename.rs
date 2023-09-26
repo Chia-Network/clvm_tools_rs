@@ -215,7 +215,6 @@ fn rename_in_bodyform(
                     ..*letdata.clone()
                 }),
             );
-            eprintln!("rename {}", res.to_sexp());
             Ok(res)
         }
 
