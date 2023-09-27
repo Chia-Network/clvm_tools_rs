@@ -255,10 +255,7 @@ fn make_let_bindings(
     opts: Rc<dyn CompilerOpts>,
     body: Rc<SExp>,
 ) -> Result<Vec<Rc<Binding>>, CompileErr> {
-    let err = Err(CompileErr(
-        body.loc(),
-        "Bad binding tail ".to_string() + &body.to_string(),
-    ));
+    let err = Err(CompileErr(body.loc(), format!("Bad binding tail {body:?}")));
     let do_atomize = if opts.dialect().strict {
         |a: &SExp| -> SExp { a.atomize() }
     } else {
@@ -283,7 +280,10 @@ fn make_let_bindings(
                     result.append(&mut rest_bindings);
                     Ok(result)
                 }
-                _ => err.clone(),
+                _ => {
+                    eprintln!("crap {body:?}");
+                    err.clone()
+                }
             })
             .unwrap_or_else(|| err.clone()),
         _ => err,

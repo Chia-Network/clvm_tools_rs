@@ -168,17 +168,17 @@ fn fe_opt(
     })
 }
 
-pub fn compile_pre_forms(
-    context: &mut BasicCompileContext,
+pub fn compile_from_compileform(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
     opts: Rc<dyn CompilerOpts>,
-    pre_forms: &[Rc<SExp>],
+    p0: CompileForm,
+    symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
-    // Resolve includes, convert program source to lexemes
-    let p0 = frontend(opts.clone(), pre_forms)?;
-
+    let mut wrapper = CompileContextWrapper::new(allocator, runner, symbol_table);
     let p1 = if opts.frontend_opt() {
         // Front end optimization
-        fe_opt(context, opts.clone(), p0)?
+        fe_opt(&mut wrapper.context, opts.clone(), p0)?
     } else {
         p0
     };
@@ -202,7 +202,20 @@ pub fn compile_pre_forms(
     };
 
     // generate code from AST, optionally with optimization
-    codegen(context, opts, &p2)
+    codegen(&mut wrapper.context, opts, &p2)
+}
+
+pub fn compile_pre_forms(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    opts: Rc<dyn CompilerOpts>,
+    pre_forms: &[Rc<SExp>],
+    symbol_table: &mut HashMap<String, String>,
+) -> Result<SExp, CompileErr> {
+    // Resolve includes, convert program source to lexemes
+    let p0 = frontend(opts.clone(), pre_forms)?;
+
+    compile_from_compileform(allocator, runner, opts, p0, symbol_table)
 }
 
 pub fn compile_file(
@@ -213,8 +226,7 @@ pub fn compile_file(
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
     let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), content.bytes())?;
-    let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table);
-    compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
+    compile_pre_forms(allocator, runner, opts, &pre_forms, symbol_table)
 }
 
 pub fn run_optimizer(
@@ -376,8 +388,7 @@ impl CompilerOpts for DefaultCompilerOpts {
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
-        let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table);
-        compile_pre_forms(&mut context_wrapper.context, me, &[sexp])
+        compile_pre_forms(allocator, runner, me, &[sexp], symbol_table)
     }
 }
 

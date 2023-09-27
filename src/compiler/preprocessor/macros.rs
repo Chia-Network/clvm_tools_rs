@@ -2,31 +2,24 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use clvmr::allocator::Allocator;
 use num_bigint::ToBigInt;
 use num_traits::ToPrimitive;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 
-use crate::compiler::clvm::truthy;
-use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts};
-use crate::compiler::evaluate::{EvalExtension, Evaluator};
-use crate::compiler::preprocessor::dequote;
-use crate::compiler::sexp::{decode_string, SExp};
+use crate::compiler::clvm::PrimOverride;
+use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::runtypes::RunFailure;
+use crate::compiler::sexp::{decode_string, printable, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, Number};
 
 // If the bodyform represents a constant, only match a quoted string.
-fn match_quoted_string(body: Rc<BodyForm>) -> Result<Option<(Srcloc, Vec<u8>)>, CompileErr> {
+fn match_quoted_string(body: Rc<SExp>) -> Result<Option<(Srcloc, Vec<u8>)>, CompileErr> {
     let is_string = match body.borrow() {
-        BodyForm::Quoted(SExp::QuotedString(_, b'x', _)) => None,
-        BodyForm::Quoted(SExp::QuotedString(al, _, an)) => Some((al.clone(), an.clone())),
-        BodyForm::Value(SExp::QuotedString(_, b'x', _)) => None,
-        BodyForm::Value(SExp::QuotedString(al, _, an)) => Some((al.clone(), an.clone())),
-        BodyForm::Quoted(_) => None,
-        _ => {
-            return Ok(None);
-        }
+        SExp::QuotedString(_, b'x', _) => None,
+        SExp::QuotedString(al, _, an) => Some((al.clone(), an.clone())),
+        _ => None,
     };
 
     if let Some((loc, s)) = is_string {
@@ -36,13 +29,11 @@ fn match_quoted_string(body: Rc<BodyForm>) -> Result<Option<(Srcloc, Vec<u8>)>, 
     }
 }
 
-fn match_atom(body: Rc<BodyForm>) -> Result<Option<(Srcloc, Vec<u8>)>, CompileErr> {
-    if let BodyForm::Quoted(SExp::Atom(al, an)) = body.borrow() {
+fn match_atom(body: Rc<SExp>) -> Result<Option<(Srcloc, Vec<u8>)>, CompileErr> {
+    if let SExp::Atom(al, an) = body.borrow() {
         Ok(Some((al.clone(), an.clone())))
-    } else if let BodyForm::Quoted(_) = body.borrow() {
-        Err(CompileErr(body.loc(), "atom required".to_string()))
     } else {
-        Ok(None)
+        Err(CompileErr(body.loc(), "atom required".to_string()))
     }
 }
 
@@ -51,23 +42,31 @@ enum MatchedNumber {
     MatchedHex(Srcloc, Vec<u8>),
 }
 
-fn match_number(body: Rc<BodyForm>) -> Result<Option<MatchedNumber>, CompileErr> {
+fn match_number(body: Rc<SExp>) -> Result<Option<MatchedNumber>, CompileErr> {
     match body.borrow() {
-        BodyForm::Quoted(SExp::Integer(il, n)) => {
-            Ok(Some(MatchedNumber::MatchedInt(il.clone(), n.clone())))
+        SExp::Integer(il, n) => {
+            return Ok(Some(MatchedNumber::MatchedInt(il.clone(), n.clone())));
         }
-        BodyForm::Quoted(SExp::QuotedString(ql, b'x', b)) => {
-            Ok(Some(MatchedNumber::MatchedHex(ql.clone(), b.clone())))
+        SExp::QuotedString(ql, b'x', b) => {
+            return Ok(Some(MatchedNumber::MatchedHex(ql.clone(), b.clone())));
         }
-        BodyForm::Quoted(SExp::Nil(il)) => {
-            Ok(Some(MatchedNumber::MatchedInt(il.clone(), bi_zero())))
+        SExp::Atom(al, b) => {
+            // An atom with unprintable characters is rendered as an integer.
+            if !printable(b) {
+                let to_integer = number_from_u8(b);
+                return Ok(Some(MatchedNumber::MatchedInt(al.clone(), to_integer)));
+            }
         }
-        BodyForm::Quoted(_) => Err(CompileErr(body.loc(), "number required".to_string())),
-        _ => Ok(None),
+        SExp::Nil(il) => {
+            return Ok(Some(MatchedNumber::MatchedInt(il.clone(), bi_zero())));
+        }
+        _ => {}
     }
+
+    Err(CompileErr(body.loc(), "number required".to_string()))
 }
 
-fn numeric_value(body: Rc<BodyForm>) -> Result<Number, CompileErr> {
+fn numeric_value(body: Rc<SExp>) -> Result<Number, CompileErr> {
     match match_number(body.clone())? {
         Some(MatchedNumber::MatchedInt(_, n)) => Ok(n),
         Some(MatchedNumber::MatchedHex(_, h)) => Ok(number_from_u8(&h)),
@@ -75,35 +74,13 @@ fn numeric_value(body: Rc<BodyForm>) -> Result<Number, CompileErr> {
     }
 }
 
-fn usize_value(body: Rc<BodyForm>) -> Result<usize, CompileErr> {
+fn usize_value(body: Rc<SExp>) -> Result<usize, CompileErr> {
     let n = numeric_value(body.clone())?;
     if let Some(res) = n.to_usize() {
         Ok(res)
     } else {
         Err(CompileErr(body.loc(), "Value out of range".to_string()))
     }
-}
-
-fn reify_args(
-    evaluator: &Evaluator,
-    prog_args: Rc<SExp>,
-    env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-    args: &[Rc<BodyForm>],
-) -> Result<Vec<Rc<BodyForm>>, CompileErr> {
-    let mut allocator = Allocator::new();
-    let mut converted_args = Vec::new();
-    for a in args.iter() {
-        let shrunk = evaluator.shrink_bodyform(
-            &mut allocator,
-            prog_args.clone(),
-            env,
-            a.clone(),
-            false,
-            None,
-        )?;
-        converted_args.push(shrunk);
-    }
-    Ok(converted_args)
 }
 
 /// A container for a function to evaluate in advanced preprocessor macros.
@@ -117,16 +94,7 @@ pub trait ExtensionFunction {
     }
     fn required_args(&self) -> Option<usize>;
     #[allow(clippy::too_many_arguments)]
-    fn try_eval(
-        &self,
-        evaluator: &Evaluator,
-        prog_args: Rc<SExp>,
-        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        loc: &Srcloc,
-        name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr>;
+    fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr>;
 }
 
 struct StringQ {}
@@ -142,25 +110,13 @@ impl ExtensionFunction for StringQ {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        _evaluator: &Evaluator,
-        _prog_args: Rc<SExp>,
-        _env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        loc: &Srcloc,
-        _name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
+    fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let res = match match_quoted_string(args[0].clone()) {
             Ok(Some(_)) => SExp::Integer(loc.clone(), bi_one()),
-            Ok(None) => {
-                return Ok(body);
-            }
-            Err(_) => SExp::Nil(loc.clone()),
+            _ => SExp::Nil(loc.clone()),
         };
 
-        Ok(Rc::new(BodyForm::Quoted(res)))
+        Ok(Rc::new(res))
     }
 }
 
@@ -177,25 +133,13 @@ impl ExtensionFunction for NumberQ {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        _evaluator: &Evaluator,
-        _prog_args: Rc<SExp>,
-        _env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        loc: &Srcloc,
-        _name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
+    fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let res = match match_number(args[0].clone()) {
             Ok(Some(_)) => SExp::Integer(loc.clone(), bi_one()),
-            Ok(None) => {
-                return Ok(body);
-            }
-            Err(_) => SExp::Nil(loc.clone()),
+            _ => SExp::Nil(loc.clone()),
         };
 
-        Ok(Rc::new(BodyForm::Quoted(res)))
+        Ok(Rc::new(res))
     }
 }
 
@@ -212,25 +156,13 @@ impl ExtensionFunction for SymbolQ {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        _evaluator: &Evaluator,
-        _prog_args: Rc<SExp>,
-        _env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        loc: &Srcloc,
-        _name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
+    fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let res = match match_atom(args[0].clone()) {
             Ok(Some(_)) => SExp::Integer(loc.clone(), bi_one()),
-            Ok(None) => {
-                return Ok(body);
-            }
-            Err(_) => SExp::Nil(loc.clone()),
+            _ => SExp::Nil(loc.clone()),
         };
 
-        Ok(Rc::new(BodyForm::Quoted(res)))
+        Ok(Rc::new(res))
     }
 }
 
@@ -247,22 +179,11 @@ impl ExtensionFunction for SymbolToString {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        _evaluator: &Evaluator,
-        _prog_args: Rc<SExp>,
-        _env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        _loc: &Srcloc,
-        _name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
+    fn try_eval(&self, _loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         if let Some((loc, value)) = match_atom(args[0].clone())? {
-            Ok(Rc::new(BodyForm::Quoted(SExp::QuotedString(
-                loc, b'\"', value,
-            ))))
+            Ok(Rc::new(SExp::QuotedString(loc, b'\"', value)))
         } else {
-            Ok(body)
+            Err(CompileErr(args[0].loc(), "Not a symbol".to_string()))
         }
     }
 }
@@ -280,20 +201,11 @@ impl ExtensionFunction for StringToSymbol {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        _evaluator: &Evaluator,
-        _prog_args: Rc<SExp>,
-        _env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        _loc: &Srcloc,
-        _name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
+    fn try_eval(&self, _loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
-            Ok(Rc::new(BodyForm::Quoted(SExp::Atom(loc, value))))
+            Ok(Rc::new(SExp::Atom(loc, value)))
         } else {
-            Ok(body)
+            Err(CompileErr(args[0].loc(), "Not a string".to_string()))
         }
     }
 }
@@ -311,16 +223,7 @@ impl ExtensionFunction for StringAppend {
         None
     }
 
-    fn try_eval(
-        &self,
-        _evaluator: &Evaluator,
-        _prog_args: Rc<SExp>,
-        _env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        _loc: &Srcloc,
-        _name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
+    fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let mut out_vec = Vec::new();
         let mut out_loc = None;
         for a in args.iter() {
@@ -330,14 +233,14 @@ impl ExtensionFunction for StringAppend {
                 }
                 out_vec.append(&mut value);
             } else {
-                return Ok(body);
+                return Err(CompileErr(a.loc(), "not a quoted string".to_string()));
             }
         }
-        Ok(Rc::new(BodyForm::Quoted(SExp::QuotedString(
-            out_loc.unwrap_or_else(|| body.loc()),
+        Ok(Rc::new(SExp::QuotedString(
+            out_loc.unwrap_or_else(|| loc.clone()),
             b'\"',
             out_vec,
-        ))))
+        )))
     }
 }
 
@@ -354,29 +257,20 @@ impl ExtensionFunction for NumberToString {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        _evaluator: &Evaluator,
-        _prog_args: Rc<SExp>,
-        _env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        _loc: &Srcloc,
-        _name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
+    fn try_eval(&self, _loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let match_res = match_number(args[0].clone())?;
         let (use_loc, int_val) = match &match_res {
             Some(MatchedNumber::MatchedInt(l, i)) => (l.clone(), i.clone()),
             Some(MatchedNumber::MatchedHex(l, h)) => (l.clone(), number_from_u8(h)),
             _ => {
-                return Ok(body);
+                return Err(CompileErr(args[0].loc(), "Not a number".to_string()));
             }
         };
-        Ok(Rc::new(BodyForm::Quoted(SExp::QuotedString(
+        Ok(Rc::new(SExp::QuotedString(
             use_loc,
             b'\"',
             int_val.to_string().as_bytes().to_vec(),
-        ))))
+        )))
     }
 }
 
@@ -393,19 +287,10 @@ impl ExtensionFunction for StringToNumber {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        _evaluator: &Evaluator,
-        _prog_args: Rc<SExp>,
-        _env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        loc: &Srcloc,
-        _name: &[u8],
-        args: &[Rc<BodyForm>],
-        _body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
+    fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
             if let Ok(cvt_bi) = decode_string(&value).parse::<Number>() {
-                Ok(Rc::new(BodyForm::Quoted(SExp::Integer(loc, cvt_bi))))
+                Ok(Rc::new(SExp::Integer(loc, cvt_bi)))
             } else {
                 Err(CompileErr(loc, "bad number".to_string()))
             }
@@ -431,25 +316,17 @@ impl ExtensionFunction for StringLength {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        _evaluator: &Evaluator,
-        _prog_args: Rc<SExp>,
-        _env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        _loc: &Srcloc,
-        _name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
+    fn try_eval(&self, _loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
             if let Some(len_bi) = value.len().to_bigint() {
-                Ok(Rc::new(BodyForm::Quoted(SExp::Integer(loc, len_bi))))
-            } else {
-                Err(CompileErr(loc, "Error getting string length".to_string()))
+                return Ok(Rc::new(SExp::Integer(loc, len_bi)));
             }
-        } else {
-            Ok(body)
         }
+
+        Err(CompileErr(
+            args[0].loc(),
+            "Error getting string length".to_string(),
+        ))
     }
 }
 
@@ -466,21 +343,12 @@ impl ExtensionFunction for Substring {
         Some(3)
     }
 
-    fn try_eval(
-        &self,
-        _evaluator: &Evaluator,
-        _prog_args: Rc<SExp>,
-        _env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        _loc: &Srcloc,
-        _name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
+    fn try_eval(&self, _loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let start_element = usize_value(args[1].clone())?;
         let end_element = usize_value(args[2].clone())?;
 
         match args[0].borrow() {
-            BodyForm::Quoted(SExp::QuotedString(l, ch, s)) => {
+            SExp::QuotedString(l, ch, s) => {
                 if start_element > end_element || start_element > s.len() || end_element > s.len() {
                     return Err(CompileErr(
                         l.clone(),
@@ -493,221 +361,9 @@ impl ExtensionFunction for Substring {
                     .skip(start_element)
                     .copied()
                     .collect();
-                Ok(Rc::new(BodyForm::Quoted(SExp::QuotedString(
-                    l.clone(),
-                    *ch,
-                    result_value,
-                ))))
+                Ok(Rc::new(SExp::QuotedString(l.clone(), *ch, result_value)))
             }
-            BodyForm::Quoted(_) => Err(CompileErr(body.loc(), "Not a string".to_string())),
-            _ => Ok(body),
-        }
-    }
-}
-
-struct List {}
-
-impl List {
-    fn create() -> Rc<dyn ExtensionFunction> {
-        Rc::new(List {})
-    }
-}
-
-impl ExtensionFunction for List {
-    fn required_args(&self) -> Option<usize> {
-        None
-    }
-
-    fn try_eval(
-        &self,
-        evaluator: &Evaluator,
-        prog_args: Rc<SExp>,
-        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        loc: &Srcloc,
-        _name: &[u8],
-        args: &[Rc<BodyForm>],
-        _body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
-        let mut allocator = Allocator::new();
-        let mut res = Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone())));
-        for a in args.iter().rev() {
-            res = Rc::new(BodyForm::Call(
-                loc.clone(),
-                vec![
-                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), b"c".to_vec()))),
-                    a.clone(),
-                    res,
-                ],
-                // Calls primitive 'c' so no tail.
-                None,
-            ));
-        }
-        evaluator.shrink_bodyform(&mut allocator, prog_args, env, res, false, None)
-    }
-}
-
-struct Cons {}
-
-impl Cons {
-    fn create() -> Rc<dyn ExtensionFunction> {
-        Rc::new(Cons {})
-    }
-}
-
-impl ExtensionFunction for Cons {
-    fn required_args(&self) -> Option<usize> {
-        Some(2)
-    }
-
-    fn try_eval(
-        &self,
-        _evaluator: &Evaluator,
-        _prog_args: Rc<SExp>,
-        _env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        loc: &Srcloc,
-        _name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
-        if let (BodyForm::Quoted(a), BodyForm::Quoted(b)) = (args[0].borrow(), args[1].borrow()) {
-            Ok(Rc::new(BodyForm::Quoted(SExp::Cons(
-                loc.clone(),
-                Rc::new(a.clone()),
-                Rc::new(b.clone()),
-            ))))
-        } else {
-            Ok(body)
-        }
-    }
-}
-
-struct First {}
-
-impl First {
-    fn create() -> Rc<dyn ExtensionFunction> {
-        Rc::new(First {})
-    }
-}
-
-impl ExtensionFunction for First {
-    fn required_args(&self) -> Option<usize> {
-        Some(1)
-    }
-
-    fn try_eval(
-        &self,
-        _evaluator: &Evaluator,
-        _prog_args: Rc<SExp>,
-        _env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        loc: &Srcloc,
-        _name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
-        if let BodyForm::Quoted(SExp::Cons(_, a, _)) = args[0].borrow() {
-            let a_borrowed: &SExp = a.borrow();
-            Ok(Rc::new(BodyForm::Quoted(a_borrowed.clone())))
-        } else if let BodyForm::Quoted(_) = args[0].borrow() {
-            Err(CompileErr(loc.clone(), "bad cons in first".to_string()))
-        } else {
-            Ok(body)
-        }
-    }
-}
-
-struct Rest {}
-
-impl Rest {
-    fn create() -> Rc<dyn ExtensionFunction> {
-        Rc::new(Rest {})
-    }
-}
-
-impl ExtensionFunction for Rest {
-    fn required_args(&self) -> Option<usize> {
-        Some(1)
-    }
-
-    fn try_eval(
-        &self,
-        _evaluator: &Evaluator,
-        _prog_args: Rc<SExp>,
-        _env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        loc: &Srcloc,
-        _name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
-        if let BodyForm::Quoted(SExp::Cons(_, _, b)) = args[0].borrow() {
-            let a_borrowed: &SExp = b.borrow();
-            Ok(Rc::new(BodyForm::Quoted(a_borrowed.clone())))
-        } else if let BodyForm::Quoted(_) = args[0].borrow() {
-            Err(CompileErr(loc.clone(), "bad cons in rest".to_string()))
-        } else {
-            Ok(body)
-        }
-    }
-}
-
-struct If {}
-
-impl If {
-    fn create() -> Rc<dyn ExtensionFunction> {
-        Rc::new(If {})
-    }
-}
-
-impl ExtensionFunction for If {
-    fn want_interp(&self) -> bool {
-        false
-    }
-
-    fn required_args(&self) -> Option<usize> {
-        Some(3)
-    }
-
-    fn try_eval(
-        &self,
-        evaluator: &Evaluator,
-        prog_args: Rc<SExp>,
-        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        _loc: &Srcloc,
-        _name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Rc<BodyForm>, CompileErr> {
-        let mut allocator = Allocator::new();
-        let cond_result = evaluator.shrink_bodyform(
-            &mut allocator,
-            prog_args.clone(),
-            env,
-            args[0].clone(),
-            false,
-            None,
-        )?;
-
-        if let Ok(unquoted) = dequote(body.loc(), cond_result) {
-            if truthy(unquoted) {
-                evaluator.shrink_bodyform(
-                    &mut allocator,
-                    prog_args,
-                    env,
-                    args[1].clone(),
-                    false,
-                    None,
-                )
-            } else {
-                evaluator.shrink_bodyform(
-                    &mut allocator,
-                    prog_args,
-                    env,
-                    args[2].clone(),
-                    false,
-                    None,
-                )
-            }
-        } else {
-            Ok(body.clone())
+            _ => Err(CompileErr(args[0].loc(), "Not a string".to_string())),
         }
     }
 }
@@ -750,14 +406,44 @@ pub struct PreprocessorExtension {
     extfuns: HashMap<Vec<u8>, Rc<dyn ExtensionFunction>>,
 }
 
+fn compile_to_run_err(e: CompileErr) -> RunFailure {
+    match e {
+        CompileErr(l, e) => RunFailure::RunErr(l, e),
+    }
+}
+
+impl PrimOverride for PreprocessorExtension {
+    fn try_handle(
+        &self,
+        head: Rc<SExp>,
+        _context: Rc<SExp>,
+        tail: Rc<SExp>,
+    ) -> Result<Option<Rc<SExp>>, RunFailure> {
+        eprintln!("running {head} {tail}");
+        if let SExp::Atom(hl, head_atom) = head.borrow() {
+            let have_args: Vec<Rc<SExp>> = if let Some(args_list) = tail.proper_list() {
+                args_list.into_iter().map(Rc::new).collect()
+            } else {
+                return Ok(None);
+            };
+
+            if let Some(extension) = self.extfuns.get(head_atom) {
+                let res = extension
+                    .try_eval(hl, &have_args)
+                    .map_err(compile_to_run_err)?;
+
+                eprintln!("res = {res}");
+                return Ok(Some(res));
+            }
+        }
+
+        Ok(None)
+    }
+}
+
 impl PreprocessorExtension {
     pub fn new() -> Self {
         let extfuns = [
-            (b"if".to_vec(), If::create()),
-            (b"list".to_vec(), List::create()),
-            (b"c".to_vec(), Cons::create()),
-            (b"f".to_vec(), First::create()),
-            (b"r".to_vec(), Rest::create()),
             (b"string?".to_vec(), StringQ::create()),
             (b"number?".to_vec(), NumberQ::create()),
             (b"symbol?".to_vec(), SymbolQ::create()),
@@ -789,40 +475,5 @@ impl PreprocessorExtension {
         }
 
         opts.set_prim_map(Rc::new(new_prim_map_cloned))
-    }
-}
-
-impl EvalExtension for PreprocessorExtension {
-    fn try_eval(
-        &self,
-        evaluator: &Evaluator,
-        prog_args: Rc<SExp>,
-        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        loc: &Srcloc,
-        name: &[u8],
-        raw_args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Option<Rc<BodyForm>>, CompileErr> {
-        if let Some(extfun) = self.extfuns.get(name) {
-            if let Some(n) = extfun.required_args() {
-                if raw_args.len() != n {
-                    return Err(CompileErr(
-                        loc.clone(),
-                        format!("{} requires {} args", decode_string(name), n),
-                    ));
-                }
-            }
-
-            let args = if extfun.want_interp() {
-                reify_args(evaluator, prog_args.clone(), env, raw_args)?
-            } else {
-                raw_args.to_vec()
-            };
-            Ok(Some(extfun.try_eval(
-                evaluator, prog_args, env, loc, name, &args, body,
-            )?))
-        } else {
-            Ok(None)
-        }
     }
 }
