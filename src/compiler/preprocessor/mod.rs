@@ -75,7 +75,7 @@ fn nilize(v: Rc<SExp>) -> Rc<SExp> {
     if let SExp::Cons(l, a, b) = v.borrow() {
         let a_conv = nilize(a.clone());
         let b_conv = nilize(b.clone());
-        if Rc::as_ptr(&a_conv) == Rc::as_ptr(&a) && Rc::as_ptr(&b_conv) == Rc::as_ptr(&b) {
+        if Rc::as_ptr(&a_conv) == Rc::as_ptr(a) && Rc::as_ptr(&b_conv) == Rc::as_ptr(b) {
             v.clone()
         } else {
             Rc::new(SExp::Cons(l.clone(), a_conv, b_conv))
@@ -323,7 +323,7 @@ impl Preprocessor {
                             None,
                         )
                         .map(nilize)
-                        .map_err(|e| CompileErr::from(e))?;
+                        .map_err(CompileErr::from)?;
 
                         eprintln!("macro {} {args} => {res}", decode_string(&name));
                         return Ok(Some(res));

@@ -52,8 +52,8 @@ fn match_number(body: Rc<SExp>) -> Result<Option<MatchedNumber>, CompileErr> {
         }
         SExp::Atom(al, b) => {
             // An atom with unprintable characters is rendered as an integer.
-            if !printable(&b) {
-                let to_integer = number_from_u8(&b);
+            if !printable(b) {
+                let to_integer = number_from_u8(b);
                 return Ok(Some(MatchedNumber::MatchedInt(al.clone(), to_integer)));
             }
         }
@@ -429,7 +429,7 @@ impl PrimOverride for PreprocessorExtension {
 
             if let Some(extension) = self.extfuns.get(head_atom) {
                 let res = extension
-                    .try_eval(&hl, &have_args)
+                    .try_eval(hl, &have_args)
                     .map_err(compile_to_run_err)?;
 
                 eprintln!("res = {res}");
