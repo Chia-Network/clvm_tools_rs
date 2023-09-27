@@ -5,17 +5,18 @@ use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::comptypes::{
-    list_to_cons, ArgsAndTail, Binding, BodyForm, CompileErr, CompileForm, CompilerOpts,
-    ConstantKind, DefconstData, DefmacData, DefunData, HelperForm, IncludeDesc, LetData,
-    LetFormKind, ModAccum,
+    list_to_cons, ArgsAndTail, Binding, BindingPattern, BodyForm, CompileErr, CompileForm,
+    CompilerOpts, ConstantKind, DefconstData, DefmacData, DefunData, HelperForm, IncludeDesc,
+    LetData, LetFormInlineHint, LetFormKind, ModAccum,
 };
+use crate::compiler::lambda::handle_lambda;
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::rename::rename_children_compileform;
-use crate::compiler::sexp::{enlist, SExp};
+use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::util::u8_from_number;
 
-fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
+pub fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
     match body.borrow() {
         SExp::Atom(_, name) => vec![name.to_vec()],
         SExp::Cons(_, head, tail) => {
@@ -69,6 +70,11 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
             result
         }
         BodyForm::Mod(_, _) => vec![],
+        BodyForm::Lambda(ldata) => {
+            let mut capture_names = collect_used_names_bodyform(ldata.captures.borrow());
+            capture_names.append(&mut collect_used_names_bodyform(ldata.body.borrow()));
+            capture_names
+        }
     }
 }
 
@@ -253,20 +259,25 @@ fn make_let_bindings(
         body.loc(),
         format!("Bad binding tail {body:?}")
     ));
-    eprintln!("make_let_bindings {body}");
+    let do_atomize = if opts.dialect().strict {
+        |a: &SExp| -> SExp { a.atomize() }
+    } else {
+        |a: &SExp| -> SExp { a.clone() }
+    };
     match body.borrow() {
         SExp::Nil(_) => Ok(vec![]),
         SExp::Cons(_, head, tl) => head
             .proper_list()
-            .map(|x| match &x[..] {
-                [SExp::Atom(l, name), expr] => {
+            .filter(|x| x.len() == 2)
+            .map(|x| match (do_atomize(&x[0]), &x[1]) {
+                (SExp::Atom(l, name), expr) => {
                     let compiled_body = compile_bodyform(opts.clone(), Rc::new(expr.clone()))?;
                     let mut result = Vec::new();
                     let mut rest_bindings = make_let_bindings(opts, tl.clone())?;
                     result.push(Rc::new(Binding {
                         loc: l.clone(),
-                        nl: l.clone(),
-                        name: name.to_vec(),
+                        nl: l,
+                        pattern: BindingPattern::Name(name.to_vec()),
                         body: Rc::new(compiled_body),
                     }));
                     result.append(&mut rest_bindings);
@@ -280,6 +291,83 @@ fn make_let_bindings(
             .unwrap_or_else(|| err.clone()),
         _ => err,
     }
+}
+
+// Make a set of names in this sexp.
+pub fn make_provides_set(provides_set: &mut HashSet<Vec<u8>>, body_sexp: Rc<SExp>) {
+    match body_sexp.atomize() {
+        SExp::Cons(_, a, b) => {
+            make_provides_set(provides_set, a);
+            make_provides_set(provides_set, b);
+        }
+        SExp::Atom(_, name) => {
+            provides_set.insert(name);
+        }
+        _ => {}
+    }
+}
+
+fn handle_assign_form(
+    opts: Rc<dyn CompilerOpts>,
+    l: Srcloc,
+    v: &[SExp],
+    inline_hint: Option<LetFormInlineHint>,
+) -> Result<BodyForm, CompileErr> {
+    if v.len() % 2 == 0 {
+        return Err(CompileErr(
+            l,
+            "assign form should be in pairs of pattern value followed by an expression".to_string(),
+        ));
+    }
+
+    let mut bindings = Vec::new();
+    let mut check_duplicates = HashSet::new();
+
+    for idx in (0..(v.len() - 1) / 2).map(|idx| idx * 2) {
+        let destructure_pattern = Rc::new(v[idx].clone());
+        let binding_body = compile_bodyform(opts.clone(), Rc::new(v[idx + 1].clone()))?;
+
+        // Ensure bindings aren't duplicated as we won't be able to
+        // guarantee their order during toposort.
+        let mut this_provides = HashSet::new();
+        make_provides_set(&mut this_provides, destructure_pattern.clone());
+
+        for item in this_provides.iter() {
+            if check_duplicates.contains(item) {
+                return Err(CompileErr(
+                    destructure_pattern.loc(),
+                    format!("Duplicate binding {}", decode_string(item)),
+                ));
+            }
+            check_duplicates.insert(item.clone());
+        }
+
+        bindings.push(Rc::new(Binding {
+            loc: v[idx].loc().ext(&v[idx + 1].loc()),
+            nl: destructure_pattern.loc(),
+            pattern: BindingPattern::Complex(destructure_pattern),
+            body: Rc::new(binding_body),
+        }));
+    }
+
+    let compiled_body = compile_bodyform(opts.clone(), Rc::new(v[v.len() - 1].clone()))?;
+    // We don't need to do much if there were no bindings.
+    if bindings.is_empty() {
+        return Ok(compiled_body);
+    }
+
+    // Return a precise representation of this assign while storing up the work
+    // we did breaking it down.
+    Ok(BodyForm::Let(
+        LetFormKind::Assign,
+        Box::new(LetData {
+            loc: l.clone(),
+            kw: Some(l),
+            bindings,
+            inline_hint,
+            body: Rc::new(compiled_body),
+        }),
+    ))
 }
 
 pub fn compile_bodyform(
@@ -316,23 +404,22 @@ pub fn compile_bodyform(
 
             match op.borrow() {
                 SExp::Atom(l, atom_name) => {
-                    if *atom_name == "q".as_bytes().to_vec()
-                        || (atom_name.len() == 1 && atom_name[0] == 1)
-                    {
+                    if *atom_name == b"q" || (atom_name.len() == 1 && atom_name[0] == 1) {
                         let tail_copy: &SExp = tail.borrow();
                         return Ok(BodyForm::Quoted(tail_copy.clone()));
                     }
 
+                    let assign_lambda = *atom_name == "assign-lambda".as_bytes().to_vec();
+                    let assign_inline = *atom_name == "assign-inline".as_bytes().to_vec();
+
                     match tail.proper_list() {
                         Some(v) => {
-                            if *atom_name == "let".as_bytes().to_vec()
-                                || *atom_name == "let*".as_bytes().to_vec()
-                            {
+                            if *atom_name == b"let" || *atom_name == b"let*" {
                                 if v.len() != 2 {
                                     return finish_err("let");
                                 }
 
-                                let kind = if *atom_name == "let".as_bytes().to_vec() {
+                                let kind = if *atom_name == b"let" {
                                     LetFormKind::Parallel
                                 } else {
                                     LetFormKind::Sequential
@@ -346,13 +433,30 @@ pub fn compile_bodyform(
                                 let compiled_body = compile_bodyform(opts, Rc::new(body))?;
                                 Ok(BodyForm::Let(
                                     kind,
-                                    LetData {
+                                    Box::new(LetData {
                                         loc: l.clone(),
                                         kw: Some(l.clone()),
                                         bindings: let_bindings,
+                                        inline_hint: None,
                                         body: Rc::new(compiled_body),
-                                    },
+                                    }),
                                 ))
+                            } else if assign_lambda
+                                || assign_inline
+                                || *atom_name == "assign".as_bytes().to_vec()
+                            {
+                                handle_assign_form(
+                                    opts.clone(),
+                                    l.clone(),
+                                    &v,
+                                    if assign_lambda {
+                                        Some(LetFormInlineHint::NonInline(l.clone()))
+                                    } else if assign_inline {
+                                        Some(LetFormInlineHint::Inline(l.clone()))
+                                    } else {
+                                        Some(LetFormInlineHint::NoChoice)
+                                    },
+                                )
                             } else if *atom_name == "quote".as_bytes().to_vec() {
                                 if v.len() != 1 {
                                     return finish_err("quote");
@@ -361,7 +465,7 @@ pub fn compile_bodyform(
                                 let quote_body = v[0].clone();
 
                                 Ok(BodyForm::Quoted(quote_body))
-                            } else if *atom_name == "qq".as_bytes().to_vec() {
+                            } else if *atom_name == b"qq" {
                                 if v.len() != 1 {
                                     return finish_err("qq");
                                 }
@@ -369,9 +473,11 @@ pub fn compile_bodyform(
                                 let quote_body = v[0].clone();
 
                                 qq_to_expression(opts, Rc::new(quote_body))
-                            } else if *atom_name == "mod".as_bytes().to_vec() {
+                            } else if *atom_name == b"mod" {
                                 let subparse = frontend(opts, &[body.clone()])?;
                                 Ok(BodyForm::Mod(op.loc(), subparse))
+                            } else if *atom_name == b"lambda" {
+                                handle_lambda(opts, Some(l.clone()), &v)
                             } else {
                                 application()
                             }
@@ -755,7 +861,7 @@ fn frontend_start(
                         ));
                     }
 
-                    if *mod_atom == "mod".as_bytes().to_vec() {
+                    if *mod_atom == b"mod" {
                         let args = Rc::new(x[1].clone());
                         let body_vec: Vec<Rc<SExp>> =
                             x.iter().skip(2).map(|s| Rc::new(s.clone())).collect();
@@ -812,7 +918,7 @@ pub fn frontend(
         }
     };
 
-    let our_mod = rename_children_compileform(&compiled?);
+    let our_mod = rename_children_compileform(&compiled?)?;
 
     let expr_names: HashSet<Vec<u8>> = collect_used_names_bodyform(our_mod.exp.borrow())
         .iter()

@@ -246,9 +246,9 @@ pub fn convert_to_clvm_rs(
                     })
             }
         }
-        SExp::Cons(_, a, b) => convert_to_clvm_rs(allocator, a.clone()).and_then(|head| {
+        SExp::Cons(_, a, b) => convert_to_clvm_rs(allocator, a.clone()).and_then(|head_ptr| {
             convert_to_clvm_rs(allocator, b.clone()).and_then(|tail| {
-                allocator.new_pair(head, tail).map_err(|_e| {
+                allocator.new_pair(head_ptr, tail).map_err(|_e| {
                     RunFailure::RunErr(a.loc(), format!("failed to alloc cons {head}"))
                 })
             })
@@ -263,7 +263,7 @@ pub fn convert_from_clvm_rs(
     head: NodePtr,
 ) -> Result<Rc<SExp>, RunFailure> {
     match allocator.sexp(head) {
-        allocator::SExp::Atom() => {
+        allocator::SExp::Atom => {
             let atom_data = allocator.atom(head);
             if atom_data.is_empty() {
                 Ok(Rc::new(SExp::Nil(loc)))

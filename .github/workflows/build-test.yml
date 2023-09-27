@@ -1,16 +1,20 @@
 # Thanks: clvm_rs' github actions.
-name: Build Mac, Linux, and Windows wheels
+name: Build
 
 on:
   push:
     branches:
       - base
       - dev
-    tags:
-        - '**'
+  release:
+    types: [published]
   pull_request:
     branches:
       - '**'
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   build_wheels:
@@ -85,12 +89,6 @@ jobs:
         # Ensure an empty .cargo-lock file exists.
         touch target/release/.cargo-lock
 
-    - name: Build alpine wheel via docker
-      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
-      run: |
-        cd resources/alpine && docker build -t clvm-tools-rs-alpine .
-        docker run -v ${GITHUB_WORKSPACE}:/root/clvm_tools_rs -t clvm-tools-rs-alpine sh /root/build-alpine.sh
-
     - name: Build Windows with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'windows')
       run: |
@@ -116,7 +114,7 @@ jobs:
       run: |
         . ./activate
         python -m pip install pytest
-        python -m pip install blspy      
+        python -m pip install blspy
 
     - name: install clvm & clvm_tools
       run: |
@@ -140,10 +138,13 @@ jobs:
         python -c 'import clvm; print(clvm.__file__)'
         python -c 'import clvm_rs; print(clvm_rs.__file__)'
         python -c 'import clvm_tools_rs; print(clvm_tools_rs.__file__)'
+        echo "CLVM_TOOLS_RS_VERSION=$(python -c 'import clvm_tools_rs; print(clvm_tools_rs.get_version())')" >> "$GITHUB_ENV"
 
-    - name: Verify recompilation of old sources match
+
+    - name: Verify recompilation of old sources match with new compiler
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
+        set -x
         . ./activate
         # Build cmd line tools
         PYO3_PYTHON=`which python` cargo build --no-default-features --release
@@ -152,9 +153,16 @@ jobs:
         rm -rf chia-blockchain
         git clone https://github.com/Chia-Network/chia-blockchain
 
-        # Check recompiles
-        cp support/recompile_check.py chia-blockchain
-        (cd chia-blockchain && python recompile_check.py)
+        # Check that recompiling deployed puzzles match with their deployed hashes
+        cp support/install_deps.sh support/verify_compiler_version.sh chia-blockchain
+        (cd chia-blockchain && python -m venv venv && . venv/bin/activate && pip install --upgrade pip && \
+          python -m pip install maturin==1.1.0 && \
+          cd .. && python support/wheelname.py && \
+          cd chia-blockchain && \
+          # deps for manage_clvm.py
+          pip install click typing_extensions chia_rs clvm && \
+          export PYTHONPATH=${PYTHONPATH}:$(pwd) && \
+          ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && ./activated.py python tools/manage_clvm.py check)
 
     - name: Test Classic command line tools with pytest
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
@@ -204,6 +212,10 @@ jobs:
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: cargo test --no-default-features
 
+    - name: Exhaustive assign tests
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
+      run: cargo test -- --include-ignored assign
+
     - name: Check coverage
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
@@ -217,57 +229,60 @@ jobs:
         name: wheels
         path: ./target/wheels/
 
-    - name: Install Twine
-      run: pip install twine
-
     - name: Test for secrets access
       id: check_secrets
       shell: bash
       run: |
-        unset HAS_SECRET
         unset HAS_AWS_SECRET
-
-        if [ -n "$SECRET" ]; then HAS_SECRET='true' ; fi
-        echo "HAS_SECRET=${HAS_SECRET}" >>$GITHUB_OUTPUT
 
         if [ -n "$AWS_SECRET" ]; then HAS_AWS_SECRET='true' ; fi
         echo HAS_AWS_SECRET=${HAS_AWS_SECRET} >>$GITHUB_OUTPUT
-
       env:
-        SECRET: "${{ secrets.test_pypi_password }}"
-        AWS_SECRET: "${{ secrets.INSTALLER_UPLOAD_KEY }}"
+        AWS_SECRET: "${{ secrets.CHIA_AWS_ACCOUNT_ID }}"
+
+    - name: Set Env
+      uses: Chia-Network/actions/setjobenv@main
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: publish (PyPi)
-      if: startsWith(github.event.ref, 'refs/tags') && steps.check_secrets.outputs.HAS_SECRET
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_NON_INTERACTIVE: 1
-        TWINE_PASSWORD: ${{ secrets.pypi_password }}
-      run: twine upload --non-interactive --skip-existing --verbose 'target/wheels/*'
+      if: env.RELEASE == 'true'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        packages-dir: target/wheels/
+        skip-existing: true
 
     - name: publish (Test PyPi)
-      if: steps.check_secrets.outputs.HAS_SECRET
-      env:
-        TWINE_REPOSITORY_URL: https://test.pypi.org/legacy/
-        TWINE_USERNAME: __token__
-        TWINE_NON_INTERACTIVE: 1
-        TWINE_PASSWORD: ${{ secrets.test_pypi_password }}
-      run: twine upload --non-interactive --skip-existing --verbose 'target/wheels/*'
+      if: env.PRE_RELEASE == 'true'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: https://test.pypi.org/legacy/
+        packages-dir: target/wheels/
+        skip-existing: true
+
+    - name: Configure AWS credentials
+      if: steps.check_secrets.outputs.HAS_AWS_SECRET
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: arn:aws:iam::${{ secrets.CHIA_AWS_ACCOUNT_ID }}:role/installer-upload
+        aws-region: us-west-2
 
     - name: Publish Dev
       if: steps.check_secrets.outputs.HAS_AWS_SECRET && github.ref == 'refs/heads/dev'
       shell: bash
       working-directory: ./target/wheels
-      env:
-        AWS_ACCESS_KEY_ID: "${{ secrets.INSTALLER_UPLOAD_KEY }}"
-        AWS_SECRET_ACCESS_KEY: "${{ secrets.INSTALLER_UPLOAD_SECRET }}"
-        AWS_REGION: us-west-2
       run: |
         FILES=$(find . -type f -name '*.whl')
         while IFS= read -r file; do
           filename=$(basename $file)
           aws --no-progress s3 cp "$file" "s3://download.chia.net/simple-dev/clvm-tools-rs/$filename"
         done <<< "$FILES"
+
+    - name: Build alpine wheel via docker
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
+      run: |
+        cd resources/alpine && docker build -t clvm-tools-rs-alpine .
+        docker run -v ${GITHUB_WORKSPACE}:/root/clvm_tools_rs -t clvm-tools-rs-alpine sh /root/build-alpine.sh
 
   fmt:
     runs-on: ubuntu-20.04
@@ -296,10 +311,10 @@ jobs:
           override: true
       - name: clippy
         run: cargo clippy --all -- -D warnings
-      - uses: actions-rs/clippy-check@v1
+      - uses: giraffate/clippy-action@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features
+          reporter: 'github-pr-review'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
   unit_tests:
     runs-on: ubuntu-20.04
@@ -322,11 +337,26 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
-            toolchain: nightly
-      - name: Install tarpaulin
-        run: cargo +nightly install cargo-tarpaulin
-      - name: Run tarpaulin
-        run: cargo tarpaulin --no-dead-code --engine llvm --workspace --all-features --ignore-panics --out Lcov
+            toolchain: stable
+      - name: Run for coverage
+        run: |
+          sudo apt-get update
+          sudo apt-get install lcov -y
+          rustup component add llvm-tools-preview
+          cargo install grcov
+          export RUSTFLAGS="-Cinstrument-coverage"
+          export LLVM_PROFILE_FILE=$(pwd)/target/clvm_tools_rs-%p-%m.profraw
+          export CARGO_TARGET_DIR=$(pwd)/target
+          cargo test --release --workspace
+          python -m venv venv
+          source venv/bin/activate
+          git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
+          pip install ./clvm_tools
+          pip install maturin pytest
+          maturin develop --release
+          (cd resources/tests/cmdline/tests && pytest)
+          grcov . --binary-path target -s . --branch --ignore-not-existing --ignore='*/.cargo/*' --ignore='*/tests/*' -o rust_cov.info
+          python -c 'with open("rust_cov.info") as f: lines = [l for l in f if not (l.startswith("DA:") and int(l.split(",")[1].strip()) >= 2**63)]; open("lcov.info", "w").writelines(lines)'
       - name: Upload to Coveralls
         uses: coverallsapp/github-action@v2
         if: always()

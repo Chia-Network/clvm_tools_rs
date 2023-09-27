@@ -52,6 +52,9 @@ pub fn compile_clvm_text_maybe_opt(
     let dialect = detect_modern(allocator, assembled_sexp);
     // Now the stepping is optional (None for classic) but we may communicate
     // other information in dialect as well.
+    //
+    // I think stepping is a good name for the number below as dialect is going
+    // to get more members that are somewhat independent.
     if let Some(stepping) = dialect.stepping {
         let runner = Rc::new(DefaultProgramRunner::new());
         let opts = opts

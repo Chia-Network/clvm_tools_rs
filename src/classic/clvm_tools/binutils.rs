@@ -128,7 +128,7 @@ pub fn disassemble_to_ir_with_kw(
             IRRepr::Cons(Rc::new(v0), Rc::new(v1))
         }
 
-        SExp::Atom() => {
+        SExp::Atom => {
             // sexp is the only node in scope.
             let bytes = Bytes::new(Some(BytesFromType::Raw(allocator.atom(sexp).to_vec())));
             ir_for_atom(&bytes, allow_keyword, keyword_from_atom)
@@ -141,7 +141,7 @@ pub fn disassemble_with_kw(
     sexp: NodePtr,
     keyword_from_atom: &Record<Vec<u8>, String>,
 ) -> String {
-    let with_keywords = !matches!(allocator.sexp(sexp), SExp::Atom());
+    let with_keywords = !matches!(allocator.sexp(sexp), SExp::Atom);
     let symbols = disassemble_to_ir_with_kw(allocator, sexp, keyword_from_atom, with_keywords);
     write_ir(Rc::new(symbols))
 }

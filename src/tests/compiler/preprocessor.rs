@@ -410,6 +410,7 @@ fn test_defmac_string_needs_conversion() {
     "}
     .to_string();
     let res = run_string(&prog, &"(5)".to_string());
+    eprintln!("res {res:?}");
     assert!(res.is_err());
 }
 

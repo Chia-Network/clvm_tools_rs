@@ -3,25 +3,32 @@ name: npm publish
 on:
   push:
     branches:
-      - main
-      - dev
-    tags:
-        - '**'
+      - base
+  release:
+    types: [published]
   pull_request:
     branches:
       - '**'
+
+concurrency:
+  # SHA is added to the end if on `main` to let all main workflows run
+  group: ${{ github.ref }}-${{ github.workflow }}-${{ github.event_name }}-${{ (github.ref == 'refs/heads/main') && github.sha || '' }}
+  cancel-in-progress: true
 
 jobs:
   build_npm:
     name: Npm
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
 
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
+
+      - name: Set Env
+        uses: Chia-Network/actions/setjobenv@main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up rusts
         uses: actions-rs/toolchain@v1
@@ -40,8 +47,19 @@ jobs:
         with:
           node-version: '16.x'
 
+      # Cargo.toml won't allow an "@" in the name, so we just update the package name this way for NPM
+      - name: Update package name for npm
+        working-directory: ${{ github.workspace }}/wasm/pkg
+        run: |
+          cp package.json package.json.orig
+          jq '.name="@chia/chialisp"' package.json > temp.json && mv temp.json package.json
+
       - name: Test wasm
         run: node wasm/tests/index.js
+
+      - name: Test clvm-js like wasm interface
+        run: |
+          cd wasm/tests/clvm-tools-interface && npm install && yarn test
 
       - name: Upload npm pkg artifacts
         uses: actions/upload-artifact@v3
@@ -57,12 +75,14 @@ jobs:
           if [ -n "$SECRET" ]; then HAS_SECRET='true' ; fi
           echo "HAS_SECRET=${HAS_SECRET}" >>$GITHUB_OUTPUT
         env:
-          SECRET: "${{ secrets.test_pypi_password }}"
+          SECRET: "${{ secrets.NPM_TOKEN }}"
 
       - name: Publish wasm
-        if: steps.check_secrets.HAS_SECRET
-        shell: bash
+        if: env.FULL_RELEASE == 'true' && steps.check_secrets.outputs.HAS_SECRET
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        working-directory: ${{ github.workspace }}/wasm/pkg
         run: |
-          cd wasm/pkg
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
           rm -f clvm_tools_wasm-*.tgz
           npm publish --access public
