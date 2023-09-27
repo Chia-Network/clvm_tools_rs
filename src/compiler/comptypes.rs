@@ -292,6 +292,9 @@ pub enum IncludeProcessType {
     Hex,
     /// Read clvm in s-expression form as a clvm value.
     SExpression,
+    /// The file is a program that should be compiled as clvm.
+    /// The output is s-expression data.
+    Compiled,
 }
 
 /// A description of an include form.  Here, records the locations of the various

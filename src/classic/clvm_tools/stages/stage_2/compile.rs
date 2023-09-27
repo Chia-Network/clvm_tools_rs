@@ -10,11 +10,17 @@ use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
 
 use crate::classic::clvm_tools::binutils::{assemble, disassemble};
+use crate::classic::clvm_tools::clvmc::{compile_clvm_text, write_sym_output};
 use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::defaults::default_macro_lookup;
 use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote};
 use crate::classic::clvm_tools::stages::stage_2::module::compile_mod;
+use crate::classic::clvm_tools::stages::stage_2::reader::read_file;
+
+use crate::compiler::compiler::DefaultCompilerOpts;
+use crate::compiler::comptypes::CompilerOpts;
+use crate::compiler::sexp::decode_string;
 
 const DIAG_OUTPUT: bool = false;
 
@@ -843,4 +849,64 @@ pub fn make_symbols_name(current_filename: &str, name: &str) -> String {
     let take_end = get_last_path_component(name);
 
     format!("{take_start}_{take_end}.sym")
+}
+
+pub fn compile_file(
+    runner: Rc<dyn TRunProgram>,
+    allocator: &mut Allocator,
+    parent_sexp: NodePtr,
+    name: &str,
+    filename: &str,
+) -> Response {
+    let search_paths = get_search_paths(runner.clone(), allocator)?;
+    let opts = Rc::new(DefaultCompilerOpts::new(filename)).set_search_paths(&search_paths);
+    let mut symtab = HashMap::new();
+    let current_filename = get_compile_filename(runner.clone(), allocator)?;
+    let file = read_file(runner, allocator, parent_sexp, filename)?;
+    let compiled = compile_clvm_text(
+        allocator,
+        opts,
+        &mut symtab,
+        &decode_string(&file.data),
+        &file.full_path,
+        true,
+    )?;
+
+    // Write symbols for the compiled inner module.
+    if let Some(filename) = current_filename {
+        let target_symbols_name = make_symbols_name(&filename, name);
+
+        // Not a hard error if we can't write the symbols,
+        // given the way most write chialisp.
+        write_sym_output(&symtab, &target_symbols_name).ok();
+    }
+
+    Ok(Reduction(1, compiled))
+}
+
+pub fn process_compile_file(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    declaration_sexp: NodePtr,
+    name: Vec<u8>,
+) -> Result<(Vec<u8>, NodePtr), EvalErr> {
+    // A fancy include for the compilation result of a program.
+    let r_of_declaration = rest(allocator, declaration_sexp)?;
+    let rr_of_declaration = rest(allocator, r_of_declaration)?;
+    let frr_of_declaration = first(allocator, rr_of_declaration)?;
+    if let SExp::Atom = allocator.sexp(frr_of_declaration) {
+        // Referenced above.
+        let b_name = allocator.atom(frr_of_declaration).to_vec();
+        let compiled_output = compile_file(
+            runner,
+            allocator,
+            declaration_sexp,
+            &Bytes::new(Some(BytesFromType::Raw(name.clone()))).decode(),
+            &Bytes::new(Some(BytesFromType::Raw(b_name))).decode(),
+        )?;
+
+        Ok((name, quote(allocator, compiled_output.1)?))
+    } else {
+        Err(EvalErr(declaration_sexp, "expected filename".to_string()))
+    }
 }

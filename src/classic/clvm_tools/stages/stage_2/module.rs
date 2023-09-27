@@ -15,6 +15,7 @@ use crate::classic::clvm_tools::debug::{build_symbol_dump, FunctionExtraInfo};
 use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages::assemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
+use crate::classic::clvm_tools::stages::stage_2::compile::process_compile_file;
 use crate::classic::clvm_tools::stages::stage_2::helpers::{evaluate, quote};
 use crate::classic::clvm_tools::stages::stage_2::inline::{
     formulate_path_selections_for_destructuring, is_at_capture, is_inline_destructure,
@@ -349,6 +350,11 @@ fn parse_mod_sexp(
     } else if op == "embed-file".as_bytes() {
         let (name, constant) =
             process_embed_file(allocator, run_program.clone(), declaration_sexp)?;
+        constants.insert(name, constant);
+        Ok(())
+    } else if op == "compile-file".as_bytes() {
+        let (name, constant) =
+            process_compile_file(allocator, run_program.clone(), declaration_sexp, name)?;
         constants.insert(name, constant);
         Ok(())
     } else if namespace.contains(&name) {

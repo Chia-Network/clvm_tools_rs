@@ -5,8 +5,10 @@ use std::rc::Rc;
 use clvmr::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
+use crate::classic::clvm_tools::clvmc::compile_clvm_text_maybe_opt;
 
 use crate::compiler::cldb::hex_to_modern_sexp;
+use crate::compiler::clvm::convert_from_clvm_rs;
 use crate::compiler::compiler::KNOWN_DIALECTS;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, IncludeDesc, IncludeProcessType};
 use crate::compiler::runtypes::RunFailure;
@@ -108,6 +110,23 @@ fn process_embed(
 
             parsed[0].clone()
         }
+        IncludeProcessType::Compiled => {
+            let decoded_content = decode_string(&content);
+            let mut symtab = HashMap::new();
+            let newly_compiled = compile_clvm_text_maybe_opt(
+                &mut allocator,
+                opts.optimize(),
+                opts,
+                &mut symtab,
+                &decoded_content,
+                &full_name,
+                true,
+            )
+            .map_err(|e| CompileErr(loc.clone(), format!("Subcompile failed: {}", e.1)))?;
+
+            convert_from_clvm_rs(&mut allocator, loc.clone(), newly_compiled)
+                .map_err(run_to_compile_err)?
+        }
     };
 
     Ok(vec![compose_defconst(loc, constant_name, content)])
@@ -122,6 +141,7 @@ fn process_pp_form(
     // Support using the preprocessor to collect dependencies recursively.
     let recurse_dependencies = |opts: Rc<dyn CompilerOpts>,
                                 includes: &mut Vec<IncludeDesc>,
+                                kind: IncludeProcessType,
                                 desc: IncludeDesc|
      -> Result<(), CompileErr> {
         let name_string = decode_string(&desc.name);
@@ -134,6 +154,10 @@ fn process_pp_form(
             name: full_name.as_bytes().to_vec(),
             ..desc
         });
+
+        if !matches!(kind, IncludeProcessType::Compiled) {
+            return Ok(());
+        }
 
         let parsed = parse_sexp(Srcloc::start(&full_name), content.iter().copied())
             .map_err(|e| CompileErr(e.0, e.1))?;
@@ -164,6 +188,22 @@ fn process_pp_form(
                             kind: None,
                             name: fname.clone(),
                         })));
+                    }
+                }
+
+                [SExp::Atom(kl, compile_file), SExp::Atom(_, name), SExp::Atom(nl, fname)] => {
+                    if compile_file == b"compile-file" {
+                        return Ok(Some(IncludeType::Processed(
+                            IncludeDesc {
+                                kw: kl.clone(),
+                                nl: nl.clone(),
+                                kind: Some(IncludeProcessType::Compiled),
+
+                                name: fname.clone(),
+                            },
+                            IncludeProcessType::Compiled,
+                            name.clone()
+                        )));
                     }
                 }
 
@@ -238,16 +278,24 @@ fn process_pp_form(
 
     match include_type {
         Some(IncludeType::Basic(f)) => {
-            recurse_dependencies(opts.clone(), includes, f.clone())?;
+            recurse_dependencies(
+                opts.clone(),
+                includes,
+                IncludeProcessType::Compiled,
+                f.clone(),
+            )?;
             process_include(opts, f)
         }
-        Some(IncludeType::Processed(f, kind, name)) => process_embed(
-            body.loc(),
-            opts,
-            &Bytes::new(Some(BytesFromType::Raw(f.name.to_vec()))).decode(),
-            kind,
-            &name,
-        ),
+        Some(IncludeType::Processed(f, kind, name)) => {
+            recurse_dependencies(opts.clone(), includes, kind.clone(), f.clone())?;
+            process_embed(
+                body.loc(),
+                opts,
+                &Bytes::new(Some(BytesFromType::Raw(f.name.to_vec()))).decode(),
+                kind,
+                &name,
+            )
+        }
         _ => Ok(vec![body]),
     }
 }
