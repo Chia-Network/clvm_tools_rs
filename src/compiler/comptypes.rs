@@ -9,10 +9,18 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::sha256tree;
+use crate::compiler::clvm::{sha256tree, truthy};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
+
+// Note: only used in tests, not normally dependencies.
+#[cfg(test)]
+use crate::compiler::compiler::DefaultCompilerOpts;
+#[cfg(test)]
+use crate::compiler::frontend::compile_bodyform;
+#[cfg(test)]
+use crate::compiler::sexp::parse_sexp;
 
 /// The basic error type.  It contains a Srcloc identifying coordinates of the
 /// error in the source file and a message.  It probably should be made even better
@@ -145,6 +153,17 @@ pub struct LetData {
     pub body: Rc<BodyForm>,
 }
 
+/// Describes a lambda used in an expression.
+#[derive(Clone, Debug, Serialize)]
+pub struct LambdaData {
+    pub loc: Srcloc,
+    pub kw: Option<Srcloc>,
+    pub capture_args: Rc<SExp>,
+    pub captures: Rc<BodyForm>,
+    pub args: Rc<SExp>,
+    pub body: Rc<BodyForm>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub enum BodyForm {
     /// A let or let* form (depending on LetFormKind).
@@ -172,6 +191,17 @@ pub enum BodyForm {
     /// the compiled code.  Here, it contains a CompileForm, which represents
     /// the full significant input of a program (yielded by frontend()).
     Mod(Srcloc, CompileForm),
+    /// A lambda form (lambda (...) ...)
+    ///
+    /// The lambda arguments are in two parts:
+    ///
+    /// (lambda ((& captures) real args) ...)
+    ///
+    /// Where the parts in captures are captured from the hosting environment.
+    /// Captures are optional.
+    /// The real args are given in the indicated shape when the lambda is applied
+    /// with the 'a' operator.
+    Lambda(Box<LambdaData>),
 }
 
 /// The information needed to know about a defun.  Whether it's inline is left in
@@ -637,6 +667,35 @@ impl HelperForm {
     }
 }
 
+fn compose_lambda_serialized_form(ldata: &LambdaData) -> Rc<SExp> {
+    let lambda_kw = Rc::new(SExp::Atom(ldata.loc.clone(), b"lambda".to_vec()));
+    let amp_kw = Rc::new(SExp::Atom(ldata.loc.clone(), b"&".to_vec()));
+    let arguments = if truthy(ldata.capture_args.clone()) {
+        Rc::new(SExp::Cons(
+            ldata.loc.clone(),
+            Rc::new(SExp::Cons(
+                ldata.loc.clone(),
+                amp_kw,
+                ldata.capture_args.clone(),
+            )),
+            ldata.args.clone(),
+        ))
+    } else {
+        ldata.args.clone()
+    };
+    let rest_of_body = Rc::new(SExp::Cons(
+        ldata.loc.clone(),
+        ldata.body.to_sexp(),
+        Rc::new(SExp::Nil(ldata.loc.clone())),
+    ));
+
+    Rc::new(SExp::Cons(
+        ldata.loc.clone(),
+        lambda_kw,
+        Rc::new(SExp::Cons(ldata.loc.clone(), arguments, rest_of_body)),
+    ))
+}
+
 fn compose_let(marker: &[u8], letdata: &LetData) -> Rc<SExp> {
     let translated_bindings: Vec<Rc<SExp>> = letdata.bindings.iter().map(|x| x.to_sexp()).collect();
     let bindings_cons = list_to_cons(letdata.loc.clone(), &translated_bindings);
@@ -699,6 +758,7 @@ impl BodyForm {
             BodyForm::Call(loc, _, _) => loc.clone(),
             BodyForm::Value(a) => a.loc(),
             BodyForm::Mod(kl, program) => kl.ext(&program.loc),
+            BodyForm::Lambda(ldata) => ldata.loc.ext(&ldata.body.loc()),
         }
     }
 
@@ -731,8 +791,33 @@ impl BodyForm {
                 Rc::new(SExp::Atom(loc.clone(), b"mod".to_vec())),
                 program.to_sexp(),
             )),
+            BodyForm::Lambda(ldata) => compose_lambda_serialized_form(ldata),
         }
     }
+}
+
+// Note: in cfg(test), this will not be part of the finished binary.
+// Also: not a test in itself, just named test so for at least some readers,
+// its association with test infrastructure will be apparent.
+#[cfg(test)]
+fn test_parse_bodyform_to_frontend(bf: &str) {
+    let name = "*test*";
+    let loc = Srcloc::start(name);
+    let opts = Rc::new(DefaultCompilerOpts::new(name));
+    let parsed = parse_sexp(loc, bf.bytes()).expect("should parse");
+    let bodyform = compile_bodyform(opts, parsed[0].clone()).expect("should compile");
+    assert_eq!(bodyform.to_sexp(), parsed[0]);
+}
+
+// Inline unit tests for sexp serialization.
+#[test]
+fn test_mod_serialize_regular_mod() {
+    test_parse_bodyform_to_frontend("(mod (X) (+ X 1))");
+}
+
+#[test]
+fn test_mod_serialize_simple_lambda() {
+    test_parse_bodyform_to_frontend("(lambda (X) (+ X 1))");
 }
 
 impl Binding {

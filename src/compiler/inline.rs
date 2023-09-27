@@ -10,7 +10,7 @@ use crate::compiler::codegen::{generate_expr_code, get_call_name, get_callable};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     ArgsAndTail, BodyForm, CallSpec, Callable, CompileErr, CompiledCode, CompilerOpts,
-    InlineFunction, PrimaryCodegen,
+    InlineFunction, LambdaData, PrimaryCodegen,
 };
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -444,6 +444,24 @@ fn replace_inline_body(
             let alookup = arg_lookup(callsite, inline.args.clone(), args, tail, a.clone())?
                 .unwrap_or_else(|| expr.clone());
             Ok(alookup)
+        }
+        BodyForm::Lambda(ldata) => {
+            let rewritten_captures = replace_inline_body(
+                visited_inlines,
+                runner,
+                opts,
+                compiler,
+                loc,
+                inline,
+                args,
+                tail,
+                callsite,
+                ldata.captures.clone(),
+            )?;
+            Ok(Rc::new(BodyForm::Lambda(Box::new(LambdaData {
+                captures: rewritten_captures,
+                ..*ldata.clone()
+            }))))
         }
         _ => Ok(expr.clone()),
     }
