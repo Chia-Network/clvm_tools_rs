@@ -124,7 +124,7 @@ jobs:
       run: |
         . ./activate
         cp support/test-game-referee.sh .
-        sh test-game-referee.sh
+        sh test-game-referee.sh resources/tests/game-referee-in-cl21
 
     - name: Large HAMT structure test
       run: |

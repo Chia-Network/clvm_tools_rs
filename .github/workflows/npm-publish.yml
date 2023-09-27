@@ -78,7 +78,7 @@ jobs:
           SECRET: "${{ secrets.NPM_TOKEN }}"
 
       - name: Publish wasm
-        if: env.FULL_RELEASE == 'true' && steps.check_secrets.HAS_SECRET
+        if: env.FULL_RELEASE == 'true' && steps.check_secrets.outputs.HAS_SECRET
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         working-directory: ${{ github.workspace }}/wasm/pkg

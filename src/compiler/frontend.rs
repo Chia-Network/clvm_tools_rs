@@ -307,7 +307,7 @@ pub fn make_provides_set(provides_set: &mut HashSet<Vec<u8>>, body_sexp: Rc<SExp
 }
 
 fn at_or_above_23(opts: Rc<dyn CompilerOpts>) -> bool {
-    opts.dialect().stepping.unwrap_or(0) > 22
+    opts.dialect().stepping.map(|s| s > 22).unwrap_or(false)
 }
 
 fn handle_assign_form(
@@ -466,7 +466,7 @@ pub fn compile_bodyform(
                                         Some(LetFormInlineHint::NoChoice)
                                     },
                                 )
-                            } else if *atom_name == b"quote" {
+                            } else if *atom_name == "quote".as_bytes().to_vec() {
                                 if v.len() != 1 {
                                     return finish_err("quote");
                                 }
@@ -1421,7 +1421,7 @@ fn frontend_start(
                         let body = Rc::new(enlist(pre_forms[0].loc(), &body_vec));
 
                         let ls = preprocess(opts.clone(), includes, body)?;
-                        let mut ma = ModAccum::new(l.clone(), false);
+                        let mut ma = ModAccum::new(l.clone());
                         for form in ls.iter().take(ls.len() - 1) {
                             ma = ma.compile_mod_helper(
                                 opts.clone(),

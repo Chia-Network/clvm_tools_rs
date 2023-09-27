@@ -10,7 +10,6 @@ use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     Binding, BindingPattern, BodyForm, CompileErr, CompilerOpts, LambdaData,
 };
-use crate::compiler::evaluate::make_operator2;
 use crate::compiler::frontend::compile_bodyform;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
@@ -18,9 +17,9 @@ use crate::util::Number;
 
 fn make_captures(opts: Rc<dyn CompilerOpts>, sexp: Rc<SExp>) -> Result<Rc<BodyForm>, CompileErr> {
     if let SExp::Cons(l, f, r) = sexp.borrow() {
-        Ok(Rc::new(make_operator2(
-            l,
-            "c".to_string(),
+        Ok(Rc::new(make_operator(
+            l.clone(),
+            4,
             make_captures(opts.clone(), f.clone())?,
             make_captures(opts, r.clone())?,
         )))
@@ -69,7 +68,7 @@ fn make_operator(loc: Srcloc, op: u8, arg1: Rc<BodyForm>, arg2: Rc<BodyForm>) ->
             arg1,
             arg2,
         ],
-        // Tail safe: creates a primitive.
+        // Calling a primitive, no tail.
         None,
     )
 }
@@ -85,7 +84,7 @@ fn make_list(loc: Srcloc, args: &[BodyForm]) -> BodyForm {
         res = BodyForm::Call(
             loc.clone(),
             vec![Rc::new(cons_atom.clone()), Rc::new(a.clone()), Rc::new(res)],
-            // Tail safe: creating a list with primitives.
+            // Calling a primitive, no tail.
             None,
         );
     }
@@ -106,7 +105,7 @@ fn make_list(loc: Srcloc, args: &[BodyForm]) -> BodyForm {
 //    (list 4 (list 4 (c 1 compose_captures) @))
 //    )
 //
-pub fn lambda_codegen(name: &[u8], ldata: &LambdaData) -> Result<BodyForm, CompileErr> {
+pub fn lambda_codegen(name: &[u8], ldata: &LambdaData) -> BodyForm {
     // Code to retrieve and quote the captures.
     let quote_atom = BodyForm::Value(SExp::Integer(ldata.loc.clone(), bi_one()));
     let apply_atom = BodyForm::Value(SExp::Integer(ldata.loc.clone(), 2_u32.to_bigint().unwrap()));
@@ -119,7 +118,7 @@ pub fn lambda_codegen(name: &[u8], ldata: &LambdaData) -> Result<BodyForm, Compi
         ldata.captures.clone(),
     );
 
-    let lambda_output = make_list(
+    make_list(
         ldata.loc.clone(),
         &[
             apply_atom,
@@ -133,8 +132,7 @@ pub fn lambda_codegen(name: &[u8], ldata: &LambdaData) -> Result<BodyForm, Compi
             ),
             make_list(ldata.loc.clone(), &[cons_atom, compose_captures, whole_env]),
         ],
-    );
-    Ok(lambda_output)
+    )
 }
 
 pub fn handle_lambda(

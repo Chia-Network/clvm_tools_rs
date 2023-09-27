@@ -522,7 +522,6 @@ pub struct ModAccum {
     pub loc: Srcloc,
     pub includes: Vec<IncludeDesc>,
     pub helpers: Vec<HelperForm>,
-    pub left_capture: bool,
     pub exp_form: Option<CompileForm>,
 }
 
@@ -559,7 +558,6 @@ impl ModAccum {
             loc: self.loc.clone(),
             includes: self.includes.clone(),
             helpers: self.helpers.clone(),
-            left_capture: self.left_capture,
             exp_form: Some(c.clone()),
         }
     }
@@ -571,7 +569,6 @@ impl ModAccum {
             loc: self.loc.clone(),
             includes: new_includes,
             helpers: self.helpers.clone(),
-            left_capture: self.left_capture,
             exp_form: self.exp_form.clone(),
         }
     }
@@ -584,17 +581,15 @@ impl ModAccum {
             loc: self.loc.clone(),
             includes: self.includes.clone(),
             helpers: hs,
-            left_capture: self.left_capture,
             exp_form: self.exp_form.clone(),
         }
     }
 
-    pub fn new(loc: Srcloc, left_capture: bool) -> ModAccum {
+    pub fn new(loc: Srcloc) -> ModAccum {
         ModAccum {
             loc,
             includes: Vec::new(),
             helpers: Vec::new(),
-            left_capture,
             exp_form: None,
         }
     }
