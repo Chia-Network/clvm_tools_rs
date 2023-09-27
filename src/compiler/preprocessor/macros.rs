@@ -19,7 +19,7 @@ fn match_quoted_string(body: Rc<SExp>) -> Result<Option<(Srcloc, Vec<u8>)>, Comp
     let is_string = match body.borrow() {
         SExp::QuotedString(_, b'x', _) => None,
         SExp::QuotedString(al, _, an) => Some((al.clone(), an.clone())),
-        _ => None
+        _ => None,
     };
 
     if let Some((loc, s)) = is_string {
@@ -60,7 +60,7 @@ fn match_number(body: Rc<SExp>) -> Result<Option<MatchedNumber>, CompileErr> {
         SExp::Nil(il) => {
             return Ok(Some(MatchedNumber::MatchedInt(il.clone(), bi_zero())));
         }
-        _ => { }
+        _ => {}
     }
 
     Err(CompileErr(body.loc(), "number required".to_string()))
@@ -94,11 +94,7 @@ pub trait ExtensionFunction {
     }
     fn required_args(&self) -> Option<usize>;
     #[allow(clippy::too_many_arguments)]
-    fn try_eval(
-        &self,
-        loc: &Srcloc,
-        args: &[Rc<SExp>],
-    ) -> Result<Rc<SExp>, CompileErr>;
+    fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr>;
 }
 
 struct StringQ {}
@@ -114,11 +110,7 @@ impl ExtensionFunction for StringQ {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        loc: &Srcloc,
-        args: &[Rc<SExp>],
-    ) -> Result<Rc<SExp>, CompileErr> {
+    fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let res = match match_quoted_string(args[0].clone()) {
             Ok(Some(_)) => SExp::Integer(loc.clone(), bi_one()),
             _ => SExp::Nil(loc.clone()),
@@ -141,11 +133,7 @@ impl ExtensionFunction for NumberQ {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        loc: &Srcloc,
-        args: &[Rc<SExp>],
-    ) -> Result<Rc<SExp>, CompileErr> {
+    fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let res = match match_number(args[0].clone()) {
             Ok(Some(_)) => SExp::Integer(loc.clone(), bi_one()),
             _ => SExp::Nil(loc.clone()),
@@ -168,11 +156,7 @@ impl ExtensionFunction for SymbolQ {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        loc: &Srcloc,
-        args: &[Rc<SExp>],
-    ) -> Result<Rc<SExp>, CompileErr> {
+    fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let res = match match_atom(args[0].clone()) {
             Ok(Some(_)) => SExp::Integer(loc.clone(), bi_one()),
             _ => SExp::Nil(loc.clone()),
@@ -195,15 +179,9 @@ impl ExtensionFunction for SymbolToString {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        _loc: &Srcloc,
-        args: &[Rc<SExp>],
-    ) -> Result<Rc<SExp>, CompileErr> {
+    fn try_eval(&self, _loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         if let Some((loc, value)) = match_atom(args[0].clone())? {
-            Ok(Rc::new(SExp::QuotedString(
-                loc, b'\"', value,
-            )))
+            Ok(Rc::new(SExp::QuotedString(loc, b'\"', value)))
         } else {
             Err(CompileErr(args[0].loc(), "Not a symbol".to_string()))
         }
@@ -223,11 +201,7 @@ impl ExtensionFunction for StringToSymbol {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        _loc: &Srcloc,
-        args: &[Rc<SExp>],
-    ) -> Result<Rc<SExp>, CompileErr> {
+    fn try_eval(&self, _loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
             Ok(Rc::new(SExp::Atom(loc, value)))
         } else {
@@ -249,11 +223,7 @@ impl ExtensionFunction for StringAppend {
         None
     }
 
-    fn try_eval(
-        &self,
-        loc: &Srcloc,
-        args: &[Rc<SExp>],
-    ) -> Result<Rc<SExp>, CompileErr> {
+    fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let mut out_vec = Vec::new();
         let mut out_loc = None;
         for a in args.iter() {
@@ -287,11 +257,7 @@ impl ExtensionFunction for NumberToString {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        _loc: &Srcloc,
-        args: &[Rc<SExp>],
-    ) -> Result<Rc<SExp>, CompileErr> {
+    fn try_eval(&self, _loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let match_res = match_number(args[0].clone())?;
         let (use_loc, int_val) = match &match_res {
             Some(MatchedNumber::MatchedInt(l, i)) => (l.clone(), i.clone()),
@@ -321,11 +287,7 @@ impl ExtensionFunction for StringToNumber {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        loc: &Srcloc,
-        args: &[Rc<SExp>],
-    ) -> Result<Rc<SExp>, CompileErr> {
+    fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
             if let Ok(cvt_bi) = decode_string(&value).parse::<Number>() {
                 Ok(Rc::new(SExp::Integer(loc, cvt_bi)))
@@ -354,18 +316,17 @@ impl ExtensionFunction for StringLength {
         Some(1)
     }
 
-    fn try_eval(
-        &self,
-        _loc: &Srcloc,
-        args: &[Rc<SExp>],
-    ) -> Result<Rc<SExp>, CompileErr> {
+    fn try_eval(&self, _loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
             if let Some(len_bi) = value.len().to_bigint() {
                 return Ok(Rc::new(SExp::Integer(loc, len_bi)));
             }
         }
 
-        Err(CompileErr(args[0].loc(), "Error getting string length".to_string()))
+        Err(CompileErr(
+            args[0].loc(),
+            "Error getting string length".to_string(),
+        ))
     }
 }
 
@@ -382,11 +343,7 @@ impl ExtensionFunction for Substring {
         Some(3)
     }
 
-    fn try_eval(
-        &self,
-        _loc: &Srcloc,
-        args: &[Rc<SExp>],
-    ) -> Result<Rc<SExp>, CompileErr> {
+    fn try_eval(&self, _loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let start_element = usize_value(args[1].clone())?;
         let end_element = usize_value(args[2].clone())?;
 
@@ -404,11 +361,7 @@ impl ExtensionFunction for Substring {
                     .skip(start_element)
                     .copied()
                     .collect();
-                Ok(Rc::new(SExp::QuotedString(
-                    l.clone(),
-                    *ch,
-                    result_value,
-                )))
+                Ok(Rc::new(SExp::QuotedString(l.clone(), *ch, result_value)))
             }
             _ => Err(CompileErr(args[0].loc(), "Not a string".to_string())),
         }
@@ -468,15 +421,15 @@ impl PrimOverride for PreprocessorExtension {
     ) -> Result<Option<Rc<SExp>>, RunFailure> {
         eprintln!("running {head} {tail}");
         if let SExp::Atom(hl, head_atom) = head.borrow() {
-            let have_args: Vec<Rc<SExp>> =
-                if let Some(args_list) = tail.proper_list() {
-                    args_list.into_iter().map(Rc::new).collect()
-                } else {
-                    return Ok(None);
-                };
+            let have_args: Vec<Rc<SExp>> = if let Some(args_list) = tail.proper_list() {
+                args_list.into_iter().map(Rc::new).collect()
+            } else {
+                return Ok(None);
+            };
 
             if let Some(extension) = self.extfuns.get(head_atom) {
-                let res = extension.try_eval(&hl, &have_args)
+                let res = extension
+                    .try_eval(&hl, &have_args)
                     .map_err(compile_to_run_err)?;
 
                 eprintln!("res = {res}");

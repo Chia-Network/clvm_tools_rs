@@ -255,10 +255,7 @@ fn make_let_bindings(
     opts: Rc<dyn CompilerOpts>,
     body: Rc<SExp>,
 ) -> Result<Vec<Rc<Binding>>, CompileErr> {
-    let err = Err(CompileErr(
-        body.loc(),
-        format!("Bad binding tail {body:?}")
-    ));
+    let err = Err(CompileErr(body.loc(), format!("Bad binding tail {body:?}")));
     let do_atomize = if opts.dialect().strict {
         |a: &SExp| -> SExp { a.atomize() }
     } else {

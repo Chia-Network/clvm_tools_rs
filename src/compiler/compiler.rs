@@ -175,9 +175,7 @@ pub fn compile_from_compileform(
     p0: CompileForm,
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
-    let mut wrapper = CompileContextWrapper::new(
-        allocator, runner, symbol_table
-    );
+    let mut wrapper = CompileContextWrapper::new(allocator, runner, symbol_table);
     let p1 = if opts.frontend_opt() {
         // Front end optimization
         fe_opt(&mut wrapper.context, opts.clone(), p0)?
@@ -217,13 +215,7 @@ pub fn compile_pre_forms(
     // Resolve includes, convert program source to lexemes
     let p0 = frontend(opts.clone(), pre_forms)?;
 
-    compile_from_compileform(
-        allocator,
-        runner,
-        opts,
-        p0,
-        symbol_table
-    )
+    compile_from_compileform(allocator, runner, opts, p0, symbol_table)
 }
 
 pub fn compile_file(

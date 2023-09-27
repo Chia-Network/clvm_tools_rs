@@ -72,7 +72,7 @@ fn make_defmac_name(name: &[u8]) -> Vec<u8> {
 }
 
 fn nilize(v: Rc<SExp>) -> Rc<SExp> {
-    if let SExp::Cons(l,a,b) = v.borrow() {
+    if let SExp::Cons(l, a, b) = v.borrow() {
         let a_conv = nilize(a.clone());
         let b_conv = nilize(b.clone());
         if Rc::as_ptr(&a_conv) == Rc::as_ptr(&a) && Rc::as_ptr(&b_conv) == Rc::as_ptr(&b) {
@@ -321,7 +321,9 @@ impl Preprocessor {
                             args.clone(),
                             Some(extension),
                             None,
-                        ).map(nilize).map_err(|e| CompileErr::from(e))?;
+                        )
+                        .map(nilize)
+                        .map_err(|e| CompileErr::from(e))?;
 
                         eprintln!("macro {} {args} => {res}", decode_string(&name));
                         return Ok(Some(res));
