@@ -5,6 +5,7 @@ build-backend = "maturin"
 [tool.maturin]
 bindings = "pyo3"
 features = ["extension-module"]
+python-source = "python"
 
 [project]
 name = "clvm_tools_rs"
