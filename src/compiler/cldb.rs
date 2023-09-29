@@ -191,7 +191,7 @@ impl CldbRun {
     }
 
     #[cfg(not(feature = "debug-print"))]
-    pub fn should_print_basic_output(&self) {
+    pub fn should_print_basic_output(&self) -> bool {
         true
     }
 
