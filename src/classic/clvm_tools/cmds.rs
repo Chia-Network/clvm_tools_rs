@@ -751,6 +751,9 @@ pub fn cldb(args: &[String]) {
         output.push(cvt_subtree);
     };
 
+    #[cfg(feature = "debug-print")]
+    cldbrun.set_print_only(only_print);
+
     loop {
         if cldbrun.is_ended() {
             println!("{}", yamlette_string(&output));
