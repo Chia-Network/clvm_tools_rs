@@ -9,18 +9,14 @@ use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
-use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 
-use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
+use crate::compiler::clvm::sha256tree;
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
-use crate::compiler::comptypes::{
-    CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
-};
+use crate::compiler::comptypes::{CompileErr, CompileForm, CompilerOpts, PrimaryCodegen};
 use crate::compiler::dialect::AcceptedDialect;
-use crate::compiler::evaluate::{build_reflex_captures, Evaluator, EVAL_STACK_LIMIT};
 use crate::compiler::frontend::frontend;
+use crate::compiler::optimize::get_optimizer;
 use crate::compiler::prims;
-use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
@@ -92,64 +88,34 @@ pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
     Rc::new(prim_map)
 }
 
-fn fe_opt(
-    context: &mut BasicCompileContext,
-    opts: Rc<dyn CompilerOpts>,
-    compileform: CompileForm,
-) -> Result<CompileForm, CompileErr> {
-    let runner = context.runner();
-    let evaluator = Evaluator::new(opts.clone(), runner.clone(), compileform.helpers.clone());
-    let mut optimized_helpers: Vec<HelperForm> = Vec::new();
-    for h in compileform.helpers.iter() {
-        match h {
-            HelperForm::Defun(inline, defun) => {
-                let mut env = HashMap::new();
-                build_reflex_captures(&mut env, defun.args.clone());
-                let body_rc = evaluator.shrink_bodyform(
-                    context.allocator(),
-                    defun.args.clone(),
-                    &env,
-                    defun.body.clone(),
-                    true,
-                    Some(EVAL_STACK_LIMIT),
-                )?;
-                let new_helper = HelperForm::Defun(
-                    *inline,
-                    DefunData {
-                        loc: defun.loc.clone(),
-                        nl: defun.nl.clone(),
-                        kw: defun.kw.clone(),
-                        name: defun.name.clone(),
-                        args: defun.args.clone(),
-                        orig_args: defun.orig_args.clone(),
-                        body: body_rc.clone(),
-                    },
-                );
-                optimized_helpers.push(new_helper);
-            }
-            obj => {
-                optimized_helpers.push(obj.clone());
-            }
-        }
-    }
-    let new_evaluator = Evaluator::new(opts.clone(), runner.clone(), optimized_helpers.clone());
+fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
+    // Transform let bindings, merging nested let scopes with the top namespace
+    let hoisted_bindings = hoist_body_let_binding(None, program.args.clone(), program.exp.clone())?;
+    let mut new_helpers = hoisted_bindings.0;
+    let expr = hoisted_bindings.1; // expr is the let-hoisted program
 
-    let shrunk = new_evaluator.shrink_bodyform(
-        context.allocator(),
-        Rc::new(SExp::Nil(compileform.args.loc())),
-        &HashMap::new(),
-        compileform.exp.clone(),
-        true,
-        Some(EVAL_STACK_LIMIT),
-    )?;
+    // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later stages
+    let mut combined_helpers = program.helpers.clone();
+    combined_helpers.append(&mut new_helpers);
+    let combined_helpers = process_helper_let_bindings(&combined_helpers)?;
 
     Ok(CompileForm {
-        loc: compileform.loc.clone(),
-        include_forms: compileform.include_forms.clone(),
-        args: compileform.args,
-        helpers: optimized_helpers.clone(),
-        exp: shrunk,
+        helpers: combined_helpers,
+        exp: expr,
+        ..program.clone()
     })
+}
+
+pub fn desugar_pre_forms(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    pre_forms: &[Rc<SExp>],
+) -> Result<CompileForm, CompileErr> {
+    let p0 = frontend(opts.clone(), pre_forms)?;
+
+    let p1 = context.frontend_optimization(opts.clone(), p0)?;
+
+    do_desugar(&p1)
 }
 
 pub fn compile_pre_forms(
@@ -158,35 +124,16 @@ pub fn compile_pre_forms(
     pre_forms: &[Rc<SExp>],
 ) -> Result<SExp, CompileErr> {
     // Resolve includes, convert program source to lexemes
-    let p0 = frontend(opts.clone(), pre_forms)?;
+    let p2 = desugar_pre_forms(context, opts.clone(), pre_forms)?;
 
-    let p1 = if opts.frontend_opt() {
-        // Front end optimization
-        fe_opt(context, opts.clone(), p0)?
-    } else {
-        p0
-    };
-
-    // Transform let bindings, merging nested let scopes with the top namespace
-    let hoisted_bindings = hoist_body_let_binding(None, p1.args.clone(), p1.exp.clone())?;
-    let mut new_helpers = hoisted_bindings.0;
-    let expr = hoisted_bindings.1; // expr is the let-hoisted program
-
-    // TODO: Distinguish the frontend_helpers and the hoisted_let helpers for later stages
-    let mut combined_helpers = p1.helpers.clone();
-    combined_helpers.append(&mut new_helpers);
-    let combined_helpers = process_helper_let_bindings(&combined_helpers)?;
-
-    let p2 = CompileForm {
-        loc: p1.loc.clone(),
-        include_forms: p1.include_forms.clone(),
-        args: p1.args,
-        helpers: combined_helpers,
-        exp: expr,
-    };
+    let p3 = context.post_desugar_optimization(opts.clone(), p2)?;
 
     // generate code from AST, optionally with optimization
-    codegen(context, opts, &p2)
+    let generated = codegen(context, opts.clone(), &p3)?;
+
+    let g2 = context.post_codegen_output_optimize(opts, generated)?;
+
+    Ok(g2)
 }
 
 pub fn compile_file(
@@ -196,31 +143,15 @@ pub fn compile_file(
     content: &str,
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
-    let pre_forms = parse_sexp(Srcloc::start(&opts.filename()), content.bytes())?;
-    let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table);
+    let srcloc = Srcloc::start(&opts.filename());
+    let pre_forms = parse_sexp(srcloc.clone(), content.bytes())?;
+    let mut context_wrapper = CompileContextWrapper::new(
+        allocator,
+        runner,
+        symbol_table,
+        get_optimizer(&srcloc, opts.clone())?,
+    );
     compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
-}
-
-pub fn run_optimizer(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
-    r: Rc<SExp>,
-) -> Result<Rc<SExp>, CompileErr> {
-    let to_clvm_rs = convert_to_clvm_rs(allocator, r.clone())
-        .map(|x| (r.loc(), x))
-        .map_err(|e| match e {
-            RunFailure::RunErr(l, e) => CompileErr(l, e),
-            RunFailure::RunExn(s, e) => CompileErr(s, format!("exception {e}\n")),
-        })?;
-
-    let optimized = optimize_sexp(allocator, to_clvm_rs.1, runner)
-        .map_err(|e| CompileErr(to_clvm_rs.0.clone(), e.1))
-        .map(|x| (to_clvm_rs.0, x))?;
-
-    convert_from_clvm_rs(allocator, optimized.0, optimized.1).map_err(|e| match e {
-        RunFailure::RunErr(l, e) => CompileErr(l, e),
-        RunFailure::RunExn(s, e) => CompileErr(s, format!("exception {e}\n")),
-    })
 }
 
 impl CompilerOpts for DefaultCompilerOpts {
@@ -351,7 +282,9 @@ impl CompilerOpts for DefaultCompilerOpts {
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
-        let mut context_wrapper = CompileContextWrapper::new(allocator, runner, symbol_table);
+        let optimizer = get_optimizer(&sexp.loc(), me.clone())?;
+        let mut context_wrapper =
+            CompileContextWrapper::new(allocator, runner, symbol_table, optimizer);
         compile_pre_forms(&mut context_wrapper.context, me, &[sexp])
     }
 }

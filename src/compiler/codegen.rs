@@ -9,12 +9,12 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm::__type_compatibility__::bi_one;
 
 use crate::compiler::clvm::run;
-use crate::compiler::compiler::{is_at_capture, run_optimizer};
+use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, CallSpec,
     Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall,
     DefunData, HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind, PrimaryCodegen,
-    RawCallSpec,
+    RawCallSpec, SyntheticType,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
@@ -22,11 +22,11 @@ use crate::compiler::frontend::{compile_bodyform, make_provides_set};
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
 use crate::compiler::lambda::lambda_codegen;
-use crate::compiler::optimize::optimize_expr;
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::StartOfCodegenOptimization;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::{toposort, u8_from_number, TopoSortItem};
 
@@ -610,8 +610,13 @@ pub fn do_mod_codegen(
     let without_env = opts.set_start_env(None).set_in_defun(false);
     let mut throwaway_symbols = HashMap::new();
     let runner = context.runner();
-    let mut context_wrapper =
-        CompileContextWrapper::new(context.allocator(), runner.clone(), &mut throwaway_symbols);
+    let optimizer = context.optimizer.duplicate();
+    let mut context_wrapper = CompileContextWrapper::new(
+        context.allocator(),
+        runner.clone(),
+        &mut throwaway_symbols,
+        optimizer,
+    );
     let code = codegen(&mut context_wrapper.context, without_env, program)?;
     Ok(CompiledCode(
         program.loc.clone(),
@@ -770,21 +775,7 @@ fn codegen_(
                         defun.args.clone(),
                     )));
 
-                let runner = context.runner();
-                let opt = if opts.optimize() {
-                    // Run optimizer on frontend style forms.
-                    optimize_expr(
-                        context.allocator(),
-                        opts.clone(),
-                        runner,
-                        compiler,
-                        defun.body.clone(),
-                    )
-                    .map(|x| x.1)
-                    .unwrap_or_else(|| defun.body.clone())
-                } else {
-                    defun.body.clone()
-                };
+                let opt = context.pre_codegen_function_optimize(opts.clone(), compiler, defun)?;
 
                 let tocompile = SExp::Cons(
                     defun.loc.clone(),
@@ -810,11 +801,7 @@ fn codegen_(
                         &mut unused_symbol_table,
                     )
                     .and_then(|code| {
-                        if opts.optimize() {
-                            run_optimizer(context.allocator(), runner, Rc::new(code))
-                        } else {
-                            Ok(Rc::new(code))
-                        }
+                        context.post_codegen_function_optimize(opts.clone(), Some(h), Rc::new(code))
                     })
                     .and_then(|code| {
                         fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)
@@ -904,7 +891,7 @@ fn generate_let_defun(
         // binary size, when permitted.  Sometimes the user will signal a
         // preference.
         should_inline_let(inline_hint),
-        DefunData {
+        Box::new(DefunData {
             loc: l.clone(),
             nl: l,
             kw: kwl,
@@ -912,7 +899,8 @@ fn generate_let_defun(
             orig_args: inner_function_args.clone(),
             args: inner_function_args,
             body,
-        },
+            synthetic: Some(SyntheticType::NoInlinePreference),
+        }),
     )
 }
 
@@ -1214,7 +1202,7 @@ pub fn hoist_body_let_binding(
             )?;
             let function = HelperForm::Defun(
                 false,
-                DefunData {
+                Box::new(DefunData {
                     loc: letdata.loc.clone(),
                     name: new_function_name.clone(),
                     kw: letdata.kw.clone(),
@@ -1222,7 +1210,8 @@ pub fn hoist_body_let_binding(
                     orig_args: new_function_args.clone(),
                     args: new_function_args,
                     body: new_body,
-                },
+                    synthetic: Some(SyntheticType::WantNonInline),
+                }),
             );
             new_helpers_from_body.push(function);
 
@@ -1259,15 +1248,11 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
 
                 result[i] = HelperForm::Defun(
                     inline,
-                    DefunData {
-                        loc: defun.loc.clone(),
-                        nl: defun.nl.clone(),
-                        kw: defun.kw.clone(),
-                        name: defun.name.clone(),
-                        args: defun.args.clone(),
+                    Box::new(DefunData {
                         orig_args: defun.orig_args.clone(),
                         body: hoisted_body,
-                    },
+                        ..*defun.clone()
+                    }),
                 );
 
                 i += 1;
@@ -1393,21 +1378,17 @@ fn start_codegen(
                     .set_frontend_opt(false);
 
                 let runner = context.runner();
-                updated_opts
-                    .compile_program(
-                        context.allocator(),
-                        runner.clone(),
-                        macro_program,
-                        &mut HashMap::new(),
-                    )
-                    .and_then(|code| {
-                        if opts.optimize() {
-                            run_optimizer(context.allocator(), runner, Rc::new(code))
-                        } else {
-                            Ok(Rc::new(code))
-                        }
-                    })
-                    .map(|code| code_generator.add_macro(&mac.name, code))?
+                let code = updated_opts.compile_program(
+                    context.allocator(),
+                    runner.clone(),
+                    macro_program,
+                    &mut HashMap::new(),
+                )?;
+
+                let optimized_code =
+                    context.macro_optimization(opts.clone(), Rc::new(code.clone()))?;
+
+                code_generator.add_macro(&mac.name, optimized_code)
             }
             _ => code_generator,
         };
@@ -1445,25 +1426,15 @@ fn final_codegen(
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
 ) -> Result<PrimaryCodegen, CompileErr> {
-    let runner = context.runner();
-    let opt_final_expr = if opts.optimize() {
-        optimize_expr(
-            context.allocator(),
-            opts.clone(),
-            runner,
-            compiler,
-            compiler.final_expr.clone(),
-        )
-        .map(|x| x.1)
-        .unwrap_or_else(|| compiler.final_expr.clone())
-    } else {
-        compiler.final_expr.clone()
-    };
+    let opt_final_expr = context.pre_final_codegen_optimize(opts.clone(), compiler)?;
 
-    generate_expr_code(context, opts, compiler, opt_final_expr).map(|code| {
+    let optimizer_opts = opts.clone();
+    generate_expr_code(context, opts, compiler, opt_final_expr).and_then(|code| {
         let mut final_comp = compiler.clone();
-        final_comp.final_code = Some(CompiledCode(code.0, code.1));
-        final_comp
+        let optimized_code =
+            context.post_codegen_function_optimize(optimizer_opts.clone(), None, code.1.clone())?;
+        final_comp.final_code = Some(CompiledCode(code.0, optimized_code));
+        Ok(final_comp)
     })
 }
 
@@ -1571,7 +1542,45 @@ pub fn codegen(
     opts: Rc<dyn CompilerOpts>,
     cmod: &CompileForm,
 ) -> Result<SExp, CompileErr> {
-    let mut code_generator = dummy_functions(&start_codegen(context, opts.clone(), cmod.clone())?)?;
+    let mut start_of_codegen_optimization = StartOfCodegenOptimization {
+        program: cmod.clone(),
+        code_generator: dummy_functions(&start_codegen(context, opts.clone(), cmod.clone())?)?,
+    };
+
+    // This is a tree-shaking loop.  It results in the minimum number of emitted
+    // helpers in the environment by taking only those still alive after each
+    // optimization pass.  If a function is constant at all call sites, then
+    // then the function will be constant reduced and won't appear when we do
+    // the live calculation again, which can also remove the last reference to
+    // other helpers.
+    loop {
+        // We should not modify the environment if we're here on behalf of a
+        // function in a program, only the toplevel program itself.
+        if opts.in_defun() {
+            break;
+        }
+
+        let newly_optimized_start = context
+            .start_of_codegen_optimization(opts.clone(), start_of_codegen_optimization.clone())?;
+
+        // We got back the same program, so nothing will change anymore.
+        if newly_optimized_start.program.to_sexp()
+            == start_of_codegen_optimization.program.to_sexp()
+        {
+            break;
+        }
+        // Reset the optimization struct so we can go again.
+        // The maximum number of iterations should be about (N+1) * M where N is
+        // the number of functions and M is the largest number of parameters in
+        // any called function or operator.
+        let program = newly_optimized_start.program;
+        start_of_codegen_optimization = StartOfCodegenOptimization {
+            program: program.clone(),
+            code_generator: dummy_functions(&start_codegen(context, opts.clone(), program)?)?,
+        };
+    }
+
+    let mut code_generator = start_of_codegen_optimization.code_generator;
 
     let to_process = code_generator.to_process.clone();
 

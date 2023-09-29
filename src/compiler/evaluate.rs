@@ -17,6 +17,7 @@ use crate::compiler::comptypes::{
     HelperForm, LambdaData, LetData, LetFormInlineHint, LetFormKind,
 };
 use crate::compiler::frontend::frontend;
+use crate::compiler::optimize::get_optimizer;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
@@ -493,8 +494,12 @@ fn is_apply_atom(h: Rc<SExp>) -> bool {
     match_atom_to_prim(vec![b'a'], 2, h)
 }
 
-fn is_i_atom(h: Rc<SExp>) -> bool {
+pub fn is_i_atom(h: Rc<SExp>) -> bool {
     match_atom_to_prim(vec![b'i'], 3, h)
+}
+
+pub fn is_not_atom(h: Rc<SExp>) -> bool {
+    match_atom_to_prim(b"not".to_vec(), 32, h)
 }
 
 fn is_cons_atom(h: Rc<SExp>) -> bool {
@@ -862,7 +867,7 @@ impl<'info> Evaluator {
     fn invoke_primitive(
         &self,
         allocator: &mut Allocator,
-        visited_: &'info mut VisitedMarker<'_, VisitedInfo>,
+        visited_: &'_ mut VisitedMarker<'info, VisitedInfo>,
         call: &CallSpec,
         prog_args: Rc<SExp>,
         arguments_to_convert: &[Rc<BodyForm>],
@@ -1272,7 +1277,7 @@ impl<'info> Evaluator {
         for h in self.helpers.iter() {
             if let HelperForm::Defun(false, dd) = &h {
                 if name == h.name() {
-                    return Some(Box::new(dd.clone()));
+                    return Some(dd.clone());
                 }
             }
         }
@@ -1479,11 +1484,16 @@ impl<'info> Evaluator {
                     )),
                 }
             }
-            BodyForm::Mod(_, program) => {
+            BodyForm::Mod(l, program) => {
                 // A mod form yields the compiled code.
                 let mut symbols = HashMap::new();
-                let mut context_wrapper =
-                    CompileContextWrapper::new(allocator, self.runner.clone(), &mut symbols);
+                let optimizer = get_optimizer(l, self.opts.clone())?;
+                let mut context_wrapper = CompileContextWrapper::new(
+                    allocator,
+                    self.runner.clone(),
+                    &mut symbols,
+                    optimizer,
+                );
                 let code = codegen(&mut context_wrapper.context, self.opts.clone(), program)?;
                 Ok(Rc::new(BodyForm::Quoted(code)))
             }
