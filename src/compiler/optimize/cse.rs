@@ -203,7 +203,9 @@ fn sorted_cse_detections_by_applicability(
 }
 
 fn is_one_env_ref(bf: &BodyForm) -> bool {
-    bf.to_sexp() == Rc::new(SExp::Atom(bf.loc(), vec![1]))
+    bf.to_sexp() == Rc::new(SExp::Atom(bf.loc(), vec![1])) ||
+        bf.to_sexp() == Rc::new(SExp::Atom(bf.loc(), vec![b'@'])) ||
+        bf.to_sexp() == Rc::new(SExp::Atom(bf.loc(), b"@*env*".to_vec()))
 }
 
 pub fn is_canonical_apply_parent(
@@ -359,6 +361,8 @@ pub fn cse_classify_by_conditions(
                 }
             }
 
+            eprintln!("possible root for {}: {possible_root:?}", d.subexp.to_sexp());
+
             // path_limit points to the common root of all instances of this
             // cse detection.
             //
@@ -374,7 +378,12 @@ pub fn cse_classify_by_conditions(
             // it encloses.
             let fully_canonical = applicable_conditions
                 .iter()
-                .all(|c| c.canonical && cse_is_covering(&c.path, &d.instances));
+                .all(|c| {
+                    eprintln!("{} canonical {}", d.subexp.to_sexp(), c.canonical);
+                    c.canonical && cse_is_covering(&c.path, &d.instances)
+                });
+
+            eprintln!("{} is fully canonical: {fully_canonical}", d.subexp.to_sexp());
 
             Some(CSEDetection {
                 hash: d.hash.clone(),
@@ -502,6 +511,9 @@ pub fn cse_optimize_bodyform(
     let conditions = detect_conditions(b)?;
     let cse_raw_detections = cse_detect(b)?;
     let cse_detections = cse_classify_by_conditions(&conditions, &cse_raw_detections);
+
+    eprintln!("conditions {conditions:?}");
+
     // While we have them, apply any detections that overlap no others.
     let mut detections_with_dependencies: Vec<(usize, CSEDetection)> =
         sorted_cse_detections_by_applicability(&cse_detections);

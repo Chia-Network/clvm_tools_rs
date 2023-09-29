@@ -104,3 +104,48 @@ fn test_cse_dominace_sorting() {
     .to_string();
     assert_eq!(run_result, "(13 19)");
 }
+
+// Test out atomsort from bram's chialisp
+#[test]
+fn test_atomsort_bad_ref() {
+    let filename = "resources/tests/strict/test_atomsort.clsp";
+
+    let preprocessed = do_basic_run(&vec![
+        "run".to_string(),
+        "-E".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        filename.to_string()
+    ]).trim().to_string();
+
+    eprintln!("preprocessed {preprocessed}");
+
+    let desugared = do_basic_run(&vec![
+        "run".to_string(),
+        "-D".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        filename.to_string()
+    ]).trim().to_string();
+
+    eprintln!("desugared {desugared}");
+
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        filename.to_string()
+    ])
+        .trim()
+        .to_string();
+
+    eprintln!("program {program}");
+    let run_result = do_basic_brun(&vec![
+        "brun".to_string(),
+        "-n".to_string(),
+        program,
+        "()".to_string(),
+    ]).trim().to_string();
+
+    assert_eq!(run_result, "()");
+}
