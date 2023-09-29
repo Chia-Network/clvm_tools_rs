@@ -277,14 +277,16 @@ impl CldbRun {
                         }
                     }
                 }
-                self.env.add_context(
-                    sexp.borrow(),
-                    c.borrow(),
-                    Some(a.clone()),
-                    &mut self.to_print,
-                );
-                self.env.add_function(sexp, &mut self.to_print);
-                self.in_expr = true;
+                if should_print_basic_output {
+                    self.env.add_context(
+                        sexp.borrow(),
+                        c.borrow(),
+                        Some(a.clone()),
+                        &mut self.to_print,
+                    );
+                    self.env.add_function(sexp, &mut self.to_print);
+                    self.in_expr = true;
+                }
             }
             Ok(RunStep::Op(_sexp, _c, _a, Some(_v), _p)) => {}
             Err(RunFailure::RunExn(l, s)) => {
