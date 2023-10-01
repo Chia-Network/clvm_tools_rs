@@ -3,10 +3,13 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
+use crate::classic::clvm_tools::binutils::assemble;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::dialect::detect_modern;
 use crate::compiler::frontend::{collect_used_names_sexp, frontend};
 use crate::compiler::rename::rename_in_cons;
 use crate::compiler::runtypes::RunFailure;
@@ -29,12 +32,22 @@ fn run_string_maybe_opt(
     fe_opt: bool,
 ) -> Result<Rc<SExp>, CompileErr> {
     let mut allocator = Allocator::new();
+    let classic_program = assemble(&mut allocator, content).expect("should parse");
+    let dialect = detect_modern(&mut allocator, classic_program);
     let runner = Rc::new(DefaultProgramRunner::new());
     let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let srcloc = Srcloc::start(&"*test*".to_string());
-    opts = opts
-        .set_frontend_opt(fe_opt)
-        .set_search_paths(&vec!["resources/tests".to_string()]);
+    if let Some(stepping) = dialect.stepping.as_ref() {
+        opts = opts
+            .set_dialect(dialect.clone())
+            .set_optimize(*stepping > 21)
+            .set_frontend_opt(fe_opt || *stepping == 22)
+            .set_search_paths(&vec!["resources/tests".to_string()]);
+    } else {
+        opts = opts
+            .set_frontend_opt(fe_opt)
+            .set_search_paths(&vec!["resources/tests".to_string()]);
+    }
     let sexp_args = parse_sexp(srcloc.clone(), args.bytes())?[0].clone();
 
     compile_file(

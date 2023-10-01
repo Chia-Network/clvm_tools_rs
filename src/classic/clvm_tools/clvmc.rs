@@ -21,9 +21,10 @@ use crate::classic::platform::distutils::dep_util::newer;
 
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::compile_file;
-use crate::compiler::compiler::{run_optimizer, DefaultCompilerOpts};
+use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::dialect::detect_modern;
+use crate::compiler::optimize::maybe_finalize_program_via_classic_optimizer;
 use crate::compiler::runtypes::RunFailure;
 
 pub fn write_sym_output(
@@ -59,11 +60,13 @@ pub fn compile_clvm_text_maybe_opt(
         let runner = Rc::new(DefaultProgramRunner::new());
         let opts = opts
             .set_dialect(dialect)
-            .set_optimize(do_optimize)
-            .set_frontend_opt(stepping > 21);
+            .set_optimize(do_optimize || stepping > 22) // Would apply to cl23
+            .set_frontend_opt(stepping == 22);
 
-        let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
-        let res = unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)));
+        let unopt_res = compile_file(allocator, runner.clone(), opts.clone(), text, symbol_table);
+        let res = unopt_res.and_then(|x| {
+            maybe_finalize_program_via_classic_optimizer(allocator, runner, opts, do_optimize, &x)
+        });
 
         res.and_then(|x| {
             convert_to_clvm_rs(allocator, x).map_err(|r| match r {

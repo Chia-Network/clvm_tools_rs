@@ -10,7 +10,7 @@ use crate::classic::clvm_tools::clvmc::compile_clvm_text_maybe_opt;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 
 use crate::compiler::cldb::hex_to_modern_sexp;
-use crate::compiler::clvm;
+use crate::compiler::{clvm, CompileContextWrapper};
 use crate::compiler::clvm::{convert_from_clvm_rs, truthy};
 use crate::compiler::compiler::compile_from_compileform;
 use crate::compiler::comptypes::{
@@ -19,6 +19,7 @@ use crate::compiler::comptypes::{
 use crate::compiler::dialect::KNOWN_DIALECTS;
 use crate::compiler::evaluate::{create_argument_captures, ArgInputs};
 use crate::compiler::frontend::compile_helperform;
+use crate::compiler::optimize::get_optimizer;
 use crate::compiler::preprocessor::macros::PreprocessorExtension;
 use crate::compiler::rename::rename_args_helperform;
 use crate::compiler::runtypes::RunFailure;
@@ -305,16 +306,25 @@ impl Preprocessor {
                             helpers: self.helpers.clone(),
                             exp: mdata.body.clone(),
                         };
+                        eprintln!("dialect {:?}", self.opts.dialect());
+                        eprintln!("new_program {}", new_program.to_sexp());
+                        if !self.opts.dialect().strict {
+                            todo!();
+                        }
                         let mut symbol_table = HashMap::new();
-                        let compiled_program = compile_from_compileform(
+                        let mut wrapper = CompileContextWrapper::new(
                             &mut allocator,
                             self.runner.clone(),
+                            &mut symbol_table,
+                            get_optimizer(&body.loc(), opts_prims.clone())?
+                        );
+                        let compiled_program = compile_from_compileform(
+                            &mut wrapper.context,
                             opts_prims.clone(),
                             new_program,
-                            &mut symbol_table,
                         )?;
                         let res = clvm::run(
-                            &mut allocator,
+                            wrapper.context.allocator(),
                             self.runner.clone(),
                             opts_prims.prim_map(),
                             Rc::new(compiled_program),

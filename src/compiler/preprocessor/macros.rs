@@ -43,6 +43,7 @@ enum MatchedNumber {
 }
 
 fn match_number(body: Rc<SExp>) -> Result<Option<MatchedNumber>, CompileErr> {
+    eprintln!("body: {body} {body:?}");
     match body.borrow() {
         SExp::Integer(il, n) => {
             return Ok(Some(MatchedNumber::MatchedInt(il.clone(), n.clone())));

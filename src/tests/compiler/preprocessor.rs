@@ -12,6 +12,7 @@ use crate::tests::compiler::compiler::run_string;
 fn test_defmac_basic_0() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defmac double-arg (A) (list (string->symbol (string-append (symbol->string A) \"1\")) (string->symbol (string-append (symbol->string A) \"2\"))))
       (defun strange (double-arg X) (+ X1 X2))
       (strange X (* 2 X))
@@ -26,6 +27,7 @@ fn test_defmac_basic_0() {
 fn test_defmac_basic_shared_constant() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defconstant twostring \"2\")
       (defmac double-arg (A) (list (string->symbol (string-append (symbol->string A) \"1\")) (string->symbol (string-append (symbol->string A) twostring))))
       (defun strange (double-arg X) (+ X1 X2))
@@ -41,6 +43,7 @@ fn test_defmac_basic_shared_constant() {
 fn test_defmac_basic_shared_constant_not_string_with_string_operator() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defconstant twostring 2)
       (defmac double-arg (A) (list (string->symbol (string-append (symbol->string A) \"1\")) (string->symbol (string-append (symbol->string A) twostring))))
       (defun strange (double-arg X) (+ X1 X2))
@@ -56,6 +59,7 @@ fn test_defmac_basic_shared_constant_not_string_with_string_operator() {
 fn test_defmac_basic_shared_constant_not_string_with_string_operator_fun() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defconstant twostring \"2\")
       (defun make-arg-list (A) (list (string->symbol (string-append (symbol->string A) \"1\")) (string->symbol (string-append (symbol->string A) twostring))))
       (defmac double-arg (A) (make-arg-list A))
@@ -72,6 +76,7 @@ fn test_defmac_basic_shared_constant_not_string_with_string_operator_fun() {
 fn test_defmac_basic_test_is_string_pos() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defmac classify (S)
         (if (string? S)
           (qq (c 1 (unquote S)))
@@ -90,6 +95,7 @@ fn test_defmac_basic_test_is_string_pos() {
 fn test_defmac_basic_test_is_string_neg() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defmac classify (S)
         (if (string? S)
           (qq (c 1 (unquote S)))
@@ -108,6 +114,7 @@ fn test_defmac_basic_test_is_string_neg() {
 fn test_defmac_basic_test_is_symbol_pos() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defmac classify (S)
         (if (symbol? S)
           (qq (c 1 (unquote S)))
@@ -126,6 +133,7 @@ fn test_defmac_basic_test_is_symbol_pos() {
 fn test_defmac_basic_test_is_symbol_neg() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defmac classify (S)
         (if (symbol? S)
           (qq (c 1 (unquote S)))
@@ -162,6 +170,7 @@ fn test_defmac_basic_test_is_number_pos() {
 fn test_defmac_basic_test_is_number_neg() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defmac classify (S)
         (if (number? S)
           (qq (c 1 (unquote S)))
@@ -180,6 +189,7 @@ fn test_defmac_basic_test_is_number_neg() {
 fn test_defmac_extension_from_function() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defun FX (X) (symbol->string X))
       (defmac F (X) (FX X))
       (c 3 (F X))
@@ -194,6 +204,7 @@ fn test_defmac_extension_from_function() {
 fn test_defmac_if_extension() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defun FX (X) (if X (number->string 1) 2))
       (defmac F (X) (c 1 (FX X)))
       (F X)
@@ -211,7 +222,7 @@ fn test_defmac_create_match_form() {
     ;;
     ;; The real version will be more elaborate.  This is a test case and a demo.
     (mod X
-        (include *standard-cl-21*)
+        (include *strict-cl-21*)
         (defun list-nth (L N)
           (if N
             (list-nth (r L) (- N 1))
@@ -339,6 +350,7 @@ fn test_defmac_create_match_form() {
 fn test_defmac_stringq() {
     let prog = indoc! {"
       (mod ()
+         (include *strict-cl-21*)
          (defmac is-string (X) (string? X))
          (list (is-string X) (is-string \"X\") (is-string 3))
          )
@@ -352,6 +364,7 @@ fn test_defmac_stringq() {
 fn test_defmac_numberq() {
     let prog = indoc! {"
       (mod ()
+        (include *strict-cl-21*)
          (defmac is-number (X) (number? X))
          (list (is-number X) (is-number \"X\") (is-number 3))
          )
@@ -365,6 +378,7 @@ fn test_defmac_numberq() {
 fn test_defmac_symbolq() {
     let prog = indoc! {"
       (mod ()
+        (include *strict-cl-21*)
          (defmac is-symbol (X) (symbol? X))
          (list (is-symbol X) (is-symbol \"X\") (is-symbol 3))
          )
@@ -378,6 +392,7 @@ fn test_defmac_symbolq() {
 fn test_defmac_string_to_symbol() {
     let prog = indoc! {"
       (mod ()
+        (include *strict-cl-21*)
          (defmac is-symbol (X) (symbol? X))
          (list (is-symbol X) (is-symbol \"X\") (is-symbol 3))
          )
@@ -391,6 +406,7 @@ fn test_defmac_string_to_symbol() {
 fn test_defmac_string_to_symbol_converts() {
     let prog = indoc! {"
       (mod (X)
+        (include *strict-cl-21*)
         (defmac let_pi (code) (qq (let (((unquote (string->symbol \"pi\")) 31415)) (unquote code))))
         (let_pi (+ pi X))
         )
@@ -404,6 +420,7 @@ fn test_defmac_string_to_symbol_converts() {
 fn test_defmac_string_needs_conversion() {
     let prog = indoc! {"
       (mod (X)
+        (include *strict-cl-21*)
         (defmac let_pi (code) (qq (let ((\"pi\" 31415)) (unquote code))))
         (let_pi (+ pi X))
         )
@@ -418,6 +435,7 @@ fn test_defmac_string_needs_conversion() {
 fn test_defmac_string_substr_0() {
     let prog = indoc! {"
       (mod (X)
+        (include *strict-cl-21*)
         (defmac first-letter-of (Q)
           (let ((first-character (substring (symbol->string Q) 0 1)))
             (qq (c (unquote first-character) (unquote (string->symbol first-character))))
@@ -435,6 +453,7 @@ fn test_defmac_string_substr_0() {
 fn test_defmac_string_substr_bad() {
     let prog = indoc! {"
       (mod (test_variable_name)
+        (include *strict-cl-21*)
         (defmac bind-tail-of-symbol (N Q CODE)
           (let*
             ((stringified (symbol->string Q))
@@ -455,6 +474,7 @@ fn test_defmac_string_substr_bad() {
 fn test_defmac_string_to_number_0() {
     let prog = indoc! {"
       (mod (X_7)
+        (include *strict-cl-21*)
         (defmac add-n-to (X)
           (let*
             ((stringified (symbol->string X))
@@ -497,10 +517,11 @@ fn test_defmac_string_to_number_bad() {
 fn test_defmac_number_to_string() {
     let prog = indoc! {"
       (mod (Q)
+        (include *strict-cl-21*)
         (defmac with-my-length (X)
-          (let*
-            ((stringified (symbol->string X))
-             (slen (string-length stringified)))
+          (assign
+            stringified (symbol->string X)
+            slen (string-length stringified)
             (string->symbol (string-append stringified \"-\" (number->string slen)))
             )
           )
@@ -551,7 +572,7 @@ fn test_preprocess_expansion_makes_numeric_operators() {
 fn test_preprocessor_tours_includes_properly() {
     let prog = indoc! {"
       ( ;; Note: preprocessing is run in the list of the body forms.
-        (include *standard-cl-23*)
+        (include *strict-cl-21*)
         (include condition_codes.clvm)
         (include curry-and-treehash.clinc)
         ()

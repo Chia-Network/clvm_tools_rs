@@ -589,7 +589,7 @@ fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun) -> Result<Helpe
     compile_bodyform(opts, take_form).map(|bf| {
         HelperForm::Defun(
             data.inline,
-            DefunData {
+            Box::new(DefunData {
                 loc: data.l,
                 nl: data.nl,
                 kw: data.kwl,
@@ -597,7 +597,8 @@ fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun) -> Result<Helpe
                 args: data.args.clone(),
                 orig_args: data.args,
                 body: Rc::new(bf),
-            },
+                synthetic: None,
+            }),
         )
     })
 }
@@ -897,6 +898,9 @@ pub fn frontend(
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>],
 ) -> Result<CompileForm, CompileErr> {
+    if !opts.dialect().strict {
+        todo!();
+    }
     let mut includes = Vec::new();
     let started = frontend_start(opts.clone(), &mut includes, pre_forms)?;
 
