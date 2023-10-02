@@ -108,7 +108,7 @@ fn test_cse_dominace_sorting() {
 // Test out atomsort from bram's chialisp
 #[test]
 fn test_atomsort_bad_ref() {
-    let filename = "resources/tests/strict/test_atomsort.clsp";
+    let filename = "resources/tests/strict/csecond.clsp";
 
     let preprocessed = do_basic_run(&vec![
         "run".to_string(),

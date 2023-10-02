@@ -24,7 +24,7 @@ use crate::compiler::inline::{replace_in_inline, synthesize_args};
 use crate::compiler::lambda::lambda_codegen;
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::{decode_string, SExp};
+use crate::compiler::sexp::{decode_string, SExp, printable};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::StartOfCodegenOptimization;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
@@ -697,7 +697,7 @@ pub fn generate_expr_code(
                         create_name_lookup(compiler, l.clone(), atom, true)
                             .map(|f| Ok(CompiledCode(l.clone(), f)))
                             .unwrap_or_else(|_| {
-                                if opts.dialect().strict {
+                                if opts.dialect().strict && printable(&atom, false) {
                                     return Err(CompileErr(
                                         l.clone(),
                                         format!(

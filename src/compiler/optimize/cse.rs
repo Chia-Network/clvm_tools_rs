@@ -331,20 +331,21 @@ fn cse_is_covering(c_path: &[BodyformPathArc], instances: &[CSEInstance]) -> boo
 
     let have_targets: Vec<bool> = target_paths
         .iter()
-        .map(|t| instances.iter().any(|i| path_overlap_one_way(t, &i.path)))
+        .map(|t| instances.iter().any(|i| path_overlap_one_way(&i.path, t)))
         .collect();
 
     have_targets[0] || (have_targets[1] && have_targets[2])
 }
 
 pub fn cse_classify_by_conditions(
+    root: &BodyForm,
     conditions: &[CSECondition],
     detections: &[CSEDetectionWithoutConditions],
 ) -> Vec<CSEDetection> {
     detections
         .iter()
         .filter_map(|d| {
-            // Detect the common root of all instanceees.
+            // Detect the common root of all instances.
             if d.instances.is_empty() {
                 return None;
             }
@@ -362,6 +363,16 @@ pub fn cse_classify_by_conditions(
             }
 
             eprintln!("possible root for {}: {possible_root:?}", d.subexp.to_sexp());
+            let mut bf = root.clone();
+            if let Some(root_of_cse) = retrieve_bodyform(
+                &possible_root,
+                &mut bf,
+                &|x| x.clone()
+            ) {
+                eprintln!("root is {}", root_of_cse.to_sexp());
+            } else {
+                todo!();
+            }
 
             // path_limit points to the common root of all instances of this
             // cse detection.
@@ -369,9 +380,25 @@ pub fn cse_classify_by_conditions(
             // now find conditions that are downstream of the cse root.
             let applicable_conditions: Vec<CSECondition> = conditions
                 .iter()
-                .filter(|c| path_overlap_one_way(&possible_root, &c.path))
+                .filter(|c| path_overlap_one_way(&c.path, &possible_root))
                 .cloned()
                 .collect();
+
+            if !applicable_conditions.is_empty() {
+                eprintln!("CSE {} has conditions:", d.subexp.to_sexp());
+                for a in applicable_conditions.iter() {
+                    bf = root.clone();
+                    if let Some(cond) = retrieve_bodyform(
+                        &a.path,
+                        &mut bf,
+                        &|x| x.clone()
+                    ) {
+                        eprintln!("- {}", cond.to_sexp());
+                    } else {
+                        todo!();
+                    }
+                }
+            }
 
             // We don't need to delay the CSE if 1) all conditions below it
             // are canonical and 2) it appears downstream of all conditions
@@ -508,9 +535,10 @@ pub fn cse_optimize_bodyform(
     name: &[u8],
     b: &BodyForm,
 ) -> Result<BodyForm, CompileErr> {
+    eprintln!("CSE optimize {}", b.to_sexp());
     let conditions = detect_conditions(b)?;
     let cse_raw_detections = cse_detect(b)?;
-    let cse_detections = cse_classify_by_conditions(&conditions, &cse_raw_detections);
+    let cse_detections = cse_classify_by_conditions(b, &conditions, &cse_raw_detections);
 
     eprintln!("conditions {conditions:?}");
 
