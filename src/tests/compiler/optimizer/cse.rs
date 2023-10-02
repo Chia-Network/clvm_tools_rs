@@ -107,7 +107,7 @@ fn test_cse_dominace_sorting() {
 
 // Test out atomsort from bram's chialisp
 #[test]
-fn test_atomsort_bad_ref() {
+fn test_atomsort_bad_ref_simplified() {
     let filename = "resources/tests/strict/csecond.clsp";
 
     let program = do_basic_run(&vec![
@@ -128,4 +128,55 @@ fn test_atomsort_bad_ref() {
 
     // Expect test5
     assert_eq!(run_result, "\"test5\"");
+}
+
+#[test]
+fn test_atomsort_bad_ref() {
+    let filename = "resources/tests/strict/test_atomsort.clsp";
+
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        filename.to_string()
+    ])
+        .trim()
+        .to_string();
+
+    let run_result_empty = do_basic_brun(&vec![
+        "brun".to_string(),
+        "-n".to_string(),
+        program.clone(),
+        "(())".to_string(),
+    ]).trim().to_string();
+
+    // Expect a sorted list, descending order.
+    assert_eq!(run_result_empty, "()");
+
+    // let run_result_one_item = do_basic_brun(&vec![
+    //     "brun".to_string(),
+    //     "-n".to_string(),
+    //     program.clone(),
+    //     "((0x100001))".to_string(),
+    // ]).trim().to_string();
+
+    // assert_eq!(run_result_one_item, "(0x100001)");
+
+    let run_result_two_items = do_basic_brun(&vec![
+        "brun".to_string(),
+        "-n".to_string(),
+        program.clone(),
+        "((0x100001 0x100002))".to_string(),
+    ]).trim().to_string();
+
+    assert_eq!(run_result_two_items, "(0x100002 0x100001)");
+
+    let run_result_three_items = do_basic_brun(&vec![
+        "brun".to_string(),
+        "-n".to_string(),
+        program,
+        "((0x100001 0x100003 0x100002))".to_string(),
+    ]).trim().to_string();
+
+    assert_eq!(run_result_three_items, "(0x100003 0x100002 0x100001)");
 }

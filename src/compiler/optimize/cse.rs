@@ -560,14 +560,7 @@ pub fn cse_optimize_bodyform(
                 if d.saturated {
                     r
                 } else {
-                    BodyForm::Call(
-                        r.loc(),
-                        vec![
-                            Rc::new(BodyForm::Value(SExp::Atom(r.loc(), b"com".to_vec()))),
-                            Rc::new(r.clone())
-                        ],
-                        None
-                    )
+                    return Ok(b.clone());
                 }
             } else {
                 return Err(CompileErr(
@@ -596,7 +589,7 @@ pub fn cse_optimize_bodyform(
                     vec![
                         Rc::new(BodyForm::Value(SExp::Atom(b.loc(), vec![2]))),
                         Rc::new(new_variable_bf_alone),
-                        Rc::new(BodyForm::Value(SExp::Atom(b.loc(), b"@".to_vec()))),
+                        Rc::new(BodyForm::Value(SExp::Nil(b.loc())))
                     ],
                     None,
                 )
