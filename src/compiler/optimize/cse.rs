@@ -203,9 +203,9 @@ fn sorted_cse_detections_by_applicability(
 }
 
 fn is_one_env_ref(bf: &BodyForm) -> bool {
-    bf.to_sexp() == Rc::new(SExp::Atom(bf.loc(), vec![1])) ||
-        bf.to_sexp() == Rc::new(SExp::Atom(bf.loc(), vec![b'@'])) ||
-        bf.to_sexp() == Rc::new(SExp::Atom(bf.loc(), b"@*env*".to_vec()))
+    bf.to_sexp() == Rc::new(SExp::Atom(bf.loc(), vec![1]))
+        || bf.to_sexp() == Rc::new(SExp::Atom(bf.loc(), vec![b'@']))
+        || bf.to_sexp() == Rc::new(SExp::Atom(bf.loc(), b"@*env*".to_vec()))
 }
 
 pub fn is_canonical_apply_parent(
@@ -376,9 +376,7 @@ pub fn cse_classify_by_conditions(
             // it encloses.
             let fully_canonical = applicable_conditions
                 .iter()
-                .all(|c| {
-                    c.canonical && cse_is_covering(&c.path, &d.instances)
-                });
+                .all(|c| c.canonical && cse_is_covering(&c.path, &d.instances));
 
             Some(CSEDetection {
                 hash: d.hash.clone(),
@@ -560,8 +558,7 @@ pub fn cse_optimize_bodyform(
             let prototype_instance = if let Some(r) =
                 retrieve_bodyform(&d.instances[0].path, &function_body, &|b: &BodyForm| {
                     b.clone()
-                })
-            {
+                }) {
                 r
             } else {
                 return Err(CompileErr(

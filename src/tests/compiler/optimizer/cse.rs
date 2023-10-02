@@ -114,17 +114,19 @@ fn test_atomsort_bad_ref_simplified() {
         "run".to_string(),
         "-i".to_string(),
         "resources/tests/strict".to_string(),
-        filename.to_string()
+        filename.to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
 
     let run_result = do_basic_brun(&vec![
         "brun".to_string(),
         "-n".to_string(),
         program,
         "((99 101 103))".to_string(),
-    ]).trim().to_string();
+    ])
+    .trim()
+    .to_string();
 
     // Expect test5
     assert_eq!(run_result, "\"test5\"");
@@ -138,17 +140,19 @@ fn test_atomsort_bad_ref() {
         "run".to_string(),
         "-i".to_string(),
         "resources/tests/strict".to_string(),
-        filename.to_string()
+        filename.to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
 
     let run_result_empty = do_basic_brun(&vec![
         "brun".to_string(),
         "-n".to_string(),
         program.clone(),
         "(())".to_string(),
-    ]).trim().to_string();
+    ])
+    .trim()
+    .to_string();
 
     // Expect a sorted list, descending order.
     assert_eq!(run_result_empty, "()");
@@ -158,7 +162,9 @@ fn test_atomsort_bad_ref() {
         "-n".to_string(),
         program.clone(),
         "((0x100001))".to_string(),
-    ]).trim().to_string();
+    ])
+    .trim()
+    .to_string();
 
     assert_eq!(run_result_one_item, "(0x100001)");
 
@@ -167,7 +173,9 @@ fn test_atomsort_bad_ref() {
         "-n".to_string(),
         program.clone(),
         "((0x100001 0x100002))".to_string(),
-    ]).trim().to_string();
+    ])
+    .trim()
+    .to_string();
 
     assert_eq!(run_result_two_items, "(0x100002 0x100001)");
 
@@ -176,7 +184,9 @@ fn test_atomsort_bad_ref() {
         "-n".to_string(),
         program,
         "((0x100001 0x100003 0x100002))".to_string(),
-    ]).trim().to_string();
+    ])
+    .trim()
+    .to_string();
 
     assert_eq!(run_result_three_items, "(0x100003 0x100002 0x100001)");
 }
