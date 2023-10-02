@@ -89,7 +89,7 @@ fn test_cse_tricky_lambda() {
 // replacements before outer ones.  Any that aren't dominated don't have an
 // order that matters.
 #[test]
-fn test_cse_dominace_sorting() {
+fn test_cse_dominance_sorting() {
     let filename = "resources/tests/strict/cse-test-no-dom.clsp";
     let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
         .trim()
@@ -153,14 +153,14 @@ fn test_atomsort_bad_ref() {
     // Expect a sorted list, descending order.
     assert_eq!(run_result_empty, "()");
 
-    // let run_result_one_item = do_basic_brun(&vec![
-    //     "brun".to_string(),
-    //     "-n".to_string(),
-    //     program.clone(),
-    //     "((0x100001))".to_string(),
-    // ]).trim().to_string();
+    let run_result_one_item = do_basic_brun(&vec![
+        "brun".to_string(),
+        "-n".to_string(),
+        program.clone(),
+        "((0x100001))".to_string(),
+    ]).trim().to_string();
 
-    // assert_eq!(run_result_one_item, "(0x100001)");
+    assert_eq!(run_result_one_item, "(0x100001)");
 
     let run_result_two_items = do_basic_brun(&vec![
         "brun".to_string(),

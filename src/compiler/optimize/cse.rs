@@ -514,7 +514,6 @@ pub fn cse_optimize_bodyform(
 
     let mut function_body = b.clone();
     let mut new_binding_stack: Vec<(Vec<BodyformPathArc>, Vec<Rc<Binding>>)> = Vec::new();
-    let have_detections = !cse_detections.is_empty();
 
     while !detections_with_dependencies.is_empty() {
         let detections_to_apply: Vec<CSEDetection> = detections_with_dependencies
@@ -547,6 +546,12 @@ pub fn cse_optimize_bodyform(
                 break;
             }
 
+            // Skip unsaturated conditional CSE clauses at the moment.
+            // This is improvable in the future.
+            if !d.saturated {
+                continue;
+            }
+
             // All detections should have been transformed equally.
             // Therefore, we can pick one out and use its form.
             //
@@ -557,11 +562,7 @@ pub fn cse_optimize_bodyform(
                     b.clone()
                 })
             {
-                if d.saturated {
-                    r
-                } else {
-                    return Ok(b.clone());
-                }
+                r
             } else {
                 return Err(CompileErr(
                     loc.clone(),
@@ -581,19 +582,7 @@ pub fn cse_optimize_bodyform(
                 new_variable_name.clone(),
             ));
 
-            let new_variable_bf = if d.saturated {
-                new_variable_bf_alone
-            } else {
-                BodyForm::Call(
-                    b.loc(),
-                    vec![
-                        Rc::new(BodyForm::Value(SExp::Atom(b.loc(), vec![2]))),
-                        Rc::new(new_variable_bf_alone),
-                        Rc::new(BodyForm::Value(SExp::Nil(b.loc())))
-                    ],
-                    None,
-                )
-            };
+            let new_variable_bf = new_variable_bf_alone;
 
             let replacement_spec: Vec<PathDetectVisitorResult<()>> = d
                 .instances
@@ -646,7 +635,6 @@ pub fn cse_optimize_bodyform(
                 ));
             }
 
-            detections_with_dependencies = sorted_cse_detections_by_applicability(&keep_detections);
             // Put aside the definition in this binding set.
             let name_atom = SExp::Atom(prototype_instance.loc(), new_variable_name.clone());
             binding_set.push(CSEBindingSite {
@@ -659,6 +647,8 @@ pub fn cse_optimize_bodyform(
                 },
             });
         }
+
+        detections_with_dependencies = sorted_cse_detections_by_applicability(&keep_detections);
 
         new_binding_stack.append(
             &mut binding_set
@@ -675,8 +665,6 @@ pub fn cse_optimize_bodyform(
                 .collect(),
         );
     }
-
-    assert!(!have_detections || !new_binding_stack.is_empty());
 
     // We might not have completely sorted sites anymore due to joining up each
     // site set under a common target path (which themselves need sorting).
