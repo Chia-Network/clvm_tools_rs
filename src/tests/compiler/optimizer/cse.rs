@@ -100,7 +100,7 @@ fn test_cse_dominace_sorting() {
         program,
         "(((3 3) (2 1 13 19) (5 5) (7 7)))".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     assert_eq!(run_result, "(13 19)");
 }
