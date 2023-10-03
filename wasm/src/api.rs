@@ -495,5 +495,5 @@ pub fn h(v: String) -> Result<Vec<u8>, JsValue> {
 
 #[wasm_bindgen]
 pub fn t(a: &JsValue, b: &JsValue) -> Result<JsValue, JsValue> {
-    Program::as_pair_internal(&Program::cons_internal(&Program::to(a)?, &Program::to(b)?)?)
+    Program::as_pair_internal(&Program::cons_internal(&Program::to_internal(a)?, &Program::to_internal(b)?)?.into())
 }
