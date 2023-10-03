@@ -291,7 +291,7 @@ interface IProgram {
     curry(args: [IProgram]): IProgram;
     sha256tree(): [Uint8Array];
     uncurry_error(): [IProgram];
-    uncurry(): [IProgram|null];
+    uncurry(): [IProgram, Array<IProgram>|null];
 }
 "#;
 
@@ -821,7 +821,7 @@ impl Program {
         if let Ok(res) = Program::uncurry_error_internal(obj) {
             Ok(res)
         } else {
-            Ok(vec![obj.clone().unchecked_into::<IProgram>(), Program::null()?])
+            Ok(vec![obj.clone().unchecked_into::<IProgram>(), JsValue::null().unchecked_into::<IProgram>()])
         }
     }
 }
