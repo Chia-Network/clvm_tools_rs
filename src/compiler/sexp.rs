@@ -6,6 +6,7 @@ use rand::prelude::Distribution;
 use rand::Rng;
 
 use std::borrow::Borrow;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -1150,5 +1151,81 @@ where
         } else {
             Err(E::from((s.loc(), "not a cons".to_string())))
         }
+    }
+}
+
+pub trait ToSExp {
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp>;
+}
+
+impl ToSExp for SExp {
+    fn to_sexp(&self, _srcloc: Srcloc) -> Rc<SExp> {
+        Rc::new(self.clone())
+    }
+}
+
+impl ToSExp for Rc<SExp> {
+    fn to_sexp(&self, _srcloc: Srcloc) -> Rc<SExp> {
+        self.clone()
+    }
+}
+
+impl ToSExp for [u8] {
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        Rc::new(SExp::Atom(srcloc, self.to_vec()))
+    }
+}
+
+impl ToSExp for Vec<u8> {
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        Rc::new(SExp::Atom(srcloc, self.clone()))
+    }
+}
+
+impl ToSExp for &str {
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        self.as_bytes().to_sexp(srcloc)
+    }
+}
+
+impl<V> ToSExp for Vec<V> where V: ToSExp {
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        let vec: Vec<Rc<SExp>> =
+            self.iter().map(|v| v.to_sexp(srcloc.clone())).collect();
+
+        Rc::new(enlist(srcloc.clone(), &vec))
+    }
+}
+
+impl<V> ToSExp for HashSet<V> where V: ToSExp {
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        let vec: Vec<Rc<SExp>> =
+            self.iter().map(|v| v.to_sexp(srcloc.clone())).collect();
+
+        vec.to_sexp(srcloc)
+    }
+}
+
+impl<K,V> ToSExp for (K,V) where K: ToSExp, V: ToSExp {
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        let vec = vec![
+            self.0.to_sexp(srcloc.clone()),
+            self.1.to_sexp(srcloc.clone())
+        ];
+
+        vec.to_sexp(srcloc)
+    }
+}
+
+impl<K,V> ToSExp for HashMap<K,V> where K: ToSExp, V: ToSExp {
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        let vec: Vec<Rc<SExp>> =
+            self.iter().map(|(k,v)| {
+                let ks = k.to_sexp(srcloc.clone());
+                let vs = v.to_sexp(srcloc.clone());
+                (ks, vs).to_sexp(srcloc.clone())
+            }).collect();
+
+        vec.to_sexp(srcloc)
     }
 }

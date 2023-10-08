@@ -2,6 +2,7 @@ pub mod above22;
 pub mod bodyform;
 pub mod brief;
 pub mod cse;
+pub mod depgraph;
 pub mod double_apply;
 pub mod strategy;
 
