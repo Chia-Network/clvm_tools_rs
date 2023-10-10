@@ -52,7 +52,7 @@ use crate::classic::platform::argparse::{
 use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
 use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
 use crate::compiler::clvm::start_step;
-use crate::compiler::compiler::{compile_file, desugar_pre_forms, DefaultCompilerOpts};
+use crate::compiler::compiler::{compile_file, do_desugar, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompileForm, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
 use crate::compiler::dialect::detect_modern;
@@ -321,12 +321,19 @@ impl ArgumentValueConv for OperatorsVersion {
 pub fn run(args: &[String]) {
     env_logger::init();
 
+    // let guard = pprof::ProfilerGuardBuilder::default().frequency(100).blocklist(&["libc", "libgcc", "pthread", "vdso"]).build().unwrap();
+
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, "run", 2);
     io::stdout()
         .write_all(s.get_value().data())
         .expect("stdout");
     io::stdout().flush().expect("stdout");
+
+    // if let Ok(report) = guard.report().build() {
+    //     let file = fs::File::create("flamegraph-compile.svg").unwrap();
+    //     report.flamegraph(file).unwrap();
+    // };
 }
 
 pub fn brun(args: &[String]) {
@@ -640,6 +647,8 @@ pub fn cldb(args: &[String]) {
         )
         .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
         _ => {
+            // let guard = pprof::ProfilerGuardBuilder::default().frequency(1000).blocklist(&["libc", "libgcc", "pthread", "vdso"]).build().unwrap();
+
             // don't clobber a symbol table brought in via -y unless we're
             // compiling here.
             let unopt_res = compile_file(
@@ -649,11 +658,18 @@ pub fn cldb(args: &[String]) {
                 &input_program,
                 &mut use_symbol_table,
             );
-            if do_optimize {
+            let res = if do_optimize {
                 unopt_res.and_then(|x| run_optimizer(&mut allocator, runner.clone(), Rc::new(x)))
             } else {
                 unopt_res.map(Rc::new)
-            }
+            };
+
+            // if let Ok(report) = guard.report().build() {
+            //     let file = fs::File::create("flamegraph-compile.svg").unwrap();
+            //     report.flamegraph(file).unwrap();
+            // };
+
+            res
         }
     };
 
@@ -750,9 +766,6 @@ pub fn cldb(args: &[String]) {
         }
         output.push(cvt_subtree);
     };
-
-    #[cfg(feature = "debug-print")]
-    cldbrun.set_print_only(only_print);
 
     loop {
         if cldbrun.is_ended() {
@@ -854,6 +867,7 @@ fn parse_module_and_get_sigil(
     program_text: &str,
 ) -> Result<(Option<String>, Vec<Rc<sexp::SExp>>), CompileErr> {
     let srcloc = Srcloc::start(input_file);
+    // Parse the source file.
     let parsed = parse_sexp(srcloc, program_text.bytes())?;
     let stepping_form_text = match opts.dialect().stepping {
         Some(21) => Some("(include *strict-cl-21*)".to_string()),
@@ -896,12 +910,31 @@ fn render_mod_with_sigil(
     ))
 }
 
+    // A function which performs preprocessing on a whole program and renders the
+    // output to the user.
+    //
+    // This is used in the same way as cc -E in a C compiler; to see what
+    // preprocessing did to the source so you can debug and improve your macros.
+    //
+    // Without this, it's difficult for some to visualize how macro are functioning
+    // and what forms they output.
 fn perform_preprocessing(
     stdout: &mut Stream,
     opts: Rc<dyn CompilerOpts>,
     input_file: &str,
     program_text: &str,
 ) -> Result<(), CompileErr> {
+    // Get the detected dialect and compose a sigil that matches.
+    // Classic preprocessing (also shared by standard sigil 21 and 21) does macro
+    // expansion during the compile process, making all macros available to all
+    // code regardless of its lexical order and therefore isn't rendered in a
+    // unified way (for example, 'com' and 'mod' forms invoke macros when
+    // encountered and expanded.  By contrast strict mode reads the macros and
+    // evaluates them in that order (as in C).
+    //
+    // The result is fully rendered before the next stage of compilation so that
+    // it can be inspected and so that the execution environment for macros is
+    // fully and cleanly separated from compile time.
     let (stepping_form_text, parsed) =
         parse_module_and_get_sigil(opts.clone(), input_file, program_text)?;
     let frontend = frontend(opts, &parsed)?;
@@ -927,8 +960,12 @@ fn perform_desugaring(
         HashMap::new(),
         get_optimizer(&srcloc, opts.clone())?,
     );
-    let frontend = desugar_pre_forms(&mut context, opts, &parsed)?;
-    let whole_mod = render_mod_with_sigil(input_file, &stepping_form_text, &frontend)?;
+    let p0 = frontend(opts.clone(), &parsed)?;
+    let p1 = context.frontend_optimization(opts.clone(), p0)?;
+
+    // Resolve includes, convert program source to lexemes
+    let p2 = do_desugar(&p1)?;
+    let whole_mod = render_mod_with_sigil(input_file, &stepping_form_text, &p2)?;
 
     stdout.write_str(&format!("{}", whole_mod));
     Ok(())
@@ -1085,6 +1122,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         Argument::new()
             .set_type(Rc::new(PathJoin {}))
             .set_default(ArgumentValue::ArgString(None, "main.sym".to_string())),
+    );
+    parser.add_argument(
+        vec!["--strict".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("For modern dialects, don't treat unknown names as constants".to_string()),
     );
     parser.add_argument(
         vec!["-E".to_string(), "--preprocess".to_string()],
@@ -1414,8 +1457,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         })
         .unwrap_or_else(|| "main.sym".to_string());
 
-    // In testing: short circuit for modern compilation.
-    // Now stepping is the optional part.
     if let Some(stepping) = dialect.as_ref().and_then(|d| d.stepping) {
         let do_optimize = parsed_args
             .get("optimize")
@@ -1732,6 +1773,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 only_exn,
                 &log_content,
                 symbol_table,
+                // Clippy: disassemble no longer requires mutability,
+                // but this callback interface delivers it.
                 &|allocator, p| disassemble(allocator, p, disassembly_ver),
             );
         } else {
@@ -1742,6 +1785,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 only_exn,
                 &log_content,
                 symbol_table,
+                // Same as above.
                 &|allocator, p| disassemble(allocator, p, disassembly_ver),
             );
         }

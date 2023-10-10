@@ -10,8 +10,7 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
     list_to_cons, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType, CompileErr,
     CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData,
-    HelperForm, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, ModAccum, StructDef,
-    StructMember, SyntheticType, TypeAnnoKind,
+    HelperForm, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, ModAccum, StructDef, StructMember, SyntheticType, TypeAnnoKind,
 };
 use crate::compiler::lambda::handle_lambda;
 use crate::compiler::preprocessor::preprocess;
@@ -264,7 +263,7 @@ fn make_let_bindings(
 ) -> Result<Vec<Rc<Binding>>, CompileErr> {
     let err = Err(CompileErr(
         body.loc(),
-        "Bad binding tail ".to_string() + &body.to_string(),
+        format!("Bad binding tail {body:?}")
     ));
     match body.borrow() {
         SExp::Nil(_) => Ok(vec![]),
@@ -285,7 +284,9 @@ fn make_let_bindings(
                     result.append(&mut rest_bindings);
                     Ok(result)
                 }
-                _ => err.clone(),
+                _ => {
+                    err.clone()
+                }
             })
             .unwrap_or_else(|| err.clone()),
         _ => err,

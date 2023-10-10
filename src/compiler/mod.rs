@@ -86,7 +86,7 @@ impl BasicCompileContext {
 
     /// Called after frontend parsing and preprocessing when we have a complete
     /// picture of the user's intended semantics.
-    fn frontend_optimization(
+    pub fn frontend_optimization(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         cf: CompileForm,

@@ -2,40 +2,94 @@ use std::collections::{HashMap, HashSet};
 use std::borrow::Borrow;
 use std::rc::Rc;
 
-use crate::compiler::{BodyForm, CompileForm, HelperForm, SExp};
-use crate::compiler::sexp::ToSExp;
+use crate::compiler::{BodyForm, CompileForm, DefunData, HelperForm, SExp};
+use crate::compiler::optimize::SyntheticType;
+use crate::compiler::sexp::enlist;
 use crate::compiler::srcloc::Srcloc;
+
+#[derive(Debug)]
+pub enum DepgraphKind {
+    UserNonInline,
+    UserInline,
+    Synthetic(SyntheticType),
+}
+
+pub struct FunctionDependencyEntry {
+    pub loc: Srcloc,
+    pub name: Vec<u8>,
+    pub status: DepgraphKind,
+    pub depends_on: HashSet<Vec<u8>>,
+    pub is_depended_on_by: HashSet<Vec<u8>>,
+}
+
+impl FunctionDependencyEntry {
+    pub fn to_sexp(&self) -> Rc<SExp> {
+        let depends_on: Vec<Rc<SExp>> =
+            self.depends_on.iter().map(|x| {
+                Rc::new(SExp::Atom(self.loc.clone(), x.clone()))
+            }).collect();
+
+        let is_depended_on_by: Vec<Rc<SExp>> =
+            self.is_depended_on_by.iter().map(|x| {
+                Rc::new(SExp::Atom(self.loc.clone(), x.clone()))
+            }).collect();
+
+        Rc::new(enlist(
+            self.loc.clone(),
+            &[
+                Rc::new(SExp::Atom(self.loc.clone(), self.name.clone())),
+                Rc::new(SExp::Atom(self.loc.clone(), format!("{:?}", self.status).as_bytes().to_vec())),
+                Rc::new(SExp::Atom(self.loc.clone(), "depends_on".as_bytes().to_vec())),
+                Rc::new(enlist(self.loc.clone(), &depends_on)),
+                Rc::new(SExp::Atom(self.loc.clone(), "is_depended_on_by".as_bytes().to_vec())),
+                Rc::new(enlist(self.loc.clone(), &is_depended_on_by)),
+            ]
+        ))
+    }
+
+    pub fn new(name: &[u8], loc: Srcloc, status: DepgraphKind) -> Self {
+        FunctionDependencyEntry {
+            loc: loc,
+            name: name.to_vec(),
+            status: status,
+            depends_on: HashSet::default(),
+            is_depended_on_by: HashSet::default(),
+        }
+    }
+}
 
 pub struct FunctionDependencyGraph {
     pub loc: Srcloc,
-    pub helpers: HashSet<Vec<u8>>,
-    pub helper_depends_on: HashMap<Vec<u8>, HashSet<Vec<u8>>>,
-    pub helper_is_depended_on: HashMap<Vec<u8>, HashSet<Vec<u8>>>,
+    pub helpers: HashMap<Vec<u8>, FunctionDependencyEntry>,
 }
 
-fn insert_into_collection(collection: &mut HashMap<Vec<u8>, HashSet<Vec<u8>>>, at: &[u8], new_member: &[u8]) {
-    if let Some(d) = collection.get_mut(at) {
-        d.insert(new_member.to_vec());
-    } else {
-        let hs: HashSet<Vec<u8>> = [new_member.to_vec()].iter().cloned().collect();
-        collection.insert(at.to_vec(), hs);
+fn status_from_defun(inline: bool, defun: &DefunData) -> DepgraphKind {
+    match (inline, defun.synthetic.as_ref()) {
+        (true, None) => DepgraphKind::UserNonInline,
+        (false, None) => DepgraphKind::UserInline,
+        (_, Some(st)) => DepgraphKind::Synthetic(st.clone()),
     }
 }
 
 impl FunctionDependencyGraph {
-    pub fn to_sexp(&self) -> Rc<SExp> {
-        let list = vec![
-            ("helpers", self.helpers.to_sexp(self.loc.clone())),
-            ("helper_depends_on", self.helper_depends_on.to_sexp(self.loc.clone())),
-            ("helper_is_depended_on", self.helper_is_depended_on.to_sexp(self.loc.clone())),
-        ];
+    /// Find leaf functions.
+    pub fn leaves(&self) -> HashSet<Vec<u8>> {
+        self.helpers.iter().filter(|(k,h)| {
+            h.depends_on.is_empty()
+        }).map(|(k,h)| k.clone()).collect()
+    }
 
-        list.to_sexp(self.loc.clone())
+    pub fn parents(&self, helper: &[u8]) -> Option<HashSet<Vec<u8>>> {
+        self.helpers.get(helper).and_then(|h| {
+            let mut result_set = h.is_depended_on_by.clone();
+            result_set.remove(helper);
+            Some(result_set)
+        })
     }
 
     pub fn get_full_depended_on_by(&self, depended_on_by: &mut HashSet<Vec<u8>>, helper_name: &[u8]) {
-        if let Some(depended_on) = self.helper_is_depended_on.get(helper_name) {
-            for d in depended_on.iter() {
+        if let Some(helper) = self.helpers.get(helper_name) {
+            for d in helper.is_depended_on_by.iter() {
                 if !depended_on_by.contains(d) {
                     depended_on_by.insert(d.to_vec());
                     self.get_full_depended_on_by(depended_on_by, d);
@@ -45,8 +99,8 @@ impl FunctionDependencyGraph {
     }
 
     pub fn get_full_depends_on(&self, depends_on_fun: &mut HashSet<Vec<u8>>, helper_name: &[u8]) {
-        if let Some(depends_on) = self.helper_depends_on.get(helper_name) {
-            for d in depends_on.iter() {
+        if let Some(helper) = self.helpers.get(helper_name) {
+            for d in helper.depends_on.iter() {
                 if !depends_on_fun.contains(d) {
                     depends_on_fun.insert(d.clone());
                     self.get_full_depends_on(depends_on_fun, d);
@@ -55,14 +109,25 @@ impl FunctionDependencyGraph {
         }
     }
 
+    fn add_depends_on_relationship(&mut self, helper_name: &[u8], name: &[u8]) {
+        if !self.helpers.contains_key(helper_name) || !self.helpers.contains_key(name) {
+            return;
+        }
+
+        if let Some(function_entry) = self.helpers.get_mut(helper_name) {
+            function_entry.depends_on.insert(name.to_vec());
+        }
+
+        if let Some(function_entry) = self.helpers.get_mut(name) {
+            function_entry.is_depended_on_by.insert(helper_name.to_vec());
+        }
+    }
+
     fn process_expr(&mut self, helper_name: &[u8], expr: Rc<BodyForm>) {
         match expr.borrow() {
             BodyForm::Value(SExp::Atom(_, name)) => {
-                if self.helpers.contains(name) {
-                    // This introduces a function dependency.
-                    insert_into_collection(&mut self.helper_depends_on, helper_name, &name);
-                    insert_into_collection(&mut self.helper_is_depended_on, &name, helper_name);
-                }
+                // This introduces a function dependency.
+                self.add_depends_on_relationship(helper_name, &name);
             }
             BodyForm::Value(_) => { }
             BodyForm::Let(_, letdata) => {
@@ -97,15 +162,21 @@ impl FunctionDependencyGraph {
     }
 
     pub fn new(program: &CompileForm) -> Self {
-        let helpers: HashSet<Vec<u8>> = program.helpers.iter().map(|h| {
-            h.name().to_vec()
-        }).collect();
+        let mut helpers: HashMap<Vec<u8>, FunctionDependencyEntry> = HashMap::new();
+
+        for h in program.helpers.iter() {
+            if let HelperForm::Defun(inline, d) = h {
+                helpers.insert(h.name().to_vec(), FunctionDependencyEntry::new(
+                    h.name(),
+                    h.loc(),
+                    status_from_defun(*inline, &d)
+                ));
+            }
+        }
 
         let mut graph = FunctionDependencyGraph {
             loc: program.loc.clone(),
             helpers: helpers,
-            helper_depends_on: HashMap::default(),
-            helper_is_depended_on: HashMap::default(),
         };
 
         for h in program.helpers.iter() {
@@ -115,4 +186,9 @@ impl FunctionDependencyGraph {
         graph
     }
 
+    pub fn to_sexp(&self) -> Rc<SExp> {
+        let helpers: Vec<Rc<SExp>> = self.helpers.iter().map(|(_k,v)| v.to_sexp()).collect();
+
+        Rc::new(enlist(self.loc.clone(), &helpers))
+    }
 }

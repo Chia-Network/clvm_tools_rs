@@ -6,7 +6,7 @@ use rand::prelude::Distribution;
 use rand::Rng;
 
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -1164,12 +1164,6 @@ impl ToSExp for SExp {
     }
 }
 
-impl ToSExp for Rc<SExp> {
-    fn to_sexp(&self, _srcloc: Srcloc) -> Rc<SExp> {
-        self.clone()
-    }
-}
-
 impl ToSExp for [u8] {
     fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
         Rc::new(SExp::Atom(srcloc, self.to_vec()))
@@ -1190,42 +1184,41 @@ impl ToSExp for &str {
 
 impl<V> ToSExp for Vec<V> where V: ToSExp {
     fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
-        let vec: Vec<Rc<SExp>> =
-            self.iter().map(|v| v.to_sexp(srcloc.clone())).collect();
-
-        Rc::new(enlist(srcloc.clone(), &vec))
+        let converted: Vec<Rc<SExp>> = self.iter().map(|x| x.to_sexp(srcloc.clone())).collect();
+        Rc::new(enlist(srcloc, &converted))
     }
 }
 
 impl<V> ToSExp for HashSet<V> where V: ToSExp {
     fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
-        let vec: Vec<Rc<SExp>> =
-            self.iter().map(|v| v.to_sexp(srcloc.clone())).collect();
-
-        vec.to_sexp(srcloc)
+        let converted: Vec<Rc<SExp>> = self.iter().map(|x| x.to_sexp(srcloc.clone())).collect();
+        Rc::new(enlist(srcloc, &converted))
     }
 }
 
-impl<K,V> ToSExp for (K,V) where K: ToSExp, V: ToSExp {
+impl<V> ToSExp for BTreeSet<V> where V: ToSExp {
     fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
-        let vec = vec![
-            self.0.to_sexp(srcloc.clone()),
-            self.1.to_sexp(srcloc.clone())
-        ];
+        let converted: Vec<Rc<SExp>> = self.iter().map(|x| x.to_sexp(srcloc.clone())).collect();
+        Rc::new(enlist(srcloc, &converted))
+    }
+}
 
-        vec.to_sexp(srcloc)
+impl<K,V> ToSExp for BTreeMap<K,V> where K: ToSExp, V: ToSExp {
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        let converted: Vec<Rc<SExp>> = self.iter().map(|(k,v)| {
+            let cvt = vec![k.to_sexp(srcloc.clone()), v.to_sexp(srcloc.clone())];
+            Rc::new(enlist(srcloc.clone(), &cvt))
+        }).collect();
+        Rc::new(enlist(srcloc, &converted))
     }
 }
 
 impl<K,V> ToSExp for HashMap<K,V> where K: ToSExp, V: ToSExp {
     fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
-        let vec: Vec<Rc<SExp>> =
-            self.iter().map(|(k,v)| {
-                let ks = k.to_sexp(srcloc.clone());
-                let vs = v.to_sexp(srcloc.clone());
-                (ks, vs).to_sexp(srcloc.clone())
-            }).collect();
-
-        vec.to_sexp(srcloc)
+        let converted: Vec<Rc<SExp>> = self.iter().map(|(k,v)| {
+            let cvt = vec![k.to_sexp(srcloc.clone()), v.to_sexp(srcloc.clone())];
+            Rc::new(enlist(srcloc.clone(), &cvt))
+        }).collect();
+        Rc::new(enlist(srcloc, &converted))
     }
 }

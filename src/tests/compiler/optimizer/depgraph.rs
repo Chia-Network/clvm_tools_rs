@@ -5,7 +5,7 @@ use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::depgraph::FunctionDependencyGraph;
-use crate::compiler::sexp::{parse_sexp, ToSExp};
+use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::Srcloc;
 
 fn get_depgraph_for_program(prog: &str) -> FunctionDependencyGraph {
@@ -41,8 +41,6 @@ fn test_dependency_graph_smoke() {
     let mut depended_on_by = HashSet::default();
     depgraph.get_full_depended_on_by(&mut depended_on_by, b"DependedOnByFGAndH");
 
-    eprintln!("depgraph {}", depgraph.to_sexp());
-
     let want_depended_on_by_set: HashSet<Vec<u8>> = [
         b"F".to_vec(),
         b"G".to_vec(),
@@ -62,7 +60,6 @@ fn test_dependency_graph_smoke() {
     let want_f_depends_on_set = [
         b"DependedOnByFGAndH".to_vec(),
     ].iter().cloned().collect();
-    eprintln!("f_depends_on {}", f_depends_on.to_sexp(depgraph.loc.clone()));
     assert_eq!(f_depends_on, want_f_depends_on_set);
 
     let mut h_depends_on = HashSet::default();

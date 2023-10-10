@@ -111,7 +111,7 @@ pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
     Rc::new(prim_map)
 }
 
-fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
+pub fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
     // Transform let bindings, merging nested let scopes with the top namespace
     let hoisted_bindings = hoist_body_let_binding(None, program.args.clone(), program.exp.clone())?;
     let mut new_helpers = hoisted_bindings.0;
@@ -129,25 +129,15 @@ fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
     })
 }
 
-pub fn desugar_pre_forms(
+pub fn compile_from_compileform(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
-    pre_forms: &[Rc<SExp>],
-) -> Result<CompileForm, CompileErr> {
-    let p0 = frontend(opts.clone(), pre_forms)?;
-
+    p0: CompileForm,
+) -> Result<SExp, CompileErr> {
     let p1 = context.frontend_optimization(opts.clone(), p0)?;
 
-    do_desugar(&p1)
-}
-
-pub fn compile_pre_forms(
-    context: &mut BasicCompileContext,
-    opts: Rc<dyn CompilerOpts>,
-    pre_forms: &[Rc<SExp>],
-) -> Result<SExp, CompileErr> {
     // Resolve includes, convert program source to lexemes
-    let p2 = desugar_pre_forms(context, opts.clone(), pre_forms)?;
+    let p2 = do_desugar(&p1)?;
 
     let p3 = context.post_desugar_optimization(opts.clone(), p2)?;
 
@@ -157,6 +147,20 @@ pub fn compile_pre_forms(
     let g2 = context.post_codegen_output_optimize(opts, generated)?;
 
     Ok(g2)
+}
+
+pub fn compile_pre_forms(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    pre_forms: &[Rc<SExp>],
+) -> Result<SExp, CompileErr> {
+    let p0 = frontend(opts.clone(), pre_forms)?;
+
+    compile_from_compileform(
+        context,
+        opts,
+        p0,
+    )
 }
 
 pub fn compile_file(
@@ -278,12 +282,12 @@ impl CompilerOpts for DefaultCompilerOpts {
     ) -> Result<(String, Vec<u8>), CompileErr> {
         if filename == "*macros*" {
             if self.dialect().strict {
-                return Ok((filename, ADVANCED_MACROS.as_bytes().to_vec()));
+                return Ok((filename, ADVANCED_MACROS.bytes().collect()));
             } else {
-                return Ok((filename, STANDARD_MACROS.as_bytes().to_vec()));
+                return Ok((filename, STANDARD_MACROS.bytes().collect()));
             }
         } else if let Some(dialect) = KNOWN_DIALECTS.get(&filename) {
-            return Ok((filename, dialect.content.as_bytes().to_vec()));
+            return Ok((filename, dialect.content.bytes().collect()));
         }
 
         for dir in self.include_dirs.iter() {

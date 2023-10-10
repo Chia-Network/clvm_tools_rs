@@ -12,9 +12,10 @@ use crate::compiler::comptypes::{
 use crate::compiler::frontend::compute_live_helpers;
 use crate::compiler::optimize::brief::brief_path_selection;
 use crate::compiler::optimize::cse::cse_optimize_bodyform;
+use crate::compiler::optimize::deinline::deinline_opt;
 use crate::compiler::optimize::double_apply::remove_double_apply;
 use crate::compiler::optimize::{
-    deinline_opt, null_optimization, optimize_expr, run_optimizer, CompileContextWrapper,
+    null_optimization, optimize_expr, run_optimizer, CompileContextWrapper,
     Optimization,
 };
 use crate::compiler::sexp::SExp;

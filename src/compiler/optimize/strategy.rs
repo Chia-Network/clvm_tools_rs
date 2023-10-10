@@ -9,8 +9,9 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
+use crate::compiler::optimize::deinline::deinline_opt;
 use crate::compiler::optimize::{
-    deinline_opt, fe_opt, null_optimization, optimize_expr, run_optimizer, CompileContextWrapper,
+    fe_opt, null_optimization, optimize_expr, run_optimizer, CompileContextWrapper,
     Optimization,
 };
 use crate::compiler::sexp::SExp;

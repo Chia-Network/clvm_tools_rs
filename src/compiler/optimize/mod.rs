@@ -2,6 +2,7 @@ pub mod above22;
 pub mod bodyform;
 pub mod brief;
 pub mod cse;
+pub mod deinline;
 pub mod depgraph;
 pub mod double_apply;
 pub mod strategy;
@@ -38,7 +39,6 @@ use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::parse_sexp;
 use crate::compiler::sexp::{AtomValue, NodeSel, SExp, SelectNode, ThisNode};
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::BasicCompileContext;
 use crate::compiler::CompileContextWrapper;
 use crate::compiler::StartOfCodegenOptimization;
 use crate::util::u8_from_number;
@@ -612,56 +612,6 @@ fn test_null_optimization_ok_not_doing_anything() {
     let (did_work, optimized) = null_optimization(parsed[0].clone(), true);
     assert!(!did_work);
     assert_eq!(optimized.to_string(), "(2 (1 (1) (1) (1)) (3))");
-}
-
-// Should take a desugared program.
-pub fn deinline_opt(
-    context: &mut BasicCompileContext,
-    opts: Rc<dyn CompilerOpts>,
-    mut compileform: CompileForm,
-) -> Result<CompileForm, CompileErr> {
-    let mut best_compileform = compileform.clone();
-    let generated_program = codegen(context, opts.clone(), &best_compileform)?;
-    let mut metric = sexp_scale(&generated_program);
-    let flip_helper = |h: &mut HelperForm| {
-        if let HelperForm::Defun(inline, defun) = h {
-            if matches!(&defun.synthetic, Some(SyntheticType::NoInlinePreference)) {
-                *h = HelperForm::Defun(!*inline, defun.clone());
-                return true;
-            }
-        }
-
-        false
-    };
-
-    loop {
-        let start_metric = metric;
-
-        for i in 0..compileform.helpers.len() {
-            // Try flipped.
-            let old_helper = compileform.helpers[i].clone();
-            if !flip_helper(&mut compileform.helpers[i]) {
-                continue;
-            }
-
-            let maybe_smaller_program = codegen(context, opts.clone(), &compileform)?;
-            let new_metric = sexp_scale(&maybe_smaller_program);
-
-            // Don't keep this change if it made things worse.
-            if new_metric >= metric {
-                compileform.helpers[i] = old_helper;
-            } else {
-                metric = new_metric;
-                best_compileform = compileform.clone();
-            }
-        }
-
-        if start_metric == metric {
-            break;
-        }
-    }
-
-    Ok(best_compileform)
 }
 
 fn fe_opt(
