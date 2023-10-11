@@ -9,7 +9,7 @@ use clvmr::allocator::Allocator;
 use crate::classic::clvm_tools::clvmc::compile_clvm_text_maybe_opt;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 
-use crate::compiler::BasicCompileContext;
+use crate::compiler::CompileContextWrapper;
 use crate::compiler::cldb::hex_to_modern_sexp;
 use crate::compiler::clvm;
 use crate::compiler::clvm::{convert_from_clvm_rs, truthy};
@@ -47,6 +47,7 @@ enum IncludeType {
 
 struct Preprocessor {
     opts: Rc<dyn CompilerOpts>,
+    ppext: Rc<PreprocessorExtension>,
     runner: Rc<dyn TRunProgram>,
     helpers: Vec<HelperForm>,
     strict: bool,
@@ -93,8 +94,11 @@ fn nilize(v: Rc<SExp>) -> Rc<SExp> {
 impl Preprocessor {
     pub fn new(opts: Rc<dyn CompilerOpts>) -> Self {
         let runner = Rc::new(DefaultProgramRunner::new());
+        let ppext = Rc::new(PreprocessorExtension::new());
+        let opts_prims = ppext.enrich_prims(opts.clone());
         Preprocessor {
-            opts: opts.clone(),
+            opts: opts_prims,
+            ppext: ppext,
             runner,
             helpers: Vec::new(),
             strict: opts.dialect().strict,
@@ -285,18 +289,6 @@ impl Preprocessor {
                             continue;
                         }
 
-                        // as inline defuns because they're closest to that
-                        // semantically.
-                        let optimizer = get_optimizer(
-                            &body.loc(),
-                            self.opts.clone()
-                        )?;
-                        let mut context = BasicCompileContext::new(
-                            Allocator::new(),
-                            self.runner.clone(),
-                            HashMap::new(),
-                            optimizer,
-                        );
                         // The name matched, try calling it.
 
                         // Form argument env.
@@ -308,36 +300,49 @@ impl Preprocessor {
                             mdata.args.clone(),
                         )?;
 
-                        let ppext = Rc::new(PreprocessorExtension::new());
-                        let extension: &PreprocessorExtension = ppext.borrow();
-                        let opts_prims = extension.enrich_prims(self.opts.clone());
-                        let new_program = CompileForm {
-                            loc: body.loc(),
-                            args: mdata.args.clone(),
-                            include_forms: vec![],
-                            helpers: self.helpers.clone(),
-                            exp: mdata.body.clone(),
-                            ty: None,
-                        };
+                        let mut allocator = Allocator::new();
                         let compiled_program =
                             if let Some(compiled_program) = self.stored_macros.get(&mdata.name) {
                                 compiled_program.clone()
                             } else {
+                                // as inline defuns because they're closest to that
+                                // semantically.
+                                let optimizer = get_optimizer(
+                                    &body.loc(),
+                                    self.opts.clone()
+                                )?;
+                                let mut symbol_table = HashMap::new();
+                                let mut wrapper = CompileContextWrapper::new(
+                                    &mut allocator,
+                                    self.runner.clone(),
+                                    &mut symbol_table,
+                                    optimizer
+                                );
+                                let new_program = CompileForm {
+                                    loc: body.loc(),
+                                    args: mdata.args.clone(),
+                                    include_forms: vec![],
+                                    helpers: self.helpers.clone(),
+                                    exp: mdata.body.clone(),
+                                    ty: None,
+                                };
                                 let compiled_program = compile_from_compileform(
-                                    &mut context,
-                                    opts_prims.clone(),
+                                    &mut wrapper.context,
+                                    self.opts.clone(),
                                     new_program,
                                 )?;
                                 self.stored_macros.insert(mdata.name.clone(), Rc::new(compiled_program.clone()));
                                 Rc::new(compiled_program)
                             };
+
+                        let ppext: &PreprocessorExtension = self.ppext.borrow();
                         let res = clvm::run(
-                            context.allocator(),
+                            &mut allocator,
                             self.runner.clone(),
-                            opts_prims.prim_map(),
+                            self.opts.prim_map(),
                             compiled_program,
                             args.clone(),
-                            Some(extension),
+                            Some(ppext),
                             None,
                         ).map(nilize).map_err(|e| CompileErr::from(e))?;
 

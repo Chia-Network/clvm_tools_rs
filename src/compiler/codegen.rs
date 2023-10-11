@@ -593,7 +593,6 @@ fn compile_call(
                             &mut unused_symbol_table,
                         )
                         .map(|code| {
-                            eprintln!("compile: {}", code);
                             CompiledCode(
                                 call.loc.clone(),
                                 Rc::new(primquote(call.loc.clone(), Rc::new(code))),

@@ -321,7 +321,7 @@ impl ArgumentValueConv for OperatorsVersion {
 pub fn run(args: &[String]) {
     env_logger::init();
 
-    // let guard = pprof::ProfilerGuardBuilder::default().frequency(100).blocklist(&["libc", "libgcc", "pthread", "vdso"]).build().unwrap();
+    let guard = pprof::ProfilerGuardBuilder::default().frequency(100).blocklist(&["libc", "libgcc", "pthread", "vdso"]).build().unwrap();
 
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, "run", 2);
@@ -330,10 +330,10 @@ pub fn run(args: &[String]) {
         .expect("stdout");
     io::stdout().flush().expect("stdout");
 
-    // if let Ok(report) = guard.report().build() {
-    //     let file = fs::File::create("flamegraph-compile.svg").unwrap();
-    //     report.flamegraph(file).unwrap();
-    // };
+    if let Ok(report) = guard.report().build() {
+        let file = fs::File::create("flamegraph-compile.svg").unwrap();
+        report.flamegraph(file).unwrap();
+    };
 }
 
 pub fn brun(args: &[String]) {

@@ -65,8 +65,8 @@ pub struct FunctionDependencyGraph {
 
 fn status_from_defun(inline: bool, defun: &DefunData) -> DepgraphKind {
     match (inline, defun.synthetic.as_ref()) {
-        (true, None) => DepgraphKind::UserNonInline,
-        (false, None) => DepgraphKind::UserInline,
+        (true, None) => DepgraphKind::UserInline,
+        (false, None) => DepgraphKind::UserNonInline,
         (_, Some(st)) => DepgraphKind::Synthetic(st.clone()),
     }
 }
@@ -74,9 +74,9 @@ fn status_from_defun(inline: bool, defun: &DefunData) -> DepgraphKind {
 impl FunctionDependencyGraph {
     /// Find leaf functions.
     pub fn leaves(&self) -> HashSet<Vec<u8>> {
-        self.helpers.iter().filter(|(k,h)| {
+        self.helpers.iter().filter(|(_k,h)| {
             h.depends_on.is_empty()
-        }).map(|(k,h)| k.clone()).collect()
+        }).map(|(k,_h)| k.clone()).collect()
     }
 
     pub fn parents(&self, helper: &[u8]) -> Option<HashSet<Vec<u8>>> {
