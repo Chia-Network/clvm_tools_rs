@@ -346,7 +346,6 @@ impl Preprocessor {
                             None,
                         ).map(nilize).map_err(|e| CompileErr::from(e))?;
 
-                        eprintln!("macro {} {args} => {res}", decode_string(&name));
                         return Ok(Some(res));
                     }
                 }

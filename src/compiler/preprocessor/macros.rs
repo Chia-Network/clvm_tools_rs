@@ -478,7 +478,6 @@ impl PrimOverride for PreprocessorExtension {
                 let res = extension.try_eval(&hl, &have_args)
                     .map_err(compile_to_run_err)?;
 
-                eprintln!("res = {res}");
                 return Ok(Some(res));
             }
         }
