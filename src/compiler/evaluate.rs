@@ -8,7 +8,7 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::{run, PrimOverride};
+use crate::compiler::clvm::run;
 use crate::compiler::codegen::{codegen, hoist_assign_form};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
@@ -139,65 +139,10 @@ pub struct Evaluator {
     opts: Rc<dyn CompilerOpts>,
     runner: Rc<dyn TRunProgram>,
     prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
-    extensions: Vec<Rc<dyn EvalExtension>>,
     helpers: Vec<HelperForm>,
     mash_conditions: bool,
     ignore_exn: bool,
     disable_calls: bool,
-}
-
-fn compile_to_run_err(e: CompileErr) -> RunFailure {
-    match e {
-        CompileErr(l, e) => RunFailure::RunErr(l, e),
-    }
-}
-
-impl PrimOverride for Evaluator {
-    fn try_handle(
-        &self,
-        head: Rc<SExp>,
-        _context: Rc<SExp>,
-        tail: Rc<SExp>,
-    ) -> Result<Option<Rc<SExp>>, RunFailure> {
-        let have_args: Vec<Rc<BodyForm>> = if let Some(args_list) = tail.proper_list() {
-            args_list
-                .iter()
-                .map(|e| Rc::new(BodyForm::Quoted(e.clone())))
-                .collect()
-        } else {
-            return Ok(None);
-        };
-
-        if let SExp::Atom(hl, head_atom) = head.borrow() {
-            let mut call_args = vec![Rc::new(BodyForm::Value(SExp::Atom(
-                hl.clone(),
-                head_atom.clone(),
-            )))];
-            call_args.append(&mut have_args.clone());
-            let call_form = Rc::new(BodyForm::Call(head.loc(), call_args, None));
-
-            for x in self.extensions.iter() {
-                if let Some(res) = x
-                    .try_eval(
-                        self,
-                        Rc::new(SExp::Nil(head.loc())),
-                        &HashMap::new(),
-                        &head.loc(),
-                        head_atom,
-                        &have_args,
-                        call_form.clone(),
-                    )
-                    .map_err(compile_to_run_err)?
-                {
-                    return dequote(head.loc(), res)
-                        .map_err(compile_to_run_err)
-                        .map(Some);
-                }
-            }
-        }
-
-        Ok(None)
-    }
 }
 
 fn select_helper(bindings: &[HelperForm], name: &[u8]) -> Option<HelperForm> {
@@ -772,7 +717,6 @@ impl<'info> Evaluator {
             helpers,
             mash_conditions: false,
             ignore_exn: false,
-            extensions: Vec::new(),
             disable_calls: false,
         }
     }
@@ -1213,20 +1157,6 @@ impl<'info> Evaluator {
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        for ext in self.extensions.iter() {
-            if let Some(res) = ext.try_eval(
-                self,
-                prog_args.clone(),
-                env,
-                &call.loc,
-                call.name,
-                arguments_to_convert,
-                call.original.clone(),
-            )? {
-                return Ok(res);
-            }
-        }
-
         let helper = select_helper(&self.helpers, call.name);
         match helper {
             Some(HelperForm::Defmacro(mac)) => {
@@ -1700,7 +1630,7 @@ impl<'info> Evaluator {
             self.prims.clone(),
             prim,
             args,
-            Some(self),
+            None,
             Some(PRIM_RUN_LIMIT),
         )
         .map_err(|e| match e {
@@ -1746,10 +1676,6 @@ impl<'info> Evaluator {
             }
         }
         self.helpers.push(h.clone());
-    }
-
-    pub fn add_extension(&mut self, e: Rc<dyn EvalExtension>) {
-        self.extensions.push(e);
     }
 
     // The evaluator treats the forms coming up from constants as live.
