@@ -607,25 +607,48 @@ impl Program {
                 Rc::new(DefaultProgramRunner::default())
             };
 
+        let clvm_to_modern_err = |_| {
+            let err: JsValue = JsString::from("error converting result").into();
+            err
+        };
+
         let run_result =
-            runner.run_program(
+            match runner.run_program(
                 &mut allocator,
                 prog_classic,
                 arg_classic,
                 None
-            ).map_err(|e| {
-                let err_str: &str = &e.1;
-                let err: JsValue = JsString::from(err_str).into();
-                err
-            })?;
+            ) {
+                Ok(res) => res,
+                Err(e) => {
+                    let err_str: &str = &e.1;
+                    let err: JsValue = JsString::from(err_str).into();
+                    let err_atom =
+                        if let Ok(atom) = allocator.new_atom(err_str.as_bytes()) {
+                            atom
+                        } else {
+                            return Err(err);
+                        };
+                    let err_cons =
+                        if let Ok(cons) = allocator.new_pair(e.0, err_atom) {
+                            cons
+                        } else {
+                            return Err(err);
+                        };
+                    let modern_err = convert_from_clvm_rs(
+                        &mut allocator,
+                        get_srcloc(),
+                        err_cons
+                    ).map_err(clvm_to_modern_err)?;
+                    return Err(convert_to_program(modern_err)?);
+                }
+            };
+
         let modern_result = convert_from_clvm_rs(
             &mut allocator,
             get_srcloc(),
             run_result.1
-        ).map_err(|_| {
-            let err: JsValue = JsString::from("error converting result").into();
-            err
-        })?;
+        ).map_err(clvm_to_modern_err)?;
         let result_object = convert_to_program(modern_result)?;
         let cost_and_result_array = Array::new();
         cost_and_result_array.push(&JsValue::from_f64(run_result.0 as f64));
