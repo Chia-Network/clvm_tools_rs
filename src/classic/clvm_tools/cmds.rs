@@ -321,19 +321,12 @@ impl ArgumentValueConv for OperatorsVersion {
 pub fn run(args: &[String]) {
     env_logger::init();
 
-    let guard = pprof::ProfilerGuardBuilder::default().frequency(100).blocklist(&["libc", "libgcc", "pthread", "vdso"]).build().unwrap();
-
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, "run", 2);
     io::stdout()
         .write_all(s.get_value().data())
         .expect("stdout");
     io::stdout().flush().expect("stdout");
-
-    if let Ok(report) = guard.report().build() {
-        let file = fs::File::create("flamegraph-compile.svg").unwrap();
-        report.flamegraph(file).unwrap();
-    };
 }
 
 pub fn brun(args: &[String]) {
@@ -647,8 +640,6 @@ pub fn cldb(args: &[String]) {
         )
         .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
         _ => {
-            // let guard = pprof::ProfilerGuardBuilder::default().frequency(1000).blocklist(&["libc", "libgcc", "pthread", "vdso"]).build().unwrap();
-
             // don't clobber a symbol table brought in via -y unless we're
             // compiling here.
             let unopt_res = compile_file(
@@ -663,11 +654,6 @@ pub fn cldb(args: &[String]) {
             } else {
                 unopt_res.map(Rc::new)
             };
-
-            // if let Ok(report) = guard.report().build() {
-            //     let file = fs::File::create("flamegraph-compile.svg").unwrap();
-            //     report.flamegraph(file).unwrap();
-            // };
 
             res
         }
