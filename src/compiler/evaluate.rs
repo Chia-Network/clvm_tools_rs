@@ -937,26 +937,13 @@ impl<'info> Evaluator {
         )
     }
 
-    fn defmac_ordering(&self) -> bool {
-        let dialect = self.opts.dialect();
-        dialect.strict || dialect.stepping.unwrap_or(21) > 22
-    }
-
     fn make_com_module(&self, l: &Srcloc, prog_args: Rc<SExp>, body: Rc<SExp>) -> Rc<SExp> {
-        let end_of_list = if self.defmac_ordering() {
-            let mut mod_list: Vec<Rc<SExp>> = self.helpers.iter().map(|h| h.to_sexp()).collect();
-            mod_list.push(body);
-            Rc::new(enlist(l.clone(), &mod_list))
-        } else {
-            let mut end_of_list =
-                Rc::new(SExp::Cons(l.clone(), body, Rc::new(SExp::Nil(l.clone()))));
+        let mut end_of_list =
+            Rc::new(SExp::Cons(l.clone(), body, Rc::new(SExp::Nil(l.clone()))));
 
-            for h in self.helpers.iter() {
-                end_of_list = Rc::new(SExp::Cons(l.clone(), h.to_sexp(), end_of_list));
-            }
-
-            end_of_list
-        };
+        for h in self.helpers.iter() {
+            end_of_list = Rc::new(SExp::Cons(l.clone(), h.to_sexp(), end_of_list));
+        }
 
         Rc::new(SExp::Cons(
             l.clone(),
@@ -1719,14 +1706,14 @@ impl<'info> Evaluator {
         in_defun: bool,
         use_body: Rc<SExp>,
     ) -> Result<Rc<SExp>, CompileErr> {
+        assert!(self.opts.dialect().strict);
         // Com takes place in the current environment.
         // We can only reduce com if all bindings are
         // primitive.
         let updated_opts = self
             .opts
             .set_stdenv(!in_defun && !self.opts.dialect().strict)
-            .set_in_defun(in_defun)
-            .set_frontend_opt(false);
+            .set_in_defun(in_defun);
 
         let com_result = updated_opts.compile_program(
             allocator,
@@ -1734,6 +1721,8 @@ impl<'info> Evaluator {
             use_body,
             &mut HashMap::new(),
         )?;
+
+        eprintln!("com_result {:?} {com_result}", self.opts.dialect());
 
         Ok(Rc::new(com_result))
     }

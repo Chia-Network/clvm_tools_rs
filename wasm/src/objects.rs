@@ -1,13 +1,15 @@
 use js_sys;
-use js_sys::{Array, JsString, Reflect};
+use js_sys::{Array, Function, JsString, Reflect};
 use num_traits::cast::ToPrimitive;
 use std::borrow::Borrow;
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 
 use clvmr::Allocator;
+use clvmr::dialect::Dialect;
 use clvm_tools_rs::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType, bi_one};
 use clvm_tools_rs::classic::clvm::serialize::{SimpleCreateCLVMObject, sexp_to_stream, sexp_from_stream};
 use clvm_tools_rs::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
@@ -17,7 +19,8 @@ use clvm_tools_rs::compiler::sexp::SExp;
 use clvm_tools_rs::compiler::srcloc::Srcloc;
 
 use crate::api::{create_clvm_runner_err, get_next_id};
-use crate::jsval::{js_object_from_sexp, sexp_from_js_object};
+use crate::dialect::JsEnrichedCLVM;
+use crate::jsval::{js_object_from_sexp, sexp_from_js_object, get_property};
 
 const DEFAULT_CACHE_ENTRIES: usize = 1024;
 
@@ -409,6 +412,12 @@ fn cache_and_accumulate_arg(array: &Array, prog: Rc<SExp>) -> Result<(), JsValue
     Ok(())
 }
 
+pub fn convert_to_program(sexp: Rc<SExp>) -> Result<JsValue, JsValue> {
+    let result_id = get_next_id();
+    let new_cached_result = create_cached_sexp(result_id, sexp)?;
+    finish_new_object(result_id, &new_cached_result)
+}
+
 #[wasm_bindgen]
 impl Program {
     #[wasm_bindgen]
@@ -558,7 +567,7 @@ impl Program {
     }
 
     #[wasm_bindgen]
-    pub fn run_internal(obj: &JsValue, args: &JsValue) -> Result<JsValue, JsValue> {
+    pub fn run_internal(obj: &JsValue, args: &JsValue, options: &JsValue) -> Result<JsValue, JsValue> {
         let progval = js_cache_value_from_js(obj)?;
         let prog_cache = find_cached_sexp(progval.entry, &progval.content)?;
 
@@ -581,7 +590,23 @@ impl Program {
             err
         })?;
 
-        let runner = DefaultProgramRunner::default();
+        let operators_val = JsValue::from_str("operators");
+        let runner: Rc<dyn TRunProgram> =
+            if let Ok(ops) = Reflect::get(&options, &operators_val) {
+                let mut operator_map = HashMap::new();
+                let keys = Reflect::own_keys(&ops)?;
+                for k in keys.iter() {
+                    if let (Ok(fun), Some(k_str)) = (Reflect::get(&ops, &k), JsValue::as_string(&k)) {
+                        let function: &Function = fun.unchecked_ref();
+                        operator_map.insert(k_str.as_bytes().to_vec(), function.clone());
+                    }
+                }
+
+                Rc::new(JsEnrichedCLVM::new(Srcloc::start("*run*"), operator_map))
+            } else {
+                Rc::new(DefaultProgramRunner::default())
+            };
+
         let run_result =
             runner.run_program(
                 &mut allocator,
@@ -601,9 +626,7 @@ impl Program {
             let err: JsValue = JsString::from("error converting result").into();
             err
         })?;
-        let result_id = get_next_id();
-        let new_cached_result = create_cached_sexp(result_id, modern_result)?;
-        let result_object = finish_new_object(result_id, &new_cached_result)?;
+        let result_object = convert_to_program(modern_result)?;
         let cost_and_result_array = Array::new();
         cost_and_result_array.push(&JsValue::from_f64(run_result.0 as f64));
         cost_and_result_array.push(&result_object);

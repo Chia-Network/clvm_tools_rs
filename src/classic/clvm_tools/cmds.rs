@@ -321,7 +321,7 @@ impl ArgumentValueConv for OperatorsVersion {
 pub fn run(args: &[String]) {
     env_logger::init();
 
-    let guard = pprof::ProfilerGuardBuilder::default().frequency(100).blocklist(&["libc", "libgcc", "pthread", "vdso"]).build().unwrap();
+    // let guard = pprof::ProfilerGuardBuilder::default().frequency(100).blocklist(&["libc", "libgcc", "pthread", "vdso"]).build().unwrap();
 
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, "run", 2);
@@ -330,10 +330,10 @@ pub fn run(args: &[String]) {
         .expect("stdout");
     io::stdout().flush().expect("stdout");
 
-    if let Ok(report) = guard.report().build() {
-        let file = fs::File::create("flamegraph-compile.svg").unwrap();
-        report.flamegraph(file).unwrap();
-    };
+    // if let Ok(report) = guard.report().build() {
+    //     let file = fs::File::create("flamegraph-compile.svg").unwrap();
+    //     report.flamegraph(file).unwrap();
+    // };
 }
 
 pub fn brun(args: &[String]) {
@@ -512,6 +512,8 @@ pub fn cldb_hierarchy(
 pub fn cldb(args: &[String]) {
     env_logger::init();
 
+    // let guard = pprof::ProfilerGuardBuilder::default().frequency(100).blocklist(&["libc", "libgcc", "pthread", "vdso"]).build().unwrap();
+
     let tool_name = "cldb".to_string();
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
@@ -621,7 +623,7 @@ pub fn cldb(args: &[String]) {
             _ => None,
         });
 
-    let only_print = parsed_args.get("only_print").map(|_| true).unwrap_or(false);
+    let only_print = parsed_args.get("debug_print").map(|_| true).unwrap_or(false);
 
     let do_optimize = parsed_args
         .get("optimize")
@@ -647,8 +649,6 @@ pub fn cldb(args: &[String]) {
         )
         .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
         _ => {
-            // let guard = pprof::ProfilerGuardBuilder::default().frequency(1000).blocklist(&["libc", "libgcc", "pthread", "vdso"]).build().unwrap();
-
             // don't clobber a symbol table brought in via -y unless we're
             // compiling here.
             let unopt_res = compile_file(
@@ -663,11 +663,6 @@ pub fn cldb(args: &[String]) {
             } else {
                 unopt_res.map(Rc::new)
             };
-
-            // if let Ok(report) = guard.report().build() {
-            //     let file = fs::File::create("flamegraph-compile.svg").unwrap();
-            //     report.flamegraph(file).unwrap();
-            // };
 
             res
         }
@@ -770,6 +765,12 @@ pub fn cldb(args: &[String]) {
     loop {
         if cldbrun.is_ended() {
             println!("{}", yamlette_string(&output));
+
+            // if let Ok(report) = guard.report().build() {
+            //     let file = fs::File::create("flamegraph-compile.svg").unwrap();
+            //     report.flamegraph(file).unwrap();
+            // };
+
             return;
         }
 

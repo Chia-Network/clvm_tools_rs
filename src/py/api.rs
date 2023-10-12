@@ -405,5 +405,6 @@ fn clvm_tools_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(check_dependencies, m)?)?;
     m.add_function(wrap_pyfunction!(compose_run_function, m)?)?;
     m.add_class::<PythonRunStep>()?;
+    m.add_function(wrap_pyfunction!(brun_with_operators, m)?)?;
     Ok(())
 }

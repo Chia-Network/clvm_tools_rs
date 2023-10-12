@@ -152,6 +152,32 @@ it('Has run', async () => {
     assert.equal(cost, 2658);
 });
 
+it('Has run with operator override', async () => {
+    let program = Program.from_hex('ff907370656369616c2d6f70657261746f72ff02ff0580');
+    let n1 = 101;
+    let n2 = 523;
+    let args0 = Program.to([n1,n2]);
+    let options = {
+        "operators": {
+            "special-operator": (args) => {
+                let first_arg = args.first().as_int();
+                let second_arg = args.rest().first().as_int();
+                return Program.to(first_arg ^ second_arg);
+            }
+        }
+    };
+    const [cost0, run_result0] = program.run(args0, options);
+    assert.equal(run_result0.as_int(), 622);
+
+    let args1 = Program.to([]);
+    try {
+        program.run(args1, options);
+        assert.fail(true);
+    } catch (e) {
+        assert.equal(e, "path into atom");
+    }
+});
+
 it('Has curry', async () => {
     let program = Program.from_hex('ff12ffff10ff02ffff010180ffff11ff02ffff01018080');
     let program_with_arg = program.curry(Program.to(13));
