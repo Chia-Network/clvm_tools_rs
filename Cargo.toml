@@ -41,6 +41,11 @@ linked-hash-map = "0.5.6"
 serde = { version = "1.0", features = ["derive", "rc"] }
 regex = "1.8.4"
 
+[dependencies.pprof]
+version = "0.13"
+features = ["flamegraph"]
+optional = true
+
 [dependencies.pyo3]
 version = "0.14.2"
 features = ["abi3-py38", "extension-module"]
@@ -57,6 +62,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 extension-module = ["dep:pyo3"]
 debug-print = []
+profiling = ["dep:pprof"]
 default = ["debug-print"]
 
 [target.'cfg(target_family="wasm")'.dependencies]

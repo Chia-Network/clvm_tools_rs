@@ -152,6 +152,78 @@ it('Has run', async () => {
     assert.equal(cost, 2658);
 });
 
+it('Has run with operator override', async () => {
+    let program = Program.from_hex('ff907370656369616c2d6f70657261746f72ff02ff0580');
+    let n1 = 101;
+    let n2 = 523;
+    let args0 = Program.to([n1,n2]);
+    let options = {
+        "operators": {
+            "special-operator": (args) => {
+                let first_arg = args.first().as_int();
+                let second_arg = args.rest().first().as_int();
+                return Program.to(first_arg ^ second_arg);
+            }
+        }
+    };
+    const [cost0, run_result0] = program.run(args0, options);
+    assert.equal(run_result0.as_int(), 622);
+
+    let args1 = Program.to([]);
+    try {
+        program.run(args1, options);
+        assert.fail(true);
+    } catch (e) {
+        assert.equal(e.toString(), Program.to(t([], "path into atom")).toString());
+    }
+});
+
+it('Can run isolated code and examine the result', async () => {
+    let program = Program.from_hex('ff02ffff01ff02ff02ffff04ff02ffff04ff05ffff04ff0bff8080808080ffff04ffff01ff9272756e2d776974682d657863657074696f6eff05ff0b80ff018080');
+    let use_program = Program.from_hex('ff02ffff01ff02ffff03ff05ffff01ff02ffff01ff02ff02ffff04ff02ff058080ff0180ffff01ff02ffff01ff08ffff018d6e6f206172677320676976656e80ff018080ff0180ffff04ffff01ff02ffff0117ff0180ff018080');
+    let options = {
+        "operators": {
+            "run-with-exception": (args) => {
+                let program = args.first();
+                let env = args.rest().first();
+                try {
+                    let [cost, result] = program.run(env);
+                    return Program.to(t(result, []));
+                } catch (e) {
+                    return Program.to(t([], e));
+                }
+            }
+        }
+    };
+
+    let args0 = Program.to([use_program, [[1, 2, 3]]]);
+    const [cost0, run_result0] = program.run(args0, options);
+    assert.equal(run_result0.first().as_int(), 3);
+    assert.ok(run_result0.rest().nullp());
+
+    let args1 = Program.to([use_program, [[1, 2]]]);
+    const [cost1, run_result1] = program.run(args1, options);
+    assert.ok(run_result1.first().nullp());
+    console.log(run_result1.first().toString());
+    console.log(run_result1.rest().toString());
+    assert.equal(
+        run_result1.rest().toString(),
+        Program.to(t([], "path into atom")).toString()
+    );
+
+    let args2 = Program.to([use_program, [[]]]);
+    const [cost2, run_result2] = program.run(args2, options);
+    assert.ok(run_result2.first().nullp());
+    assert.equal(
+        run_result2.rest().first().toString(),
+        Program.to("no args given").toString()
+    );
+    assert.equal(
+        run_result2.rest().rest().toString(),
+        Program.to("clvm raise").toString()
+    );
+});
+
 it('Has curry', async () => {
     let program = Program.from_hex('ff12ffff10ff02ffff010180ffff11ff02ffff01018080');
     let program_with_arg = program.curry(Program.to(13));
