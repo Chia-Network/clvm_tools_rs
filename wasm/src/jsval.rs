@@ -67,19 +67,19 @@ pub fn get_property(o: &Object, name: &str) -> Option<JsValue> {
         o,
         &JsValue::from_str(name),
     ))
-        .and_then(|desc_obj| match Object::try_from(desc_obj) {
-            Some(o) => {
-                for pj in Object::entries(o).values() {
-                    let pair = Array::from(&pj.unwrap());
-                    let propname = pair.get(0).as_string();
-                    if propname == Some("value".to_string()) {
-                        return Some(pair.get(1));
-                    }
+    .and_then(|desc_obj| match Object::try_from(desc_obj) {
+        Some(o) => {
+            for pj in Object::entries(o).values() {
+                let pair = Array::from(&pj.unwrap());
+                let propname = pair.get(0).as_string();
+                if propname == Some("value".to_string()) {
+                    return Some(pair.get(1));
                 }
-                None
             }
-            _ => None,
-        })
+            None
+        }
+        _ => None,
+    })
 }
 
 fn location_lc_pair(o: &Object) -> Option<(usize, usize)> {
