@@ -2003,3 +2003,35 @@ fn test_rename_in_compileform_simple() {
     let renamed_helperform = squash_name_differences(helper_f[0].to_sexp()).expect("should rename");
     assert_eq!(renamed_helperform.to_string(), desired_outcome);
 }
+
+#[test]
+fn test_check_for_argument_presence() {
+    let prog = indoc! {"
+(mod (X)
+
+  (include *standard-cl-23*)
+
+  (defun F (A B C)
+    (if (@ C 1)
+      (+ A B C)
+      (x \"no argument C\")
+      )
+    )
+
+  (F &rest X)
+  )"}
+    .to_string();
+    let res1 = run_string(&prog, &"((1 2 3))".to_string()).expect("should compile and run");
+    assert_eq!(res1.to_string(), "6");
+
+    let res2 = run_string(&prog, &"((1 2))".to_string());
+    match res2 {
+        Err(CompileErr(_, err_str)) => {
+            assert!(err_str.contains("clvm raise"));
+            assert!(err_str.contains("no argument C"));
+        }
+        Ok(_) => {
+            assert!(false);
+        }
+    }
+}
