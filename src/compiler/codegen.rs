@@ -460,7 +460,7 @@ pub fn get_call_name(l: Srcloc, body: BodyForm) -> Result<Rc<SExp>, CompileErr> 
 }
 
 fn produce_argument_check(compiler: &PrimaryCodegen, loc: Srcloc, a: &[u8], mut steps: Number) -> Result<CompiledCode, CompileErr> {
-    if let Ok(SExp::Integer(l, lookup)) =
+    if let Ok(SExp::Integer(l, mut lookup)) =
         create_name_lookup(
             compiler,
             loc.clone(),
@@ -481,11 +481,15 @@ fn produce_argument_check(compiler: &PrimaryCodegen, loc: Srcloc, a: &[u8], mut 
         while steps > bi_zero() {
             steps -= bi_one();
             bit /= two.clone();
+            if lookup.clone() & bit.clone() != bi_zero() {
+                lookup ^= bit.clone();
+            }
+            lookup |= bit.clone() / two.clone();
         }
 
         Ok(CompiledCode(
             loc.clone(),
-            Rc::new(SExp::Integer(l, bit - bi_one()))
+            Rc::new(SExp::Integer(l, lookup))
         ))
     } else {
         Err(CompileErr(

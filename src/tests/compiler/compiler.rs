@@ -2005,7 +2005,7 @@ fn test_rename_in_compileform_simple() {
 }
 
 #[test]
-fn test_check_for_argument_presence() {
+fn test_check_for_argument_presence_0() {
     let prog = indoc! {"
 (mod (X)
 
@@ -2029,6 +2029,38 @@ fn test_check_for_argument_presence() {
         Err(CompileErr(_, err_str)) => {
             assert!(err_str.contains("clvm raise"));
             assert!(err_str.contains("no argument C"));
+        }
+        Ok(_) => {
+            assert!(false);
+        }
+    }
+}
+
+#[test]
+fn test_check_for_argument_presence_1() {
+    let prog = indoc! {"
+(mod (X)
+
+  (include *standard-cl-23*)
+
+  (defun F ((Q R S) B C)
+    (if (@ S 1)
+      (+ Q R S B C)
+      (x \"no argument S\")
+      )
+    )
+
+  (F &rest X)
+  )"}
+    .to_string();
+    let res1 = run_string(&prog, &"(((99 101 103) 2 3))".to_string()).expect("should compile and run");
+    assert_eq!(res1.to_string(), "308");
+
+    let res2 = run_string(&prog, &"(((99 101) 2 3))".to_string());
+    match res2 {
+        Err(CompileErr(_, err_str)) => {
+            assert!(err_str.contains("clvm raise"));
+            assert!(err_str.contains("no argument S"));
         }
         Ok(_) => {
             assert!(false);
