@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import { resolve } from 'path';
 import * as assert from 'assert';
 import * as bls_loader from 'bls-signatures';
-const {h, t, Program} = require('../../../../../pkg/clvm_tools_wasm');
+const {h, t, Program, compile, get_dependencies} = require('../../../../../pkg/clvm_tools_wasm');
 
 it('Has BLS signatures support', async () => {
     let bls = await bls_loader.default();
@@ -204,8 +204,6 @@ it('Can run isolated code and examine the result', async () => {
     let args1 = Program.to([use_program, [[1, 2]]]);
     const [cost1, run_result1] = program.run(args1, options);
     assert.ok(run_result1.first().nullp());
-    console.log(run_result1.first().toString());
-    console.log(run_result1.rest().toString());
     assert.equal(
         run_result1.rest().toString(),
         Program.to(t([], "path into atom")).toString()
@@ -255,4 +253,43 @@ it('works as expected in context', async () => {
     // Expected puzzle hash = 30cdae3d54778db5eba21584c452cfb1a278136b2ec352ba44a52078efea7507
     let target_puzzle = ce.puzzle_for_synthetic_public_key(pk);
     assert.equal(target_puzzle.sha256tree().toString(), h('30cdae3d54778db5eba21584c452cfb1a278136b2ec352ba44a52078efea7507').toString());
+});
+
+function compiler_read_file(filename, dirs) {
+    for (let d in dirs) {
+        let dir = dirs[d];
+        let path = resolve(dir, filename);
+        try {
+            return [path, fs.readFileSync(path, 'utf8')];
+        } catch (e) {
+            // Ok, try the next dir.
+        }
+    }
+
+    throw `Could not find file ${filename}`;
+}
+
+it('can compile complex programs', async () => {
+    let filename = resolve(__dirname, '../../../content/test-with-include.clsp');
+    let program_text = fs.readFileSync(filename, 'utf8');
+    let program_output = compile(
+        program_text,
+        filename,
+        [resolve(__dirname, '../../../content')],
+        { 'read_new_file': compiler_read_file }
+    );
+    assert.equal(program_output.hex, 'ff10ff02ffff010380');
+});
+
+it('can get dependencies', async () => {
+    let filename = resolve(__dirname, '../../../content/test-with-include.clsp');
+    let program_text = fs.readFileSync(filename, 'utf8');
+    let deplist = get_dependencies(
+        program_text,
+        filename,
+        [resolve(__dirname, '../../../content')],
+        { 'read_new_file': compiler_read_file }
+    );
+    assert.equal(deplist.length, 1);
+    assert.equal(deplist[0], resolve(__dirname, '../../../content/test-include.clinc'));
 });

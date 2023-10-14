@@ -1,0 +1,7 @@
+(mod (X)
+  (include *standard-cl-23*)
+
+  (include test-include.clinc)
+
+  (+ X Z)
+  )

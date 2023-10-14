@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
@@ -14,7 +15,8 @@ use clvm_tools_rs::compiler::compiler::{DefaultCompilerOpts, compile_pre_forms};
 use clvm_tools_rs::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
 use clvm_tools_rs::compiler::dialect::AcceptedDialect;
 use clvm_tools_rs::compiler::optimize::get_optimizer;
-use clvm_tools_rs::compiler::sexp::SExp;
+use clvm_tools_rs::compiler::preprocessor::gather_dependencies;
+use clvm_tools_rs::compiler::sexp::{decode_string, SExp};
 use clvm_tools_rs::compiler::srcloc::Srcloc;
 
 use crate::api::create_clvm_runner_err;
@@ -196,8 +198,19 @@ impl CompilerOpts for JsCompilerOpts {
                 }
             })?;
 
-            if let Some(result_string) = res.as_string() {
-                return Ok((filename.clone(), result_string.as_bytes().to_vec()));
+            let res_array: js_sys::Array = js_sys::Array::try_from(res).map_err(|_| {
+                CompileErr(Srcloc::start(&inc_from), format!("error reading {filename}: could not convert result from injected reader"))
+            })?;
+
+            if res_array.iter().len() != 2 {
+                return Err(CompileErr(Srcloc::start(&inc_from), format!("error reading {filename}: not an array from injected reader")));
+            }
+
+            let res_name = res_array.get(0);
+            let res_data = res_array.get(1);
+
+            if let (Some(name), Some(data)) = (res_name.as_string(), res_data.as_string()) {
+                return Ok((name.clone(), data.as_bytes().to_vec()));
             } else {
                 return Err(CompileErr(Srcloc::start(&inc_from), "could not convert result to string".to_string()));
             }
@@ -226,6 +239,22 @@ impl CompilerOpts for JsCompilerOpts {
     }
 }
 
+fn convert_search_paths(search_paths_js: &[JsValue]) -> Result<Vec<String>, String> {
+    let mut search_paths: Vec<String> = Vec::new();
+
+    for j in search_paths_js
+        .iter()
+    {
+        if let Some(s) = j.as_string() {
+            search_paths.push(s);
+        } else {
+            return Err("could not convert all paths".to_string());
+        }
+    }
+
+    Ok(search_paths)
+}
+
 // Compile a program, giving
 // {"hex": "02392349234...", "symbols":{...}}
 // or
@@ -238,14 +267,18 @@ pub fn compile(input_js: JsValue, filename_js: JsValue, search_paths_js: Vec<JsV
 
     let input = input_js.as_string().unwrap();
     let filename = filename_js.as_string().unwrap();
-    let search_paths: Vec<String> = search_paths_js
-        .iter()
-        .map(|j| j.as_string().unwrap())
-        .collect();
+    let search_paths =
+        match convert_search_paths(&search_paths_js) {
+            Ok(paths) => paths,
+            Err(e) => {
+                return create_clvm_runner_err(e);
+            }
+        };
 
     let original_opts = Rc::new(DefaultCompilerOpts::new(&filename));
     let opts = Rc::new(JsCompilerOpts::new(original_opts, options))
         .set_search_paths(&search_paths);
+
     match compile_clvm_inner(
         &mut allocator,
         opts,
@@ -258,4 +291,24 @@ pub fn compile(input_js: JsValue, filename_js: JsValue, search_paths_js: Vec<JsV
         Ok(_) => make_compile_output(&result_stream, &symbol_table),
         Err(e) => create_clvm_runner_err(e),
     }
+}
+
+// Do get_dependencies on a program giving a list of dependencies.
+#[wasm_bindgen]
+pub fn get_dependencies(input_js: JsValue, filename_js: JsValue, search_paths_js: Vec<JsValue>, options: JsValue) -> Result<Vec<JsValue>, JsValue> {
+    let input = input_js.as_string().unwrap();
+    let filename = filename_js.as_string().unwrap();
+    let search_paths = convert_search_paths(&search_paths_js)?;
+
+    let original_opts = Rc::new(DefaultCompilerOpts::new(&filename));
+    let opts = Rc::new(JsCompilerOpts::new(original_opts, options))
+        .set_search_paths(&search_paths);
+
+    let result_list = gather_dependencies(opts, &filename, &input).map_err(|e| {
+        JsValue::from_str(&format!("{}: {}\n", e.0, e.1))
+    })?.into_iter().map(|path| {
+        JsValue::from_str(&decode_string(&path.name))
+    }).collect();
+
+    Ok(result_list)
 }
