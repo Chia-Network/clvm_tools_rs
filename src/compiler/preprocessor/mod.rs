@@ -109,7 +109,7 @@ impl Preprocessor {
 
     /// Given a specification of an include file, load up the forms inside it and
     /// return them (or an error if the file couldn't be read or wasn't a list).
-    pub fn process_include(&mut self, include: &IncludeDesc) -> Result<Vec<Rc<SExp>>, CompileErr> {
+    pub fn process_include(&mut self, includes: &mut Vec<IncludeDesc>, include: &IncludeDesc) -> Result<Vec<Rc<SExp>>, CompileErr> {
         let filename_and_content = self
             .opts
             .read_new_file(self.opts.filename(), decode_string(&include.name))?;
@@ -131,9 +131,8 @@ impl Preprocessor {
         if self.strict {
             let mut result = Vec::new();
             for p in parsed.into_iter() {
-                if let Some(res) = self.expand_macros(p.clone(), true)? {
-                    result.push(res);
-                }
+                let mut new_forms = self.process_pp_form(includes, p.clone())?;
+                result.append(&mut new_forms);
             }
 
             Ok(result)
@@ -540,7 +539,7 @@ impl Preprocessor {
             Ok(vec![])
         } else if let Some(IncludeType::Basic(i)) = &included {
             self.recurse_dependencies(includes, IncludeProcessType::Compiled, i.clone())?;
-            self.process_include(i)
+            self.process_include(includes, i)
         } else if let Some(IncludeType::Processed(f, kind, name)) = &included {
             self.recurse_dependencies(includes, kind.clone(), f.clone())?;
             self.process_embed(body.loc(), &decode_string(&f.name), kind, name)
