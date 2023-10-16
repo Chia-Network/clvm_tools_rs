@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
 
+use crate::classic::clvm_tools::binutils::assemble;
 use crate::classic::clvm_tools::clvmc::compile_clvm_text_maybe_opt;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 
@@ -17,9 +18,9 @@ use crate::compiler::compiler::compile_from_compileform;
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, IncludeDesc, IncludeProcessType,
 };
-use crate::compiler::dialect::KNOWN_DIALECTS;
+use crate::compiler::dialect::{detect_modern, KNOWN_DIALECTS};
 use crate::compiler::evaluate::{create_argument_captures, ArgInputs};
-use crate::compiler::frontend::compile_helperform;
+use crate::compiler::frontend::{compile_helperform, frontend};
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::preprocessor::macros::PreprocessorExtension;
 use crate::compiler::rename::rename_args_helperform;
@@ -612,24 +613,25 @@ pub fn preprocess(
 /// form that causes compilation to include another file.  The file names are path
 /// expanded based on the include path they were found in (from opts).
 pub fn gather_dependencies(
-    opts: Rc<dyn CompilerOpts>,
+    mut opts: Rc<dyn CompilerOpts>,
     real_input_path: &str,
     file_content: &str,
 ) -> Result<Vec<IncludeDesc>, CompileErr> {
-    let mut includes = Vec::new();
-    let no_stdenv_opts = opts.set_stdenv(false);
-    let mut p = Preprocessor::new(no_stdenv_opts);
-    let loc = Srcloc::start(real_input_path);
+    let mut allocator = Allocator::new();
 
-    let parsed = parse_sexp(loc, file_content.bytes())?;
-
-    if parsed.is_empty() {
-        return Ok(vec![]);
+    let assembled_input = assemble(&mut allocator, &file_content).map_err(|e| {
+        CompileErr(Srcloc::start(real_input_path), e.1)
+    })?;
+    let dialect = detect_modern(&mut allocator, assembled_input);
+    opts = opts.set_stdenv(dialect.strict).set_dialect(dialect.clone());
+    if let Some(stepping) = dialect.stepping {
+        opts = opts
+            .set_optimize(stepping > 22)
+            .set_frontend_opt(stepping > 21);
     }
 
-    for elt in parsed.iter() {
-        p.run(&mut includes, elt.clone())?;
-    }
+    let parsed = parse_sexp(Srcloc::start(real_input_path), file_content.bytes())?;
+    let program = frontend(opts, &parsed)?;
 
-    Ok(includes)
+    Ok(program.include_forms)
 }
