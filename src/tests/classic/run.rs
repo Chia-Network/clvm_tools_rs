@@ -2606,7 +2606,6 @@ fn test_continued_if() {
     assert_eq!(res.to_string(), "0x0304050d630090");
 }
 
-
 #[test]
 fn test_preprocess_can_recurse() {
     let prog = "resources/tests/strict/test-inner-include.clsp".to_string();
@@ -2616,7 +2615,7 @@ fn test_preprocess_can_recurse() {
         "resources/tests/strict".to_string(),
         prog.clone(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     assert_eq!(res, "(2 (3 2 (1 18 2 (1 . 2)) (1 16 2 (1 . 1))) 1)");
 }

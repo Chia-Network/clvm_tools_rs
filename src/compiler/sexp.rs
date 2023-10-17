@@ -1182,43 +1182,66 @@ impl ToSExp for &str {
     }
 }
 
-impl<V> ToSExp for Vec<V> where V: ToSExp {
+impl<V> ToSExp for Vec<V>
+where
+    V: ToSExp,
+{
     fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
         let converted: Vec<Rc<SExp>> = self.iter().map(|x| x.to_sexp(srcloc.clone())).collect();
         Rc::new(enlist(srcloc, &converted))
     }
 }
 
-impl<V> ToSExp for HashSet<V> where V: ToSExp {
+impl<V> ToSExp for HashSet<V>
+where
+    V: ToSExp,
+{
     fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
         let converted: Vec<Rc<SExp>> = self.iter().map(|x| x.to_sexp(srcloc.clone())).collect();
         Rc::new(enlist(srcloc, &converted))
     }
 }
 
-impl<V> ToSExp for BTreeSet<V> where V: ToSExp {
+impl<V> ToSExp for BTreeSet<V>
+where
+    V: ToSExp,
+{
     fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
         let converted: Vec<Rc<SExp>> = self.iter().map(|x| x.to_sexp(srcloc.clone())).collect();
         Rc::new(enlist(srcloc, &converted))
     }
 }
 
-impl<K,V> ToSExp for BTreeMap<K,V> where K: ToSExp, V: ToSExp {
+impl<K, V> ToSExp for BTreeMap<K, V>
+where
+    K: ToSExp,
+    V: ToSExp,
+{
     fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
-        let converted: Vec<Rc<SExp>> = self.iter().map(|(k,v)| {
-            let cvt = vec![k.to_sexp(srcloc.clone()), v.to_sexp(srcloc.clone())];
-            Rc::new(enlist(srcloc.clone(), &cvt))
-        }).collect();
+        let converted: Vec<Rc<SExp>> = self
+            .iter()
+            .map(|(k, v)| {
+                let cvt = vec![k.to_sexp(srcloc.clone()), v.to_sexp(srcloc.clone())];
+                Rc::new(enlist(srcloc.clone(), &cvt))
+            })
+            .collect();
         Rc::new(enlist(srcloc, &converted))
     }
 }
 
-impl<K,V> ToSExp for HashMap<K,V> where K: ToSExp, V: ToSExp {
+impl<K, V> ToSExp for HashMap<K, V>
+where
+    K: ToSExp,
+    V: ToSExp,
+{
     fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
-        let converted: Vec<Rc<SExp>> = self.iter().map(|(k,v)| {
-            let cvt = vec![k.to_sexp(srcloc.clone()), v.to_sexp(srcloc.clone())];
-            Rc::new(enlist(srcloc.clone(), &cvt))
-        }).collect();
+        let converted: Vec<Rc<SExp>> = self
+            .iter()
+            .map(|(k, v)| {
+                let cvt = vec![k.to_sexp(srcloc.clone()), v.to_sexp(srcloc.clone())];
+                Rc::new(enlist(srcloc.clone(), &cvt))
+            })
+            .collect();
         Rc::new(enlist(srcloc, &converted))
     }
 }

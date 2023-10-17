@@ -28,7 +28,7 @@ use crate::compiler::sexp::{decode_string, printable, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::StartOfCodegenOptimization;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
-use crate::util::{toposort, Number, u8_from_number, TopoSortItem};
+use crate::util::{toposort, u8_from_number, Number, TopoSortItem};
 
 const MACRO_TIME_LIMIT: usize = 1000000;
 const CONST_EVAL_LIMIT: usize = 1000000;
@@ -459,14 +459,14 @@ pub fn get_call_name(l: Srcloc, body: BodyForm) -> Result<Rc<SExp>, CompileErr> 
     ))
 }
 
-fn produce_argument_check(compiler: &PrimaryCodegen, loc: Srcloc, a: &[u8], mut steps: Number) -> Result<CompiledCode, CompileErr> {
-    if let Ok(SExp::Integer(l, mut lookup)) =
-        create_name_lookup(
-            compiler,
-            loc.clone(),
-            a,
-            true
-        ).map(|x| {
+fn produce_argument_check(
+    compiler: &PrimaryCodegen,
+    loc: Srcloc,
+    a: &[u8],
+    mut steps: Number,
+) -> Result<CompiledCode, CompileErr> {
+    if let Ok(SExp::Integer(l, mut lookup)) = create_name_lookup(compiler, loc.clone(), a, true)
+        .map(|x| {
             let x_ref: &SExp = x.borrow();
             x_ref.clone()
         })
@@ -487,14 +487,14 @@ fn produce_argument_check(compiler: &PrimaryCodegen, loc: Srcloc, a: &[u8], mut 
             lookup |= bit.clone() / two.clone();
         }
 
-        Ok(CompiledCode(
-            loc.clone(),
-            Rc::new(SExp::Integer(l, lookup))
-        ))
+        Ok(CompiledCode(loc.clone(), Rc::new(SExp::Integer(l, lookup))))
     } else {
         Err(CompileErr(
             loc.clone(),
-            format!("Lookup of unbound variable {}", SExp::Atom(loc.clone(), a.to_vec())),
+            format!(
+                "Lookup of unbound variable {}",
+                SExp::Atom(loc.clone(), a.to_vec())
+            ),
         ))
     }
 }
@@ -594,12 +594,14 @@ fn compile_call(
                     }
                 } else if tl.len() == 2 {
                     match (tl[0].borrow(), tl[1].borrow()) {
-                        (BodyForm::Value(SExp::Atom(_al, a)), BodyForm::Value(SExp::Integer(_il, i))) => {
-                            produce_argument_check(compiler, call.loc.clone(), a, i.clone())
-                        }
-                        (BodyForm::Value(SExp::Atom(_al, a)), BodyForm::Quoted(SExp::Integer(_il, i))) => {
-                            produce_argument_check(compiler, call.loc.clone(), a, i.clone())
-                        }
+                        (
+                            BodyForm::Value(SExp::Atom(_al, a)),
+                            BodyForm::Value(SExp::Integer(_il, i)),
+                        ) => produce_argument_check(compiler, call.loc.clone(), a, i.clone()),
+                        (
+                            BodyForm::Value(SExp::Atom(_al, a)),
+                            BodyForm::Quoted(SExp::Integer(_il, i)),
+                        ) => produce_argument_check(compiler, call.loc.clone(), a, i.clone()),
                         _ => Err(CompileErr(
                             al.clone(),
                             "@ form with two arguments requires argument and integer".to_string(),

@@ -11,8 +11,7 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::optimize::deinline::deinline_opt;
 use crate::compiler::optimize::{
-    fe_opt, null_optimization, optimize_expr, run_optimizer, CompileContextWrapper,
-    Optimization,
+    fe_opt, null_optimization, optimize_expr, run_optimizer, CompileContextWrapper, Optimization,
 };
 use crate::compiler::sexp::SExp;
 use crate::compiler::StartOfCodegenOptimization;

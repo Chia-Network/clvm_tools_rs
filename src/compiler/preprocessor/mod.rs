@@ -10,7 +10,6 @@ use crate::classic::clvm_tools::binutils::assemble;
 use crate::classic::clvm_tools::clvmc::compile_clvm_text_maybe_opt;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 
-use crate::compiler::CompileContextWrapper;
 use crate::compiler::cldb::hex_to_modern_sexp;
 use crate::compiler::clvm;
 use crate::compiler::clvm::{convert_from_clvm_rs, truthy};
@@ -29,6 +28,7 @@ use crate::compiler::sexp::{
     decode_string, enlist, parse_sexp, Atom, NodeSel, SExp, SelectNode, ThisNode,
 };
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::CompileContextWrapper;
 use crate::util::ErrInto;
 
 /// Determines how an included file is used.
@@ -77,10 +77,10 @@ fn make_defmac_name(name: &[u8]) -> Vec<u8> {
 }
 
 fn nilize(v: Rc<SExp>) -> Rc<SExp> {
-    if let SExp::Cons(l,a,b) = v.borrow() {
+    if let SExp::Cons(l, a, b) = v.borrow() {
         let a_conv = nilize(a.clone());
         let b_conv = nilize(b.clone());
-        if Rc::as_ptr(&a_conv) == Rc::as_ptr(&a) && Rc::as_ptr(&b_conv) == Rc::as_ptr(&b) {
+        if Rc::as_ptr(&a_conv) == Rc::as_ptr(a) && Rc::as_ptr(&b_conv) == Rc::as_ptr(b) {
             v.clone()
         } else {
             Rc::new(SExp::Cons(l.clone(), a_conv, b_conv))
@@ -99,7 +99,7 @@ impl Preprocessor {
         let opts_prims = ppext.enrich_prims(opts.clone());
         Preprocessor {
             opts: opts_prims,
-            ppext: ppext,
+            ppext,
             runner,
             helpers: Vec::new(),
             strict: opts.dialect().strict,
@@ -109,7 +109,11 @@ impl Preprocessor {
 
     /// Given a specification of an include file, load up the forms inside it and
     /// return them (or an error if the file couldn't be read or wasn't a list).
-    pub fn process_include(&mut self, includes: &mut Vec<IncludeDesc>, include: &IncludeDesc) -> Result<Vec<Rc<SExp>>, CompileErr> {
+    pub fn process_include(
+        &mut self,
+        includes: &mut Vec<IncludeDesc>,
+        include: &IncludeDesc,
+    ) -> Result<Vec<Rc<SExp>>, CompileErr> {
         let filename_and_content = self
             .opts
             .read_new_file(self.opts.filename(), decode_string(&include.name))?;
@@ -307,16 +311,13 @@ impl Preprocessor {
                             } else {
                                 // as inline defuns because they're closest to that
                                 // semantically.
-                                let optimizer = get_optimizer(
-                                    &body.loc(),
-                                    self.opts.clone()
-                                )?;
+                                let optimizer = get_optimizer(&body.loc(), self.opts.clone())?;
                                 let mut symbol_table = HashMap::new();
                                 let mut wrapper = CompileContextWrapper::new(
                                     &mut allocator,
                                     self.runner.clone(),
                                     &mut symbol_table,
-                                    optimizer
+                                    optimizer,
                                 );
                                 let new_program = CompileForm {
                                     loc: body.loc(),
@@ -331,7 +332,8 @@ impl Preprocessor {
                                     self.opts.clone(),
                                     new_program,
                                 )?;
-                                self.stored_macros.insert(mdata.name.clone(), Rc::new(compiled_program.clone()));
+                                self.stored_macros
+                                    .insert(mdata.name.clone(), Rc::new(compiled_program.clone()));
                                 Rc::new(compiled_program)
                             };
 
@@ -344,7 +346,9 @@ impl Preprocessor {
                             args.clone(),
                             Some(ppext),
                             None,
-                        ).map(nilize).map_err(|e| CompileErr::from(e))?;
+                        )
+                        .map(nilize)
+                        .map_err(CompileErr::from)?;
 
                         return Ok(Some(res));
                     }
@@ -618,9 +622,8 @@ pub fn gather_dependencies(
 ) -> Result<Vec<IncludeDesc>, CompileErr> {
     let mut allocator = Allocator::new();
 
-    let assembled_input = assemble(&mut allocator, &file_content).map_err(|e| {
-        CompileErr(Srcloc::start(real_input_path), e.1)
-    })?;
+    let assembled_input = assemble(&mut allocator, file_content)
+        .map_err(|e| CompileErr(Srcloc::start(real_input_path), e.1))?;
     let dialect = detect_modern(&mut allocator, assembled_input);
     opts = opts.set_stdenv(dialect.strict).set_dialect(dialect.clone());
     if let Some(stepping) = dialect.stepping {
@@ -632,5 +635,10 @@ pub fn gather_dependencies(
     let parsed = parse_sexp(Srcloc::start(real_input_path), file_content.bytes())?;
     let program = frontend(opts, &parsed)?;
 
-    Ok(program.include_forms)
+    let filtered_results: Vec<IncludeDesc> = program
+        .include_forms
+        .into_iter()
+        .filter(|f| !f.name.starts_with(b"*"))
+        .collect();
+    Ok(filtered_results)
 }

@@ -2053,7 +2053,8 @@ fn test_check_for_argument_presence_1() {
   (F &rest X)
   )"}
     .to_string();
-    let res1 = run_string(&prog, &"(((99 101 103) 2 3))".to_string()).expect("should compile and run");
+    let res1 =
+        run_string(&prog, &"(((99 101 103) 2 3))".to_string()).expect("should compile and run");
     assert_eq!(res1.to_string(), "308");
 
     let res2 = run_string(&prog, &"(((99 101) 2 3))".to_string());

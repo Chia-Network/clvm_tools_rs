@@ -617,7 +617,10 @@ pub fn cldb(args: &[String]) {
             _ => None,
         });
 
-    let only_print = parsed_args.get("debug_print").map(|_| true).unwrap_or(false);
+    let only_print = parsed_args
+        .get("debug_print")
+        .map(|_| true)
+        .unwrap_or(false);
 
     let do_optimize = parsed_args
         .get("optimize")
@@ -652,13 +655,11 @@ pub fn cldb(args: &[String]) {
                 &input_program,
                 &mut use_symbol_table,
             );
-            let res = if do_optimize {
+            if do_optimize {
                 unopt_res.and_then(|x| run_optimizer(&mut allocator, runner.clone(), Rc::new(x)))
             } else {
                 unopt_res.map(Rc::new)
-            };
-
-            res
+            }
         }
     };
 
@@ -900,14 +901,14 @@ fn render_mod_with_sigil(
     ))
 }
 
-    // A function which performs preprocessing on a whole program and renders the
-    // output to the user.
-    //
-    // This is used in the same way as cc -E in a C compiler; to see what
-    // preprocessing did to the source so you can debug and improve your macros.
-    //
-    // Without this, it's difficult for some to visualize how macro are functioning
-    // and what forms they output.
+// A function which performs preprocessing on a whole program and renders the
+// output to the user.
+//
+// This is used in the same way as cc -E in a C compiler; to see what
+// preprocessing did to the source so you can debug and improve your macros.
+//
+// Without this, it's difficult for some to visualize how macro are functioning
+// and what forms they output.
 fn perform_preprocessing(
     stdout: &mut Stream,
     opts: Rc<dyn CompilerOpts>,

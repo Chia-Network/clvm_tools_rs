@@ -15,8 +15,7 @@ use crate::compiler::optimize::cse::cse_optimize_bodyform;
 use crate::compiler::optimize::deinline::deinline_opt;
 use crate::compiler::optimize::double_apply::remove_double_apply;
 use crate::compiler::optimize::{
-    null_optimization, optimize_expr, run_optimizer, CompileContextWrapper,
-    Optimization,
+    null_optimization, optimize_expr, run_optimizer, CompileContextWrapper, Optimization,
 };
 use crate::compiler::sexp::SExp;
 use crate::compiler::StartOfCodegenOptimization;
