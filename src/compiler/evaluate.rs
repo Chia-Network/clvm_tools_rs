@@ -80,7 +80,6 @@ pub enum ArgInputs {
     Pair(Rc<ArgInputs>, Rc<ArgInputs>),
 }
 
-
 /// Evaluator is an object that simplifies expressions, given the helpers
 /// (helpers are forms that are reusable parts of programs, such as defconst,
 /// defun or defmacro) from a program.  In the simplest form, it can be used to

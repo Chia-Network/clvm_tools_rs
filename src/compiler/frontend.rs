@@ -280,9 +280,7 @@ fn make_let_bindings(
                     result.append(&mut rest_bindings);
                     Ok(result)
                 }
-                _ => {
-                    err.clone()
-                }
+                _ => err.clone(),
             })
             .unwrap_or_else(|| err.clone()),
         _ => err,

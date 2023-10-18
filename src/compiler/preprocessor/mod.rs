@@ -302,38 +302,38 @@ impl Preprocessor {
                         )?;
 
                         let mut allocator = Allocator::new();
-                        let compiled_program =
-                            if let Some(compiled_program) = self.stored_macros.get(&mdata.name) {
-                                compiled_program.clone()
-                            } else {
-                                // as inline defuns because they're closest to that
-                                // semantically.
-                                let mut symbol_table = HashMap::new();
-                                let new_program = CompileForm {
-                                    loc: body.loc(),
-                                    args: mdata.args.clone(),
-                                    include_forms: vec![],
-                                    helpers: self.helpers.clone(),
-                                    exp: mdata.body.clone(),
-                                };
-
-                                let program_sexp =
-                                    Rc::new(SExp::Cons(
-                                        body.loc(),
-                                        Rc::new(SExp::Atom(body.loc(), b"mod".to_vec())),
-                                        new_program.to_sexp()
-                                    ));
-
-                                let compiled_program = self.opts.set_stdenv(false).compile_program(
-                                    &mut allocator,
-                                    self.runner.clone(),
-                                    program_sexp,
-                                    &mut symbol_table,
-                                )?;
-                                self.stored_macros
-                                    .insert(mdata.name.clone(), Rc::new(compiled_program.clone()));
-                                Rc::new(compiled_program)
+                        let compiled_program = if let Some(compiled_program) =
+                            self.stored_macros.get(&mdata.name)
+                        {
+                            compiled_program.clone()
+                        } else {
+                            // as inline defuns because they're closest to that
+                            // semantically.
+                            let mut symbol_table = HashMap::new();
+                            let new_program = CompileForm {
+                                loc: body.loc(),
+                                args: mdata.args.clone(),
+                                include_forms: vec![],
+                                helpers: self.helpers.clone(),
+                                exp: mdata.body.clone(),
                             };
+
+                            let program_sexp = Rc::new(SExp::Cons(
+                                body.loc(),
+                                Rc::new(SExp::Atom(body.loc(), b"mod".to_vec())),
+                                new_program.to_sexp(),
+                            ));
+
+                            let compiled_program = self.opts.set_stdenv(false).compile_program(
+                                &mut allocator,
+                                self.runner.clone(),
+                                program_sexp,
+                                &mut symbol_table,
+                            )?;
+                            self.stored_macros
+                                .insert(mdata.name.clone(), Rc::new(compiled_program.clone()));
+                            Rc::new(compiled_program)
+                        };
 
                         let ppext: &PreprocessorExtension = self.ppext.borrow();
                         let res = clvm::run(
@@ -348,10 +348,7 @@ impl Preprocessor {
                         .map(nilize)
                         .map_err(CompileErr::from)?;
 
-                        if let Some(final_result) = self.expand_macros(
-                            res.clone(),
-                            true,
-                        )? {
+                        if let Some(final_result) = self.expand_macros(res.clone(), true)? {
                             return Ok(Some(final_result));
                         } else {
                             return Ok(Some(res));

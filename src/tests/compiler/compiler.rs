@@ -6,8 +6,8 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
-use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::frontend::{collect_used_names_sexp, frontend};
 use crate::compiler::rename::rename_in_cons;
 use crate::compiler::runtypes::RunFailure;
@@ -264,8 +264,13 @@ fn run_test_4_opt() {
 }
 
 fn run_test_5_maybe_opt(opt: bool) {
-    let result =
-        run_string_maybe_opt(&"(mod (a) (list 1 2))".to_string(), &"()".to_string(), opt, false).unwrap();
+    let result = run_string_maybe_opt(
+        &"(mod (a) (list 1 2))".to_string(),
+        &"()".to_string(),
+        opt,
+        false,
+    )
+    .unwrap();
     assert_eq!(result.to_string(), "(1 2)".to_string());
 }
 
