@@ -878,6 +878,35 @@ fn frontend_start(
     }
 }
 
+/// Given the available helper list and the main expression, compute the list of
+/// reachable helpers.
+pub fn compute_live_helpers(
+        opts: Rc<dyn CompilerOpts>,
+        helper_list: &[HelperForm],
+        main_exp: Rc<BodyForm>,
+    ) -> Vec<HelperForm> {
+        let expr_names: HashSet<Vec<u8>> = collect_used_names_bodyform(main_exp.borrow())
+        .iter()
+        .map(|x| x.to_vec())
+        .collect();
+
+    let mut helper_map = HashMap::new();
+
+    for h in helper_list.iter() {
+        helper_map.insert(h.name().clone(), h.clone());
+    }
+
+    let helper_names = calculate_live_helpers(&HashSet::new(), &expr_names, &helper_map);
+
+    helper_list
+        .iter()
+        .filter(|h| {
+            !opts.frontend_check_live() || helper_names.contains(h.name())
+        })
+        .cloned()
+        .collect()
+}
+
 /// Entrypoint for compilation.  This yields a CompileForm which represents a full
 /// program.
 ///
