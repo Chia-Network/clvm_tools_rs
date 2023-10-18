@@ -305,12 +305,6 @@ pub enum IncludeProcessType {
     Hex,
     /// Read clvm in s-expression form as a clvm value.
     SExpression,
-    /// Pointing to a chialisp program, Compiled specifies that we want
-    /// the compiled form of the program as a clvm value.  It's possible
-    /// because chialisp programs self-identify how they're compiled and
-    /// the form they take is promised to be stable for released versions
-    /// of the language.
-    Compiled,
 }
 
 /// A description of an include form.  Here, records the locations of the various

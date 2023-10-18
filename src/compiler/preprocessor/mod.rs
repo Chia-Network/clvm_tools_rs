@@ -7,12 +7,11 @@ use std::rc::Rc;
 use clvmr::allocator::Allocator;
 
 use crate::classic::clvm_tools::binutils::assemble;
-use crate::classic::clvm_tools::clvmc::compile_clvm_text_maybe_opt;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 
 use crate::compiler::cldb::hex_to_modern_sexp;
 use crate::compiler::clvm;
-use crate::compiler::clvm::{convert_from_clvm_rs, truthy};
+use crate::compiler::clvm::truthy;
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, IncludeDesc, IncludeProcessType,
 };
@@ -182,23 +181,6 @@ impl Preprocessor {
 
                 parsed[0].clone()
             }
-            IncludeProcessType::Compiled => {
-                let decoded_content = decode_string(&content);
-                let mut symtab = HashMap::new();
-                let newly_compiled = compile_clvm_text_maybe_opt(
-                    &mut allocator,
-                    self.opts.optimize(),
-                    self.opts.clone(),
-                    &mut symtab,
-                    &decoded_content,
-                    &full_name,
-                    true,
-                )
-                .map_err(|e| CompileErr(loc.clone(), format!("Subcompile failed: {}", e.1)))?;
-
-                convert_from_clvm_rs(&mut allocator, loc.clone(), newly_compiled)
-                    .map_err(run_to_compile_err)?
-            }
         };
 
         Ok(vec![compose_defconst(loc, constant_name, content)])
@@ -208,7 +190,6 @@ impl Preprocessor {
     fn recurse_dependencies(
         &mut self,
         includes: &mut Vec<IncludeDesc>,
-        kind: IncludeProcessType,
         desc: IncludeDesc,
     ) -> Result<(), CompileErr> {
         let name_string = decode_string(&desc.name);
@@ -221,10 +202,6 @@ impl Preprocessor {
             name: full_name.as_bytes().to_vec(),
             ..desc
         });
-
-        if !matches!(kind, IncludeProcessType::Compiled) {
-            return Ok(());
-        }
 
         let parsed = parse_sexp(Srcloc::start(&full_name), content.iter().copied())
             .map_err(|e| CompileErr(e.0, e.1))?;
@@ -452,21 +429,6 @@ impl Preprocessor {
                         }
                     }
 
-                    [SExp::Atom(kl, compile_file), SExp::Atom(_, name), SExp::Atom(nl, fname)] => {
-                        if compile_file == b"compile-file" {
-                            return Ok(Some(IncludeType::Processed(
-                                IncludeDesc {
-                                    kw: kl.clone(),
-                                    nl: nl.clone(),
-                                    kind: Some(IncludeProcessType::Compiled),
-                                    name: fname.clone(),
-                                },
-                                IncludeProcessType::Compiled,
-                                name.clone()
-                            )));
-                        }
-                    }
-
                     [SExp::Atom(kl, embed_file), SExp::Atom(_, name), SExp::Atom(_, kind), SExp::Atom(nl, fname)] => {
                         if embed_file == b"embed-file" {
                             if kind == b"hex" {
@@ -540,10 +502,10 @@ impl Preprocessor {
         if let Some(()) = self.decode_macro(body.clone())? {
             Ok(vec![])
         } else if let Some(IncludeType::Basic(i)) = &included {
-            self.recurse_dependencies(includes, IncludeProcessType::Compiled, i.clone())?;
+            self.recurse_dependencies(includes, i.clone())?;
             self.process_include(includes, i)
         } else if let Some(IncludeType::Processed(f, kind, name)) = &included {
-            self.recurse_dependencies(includes, kind.clone(), f.clone())?;
+            self.recurse_dependencies(includes, f.clone())?;
             self.process_embed(body.loc(), &decode_string(&f.name), kind, name)
         } else {
             Ok(vec![body])
