@@ -48,12 +48,12 @@ lazy_static! {
 
             (defun __chia__if (ARGS)
               (__chia__primitive__if (r (r (r ARGS)))
-                (qq (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (unquote (__chia__if (r (r ARGS))))))
-                (qq (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (com (unquote (f (r (r ARGS)))))))
+                (qq (a (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (com (unquote (__chia__if (r (r ARGS)))))) @))
+                (qq (a (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (com (unquote (f (r (r ARGS)))))) @))
                 )
               )
 
-            (defmac if ARGS (qq (a (unquote (__chia__if ARGS)) @)))
+            (defmac if ARGS (__chia__if ARGS))
 
             (defun __chia__compile-list (args)
               (if args
