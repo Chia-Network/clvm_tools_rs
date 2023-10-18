@@ -34,3 +34,12 @@ Skipped
 
 - modern lambda added
 - updated some internal data strucutres and call interfaces to support env variable renaming at during closure generation / lambda capture, or any step during transformation.
+
+## 0.1.37
+
+- First npm publish with a Program-like object reminiscent of
+  chia.types.blockchain_format.program.Program
+
+## 0.1.38
+
+- Uncurry fix, typescript type improvements for npm personality.
