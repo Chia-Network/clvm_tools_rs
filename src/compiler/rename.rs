@@ -207,15 +207,14 @@ fn rename_in_bodyform(
                 &letdata.bindings,
             )?;
             let new_body = rename_in_bodyform(namemap, letdata.body.clone())?;
-            let res = BodyForm::Let(
+            Ok(BodyForm::Let(
                 kind.clone(),
                 Box::new(LetData {
                     bindings: new_bindings,
                     body: Rc::new(new_body),
                     ..*letdata.clone()
                 }),
-            );
-            Ok(res)
+            ))
         }
 
         BodyForm::Quoted(atom) => match atom {

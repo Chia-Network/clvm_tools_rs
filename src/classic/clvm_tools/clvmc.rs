@@ -50,6 +50,7 @@ pub fn compile_clvm_text_maybe_opt(
 ) -> Result<NodePtr, EvalErr> {
     let ir_src = read_ir(text).map_err(|s| EvalErr(allocator.null(), s.to_string()))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
+
     let dialect = detect_modern(allocator, assembled_sexp);
     // Now the stepping is optional (None for classic) but we may communicate
     // other information in dialect as well.
@@ -60,8 +61,8 @@ pub fn compile_clvm_text_maybe_opt(
         let runner = Rc::new(DefaultProgramRunner::new());
         let opts = opts
             .set_dialect(dialect)
-            .set_optimize(do_optimize)
-            .set_frontend_opt(stepping > 21);
+            .set_optimize(do_optimize || stepping > 22) // Would apply to cl23
+            .set_frontend_opt(stepping == 22);
 
         let unopt_res = compile_file(allocator, runner.clone(), opts.clone(), text, symbol_table);
         let res = unopt_res.and_then(|x| {
