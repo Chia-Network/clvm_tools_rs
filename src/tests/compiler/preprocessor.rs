@@ -570,8 +570,8 @@ fn test_preprocessor_tours_includes_properly() {
     let res = preprocess(opts, &mut includes, parsed[0].clone()).expect("should preprocess");
     let expected_lines = &[
         "(defmac __chia__primitive__if (A B C) (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @)))",
-        "(defun __chia__if (ARGS) (a (i (r (r (r ARGS))) (com (qq (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (unquote (__chia__if (r (r ARGS))))))) (com (qq (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (com (unquote (f (r (r ARGS))))))))) @))",
-        "(defmac if ARGS (qq (a (unquote (__chia__if ARGS)) @)))",
+        "(defun __chia__if (ARGS) (a (i (r (r (r ARGS))) (com (qq (a (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (com (unquote (__chia__if (r (r ARGS)))))) @))) (com (qq (a (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (com (unquote (f (r (r ARGS)))))) @)))) @))",
+        "(defmac if ARGS (__chia__if ARGS))",
         "(defun __chia__compile-list (args) (a (i args (com (c 4 (c (f args) (c (__chia__compile-list (r args)) ())))) (com ())) @))",
         "(defmac list ARGS (__chia__compile-list ARGS))",
         "(defun-inline / (A B) (f (divmod A B)))",
