@@ -13,7 +13,6 @@ use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProg
 use crate::compiler::cldb::hex_to_modern_sexp;
 use crate::compiler::clvm;
 use crate::compiler::clvm::{convert_from_clvm_rs, truthy};
-use crate::compiler::compiler::compile_from_compileform;
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, IncludeDesc, IncludeProcessType,
 };
@@ -317,11 +316,18 @@ impl Preprocessor {
                                     helpers: self.helpers.clone(),
                                     exp: mdata.body.clone(),
                                 };
-                                let compiled_program = compile_from_compileform(
+
+                                let program_sexp =
+                                    Rc::new(SExp::Cons(
+                                        body.loc(),
+                                        Rc::new(SExp::Atom(body.loc(), b"mod".to_vec())),
+                                        new_program.to_sexp()
+                                    ));
+
+                                let compiled_program = self.opts.set_stdenv(false).compile_program(
                                     &mut allocator,
                                     self.runner.clone(),
-                                    self.opts.clone(),
-                                    new_program,
+                                    program_sexp,
                                     &mut symbol_table,
                                 )?;
                                 self.stored_macros
@@ -342,7 +348,14 @@ impl Preprocessor {
                         .map(nilize)
                         .map_err(CompileErr::from)?;
 
-                        return Ok(Some(res));
+                        if let Some(final_result) = self.expand_macros(
+                            res.clone(),
+                            true,
+                        )? {
+                            return Ok(Some(final_result));
+                        } else {
+                            return Ok(Some(res));
+                        }
                     }
                 }
             }

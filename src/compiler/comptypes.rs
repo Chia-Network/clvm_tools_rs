@@ -204,6 +204,15 @@ pub enum BodyForm {
     Lambda(Box<LambdaData>),
 }
 
+/// Convey information about synthetically generated helper forms.
+#[derive(Clone, Debug, Serialize)]
+pub enum SyntheticType {
+    NoInlinePreference,
+    MaybeRecursive,
+    WantInline,
+    WantNonInline,
+}
+
 /// The information needed to know about a defun.  Whether it's inline is left in
 /// the HelperForm.
 #[derive(Clone, Debug, Serialize)]
@@ -222,6 +231,8 @@ pub struct DefunData {
     pub args: Rc<SExp>,
     /// The body expression of the defun.
     pub body: Rc<BodyForm>,
+    /// Whether this defun was created during desugaring.
+    pub synthetic: Option<SyntheticType>,
 }
 
 /// Specifies the information extracted from a macro definition allowing the
@@ -282,7 +293,7 @@ pub enum HelperForm {
     /// A macro definition (see DefmacData).
     Defmacro(DefmacData),
     /// A function definition (see DefunData).
-    Defun(bool, DefunData),
+    Defun(bool, Box<DefunData>),
 }
 
 /// To what purpose is the file included.

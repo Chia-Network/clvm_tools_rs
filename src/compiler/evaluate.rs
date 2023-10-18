@@ -17,6 +17,7 @@ use crate::compiler::comptypes::{
     HelperForm, LambdaData, LetData, LetFormInlineHint, LetFormKind,
 };
 use crate::compiler::frontend::frontend;
+use crate::compiler::optimize::get_optimizer;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -79,42 +80,6 @@ pub enum ArgInputs {
     Pair(Rc<ArgInputs>, Rc<ArgInputs>),
 }
 
-/// EvalExtension provides internal capabilities to the evaluator that function
-/// as extra primitives.  They work entirely at the semantic layer of chialisp
-/// and are preferred compared to CLVM primitives.  These operate on BodyForm
-/// so they have some ability to work on the semantics of chialisp values in
-/// addition to reified values.
-///
-/// These provide the primitive, value aware capabilities to the defmac system
-/// which runs entirely in evaluator space.  This is done because evaluator deals
-/// in high level frontend values...  Rather than having integers, symbols and
-/// strings all crushed into a single atom value space, these observe the
-/// differences and are able to judge and convert them in ways the user specifies.
-///
-/// This allows these macros to pass on programs to the chialisp compiler that
-/// are symbol and constant aware; it's able to write (for example) a matcher
-/// that takes lists of mixed symbols and constants, isolate each and produce
-/// lists of let bindings and match checks that pick out each.  Since atoms are
-/// passed on when appropriate vs constants and such, we can have macros produce
-/// code and be completely certain that any atom landing in the chialisp compiler
-/// was intended to be bound in some way and return an error if it isn't, having
-/// the result plainly be an error if not.
-///
-/// I also anticipate using EvalExtensions to analyze and control code shrinking
-/// during some kinds of optimization.
-pub trait EvalExtension {
-    #[allow(clippy::too_many_arguments)]
-    fn try_eval(
-        &self,
-        evaluator: &Evaluator,
-        prog_args: Rc<SExp>,
-        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        loc: &Srcloc,
-        name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Option<Rc<BodyForm>>, CompileErr>;
-}
 
 /// Evaluator is an object that simplifies expressions, given the helpers
 /// (helpers are forms that are reusable parts of programs, such as defconst,
@@ -136,7 +101,6 @@ pub struct Evaluator {
     opts: Rc<dyn CompilerOpts>,
     runner: Rc<dyn TRunProgram>,
     prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
-    extensions: Vec<Rc<dyn EvalExtension>>,
     helpers: Vec<HelperForm>,
     mash_conditions: bool,
     ignore_exn: bool,
@@ -532,8 +496,12 @@ fn is_apply_atom(h: Rc<SExp>) -> bool {
     match_atom_to_prim(vec![b'a'], 2, h)
 }
 
-fn is_i_atom(h: Rc<SExp>) -> bool {
+pub fn is_i_atom(h: Rc<SExp>) -> bool {
     match_atom_to_prim(vec![b'i'], 3, h)
+}
+
+pub fn is_not_atom(h: Rc<SExp>) -> bool {
+    match_atom_to_prim(b"not".to_vec(), 32, h)
 }
 
 fn is_cons_atom(h: Rc<SExp>) -> bool {
@@ -741,7 +709,6 @@ impl<'info> Evaluator {
             helpers,
             mash_conditions: false,
             ignore_exn: false,
-            extensions: Vec::new(),
         }
     }
 
@@ -751,7 +718,6 @@ impl<'info> Evaluator {
             runner: self.runner.clone(),
             prims: self.prims.clone(),
             helpers: self.helpers.clone(),
-            extensions: self.extensions.clone(),
             mash_conditions: true,
             ignore_exn: true,
         }
@@ -931,7 +897,7 @@ impl<'info> Evaluator {
     fn invoke_primitive(
         &self,
         allocator: &mut Allocator,
-        visited_: &'info mut VisitedMarker<'_, VisitedInfo>,
+        visited_: &'_ mut VisitedMarker<'info, VisitedInfo>,
         call: &CallSpec,
         prog_args: Rc<SExp>,
         arguments_to_convert: &[Rc<BodyForm>],
@@ -1169,20 +1135,6 @@ impl<'info> Evaluator {
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        for ext in self.extensions.iter() {
-            if let Some(res) = ext.try_eval(
-                self,
-                prog_args.clone(),
-                env,
-                &call.loc,
-                call.name,
-                arguments_to_convert,
-                call.original.clone(),
-            )? {
-                return Ok(res);
-            }
-        }
-
         let helper = select_helper(&self.helpers, call.name);
         match helper {
             Some(HelperForm::Defmacro(mac)) => {
@@ -1341,7 +1293,7 @@ impl<'info> Evaluator {
         for h in self.helpers.iter() {
             if let HelperForm::Defun(false, dd) = &h {
                 if name == h.name() {
-                    return Some(Box::new(dd.clone()));
+                    return Some(dd.clone());
                 }
             }
         }
@@ -1548,11 +1500,16 @@ impl<'info> Evaluator {
                     )),
                 }
             }
-            BodyForm::Mod(_, program) => {
+            BodyForm::Mod(l, program) => {
                 // A mod form yields the compiled code.
                 let mut symbols = HashMap::new();
-                let mut context_wrapper =
-                    CompileContextWrapper::new(allocator, self.runner.clone(), &mut symbols);
+                let optimizer = get_optimizer(l, self.opts.clone())?;
+                let mut context_wrapper = CompileContextWrapper::new(
+                    allocator,
+                    self.runner.clone(),
+                    &mut symbols,
+                    optimizer,
+                );
                 let code = codegen(&mut context_wrapper.context, self.opts.clone(), program)?;
                 Ok(Rc::new(BodyForm::Quoted(code)))
             }
@@ -1723,10 +1680,6 @@ impl<'info> Evaluator {
             }
         }
         self.helpers.push(h.clone());
-    }
-
-    pub fn add_extension(&mut self, e: Rc<dyn EvalExtension>) {
-        self.extensions.push(e);
     }
 
     // The evaluator treats the forms coming up from constants as live.

@@ -256,7 +256,7 @@ fn make_let_bindings(
     body: Rc<SExp>,
 ) -> Result<Vec<Rc<Binding>>, CompileErr> {
     let err = Err(CompileErr(body.loc(), format!("Bad binding tail {body:?}")));
-    let do_atomize = if opts.dialect().strict {
+    let do_atomize = if !opts.dialect().strict {
         |a: &SExp| -> SExp { a.atomize() }
     } else {
         |a: &SExp| -> SExp { a.clone() }
@@ -281,7 +281,6 @@ fn make_let_bindings(
                     Ok(result)
                 }
                 _ => {
-                    eprintln!("crap {body:?}");
                     err.clone()
                 }
             })
@@ -589,7 +588,7 @@ fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun) -> Result<Helpe
     compile_bodyform(opts, take_form).map(|bf| {
         HelperForm::Defun(
             data.inline,
-            DefunData {
+            Box::new(DefunData {
                 loc: data.l,
                 nl: data.nl,
                 kw: data.kwl,
@@ -597,7 +596,8 @@ fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun) -> Result<Helpe
                 args: data.args.clone(),
                 orig_args: data.args,
                 body: Rc::new(bf),
-            },
+                synthetic: None,
+            }),
         )
     })
 }
