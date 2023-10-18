@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
 
+use crate::classic::clvm_tools::binutils::assemble;
 use crate::classic::clvm_tools::clvmc::compile_clvm_text_maybe_opt;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 
@@ -16,9 +17,9 @@ use crate::compiler::compiler::compile_from_compileform;
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, IncludeDesc, IncludeProcessType,
 };
-use crate::compiler::dialect::KNOWN_DIALECTS;
+use crate::compiler::dialect::{detect_modern, KNOWN_DIALECTS};
 use crate::compiler::evaluate::{create_argument_captures, ArgInputs};
-use crate::compiler::frontend::compile_helperform;
+use crate::compiler::frontend::{compile_helperform, frontend};
 use crate::compiler::preprocessor::macros::PreprocessorExtension;
 use crate::compiler::rename::rename_args_helperform;
 use crate::compiler::runtypes::RunFailure;
@@ -45,9 +46,11 @@ enum IncludeType {
 
 struct Preprocessor {
     opts: Rc<dyn CompilerOpts>,
+    ppext: Rc<PreprocessorExtension>,
     runner: Rc<dyn TRunProgram>,
     helpers: Vec<HelperForm>,
     strict: bool,
+    stored_macros: HashMap<Vec<u8>, Rc<SExp>>,
 }
 
 fn compose_defconst(loc: Srcloc, name: &[u8], sexp: Rc<SExp>) -> Rc<SExp> {
@@ -90,17 +93,25 @@ fn nilize(v: Rc<SExp>) -> Rc<SExp> {
 impl Preprocessor {
     pub fn new(opts: Rc<dyn CompilerOpts>) -> Self {
         let runner = Rc::new(DefaultProgramRunner::new());
+        let ppext = Rc::new(PreprocessorExtension::new());
+        let opts_prims = ppext.enrich_prims(opts.clone());
         Preprocessor {
-            opts: opts.clone(),
+            opts: opts_prims,
+            ppext,
             runner,
             helpers: Vec::new(),
             strict: opts.dialect().strict,
+            stored_macros: HashMap::default(),
         }
     }
 
     /// Given a specification of an include file, load up the forms inside it and
     /// return them (or an error if the file couldn't be read or wasn't a list).
-    pub fn process_include(&mut self, include: &IncludeDesc) -> Result<Vec<Rc<SExp>>, CompileErr> {
+    pub fn process_include(
+        &mut self,
+        includes: &mut Vec<IncludeDesc>,
+        include: &IncludeDesc,
+    ) -> Result<Vec<Rc<SExp>>, CompileErr> {
         let filename_and_content = self
             .opts
             .read_new_file(self.opts.filename(), decode_string(&include.name))?;
@@ -122,9 +133,8 @@ impl Preprocessor {
         if self.strict {
             let mut result = Vec::new();
             for p in parsed.into_iter() {
-                if let Some(res) = self.expand_macros(p.clone(), true)? {
-                    result.push(res);
-                }
+                let mut new_forms = self.process_pp_form(includes, p.clone())?;
+                result.append(&mut new_forms);
             }
 
             Ok(result)
@@ -281,9 +291,6 @@ impl Preprocessor {
                             continue;
                         }
 
-                        // as inline defuns because they're closest to that
-                        // semantically.
-                        let mut allocator = Allocator::new();
                         // The name matched, try calling it.
 
                         // Form argument env.
@@ -295,37 +302,46 @@ impl Preprocessor {
                             mdata.args.clone(),
                         )?;
 
-                        let ppext = Rc::new(PreprocessorExtension::new());
-                        let extension: &PreprocessorExtension = ppext.borrow();
-                        let opts_prims = extension.enrich_prims(self.opts.clone());
-                        let new_program = CompileForm {
-                            loc: body.loc(),
-                            args: mdata.args.clone(),
-                            include_forms: vec![],
-                            helpers: self.helpers.clone(),
-                            exp: mdata.body.clone(),
-                        };
-                        let mut symbol_table = HashMap::new();
-                        let compiled_program = compile_from_compileform(
-                            &mut allocator,
-                            self.runner.clone(),
-                            opts_prims.clone(),
-                            new_program,
-                            &mut symbol_table,
-                        )?;
+                        let mut allocator = Allocator::new();
+                        let compiled_program =
+                            if let Some(compiled_program) = self.stored_macros.get(&mdata.name) {
+                                compiled_program.clone()
+                            } else {
+                                // as inline defuns because they're closest to that
+                                // semantically.
+                                let mut symbol_table = HashMap::new();
+                                let new_program = CompileForm {
+                                    loc: body.loc(),
+                                    args: mdata.args.clone(),
+                                    include_forms: vec![],
+                                    helpers: self.helpers.clone(),
+                                    exp: mdata.body.clone(),
+                                };
+                                let compiled_program = compile_from_compileform(
+                                    &mut allocator,
+                                    self.runner.clone(),
+                                    self.opts.clone(),
+                                    new_program,
+                                    &mut symbol_table,
+                                )?;
+                                self.stored_macros
+                                    .insert(mdata.name.clone(), Rc::new(compiled_program.clone()));
+                                Rc::new(compiled_program)
+                            };
+
+                        let ppext: &PreprocessorExtension = self.ppext.borrow();
                         let res = clvm::run(
                             &mut allocator,
                             self.runner.clone(),
-                            opts_prims.prim_map(),
-                            Rc::new(compiled_program),
+                            self.opts.prim_map(),
+                            compiled_program,
                             args.clone(),
-                            Some(extension),
+                            Some(ppext),
                             None,
                         )
                         .map(nilize)
                         .map_err(CompileErr::from)?;
 
-                        eprintln!("macro {} {args} => {res}", decode_string(&name));
                         return Ok(Some(res));
                     }
                 }
@@ -515,7 +531,7 @@ impl Preprocessor {
             Ok(vec![])
         } else if let Some(IncludeType::Basic(i)) = &included {
             self.recurse_dependencies(includes, IncludeProcessType::Compiled, i.clone())?;
-            self.process_include(i)
+            self.process_include(includes, i)
         } else if let Some(IncludeType::Processed(f, kind, name)) = &included {
             self.recurse_dependencies(includes, kind.clone(), f.clone())?;
             self.process_embed(body.loc(), &decode_string(&f.name), kind, name)
@@ -588,24 +604,30 @@ pub fn preprocess(
 /// form that causes compilation to include another file.  The file names are path
 /// expanded based on the include path they were found in (from opts).
 pub fn gather_dependencies(
-    opts: Rc<dyn CompilerOpts>,
+    mut opts: Rc<dyn CompilerOpts>,
     real_input_path: &str,
     file_content: &str,
 ) -> Result<Vec<IncludeDesc>, CompileErr> {
-    let mut includes = Vec::new();
-    let no_stdenv_opts = opts.set_stdenv(false);
-    let mut p = Preprocessor::new(no_stdenv_opts);
-    let loc = Srcloc::start(real_input_path);
+    let mut allocator = Allocator::new();
 
-    let parsed = parse_sexp(loc, file_content.bytes())?;
-
-    if parsed.is_empty() {
-        return Ok(vec![]);
+    let assembled_input = assemble(&mut allocator, &file_content).map_err(|e| {
+        CompileErr(Srcloc::start(real_input_path), e.1)
+    })?;
+    let dialect = detect_modern(&mut allocator, assembled_input);
+    opts = opts.set_stdenv(dialect.strict).set_dialect(dialect.clone());
+    if let Some(stepping) = dialect.stepping {
+        opts = opts
+            .set_optimize(stepping > 22)
+            .set_frontend_opt(stepping > 21);
     }
 
-    for elt in parsed.iter() {
-        p.run(&mut includes, elt.clone())?;
-    }
+    let parsed = parse_sexp(Srcloc::start(real_input_path), file_content.bytes())?;
+    let program = frontend(opts, &parsed)?;
 
-    Ok(includes)
+    let filtered_results: Vec<IncludeDesc> = program
+        .include_forms
+        .into_iter()
+        .filter(|f| !f.name.starts_with(b"*"))
+        .collect();
+    Ok(filtered_results)
 }

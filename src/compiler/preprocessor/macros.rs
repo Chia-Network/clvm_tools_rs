@@ -419,7 +419,6 @@ impl PrimOverride for PreprocessorExtension {
         _context: Rc<SExp>,
         tail: Rc<SExp>,
     ) -> Result<Option<Rc<SExp>>, RunFailure> {
-        eprintln!("running {head} {tail}");
         if let SExp::Atom(hl, head_atom) = head.borrow() {
             let have_args: Vec<Rc<SExp>> = if let Some(args_list) = tail.proper_list() {
                 args_list.into_iter().map(Rc::new).collect()
@@ -432,7 +431,6 @@ impl PrimOverride for PreprocessorExtension {
                     .try_eval(hl, &have_args)
                     .map_err(compile_to_run_err)?;
 
-                eprintln!("res = {res}");
                 return Ok(Some(res));
             }
         }
