@@ -127,12 +127,15 @@ pub fn desugar_pre_forms(
     do_desugar(&p1)
 }
 
-pub fn compile_from_compileform(
+pub fn compile_pre_forms(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
-    p0: CompileForm,
+    pre_forms: &[Rc<SExp>],
 ) -> Result<SExp, CompileErr> {
-    let p3 = context.post_desugar_optimization(opts.clone(), p0)?;
+    // Resolve includes, convert program source to lexemes
+    let p2 = desugar_pre_forms(context, opts.clone(), pre_forms)?;
+
+    let p3 = context.post_desugar_optimization(opts.clone(), p2)?;
 
     // generate code from AST, optionally with optimization
     let generated = codegen(context, opts.clone(), &p3)?;
@@ -140,17 +143,6 @@ pub fn compile_from_compileform(
     let g2 = context.post_codegen_output_optimize(opts, generated)?;
 
     Ok(g2)
-}
-
-pub fn compile_pre_forms(
-    context: &mut BasicCompileContext,
-    opts: Rc<dyn CompilerOpts>,
-    pre_forms: &[Rc<SExp>],
-) -> Result<SExp, CompileErr> {
-    // Resolve includes, convert program source to lexemes
-    let p0 = desugar_pre_forms(context, opts.clone(), pre_forms)?;
-
-    compile_from_compileform(context, opts, p0)
 }
 
 pub fn compile_file(
