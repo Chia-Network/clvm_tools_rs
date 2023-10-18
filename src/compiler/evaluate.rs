@@ -19,7 +19,7 @@ use crate::compiler::comptypes::{
 use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::{enlist, SExp};
+use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::stackvisit::{HasDepthLimit, VisitedMarker};
 use crate::compiler::CompileContextWrapper;
@@ -73,7 +73,6 @@ pub struct LambdaApply {
 
 // Frontend evaluator based on my fuzzer representation and direct interpreter of
 // that.
-
 #[derive(Debug)]
 pub enum ArgInputs {
     Whole(Rc<BodyForm>),
@@ -347,7 +346,7 @@ fn decons_args(formed_tail: Rc<BodyForm>) -> ArgInputs {
     }
 }
 
-pub fn build_argument_captures(
+fn build_argument_captures(
     l: &Srcloc,
     arguments_to_convert: &[Rc<BodyForm>],
     tail: Option<Rc<BodyForm>>,
@@ -777,34 +776,6 @@ impl<'info> Evaluator {
         }
     }
 
-    fn defmac_ordering(&self) -> bool {
-        let dialect = self.opts.dialect();
-        dialect.strict || dialect.stepping.unwrap_or(21) > 22
-    }
-
-    fn make_com_module(&self, l: &Srcloc, prog_args: Rc<SExp>, body: Rc<SExp>) -> Rc<SExp> {
-        let end_of_list = if self.defmac_ordering() {
-            let mut mod_list: Vec<Rc<SExp>> = self.helpers.iter().map(|h| h.to_sexp()).collect();
-            mod_list.push(body);
-            Rc::new(enlist(l.clone(), &mod_list))
-        } else {
-            let mut end_of_list =
-                Rc::new(SExp::Cons(l.clone(), body, Rc::new(SExp::Nil(l.clone()))));
-
-            for h in self.helpers.iter() {
-                end_of_list = Rc::new(SExp::Cons(l.clone(), h.to_sexp(), end_of_list));
-            }
-
-            end_of_list
-        };
-
-        Rc::new(SExp::Cons(
-            l.clone(),
-            Rc::new(SExp::Atom(l.clone(), "mod".as_bytes().to_vec())),
-            Rc::new(SExp::Cons(l.clone(), prog_args, end_of_list)),
-        ))
-    }
-
     fn is_lambda_apply(
         &self,
         allocator: &mut Allocator,
@@ -915,9 +886,23 @@ impl<'info> Evaluator {
                 prog_args,
             ))))
         } else if call.name == "com".as_bytes() {
-            let use_body =
-                self.make_com_module(&call.loc, prog_args, arguments_to_convert[0].to_sexp());
-            let compiled = self.compile_code(allocator, false, use_body)?;
+            let mut end_of_list = Rc::new(SExp::Cons(
+                call.loc.clone(),
+                arguments_to_convert[0].to_sexp(),
+                Rc::new(SExp::Nil(call.loc.clone())),
+            ));
+
+            for h in self.helpers.iter() {
+                end_of_list = Rc::new(SExp::Cons(call.loc.clone(), h.to_sexp(), end_of_list))
+            }
+
+            let use_body = SExp::Cons(
+                call.loc.clone(),
+                Rc::new(SExp::Atom(call.loc.clone(), "mod".as_bytes().to_vec())),
+                Rc::new(SExp::Cons(call.loc.clone(), prog_args, end_of_list)),
+            );
+
+            let compiled = self.compile_code(allocator, false, Rc::new(use_body))?;
             let compiled_borrowed: &SExp = compiled.borrow();
             Ok(Rc::new(BodyForm::Quoted(compiled_borrowed.clone())))
         } else {
@@ -1657,7 +1642,7 @@ impl<'info> Evaluator {
         // primitive.
         let updated_opts = self
             .opts
-            .set_stdenv(!in_defun && !self.opts.dialect().strict)
+            .set_stdenv(!in_defun)
             .set_in_defun(in_defun)
             .set_frontend_opt(false);
 
