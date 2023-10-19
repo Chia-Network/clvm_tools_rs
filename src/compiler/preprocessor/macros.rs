@@ -26,9 +26,8 @@ fn match_quoted_string(body: Rc<SExp>) -> Result<(Srcloc, Vec<u8>), CompileErr> 
 }
 
 fn match_atom(body: Rc<SExp>) -> Result<(Srcloc, Vec<u8>), CompileErr> {
-    match body.borrow() {
-        SExp::Atom(al, an) => return Ok((al.clone(), an.clone())),
-        _ => {}
+    if let SExp::Atom(al, an) = body.borrow() {
+        return Ok((al.clone(), an.clone()));
     }
     Err(CompileErr(body.loc(), "atom required".to_string()))
 }
