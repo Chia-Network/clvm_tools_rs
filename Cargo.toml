@@ -37,6 +37,7 @@ binascii = "0.1.4"
 yaml-rust = "0.4"
 linked-hash-map = "0.5.6"
 serde = { version = "1.0", features = ["derive", "rc"] }
+regex = "1.8.4"
 
 [dependencies.pyo3]
 version = "0.14.2"
