@@ -52,8 +52,9 @@ name = "clvm_tools_rs"
 crate-type = ["cdylib", "rlib"]
 
 [features]
+debug-print = []
 extension-module = ["dep:pyo3"]
-default = []
+default = ["debug-print"]
 
 [target.'cfg(target_family="wasm")'.dependencies]
 wasm-bindgen = { version = "0.2.80", features = ["serde-serialize"] }

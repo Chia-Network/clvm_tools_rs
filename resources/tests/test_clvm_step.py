@@ -4,7 +4,10 @@ from pathlib import Path
 import json
 from clvm_tools_rs import start_clvm_program, compose_run_function
 
-def run_until_end(p):
+def do_nothing(p):
+    pass
+
+def run_until_end(p,printing=do_nothing,spam=True):
     last = None
     location = None
 
@@ -12,9 +15,12 @@ def run_until_end(p):
         step_result = p.step()
         if step_result is not None:
             last = step_result
+            if 'Print' in last:
+                printing(last['Print'])
             if 'Operator-Location' in last:
                 location = last['Operator-Location']
-            print(json.dumps(step_result))
+            if spam:
+                print(json.dumps(step_result))
 
     return (last, location)
 
@@ -43,6 +49,54 @@ def complex_test():
 
     assert int(last['Final']) == 11880
 
+def test_with_printing():
+    mypath = Path(os.path.abspath(__file__))
+    testpath = mypath.parent.joinpath('mandelbrot')
+    symbols = json.loads(open(str(testpath.joinpath('mandelbrot.sym'))).read())
+
+    p = start_clvm_program(open(str(testpath.joinpath('mandelbrot.clvm.hex'))).read(), 'ff82ff40ff8180ff82ff70ff81a0ff0880', symbols, {})
+
+    print_outputs = []
+    def do_print(p):
+        print(p)
+        print_outputs.append(p)
+
+    last, location = run_until_end(p,printing=do_print,spam=False)
+
+    expected_outcome = "||567AAC|68DEEE|78EEEE|78BEEE"
+    want_prints = [
+        "((\"escape-at\" -152 -104) 14)",
+        "((\"escape-at\" -160 -104) 14)",
+        "((\"escape-at\" -168 -104) 14)",
+        "((\"escape-at\" -176 -104) 11)",
+        "((\"escape-at\" -184 -104) 8)",
+        "((\"escape-at\" -192 -104) 7)",
+        "((\"escape-at\" -152 -112) 14)",
+        "((\"escape-at\" -160 -112) 14)",
+        "((\"escape-at\" -168 -112) 14)",
+        "((\"escape-at\" -176 -112) 14)",
+        "((\"escape-at\" -184 -112) 8)",
+        "((\"escape-at\" -192 -112) 7)",
+        "((\"escape-at\" -152 -120) 14)",
+        "((\"escape-at\" -160 -120) 14)",
+        "((\"escape-at\" -168 -120) 14)",
+        "((\"escape-at\" -176 -120) 13)",
+        "((\"escape-at\" -184 -120) 8)",
+        "((\"escape-at\" -192 -120) 6)",
+        "((\"escape-at\" -152 -128) 12)",
+        "((\"escape-at\" -160 -128) 10)",
+        "((\"escape-at\" -168 -128) 10)",
+        "((\"escape-at\" -176 -128) 7)",
+        "((\"escape-at\" -184 -128) 6)",
+        "((\"escape-at\" -192 -128) 5)",
+        f"(\"result\" \"{expected_outcome}\")"
+    ]
+
+    assert print_outputs == want_prints
+    to_hex = hex(int(last['Final']))
+    have_outcome = bytes.fromhex(to_hex[2:]).decode('utf8')
+    assert have_outcome == expected_outcome
+
 def single_function_test():
     mypath = Path(os.path.abspath(__file__))
     testpath = mypath.parent.joinpath('steprun')
@@ -60,3 +114,4 @@ if __name__ == '__main__':
     simple_test()
     complex_test()
     single_function_test()
+    test_with_printing()
