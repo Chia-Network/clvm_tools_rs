@@ -408,12 +408,9 @@ fn rename_in_helperform(
 ) -> Result<HelperForm, CompileErr> {
     match h {
         HelperForm::Defconstant(defc) => Ok(HelperForm::Defconstant(DefconstData {
-            loc: defc.loc.clone(),
-            kind: defc.kind.clone(),
-            name: defc.name.to_vec(),
-            nl: defc.nl.clone(),
-            kw: defc.kw.clone(),
             body: Rc::new(rename_in_bodyform(namemap, defc.body.clone())?),
+            ..defc.clone()
+            
         })),
         HelperForm::Defmacro(mac) => Ok(HelperForm::Defmacro(DefmacData {
             program: Rc::new(rename_in_compileform(namemap, mac.program.clone())?),
@@ -432,12 +429,8 @@ fn rename_in_helperform(
 pub fn rename_args_helperform(h: &HelperForm) -> Result<HelperForm, CompileErr> {
     match h {
         HelperForm::Defconstant(defc) => Ok(HelperForm::Defconstant(DefconstData {
-            loc: defc.loc.clone(),
-            kind: defc.kind.clone(),
-            nl: defc.nl.clone(),
-            kw: defc.kw.clone(),
-            name: defc.name.clone(),
             body: Rc::new(rename_args_bodyform(defc.body.borrow())?),
+            ..defc.clone()
         })),
         HelperForm::Defmacro(mac) => {
             let mut new_names: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
