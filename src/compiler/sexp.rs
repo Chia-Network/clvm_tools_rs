@@ -1007,9 +1007,7 @@ pub enum Rest<T> {
 }
 
 #[derive(Debug, Clone)]
-pub enum ThisNode {
-    Here,
-}
+pub struct ThisNode;
 
 pub enum Atom<T> {
     Here(T),

@@ -87,15 +87,14 @@ pub trait ExtensionFunction {
         true
     }
     fn required_args(&self) -> Option<usize>;
-    #[allow(clippy::too_many_arguments)]
     fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr>;
 }
 
-struct StringQ {}
+struct StringQ;
 
 impl StringQ {
     fn create() -> Rc<dyn ExtensionFunction> {
-        Rc::new(StringQ {})
+        Rc::new(StringQ)
     }
 }
 
@@ -114,11 +113,11 @@ impl ExtensionFunction for StringQ {
     }
 }
 
-struct NumberQ {}
+struct NumberQ;
 
 impl NumberQ {
     fn create() -> Rc<dyn ExtensionFunction> {
-        Rc::new(NumberQ {})
+        Rc::new(NumberQ)
     }
 }
 
@@ -137,11 +136,11 @@ impl ExtensionFunction for NumberQ {
     }
 }
 
-struct SymbolQ {}
+struct SymbolQ;
 
 impl SymbolQ {
     fn create() -> Rc<dyn ExtensionFunction> {
-        Rc::new(SymbolQ {})
+        Rc::new(SymbolQ)
     }
 }
 
@@ -160,11 +159,11 @@ impl ExtensionFunction for SymbolQ {
     }
 }
 
-struct SymbolToString {}
+struct SymbolToString;
 
 impl SymbolToString {
     fn create() -> Rc<dyn ExtensionFunction> {
-        Rc::new(SymbolToString {})
+        Rc::new(SymbolToString)
     }
 }
 
@@ -179,11 +178,11 @@ impl ExtensionFunction for SymbolToString {
     }
 }
 
-struct StringToSymbol {}
+struct StringToSymbol;
 
 impl StringToSymbol {
     fn create() -> Rc<dyn ExtensionFunction> {
-        Rc::new(StringToSymbol {})
+        Rc::new(StringToSymbol)
     }
 }
 
@@ -198,11 +197,11 @@ impl ExtensionFunction for StringToSymbol {
     }
 }
 
-struct StringAppend {}
+struct StringAppend;
 
 impl StringAppend {
     fn create() -> Rc<dyn ExtensionFunction> {
-        Rc::new(StringAppend {})
+        Rc::new(StringAppend)
     }
 }
 
@@ -229,11 +228,11 @@ impl ExtensionFunction for StringAppend {
     }
 }
 
-struct NumberToString {}
+struct NumberToString;
 
 impl NumberToString {
     fn create() -> Rc<dyn ExtensionFunction> {
-        Rc::new(NumberToString {})
+        Rc::new(NumberToString)
     }
 }
 
@@ -256,11 +255,11 @@ impl ExtensionFunction for NumberToString {
     }
 }
 
-struct StringToNumber {}
+struct StringToNumber;
 
 impl StringToNumber {
     fn create() -> Rc<dyn ExtensionFunction> {
-        Rc::new(StringToNumber {})
+        Rc::new(StringToNumber)
     }
 }
 
@@ -279,11 +278,11 @@ impl ExtensionFunction for StringToNumber {
     }
 }
 
-struct StringLength {}
+struct StringLength;
 
 impl StringLength {
     fn create() -> Rc<dyn ExtensionFunction> {
-        Rc::new(StringLength {})
+        Rc::new(StringLength)
     }
 }
 
@@ -304,11 +303,11 @@ impl ExtensionFunction for StringLength {
     }
 }
 
-struct Substring {}
+struct Substring;
 
 impl Substring {
     fn create() -> Rc<dyn ExtensionFunction> {
-        Rc::new(Substring {})
+        Rc::new(Substring)
     }
 }
 
@@ -380,12 +379,6 @@ pub struct PreprocessorExtension {
     extfuns: HashMap<Vec<u8>, Rc<dyn ExtensionFunction>>,
 }
 
-fn compile_to_run_err(e: CompileErr) -> RunFailure {
-    match e {
-        CompileErr(l, e) => RunFailure::RunErr(l, e),
-    }
-}
-
 impl PrimOverride for PreprocessorExtension {
     fn try_handle(
         &self,
@@ -401,10 +394,7 @@ impl PrimOverride for PreprocessorExtension {
             };
 
             if let Some(extension) = self.extfuns.get(head_atom) {
-                let res = extension
-                    .try_eval(hl, &have_args)
-                    .map_err(compile_to_run_err)?;
-
+                let res = extension.try_eval(hl, &have_args)?;
                 return Ok(Some(res));
             }
         }
