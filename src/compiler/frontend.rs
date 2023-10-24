@@ -884,11 +884,11 @@ fn frontend_start(
 /// Given the available helper list and the main expression, compute the list of
 /// reachable helpers.
 pub fn compute_live_helpers(
-        opts: Rc<dyn CompilerOpts>,
-        helper_list: &[HelperForm],
-        main_exp: Rc<BodyForm>,
-    ) -> Vec<HelperForm> {
-        let expr_names: HashSet<Vec<u8>> = collect_used_names_bodyform(main_exp.borrow())
+    opts: Rc<dyn CompilerOpts>,
+    helper_list: &[HelperForm],
+    main_exp: Rc<BodyForm>,
+) -> Vec<HelperForm> {
+    let expr_names: HashSet<Vec<u8>> = collect_used_names_bodyform(main_exp.borrow())
         .iter()
         .map(|x| x.to_vec())
         .collect();
@@ -903,9 +903,7 @@ pub fn compute_live_helpers(
 
     helper_list
         .iter()
-        .filter(|h| {
-            !opts.frontend_check_live() || helper_names.contains(h.name())
-        })
+        .filter(|h| !opts.frontend_check_live() || helper_names.contains(h.name()))
         .cloned()
         .collect()
 }

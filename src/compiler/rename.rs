@@ -413,7 +413,6 @@ fn rename_in_helperform(
         HelperForm::Defconstant(defc) => Ok(HelperForm::Defconstant(DefconstData {
             body: Rc::new(rename_in_bodyform(namemap, defc.body.clone())?),
             ..defc.clone()
-            
         })),
         HelperForm::Defmacro(mac) => Ok(HelperForm::Defmacro(DefmacData {
             program: Rc::new(rename_in_compileform(namemap, mac.program.clone())?),

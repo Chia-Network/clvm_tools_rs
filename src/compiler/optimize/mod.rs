@@ -638,7 +638,7 @@ fn fe_opt(
                     *inline,
                     Box::new(DefunData {
                         body: body_rc.clone(),
-                        .. *defun.clone()
+                        ..*defun.clone()
                     }),
                 );
                 optimized_helpers.push(new_helper);
