@@ -1008,6 +1008,23 @@ fn test_lambda_with_capture_defines_word() {
 }
 
 #[test]
+fn test_cost_reporting_0() {
+    let program = "(2 (1 2 6 (4 2 (4 (1 . 1) ()))) (4 (1 (2 (1 2 (3 (7 5) (1 2 (1 11 (1 . 2) (2 4 (4 2 (4 (5 5) ()))) (2 4 (4 2 (4 (6 5) ())))) 1) (1 2 (1 11 (1 . 1) 5) 1)) 1) 1) 2 (1 16 5 (1 . 50565442356047746631413349885570059132562040184787699607120092457326103992436)) 1) 1))";
+    let result = do_basic_brun(&vec![
+        "brun".to_string(),
+        "-c".to_string(),
+        program.to_string(),
+        "()".to_string(),
+    ])
+        .trim()
+        .to_string();
+    assert_eq!(
+        result,
+        "cost = 1978\n0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9875"
+    );
+}
+
+#[test]
 fn test_assign_lambda_code_generation() {
     let tname = "test_assign_lambda_code_generation.sym".to_string();
     do_basic_run(&vec![
@@ -1059,23 +1076,6 @@ fn test_assign_lambda_code_generation_normally_inlines() {
     // We should have these two functions.
     assert!(found_wanted_symbols
         .contains(&"ccd5be506752cebf01f9930b4c108fe18058c65e1ab57a72ca0a00d9788c7ca6".to_string()));
-}
-
-#[test]
-fn test_cost_reporting_0() {
-    let program = "(2 (1 2 6 (4 2 (4 (1 . 1) ()))) (4 (1 (2 (1 2 (3 (7 5) (1 2 (1 11 (1 . 2) (2 4 (4 2 (4 (5 5) ()))) (2 4 (4 2 (4 (6 5) ())))) 1) (1 2 (1 11 (1 . 1) 5) 1)) 1) 1) 2 (1 16 5 (1 . 50565442356047746631413349885570059132562040184787699607120092457326103992436)) 1) 1))";
-    let result = do_basic_brun(&vec![
-        "brun".to_string(),
-        "-c".to_string(),
-        program.to_string(),
-        "()".to_string(),
-    ])
-    .trim()
-    .to_string();
-    assert_eq!(
-        result,
-        "cost = 1978\n0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9875"
-    );
 }
 
 #[test]
