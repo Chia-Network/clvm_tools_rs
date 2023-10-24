@@ -757,28 +757,20 @@ pub fn generate_expr_code(
                     // strict mode closes the necessary loophole below.  Values
                     // intended as variable names are never crushed into integer
                     // like values from modern macros.
-                    if opts.dialect().strict {
-                        return generate_expr_code(
-                            context,
-                            opts,
-                            compiler,
-                            Rc::new(BodyForm::Quoted(SExp::Integer(l.clone(), i.clone()))),
-                        );
-                    }
-
-                    // Since macros are in this language and the runtime has
-                    // a very narrow data representation, we'll need to
-                    // accomodate bare numbers coming back in place of identifiers,
-                    // but only in legacy non-strict mode.
-                    generate_expr_code(
-                        context,
-                        opts,
-                        compiler,
+                    let ambiguous_int_value = if opts.dialect().strict {
+                        Rc::new(BodyForm::Quoted(SExp::Integer(l.clone(), i.clone())))
+                    } else {
+                        // Since macros are in this language and the runtime has
+                        // a very narrow data representation, we'll need to
+                        // accomodate bare numbers coming back in place of identifiers,
+                        // but only in legacy non-strict mode.
                         Rc::new(BodyForm::Value(SExp::Atom(
                             l.clone(),
                             u8_from_number(i.clone()),
-                        ))),
-                    )
+                        )))
+                    };
+
+                    generate_expr_code(context, opts, compiler, ambiguous_int_value)
                 }
                 _ => Ok(CompiledCode(
                     v.loc(),

@@ -253,9 +253,8 @@ impl Preprocessor {
                 return Ok(new_self);
             }
 
-            if let Ok(NodeSel::Cons((_, name), args)) =
-                NodeSel::Cons(Atom::Here(()), ThisNode::Here)
-                    .select_nodes(new_self.clone().unwrap_or_else(|| body.clone()))
+            if let Ok(NodeSel::Cons((_, name), args)) = NodeSel::Cons(Atom::Here(()), ThisNode)
+                .select_nodes(new_self.clone().unwrap_or_else(|| body.clone()))
             {
                 let defmac_name = make_defmac_name(&name);
 
@@ -347,10 +346,7 @@ impl Preprocessor {
             NodeSel::Cons((nl, name), NodeSel::Cons(args, body)),
         )) = NodeSel::Cons(
             Atom::Here(()),
-            NodeSel::Cons(
-                Atom::Here(()),
-                NodeSel::Cons(ThisNode::Here, ThisNode::Here),
-            ),
+            NodeSel::Cons(Atom::Here(()), NodeSel::Cons(ThisNode, ThisNode)),
         )
         .select_nodes(definition.clone())
         {

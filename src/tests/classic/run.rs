@@ -1578,3 +1578,25 @@ fn test_preprocess_can_recurse() {
         "(2 (1 2 (3 5 (1 2 (1 18 5 (1 . 2)) 1) (1 2 (1 16 5 (1 . 1)) 1)) 1) (4 (1) 1))"
     );
 }
+
+#[test]
+fn test_assign_rename_tricky() {
+    let filename = "resources/tests/cse-complex-21.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+
+    let run_result_11 = do_basic_brun(&vec![
+        "brun".to_string(),
+        program.clone(),
+        "(11)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(run_result_11, "506");
+
+    let run_result_41 = do_basic_brun(&vec!["brun".to_string(), program, "(41)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(run_result_41, "15375");
+}
