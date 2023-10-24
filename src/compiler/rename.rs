@@ -164,7 +164,7 @@ pub fn rename_assign_bindings(
 ) -> Result<(BodyForm, Vec<Rc<Binding>>), CompileErr> {
     // Order the bindings.
     let sorted_bindings = toposort_assign_bindings(l, bindings)?;
-    let mut renames = HashMap::new();
+    let mut renames: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
     // Process in reverse order so we rename from inner to outer.
     let bindings_to_rename: Vec<TopoSortItem<_>> = sorted_bindings.to_vec();
     let renamed_bindings = map_m_reverse(
@@ -175,9 +175,11 @@ pub fn rename_assign_bindings(
                 for (name, renamed) in new_names.iter() {
                     renames.insert(name.clone(), renamed.clone());
                 }
+
+                let renamed_in_body = Rc::new(rename_args_bodyform(b.body.borrow())?);
                 Ok(Rc::new(Binding {
                     pattern: BindingPattern::Complex(rename_in_cons(&renames, p.clone(), false)),
-                    body: Rc::new(rename_in_bodyform(&renames, b.body.clone())?),
+                    body: Rc::new(rename_in_bodyform(&renames, renamed_in_body)?),
                     ..b.clone()
                 }))
             } else {
@@ -186,7 +188,8 @@ pub fn rename_assign_bindings(
         },
         &bindings_to_rename,
     )?;
-    Ok((rename_in_bodyform(&renames, body)?, renamed_bindings))
+    let new_body = Rc::new(rename_args_bodyform(body.borrow())?);
+    Ok((rename_in_bodyform(&renames, new_body)?, renamed_bindings))
 }
 
 fn rename_in_bodyform(
