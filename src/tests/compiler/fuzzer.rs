@@ -18,7 +18,7 @@ fn test_simple_fuzzer_output_1() {
     let cf = produce_fuzz_program(input);
     assert_eq!(
         cf.to_sexp().to_string(),
-        "(E (defmacro helper_0 C (18 (q) (q))) (q))"
+        "(E (defmac helper_0 C (18 (q) (q))) (q))"
     );
 }
 
@@ -31,7 +31,7 @@ fn test_simple_fuzzer_output_2() {
     let cf = produce_fuzz_program(input);
     assert_eq!(
         cf.to_sexp().to_string(),
-        "(E (defmacro helper_0 C (let ((A (18 (q) (q)))) (18 (q) (q)))) (q))"
+        "(E (defmac helper_0 C (let ((A (18 (q) (q)))) (18 (q) (q)))) (q))"
     );
 }
 

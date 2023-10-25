@@ -12,7 +12,14 @@ use wasm_bindgen::JsCast;
 
 use clvmr::allocator::Allocator;
 
-use clvm_tools_rs::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
+use crate::jsval::{
+    btreemap_to_object, get_property, js_object_from_sexp, js_pair, object_to_value,
+    read_string_to_string_map, sexp_from_js_object,
+};
+use crate::objects::Program;
+use clvm_tools_rs::classic::clvm::__type_compatibility__::{
+    Bytes, Stream, UnvalidatedBytesFromType,
+};
 use clvm_tools_rs::classic::clvm::serialize::sexp_to_stream;
 use clvm_tools_rs::classic::clvm_tools::clvmc::compile_clvm_inner;
 use clvm_tools_rs::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
@@ -30,10 +37,6 @@ use clvm_tools_rs::compiler::repl::Repl;
 use clvm_tools_rs::compiler::runtypes::RunFailure;
 use clvm_tools_rs::compiler::sexp::SExp;
 use clvm_tools_rs::compiler::srcloc::Srcloc;
-use crate::jsval::{
-    btreemap_to_object, get_property, js_object_from_sexp, js_pair, object_to_value,
-    read_string_to_string_map, sexp_from_js_object,
-};
 
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
@@ -61,7 +64,7 @@ thread_local! {
     };
 }
 
-fn get_next_id() -> i32 {
+pub fn get_next_id() -> i32 {
     NEXT_ID.with(|n| n.fetch_add(1, Ordering::SeqCst) as i32)
 }
 
@@ -96,11 +99,8 @@ where
         runcell.replace_with(|coll| {
             let mut work_collection = HashMap::new();
             swap(coll, &mut work_collection);
-            match work_collection.get_mut(&this_id) {
-                Some(r_ref) => {
-                    result = f(r_ref);
-                }
-                _ => {}
+            if let Some(r_ref) = work_collection.get_mut(&this_id) {
+                result = f(r_ref);
             }
             work_collection
         });
@@ -108,31 +108,25 @@ where
     result
 }
 
-fn create_clvm_runner_err(error: String) -> JsValue {
+pub fn create_clvm_runner_err(error: String) -> JsValue {
     let array = js_sys::Array::new();
     array.set(
         0,
         js_pair(JsValue::from_str("error"), JsValue::from_str(&error)),
     );
-    return object_to_value(&js_sys::Object::from_entries(&array).unwrap());
+    object_to_value(&js_sys::Object::from_entries(&array).unwrap())
 }
 
 fn create_clvm_runner_run_failure(err: &RunFailure) -> JsValue {
     match err {
-        RunFailure::RunErr(l, e) => {
-            return create_clvm_runner_err(format!("{}: Error {}", l.to_string(), e));
-        }
-        RunFailure::RunExn(l, e) => {
-            return create_clvm_runner_err(format!("{}: Exn {}", l.to_string(), e.to_string()))
-        }
+        RunFailure::RunErr(l, e) => create_clvm_runner_err(format!("{}: Error {}", l, e)),
+        RunFailure::RunExn(l, e) => create_clvm_runner_err(format!("{}: Exn {}", l, e)),
     }
 }
 
 fn create_clvm_compile_failure(err: &CompileErr) -> JsValue {
     match err {
-        CompileErr(l, e) => {
-            return create_clvm_runner_err(format!("{}: Error {}", l.to_string(), e));
-        }
+        CompileErr(l, e) => create_clvm_runner_err(format!("{}: Error {}", l, e)),
     }
 }
 
@@ -146,7 +140,12 @@ impl CldbSingleBespokeOverride for JsBespokeOverride {
     // When the user returns, try to convert the result back to sexp.
     fn get_override(&self, env: Rc<SExp>) -> Result<Rc<SExp>, RunFailure> {
         let args = js_sys::Array::new();
-        args.set(0, js_object_from_sexp(env.clone()));
+        args.set(
+            0,
+            js_object_from_sexp(env.clone()).map_err(|_| {
+                RunFailure::RunErr(env.loc(), "error converting override value".to_string())
+            })?,
+        );
         self.fun
             .apply(&JsValue::null(), &args)
             .map_err(|e| {
@@ -158,7 +157,7 @@ impl CldbSingleBespokeOverride for JsBespokeOverride {
             })
             .and_then(|v| {
                 sexp_from_js_object(env.loc(), &v)
-                    .map(|s| Ok(s))
+                    .map(Ok)
                     .unwrap_or_else(|| {
                         Err(RunFailure::RunErr(
                             env.loc(),
@@ -182,8 +181,8 @@ pub fn create_clvm_runner(
 ) -> JsValue {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
-    let args_srcloc = Srcloc::start(&"*args*".to_string());
-    let prog_srcloc = Srcloc::start(&"*program*".to_string());
+    let args_srcloc = Srcloc::start("*args*");
+    let prog_srcloc = Srcloc::start("*program*");
     let mut prim_map = HashMap::new();
     let mut override_funs: HashMap<String, Box<dyn CldbSingleBespokeOverride>> = HashMap::new();
 
@@ -207,14 +206,11 @@ pub fn create_clvm_runner(
         }
     };
 
-    for ent in js_sys::Object::keys(&overrides).values() {
+    for ent in js_sys::Object::keys(overrides).values() {
         let key = ent.unwrap().as_string().unwrap();
-        let val = get_property(&overrides, &key).unwrap();
-        match val.dyn_ref::<js_sys::Function>() {
-            Some(f) => {
-                override_funs.insert(key, Box::new(JsBespokeOverride { fun: f.clone() }));
-            }
-            _ => {}
+        let val = get_property(overrides, &key).unwrap();
+        if let Some(f) = val.dyn_ref::<js_sys::Function>() {
+            override_funs.insert(key, Box::new(JsBespokeOverride { fun: f.clone() }));
         }
     }
 
@@ -246,15 +242,17 @@ pub fn create_clvm_runner(
     let this_id = get_next_id();
     insert_runner(this_id, JsRunStep { allocator, cldbrun });
 
-    return JsValue::from(this_id);
+    JsValue::from(this_id)
 }
 
 #[wasm_bindgen]
 pub fn final_value(runner: i32) -> JsValue {
     with_runner(runner, |r| {
-        r.cldbrun.final_result().map(|v| js_object_from_sexp(v))
+        r.cldbrun
+            .final_result()
+            .map(|v| js_object_from_sexp(v).unwrap_or_else(|e| e))
     })
-    .unwrap_or_else(|| JsValue::null())
+    .unwrap_or_else(JsValue::null)
 }
 
 #[wasm_bindgen]
@@ -273,7 +271,7 @@ pub fn run_step(runner: i32) -> JsValue {
         r.cldbrun.step(&mut r.allocator)
     })
     .map(|result_hash| btreemap_to_object(result_hash.iter()))
-    .unwrap_or_else(|| JsValue::null())
+    .unwrap_or_else(JsValue::null)
 }
 
 fn make_compile_output(result_stream: &Stream, symbol_table: &HashMap<String, String>) -> JsValue {
@@ -284,10 +282,11 @@ fn make_compile_output(result_stream: &Stream, symbol_table: &HashMap<String, St
         js_pair(JsValue::from_str("hex"), JsValue::from_str(&output_hex)),
     );
     let symbol_array = js_sys::Array::new();
-    let mut idx = 0;
-    for (k, v) in symbol_table.iter() {
-        symbol_array.set(idx, js_pair(JsValue::from_str(&k), JsValue::from_str(&v)));
-        idx += 1;
+    for (idx, (k, v)) in symbol_table.iter().enumerate() {
+        symbol_array.set(
+            idx as u32,
+            js_pair(JsValue::from_str(k), JsValue::from_str(v)),
+        );
     }
     let symbol_object = object_to_value(&js_sys::Object::from_entries(&symbol_array).unwrap());
     array.set(1, js_pair(JsValue::from_str("symbols"), symbol_object));
@@ -310,8 +309,7 @@ pub fn compile(input_js: JsValue, filename_js: JsValue, search_paths_js: Vec<JsV
         .map(|j| j.as_string().unwrap())
         .collect();
 
-    let opts = Rc::new(DefaultCompilerOpts::new(&filename))
-        .set_search_paths(&search_paths);
+    let opts = Rc::new(DefaultCompilerOpts::new(&filename)).set_search_paths(&search_paths);
     match compile_clvm_inner(
         &mut allocator,
         opts,
@@ -346,7 +344,7 @@ pub fn compose_run_function(
     function_name: String,
 ) -> JsValue {
     let mut allocator = Allocator::new();
-    let loc = Srcloc::start(&"*js*".to_string());
+    let loc = Srcloc::start("*js*");
     let symbol_table = match read_string_to_string_map(symbol_table_js) {
         Ok(s) => s,
         Err(e) => {
@@ -377,16 +375,14 @@ pub fn compose_run_function(
             ));
         }
     };
-    let hash_bytes = match Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(function_hash.clone()))) {
-        Err(e) => {
-            return create_clvm_compile_failure(&CompileErr(
-                program.loc(),
-                e.to_string(),
-            ));
-        },
-        Ok(x) => x,
-    };
-    
+    let hash_bytes =
+        match Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(function_hash.clone()))) {
+            Err(e) => {
+                return create_clvm_compile_failure(&CompileErr(program.loc(), e.to_string()));
+            }
+            Ok(x) => x,
+        };
+
     let function_path = match path_to_function(main_env.1.clone(), &hash_bytes.data().clone()) {
         Some(p) => p,
         _ => {
@@ -416,7 +412,7 @@ pub fn compose_run_function(
 #[wasm_bindgen]
 pub fn create_repl() -> i32 {
     let allocator = Allocator::new();
-    let opts = Rc::new(DefaultCompilerOpts::new(&"*repl*".to_string()));
+    let opts = Rc::new(DefaultCompilerOpts::new("*repl*"));
     let runner = Rc::new(DefaultProgramRunner::new());
     let repl = Repl::new(opts, runner.clone());
     let new_id = get_next_id();
@@ -469,12 +465,12 @@ pub fn repl_run_string(repl_id: i32, input: String) -> JsValue {
                 r.process_line(a, input)
             } else {
                 Err(CompileErr(
-                    Srcloc::start(&"*repl*".to_string()),
+                    Srcloc::start("*repl*"),
                     "no such repl".to_string(),
                 ))
             }
         })
-        .map(|v| v.map(|v| js_object_from_sexp(v.to_sexp())))
+        .map(|v| v.map(|v| js_object_from_sexp(v.to_sexp()).unwrap_or_else(|e| e)))
         .unwrap_or_else(|e| {
             Some(create_clvm_runner_err(format!(
                 "{}: {}",
@@ -482,13 +478,28 @@ pub fn repl_run_string(repl_id: i32, input: String) -> JsValue {
                 e.1
             )))
         })
-        .unwrap_or_else(|| JsValue::null())
+        .unwrap_or_else(JsValue::null)
 }
 
 #[wasm_bindgen]
 pub fn sexp_to_string(v: &JsValue) -> JsValue {
-    let loc = Srcloc::start(&"*val*".to_string());
+    let loc = Srcloc::start("*val*");
+
     sexp_from_js_object(loc, v)
         .map(|s| JsValue::from_str(&s.to_string()))
         .unwrap_or_else(|| create_clvm_runner_err("unable to convert to value".to_string()))
+}
+
+#[wasm_bindgen]
+pub fn h(v: String) -> Result<Vec<u8>, JsValue> {
+    let hex_data = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(v)))
+        .map_err(|_| js_sys::JsString::from("bad hex input"))?;
+    Ok(hex_data.data().clone())
+}
+
+#[wasm_bindgen]
+pub fn t(a: &JsValue, b: &JsValue) -> Result<JsValue, JsValue> {
+    Program::as_pair_internal(
+        &Program::cons_internal(&Program::to_internal(a)?, &Program::to_internal(b)?)?.into(),
+    )
 }

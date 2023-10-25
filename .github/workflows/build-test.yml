@@ -223,11 +223,58 @@ jobs:
         rustup component add llvm-tools-preview
         python ./resources/coverage/run_coverage.py --require-percent 60
 
+    - name: Build alpine wheel via docker
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
+      run: |
+        cd resources/alpine && docker build -t clvm-tools-rs-alpine .
+        docker run -v ${GITHUB_WORKSPACE}:/root/clvm_tools_rs -t clvm-tools-rs-alpine sh /root/build-alpine.sh
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v3
       with:
         name: wheels
         path: ./target/wheels/
+
+  upload:
+    name: Upload to PyPI
+    runs-on: ubuntu-latest
+    needs: build_wheels
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Set Env
+      uses: Chia-Network/actions/setjobenv@main
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Install python
+      uses: Chia-Network/actions/setup-python@main
+      with:
+        python-version: "3.10"
+
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: wheels
+        path: ./target/wheels/
+
+    - name: Publish distribution to PyPI
+      if: env.RELEASE == 'true'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        packages-dir: target/wheels/
+        skip-existing: true
+
+    - name: Publish distribution to Test PyPI
+      if: env.PRE_RELEASE == 'true'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: https://test.pypi.org/legacy/
+        packages-dir: target/wheels/
+        skip-existing: true
 
     - name: Test for secrets access
       id: check_secrets
@@ -239,26 +286,6 @@ jobs:
         echo HAS_AWS_SECRET=${HAS_AWS_SECRET} >>$GITHUB_OUTPUT
       env:
         AWS_SECRET: "${{ secrets.CHIA_AWS_ACCOUNT_ID }}"
-
-    - name: Set Env
-      uses: Chia-Network/actions/setjobenv@main
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: publish (PyPi)
-      if: env.RELEASE == 'true'
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        packages-dir: target/wheels/
-        skip-existing: true
-
-    - name: publish (Test PyPi)
-      if: env.PRE_RELEASE == 'true'
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        repository-url: https://test.pypi.org/legacy/
-        packages-dir: target/wheels/
-        skip-existing: true
 
     - name: Configure AWS credentials
       if: steps.check_secrets.outputs.HAS_AWS_SECRET
@@ -277,12 +304,6 @@ jobs:
           filename=$(basename $file)
           aws --no-progress s3 cp "$file" "s3://download.chia.net/simple-dev/clvm-tools-rs/$filename"
         done <<< "$FILES"
-
-    - name: Build alpine wheel via docker
-      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
-      run: |
-        cd resources/alpine && docker build -t clvm-tools-rs-alpine .
-        docker run -v ${GITHUB_WORKSPACE}:/root/clvm_tools_rs -t clvm-tools-rs-alpine sh /root/build-alpine.sh
 
   fmt:
     runs-on: ubuntu-20.04
@@ -337,11 +358,26 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
-            toolchain: nightly
-      - name: Install tarpaulin
-        run: cargo +nightly install cargo-tarpaulin
-      - name: Run tarpaulin
-        run: cargo tarpaulin --no-dead-code --engine llvm --workspace --all-features --ignore-panics --out Lcov
+            toolchain: stable
+      - name: Run for coverage
+        run: |
+          sudo apt-get update
+          sudo apt-get install lcov -y
+          rustup component add llvm-tools-preview
+          cargo install grcov
+          export RUSTFLAGS="-Cinstrument-coverage"
+          export LLVM_PROFILE_FILE=$(pwd)/target/clvm_tools_rs-%p-%m.profraw
+          export CARGO_TARGET_DIR=$(pwd)/target
+          cargo test --release --workspace
+          python -m venv venv
+          source venv/bin/activate
+          git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
+          pip install ./clvm_tools
+          pip install maturin pytest
+          maturin develop --release
+          (cd resources/tests/cmdline/tests && pytest)
+          grcov . --binary-path target -s . --branch --ignore-not-existing --ignore='*/.cargo/*' --ignore='*/tests/*' -o rust_cov.info
+          python -c 'with open("rust_cov.info") as f: lines = [l for l in f if not (l.startswith("DA:") and int(l.split(",")[1].strip()) >= 2**63)]; open("lcov.info", "w").writelines(lines)'
       - name: Upload to Coveralls
         uses: coverallsapp/github-action@v2
         if: always()

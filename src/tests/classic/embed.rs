@@ -60,9 +60,11 @@ fn test_embed_exhaustive() {
     for order in 0..=1 {
         for exists in 0..=1 {
             for (include_kind, include_file, want_hash) in include_list.iter() {
-                for modern in 0..=1 {
-                    let modern_sigil = if modern > 0 {
+                for modern in 0..=2 {
+                    let modern_sigil = if modern == 1 {
                         "(include *standard-cl-21*)"
+                    } else if modern == 2 {
+                        "(include *strict-cl-21*)"
                     } else {
                         ""
                     };

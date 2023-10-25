@@ -8,8 +8,8 @@ use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::comptypes::{
-    Binding, BodyForm, CompileForm, ConstantKind, DefconstData, DefmacData, DefunData, HelperForm,
-    LetData, LetFormKind,
+    Binding, BindingPattern, BodyForm, CompileForm, ConstantKind, DefconstData, DefmacData, DefunData, HelperForm,
+    LetData, LetFormKind, SyntheticType,
 };
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
@@ -98,11 +98,15 @@ fn rewrite_identifiers_bodyform(in_scope: &Vec<Vec<u8>>, body_form: &BodyForm) -
             let mut newly_bound = in_scope.clone();
             for b in data.bindings.iter() {
                 let new_binding_body = rewrite_identifiers_bodyform(&newly_bound, b.body.borrow());
-                newly_bound.push(b.name.clone());
-                let new_binding_data_borrowed: &Binding = b.borrow();
-                let mut new_binding_data_cloned = new_binding_data_borrowed.clone();
-                new_binding_data_cloned.body = Rc::new(new_binding_body);
-                new_bindings.push(Rc::new(new_binding_data_cloned));
+                if let BindingPattern::Name(n) = &b.pattern {
+                    newly_bound.push(n.clone());
+                    let new_binding_data_borrowed: &Binding = b.borrow();
+                    let mut new_binding_data_cloned = new_binding_data_borrowed.clone();
+                    new_binding_data_cloned.body = Rc::new(new_binding_body);
+                    new_bindings.push(Rc::new(new_binding_data_cloned));
+                } else {
+                    todo!();
+                }
             }
             let mut new_data = data.clone();
             new_data.bindings = new_bindings;
@@ -124,10 +128,14 @@ fn rewrite_identifiers_bodyform(in_scope: &Vec<Vec<u8>>, body_form: &BodyForm) -
                 })
                 .collect();
             let mut new_scope = in_scope.clone();
-            for b in new_bindings.iter() {
-                new_scope.push(b.name.clone());
-            }
             let mut new_data = data.clone();
+            for b in new_bindings.iter() {
+                if let BindingPattern::Name(n) = &b.pattern {
+                    new_scope.push(n.clone());
+                } else {
+                    todo!();
+                }
+            }
             new_data.bindings = new_bindings;
             new_data.body = Rc::new(rewrite_identifiers_bodyform(&new_scope, data.body.borrow()));
             BodyForm::Let(LetFormKind::Parallel, new_data)
@@ -379,7 +387,7 @@ impl CollectProgramStructure {
                 collected_bindings.push(Rc::new(Binding {
                     loc: loc.clone(),
                     nl: loc.clone(),
-                    name: arg_atom,
+                    pattern: BindingPattern::Name(arg_atom),
                     body: body,
                 }));
             }
@@ -388,12 +396,13 @@ impl CollectProgramStructure {
 
             Rc::new(BodyForm::Let(
                 kind,
-                LetData {
+                Box::new(LetData {
                     loc: loc.clone(),
                     kw: None,
                     bindings: collected_bindings,
                     body: body,
-                },
+                    inline_hint: None, // todo: generate all kinds of inline hints
+                }),
             ))
         } else {
             // Call
@@ -469,15 +478,16 @@ impl CollectProgramStructure {
             }),
             1 => HelperForm::Defun(
                 is_inline,
-                DefunData {
+                Box::new(DefunData {
                     loc: loc.clone(),
                     name: helper_name,
                     kw: None,
                     nl: loc.clone(),
                     orig_args: arguments.clone(),
                     args: arguments,
+                    synthetic: Some(SyntheticType::NoInlinePreference),
                     body,
-                },
+                }),
             ),
             _ => {
                 let program = CompileForm {
@@ -494,6 +504,7 @@ impl CollectProgramStructure {
                     nl: loc.clone(),
                     args: arguments,
                     program: Rc::new(program),
+                    advanced: true,
                 })
             }
         }
