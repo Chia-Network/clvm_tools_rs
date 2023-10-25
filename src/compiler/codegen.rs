@@ -361,6 +361,7 @@ pub fn process_macro_call(
         opts.prim_map(),
         code,
         Rc::new(args_to_macro),
+        None,
         Some(MACRO_TIME_LIMIT),
     )
     .map_err(|e| match e {
@@ -662,6 +663,26 @@ pub fn generate_expr_code(
                         create_name_lookup(compiler, l.clone(), atom, true)
                             .map(|f| Ok(CompiledCode(l.clone(), f)))
                             .unwrap_or_else(|_| {
+                                // Finally enable strictness for variable names.
+                                // This is possible because the modern macro system
+                                // takes great care to preserve as much information
+                                // from the source code as possible.
+                                //
+                                // When we come here in strict mode, we have
+                                // a string, integer or atom depending on the
+                                // user's desire and the explicitly generated
+                                // result from the macro, therefore we can return
+                                // an error if this atom didn't have a binding.
+                                if opts.dialect().strict {
+                                    return Err(CompileErr(
+                                        l.clone(),
+                                        format!(
+                                            "Unbound use of {} as a variable name",
+                                            decode_string(atom)
+                                        ),
+                                    ));
+                                }
+
                                 // Pass through atoms that don't look up on behalf of
                                 // macros, as it's possible that a macro returned
                                 // something that's canonically a name in number form.
@@ -674,19 +695,26 @@ pub fn generate_expr_code(
                             })
                     }
                 }
-                // Since macros are in this language and the runtime has
-                // a very narrow data representation, we'll need to
-                // accomodate bare numbers coming back in place of identifiers.
-                // I'm considering ways to make this better.
-                SExp::Integer(l, i) => generate_expr_code(
-                    context,
-                    opts,
-                    compiler,
-                    Rc::new(BodyForm::Value(SExp::Atom(
-                        l.clone(),
-                        u8_from_number(i.clone()),
-                    ))),
-                ),
+                SExp::Integer(l, i) => {
+                    // This code can assume that an integer is an integer because
+                    // strict mode closes the necessary loophole below.  Values
+                    // intended as variable names are never crushed into integer
+                    // like values from modern macros.
+                    let ambiguous_int_value = if opts.dialect().strict {
+                        Rc::new(BodyForm::Quoted(SExp::Integer(l.clone(), i.clone())))
+                    } else {
+                        // Since macros are in this language and the runtime has
+                        // a very narrow data representation, we'll need to
+                        // accomodate bare numbers coming back in place of identifiers,
+                        // but only in legacy non-strict mode.
+                        Rc::new(BodyForm::Value(SExp::Atom(
+                            l.clone(),
+                            u8_from_number(i.clone()),
+                        )))
+                    };
+
+                    generate_expr_code(context, opts, compiler, ambiguous_int_value)
+                }
                 _ => Ok(CompiledCode(
                     v.loc(),
                     Rc::new(primquote(v.loc(), Rc::new(v.clone()))),
@@ -1313,6 +1341,7 @@ fn start_codegen(
                         opts.prim_map(),
                         Rc::new(code),
                         Rc::new(SExp::Nil(defc.loc.clone())),
+                        None,
                         Some(CONST_EVAL_LIMIT),
                     )
                     .map_err(|r| {

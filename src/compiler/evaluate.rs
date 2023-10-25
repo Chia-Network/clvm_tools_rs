@@ -239,7 +239,7 @@ fn get_bodyform_from_arginput(l: &Srcloc, arginput: &ArgInputs) -> Rc<BodyForm> 
 //
 // It's possible this will result in irreducible (unknown at compile time)
 // argument expressions.
-fn create_argument_captures(
+pub fn create_argument_captures(
     argument_captures: &mut HashMap<Vec<u8>, Rc<BodyForm>>,
     formed_arguments: &ArgInputs,
     function_arg_spec: Rc<SExp>,
@@ -1618,6 +1618,7 @@ impl<'info> Evaluator {
             self.prims.clone(),
             prim,
             args,
+            None,
             Some(PRIM_RUN_LIMIT),
         )
         .map_err(|e| match e {

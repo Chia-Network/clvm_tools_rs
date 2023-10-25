@@ -7,6 +7,7 @@ use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::frontend::{collect_used_names_sexp, frontend};
 use crate::compiler::rename::rename_in_cons;
 use crate::compiler::runtypes::RunFailure;
@@ -27,14 +28,23 @@ fn run_string_maybe_opt(
     content: &String,
     args: &String,
     fe_opt: bool,
+    strict: bool,
 ) -> Result<Rc<SExp>, CompileErr> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
     let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let srcloc = Srcloc::start(&"*test*".to_string());
     opts = opts
-        .set_frontend_opt(fe_opt)
+        .set_frontend_opt(fe_opt && !strict)
         .set_search_paths(&vec!["resources/tests".to_string()]);
+
+    if strict {
+        opts = opts.set_dialect(AcceptedDialect {
+            stepping: Some(21),
+            strict: true,
+        });
+    }
+
     let sexp_args = parse_sexp(srcloc.clone(), args.bytes())?[0].clone();
 
     compile_file(
@@ -51,6 +61,7 @@ fn run_string_maybe_opt(
             Rc::new(HashMap::new()),
             Rc::new(x),
             sexp_args,
+            None,
             Some(TEST_TIMEOUT),
         )
         .map_err(|e| match e {
@@ -61,7 +72,11 @@ fn run_string_maybe_opt(
 }
 
 pub fn run_string(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
-    run_string_maybe_opt(content, args, false)
+    run_string_maybe_opt(content, args, false, false)
+}
+
+pub fn run_string_strict(content: &String, args: &String) -> Result<Rc<SExp>, CompileErr> {
+    run_string_maybe_opt(content, args, false, true)
 }
 
 // Given some renaming that leaves behind gensym style names with _$_<n> in them,
@@ -243,6 +258,7 @@ fn run_test_1_maybe_opt(opt: bool) {
         &"(mod () (defun f (a b) (+ (* a a) b)) (f 3 1))".to_string(),
         &"()".to_string(),
         opt,
+        false,
     )
     .unwrap();
     assert_eq!(result.to_string(), "10".to_string());
@@ -270,6 +286,7 @@ fn run_test_2_maybe_opt(opt: bool) {
         &"(mod (c) (defun f (a b) (+ (* a a) b)) (f 3 c))".to_string(),
         &"(4)".to_string(),
         opt,
+        false,
     )
     .unwrap();
     assert_eq!(result.to_string(), "13".to_string());
@@ -290,7 +307,8 @@ fn run_test_3_maybe_opt(opt: bool) {
         run_string_maybe_opt(
             &"(mod (arg_one) (defun factorial (input) (if (= input 1) 1 (* (factorial (- input 1)) input))) (factorial arg_one))".to_string(),
             &"(5)".to_string(),
-            opt
+            opt,
+            false,
         ).unwrap();
     assert_eq!(result.to_string(), "120".to_string());
 }
@@ -310,7 +328,8 @@ fn run_test_4_maybe_opt(opt: bool) {
         run_string_maybe_opt(
             &"(mod () (defun makelist (a) (if a (c (q . 4) (c (f a) (c (makelist (r a)) (q . ())))) (q . ()))) (makelist (q . (1 2 3))))".to_string(),
             &"()".to_string(),
-            opt
+            opt,
+            false,
         ).unwrap();
     assert_eq!(result.to_string(), "(4 1 (4 2 (4 3 ())))".to_string());
 }
@@ -326,8 +345,13 @@ fn run_test_4_opt() {
 }
 
 fn run_test_5_maybe_opt(opt: bool) {
-    let result =
-        run_string_maybe_opt(&"(mod (a) (list 1 2))".to_string(), &"()".to_string(), opt).unwrap();
+    let result = run_string_maybe_opt(
+        &"(mod (a) (list 1 2))".to_string(),
+        &"()".to_string(),
+        opt,
+        false,
+    )
+    .unwrap();
     assert_eq!(result.to_string(), "(1 2)".to_string());
 }
 
@@ -346,7 +370,8 @@ fn run_test_6_maybe_opt(opt: bool) {
         run_string_maybe_opt(
             &"(mod args (defmacro square (input) (qq (* (unquote input) (unquote input)))) (defun sqre_list (my_list) (if my_list (c (square (f my_list)) (sqre_list (r my_list))) my_list)) (sqre_list args))".to_string(),
             &"(10 9 8 7)".to_string(),
-            opt
+            opt,
+            false,
         ).unwrap();
     assert_eq!(result.to_string(), "(100 81 64 49)".to_string());
 }
@@ -366,7 +391,8 @@ fn run_test_7_maybe_opt(opt: bool) {
         run_string_maybe_opt(
             &"(mod (PASSWORD_HASH password new_puzhash amount) (defconstant CREATE_COIN 51) (defun check_password (PASSWORD_HASH password new_puzhash amount) (if (= (sha256 password) PASSWORD_HASH) (list (list CREATE_COIN new_puzhash amount)) (x))) (check_password PASSWORD_HASH password new_puzhash amount))".to_string(),
             &"(0x2ac6aecf15ac3042db34af4863da46111da7e1bf238fc13da1094f7edc8972a1 \"sha256ftw\" 0x12345678 1000000000)".to_string(),
-            opt
+            opt,
+            false,
         ).unwrap();
     assert_eq!(
         result.to_string(),
@@ -389,6 +415,7 @@ fn run_test_8_maybe_opt(opt: bool) {
         &"(mod (a b) (let ((x (+ a 1)) (y (+ b 1))) (+ x y)))".to_string(),
         &"(5 8)".to_string(),
         opt,
+        false,
     )
     .unwrap();
     assert_eq!(result.to_string(), "15".to_string());
@@ -609,6 +636,7 @@ fn run_test_9_maybe_opt(opt: bool) {
         &"(mod (a) (defun f (i) (let ((x (not i)) (y (* i 2))) (+ x y))) (f a))".to_string(),
         &"(0)".to_string(),
         opt,
+        false,
     )
     .unwrap();
     assert_eq!(result.to_string(), "1".to_string());
@@ -629,6 +657,7 @@ fn run_test_10_maybe_opt(opt: bool) {
         &"(mod (a) (defun f (i) (let ((x (not i)) (y (* i 2))) (+ x y))) (f a))".to_string(),
         &"(3)".to_string(),
         opt,
+        false,
     )
     .unwrap();
     assert_eq!(result.to_string(), "6".to_string());
@@ -834,6 +863,7 @@ fn test_collatz_maybe_opt(opt: bool) {
         .to_string(),
         &"(4)".to_string(),
         opt,
+        false,
     )
     .unwrap();
     assert_eq!(result.to_string(), "2");
@@ -873,6 +903,7 @@ fn fancy_nested_let_bindings_should_work() {
         .to_string(),
         &"(1 2 3 100 99)".to_string(),
         false,
+        false,
     )
     .unwrap();
     assert_eq!(result.to_string(), "8");
@@ -890,6 +921,7 @@ fn let_as_argument() {
         "}
         .to_string(),
         &"(5)".to_string(),
+        false,
         false,
     )
     .unwrap();
@@ -909,6 +941,7 @@ fn recursive_let_complicated_arguments() {
         "}
         .to_string(),
         &"(7 13)".to_string(),
+        false,
         false,
     )
     .unwrap();
@@ -942,6 +975,7 @@ fn test_let_structure_access_1() {
         "}
         .to_string(),
         &"(7 13)".to_string(),
+        false,
         false,
     )
     .unwrap();
@@ -987,6 +1021,7 @@ fn test_let_structure_access_2() {
         .to_string(),
         &"(7 13)".to_string(),
         false,
+        false,
     )
     .unwrap();
     // a = 1
@@ -1015,6 +1050,7 @@ fn test_let_inline_1() {
         "}
         .to_string(),
         &"(5)".to_string(),
+        false,
         false,
     )
     .unwrap();

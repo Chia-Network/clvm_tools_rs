@@ -1,5 +1,6 @@
 use core::cell::RefCell;
 
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io;
@@ -42,7 +43,6 @@ use crate::classic::clvm_tools::stages::stage_0::{
 };
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::platform::PathJoin;
-use crate::compiler::dialect::detect_modern;
 
 use crate::classic::platform::argparse::{
     Argument, ArgumentParser, ArgumentValue, ArgumentValueConv, IntConversion, NArgsSpec,
@@ -55,6 +55,8 @@ use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
+use crate::compiler::dialect::detect_modern;
+use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::maybe_finalize_program_via_classic_optimizer;
 use crate::compiler::preprocessor::gather_dependencies;
 use crate::compiler::prims;
@@ -811,6 +813,70 @@ fn fix_log(
     }
 }
 
+// A function which performs preprocessing on a whole program and renders the
+// output to the user.
+//
+// This is used in the same way as cc -E in a C compiler; to see what
+// preprocessing did to the source so you can debug and improve your macros.
+//
+// Without this, it's difficult for some to visualize how macro are functioning
+// and what forms they output.
+fn perform_preprocessing(
+    stdout: &mut Stream,
+    opts: Rc<dyn CompilerOpts>,
+    input_file: &str,
+    program_text: &str,
+) -> Result<(), CompileErr> {
+    let srcloc = Srcloc::start(input_file);
+    // Parse the source file.
+    let parsed = parse_sexp(srcloc.clone(), program_text.bytes())?;
+    // Get the detected dialect and compose a sigil that matches.
+    // Classic preprocessing (also shared by standard sigil 21 and 21) does macro
+    // expansion during the compile process, making all macros available to all
+    // code regardless of its lexical order and therefore isn't rendered in a
+    // unified way (for example, 'com' and 'mod' forms invoke macros when
+    // encountered and expanded.  By contrast strict mode reads the macros and
+    // evaluates them in that order (as in C).
+    //
+    // The result is fully rendered before the next stage of compilation so that
+    // it can be inspected and so that the execution environment for macros is
+    // fully and cleanly separated from compile time.
+    let stepping_form_text = match opts.dialect().stepping {
+        Some(21) => Some("(include *strict-cl-21*)".to_string()),
+        Some(n) => Some(format!("(include *standard-cl-{n}*)")),
+        _ => None,
+    };
+    let frontend = frontend(opts, &parsed)?;
+    let fe_sexp = frontend.to_sexp();
+    let with_stepping = if let Some(s) = stepping_form_text {
+        let parsed_stepping_form = parse_sexp(srcloc.clone(), s.bytes())?;
+        if let sexp::SExp::Cons(_, a, rest) = fe_sexp.borrow() {
+            Rc::new(sexp::SExp::Cons(
+                srcloc.clone(),
+                a.clone(),
+                Rc::new(sexp::SExp::Cons(
+                    srcloc.clone(),
+                    parsed_stepping_form[0].clone(),
+                    rest.clone(),
+                )),
+            ))
+        } else {
+            fe_sexp
+        }
+    } else {
+        fe_sexp
+    };
+
+    let whole_mod = sexp::SExp::Cons(
+        srcloc.clone(),
+        Rc::new(sexp::SExp::Atom(srcloc, b"mod".to_vec())),
+        with_stepping,
+    );
+
+    stdout.write_str(&format!("{}", whole_mod));
+    Ok(())
+}
+
 fn get_disassembly_ver(p: &HashMap<String, ArgumentValue>) -> Option<usize> {
     if let Some(ArgumentValue::ArgInt(x)) = p.get("operators_version") {
         return Some(*x as usize);
@@ -956,6 +1022,18 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         Argument::new()
             .set_type(Rc::new(PathJoin {}))
             .set_default(ArgumentValue::ArgString(None, "main.sym".to_string())),
+    );
+    parser.add_argument(
+        vec!["--strict".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("For modern dialects, don't treat unknown names as constants".to_string()),
+    );
+    parser.add_argument(
+        vec!["-E".to_string(), "--preprocess".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("Perform strict mode preprocessing and show the result".to_string()),
     );
     parser.add_argument(
         vec!["--operators-version".to_string()],
@@ -1240,8 +1318,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .unwrap_or_else(|| "main.sym".to_string());
 
     // In testing: short circuit for modern compilation.
-    // Now stepping is the optional part.
-    if let Some(dialect) = dialect.and_then(|d| d.stepping) {
+    if let Some(stepping) = dialect.as_ref().and_then(|d| d.stepping) {
         let do_optimize = parsed_args
             .get("optimize")
             .map(|x| matches!(x, ArgumentValue::ArgBool(true)))
@@ -1249,11 +1326,20 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         let runner = Rc::new(DefaultProgramRunner::new());
         let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
+            .set_dialect(dialect.unwrap_or_default())
             .set_optimize(do_optimize)
             .set_search_paths(&search_paths)
-            .set_frontend_opt(dialect > 21)
+            .set_frontend_opt(stepping > 21)
             .set_disassembly_ver(get_disassembly_ver(&parsed_args));
         let mut symbol_table = HashMap::new();
+
+        // Short circuit preprocessing display.
+        if parsed_args.get("preprocess").is_some() {
+            if let Err(e) = perform_preprocessing(stdout, opts, &use_filename, &input_program) {
+                stdout.write_str(&format!("{}: {}", e.0, e.1));
+            }
+            return;
+        }
 
         let unopt_res = compile_file(
             &mut allocator,
@@ -1543,6 +1629,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 only_exn,
                 &log_content,
                 symbol_table,
+                // Clippy: disassemble no longer requires mutability,
+                // but this callback interface delivers it.
                 &|allocator, p| disassemble(allocator, p, disassembly_ver),
             );
         } else {
@@ -1553,6 +1641,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 only_exn,
                 &log_content,
                 symbol_table,
+                // Same as above.
                 &|allocator, p| disassemble(allocator, p, disassembly_ver),
             );
         }

@@ -13,7 +13,7 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::clvm::sha256tree;
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{CompileErr, CompileForm, CompilerOpts, PrimaryCodegen};
-use crate::compiler::dialect::AcceptedDialect;
+use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::prims;
@@ -23,24 +23,6 @@ use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::Number;
 
 lazy_static! {
-    pub static ref KNOWN_DIALECTS: HashMap<String, String> = {
-        let mut known_dialects: HashMap<String, String> = HashMap::new();
-        known_dialects.insert(
-            "*standard-cl-21*".to_string(),
-            indoc! {"(
-           (defconstant *chialisp-version* 21)
-        )"}
-            .to_string(),
-        );
-        known_dialects.insert(
-            "*standard-cl-22*".to_string(),
-            indoc! {"(
-           (defconstant *chialisp-version* 22)
-        )"}
-            .to_string(),
-        );
-        known_dialects
-    };
     pub static ref STANDARD_MACROS: String = {
         indoc! {"(
             (defmacro if (A B C) (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @)))
@@ -53,6 +35,35 @@ lazy_static! {
                                        ()))
                             (compile-list ARGS)
                     )
+            (defun-inline / (A B) (f (divmod A B)))
+            )
+            "}
+        .to_string()
+    };
+    pub static ref ADVANCED_MACROS: String = {
+        indoc! {"(
+            (defmac __chia__primitive__if (A B C)
+              (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @))
+              )
+
+            (defun __chia__if (ARGS)
+              (__chia__primitive__if (r (r (r ARGS)))
+                (qq (a (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (com (unquote (__chia__if (r (r ARGS)))))) @))
+                (qq (a (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (com (unquote (f (r (r ARGS)))))) @))
+                )
+              )
+
+            (defmac if ARGS (__chia__if ARGS))
+
+            (defun __chia__compile-list (args)
+              (if args
+                (c 4 (c (f args) (c (__chia__compile-list (r args)) ())))
+                ()
+                )
+              )
+
+            (defmac list ARGS (__chia__compile-list ARGS))
+
             (defun-inline / (A B) (f (divmod A B)))
             )
             "}
@@ -74,8 +85,6 @@ pub struct DefaultCompilerOpts {
     pub disassembly_ver: Option<usize>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     pub dialect: AcceptedDialect,
-
-    known_dialects: Rc<HashMap<String, String>>,
 }
 
 pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
@@ -242,6 +251,11 @@ impl CompilerOpts for DefaultCompilerOpts {
         copy.start_env = start_env;
         Rc::new(copy)
     }
+    fn set_prim_map(&self, prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.prim_map = prims;
+        Rc::new(copy)
+    }
 
     fn read_new_file(
         &self,
@@ -249,9 +263,13 @@ impl CompilerOpts for DefaultCompilerOpts {
         filename: String,
     ) -> Result<(String, Vec<u8>), CompileErr> {
         if filename == "*macros*" {
-            return Ok((filename, STANDARD_MACROS.clone().as_bytes().to_vec()));
-        } else if let Some(content) = self.known_dialects.get(&filename) {
-            return Ok((filename, content.as_bytes().to_vec()));
+            if self.dialect().strict {
+                return Ok((filename, ADVANCED_MACROS.bytes().collect()));
+            } else {
+                return Ok((filename, STANDARD_MACROS.bytes().collect()));
+            }
+        } else if let Some(dialect) = KNOWN_DIALECTS.get(&filename) {
+            return Ok((filename, dialect.content.bytes().collect()));
         }
 
         for dir in self.include_dirs.iter() {
@@ -304,7 +322,6 @@ impl DefaultCompilerOpts {
             dialect: AcceptedDialect::default(),
             prim_map: create_prim_map(),
             disassembly_ver: None,
-            known_dialects: Rc::new(KNOWN_DIALECTS.clone()),
         }
     }
 }

@@ -255,16 +255,18 @@ fn make_let_bindings(
     opts: Rc<dyn CompilerOpts>,
     body: Rc<SExp>,
 ) -> Result<Vec<Rc<Binding>>, CompileErr> {
-    let err = Err(CompileErr(
-        body.loc(),
-        "Bad binding tail ".to_string() + &body.to_string(),
-    ));
+    let err = Err(CompileErr(body.loc(), format!("Bad binding tail {body:?}")));
+    let do_atomize = if !opts.dialect().strict {
+        |a: &SExp| -> SExp { a.atomize() }
+    } else {
+        |a: &SExp| -> SExp { a.clone() }
+    };
     match body.borrow() {
         SExp::Nil(_) => Ok(vec![]),
         SExp::Cons(_, head, tl) => head
             .proper_list()
             .filter(|x| x.len() == 2)
-            .map(|x| match (x[0].atomize(), &x[1]) {
+            .map(|x| match (do_atomize(&x[0]), &x[1]) {
                 (SExp::Atom(l, name), expr) => {
                     let compiled_body = compile_bodyform(opts.clone(), Rc::new(expr.clone()))?;
                     let mut result = Vec::new();
@@ -621,6 +623,7 @@ fn compile_defmacro(
             name,
             args: args.clone(),
             program: Rc::new(p),
+            advanced: false,
         })
     })
 }
@@ -709,7 +712,7 @@ pub fn compile_helperform(
                 matched.args,
             )
             .map(Some)
-        } else if matched.op_name == b"defmacro" {
+        } else if matched.op_name == b"defmacro" || matched.op_name == b"defmac" {
             compile_defmacro(
                 opts,
                 l,
