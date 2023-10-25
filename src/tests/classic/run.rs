@@ -1261,7 +1261,6 @@ fn test_optimizer_fully_reduces_constant_outcome_0() {
     assert_eq!(res, "(1 . 4)");
 }
 
-
 // Check for the optimizer to reduce a fully constant program to a constant.
 #[test]
 fn test_optimizer_fully_reduces_constant_outcome_sha256tree() {
@@ -1275,6 +1274,345 @@ fn test_optimizer_fully_reduces_constant_outcome_sha256tree() {
         res,
         "(1 . -39425664269051251592384450451821132878837081010681666327853404714379049572411)"
     );
+}
+
+#[test]
+fn test_defmac_assert_smoke_preprocess_23() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "-E".to_string(),
+        "resources/tests/strict/assert23.clsp".to_string(),
+    ]);
+    assert_eq!(
+        result_prog,
+        "(mod (A) (include *standard-cl-23*) (a (i 1 (com (a (i A (com 13) (com (x))) @)) (com (x))) @))"
+    );
+    let result_after_preproc = do_basic_run(&vec!["run".to_string(), result_prog]);
+    let result_with_preproc = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/assert23.clsp".to_string(),
+    ]);
+    assert_eq!(result_after_preproc, result_with_preproc);
+    let run_result_true = do_basic_brun(&vec![
+        "brun".to_string(),
+        result_with_preproc.clone(),
+        "(15)".to_string(),
+    ]);
+    assert_eq!(run_result_true.trim(), "13");
+    let run_result_false = do_basic_brun(&vec![
+        "brun".to_string(),
+        result_with_preproc.clone(),
+        "(0)".to_string(),
+    ]);
+    assert_eq!(run_result_false.trim(), "FAIL: clvm raise ()");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_0() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (X) (r @*env*)) ;; X = ((3)), returns (((3)))
+            (defun B (X) (A (r @*env*))) ;; X = (3)
+            (defun C (X) (B (r @*env*))) ;; X = 3
+            (C Y) ;; Y = 3
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_1() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (X) (r @*env*))
+            (defun B (X) (A (r @*env*)))
+            (defun C (X) (B (r @*env*)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_2() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (X) (r @*env*))
+            (defun-inline B (X) (A (r @*env*)))
+            (defun C (X) (B (r @*env*)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_3() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (X) (r @*env*))
+            (defun-inline B (X) (A (r @*env*)))
+            (defun C (X) (B (r @*env*)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_4() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (X) (r @*env*))
+            (defun B (X) (A (r @*env*)))
+            (defun-inline C (X) (B (r @*env*)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_5() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (X) (r @*env*))
+            (defun B (X) (A (r @*env*)))
+            (defun-inline C (X) (B (r @*env*)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_6() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (X) (r @*env*))
+            (defun-inline B (X) (A (r @*env*)))
+            (defun-inline C (X) (B (r @*env*)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_23_7() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (X) (r @*env*))
+            (defun-inline B (X) (A (r @*env*)))
+            (defun-inline C (X) (B (r @*env*)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(((i)))");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_0() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (((PPX) PX) X) (list PPX PX X))
+            (defun B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_1() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (((PPX) PX) X) (list PPX PX X))
+            (defun B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_2() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (((PPX) PX) X) (list PPX PX X))
+            (defun-inline B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_3() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (((PPX) PX) X) (list PPX PX X))
+            (defun-inline B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_4() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (((PPX) PX) X) (list PPX PX X))
+            (defun B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun-inline C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_5() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (((PPX) PX) X) (list PPX PX X))
+            (defun B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun-inline C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_6() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun A (((PPX) PX) X) (list PPX PX X))
+            (defun-inline B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun-inline C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
+}
+
+#[test]
+fn test_smoke_inline_at_expansion_var_23_7() {
+    let prog = do_basic_run(&vec![
+        "run".to_string(),
+        indoc! {"
+          (mod (Y)
+            (include *standard-cl-23*)
+            (defun-inline A (((PPX) PX) X) (list PPX PX X))
+            (defun-inline B ((PX) X) (A (r @*env*) (+ X 1)))
+            (defun-inline C (X) (B (r @*env*) (+ X 1)))
+            (C Y)
+            )
+        "}
+        .to_string(),
+    ]);
+    let run_result = do_basic_brun(&vec!["brun".to_string(), prog, "(3)".to_string()]);
+    assert_eq!(run_result.trim(), "(i 4 5)");
 }
 
 // Check for the optimizer to reduce a fully constant function call to a constant
