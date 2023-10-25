@@ -1,0 +1,17 @@
+[package]
+name = "proggen"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+sqlite = "0.30.0"
+base64 = "0.21.0"
+clvmr = "0.1.24"
+rand_chacha = "0.3.1"
+rand = "0.8.5"
+
+[dependencies.clvm_tools_rs]
+path = "../.."
+features = ["fuzzer"]

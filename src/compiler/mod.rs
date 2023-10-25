@@ -18,6 +18,8 @@ pub mod debug;
 pub mod dialect;
 pub mod evaluate;
 pub mod frontend;
+#[cfg(any(test, feature = "fuzzer"))]
+pub mod fuzzer;
 pub mod gensym;
 mod inline;
 mod lambda;
