@@ -1261,6 +1261,22 @@ fn test_optimizer_fully_reduces_constant_outcome_0() {
     assert_eq!(res, "(1 . 4)");
 }
 
+
+// Check for the optimizer to reduce a fully constant program to a constant.
+#[test]
+fn test_optimizer_fully_reduces_constant_outcome_sha256tree() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (F 3))".to_string(),
+    ]);
+    assert_eq!(
+        res,
+        "(1 . -39425664269051251592384450451821132878837081010681666327853404714379049572411)"
+    );
+}
+
 // Note: this program is intentionally made to properly preprocess but trigger
 // an error in strict compilation as a demonstration and test that the preprocessor
 // is a mechanically separate step from compilation.  Separating them like this
