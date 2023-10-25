@@ -1235,6 +1235,32 @@ fn test_check_symbol_kinds_nested_if() {
     assert_eq!(result_0, "(q 1 2 3 4 4)");
 }
 
+// Check for successful deinlining of a large constant.
+// The result program tables the constant.
+#[test]
+fn test_basic_deinlining_smoke_0() {
+    let fname = "resources/tests/simple_deinline_case_23.clsp";
+    let file_content = fs::read_to_string(fname).expect("should exist");
+    let result_prog = do_basic_run(&vec!["run".to_string(), fname.to_string()]);
+    eprintln!("result_prog 23 {result_prog}");
+    assert_eq!(result_prog.matches("1000000").count(), 1);
+    let old_prog = file_content.to_string().replace("23", "21");
+    let result_prog_21 = do_basic_run(&vec!["run".to_string(), old_prog]);
+    eprintln!("result_prog 21 {result_prog_21}");
+    assert_eq!(result_prog_21.matches("1000000").count(), 6);
+    assert!(result_prog.len() < result_prog_21.len());
+}
+
+// Check for the optimizer to reduce a fully constant program to a constant.
+#[test]
+fn test_optimizer_fully_reduces_constant_outcome_0() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "(mod () (include *standard-cl-23*) (defun F (X) (+ X 1)) (F 3))".to_string(),
+    ]);
+    assert_eq!(res, "(1 . 4)");
+}
+
 // Note: this program is intentionally made to properly preprocess but trigger
 // an error in strict compilation as a demonstration and test that the preprocessor
 // is a mechanically separate step from compilation.  Separating them like this
@@ -1309,6 +1335,23 @@ fn test_g1_map_op_modern() {
     assert_eq!(
         output,
         "0x88e7302bf1fa8fcdecfb96f6b81475c3564d3bcaf552ccb338b1c48b9ba18ab7195c5067fe94fb216478188c0a3bef4a"
+    );
+}
+
+#[test]
+fn test_optimizer_fully_reduces_constant_outcome_let_0() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (A) (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (defun G (Q) (let ((R (F Q))) (+ R 1))) (+ A (G 3)))".to_string(),
+    ]);
+    // Tree shaking will remove the functions that became unused due to constant
+    // reduction.  We now support suppressing the left env in stepping 23 and
+    // above.
+    assert_eq!(
+        res,
+        "(16 2 (1 . -39425664269051251592384450451821132878837081010681666327853404714379049572410))"
     );
 }
 
