@@ -1277,6 +1277,136 @@ fn test_optimizer_fully_reduces_constant_outcome_sha256tree() {
     );
 }
 
+// Check for the optimizer to reduce a fully constant function call to a constant
+// and propogate through another expression.
+#[test]
+fn test_optimizer_fully_reduces_constant_outcome_sha256tree_1() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod () (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (+ (F 3) 1))".to_string(),
+    ]);
+    assert_eq!(
+        res,
+        "(1 . -39425664269051251592384450451821132878837081010681666327853404714379049572410)"
+    );
+}
+
+#[test]
+fn test_g1_map_op_modern() {
+    let program = "(mod (S) (include *standard-cl-21*) (g1_map S \"BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_AUG_\"))";
+    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
+    let output = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(abcdef0123456789)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        output,
+        "0x88e7302bf1fa8fcdecfb96f6b81475c3564d3bcaf552ccb338b1c48b9ba18ab7195c5067fe94fb216478188c0a3bef4a"
+    );
+}
+
+#[test]
+fn test_optimizer_fully_reduces_constant_outcome_let_0() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (A) (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (defun G (Q) (let ((R (F Q))) (+ R 1))) (+ A (G 3)))".to_string(),
+    ]);
+    // Tree shaking will remove the functions that became unused due to constant
+    // reduction.  We now support suppressing the left env in stepping 23 and
+    // above.
+    assert_eq!(
+        res,
+        "(16 2 (1 . -39425664269051251592384450451821132878837081010681666327853404714379049572410))"
+    );
+}
+
+// Test that the optimizer inverts (i (not x) a b) to (i x b a)
+#[test]
+fn test_not_inversion_body() {
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "(mod (X) (include *standard-cl-23*) (if (not X) (+ X 1) (* X 2)))".to_string(),
+    ]);
+    assert_eq!(res, "(2 (3 2 (1 18 2 (1 . 2)) (1 16 2 (1 . 1))) 1)");
+}
+
+// Test that we can test chialisp outcomes in chialisp.
+#[test]
+fn test_chialisp_in_chialisp_test_pos() {
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (X) (include *standard-cl-23*) (if (= (f (mod () (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (+ (F 3) 1))) 1) \"worked\" \"didnt work\"))".to_string(),
+    ]);
+    assert_eq!(compiled, "(1 . \"worked\")");
+}
+
+// Test that we can test chialisp outcomes in chialisp.
+#[test]
+fn test_chialisp_in_chialisp_test_neg() {
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (X) (include *standard-cl-23*) (if (= (f (mod () (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ (list X) 1))) (+ (F 3) 1))) 1) \"worked\" \"didnt work\"))".to_string(),
+    ]);
+    assert_eq!(compiled, "(1 . \"didnt work\")");
+}
+
+// Test CSE when detections are inside a lambda.  It's necessary to add a capture for
+// the replaced expression.
+#[test]
+fn test_cse_replacement_inside_lambda_23_0() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/more_exhaustive/lambda_cse_1.clsp".to_string(),
+    ]);
+    let res = do_basic_brun(&vec![
+        "brun".to_string(),
+        program.clone(),
+        "(17 17)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(res, "0x15aa51");
+    let res = do_basic_brun(&vec![
+        "brun".to_string(),
+        program.clone(),
+        "(17 19)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(res, "0x1b1019");
+    let res = do_basic_brun(&vec!["brun".to_string(), program, "(19 17)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(res, "0x1e3f2b");
+}
+
+#[test]
+fn test_cse_replacement_inside_lambda_test_desugared_form_23() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/more_exhaustive/lambda_cse_1_desugared_form.clsp".to_string(),
+    ]);
+    let res = do_basic_brun(&vec!["brun".to_string(), program, "(17 17)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(res, "0x15aa51");
+}
+
 // Note: this program is intentionally made to properly preprocess but trigger
 // an error in strict compilation as a demonstration and test that the preprocessor
 // is a mechanically separate step from compilation.  Separating them like this
@@ -1335,40 +1465,6 @@ fn test_defmac_assert_smoke_preprocess() {
         "(0)".to_string(),
     ]);
     assert_eq!(run_result_false.trim(), "FAIL: clvm raise ()");
-}
-
-#[test]
-fn test_g1_map_op_modern() {
-    let program = "(mod (S) (include *standard-cl-21*) (g1_map S \"BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_AUG_\"))";
-    let compiled = do_basic_run(&vec!["run".to_string(), program.to_string()]);
-    let output = do_basic_brun(&vec![
-        "brun".to_string(),
-        compiled,
-        "(abcdef0123456789)".to_string(),
-    ])
-    .trim()
-    .to_string();
-    assert_eq!(
-        output,
-        "0x88e7302bf1fa8fcdecfb96f6b81475c3564d3bcaf552ccb338b1c48b9ba18ab7195c5067fe94fb216478188c0a3bef4a"
-    );
-}
-
-#[test]
-fn test_optimizer_fully_reduces_constant_outcome_let_0() {
-    let res = do_basic_run(&vec![
-        "run".to_string(),
-        "-i".to_string(),
-        "resources/tests".to_string(),
-        "(mod (A) (include *standard-cl-23*) (include sha256tree.clib) (defun F (X) (sha256tree (+ X 1))) (defun G (Q) (let ((R (F Q))) (+ R 1))) (+ A (G 3)))".to_string(),
-    ]);
-    // Tree shaking will remove the functions that became unused due to constant
-    // reduction.  We now support suppressing the left env in stepping 23 and
-    // above.
-    assert_eq!(
-        res,
-        "(16 2 (1 . -39425664269051251592384450451821132878837081010681666327853404714379049572410))"
-    );
 }
 
 #[test]
