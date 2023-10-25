@@ -236,6 +236,7 @@ fn compile_test_15() {
         &"(mod #(a b c) (- (+ a c) b))".to_string(),
         &"(100 20 . 10)".to_string(),
         true,
+        false,
     )
     .unwrap();
     assert_eq!(result.to_string(), "90".to_string());
@@ -248,6 +249,7 @@ fn compile_test_16() {
         &"(mod #(a b c) (- (+ a c) b))".to_string(),
         &"#(100 20 10)".to_string(),
         true,
+        false,
     )
     .unwrap();
     assert_eq!(result.to_string(), "90".to_string());
