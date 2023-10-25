@@ -276,6 +276,8 @@ fn rename_in_bodyform(
     }
 }
 
+/// Given a set of sequential bindings, create a stack of let forms that have
+/// the same meaning.  This is used to propogate renaming.
 pub fn desugar_sequential_let_bindings(
     bindings: &[Rc<Binding>],
     body: &BodyForm,
@@ -417,12 +419,8 @@ fn rename_in_helperform(
             body: Rc::new(rename_in_bodyform(namemap, defc.body.clone())?),
         })),
         HelperForm::Defmacro(mac) => Ok(HelperForm::Defmacro(DefmacData {
-            loc: mac.loc.clone(),
-            kw: mac.kw.clone(),
-            nl: mac.nl.clone(),
-            name: mac.name.to_vec(),
-            args: mac.args.clone(),
             program: Rc::new(rename_in_compileform(namemap, mac.program.clone())?),
+            ..mac.clone()
         })),
         HelperForm::Defun(inline, defun) => Ok(HelperForm::Defun(
             *inline,
@@ -434,7 +432,7 @@ fn rename_in_helperform(
     }
 }
 
-fn rename_args_helperform(h: &HelperForm) -> Result<HelperForm, CompileErr> {
+pub fn rename_args_helperform(h: &HelperForm) -> Result<HelperForm, CompileErr> {
     match h {
         HelperForm::Defconstant(defc) => Ok(HelperForm::Defconstant(DefconstData {
             loc: defc.loc.clone(),
@@ -456,15 +454,12 @@ fn rename_args_helperform(h: &HelperForm) -> Result<HelperForm, CompileErr> {
             let local_renamed_arg = rename_in_cons(&local_namemap, mac.args.clone(), true);
             let local_renamed_body = rename_args_compileform(mac.program.borrow())?;
             Ok(HelperForm::Defmacro(DefmacData {
-                loc: mac.loc.clone(),
-                kw: mac.kw.clone(),
-                nl: mac.nl.clone(),
-                name: mac.name.clone(),
                 args: local_renamed_arg,
                 program: Rc::new(rename_in_compileform(
                     &local_namemap,
                     Rc::new(local_renamed_body),
                 )?),
+                ..mac.clone()
             }))
         }
         HelperForm::Defun(inline, defun) => {
@@ -503,18 +498,25 @@ fn rename_in_compileform(
     })
 }
 
+/// For all the HelperForms in a CompileForm, do renaming in them so that all
+/// unique variable bindings in the program have unique names.
 pub fn rename_children_compileform(c: &CompileForm) -> Result<CompileForm, CompileErr> {
+    let c_ref: &CompileForm = c;
     let local_renamed_helpers = map_m(&rename_args_helperform, &c.helpers)?;
     let local_renamed_body = rename_args_bodyform(c.exp.borrow())?;
     Ok(CompileForm {
-        loc: c.loc.clone(),
-        args: c.args.clone(),
-        include_forms: c.include_forms.clone(),
         helpers: local_renamed_helpers,
         exp: Rc::new(local_renamed_body),
+        ..c_ref.clone()
     })
 }
 
+/// Given a compileform, perform renaming in descendants so that every variable
+/// name that lives in a different scope has a unique name.  This allows
+/// compilation to treat identical forms as equivalent and ensures that forms
+/// that look the same but refer to different variables are different.  It also
+/// ensures that future tricky variable name uses decide on one binding from their
+/// lexical scope.
 pub fn rename_args_compileform(c: &CompileForm) -> Result<CompileForm, CompileErr> {
     let new_names = invent_new_names_sexp(c.args.clone());
     let mut local_namemap = HashMap::new();

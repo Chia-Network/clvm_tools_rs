@@ -357,6 +357,7 @@ pub fn optimize_expr(
                                 opts.prim_map(),
                                 code.to_sexp(),
                                 Rc::new(SExp::Nil(l)),
+                                None,
                                 Some(CONST_FOLD_LIMIT),
                             )
                             .map(|x| {

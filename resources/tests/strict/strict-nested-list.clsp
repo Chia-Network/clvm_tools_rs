@@ -1,0 +1,4 @@
+(mod (X)
+  (include *strict-cl-21*)
+  (list X (list X) (list (list X)))
+  )

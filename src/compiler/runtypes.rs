@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::rc::Rc;
 
+use crate::compiler::comptypes::CompileErr;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
 
@@ -25,5 +26,22 @@ impl Display for RunFailure {
             }
         }
         Ok(())
+    }
+}
+
+impl From<RunFailure> for CompileErr {
+    fn from(item: RunFailure) -> Self {
+        match item {
+            RunFailure::RunExn(l, s) => CompileErr(l.clone(), format!("Runtime exception: {s}")),
+            RunFailure::RunErr(l, s) => CompileErr(l.clone(), format!("Runtime error: {s}")),
+        }
+    }
+}
+
+impl From<CompileErr> for RunFailure {
+    fn from(e: CompileErr) -> Self {
+        match e {
+            CompileErr(l, e) => RunFailure::RunErr(l, e),
+        }
     }
 }

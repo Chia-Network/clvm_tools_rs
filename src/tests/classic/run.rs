@@ -1079,6 +1079,194 @@ fn test_cost_reporting_0() {
 }
 
 #[test]
+fn test_strict_smoke_0() {
+    let result = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-test-fail.clsp".to_string(),
+    ]);
+    assert!(result.contains("Unbound"));
+    assert!(result.contains("X1"));
+}
+
+#[test]
+fn test_strict_smoke_1() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-test-pass.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "(13)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "15");
+}
+
+#[test]
+fn test_strict_list_fail() {
+    let result = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-list-fail.clsp".to_string(),
+    ]);
+    assert!(result.contains("Unbound"));
+    assert!(result.contains("X2"));
+}
+
+#[test]
+fn test_strict_list_pass() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-list-pass.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "(13)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "(strlen 14 15)");
+}
+
+#[test]
+fn test_strict_nested_list_pass() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-nested-list.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "(13)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "(strlen (strlen) ((strlen)))");
+}
+
+#[test]
+fn test_double_constant_pass() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/double-constant-pass.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "()".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "198");
+}
+
+#[test]
+fn test_double_constant_fail() {
+    let result = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/double-constant-fail.clsp".to_string(),
+    ]);
+    assert!(result.contains("not a number given to only-integers"));
+    assert!(result.contains("\"hithere\""));
+}
+
+#[test]
+fn test_double_constant_pass_in_function() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/double-constant-pass-in-function.clsp".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), result_prog, "(13)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result, "211");
+}
+
+#[test]
+fn test_check_symbol_kinds_nested_if() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/strict-classify-expr-if.clsp".to_string(),
+    ]);
+    let result_1 = do_basic_brun(&vec![
+        "brun".to_string(),
+        result_prog.clone(),
+        "(1)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(result_1, "2");
+    let result_0 = do_basic_brun(&vec!["brun".to_string(), result_prog, "(0)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(result_0, "(q 1 2 3 4 4)");
+}
+
+// Note: this program is intentionally made to properly preprocess but trigger
+// an error in strict compilation as a demonstration and test that the preprocessor
+// is a mechanically separate step from compilation.  Separating them like this
+// has the advantage that you can emit preprocessed compiler input on its own
+// and also that it internally untangles the stages and makes compilation simpler.
+#[test]
+fn test_defmac_if_smoke_preprocess() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "-E".to_string(),
+        "resources/tests/strict/defmac_if_smoke.clsp".to_string(),
+    ]);
+    assert_eq!(
+        result_prog,
+        "(mod () (include *strict-cl-21*) (a (i t1 (com t2) (com t3)) @))"
+    );
+    let result2 = do_basic_run(&vec!["run".to_string(), result_prog]);
+    assert!(result2.contains("Unbound use"));
+    // Ensure that we're identifying one of the actually misused variables, but
+    // do not make a claim about which one is identified first.
+    assert!(result2.contains("of t1") || result2.contains("of t2") || result2.contains("of t3"));
+}
+
+#[test]
+fn test_defmac_assert_smoke_preprocess() {
+    let result_prog = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "-E".to_string(),
+        "resources/tests/strict/assert.clsp".to_string(),
+    ]);
+    assert_eq!(
+        result_prog,
+        "(mod (A) (include *strict-cl-21*) (a (i 1 (com (a (i A (com 13) (com (x))) @)) (com (x))) @))"
+    );
+    let result_after_preproc = do_basic_run(&vec!["run".to_string(), result_prog]);
+    let result_with_preproc = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/assert.clsp".to_string(),
+    ]);
+    assert_eq!(result_after_preproc, result_with_preproc);
+    let run_result_true = do_basic_brun(&vec![
+        "brun".to_string(),
+        result_with_preproc.clone(),
+        "(15)".to_string(),
+    ]);
+    assert_eq!(run_result_true.trim(), "13");
+    let run_result_false = do_basic_brun(&vec![
+        "brun".to_string(),
+        result_with_preproc.clone(),
+        "(0)".to_string(),
+    ]);
+    assert_eq!(run_result_false.trim(), "FAIL: clvm raise ()");
+}
+
+#[test]
 fn test_assign_fancy_final_dot_rest() {
     let result_prog = do_basic_run(&vec![
         "run".to_string(),
@@ -1342,6 +1530,53 @@ fn test_classic_obeys_operator_choice_at_compile_time_version_0() {
     .trim()
     .to_string();
     assert_eq!(compiled, "FAIL: unimplemented operator 48");
+}
+
+#[test]
+fn test_continued_if() {
+    let prog = indoc! {"
+(mod X
+  (include *strict-cl-21*)
+
+  (defun bigatom (Xs Ys)
+    (if
+      Xs (concat (f Xs) (bigatom (r Xs) Ys))
+      Ys (concat (f Ys) (bigatom (r Ys) ()))
+      ()
+      )
+    )
+
+  (bigatom (q . (3 4 5)) X)
+  )"}
+    .to_string();
+    let compiled = do_basic_run(&vec!["run".to_string(), prog])
+        .trim()
+        .to_string();
+    let res = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled,
+        "(13 99 144)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(res.to_string(), "0x0304050d630090");
+}
+
+#[test]
+fn test_preprocess_can_recurse() {
+    let prog = "resources/tests/strict/test-inner-include.clsp".to_string();
+    let res = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        prog.clone(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(
+        res,
+        "(2 (1 2 (3 5 (1 2 (1 18 5 (1 . 2)) 1) (1 2 (1 16 5 (1 . 1)) 1)) 1) (4 (1) 1))"
+    );
 }
 
 #[test]
