@@ -693,7 +693,6 @@ pub fn get_optimizer(
     loc: &Srcloc,
     opts: Rc<dyn CompilerOpts>,
 ) -> Result<Box<dyn Optimization>, CompileErr> {
-    eprintln!("dialect {:?} opt {} fe {}", opts.dialect(), opts.optimize(), opts.frontend_opt());
     if let Some(s) = opts.dialect().stepping {
         if s < 21 {
             return Err(CompileErr(
