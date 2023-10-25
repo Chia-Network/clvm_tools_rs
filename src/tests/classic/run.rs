@@ -1745,6 +1745,268 @@ fn test_smoke_inline_at_expansion_var_23_7() {
     assert_eq!(run_result.trim(), "(i 4 5)");
 }
 
+//
+// Inside assert_ (items):
+// items @ 5
+//
+// Inside letbinding_$_44 ((items) cse_$_43_$_24)
+//
+// items @ 9
+// cse_$_43_$_24 @ 11
+//
+#[test]
+fn test_inline_vs_deinline_23() {
+    eprintln!("=== W2 ===");
+    let compiled_2 = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/use-w2.clsp".to_string(),
+    ]);
+    eprintln!("=== W3 ===");
+    let compiled_3 = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/use-w3.clsp".to_string(),
+    ]);
+    eprintln!("=== RUN W2 ===");
+    let result_2 = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled_2,
+        "((1 2 3))".to_string(),
+    ]);
+    eprintln!("=== RUN W3 ===");
+    let result_3 = do_basic_brun(&vec![
+        "brun".to_string(),
+        compiled_3,
+        "((1 2 3))".to_string(),
+    ]);
+    assert_eq!(result_2, result_3);
+}
+
+#[test]
+fn test_rosetta_code_abc_example() {
+    let test_words = &[
+        ("A", true),
+        ("BARK", true),
+        ("TREAT", true),
+        ("BOOK", false),
+        ("COMMON", false),
+        ("SQUAD", true),
+        ("CONFUSE", true),
+    ];
+    let prog_pp = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/rosetta_code_abc.clsp".to_string(),
+    ]);
+    let prog_np = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/rosetta_code_abc_preprocessed.clsp".to_string(),
+    ]);
+    eprintln!("{prog_pp}");
+    assert_eq!(prog_pp, prog_np);
+    for (w, success) in test_words.iter() {
+        eprintln!("{} {}", w, success);
+        let result = do_basic_brun(&vec![
+            "brun".to_string(),
+            prog_pp.clone(),
+            format!("({})", w),
+        ])
+        .trim()
+        .to_string();
+        if *success {
+            assert_eq!(result, "1");
+        } else {
+            assert_eq!(result, "()");
+        }
+    }
+}
+
+#[test]
+fn test_rosetta_code_babbage_problem() {
+    let preprocessed = do_basic_run(&vec![
+        "run".to_string(),
+        "-E".to_string(),
+        "resources/tests/strict/rosetta_code_babbage_problem.clsp".to_string(),
+    ]);
+    assert!(!preprocessed.contains("*macros*"));
+    assert!(!preprocessed.contains("(defmacro list"));
+    let compiled = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/rosetta_code_babbage_problem.clsp".to_string(),
+    ]);
+    let output = do_basic_brun(&vec!["brun".to_string(), compiled, "(269696)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(output, "25264");
+}
+
+#[test]
+fn test_cse_when_not_dominating_conditions() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x009988"); // 34 * 34 * 34
+}
+
+#[test]
+fn test_cse_not_dominating_conditions_with_superior_let() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x009988"); // 34 * 34 * 34
+}
+
+#[test]
+fn test_cse_not_dominating_conditions_with_superior_let_outside() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let_outside.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x5c13d840"); // 34 * 34 * 34 * 34 * 34 * 34
+}
+
+#[test]
+fn test_cse_not_dominating_conditions_with_superior_let_outside_in_inline() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let_outside_in_inline.clsp"
+            .to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x5c13d840"); // 34 * 34 * 34 * 34 * 34 * 34
+}
+
+#[test]
+fn test_cse_not_dominating_conditions_with_superior_let_outside_in_defun() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let_outside_in_defun.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x5c13d840"); // 34 * 34 * 34 * 34 * 34 * 34
+}
+
+#[test]
+fn test_cse_not_dominating_conditions_with_superior_let_odi() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let_odi.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x5c13d840"); // 34 * 34 * 34 * 34 * 34 * 34
+}
+
+#[test]
+fn test_cse_not_dominating_conditions_with_superior_let_iodi() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/cse_doesnt_dominate_superior_let_iodi.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(33)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "0x5c13d840"); // 34 * 34 * 34 * 34 * 34 * 34
+}
+
+#[test]
+fn test_chialisp_web_example() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/chialisp-web-example.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(100)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "(306 (101 103))");
+}
+
+#[test]
+fn test_chialisp_web_example_defconst() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/defconst.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(3)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(
+        outcome,
+        "0xf60efb25b9e6e3587acd9cf01c332707bb771801bdb5e4f50ea957a29c8dde89"
+    );
+}
+
+#[test]
+fn test_chialisp_web_example_big_maybe() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/big-maybe.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(((3 5)))".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "8");
+}
+
+#[test]
+fn test_chialisp_web_example_map() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/map-example.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "((1 2 3))".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(outcome, "(a 3 4)");
+}
+
+#[test]
+fn test_chialisp_web_example_map_lambda() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/map-example.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec![
+        "brun".to_string(),
+        program,
+        "((100 101 102))".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(outcome, "(101 102 103)");
+}
+
+#[test]
+fn test_chialisp_web_example_embed() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        "resources/tests/strict/embed.clsp".to_string(),
+    ]);
+    let outcome = do_basic_brun(&vec!["brun".to_string(), program, "(world)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(
+        outcome,
+        "0x26c60a61d01db5836ca70fefd44a6a016620413c8ef5f259a6c5612d4f79d3b8"
+    );
+}
+
 // Note: this program is intentionally made to properly preprocess but trigger
 // an error in strict compilation as a demonstration and test that the preprocessor
 // is a mechanically separate step from compilation.  Separating them like this
