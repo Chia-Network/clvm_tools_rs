@@ -22,10 +22,10 @@ def compile_module_with_symbols(include_paths: List[Path], source: Path):
         str(path_obj.resolve()), str(target_file.absolute()), [str(p) for p in include_paths], True
     )
     print(f"Writing to {target_file} {compile_result}")
-    # symbols = compile_result["symbols"]
-    # if len(symbols) != 0:
-    #    with open(str(sym_file.absolute()), "w") as symfile:
-    #        symfile.write(json.dumps(symbols))
+    symbols = compile_result["symbols"]
+    if len(symbols) != 0:
+        with open(str(sym_file.absolute()), "w") as symfile:
+            symfile.write(json.dumps(symbols))
 
 
 def run_until_end(p):
