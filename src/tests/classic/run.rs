@@ -1001,8 +1001,8 @@ fn test_lambda_without_capture_strict() {
         "resources/tests".to_string(),
         "resources/tests/strict/rps-referee-uncaptured.clsp".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     assert!(compiler_result.contains("Unbound"));
     assert!(compiler_result.contains("new_puzzle_hash"));
 }
@@ -1031,8 +1031,8 @@ fn test_cost_reporting_0() {
         program.to_string(),
         "()".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     assert_eq!(
         result,
         "cost = 1978\n0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9875"
