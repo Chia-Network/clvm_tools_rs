@@ -3,7 +3,7 @@ use rand::prelude::*;
 use regex::Regex;
 
 use std::borrow::Borrow;
-use std::collections::{BTreeSet, BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
@@ -11,16 +11,16 @@ use clvmr::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 
-use crate::compiler::CompileContextWrapper;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{compile_from_compileform, DefaultCompilerOpts};
 use crate::compiler::comptypes::{BodyForm, CompileForm, CompilerOpts, DefunData, HelperForm};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::frontend::compile_bodyform;
-use crate::compiler::optimize::get_optimizer;
 use crate::compiler::optimize::cse::cse_optimize_bodyform;
+use crate::compiler::optimize::get_optimizer;
 use crate::compiler::sexp::{enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::CompileContextWrapper;
 
 use crate::tests::classic::run::{do_basic_brun, do_basic_run};
 use crate::tests::compiler::clvm::TEST_TIMEOUT;
@@ -324,7 +324,7 @@ struct TreeNode {
 
 fn generate_option<F>(srcloc: Srcloc, opt: Option<&Rc<TreeNode>>, filter: &F) -> SExp
 where
-    F: Fn(&TreeNode) -> bool
+    F: Fn(&TreeNode) -> bool,
 {
     if let Some(r) = opt {
         if filter(r) {
@@ -338,7 +338,7 @@ where
 impl TreeNode {
     fn generate<F>(&self, srcloc: Srcloc, filter: &F) -> SExp
     where
-        F: Fn(&TreeNode) -> bool
+        F: Fn(&TreeNode) -> bool,
     {
         let n = SExp::Integer(srcloc.clone(), self.number.to_bigint().unwrap());
         if self.left.is_none() && self.right.is_none() {
@@ -364,9 +364,13 @@ struct TreeChoice {
 
 impl TreeChoice {
     pub fn prerequisites(&self) -> BTreeSet<TreeChoice> {
-        self.path.iter().enumerate().map(|(i,_)| {
-            TreeChoice { path: self.path.iter().take(i).cloned().collect() }
-        }).collect()
+        self.path
+            .iter()
+            .enumerate()
+            .map(|(i, _)| TreeChoice {
+                path: self.path.iter().take(i).cloned().collect(),
+            })
+            .collect()
     }
 
     pub fn contains(&self, other: &TreeChoice) -> bool {
@@ -385,7 +389,7 @@ impl TreeChoice {
                 srcloc.clone(),
                 vec![
                     Rc::new(BodyForm::Value(SExp::Atom(srcloc.clone(), op.to_vec()))),
-                    condition
+                    condition,
                 ],
                 None,
             ));
@@ -394,9 +398,9 @@ impl TreeChoice {
     }
 
     pub fn conditions(&self, myself: bool, prev: Option<Rc<BodyForm>>) -> Vec<Rc<BodyForm>> {
-        let mut condition_vec =
-            prev.map(|b| vec![b.clone()]).unwrap_or_else(|| vec![]);
-        let mut prerequisite_conditions = self.prerequisites().iter().map(|p| p.condition()).collect();
+        let mut condition_vec = prev.map(|b| vec![b.clone()]).unwrap_or_else(|| vec![]);
+        let mut prerequisite_conditions =
+            self.prerequisites().iter().map(|p| p.condition()).collect();
         condition_vec.append(&mut prerequisite_conditions);
         if myself {
             condition_vec.push(self.condition());
@@ -407,18 +411,24 @@ impl TreeChoice {
 
 fn all_conditions(c: &[Rc<BodyForm>]) -> Rc<BodyForm> {
     if c.is_empty() {
-        return Rc::new(BodyForm::Quoted(SExp::Integer(Srcloc::start("*all-conditions-empty*"), bi_one())));
+        return Rc::new(BodyForm::Quoted(SExp::Integer(
+            Srcloc::start("*all-conditions-empty*"),
+            bi_one(),
+        )));
     }
     let mut copy_vec = c.to_vec();
-    copy_vec.insert(0, Rc::new(BodyForm::Value(SExp::Atom(c[0].loc(), b"all".to_vec()))));
-    Rc::new(BodyForm::Call(
-        c[0].loc(),
-        copy_vec,
-        None,
-    ))
+    copy_vec.insert(
+        0,
+        Rc::new(BodyForm::Value(SExp::Atom(c[0].loc(), b"all".to_vec()))),
+    );
+    Rc::new(BodyForm::Call(c[0].loc(), copy_vec, None))
 }
 
-fn if_expr(cond: Rc<BodyForm>, then_clause: Rc<BodyForm>, else_clause: Rc<BodyForm>) -> Rc<BodyForm> {
+fn if_expr(
+    cond: Rc<BodyForm>,
+    then_clause: Rc<BodyForm>,
+    else_clause: Rc<BodyForm>,
+) -> Rc<BodyForm> {
     Rc::new(BodyForm::Call(
         cond.loc(),
         vec![
@@ -455,9 +465,14 @@ fn if_expr(cond: Rc<BodyForm>, then_clause: Rc<BodyForm>, else_clause: Rc<BodyFo
 
 #[test]
 fn test_tree_choice_conditions() {
-    let tree = TreeChoice { path: vec![Direction::L, Direction::L, Direction::R] };
+    let tree = TreeChoice {
+        path: vec![Direction::L, Direction::L, Direction::R],
+    };
     let conditions_of = all_conditions(&tree.conditions(false, None));
-    assert_eq!(conditions_of.to_sexp().to_string(), "(all arg (f arg) (f (f arg)))");
+    assert_eq!(
+        conditions_of.to_sexp().to_string(),
+        "(all arg (f arg) (f (f arg)))"
+    );
 }
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
@@ -471,11 +486,16 @@ impl CheckAndRetrieve {
     // generate an if of the native checks and the check of the retrievable
     // itself for this object, otherwise doing the else clause.
     pub fn generate_body_if(&self, else_clause: Rc<BodyForm>) -> Rc<BodyForm> {
-        let check_conditions: Vec<Rc<BodyForm>> =
-            self.checks.iter().map(|c| {
-                all_conditions(&c.conditions(true, None))
-            }).collect();
-        let retrieve_condition = all_conditions(&self.retrieve.conditions(false, Some(all_conditions(&check_conditions))));
+        let check_conditions: Vec<Rc<BodyForm>> = self
+            .checks
+            .iter()
+            .map(|c| all_conditions(&c.conditions(true, None)))
+            .collect();
+        let retrieve_condition = all_conditions(
+            &self
+                .retrieve
+                .conditions(false, Some(all_conditions(&check_conditions))),
+        );
         let what_to_do = self.retrieve.condition();
 
         if_expr(retrieve_condition, what_to_do, else_clause)
@@ -486,22 +506,34 @@ impl CheckAndRetrieve {
 fn test_check_and_retrieve_1() {
     let car = CheckAndRetrieve {
         gate: None,
-        retrieve: TreeChoice { path: vec![Direction::L, Direction::R] },
-        checks: vec![]
+        retrieve: TreeChoice {
+            path: vec![Direction::L, Direction::R],
+        },
+        checks: vec![],
     };
     let else_clause = Rc::new(BodyForm::Value(SExp::Nil(Srcloc::start("*test*"))));
-    assert_eq!(car.generate_body_if(else_clause).to_sexp().to_string(), "(if (all (q . 1) arg (f arg) (r (f arg))) (r (f arg)) ())");
+    assert_eq!(
+        car.generate_body_if(else_clause).to_sexp().to_string(),
+        "(if (all (q . 1) arg (f arg) (r (f arg))) (r (f arg)) ())"
+    );
 }
 
 #[test]
 fn test_check_and_retrieve_2() {
     let car = CheckAndRetrieve {
         gate: None,
-        retrieve: TreeChoice { path: vec![Direction::L, Direction::R] },
-        checks: vec![TreeChoice { path: vec![Direction::R] }]
+        retrieve: TreeChoice {
+            path: vec![Direction::L, Direction::R],
+        },
+        checks: vec![TreeChoice {
+            path: vec![Direction::R],
+        }],
     };
     let else_clause = Rc::new(BodyForm::Value(SExp::Nil(Srcloc::start("*test*"))));
-    assert_eq!(car.generate_body_if(else_clause).to_sexp().to_string(), "(if (all (all (all arg (r arg))) arg (f arg) (r (f arg))) (r (f arg)) ())");
+    assert_eq!(
+        car.generate_body_if(else_clause).to_sexp().to_string(),
+        "(if (all (all (all arg (r arg))) arg (f arg) (r (f arg))) (r (f arg)) ())"
+    );
 }
 
 fn create_number_tree(tree: &mut TreeNode, numbers: &[u16]) {
@@ -520,8 +552,8 @@ fn create_number_tree(tree: &mut TreeNode, numbers: &[u16]) {
         create_number_tree(&mut left_node, left_slice);
         tree.left = Some(Rc::new(left_node));
     }
-    if len > mid+1 {
-        let right_slice = &numbers[mid+1..len];
+    if len > mid + 1 {
+        let right_slice = &numbers[mid + 1..len];
         let mut right_node = TreeNode::default();
         create_number_tree(&mut right_node, right_slice);
         tree.right = Some(Rc::new(right_node));
@@ -572,11 +604,7 @@ impl IfWithGate {
             gated = new_gated.generate_body_if(gated);
         }
 
-        if_expr(
-            gate_conditions,
-            gated,
-            maybe_also_these,
-        )
+        if_expr(gate_conditions, gated, maybe_also_these)
     }
 }
 
@@ -584,18 +612,40 @@ impl IfWithGate {
 fn test_if_with_gate_generate_0() {
     let mut in_gate_set = BTreeSet::new();
     in_gate_set.insert(CheckAndRetrieve {
-        gate: Some(TreeChoice { path: vec![Direction::R, Direction::L, Direction::R, Direction::L] }),
-        retrieve: TreeChoice { path: vec![Direction::R, Direction::R, Direction::R, Direction::R, Direction::L, Direction::L] },
+        gate: Some(TreeChoice {
+            path: vec![Direction::R, Direction::L, Direction::R, Direction::L],
+        }),
+        retrieve: TreeChoice {
+            path: vec![
+                Direction::R,
+                Direction::R,
+                Direction::R,
+                Direction::R,
+                Direction::L,
+                Direction::L,
+            ],
+        },
         checks: vec![],
     });
     let mut otherwise_set = BTreeSet::new();
     otherwise_set.insert(CheckAndRetrieve {
         gate: None,
-        retrieve: TreeChoice { path: vec![Direction::R, Direction::R, Direction::R, Direction::R, Direction::L, Direction::R] },
+        retrieve: TreeChoice {
+            path: vec![
+                Direction::R,
+                Direction::R,
+                Direction::R,
+                Direction::R,
+                Direction::L,
+                Direction::R,
+            ],
+        },
         checks: vec![],
     });
     let iwg = IfWithGate {
-        gate: TreeChoice { path: vec![Direction::R, Direction::R, Direction::R] },
+        gate: TreeChoice {
+            path: vec![Direction::R, Direction::R, Direction::R],
+        },
         in_gate: in_gate_set,
         otherwise_reachable: otherwise_set,
     };
@@ -620,22 +670,23 @@ impl GenerateTrickyCSE {
                     &number_tree,
                     numbers[rng.gen::<usize>() % number_of_numbers],
                 );
-                let gate =
-                    if rng.gen() {
-                        Some(choose_in_tree(
-                            &number_tree,
-                            numbers[rng.gen::<usize>() % number_of_numbers],
-                        ))
-                    } else {
-                        None
-                    };
-                let num_checks = rng.gen::<usize>() % 3;
-                let checks: Vec<TreeChoice> = (0..num_checks).map(|_| {
-                    choose_in_tree(
+                let gate = if rng.gen() {
+                    Some(choose_in_tree(
                         &number_tree,
                         numbers[rng.gen::<usize>() % number_of_numbers],
-                    )
-                }).collect();
+                    ))
+                } else {
+                    None
+                };
+                let num_checks = rng.gen::<usize>() % 3;
+                let checks: Vec<TreeChoice> = (0..num_checks)
+                    .map(|_| {
+                        choose_in_tree(
+                            &number_tree,
+                            numbers[rng.gen::<usize>() % number_of_numbers],
+                        )
+                    })
+                    .collect();
                 CheckAndRetrieve {
                     gate,
                     retrieve,
@@ -649,7 +700,11 @@ impl GenerateTrickyCSE {
         choices.sort();
 
         eprintln!("choices {choices:?}");
-        GenerateTrickyCSE { choices, tree: number_tree.clone(), numbers: numbers_set }
+        GenerateTrickyCSE {
+            choices,
+            tree: number_tree.clone(),
+            numbers: numbers_set,
+        }
     }
 
     fn generate_expr(&self) -> Rc<BodyForm> {
@@ -666,11 +721,14 @@ impl GenerateTrickyCSE {
                 } else {
                     let mut in_gate = BTreeSet::new();
                     in_gate.insert(choice.clone());
-                    choice_by_gate.insert(choice_gate.clone(), IfWithGate {
-                        gate: choice_gate.clone(),
-                        in_gate,
-                        otherwise_reachable: BTreeSet::default(),
-                    });
+                    choice_by_gate.insert(
+                        choice_gate.clone(),
+                        IfWithGate {
+                            gate: choice_gate.clone(),
+                            in_gate,
+                            otherwise_reachable: BTreeSet::default(),
+                        },
+                    );
                 }
             }
         }
@@ -678,10 +736,17 @@ impl GenerateTrickyCSE {
         // For each gate, filter all the remaining checks into in_gate or
         // otherwise_reachable.
         for (gate, ifwith) in choice_by_gate.iter_mut() {
-            let (in_gate, otherwise_reachable) = self.choices.iter().cloned().partition::<Vec<CheckAndRetrieve>, _>(|choice| {
-                choice.gate.as_ref().map(|g| gate.contains(g))
-                    .unwrap_or(false)
-            });
+            let (in_gate, otherwise_reachable) = self
+                .choices
+                .iter()
+                .cloned()
+                .partition::<Vec<CheckAndRetrieve>, _>(|choice| {
+                    choice
+                        .gate
+                        .as_ref()
+                        .map(|g| gate.contains(g))
+                        .unwrap_or(false)
+                });
             for g in in_gate.iter() {
                 ifwith.in_gate.insert(g.clone());
             }
@@ -695,11 +760,7 @@ impl GenerateTrickyCSE {
         for (gate, ifwith) in choice_by_gate.iter().rev() {
             let this_gate = ifwith.generate();
             let gate_conditions = all_conditions(&gate.conditions(true, None));
-            final_value = if_expr(
-                gate_conditions,
-                this_gate,
-                final_value,
-            );
+            final_value = if_expr(gate_conditions, this_gate, final_value);
         }
 
         final_value
@@ -710,18 +771,21 @@ impl GenerateTrickyCSE {
         let args = Rc::new(SExp::Cons(
             srcloc.clone(),
             Rc::new(SExp::Atom(srcloc.clone(), b"arg".to_vec())),
-            Rc::new(SExp::Nil(srcloc.clone()))
+            Rc::new(SExp::Nil(srcloc.clone())),
         ));
-        HelperForm::Defun(false, Box::new(DefunData {
-            nl: srcloc.clone(),
-            loc: srcloc.clone(),
-            name: b"tricky-cse".to_vec(),
-            args: args.clone(),
-            orig_args: args.clone(),
-            body: self.generate_expr(),
-            kw: None,
-            synthetic: None,
-        }))
+        HelperForm::Defun(
+            false,
+            Box::new(DefunData {
+                nl: srcloc.clone(),
+                loc: srcloc.clone(),
+                name: b"tricky-cse".to_vec(),
+                args: args.clone(),
+                orig_args: args.clone(),
+                body: self.generate_expr(),
+                kw: None,
+                synthetic: None,
+            }),
+        )
     }
 
     fn generate_program(&self) -> CompileForm {
@@ -734,7 +798,10 @@ impl GenerateTrickyCSE {
             exp: Rc::new(BodyForm::Call(
                 helper.loc(),
                 vec![
-                    Rc::new(BodyForm::Value(SExp::Atom(helper.loc(), helper.name().to_vec()))),
+                    Rc::new(BodyForm::Value(SExp::Atom(
+                        helper.loc(),
+                        helper.name().to_vec(),
+                    ))),
                     Rc::new(BodyForm::Value(SExp::Atom(helper.loc(), b"arg".to_vec()))),
                 ],
                 None,
@@ -756,10 +823,12 @@ fn test_generated_cse(n: u32) {
         stepping: Some(21),
         strict: true,
     });
-    let opts23 = opts.set_dialect(AcceptedDialect {
-        stepping: Some(23),
-        strict: true,
-    }).set_optimize(true);
+    let opts23 = opts
+        .set_dialect(AcceptedDialect {
+            stepping: Some(23),
+            strict: true,
+        })
+        .set_optimize(true);
     let mut allocator = Allocator::new();
     let mut symbols = HashMap::new();
     let compiled21;
@@ -774,34 +843,37 @@ fn test_generated_cse(n: u32) {
             get_optimizer(&generated.loc(), opts21.clone()).expect("should be ok dialect"),
         );
         eprintln!("21 compile");
-        compiled21 = Rc::new(compile_from_compileform(
-            &mut wrapper21.context,
-            opts21,
-            generated.clone(),
-        ).expect("compiled"))
+        compiled21 = Rc::new(
+            compile_from_compileform(&mut wrapper21.context, opts21, generated.clone())
+                .expect("compiled"),
+        )
     }
 
     // Get cl23 compile
     {
         let mut wrapper23 = CompileContextWrapper::new(
-        &mut allocator,
+            &mut allocator,
             runner.clone(),
             &mut symbols,
             get_optimizer(&generated.loc(), opts23.clone()).expect("should be ok dialect"),
         );
         eprintln!("23 compile");
-        compiled23 = Rc::new(compile_from_compileform(
-            &mut wrapper23.context,
-            opts23,
-            generated.clone(),
-        ).expect("compiled"))
+        compiled23 = Rc::new(
+            compile_from_compileform(&mut wrapper23.context, opts23, generated.clone())
+                .expect("compiled"),
+        )
     }
 
     eprintln!("generate tree numbers");
-    let check_numbers: BTreeSet<u16> = tcse.numbers.iter().filter(|_| {
-        let check: u8 = rng.gen();
-        check & 15 >= 1
-    }).copied().collect();
+    let check_numbers: BTreeSet<u16> = tcse
+        .numbers
+        .iter()
+        .filter(|_| {
+            let check: u8 = rng.gen();
+            check & 15 >= 1
+        })
+        .copied()
+        .collect();
     eprintln!("generate tree");
     let tree = Rc::new(tcse.tree.generate(generated.loc(), &move |tn| {
         check_numbers.contains(&tn.number)

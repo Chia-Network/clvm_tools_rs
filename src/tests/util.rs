@@ -1,6 +1,6 @@
-use std::collections::HashSet;
 use rand::prelude::*;
 use rand::Error;
+use std::collections::HashSet;
 
 use crate::util::toposort;
 
@@ -101,11 +101,13 @@ fn test_topo_sort_1() {
 // A simple pseudo RNG based on an lfsr.  Good enough to generate interesting
 // deterministic patterns.
 pub struct RngLFSR {
-    generator: u32
+    generator: u32,
 }
 
 impl RngLFSR {
-    pub fn new(state: u32) -> Self { RngLFSR { generator: state } }
+    pub fn new(state: u32) -> Self {
+        RngLFSR { generator: state }
+    }
     fn next(&mut self) -> u32 {
         self.generator = lfsr::galois::Galois16::up(self.generator);
         self.generator
