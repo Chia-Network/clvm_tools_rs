@@ -514,7 +514,7 @@ fn test_check_and_retrieve_1() {
     let else_clause = Rc::new(BodyForm::Value(SExp::Nil(Srcloc::start("*test*"))));
     assert_eq!(
         car.generate_body_if(else_clause).to_sexp().to_string(),
-        "(if (all (q . 1) arg (f arg) (r (f arg))) (r (f arg)) ())"
+        "(a (i (all (q . 1) arg (f arg)) (com (r (f arg))) (com ())) @)"
     );
 }
 
@@ -532,7 +532,7 @@ fn test_check_and_retrieve_2() {
     let else_clause = Rc::new(BodyForm::Value(SExp::Nil(Srcloc::start("*test*"))));
     assert_eq!(
         car.generate_body_if(else_clause).to_sexp().to_string(),
-        "(if (all (all (all arg (r arg))) arg (f arg) (r (f arg))) (r (f arg)) ())"
+        "(a (i (all (all (all arg (r arg))) arg (f arg)) (com (r (f arg))) (com ())) @)"
     );
 }
 
@@ -649,7 +649,7 @@ fn test_if_with_gate_generate_0() {
         in_gate: in_gate_set,
         otherwise_reachable: otherwise_set,
     };
-    assert_eq!(iwg.generate().to_sexp().to_string(), "(if (all arg (r arg) (r (r arg))) (if (all (q . 1) arg (r arg) (r (r arg)) (r (r (r arg))) (r (r (r (r arg)))) (f (r (r (r (r arg)))))) (f (f (r (r (r (r arg)))))) (if (all (q . 1) arg (r arg) (r (r arg)) (r (r (r arg))) (r (r (r (r arg)))) (f (r (r (r (r arg)))))) (r (f (r (r (r (r arg)))))) (q))) (if (all (q . 1) arg (r arg) (r (r arg)) (r (r (r arg))) (r (r (r (r arg)))) (f (r (r (r (r arg)))))) (r (f (r (r (r (r arg)))))) (q)))");
+    assert_eq!(iwg.generate().to_sexp().to_string(), "(a (i (all arg (r arg) (r (r arg))) (com (a (i (all (q . 1) arg (r arg) (r (r arg)) (r (r (r arg))) (r (r (r (r arg)))) (f (r (r (r (r arg)))))) (com (f (f (r (r (r (r arg))))))) (com (a (i (all (q . 1) arg (r arg) (r (r arg)) (r (r (r arg))) (r (r (r (r arg)))) (f (r (r (r (r arg)))))) (com (r (f (r (r (r (r arg))))))) (com (q))) @))) @)) (com (a (i (all (q . 1) arg (r arg) (r (r arg)) (r (r (r arg))) (r (r (r (r arg)))) (f (r (r (r (r arg)))))) (com (r (f (r (r (r (r arg))))))) (com (q))) @))) @)");
 }
 
 impl GenerateTrickyCSE {
