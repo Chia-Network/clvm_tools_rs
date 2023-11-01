@@ -130,8 +130,8 @@ fn test_atomsort_bad_ref_simplified() {
         "resources/tests/strict".to_string(),
         filename.to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
 
     let run_result = do_basic_brun(&vec![
         "brun".to_string(),
@@ -139,8 +139,8 @@ fn test_atomsort_bad_ref_simplified() {
         program,
         "((99 101 103))".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
 
     // Expect test5
     assert_eq!(run_result, "\"test5\"");
@@ -217,8 +217,8 @@ fn test_tricky_handcalc_example() {
         "resources/tests/strict".to_string(),
         filename.to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
 
     eprintln!("{program}");
     assert!(!program.contains(":"));
@@ -229,8 +229,8 @@ fn test_tricky_handcalc_example() {
         program,
         "((13 . 1) (12 . 1) (10 . 1) (6 . 2) (5 . 2))".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
 
     assert_eq!(run_result, "31");
 }

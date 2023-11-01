@@ -119,7 +119,7 @@ pub fn cse_detect(fe: &BodyForm) -> Result<Vec<CSEDetectionWithoutConditions>, C
             }
 
             // We can't take a com directly, but we can take parents or children.
-            if matches!(get_com_body(form), Some(_)) {
+            if get_com_body(form).is_some() {
                 return Ok(None);
             }
 

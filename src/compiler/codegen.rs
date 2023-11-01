@@ -718,7 +718,7 @@ pub fn generate_expr_code(
                             context,
                             opts,
                             compiler,
-                            Rc::new(BodyForm::Value(SExp::Nil(v.loc())))
+                            Rc::new(BodyForm::Value(SExp::Nil(v.loc()))),
                         )
                     } else {
                         // This is as a variable access, given that we've got
