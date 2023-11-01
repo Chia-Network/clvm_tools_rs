@@ -130,8 +130,8 @@ fn test_atomsort_bad_ref_simplified() {
         "resources/tests/strict".to_string(),
         filename.to_string(),
     ])
-    .trim()
-    .to_string();
+        .trim()
+        .to_string();
 
     let run_result = do_basic_brun(&vec![
         "brun".to_string(),
@@ -139,8 +139,8 @@ fn test_atomsort_bad_ref_simplified() {
         program,
         "((99 101 103))".to_string(),
     ])
-    .trim()
-    .to_string();
+        .trim()
+        .to_string();
 
     // Expect test5
     assert_eq!(run_result, "\"test5\"");
@@ -203,6 +203,36 @@ fn test_atomsort_bad_ref() {
     .to_string();
 
     assert_eq!(run_result_three_items, "(0x100003 0x100002 0x100001)");
+}
+
+#[test]
+fn test_tricky_handcalc_example() {
+    let filename = "resources/tests/strict/cse_tricky_assign.clsp";
+
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests/game-referee-after-cl21".to_string(),
+        "-i".to_string(),
+        "resources/tests/strict".to_string(),
+        filename.to_string(),
+    ])
+        .trim()
+        .to_string();
+
+    eprintln!("{program}");
+    assert!(!program.contains(":"));
+
+    let run_result = do_basic_brun(&vec![
+        "brun".to_string(),
+        "-n".to_string(),
+        program,
+        "((13 . 1) (12 . 1) (10 . 1) (6 . 2) (5 . 2))".to_string(),
+    ])
+        .trim()
+        .to_string();
+
+    assert_eq!(run_result, "31");
 }
 
 // Produce trees of CSE eligible forms and challenge the CSE optimizer.

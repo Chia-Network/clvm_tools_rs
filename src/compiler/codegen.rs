@@ -713,6 +713,13 @@ pub fn generate_expr_code(
                             l.clone(),
                             Rc::new(SExp::Integer(l.clone(), bi_one())),
                         ))
+                    } else if atom.is_empty() {
+                        generate_expr_code(
+                            context,
+                            opts,
+                            compiler,
+                            Rc::new(BodyForm::Value(SExp::Nil(v.loc())))
+                        )
                     } else {
                         // This is as a variable access, given that we've got
                         // a Value bodyform containing an Atom, so if a defun

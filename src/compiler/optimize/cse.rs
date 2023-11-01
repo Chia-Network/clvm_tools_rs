@@ -114,7 +114,12 @@ pub fn cse_detect(fe: &BodyForm) -> Result<Vec<CSEDetectionWithoutConditions>, C
             }
 
             // Skip individual variable references.
-            if let BodyForm::Value(SExp::Atom(_, _)) = form {
+            if matches!(form, BodyForm::Value(SExp::Atom(_, _))) {
+                return Ok(None);
+            }
+
+            // We can't take a com directly, but we can take parents or children.
+            if matches!(get_com_body(form), Some(_)) {
                 return Ok(None);
             }
 
