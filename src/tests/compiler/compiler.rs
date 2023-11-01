@@ -2306,7 +2306,6 @@ fn test_rename_in_compileform_simple() {
     assert_eq!(renamed_helperform.to_string(), desired_outcome);
 }
 
-
 #[test]
 fn test_handle_explicit_empty_atom() {
     let filename = "*empty-atom-test*";
@@ -2316,31 +2315,29 @@ fn test_handle_explicit_empty_atom() {
         strict: true,
     });
 
-    let atom = |s: &str| {
-        Rc::new(SExp::Atom(srcloc.clone(), s.as_bytes().to_vec()))
-    };
+    let atom = |s: &str| Rc::new(SExp::Atom(srcloc.clone(), s.as_bytes().to_vec()));
 
-    let sublist = |l: &[Rc<SExp>]| {
-        Rc::new(enlist(srcloc.clone(), l))
-    };
+    let sublist = |l: &[Rc<SExp>]| Rc::new(enlist(srcloc.clone(), l));
 
     let nil = Rc::new(SExp::Nil(srcloc.clone()));
 
     let program = sublist(&[
-        atom("mod"), nil.clone(),
+        atom("mod"),
+        nil.clone(),
         sublist(&[atom("include"), atom("*strict-cl-21*")]),
-        sublist(&[atom("+"), atom(""), Rc::new(SExp::Integer(srcloc.clone(), bi_one()))])
+        sublist(&[
+            atom("+"),
+            atom(""),
+            Rc::new(SExp::Integer(srcloc.clone(), bi_one())),
+        ]),
     ]);
     let mut allocator = Allocator::new();
     let mut symbols = HashMap::new();
     let runner = Rc::new(DefaultProgramRunner::new());
 
-    let compiled = opts.compile_program(
-        &mut allocator,
-        runner.clone(),
-        program,
-        &mut symbols,
-    ).expect("should compile");
+    let compiled = opts
+        .compile_program(&mut allocator, runner.clone(), program, &mut symbols)
+        .expect("should compile");
     let outcome = run(
         &mut allocator,
         runner,
@@ -2349,9 +2346,7 @@ fn test_handle_explicit_empty_atom() {
         nil,
         None,
         None,
-    ).expect("should run");
-    assert_eq!(
-        outcome.to_string(),
-        "1"
-    );
+    )
+    .expect("should run");
+    assert_eq!(outcome.to_string(), "1");
 }

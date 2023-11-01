@@ -242,7 +242,7 @@ fn at_capture_inline_3() {
             "run".to_string(),
             "(mod () (defun-inline F (@ pt (X Y)) pt) (F (+ 117 1) (+ 98 1)))".to_string()
         ))
-            .trim(),
+        .trim(),
         "(q 118 99)"
     );
 }
