@@ -1,7 +1,7 @@
 import pytest
 import random
 from itertools import permutations
-from hsms.streamables.program import Program
+from chia.types.blockchain_format.program import Program
 from steprun import diag_run_clvm, compile_module_with_symbols
 
 compile_module_with_symbols(['.'], 'smoke_test_deep_compare.clsp')

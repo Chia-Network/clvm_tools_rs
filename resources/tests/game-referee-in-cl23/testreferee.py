@@ -5,7 +5,7 @@ from chia.clvm.spend_sim import SimClient, SpendSim
 from pathlib import Path
 from clvm.casts import int_to_bytes, int_from_bytes
 
-from hsms.streamables.program import Program
+from chia.types.blockchain_format.program import Program
 from clvm_tools_rs import compile_clvm
 from clvm_tools.binutils import disassemble
 

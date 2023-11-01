@@ -1,6 +1,6 @@
 import hashlib
 
-from hsms.streamables.program import Program
+from chia.types.blockchain_format.program import Program
 
 from clvm.EvalError import EvalError
 
