@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
+use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
@@ -11,7 +12,7 @@ use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::frontend::{collect_used_names_sexp, frontend};
 use crate::compiler::rename::rename_in_cons;
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
+use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 const TEST_TIMEOUT: usize = 1000000;
@@ -2303,4 +2304,49 @@ fn test_rename_in_compileform_simple() {
         .collect();
     let renamed_helperform = squash_name_differences(helper_f[0].to_sexp()).expect("should rename");
     assert_eq!(renamed_helperform.to_string(), desired_outcome);
+}
+
+#[test]
+fn test_handle_explicit_empty_atom() {
+    let filename = "*empty-atom-test*";
+    let srcloc = Srcloc::start(filename);
+    let opts = Rc::new(DefaultCompilerOpts::new(filename)).set_dialect(AcceptedDialect {
+        stepping: Some(21),
+        strict: true,
+    });
+
+    let atom = |s: &str| Rc::new(SExp::Atom(srcloc.clone(), s.as_bytes().to_vec()));
+
+    let sublist = |l: &[Rc<SExp>]| Rc::new(enlist(srcloc.clone(), l));
+
+    let nil = Rc::new(SExp::Nil(srcloc.clone()));
+
+    let program = sublist(&[
+        atom("mod"),
+        nil.clone(),
+        sublist(&[atom("include"), atom("*strict-cl-21*")]),
+        sublist(&[
+            atom("+"),
+            atom(""),
+            Rc::new(SExp::Integer(srcloc.clone(), bi_one())),
+        ]),
+    ]);
+    let mut allocator = Allocator::new();
+    let mut symbols = HashMap::new();
+    let runner = Rc::new(DefaultProgramRunner::new());
+
+    let compiled = opts
+        .compile_program(&mut allocator, runner.clone(), program, &mut symbols)
+        .expect("should compile");
+    let outcome = run(
+        &mut allocator,
+        runner,
+        opts.prim_map(),
+        Rc::new(compiled),
+        nil,
+        None,
+        None,
+    )
+    .expect("should run");
+    assert_eq!(outcome.to_string(), "1");
 }
