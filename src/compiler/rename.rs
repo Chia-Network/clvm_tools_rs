@@ -129,7 +129,7 @@ fn make_binding_unique(b: &Binding) -> InnerRenameList {
                 bindings: single_name_map,
                 from_wing: Binding {
                     pattern: BindingPattern::Name(new_name),
-                    .. b.clone()
+                    ..b.clone()
                 },
             }
         }
@@ -146,7 +146,7 @@ fn make_binding_unique(b: &Binding) -> InnerRenameList {
                 bindings: new_names,
                 from_wing: Binding {
                     pattern: BindingPattern::Complex(renamed_pattern),
-                    .. b.clone()
+                    ..b.clone()
                 },
             }
         }
@@ -199,7 +199,7 @@ fn rename_in_bodyform(
                     let b_borrowed: &Binding = b.borrow();
                     Ok(Rc::new(Binding {
                         body: Rc::new(rename_in_bodyform(namemap, b.body.clone())?),
-                        .. b_borrowed.clone()
+                        ..b_borrowed.clone()
                     }))
                 },
                 &letdata.bindings,
@@ -480,7 +480,7 @@ fn rename_in_compileform(
     Ok(CompileForm {
         helpers: map_m(|x| rename_in_helperform(namemap, x), &c.helpers)?,
         exp: Rc::new(rename_in_bodyform(namemap, c.exp.clone())?),
-        .. c_ref.clone()
+        ..c_ref.clone()
     })
 }
 
