@@ -1,6 +1,6 @@
 import hashlib
 
-from chia.types.blockchain_format.program import Program
+from clvm_rs import Program
 
 from clvm.EvalError import EvalError
 
