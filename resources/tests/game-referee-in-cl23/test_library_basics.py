@@ -51,7 +51,7 @@ def proper_list(cl):
     return proper_list_inner(result,cl)
 
 def int_list(cl):
-    return [Program.to(x).as_int() for x in Program.to(cl).as_atom_list()]
+    return [int(x) for x in Program.to(cl).as_iter()]
 
 def de_none_list(l):
     return [x if x is not None else [] for x in l]
