@@ -21,11 +21,9 @@ use crate::compiler::clvm::{convert_from_clvm_rs, run_step, RunStep};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
-#[cfg(feature = "debug-print")]
 use crate::util::u8_from_number;
 use crate::util::Number;
 
-#[cfg(feature = "debug-print")]
 fn print_atom() -> SExp {
     SExp::Atom(Srcloc::start("*print*"), b"$print$".to_vec())
 }
@@ -115,7 +113,6 @@ pub struct CldbRun {
     outputs_to_step: HashMap<Number, PriorResult>,
 }
 
-#[cfg(feature = "debug-print")]
 fn humanize(a: Rc<SExp>) -> Rc<SExp> {
     match a.borrow() {
         SExp::Integer(l, i) => {
@@ -136,7 +133,6 @@ fn humanize(a: Rc<SExp>) -> Rc<SExp> {
     }
 }
 
-#[cfg(feature = "debug-print")]
 fn is_print_request(a: &SExp) -> Option<(Srcloc, Rc<SExp>)> {
     if let SExp::Cons(l, f, r) = a {
         if &print_atom() == f.borrow() {
@@ -185,14 +181,8 @@ impl CldbRun {
         self.final_result.clone()
     }
 
-    #[cfg(feature = "debug-print")]
     pub fn should_print_basic_output(&self) -> bool {
         !self.print_only
-    }
-
-    #[cfg(not(feature = "debug-print"))]
-    pub fn should_print_basic_output(&self) -> bool {
-        true
     }
 
     pub fn step(&mut self, allocator: &mut Allocator) -> Option<BTreeMap<String, String>> {
@@ -265,7 +255,6 @@ impl CldbRun {
                         let args = format_arg_inputs(&arg_associations);
                         self.to_print.insert("Argument-Refs".to_string(), args);
                     } else if v == 34_u32.to_bigint().unwrap() {
-                        #[cfg(feature = "debug-print")]
                         // Handle diagnostic output.
                         if let Some((loc, outputs)) = is_print_request(a) {
                             self.to_print
