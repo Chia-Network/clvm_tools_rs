@@ -4,6 +4,8 @@ from itertools import permutations
 from clvm_rs import Program
 from steprun import diag_run_clvm, compile_module_with_symbols
 
+Program.set_run_unsafe_max_cost(11000000000)
+
 compile_module_with_symbols(['.'], 'smoke_test_deep_compare.clsp')
 compare_program = Program.from_bytes(bytes.fromhex(open('smoke_test_deep_compare.clvm.hex').read()))
 
