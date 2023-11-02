@@ -714,11 +714,12 @@ pub fn generate_expr_code(
                             Rc::new(SExp::Integer(l.clone(), bi_one())),
                         ))
                     } else if atom.is_empty() {
+                        // Ensure that we handle empty atoms as nils.
                         generate_expr_code(
                             context,
                             opts,
                             compiler,
-                            Rc::new(BodyForm::Value(SExp::Nil(v.loc()))),
+                            Rc::new(BodyForm::Value(SExp::Nil(l.clone()))),
                         )
                     } else {
                         // This is as a variable access, given that we've got
