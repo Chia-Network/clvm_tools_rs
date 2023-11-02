@@ -1,6 +1,6 @@
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
@@ -10,11 +10,11 @@ use crate::compiler::codegen::{generate_expr_code, get_call_name, get_callable};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     ArgsAndTail, BodyForm, CallSpec, Callable, CompileErr, CompiledCode, CompilerOpts,
-    InlineFunction, PrimaryCodegen,
+    InlineFunction, LambdaData, PrimaryCodegen,
 };
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::BasicCompileContext;
+use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 
 use crate::util::Number;
 
@@ -445,6 +445,24 @@ fn replace_inline_body(
                 .unwrap_or_else(|| expr.clone());
             Ok(alookup)
         }
+        BodyForm::Lambda(ldata) => {
+            let rewritten_captures = replace_inline_body(
+                visited_inlines,
+                runner,
+                opts,
+                compiler,
+                loc,
+                inline,
+                args,
+                tail,
+                callsite,
+                ldata.captures.clone(),
+            )?;
+            Ok(Rc::new(BodyForm::Lambda(Box::new(LambdaData {
+                captures: rewritten_captures,
+                ..*ldata.clone()
+            }))))
+        }
         _ => Ok(expr.clone()),
     }
 }
@@ -491,5 +509,12 @@ pub fn replace_in_inline(
         callsite,
         inline.body.clone(),
     )
-    .and_then(|x| generate_expr_code(context, opts, compiler, x))
+    .and_then(|x| {
+        let mut symbols = HashMap::new();
+        let runner = context.runner();
+        let optimizer = context.optimizer.duplicate();
+        let mut context_wrapper =
+            CompileContextWrapper::new(context.allocator(), runner, &mut symbols, optimizer);
+        generate_expr_code(&mut context_wrapper.context, opts, compiler, x)
+    })
 }

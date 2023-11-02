@@ -377,6 +377,9 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
     fn set_start_env(&self, _start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts> {
         Rc::new(self.clone())
     }
+    fn set_prim_map(&self, _prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts> {
+        Rc::new(self.clone())
+    }
     fn set_disassembly_ver(&self, _ver: Option<usize>) -> Rc<dyn CompilerOpts> {
         Rc::new(self.clone())
     }
