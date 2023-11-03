@@ -40,6 +40,8 @@ enum IncludeType {
     /// The data in the file will be processed in some way and the result will
     /// live in a named constant.
     Processed(IncludeDesc, IncludeProcessType, Vec<u8>),
+    /// Import a module by name and perform peripheral renaming.
+    Import(IncludeDesc),
 }
 
 struct Preprocessor {
@@ -180,6 +182,11 @@ impl Preprocessor {
                 }
 
                 parsed[0].clone()
+            }
+            IncludeProcessType::Module => {
+                let _parsed = parse_sexp(Srcloc::start(&full_name), content.iter().copied())
+                    .map_err(|e| CompileErr(e.0, e.1))?;
+                todo!();
             }
         };
 
@@ -385,6 +392,132 @@ impl Preprocessor {
         Ok(None)
     }
 
+    fn parse_import(&mut self, form: &[SExp]) -> Result<Option<IncludeType>, CompileErr> {
+        if form.len() < 2 {
+            return Ok(None);
+        }
+
+        let kw = form[0].loc();
+        if let SExp::Atom(_, import_name) = &form[0] {
+            if import_name != b"import" {
+                return Ok(None);
+            }
+        }
+
+        let (nl, fname) = if let SExp::Atom(nl, fname) = &form[1] {
+            (nl.clone(), fname.clone())
+        } else if let SExp::QuotedString(nl, _, fname) = &form[1] {
+            (nl.clone(), fname.clone())
+        } else {
+            return Err(CompileErr(
+                form[1].loc(),
+                "Name must be an atom or string".to_string(),
+            ));
+        };
+
+        Ok(Some(IncludeType::Import(IncludeDesc {
+            kw: kw.clone(),
+            nl: nl.clone(),
+            name: fname.clone(),
+            kind: Some(IncludeProcessType::Module),
+        })))
+    }
+
+    fn parse_include(&mut self, form: &[SExp]) -> Result<Option<IncludeType>, CompileErr> {
+        if let [SExp::Atom(kw, include_kw), include_name] = form {
+            if include_kw != b"include" {
+                return Ok(None);
+            }
+
+            let (nl, fname) = if let SExp::Atom(nl, fname) = include_name {
+                (nl.clone(), fname.clone())
+            } else if let SExp::QuotedString(nl, _, fname) = include_name {
+                (nl.clone(), fname.clone())
+            } else {
+                return Err(CompileErr(
+                    include_name.loc(),
+                    "Name must be an atom or string".to_string(),
+                ));
+            };
+
+            return Ok(Some(IncludeType::Basic(IncludeDesc {
+                kw: kw.clone(),
+                nl: nl.clone(),
+                name: fname.clone(),
+                kind: None,
+            })));
+        }
+
+        Ok(None)
+    }
+
+    fn parse_embed(
+        &mut self,
+        body: Rc<SExp>,
+        form: &[SExp],
+    ) -> Result<Option<IncludeType>, CompileErr> {
+        if let [SExp::Atom(kl, embed_file), SExp::Atom(_, name), SExp::Atom(kind_loc, kind), fname_atom] =
+            form
+        {
+            if embed_file != b"embed-file" {
+                return Ok(None);
+            }
+
+            let (nl, fname) = if let SExp::Atom(nl, fname) = fname_atom {
+                (nl.clone(), fname.clone())
+            } else if let SExp::QuotedString(nl, _, fname) = fname_atom {
+                (nl.clone(), fname.clone())
+            } else {
+                return Err(CompileErr(
+                    fname_atom.loc(),
+                    "Name must be an atom or string".to_string(),
+                ));
+            };
+
+            if kind == b"hex" {
+                return Ok(Some(IncludeType::Processed(
+                    IncludeDesc {
+                        kw: kl.clone(),
+                        nl: nl.clone(),
+                        kind: Some(IncludeProcessType::Hex),
+                        name: fname.clone(),
+                    },
+                    IncludeProcessType::Hex,
+                    name.clone(),
+                )));
+            } else if kind == b"bin" {
+                return Ok(Some(IncludeType::Processed(
+                    IncludeDesc {
+                        kw: kl.clone(),
+                        nl: nl.clone(),
+                        kind: Some(IncludeProcessType::Bin),
+                        name: fname.clone(),
+                    },
+                    IncludeProcessType::Bin,
+                    name.clone(),
+                )));
+            } else if kind == b"sexp" {
+                return Ok(Some(IncludeType::Processed(
+                    IncludeDesc {
+                        kw: kl.clone(),
+                        nl: nl.clone(),
+                        kind: Some(IncludeProcessType::SExpression),
+                        name: fname.clone(),
+                    },
+                    IncludeProcessType::SExpression,
+                    name.clone(),
+                )));
+            } else {
+                return Err(CompileErr(
+                    kind_loc.clone(),
+                    format!("bad include kind in embed-file {body}"),
+                ));
+            }
+        }
+
+        Ok(None)
+    }
+
     /* Expand include inline in forms */
     fn process_pp_form(
         &mut self,
@@ -394,106 +527,37 @@ impl Preprocessor {
         let body = self
             .expand_macros(unexpanded_body.clone(), true)?
             .unwrap_or_else(|| unexpanded_body.clone());
+
         // Support using the preprocessor to collect dependencies recursively.
-        let included: Option<IncludeType> = body
+        let as_list: Option<Vec<SExp>> = body
             .proper_list()
-            .map(|x| x.iter().map(|elt| elt.atomize()).collect())
-            .map(|x: Vec<SExp>| {
-                match &x[..] {
-                    [SExp::Atom(kw, inc), SExp::Atom(nl, fname)] => {
-                        if "include".as_bytes().to_vec() == *inc {
-                            return Ok(Some(IncludeType::Basic(
-                                IncludeDesc {
-                                    kw: kw.clone(),
-                                    nl: nl.clone(),
-                                    name: fname.clone(),
-                                    kind: None,
-                                }
-                            )));
-                        }
-                    }
-                    [SExp::Atom(kw, inc), SExp::QuotedString(nl, _, fname)] => {
-                        if "include".as_bytes().to_vec() == *inc {
-                            return Ok(Some(IncludeType::Basic(
-                                IncludeDesc {
-                                    kw: kw.clone(),
-                                    nl: nl.clone(),
-                                    name: fname.clone(),
-                                    kind: None,
-                                }
-                            )));
-                        }
-                    }
-
-                    [SExp::Atom(kl, embed_file), SExp::Atom(_, name), SExp::Atom(_, kind), SExp::Atom(nl, fname)] => {
-                        if embed_file == b"embed-file" {
-                            if kind == b"hex" {
-                                return Ok(Some(IncludeType::Processed(
-                                    IncludeDesc {
-                                        kw: kl.clone(),
-                                        nl: nl.clone(),
-                                        kind: Some(IncludeProcessType::Hex),
-                                        name: fname.clone(),
-                                    },
-                                    IncludeProcessType::Hex,
-                                    name.clone()
-                                )));
-                            } else if kind == b"bin" {
-                                return Ok(Some(IncludeType::Processed(
-                                    IncludeDesc {
-                                        kw: kl.clone(),
-                                        nl: nl.clone(),
-                                        kind: Some(IncludeProcessType::Bin),
-                                        name: fname.clone(),
-                                    },
-                                    IncludeProcessType::Bin,
-                                    name.clone(),
-                                )));
-                            } else if kind == b"sexp" {
-                                return Ok(Some(IncludeType::Processed(
-                                    IncludeDesc {
-                                        kw: kl.clone(),
-                                        nl: nl.clone(),
-                                        kind: Some(IncludeProcessType::SExpression),
-                                        name: fname.clone(),
-                                    },
-                                    IncludeProcessType::SExpression,
-                                    name.clone(),
-                                )));
-                            } else {
-                                return Err(CompileErr(
-                                    body.loc(),
-                                    format!("bad include kind in embed-file {body}")
-                                ));
-                            }
-                        }
-                    }
-
-                    [] => {}
-
-                    // Ensure that legal empty or atom expressions don't try include
-                    _ => {
-                        // Include is only allowed as a proper form.  It's a keyword in
-                        // this language.
-                        if let SExp::Atom(_, inc) = &x[0] {
-                            if "include".as_bytes().to_vec() == *inc {
-                                return Err(CompileErr(
-                                    body.loc(),
-                                    format!("bad tail in include {body}"),
-                                ));
-                            } else {
-                                // Try to pick up helperforms.
-                                if let Some(()) = self.decode_macro(body.clone())? {
-                                    return Ok(None);
-                                }
-                            }
-                        }
+            .map(|x| x.iter().map(|elt| elt.atomize()).collect());
+        let included: Option<IncludeType> = if let Some(x) = as_list.as_ref() {
+            if let Some(res) = self.parse_import(x)? {
+                Some(res)
+            } else if let Some(res) = self.parse_include(x)? {
+                Some(res)
+            } else if let Some(res) = self.parse_embed(body.clone(), x)? {
+                Some(res)
+            } else if !x.is_empty() {
+                // Include is only allowed as a proper form.  It's a keyword in
+                // this language.
+                if let SExp::Atom(_, inc) = &x[0] {
+                    if "include".as_bytes().to_vec() == *inc {
+                        return Err(CompileErr(
+                            body.loc(),
+                            format!("bad tail in include {body}"),
+                        ));
                     }
                 }
 
-                Ok(None)
-            })
-            .unwrap_or_else(|| Ok(None))?;
+                None
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         if let Some(()) = self.decode_macro(body.clone())? {
             Ok(vec![])

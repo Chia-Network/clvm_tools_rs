@@ -305,6 +305,8 @@ pub enum IncludeProcessType {
     Hex,
     /// Read clvm in s-expression form as a clvm value.
     SExpression,
+    /// Import as module.
+    Module,
 }
 
 /// A description of an include form.  Here, records the locations of the various
@@ -318,16 +320,26 @@ pub struct IncludeDesc {
     pub nl: Srcloc,
     /// The relative path to a target or a special directive name.
     pub name: Vec<u8>,
+    /// Kind of inclusion.  Determines whether dependencies are recursed and
+    /// what operation is performed on the retrieved clvm form.
     pub kind: Option<IncludeProcessType>,
 }
 
 impl IncludeDesc {
     pub fn to_sexp(&self) -> Rc<SExp> {
-        Rc::new(SExp::Cons(
-            self.kw.clone(),
-            Rc::new(SExp::Atom(self.kw.clone(), b"include".to_vec())),
-            Rc::new(SExp::QuotedString(self.nl.clone(), b'"', self.name.clone())),
-        ))
+        if matches!(self.kind, Some(IncludeProcessType::Module)) {
+            Rc::new(SExp::Cons(
+                self.kw.clone(),
+                Rc::new(SExp::Atom(self.kw.clone(), b"module".to_vec())),
+                Rc::new(SExp::QuotedString(self.nl.clone(), b'"', self.name.clone())),
+            ))
+        } else {
+            Rc::new(SExp::Cons(
+                self.kw.clone(),
+                Rc::new(SExp::Atom(self.kw.clone(), b"include".to_vec())),
+                Rc::new(SExp::QuotedString(self.nl.clone(), b'"', self.name.clone())),
+            ))
+        }
     }
 }
 
