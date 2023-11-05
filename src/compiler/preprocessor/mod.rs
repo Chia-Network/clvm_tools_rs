@@ -90,6 +90,75 @@ fn nilize(v: Rc<SExp>) -> Rc<SExp> {
     }
 }
 
+struct IterateIncludeUnit {
+    parsed: Vec<Rc<SExp>>,
+    item: usize,
+}
+
+impl Iterator for IterateIncludeUnit {
+    type Item = Rc<SExp>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.item >= self.parsed.len() {
+            return None;
+        }
+
+        let current_item = self.item;
+        self.item += 1;
+
+        Some(self.parsed[current_item].clone())
+    }
+}
+
+/// Import modules can be enclosed, but needn't be:
+///
+/// An import file that contains a nil or a list beginning with a nonempty cons is
+/// an enclosed clinc (classic style), otherwise it's a list of helper forms.
+fn get_module_iterator(parsed: &[Rc<SExp>]) -> IterateIncludeUnit {
+    // An empty form is a modern include file with 0 helpers.
+    if parsed.is_empty() {
+        eprintln!("module iterator ()");
+        return IterateIncludeUnit {
+            parsed: vec![],
+            item: 0,
+        };
+    }
+
+    // A single form is an enclosed clinc if it is headed by a cons form.
+    if parsed.len() == 1 {
+        if let Some(lst) = parsed[0].proper_list() {
+            if lst.is_empty() {
+                eprintln!("module operator (())");
+                return IterateIncludeUnit {
+                    parsed: vec![],
+                    item: 0,
+                };
+            }
+
+            if !matches!(lst[0].borrow(), SExp::Cons(_, _, _)) {
+                eprintln!("single non-enclosed form {}", parsed[0]);
+                return IterateIncludeUnit {
+                    parsed: parsed.iter().cloned().collect(),
+                    item: 0,
+                };
+            }
+
+            eprintln!("classic enclosed include {}", parsed[0]);
+            return IterateIncludeUnit {
+                parsed: lst.iter().cloned().map(Rc::new).collect(),
+                item: 0,
+            };
+        }
+    }
+
+    // More than one form: conventional, not enclosed.
+    eprintln!("not enclosed form {}", enlist(parsed[0].loc(), parsed));
+    IterateIncludeUnit {
+        parsed: parsed.iter().cloned().collect(),
+        item: 0,
+    }
+}
+
 impl Preprocessor {
     pub fn new(opts: Rc<dyn CompilerOpts>) -> Self {
         let runner = Rc::new(DefaultProgramRunner::new());
@@ -120,6 +189,7 @@ impl Preprocessor {
 
         // Because we're also subsequently returning CompileErr later in the pipe,
         // this needs an explicit err map.
+
         let parsed: Vec<Rc<SExp>> = parse_sexp(start_of_file.clone(), content.iter().copied())
             .err_into()
             .and_then(|x| match x[0].proper_list() {
@@ -132,7 +202,7 @@ impl Preprocessor {
 
         if self.strict {
             let mut result = Vec::new();
-            for p in parsed.into_iter() {
+            for p in get_module_iterator(&parsed).into_iter() {
                 let mut new_forms = self.process_pp_form(includes, p.clone())?;
                 result.append(&mut new_forms);
             }
