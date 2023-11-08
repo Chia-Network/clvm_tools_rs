@@ -6,19 +6,20 @@ use crate::compiler::sexp::parse_sexp;
 use crate::compiler::srcloc::Srcloc;
 use std::rc::Rc;
 
-use crate::tests::compiler::compiler::run_string;
+use crate::tests::compiler::compiler::run_string_strict;
 
 #[test]
 fn test_defmac_basic_0() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defmac double-arg (A) (list (string->symbol (string-append (symbol->string A) \"1\")) (string->symbol (string-append (symbol->string A) \"2\"))))
       (defun strange (double-arg X) (+ X1 X2))
       (strange X (* 2 X))
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "9");
 }
 
@@ -26,6 +27,7 @@ fn test_defmac_basic_0() {
 fn test_defmac_basic_shared_constant() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defconstant twostring \"2\")
       (defmac double-arg (A) (list (string->symbol (string-append (symbol->string A) \"1\")) (string->symbol (string-append (symbol->string A) twostring))))
       (defun strange (double-arg X) (+ X1 X2))
@@ -33,7 +35,7 @@ fn test_defmac_basic_shared_constant() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(\"2\" . 9)");
 }
 
@@ -41,6 +43,7 @@ fn test_defmac_basic_shared_constant() {
 fn test_defmac_basic_shared_constant_not_string_with_string_operator() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defconstant twostring 2)
       (defmac double-arg (A) (list (string->symbol (string-append (symbol->string A) \"1\")) (string->symbol (string-append (symbol->string A) twostring))))
       (defun strange (double-arg X) (+ X1 X2))
@@ -48,7 +51,7 @@ fn test_defmac_basic_shared_constant_not_string_with_string_operator() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string());
+    let res = run_string_strict(&prog, &"(3)".to_string());
     assert!(res.is_err());
 }
 
@@ -56,6 +59,7 @@ fn test_defmac_basic_shared_constant_not_string_with_string_operator() {
 fn test_defmac_basic_shared_constant_not_string_with_string_operator_fun() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defconstant twostring \"2\")
       (defun make-arg-list (A) (list (string->symbol (string-append (symbol->string A) \"1\")) (string->symbol (string-append (symbol->string A) twostring))))
       (defmac double-arg (A) (make-arg-list A))
@@ -64,7 +68,7 @@ fn test_defmac_basic_shared_constant_not_string_with_string_operator_fun() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(\"2\" . 9)");
 }
 
@@ -72,6 +76,7 @@ fn test_defmac_basic_shared_constant_not_string_with_string_operator_fun() {
 fn test_defmac_basic_test_is_string_pos() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defmac classify (S)
         (if (string? S)
           (qq (c 1 (unquote S)))
@@ -82,7 +87,7 @@ fn test_defmac_basic_test_is_string_pos() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(3 1 . \"test\")");
 }
 
@@ -90,6 +95,7 @@ fn test_defmac_basic_test_is_string_pos() {
 fn test_defmac_basic_test_is_string_neg() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defmac classify (S)
         (if (string? S)
           (qq (c 1 (unquote S)))
@@ -100,7 +106,7 @@ fn test_defmac_basic_test_is_string_neg() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(3 2 . test)");
 }
 
@@ -108,6 +114,7 @@ fn test_defmac_basic_test_is_string_neg() {
 fn test_defmac_basic_test_is_symbol_pos() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defmac classify (S)
         (if (symbol? S)
           (qq (c 1 (unquote S)))
@@ -118,7 +125,7 @@ fn test_defmac_basic_test_is_symbol_pos() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(3 1 . test)");
 }
 
@@ -126,6 +133,7 @@ fn test_defmac_basic_test_is_symbol_pos() {
 fn test_defmac_basic_test_is_symbol_neg() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defmac classify (S)
         (if (symbol? S)
           (qq (c 1 (unquote S)))
@@ -136,7 +144,7 @@ fn test_defmac_basic_test_is_symbol_neg() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(3 2 . \"test\")");
 }
 
@@ -144,6 +152,7 @@ fn test_defmac_basic_test_is_symbol_neg() {
 fn test_defmac_basic_test_is_number_pos() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defmac classify (S)
         (if (number? S)
           (qq (c 1 (unquote S)))
@@ -154,7 +163,7 @@ fn test_defmac_basic_test_is_number_pos() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(3 1 . 7)");
 }
 
@@ -162,6 +171,7 @@ fn test_defmac_basic_test_is_number_pos() {
 fn test_defmac_basic_test_is_number_neg() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defmac classify (S)
         (if (number? S)
           (qq (c 1 (unquote S)))
@@ -172,7 +182,7 @@ fn test_defmac_basic_test_is_number_neg() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(3 2 . \"test\")");
 }
 
@@ -180,13 +190,14 @@ fn test_defmac_basic_test_is_number_neg() {
 fn test_defmac_extension_from_function() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defun FX (X) (symbol->string X))
       (defmac F (X) (FX X))
       (c 3 (F X))
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(3 . \"X\")");
 }
 
@@ -194,13 +205,14 @@ fn test_defmac_extension_from_function() {
 fn test_defmac_if_extension() {
     let prog = indoc! {"
     (mod (X)
+      (include *strict-cl-21*)
       (defun FX (X) (if X (number->string 1) 2))
       (defmac F (X) (c 1 (FX X)))
       (F X)
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(9)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(9)".to_string()).unwrap();
     assert_eq!(res.to_string(), "\"1\"");
 }
 
@@ -211,7 +223,7 @@ fn test_defmac_create_match_form() {
     ;;
     ;; The real version will be more elaborate.  This is a test case and a demo.
     (mod X
-        (include *standard-cl-21*)
+        (include *strict-cl-21*)
         (defun list-nth (L N)
           (if N
             (list-nth (r L) (- N 1))
@@ -331,7 +343,7 @@ fn test_defmac_create_match_form() {
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3 () 1001 1002)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3 () 1001 1002)".to_string()).unwrap();
     assert_eq!(res.to_string(), "1002");
 }
 
@@ -339,12 +351,13 @@ fn test_defmac_create_match_form() {
 fn test_defmac_stringq() {
     let prog = indoc! {"
       (mod ()
+         (include *strict-cl-21*)
          (defmac is-string (X) (string? X))
          (list (is-string X) (is-string \"X\") (is-string 3))
          )
     "}
     .to_string();
-    let res = run_string(&prog, &"()".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "(() 1 ())");
 }
 
@@ -352,12 +365,13 @@ fn test_defmac_stringq() {
 fn test_defmac_numberq() {
     let prog = indoc! {"
       (mod ()
+         (include *strict-cl-21*)
          (defmac is-number (X) (number? X))
          (list (is-number X) (is-number \"X\") (is-number 3))
          )
     "}
     .to_string();
-    let res = run_string(&prog, &"()".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "(() () 1)");
 }
 
@@ -365,12 +379,13 @@ fn test_defmac_numberq() {
 fn test_defmac_symbolq() {
     let prog = indoc! {"
       (mod ()
+         (include *strict-cl-21*)
          (defmac is-symbol (X) (symbol? X))
          (list (is-symbol X) (is-symbol \"X\") (is-symbol 3))
          )
     "}
     .to_string();
-    let res = run_string(&prog, &"()".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "(1 () ())");
 }
 
@@ -378,12 +393,13 @@ fn test_defmac_symbolq() {
 fn test_defmac_string_to_symbol() {
     let prog = indoc! {"
       (mod ()
+         (include *strict-cl-21*)
          (defmac is-symbol (X) (symbol? X))
          (list (is-symbol X) (is-symbol \"X\") (is-symbol 3))
          )
     "}
     .to_string();
-    let res = run_string(&prog, &"()".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "(1 () ())");
 }
 
@@ -391,12 +407,13 @@ fn test_defmac_string_to_symbol() {
 fn test_defmac_string_to_symbol_converts() {
     let prog = indoc! {"
       (mod (X)
+         (include *strict-cl-21*)
         (defmac let_pi (code) (qq (let (((unquote (string->symbol \"pi\")) 31415)) (unquote code))))
         (let_pi (+ pi X))
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"(5)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(5)".to_string()).unwrap();
     assert_eq!(res.to_string(), "31420");
 }
 
@@ -404,12 +421,13 @@ fn test_defmac_string_to_symbol_converts() {
 fn test_defmac_string_needs_conversion() {
     let prog = indoc! {"
       (mod (X)
+        (include *strict-cl-21*)
         (defmac let_pi (code) (qq (let ((\"pi\" 31415)) (unquote code))))
         (let_pi (+ pi X))
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"(5)".to_string());
+    let res = run_string_strict(&prog, &"(5)".to_string());
     assert!(res.is_err());
 }
 
@@ -417,6 +435,7 @@ fn test_defmac_string_needs_conversion() {
 fn test_defmac_string_substr_0() {
     let prog = indoc! {"
       (mod (X)
+        (include *strict-cl-21*)
         (defmac first-letter-of (Q)
           (let ((first-character (substring (symbol->string Q) 0 1)))
             (qq (c (unquote first-character) (unquote (string->symbol first-character))))
@@ -426,7 +445,7 @@ fn test_defmac_string_substr_0() {
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"(5999)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(5999)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(\"X\" . 5999)");
 }
 
@@ -434,6 +453,7 @@ fn test_defmac_string_substr_0() {
 fn test_defmac_string_substr_bad() {
     let prog = indoc! {"
       (mod (test_variable_name)
+        (include *strict-cl-21*)
         (defmac bind-tail-of-symbol (N Q CODE)
           (let*
             ((stringified (symbol->string Q))
@@ -446,7 +466,7 @@ fn test_defmac_string_substr_bad() {
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"((87 89 91))".to_string());
+    let res = run_string_strict(&prog, &"((87 89 91))".to_string());
     assert!(res.is_err());
 }
 
@@ -454,6 +474,7 @@ fn test_defmac_string_substr_bad() {
 fn test_defmac_string_to_number_0() {
     let prog = indoc! {"
       (mod (X_7)
+        (include *strict-cl-21*)
         (defmac add-n-to (X)
           (let*
             ((stringified (symbol->string X))
@@ -467,7 +488,7 @@ fn test_defmac_string_to_number_0() {
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"(31)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(31)".to_string()).unwrap();
     assert_eq!(res.to_string(), "38");
 }
 
@@ -475,7 +496,8 @@ fn test_defmac_string_to_number_0() {
 fn test_defmac_string_to_number_bad() {
     let prog = indoc! {"
       (mod (X_A)
-        (defmac add-n-to (X)
+       (include *strict-cl-21*)
+       (defmac add-n-to (X)
           (let
             ((stringified (symbol->string X))
              (slen (string-length stringified))
@@ -488,7 +510,7 @@ fn test_defmac_string_to_number_bad() {
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"(31)".to_string());
+    let res = run_string_strict(&prog, &"(31)".to_string());
     assert!(res.is_err());
 }
 
@@ -496,6 +518,7 @@ fn test_defmac_string_to_number_bad() {
 fn test_defmac_number_to_string() {
     let prog = indoc! {"
       (mod (Q)
+        (include *strict-cl-21*)
         (defmac with-my-length (X)
           (let*
             ((stringified (symbol->string X))
@@ -508,7 +531,7 @@ fn test_defmac_number_to_string() {
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"(37)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(37)".to_string()).unwrap();
     assert_eq!(res.to_string(), "136");
 }
 
@@ -542,7 +565,7 @@ fn test_preprocess_expansion_makes_numeric_operators() {
          )
     "}
     .to_string();
-    let res = run_string(&prog, &"()".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "(\"test\")");
 }
 

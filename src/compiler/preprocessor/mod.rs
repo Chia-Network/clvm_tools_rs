@@ -333,9 +333,11 @@ impl Preprocessor {
                 Some(v) => Ok(v.iter().map(|x| Rc::new(x.clone())).collect()),
             })?;
 
+        eprintln!("do body of include (strict {}) {}", self.strict, decode_string(&include.name));
         if self.strict {
             let mut result = Vec::new();
             for p in get_module_iterator(&parsed).into_iter() {
+                eprintln!("module iterator - {p}");
                 let mut new_forms = self.process_pp_form(includes, p.clone())?;
                 result.append(&mut new_forms);
             }
@@ -890,6 +892,7 @@ impl Preprocessor {
             None
         };
 
+        eprintln!("body {body} include type {included:?}");
         if let Some(IncludeType::Basic(i)) = &included {
             self.recurse_dependencies(includes, None, i.clone())?;
             self.process_include(includes, i)
@@ -942,6 +945,7 @@ impl Preprocessor {
         cmod: Rc<SExp>,
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
         let mut result = Vec::new();
+        eprintln!("inject? self.opts.stdenv() {}", self.opts.stdenv());
         let mut tocompile = if self.opts.stdenv() {
             let injected = self.inject_std_macros(cmod);
             Rc::new(injected)
@@ -949,6 +953,7 @@ impl Preprocessor {
             cmod
         };
 
+        eprintln!("tocompile {tocompile}");
         while let SExp::Cons(_, f, r) = tocompile.borrow() {
             let mut lst = self.process_pp_form(includes, f.clone())?;
             result.append(&mut lst);

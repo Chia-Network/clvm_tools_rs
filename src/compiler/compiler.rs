@@ -486,9 +486,11 @@ pub fn compile_file(
     );
 
     if detect_chialisp_module(&pre_forms) && opts.dialect().strict {
+        eprintln!("compile as module");
         return compile_module(&mut context_wrapper.context, opts, &pre_forms);
     }
 
+    eprintln!("compile traditional wrapped form of {}", enlist(srcloc.clone(), &pre_forms));
     compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
 }
 
