@@ -541,7 +541,6 @@ fn compile_module(
         )?;
         stream.write(sexp_as_bin(context.allocator(), converted_func));
         let output_path = create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(&m.name))?;
-        eprintln!("writing output {output_path}");
         fs::write(&output_path, stream.get_value().hex()).map_err(|_| {
             CompileErr(
                 m.func.loc(),
