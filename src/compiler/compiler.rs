@@ -349,9 +349,7 @@ fn compile_module(
                 }
 
                 found_main = true;
-            }
-
-            if found_main {
+            } else if found_main {
                 return Err(CompileErr(
                     loc.clone(),
                     "A chialisp module may only export a main or a set of functions".to_string()
@@ -391,7 +389,22 @@ fn compile_module(
             program.args = args.clone();
             program.exp = expr.clone();
 
-            return compile_from_compileform(context, opts, program);
+            let output = compile_from_compileform(context, opts.clone(), program)?;
+            let converted = convert_to_clvm_rs(
+                context.allocator(),
+                Rc::new(output),
+            )?;
+            let mut stream = Stream::new(None);
+            stream.write(sexp_as_bin(context.allocator(), converted));
+            let mut output_path = PathBuf::from(&opts.filename());
+            output_path.set_extension("hex");
+            fs::write(&output_path, stream.get_value().hex()).map_err(|_| {
+                CompileErr(
+                    loc.clone(),
+                    format!("could not write hex output file for {}", opts.filename())
+                )
+            })?;
+            return Ok(SExp::Nil(loc.clone()));
         }
     }
 
