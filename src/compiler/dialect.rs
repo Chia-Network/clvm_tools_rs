@@ -113,8 +113,6 @@ fn include_dialect(allocator: &Allocator, e: &[NodePtr]) -> Option<AcceptedDiale
 pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> AcceptedDialect {
     let mut result = AcceptedDialect::default();
 
-    eprintln!("detect_modern {}", disassemble(allocator, sexp, None));
-
     if let Some(l) = proper_list(allocator, sexp, true) {
         for elt in l.iter() {
             let detect_modern_result = detect_modern(allocator, *elt);

@@ -66,8 +66,18 @@ lazy_static! {
             (defmac list ARGS (__chia__compile-list ARGS))
 
             (defun-inline / (A B) (f (divmod A B)))
-            )
-            "}
+
+            (defun __chia__sha256tree (t)
+              (a
+                (i
+                  (l t)
+                  (com (sha256 2 (__chia__sha256tree (f t)) (__chia__sha256tree (r t))))
+                  (com (sha256 1 t))
+                  )
+                @
+                )
+              )
+          )"}
         .to_string()
     };
 }
@@ -271,9 +281,7 @@ fn compile_module(
 
     let mut namespace_collection = NamespaceCollection::default();
 
-    eprintln!("separate helpers and exports");
     for p in output_forms.iter() {
-        eprintln!("- {p}");
         if let Some(alias) = recognize_defalias(opts.clone(), p.clone())? {
             match alias {
                 Alias::End(namespace_id) => {
@@ -304,11 +312,13 @@ fn compile_module(
 
             exports.push(export);
         } else if let Some(helper) = compile_helperform(opts.clone(), p.clone())? {
-            other_forms.push(helper);
+            // Macros have been eliminated by this point.
+            if !matches!(helper, HelperForm::Defmacro(_)) {
+                other_forms.push(helper);
+            }
         }
     }
 
-    eprintln!("check for any exports");
     if exports.is_empty() {
         return Err(CompileErr(
             loc.clone(),
@@ -324,10 +334,15 @@ fn compile_module(
         exp: Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone()))),
     };
 
-    if exports.len() == 1 && matches!(exports[0].clone(), Export::MainProgram(args, expr)) {
-        // Single program.
-        eprintln!("basic program {}", program.to_sexp());
-        todo!();
+    if exports.len() == 1 {
+        if let Export::MainProgram(args, expr) = &exports[0] {
+            // Single program.
+            eprintln!("basic program {}", program.to_sexp());
+            program.args = args.clone();
+            program.exp = expr.clone();
+
+            return compile_frontend(context, opts, program);
+        }
     }
 
     // So we can most optimistically know a peer module hash in this
@@ -359,6 +374,9 @@ fn compile_module(
     // env reference.
 
     // XXX write this the simple way for now
+
+    let mut function_list = program.exp.clone();
+
     for fun in exports.iter() {
         let fun_name =
             if let Export::Function(name) = fun {
@@ -379,6 +397,38 @@ fn compile_module(
             let mut new_name = fun_name.clone();
             new_name.extend(b"_hash".to_vec());
 
+            function_list = Rc::new(BodyForm::Call(
+                loc.clone(),
+                vec![
+                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), b"c".to_vec()))),
+                    Rc::new(BodyForm::Quoted(SExp::QuotedString(loc.clone(), b'"', fun_name.clone()))),
+                    Rc::new(BodyForm::Call(
+                        loc.clone(),
+                        vec![
+                            Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), b"c".to_vec()))),
+                            Rc::new(BodyForm::Call(
+                                loc.clone(),
+                                vec![
+                                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), new_name.clone())))
+                                ],
+                                None
+                            )),
+                            Rc::new(BodyForm::Call(
+                                loc.clone(),
+                                vec![
+                                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), b"c".to_vec()))),
+                                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), fun_name.clone()))),
+                                    function_list
+                                ],
+                                None
+                            ))
+                        ],
+                        None
+                    )),
+                ],
+                None
+            ));
+
             program.helpers.push(HelperForm::Defun(false, Box::new(DefunData {
                 loc: dd.loc.clone(),
                 kw: None,
@@ -389,7 +439,7 @@ fn compile_module(
                 body: Rc::new(BodyForm::Call(
                     dd.loc.clone(),
                     vec![
-                        Rc::new(BodyForm::Value(SExp::Atom(dd.loc.clone(), b"sha256tree".to_vec()))),
+                        Rc::new(BodyForm::Value(SExp::Atom(dd.loc.clone(), b"__chia__sha256tree".to_vec()))),
                         Rc::new(BodyForm::Value(SExp::Atom(dd.loc.clone(), fun_name.clone()))),
                     ],
                     None
@@ -404,6 +454,7 @@ fn compile_module(
         }
     }
 
+    program.exp = function_list;
     compile_frontend(context, opts, program)
 }
 

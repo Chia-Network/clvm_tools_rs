@@ -771,7 +771,6 @@ pub fn recognize_defalias(
     form: Rc<SExp>,
 ) -> Result<Option<Alias>, CompileErr> {
     if let Some(lst) = form.proper_list() {
-        eprintln!("recognize defalias {form}");
         if lst.is_empty() {
             return Ok(None);
         }

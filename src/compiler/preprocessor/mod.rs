@@ -139,7 +139,6 @@ impl Iterator for IterateIncludeUnit {
 fn get_module_iterator(parsed: &[Rc<SExp>]) -> IterateIncludeUnit {
     // An empty form is a modern include file with 0 helpers.
     if parsed.is_empty() {
-        eprintln!("module iterator ()");
         return IterateIncludeUnit {
             parsed: vec![],
             item: 0,
@@ -150,7 +149,6 @@ fn get_module_iterator(parsed: &[Rc<SExp>]) -> IterateIncludeUnit {
     if parsed.len() == 1 {
         if let Some(lst) = parsed[0].proper_list() {
             if lst.is_empty() {
-                eprintln!("module operator (())");
                 return IterateIncludeUnit {
                     parsed: vec![],
                     item: 0,
@@ -158,14 +156,12 @@ fn get_module_iterator(parsed: &[Rc<SExp>]) -> IterateIncludeUnit {
             }
 
             if !matches!(lst[0].borrow(), SExp::Cons(_, _, _)) {
-                eprintln!("single non-enclosed form {}", parsed[0]);
                 return IterateIncludeUnit {
                     parsed: parsed.iter().cloned().collect(),
                     item: 0,
                 };
             }
 
-            eprintln!("classic enclosed include {}", parsed[0]);
             return IterateIncludeUnit {
                 parsed: lst.iter().cloned().map(Rc::new).collect(),
                 item: 0,
@@ -174,7 +170,6 @@ fn get_module_iterator(parsed: &[Rc<SExp>]) -> IterateIncludeUnit {
     }
 
     // More than one form: conventional, not enclosed.
-    eprintln!("not enclosed form {}", enlist(parsed[0].loc(), parsed));
     IterateIncludeUnit {
         parsed: parsed.iter().cloned().collect(),
         item: 0,
