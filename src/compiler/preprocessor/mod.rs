@@ -847,6 +847,32 @@ impl Preprocessor {
                     format!("bad include kind in embed-file {body}"),
                 ));
             }
+        } else if let [SExp::Atom(kl, compile_file), SExp::Atom(_, name), fname_atom] = form {
+            if compile_file != b"compile-file" {
+                return Ok(None);
+            }
+
+            let (nl, fname) = if let SExp::Atom(nl, fname) = fname_atom {
+                (nl.clone(), fname.clone())
+            } else if let SExp::QuotedString(nl, _, fname) = fname_atom {
+                (nl.clone(), fname.clone())
+            } else {
+                return Err(CompileErr(
+                    fname_atom.loc(),
+                    "Name must be an atom or string".to_string(),
+                ));
+            };
+
+            return Ok(Some(IncludeType::Processed(
+                IncludeDesc {
+                    kw: kl.clone(),
+                    nl: nl.clone(),
+                    kind: Some(IncludeProcessType::Compiled),
+                    name: fname.clone(),
+                },
+                IncludeProcessType::Compiled,
+                name.clone()
+            )));
         }
 
         Ok(None)
