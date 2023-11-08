@@ -8,9 +8,9 @@ use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
-    list_to_cons, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType, CompileErr,
+    list_to_cons, Alias, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType, CompileErr,
     CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData,
-    HelperForm, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, ModAccum, StructDef,
+    HelperForm, ImportLongName, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, ModAccum, StructDef,
     StructMember, SyntheticType, TypeAnnoKind,
 };
 use crate::compiler::lambda::handle_lambda;
@@ -1269,6 +1269,7 @@ pub fn compile_helperform(
                 new_helpers: helpers,
             }))
         } else {
+            todo!();
             Err(CompileErr(
                 matched.body.loc(),
                 "unknown keyword in helper".to_string(),
@@ -1277,6 +1278,126 @@ pub fn compile_helperform(
     } else {
         Ok(None)
     }
+}
+
+pub fn recognize_defalias(
+    opts: Rc<dyn CompilerOpts>,
+    form: Rc<SExp>,
+) -> Result<Option<Alias>, CompileErr> {
+    if let Some(lst) = form.proper_list() {
+        if lst.is_empty() {
+            return Ok(None);
+        }
+        if let SExp::Atom(_, akw) = &lst[0] {
+            if akw == b"defalias" {
+                if lst.len() < 2 {
+                    return Err(CompileErr(
+                        form.loc(),
+                        "No directive specified in defalias".to_string()
+                    ));
+                }
+
+                if let SExp::Atom(_, directive) = &lst[1] {
+                    if directive == b"shorten" {
+                        if lst.len() < 3 {
+                            return Err(CompileErr(
+                                form.loc(),
+                                "shorten alias needs a namespace to shorten".to_string()
+                            ));
+                        }
+
+                        let namespace_id =
+                            if lst.len() > 3 {
+                                Some(Rc::new(lst[3].clone()))
+                            } else {
+                                None
+                            };
+
+                        if let SExp::Atom(_, namespace) = &lst[2] {
+                            let (relative, long_name) = ImportLongName::parse(namespace);
+                            if relative {
+                                return Err(CompileErr(
+                                    form.loc(),
+                                    "A relative namespace isn't allowed with shorten".to_string()
+                                ));
+                            }
+
+                            return Ok(Some(Alias::Shorten(namespace_id, long_name.clone())));
+                        }
+                    } else if directive == b"end-scope" {
+                        if lst.len() < 3 {
+                            return Err(CompileErr(
+                                form.loc(),
+                                "end-scope needs a scope id".to_string(),
+                            ));
+                        }
+                        return Ok(Some(Alias::End(Rc::new(lst[2].clone()))));
+                    } else if directive == b"rename" {
+                        if lst.len() < 3 {
+                            return Err(CompileErr(
+                                form.loc(),
+                                "rename needs at least a module name".to_string(),
+                            ));
+                        }
+
+                        let (next, scope_id) =
+                            if let SExp::Atom(_, maybe_scope) = &lst[2] {
+                                if maybe_scope == b"scope" && lst.len() > 4 {
+                                    (4, Some(Rc::new(lst[3].clone())))
+                                } else {
+                                    (2, None)
+                                }
+                            } else {
+                                (2, None)
+                            };
+
+                        if lst.len() <= next {
+                            return Err(CompileErr(
+                                form.loc(),
+                                "no module name given to rename".to_string(),
+                            ));
+                        }
+
+                        let module_name =
+                            if let SExp::Atom(_, module_name) = &lst[next] {
+                                let (relative, parsed) = ImportLongName::parse(&module_name);
+                                if relative {
+                                    return Err(CompileErr(
+                                        form.loc(),
+                                        "module name can't be relative".to_string()
+                                    ));
+                                }
+
+                                parsed
+                            } else {
+                                return Err(CompileErr(
+                                    form.loc(),
+                                    "module name must be an atom".to_string()
+                                ));
+                            };
+
+                        let mut renames = Vec::new();
+                        for r in lst.iter().skip(next+1) {
+                            if let SExp::Atom(_, name) = r {
+                                renames.push(name.clone());
+                            } else {
+                                return Err(CompileErr(
+                                    form.loc(),
+                                    "rename list must be atoms".to_string()
+                                ));
+                            }
+                        }
+
+                        return Ok(Some(Alias::Rename(scope_id, module_name, renames)));
+                    } else {
+                        todo!();
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(None)
 }
 
 trait ModCompileForms {

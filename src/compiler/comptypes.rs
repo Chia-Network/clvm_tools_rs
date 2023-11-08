@@ -346,6 +346,140 @@ pub enum HelperForm {
     Defun(bool, DefunData),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+pub struct ImportLongName {
+    components: Vec<Vec<u8>>,
+}
+
+impl ImportLongName {
+    pub fn parse(name: &[u8]) -> (bool, Self) {
+        let (relative, skip_words) =
+            if name.starts_with(b".") {
+                (true, 1)
+            } else {
+                (false, 0)
+            };
+
+        let components = name.split(|ch| *ch == b'.').skip(skip_words).map(|x| x.to_vec()).collect();
+        (relative, ImportLongName { components })
+    }
+
+    pub fn as_u8_vec(&self, filename: bool) -> Vec<u8> {
+        let mut result_vec = vec![];
+        let sep = if filename { b'/' } else { b'.' };
+        for (i, c) in self.components.iter().enumerate() {
+            if i != 0 {
+                result_vec.push(sep);
+            }
+            result_vec.extend(c.clone());
+        }
+        if filename {
+            result_vec.extend(b".clinc".to_vec());
+        }
+        result_vec
+    }
+
+    pub fn combine(&self, with: &ImportLongName) -> Self {
+        let mut result = self.components.clone();
+        result.extend(with.components.clone());
+        ImportLongName { components: result }
+    }
+
+    /// True if parent namespace contains self.
+    pub fn is_contained_by(&self, parent: &ImportLongName) -> bool {
+        if self.components.len() < parent.components.len() {
+            return false;
+        }
+
+        for (i, p) in parent.components.iter().enumerate() {
+            if self.components[i] != *p {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+/// Specification of how to name imported items from the target namespace.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub enum ModuleImportSpec {
+    /// As import qualified [as ...] in haskell.
+    Qualified(Option<ImportLongName>),
+    /// The given names are in the toplevel namespace after the import.
+    Exposing(Vec<Vec<u8>>),
+    /// All but these names are in the toplevel namespace after the import.
+    Hiding(Vec<Vec<u8>>),
+}
+
+impl ModuleImportSpec {
+    pub fn parse(
+        forms: &[SExp],
+        mut skip: usize
+    ) -> Result<Self, CompileErr> {
+        if skip >= forms.len() {
+            return Ok(ModuleImportSpec::Hiding(vec![]));
+        }
+
+        // Figure out whether it's "import qualified" or
+        // "import qualified foo as bar"
+        let first_atom =
+            if let SExp::Atom(first_loc, first) = &forms[skip] {
+                first.clone()
+            } else {
+                return Err(CompileErr(
+                    forms[skip].loc(),
+                    "import must be followed by a name or 'qualified'".to_string()
+                ));
+            };
+
+        if first_atom == b"qualified" {
+            if forms.len() == 5 {
+                let second_atom =
+                    if let SExp::Atom(second_loc, second) = &forms[2] {
+                        second.clone()
+                    } else {
+                        return Err(CompileErr(
+                            forms[2].loc(),
+                            "import qualified must be followed by a name".to_string()
+                        ));
+                    };
+
+                let (_, p) = ImportLongName::parse(&second_atom);
+                return Ok(ModuleImportSpec::Qualified(Some(p)));
+            } else if forms.len() == 3 {
+                return Ok(ModuleImportSpec::Qualified(None));
+            }
+        }
+
+        skip += 1;
+
+        if let SExp::Atom(kw_loc, kw) = &forms[skip] {
+            let mut words = vec![];
+            for atom in forms.iter().skip(skip+1) {
+                if let SExp::Atom(name_loc, name) = atom {
+                    words.push(name.clone());
+                } else {
+                    return Err(CompileErr(
+                        atom.loc(),
+                        "Exposed names must be atoms".to_string()
+                    ));
+                }
+            }
+            if kw == b"exposing" {
+                return Ok(ModuleImportSpec::Exposing(words));
+            } else if kw == b"hiding" {
+                return Ok(ModuleImportSpec::Hiding(words));
+            }
+        }
+
+        Err(CompileErr(
+            forms[skip].loc(),
+            format!("Bad keyword {} in import", forms[skip]),
+        ))
+    }
+}
+
 /// To what purpose is the file included.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum IncludeProcessType {
@@ -357,6 +491,8 @@ pub enum IncludeProcessType {
     SExpression,
     /// Compile a full program and return its representation.
     Compiled,
+    /// Import as a module.
+    Module(ModuleImportSpec),
 }
 
 /// A description of an include form.  Here, records the locations of the various
@@ -370,16 +506,26 @@ pub struct IncludeDesc {
     pub nl: Srcloc,
     /// The relative path to a target or a special directive name.
     pub name: Vec<u8>,
+    /// Kind of inclusion.  Determines whether dependencies are recursed and
+    /// what operation is performed on the retrieved clvm form.
     pub kind: Option<IncludeProcessType>,
 }
 
 impl IncludeDesc {
     pub fn to_sexp(&self) -> Rc<SExp> {
-        Rc::new(SExp::Cons(
-            self.kw.clone(),
-            Rc::new(SExp::Atom(self.kw.clone(), b"include".to_vec())),
-            Rc::new(SExp::QuotedString(self.nl.clone(), b'"', self.name.clone())),
-        ))
+        if let Some(IncludeProcessType::Module(spec)) = &self.kind {
+            Rc::new(SExp::Cons(
+                self.kw.clone(),
+                Rc::new(SExp::Atom(self.kw.clone(), b"module".to_vec())),
+                Rc::new(SExp::QuotedString(self.nl.clone(), b'"', self.name.clone())),
+            ))
+        } else {
+            Rc::new(SExp::Cons(
+                self.kw.clone(),
+                Rc::new(SExp::Atom(self.kw.clone(), b"include".to_vec())),
+                Rc::new(SExp::QuotedString(self.nl.clone(), b'"', self.name.clone())),
+            ))
+        }
     }
 }
 
@@ -514,6 +660,42 @@ pub trait CompilerOpts {
         sexp: Rc<SExp>,
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr>;
+}
+
+#[derive(Debug, Clone)]
+pub enum Alias {
+    Rename(Option<Rc<SExp>>, ImportLongName, Vec<Vec<u8>>),
+    Shorten(Option<Rc<SExp>>, ImportLongName),
+    End(Rc<SExp>),
+}
+
+impl Alias {
+    pub fn scope_id(&self) -> Option<Rc<SExp>> {
+        match self {
+            Alias::Rename(scope_id, _, _) => scope_id.clone(),
+            Alias::Shorten(scope_id, _) => scope_id.clone(),
+            Alias::End(scope_id) => Some(scope_id.clone()),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct NamespaceCollection {
+    renames: Vec<Alias>,
+}
+
+impl NamespaceCollection {
+    pub fn add(&mut self, alias: Alias) {
+        self.renames.push(alias);
+    }
+    pub fn remove(&mut self, scope_id: Rc<SExp>) {
+        self.renames =
+            self.renames
+            .iter()
+            .filter(|a| a.scope_id() != Some(scope_id.clone()))
+            .cloned()
+            .collect();
+    }
 }
 
 /// Frontend uses this to accumulate frontend forms, used internally.

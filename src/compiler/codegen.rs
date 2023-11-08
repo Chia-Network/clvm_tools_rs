@@ -339,10 +339,12 @@ pub fn get_callable(
                 }
                 (_, _, _, _, true, _) => Ok(Callable::RunCompiler),
                 (_, _, _, _, _, true) => Ok(Callable::EnvPath),
-                _ => Err(CompileErr(
-                    l.clone(),
-                    format!("no such callable '{}'", decode_string(name)),
-                )),
+                _ => {
+                    Err(CompileErr(
+                        l.clone(),
+                        format!("no such callable '{}'", decode_string(name)),
+                    ))
+                }
             }
         }
         SExp::Integer(_, v) => Ok(Callable::CallPrim(l.clone(), SExp::Integer(l, v.clone()))),
@@ -1545,7 +1547,6 @@ fn final_codegen(
     compiler: &PrimaryCodegen,
 ) -> Result<PrimaryCodegen, CompileErr> {
     let opt_final_expr = context.pre_final_codegen_optimize(opts.clone(), compiler)?;
-
     let optimizer_opts = opts.clone();
     generate_expr_code(context, opts, compiler, opt_final_expr).and_then(|code| {
         let mut final_comp = compiler.clone();
