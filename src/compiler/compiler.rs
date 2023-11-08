@@ -12,13 +12,13 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::sha256tree;
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
-use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, PrimaryCodegen};
+use crate::compiler::comptypes::{Alias, BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, NamespaceCollection, PrimaryCodegen, SyntheticType};
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
-use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend};
+use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend, recognize_defalias};
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::preprocessor::preprocess;
 use crate::compiler::prims;
-use crate::compiler::sexp::{enlist, parse_sexp, SExp};
+use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::Number;
@@ -116,6 +116,16 @@ fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
     })
 }
 
+pub fn desugar_frontend(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    p0: CompileForm,
+) -> Result<CompileForm, CompileErr> {
+    let p1 = context.frontend_optimization(opts.clone(), p0)?;
+
+    do_desugar(&p1)
+}
+
 pub fn desugar_pre_forms(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
@@ -123,9 +133,33 @@ pub fn desugar_pre_forms(
 ) -> Result<CompileForm, CompileErr> {
     let p0 = frontend(opts.clone(), pre_forms)?;
 
-    let p1 = context.frontend_optimization(opts.clone(), p0)?;
+    desugar_frontend(context, opts, p0)
+}
 
-    do_desugar(&p1)
+pub fn finish_compilation(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    p2: CompileForm,
+) -> Result<SExp, CompileErr> {
+    let p3 = context.post_desugar_optimization(opts.clone(), p2)?;
+
+    // generate code from AST, optionally with optimization
+    let generated = codegen(context, opts.clone(), &p3)?;
+
+    let g2 = context.post_codegen_output_optimize(opts, generated)?;
+
+    Ok(g2)
+}
+
+pub fn compile_frontend(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    p0: CompileForm,
+) -> Result<SExp, CompileErr> {
+    // Resolve includes, convert program source to lexemes
+    let p2 = desugar_frontend(context, opts.clone(), p0)?;
+
+    finish_compilation(context, opts, p2)
 }
 
 pub fn compile_pre_forms(
@@ -136,14 +170,7 @@ pub fn compile_pre_forms(
     // Resolve includes, convert program source to lexemes
     let p2 = desugar_pre_forms(context, opts.clone(), pre_forms)?;
 
-    let p3 = context.post_desugar_optimization(opts.clone(), p2)?;
-
-    // generate code from AST, optionally with optimization
-    let generated = codegen(context, opts.clone(), &p3)?;
-
-    let g2 = context.post_codegen_output_optimize(opts, generated)?;
-
-    Ok(g2)
+    finish_compilation(context, opts, p2)
 }
 
 #[derive(Debug, Clone)]
@@ -242,10 +269,21 @@ fn compile_module(
         preprocess_source
     )?;
 
+    let mut namespace_collection = NamespaceCollection::default();
+
     eprintln!("separate helpers and exports");
     for p in output_forms.iter() {
         eprintln!("- {p}");
-        if let Some(export) = match_export_form(opts.clone(), p.clone())? {
+        if let Some(alias) = recognize_defalias(opts.clone(), p.clone())? {
+            match alias {
+                Alias::End(namespace_id) => {
+                    namespace_collection.remove(namespace_id.clone());
+                },
+                _ => {
+                    namespace_collection.add(alias.clone());
+                }
+            }
+        } else if let Some(export) = match_export_form(opts.clone(), p.clone())? {
             if matches!(export, Export::MainProgram(_, _)) {
                 if found_main || !exports.is_empty() {
                     return Err(CompileErr(
@@ -257,14 +295,15 @@ fn compile_module(
                 found_main = true;
             }
 
-            exports.push(export);
-        } else if let Some(helper) = compile_helperform(opts.clone(), p.clone())? {
             if found_main {
                 return Err(CompileErr(
                     loc.clone(),
                     "A chialisp module may only export a main or a set of functions".to_string()
                 ));
             }
+
+            exports.push(export);
+        } else if let Some(helper) = compile_helperform(opts.clone(), p.clone())? {
             other_forms.push(helper);
         }
     }
@@ -281,13 +320,13 @@ fn compile_module(
         loc: loc.clone(),
         include_forms: includes.clone(),
         args: Rc::new(SExp::Nil(loc.clone())),
-        helpers: other_forms,
+        helpers: other_forms.clone(),
         exp: Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone()))),
     };
-    eprintln!("basic program {}", program.to_sexp());
 
     if exports.len() == 1 && matches!(exports[0].clone(), Export::MainProgram(args, expr)) {
         // Single program.
+        eprintln!("basic program {}", program.to_sexp());
         todo!();
     }
 
@@ -318,7 +357,54 @@ fn compile_module(
     // body with a tree hash computation that short circuits each left or
     // right branch, computing its own hash via sha256tree on its own
     // env reference.
-    todo!();
+
+    // XXX write this the simple way for now
+    for fun in exports.iter() {
+        let fun_name =
+            if let Export::Function(name) = fun {
+                name.clone()
+            } else {
+                return Err(CompileErr(loc.clone(), "got program, wanted fun".to_string()));
+            };
+
+        let mut found_helper: Vec<Option<HelperForm>> = other_forms.iter().filter(|f| {
+            f.name() == &fun_name && matches!(f, HelperForm::Defun(_, _))
+        }).cloned().map(Some).collect();
+
+        if found_helper.is_empty() {
+            found_helper.push(None);
+        }
+
+        if let Some(HelperForm::Defun(_, dd)) = &found_helper[0] {
+            let mut new_name = fun_name.clone();
+            new_name.extend(b"_hash".to_vec());
+
+            program.helpers.push(HelperForm::Defun(false, Box::new(DefunData {
+                loc: dd.loc.clone(),
+                kw: None,
+                nl: dd.nl.clone(),
+                name: new_name,
+                args: Rc::new(SExp::Nil(dd.loc.clone())),
+                orig_args: Rc::new(SExp::Nil(dd.loc.clone())),
+                body: Rc::new(BodyForm::Call(
+                    dd.loc.clone(),
+                    vec![
+                        Rc::new(BodyForm::Value(SExp::Atom(dd.loc.clone(), b"sha256tree".to_vec()))),
+                        Rc::new(BodyForm::Value(SExp::Atom(dd.loc.clone(), fun_name.clone()))),
+                    ],
+                    None
+                )),
+                synthetic: Some(SyntheticType::WantNonInline),
+            })));
+        } else {
+            return Err(CompileErr(
+                loc.clone(),
+                format!("exported function {} not found", decode_string(&fun_name))
+            ));
+        }
+    }
+
+    compile_frontend(context, opts, program)
 }
 
 pub fn compile_file(

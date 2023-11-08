@@ -314,15 +314,18 @@ impl ImportLongName {
         (relative, ImportLongName { components })
     }
 
-    pub fn as_u8_vec(&self) -> Vec<u8> {
+    pub fn as_u8_vec(&self, filename: bool) -> Vec<u8> {
         let mut result_vec = vec![];
+        let sep = if filename { b'/' } else { b'.' };
         for (i, c) in self.components.iter().enumerate() {
             if i != 0 {
-                result_vec.push(b'/');
+                result_vec.push(sep);
             }
             result_vec.extend(c.clone());
         }
-        result_vec.extend(b".clinc".to_vec());
+        if filename {
+            result_vec.extend(b".clinc".to_vec());
+        }
         result_vec
     }
 
@@ -330,6 +333,21 @@ impl ImportLongName {
         let mut result = self.components.clone();
         result.extend(with.components.clone());
         ImportLongName { components: result }
+    }
+
+    /// True if parent namespace contains self.
+    pub fn is_contained_by(&self, parent: &ImportLongName) -> bool {
+        if self.components.len() < parent.components.len() {
+            return false;
+        }
+
+        for (i, p) in parent.components.iter().enumerate() {
+            if self.components[i] != *p {
+                return false;
+            }
+        }
+
+        true
     }
 }
 
@@ -347,11 +365,44 @@ pub enum ModuleImportSpec {
 impl ModuleImportSpec {
     pub fn parse(
         forms: &[SExp],
-        skip: usize
+        mut skip: usize
     ) -> Result<Self, CompileErr> {
         if skip >= forms.len() {
             return Ok(ModuleImportSpec::Hiding(vec![]));
         }
+
+        // Figure out whether it's "import qualified" or
+        // "import qualified foo as bar"
+        let first_atom =
+            if let SExp::Atom(first_loc, first) = &forms[skip] {
+                first.clone()
+            } else {
+                return Err(CompileErr(
+                    forms[skip].loc(),
+                    "import must be followed by a name or 'qualified'".to_string()
+                ));
+            };
+
+        if first_atom == b"qualified" {
+            if forms.len() == 5 {
+                let second_atom =
+                    if let SExp::Atom(second_loc, second) = &forms[2] {
+                        second.clone()
+                    } else {
+                        return Err(CompileErr(
+                            forms[2].loc(),
+                            "import qualified must be followed by a name".to_string()
+                        ));
+                    };
+
+                let (_, p) = ImportLongName::parse(&second_atom);
+                return Ok(ModuleImportSpec::Qualified(Some(p)));
+            } else if forms.len() == 3 {
+                return Ok(ModuleImportSpec::Qualified(None));
+            }
+        }
+
+        skip += 1;
 
         if let SExp::Atom(kw_loc, kw) = &forms[skip] {
             let mut words = vec![];
@@ -555,8 +606,44 @@ pub trait CompilerOpts {
     ) -> Result<SExp, CompileErr>;
 }
 
+#[derive(Debug, Clone)]
+pub enum Alias {
+    Rename(Option<Rc<SExp>>, ImportLongName, Vec<Vec<u8>>),
+    Shorten(Option<Rc<SExp>>, ImportLongName),
+    End(Rc<SExp>),
+}
+
+impl Alias {
+    pub fn scope_id(&self) -> Option<Rc<SExp>> {
+        match self {
+            Alias::Rename(scope_id, _, _) => scope_id.clone(),
+            Alias::Shorten(scope_id, _) => scope_id.clone(),
+            Alias::End(scope_id) => Some(scope_id.clone()),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct NamespaceCollection {
+    renames: Vec<Alias>,
+}
+
+impl NamespaceCollection {
+    pub fn add(&mut self, alias: Alias) {
+        self.renames.push(alias);
+    }
+    pub fn remove(&mut self, scope_id: Rc<SExp>) {
+        self.renames =
+            self.renames
+            .iter()
+            .filter(|a| a.scope_id() != Some(scope_id.clone()))
+            .cloned()
+            .collect();
+    }
+}
+
 /// Frontend uses this to accumulate frontend forms, used internally.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ModAccum {
     pub loc: Srcloc,
     pub includes: Vec<IncludeDesc>,
@@ -594,10 +681,8 @@ pub struct ArgsAndTail {
 impl ModAccum {
     pub fn set_final(&self, c: &CompileForm) -> Self {
         ModAccum {
-            loc: self.loc.clone(),
-            includes: self.includes.clone(),
-            helpers: self.helpers.clone(),
             exp_form: Some(c.clone()),
+            .. self.clone()
         }
     }
 
@@ -605,10 +690,8 @@ impl ModAccum {
         let mut new_includes = self.includes.clone();
         new_includes.push(i);
         ModAccum {
-            loc: self.loc.clone(),
             includes: new_includes,
-            helpers: self.helpers.clone(),
-            exp_form: self.exp_form.clone(),
+            .. self.clone()
         }
     }
 
@@ -617,10 +700,8 @@ impl ModAccum {
         hs.push(h);
 
         ModAccum {
-            loc: self.loc.clone(),
-            includes: self.includes.clone(),
             helpers: hs,
-            exp_form: self.exp_form.clone(),
+            .. self.clone()
         }
     }
 

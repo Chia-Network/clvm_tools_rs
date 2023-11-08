@@ -1,5 +1,7 @@
 mod macros;
 
+use num_bigint::ToBigInt;
+
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -42,16 +44,22 @@ enum IncludeType {
     Processed(IncludeDesc, IncludeProcessType, Vec<u8>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct ImportedModule {
-    helpers: HashMap<Vec<u8>, Rc<HelperForm>>,
+    name: ImportLongName,
+}
+
+#[derive(Debug)]
+struct ModuleAndImportSpec {
+    name: ImportLongName,
+    spec: ModuleImportSpec,
 }
 
 #[derive(Debug)]
 struct ImportNameMap {
-    from_module: Option<ImportLongName>,
-    imported_namespaces: Vec<ImportLongName>,
-    short_imported_names: HashMap<Vec<u8>, Vec<u8>>
+    scope_id: usize,
+    name: Option<ImportLongName>,
+    import_specs: Vec<ModuleAndImportSpec>,
 }
 
 struct Preprocessor {
@@ -193,6 +201,72 @@ fn import_name_to_module_name(
     Ok(parsed)
 }
 
+fn make_defalias_form(
+    loc: Srcloc,
+    scope_id: usize,
+    module_name: &ImportLongName,
+    spec: &ModuleImportSpec,
+) -> Rc<SExp> {
+    let mut form = vec![
+        SExp::Atom(loc.clone(), b"defalias".to_vec()),
+        SExp::Atom(loc.clone(), b"rename".to_vec()),
+        SExp::Atom(loc.clone(), b"scope".to_vec()),
+        SExp::Integer(loc.clone(), scope_id.to_bigint().unwrap()),
+        SExp::Atom(loc.clone(), module_name.as_u8_vec(false)),
+    ];
+
+    match spec {
+        ModuleImportSpec::Qualified(Some(qname)) => {
+            todo!();
+        }
+        ModuleImportSpec::Qualified(None) => {
+            todo!();
+        }
+        ModuleImportSpec::Exposing(names) => {
+            for n in names.iter() {
+                form.push(SExp::Atom(loc.clone(), n.clone()));
+            }
+        }
+        ModuleImportSpec::Hiding(names) => {
+            todo!();
+        }
+    }
+
+    let rc_form_vec: Vec<Rc<SExp>> = form.into_iter().map(Rc::new).collect();
+    Rc::new(enlist(loc, &rc_form_vec))
+}
+
+fn make_scope_head(
+    loc: Srcloc,
+    scope_id: usize,
+    module_name: &ImportLongName,
+) -> Rc<SExp> {
+    let form = vec![
+        SExp::Atom(loc.clone(), b"defalias".to_vec()),
+        SExp::Atom(loc.clone(), b"shorten".to_vec()),
+        SExp::Atom(loc.clone(), module_name.as_u8_vec(false)),
+        SExp::Integer(loc.clone(), scope_id.to_bigint().unwrap())
+    ];
+
+    let rc_form_vec: Vec<Rc<SExp>> = form.into_iter().map(Rc::new).collect();
+    Rc::new(enlist(loc, &rc_form_vec))
+}
+
+fn make_scope_tail(
+    loc: Srcloc,
+    scope_id: usize,
+    module_name: &ImportLongName,
+) -> Rc<SExp> {
+    let form = vec![
+        SExp::Atom(loc.clone(), b"defalias".to_vec()),
+        SExp::Atom(loc.clone(), b"end-scope".to_vec()),
+        SExp::Integer(loc.clone(), scope_id.to_bigint().unwrap())
+    ];
+
+    let rc_form_vec: Vec<Rc<SExp>> = form.into_iter().map(Rc::new).collect();
+    Rc::new(enlist(loc, &rc_form_vec))
+}
+
 impl Preprocessor {
     pub fn new(opts: Rc<dyn CompilerOpts>) -> Self {
         let runner = Rc::new(DefaultProgramRunner::new());
@@ -211,6 +285,17 @@ impl Preprocessor {
         }
     }
 
+    /// Get the current module name.
+    pub fn current_module_name(&self) -> Option<ImportLongName> {
+        if self.namespace_stack.is_empty() {
+            None
+        } else if let Some(name) = &self.namespace_stack[self.namespace_stack.len()-1].name {
+            Some(name.clone())
+        } else {
+            None
+        }
+    }
+
     /// Compute the expected filename from a module name.  It must be absolute
     /// if we're in the root file of a program, otherwise it can be relative.
     /// The namespace_stack determines that.
@@ -219,15 +304,8 @@ impl Preprocessor {
         loc: Srcloc,
         name: &[u8]
     ) -> Result<ImportLongName, CompileErr> {
-        let reference_name =
-            if self.namespace_stack.is_empty() {
-                None
-            } else if let Some(name) = &self.namespace_stack[self.namespace_stack.len()-1].from_module {
-                Some(name)
-            } else {
-                None
-            };
-        import_name_to_module_name(loc, reference_name, name)
+        let reference_name = self.current_module_name();
+        import_name_to_module_name(loc, reference_name.as_ref(), name)
     }
 
     /// Given a specification of an include file, load up the forms inside it and
@@ -273,14 +351,8 @@ impl Preprocessor {
         &mut self,
         includes: &mut Vec<IncludeDesc>,
         import_name: &ImportLongName
-    ) -> Result<Vec<Vec<u8>>, CompileErr> {
-        // Process this module.
-
-        // Get a unique scope name.
-        let this_scope = self.scope_id;
-        self.scope_id += 1;
-
-        let filename = decode_string(&import_name.as_u8_vec());
+    ) -> Result<Vec<Rc<SExp>>, CompileErr> {
+        let filename = decode_string(&import_name.as_u8_vec(true));
         let (full_name, content) = self
             .opts
             .read_new_file(self.opts.filename(), filename)?;
@@ -288,12 +360,49 @@ impl Preprocessor {
         let parsed = parse_sexp(Srcloc::start(&full_name), content.iter().copied())
             .map_err(|e| CompileErr(e.0, e.1))?;
 
-        let mut out_forms: Vec<HelperForm> = vec![];
+        let import_name_u8 = import_name.as_u8_vec(false);
+        let mut out_forms = vec![];
+
+        self.scope_id += 1;
+
+        self.namespace_stack.push(ImportNameMap {
+            scope_id: self.scope_id,
+            name: Some(import_name.clone()),
+            import_specs: vec![],
+        });
+
         for p in parsed.iter() {
-            self.process_pp_form(includes, p.clone())?;
+            for form in self.process_pp_form(includes, p.clone())? {
+                out_forms.push(form.clone());
+            }
         }
 
-        todo!();
+        self.namespace_stack.pop();
+
+        Ok(out_forms)
+    }
+
+    /// Do common tasks necessary to fix the current namespace for the module
+    /// import.
+    fn fixup_for_module_import(
+        &mut self,
+        loc: Srcloc,
+        spec: &ModuleImportSpec,
+        module: &ImportedModule,
+    ) -> Result<Vec<Rc<SExp>>, CompileErr> {
+        let mut short_imported_names: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
+        if !self.namespace_stack.is_empty() {
+            let len = self.namespace_stack.len();
+            let inames: &mut ImportNameMap = &mut self.namespace_stack[len - 1];
+            inames.import_specs.push(ModuleAndImportSpec {
+                name: module.name.clone(),
+                spec: spec.clone(),
+            });
+        }
+
+        // Make defalias form.
+        let scope_id = self.namespace_stack[self.namespace_stack.len()-1].scope_id;
+        Ok(vec![make_defalias_form(loc, scope_id, &module.name, spec)])
     }
 
     fn import_module(
@@ -307,11 +416,28 @@ impl Preprocessor {
         let full_import_name = self.import_name_to_module_name(loc.clone(), import_name)?;
         if let Some(m) = self.imported_modules.get(&full_import_name) {
             // We've processed this already, generate namespace directives.
-            todo!();
+            let m_copy = m.clone();
+            return self.fixup_for_module_import(loc, spec, &m_copy);
         }
-        let helper_names = self.import_new_module(includes, &full_import_name);
 
-        todo!();
+        // Process this module.
+        let mut helper_forms: Vec<Rc<SExp>> = Vec::new();
+        let scope_id = self.namespace_stack[self.namespace_stack.len()-1].scope_id;
+
+        helper_forms.push(make_scope_head(loc.clone(), scope_id, &full_import_name));
+        helper_forms.extend(self.import_new_module(includes, &full_import_name)?);
+        helper_forms.push(make_scope_tail(loc.clone(), scope_id, &full_import_name));
+
+        // Generate and install an ImportedModule for self.imported_modules.
+        let imported_module = ImportedModule {
+            name: full_import_name.clone(),
+        };
+
+        self.imported_modules.insert(full_import_name.clone(), imported_module.clone());
+
+        let mut finish_forms: Vec<Rc<SExp>> = self.fixup_for_module_import(loc, spec, &imported_module)?;
+        helper_forms.extend(finish_forms);
+        Ok(helper_forms)
     }
 
     fn process_embed(
@@ -371,7 +497,7 @@ impl Preprocessor {
         // Process an import
         let name_string =
             if let Some(IncludeProcessType::Module(_)) = kind {
-                decode_string(&self.import_name_to_module_name(desc.nl.clone(), &desc.name)?.as_u8_vec())
+                decode_string(&self.import_name_to_module_name(desc.nl.clone(), &desc.name)?.as_u8_vec(true))
             } else {
                 decode_string(&desc.name)
             };
@@ -540,6 +666,7 @@ impl Preprocessor {
                 || kw == b"defun-inline"
                 || kw == b"defconst"
                 || kw == b"defconstant"
+                || kw == b"defalias"
             {
                 if is_defmac {
                     let target_defun = Rc::new(SExp::Cons(
@@ -591,7 +718,7 @@ impl Preprocessor {
             ));
         };
 
-        let spec = ModuleImportSpec::parse(form, 2)?;
+        let spec = ModuleImportSpec::parse(form, 1)?;
         let mod_kind = IncludeProcessType::Module(spec);
 
         Ok(Some(IncludeType::Processed(
@@ -746,6 +873,13 @@ impl Preprocessor {
             self.recurse_dependencies(includes, None, i.clone())?;
             self.process_include(includes, i)
         } else if let Some(IncludeType::Processed(f, IncludeProcessType::Module(spec), name)) = &included {
+            if self.namespace_stack.is_empty() {
+                self.namespace_stack.push(ImportNameMap {
+                    scope_id: 0,
+                    name: None,
+                    import_specs: Vec::new(),
+                });
+            }
             self.import_module(body.loc(), includes, spec, name)
         } else if let Some(IncludeType::Processed(f, kind, name)) = &included {
             self.recurse_dependencies(includes, Some(kind.clone()), f.clone())?;
