@@ -654,7 +654,11 @@ impl Preprocessor {
                         .map(nilize)
                         .map_err(CompileErr::from)?;
 
-                        return Ok(Some(res));
+                        if let Some(final_result) = self.expand_macros(res.clone(), true)? {
+                            return Ok(Some(final_result));
+                        } else {
+                            return Ok(Some(res));
+                        }
                     }
                 }
             }
