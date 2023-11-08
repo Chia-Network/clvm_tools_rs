@@ -296,6 +296,89 @@ pub enum HelperForm {
     Defun(bool, Box<DefunData>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+pub struct ImportLongName {
+    components: Vec<Vec<u8>>,
+}
+
+impl ImportLongName {
+    pub fn parse(name: &[u8]) -> (bool, Self) {
+        let (relative, skip_words) =
+            if name.starts_with(b".") {
+                (true, 1)
+            } else {
+                (false, 0)
+            };
+
+        let components = name.split(|ch| *ch == b'.').skip(skip_words).map(|x| x.to_vec()).collect();
+        (relative, ImportLongName { components })
+    }
+
+    pub fn as_u8_vec(&self) -> Vec<u8> {
+        let mut result_vec = vec![];
+        for (i, c) in self.components.iter().enumerate() {
+            if i != 0 {
+                result_vec.push(b'/');
+            }
+            result_vec.extend(c.clone());
+        }
+        result_vec.extend(b".clinc".to_vec());
+        result_vec
+    }
+
+    pub fn combine(&self, with: &ImportLongName) -> Self {
+        let mut result = self.components.clone();
+        result.extend(with.components.clone());
+        ImportLongName { components: result }
+    }
+}
+
+/// Specification of how to name imported items from the target namespace.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub enum ModuleImportSpec {
+    /// As import qualified [as ...] in haskell.
+    Qualified(Option<ImportLongName>),
+    /// The given names are in the toplevel namespace after the import.
+    Exposing(Vec<Vec<u8>>),
+    /// All but these names are in the toplevel namespace after the import.
+    Hiding(Vec<Vec<u8>>),
+}
+
+impl ModuleImportSpec {
+    pub fn parse(
+        forms: &[SExp],
+        skip: usize
+    ) -> Result<Self, CompileErr> {
+        if skip >= forms.len() {
+            return Ok(ModuleImportSpec::Hiding(vec![]));
+        }
+
+        if let SExp::Atom(kw_loc, kw) = &forms[skip] {
+            let mut words = vec![];
+            for atom in forms.iter().skip(skip+1) {
+                if let SExp::Atom(name_loc, name) = atom {
+                    words.push(name.clone());
+                } else {
+                    return Err(CompileErr(
+                        atom.loc(),
+                        "Exposed names must be atoms".to_string()
+                    ));
+                }
+            }
+            if kw == b"exposing" {
+                return Ok(ModuleImportSpec::Exposing(words));
+            } else if kw == b"hiding" {
+                return Ok(ModuleImportSpec::Hiding(words));
+            }
+        }
+
+        Err(CompileErr(
+            forms[skip].loc(),
+            format!("Bad keyword {} in import", forms[skip]),
+        ))
+    }
+}
+
 /// To what purpose is the file included.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum IncludeProcessType {
@@ -306,7 +389,7 @@ pub enum IncludeProcessType {
     /// Read clvm in s-expression form as a clvm value.
     SExpression,
     /// Import as module.
-    Module,
+    Module(ModuleImportSpec),
 }
 
 /// A description of an include form.  Here, records the locations of the various
@@ -327,7 +410,7 @@ pub struct IncludeDesc {
 
 impl IncludeDesc {
     pub fn to_sexp(&self) -> Rc<SExp> {
-        if matches!(self.kind, Some(IncludeProcessType::Module)) {
+        if let Some(IncludeProcessType::Module(spec)) = &self.kind {
             Rc::new(SExp::Cons(
                 self.kw.clone(),
                 Rc::new(SExp::Atom(self.kw.clone(), b"module".to_vec())),

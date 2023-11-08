@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use clvmr::allocator::{Allocator, NodePtr, SExp};
 
 use crate::classic::clvm::sexp::proper_list;
+use crate::classic::clvm_tools::binutils::disassemble;
 
 use crate::compiler::sexp::decode_string;
 
@@ -111,6 +112,8 @@ fn include_dialect(allocator: &Allocator, e: &[NodePtr]) -> Option<AcceptedDiale
 // being able to include more information in the dialect result.
 pub fn detect_modern(allocator: &mut Allocator, sexp: NodePtr) -> AcceptedDialect {
     let mut result = AcceptedDialect::default();
+
+    eprintln!("detect_modern {}", disassemble(allocator, sexp, None));
 
     if let Some(l) = proper_list(allocator, sexp, true) {
         for elt in l.iter() {

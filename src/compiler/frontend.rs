@@ -835,46 +835,45 @@ fn frontend_start(
     pre_forms: &[Rc<SExp>],
 ) -> Result<ModAccum, CompileErr> {
     if pre_forms.is_empty() {
-        Err(CompileErr(
+        return Err(CompileErr(
             Srcloc::start(&opts.filename()),
             "empty source file not allowed".to_string(),
-        ))
+        ));
+    }
+
+    if pre_forms.len() > 1 {
+        return Err(CompileErr(
+            pre_forms[0].loc(),
+            "one toplevel mod form allowed".to_string(),
+        ));
+    }
+
+    let l = pre_forms[0].loc();
+    if let Some(x) = pre_forms[0].proper_list() {
+        if x.is_empty() {
+            return frontend_step_finish(opts.clone(), includes, pre_forms);
+        }
+
+        if let SExp::Atom(_, mod_atom) = &x[0] {
+            if *mod_atom == b"mod" {
+                let args = Rc::new(x[1].clone());
+                let body_vec: Vec<Rc<SExp>> =
+                    x.iter().skip(2).map(|s| Rc::new(s.clone())).collect();
+                let body = Rc::new(enlist(pre_forms[0].loc(), &body_vec));
+
+                let ls = preprocess(opts.clone(), includes, body)?;
+                return compile_mod_(
+                    &ModAccum::new(l.clone()),
+                    opts.clone(),
+                    args,
+                    Rc::new(list_to_cons(l, &ls)),
+                );
+            }
+        }
+
+        frontend_step_finish(opts.clone(), includes, pre_forms)
     } else {
-        let l = pre_forms[0].loc();
-        pre_forms[0]
-            .proper_list()
-            .map(|x| {
-                if x.is_empty() {
-                    return frontend_step_finish(opts.clone(), includes, pre_forms);
-                }
-
-                if let SExp::Atom(_, mod_atom) = &x[0] {
-                    if pre_forms.len() > 1 {
-                        return Err(CompileErr(
-                            pre_forms[0].loc(),
-                            "one toplevel mod form allowed".to_string(),
-                        ));
-                    }
-
-                    if *mod_atom == b"mod" {
-                        let args = Rc::new(x[1].clone());
-                        let body_vec: Vec<Rc<SExp>> =
-                            x.iter().skip(2).map(|s| Rc::new(s.clone())).collect();
-                        let body = Rc::new(enlist(pre_forms[0].loc(), &body_vec));
-
-                        let ls = preprocess(opts.clone(), includes, body)?;
-                        return compile_mod_(
-                            &ModAccum::new(l.clone()),
-                            opts.clone(),
-                            args,
-                            Rc::new(list_to_cons(l, &ls)),
-                        );
-                    }
-                }
-
-                frontend_step_finish(opts.clone(), includes, pre_forms)
-            })
-            .unwrap_or_else(|| frontend_step_finish(opts, includes, pre_forms))
+        frontend_step_finish(opts, includes, pre_forms)
     }
 }
 

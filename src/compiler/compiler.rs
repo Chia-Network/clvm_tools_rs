@@ -12,12 +12,13 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::sha256tree;
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
-use crate::compiler::comptypes::{CompileErr, CompileForm, CompilerOpts, PrimaryCodegen};
+use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, PrimaryCodegen};
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
-use crate::compiler::frontend::frontend;
+use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend};
 use crate::compiler::optimize::get_optimizer;
+use crate::compiler::preprocessor::preprocess;
 use crate::compiler::prims;
-use crate::compiler::sexp::{parse_sexp, SExp};
+use crate::compiler::sexp::{enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::Number;
@@ -145,6 +146,181 @@ pub fn compile_pre_forms(
     Ok(g2)
 }
 
+#[derive(Debug, Clone)]
+enum Export {
+    MainProgram(Rc<SExp>, Rc<BodyForm>),
+    Function(Vec<u8>),
+}
+
+fn detect_chialisp_module(
+    pre_forms: &[Rc<SExp>],
+) -> bool {
+    if pre_forms.is_empty() {
+        return false;
+    }
+
+    if pre_forms.len() > 1 {
+        return true;
+    }
+
+    if let Some(lst) = pre_forms[0].proper_list() {
+        eprintln!("checking whether {} is an element of a module", lst[0]);
+        return matches!(lst[0].borrow(), SExp::Cons(_, _, _));
+    }
+
+    true
+}
+
+fn match_export_form(
+    opts: Rc<dyn CompilerOpts>,
+    form: Rc<SExp>
+) -> Result<Option<Export>, CompileErr> {
+    if let Some(lst) = form.proper_list() {
+        // Empty form isn't export
+        if lst.is_empty() {
+            return Ok(None);
+        }
+
+        // Export if it has an export keyword.
+        if let SExp::Atom(kw, export_name) = lst[0].borrow() {
+            if export_name != b"export" {
+                return Ok(None);
+            }
+        } else {
+            // No export kw, not export.
+            return Ok(None);
+        }
+
+        // A main export
+        if lst.len() == 3 {
+            let expr = compile_bodyform(opts.clone(), Rc::new(lst[2].clone()))?;
+            return Ok(Some(Export::MainProgram(
+                Rc::new(lst[1].clone()),
+                Rc::new(expr)
+            )));
+        }
+
+        if let SExp::Atom(fun_kw, fun_name) = lst[1].borrow() {
+            return Ok(Some(Export::Function(fun_name.clone())));
+        }
+
+        return Err(CompileErr(form.loc(), format!("Malformed export {form}")));
+    }
+
+    Ok(None)
+}
+
+// Exports are returned main programs:
+//
+// Single main
+//
+// (export (X) (do-stuff X))
+//
+// Multiple mains
+//
+// (export foo)
+// (export bar)
+fn compile_module(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    pre_forms: &[Rc<SExp>]
+) -> Result<SExp, CompileErr> {
+    let mut other_forms = vec![];
+    let mut exports = vec![];
+    let mut found_main = false;
+    let mut includes = vec![];
+
+    if pre_forms.is_empty() {
+        return Err(CompileErr(Srcloc::start(&opts.filename()), "We don't yet allow empty programs".to_string()));
+    }
+
+    let loc = pre_forms[0].loc().ext(&pre_forms[pre_forms.len()-1].loc());
+    let preprocess_source = Rc::new(enlist(loc.clone(), pre_forms));
+    let output_forms = preprocess(
+        opts.clone(),
+        &mut includes,
+        preprocess_source
+    )?;
+
+    eprintln!("separate helpers and exports");
+    for p in output_forms.iter() {
+        eprintln!("- {p}");
+        if let Some(export) = match_export_form(opts.clone(), p.clone())? {
+            if matches!(export, Export::MainProgram(_, _)) {
+                if found_main || !exports.is_empty() {
+                    return Err(CompileErr(
+                        loc.clone(),
+                        "Only one main export is allowed, otherwise export functions".to_string()
+                    ));
+                }
+
+                found_main = true;
+            }
+
+            exports.push(export);
+        } else if let Some(helper) = compile_helperform(opts.clone(), p.clone())? {
+            if found_main {
+                return Err(CompileErr(
+                    loc.clone(),
+                    "A chialisp module may only export a main or a set of functions".to_string()
+                ));
+            }
+            other_forms.push(helper);
+        }
+    }
+
+    eprintln!("check for any exports");
+    if exports.is_empty() {
+        return Err(CompileErr(
+            loc.clone(),
+            "A chialisp module should have at least one export".to_string()
+        ));
+    }
+
+    let mut program = CompileForm {
+        loc: loc.clone(),
+        include_forms: includes.clone(),
+        args: Rc::new(SExp::Nil(loc.clone())),
+        helpers: other_forms,
+        exp: Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone()))),
+    };
+    eprintln!("basic program {}", program.to_sexp());
+
+    if exports.len() == 1 && matches!(exports[0].clone(), Export::MainProgram(args, expr)) {
+        // Single program.
+        todo!();
+    }
+
+    // So we can most optimistically know a peer module hash in this
+    // way:
+    //
+    // using a guid placeholder, define an out-of-line function *env-hash*.
+    //
+    // for each exported function, define a out-of-line function
+    // *<fun>-hash* using a guid placeholder.
+    //
+    // Compile this program.
+    //
+    // Now each exported function's body has its final representation.
+    // The function's final hash is the tree hash of
+    //
+    // (4 (1 . 2) (4 (4 (1 . 1) n) (4 (4 (1 . 1) (f @)) (4 (1 . 1) ()))))
+    //
+    // Where n is the path into the environment of the function.
+    //
+    // For each function, we retrieve its representation from the environment
+    // and hash it, replacing the placeholder guid with a program that takes
+    // the above wrapping with a sped-up treehash which replaces n in the
+    // treehash with the function body's literal hash and 2 with an invocation
+    // of *env-hash*.  We place this computation in *<fun>-hash*.
+    //
+    // Now, the last part is to find the path to *env-hash* and replace its
+    // body with a tree hash computation that short circuits each left or
+    // right branch, computing its own hash via sha256tree on its own
+    // env reference.
+    todo!();
+}
+
 pub fn compile_file(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
@@ -160,6 +336,11 @@ pub fn compile_file(
         symbol_table,
         get_optimizer(&srcloc, opts.clone())?,
     );
+
+    if detect_chialisp_module(&pre_forms) && opts.dialect().strict {
+        return compile_module(&mut context_wrapper.context, opts, &pre_forms);
+    }
+
     compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
 }
 
