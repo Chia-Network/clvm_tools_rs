@@ -7,10 +7,11 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
+use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, Stream};
+use crate::classic::clvm::sexp::sexp_as_bin;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::sha256tree;
+use crate::compiler::clvm::{convert_to_clvm_rs, convert_from_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{Alias, BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, NamespaceCollection, PrimaryCodegen, SyntheticType};
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
@@ -198,7 +199,6 @@ fn detect_chialisp_module(
     }
 
     if let Some(lst) = pre_forms[0].proper_list() {
-        eprintln!("checking whether {} is an element of a module", lst[0]);
         return matches!(lst[0].borrow(), SExp::Cons(_, _, _));
     }
 
@@ -242,6 +242,57 @@ fn match_export_form(
     }
 
     Ok(None)
+}
+
+struct ModuleOutputEntry {
+    name: Vec<u8>,
+    hash: Vec<u8>,
+    func: Rc<SExp>,
+}
+
+fn break_down_module_output(loc: Srcloc, run_result: Rc<SExp>) -> Result<Vec<ModuleOutputEntry>, CompileErr> {
+    let list_data =
+        if let Some(lst) = run_result.proper_list() {
+            lst
+        } else {
+            return Err(CompileErr(
+                loc,
+                "output from intermediate module program should have been a proper list".to_string(),
+            ));
+        };
+
+    if list_data.len() % 3 != 0 {
+        return Err(CompileErr(loc, "output length from intermediate module program should have been divisible by 3".to_string()));
+    }
+
+    let mut result = Vec::new();
+    for tuple_idx in 0..(list_data.len() / 3) {
+        let i = tuple_idx * 3;
+        if let (SExp::Atom(_, name), SExp::Atom(_, hash)) = (list_data[i].atomize(), list_data[i+1].atomize()) {
+            result.push(ModuleOutputEntry {
+                name: name.clone(),
+                hash: hash.clone(),
+                func: Rc::new(list_data[i+2].clone()),
+            });
+        } else {
+            return Err(CompileErr(loc.clone(), format!("output from intermediate module program wasn't in triplets of atom, atom, program {} {} {}", list_data[i], list_data[i+1], list_data[i+2])));
+        }
+    }
+
+    Ok(result)
+}
+
+fn create_hex_output_path(loc: Srcloc, file_path: &str, func: &str) -> Result<String, CompileErr> {
+    let mut dir = PathBuf::from(file_path);
+    dir.pop();
+    let func_dot_hex = &[func.to_string(), "hex".to_string()];
+    dir.push(func_dot_hex.join("."));
+    dir.into_os_string().into_string().map_err(|_| {
+        CompileErr(
+            loc,
+            format!("could not make os file path for output {func}")
+        )
+    })
 }
 
 // Exports are returned main programs:
@@ -337,7 +388,6 @@ fn compile_module(
     if exports.len() == 1 {
         if let Export::MainProgram(args, expr) = &exports[0] {
             // Single program.
-            eprintln!("basic program {}", program.to_sexp());
             program.args = args.clone();
             program.exp = expr.clone();
 
@@ -376,6 +426,7 @@ fn compile_module(
     // XXX write this the simple way for now
 
     let mut function_list = program.exp.clone();
+    let mut prog_output = SExp::Nil(loc.clone());
 
     for fun in exports.iter() {
         let fun_name =
@@ -456,7 +507,50 @@ fn compile_module(
     }
 
     program.exp = function_list;
-    compile_from_compileform(context, opts, program)
+    let compiled_result = Rc::new(compile_from_compileform(context, opts.clone(), program)?);
+    let result_clvm = convert_to_clvm_rs(context.allocator(), compiled_result)?;
+    let nil = context.allocator().null();
+    let runner = context.runner();
+    let run_result_clvm = runner.run_program(
+        context.allocator(),
+        result_clvm,
+        nil,
+        None
+    ).map_err(|_| CompileErr(loc.clone(), "failed to run intermediate module program".to_string()))?;
+    let run_result = convert_from_clvm_rs(
+        context.allocator(),
+        loc.clone(),
+        run_result_clvm.1,
+    )?;
+    let modules = break_down_module_output(loc.clone(), run_result)?;
+    for m in modules.into_iter() {
+        prog_output = SExp::Cons(
+            loc.clone(),
+            Rc::new(SExp::Cons(
+                loc.clone(),
+                Rc::new(SExp::Atom(loc.clone(), m.name.clone())),
+                Rc::new(SExp::QuotedString(loc.clone(), b'x', m.hash.clone()))
+            )),
+            Rc::new(prog_output)
+        );
+
+        let mut stream = Stream::new(None);
+        let converted_func = convert_to_clvm_rs(
+            context.allocator(),
+            m.func.clone()
+        )?;
+        stream.write(sexp_as_bin(context.allocator(), converted_func));
+        let output_path = create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(&m.name))?;
+        eprintln!("writing output {output_path}");
+        fs::write(&output_path, stream.get_value().hex()).map_err(|_| {
+            CompileErr(
+                m.func.loc(),
+                format!("could not write output file {output_path}")
+            )
+        })?;
+    }
+
+    Ok(prog_output)
 }
 
 pub fn compile_pre_forms(
@@ -486,11 +580,9 @@ pub fn compile_file(
     );
 
     if detect_chialisp_module(&pre_forms) && opts.dialect().strict {
-        eprintln!("compile as module");
         return compile_module(&mut context_wrapper.context, opts, &pre_forms);
     }
 
-    eprintln!("compile traditional wrapped form of {}", enlist(srcloc.clone(), &pre_forms));
     compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
 }
 

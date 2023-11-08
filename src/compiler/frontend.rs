@@ -1445,7 +1445,6 @@ impl ModCompileForms for ModAccum {
         _ty: Option<Polytype>,
     ) -> Result<ModAccum, CompileErr> {
         let mut mc = self.clone();
-        eprintln!("compile_mod_helper {body}");
         if let Some(helpers) = compile_helperform(opts.clone(), body.clone())? {
             for form in helpers.new_helpers.iter() {
                 debug!("process helper {}", decode_string(form.name()));
@@ -1494,7 +1493,6 @@ fn frontend_start(
         ))
     } else {
         let l = pre_forms[0].loc();
-        eprintln!("frontend_start {}", pre_forms[0]);
         pre_forms[0]
             .proper_list()
             .map(|x| {
@@ -1542,7 +1540,6 @@ fn frontend_start(
                         let ls = preprocess(opts.clone(), includes, body)?;
                         let mut ma = ModAccum::new(l.clone(), false);
                         for form in ls.iter().take(ls.len() - 1) {
-                            eprintln!("process pp form {form}");
                             ma = ma.compile_mod_helper(
                                 opts.clone(),
                                 stripped_args.clone(),
