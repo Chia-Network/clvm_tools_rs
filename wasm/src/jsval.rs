@@ -213,7 +213,7 @@ pub fn sexp_from_js_object(sstart: Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
                             .ok()
                             .and_then(|v| v.as_string())
                             .and_then(|v| Number::from_str(&v).ok())
-                                .map(|n| Rc::new(SExp::Integer(sstart.clone(), n)))
+                            .map(|n| Rc::new(SExp::Integer(sstart.clone(), n)))
                     })
             })
     }
