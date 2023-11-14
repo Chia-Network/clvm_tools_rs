@@ -18,6 +18,28 @@ it('Has the "h" function', async () => {
     assert.equal([0x21, 0x20, 0x30, 0x31].toString(), unhexed.toString());
 });
 
+it('Converts uint8arrays', async () => {
+    let ua = new Uint8Array(3);
+    ua[0] = 0x30;
+    ua[1] = 0x81;
+    ua[2] = 0xff;
+    let p = Program.to(ua);
+    assert.equal([0x30, 0x81, 0xff].toString(), ua.toString());
+});
+
+it('Converts uint8arrays from the "h" function', async () => {
+    let unhexed = h('8b5fd961cb1a826823c45a796b350d0d6ba2398829f249b1e535fd76f6d150b1');
+    let p = Program.to([unhexed]);
+    assert.equal("ffa08b5fd961cb1a826823c45a796b350d0d6ba2398829f249b1e535fd76f6d150b180", p.toString());
+});
+
+it('Converts a buffer', async () => {
+    let unhexed = h('8b5fd961cb1a826823c45a796b350d0d6ba2398829f249b1e535fd76f6d150b1');
+    let b = Buffer.from(unhexed);
+    let p = Program.to([b]);
+    assert.equal("ffa08b5fd961cb1a826823c45a796b350d0d6ba2398829f249b1e535fd76f6d150b180", p.toString());
+});
+
 it('Converts to string', async () => {
     const converted_sexp = Program.to([1, 2, 3]);
     assert.equal("ff01ff02ff0380", converted_sexp.toString());
