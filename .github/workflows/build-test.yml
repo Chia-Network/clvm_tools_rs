@@ -148,6 +148,7 @@ jobs:
       run: |
         . ./activate
         maturin develop
+        cargo build
         cd resources/tests && \
         python test_clvm_step.py && \
         python mandelbrot-cldb.py
