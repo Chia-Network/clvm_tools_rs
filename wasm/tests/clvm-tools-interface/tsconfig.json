@@ -12,6 +12,7 @@
       "suppressImplicitAnyIndexErrors": true,
       "lib": ["es2018", "dom"],
       "moduleResolution": "node",
+      "target": "es2020"
     },
     "include": ["src/lib"],
     "exclude": ["src/lib/**/tests"],
