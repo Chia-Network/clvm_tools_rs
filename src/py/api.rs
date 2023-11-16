@@ -4,8 +4,9 @@
 // re: https://github.com/rust-lang/rust-clippy/issues/8971
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyString, PyTuple};
+use pyo3::types::{PyDict, PyString, PyTuple, PyBool};
 
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::rc::Rc;
@@ -206,15 +207,30 @@ impl CldbSingleBespokeOverride for CldbSinglePythonOverride {
     }
 }
 
-#[pyfunction(arg4 = "None")]
+#[pyfunction(arg4 = "None", arg5 = "None")]
 fn start_clvm_program(
     hex_prog: String,
     hex_args: String,
     symbol_table: Option<HashMap<String, String>>,
     overrides: Option<HashMap<String, Py<PyAny>>>,
+    run_options: Option<HashMap<String, Py<PyAny>>>,
 ) -> PyResult<PythonRunStep> {
     let (command_tx, command_rx) = mpsc::channel();
     let (result_tx, result_rx) = mpsc::channel();
+
+    let gil = Python::acquire_gil();
+    let py = gil.python();
+
+    let print_only_option =
+        run_options
+        .and_then(|h| h.get("print").map(|p| p.clone()))
+        .unwrap_or_else(|| {
+            let any: Py<PyAny> = PyBool::new(py, false).into();
+            any
+        });
+
+    let print_only =
+        PyBool::new(py, true).compare(print_only_option)? == Ordering::Equal;
 
     thread::spawn(move || {
         let mut allocator = Allocator::new();
@@ -258,6 +274,8 @@ fn start_clvm_program(
         let step = start_step(program, args);
         let cldbenv = CldbRunEnv::new(None, Rc::new(vec![]), Box::new(override_runnable));
         let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
+        cldbrun.set_print_only(print_only);
+
         loop {
             match cmd_input.recv() {
                 Ok(end_run) => {

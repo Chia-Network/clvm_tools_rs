@@ -153,6 +153,14 @@ jobs:
         python test_clvm_step.py && \
         python mandelbrot-cldb.py
 
+    - name: "Test step run with mandelbrot, setting print only"
+      shell: bash
+      run: |
+        python ./resources/tests/steprun.py ./resources/tests/mandelbrot/mandelbrot.clvm.hex mand_args.txt ./resources/tests/mandelbrot/mandelbrot.sym > /tmp/mand_output.txt
+        # Fail if the output differs.
+        diff -s -q /tmp/mand_output.txt ./resources/tests/mandelbrot/mand_test.txt
+
+
     - name: Verify recompilation of old sources match with new compiler
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
