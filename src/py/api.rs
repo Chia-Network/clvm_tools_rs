@@ -4,7 +4,7 @@
 // re: https://github.com/rust-lang/rust-clippy/issues/8971
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyString, PyTuple, PyBool};
+use pyo3::types::{PyBool, PyDict, PyString, PyTuple};
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
@@ -221,16 +221,14 @@ fn start_clvm_program(
     let gil = Python::acquire_gil();
     let py = gil.python();
 
-    let print_only_option =
-        run_options
+    let print_only_option = run_options
         .and_then(|h| h.get("print").map(|p| p.clone()))
         .unwrap_or_else(|| {
             let any: Py<PyAny> = PyBool::new(py, false).into();
             any
         });
 
-    let print_only =
-        PyBool::new(py, true).compare(print_only_option)? == Ordering::Equal;
+    let print_only = PyBool::new(py, true).compare(print_only_option)? == Ordering::Equal;
 
     thread::spawn(move || {
         let mut allocator = Allocator::new();
