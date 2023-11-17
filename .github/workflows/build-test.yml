@@ -156,7 +156,9 @@ jobs:
         python ./resources/tests/lib/steprun.py ./resources/tests/mandelbrot/mandelbrot.clvm.hex resources/tests/mandelbrot/mand_args.txt ./resources/tests/mandelbrot/mandelbrot.sym > mand_output.txt
         # git diff invoked this way returns 0 (as /bin/true) if there is no difference or 1 if there is.
         git diff --no-index -s --quiet -- mand_output.txt ./resources/tests/mandelbrot/mand_test.txt
-        rm --force mand_output.txt
+        # Remove file in a compatible way using git as a general tool
+        git add mand_output.txt
+        git rm --force mand_output.txt
 
 
     - name: Verify recompilation of old sources match with new compiler
