@@ -173,6 +173,89 @@ fn compile_test_6() {
     );
 }
 
+// odd numbered list
+#[test]
+fn compile_test_8() {
+    let result =
+        compile_string(&"(mod (S) (c S (q . #(2000 3000 4000 5000 6000 7000 8000))))".to_string())
+            .unwrap();
+    assert_eq!(
+        result,
+        "(2 (1 4 5 (1 (2000 3000 . 4000) (5000 . 6000) 7000 . 8000)) (4 (1) 1))".to_string()
+    );
+}
+
+// even numbered list
+#[test]
+fn compile_test_9() {
+    let result = compile_string(&"(mod (S) (c S (q . #(a b c d))))".to_string()).unwrap();
+    assert_eq!(
+        result,
+        "(2 (1 4 5 (1 (a . b) c . d)) (4 (1) 1))".to_string()
+    );
+}
+
+// word
+#[test]
+fn compile_test_10() {
+    let result = compile_string(&"(mod (S) (c S #fake))".to_string()).unwrap();
+    assert_eq!(result, "(2 (1 4 5 (1 . fake)) (4 (1) 1))".to_string());
+}
+
+// op letter
+#[test]
+fn compile_test_11() {
+    let result = compile_string(&"(mod (S) (c S #a))".to_string()).unwrap();
+    assert_eq!(result, "(2 (1 4 5 (1 . 2)) (4 (1) 1))".to_string());
+}
+
+// length 1 list
+#[test]
+fn compile_test_12() {
+    let result = compile_string(&"(mod (S) (c S (q . #(100))))".to_string()).unwrap();
+    assert_eq!(result, "(2 (1 4 5 (1 . 100)) (4 (1) 1))".to_string());
+}
+
+// length 0 list
+#[test]
+fn compile_test_13() {
+    let result = compile_string(&"(mod (S) (c S (q . #())))".to_string()).unwrap();
+    assert_eq!(result, "(2 (1 4 5 (1)) (4 (1) 1))".to_string());
+}
+
+// length 2 list
+#[test]
+fn compile_test_14() {
+    let result = compile_string(&"(mod (S) (c S (q . #(a b))))".to_string()).unwrap();
+    assert_eq!(result, "(2 (1 4 5 (1 a . b)) (4 (1) 1))".to_string());
+}
+
+// use structured list in solution
+#[test]
+fn compile_test_15() {
+    let result = run_string_maybe_opt(
+        &"(mod #(a b c) (- (+ a c) b))".to_string(),
+        &"(100 20 . 10)".to_string(),
+        true,
+        false,
+    )
+    .unwrap();
+    assert_eq!(result.to_string(), "90".to_string());
+}
+
+// use structured list in solution
+#[test]
+fn compile_test_16() {
+    let result = run_string_maybe_opt(
+        &"(mod #(a b c) (- (+ a c) b))".to_string(),
+        &"#(100 20 10)".to_string(),
+        true,
+        false,
+    )
+    .unwrap();
+    assert_eq!(result.to_string(), "90".to_string());
+}
+
 fn run_test_1_maybe_opt(opt: bool) {
     let result = run_string_maybe_opt(
         &"(mod () (defun f (a b) (+ (* a a) b)) (f 3 1))".to_string(),

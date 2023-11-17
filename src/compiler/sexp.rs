@@ -204,14 +204,15 @@ enum SExpParseState {
     Bareword(Srcloc, Vec<u8>), //srcloc contains the file, line, column and length for the captured form
     QuotedText(Srcloc, u8, Vec<u8>),
     QuotedEscaped(Srcloc, u8, Vec<u8>),
-    OpenList(Srcloc),
-    ParsingList(Srcloc, Rc<SExpParseState>, Vec<Rc<SExp>>),
+    OpenList(Srcloc, bool),
+    ParsingList(Srcloc, Rc<SExpParseState>, Vec<Rc<SExp>>, bool), // Rc<SExpParseState> is for the inner state of the list, bool is is_structured
     TermList(
         Srcloc,
         Option<Rc<SExp>>,   // this is the second value in the dot expression
         Rc<SExpParseState>, // used for inner parsing
         Vec<Rc<SExp>>,      // list content
     ),
+    StartStructuredList(Srcloc),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -533,17 +534,34 @@ impl SExp {
     }
 }
 
+fn restructure_list(mut this_list: Vec<Rc<SExp>>, srcloc: Srcloc) -> Rc<SExp> {
+    // Check if the vector is empty
+    if this_list.len() == 1 {
+        return Rc::clone(&this_list[0]);
+    }
+    if this_list.is_empty() {
+        return Rc::new(SExp::Nil(srcloc.clone()));
+    }
+    // Remove and get the middle element as the root
+    let mid_index = this_list.len() / 2;
+    let left_subtree = restructure_list(this_list.drain(..mid_index).collect(), srcloc.clone());
+    let right_subtree = restructure_list(this_list, srcloc.clone());
+
+    Rc::new(make_cons(left_subtree, right_subtree))
+}
+
 fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -> SExpParseResult {
     // switch on our state
     match current_state {
         SExpParseState::Empty => match this_char as char {
             // we are not currently in a list
-            '(' => resume(SExpParseState::OpenList(loc)), // move to OpenList state
-            '\n' => resume(SExpParseState::Empty),        // new line, same state
+            '(' => resume(SExpParseState::OpenList(loc, false)), // move to OpenList state
+            '\n' => resume(SExpParseState::Empty),               // new line, same state
             ';' => resume(SExpParseState::CommentText),
             ')' => error(loc, "Too many close parens"),
             '"' => resume(SExpParseState::QuotedText(loc, b'"', Vec::new())), // match on "
             '\'' => resume(SExpParseState::QuotedText(loc, b'\'', Vec::new())), // match on '
+            '#' => resume(SExpParseState::StartStructuredList(loc)), // initiating a structured list
             ch => {
                 if char::is_whitespace(ch) {
                     resume(SExpParseState::Empty)
@@ -599,7 +617,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
             tcopy.push(this_char);
             resume(SExpParseState::QuotedText(srcloc.clone(), *term, tcopy))
         }
-        SExpParseState::OpenList(srcloc) => match this_char as char {
+        SExpParseState::OpenList(srcloc, is_structured) => match this_char as char {
             // we are beginning a new list
             ')' => emit(Rc::new(SExp::Nil(srcloc.ext(&loc))), SExpParseState::Empty), // create a Nil object
             '.' => error(loc, "Dot can't appear directly after begin paren"),
@@ -610,44 +628,69 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                     srcloc.ext(&loc),
                     Rc::new(current_state), // captured state from our pretend empty state
                     vec![o],
+                    *is_structured,
                 )),
                 SExpParseResult::Resume(current_state) => resume(SExpParseState::ParsingList(
                     // we're still reading the object, resume processing
                     srcloc.ext(&loc),
                     Rc::new(current_state), // captured state from our pretend empty state
                     Vec::new(),
+                    *is_structured,
                 )),
                 SExpParseResult::Error(l, e) => SExpParseResult::Error(l, e), // propagate error
             },
         },
         // We are in the middle of a list currently
-        SExpParseState::ParsingList(srcloc, pp, list_content) => {
+        SExpParseState::ParsingList(srcloc, pp, list_content, is_structured) => {
             // pp is the captured inside-list state we received from OpenList
-            match (this_char as char, pp.borrow()) {
-                ('.', SExpParseState::Empty) => resume(SExpParseState::TermList(
+            match (this_char as char, pp.borrow(), is_structured) {
+                ('.', SExpParseState::Empty, false) => resume(SExpParseState::TermList(
                     // dot notation showing cons cell
                     srcloc.ext(&loc),
                     None,
                     Rc::new(SExpParseState::Empty), // nested state is empty
                     list_content.to_vec(),
                 )),
-                (')', SExpParseState::Empty) => emit(
-                    // close list and emit it upwards as a complete entity
-                    Rc::new(enlist(srcloc.clone(), list_content)),
-                    SExpParseState::Empty,
-                ),
-                (')', SExpParseState::Bareword(l, t)) => {
+                ('.', SExpParseState::Empty, true) => {
+                    error(loc, "Dot expressions disallowed in structured lists")
+                }
+                (')', SExpParseState::Empty, _) => {
+                    if *is_structured {
+                        emit(
+                            // close list and emit it upwards as a complete entity
+                            restructure_list(list_content.to_vec(), srcloc.clone()),
+                            SExpParseState::Empty,
+                        )
+                    } else {
+                        emit(
+                            // close list and emit it upwards as a complete entity
+                            Rc::new(enlist(srcloc.clone(), list_content)),
+                            SExpParseState::Empty,
+                        )
+                    }
+                }
+                (')', SExpParseState::Bareword(l, t), _) => {
                     // you've reached the end of the word AND the end of the list, close list and emit upwards
+                    // TODO: check bool and rearrange here
                     let parsed_atom = make_atom(l.clone(), t.to_vec());
                     let mut updated_list = list_content.to_vec();
                     updated_list.push(Rc::new(parsed_atom));
-                    emit(
-                        Rc::new(enlist(srcloc.clone(), &updated_list)),
-                        SExpParseState::Empty,
-                    )
+                    if *is_structured {
+                        emit(
+                            // close list and emit it upwards as a complete entity
+                            restructure_list(updated_list, srcloc.clone()),
+                            SExpParseState::Empty,
+                        )
+                    } else {
+                        emit(
+                            // close list and emit it upwards as a complete entity
+                            Rc::new(enlist(srcloc.clone(), &updated_list)),
+                            SExpParseState::Empty,
+                        )
+                    }
                 }
                 // analyze this character using the mock "inner state" stored in pp
-                (_, _) => match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
+                (_, _, _) => match parse_sexp_step(loc.clone(), pp.borrow(), this_char) {
                     //
                     SExpParseResult::Emit(o, current_state) => {
                         // add result of parse_sexp_step to our list
@@ -657,6 +700,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                             srcloc.ext(&loc),
                             Rc::new(current_state),
                             list_copy,
+                            *is_structured,
                         );
                         resume(result)
                     }
@@ -665,6 +709,7 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                         srcloc.ext(&loc),
                         Rc::new(rp), // store the returned state from parse_sexp_step in pp
                         list_content.to_vec(),
+                        *is_structured,
                     )),
                     SExpParseResult::Error(l, e) => SExpParseResult::Error(l, e), // propagate error upwards
                 },
@@ -777,6 +822,24 @@ fn parse_sexp_step(loc: Srcloc, current_state: &SExpParseState, this_char: u8) -
                 },
             }
         }
+        SExpParseState::StartStructuredList(l) => {
+            let new_srcloc = l.ext(&loc);
+            match this_char as char {
+                '(' => resume(SExpParseState::ParsingList(
+                    // go into a ParsingList
+                    new_srcloc,
+                    Rc::new(SExpParseState::Empty), // we have no inner state
+                    Vec::new(),
+                    true, // note that this is a special StructuredList to be processed later
+                )),
+                _ => parse_sexp_step(
+                    // if we don't see a '(' then process it as if the preceding '#' was part of a bareword
+                    loc.clone(),
+                    &SExpParseState::Bareword(loc, vec![b'#']),
+                    this_char,
+                ),
+            }
+        } // SExpParseState::StartStructuredList(_) => error(loc, "Missing srcloc"),
     }
 }
 
@@ -835,9 +898,14 @@ impl ParsePartialResult {
             SExpParseState::QuotedEscaped(l, _, _) => {
                 Err((l, "unterminated quoted string with escape".to_string()))
             }
-            SExpParseState::OpenList(l) => Err((l, "Unterminated list (empty)".to_string())),
-            SExpParseState::ParsingList(l, _, _) => Err((l, "Unterminated mid list".to_string())),
+            SExpParseState::OpenList(l, _) => Err((l, "Unterminated list (empty)".to_string())),
+            SExpParseState::ParsingList(l, _, _, _) => {
+                Err((l, "Unterminated mid list".to_string()))
+            }
             SExpParseState::TermList(l, _, _, _) => Err((l, "Unterminated tail list".to_string())),
+            SExpParseState::StartStructuredList(l) => {
+                Err((l, "Unclosed structured list".to_string()))
+            }
         }
     }
 }
