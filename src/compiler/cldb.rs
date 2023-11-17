@@ -21,7 +21,12 @@ use crate::compiler::clvm::{convert_from_clvm_rs, run_step, RunStep};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
+use crate::util::u8_from_number;
 use crate::util::Number;
+
+fn print_atom() -> SExp {
+    SExp::Atom(Srcloc::start("*print*"), b"$print$".to_vec())
+}
 
 #[derive(Clone, Debug)]
 pub struct PriorResult {
@@ -103,8 +108,39 @@ pub struct CldbRun {
     to_print: BTreeMap<String, String>,
     in_expr: bool,
     row: usize,
+    print_only: bool,
 
     outputs_to_step: HashMap<Number, PriorResult>,
+}
+
+fn humanize(a: Rc<SExp>) -> Rc<SExp> {
+    match a.borrow() {
+        SExp::Integer(l, i) => {
+            // If it has a nice string representation then show that.
+            let bytes_of_int = u8_from_number(i.clone());
+            if bytes_of_int.len() > 2 && bytes_of_int.iter().all(|b| *b >= 32 && *b < 127) {
+                Rc::new(SExp::QuotedString(l.clone(), b'\'', bytes_of_int))
+            } else {
+                a.clone()
+            }
+        }
+        SExp::Cons(l, a, b) => {
+            let new_a = humanize(a.clone());
+            let new_b = humanize(b.clone());
+            Rc::new(SExp::Cons(l.clone(), new_a, new_b))
+        }
+        _ => a.clone(),
+    }
+}
+
+fn is_print_request(a: &SExp) -> Option<(Srcloc, Rc<SExp>)> {
+    if let SExp::Cons(l, f, r) = a {
+        if &print_atom() == f.borrow() {
+            return Some((l.clone(), humanize(r.clone())));
+        }
+    }
+
+    None
 }
 
 impl CldbRun {
@@ -129,7 +165,12 @@ impl CldbRun {
             in_expr: false,
             row: 0,
             outputs_to_step: HashMap::<Number, PriorResult>::new(),
+            print_only: false,
         }
+    }
+
+    pub fn set_print_only(&mut self, pronly: bool) {
+        self.print_only = pronly;
     }
 
     pub fn is_ended(&self) -> bool {
@@ -138,6 +179,10 @@ impl CldbRun {
 
     pub fn final_result(&self) -> Option<Rc<SExp>> {
         self.final_result.clone()
+    }
+
+    pub fn should_print_basic_output(&self) -> bool {
+        !self.print_only
     }
 
     pub fn step(&mut self, allocator: &mut Allocator) -> Option<BTreeMap<String, String>> {
@@ -159,23 +204,27 @@ impl CldbRun {
         match &new_step {
             Ok(RunStep::OpResult(l, x, _p)) => {
                 if self.in_expr {
-                    self.to_print
-                        .insert("Result-Location".to_string(), l.to_string());
-                    self.to_print.insert("Value".to_string(), x.to_string());
-                    self.to_print
-                        .insert("Row".to_string(), self.row.to_string());
-                    if let Ok(n) = x.get_number() {
-                        self.outputs_to_step.insert(
-                            n,
-                            PriorResult {
-                                reference: self.row,
-                                // value: x.clone(), // for future
-                            },
-                        );
+                    if self.should_print_basic_output() {
+                        self.to_print
+                            .insert("Result-Location".to_string(), l.to_string());
+                        self.to_print.insert("Value".to_string(), x.to_string());
+                        self.to_print
+                            .insert("Row".to_string(), self.row.to_string());
+
+                        if let Ok(n) = x.get_number() {
+                            self.outputs_to_step.insert(
+                                n,
+                                PriorResult {
+                                    reference: self.row,
+                                    // value: x.clone(), // for future
+                                },
+                            );
+                        }
+                        swap(&mut self.to_print, &mut result);
+                        produce_result = true;
                     }
+
                     self.in_expr = false;
-                    swap(&mut self.to_print, &mut result);
-                    produce_result = true;
                 }
             }
             Ok(RunStep::Done(l, x)) => {
@@ -190,27 +239,43 @@ impl CldbRun {
             }
             Ok(RunStep::Step(_sexp, _c, _p)) => {}
             Ok(RunStep::Op(sexp, c, a, None, _p)) => {
-                self.to_print
-                    .insert("Operator-Location".to_string(), a.loc().to_string());
-                self.to_print
-                    .insert("Operator".to_string(), sexp.to_string());
+                let should_print_basic_output = self.should_print_basic_output();
+                if should_print_basic_output {
+                    self.to_print
+                        .insert("Operator-Location".to_string(), a.loc().to_string());
+                    self.to_print
+                        .insert("Operator".to_string(), sexp.to_string());
+                }
+
                 if let Ok(v) = sexp.get_number() {
-                    if v == 11_u32.to_bigint().unwrap() {
+                    if v == 11_u32.to_bigint().unwrap() && should_print_basic_output {
                         // Build source tree for hashes.
                         let arg_associations =
                             get_arg_associations(&self.outputs_to_step, a.clone());
                         let args = format_arg_inputs(&arg_associations);
                         self.to_print.insert("Argument-Refs".to_string(), args);
+                    } else if v == 34_u32.to_bigint().unwrap() {
+                        // Handle diagnostic output.
+                        if let Some((loc, outputs)) = is_print_request(a) {
+                            self.to_print
+                                .insert("Print-Location".to_string(), loc.to_string());
+                            self.to_print
+                                .insert("Print".to_string(), outputs.to_string());
+                            swap(&mut self.to_print, &mut result);
+                            produce_result = true;
+                        }
                     }
                 }
-                self.env.add_context(
-                    sexp.borrow(),
-                    c.borrow(),
-                    Some(a.clone()),
-                    &mut self.to_print,
-                );
-                self.env.add_function(sexp, &mut self.to_print);
-                self.in_expr = true;
+                if should_print_basic_output {
+                    self.env.add_context(
+                        sexp.borrow(),
+                        c.borrow(),
+                        Some(a.clone()),
+                        &mut self.to_print,
+                    );
+                    self.env.add_function(sexp, &mut self.to_print);
+                    self.in_expr = true;
+                }
             }
             Ok(RunStep::Op(_sexp, _c, _a, Some(_v), _p)) => {}
             Err(RunFailure::RunExn(l, s)) => {

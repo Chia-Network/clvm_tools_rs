@@ -532,6 +532,12 @@ pub fn cldb(args: &[String]) {
             .set_help("path to symbol file".to_string()),
     );
     parser.add_argument(
+        vec!["-p".to_string(), "--only-print".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("only show printing from the program".to_string()),
+    );
+    parser.add_argument(
         vec!["-t".to_string(), "--tree".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
@@ -598,6 +604,8 @@ pub fn cldb(args: &[String]) {
             }
             _ => None,
         });
+
+    let only_print = parsed_args.get("only_print").map(|_| true).unwrap_or(false);
 
     let do_optimize = parsed_args
         .get("optimize")
@@ -730,6 +738,16 @@ pub fn cldb(args: &[String]) {
 
     let step = start_step(program, args);
     let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
+    let print_tree = |output: &mut Vec<_>, result: &BTreeMap<String, String>| {
+        let mut cvt_subtree = BTreeMap::new();
+        for (k, v) in result.iter() {
+            cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
+        }
+        output.push(cvt_subtree);
+    };
+
+    cldbrun.set_print_only(only_print);
+
     loop {
         if cldbrun.is_ended() {
             println!("{}", yamlette_string(&output));
@@ -737,11 +755,22 @@ pub fn cldb(args: &[String]) {
         }
 
         if let Some(result) = cldbrun.step(&mut allocator) {
-            let mut cvt_subtree = BTreeMap::new();
-            for (k, v) in result.iter() {
-                cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
+            if only_print {
+                if let Some(p) = result.get("Print") {
+                    let mut only_print = BTreeMap::new();
+                    only_print.insert("Print".to_string(), YamlElement::String(p.clone()));
+                    output.push(only_print);
+                } else {
+                    let is_final = result.get("Final").is_some();
+                    let is_throw = result.get("Throw").is_some();
+                    let is_failure = result.get("Failure").is_some();
+                    if is_final || is_throw || is_failure {
+                        print_tree(&mut output, &result);
+                    }
+                }
+            } else {
+                print_tree(&mut output, &result);
             }
-            output.push(cvt_subtree);
         }
     }
 }

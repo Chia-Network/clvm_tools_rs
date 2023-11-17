@@ -1,15 +1,11 @@
+from typing import List
 import binascii
 import json
 import os
 from pathlib import Path
-from typing import List
-
-# from chia.types.blockchain_format.program import Program
+from clvm_tools_rs import start_clvm_program, compose_run_function, compile_clvm
+from clvm_tools.binutils import assemble
 from clvm_rs import Program
-from clvm_tools.binutils import assemble, disassemble
-
-from clvm_tools_rs import compile_clvm, compose_run_function, start_clvm_program
-
 
 def compile_module_with_symbols(include_paths: List[Path], source: Path):
     path_obj = Path(source)
@@ -36,34 +32,36 @@ def run_until_end(p):
         step_result = p.step()
         if step_result is not None:
             last = step_result
-            if "Print" in last:
-                to_print = last["Print"]
-                if "Print-Location" in last:
-                    print(f"{last['Print-Location']}: print {to_print}")
-                else:
-                    print(f"print {to_print}")
+            if 'Print' in last:
+                print(f"{last['Print']}")
 
     return last
 
-
-def diag_run_clvm(program, args, symbols):
-    hex_form_of_program = binascii.hexlify(bytes(program)).decode("utf8")
-    hex_form_of_args = binascii.hexlify(bytes(args)).decode("utf8")
+def diag_run_clvm(program, args, symbols, options):
+    hex_form_of_program = binascii.hexlify(bytes(program)).decode('utf8')
+    hex_form_of_args = binascii.hexlify(bytes(args)).decode('utf8')
     symbols = json.loads(open(symbols).read())
-    p = start_clvm_program(
-        hex_form_of_program, hex_form_of_args, symbols, None
-    )
+    p = start_clvm_program(hex_form_of_program, hex_form_of_args, symbols, None, options)
     report = run_until_end(p)
-    if "Failure" in report:
-        raise Exception(report)
+    if 'Failure' in report:
+        print(report['Failure'])
     else:
-        return assemble(report["Final"])
+        return assemble(report['Final'])
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     # smoke test
     import sys
+    import argparse
+    import traceback
 
-    program = Program.fromhex(open(sys.argv[1]).read())
-    args = Program.fromhex(open(sys.argv[2]).read())
-    diag_run_clvm(program, args)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-p', '--print', action='store_true', default=True)
+    parser.add_argument('program')
+    parser.add_argument('env')
+    parser.add_argument('symbols')
+    args = parser.parse_args()
+
+    program = Program.fromhex(open(args.program).read())
+    env = Program.fromhex(open(args.env).read())
+    options = { 'print': args.print }
+    diag_run_clvm(program, env, args.symbols, options)
