@@ -1,3 +1,4 @@
+from typing import List
 import binascii
 import json
 import os
