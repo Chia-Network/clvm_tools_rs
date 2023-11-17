@@ -150,6 +150,7 @@ jobs:
         cargo build
         pip install .
         pip install clvm_rs
+        pip install clvm_tools
         cd resources/tests && \
         python test_clvm_step.py && \
         python mandelbrot-cldb.py
