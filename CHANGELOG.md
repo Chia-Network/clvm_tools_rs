@@ -43,3 +43,7 @@ Skipped
 ## 0.1.38
 
 - Uncurry fix, typescript type improvements for npm personality.
+
+## 0.1.39
+
+- Support conversion from Uint8Array to IProgram in wasm.

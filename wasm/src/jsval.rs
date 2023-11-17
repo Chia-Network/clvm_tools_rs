@@ -1,5 +1,5 @@
 use js_sys::JSON::stringify;
-use js_sys::{Array, BigInt, Object, Reflect};
+use js_sys::{Array, BigInt, Object, Reflect, Uint8Array};
 use wasm_bindgen::JsCast;
 
 use num_bigint::ToBigInt;
@@ -190,6 +190,11 @@ pub fn sexp_from_js_object(sstart: Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
                     .and_then(|o| Object::try_from(&o).cloned())
                     .and_then(|o| location(&o))
                     .unwrap_or_else(|| sstart.clone());
+                if Uint8Array::instanceof(v) {
+                    // Explicitly handle uint8array conversion.
+                    let as_uint8array = Uint8Array::unchecked_from_js(v.clone());
+                    return Some(Rc::new(SExp::Atom(loc, as_uint8array.to_vec())));
+                }
                 get_property(o, "pair")
                     .and_then(|p| {
                         let pa = Array::from(&p);

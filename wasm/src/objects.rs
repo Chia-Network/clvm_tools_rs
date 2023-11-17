@@ -281,21 +281,21 @@ interface ITuple {
 interface IProgram {
     toString(): string;
     as_pair(): ITuple;
-    listp(): bool;
-    nullp(): bool;
+    listp(): boolean;
+    nullp(): boolean;
     as_int(): number;
     as_bigint(): bigint;
-    as_bin(): [Uint8Array];
+    as_bin(): Uint8Array;
     first(): IProgram;
     rest(): IProgram;
     cons(p: IProgram): IProgram;
-    run(code: IProgram, env: IProgram): [number, IProgram];
+    run(env: IProgram): [number, IProgram];
     list_len(): number;
-    equal_to(other: IProgram): bool;
+    equal_to(other: IProgram): boolean;
     as_javascript(): any;
     curry(args: [IProgram]): IProgram;
-    sha256tree(): [Uint8Array];
-    uncurry_error(): [IProgram];
+    sha256tree(): Uint8Array;
+    uncurry_error(): [IProgram, Array<IProgram>];
     uncurry(): [IProgram, Array<IProgram>|null];
 }
 "#;
