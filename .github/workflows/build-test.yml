@@ -142,7 +142,6 @@ jobs:
 
     # Test cldb output both run from python and via its command line tool.
     - name: "Run step run tests"
-      shell: bash
       run: |
         . ./activate
         cargo build
@@ -154,7 +153,6 @@ jobs:
         python mandelbrot-cldb.py
 
     - name: "Test step run with mandelbrot, setting print only"
-      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
         . ./activate
         python ./resources/tests/lib/steprun.py ./resources/tests/mandelbrot/mandelbrot.clvm.hex resources/tests/mandelbrot/mand_args.txt ./resources/tests/mandelbrot/mandelbrot.sym > /tmp/mand_output.txt
