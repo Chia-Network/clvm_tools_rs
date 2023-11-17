@@ -147,8 +147,9 @@ jobs:
       shell: bash
       run: |
         . ./activate
-        pip install .
         cargo build
+        pip install .
+        pip install clvm_rs
         cd resources/tests && \
         python test_clvm_step.py && \
         python mandelbrot-cldb.py
