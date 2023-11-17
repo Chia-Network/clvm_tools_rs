@@ -142,7 +142,6 @@ jobs:
         echo "CLVM_TOOLS_RS_VERSION=$(python -c 'import clvm_tools_rs; print(clvm_tools_rs.get_version())')" >> "$GITHUB_ENV"
 
     # Test cldb output both run from python and via its command line tool.
-    # Thanks: https://stackoverflow.com/questions/9948517/how-to-stop-a-powershell-script-on-the-first-error
     - name: "Run step run tests"
       shell: bash
       run: |
