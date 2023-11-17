@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 from clvm_tools_rs import start_clvm_program, compose_run_function, compile_clvm
-from clvm_tools import assemble
+from clvm_tools.binutils import assemble
 from clvm_rs import Program
 
 def compile_module_with_symbols(include_paths: List[Path], source: Path):
