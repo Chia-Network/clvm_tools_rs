@@ -147,7 +147,7 @@ jobs:
       shell: bash
       run: |
         . ./activate
-        maturin develop
+        pip install .
         cargo build
         cd resources/tests && \
         python test_clvm_step.py && \
