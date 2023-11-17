@@ -37,7 +37,9 @@ def run_until_end(p):
 
     return last
 
-def diag_run_clvm(program, args, symbols, options):
+def diag_run_clvm(program, args, symbols, options=None):
+    if options is None:
+        options = {}
     hex_form_of_program = binascii.hexlify(bytes(program)).decode('utf8')
     hex_form_of_args = binascii.hexlify(bytes(args)).decode('utf8')
     symbols = json.loads(open(symbols).read())
