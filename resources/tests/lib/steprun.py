@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from clvm_tools.binutils import assemble, disassemble
 from clvm_tools_rs import start_clvm_program, compose_run_function, compile_clvm
-from chia.types.blockchain_format.program import Program
+from clvm_rs import Program
 
 def compile_module_with_symbols(include_paths: List[Path], source: Path):
     path_obj = Path(source)
