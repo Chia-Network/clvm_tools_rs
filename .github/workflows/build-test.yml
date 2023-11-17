@@ -148,9 +148,7 @@ jobs:
         pip install .
         pip install clvm_rs
         pip install clvm_tools
-        cd resources/tests && \
-        python test_clvm_step.py && \
-        python mandelbrot-cldb.py
+        cd resources/tests && python test_clvm_step.py && python mandelbrot-cldb.py
 
     - name: "Test step run with mandelbrot, setting print only"
       run: |
