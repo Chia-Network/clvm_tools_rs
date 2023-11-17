@@ -2,7 +2,6 @@ import binascii
 import json
 import os
 from pathlib import Path
-from clvm_tools.binutils import assemble, disassemble
 from clvm_tools_rs import start_clvm_program, compose_run_function, compile_clvm
 from clvm_rs import Program
 
@@ -33,19 +32,6 @@ def run_until_end(p):
             last = step_result
             if 'Print' in last:
                 print(f"{last['Print']}")
-
-            if 'Result-Location' in last and \
-               'Arguments' in last and \
-               'print' in last['Result-Location'] and \
-               'Value' in last:
-                value_assembled = assemble(last['Value'])
-                assembled_arg_list = []
-                while value_assembled.pair is not None:
-                    assembled_arg_list.append(value_assembled.pair[0])
-                    value_assembled = value_assembled.pair[1]
-                if len(assembled_arg_list) > 2:
-                    to_show = disassemble(Program.to(assembled_arg_list[-2:]))
-                    print(f"print {last['Operator']} {to_show}")
 
     return last
 
