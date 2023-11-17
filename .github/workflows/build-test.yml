@@ -140,6 +140,27 @@ jobs:
         python -c 'import clvm_tools_rs; print(clvm_tools_rs.__file__)'
         echo "CLVM_TOOLS_RS_VERSION=$(python -c 'import clvm_tools_rs; print(clvm_tools_rs.get_version())')" >> "$GITHUB_ENV"
 
+    # Test cldb output both run from python and via its command line tool.
+    - name: "Run step run tests"
+      shell: bash
+      run: |
+        . ./activate
+        cargo build
+        pip install .
+        pip install clvm_rs
+        pip install clvm_tools
+        cd resources/tests && \
+        python test_clvm_step.py && \
+        python mandelbrot-cldb.py
+
+    - name: "Test step run with mandelbrot, setting print only"
+      shell: bash
+      run: |
+        . ./activate
+        python ./resources/tests/lib/steprun.py ./resources/tests/mandelbrot/mandelbrot.clvm.hex resources/tests/mandelbrot/mand_args.txt ./resources/tests/mandelbrot/mandelbrot.sym > /tmp/mand_output.txt
+        # Fail if the output differs.
+        diff -s -q /tmp/mand_output.txt ./resources/tests/mandelbrot/mand_test.txt
+
 
     - name: Verify recompilation of old sources match with new compiler
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
@@ -147,7 +168,7 @@ jobs:
         set -x
         . ./activate
         # Build cmd line tools
-        PYO3_PYTHON=`which python` cargo build --no-default-features --release
+        PYO3_PYTHON=`which python` cargo build --release
 
         # Grab chia-blockchain
         rm -rf chia-blockchain
@@ -210,7 +231,7 @@ jobs:
 
     - name: Run tests
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
-      run: cargo test --no-default-features
+      run: cargo test
 
     - name: Exhaustive assign tests
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')

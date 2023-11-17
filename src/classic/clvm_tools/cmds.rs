@@ -531,7 +531,6 @@ pub fn cldb(args: &[String]) {
             .set_type(Rc::new(PathOrCodeConv {}))
             .set_help("path to symbol file".to_string()),
     );
-    #[cfg(feature = "debug-print")]
     parser.add_argument(
         vec!["-p".to_string(), "--only-print".to_string()],
         Argument::new()
@@ -746,6 +745,8 @@ pub fn cldb(args: &[String]) {
         }
         output.push(cvt_subtree);
     };
+
+    cldbrun.set_print_only(only_print);
 
     loop {
         if cldbrun.is_ended() {
