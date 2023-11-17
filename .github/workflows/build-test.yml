@@ -158,7 +158,7 @@ jobs:
       shell: bash
       run: |
         . ./activate
-        python ./resources/tests/lib/steprun.py ./resources/tests/mandelbrot/mandelbrot.clvm.hex mand_args.txt ./resources/tests/mandelbrot/mandelbrot.sym > /tmp/mand_output.txt
+        python ./resources/tests/lib/steprun.py ./resources/tests/mandelbrot/mandelbrot.clvm.hex resources/tests/mandelbrot/mand_args.txt ./resources/tests/mandelbrot/mandelbrot.sym > /tmp/mand_output.txt
         # Fail if the output differs.
         diff -s -q /tmp/mand_output.txt ./resources/tests/mandelbrot/mand_test.txt
 
