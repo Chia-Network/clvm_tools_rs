@@ -154,6 +154,7 @@ jobs:
       run: |
         . ./activate
         python ./resources/tests/lib/steprun.py ./resources/tests/mandelbrot/mandelbrot.clvm.hex resources/tests/mandelbrot/mand_args.txt ./resources/tests/mandelbrot/mandelbrot.sym > mand_output.txt
+        # git diff invoked this way returns 0 (as /bin/true) if there is no difference or 1 if there is.
         git diff --no-index -s --quiet -- mand_output.txt ./resources/tests/mandelbrot/mand_test.txt
         rm -f mand_output.txt
 
