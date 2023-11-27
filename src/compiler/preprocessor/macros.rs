@@ -47,7 +47,7 @@ fn match_number(body: Rc<SExp>) -> Result<MatchedNumber, CompileErr> {
         }
         SExp::Atom(al, b) => {
             // An atom with unprintable characters is rendered as an integer.
-            if !printable(b) {
+            if !printable(b, false) {
                 let to_integer = number_from_u8(b);
                 return Ok(MatchedNumber::MatchedInt(al.clone(), to_integer));
             }

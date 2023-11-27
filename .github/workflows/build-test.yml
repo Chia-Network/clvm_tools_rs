@@ -91,10 +91,9 @@ jobs:
 
     - name: Build Windows with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'windows')
-      shell: bash
       run: |
         python -m venv venv
-        cp venv/Scripts/activate .
+        echo ". .\venv\Scripts\Activate.ps1" > activate.ps1
         . ./activate
         maturin build -i python --release --strip
         # Find and install the newly built wheel
@@ -143,24 +142,23 @@ jobs:
 
     # Test cldb output both run from python and via its command line tool.
     - name: "Run step run tests"
-      shell: bash
       run: |
         . ./activate
         cargo build
         pip install .
         pip install clvm_rs
         pip install clvm_tools
-        cd resources/tests && \
-        python test_clvm_step.py && \
-        python mandelbrot-cldb.py
+        cd resources/tests && python test_clvm_step.py && python mandelbrot-cldb.py
 
     - name: "Test step run with mandelbrot, setting print only"
-      shell: bash
       run: |
         . ./activate
-        python ./resources/tests/lib/steprun.py ./resources/tests/mandelbrot/mandelbrot.clvm.hex resources/tests/mandelbrot/mand_args.txt ./resources/tests/mandelbrot/mandelbrot.sym > /tmp/mand_output.txt
-        # Fail if the output differs.
-        diff -s -q /tmp/mand_output.txt ./resources/tests/mandelbrot/mand_test.txt
+        python ./resources/tests/lib/steprun.py ./resources/tests/mandelbrot/mandelbrot.clvm.hex resources/tests/mandelbrot/mand_args.txt ./resources/tests/mandelbrot/mandelbrot.sym > mand_output.txt
+        # git diff invoked this way returns 0 (as /bin/true) if there is no difference or 1 if there is.
+        git diff --no-index -s --quiet -- mand_output.txt ./resources/tests/mandelbrot/mand_test.txt
+        # Remove file in a compatible way using git as a general tool
+        git add mand_output.txt
+        git rm --force mand_output.txt
 
 
     - name: Verify recompilation of old sources match with new compiler
