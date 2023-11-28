@@ -368,6 +368,7 @@ impl Preprocessor {
 
         for p in parsed.iter() {
             for form in self.process_pp_form(includes, p.clone())? {
+                eprintln!("import form {}", form);
                 out_forms.push(form.clone());
             }
         }

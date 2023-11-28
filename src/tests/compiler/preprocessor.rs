@@ -575,6 +575,8 @@ fn test_preprocessor_tours_includes_properly() {
         "(defun __chia__compile-list (args) (a (i args (com (c 4 (c (f args) (c (__chia__compile-list (r args)) ())))) (com ())) @))",
         "(defmac list ARGS (__chia__compile-list ARGS))",
         "(defun-inline / (A B) (f (divmod A B)))",
+        "(defun __chia__sha256tree (t) (a (i (l t) (com (sha256 2 (__chia__sha256tree (f t)) (__chia__sha256tree (r t)))) (com (sha256 1 t))) @))",
+        "(defun-inline / (A B) (f (divmod A B)))",
         "(defconstant *chialisp-version* 22)",
         "(defconstant AGG_SIG_UNSAFE 49)",
         "(defconstant AGG_SIG_ME 50)",
