@@ -331,6 +331,7 @@ fn compile_module(
 
     for p in output_forms.iter() {
         if let Some(alias) = recognize_defalias(opts.clone(), p.clone())? {
+            eprintln!("alias in scope {alias:?}");
             match alias {
                 Alias::End(namespace_id) => {
                     namespace_collection.remove(namespace_id.clone());

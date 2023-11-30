@@ -399,6 +399,12 @@ impl ImportLongName {
 
         true
     }
+
+    pub fn with_child(&self, name: &[u8]) -> Self {
+        let mut result = self.components.clone();
+        result.push(name.to_vec());
+        ImportLongName { components: result }
+    }
 }
 
 /// Specification of how to name imported items from the target namespace.
@@ -675,6 +681,20 @@ impl Alias {
             Alias::Rename(scope_id, _, _) => scope_id.clone(),
             Alias::Shorten(scope_id, _) => scope_id.clone(),
             Alias::End(scope_id) => Some(scope_id.clone()),
+        }
+    }
+
+    pub fn to_sexp(&self) -> Rc<SExp> {
+        match self {
+            Alias::Rename(scope_id, module_name, qualified) => {
+                todo!();
+            }
+            Alias::Shorten(scope_id, module_name) => {
+                todo!();
+            }
+            Alias::End(scope_id) => {
+                todo!();
+            }
         }
     }
 }

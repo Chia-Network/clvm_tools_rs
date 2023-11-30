@@ -53,7 +53,7 @@ struct ImportedModule {
     name: ImportLongName,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ModuleAndImportSpec {
     name: ImportLongName,
     spec: ModuleImportSpec,
@@ -66,11 +66,24 @@ struct ImportNameMap {
     import_specs: Vec<ModuleAndImportSpec>,
 }
 
+#[derive(Debug, Clone)]
+struct HelperNamespace {
+    defined_in: Option<ImportLongName>,
+    with_namespace: Vec<ModuleAndImportSpec>,
+}
+
+#[derive(Debug, Clone)]
+struct NamespacedHelperForm {
+    helper: HelperForm,
+    full_name: ImportLongName,
+    context: Option<HelperNamespace>
+}
+
 struct Preprocessor {
     opts: Rc<dyn CompilerOpts>,
     ppext: Rc<PreprocessorExtension>,
     runner: Rc<dyn TRunProgram>,
-    helpers: Vec<HelperForm>,
+    helpers: Vec<NamespacedHelperForm>,
     strict: bool,
     stored_macros: HashMap<Vec<u8>, Rc<SExp>>,
 
@@ -547,13 +560,38 @@ impl Preprocessor {
         Ok(())
     }
 
+    fn get_namespace_context(&self) -> Option<HelperNamespace> {
+        if self.namespace_stack.is_empty() {
+            return None;
+        }
+
+        let namespace = &self.namespace_stack[self.namespace_stack.len()-1];
+        Some(HelperNamespace {
+            defined_in: namespace.name.clone(),
+            with_namespace: namespace.import_specs.clone(),
+        })
+    }
+
     fn add_helper(&mut self, h: HelperForm) {
+        let helper_context = self.get_namespace_context();
+        // We compute a qualified name to call the helper by.
+        let computed_name = helper_context.as_ref().and_then(|hctx| {
+            hctx.defined_in.as_ref().map(|hmod| hmod.with_child(h.name()))
+        }).unwrap_or_else(|| {
+            let (_, name) = ImportLongName::parse(h.name());
+            name
+        });
+
         for i in 0..=self.helpers.len() {
             if i == self.helpers.len() {
-                self.helpers.push(h);
+                self.helpers.push(NamespacedHelperForm {
+                    full_name: computed_name,
+                    helper: h,
+                    context: helper_context,
+                });
                 break;
-            } else if self.helpers[i].name() == h.name() {
-                self.helpers[i] = h;
+            } else if self.helpers[i].full_name == computed_name {
+                self.helpers[i].helper = h;
                 break;
             }
         }
@@ -589,7 +627,7 @@ impl Preprocessor {
 
                 // See if it's a form that calls one of our macros.
                 for m in self.helpers.iter() {
-                    if let HelperForm::Defun(_, mdata) = &m {
+                    if let HelperForm::Defun(_, mdata) = &m.helper {
                         // We record upfront macros
                         if mdata.name != defmac_name {
                             continue;
@@ -625,7 +663,7 @@ impl Preprocessor {
                                     loc: body.loc(),
                                     args: mdata.args.clone(),
                                     include_forms: vec![],
-                                    helpers: self.helpers.clone(),
+                                    helpers: self.helpers.iter().map(|hn| hn.helper.clone()).collect(),
                                     exp: mdata.body.clone(),
                                     ty: None,
                                 };
