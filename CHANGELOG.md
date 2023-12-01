@@ -51,3 +51,4 @@ Skipped
 ## 0.1.40
 
 - New language sigil ```*standard-cl-23*``` is here which is the same language as that introduced by ```*strict-cl-21*``` but has much better optimization.
+- Syntactic tree lists using #(...) syntax in cl21 and cl23 (matt-o-how).
