@@ -149,7 +149,7 @@ jobs:
         # We do it here as a hedge against changes in the python environment that might
         # have happened due to pulling in the trunk versions of other packages that
         # depend on clvm_tools_rs.
-        python support/wheelname.py
+        pip install --no-index --find-links target/wheels/ clvm_tools_rs
         pip install clvm_rs
         pip install clvm_tools
         cd resources/tests && python test_clvm_step.py && python mandelbrot-cldb.py
