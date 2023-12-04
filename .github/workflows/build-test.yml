@@ -97,7 +97,7 @@ jobs:
         . ./activate
         maturin build -i python --release --strip
         # Find and install the newly built wheel
-        python support/wheelname.py
+        pip install --no-index --find-links target/wheels/ clvm_tools_rs
 
     - name: Install clvm_tools_rs wheel
       if: ${{ !startsWith(matrix.os, 'windows') }}
@@ -177,7 +177,7 @@ jobs:
         cp support/install_deps.sh support/verify_compiler_version.sh chia-blockchain
         (cd chia-blockchain && python -m venv venv && . venv/bin/activate && pip install --upgrade pip && \
           python -m pip install maturin==1.1.0 && \
-          cd .. && python support/wheelname.py && \
+          cd .. && pip install --no-index --find-links target/wheels/ clvm_tools_rs && \
           cd chia-blockchain && \
           # deps for manage_clvm.py
           pip install click typing_extensions chia_rs clvm && \
@@ -189,7 +189,7 @@ jobs:
       run: |
         python -m pip install pytest
         # This script installs the wheel built during this workflow.
-        python support/wheelname.py
+        pip install --no-index --find-links wheel/target/wheels/ clvm_tools_rs
         # TODO: bring in the other tests in resources/tests/cmdline/tests besides cmds_test.py
         (cd resources/tests/cmdline/tests && py.test cmds_test.py )
 
@@ -202,13 +202,13 @@ jobs:
         # Ensure we're using the sources we have.  This is a hedge against
         # changes made by any other step doing operations on pip.
         # This script installs the wheel built during this workflow.
-        python support/wheelname.py
+        pip install --no-index --find-links wheel/target/wheels/ clvm_tools_rs
         (cd resources/tests && python check-recompiles.py)
 
     - name: Verify recompilation follows date and modification rules
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
-        python support/wheelname.py
+        pip install --no-index --find-links wheel/target/wheels/ clvm_tools_rs
         python resources/tests/test-clvm-recompile-behavior.py
 
     - name: Install pytest
