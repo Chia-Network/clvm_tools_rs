@@ -145,7 +145,11 @@ jobs:
       run: |
         . ./activate
         cargo build
-        pip install .
+        # This finds and installs a compatible wheel from the target directory on linux.
+        # We do it here as a hedge against changes in the python environment that might
+        # have happened due to pulling in the trunk versions of other packages that
+        # depend on clvm_tools_rs.
+        python support/wheelname.py
         pip install clvm_rs
         pip install clvm_tools
         cd resources/tests && python test_clvm_step.py && python mandelbrot-cldb.py
@@ -280,6 +284,13 @@ jobs:
       with:
         name: wheels
         path: ./target/wheels/
+
+    - name: Check for incompatible wheels and bail if found
+      run: |
+        set -e
+        # Check for a wheel with -linux_x86_64 platform tag, which will
+        # fail uploading to pypi.
+        find target -name \*-linux_x86_64.whl -exec /bin/false '{}' '+'
 
     - name: Publish distribution to PyPI
       if: env.RELEASE == 'true'
