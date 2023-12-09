@@ -8,9 +8,9 @@ use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
-    list_to_cons, Alias, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType, CompileErr,
+    list_to_cons, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType, CompileErr,
     CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData,
-    HelperForm, ImportLongName, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, ModAccum, StructDef,
+    HelperForm, ImportLongName, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, ModAccum, ModuleImportSpec, NamespaceData, NamespaceRefData, StructDef,
     StructMember, SyntheticType, TypeAnnoKind,
 };
 use crate::compiler::lambda::handle_lambda;
@@ -87,6 +87,8 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
 fn collect_used_names_helperform(body: &HelperForm) -> Vec<Vec<u8>> {
     match body {
         HelperForm::Deftype(_) => Vec::new(),
+        HelperForm::Defnamespace(ns) => Vec::new(),
+        HelperForm::Defnsref(ns) => Vec::new(),
         HelperForm::Defconstant(defc) => collect_used_names_bodyform(defc.body.borrow()),
         HelperForm::Defmacro(mac) => {
             let mut res = collect_used_names_compileform(mac.program.borrow());
@@ -1148,6 +1150,80 @@ pub struct HelperFormResult {
     pub new_helpers: Vec<HelperForm>,
 }
 
+pub fn compile_namespace(
+    opts: Rc<dyn CompilerOpts>,
+    loc: Srcloc,
+    internal: &[SExp]
+) -> Result<HelperForm, CompileErr> {
+    if internal.len() < 2 {
+        return Err(CompileErr(loc, "Namespace must have a name".to_string()));
+    }
+
+    let (_, parsed) =
+        if let SExp::Atom(_, name) = &internal[1] {
+            ImportLongName::parse(&name)
+        } else {
+            return Err(CompileErr(internal[1].loc(), "Namespace name must be an atom".to_string()));
+        };
+
+    let mut helpers = Vec::new();
+    for sexp in internal.iter().skip(2) {
+        if let Some(hresult) = compile_helperform(opts.clone(), Rc::new(sexp.clone()))? {
+            for h in hresult.new_helpers.iter() {
+                helpers.push(h.clone());
+            }
+        } else {
+            return Err(CompileErr(sexp.loc(), "Namespaces must contain only definitions".to_string()));
+        }
+    }
+
+    Ok(HelperForm::Defnamespace(NamespaceData {
+        loc: loc.clone(),
+        kw: internal[0].loc(),
+        nl: internal[1].loc(),
+        rendered_name: parsed.as_u8_vec(false),
+        longname: parsed,
+        helpers,
+    }))
+}
+
+pub fn compile_nsref(
+    opts: Rc<dyn CompilerOpts>,
+    loc: Srcloc,
+    internal: &[SExp]
+) -> Result<HelperForm, CompileErr> {
+    if internal.len() < 2 {
+        return Err(CompileErr(loc.clone(), "import must import a module".to_string()));
+    }
+    let import_spec = ModuleImportSpec::parse(loc.clone(), internal[0].loc(), internal, 1)?;
+    if let ModuleImportSpec::Qualified(q) = &import_spec {
+        return Ok(HelperForm::Defnsref(NamespaceRefData {
+            loc,
+            kw: internal[0].loc(),
+            nl: q.nl.clone(),
+            rendered_name: q.name.as_u8_vec(false),
+            longname: q.name.clone(),
+            specification: import_spec.clone()
+        }));
+    }
+
+    let (_, parsed) =
+        if let SExp::Atom(nl, name) = &internal[1] {
+            ImportLongName::parse(&name)
+        } else {
+            return Err(CompileErr(internal[1].loc(), "Import name must be an atom".to_string()));
+        };
+
+    Ok(HelperForm::Defnsref(NamespaceRefData {
+        loc,
+        kw: internal[0].loc(),
+        nl: import_spec.name_loc(),
+        rendered_name: parsed.as_u8_vec(false),
+        longname: parsed,
+        specification: import_spec
+    }))
+}
+
 pub fn compile_helperform(
     opts: Rc<dyn CompilerOpts>,
     body: Rc<SExp>,
@@ -1268,135 +1344,27 @@ pub fn compile_helperform(
                 chia_type: Some(parsed_chia),
                 new_helpers: helpers,
             }))
+        } else if matched.op_name == "namespace".as_bytes().to_vec() {
+            let ns = compile_namespace(opts, body.loc(), &matched.orig)?;
+            Ok(Some(HelperFormResult {
+                chia_type: None,
+                new_helpers: vec![ns],
+            }))
+        } else if matched.op_name == "import".as_bytes().to_vec() {
+            let nsref = compile_nsref(opts, body.loc(), &matched.orig)?;
+            Ok(Some(HelperFormResult {
+                chia_type: None,
+                new_helpers: vec![nsref],
+            }))
         } else {
             Err(CompileErr(
                 matched.body.loc(),
-                "unknown keyword in helper".to_string(),
+                format!("unknown keyword in helper {body}")
             ))
         }
     } else {
         Ok(None)
     }
-}
-
-pub fn recognize_defalias(
-    opts: Rc<dyn CompilerOpts>,
-    form: Rc<SExp>,
-) -> Result<Option<Alias>, CompileErr> {
-    if let Some(lst) = form.proper_list() {
-        if lst.is_empty() {
-            return Ok(None);
-        }
-        if let SExp::Atom(_, akw) = &lst[0] {
-            if akw == b"defalias" {
-                if lst.len() < 2 {
-                    return Err(CompileErr(
-                        form.loc(),
-                        "No directive specified in defalias".to_string()
-                    ));
-                }
-
-                if let SExp::Atom(_, directive) = &lst[1] {
-                    if directive == b"shorten" {
-                        if lst.len() < 3 {
-                            return Err(CompileErr(
-                                form.loc(),
-                                "shorten alias needs a namespace to shorten".to_string()
-                            ));
-                        }
-
-                        let namespace_id =
-                            if lst.len() > 3 {
-                                Some(Rc::new(lst[3].clone()))
-                            } else {
-                                None
-                            };
-
-                        if let SExp::Atom(_, namespace) = &lst[2] {
-                            let (relative, long_name) = ImportLongName::parse(namespace);
-                            if relative {
-                                return Err(CompileErr(
-                                    form.loc(),
-                                    "A relative namespace isn't allowed with shorten".to_string()
-                                ));
-                            }
-
-                            return Ok(Some(Alias::Shorten(namespace_id, long_name.clone())));
-                        }
-                    } else if directive == b"end-scope" {
-                        if lst.len() < 3 {
-                            return Err(CompileErr(
-                                form.loc(),
-                                "end-scope needs a scope id".to_string(),
-                            ));
-                        }
-                        return Ok(Some(Alias::End(Rc::new(lst[2].clone()))));
-                    } else if directive == b"rename" {
-                        if lst.len() < 3 {
-                            return Err(CompileErr(
-                                form.loc(),
-                                "rename needs at least a module name".to_string(),
-                            ));
-                        }
-
-                        let (next, scope_id) =
-                            if let SExp::Atom(_, maybe_scope) = &lst[2] {
-                                if maybe_scope == b"scope" && lst.len() > 4 {
-                                    (4, Some(Rc::new(lst[3].clone())))
-                                } else {
-                                    (2, None)
-                                }
-                            } else {
-                                (2, None)
-                            };
-
-                        if lst.len() <= next {
-                            return Err(CompileErr(
-                                form.loc(),
-                                "no module name given to rename".to_string(),
-                            ));
-                        }
-
-                        let module_name =
-                            if let SExp::Atom(_, module_name) = &lst[next] {
-                                let (relative, parsed) = ImportLongName::parse(&module_name);
-                                if relative {
-                                    return Err(CompileErr(
-                                        form.loc(),
-                                        "module name can't be relative".to_string()
-                                    ));
-                                }
-
-                                parsed
-                            } else {
-                                return Err(CompileErr(
-                                    form.loc(),
-                                    "module name must be an atom".to_string()
-                                ));
-                            };
-
-                        let mut renames = Vec::new();
-                        for r in lst.iter().skip(next+1) {
-                            if let SExp::Atom(_, name) = r {
-                                renames.push(name.clone());
-                            } else {
-                                return Err(CompileErr(
-                                    form.loc(),
-                                    "rename list must be atoms".to_string()
-                                ));
-                            }
-                        }
-
-                        return Ok(Some(Alias::Rename(scope_id, module_name, renames)));
-                    } else {
-                        todo!();
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(None)
 }
 
 trait ModCompileForms {

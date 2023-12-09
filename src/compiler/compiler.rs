@@ -13,12 +13,13 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::{convert_to_clvm_rs, convert_from_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
-use crate::compiler::comptypes::{Alias, BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, NamespaceCollection, PrimaryCodegen, SyntheticType};
+use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen, SyntheticType};
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
-use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend, recognize_defalias};
+use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend};
 use crate::compiler::optimize::get_optimizer;
-use crate::compiler::preprocessor::preprocess;
+use crate::compiler::preprocessor::{Preprocessor, preprocess};
 use crate::compiler::prims;
+use crate::compiler::resolve::resolve_namespaces;
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
@@ -321,26 +322,18 @@ fn compile_module(
 
     let loc = pre_forms[0].loc().ext(&pre_forms[pre_forms.len()-1].loc());
     let preprocess_source = Rc::new(enlist(loc.clone(), pre_forms));
-    let output_forms = preprocess(
-        opts.clone(),
+    let mut preprocessor = Preprocessor::new(opts.clone());
+    let output_forms = preprocessor.run_modules(
         &mut includes,
         preprocess_source
     )?;
 
-    let mut namespace_collection = NamespaceCollection::default();
-
     for p in output_forms.iter() {
-        if let Some(alias) = recognize_defalias(opts.clone(), p.clone())? {
-            eprintln!("alias in scope {alias:?}");
-            match alias {
-                Alias::End(namespace_id) => {
-                    namespace_collection.remove(namespace_id.clone());
-                },
-                _ => {
-                    namespace_collection.add(alias.clone());
-                }
-            }
-        } else if let Some(export) = match_export_form(opts.clone(), p.clone())? {
+        eprintln!("pp: {p}");
+    }
+    
+    for p in output_forms.iter() {
+        if let Some(export) = match_export_form(opts.clone(), p.clone())? {
             if matches!(export, Export::MainProgram(_, _)) {
                 if found_main || !exports.is_empty() {
                     return Err(CompileErr(
@@ -389,6 +382,8 @@ fn compile_module(
             // Single program.
             program.args = args.clone();
             program.exp = expr.clone();
+
+            program = resolve_namespaces(opts.clone(), &program)?;
 
             let output = compile_from_compileform(context, opts.clone(), program)?;
             let converted = convert_to_clvm_rs(
@@ -521,6 +516,8 @@ fn compile_module(
     }
 
     program.exp = function_list;
+    program = resolve_namespaces(opts.clone(), &program)?;
+
     let compiled_result = Rc::new(compile_from_compileform(context, opts.clone(), program)?);
     let result_clvm = convert_to_clvm_rs(context.allocator(), compiled_result)?;
     let nil = context.allocator().null();
