@@ -397,6 +397,13 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
             format!("could not read {filename}"),
         ))
     }
+    fn write_new_file(
+        &self,
+        _target: &str,
+        _content: &[u8]
+    ) -> Result<(), CompileErr> {
+        panic!("should not be writing from tests depending on this opts");
+    }
     fn compile_program(
         &self,
         _allocator: &mut Allocator,

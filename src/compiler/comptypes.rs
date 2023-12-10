@@ -885,6 +885,13 @@ pub trait CompilerOpts {
         filename: String,
     ) -> Result<(String, Vec<u8>), CompileErr>;
 
+    /// Fully write a file to the filesystem.
+    fn write_new_file(
+        &self,
+        target_path: &str,
+        content: &[u8]
+    ) -> Result<(), CompileErr>;
+
     /// Given a parsed SExp, compile it as an independent program based on the
     /// settings given here.  The result is bare generated code.
     fn compile_program(

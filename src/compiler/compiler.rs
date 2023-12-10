@@ -390,16 +390,12 @@ fn compile_module(
                 context.allocator(),
                 Rc::new(output),
             )?;
+
+            let mut output_path = PathBuf::from(&opts.filename());
             let mut stream = Stream::new(None);
             stream.write(sexp_as_bin(context.allocator(), converted));
-            let mut output_path = PathBuf::from(&opts.filename());
             output_path.set_extension("hex");
-            fs::write(&output_path, stream.get_value().hex()).map_err(|_| {
-                CompileErr(
-                    loc.clone(),
-                    format!("could not write hex output file for {}", opts.filename())
-                )
-            })?;
+            opts.write_new_file(&output_path.into_os_string().to_string_lossy(), stream.get_value().hex().as_bytes())?;
             return Ok(SExp::Nil(loc.clone()));
         }
     }
@@ -552,12 +548,7 @@ fn compile_module(
         )?;
         stream.write(sexp_as_bin(context.allocator(), converted_func));
         let output_path = create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(&m.name))?;
-        fs::write(&output_path, stream.get_value().hex()).map_err(|_| {
-            CompileErr(
-                m.func.loc(),
-                format!("could not write output file {output_path}")
-            )
-        })?;
+        opts.write_new_file(&output_path, stream.get_value().hex().as_bytes())?;
     }
 
     Ok(prog_output)
@@ -725,6 +716,21 @@ impl CompilerOpts for DefaultCompilerOpts {
             format!("could not find {filename} to include"),
         ))
     }
+
+    fn write_new_file(
+        &self,
+        target: &str,
+        content: &[u8]
+    ) -> Result<(), CompileErr> {
+        fs::write(target, content).map_err(|_| {
+            CompileErr(
+                Srcloc::start(&self.filename()),
+                format!("could not write output file {} for {}", target, self.filename())
+            )
+        })?;
+        todo!();
+    }
+
     fn compile_program(
         &self,
         allocator: &mut Allocator,

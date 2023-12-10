@@ -370,7 +370,6 @@ impl Preprocessor {
         });
 
         for p in parsed.iter() {
-            eprintln!("preprocess {}", p);
             for form in self.process_pp_form(includes, p.clone())? {
                 out_forms.push(form.clone());
             }
@@ -589,8 +588,6 @@ impl Preprocessor {
                 parsed_name
             };
 
-        eprintln!("find_macro {} {}", decode_string(&clean_last_name_component), decode_string(&updated_name.as_u8_vec(false)));
-
         let current_module_name_ref = current_module_name.as_ref().map(|n| n);
         let (found_name, target) =
             if let Some((tname, target)) = find_helper_target(
@@ -600,9 +597,6 @@ impl Preprocessor {
                 &clean_last_name_component,
                 &updated_name
             ) {
-                eprintln!("got macro helper {}", decode_string(&tname.as_u8_vec(false)));
-                let printable_macro_names: Vec<String> = self.stored_macros.keys().map(|k| decode_string(&k.as_u8_vec(false))).collect();
-                eprintln!("macros {:?}", printable_macro_names);
                 if let Some(mac) = self.stored_macros.get_mut(&tname) {
                     match mac {
                         StoredMacro::Compiled(use_macro) => {
@@ -682,7 +676,6 @@ impl Preprocessor {
         body: Rc<SExp>,
         start: bool,
     ) -> Result<Option<Rc<SExp>>, CompileErr> {
-        eprintln!("expand_macros {}", body);
         if let SExp::Cons(l, f, r) = body.borrow() {
             // First expand inner macros.
             let first_expanded = self.expand_macros(f.clone(), true)?;
@@ -1060,7 +1053,6 @@ impl Preprocessor {
         let mut result = Vec::new();
         while let SExp::Cons(_, f, r) = tocompile.borrow() {
             let mut lst = self.process_pp_form(includes, f.clone())?;
-            eprintln!("process_pp_form {} => {}", f, enlist(f.loc(), &lst));
             result.append(&mut lst);
             tocompile = r.clone();
         }
