@@ -3,7 +3,6 @@ use std::collections::{BTreeMap, HashSet};
 use std::mem::swap;
 use std::rc::Rc;
 
-use crate::compiler::BasicCompileContext;
 use crate::compiler::codegen::toposort_assign_bindings;
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData, DefunData, HelperForm, ImportLongName, LambdaData, LetData, LetFormKind, ModuleImportSpec, NamespaceData, map_m};

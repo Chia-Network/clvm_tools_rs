@@ -279,7 +279,7 @@ fn test_simple_module_compliation_lambda_rewrite_with_body() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(3 13)",
-                outcome: Some("(16 39)")
+                outcome: Some("(+ 39)")
             },
             HexArgumentOutcome {
                 hexfile: hex_filename,

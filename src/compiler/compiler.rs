@@ -17,7 +17,7 @@ use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend};
 use crate::compiler::optimize::get_optimizer;
-use crate::compiler::preprocessor::{Preprocessor, preprocess};
+use crate::compiler::preprocessor::Preprocessor;
 use crate::compiler::prims;
 use crate::compiler::resolve::resolve_namespaces;
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};

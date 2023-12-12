@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use serde::Serialize;
@@ -597,7 +597,7 @@ impl ModuleImportSpec {
                 }).collect::<Vec<Rc<SExp>>>());
                 Rc::new(enlist(kl.clone(), &result_vec))
             }
-            /// All but these names are in the toplevel namespace after the import.
+            // All but these names are in the toplevel namespace after the import.
             ModuleImportSpec::Hiding(kl, hidden_names) => {
                 if hidden_names.is_empty() {
                     return Rc::new(SExp::Nil(kl.clone()));

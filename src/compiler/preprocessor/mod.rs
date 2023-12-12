@@ -1,9 +1,7 @@
 mod macros;
 
-use num_bigint::ToBigInt;
-
 use std::borrow::Borrow;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
@@ -17,10 +15,9 @@ use crate::compiler::clvm;
 use crate::compiler::clvm::{convert_from_clvm_rs, truthy};
 use crate::compiler::compiler::compile_from_compileform;
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, ImportLongName, IncludeDesc, IncludeProcessType, ModuleImportSpec, NamespaceData, NamespaceRefData, QualifiedModuleInfo, map_m
+    BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, ImportLongName, IncludeDesc, IncludeProcessType, ModuleImportSpec, NamespaceData, NamespaceRefData, QualifiedModuleInfo,
 };
 use crate::compiler::dialect::{detect_modern, KNOWN_DIALECTS};
-use crate::compiler::evaluate::{create_argument_captures, ArgInputs};
 use crate::compiler::frontend::{compile_helperform, compile_nsref, frontend};
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::preprocessor::macros::PreprocessorExtension;

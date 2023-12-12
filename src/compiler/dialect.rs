@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use clvmr::allocator::{Allocator, NodePtr, SExp};
 
 use crate::classic::clvm::sexp::proper_list;
-use crate::classic::clvm_tools::binutils::disassemble;
 
 use crate::compiler::sexp::decode_string;
 
