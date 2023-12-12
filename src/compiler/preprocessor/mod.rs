@@ -310,7 +310,7 @@ impl Preprocessor {
         import_name_to_module_name(loc, reference_name.as_ref(), name)
     }
 
-    /// Given a specification of an include file, load up the forms inside it and
+    /// Given a specification of an include file, ltoad up the forms inside it and
     /// return them (or an error if the file couldn't be read or wasn't a list).
     pub fn process_include(
         &mut self,
@@ -782,6 +782,10 @@ impl Preprocessor {
     }
 
     fn parse_import(&mut self, loc: Srcloc, form: &[SExp]) -> Result<Option<IncludeType>, CompileErr> {
+        if form.is_empty() {
+            return Ok(None);
+        }
+
         let import =
             if let SExp::Atom(_, name) = &form[0] {
                 if name != b"import" {

@@ -141,12 +141,17 @@ impl CompilerOpts for TestModuleCompilerOpts {
     }
 }
 
+struct HexArgumentOutcome<'a> {
+    hexfile: &'a str,
+    argument: &'a str,
+    outcome: Option<&'a str>
+}
 
-#[test]
-fn test_simple_module_compliation() {
-    let filename = "resources/tests/module/modtest1.clsp";
-
-    let content = fs::read_to_string(filename).expect("file should exist");
+fn test_compile_and_run_program_with_modules(
+    filename: &str,
+    content: &str,
+    runs: &[HexArgumentOutcome]
+) {
     let loc = Srcloc::start(filename);
     let parsed: Vec<Rc<SExp>> = parse_sexp(loc.clone(), content.bytes()).expect("should parse");
     let listed = Rc::new(enlist(loc.clone(), &parsed));
@@ -167,26 +172,96 @@ fn test_simple_module_compliation() {
         &content,
         &mut symbol_table
     ).expect("should compile");
+
+    for run in runs.iter() {
+        let hex_data = source_opts.get_written_file(run.hexfile).expect("should have written hex data beside the source file");
+        let mut hex_stream = Stream::new(Some(Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(decode_string(&hex_data)))).expect("should be valid hex")));
+        let compiled_node = sexp_from_stream(&mut allocator, &mut hex_stream, Box::new(SimpleCreateCLVMObject {})).expect("hex data should decode as sexp").1;
+
+        let assembled_env = assemble(&mut allocator, run.argument).expect("should assemble");
+        let run_result = runner.run_program(
+            &mut allocator,
+            compiled_node,
+            assembled_env,
+            None
+        );
+        if let Some(res) = &run.outcome {
+            let have_outcome = run_result.expect("expected success").1;
+            assert_eq!(&disassemble(&mut allocator, have_outcome, None), res);
+        } else {
+            assert!(run_result.is_err());
+        }
+    }
+}
+
+#[test]
+fn test_simple_module_compliation() {
+    let filename = "resources/tests/module/modtest1.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
     let hex_filename = "resources/tests/module/modtest1.hex";
-    let hex_data = source_opts.get_written_file(hex_filename).expect("should have written hex data beside the source file");
-    let mut hex_stream = Stream::new(Some(Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(decode_string(&hex_data)))).expect("should be valid hex")));
-    let compiled_node = sexp_from_stream(&mut allocator, &mut hex_stream, Box::new(SimpleCreateCLVMObject {})).expect("hex data should decode as sexp").1;
 
-    let env_3 = assemble(&mut allocator, "(3)").expect("should assemble");
-    let run_result_3 = runner.run_program(
-        &mut allocator,
-        compiled_node,
-        env_3,
-        None
-    ).expect("should run");
-    assert_eq!(disassemble(&mut allocator, run_result_3.1, None), "3");
-
-    let env_13 = assemble(&mut allocator, "(13)").expect("should assemble");
-    let run_result = runner.run_program(
-        &mut allocator,
-        compiled_node,
-        env_13,
-        None
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "(3)",
+                outcome: Some("3")
+            },
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "(13)",
+                outcome: None
+            }
+        ]
     );
-    assert!(run_result.is_err());
+}
+
+#[test]
+fn test_simple_module_compliation_assign_rewrite() {
+    let filename = "resources/tests/module/modtest1_assign.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_filename = "resources/tests/module/modtest1_assign.hex";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "(3)",
+                outcome: Some("3")
+            },
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "(13)",
+                outcome: None
+            }
+        ]
+    );
+}
+
+#[test]
+fn test_simple_module_compliation_lambda_rewrite() {
+    let filename = "resources/tests/module/modtest1_lambda.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_filename = "resources/tests/module/modtest1_lambda.hex";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "(3)",
+                outcome: Some("3")
+            },
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "(13)",
+                outcome: None
+            }
+        ]
+    );
 }

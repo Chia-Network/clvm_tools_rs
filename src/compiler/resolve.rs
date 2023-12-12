@@ -4,8 +4,9 @@ use std::mem::swap;
 use std::rc::Rc;
 
 use crate::compiler::BasicCompileContext;
+use crate::compiler::codegen::toposort_assign_bindings;
 use crate::compiler::compiler::is_at_capture;
-use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, ImportLongName, ModuleImportSpec, NamespaceData, map_m};
+use crate::compiler::comptypes::{Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData, DefunData, HelperForm, ImportLongName, LetData, LetFormKind, ModuleImportSpec, NamespaceData, map_m};
 use crate::compiler::sexp::{decode_string, SExp};
 
 fn capture_scope(in_scope: &mut HashSet<Vec<u8>>, args: Rc<SExp>) {
@@ -95,6 +96,12 @@ fn namespace_helper(
             HelperForm::Defun(*inline, DefunData {
                 name: name.as_u8_vec(false),
                 .. dd.clone()
+            })
+        }
+        HelperForm::Defconstant(dc) => {
+            HelperForm::Defconstant(DefconstData {
+                name: name.as_u8_vec(false),
+                .. dc.clone()
             })
         }
         _ => todo!()
@@ -228,6 +235,7 @@ pub fn find_helper_target<'a>(
                 }
             }
             ModuleImportSpec::Hiding(_, h) => {
+                eprintln!("check namespace {} for {}", decode_string(&ns_spec.longname), decode_string(&orig_name));
                 if parent.is_some() {
                     continue;
                 }
@@ -264,6 +272,26 @@ fn display_namespace(parent_ns: Option<&ImportLongName>) -> String {
 
 fn is_compiler_builtin(name: &[u8]) -> bool {
     name == b"com" || name == b"@"
+}
+
+fn add_binding_names(bindings: &mut HashSet<Vec<u8>>, pattern: &BindingPattern) {
+    match pattern {
+        BindingPattern::Name(n) => {
+            bindings.insert(n.clone());
+        }
+        BindingPattern::Complex(c) => {
+            match c.borrow() {
+                SExp::Cons(_, a, b) => {
+                    add_binding_names(bindings, &BindingPattern::Complex(a.clone()));
+                    add_binding_names(bindings, &BindingPattern::Complex(b.clone()));
+                }
+                SExp::Atom(_, a) => {
+                    bindings.insert(a.clone());
+                }
+                _ => { }
+            }
+        }
+    }
 }
 
 fn resolve_namespaces_in_expr(
@@ -319,8 +347,17 @@ fn resolve_namespaces_in_expr(
 
             // If not namespaced, then it could be a primitive
             if parent.is_none() {
-                if let Some(p) = opts.prim_map().get(&child) {
+                let prim_map = opts.prim_map();
+                if let Some(p) = prim_map.get(&child) {
                     return Ok(expr.clone());
+                }
+
+                let child_sexp = SExp::Atom(nl.clone(), name.clone());
+                for (k, v) in prim_map.iter() {
+                    let v_borrowed: &SExp = v.borrow();
+                    if v_borrowed == &child_sexp {
+                        return Ok(expr.clone());
+                    }
                 }
             }
 
@@ -344,7 +381,105 @@ fn resolve_namespaces_in_expr(
         }
         BodyForm::Value(val) => Ok(expr.clone()),
         BodyForm::Quoted(val) => Ok(expr.clone()),
-        _ => {
+        BodyForm::Let(LetFormKind::Sequential, ld) => {
+            let mut new_scope = in_scope.clone();
+            let mut new_bindings = Vec::new();
+            for b in ld.bindings.iter() {
+                let b_borrowed: &Binding = b.borrow();
+                let new_binding = Binding {
+                    body: resolve_namespaces_in_expr(
+                        resolved_helpers,
+                        opts.clone(),
+                        program,
+                        parent_ns,
+                        &new_scope,
+                        b.body.clone()
+                    )?,
+                    .. b_borrowed.clone()
+                };
+                new_bindings.push(Rc::new(new_binding));
+                add_binding_names(&mut new_scope, &b.pattern);
+            }
+            Ok(Rc::new(BodyForm::Let(LetFormKind::Sequential, Box::new(LetData {
+                bindings: new_bindings,
+                body: resolve_namespaces_in_expr(
+                    resolved_helpers,
+                    opts.clone(),
+                    program,
+                    parent_ns,
+                    &new_scope,
+                    ld.body.clone()
+                )?,
+                .. *ld.clone()
+            }))))
+        }
+        BodyForm::Let(LetFormKind::Parallel, ld) => {
+            let mut new_scope = in_scope.clone();
+            let mut new_bindings = Vec::new();
+            for b in ld.bindings.iter() {
+                let b_borrowed: &Binding = b.borrow();
+                let new_binding = Binding {
+                    body: resolve_namespaces_in_expr(
+                        resolved_helpers,
+                        opts.clone(),
+                        program,
+                        parent_ns,
+                        in_scope,
+                        b.body.clone()
+                    )?,
+                    .. b_borrowed.clone()
+                };
+                new_bindings.push(Rc::new(new_binding));
+                add_binding_names(&mut new_scope, &b.pattern);
+            }
+            Ok(Rc::new(BodyForm::Let(LetFormKind::Sequential, Box::new(LetData {
+                bindings: new_bindings,
+                body: resolve_namespaces_in_expr(
+                    resolved_helpers,
+                    opts.clone(),
+                    program,
+                    parent_ns,
+                    &new_scope,
+                    ld.body.clone()
+                )?,
+                .. *ld.clone()
+            }))))
+        }
+        BodyForm::Let(LetFormKind::Assign, ld) => {
+            let mut new_scope = in_scope.clone();
+            let mut new_bindings = Vec::new();
+            let sorted_bindings = toposort_assign_bindings(&expr.loc(), &ld.bindings)?;
+            for b in sorted_bindings.iter() {
+                let b_borrowed: &Binding = ld.bindings[b.index].borrow();
+                let new_binding = Binding {
+                    body: resolve_namespaces_in_expr(
+                        resolved_helpers,
+                        opts.clone(),
+                        program,
+                        parent_ns,
+                        &new_scope,
+                        b_borrowed.body.clone()
+                    )?,
+                    .. b_borrowed.clone()
+                };
+                new_bindings.push(Rc::new(new_binding));
+                add_binding_names(&mut new_scope, &b_borrowed.pattern);
+            }
+            Ok(Rc::new(BodyForm::Let(LetFormKind::Assign, Box::new(LetData {
+                bindings: new_bindings,
+                body: resolve_namespaces_in_expr(
+                    resolved_helpers,
+                    opts.clone(),
+                    program,
+                    parent_ns,
+                    &new_scope,
+                    ld.body.clone()
+                )?,
+                .. *ld.clone()
+            }))))
+        }
+        BodyForm::Mod(_, _) => Ok(expr.clone()),
+        BodyForm::Lambda(_) => {
             todo!()
         }
     }
@@ -401,7 +536,25 @@ fn resolve_namespaces_in_helper(
             });
             Ok(new_defun)
         }
-        _ => todo!()
+        HelperForm::Defconstant(dc) => {
+            let mut in_scope = HashSet::new();
+            let new_defconst = HelperForm::Defconstant(DefconstData {
+                body: resolve_namespaces_in_expr(
+                    resolved_helpers,
+                    opts.clone(),
+                    program,
+                    parent_ns.clone(),
+                    &in_scope,
+                    dc.body.clone()
+                )?,
+                .. dc.clone()
+            });
+            Ok(new_defconst)
+        }
+        _ => {
+            eprintln!("unhandled helper {}", helper.to_sexp());
+            todo!()
+        }
     }
 }
 
