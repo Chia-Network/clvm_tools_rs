@@ -268,7 +268,7 @@ fn test_simple_module_compliation_lambda_rewrite() {
 
 #[test]
 fn test_simple_module_compliation_lambda_rewrite_with_body() {
-    let filename = "resources/tests/module/modtest12_lambda.clsp";
+    let filename = "resources/tests/module/modtest2_lambda.clsp";
     let content = fs::read_to_string(filename).expect("file should exist");
     let hex_filename = "resources/tests/module/modtest2_lambda.hex";
 
