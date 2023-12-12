@@ -46,18 +46,6 @@ enum IncludeType {
     Processed(IncludeDesc, IncludeProcessType, Vec<u8>),
 }
 
-#[derive(Clone, Debug)]
-struct ImportedModule {
-    name: ImportLongName,
-    forms: Vec<Rc<SExp>>,
-}
-
-#[derive(Debug, Clone)]
-struct ModuleAndImportSpec {
-    name: ImportLongName,
-    spec: ModuleImportSpec,
-}
-
 #[derive(Debug)]
 struct ImportNameMap {
     name: Option<ImportLongName>,
@@ -219,13 +207,14 @@ fn make_namespace_container(
 
 fn make_namespace_ref(
     loc: &Srcloc,
+    kw: &Srcloc,
     nl: &Srcloc,
     target: &ImportLongName,
     spec: &ModuleImportSpec,
 ) -> HelperForm {
     HelperForm::Defnsref(NamespaceRefData {
         loc: loc.clone(),
-        kw: loc.clone(),
+        kw: kw.clone(),
         nl: nl.clone(),
         rendered_name: target.as_u8_vec(false),
         longname: target.clone(),
@@ -279,7 +268,7 @@ impl Preprocessor {
         let helpers =
             if self.opts.stdenv() {
                 vec![
-                    make_namespace_ref(&loc, &loc, &ImportLongName::parse(b"std.prelude").1, &ModuleImportSpec::Hiding(loc.clone(), vec![]))
+                    make_namespace_ref(&loc, &loc, &loc, &ImportLongName::parse(b"std.prelude").1, &ModuleImportSpec::Hiding(loc.clone(), vec![]))
                 ]
             } else {
                 vec![]
@@ -359,9 +348,7 @@ impl Preprocessor {
         let parsed = parse_sexp(Srcloc::start(&full_name), content.iter().copied())
             .map_err(|e| CompileErr(e.0, e.1))?;
 
-        let import_name_u8 = import_name.as_u8_vec(false);
         let mut out_forms = vec![];
-
         self.namespace_stack.push(ImportNameMap {
             name: Some(import_name.clone()),
         });
@@ -388,7 +375,7 @@ impl Preprocessor {
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
         // The name of a module needs more processing.
         let full_import_name = self.import_name_to_module_name(loc.clone(), import_name)?;
-        let ns_helper = make_namespace_ref(&loc, &nl, &full_import_name, spec);
+        let ns_helper = make_namespace_ref(&loc, &kw, &nl, &full_import_name, spec);
 
         if self.imported_modules.contains(&full_import_name) {
             // We've processed this already, generate namespace directives.
@@ -406,12 +393,6 @@ impl Preprocessor {
             make_namespace_container(&loc, &nl, &full_import_name, imported_content)?,
             ns_helper.to_sexp()
         ];
-
-        // Generate and install an ImportedModule for self.imported_modules.
-        let imported_module = ImportedModule {
-            name: full_import_name.clone(),
-            forms: self.import_new_module(includes, &full_import_name)?
-        };
 
         self.imported_modules.insert(full_import_name.clone());
         self.add_helper(ns_helper.clone());
@@ -790,7 +771,7 @@ impl Preprocessor {
                     return Ok(None);
                 }
 
-                if let HelperForm::Defnsref(import) = compile_nsref(self.opts.clone(), loc.clone(), form)? {
+                if let HelperForm::Defnsref(import) = compile_nsref(loc.clone(), form)? {
                     import
                 } else {
                     return Err(CompileErr(loc, "asked to parse import".to_string()));

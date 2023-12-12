@@ -217,7 +217,7 @@ fn match_export_form(
         }
 
         // Export if it has an export keyword.
-        if let SExp::Atom(kw, export_name) = lst[0].borrow() {
+        if let SExp::Atom(_, export_name) = lst[0].borrow() {
             if export_name != b"export" {
                 return Ok(None);
             }
@@ -235,7 +235,7 @@ fn match_export_form(
             )));
         }
 
-        if let SExp::Atom(fun_kw, fun_name) = lst[1].borrow() {
+        if let SExp::Atom(_, fun_name) = lst[1].borrow() {
             return Ok(Some(Export::Function(fun_name.clone())));
         }
 

@@ -503,9 +503,9 @@ impl ModuleImportSpec {
             let (_, p) = ImportLongName::parse(&second_atom);
 
             if forms.len() == 5 {
-                let (qname_loc, qname) =
-                    if let SExp::Atom(qname_loc, qname) = &forms[4] {
-                        (qname_loc.clone(), qname.clone())
+                let qname =
+                    if let SExp::Atom(_, qname) = &forms[4] {
+                        qname.clone()
                     } else {
                         return Err(CompileErr(
                             forms[4].loc(),
@@ -566,9 +566,6 @@ impl ModuleImportSpec {
             }
         }
 
-        let printable_forms: Vec<Rc<SExp>> = forms.iter().cloned().map(Rc::new).collect();
-        eprintln!("{}", enlist(forms[0].loc(), &printable_forms));
-        todo!();
         Err(CompileErr(
             forms[skip].loc(),
             format!("Bad keyword {} in import", forms[skip]),

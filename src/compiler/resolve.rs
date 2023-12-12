@@ -10,7 +10,7 @@ use crate::compiler::sexp::{decode_string, SExp};
 
 fn capture_scope(in_scope: &mut HashSet<Vec<u8>>, args: Rc<SExp>) {
     match args.borrow() {
-        SExp::Cons(l, a, b) => {
+        SExp::Cons(_, a, b) => {
             if let Some((parent, children)) = is_at_capture(a.clone(), b.clone()) {
                 in_scope.insert(parent.clone());
                 capture_scope(in_scope, children);
@@ -19,7 +19,7 @@ fn capture_scope(in_scope: &mut HashSet<Vec<u8>>, args: Rc<SExp>) {
                 capture_scope(in_scope, b.clone());
             }
         }
-        SExp::Atom(l, a) => {
+        SExp::Atom(_, a) => {
             in_scope.insert(a.clone());
         }
         _ => { }
@@ -38,9 +38,9 @@ pub struct TourNamespaces<'a> {
 }
 
 pub struct FoundHelper<'a> {
-    helpers: &'a [HelperForm],
-    namespace: Option<&'a ImportLongName>,
-    helper: &'a HelperForm
+    pub helpers: &'a [HelperForm],
+    pub namespace: Option<&'a ImportLongName>,
+    pub helper: &'a HelperForm
 }
 
 impl<'a> Iterator for TourNamespaces<'a> {
@@ -65,10 +65,6 @@ impl<'a> Iterator for TourNamespaces<'a> {
             self.look_stack[ls_at].offset += 1;
 
             if let HelperForm::Defnamespace(ns) = current {
-                let combined_name = self.look_stack[ls_at].namespace.map(|p| {
-                    p.combine(&ns.longname)
-                });
-
                 self.look_stack.push(FindNamespaceLookingAtHelpers {
                     hlist: &ns.helpers,
                     namespace: Some(&ns.longname),
@@ -120,25 +116,6 @@ pub fn tour_helpers<'a>(
     }
 }
 
-fn find_helper_in_namespace<'a>(
-    helpers: &'a [FoundHelper],
-    parent: Option<&ImportLongName>,
-    child: &[u8],
-) -> Option<(ImportLongName, &'a HelperForm)> {
-    let mut in_target = helpers.iter().filter(|found| {
-        found.namespace == parent
-    }).filter(|h| h.helper.name() == child);
-    if let Some(t) = in_target.next() {
-        let name = parent.map(|p| p.with_child(child)).unwrap_or_else(|| {
-            let (_, parsed) = ImportLongName::parse(child);
-            parsed
-        });
-        return Some((name, t.helper));
-    }
-
-    None
-}
-
 pub fn find_helper_target<'a>(
     opts: Rc<dyn CompilerOpts>,
     helpers: &'a [HelperForm],
@@ -188,28 +165,28 @@ pub fn find_helper_target<'a>(
                     // Qualified as [t.name] only matches when we look use the 'as' qualifier.
                     if Some(&t.name) == parent.as_ref() {
                         let target_name = ns_spec.longname.with_child(&child);
-                        if let Some((name, helper)) = find_helper_target(
+                        if let Some(helper) = find_helper_target(
                             opts.clone(),
                             helpers,
                             Some(&ns_spec.longname),
                             orig_name,
                             &target_name,
                         ) {
-                            return Some((target_name, helper.clone()));
+                            return Some(helper.clone());
                         }
                     }
                 } else {
                     // Qualified namespace matches the canonical name
                     if parent.as_ref() == Some(&ns_spec.longname) {
                         let target_name = ns_spec.longname.with_child(&child);
-                        if let Some((name, helper)) = find_helper_target(
+                        if let Some(helper) = find_helper_target(
                             opts.clone(),
                             helpers,
                             Some(&ns_spec.longname),
                             orig_name,
                             &target_name
                         ) {
-                            return Some((target_name, helper.clone()));
+                            return Some(helper.clone());
                         }
                     }
                 }
@@ -222,14 +199,14 @@ pub fn find_helper_target<'a>(
                 for exposed in x.iter() {
                     if exposed.name == orig_name {
                         let target_name = ns_spec.longname.with_child(&child);
-                        if let Some((name, helper)) = find_helper_target(
+                        if let Some(helper) = find_helper_target(
                             opts.clone(),
                             helpers,
                             Some(&ns_spec.longname),
                             orig_name,
                             &target_name,
                         ) {
-                            return Some((target_name, helper.clone()));
+                            return Some(helper.clone());
                         }
                     }
                 }
@@ -246,14 +223,14 @@ pub fn find_helper_target<'a>(
                 }
 
                 let target_name = ns_spec.longname.with_child(&child);
-                if let Some((name, helper)) = find_helper_target(
+                if let Some(helper) = find_helper_target(
                     opts.clone(),
                     &helpers,
                     Some(&ns_spec.longname),
                     orig_name,
                     &target_name,
                 ) {
-                    return Some((target_name, helper.clone()));
+                    return Some(helper.clone());
                 }
             }
         }
@@ -348,12 +325,12 @@ fn resolve_namespaces_in_expr(
             // If not namespaced, then it could be a primitive
             if parent.is_none() {
                 let prim_map = opts.prim_map();
-                if let Some(p) = prim_map.get(&child) {
+                if prim_map.get(&child).is_some() {
                     return Ok(expr.clone());
                 }
 
                 let child_sexp = SExp::Atom(nl.clone(), name.clone());
-                for (k, v) in prim_map.iter() {
+                for v in prim_map.values() {
                     let v_borrowed: &SExp = v.borrow();
                     if v_borrowed == &child_sexp {
                         return Ok(expr.clone());
@@ -379,8 +356,8 @@ fn resolve_namespaces_in_expr(
             resolved_helpers.insert(target_full_name.clone(), target_helper.clone());
             Ok(Rc::new(BodyForm::Value(SExp::Atom(nl.clone(), target_full_name.as_u8_vec(false)))))
         }
-        BodyForm::Value(val) => Ok(expr.clone()),
-        BodyForm::Quoted(val) => Ok(expr.clone()),
+        BodyForm::Value(_) => Ok(expr.clone()),
+        BodyForm::Quoted(_) => Ok(expr.clone()),
         BodyForm::Let(LetFormKind::Sequential, ld) => {
             let mut new_scope = in_scope.clone();
             let mut new_bindings = Vec::new();
@@ -514,7 +491,6 @@ fn resolve_namespaces_in_helper(
     program: &CompileForm,
     parent_ns: Option<&ImportLongName>,
     helper: &HelperForm,
-    root: bool
 ) -> Result<HelperForm, CompileErr> {
     match helper {
         HelperForm::Defnamespace(ns) => {
@@ -533,8 +509,7 @@ fn resolve_namespaces_in_helper(
                             opts.clone(),
                             program,
                             Some(&combined_ns),
-                            h,
-                            false
+                            h
                         )
                     },
                     &ns.helpers
@@ -542,7 +517,7 @@ fn resolve_namespaces_in_helper(
                 .. ns.clone()
             }))
         }
-        HelperForm::Defnsref(nsr) => Ok(helper.clone()),
+        HelperForm::Defnsref(_) => Ok(helper.clone()),
         HelperForm::Defun(inline, dd) => {
             let mut in_scope = HashSet::new();
             capture_scope(&mut in_scope, dd.args.clone());
@@ -560,7 +535,7 @@ fn resolve_namespaces_in_helper(
             Ok(new_defun)
         }
         HelperForm::Defconstant(dc) => {
-            let mut in_scope = HashSet::new();
+            let in_scope = HashSet::new();
             let new_defconst = HelperForm::Defconstant(DefconstData {
                 body: resolve_namespaces_in_expr(
                     resolved_helpers,
@@ -574,9 +549,9 @@ fn resolve_namespaces_in_helper(
             });
             Ok(new_defconst)
         }
-        _ => {
-            eprintln!("unhandled helper {}", helper.to_sexp());
-            todo!()
+        HelperForm::Deftype(_) => Ok(helper.clone()),
+        HelperForm::Defmacro(_) => {
+            return Err(CompileErr(helper.loc(), "Classic macros are deprecated in module style chialisp".to_string()));
         }
     }
 }
@@ -607,7 +582,7 @@ pub fn resolve_namespaces(
     while !new_resolved_helpers.is_empty() {
         let mut round_resolved_helpers = BTreeMap::new();
         for (name, helper) in new_resolved_helpers.iter() {
-            let (parent, child) = name.parent_and_name();
+            let (parent, _) = name.parent_and_name();
             let renamed_helper = namespace_helper(&name, &helper);
             if !resolved_helpers.contains_key(name) {
                 let rewritten_helper = resolve_namespaces_in_helper(
@@ -615,8 +590,7 @@ pub fn resolve_namespaces(
                     opts.clone(),
                     program,
                     parent.as_ref(),
-                    &renamed_helper,
-                    true
+                    &renamed_helper
                 )?;
                 resolved_helpers.insert(name.clone(), rewritten_helper.clone());
             }
@@ -627,6 +601,7 @@ pub fn resolve_namespaces(
     // The set of helpers is the set of helpers in resolved_helpers al
     Ok(CompileForm {
         helpers: resolved_helpers.values().cloned().collect(),
+        exp: new_expr.clone(),
         .. program.clone()
     })
 }

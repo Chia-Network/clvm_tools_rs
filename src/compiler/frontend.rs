@@ -1188,7 +1188,6 @@ pub fn compile_namespace(
 }
 
 pub fn compile_nsref(
-    opts: Rc<dyn CompilerOpts>,
     loc: Srcloc,
     internal: &[SExp]
 ) -> Result<HelperForm, CompileErr> {
@@ -1352,7 +1351,7 @@ pub fn compile_helperform(
                 new_helpers: vec![ns],
             }))
         } else if matched.op_name == "import".as_bytes().to_vec() {
-            let nsref = compile_nsref(opts, body.loc(), &matched.orig)?;
+            let nsref = compile_nsref(body.loc(), &matched.orig)?;
             Ok(Some(HelperFormResult {
                 chia_type: None,
                 new_helpers: vec![nsref],
