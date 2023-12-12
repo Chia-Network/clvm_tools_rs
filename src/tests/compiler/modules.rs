@@ -254,12 +254,12 @@ fn test_simple_module_compliation_lambda_rewrite() {
         &[
             HexArgumentOutcome {
                 hexfile: hex_filename,
-                argument: "(3)",
-                outcome: Some("3")
+                argument: "(3 13)",
+                outcome: Some("16")
             },
             HexArgumentOutcome {
                 hexfile: hex_filename,
-                argument: "(13)",
+                argument: "(13 3)",
                 outcome: None
             }
         ]

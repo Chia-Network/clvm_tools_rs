@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::compiler::BasicCompileContext;
 use crate::compiler::codegen::toposort_assign_bindings;
 use crate::compiler::compiler::is_at_capture;
-use crate::compiler::comptypes::{Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData, DefunData, HelperForm, ImportLongName, LetData, LetFormKind, ModuleImportSpec, NamespaceData, map_m};
+use crate::compiler::comptypes::{Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData, DefunData, HelperForm, ImportLongName, LambdaData, LetData, LetFormKind, ModuleImportSpec, NamespaceData, map_m};
 use crate::compiler::sexp::{decode_string, SExp};
 
 fn capture_scope(in_scope: &mut HashSet<Vec<u8>>, args: Rc<SExp>) {
@@ -182,6 +182,7 @@ pub fn find_helper_target<'a>(
             None
         }
     }) {
+        eprintln!("try to find {} ({}) using import {} in namespace {}", decode_string(orig_name), decode_string(&name.as_u8_vec(false)), HelperForm::Defnsref(ns_spec.clone()).to_sexp(), display_namespace(parent_ns.clone()));
         match &ns_spec.specification {
             ModuleImportSpec::Qualified(q) => {
                 if let Some(t) = &q.target {
@@ -235,7 +236,7 @@ pub fn find_helper_target<'a>(
                 }
             }
             ModuleImportSpec::Hiding(_, h) => {
-                eprintln!("check namespace {} for {}", decode_string(&ns_spec.longname), decode_string(&orig_name));
+                eprintln!("check namespace {} for {}", decode_string(&ns_spec.longname.as_u8_vec(false)), decode_string(&orig_name));
                 if parent.is_some() {
                     continue;
                 }
@@ -479,8 +480,31 @@ fn resolve_namespaces_in_expr(
             }))))
         }
         BodyForm::Mod(_, _) => Ok(expr.clone()),
-        BodyForm::Lambda(_) => {
-            todo!()
+        BodyForm::Lambda(ld) => {
+            let new_captures = resolve_namespaces_in_expr(
+                resolved_helpers,
+                opts.clone(),
+                program,
+                parent_ns,
+                in_scope,
+                ld.captures.clone()
+            )?;
+            let mut scope_inside_lambda = in_scope.clone();
+            capture_scope(&mut scope_inside_lambda, ld.capture_args.clone());
+            capture_scope(&mut scope_inside_lambda, ld.args.clone());
+            let new_body = resolve_namespaces_in_expr(
+                resolved_helpers,
+                opts.clone(),
+                program,
+                parent_ns,
+                &scope_inside_lambda,
+                ld.body.clone()
+            )?;
+            Ok(Rc::new(BodyForm::Lambda(Box::new(LambdaData {
+                captures: new_captures,
+                body: new_body,
+                .. *ld.clone()
+            }))))
         }
     }
 }

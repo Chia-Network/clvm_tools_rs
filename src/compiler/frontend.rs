@@ -1195,6 +1195,7 @@ pub fn compile_nsref(
     if internal.len() < 2 {
         return Err(CompileErr(loc.clone(), "import must import a module".to_string()));
     }
+
     let import_spec = ModuleImportSpec::parse(loc.clone(), internal[0].loc(), internal, 1)?;
     if let ModuleImportSpec::Qualified(q) = &import_spec {
         return Ok(HelperForm::Defnsref(NamespaceRefData {

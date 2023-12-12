@@ -580,6 +580,7 @@ impl Preprocessor {
             parsed_name.parent_and_name();
 
         let last_name_component = make_defmac_name(&clean_last_name_component);
+        eprintln!("try to lookup {}", decode_string(&last_name_component));
         let updated_name =
             if let Some(parent) = &parent_name {
                 parent.with_child(&last_name_component)

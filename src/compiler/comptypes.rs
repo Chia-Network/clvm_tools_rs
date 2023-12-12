@@ -470,9 +470,6 @@ impl ModuleImportSpec {
             return Ok(ModuleImportSpec::Hiding(loc, vec![]));
         }
 
-        let printable_forms: Vec<Rc<SExp>> = forms.iter().cloned().map(Rc::new).collect();
-        eprintln!("peeking at module import spec (skip={skip}) {}", enlist(loc.clone(), &printable_forms));
-
         // Figure out whether it's "import qualified" or
         // "import qualified foo as bar"
         let (first_loc, first_atom) =
@@ -539,21 +536,12 @@ impl ModuleImportSpec {
                     target: None,
                 }));
             }
-        } else if forms.len() == 2 {
-            let (_, p) = ImportLongName::parse(&first_atom);
-            return Ok(ModuleImportSpec::Qualified(QualifiedModuleInfo {
-                loc: loc.clone(),
-                kw: kw.clone(),
-                nl: first_loc.clone(),
-                name: p,
-                target: None
-            }));
         }
 
         skip += 1;
 
         if skip >= forms.len() {
-            return Err(CompileErr(forms[0].loc(), "Short import".to_string()));
+            return Ok(ModuleImportSpec::Hiding(loc, vec![]));
         }
 
         if let SExp::Atom(kw_loc, kw) = &forms[skip] {
@@ -1161,7 +1149,6 @@ impl HelperForm {
                         ))
                     }
                 };
-                eprintln!("import tail {tail}");
                 Rc::new(SExp::Cons(
                     defr.loc.clone(),
                     Rc::new(SExp::Atom(defr.loc.clone(), b"import".to_vec())),
