@@ -165,7 +165,7 @@ fn test_compile_and_run_program_with_modules(
     let opts: Rc<dyn CompilerOpts> = Rc::new(source_opts.clone());
     let mut symbol_table = HashMap::new();
     let runner = Rc::new(DefaultProgramRunner::new());
-    let compiled = compile_file(
+    let _ = compile_file(
         &mut allocator,
         runner.clone(),
         opts,
@@ -256,6 +256,30 @@ fn test_simple_module_compliation_lambda_rewrite() {
                 hexfile: hex_filename,
                 argument: "(3 13)",
                 outcome: Some("16")
+            },
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "(13 3)",
+                outcome: None
+            }
+        ]
+    );
+}
+
+#[test]
+fn test_simple_module_compliation_lambda_rewrite_with_body() {
+    let filename = "resources/tests/module/modtest12_lambda.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_filename = "resources/tests/module/modtest2_lambda.hex";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "(3 13)",
+                outcome: Some("(16 39)")
             },
             HexArgumentOutcome {
                 hexfile: hex_filename,
