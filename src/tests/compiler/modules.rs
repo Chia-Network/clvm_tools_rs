@@ -327,3 +327,22 @@ fn test_simple_module_compliation_import_program_1() {
         ]
     );
 }
+
+#[test]
+fn test_simple_module_compliation_import_classic_program() {
+    let filename = "resources/tests/module/classic_program_import.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_filename = "resources/tests/module/classic_program_import.hex";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "()",
+                outcome: Some("(0x27a343d6617931e67a7eb27a41f7c4650b5fa79d8b5132af1b4eae959bdf2272 (* 2 (q . 13)))")
+            }
+        ]
+    );
+}

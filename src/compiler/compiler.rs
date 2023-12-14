@@ -195,6 +195,7 @@ pub fn detect_chialisp_module(
         return false;
     }
 
+    eprintln!("pre_forms[0] {}", pre_forms[0]);
     if pre_forms.len() > 1 {
         return true;
     }
@@ -203,7 +204,15 @@ pub fn detect_chialisp_module(
         return matches!(lst[0].borrow(), SExp::Cons(_, _, _));
     }
 
-    true
+    false
+}
+
+#[test]
+pub fn test_detect_chialisp_module_classic() {
+    let filename = "resources/tests/module/programs/classic.clsp";
+    let content = "(mod (X) (* X 13))";
+    let parsed = parse_sexp(Srcloc::start(filename), content.bytes()).expect("should parse");
+    assert!(!detect_chialisp_module(&parsed));
 }
 
 fn match_export_form(

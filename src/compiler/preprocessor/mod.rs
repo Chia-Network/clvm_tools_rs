@@ -344,6 +344,7 @@ impl Preprocessor {
         filename: &str,
         content: &[u8]
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
+        eprintln!("import program {}", filename);
         let srcloc = Srcloc::start(filename);
         let mut allocator = Allocator::new();
         let mut symbol_table = HashMap::new();
@@ -382,7 +383,8 @@ impl Preprocessor {
             return Ok(output);
         }
 
-        let classic_parse = assemble(&mut allocator, &decode_string(&content)).map_err(|_| {
+        let program_text = decode_string(&content);
+        let classic_parse = assemble(&mut allocator, &program_text).map_err(|_| {
             CompileErr(srcloc.clone(), format!("Could not parse {filename} to determine dialect"))
         })?;
 
@@ -390,7 +392,26 @@ impl Preprocessor {
         let dialect = detect_modern(&mut allocator, classic_parse);
         if dialect.stepping.is_none() {
             // Classic compile.
-            todo!();
+            let newly_compiled = compile_clvm_text_maybe_opt(
+                &mut allocator,
+                self.subcompile_opts.optimize(),
+                self.subcompile_opts.clone(),
+                &mut symbol_table,
+                &program_text,
+                &filename,
+                true,
+            )
+                .map_err(|e| CompileErr(srcloc.clone(), format!("Subcompile failed: {}", e.1)))?;
+            let converted = convert_from_clvm_rs(
+                &mut allocator,
+                srcloc.clone(),
+                newly_compiled
+            )?;
+            let converted_borrowed: &SExp = converted.borrow();
+            return Ok(vec![
+                make_constant(b"program", converted_borrowed.clone()),
+                make_constant(b"program_hash", SExp::QuotedString(srcloc.clone(), b'x', sha256tree(converted)))
+            ]);
         }
 
         let opts = self.subcompile_opts.set_dialect(dialect);
@@ -521,8 +542,8 @@ impl Preprocessor {
                 let mut symtab = HashMap::new();
                 let newly_compiled = compile_clvm_text_maybe_opt(
                     &mut allocator,
-                    self.opts.optimize(),
-                    self.opts.clone(),
+                    self.subcompile_opts.optimize(),
+                    self.subcompile_opts.clone(),
                     &mut symtab,
                     &decoded_content,
                     &full_name,
