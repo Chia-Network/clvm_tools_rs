@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use crate::compiler::codegen::toposort_assign_bindings;
 use crate::compiler::compiler::is_at_capture;
-use crate::compiler::comptypes::{Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData, DefunData, HelperForm, ImportLongName, LambdaData, LetData, LetFormKind, LongNameTranslation, ModuleImportSpec, NamespaceData, map_m};
+use crate::compiler::comptypes::{Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData, DefmacData, DefunData, DeftypeData, HelperForm, ImportLongName, LambdaData, LetData, LetFormKind, LongNameTranslation, ModuleImportSpec, NamespaceData, map_m};
 use crate::compiler::sexp::{decode_string, SExp};
 
 fn capture_scope(in_scope: &mut HashSet<Vec<u8>>, args: Rc<SExp>) {
@@ -99,7 +99,20 @@ fn namespace_helper(
                 .. dc.clone()
             })
         }
-        _ => todo!()
+        HelperForm::Defmacro(dm) => {
+            HelperForm::Defmacro(DefmacData {
+                name: name.as_u8_vec(LongNameTranslation::Namespace),
+                .. dm.clone()
+            })
+        }
+        HelperForm::Deftype(ty) => {
+            HelperForm::Deftype(DeftypeData {
+                name: name.as_u8_vec(LongNameTranslation::Namespace),
+                .. ty.clone()
+            })
+        }
+        HelperForm::Defnsref(_) => value.clone(),
+        HelperForm::Defnamespace(_) => value.clone()
     }
 }
 
