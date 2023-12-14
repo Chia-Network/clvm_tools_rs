@@ -87,8 +87,8 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
 fn collect_used_names_helperform(body: &HelperForm) -> Vec<Vec<u8>> {
     match body {
         HelperForm::Deftype(_) => Vec::new(),
-        HelperForm::Defnamespace(ns) => Vec::new(),
-        HelperForm::Defnsref(ns) => Vec::new(),
+        HelperForm::Defnamespace(_ns) => Vec::new(),
+        HelperForm::Defnsref(_ns) => Vec::new(),
         HelperForm::Defconstant(defc) => collect_used_names_bodyform(defc.body.borrow()),
         HelperForm::Defmacro(mac) => {
             let mut res = collect_used_names_compileform(mac.program.borrow());
@@ -1208,7 +1208,7 @@ pub fn compile_nsref(
     }
 
     let (_, parsed) =
-        if let SExp::Atom(nl, name) = &internal[1] {
+        if let SExp::Atom(_nl, name) = &internal[1] {
             ImportLongName::parse(&name)
         } else {
             return Err(CompileErr(internal[1].loc(), "Import name must be an atom".to_string()));

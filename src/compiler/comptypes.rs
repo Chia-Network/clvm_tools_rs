@@ -738,7 +738,7 @@ pub struct IncludeDesc {
 
 impl IncludeDesc {
     pub fn to_sexp(&self) -> Rc<SExp> {
-        if let Some(IncludeProcessType::Module(spec)) = &self.kind {
+        if let Some(IncludeProcessType::Module(_spec)) = &self.kind {
             Rc::new(SExp::Cons(
                 self.kw.clone(),
                 Rc::new(SExp::Atom(self.kw.clone(), b"module".to_vec())),
@@ -1141,7 +1141,7 @@ impl HelperForm {
             }
             HelperForm::Defnsref(defr) => {
                 let tail = match &defr.specification {
-                    ModuleImportSpec::Qualified(q) => {
+                    ModuleImportSpec::Qualified(_q) => {
                         defr.specification.to_sexp()
                     }
                     _ => {

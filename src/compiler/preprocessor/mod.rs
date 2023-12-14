@@ -196,7 +196,7 @@ fn make_namespace_container(
     loc: &Srcloc,
     nl: &Srcloc,
     target: &ImportLongName,
-    mut helpers: Vec<Rc<SExp>>,
+    helpers: Vec<Rc<SExp>>,
 ) -> Result<Rc<SExp>, CompileErr> {
     let mut result_vec = vec![
         Rc::new(SExp::Atom(loc.clone(), b"namespace".to_vec())),
@@ -339,15 +339,15 @@ impl Preprocessor {
 
     fn import_program(
         &mut self,
-        includes: &mut Vec<IncludeDesc>,
-        import_name: &ImportLongName,
+        _includes: &mut Vec<IncludeDesc>,
+        _import_name: &ImportLongName,
         filename: &str,
         content: &[u8]
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
         let srcloc = Srcloc::start(filename);
         let mut allocator = Allocator::new();
         let mut symbol_table = HashMap::new();
-        let mut runner = Rc::new(DefaultProgramRunner::new());
+        let runner = Rc::new(DefaultProgramRunner::new());
         let pre_forms = parse_sexp(srcloc.clone(), content.iter().copied())?;
 
         let make_constant = |name: &[u8], s: SExp| {
@@ -470,8 +470,8 @@ impl Preprocessor {
         self.add_helper(empty_ns);
 
         // Process this module.
-        let mut imported_content = self.import_new_module(includes, &full_import_name)?;
-        let mut helper_forms: Vec<Rc<SExp>> = vec![
+        let imported_content = self.import_new_module(includes, &full_import_name)?;
+        let helper_forms: Vec<Rc<SExp>> = vec![
             make_namespace_container(&loc, &nl, &full_import_name, imported_content)?,
             ns_helper.to_sexp()
         ];
@@ -631,7 +631,6 @@ impl Preprocessor {
         &mut self,
         loc: Srcloc,
         name: &[u8],
-        args: Rc<SExp>,
     ) -> Result<Option<Rc<SExp>>, CompileErr> {
         let mut allocator = Allocator::new();
         let current_module_name = self.current_module_name();
@@ -650,8 +649,8 @@ impl Preprocessor {
             };
 
         let current_module_name_ref = current_module_name.as_ref().map(|n| n);
-        let (found_name, target) =
-            if let Some((tname, target)) = find_helper_target(
+        let found_name =
+            if let Some((tname, _helper)) = find_helper_target(
                 self.opts.clone(),
                 &self.prototype_program,
                 current_module_name_ref,
@@ -663,8 +662,8 @@ impl Preprocessor {
                         StoredMacro::Compiled(use_macro) => {
                             return Ok(Some(use_macro.clone()));
                         }
-                        StoredMacro::Waiting(h) => {
-                            (tname, h.clone())
+                        StoredMacro::Waiting(_h) => {
+                            tname
                         }
                     }
                 } else {
@@ -757,7 +756,7 @@ impl Preprocessor {
                     .select_nodes(new_self.clone().unwrap_or_else(|| body.clone()))
             {
                 // See if it's a form that calls one of our macros.
-                if let Some(compiled_program) = self.find_macro(body.loc(), &name, args.clone())? {
+                if let Some(compiled_program) = self.find_macro(body.loc(), &name)? {
                     // Form argument env.
                     let mut allocator = Allocator::new();
 

@@ -401,8 +401,8 @@ fn rename_in_helperform(
 ) -> Result<HelperForm, CompileErr> {
     match h {
         HelperForm::Deftype(_) => Ok(h.clone()),
-        HelperForm::Defnamespace(ns) => todo!(),
-        HelperForm::Defnsref(ns) => todo!(),
+        HelperForm::Defnamespace(_ns) => todo!(),
+        HelperForm::Defnsref(_ns) => todo!(),
         HelperForm::Defconstant(defc) => Ok(HelperForm::Defconstant(DefconstData {
             body: Rc::new(rename_in_bodyform(namemap, defc.body.clone())?),
             ..defc.clone()
