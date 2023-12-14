@@ -303,7 +303,26 @@ fn test_simple_module_compliation_import_program_0() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "()",
-                outcome: Some("(0x58d8ee2d7360024e0db69b0d46098d02395b3f03dfa97a8c9b14b5033f66ae74 (a (q 16 5 (q . 1)) (c (q) 1)))")
+                outcome: Some("(0x9df8d4d222276747372a532a1cd736cdd5c6800c39906c9695489d36286ed215 (+ 2 (q . 1)))")
+            }
+        ]
+    );
+}
+
+#[test]
+fn test_simple_module_compliation_import_program_1() {
+    let filename = "resources/tests/module/two_program_import.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_filename = "resources/tests/module/two_program_import.hex";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "(13 73)",
+                outcome: Some("(0x11243be880ff2f81afa098242dbd5b54542cb89f5f8a35ef59be03a1d089b223 14 (a (q 16 5 (q . 1)) (c (q (+ 5 (q . 1)) 18 5 (q . 2)) 1)) 0x22506fd38b2f0ff66cd1899ded982c8e82b71364a038833d2cc80d48fbd423c8 146 (a (q 18 5 (q . 2)) (c (q (+ 5 (q . 1)) 18 5 (q . 2)) 1)))")
             }
         ]
     );

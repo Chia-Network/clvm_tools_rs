@@ -58,6 +58,7 @@ pub enum StoredMacro {
 }
 
 pub struct Preprocessor {
+    subcompile_opts: Rc<dyn CompilerOpts>,
     opts: Rc<dyn CompilerOpts>,
     ppext: Rc<PreprocessorExtension>,
     runner: Rc<dyn TRunProgram>,
@@ -229,6 +230,7 @@ impl Preprocessor {
         let opts_prims = ppext.enrich_prims(opts.clone());
         let srcloc = Srcloc::start(&opts.filename());
         Preprocessor {
+            subcompile_opts: opts.clone(),
             opts: opts_prims,
             ppext,
             runner,
@@ -366,9 +368,9 @@ impl Preprocessor {
                 &mut allocator,
                 runner,
                 &mut symbol_table,
-                get_optimizer(&srcloc, self.opts.clone())?,
+                get_optimizer(&srcloc, self.subcompile_opts.clone())?,
             );
-            let module_output = compile_module(&mut context_wrapper.context, self.opts.clone(), &pre_forms)?;
+            let module_output = compile_module(&mut context_wrapper.context, self.subcompile_opts.clone(), &pre_forms)?;
             let mut output = Vec::new();
             for c in module_output.components.iter() {
                 let borrowed_content: &SExp = c.content.borrow();
@@ -383,6 +385,7 @@ impl Preprocessor {
         let classic_parse = assemble(&mut allocator, &decode_string(&content)).map_err(|_| {
             CompileErr(srcloc.clone(), format!("Could not parse {filename} to determine dialect"))
         })?;
+
         eprintln!("compile {}", disassemble(&mut allocator, classic_parse, None));
         let dialect = detect_modern(&mut allocator, classic_parse);
         if dialect.stepping.is_none() {
@@ -390,7 +393,7 @@ impl Preprocessor {
             todo!();
         }
 
-        let opts = self.opts.set_dialect(dialect);
+        let opts = self.subcompile_opts.set_dialect(dialect);
         let mut context_wrapper = CompileContextWrapper::new(
             &mut allocator,
             runner,

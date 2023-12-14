@@ -578,6 +578,8 @@ pub fn compile_module(
         let output_path = create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(&m.name))?;
         opts.write_new_file(&output_path, stream.get_value().hex().as_bytes())?;
 
+        eprintln!("make output for {} dialect {:?} opt {} fe_opt {}", decode_string(&m.name), opts.dialect(), opts.optimize(), opts.frontend_opt());
+
         components.push(CompileModuleComponent {
             shortname: m.name.clone(),
             filename: output_path,
@@ -605,7 +607,7 @@ pub fn compile_pre_forms(
 pub fn compile_file(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
-    opts: Rc<dyn CompilerOpts>,
+    mut opts: Rc<dyn CompilerOpts>,
     content: &str,
     symbol_table: &mut HashMap<String, String>,
 ) -> Result<SExp, CompileErr> {
@@ -619,6 +621,12 @@ pub fn compile_file(
     );
 
     if detect_chialisp_module(&pre_forms) && opts.dialect().strict {
+        // cl23 always reflects optimization.
+        opts = if let Some(stepping) = opts.dialect().stepping.as_ref() {
+            opts.set_optimize(*stepping > 21)
+        } else {
+            opts
+        };
         let compiled = compile_module(&mut context_wrapper.context, opts, &pre_forms)?;
         let borrowed_summary: &SExp = compiled.summary.borrow();
         return Ok(borrowed_summary.clone());
@@ -768,7 +776,7 @@ impl CompilerOpts for DefaultCompilerOpts {
                 format!("could not write output file {} for {}", target, self.filename())
             )
         })?;
-        todo!();
+        Ok(())
     }
 
     fn compile_program(
