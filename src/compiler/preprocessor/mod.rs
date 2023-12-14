@@ -15,7 +15,7 @@ use crate::compiler::clvm;
 use crate::compiler::clvm::{convert_from_clvm_rs, truthy};
 use crate::compiler::compiler::compile_from_compileform;
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, ImportLongName, IncludeDesc, IncludeProcessType, ModuleImportSpec, NamespaceData, NamespaceRefData, QualifiedModuleInfo,
+    BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, ImportLongName, IncludeDesc, IncludeProcessType, LongNameTranslation, ModuleImportSpec, NamespaceData, NamespaceRefData, QualifiedModuleInfo,
 };
 use crate::compiler::dialect::{detect_modern, KNOWN_DIALECTS};
 use crate::compiler::frontend::{compile_helperform, compile_nsref, frontend};
@@ -199,7 +199,7 @@ fn make_namespace_container(
 ) -> Result<Rc<SExp>, CompileErr> {
     let mut result_vec = vec![
         Rc::new(SExp::Atom(loc.clone(), b"namespace".to_vec())),
-        Rc::new(SExp::Atom(nl.clone(), target.as_u8_vec(false)))
+        Rc::new(SExp::Atom(nl.clone(), target.as_u8_vec(LongNameTranslation::Namespace)))
     ];
     result_vec.extend(helpers);
     Ok(Rc::new(enlist(loc.clone(), &result_vec)))
@@ -216,7 +216,7 @@ fn make_namespace_ref(
         loc: loc.clone(),
         kw: kw.clone(),
         nl: nl.clone(),
-        rendered_name: target.as_u8_vec(false),
+        rendered_name: target.as_u8_vec(LongNameTranslation::Namespace),
         longname: target.clone(),
         specification: spec.clone()
     })
@@ -278,7 +278,7 @@ impl Preprocessor {
             loc: loc.clone(),
             nl: loc.clone(),
             kw: loc.clone(),
-            rendered_name: name.as_u8_vec(false),
+            rendered_name: name.as_u8_vec(LongNameTranslation::Namespace),
             longname: name.clone(),
             helpers,
         })
@@ -340,7 +340,7 @@ impl Preprocessor {
         includes: &mut Vec<IncludeDesc>,
         import_name: &ImportLongName
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
-        let filename = decode_string(&import_name.as_u8_vec(true));
+        let filename = decode_string(&import_name.as_u8_vec(LongNameTranslation::Filename(".clinc".to_string())));
         let (full_name, content) = self
             .opts
             .read_new_file(self.opts.filename(), filename)?;
@@ -473,7 +473,7 @@ impl Preprocessor {
         // Process an import
         let name_string =
             if let Some(IncludeProcessType::Module(_)) = kind {
-                decode_string(&self.import_name_to_module_name(desc.nl.clone(), &desc.name)?.as_u8_vec(true))
+                decode_string(&self.import_name_to_module_name(desc.nl.clone(), &desc.name)?.as_u8_vec(LongNameTranslation::Filename(".clinc".to_string())))
             } else {
                 decode_string(&desc.name)
             };
@@ -609,7 +609,7 @@ impl Preprocessor {
                 loc: loc.clone(),
                 kw: loc.clone(),
                 nl: loc.clone(),
-                rendered_name: parent.as_u8_vec(false),
+                rendered_name: parent.as_u8_vec(LongNameTranslation::Namespace),
                 longname: parent.clone(),
                 specification: ModuleImportSpec::Qualified(QualifiedModuleInfo {
                     loc: loc.clone(),
@@ -629,7 +629,7 @@ impl Preprocessor {
             exp: Rc::new(BodyForm::Call(
                 loc.clone(),
                 vec![
-                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), found_name.as_u8_vec(false))))
+                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), found_name.as_u8_vec(LongNameTranslation::Namespace))))
                 ],
                 Some(Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), b"__chia__arg".to_vec()))))
             )),
@@ -781,7 +781,7 @@ impl Preprocessor {
             };
 
         let mod_kind = IncludeProcessType::Module(import.specification.clone());
-        let fname = import.longname.as_u8_vec(false);
+        let fname = import.longname.as_u8_vec(LongNameTranslation::Namespace);
 
         Ok(Some(IncludeType::Processed(
             IncludeDesc {

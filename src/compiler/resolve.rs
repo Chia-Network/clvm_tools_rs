@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use crate::compiler::codegen::toposort_assign_bindings;
 use crate::compiler::compiler::is_at_capture;
-use crate::compiler::comptypes::{Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData, DefunData, HelperForm, ImportLongName, LambdaData, LetData, LetFormKind, ModuleImportSpec, NamespaceData, map_m};
+use crate::compiler::comptypes::{Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData, DefunData, HelperForm, ImportLongName, LambdaData, LetData, LetFormKind, LongNameTranslation, ModuleImportSpec, NamespaceData, map_m};
 use crate::compiler::sexp::{decode_string, SExp};
 
 fn capture_scope(in_scope: &mut HashSet<Vec<u8>>, args: Rc<SExp>) {
@@ -89,13 +89,13 @@ fn namespace_helper(
     match value {
         HelperForm::Defun(inline,dd) => {
             HelperForm::Defun(*inline, DefunData {
-                name: name.as_u8_vec(false),
+                name: name.as_u8_vec(LongNameTranslation::Namespace),
                 .. dd.clone()
             })
         }
         HelperForm::Defconstant(dc) => {
             HelperForm::Defconstant(DefconstData {
-                name: name.as_u8_vec(false),
+                name: name.as_u8_vec(LongNameTranslation::Namespace),
                 .. dc.clone()
             })
         }
@@ -158,7 +158,7 @@ pub fn find_helper_target<'a>(
             None
         }
     }) {
-        eprintln!("try to find {} ({}) using import {} in namespace {}", decode_string(orig_name), decode_string(&name.as_u8_vec(false)), HelperForm::Defnsref(ns_spec.clone()).to_sexp(), display_namespace(parent_ns.clone()));
+        eprintln!("try to find {} ({}) using import {} in namespace {}", decode_string(orig_name), decode_string(&name.as_u8_vec(LongNameTranslation::Namespace)), HelperForm::Defnsref(ns_spec.clone()).to_sexp(), display_namespace(parent_ns.clone()));
         match &ns_spec.specification {
             ModuleImportSpec::Qualified(q) => {
                 if let Some(t) = &q.target {
@@ -212,7 +212,7 @@ pub fn find_helper_target<'a>(
                 }
             }
             ModuleImportSpec::Hiding(_, h) => {
-                eprintln!("check namespace {} for {}", decode_string(&ns_spec.longname.as_u8_vec(false)), decode_string(&orig_name));
+                eprintln!("check namespace {} for {}", decode_string(&ns_spec.longname.as_u8_vec(LongNameTranslation::Namespace)), decode_string(&orig_name));
                 if parent.is_some() {
                     continue;
                 }
@@ -241,7 +241,7 @@ pub fn find_helper_target<'a>(
 
 fn display_namespace(parent_ns: Option<&ImportLongName>) -> String {
     if let Some(p) = parent_ns {
-        format!("namespace {}", decode_string(&p.as_u8_vec(false)))
+        format!("namespace {}", decode_string(&p.as_u8_vec(LongNameTranslation::Namespace)))
     } else {
         "the root module".to_string()
     }
@@ -354,7 +354,7 @@ fn resolve_namespaces_in_expr(
                 };
 
             resolved_helpers.insert(target_full_name.clone(), target_helper.clone());
-            Ok(Rc::new(BodyForm::Value(SExp::Atom(nl.clone(), target_full_name.as_u8_vec(false)))))
+            Ok(Rc::new(BodyForm::Value(SExp::Atom(nl.clone(), target_full_name.as_u8_vec(LongNameTranslation::Namespace)))))
         }
         BodyForm::Value(_) => Ok(expr.clone()),
         BodyForm::Quoted(_) => Ok(expr.clone()),

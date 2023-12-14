@@ -334,6 +334,12 @@ pub struct ImportLongName {
     pub components: Vec<Vec<u8>>,
 }
 
+#[derive(Debug, Clone)]
+pub enum LongNameTranslation {
+    Namespace,
+    Filename(String)
+}
+
 impl ImportLongName {
     pub fn parse(name: &[u8]) -> (bool, Self) {
         let (relative, skip_words) =
@@ -347,17 +353,17 @@ impl ImportLongName {
         (relative, ImportLongName { components })
     }
 
-    pub fn as_u8_vec(&self, filename: bool) -> Vec<u8> {
+    pub fn as_u8_vec(&self, filename: LongNameTranslation) -> Vec<u8> {
         let mut result_vec = vec![];
-        let sep = if filename { b'/' } else { b'.' };
+        let sep = if matches!(filename, LongNameTranslation::Filename(_)) { b'/' } else { b'.' };
         for (i, c) in self.components.iter().enumerate() {
             if i != 0 {
                 result_vec.push(sep);
             }
             result_vec.extend(c.clone());
         }
-        if filename {
-            result_vec.extend(b".clinc".to_vec());
+        if let LongNameTranslation::Filename(ext) = &filename {
+            result_vec.extend(ext.as_bytes().to_vec());
         }
         result_vec
     }
@@ -577,11 +583,11 @@ impl ModuleImportSpec {
             ModuleImportSpec::Qualified(as_name) => {
                 let mut result_vec = vec![
                     Rc::new(SExp::Atom(as_name.kw.clone(), b"qualified".to_vec())),
-                    Rc::new(SExp::Atom(as_name.nl.clone(), as_name.name.as_u8_vec(false))),
+                    Rc::new(SExp::Atom(as_name.nl.clone(), as_name.name.as_u8_vec(LongNameTranslation::Namespace))),
                 ];
                 if let Some(target) = as_name.target.as_ref() {
                     result_vec.push(Rc::new(SExp::Atom(target.kw.clone(), b"as".to_vec())));
-                    result_vec.push(Rc::new(SExp::Atom(target.nl.clone(), target.name.as_u8_vec(false))));
+                    result_vec.push(Rc::new(SExp::Atom(target.nl.clone(), target.name.as_u8_vec(LongNameTranslation::Namespace))));
                 }
                 Rc::new(enlist(as_name.loc.clone(), &result_vec))
             }
@@ -660,7 +666,7 @@ fn test_helperform_import_qualified_0() {
         loc: srcloc.clone(),
         kw: srcloc.clone(),
         nl: srcloc.clone(),
-        rendered_name: name.as_u8_vec(false),
+        rendered_name: name.as_u8_vec(LongNameTranslation::Namespace),
         longname: name.clone(),
         specification: ModuleImportSpec::Qualified(QualifiedModuleInfo {
             loc: srcloc.clone(),
@@ -682,7 +688,7 @@ fn test_helperform_import_qualified_1() {
         loc: srcloc.clone(),
         kw: srcloc.clone(),
         nl: srcloc.clone(),
-        rendered_name: name.as_u8_vec(false),
+        rendered_name: name.as_u8_vec(LongNameTranslation::Namespace),
         longname: name.clone(),
         specification: ModuleImportSpec::Qualified(QualifiedModuleInfo {
             loc: srcloc.clone(),

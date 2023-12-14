@@ -10,7 +10,7 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
     list_to_cons, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType, CompileErr,
     CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData,
-    HelperForm, ImportLongName, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, ModAccum, ModuleImportSpec, NamespaceData, NamespaceRefData, StructDef,
+    HelperForm, ImportLongName, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, NamespaceData, NamespaceRefData, StructDef,
     StructMember, SyntheticType, TypeAnnoKind,
 };
 use crate::compiler::lambda::handle_lambda;
@@ -1181,7 +1181,7 @@ pub fn compile_namespace(
         loc: loc.clone(),
         kw: internal[0].loc(),
         nl: internal[1].loc(),
-        rendered_name: parsed.as_u8_vec(false),
+        rendered_name: parsed.as_u8_vec(LongNameTranslation::Namespace),
         longname: parsed,
         helpers,
     }))
@@ -1201,7 +1201,7 @@ pub fn compile_nsref(
             loc,
             kw: internal[0].loc(),
             nl: q.nl.clone(),
-            rendered_name: q.name.as_u8_vec(false),
+            rendered_name: q.name.as_u8_vec(LongNameTranslation::Namespace),
             longname: q.name.clone(),
             specification: import_spec.clone()
         }));
@@ -1218,7 +1218,7 @@ pub fn compile_nsref(
         loc,
         kw: internal[0].loc(),
         nl: import_spec.name_loc(),
-        rendered_name: parsed.as_u8_vec(false),
+        rendered_name: parsed.as_u8_vec(LongNameTranslation::Namespace),
         longname: parsed,
         specification: import_spec
     }))
