@@ -188,7 +188,7 @@ enum Export {
     Function(Vec<u8>),
 }
 
-fn detect_chialisp_module(
+pub fn detect_chialisp_module(
     pre_forms: &[Rc<SExp>],
 ) -> bool {
     if pre_forms.is_empty() {
@@ -296,6 +296,20 @@ fn create_hex_output_path(loc: Srcloc, file_path: &str, func: &str) -> Result<St
     })
 }
 
+#[derive(Debug, Clone)]
+pub struct CompileModuleComponent {
+    pub shortname: Vec<u8>,
+    pub filename: String,
+    pub content: Rc<SExp>,
+    pub hash: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompileModuleOutput {
+    pub summary: Rc<SExp>,
+    pub components: Vec<CompileModuleComponent>
+}
+
 // Exports are returned main programs:
 //
 // Single main
@@ -306,11 +320,11 @@ fn create_hex_output_path(loc: Srcloc, file_path: &str, func: &str) -> Result<St
 //
 // (export foo)
 // (export bar)
-fn compile_module(
+pub fn compile_module(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>]
-) -> Result<SExp, CompileErr> {
+) -> Result<CompileModuleOutput, CompileErr> {
     let mut other_forms = vec![];
     let mut exports = vec![];
     let mut found_main = false;
@@ -331,7 +345,7 @@ fn compile_module(
     for p in output_forms.iter() {
         eprintln!("pp: {p}");
     }
-    
+
     for p in output_forms.iter() {
         if let Some(export) = match_export_form(opts.clone(), p.clone())? {
             if matches!(export, Export::MainProgram(_, _)) {
@@ -385,18 +399,27 @@ fn compile_module(
 
             program = resolve_namespaces(opts.clone(), &program)?;
 
-            let output = compile_from_compileform(context, opts.clone(), program)?;
+            let output = Rc::new(compile_from_compileform(context, opts.clone(), program)?);
             let converted = convert_to_clvm_rs(
                 context.allocator(),
-                Rc::new(output),
+                output.clone(),
             )?;
 
             let mut output_path = PathBuf::from(&opts.filename());
+            output_path.set_extension("hex");
+            let output_path_str = output_path.into_os_string().to_string_lossy().to_string();
             let mut stream = Stream::new(None);
             stream.write(sexp_as_bin(context.allocator(), converted));
-            output_path.set_extension("hex");
-            opts.write_new_file(&output_path.into_os_string().to_string_lossy(), stream.get_value().hex().as_bytes())?;
-            return Ok(SExp::Nil(loc.clone()));
+            opts.write_new_file(&output_path_str, stream.get_value().hex().as_bytes())?;
+            return Ok(CompileModuleOutput {
+                summary: Rc::new(SExp::Nil(loc.clone())),
+                components: vec![CompileModuleComponent {
+                    shortname: b"program".to_vec(),
+                    filename: output_path_str,
+                    content: output.clone(),
+                    hash: sha256tree(output)
+                }]
+            });
         }
     }
 
@@ -529,7 +552,12 @@ fn compile_module(
         loc.clone(),
         run_result_clvm.1,
     )?;
+
+    // Components to use for the CompileModuleOutput, which downstream can be
+    // collected for namespacing.
+    let mut components = vec![];
     let modules = break_down_module_output(loc.clone(), run_result)?;
+
     for m in modules.into_iter() {
         prog_output = SExp::Cons(
             loc.clone(),
@@ -549,9 +577,19 @@ fn compile_module(
         stream.write(sexp_as_bin(context.allocator(), converted_func));
         let output_path = create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(&m.name))?;
         opts.write_new_file(&output_path, stream.get_value().hex().as_bytes())?;
+
+        components.push(CompileModuleComponent {
+            shortname: m.name.clone(),
+            filename: output_path,
+            content: m.func.clone(),
+            hash: m.hash
+        });
     }
 
-    Ok(prog_output)
+    Ok(CompileModuleOutput {
+        summary: Rc::new(prog_output),
+        components
+    })
 }
 
 pub fn compile_pre_forms(
@@ -581,7 +619,9 @@ pub fn compile_file(
     );
 
     if detect_chialisp_module(&pre_forms) && opts.dialect().strict {
-        return compile_module(&mut context_wrapper.context, opts, &pre_forms);
+        let compiled = compile_module(&mut context_wrapper.context, opts, &pre_forms)?;
+        let borrowed_summary: &SExp = compiled.summary.borrow();
+        return Ok(borrowed_summary.clone());
     }
 
     compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)

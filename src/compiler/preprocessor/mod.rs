@@ -6,16 +6,16 @@ use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
 
-use crate::classic::clvm_tools::binutils::assemble;
+use crate::classic::clvm_tools::binutils::{assemble, disassemble};
 use crate::classic::clvm_tools::clvmc::compile_clvm_text_maybe_opt;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 
 use crate::compiler::cldb::hex_to_modern_sexp;
 use crate::compiler::clvm;
-use crate::compiler::clvm::{convert_from_clvm_rs, truthy};
-use crate::compiler::compiler::compile_from_compileform;
+use crate::compiler::clvm::{convert_from_clvm_rs, sha256tree, truthy};
+use crate::compiler::compiler::{compile_from_compileform, compile_module, compile_pre_forms, detect_chialisp_module};
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, HelperForm, ImportLongName, IncludeDesc, IncludeProcessType, LongNameTranslation, ModuleImportSpec, NamespaceData, NamespaceRefData, QualifiedModuleInfo,
+    BodyForm, CompileErr, CompileForm, CompilerOpts, ConstantKind, DefconstData, HelperForm, ImportLongName, IncludeDesc, IncludeProcessType, LongNameTranslation, ModuleImportSpec, NamespaceData, NamespaceRefData, QualifiedModuleInfo,
 };
 use crate::compiler::dialect::{detect_modern, KNOWN_DIALECTS};
 use crate::compiler::frontend::{compile_helperform, compile_nsref, frontend};
@@ -335,15 +335,94 @@ impl Preprocessor {
         }
     }
 
+    fn import_program(
+        &mut self,
+        includes: &mut Vec<IncludeDesc>,
+        import_name: &ImportLongName,
+        filename: &str,
+        content: &[u8]
+    ) -> Result<Vec<Rc<SExp>>, CompileErr> {
+        let srcloc = Srcloc::start(filename);
+        let mut allocator = Allocator::new();
+        let mut symbol_table = HashMap::new();
+        let mut runner = Rc::new(DefaultProgramRunner::new());
+        let pre_forms = parse_sexp(srcloc.clone(), content.iter().copied())?;
+
+        let make_constant = |name: &[u8], s: SExp| {
+            HelperForm::Defconstant(DefconstData {
+                loc: srcloc.clone(),
+                kind: ConstantKind::Complex,
+                name: name.to_vec(),
+                kw: None,
+                nl: srcloc.clone(),
+                tabled: true,
+                ty: None,
+                body: Rc::new(BodyForm::Quoted(s)),
+            }).to_sexp()
+        };
+
+        if detect_chialisp_module(&pre_forms) {
+            let mut context_wrapper = CompileContextWrapper::new(
+                &mut allocator,
+                runner,
+                &mut symbol_table,
+                get_optimizer(&srcloc, self.opts.clone())?,
+            );
+            let module_output = compile_module(&mut context_wrapper.context, self.opts.clone(), &pre_forms)?;
+            let mut output = Vec::new();
+            for c in module_output.components.iter() {
+                let borrowed_content: &SExp = c.content.borrow();
+                output.push(make_constant(&c.shortname, borrowed_content.clone()));
+                let mut hash_name = c.shortname.clone();
+                hash_name.extend(b"_hash".to_vec());
+                output.push(make_constant(&hash_name, SExp::QuotedString(srcloc.clone(), b'x', c.hash.clone())));
+            }
+            return Ok(output);
+        }
+
+        let classic_parse = assemble(&mut allocator, &decode_string(&content)).map_err(|_| {
+            CompileErr(srcloc.clone(), format!("Could not parse {filename} to determine dialect"))
+        })?;
+        eprintln!("compile {}", disassemble(&mut allocator, classic_parse, None));
+        let dialect = detect_modern(&mut allocator, classic_parse);
+        if dialect.stepping.is_none() {
+            // Classic compile.
+            todo!();
+        }
+
+        let opts = self.opts.set_dialect(dialect);
+        let mut context_wrapper = CompileContextWrapper::new(
+            &mut allocator,
+            runner,
+            &mut symbol_table,
+            get_optimizer(&srcloc, opts.clone())?,
+        );
+
+        let compile_output = compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)?;
+        return Ok(vec![
+            make_constant(b"program", compile_output.clone()),
+            make_constant(b"program_hash", SExp::QuotedString(srcloc.clone(), b'x', sha256tree(Rc::new(compile_output))))
+        ]);
+    }
+
     fn import_new_module(
         &mut self,
         includes: &mut Vec<IncludeDesc>,
         import_name: &ImportLongName
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
-        let filename = decode_string(&import_name.as_u8_vec(LongNameTranslation::Filename(".clinc".to_string())));
+        let filename_clsp = decode_string(&import_name.as_u8_vec(LongNameTranslation::Filename(".clsp".to_string())));
+        let filename_clinc = decode_string(&import_name.as_u8_vec(LongNameTranslation::Filename(".clinc".to_string())));
+
+        if let Ok((full_name, content)) = self
+            .opts
+            .read_new_file(self.opts.filename(), filename_clsp)
+        {
+            return self.import_program(includes, import_name, &full_name, &content);
+        }
+
         let (full_name, content) = self
             .opts
-            .read_new_file(self.opts.filename(), filename)?;
+            .read_new_file(self.opts.filename(), filename_clinc)?;
 
         let parsed = parse_sexp(Srcloc::start(&full_name), content.iter().copied())
             .map_err(|e| CompileErr(e.0, e.1))?;

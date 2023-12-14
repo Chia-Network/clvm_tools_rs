@@ -289,3 +289,22 @@ fn test_simple_module_compliation_lambda_rewrite_with_body() {
         ]
     );
 }
+
+#[test]
+fn test_simple_module_compliation_import_program_0() {
+    let filename = "resources/tests/module/basic_program_import.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_filename = "resources/tests/module/basic_program_import.hex";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "()",
+                outcome: Some("(0x58d8ee2d7360024e0db69b0d46098d02395b3f03dfa97a8c9b14b5033f66ae74 (a (q 16 5 (q . 1)) (c (q) 1)))")
+            }
+        ]
+    );
+}
