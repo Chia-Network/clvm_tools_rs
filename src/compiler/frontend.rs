@@ -947,13 +947,16 @@ fn augment_fun_type_with_args(
     }
 }
 
-fn create_constructor_code(sdef: &StructDef, proto: Rc<SExp>) -> BodyForm {
+fn create_constructor_code(
+    sdef: &StructDef,
+    proto: Rc<SExp>
+) -> BodyForm {
     match proto.atomize() {
         SExp::Atom(l, n) => BodyForm::Value(SExp::Atom(l, n)),
         SExp::Cons(l, a, b) => BodyForm::Call(
             l.clone(),
             vec![
-                Rc::new(BodyForm::Value(SExp::Atom(l, b"c*".to_vec()))),
+                Rc::new(BodyForm::Value(SExp::Integer(l, 4_u32.to_bigint().unwrap()))),
                 Rc::new(create_constructor_code(sdef, a)),
                 Rc::new(create_constructor_code(sdef, b)),
             ],
@@ -1060,9 +1063,9 @@ pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
                             body: Rc::new(BodyForm::Call(
                                 m.loc.clone(),
                                 vec![
-                                    Rc::new(BodyForm::Value(SExp::Atom(
+                                    Rc::new(BodyForm::Value(SExp::Integer(
                                         m.loc.clone(),
-                                        vec![b'a', b'*'],
+                                        2_u32.to_bigint().unwrap()
                                     ))),
                                     Rc::new(BodyForm::Quoted(SExp::Integer(
                                         m.loc.clone(),
@@ -1148,6 +1151,15 @@ fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
 pub struct HelperFormResult {
     pub chia_type: Option<ChiaType>,
     pub new_helpers: Vec<HelperForm>,
+}
+
+impl HelperFormResult {
+    pub fn new(helpers: &[HelperForm], ty: Option<ChiaType>) -> Self {
+        HelperFormResult {
+            chia_type: ty,
+            new_helpers: helpers.iter().cloned().collect()
+        }
+    }
 }
 
 pub fn compile_namespace(
@@ -1323,6 +1335,7 @@ pub fn compile_helperform(
                     loc: l.clone(),
                     name: n.clone(),
                     args: vec![],
+                    parsed: parsed_chia.clone(),
                     ty: None,
                 }),
                 ChiaType::Struct(sdef) => {
@@ -1335,6 +1348,7 @@ pub fn compile_helperform(
                         loc: sdef.loc.clone(),
                         name: sdef.name.clone(),
                         args: sdef.vars.clone(),
+                        parsed: parsed_chia.clone(),
                         ty: Some(sdef.ty.clone()),
                     })
                 }

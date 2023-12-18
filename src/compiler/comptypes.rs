@@ -281,7 +281,7 @@ pub struct DefconstData {
     pub ty: Option<Polytype>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct StructMember {
     pub loc: Srcloc,
     pub name: Vec<u8>,
@@ -289,7 +289,7 @@ pub struct StructMember {
     pub ty: Polytype,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct StructDef {
     pub loc: Srcloc,
     pub name: Vec<u8>,
@@ -299,7 +299,7 @@ pub struct StructDef {
     pub ty: Polytype,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum ChiaType {
     Abstract(Srcloc, Vec<u8>),
     Struct(StructDef),
@@ -318,6 +318,7 @@ pub struct DeftypeData {
     pub loc: Srcloc,
     pub name: Vec<u8>,
     pub args: Vec<TypeVar>,
+    pub parsed: ChiaType,
     pub ty: Option<Polytype>,
 }
 

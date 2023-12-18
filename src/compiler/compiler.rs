@@ -629,9 +629,10 @@ pub fn compile_file(
         get_optimizer(&srcloc, opts.clone())?,
     );
 
-    if detect_chialisp_module(&pre_forms) && opts.dialect().strict {
+    let dialect = opts.dialect();
+    if detect_chialisp_module(&pre_forms) && dialect.strict {
         // cl23 always reflects optimization.
-        opts = if let Some(stepping) = opts.dialect().stepping.as_ref() {
+        opts = if let Some(stepping) = dialect.stepping.as_ref() {
             opts.set_optimize(*stepping > 21)
         } else {
             opts

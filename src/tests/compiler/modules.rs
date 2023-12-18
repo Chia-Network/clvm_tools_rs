@@ -365,3 +365,22 @@ fn test_simple_module_compliation_simple_type_1() {
         ]
     );
 }
+
+#[test]
+fn test_simple_module_compliation_simple_type_2() {
+    let filename = "resources/tests/module/modtest1_other_module_type.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_filename = "resources/tests/module/modtest1_other_module_type.hex";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "(13 17)",
+                outcome: Some("13")
+            }
+        ]
+    );
+}
