@@ -956,7 +956,7 @@ fn create_constructor_code(
         SExp::Cons(l, a, b) => BodyForm::Call(
             l.clone(),
             vec![
-                Rc::new(BodyForm::Value(SExp::Integer(l, 4_u32.to_bigint().unwrap()))),
+                Rc::new(BodyForm::Value(SExp::Atom(l, b"c*".to_vec()))),
                 Rc::new(create_constructor_code(sdef, a)),
                 Rc::new(create_constructor_code(sdef, b)),
             ],
@@ -1063,9 +1063,9 @@ pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
                             body: Rc::new(BodyForm::Call(
                                 m.loc.clone(),
                                 vec![
-                                    Rc::new(BodyForm::Value(SExp::Integer(
+                                    Rc::new(BodyForm::Value(SExp::Atom(
                                         m.loc.clone(),
-                                        2_u32.to_bigint().unwrap()
+                                        vec![b'a', b'*'],
                                     ))),
                                     Rc::new(BodyForm::Quoted(SExp::Integer(
                                         m.loc.clone(),

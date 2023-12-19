@@ -114,6 +114,7 @@ fn namespace_helper(
         }
         HelperForm::Deftype(ty) => {
             let new_helpers = generate_type_helpers(&ty.parsed);
+            eprintln!("namespacing deftype {}", value.to_sexp());
             let mut result_helpers = Vec::new();
             for h in new_helpers.into_iter() {
                 let new_helper_name = if let Some(p) = name.parent() {
@@ -158,12 +159,14 @@ pub fn find_helper_target<'a>(
     // Get a list namespace refs from the namespace identified by parent_ns.
     let tour_helpers: Vec<FoundHelper> = tour_helpers(&helpers).collect();
     let home_ns: Vec<&FoundHelper> = tour_helpers.iter().filter(|found| {
+        eprintln!("find tour: got ns {} containing {}", display_namespace(found.namespace.clone()), found.helper.to_sexp());
         found.namespace == parent_ns
     }).collect();
 
     // check the matching namespace to the one specified to see if we can find the
     // target.
     for h in home_ns.iter() {
+        eprintln!("finding {} checking {}", display_namespace(Some(name)), h.helper.to_sexp());
         if let HelperForm::Deftype(dt) = &h.helper {
             let new_helpers = generate_type_helpers(&dt.parsed);
             for gh in new_helpers.iter() {
@@ -381,6 +384,7 @@ fn resolve_namespaces_in_expr(
                 }
             }
 
+            eprintln!("find_helper_target {} in parent_ns {}", decode_string(&name), display_namespace(parent_ns.clone()));
             let (target_full_name, target_helper) =
                 if let Some((target_full_name, target_helper)) = find_helper_target(
                     opts.clone(),
@@ -393,6 +397,7 @@ fn resolve_namespaces_in_expr(
                 } else if is_compiler_builtin(&name) {
                     return Ok(expr.clone());
                 } else {
+                    eprintln!("trying to find {}, but failed", decode_string(&name));
                     return Err(CompileErr(expr.loc(), format!("could not find helper {} in {}", decode_string(&name), display_namespace(parent_ns.clone()))));
                 };
 
@@ -537,6 +542,7 @@ fn resolve_namespaces_in_helper(
 ) -> Result<HelperFormResult, CompileErr> {
     match helper {
         HelperForm::Defnamespace(ns) => {
+            eprintln!("have namespace {}", helper.to_sexp());
             let combined_ns =
                 if let Some(p) = parent_ns {
                     p.combine(&ns.longname)
@@ -599,7 +605,9 @@ fn resolve_namespaces_in_helper(
         HelperForm::Deftype(dt) => {
             let mut new_helpers = generate_type_helpers(&dt.parsed);
             let mut result_helpers = Vec::new();
+            eprintln!("processing deftype {}", helper.to_sexp());
             for h in new_helpers.iter_mut() {
+                eprintln!("resolving generated {}", h.to_sexp());
                 let results = resolve_namespaces_in_helper(
                     resolved_helpers,
                     opts.clone(),
@@ -623,6 +631,8 @@ pub fn resolve_namespaces(
 ) -> Result<CompileForm, CompileErr> {
     let mut resolved_helpers: BTreeMap<ImportLongName, HelperFormResult> = BTreeMap::new();
     let mut new_resolved_helpers: BTreeMap<ImportLongName, HelperFormResult> = BTreeMap::new();
+
+    eprintln!("resolve_namespaces: program = {}", program.to_sexp());
 
     // The main expression is in the scope of the program arguments.
     let mut program_scope = HashSet::new();
@@ -650,6 +660,7 @@ pub fn resolve_namespaces(
             let (parent, _) = name.parent_and_name();
 
             for helper in helpers.new_helpers.iter() {
+                eprintln!("{} doing tree build via {}", display_namespace(parent.as_ref()), helper.to_sexp());
                 let mut result_helpers = Vec::new();
                 let mut renamed_helpers = namespace_helper(&name, &helper);
 
@@ -669,6 +680,7 @@ pub fn resolve_namespaces(
                         continue;
                     }
 
+                    eprintln!("resolving {}", h.to_sexp());
                     let results = resolve_namespaces_in_helper(
                         &mut round_resolved_helpers,
                         opts.clone(),
@@ -676,6 +688,12 @@ pub fn resolve_namespaces(
                         parent.as_ref(),
                         h
                     )?;
+
+                    for h in results.new_helpers.iter() {
+                        eprintln!("=> {}", h.to_sexp());
+                    }
+
+                    eprintln!("just resolved {}", decode_string(&full_name.as_u8_vec(LongNameTranslation::Namespace)));
 
                     result_helpers.extend(results.new_helpers.clone());
                     resolved_helpers.insert(full_name, HelperFormResult::new(&[], None));

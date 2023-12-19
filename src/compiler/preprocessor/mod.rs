@@ -431,6 +431,7 @@ impl Preprocessor {
 
     fn import_new_module(
         &mut self,
+        loc: Srcloc,
         includes: &mut Vec<IncludeDesc>,
         import_name: &ImportLongName
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
@@ -452,6 +453,11 @@ impl Preprocessor {
             .map_err(|e| CompileErr(e.0, e.1))?;
 
         let mut out_forms = vec![];
+
+        if self.opts.stdenv() {
+            out_forms.push(make_namespace_ref(&loc, &loc, &loc, &ImportLongName::parse(b"std.prelude").1, &ModuleImportSpec::Hiding(loc.clone(), vec![])).to_sexp());
+        }
+
         self.namespace_stack.push(ImportNameMap {
             name: Some(import_name.clone()),
         });
@@ -491,7 +497,7 @@ impl Preprocessor {
         self.add_helper(empty_ns);
 
         // Process this module.
-        let imported_content = self.import_new_module(includes, &full_import_name)?;
+        let imported_content = self.import_new_module(loc.clone(), includes, &full_import_name)?;
         let helper_forms: Vec<Rc<SExp>> = vec![
             make_namespace_container(&loc, &nl, &full_import_name, imported_content)?,
             ns_helper.to_sexp()
