@@ -656,9 +656,9 @@ pub fn cldb(args: &[String]) {
                 &mut use_symbol_table,
             );
             if do_optimize {
-                unopt_res.and_then(|x| run_optimizer(&mut allocator, runner.clone(), Rc::new(x)))
+                unopt_res.and_then(|x| run_optimizer(&mut allocator, runner.clone(), Rc::new(x.to_sexp())))
             } else {
-                unopt_res.map(Rc::new)
+                unopt_res.map(|x| Rc::new(x.to_sexp()))
             }
         }
     };
@@ -1488,9 +1488,9 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             &mut symbol_table,
         );
         let res = if do_optimize {
-            unopt_res.and_then(|x| run_optimizer(&mut allocator, runner, Rc::new(x)))
+            unopt_res.and_then(|x| run_optimizer(&mut allocator, runner, Rc::new(x.to_sexp())))
         } else {
-            unopt_res.map(Rc::new)
+            unopt_res.map(|x| x.to_sexp()).map(Rc::new)
         };
 
         match res {

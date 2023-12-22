@@ -531,7 +531,7 @@ fn test_preprocess_basic_list() {
     let parsed_lst: Vec<Rc<SExp>> = parsed_forms[0].proper_list().expect("was a list").into_iter().map(Rc::new).collect();
     let pp = preprocess(opts.clone(), &mut includes, &parsed_lst)
         .expect("should preprocess");
-    assert_eq!(pp[pp.len() - 1].to_string(), "(4 1 (4 2 (4 3 ())))");
+    assert_eq!(pp.forms[pp.forms.len() - 1].to_string(), "(4 1 (4 2 (4 3 ())))");
 }
 
 #[test]
@@ -613,8 +613,8 @@ fn test_preprocessor_tours_includes_properly() {
         "(defun puzzle-hash-of-curried-function (function-hash . reversed-curry-parameter-hashes) (tree-hash-of-apply function-hash (build-curry-list reversed-curry-parameter-hashes (sha256 ONE ONE))))",
         "()",
     ];
-    for (i, r) in res.iter().enumerate() {
+    for (i, r) in res.forms.iter().enumerate() {
         assert_eq!(r.to_string(), expected_lines[i]);
     }
-    assert_eq!(res.len(), expected_lines.len());
+    assert_eq!(res.forms.len(), expected_lines.len());
 }

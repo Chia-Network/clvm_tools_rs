@@ -1472,10 +1472,10 @@ fn frontend_start(
     match parse_toplevel_mod(opts.clone(), pre_forms)? {
         ToplevelModParseResult::Mod(tm) => {
             let ls = preprocess(opts.clone(), includes, &tm.forms)?;
-            let l = ls[0].loc();
+            let l = ls.forms[0].loc();
 
             let mut ma = ModAccum::new(l.clone(), false);
-            for form in ls.iter().take(ls.len() - 1) {
+            for form in ls.forms.iter().take(ls.forms.len() - 1) {
                 ma = ma.compile_mod_helper(
                     opts.clone(),
                     tm.stripped_args.clone(),
@@ -1488,7 +1488,7 @@ fn frontend_start(
                 opts.clone(),
                 includes.clone(),
                 tm.stripped_args,
-                ls[ls.len() - 1].clone(),
+                ls.forms[ls.forms.len() - 1].clone(),
                 tm.parsed_type,
             )
         }

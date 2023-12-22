@@ -298,6 +298,11 @@ pub fn parse_toplevel_mod(
     Ok(ToplevelModParseResult::Simple(pre_forms.to_vec()))
 }
 
+pub struct PreprocessResult {
+    pub forms: Vec<Rc<SExp>>,
+    pub modules: bool,
+}
+
 impl Preprocessor {
     pub fn new(opts: Rc<dyn CompilerOpts>) -> Self {
         let runner = Rc::new(DefaultProgramRunner::new());
@@ -446,8 +451,8 @@ impl Preprocessor {
                 &mut symbol_table,
                 get_optimizer(&srcloc, self.subcompile_opts.clone())?,
             );
-            let forms = preprocess(self.subcompile_opts.clone(), includes, &pre_forms)?;
-            let module_output = compile_module(&mut context_wrapper.context, self.subcompile_opts.clone(), includes, &forms)?;
+            let pp = preprocess(self.subcompile_opts.clone(), includes, &pre_forms)?;
+            let module_output = compile_module(&mut context_wrapper.context, self.subcompile_opts.clone(), includes, &pp.forms)?;
             let mut output = Vec::new();
             for c in module_output.components.iter() {
                 let borrowed_content: &SExp = c.content.borrow();
@@ -1180,7 +1185,7 @@ impl Preprocessor {
         &mut self,
         includes: &mut Vec<IncludeDesc>,
         cmod: &[Rc<SExp>],
-    ) -> Result<Vec<Rc<SExp>>, CompileErr> {
+    ) -> Result<PreprocessResult, CompileErr> {
         let mut result = Vec::new();
 
         if self.opts.stdenv() {
@@ -1192,14 +1197,17 @@ impl Preprocessor {
             result.append(&mut lst);
         }
 
-        Ok(result)
+        Ok(PreprocessResult {
+            forms: result,
+            modules: false,
+        })
     }
 
     pub fn run_modules(
         &mut self,
         includes: &mut Vec<IncludeDesc>,
         cmod: &[Rc<SExp>],
-    ) -> Result<Vec<Rc<SExp>>, CompileErr> {
+    ) -> Result<PreprocessResult, CompileErr> {
         if !cmod.is_empty() {
             self.prelude_import = Rc::new(SExp::Cons(
                 cmod[0].loc(),
@@ -1211,7 +1219,11 @@ impl Preprocessor {
                 )),
             ));
         }
-        self.run(includes, cmod)
+        let m = self.run(includes, cmod)?;
+        Ok(PreprocessResult {
+            modules: true,
+            .. m
+        })
     }
 }
 
@@ -1222,7 +1234,7 @@ pub fn preprocess(
     opts: Rc<dyn CompilerOpts>,
     includes: &mut Vec<IncludeDesc>,
     cmod: &[Rc<SExp>],
-) -> Result<Vec<Rc<SExp>>, CompileErr> {
+) -> Result<PreprocessResult, CompileErr> {
     let mut p = Preprocessor::new(opts);
     p.run(includes, cmod)
 }

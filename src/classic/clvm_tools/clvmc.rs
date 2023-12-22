@@ -66,9 +66,9 @@ pub fn compile_clvm_text_maybe_opt(
 
         let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
         let res = if do_optimize {
-            unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x)))
+            unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x.to_sexp())))
         } else {
-            unopt_res.map(Rc::new)
+            unopt_res.map(|x| x.to_sexp()).map(Rc::new)
         };
 
         res.and_then(|x| {

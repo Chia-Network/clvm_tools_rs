@@ -599,13 +599,34 @@ pub fn compile_pre_forms(
     compile_from_compileform(context, opts, p0)
 }
 
+pub enum CompilerOutput {
+    Program(SExp),
+    Module(Vec<CompileModuleComponent>, SExp)
+}
+
+impl CompilerOutput {
+    pub fn to_sexp(&self) -> SExp {
+        match self {
+            CompilerOutput::Program(x) => x.clone(),
+            CompilerOutput::Module(_, x) => x.clone(),
+        }
+    }
+
+    pub fn loc(&self) -> Srcloc {
+        match self {
+            CompilerOutput::Program(x) => x.loc(),
+            CompilerOutput::Module(_, x) => x.loc(),
+        }
+    }
+}
+
 pub fn compile_file(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     mut opts: Rc<dyn CompilerOpts>,
     content: &str,
     symbol_table: &mut HashMap<String, String>,
-) -> Result<SExp, CompileErr> {
+) -> Result<CompilerOutput, CompileErr> {
     let srcloc = Srcloc::start(&opts.filename());
     let pre_forms = parse_sexp(srcloc.clone(), content.bytes())?;
     let mut context_wrapper = CompileContextWrapper::new(
@@ -634,13 +655,17 @@ pub fn compile_file(
             &mut context_wrapper.context,
             opts,
             &includes,
-            &output_forms
+            &output_forms.forms
         )?;
         let borrowed_summary: &SExp = compiled.summary.borrow();
-        return Ok(borrowed_summary.clone());
+        return Ok(CompilerOutput::Module(
+            compiled.components.clone(),
+            borrowed_summary.clone()
+        ));
     }
 
-    compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
+    let program = compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)?;
+    Ok(CompilerOutput::Program(program))
 }
 
 impl CompilerOpts for DefaultCompilerOpts {
