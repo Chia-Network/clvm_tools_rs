@@ -1463,86 +1463,111 @@ fn frontend_step_finish(
     )
 }
 
+pub struct ToplevelMod {
+    pub forms: Vec<Rc<SExp>>,
+    pub stripped_args: Rc<SExp>,
+    pub parsed_type: Option<Polytype>,
+}
+
+pub enum ToplevelModParseResult {
+    Mod(ToplevelMod),
+    Simple(Vec<Rc<SExp>>),
+}
+
+pub fn parse_toplevel_mod(
+    opts: Rc<dyn CompilerOpts>,
+    includes: &mut Vec<IncludeDesc>,
+    pre_forms: &[Rc<SExp>]
+) -> Result<ToplevelModParseResult, CompileErr> {
+    if pre_forms.is_empty() {
+        return Err(CompileErr(
+            Srcloc::start(&opts.filename()),
+            "empty source file not allowed".to_string(),
+        ));
+    } else {
+        if let Some(x) = pre_forms[0].proper_list() {
+            if x.is_empty() {
+                return Ok(ToplevelModParseResult::Simple(pre_forms.to_vec()));
+            }
+
+            if let SExp::Atom(_, mod_atom) = &x[0] {
+                if pre_forms.len() > 1 {
+                    return Err(CompileErr(
+                        pre_forms[0].loc(),
+                        "one toplevel mod form allowed".to_string(),
+                    ));
+                }
+
+                if *mod_atom == b"mod" {
+                    let args = Rc::new(x[1].atomize());
+                    let mut skip_idx = 2;
+                    let mut ty: Option<TypeAnnoKind> = None;
+
+                    if x.len() < 3 {
+                        return Err(CompileErr(x[0].loc(), "incomplete mod form".to_string()));
+                    }
+
+                    if let SExp::Atom(_, colon) = &x[2].atomize() {
+                        if *colon == vec![b':'] && x.len() > 3 {
+                            let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
+                            ty = Some(TypeAnnoKind::Colon(use_ty));
+                            skip_idx += 2;
+                        } else if *colon == vec![b'-', b'>'] && x.len() > 3 {
+                            let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
+                            ty = Some(TypeAnnoKind::Arrow(use_ty));
+                            skip_idx += 2;
+                        }
+                    }
+                    let (stripped_args, parsed_type) = augment_fun_type_with_args(args, ty)?;
+
+                    return Ok(ToplevelModParseResult::Mod(ToplevelMod {
+                        forms: x
+                            .iter()
+                            .skip(skip_idx)
+                            .map(|s| Rc::new(s.clone()))
+                            .collect(),
+                        stripped_args,
+                        parsed_type,
+                    }));
+                }
+            }
+        }
+    }
+
+    Ok(ToplevelModParseResult::Simple(pre_forms.to_vec()))
+}
+
 fn frontend_start(
     opts: Rc<dyn CompilerOpts>,
     includes: &mut Vec<IncludeDesc>,
     pre_forms: &[Rc<SExp>],
 ) -> Result<ModAccum, CompileErr> {
-    if pre_forms.is_empty() {
-        Err(CompileErr(
-            Srcloc::start(&opts.filename()),
-            "empty source file not allowed".to_string(),
-        ))
-    } else {
-        let l = pre_forms[0].loc();
-        pre_forms[0]
-            .proper_list()
-            .map(|x| {
-                if x.is_empty() {
-                    return frontend_step_finish(opts.clone(), includes, pre_forms);
-                }
+    match parse_toplevel_mod(opts.clone(), includes, pre_forms)? {
+        ToplevelModParseResult::Mod(tm) => {
+            let ls = preprocess(opts.clone(), includes, &tm.forms)?;
+            let l = ls[0].loc();
 
-                if let SExp::Atom(_, mod_atom) = &x[0] {
-                    if pre_forms.len() > 1 {
-                        return Err(CompileErr(
-                            pre_forms[0].loc(),
-                            "one toplevel mod form allowed".to_string(),
-                        ));
-                    }
+            let mut ma = ModAccum::new(l.clone(), false);
+            for form in ls.iter().take(ls.len() - 1) {
+                ma = ma.compile_mod_helper(
+                    opts.clone(),
+                    tm.stripped_args.clone(),
+                    form.clone(),
+                    tm.parsed_type.clone(),
+                )?;
+            }
 
-                    if *mod_atom == b"mod" {
-                        let args = Rc::new(x[1].atomize());
-                        let mut skip_idx = 2;
-                        let mut ty: Option<TypeAnnoKind> = None;
-
-                        if x.len() < 3 {
-                            return Err(CompileErr(x[0].loc(), "incomplete mod form".to_string()));
-                        }
-
-                        if let SExp::Atom(_, colon) = &x[2].atomize() {
-                            if *colon == vec![b':'] && x.len() > 3 {
-                                let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
-                                ty = Some(TypeAnnoKind::Colon(use_ty));
-                                skip_idx += 2;
-                            } else if *colon == vec![b'-', b'>'] && x.len() > 3 {
-                                let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
-                                ty = Some(TypeAnnoKind::Arrow(use_ty));
-                                skip_idx += 2;
-                            }
-                        }
-                        let (stripped_args, parsed_type) = augment_fun_type_with_args(args, ty)?;
-
-                        let body_vec: Vec<Rc<SExp>> = x
-                            .iter()
-                            .skip(skip_idx)
-                            .map(|s| Rc::new(s.clone()))
-                            .collect();
-                        let body = Rc::new(enlist(pre_forms[0].loc(), &body_vec));
-
-                        let ls = preprocess(opts.clone(), includes, body)?;
-                        let mut ma = ModAccum::new(l.clone(), false);
-                        for form in ls.iter().take(ls.len() - 1) {
-                            ma = ma.compile_mod_helper(
-                                opts.clone(),
-                                stripped_args.clone(),
-                                form.clone(),
-                                parsed_type.clone(),
-                            )?;
-                        }
-
-                        return ma.compile_mod_body(
-                            opts.clone(),
-                            includes.clone(),
-                            stripped_args,
-                            ls[ls.len() - 1].clone(),
-                            parsed_type,
-                        );
-                    }
-                }
-
-                frontend_step_finish(opts.clone(), includes, pre_forms)
-            })
-            .unwrap_or_else(|| frontend_step_finish(opts, includes, pre_forms))
+            ma.compile_mod_body(
+                opts.clone(),
+                includes.clone(),
+                tm.stripped_args,
+                ls[ls.len() - 1].clone(),
+                tm.parsed_type,
+            )
+        }
+        ToplevelModParseResult::Simple(t) => {
+            frontend_step_finish(opts.clone(), includes, &t)
+        }
     }
 }
 

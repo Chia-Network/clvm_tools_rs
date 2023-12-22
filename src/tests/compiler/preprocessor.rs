@@ -2,7 +2,7 @@ use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::preprocessor::preprocess;
-use crate::compiler::sexp::parse_sexp;
+use crate::compiler::sexp::{SExp, parse_sexp};
 use crate::compiler::srcloc::Srcloc;
 use std::rc::Rc;
 
@@ -528,7 +528,8 @@ fn test_preprocess_basic_list() {
             strict: true,
         });
     let mut includes = Vec::new();
-    let pp = preprocess(opts.clone(), &mut includes, parsed_forms[0].clone())
+    let parsed_lst: Vec<Rc<SExp>> = parsed_forms[0].proper_list().expect("was a list").into_iter().map(Rc::new).collect();
+    let pp = preprocess(opts.clone(), &mut includes, &parsed_lst)
         .expect("should preprocess");
     assert_eq!(pp[pp.len() - 1].to_string(), "(4 1 (4 2 (4 3 ())))");
 }
@@ -566,8 +567,9 @@ fn test_preprocessor_tours_includes_properly() {
             strict: true,
         });
     let parsed = parse_sexp(Srcloc::start(pname), prog.bytes()).expect("should parse");
+    let parsed_lst: Vec<Rc<SExp>> = parsed[0].proper_list().expect("was a list").into_iter().map(Rc::new).collect();
     let mut includes = Vec::new();
-    let res = preprocess(opts, &mut includes, parsed[0].clone()).expect("should preprocess");
+    let res = preprocess(opts, &mut includes, &parsed_lst).expect("should preprocess");
     let expected_lines = &[
         "(defmac __chia__primitive__if (A B C) (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @)))",
         "(defun __chia__if (ARGS) (a (i (r (r (r ARGS))) (com (qq (a (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (com (unquote (__chia__if (r (r ARGS)))))) @))) (com (qq (a (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (com (unquote (f (r (r ARGS)))))) @)))) @))",

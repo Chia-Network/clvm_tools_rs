@@ -1103,20 +1103,17 @@ impl Preprocessor {
     pub fn run(
         &mut self,
         includes: &mut Vec<IncludeDesc>,
-        cmod: Rc<SExp>,
+        cmod: &[Rc<SExp>],
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
         let mut result = Vec::new();
-        let mut tocompile = if self.opts.stdenv() {
-            let injected = self.inject_std_macros(cmod);
-            Rc::new(injected)
-        } else {
-            cmod
-        };
 
-        while let SExp::Cons(_, f, r) = tocompile.borrow() {
+        if self.opts.stdenv() {
+            let mut lst = self.process_pp_form(includes, self.prelude_import.clone())?;
+            result.append(&mut lst);
+        }
+        for f in cmod.iter() {
             let mut lst = self.process_pp_form(includes, f.clone())?;
             result.append(&mut lst);
-            tocompile = r.clone();
         }
 
         Ok(result)
@@ -1158,7 +1155,7 @@ impl Preprocessor {
 pub fn preprocess(
     opts: Rc<dyn CompilerOpts>,
     includes: &mut Vec<IncludeDesc>,
-    cmod: Rc<SExp>,
+    cmod: &[Rc<SExp>],
 ) -> Result<Vec<Rc<SExp>>, CompileErr> {
     let mut p = Preprocessor::new(opts);
     p.run(includes, cmod)
