@@ -13,7 +13,7 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::{convert_to_clvm_rs, convert_from_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
-use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen, SyntheticType};
+use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, IncludeDesc, PrimaryCodegen, SyntheticType};
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend};
 use crate::compiler::optimize::get_optimizer;
@@ -332,30 +332,16 @@ pub struct CompileModuleOutput {
 pub fn compile_module(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
+    includes: &[IncludeDesc],
     pre_forms: &[Rc<SExp>]
 ) -> Result<CompileModuleOutput, CompileErr> {
     let mut other_forms = vec![];
     let mut exports = vec![];
     let mut found_main = false;
-    let mut includes = vec![];
-
-    if pre_forms.is_empty() {
-        return Err(CompileErr(Srcloc::start(&opts.filename()), "We don't yet allow empty programs".to_string()));
-    }
 
     let loc = pre_forms[0].loc().ext(&pre_forms[pre_forms.len()-1].loc());
-    let preprocess_source = Rc::new(enlist(loc.clone(), pre_forms));
-    let mut preprocessor = Preprocessor::new(opts.clone());
-    let output_forms = preprocessor.run_modules(
-        &mut includes,
-        preprocess_source
-    )?;
 
-    for p in output_forms.iter() {
-        eprintln!("pp: {p}");
-    }
-
-    for p in output_forms.iter() {
+    for p in pre_forms.iter() {
         if let Some(export) = match_export_form(opts.clone(), p.clone())? {
             if matches!(export, Export::MainProgram(_, _)) {
                 if found_main || !exports.is_empty() {
@@ -393,7 +379,7 @@ pub fn compile_module(
 
     let mut program = CompileForm {
         loc: loc.clone(),
-        include_forms: includes.clone(),
+        include_forms: includes.to_vec(),
         args: Rc::new(SExp::Nil(loc.clone())),
         helpers: other_forms.clone(),
         exp: Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone()))),
@@ -637,7 +623,19 @@ pub fn compile_file(
         } else {
             opts
         };
-        let compiled = compile_module(&mut context_wrapper.context, opts, &pre_forms)?;
+
+        let mut includes = Vec::new();
+        let mut preprocessor = Preprocessor::new(opts.clone());
+        let output_forms = preprocessor.run_modules(
+            &mut includes,
+            &pre_forms,
+        )?;
+        let compiled = compile_module(
+            &mut context_wrapper.context,
+            opts,
+            &includes,
+            &output_forms
+        )?;
         let borrowed_summary: &SExp = compiled.summary.borrow();
         return Ok(borrowed_summary.clone());
     }

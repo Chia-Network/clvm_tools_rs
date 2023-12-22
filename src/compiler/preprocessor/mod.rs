@@ -238,7 +238,6 @@ pub enum ToplevelModParseResult {
 
 pub fn parse_toplevel_mod(
     opts: Rc<dyn CompilerOpts>,
-    includes: &mut Vec<IncludeDesc>,
     pre_forms: &[Rc<SExp>]
 ) -> Result<ToplevelModParseResult, CompileErr> {
     if pre_forms.is_empty() {
@@ -415,7 +414,7 @@ impl Preprocessor {
 
     fn import_program(
         &mut self,
-        _includes: &mut Vec<IncludeDesc>,
+        includes: &mut Vec<IncludeDesc>,
         _import_name: &ImportLongName,
         filename: &str,
         content: &[u8]
@@ -447,7 +446,8 @@ impl Preprocessor {
                 &mut symbol_table,
                 get_optimizer(&srcloc, self.subcompile_opts.clone())?,
             );
-            let module_output = compile_module(&mut context_wrapper.context, self.subcompile_opts.clone(), &pre_forms)?;
+            let forms = preprocess(self.subcompile_opts.clone(), includes, &pre_forms)?;
+            let module_output = compile_module(&mut context_wrapper.context, self.subcompile_opts.clone(), includes, &forms)?;
             let mut output = Vec::new();
             for c in module_output.components.iter() {
                 let borrowed_content: &SExp = c.content.borrow();
@@ -1198,30 +1198,20 @@ impl Preprocessor {
     pub fn run_modules(
         &mut self,
         includes: &mut Vec<IncludeDesc>,
-        cmod: Rc<SExp>,
+        cmod: &[Rc<SExp>],
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
-        self.prelude_import = Rc::new(SExp::Cons(
-            cmod.loc(),
-            Rc::new(SExp::atom_from_string(cmod.loc(), "import")),
-            Rc::new(SExp::Cons(
-                cmod.loc(),
-                Rc::new(SExp::atom_from_string(cmod.loc(), "std.prelude")),
-                Rc::new(SExp::Nil(cmod.loc())),
-            )),
-        ));
-        let mut tocompile = if self.opts.stdenv() {
-            Rc::new(self.inject_std_macros(cmod))
-        } else {
-            cmod
-        };
-        let mut result = Vec::new();
-        while let SExp::Cons(_, f, r) = tocompile.borrow() {
-            let mut lst = self.process_pp_form(includes, f.clone())?;
-            result.append(&mut lst);
-            tocompile = r.clone();
+        if !cmod.is_empty() {
+            self.prelude_import = Rc::new(SExp::Cons(
+                cmod[0].loc(),
+                Rc::new(SExp::atom_from_string(cmod[0].loc(), "import")),
+                Rc::new(SExp::Cons(
+                    cmod[0].loc(),
+                    Rc::new(SExp::atom_from_string(cmod[0].loc(), "std.prelude")),
+                    Rc::new(SExp::Nil(cmod[0].loc())),
+                )),
+            ));
         }
-
-        Ok(result)
+        self.run(includes, cmod)
     }
 }
 

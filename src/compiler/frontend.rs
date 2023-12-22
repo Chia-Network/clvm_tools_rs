@@ -1371,6 +1371,7 @@ pub fn compile_helperform(
                 new_helpers: vec![nsref],
             }))
         } else {
+            todo!();
             Err(CompileErr(
                 matched.body.loc(),
                 format!("unknown keyword in helper {body}")
@@ -1468,7 +1469,7 @@ fn frontend_start(
     includes: &mut Vec<IncludeDesc>,
     pre_forms: &[Rc<SExp>],
 ) -> Result<ModAccum, CompileErr> {
-    match parse_toplevel_mod(opts.clone(), includes, pre_forms)? {
+    match parse_toplevel_mod(opts.clone(), pre_forms)? {
         ToplevelModParseResult::Mod(tm) => {
             let ls = preprocess(opts.clone(), includes, &tm.forms)?;
             let l = ls[0].loc();
