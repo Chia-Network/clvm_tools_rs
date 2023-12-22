@@ -14,7 +14,7 @@ use crate::compiler::comptypes::{
     StructMember, SyntheticType, TypeAnnoKind,
 };
 use crate::compiler::lambda::handle_lambda;
-use crate::compiler::preprocessor::preprocess;
+use crate::compiler::preprocessor::{parse_toplevel_mod, preprocess, ToplevelModParseResult};
 use crate::compiler::rename::{rename_assign_bindings, rename_children_compileform};
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::{HasLoc, Srcloc};
@@ -900,7 +900,7 @@ fn promote_with_arg_type(argty: &Polytype, funty: &Polytype) -> Polytype {
 // If type arguments are given, the function's type signature must not be given
 // as a function type (since all functions are arity-1 in chialisp).  The final
 // result type will be enriched to include the argument types.
-fn augment_fun_type_with_args(
+pub fn augment_fun_type_with_args(
     args: Rc<SExp>,
     result_ty: Option<TypeAnnoKind>,
 ) -> Result<(Rc<SExp>, Option<Polytype>), CompileErr> {
@@ -1461,80 +1461,6 @@ fn frontend_step_finish(
             )),
         ))],
     )
-}
-
-pub struct ToplevelMod {
-    pub forms: Vec<Rc<SExp>>,
-    pub stripped_args: Rc<SExp>,
-    pub parsed_type: Option<Polytype>,
-}
-
-pub enum ToplevelModParseResult {
-    Mod(ToplevelMod),
-    Simple(Vec<Rc<SExp>>),
-}
-
-pub fn parse_toplevel_mod(
-    opts: Rc<dyn CompilerOpts>,
-    includes: &mut Vec<IncludeDesc>,
-    pre_forms: &[Rc<SExp>]
-) -> Result<ToplevelModParseResult, CompileErr> {
-    if pre_forms.is_empty() {
-        return Err(CompileErr(
-            Srcloc::start(&opts.filename()),
-            "empty source file not allowed".to_string(),
-        ));
-    } else {
-        if let Some(x) = pre_forms[0].proper_list() {
-            if x.is_empty() {
-                return Ok(ToplevelModParseResult::Simple(pre_forms.to_vec()));
-            }
-
-            if let SExp::Atom(_, mod_atom) = &x[0] {
-                if pre_forms.len() > 1 {
-                    return Err(CompileErr(
-                        pre_forms[0].loc(),
-                        "one toplevel mod form allowed".to_string(),
-                    ));
-                }
-
-                if *mod_atom == b"mod" {
-                    let args = Rc::new(x[1].atomize());
-                    let mut skip_idx = 2;
-                    let mut ty: Option<TypeAnnoKind> = None;
-
-                    if x.len() < 3 {
-                        return Err(CompileErr(x[0].loc(), "incomplete mod form".to_string()));
-                    }
-
-                    if let SExp::Atom(_, colon) = &x[2].atomize() {
-                        if *colon == vec![b':'] && x.len() > 3 {
-                            let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
-                            ty = Some(TypeAnnoKind::Colon(use_ty));
-                            skip_idx += 2;
-                        } else if *colon == vec![b'-', b'>'] && x.len() > 3 {
-                            let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
-                            ty = Some(TypeAnnoKind::Arrow(use_ty));
-                            skip_idx += 2;
-                        }
-                    }
-                    let (stripped_args, parsed_type) = augment_fun_type_with_args(args, ty)?;
-
-                    return Ok(ToplevelModParseResult::Mod(ToplevelMod {
-                        forms: x
-                            .iter()
-                            .skip(skip_idx)
-                            .map(|s| Rc::new(s.clone()))
-                            .collect(),
-                        stripped_args,
-                        parsed_type,
-                    }));
-                }
-            }
-        }
-    }
-
-    Ok(ToplevelModParseResult::Simple(pre_forms.to_vec()))
 }
 
 fn frontend_start(
