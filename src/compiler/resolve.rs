@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use crate::compiler::codegen::toposort_assign_bindings;
 use crate::compiler::compiler::is_at_capture;
-use crate::compiler::comptypes::{Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData, DefmacData, DefunData, DeftypeData, HelperForm, ImportLongName, LambdaData, LetData, LetFormKind, LongNameTranslation, ModuleImportSpec, NamespaceData, map_m};
+use crate::compiler::comptypes::{Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData, DefmacData, DefunData, HelperForm, ImportLongName, LambdaData, LetData, LetFormKind, LongNameTranslation, ModuleImportSpec, NamespaceData, map_m};
 use crate::compiler::frontend::{HelperFormResult, generate_type_helpers};
 use crate::compiler::sexp::{decode_string, SExp};
 

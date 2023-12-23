@@ -1371,7 +1371,6 @@ pub fn compile_helperform(
                 new_helpers: vec![nsref],
             }))
         } else {
-            todo!();
             Err(CompileErr(
                 matched.body.loc(),
                 format!("unknown keyword in helper {body}")
