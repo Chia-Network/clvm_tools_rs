@@ -1236,7 +1236,11 @@ pub fn preprocess(
     cmod: &[Rc<SExp>],
 ) -> Result<PreprocessResult, CompileErr> {
     let mut p = Preprocessor::new(opts);
-    p.run(includes, cmod)
+    if detect_chialisp_module(cmod) {
+        p.run_modules(includes, cmod)
+    } else {
+        p.run(includes, cmod)
+    }
 }
 
 /// Visit all files used during compilation.
