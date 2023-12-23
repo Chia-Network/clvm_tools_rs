@@ -17,7 +17,7 @@ use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend};
 use crate::compiler::optimize::get_optimizer;
-use crate::compiler::preprocessor::{Preprocessor, preprocess};
+use crate::compiler::preprocessor::Preprocessor;
 use crate::compiler::prims;
 use crate::compiler::resolve::resolve_namespaces;
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
@@ -201,10 +201,6 @@ pub fn detect_chialisp_module(
     }
 
     if let Some(lst) = pre_forms[0].proper_list() {
-        if lst.is_empty() {
-            return false;
-        }
-
         return matches!(lst[0].borrow(), SExp::Cons(_, _, _));
     }
 
@@ -650,7 +646,11 @@ pub fn compile_file(
         };
 
         let mut includes = Vec::new();
-        let output_forms = preprocess(opts.clone(), &mut includes, &pre_forms)?;
+        let mut preprocessor = Preprocessor::new(opts.clone());
+        let output_forms = preprocessor.run_modules(
+            &mut includes,
+            &pre_forms,
+        )?;
         let compiled = compile_module(
             &mut context_wrapper.context,
             opts,
