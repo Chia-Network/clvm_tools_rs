@@ -14,10 +14,10 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::clvm::{convert_to_clvm_rs, convert_from_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, IncludeDesc, PrimaryCodegen, SyntheticType};
-use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS, detect_modern};
+use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend};
 use crate::compiler::optimize::get_optimizer;
-use crate::compiler::preprocessor::preprocess;
+use crate::compiler::preprocessor::{Preprocessor, preprocess};
 use crate::compiler::prims;
 use crate::compiler::resolve::resolve_namespaces;
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
@@ -186,6 +186,37 @@ pub fn compile_from_compileform(
 enum Export {
     MainProgram(Rc<SExp>, Rc<BodyForm>),
     Function(Vec<u8>),
+}
+
+pub fn detect_chialisp_module(
+    pre_forms: &[Rc<SExp>],
+) -> bool {
+    if pre_forms.is_empty() {
+        return false;
+    }
+
+    eprintln!("pre_forms[0] {}", pre_forms[0]);
+    if pre_forms.len() > 1 {
+        return true;
+    }
+
+    if let Some(lst) = pre_forms[0].proper_list() {
+        if lst.is_empty() {
+            return false;
+        }
+
+        return matches!(lst[0].borrow(), SExp::Cons(_, _, _));
+    }
+
+    false
+}
+
+#[test]
+pub fn test_detect_chialisp_module_classic() {
+    let filename = "resources/tests/module/programs/classic.clsp";
+    let content = "(mod (X) (* X 13))";
+    let parsed = parse_sexp(Srcloc::start(filename), content.bytes()).expect("should parse");
+    assert!(!detect_chialisp_module(&parsed));
 }
 
 fn match_export_form(
@@ -562,6 +593,16 @@ pub fn compile_module(
     })
 }
 
+pub fn compile_pre_forms(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    pre_forms: &[Rc<SExp>],
+) -> Result<SExp, CompileErr> {
+    let p0 = frontend(opts.clone(), pre_forms)?;
+
+    compile_from_compileform(context, opts, p0)
+}
+
 pub enum CompilerOutput {
     Program(SExp),
     Module(Vec<CompileModuleComponent>, SExp)
@@ -583,27 +624,38 @@ impl CompilerOutput {
     }
 }
 
-pub fn compile_pre_forms(
-    context: &mut BasicCompileContext,
-    opts: Rc<dyn CompilerOpts>,
-    pre_forms: &[Rc<SExp>],
+pub fn compile_file(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    mut opts: Rc<dyn CompilerOpts>,
+    content: &str,
+    symbol_table: &mut HashMap<String, String>,
 ) -> Result<CompilerOutput, CompileErr> {
-    let mut includes = Vec::new();
-    let output = preprocess(opts.clone(), &mut includes, &pre_forms)?;
+    let srcloc = Srcloc::start(&opts.filename());
+    let pre_forms = parse_sexp(srcloc.clone(), content.bytes())?;
+    let mut context_wrapper = CompileContextWrapper::new(
+        allocator,
+        runner,
+        symbol_table,
+        get_optimizer(&srcloc, opts.clone())?,
+    );
 
-    if output.modules {
-        let collected_forms = enlist(pre_forms[0].loc(), pre_forms);
-        let mut allocator = Allocator::new();
-        let classic_version = convert_to_clvm_rs(
-            &mut allocator,
-            Rc::new(collected_forms)
-        )?;
-        let dialect = detect_modern(&mut allocator, classic_version);
+    let dialect = opts.dialect();
+    if detect_chialisp_module(&pre_forms) && dialect.strict {
+        // cl23 always reflects optimization.
+        opts = if let Some(stepping) = dialect.stepping.as_ref() {
+            opts.set_optimize(*stepping > 21)
+        } else {
+            opts
+        };
+
+        let mut includes = Vec::new();
+        let output_forms = preprocess(opts.clone(), &mut includes, &pre_forms)?;
         let compiled = compile_module(
-            context,
-            opts.set_dialect(dialect),
+            &mut context_wrapper.context,
+            opts,
             &includes,
-            &output.forms
+            &output_forms.forms
         )?;
         let borrowed_summary: &SExp = compiled.summary.borrow();
         return Ok(CompilerOutput::Module(
@@ -612,29 +664,8 @@ pub fn compile_pre_forms(
         ));
     }
 
-    let p0 = frontend(opts.clone(), pre_forms)?;
-    let program = compile_from_compileform(context, opts, p0)?;
+    let program = compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)?;
     Ok(CompilerOutput::Program(program))
-}
-
-pub fn compile_file(
-    allocator: &mut Allocator,
-    runner: Rc<dyn TRunProgram>,
-    opts: Rc<dyn CompilerOpts>,
-    content: &str,
-    symbol_table: &mut HashMap<String, String>,
-) -> Result<CompilerOutput, CompileErr> {
-    let srcloc = Srcloc::start(&opts.filename());
-    let pre_forms = parse_sexp(srcloc.clone(), content.bytes())?;
-
-    let mut context_wrapper = CompileContextWrapper::new(
-        allocator,
-        runner,
-        symbol_table,
-        get_optimizer(&srcloc, opts.clone())?,
-    );
-
-    compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
 }
 
 impl CompilerOpts for DefaultCompilerOpts {
@@ -795,7 +826,7 @@ impl CompilerOpts for DefaultCompilerOpts {
             symbol_table,
             get_optimizer(&sexp.loc(), me.clone())?,
         );
-        compile_pre_forms(&mut context_wrapper.context, me, &[sexp]).map(|x| x.to_sexp())
+        compile_pre_forms(&mut context_wrapper.context, me, &[sexp])
     }
 }
 

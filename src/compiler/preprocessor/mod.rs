@@ -6,19 +6,18 @@ use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
-use crate::classic::clvm_tools::binutils::assemble;
+use crate::classic::clvm_tools::binutils::{assemble, disassemble};
 use crate::classic::clvm_tools::clvmc::compile_clvm_text_maybe_opt;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 
 use crate::compiler::cldb::hex_to_modern_sexp;
 use crate::compiler::clvm;
-use crate::compiler::clvm::{convert_to_clvm_rs, convert_from_clvm_rs, sha256tree, truthy};
-use crate::compiler::compiler::{compile_file, compile_from_compileform, CompilerOutput};
+use crate::compiler::clvm::{convert_from_clvm_rs, sha256tree, truthy};
+use crate::compiler::compiler::{compile_from_compileform, compile_module, compile_pre_forms, detect_chialisp_module};
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, ConstantKind, DefconstData, HelperForm, ImportLongName, IncludeDesc, IncludeProcessType, LongNameTranslation, ModuleImportSpec, NamespaceData, NamespaceRefData, QualifiedModuleInfo, TypeAnnoKind,
 };
-use crate::compiler::dialect::{AcceptedDialect, detect_modern, KNOWN_DIALECTS};
+use crate::compiler::dialect::{detect_modern, KNOWN_DIALECTS};
 use crate::compiler::frontend::{augment_fun_type_with_args, compile_helperform, compile_nsref, frontend};
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::preprocessor::macros::PreprocessorExtension;
@@ -299,41 +298,6 @@ pub fn parse_toplevel_mod(
     Ok(ToplevelModParseResult::Simple(pre_forms.to_vec()))
 }
 
-pub fn detect_chialisp_module(
-    pre_forms: &[Rc<SExp>],
-) -> Result<Option<AcceptedDialect>, CompileErr> {
-    if pre_forms.is_empty() {
-        return Ok(None);
-    }
-
-    let mut is_module = pre_forms.len() > 1;
-
-    if let Some(lst) = pre_forms[0].proper_list() {
-        if lst.is_empty() {
-            return Ok(None);
-        }
-
-        is_module |= matches!(lst[0].borrow(), SExp::Cons(_, _, _));
-    }
-
-    if is_module {
-        let form_list = enlist(pre_forms[0].loc(), pre_forms);
-        let mut allocator = Allocator::new();
-        let as_classic = convert_to_clvm_rs(&mut allocator, Rc::new(form_list))?;
-        Ok(Some(detect_modern(&mut allocator, as_classic)))
-    } else {
-        Ok(None)
-    }
-}
-
-#[test]
-pub fn test_detect_chialisp_module_classic() {
-    let filename = "resources/tests/module/programs/classic.clsp";
-    let content = "(mod (X) (* X 13))";
-    let parsed = parse_sexp(Srcloc::start(filename), content.bytes()).expect("should parse");
-    assert!(detect_chialisp_module(&parsed).expect("should detect").is_none());
-}
-
 pub struct PreprocessResult {
     pub forms: Vec<Rc<SExp>>,
     pub modules: bool,
@@ -455,7 +419,7 @@ impl Preprocessor {
 
     fn import_program(
         &mut self,
-        _includes: &mut Vec<IncludeDesc>,
+        includes: &mut Vec<IncludeDesc>,
         _import_name: &ImportLongName,
         filename: &str,
         content: &[u8]
@@ -465,6 +429,7 @@ impl Preprocessor {
         let mut allocator = Allocator::new();
         let mut symbol_table = HashMap::new();
         let runner = Rc::new(DefaultProgramRunner::new());
+        let pre_forms = parse_sexp(srcloc.clone(), content.iter().copied())?;
 
         let make_constant = |name: &[u8], s: SExp| {
             HelperForm::Defconstant(DefconstData {
@@ -479,86 +444,70 @@ impl Preprocessor {
             }).to_sexp()
         };
 
-        let program_text = decode_string(&content);
-        let modern_parse = parse_sexp(srcloc.clone(), content.iter().copied())?;
-        let classic_parse = convert_to_clvm_rs(
-            &mut allocator,
-            Rc::new(enlist(modern_parse[0].loc(), &modern_parse))
-        )?;
-
-        let dialect = detect_modern(&mut allocator, classic_parse);
-        if modern_parse.len() == 1 {
-            if dialect.stepping.is_none() {
-                // Classic compile.
-                let newly_compiled = compile_clvm_text_maybe_opt(
-                    &mut allocator,
-                    self.subcompile_opts.optimize(),
-                    self.subcompile_opts.clone(),
-                    &mut symbol_table,
-                    &program_text,
-                    &filename,
-                    true,
-                )
-                    .map_err(|e| CompileErr(srcloc.clone(), format!("Subcompile failed: {}", e.1)))?;
-                let converted = convert_from_clvm_rs(
-                    &mut allocator,
-                    srcloc.clone(),
-                    newly_compiled
-                )?;
-                let converted_borrowed: &SExp = converted.borrow();
-                return Ok(vec![
-                    make_constant(b"program", converted_borrowed.clone()),
-                    make_constant(b"program_hash", SExp::QuotedString(srcloc.clone(), b'x', sha256tree(converted)))
-                ]);
+        if detect_chialisp_module(&pre_forms) {
+            let mut context_wrapper = CompileContextWrapper::new(
+                &mut allocator,
+                runner,
+                &mut symbol_table,
+                get_optimizer(&srcloc, self.subcompile_opts.clone())?,
+            );
+            let pp = preprocess(self.subcompile_opts.clone(), includes, &pre_forms)?;
+            let module_output = compile_module(&mut context_wrapper.context, self.subcompile_opts.clone(), includes, &pp.forms)?;
+            let mut output = Vec::new();
+            for c in module_output.components.iter() {
+                let borrowed_content: &SExp = c.content.borrow();
+                output.push(make_constant(&c.shortname, borrowed_content.clone()));
+                let mut hash_name = c.shortname.clone();
+                hash_name.extend(b"_hash".to_vec());
+                output.push(make_constant(&hash_name, SExp::QuotedString(srcloc.clone(), b'x', c.hash.clone())));
             }
+            return Ok(output);
         }
 
-        let mut opts = self.subcompile_opts.set_dialect(dialect.clone());
-        opts =
-            if let Some(stepping) = dialect.stepping.as_ref() {
-                opts.set_optimize(*stepping > 22)
-            } else {
-                opts
-            };
+        let program_text = decode_string(&content);
+        let classic_parse = assemble(&mut allocator, &program_text).map_err(|_| {
+            CompileErr(srcloc.clone(), format!("Could not parse {filename} to determine dialect"))
+        })?;
 
-        let compile_output = compile_file(
+        eprintln!("compile {}", disassemble(&mut allocator, classic_parse, None));
+        let dialect = detect_modern(&mut allocator, classic_parse);
+        if dialect.stepping.is_none() {
+            // Classic compile.
+            let newly_compiled = compile_clvm_text_maybe_opt(
+                &mut allocator,
+                self.subcompile_opts.optimize(),
+                self.subcompile_opts.clone(),
+                &mut symbol_table,
+                &program_text,
+                &filename,
+                true,
+            )
+                .map_err(|e| CompileErr(srcloc.clone(), format!("Subcompile failed: {}", e.1)))?;
+            let converted = convert_from_clvm_rs(
+                &mut allocator,
+                srcloc.clone(),
+                newly_compiled
+            )?;
+            let converted_borrowed: &SExp = converted.borrow();
+            return Ok(vec![
+                make_constant(b"program", converted_borrowed.clone()),
+                make_constant(b"program_hash", SExp::QuotedString(srcloc.clone(), b'x', sha256tree(converted)))
+            ]);
+        }
+
+        let opts = self.subcompile_opts.set_dialect(dialect);
+        let mut context_wrapper = CompileContextWrapper::new(
             &mut allocator,
             runner,
-            opts,
-            &program_text,
-            &mut symbol_table
-        )?;
+            &mut symbol_table,
+            get_optimizer(&srcloc, opts.clone())?,
+        );
 
-        match compile_output {
-            CompilerOutput::Program(p) => {
-                Ok(vec![
-                    make_constant(b"program", p.clone()),
-                    make_constant(b"program_hash", SExp::QuotedString(srcloc.clone(), b'x', sha256tree(Rc::new(p))))
-                ])
-            }
-            CompilerOutput::Module(exports,_) => {
-                let mut hash_names = HashSet::new();
-                for c in exports.iter() {
-                    if c.shortname.ends_with(b"_hash") {
-                        hash_names.insert(c.shortname.clone());
-                    }
-                }
-                let mut result = Vec::new();
-                for c in exports.iter() {
-                    let c_borrowed: &SExp = c.content.borrow();
-                    eprintln!("exporting {}: {}", decode_string(&c.shortname), c.content);
-                    result.push(make_constant(&c.shortname, c_borrowed.clone()));
-                    let mut hash_name = c.shortname.to_vec();
-                    hash_name.extend(b"_hash".to_vec());
-                    if !hash_names.contains(&hash_name) {
-                        let fun_hash = sha256tree(c.content.clone());
-                        eprintln!("added hash {}", Bytes::new(Some(BytesFromType::Raw(fun_hash.clone()))).hex());
-                        result.push(make_constant(&hash_name, SExp::QuotedString(c.content.loc(), b'x', fun_hash)));
-                    }
-                }
-                Ok(result)
-            }
-        }
+        let compile_output = compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)?;
+        return Ok(vec![
+            make_constant(b"program", compile_output.clone()),
+            make_constant(b"program_hash", SExp::QuotedString(srcloc.clone(), b'x', sha256tree(Rc::new(compile_output))))
+        ]);
     }
 
     fn import_new_module(
@@ -1216,6 +1165,22 @@ impl Preprocessor {
         }
     }
 
+    fn inject_std_macros(&mut self, body: Rc<SExp>) -> SExp {
+        match body.proper_list() {
+            Some(v) => {
+                let include_form = self.prelude_import.clone();
+                let mut v_clone: Vec<Rc<SExp>> = v.iter().map(|x| Rc::new(x.clone())).collect();
+                let include_copy: &SExp = include_form.borrow();
+                v_clone.insert(0, Rc::new(include_copy.clone()));
+                enlist(body.loc(), &v_clone)
+            }
+            _ => {
+                let body_clone: &SExp = body.borrow();
+                body_clone.clone()
+            }
+        }
+    }
+
     pub fn run(
         &mut self,
         includes: &mut Vec<IncludeDesc>,
@@ -1271,7 +1236,7 @@ pub fn preprocess(
     cmod: &[Rc<SExp>],
 ) -> Result<PreprocessResult, CompileErr> {
     let mut p = Preprocessor::new(opts);
-    if detect_chialisp_module(cmod)?.is_some() {
+    if detect_chialisp_module(cmod) {
         p.run_modules(includes, cmod)
     } else {
         p.run(includes, cmod)
