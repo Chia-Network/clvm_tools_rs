@@ -13,7 +13,7 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::{convert_to_clvm_rs, convert_from_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
-use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, CompilerOutput, CompileModuleComponent, CompileModuleOutput, DefunData, HelperForm, IncludeDesc, PrimaryCodegen, SyntheticType};
+use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, CompilerOutput, CompileModuleComponent, CompileModuleOutput, DefunData, Export, HelperForm, IncludeDesc, PrimaryCodegen, SyntheticType};
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend};
 use crate::compiler::optimize::get_optimizer;
@@ -180,12 +180,6 @@ pub fn compile_from_compileform(
     let p2 = do_desugar(&p1)?;
 
     finish_compilation(context, opts, p2)
-}
-
-#[derive(Debug, Clone)]
-enum Export {
-    MainProgram(Rc<SExp>, Rc<BodyForm>),
-    Function(Vec<u8>),
 }
 
 fn match_export_form(

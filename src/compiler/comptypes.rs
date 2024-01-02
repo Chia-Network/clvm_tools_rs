@@ -1471,6 +1471,18 @@ impl CompilerOutput {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum Export {
+    MainProgram(Rc<SExp>, Rc<BodyForm>),
+    Function(Vec<u8>),
+}
+
+#[derive(Debug, Clone)]
+pub enum FrontendOutput {
+    CompileForm(CompileForm),
+    Module(CompileForm, Vec<Export>, Rc<BodyForm>)
+}
+
 pub fn cons_of_string_map<X>(
     l: Srcloc,
     cvt_body: &dyn Fn(&X) -> Rc<SExp>,
