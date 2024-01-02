@@ -1436,6 +1436,41 @@ pub fn with_heading(l: Srcloc, name: &str, body: Rc<SExp>) -> SExp {
     SExp::Cons(l.clone(), Rc::new(SExp::atom_from_string(l, name)), body)
 }
 
+#[derive(Debug, Clone)]
+pub struct CompileModuleComponent {
+    pub shortname: Vec<u8>,
+    pub filename: String,
+    pub content: Rc<SExp>,
+    pub hash: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompileModuleOutput {
+    pub summary: Rc<SExp>,
+    pub components: Vec<CompileModuleComponent>
+}
+
+pub enum CompilerOutput {
+    Program(SExp),
+    Module(Vec<CompileModuleComponent>, SExp)
+}
+
+impl CompilerOutput {
+    pub fn to_sexp(&self) -> SExp {
+        match self {
+            CompilerOutput::Program(x) => x.clone(),
+            CompilerOutput::Module(_, x) => x.clone(),
+        }
+    }
+
+    pub fn loc(&self) -> Srcloc {
+        match self {
+            CompilerOutput::Program(x) => x.loc(),
+            CompilerOutput::Module(_, x) => x.loc(),
+        }
+    }
+}
+
 pub fn cons_of_string_map<X>(
     l: Srcloc,
     cvt_body: &dyn Fn(&X) -> Rc<SExp>,

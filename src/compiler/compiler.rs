@@ -13,7 +13,7 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::{convert_to_clvm_rs, convert_from_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
-use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, IncludeDesc, PrimaryCodegen, SyntheticType};
+use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, CompilerOutput, CompileModuleComponent, CompileModuleOutput, DefunData, HelperForm, IncludeDesc, PrimaryCodegen, SyntheticType};
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend};
 use crate::compiler::optimize::get_optimizer;
@@ -278,30 +278,16 @@ fn create_hex_output_path(loc: Srcloc, file_path: &str, func: &str) -> Result<St
     })
 }
 
-#[derive(Debug, Clone)]
-pub struct CompileModuleComponent {
-    pub shortname: Vec<u8>,
-    pub filename: String,
-    pub content: Rc<SExp>,
-    pub hash: Vec<u8>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CompileModuleOutput {
-    pub summary: Rc<SExp>,
-    pub components: Vec<CompileModuleComponent>
-}
-
-// Exports are returned main programs:
-//
-// Single main
-//
-// (export (X) (do-stuff X))
-//
-// Multiple mains
-//
-// (export foo)
-// (export bar)
+/// Exports are returned main programs:
+///
+/// Single main
+///
+/// (export (X) (do-stuff X))
+///
+/// Multiple mains
+///
+/// (export foo)
+/// (export bar)
 pub fn compile_module(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
@@ -570,27 +556,6 @@ pub fn compile_pre_forms(
     let p0 = frontend(opts.clone(), pre_forms)?;
 
     compile_from_compileform(context, opts, p0)
-}
-
-pub enum CompilerOutput {
-    Program(SExp),
-    Module(Vec<CompileModuleComponent>, SExp)
-}
-
-impl CompilerOutput {
-    pub fn to_sexp(&self) -> SExp {
-        match self {
-            CompilerOutput::Program(x) => x.clone(),
-            CompilerOutput::Module(_, x) => x.clone(),
-        }
-    }
-
-    pub fn loc(&self) -> Srcloc {
-        match self {
-            CompilerOutput::Program(x) => x.loc(),
-            CompilerOutput::Module(_, x) => x.loc(),
-        }
-    }
 }
 
 pub fn compile_file(
