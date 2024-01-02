@@ -17,7 +17,7 @@ use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend};
 use crate::compiler::optimize::get_optimizer;
-use crate::compiler::preprocessor::Preprocessor;
+use crate::compiler::preprocessor::{Preprocessor, detect_chialisp_module};
 use crate::compiler::prims;
 use crate::compiler::resolve::resolve_namespaces;
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
@@ -186,33 +186,6 @@ pub fn compile_from_compileform(
 enum Export {
     MainProgram(Rc<SExp>, Rc<BodyForm>),
     Function(Vec<u8>),
-}
-
-pub fn detect_chialisp_module(
-    pre_forms: &[Rc<SExp>],
-) -> bool {
-    if pre_forms.is_empty() {
-        return false;
-    }
-
-    eprintln!("pre_forms[0] {}", pre_forms[0]);
-    if pre_forms.len() > 1 {
-        return true;
-    }
-
-    if let Some(lst) = pre_forms[0].proper_list() {
-        return matches!(lst[0].borrow(), SExp::Cons(_, _, _));
-    }
-
-    false
-}
-
-#[test]
-pub fn test_detect_chialisp_module_classic() {
-    let filename = "resources/tests/module/programs/classic.clsp";
-    let content = "(mod (X) (* X 13))";
-    let parsed = parse_sexp(Srcloc::start(filename), content.bytes()).expect("should parse");
-    assert!(!detect_chialisp_module(&parsed));
 }
 
 fn match_export_form(

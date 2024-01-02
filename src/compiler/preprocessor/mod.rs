@@ -13,7 +13,7 @@ use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProg
 use crate::compiler::cldb::hex_to_modern_sexp;
 use crate::compiler::clvm;
 use crate::compiler::clvm::{convert_from_clvm_rs, sha256tree, truthy};
-use crate::compiler::compiler::{compile_from_compileform, compile_module, compile_pre_forms, detect_chialisp_module};
+use crate::compiler::compiler::{compile_from_compileform, compile_module, compile_pre_forms};
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, ConstantKind, DefconstData, HelperForm, ImportLongName, IncludeDesc, IncludeProcessType, LongNameTranslation, ModuleImportSpec, NamespaceData, NamespaceRefData, QualifiedModuleInfo, TypeAnnoKind,
 };
@@ -223,6 +223,32 @@ fn make_namespace_ref(
         longname: target.clone(),
         specification: spec.clone()
     })
+}
+
+pub fn detect_chialisp_module(
+    pre_forms: &[Rc<SExp>],
+) -> bool {
+    if pre_forms.is_empty() {
+        return false;
+    }
+
+    if pre_forms.len() > 1 {
+        return true;
+    }
+
+    if let Some(lst) = pre_forms[0].proper_list() {
+        return matches!(lst[0].borrow(), SExp::Cons(_, _, _));
+    }
+
+    false
+}
+
+#[test]
+pub fn test_detect_chialisp_module_classic() {
+    let filename = "resources/tests/module/programs/classic.clsp";
+    let content = "(mod (X) (* X 13))";
+    let parsed = parse_sexp(Srcloc::start(filename), content.bytes()).expect("should parse");
+    assert!(!detect_chialisp_module(&parsed));
 }
 
 pub struct ToplevelMod {
@@ -1162,22 +1188,6 @@ impl Preprocessor {
             Ok(vec![])
         } else {
             Ok(vec![body])
-        }
-    }
-
-    fn inject_std_macros(&mut self, body: Rc<SExp>) -> SExp {
-        match body.proper_list() {
-            Some(v) => {
-                let include_form = self.prelude_import.clone();
-                let mut v_clone: Vec<Rc<SExp>> = v.iter().map(|x| Rc::new(x.clone())).collect();
-                let include_copy: &SExp = include_form.borrow();
-                v_clone.insert(0, Rc::new(include_copy.clone()));
-                enlist(body.loc(), &v_clone)
-            }
-            _ => {
-                let body_clone: &SExp = body.borrow();
-                body_clone.clone()
-            }
         }
     }
 
