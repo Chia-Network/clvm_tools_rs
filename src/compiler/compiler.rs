@@ -15,7 +15,7 @@ use crate::compiler::clvm::{convert_to_clvm_rs, convert_from_clvm_rs, sha256tree
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, CompilerOutput, CompileModuleComponent, CompileModuleOutput, DefunData, Export, HelperForm, IncludeDesc, PrimaryCodegen, SyntheticType};
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
-use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend};
+use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend, match_export_form};
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::preprocessor::{Preprocessor, detect_chialisp_module};
 use crate::compiler::prims;
@@ -180,45 +180,6 @@ pub fn compile_from_compileform(
     let p2 = do_desugar(&p1)?;
 
     finish_compilation(context, opts, p2)
-}
-
-fn match_export_form(
-    opts: Rc<dyn CompilerOpts>,
-    form: Rc<SExp>
-) -> Result<Option<Export>, CompileErr> {
-    if let Some(lst) = form.proper_list() {
-        // Empty form isn't export
-        if lst.is_empty() {
-            return Ok(None);
-        }
-
-        // Export if it has an export keyword.
-        if let SExp::Atom(_, export_name) = lst[0].borrow() {
-            if export_name != b"export" {
-                return Ok(None);
-            }
-        } else {
-            // No export kw, not export.
-            return Ok(None);
-        }
-
-        // A main export
-        if lst.len() == 3 {
-            let expr = compile_bodyform(opts.clone(), Rc::new(lst[2].clone()))?;
-            return Ok(Some(Export::MainProgram(
-                Rc::new(lst[1].clone()),
-                Rc::new(expr)
-            )));
-        }
-
-        if let SExp::Atom(_, fun_name) = lst[1].borrow() {
-            return Ok(Some(Export::Function(fun_name.clone())));
-        }
-
-        return Err(CompileErr(form.loc(), format!("Malformed export {form}")));
-    }
-
-    Ok(None)
 }
 
 struct ModuleOutputEntry {

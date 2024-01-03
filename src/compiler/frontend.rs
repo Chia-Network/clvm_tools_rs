@@ -9,7 +9,7 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
     list_to_cons, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType, CompileErr,
-    CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData, FrontendOutput,
+    CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData, Export, FrontendOutput,
     HelperForm, ImportLongName, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, NamespaceData, NamespaceRefData, StructDef,
     StructMember, SyntheticType, TypeAnnoKind,
 };
@@ -1145,6 +1145,45 @@ fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
         v[0].loc(),
         "Don't know how to interpret as type definition".to_string(),
     ))
+}
+
+pub fn match_export_form(
+    opts: Rc<dyn CompilerOpts>,
+    form: Rc<SExp>
+) -> Result<Option<Export>, CompileErr> {
+    if let Some(lst) = form.proper_list() {
+        // Empty form isn't export
+        if lst.is_empty() {
+            return Ok(None);
+        }
+
+        // Export if it has an export keyword.
+        if let SExp::Atom(_, export_name) = lst[0].borrow() {
+            if export_name != b"export" {
+                return Ok(None);
+            }
+        } else {
+            // No export kw, not export.
+            return Ok(None);
+        }
+
+        // A main export
+        if lst.len() == 3 {
+            let expr = compile_bodyform(opts.clone(), Rc::new(lst[2].clone()))?;
+            return Ok(Some(Export::MainProgram(
+                Rc::new(lst[1].clone()),
+                Rc::new(expr)
+            )));
+        }
+
+        if let SExp::Atom(_, fun_name) = lst[1].borrow() {
+            return Ok(Some(Export::Function(fun_name.clone())));
+        }
+
+        return Err(CompileErr(form.loc(), format!("Malformed export {form}")));
+    }
+
+    Ok(None)
 }
 
 #[derive(Debug, Clone)]
