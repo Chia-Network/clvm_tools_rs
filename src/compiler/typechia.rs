@@ -577,14 +577,14 @@ fn handle_macro(
         &mut allocator,
         Rc::new(SExp::Nil(loc.clone())),
         &arg_env,
-        parsed_macro_output.exp,
+        parsed_macro_output.compileform().exp.clone(),
         false,
         Some(EVAL_STACK_LIMIT),
     )?;
     match dequote(loc.clone(), exp_result) {
         Ok(dequoted) => {
             let last_reparse = frontend(opts.clone(), &[dequoted])?;
-            let final_res = chialisp_to_expr(opts, program, form_args, last_reparse.exp)?;
+            let final_res = chialisp_to_expr(opts, program, form_args, last_reparse.compileform().exp.clone())?;
             Ok(final_res)
         }
         Err(_) => {

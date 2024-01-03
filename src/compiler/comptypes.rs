@@ -1470,16 +1470,25 @@ impl CompilerOutput {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum Export {
     MainProgram(Rc<SExp>, Rc<BodyForm>),
     Function(Vec<u8>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum FrontendOutput {
     CompileForm(CompileForm),
     Module(CompileForm, Vec<Export>, Rc<BodyForm>)
+}
+
+impl FrontendOutput {
+    pub fn compileform<'a>(&'a self) -> &'a CompileForm {
+        match self {
+            FrontendOutput::CompileForm(cf) => &cf,
+            FrontendOutput::Module(cf, _, _) => &cf,
+        }
+    }
 }
 
 pub fn cons_of_string_map<X>(

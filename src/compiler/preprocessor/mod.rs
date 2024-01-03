@@ -1289,6 +1289,8 @@ pub fn gather_dependencies(
     let program = frontend(opts, &parsed)?;
 
     let filtered_results: Vec<IncludeDesc> = program
+        .compileform()
+        .clone()
         .include_forms
         .into_iter()
         .filter(|f| !f.name.starts_with(b"*"))

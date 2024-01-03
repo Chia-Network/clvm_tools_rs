@@ -25,12 +25,12 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
             return frontend(opts.clone(), &parsed_program);
         })
         .and_then(|program| {
-            let e = Evaluator::new(opts.clone(), runner, program.helpers);
+            let e = Evaluator::new(opts.clone(), runner, program.compileform().helpers.clone());
             return e.shrink_bodyform(
                 &mut allocator,
-                program.args.clone(),
+                program.compileform().args.clone(),
                 &HashMap::new(),
-                program.exp.clone(),
+                program.compileform().exp.clone(),
                 false,
                 Some(EVAL_STACK_LIMIT),
             );

@@ -133,8 +133,8 @@ pub fn test_chialisp_program_typecheck(s: &str, flatten: bool) -> Result<Polytyp
     let mut fcount: usize = 0;
     let mut held = HashMap::new();
     // target_type is here just to pop the error.
-    let _target_type = context.typecheck_chialisp_program(opts.clone(), &compileform)?;
-    let target_type = context.typecheck_chialisp_program(opts23.clone(), &compileform23)?;
+    let _target_type = context.typecheck_chialisp_program(opts.clone(), &compileform.compileform().clone())?;
+    let target_type = context.typecheck_chialisp_program(opts23.clone(), &compileform23.compileform().clone())?;
     if flatten {
         Ok(flatten_exists(
             &context.reify(&target_type, None),

@@ -2027,6 +2027,7 @@ fn test_rename_in_compileform_simple() {
     let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let compiled = frontend(opts, &parsed).expect("should compile");
     let helper_f: Vec<_> = compiled
+        .compileform()
         .helpers
         .iter()
         .filter(|f| f.name() == b"F")

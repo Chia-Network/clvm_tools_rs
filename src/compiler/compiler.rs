@@ -548,7 +548,7 @@ pub fn compile_pre_forms(
 ) -> Result<SExp, CompileErr> {
     let p0 = frontend(opts.clone(), pre_forms)?;
 
-    compile_from_compileform(context, opts, p0)
+    compile_from_compileform(context, opts, p0.compileform().clone())
 }
 
 pub fn compile_file(

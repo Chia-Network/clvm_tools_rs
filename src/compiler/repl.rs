@@ -133,7 +133,7 @@ impl Repl {
             )),
         );
         let start_program_fe = frontend(opts.clone(), &[starter_empty_program]).unwrap();
-        let evaluator = Evaluator::new(opts.clone(), runner.clone(), start_program_fe.helpers);
+        let evaluator = Evaluator::new(opts.clone(), runner.clone(), start_program_fe.compileform().helpers.clone());
 
         Repl {
             depth: 0,
@@ -209,9 +209,9 @@ impl Repl {
                         .and_then(|program| {
                             self.evaluator.shrink_bodyform(
                                 allocator,
-                                program.args.clone(),
+                                program.compileform().args.clone(),
                                 &HashMap::new(),
-                                program.exp,
+                                program.compileform().exp.clone(),
                                 false,
                                 self.stack_limit,
                             )

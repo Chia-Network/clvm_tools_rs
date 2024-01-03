@@ -931,7 +931,7 @@ fn perform_preprocessing(
     let (stepping_form_text, parsed) =
         parse_module_and_get_sigil(opts.clone(), input_file, program_text)?;
     let frontend = frontend(opts, &parsed)?;
-    let whole_mod = render_mod_with_sigil(input_file, &stepping_form_text, &frontend)?;
+    let whole_mod = render_mod_with_sigil(input_file, &stepping_form_text, &frontend.compileform())?;
 
     stdout.write_str(&format!("{}", whole_mod));
     Ok(())
@@ -955,7 +955,7 @@ fn perform_desugaring(
         Vec::new(),
     );
     let p0 = frontend(opts.clone(), &parsed)?;
-    let p1 = context.frontend_optimization(opts.clone(), p0)?;
+    let p1 = context.frontend_optimization(opts.clone(), p0.compileform().clone())?;
 
     // Resolve includes, convert program source to lexemes
     let p2 = do_desugar(&p1)?;
@@ -1430,7 +1430,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                     let context = standard_type_context();
                     let compileform = frontend(opts.clone(), &pre_forms)?;
                     let target_type =
-                        context.typecheck_chialisp_program(opts.clone(), &compileform)?;
+                        context.typecheck_chialisp_program(opts.clone(), &compileform.compileform())?;
                     Ok(context.reify(&target_type, None))
                 })
             {

@@ -783,7 +783,7 @@ impl<'info> Evaluator {
             ));
 
             let program = frontend(self.opts.clone(), &[frontend_macro_input])?;
-            self.shrink_bodyform_visited(allocator, visited, prog_args, env, program.exp, false)
+            self.shrink_bodyform_visited(allocator, visited, prog_args, env, program.compileform().exp.clone(), false)
         } else {
             promote_program_to_bodyform(
                 macro_expansion.to_sexp(),

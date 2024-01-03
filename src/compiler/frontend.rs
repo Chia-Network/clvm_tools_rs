@@ -9,7 +9,7 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
     list_to_cons, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType, CompileErr,
-    CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData,
+    CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData, FrontendOutput,
     HelperForm, ImportLongName, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, NamespaceData, NamespaceRefData, StructDef,
     StructMember, SyntheticType, TypeAnnoKind,
 };
@@ -483,7 +483,7 @@ pub fn compile_bodyform(
                                 qq_to_expression(opts, Rc::new(quote_body))
                             } else if *atom_name == b"mod" {
                                 let subparse = frontend(opts, &[body.clone()])?;
-                                Ok(BodyForm::Mod(op.loc(), subparse))
+                                Ok(BodyForm::Mod(op.loc(), subparse.compileform().clone()))
                             } else if *atom_name == b"lambda" {
                                 handle_lambda(opts, Some(l.clone()), &v)
                             } else {
@@ -648,7 +648,7 @@ fn compile_defmacro(
             kw: kwl,
             name,
             args: args.clone(),
-            program: Rc::new(p),
+            program: Rc::new(p.compileform().clone()),
             advanced: false,
         })
     })
@@ -1544,7 +1544,7 @@ pub fn compute_live_helpers(
 pub fn frontend(
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>],
-) -> Result<CompileForm, CompileErr> {
+) -> Result<FrontendOutput, CompileErr> {
     let mut includes = Vec::new();
     let started = frontend_start(opts.clone(), &mut includes, pre_forms)?;
 
@@ -1567,11 +1567,11 @@ pub fn frontend(
 
     let live_helpers = compute_live_helpers(opts.clone(), &our_mod.helpers, our_mod.exp.clone());
 
-    Ok(CompileForm {
+    Ok(FrontendOutput::CompileForm(CompileForm {
         include_forms: includes.to_vec(),
         helpers: live_helpers,
         ..our_mod
-    })
+    }))
 }
 
 fn is_quote_op(sexp: Rc<SExp>) -> bool {
