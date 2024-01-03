@@ -285,7 +285,6 @@ fn create_hex_output_path(loc: Srcloc, file_path: &str, func: &str) -> Result<St
 pub fn compile_module(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
-    includes: &[IncludeDesc],
     pre_forms: &[Rc<SExp>]
 ) -> Result<CompileModuleOutput, CompileErr> {
     let mut other_forms = vec![];
@@ -332,7 +331,7 @@ pub fn compile_module(
 
     let mut program = CompileForm {
         loc: loc.clone(),
-        include_forms: includes.to_vec(),
+        include_forms: context.includes().to_vec(),
         args: Rc::new(SExp::Nil(loc.clone())),
         helpers: other_forms.clone(),
         exp: Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone()))),
@@ -558,6 +557,7 @@ pub fn compile_file(
     mut opts: Rc<dyn CompilerOpts>,
     content: &str,
     symbol_table: &mut HashMap<String, String>,
+    includes: &mut Vec<IncludeDesc>,
 ) -> Result<CompilerOutput, CompileErr> {
     let srcloc = Srcloc::start(&opts.filename());
     let pre_forms = parse_sexp(srcloc.clone(), content.bytes())?;
@@ -566,6 +566,7 @@ pub fn compile_file(
         runner,
         symbol_table,
         get_optimizer(&srcloc, opts.clone())?,
+        includes,
     );
 
     let dialect = opts.dialect();
@@ -577,16 +578,14 @@ pub fn compile_file(
             opts
         };
 
-        let mut includes = Vec::new();
         let mut preprocessor = Preprocessor::new(opts.clone());
         let output_forms = preprocessor.run_modules(
-            &mut includes,
+            context_wrapper.context.includes(),
             &pre_forms,
         )?;
         let compiled = compile_module(
             &mut context_wrapper.context,
             opts,
-            &includes,
             &output_forms.forms
         )?;
         let borrowed_summary: &SExp = compiled.summary.borrow();
@@ -746,19 +745,11 @@ impl CompilerOpts for DefaultCompilerOpts {
 
     fn compile_program(
         &self,
-        allocator: &mut Allocator,
-        runner: Rc<dyn TRunProgram>,
+        context: &mut BasicCompileContext,
         sexp: Rc<SExp>,
-        symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
         let me = Rc::new(self.clone());
-        let mut context_wrapper = CompileContextWrapper::new(
-            allocator,
-            runner,
-            symbol_table,
-            get_optimizer(&sexp.loc(), me.clone())?,
-        );
-        compile_pre_forms(&mut context_wrapper.context, me, &[sexp])
+        compile_pre_forms(context, me, &[sexp])
     }
 }
 

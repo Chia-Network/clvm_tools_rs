@@ -641,13 +641,11 @@ fn compile_call(
                     );
 
                     let mut unused_symbol_table = HashMap::new();
-                    let runner = context.runner();
+                    let mut context_wrapper = CompileContextWrapper::from_context(context, &mut unused_symbol_table);
                     updated_opts
                         .compile_program(
-                            context.allocator(),
-                            runner.clone(),
+                            &mut context_wrapper.context,
                             Rc::new(use_body),
-                            &mut unused_symbol_table,
                         )
                         .map(|code| {
                             CompiledCode(
@@ -680,13 +678,9 @@ pub fn do_mod_codegen(
     // A mod form yields the compiled code.
     let without_env = opts.set_start_env(None).set_in_defun(false);
     let mut throwaway_symbols = HashMap::new();
-    let runner = context.runner();
-    let optimizer = context.optimizer.duplicate();
-    let mut context_wrapper = CompileContextWrapper::new(
-        context.allocator(),
-        runner.clone(),
+    let mut context_wrapper = CompileContextWrapper::from_context(
+        context,
         &mut throwaway_symbols,
-        optimizer,
     );
     let code = codegen(&mut context_wrapper.context, without_env, program)?;
     Ok(CompiledCode(
@@ -913,34 +907,31 @@ fn codegen_(
                 );
 
                 let mut unused_symbol_table = HashMap::new();
-                let runner = context.runner();
-                updated_opts
-                    .compile_program(
-                        context.allocator(),
-                        runner.clone(),
-                        Rc::new(tocompile),
-                        &mut unused_symbol_table,
-                    )
-                    .and_then(|code| {
-                        context.post_codegen_function_optimize(opts.clone(), Some(h), Rc::new(code))
-                    })
-                    .and_then(|code| {
-                        fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)
-                    })
-                    .and_then(|code| {
-                        fail_if_present(defun.loc.clone(), &compiler.defuns, &defun.name, code)
-                    })
-                    .map(|code| {
-                        compiler.add_defun(
-                            &defun.name,
-                            defun.orig_args.clone(),
-                            DefunCall {
-                                required_env: defun.args.clone(),
-                                code,
-                            },
-                            true, // Always take left env for now
-                        )
-                    })
+                let code =
+                    {
+                        let mut context_wrapper = CompileContextWrapper::from_context(
+                            context,
+                            &mut unused_symbol_table
+                        );
+                        updated_opts
+                            .compile_program(
+                                &mut context_wrapper.context,
+                                Rc::new(tocompile),
+                            )?
+                    };
+
+                let code = context.post_codegen_function_optimize(opts.clone(), Some(h), Rc::new(code))?;
+                let code = fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)?;
+                let code = fail_if_present(defun.loc.clone(), &compiler.defuns, &defun.name, code)?;
+                return Ok(compiler.add_defun(
+                    &defun.name,
+                    defun.orig_args.clone(),
+                    DefunCall {
+                        required_env: defun.args.clone(),
+                        code,
+                    },
+                    true, // Always take left env for now
+                ));
             }
         }
         _ => Ok(compiler.clone()),
@@ -1416,15 +1407,18 @@ fn start_codegen(
                         )),
                     );
                     let updated_opts = opts.set_code_generator(code_generator.clone());
+                    let mut unused_symbols = HashMap::new();
                     let runner = context.runner();
+                    let mut context_wrapper = CompileContextWrapper::from_context(
+                        context,
+                        &mut unused_symbols
+                    );
                     let code = updated_opts.compile_program(
-                        context.allocator(),
-                        runner.clone(),
+                        &mut context_wrapper.context,
                         Rc::new(expand_program),
-                        &mut HashMap::new(),
                     )?;
                     run(
-                        context.allocator(),
+                        context_wrapper.context.allocator(),
                         runner,
                         opts.prim_map(),
                         Rc::new(code),
@@ -1497,16 +1491,19 @@ fn start_codegen(
                     .set_start_env(None)
                     .set_frontend_opt(false);
 
+                let mut unused_symbols = HashMap::new();
                 let runner = context.runner();
+                let mut context_wrapper = CompileContextWrapper::from_context(
+                    context,
+                    &mut unused_symbols
+                );
                 let code = updated_opts.compile_program(
-                    context.allocator(),
-                    runner.clone(),
+                    &mut context_wrapper.context,
                     macro_program,
-                    &mut HashMap::new(),
                 )?;
 
                 let optimized_code =
-                    context.macro_optimization(opts.clone(), Rc::new(code.clone()))?;
+                    context_wrapper.context.macro_optimization(opts.clone(), Rc::new(code.clone()))?;
 
                 code_generator.add_macro(&mac.name, optimized_code)
             }

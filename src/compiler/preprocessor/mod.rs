@@ -476,9 +476,18 @@ impl Preprocessor {
                 runner,
                 &mut symbol_table,
                 get_optimizer(&srcloc, self.subcompile_opts.clone())?,
+                includes,
             );
-            let pp = preprocess(self.subcompile_opts.clone(), includes, &pre_forms)?;
-            let module_output = compile_module(&mut context_wrapper.context, self.subcompile_opts.clone(), includes, &pp.forms)?;
+            let pp = preprocess(
+                self.subcompile_opts.clone(),
+                context_wrapper.context.includes(),
+                &pre_forms
+            )?;
+            let module_output = compile_module(
+                &mut context_wrapper.context,
+                self.subcompile_opts.clone(),
+                &pp.forms
+            )?;
             let mut output = Vec::new();
             for c in module_output.components.iter() {
                 let borrowed_content: &SExp = c.content.borrow();
@@ -504,6 +513,7 @@ impl Preprocessor {
                 self.subcompile_opts.optimize(),
                 self.subcompile_opts.clone(),
                 &mut symbol_table,
+                includes,
                 &program_text,
                 &filename,
                 true,
@@ -527,6 +537,7 @@ impl Preprocessor {
             runner,
             &mut symbol_table,
             get_optimizer(&srcloc, opts.clone())?,
+            includes,
         );
 
         let compile_output = compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)?;
@@ -653,11 +664,13 @@ impl Preprocessor {
             } else if let IncludeProcessType::Compiled = &kind {
                 let decoded_content = decode_string(&content);
                 let mut symtab = HashMap::new();
+                let mut includes = Vec::new();
                 let newly_compiled = compile_clvm_text_maybe_opt(
                     &mut allocator,
                     self.subcompile_opts.optimize(),
                     self.subcompile_opts.clone(),
                     &mut symtab,
+                    &mut includes,
                     &decoded_content,
                     &full_name,
                     true,
@@ -810,11 +823,13 @@ impl Preprocessor {
         // as inline defuns because they're closest to that semantically.
         let optimizer = get_optimizer(&loc, self.opts.clone())?;
         let mut symbol_table = HashMap::new();
+        let mut includes = Vec::new();
         let mut wrapper = CompileContextWrapper::new(
             &mut allocator,
             self.runner.clone(),
             &mut symbol_table,
             optimizer,
+            &mut includes,
         );
 
         let mut main_helpers: Vec<HelperForm> = self.prototype_program.clone();

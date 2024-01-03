@@ -635,6 +635,7 @@ pub fn cldb(args: &[String]) {
         .set_search_paths(&search_paths);
 
     let mut use_symbol_table = symbol_table.unwrap_or_default();
+    let mut includes = Vec::new();
     let mut output = Vec::new();
 
     let res = match parsed_args.get("hex") {
@@ -654,6 +655,7 @@ pub fn cldb(args: &[String]) {
                 opts.clone(),
                 &input_program,
                 &mut use_symbol_table,
+                &mut includes,
             );
             if do_optimize {
                 unopt_res.and_then(|x| run_optimizer(&mut allocator, runner.clone(), Rc::new(x.to_sexp())))
@@ -950,6 +952,7 @@ fn perform_desugaring(
         runner.clone(),
         HashMap::new(),
         get_optimizer(&srcloc, opts.clone())?,
+        Vec::new(),
     );
     let p0 = frontend(opts.clone(), &parsed)?;
     let p1 = context.frontend_optimization(opts.clone(), p0)?;
@@ -1462,6 +1465,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_frontend_opt(stepping > 21)
             .set_disassembly_ver(get_disassembly_ver(&parsed_args));
         let mut symbol_table = HashMap::new();
+        let mut includes = Vec::new();
 
         // Short circuit preprocessing display.
         if parsed_args.get("preprocess").is_some() {
@@ -1486,6 +1490,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             opts.clone(),
             &input_program,
             &mut symbol_table,
+            &mut includes,
         );
         let res = if do_optimize {
             unopt_res.and_then(|x| run_optimizer(&mut allocator, runner, Rc::new(x.to_sexp())))

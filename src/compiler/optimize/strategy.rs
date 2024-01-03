@@ -52,8 +52,15 @@ impl Optimization for ExistingStrategy {
     ) -> Result<CompileForm, CompileErr> {
         if opts.frontend_opt() && opts.dialect().stepping.map(|s| s > 22).unwrap_or(false) {
             let mut symbols = HashMap::new();
+            let mut includes = Vec::new();
             let mut wrapper =
-                CompileContextWrapper::new(allocator, runner, &mut symbols, self.duplicate());
+                CompileContextWrapper::new(
+                    allocator,
+                    runner,
+                    &mut symbols,
+                    self.duplicate(),
+                    &mut includes
+                );
             deinline_opt(&mut wrapper.context, opts.clone(), cf)
         } else {
             Ok(cf)

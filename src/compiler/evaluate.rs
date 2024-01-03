@@ -1499,12 +1499,14 @@ impl<'info> Evaluator {
             BodyForm::Mod(_, program) => {
                 // A mod form yields the compiled code.
                 let mut symbols = HashMap::new();
+                let mut includes = Vec::new();
                 let optimizer = get_optimizer(&program.loc(), self.opts.clone())?;
                 let mut context_wrapper = CompileContextWrapper::new(
                     allocator,
                     self.runner.clone(),
                     &mut symbols,
                     optimizer,
+                    &mut includes,
                 );
                 let code = codegen(&mut context_wrapper.context, self.opts.clone(), program)?;
                 Ok(Rc::new(BodyForm::Quoted(code)))
@@ -1658,11 +1660,19 @@ impl<'info> Evaluator {
             .set_in_defun(in_defun)
             .set_frontend_opt(false);
 
-        let com_result = updated_opts.compile_program(
+        let mut symbols = HashMap::new();
+        let mut includes = Vec::new();
+        let optimizer = get_optimizer(&use_body.loc(), updated_opts.clone())?;
+        let mut context_wrapper = CompileContextWrapper::new(
             allocator,
             self.runner.clone(),
+            &mut symbols,
+            optimizer,
+            &mut includes
+        );
+        let com_result = updated_opts.compile_program(
+            &mut context_wrapper.context,
             use_body,
-            &mut HashMap::new(),
         )?;
 
         Ok(Rc::new(com_result))

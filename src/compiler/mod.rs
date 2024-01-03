@@ -44,7 +44,7 @@ use std::rc::Rc;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
+    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, IncludeDesc, PrimaryCodegen,
 };
 use crate::compiler::optimize::Optimization;
 use crate::compiler::sexp::SExp;
@@ -56,6 +56,7 @@ pub struct BasicCompileContext {
     pub runner: Rc<dyn TRunProgram>,
     pub symbols: HashMap<String, String>,
     pub optimizer: Box<dyn Optimization>,
+    pub includes: Vec<IncludeDesc>,
 }
 
 impl BasicCompileContext {
@@ -71,6 +72,11 @@ impl BasicCompileContext {
     /// macro or constant folding.
     fn runner(&self) -> Rc<dyn TRunProgram> {
         self.runner.clone()
+    }
+
+    /// Get the list of includes traversed while processing the current compile.
+    fn includes(&mut self) -> &mut Vec<IncludeDesc> {
+        &mut self.includes
     }
 
     /// Get the mutable symbol store this compile context carries. During
@@ -197,12 +203,14 @@ impl BasicCompileContext {
         runner: Rc<dyn TRunProgram>,
         symbols: HashMap<String, String>,
         optimizer: Box<dyn Optimization>,
+        includes: Vec<IncludeDesc>,
     ) -> Self {
         BasicCompileContext {
             allocator,
             runner,
             symbols,
             optimizer,
+            includes,
         }
     }
 }
@@ -215,6 +223,7 @@ impl BasicCompileContext {
 pub struct CompileContextWrapper<'a> {
     pub allocator: &'a mut Allocator,
     pub symbols: &'a mut HashMap<String, String>,
+    pub includes: &'a mut Vec<IncludeDesc>,
     pub context: BasicCompileContext,
 }
 
@@ -241,17 +250,43 @@ impl<'a> CompileContextWrapper<'a> {
         runner: Rc<dyn TRunProgram>,
         symbols: &'a mut HashMap<String, String>,
         optimizer: Box<dyn Optimization>,
+        includes: &'a mut Vec<IncludeDesc>,
     ) -> Self {
         let bcc = BasicCompileContext {
             allocator: Allocator::new(),
             runner,
             symbols: HashMap::new(),
             optimizer,
+            includes: Vec::new(),
         };
         let mut wrapper = CompileContextWrapper {
             allocator,
             symbols,
             context: bcc,
+            includes,
+        };
+        wrapper.switch();
+        wrapper
+    }
+
+    pub fn from_context(
+        context: &'a mut BasicCompileContext,
+        symbols: &'a mut HashMap<String, String>,
+    ) -> Self {
+        let runner = context.runner();
+        let optimizer = context.optimizer.duplicate();
+        let bcc = BasicCompileContext {
+            allocator: Allocator::new(),
+            runner,
+            symbols: HashMap::new(),
+            optimizer,
+            includes: Vec::new(),
+        };
+        let mut wrapper = CompileContextWrapper {
+            allocator: &mut context.allocator,
+            symbols,
+            context: bcc,
+            includes: &mut context.includes,
         };
         wrapper.switch();
         wrapper
@@ -265,6 +300,7 @@ impl<'a> CompileContextWrapper<'a> {
     fn switch(&mut self) {
         swap(self.allocator, &mut self.context.allocator);
         swap(self.symbols, &mut self.context.symbols);
+        swap(self.includes, &mut self.context.includes);
     }
 }
 

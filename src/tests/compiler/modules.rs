@@ -9,6 +9,8 @@ use crate::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedByt
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm_tools::binutils::{assemble, disassemble};
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
+
+use crate::compiler::BasicCompileContext;
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
@@ -132,12 +134,10 @@ impl CompilerOpts for TestModuleCompilerOpts {
     }
     fn compile_program(
         &self,
-        allocator: &mut Allocator,
-        runner: Rc<dyn TRunProgram>,
+        context: &mut BasicCompileContext,
         sexp: Rc<SExp>,
-        symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
-        self.opts.compile_program(allocator, runner, sexp, symbol_table)
+        self.opts.compile_program(context, sexp)
     }
 }
 
@@ -164,13 +164,15 @@ fn test_compile_and_run_program_with_modules(
     let source_opts = TestModuleCompilerOpts::new(orig_opts);
     let opts: Rc<dyn CompilerOpts> = Rc::new(source_opts.clone());
     let mut symbol_table = HashMap::new();
+    let mut includes = Vec::new();
     let runner = Rc::new(DefaultProgramRunner::new());
     let _ = compile_file(
         &mut allocator,
         runner.clone(),
         opts,
         &content,
-        &mut symbol_table
+        &mut symbol_table,
+        &mut includes,
     ).expect("should compile");
 
     for run in runs.iter() {

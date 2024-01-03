@@ -8,6 +8,7 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
+use crate::compiler::BasicCompileContext;
 use crate::compiler::clvm::{sha256tree, truthy};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::sexp::{decode_string, enlist, SExp};
@@ -888,10 +889,8 @@ pub trait CompilerOpts {
     /// settings given here.  The result is bare generated code.
     fn compile_program(
         &self,
-        allocator: &mut Allocator,
-        runner: Rc<dyn TRunProgram>,
+        context: &mut BasicCompileContext,
         sexp: Rc<SExp>,
-        symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr>;
 }
 

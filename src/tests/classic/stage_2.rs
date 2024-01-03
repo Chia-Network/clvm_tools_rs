@@ -17,6 +17,7 @@ use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file, read_file};
 
+use crate::compiler::BasicCompileContext;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::sexp::{decode_string, SExp};
@@ -406,10 +407,8 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
     }
     fn compile_program(
         &self,
-        _allocator: &mut Allocator,
-        _runner: Rc<dyn TRunProgram>,
+        _context: &mut BasicCompileContext,
         _sexp: Rc<SExp>,
-        _symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
         Err(CompileErr(
             Srcloc::start(&self.filename),
@@ -438,11 +437,14 @@ fn test_classic_compiler_with_compiler_opts() {
     let to_compile = "(mod (A) (include test.clinc) (F A))";
     let mut allocator = Allocator::new();
     let mut symbols = HashMap::new();
+    let mut includes = Vec::new();
+
     // Verify injection
     let result = compile_clvm_text(
         &mut allocator,
         opts.clone(),
         &mut symbols,
+        &mut includes,
         to_compile,
         "test.clsp",
         true,
@@ -457,6 +459,7 @@ fn test_classic_compiler_with_compiler_opts() {
         &mut allocator,
         opts,
         &mut symbols,
+        &mut includes,
         to_compile,
         "test.clsp",
         false,

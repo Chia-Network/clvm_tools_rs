@@ -21,7 +21,7 @@ fn compile_string(content: &String) -> Result<String, CompileErr> {
     let runner = Rc::new(DefaultProgramRunner::new());
     let opts = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
 
-    compile_file(&mut allocator, runner, opts, &content, &mut HashMap::new()).map(|x| x.to_sexp().to_string())
+    compile_file(&mut allocator, runner, opts, &content, &mut HashMap::new(), &mut Vec::new()).map(|x| x.to_sexp().to_string())
 }
 
 fn run_string_maybe_opt(
@@ -53,6 +53,7 @@ fn run_string_maybe_opt(
         opts,
         &content,
         &mut HashMap::new(),
+        &mut Vec::new(),
     )
     .and_then(|x| {
         run(

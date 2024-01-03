@@ -22,7 +22,7 @@ use crate::classic::platform::distutils::dep_util::newer;
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::compile_file;
 use crate::compiler::compiler::DefaultCompilerOpts;
-use crate::compiler::comptypes::{CompileErr, CompilerOpts};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts, IncludeDesc};
 use crate::compiler::dialect::detect_modern;
 use crate::compiler::optimize::run_optimizer;
 use crate::compiler::runtypes::RunFailure;
@@ -44,6 +44,7 @@ pub fn compile_clvm_text_maybe_opt(
     do_optimize: bool,
     opts: Rc<dyn CompilerOpts>,
     symbol_table: &mut HashMap<String, String>,
+    includes: &mut Vec<IncludeDesc>,
     text: &str,
     input_path: &str,
     classic_with_opts: bool,
@@ -64,7 +65,14 @@ pub fn compile_clvm_text_maybe_opt(
             .set_optimize(do_optimize || stepping > 22)
             .set_frontend_opt(stepping == 22);
 
-        let unopt_res = compile_file(allocator, runner.clone(), opts, text, symbol_table);
+        let unopt_res = compile_file(
+            allocator,
+            runner.clone(),
+            opts,
+            text,
+            symbol_table,
+            includes,
+        );
         let res = if do_optimize {
             unopt_res.and_then(|x| run_optimizer(allocator, runner, Rc::new(x.to_sexp())))
         } else {
@@ -95,6 +103,7 @@ pub fn compile_clvm_text(
     allocator: &mut Allocator,
     opts: Rc<dyn CompilerOpts>,
     symbol_table: &mut HashMap<String, String>,
+    includes: &mut Vec<IncludeDesc>,
     text: &str,
     input_path: &str,
     classic_with_opts: bool,
@@ -104,6 +113,7 @@ pub fn compile_clvm_text(
         true,
         opts,
         symbol_table,
+        includes,
         text,
         input_path,
         classic_with_opts,
@@ -114,6 +124,7 @@ pub fn compile_clvm_inner(
     allocator: &mut Allocator,
     opts: Rc<dyn CompilerOpts>,
     symbol_table: &mut HashMap<String, String>,
+    includes: &mut Vec<IncludeDesc>,
     filename: &str,
     text: &str,
     result_stream: &mut Stream,
@@ -123,6 +134,7 @@ pub fn compile_clvm_inner(
         allocator,
         opts.clone(),
         symbol_table,
+        includes,
         text,
         filename,
         classic_with_opts,
@@ -143,6 +155,7 @@ pub fn compile_clvm(
     output_path: &str,
     search_paths: &[String],
     symbol_table: &mut HashMap<String, String>,
+    includes: &mut Vec<IncludeDesc>,
 ) -> Result<String, String> {
     let mut allocator = Allocator::new();
 
@@ -158,6 +171,7 @@ pub fn compile_clvm(
             &mut allocator,
             opts,
             symbol_table,
+            includes,
             input_path,
             &text,
             &mut result_stream,
