@@ -6,14 +6,14 @@ use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
 
-use crate::classic::clvm_tools::binutils::{assemble, disassemble};
+use crate::classic::clvm_tools::binutils::assemble;
 use crate::classic::clvm_tools::clvmc::compile_clvm_text_maybe_opt;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 
 use crate::compiler::cldb::hex_to_modern_sexp;
 use crate::compiler::clvm;
 use crate::compiler::clvm::{convert_from_clvm_rs, sha256tree, truthy};
-use crate::compiler::compiler::{compile_from_compileform, compile_module, compile_pre_forms};
+use crate::compiler::compiler::{compile_from_compileform, compile_pre_forms};
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, CompilerOutput, ConstantKind, DefconstData,
     HelperForm, ImportLongName, IncludeDesc, IncludeProcessType, LongNameTranslation,
@@ -29,7 +29,7 @@ use crate::compiler::rename::rename_args_helperform;
 use crate::compiler::resolve::{find_helper_target, resolve_namespaces};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{
-    decode_string, enlist, parse_sexp, Atom, First, NodeSel, SExp, SelectNode, ThisNode,
+    decode_string, enlist, parse_sexp, Atom, NodeSel, SExp, SelectNode, ThisNode,
 };
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::typecheck::parse_type_sexp;
@@ -49,7 +49,7 @@ enum IncludeType {
     Basic(IncludeDesc),
     /// The data in the file will be processed in some way and the result will
     /// live in a named constant.
-    Processed(IncludeDesc, IncludeProcessType, Vec<u8>),
+    Processed(Box<IncludeDesc>, IncludeProcessType, Vec<u8>),
 }
 
 #[derive(Debug)]
@@ -159,7 +159,7 @@ fn get_module_iterator(parsed: &[Rc<SExp>]) -> IterateIncludeUnit {
 
             if !matches!(lst[0].borrow(), SExp::Cons(_, _, _)) {
                 return IterateIncludeUnit {
-                    parsed: parsed.iter().cloned().collect(),
+                    parsed: parsed.to_vec(),
                     item: 0,
                 };
             }
@@ -173,7 +173,7 @@ fn get_module_iterator(parsed: &[Rc<SExp>]) -> IterateIncludeUnit {
 
     // More than one form: conventional, not enclosed.
     IterateIncludeUnit {
-        parsed: parsed.iter().cloned().collect(),
+        parsed: parsed.to_vec(),
         item: 0,
     }
 }
@@ -222,18 +222,18 @@ fn make_namespace_ref(
     target: &ImportLongName,
     spec: &ModuleImportSpec,
 ) -> HelperForm {
-    HelperForm::Defnsref(NamespaceRefData {
+    HelperForm::Defnsref(Box::new(NamespaceRefData {
         loc: loc.clone(),
         kw: kw.clone(),
         nl: nl.clone(),
         rendered_name: target.as_u8_vec(LongNameTranslation::Namespace),
         longname: target.clone(),
         specification: spec.clone(),
-    })
+    }))
 }
 
 pub fn detect_chialisp_module(pre_forms: &[Rc<SExp>]) -> Option<AcceptedDialect> {
-    let mut dialect = KNOWN_DIALECTS
+    let dialect = KNOWN_DIALECTS
         .get("*standard-cl-23*")
         .unwrap()
         .accepted
@@ -245,7 +245,7 @@ pub fn detect_chialisp_module(pre_forms: &[Rc<SExp>]) -> Option<AcceptedDialect>
 
     if pre_forms.len() > 1 {
         for p in pre_forms.iter() {
-            if let Ok(NodeSel::Cons(kl, NodeSel::Cons((nl, name), _))) = NodeSel::Cons(
+            if let Ok(NodeSel::Cons(_kl, NodeSel::Cons((_nl, name), _))) = NodeSel::Cons(
                 Atom::Here("include"),
                 NodeSel::Cons(Atom::Here(()), Atom::Here("")),
             )
@@ -384,19 +384,19 @@ impl Preprocessor {
     pub fn current_module_name(&self) -> Option<ImportLongName> {
         if self.namespace_stack.is_empty() {
             None
-        } else if let Some(name) = &self.namespace_stack[self.namespace_stack.len() - 1].name {
-            Some(name.clone())
         } else {
-            None
+            self.namespace_stack[self.namespace_stack.len() - 1]
+                .name
+                .clone()
         }
     }
 
     fn make_namespace_helper(&self, loc: &Srcloc, name: &ImportLongName) -> HelperForm {
         let helpers = if self.opts.stdenv() {
             vec![make_namespace_ref(
-                &loc,
-                &loc,
-                &loc,
+                loc,
+                loc,
+                loc,
                 &ImportLongName::parse(b"std.prelude").1,
                 &ModuleImportSpec::Hiding(loc.clone(), vec![]),
             )]
@@ -454,7 +454,7 @@ impl Preprocessor {
 
         if self.strict {
             let mut result = Vec::new();
-            for p in get_module_iterator(&parsed).into_iter() {
+            for p in get_module_iterator(&parsed) {
                 let mut new_forms = self.process_pp_form(includes, p.clone())?;
                 result.append(&mut new_forms);
             }
@@ -475,7 +475,7 @@ impl Preprocessor {
         let srcloc = Srcloc::start(filename);
         let mut allocator = Allocator::new();
         let mut symbol_table = HashMap::new();
-        let program_text = decode_string(&content);
+        let program_text = decode_string(content);
         let runner = Rc::new(DefaultProgramRunner::new());
         let pre_forms = parse_sexp(srcloc.clone(), content.iter().copied())?;
         let (have_module, dialect, classic_parse) =
@@ -521,7 +521,7 @@ impl Preprocessor {
                     &mut symbol_table,
                     includes,
                     &program_text,
-                    &filename,
+                    filename,
                     true,
                 )
                 .map_err(|e| CompileErr(srcloc.clone(), format!("Subcompile failed: {}", e.1)))?;
@@ -560,21 +560,15 @@ impl Preprocessor {
                         SExp::QuotedString(srcloc.clone(), b'x', c.hash.clone()),
                     ));
                 }
-                return Ok(output);
+                Ok(output)
             }
-            CompilerOutput::Program(compile_output) => {
-                return Ok(vec![
-                    make_constant(b"program", compile_output.clone()),
-                    make_constant(
-                        b"program_hash",
-                        SExp::QuotedString(
-                            srcloc.clone(),
-                            b'x',
-                            sha256tree(Rc::new(compile_output)),
-                        ),
-                    ),
-                ]);
-            }
+            CompilerOutput::Program(compile_output) => Ok(vec![
+                make_constant(b"program", compile_output.clone()),
+                make_constant(
+                    b"program_hash",
+                    SExp::QuotedString(srcloc.clone(), b'x', sha256tree(Rc::new(compile_output))),
+                ),
+            ]),
         }
     }
 
@@ -836,7 +830,7 @@ impl Preprocessor {
             parsed_name
         };
 
-        let current_module_name_ref = current_module_name.as_ref().map(|n| n);
+        let current_module_name_ref = current_module_name.as_ref();
         let found_name = if let Some((tname, _helper)) = find_helper_target(
             self.opts.clone(),
             &self.prototype_program,
@@ -873,20 +867,20 @@ impl Preprocessor {
         let mut main_helpers: Vec<HelperForm> = self.prototype_program.clone();
 
         if let Some(parent) = found_name.parent() {
-            main_helpers.push(HelperForm::Defnsref(NamespaceRefData {
+            main_helpers.push(HelperForm::Defnsref(Box::new(NamespaceRefData {
                 loc: loc.clone(),
                 kw: loc.clone(),
                 nl: loc.clone(),
                 rendered_name: parent.as_u8_vec(LongNameTranslation::Namespace),
                 longname: parent.clone(),
-                specification: ModuleImportSpec::Qualified(QualifiedModuleInfo {
+                specification: ModuleImportSpec::Qualified(Box::new(QualifiedModuleInfo {
                     loc: loc.clone(),
                     nl: loc.clone(),
                     kw: loc.clone(),
                     name: parent.clone(),
                     target: None,
-                }),
-            }));
+                })),
+            })));
         }
 
         let starting_program = CompileForm {
@@ -916,7 +910,7 @@ impl Preprocessor {
             found_name.clone(),
             StoredMacro::Compiled(Rc::new(compiled_program.clone())),
         );
-        return Ok(Some(Rc::new(compiled_program)));
+        Ok(Some(Rc::new(compiled_program)))
     }
 
     // Check for and apply preprocessor level macros.
@@ -1054,16 +1048,16 @@ impl Preprocessor {
             return Ok(None);
         };
 
-        let mod_kind = IncludeProcessType::Module(import.specification.clone());
+        let mod_kind = IncludeProcessType::Module(Box::new(import.specification.clone()));
         let fname = import.longname.as_u8_vec(LongNameTranslation::Namespace);
 
         Ok(Some(IncludeType::Processed(
-            IncludeDesc {
+            Box::new(IncludeDesc {
                 kw: import.kw.clone(),
                 nl: import.nl.clone(),
                 name: fname.clone(),
                 kind: Some(mod_kind.clone()),
-            },
+            }),
             mod_kind,
             fname.clone(),
         )))
@@ -1122,34 +1116,34 @@ impl Preprocessor {
 
             if kind == b"hex" {
                 return Ok(Some(IncludeType::Processed(
-                    IncludeDesc {
+                    Box::new(IncludeDesc {
                         kw: kl.clone(),
                         nl: nl.clone(),
                         kind: Some(IncludeProcessType::Hex),
                         name: fname.clone(),
-                    },
+                    }),
                     IncludeProcessType::Hex,
                     name.clone(),
                 )));
             } else if kind == b"bin" {
                 return Ok(Some(IncludeType::Processed(
-                    IncludeDesc {
+                    Box::new(IncludeDesc {
                         kw: kl.clone(),
                         nl: nl.clone(),
                         kind: Some(IncludeProcessType::Bin),
                         name: fname.clone(),
-                    },
+                    }),
                     IncludeProcessType::Bin,
                     name.clone(),
                 )));
             } else if kind == b"sexp" {
                 return Ok(Some(IncludeType::Processed(
-                    IncludeDesc {
+                    Box::new(IncludeDesc {
                         kw: kl.clone(),
                         nl: nl.clone(),
                         kind: Some(IncludeProcessType::SExpression),
                         name: fname.clone(),
-                    },
+                    }),
                     IncludeProcessType::SExpression,
                     name.clone(),
                 )));
@@ -1176,12 +1170,12 @@ impl Preprocessor {
             };
 
             return Ok(Some(IncludeType::Processed(
-                IncludeDesc {
+                Box::new(IncludeDesc {
                     kw: kl.clone(),
                     nl: nl.clone(),
                     kind: Some(IncludeProcessType::Compiled),
                     name: fname.clone(),
-                },
+                }),
                 IncludeProcessType::Compiled,
                 name.clone(),
             )));
@@ -1241,7 +1235,7 @@ impl Preprocessor {
             }
             self.import_module(body.loc(), f.kw.clone(), f.nl.clone(), includes, spec, name)
         } else if let Some(IncludeType::Processed(f, kind, name)) = &included {
-            self.recurse_dependencies(includes, Some(kind.clone()), f.clone())?;
+            self.recurse_dependencies(includes, Some(kind.clone()), *f.clone())?;
             self.process_embed(body.loc(), &decode_string(&f.name), kind, name)
         } else if let Some(()) = self.decode_macro(body.clone())? {
             Ok(vec![])

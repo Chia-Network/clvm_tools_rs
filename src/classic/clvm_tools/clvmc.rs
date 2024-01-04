@@ -39,6 +39,7 @@ pub fn write_sym_output(
         .map(|_| ())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn compile_clvm_text_maybe_opt(
     allocator: &mut Allocator,
     do_optimize: bool,
@@ -120,6 +121,7 @@ pub fn compile_clvm_text(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn compile_clvm_inner(
     allocator: &mut Allocator,
     opts: Rc<dyn CompilerOpts>,

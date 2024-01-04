@@ -1196,7 +1196,7 @@ impl HelperFormResult {
     pub fn new(helpers: &[HelperForm], ty: Option<ChiaType>) -> Self {
         HelperFormResult {
             chia_type: ty,
-            new_helpers: helpers.iter().cloned().collect(),
+            new_helpers: helpers.to_vec(),
         }
     }
 }
@@ -1211,7 +1211,7 @@ pub fn compile_namespace(
     }
 
     let (_, parsed) = if let SExp::Atom(_, name) = &internal[1] {
-        ImportLongName::parse(&name)
+        ImportLongName::parse(name)
     } else {
         return Err(CompileErr(
             internal[1].loc(),
@@ -1253,18 +1253,18 @@ pub fn compile_nsref(loc: Srcloc, internal: &[SExp]) -> Result<HelperForm, Compi
 
     let import_spec = ModuleImportSpec::parse(loc.clone(), internal[0].loc(), internal, 1)?;
     if let ModuleImportSpec::Qualified(q) = &import_spec {
-        return Ok(HelperForm::Defnsref(NamespaceRefData {
+        return Ok(HelperForm::Defnsref(Box::new(NamespaceRefData {
             loc,
             kw: internal[0].loc(),
             nl: q.nl.clone(),
             rendered_name: q.name.as_u8_vec(LongNameTranslation::Namespace),
             longname: q.name.clone(),
             specification: import_spec.clone(),
-        }));
+        })));
     }
 
     let (_, parsed) = if let SExp::Atom(_nl, name) = &internal[1] {
-        ImportLongName::parse(&name)
+        ImportLongName::parse(name)
     } else {
         return Err(CompileErr(
             internal[1].loc(),
@@ -1272,14 +1272,14 @@ pub fn compile_nsref(loc: Srcloc, internal: &[SExp]) -> Result<HelperForm, Compi
         ));
     };
 
-    Ok(HelperForm::Defnsref(NamespaceRefData {
+    Ok(HelperForm::Defnsref(Box::new(NamespaceRefData {
         loc,
         kw: internal[0].loc(),
         nl: import_spec.name_loc(),
         rendered_name: parsed.as_u8_vec(LongNameTranslation::Namespace),
         longname: parsed,
         specification: import_spec,
-    }))
+    })))
 }
 
 pub fn compile_helperform(
@@ -1591,10 +1591,9 @@ pub fn frontend(
 ) -> Result<FrontendOutput, CompileErr> {
     let mut includes = Vec::new();
 
-    if let Some(dialect) = detect_chialisp_module(&pre_forms) {
+    if let Some(_dialect) = detect_chialisp_module(pre_forms) {
         let mut other_forms = vec![];
         let mut exports = vec![];
-        let mut found_main = false;
 
         let mut preprocessor = Preprocessor::new(opts.clone());
         let output_forms = preprocessor.run_modules(&mut includes, pre_forms)?;
@@ -1617,7 +1616,7 @@ pub fn frontend(
         }
 
         let loc = output_forms.forms[0].loc();
-        let mut program = CompileForm {
+        let program = CompileForm {
             loc: loc.clone(),
             include_forms: includes.to_vec(),
             args: Rc::new(SExp::Nil(loc.clone())),
@@ -1626,14 +1625,10 @@ pub fn frontend(
             ty: None,
         };
 
-        let loc = output_forms.forms[0]
-            .loc()
-            .ext(&output_forms.forms[output_forms.forms.len() - 1].loc());
-
         return Ok(FrontendOutput::Module(program, exports));
     }
 
-    let started = frontend_start(opts.clone(), &mut includes, &pre_forms)?;
+    let started = frontend_start(opts.clone(), &mut includes, pre_forms)?;
 
     for i in includes.iter() {
         started.add_include(i.clone());

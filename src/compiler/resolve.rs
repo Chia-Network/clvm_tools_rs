@@ -7,8 +7,8 @@ use crate::compiler::codegen::toposort_assign_bindings;
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     map_m, Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData,
-    DefmacData, DeftypeData, DefunData, HelperForm, ImportLongName, LambdaData, LetData,
-    LetFormKind, LongNameTranslation, ModuleImportSpec, NamespaceData,
+    DefmacData, DefunData, HelperForm, ImportLongName, LambdaData, LetData, LetFormKind,
+    LongNameTranslation, ModuleImportSpec, NamespaceData,
 };
 use crate::compiler::frontend::{generate_type_helpers, HelperFormResult};
 use crate::compiler::sexp::{decode_string, SExp};
@@ -80,7 +80,7 @@ impl<'a> Iterator for TourNamespaces<'a> {
 
             return Some(FoundHelper {
                 helpers: self.helpers,
-                namespace: self.look_stack[ls_at].namespace.clone(),
+                namespace: self.look_stack[ls_at].namespace,
                 helper: current,
             });
         }
@@ -132,20 +132,20 @@ fn namespace_helper(name: &ImportLongName, value: &HelperForm) -> HelperFormResu
     }
 }
 
-pub fn tour_helpers<'a>(helpers: &'a [HelperForm]) -> TourNamespaces<'a> {
+pub fn tour_helpers(helpers: &[HelperForm]) -> TourNamespaces {
     TourNamespaces {
         helpers,
         look_stack: vec![FindNamespaceLookingAtHelpers {
-            hlist: &helpers,
+            hlist: helpers,
             namespace: None,
             offset: 0,
         }],
     }
 }
 
-pub fn find_helper_target<'a>(
+pub fn find_helper_target(
     opts: Rc<dyn CompilerOpts>,
-    helpers: &'a [HelperForm],
+    helpers: &[HelperForm],
     parent_ns: Option<&ImportLongName>,
     orig_name: &[u8],
     name: &ImportLongName,
@@ -155,7 +155,7 @@ pub fn find_helper_target<'a>(
     let (parent, child) = name.parent_and_name();
 
     // Get a list namespace refs from the namespace identified by parent_ns.
-    let tour_helpers: Vec<FoundHelper> = tour_helpers(&helpers).collect();
+    let tour_helpers: Vec<FoundHelper> = tour_helpers(helpers).collect();
     let home_ns: Vec<&FoundHelper> = tour_helpers
         .iter()
         .filter(|found| found.namespace == parent_ns)
@@ -258,14 +258,14 @@ pub fn find_helper_target<'a>(
                 }
 
                 // Hiding means we don't match this name.
-                if h.iter().filter(|h| h.name == orig_name).next().is_some() {
+                if h.iter().any(|h| h.name == orig_name) {
                     continue;
                 }
 
                 let target_name = ns_spec.longname.with_child(&child);
                 if let Some(helper) = find_helper_target(
                     opts.clone(),
-                    &helpers,
+                    helpers,
                     Some(&ns_spec.longname),
                     orig_name,
                     &target_name,
@@ -348,7 +348,7 @@ fn resolve_namespaces_in_expr(
                             e.clone(),
                         )
                     },
-                    &args,
+                    args,
                 )?,
                 new_tail,
             )))
@@ -359,7 +359,7 @@ fn resolve_namespaces_in_expr(
                 return Ok(expr.clone());
             }
 
-            let (_, parsed_name) = ImportLongName::parse(&name);
+            let (_, parsed_name) = ImportLongName::parse(name);
             let (parent, child) = parsed_name.parent_and_name();
 
             // If not namespaced, then it could be a primitive
@@ -383,19 +383,19 @@ fn resolve_namespaces_in_expr(
                     opts.clone(),
                     &program.helpers,
                     parent_ns,
-                    &name,
+                    name,
                     &parsed_name,
                 ) {
                 (target_full_name, target_helper)
-            } else if is_compiler_builtin(&name) {
+            } else if is_compiler_builtin(name) {
                 return Ok(expr.clone());
             } else {
                 return Err(CompileErr(
                     expr.loc(),
                     format!(
                         "could not find helper {} in {}",
-                        decode_string(&name),
-                        display_namespace(parent_ns.clone())
+                        decode_string(name),
+                        display_namespace(parent_ns)
                     ),
                 ));
             };
@@ -594,7 +594,7 @@ fn resolve_namespaces_in_helper(
                         resolved_helpers,
                         opts.clone(),
                         program,
-                        parent_ns.clone(),
+                        parent_ns,
                         &in_scope,
                         dd.body.clone(),
                     )?,
@@ -610,7 +610,7 @@ fn resolve_namespaces_in_helper(
                     resolved_helpers,
                     opts.clone(),
                     program,
-                    parent_ns.clone(),
+                    parent_ns,
                     &in_scope,
                     dc.body.clone(),
                 )?,
@@ -626,19 +626,17 @@ fn resolve_namespaces_in_helper(
                     resolved_helpers,
                     opts.clone(),
                     program,
-                    parent_ns.clone(),
+                    parent_ns,
                     h,
                 )?;
                 result_helpers.extend(results.new_helpers);
             }
             Ok(HelperFormResult::new(&result_helpers, None))
         }
-        HelperForm::Defmacro(_) => {
-            return Err(CompileErr(
-                helper.loc(),
-                "Classic macros are deprecated in module style chialisp".to_string(),
-            ));
-        }
+        HelperForm::Defmacro(_) => Err(CompileErr(
+            helper.loc(),
+            "Classic macros are deprecated in module style chialisp".to_string(),
+        )),
     }
 }
 
@@ -677,7 +675,7 @@ pub fn resolve_namespaces(
 
             for helper in helpers.new_helpers.iter() {
                 let mut result_helpers = Vec::new();
-                let mut renamed_helpers = namespace_helper(&name, &helper);
+                let mut renamed_helpers = namespace_helper(name, helper);
 
                 // This is ugly but working: if we have phantom type helpers, we
                 // add their individual names as well with no outputs.  This allows

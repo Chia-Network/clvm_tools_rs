@@ -539,8 +539,6 @@ pub fn replace_in_inline(
     )
     .and_then(|x| {
         let mut symbols = HashMap::new();
-        let runner = context.runner();
-        let optimizer = context.optimizer.duplicate();
         let mut context_wrapper = CompileContextWrapper::from_context(context, &mut symbols);
         generate_expr_code(&mut context_wrapper.context, opts, compiler, x)
     })

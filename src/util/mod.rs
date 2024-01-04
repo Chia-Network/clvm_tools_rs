@@ -81,7 +81,7 @@ where
     let mut finished_idx = 0;
 
     // Determine what's defined in these bindings.
-    for (_, item) in items.iter().enumerate() {
+    for item in items.iter() {
         for new_item in item.has.iter() {
             possible.insert(new_item.clone());
         }

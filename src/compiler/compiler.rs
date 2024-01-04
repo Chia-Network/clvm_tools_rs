@@ -19,14 +19,11 @@ use crate::compiler::comptypes::{
     SyntheticType,
 };
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
-use crate::compiler::frontend::{
-    compile_bodyform, compile_helperform, frontend, match_export_form,
-};
+use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::get_optimizer;
-use crate::compiler::preprocessor::{detect_chialisp_module, Preprocessor};
 use crate::compiler::prims;
 use crate::compiler::resolve::resolve_namespaces;
-use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
+use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::Number;
@@ -234,7 +231,7 @@ fn break_down_module_output(
 
 fn create_hex_output_path(loc: Srcloc, file_path: &str, func: &str) -> Result<String, CompileErr> {
     let mut dir = PathBuf::from(file_path);
-    let mut filename = PathBuf::from(file_path)
+    let filename = PathBuf::from(file_path)
         .with_extension("")
         .file_name()
         .map(|f| f.to_string_lossy().to_string())

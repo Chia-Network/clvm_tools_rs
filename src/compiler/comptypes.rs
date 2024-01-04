@@ -4,10 +4,7 @@ use std::rc::Rc;
 
 use serde::Serialize;
 
-use clvm_rs::allocator::Allocator;
-
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
-use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::{sha256tree, truthy};
 use crate::compiler::dialect::AcceptedDialect;
@@ -473,7 +470,7 @@ pub struct ModuleImportListedName {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum ModuleImportSpec {
     /// As import qualified [as ...] in haskell.
-    Qualified(QualifiedModuleInfo),
+    Qualified(Box<QualifiedModuleInfo>),
     /// The given names are in the toplevel namespace after the import.
     Exposing(Srcloc, Vec<ModuleImportListedName>),
     /// All but these names are in the toplevel namespace after the import.
@@ -541,7 +538,7 @@ impl ModuleImportSpec {
 
                 let (relative_qual, import_name) = ImportLongName::parse(&qname);
 
-                return Ok(ModuleImportSpec::Qualified(QualifiedModuleInfo {
+                return Ok(ModuleImportSpec::Qualified(Box::new(QualifiedModuleInfo {
                     loc: loc.clone(),
                     kw: first_loc.clone(),
                     nl: second_loc.clone(),
@@ -552,15 +549,15 @@ impl ModuleImportSpec {
                         relative: relative_qual,
                         name: import_name,
                     }),
-                }));
+                })));
             } else if forms.len() == 3 {
-                return Ok(ModuleImportSpec::Qualified(QualifiedModuleInfo {
+                return Ok(ModuleImportSpec::Qualified(Box::new(QualifiedModuleInfo {
                     loc: loc.clone(),
                     kw: kw.clone(),
                     nl: second_loc.clone(),
                     name: p,
                     target: None,
-                }));
+                })));
             }
         }
 
@@ -677,7 +674,7 @@ pub enum HelperForm {
     /// A namespace collection.
     Defnamespace(NamespaceData),
     /// A namespace reference.
-    Defnsref(NamespaceRefData),
+    Defnsref(Box<NamespaceRefData>),
     /// A constant definition (see DefconstData).
     Defconstant(DefconstData),
     /// A macro definition (see DefmacData).
@@ -755,7 +752,7 @@ pub enum IncludeProcessType {
     /// Compile a full program and return its representation.
     Compiled,
     /// Import as a module.
-    Module(ModuleImportSpec),
+    Module(Box<ModuleImportSpec>),
 }
 
 /// A description of an include form.  Here, records the locations of the various
@@ -1515,10 +1512,10 @@ pub enum FrontendOutput {
 }
 
 impl FrontendOutput {
-    pub fn compileform<'a>(&'a self) -> &'a CompileForm {
+    pub fn compileform(&self) -> &CompileForm {
         match self {
-            FrontendOutput::CompileForm(cf) => &cf,
-            FrontendOutput::Module(cf, _) => &cf,
+            FrontendOutput::CompileForm(cf) => cf,
+            FrontendOutput::Module(cf, _) => cf,
         }
     }
 }

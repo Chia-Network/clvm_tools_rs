@@ -64,19 +64,19 @@ impl BasicCompileContext {
     /// Get a mutable allocator reference from this compile context. The
     /// allocator is used any time we need to execute pure CLVM operators, such
     /// as when evaluating macros or constant folding any chialisp expression.
-    fn allocator(&mut self) -> &mut Allocator {
+    pub fn allocator(&mut self) -> &mut Allocator {
         &mut self.allocator
     }
 
     /// Get the runner this compile context carries. This is used with the
     /// allocator above to execute pure CLVM when needed either on behalf of a
     /// macro or constant folding.
-    fn runner(&self) -> Rc<dyn TRunProgram> {
+    pub fn runner(&self) -> Rc<dyn TRunProgram> {
         self.runner.clone()
     }
 
     /// Get the list of includes traversed while processing the current compile.
-    fn includes(&mut self) -> &mut Vec<IncludeDesc> {
+    pub fn includes(&mut self) -> &mut Vec<IncludeDesc> {
         &mut self.includes
     }
 
@@ -88,7 +88,7 @@ impl BasicCompileContext {
     /// There are times when we're in a subcompile (such as mod expressions when
     /// the compile context needs to do swap in or out symbols or transform them
     /// on behalf of the child.
-    fn symbols(&mut self) -> &mut HashMap<String, String> {
+    pub fn symbols(&mut self) -> &mut HashMap<String, String> {
         &mut self.symbols
     }
 
@@ -104,7 +104,7 @@ impl BasicCompileContext {
             .frontend_optimization(&mut self.allocator, runner, opts, cf)
     }
 
-    fn post_desugar_optimization(
+    pub fn post_desugar_optimization(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         cf: CompileForm,
@@ -116,7 +116,7 @@ impl BasicCompileContext {
 
     /// Shrink the program prior to generating the final environment map and
     /// doing other codegen tasks.  This also serves as a tree-shaking pass.
-    fn start_of_codegen_optimization(
+    pub fn start_of_codegen_optimization(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         to_optimize: StartOfCodegenOptimization,
@@ -129,7 +129,7 @@ impl BasicCompileContext {
     /// Note: must take measures to ensure that the symbols are changed along
     /// with any code that's changed.  It's likely better to do optimizations
     /// at other stages, such as post_codegen_function_optimize.
-    fn post_codegen_output_optimize(
+    pub fn post_codegen_output_optimize(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         generated: SExp,
@@ -138,7 +138,7 @@ impl BasicCompileContext {
     }
 
     /// Called when a full macro program optimization is used.
-    fn macro_optimization(
+    pub fn macro_optimization(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         code: Rc<SExp>,
@@ -149,7 +149,7 @@ impl BasicCompileContext {
 
     /// Called to transform a defun before generating code from it.
     /// Returns a new bodyform.
-    fn pre_codegen_function_optimize(
+    pub fn pre_codegen_function_optimize(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         codegen: &PrimaryCodegen,
@@ -165,7 +165,7 @@ impl BasicCompileContext {
     }
 
     /// Called to transform the function body after code generation.
-    fn post_codegen_function_optimize(
+    pub fn post_codegen_function_optimize(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         helper: Option<&HelperForm>,
@@ -182,7 +182,7 @@ impl BasicCompileContext {
 
     /// Call in final_codegen to get the final main bodyform to generate
     /// code from.
-    fn pre_final_codegen_optimize(
+    pub fn pre_final_codegen_optimize(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         codegen: &PrimaryCodegen,

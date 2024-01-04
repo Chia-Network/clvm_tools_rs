@@ -922,7 +922,7 @@ fn codegen_(
                 let code =
                     fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)?;
                 let code = fail_if_present(defun.loc.clone(), &compiler.defuns, &defun.name, code)?;
-                return Ok(compiler.add_defun(
+                Ok(compiler.add_defun(
                     &defun.name,
                     defun.orig_args.clone(),
                     DefunCall {
@@ -930,7 +930,7 @@ fn codegen_(
                         code,
                     },
                     true, // Always take left env for now
-                ));
+                ))
             }
         }
         _ => Ok(compiler.clone()),
@@ -1494,7 +1494,6 @@ fn start_codegen(
                     .set_frontend_opt(false);
 
                 let mut unused_symbols = HashMap::new();
-                let runner = context.runner();
                 let mut context_wrapper =
                     CompileContextWrapper::from_context(context, &mut unused_symbols);
                 let code = match updated_opts
