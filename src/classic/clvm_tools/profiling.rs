@@ -51,8 +51,8 @@ impl Drop for Profiler {
 // Smoke test that just invokes the profiler.
 #[test]
 fn test_profiler() {
+    let testfile = "test.svg";
     {
-        let testfile = "test.svg";
         let _ = Profiler::new(testfile);
         eprintln!("doing something");
     }
