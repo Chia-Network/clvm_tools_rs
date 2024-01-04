@@ -78,8 +78,14 @@ fn compile_clvm(
 
     let mut symbols = HashMap::new();
     let mut includes = Vec::new();
-    let compiled = clvmc::compile_clvm(&path_string, &output_path, &search_paths, &mut symbols, &mut includes)
-        .map_err(PyException::new_err)?;
+    let compiled = clvmc::compile_clvm(
+        &path_string,
+        &output_path,
+        &search_paths,
+        &mut symbols,
+        &mut includes,
+    )
+    .map_err(PyException::new_err)?;
 
     Python::with_gil(|py| {
         if export_symbols == Some(true) {
