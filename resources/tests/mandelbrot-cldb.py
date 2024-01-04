@@ -32,5 +32,6 @@ want_output = """---
 - Final: "3356114000950459963475899699747220812557867594760040767593731831711045"
   Final-Location: "./mandelbrot/mandelbrot.clsp(8):43"
 """
+
 have_output = subprocess.check_output(command).decode('utf8')
 assert have_output == want_output
