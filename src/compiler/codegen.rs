@@ -12,9 +12,9 @@ use crate::compiler::clvm::{run, truthy};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, CallSpec,
-    Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, CompilerOutput, ConstantKind, DefunCall,
-    DefunData, HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind, PrimaryCodegen,
-    RawCallSpec, SyntheticType,
+    Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, CompilerOutput, ConstantKind,
+    DefunCall, DefunData, HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind,
+    PrimaryCodegen, RawCallSpec, SyntheticType,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
@@ -339,12 +339,10 @@ pub fn get_callable(
                 }
                 (_, _, _, _, true, _) => Ok(Callable::RunCompiler),
                 (_, _, _, _, _, true) => Ok(Callable::EnvPath),
-                _ => {
-                    Err(CompileErr(
-                        l.clone(),
-                        format!("no such callable '{}'", decode_string(name)),
-                    ))
-                }
+                _ => Err(CompileErr(
+                    l.clone(),
+                    format!("no such callable '{}'", decode_string(name)),
+                )),
             }
         }
         SExp::Integer(_, v) => Ok(Callable::CallPrim(l.clone(), SExp::Integer(l, v.clone()))),
@@ -641,21 +639,16 @@ fn compile_call(
                     );
 
                     let mut unused_symbol_table = HashMap::new();
-                    let mut context_wrapper = CompileContextWrapper::from_context(context, &mut unused_symbol_table);
-                    let code =
-                        updated_opts
-                        .compile_program(
-                            &mut context_wrapper.context,
-                            Rc::new(use_body),
-                        )?;
+                    let mut context_wrapper =
+                        CompileContextWrapper::from_context(context, &mut unused_symbol_table);
+                    let code = updated_opts
+                        .compile_program(&mut context_wrapper.context, Rc::new(use_body))?;
 
                     match code {
-                        CompilerOutput::Program(code) => {
-                            Ok(CompiledCode(
-                                call.loc.clone(),
-                                Rc::new(primquote(call.loc.clone(), Rc::new(code))),
-                            ))
-                        }
+                        CompilerOutput::Program(code) => Ok(CompiledCode(
+                            call.loc.clone(),
+                            Rc::new(primquote(call.loc.clone(), Rc::new(code))),
+                        )),
                         CompilerOutput::Module(_) => {
                             todo!();
                         }
@@ -685,10 +678,7 @@ pub fn do_mod_codegen(
     // A mod form yields the compiled code.
     let without_env = opts.set_start_env(None).set_in_defun(false);
     let mut throwaway_symbols = HashMap::new();
-    let mut context_wrapper = CompileContextWrapper::from_context(
-        context,
-        &mut throwaway_symbols,
-    );
+    let mut context_wrapper = CompileContextWrapper::from_context(context, &mut throwaway_symbols);
     let code = codegen(&mut context_wrapper.context, without_env, program)?;
     Ok(CompiledCode(
         program.loc.clone(),
@@ -914,28 +904,23 @@ fn codegen_(
                 );
 
                 let mut unused_symbol_table = HashMap::new();
-                let code =
-                    {
-                        let mut context_wrapper = CompileContextWrapper::from_context(
-                            context,
-                            &mut unused_symbol_table
-                        );
-                        let code =
-                            updated_opts
-                            .compile_program(
-                                &mut context_wrapper.context,
-                                Rc::new(tocompile),
-                            )?;
-                        match code {
-                            CompilerOutput::Program(p) => p,
-                            CompilerOutput::Module(_) => {
-                                todo!();
-                            }
+                let code = {
+                    let mut context_wrapper =
+                        CompileContextWrapper::from_context(context, &mut unused_symbol_table);
+                    let code = updated_opts
+                        .compile_program(&mut context_wrapper.context, Rc::new(tocompile))?;
+                    match code {
+                        CompilerOutput::Program(p) => p,
+                        CompilerOutput::Module(_) => {
+                            todo!();
                         }
-                    };
+                    }
+                };
 
-                let code = context.post_codegen_function_optimize(opts.clone(), Some(h), Rc::new(code))?;
-                let code = fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)?;
+                let code =
+                    context.post_codegen_function_optimize(opts.clone(), Some(h), Rc::new(code))?;
+                let code =
+                    fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)?;
                 let code = fail_if_present(defun.loc.clone(), &compiler.defuns, &defun.name, code)?;
                 return Ok(compiler.add_defun(
                     &defun.name,
@@ -1423,20 +1408,16 @@ fn start_codegen(
                     let updated_opts = opts.set_code_generator(code_generator.clone());
                     let mut unused_symbols = HashMap::new();
                     let runner = context.runner();
-                    let mut context_wrapper = CompileContextWrapper::from_context(
-                        context,
-                        &mut unused_symbols
-                    );
-                    let code =
-                        match updated_opts.compile_program(
-                            &mut context_wrapper.context,
-                            Rc::new(expand_program),
-                        )? {
-                            CompilerOutput::Program(code) => code,
-                            CompilerOutput::Module(_) => {
-                                todo!();
-                            }
-                        };
+                    let mut context_wrapper =
+                        CompileContextWrapper::from_context(context, &mut unused_symbols);
+                    let code = match updated_opts
+                        .compile_program(&mut context_wrapper.context, Rc::new(expand_program))?
+                    {
+                        CompilerOutput::Program(code) => code,
+                        CompilerOutput::Module(_) => {
+                            todo!();
+                        }
+                    };
 
                     run(
                         context_wrapper.context.allocator(),
@@ -1514,23 +1495,20 @@ fn start_codegen(
 
                 let mut unused_symbols = HashMap::new();
                 let runner = context.runner();
-                let mut context_wrapper = CompileContextWrapper::from_context(
-                    context,
-                    &mut unused_symbols
-                );
-                let code =
-                    match updated_opts.compile_program(
-                        &mut context_wrapper.context,
-                        macro_program,
-                    )? {
-                        CompilerOutput::Program(p) => p,
-                        CompilerOutput::Module(_) => {
-                            todo!();
-                        }
-                    };
+                let mut context_wrapper =
+                    CompileContextWrapper::from_context(context, &mut unused_symbols);
+                let code = match updated_opts
+                    .compile_program(&mut context_wrapper.context, macro_program)?
+                {
+                    CompilerOutput::Program(p) => p,
+                    CompilerOutput::Module(_) => {
+                        todo!();
+                    }
+                };
 
-                let optimized_code =
-                    context_wrapper.context.macro_optimization(opts.clone(), Rc::new(code.clone()))?;
+                let optimized_code = context_wrapper
+                    .context
+                    .macro_optimization(opts.clone(), Rc::new(code.clone()))?;
 
                 code_generator.add_macro(&mac.name, optimized_code)
             }

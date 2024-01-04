@@ -428,7 +428,7 @@ pub fn rename_args_helperform(h: &HelperForm) -> Result<HelperForm, CompileErr> 
             let renamed = map_m(rename_args_helperform, &ns.helpers)?;
             Ok(HelperForm::Defnamespace(NamespaceData {
                 helpers: renamed,
-                .. ns.clone()
+                ..ns.clone()
             }))
         }
         HelperForm::Defnsref(_) => Ok(h.clone()),

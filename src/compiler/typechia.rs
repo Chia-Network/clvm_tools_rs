@@ -584,7 +584,12 @@ fn handle_macro(
     match dequote(loc.clone(), exp_result) {
         Ok(dequoted) => {
             let last_reparse = frontend(opts.clone(), &[dequoted])?;
-            let final_res = chialisp_to_expr(opts, program, form_args, last_reparse.compileform().exp.clone())?;
+            let final_res = chialisp_to_expr(
+                opts,
+                program,
+                form_args,
+                last_reparse.compileform().exp.clone(),
+            )?;
             Ok(final_res)
         }
         Err(_) => {

@@ -9,13 +9,13 @@ use clvm_rs::allocator::Allocator;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::BasicCompileContext;
 use crate::compiler::clvm::{sha256tree, truthy};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::typecheck::TheoryToSExp;
 use crate::compiler::types::ast::{Polytype, TypeVar};
+use crate::compiler::BasicCompileContext;
 use crate::util::Number;
 
 // Note: only used in tests, not normally dependencies.
@@ -340,25 +340,32 @@ pub struct ImportLongName {
 #[derive(Debug, Clone)]
 pub enum LongNameTranslation {
     Namespace,
-    Filename(String)
+    Filename(String),
 }
 
 impl ImportLongName {
     pub fn parse(name: &[u8]) -> (bool, Self) {
-        let (relative, skip_words) =
-            if name.starts_with(b".") {
-                (true, 1)
-            } else {
-                (false, 0)
-            };
+        let (relative, skip_words) = if name.starts_with(b".") {
+            (true, 1)
+        } else {
+            (false, 0)
+        };
 
-        let components = name.split(|ch| *ch == b'.').skip(skip_words).map(|x| x.to_vec()).collect();
+        let components = name
+            .split(|ch| *ch == b'.')
+            .skip(skip_words)
+            .map(|x| x.to_vec())
+            .collect();
         (relative, ImportLongName { components })
     }
 
     pub fn as_u8_vec(&self, filename: LongNameTranslation) -> Vec<u8> {
         let mut result_vec = vec![];
-        let sep = if matches!(filename, LongNameTranslation::Filename(_)) { b'/' } else { b'.' };
+        let sep = if matches!(filename, LongNameTranslation::Filename(_)) {
+            b'/'
+        } else {
+            b'.'
+        };
         for (i, c) in self.components.iter().enumerate() {
             if i != 0 {
                 result_vec.push(sep);
@@ -404,7 +411,12 @@ impl ImportLongName {
         }
 
         Some(ImportLongName {
-            components: self.components.iter().take(self.components.len()-1).cloned().collect()
+            components: self
+                .components
+                .iter()
+                .take(self.components.len() - 1)
+                .cloned()
+                .collect(),
         })
     }
 
@@ -414,9 +426,17 @@ impl ImportLongName {
         }
 
         if self.components.len() > 1 {
-            return (Some(ImportLongName {
-                components: self.components.iter().take(self.components.len()-1).cloned().collect()
-            }), self.components[self.components.len()-1].clone());
+            return (
+                Some(ImportLongName {
+                    components: self
+                        .components
+                        .iter()
+                        .take(self.components.len() - 1)
+                        .cloned()
+                        .collect(),
+                }),
+                self.components[self.components.len() - 1].clone(),
+            );
         }
 
         (None, self.components[0].clone())
@@ -465,7 +485,7 @@ impl ModuleImportSpec {
         match self {
             ModuleImportSpec::Qualified(q) => q.nl.clone(),
             ModuleImportSpec::Exposing(e, _) => e.clone(),
-            ModuleImportSpec::Hiding(e, _) => e.clone()
+            ModuleImportSpec::Hiding(e, _) => e.clone(),
         }
     }
 
@@ -473,7 +493,7 @@ impl ModuleImportSpec {
         loc: Srcloc,
         kw: Srcloc,
         forms: &[SExp],
-        mut skip: usize
+        mut skip: usize,
     ) -> Result<Self, CompileErr> {
         if skip >= forms.len() {
             return Ok(ModuleImportSpec::Hiding(loc, vec![]));
@@ -481,46 +501,43 @@ impl ModuleImportSpec {
 
         // Figure out whether it's "import qualified" or
         // "import qualified foo as bar"
-        let (first_loc, first_atom) =
-            if let SExp::Atom(first_loc, first) = &forms[skip] {
-                (first_loc.clone(), first.clone())
-            } else {
-                return Err(CompileErr(
-                    forms[skip].loc(),
-                    "import must be followed by a name or 'qualified'".to_string()
-                ));
-            };
+        let (first_loc, first_atom) = if let SExp::Atom(first_loc, first) = &forms[skip] {
+            (first_loc.clone(), first.clone())
+        } else {
+            return Err(CompileErr(
+                forms[skip].loc(),
+                "import must be followed by a name or 'qualified'".to_string(),
+            ));
+        };
 
         if first_atom == b"qualified" {
             if forms.len() < 3 {
                 return Err(CompileErr(
                     loc.clone(),
-                    "import qualified must be followed by a name".to_string()
+                    "import qualified must be followed by a name".to_string(),
                 ));
             }
 
-            let (second_loc, second_atom) =
-                if let SExp::Atom(second_loc, second) = &forms[2] {
-                    (second_loc.clone(), second.clone())
-                } else {
-                    return Err(CompileErr(
-                        forms[2].loc(),
-                        "import qualified must be followed by a name".to_string()
-                    ));
-                };
+            let (second_loc, second_atom) = if let SExp::Atom(second_loc, second) = &forms[2] {
+                (second_loc.clone(), second.clone())
+            } else {
+                return Err(CompileErr(
+                    forms[2].loc(),
+                    "import qualified must be followed by a name".to_string(),
+                ));
+            };
 
             let (_, p) = ImportLongName::parse(&second_atom);
 
             if forms.len() == 5 {
-                let qname =
-                    if let SExp::Atom(_, qname) = &forms[4] {
-                        qname.clone()
-                    } else {
-                        return Err(CompileErr(
-                            forms[4].loc(),
-                            "import qualified ... as qname must be a name".to_string()
-                        ));
-                    };
+                let qname = if let SExp::Atom(_, qname) = &forms[4] {
+                    qname.clone()
+                } else {
+                    return Err(CompileErr(
+                        forms[4].loc(),
+                        "import qualified ... as qname must be a name".to_string(),
+                    ));
+                };
 
                 let (relative_qual, import_name) = ImportLongName::parse(&qname);
 
@@ -534,7 +551,7 @@ impl ModuleImportSpec {
                         nl: forms[4].loc(),
                         relative: relative_qual,
                         name: import_name,
-                    })
+                    }),
                 }));
             } else if forms.len() == 3 {
                 return Ok(ModuleImportSpec::Qualified(QualifiedModuleInfo {
@@ -555,16 +572,16 @@ impl ModuleImportSpec {
 
         if let SExp::Atom(kw_loc, kw) = &forms[skip] {
             let mut words = vec![];
-            for atom in forms.iter().skip(skip+1) {
+            for atom in forms.iter().skip(skip + 1) {
                 if let SExp::Atom(name_loc, name) = atom {
                     words.push(ModuleImportListedName {
                         nl: name_loc.clone(),
-                        name: name.clone()
+                        name: name.clone(),
                     });
                 } else {
                     return Err(CompileErr(
                         atom.loc(),
-                        "Exposed names must be atoms".to_string()
+                        "Exposed names must be atoms".to_string(),
                     ));
                 }
             }
@@ -586,21 +603,28 @@ impl ModuleImportSpec {
             ModuleImportSpec::Qualified(as_name) => {
                 let mut result_vec = vec![
                     Rc::new(SExp::Atom(as_name.kw.clone(), b"qualified".to_vec())),
-                    Rc::new(SExp::Atom(as_name.nl.clone(), as_name.name.as_u8_vec(LongNameTranslation::Namespace))),
+                    Rc::new(SExp::Atom(
+                        as_name.nl.clone(),
+                        as_name.name.as_u8_vec(LongNameTranslation::Namespace),
+                    )),
                 ];
                 if let Some(target) = as_name.target.as_ref() {
                     result_vec.push(Rc::new(SExp::Atom(target.kw.clone(), b"as".to_vec())));
-                    result_vec.push(Rc::new(SExp::Atom(target.nl.clone(), target.name.as_u8_vec(LongNameTranslation::Namespace))));
+                    result_vec.push(Rc::new(SExp::Atom(
+                        target.nl.clone(),
+                        target.name.as_u8_vec(LongNameTranslation::Namespace),
+                    )));
                 }
                 Rc::new(enlist(as_name.loc.clone(), &result_vec))
             }
             ModuleImportSpec::Exposing(kl, exposed_names) => {
-                let mut result_vec = vec![
-                    Rc::new(SExp::Atom(kl.clone(), b"exposing".to_vec())),
-                ];
-                result_vec.extend(exposed_names.iter().map(|e| {
-                    Rc::new(SExp::Atom(e.nl.clone(), e.name.clone()))
-                }).collect::<Vec<Rc<SExp>>>());
+                let mut result_vec = vec![Rc::new(SExp::Atom(kl.clone(), b"exposing".to_vec()))];
+                result_vec.extend(
+                    exposed_names
+                        .iter()
+                        .map(|e| Rc::new(SExp::Atom(e.nl.clone(), e.name.clone())))
+                        .collect::<Vec<Rc<SExp>>>(),
+                );
                 Rc::new(enlist(kl.clone(), &result_vec))
             }
             // All but these names are in the toplevel namespace after the import.
@@ -609,12 +633,13 @@ impl ModuleImportSpec {
                     return Rc::new(SExp::Nil(kl.clone()));
                 }
 
-                let mut result_vec = vec![
-                    Rc::new(SExp::Atom(kl.clone(), b"hiding".to_vec())),
-                ];
-                result_vec.extend(hidden_names.iter().map(|e| {
-                    Rc::new(SExp::Atom(e.nl.clone(), e.name.clone()))
-                }).collect::<Vec<Rc<SExp>>>());
+                let mut result_vec = vec![Rc::new(SExp::Atom(kl.clone(), b"hiding".to_vec()))];
+                result_vec.extend(
+                    hidden_names
+                        .iter()
+                        .map(|e| Rc::new(SExp::Atom(e.nl.clone(), e.name.clone())))
+                        .collect::<Vec<Rc<SExp>>>(),
+                );
                 Rc::new(enlist(kl.clone(), &result_vec))
             }
         }
@@ -628,7 +653,7 @@ pub struct NamespaceData {
     pub nl: Srcloc,
     pub rendered_name: Vec<u8>,
     pub longname: ImportLongName,
-    pub helpers: Vec<HelperForm>
+    pub helpers: Vec<HelperForm>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -638,7 +663,7 @@ pub struct NamespaceRefData {
     pub nl: Srcloc,
     pub rendered_name: Vec<u8>,
     pub longname: ImportLongName,
-    pub specification: ModuleImportSpec
+    pub specification: ModuleImportSpec,
 }
 
 /// HelperForm is a toplevel binding of some kind.
@@ -665,20 +690,25 @@ pub enum HelperForm {
 fn test_helperform_import_qualified_0() {
     let srcloc = Srcloc::start("*test-import*");
     let (_, name) = ImportLongName::parse(b"foo.bar");
-    assert_eq!(HelperForm::Defnsref(NamespaceRefData {
-        loc: srcloc.clone(),
-        kw: srcloc.clone(),
-        nl: srcloc.clone(),
-        rendered_name: name.as_u8_vec(LongNameTranslation::Namespace),
-        longname: name.clone(),
-        specification: ModuleImportSpec::Qualified(QualifiedModuleInfo {
+    assert_eq!(
+        HelperForm::Defnsref(NamespaceRefData {
             loc: srcloc.clone(),
-            nl: srcloc.clone(),
             kw: srcloc.clone(),
-            name: name,
-            target: None,
+            nl: srcloc.clone(),
+            rendered_name: name.as_u8_vec(LongNameTranslation::Namespace),
+            longname: name.clone(),
+            specification: ModuleImportSpec::Qualified(QualifiedModuleInfo {
+                loc: srcloc.clone(),
+                nl: srcloc.clone(),
+                kw: srcloc.clone(),
+                name: name,
+                target: None,
+            })
         })
-    }).to_sexp().to_string(), "(import qualified foo.bar)");
+        .to_sexp()
+        .to_string(),
+        "(import qualified foo.bar)"
+    );
 }
 
 #[test]
@@ -687,25 +717,30 @@ fn test_helperform_import_qualified_1() {
     let (_, name) = ImportLongName::parse(b"foo.bar");
     let (relative, target) = ImportLongName::parse(b"FB");
 
-    assert_eq!(HelperForm::Defnsref(NamespaceRefData {
-        loc: srcloc.clone(),
-        kw: srcloc.clone(),
-        nl: srcloc.clone(),
-        rendered_name: name.as_u8_vec(LongNameTranslation::Namespace),
-        longname: name.clone(),
-        specification: ModuleImportSpec::Qualified(QualifiedModuleInfo {
+    assert_eq!(
+        HelperForm::Defnsref(NamespaceRefData {
             loc: srcloc.clone(),
-            nl: srcloc.clone(),
             kw: srcloc.clone(),
-            name: name,
-            target: Some(QualifiedModuleInfoTarget {
-                kw: srcloc.clone(),
+            nl: srcloc.clone(),
+            rendered_name: name.as_u8_vec(LongNameTranslation::Namespace),
+            longname: name.clone(),
+            specification: ModuleImportSpec::Qualified(QualifiedModuleInfo {
+                loc: srcloc.clone(),
                 nl: srcloc.clone(),
-                name: target,
-                relative
+                kw: srcloc.clone(),
+                name: name,
+                target: Some(QualifiedModuleInfoTarget {
+                    kw: srcloc.clone(),
+                    nl: srcloc.clone(),
+                    name: target,
+                    relative
+                })
             })
         })
-    }).to_sexp().to_string(), "(import qualified foo.bar as FB)");
+        .to_sexp()
+        .to_string(),
+        "(import qualified foo.bar as FB)"
+    );
 }
 
 /// To what purpose is the file included.
@@ -880,11 +915,7 @@ pub trait CompilerOpts {
     ) -> Result<(String, Vec<u8>), CompileErr>;
 
     /// Fully write a file to the filesystem.
-    fn write_new_file(
-        &self,
-        target_path: &str,
-        content: &[u8]
-    ) -> Result<(), CompileErr>;
+    fn write_new_file(&self, target_path: &str, content: &[u8]) -> Result<(), CompileErr>;
 
     /// Given a parsed SExp, compile it as an independent program based on the
     /// settings given here.  The result is bare generated code.
@@ -1142,21 +1173,17 @@ impl HelperForm {
             }
             HelperForm::Defnsref(defr) => {
                 let tail = match &defr.specification {
-                    ModuleImportSpec::Qualified(_q) => {
-                        defr.specification.to_sexp()
-                    }
-                    _ => {
-                        Rc::new(SExp::Cons(
-                            defr.loc.clone(),
-                            Rc::new(SExp::Atom(defr.nl.clone(), defr.rendered_name.clone())),
-                            defr.specification.to_sexp()
-                        ))
-                    }
+                    ModuleImportSpec::Qualified(_q) => defr.specification.to_sexp(),
+                    _ => Rc::new(SExp::Cons(
+                        defr.loc.clone(),
+                        Rc::new(SExp::Atom(defr.nl.clone(), defr.rendered_name.clone())),
+                        defr.specification.to_sexp(),
+                    )),
                 };
                 Rc::new(SExp::Cons(
                     defr.loc.clone(),
                     Rc::new(SExp::Atom(defr.loc.clone(), b"import".to_vec())),
-                    tail
+                    tail,
                 ))
             }
             HelperForm::Defconstant(defc) => match defc.kind {
@@ -1447,13 +1474,13 @@ pub struct CompileModuleComponent {
 #[derive(Debug, Clone, Serialize)]
 pub struct CompileModuleOutput {
     pub summary: Rc<SExp>,
-    pub components: Vec<CompileModuleComponent>
+    pub components: Vec<CompileModuleComponent>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub enum CompilerOutput {
     Program(SExp),
-    Module(CompileModuleOutput)
+    Module(CompileModuleOutput),
 }
 
 impl CompilerOutput {
@@ -1484,7 +1511,7 @@ pub enum Export {
 #[derive(Debug, Clone, Serialize)]
 pub enum FrontendOutput {
     CompileForm(CompileForm),
-    Module(CompileForm, Vec<Export>)
+    Module(CompileForm, Vec<Export>),
 }
 
 impl FrontendOutput {

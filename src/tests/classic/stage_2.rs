@@ -17,11 +17,11 @@ use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file, read_file};
 
-use crate::compiler::BasicCompileContext;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, PrimaryCodegen};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::BasicCompileContext;
 
 fn test_expand_macro(
     allocator: &mut Allocator,
@@ -398,11 +398,7 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
             format!("could not read {filename}"),
         ))
     }
-    fn write_new_file(
-        &self,
-        _target: &str,
-        _content: &[u8]
-    ) -> Result<(), CompileErr> {
+    fn write_new_file(&self, _target: &str, _content: &[u8]) -> Result<(), CompileErr> {
         panic!("should not be writing from tests depending on this opts");
     }
     fn compile_program(

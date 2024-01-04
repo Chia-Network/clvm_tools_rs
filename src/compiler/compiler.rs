@@ -11,13 +11,19 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, Stream};
 use crate::classic::clvm::sexp::sexp_as_bin;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::{convert_to_clvm_rs, convert_from_clvm_rs, sha256tree};
+use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
-use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, CompilerOutput, CompileModuleComponent, CompileModuleOutput, DefunData, Export, FrontendOutput, HelperForm, IncludeDesc, PrimaryCodegen, SyntheticType};
+use crate::compiler::comptypes::{
+    BodyForm, CompileErr, CompileForm, CompileModuleComponent, CompileModuleOutput, CompilerOpts,
+    CompilerOutput, DefunData, Export, FrontendOutput, HelperForm, IncludeDesc, PrimaryCodegen,
+    SyntheticType,
+};
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
-use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend, match_export_form};
+use crate::compiler::frontend::{
+    compile_bodyform, compile_helperform, frontend, match_export_form,
+};
 use crate::compiler::optimize::get_optimizer;
-use crate::compiler::preprocessor::{Preprocessor, detect_chialisp_module};
+use crate::compiler::preprocessor::{detect_chialisp_module, Preprocessor};
 use crate::compiler::prims;
 use crate::compiler::resolve::resolve_namespaces;
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
@@ -188,19 +194,25 @@ struct ModuleOutputEntry {
     func: Rc<SExp>,
 }
 
-fn break_down_module_output(loc: Srcloc, run_result: Rc<SExp>) -> Result<Vec<ModuleOutputEntry>, CompileErr> {
-    let list_data =
-        if let Some(lst) = run_result.proper_list() {
-            lst
-        } else {
-            return Err(CompileErr(
-                loc,
-                "output from intermediate module program should have been a proper list".to_string(),
-            ));
-        };
+fn break_down_module_output(
+    loc: Srcloc,
+    run_result: Rc<SExp>,
+) -> Result<Vec<ModuleOutputEntry>, CompileErr> {
+    let list_data = if let Some(lst) = run_result.proper_list() {
+        lst
+    } else {
+        return Err(CompileErr(
+            loc,
+            "output from intermediate module program should have been a proper list".to_string(),
+        ));
+    };
 
     if list_data.len() % 2 != 0 {
-        return Err(CompileErr(loc, "output length from intermediate module program should have been divisible by 2".to_string()));
+        return Err(CompileErr(
+            loc,
+            "output length from intermediate module program should have been divisible by 2"
+                .to_string(),
+        ));
     }
 
     let mut result = Vec::new();
@@ -209,8 +221,8 @@ fn break_down_module_output(loc: Srcloc, run_result: Rc<SExp>) -> Result<Vec<Mod
         if let SExp::Atom(_, name) = list_data[i].atomize() {
             result.push(ModuleOutputEntry {
                 name: name.clone(),
-                hash: sha256tree(Rc::new(list_data[i+1].clone())),
-                func: Rc::new(list_data[i+1].clone()),
+                hash: sha256tree(Rc::new(list_data[i + 1].clone())),
+                func: Rc::new(list_data[i + 1].clone()),
             });
         } else {
             return Err(CompileErr(loc.clone(), format!("output from intermediate module program wasn't in triplets of atom, atom, program {} {} {}", list_data[i], list_data[i+1], list_data[i+2])));
@@ -222,9 +234,11 @@ fn break_down_module_output(loc: Srcloc, run_result: Rc<SExp>) -> Result<Vec<Mod
 
 fn create_hex_output_path(loc: Srcloc, file_path: &str, func: &str) -> Result<String, CompileErr> {
     let mut dir = PathBuf::from(file_path);
-    let mut filename = PathBuf::from(file_path).with_extension("").file_name().map(|f| {
-        f.to_string_lossy().to_string()
-    }).unwrap_or_else(|| "program".to_string());
+    let mut filename = PathBuf::from(file_path)
+        .with_extension("")
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_else(|| "program".to_string());
     dir.pop();
     let func_dot_hex_list = &[func.to_string(), "hex".to_string()];
     let func_dot_hex = func_dot_hex_list.join(".");
@@ -233,7 +247,7 @@ fn create_hex_output_path(loc: Srcloc, file_path: &str, func: &str) -> Result<St
     dir.into_os_string().into_string().map_err(|_| {
         CompileErr(
             loc,
-            format!("could not make os file path for output {func}")
+            format!("could not make os file path for output {func}"),
         )
     })
 }
@@ -260,7 +274,7 @@ pub fn compile_module(
     if exports.is_empty() {
         return Err(CompileErr(
             loc.clone(),
-            "A chialisp module should have at least one export".to_string()
+            "A chialisp module should have at least one export".to_string(),
         ));
     }
 
@@ -273,10 +287,7 @@ pub fn compile_module(
             program = resolve_namespaces(opts.clone(), &program)?;
 
             let output = Rc::new(compile_from_compileform(context, opts.clone(), program)?);
-            let converted = convert_to_clvm_rs(
-                context.allocator(),
-                output.clone(),
-            )?;
+            let converted = convert_to_clvm_rs(context.allocator(), output.clone())?;
 
             let mut output_path = PathBuf::from(&opts.filename());
             output_path.set_extension("hex");
@@ -290,8 +301,8 @@ pub fn compile_module(
                     shortname: b"program".to_vec(),
                     filename: output_path_str,
                     content: output.clone(),
-                    hash: sha256tree(output)
-                }]
+                    hash: sha256tree(output),
+                }],
             });
         }
     }
@@ -330,16 +341,22 @@ pub fn compile_module(
     let mut prog_output = SExp::Nil(loc.clone());
 
     for fun in exports.iter() {
-        let fun_name =
-            if let Export::Function(name) = fun {
-                name.clone()
-            } else {
-                return Err(CompileErr(loc.clone(), "got program, wanted fun".to_string()));
-            };
+        let fun_name = if let Export::Function(name) = fun {
+            name.clone()
+        } else {
+            return Err(CompileErr(
+                loc.clone(),
+                "got program, wanted fun".to_string(),
+            ));
+        };
 
-        let mut found_helper: Vec<Option<HelperForm>> = program.helpers.iter().filter(|f| {
-            f.name() == &fun_name && matches!(f, HelperForm::Defun(_, _))
-        }).cloned().map(Some).collect();
+        let mut found_helper: Vec<Option<HelperForm>> = program
+            .helpers
+            .iter()
+            .filter(|f| f.name() == &fun_name && matches!(f, HelperForm::Defun(_, _)))
+            .cloned()
+            .map(Some)
+            .collect();
 
         if found_helper.is_empty() {
             found_helper.push(None);
@@ -353,42 +370,55 @@ pub fn compile_module(
                 loc.clone(),
                 vec![
                     Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), b"c".to_vec()))),
-                    Rc::new(BodyForm::Quoted(SExp::QuotedString(loc.clone(), b'"', fun_name.clone()))),
+                    Rc::new(BodyForm::Quoted(SExp::QuotedString(
+                        loc.clone(),
+                        b'"',
+                        fun_name.clone(),
+                    ))),
                     Rc::new(BodyForm::Call(
                         loc.clone(),
                         vec![
                             Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), b"c".to_vec()))),
                             Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), fun_name.clone()))),
-                            function_list
+                            function_list,
                         ],
-                        None
-                    ))
+                        None,
+                    )),
                 ],
-                None
+                None,
             ));
 
-            program.helpers.push(HelperForm::Defun(false, DefunData {
-                loc: dd.loc.clone(),
-                kw: None,
-                nl: dd.nl.clone(),
-                name: new_name,
-                args: Rc::new(SExp::Nil(dd.loc.clone())),
-                orig_args: Rc::new(SExp::Nil(dd.loc.clone())),
-                body: Rc::new(BodyForm::Call(
-                    dd.loc.clone(),
-                    vec![
-                        Rc::new(BodyForm::Value(SExp::Atom(dd.loc.clone(), b"__chia__sha256tree".to_vec()))),
-                        Rc::new(BodyForm::Value(SExp::Atom(dd.loc.clone(), fun_name.clone()))),
-                    ],
-                    None
-                )),
-                synthetic: Some(SyntheticType::WantNonInline),
-                ty: None,
-            }));
+            program.helpers.push(HelperForm::Defun(
+                false,
+                DefunData {
+                    loc: dd.loc.clone(),
+                    kw: None,
+                    nl: dd.nl.clone(),
+                    name: new_name,
+                    args: Rc::new(SExp::Nil(dd.loc.clone())),
+                    orig_args: Rc::new(SExp::Nil(dd.loc.clone())),
+                    body: Rc::new(BodyForm::Call(
+                        dd.loc.clone(),
+                        vec![
+                            Rc::new(BodyForm::Value(SExp::Atom(
+                                dd.loc.clone(),
+                                b"__chia__sha256tree".to_vec(),
+                            ))),
+                            Rc::new(BodyForm::Value(SExp::Atom(
+                                dd.loc.clone(),
+                                fun_name.clone(),
+                            ))),
+                        ],
+                        None,
+                    )),
+                    synthetic: Some(SyntheticType::WantNonInline),
+                    ty: None,
+                },
+            ));
         } else {
             return Err(CompileErr(
                 loc.clone(),
-                format!("exported function {} not found", decode_string(&fun_name))
+                format!("exported function {} not found", decode_string(&fun_name)),
             ));
         }
     }
@@ -400,17 +430,15 @@ pub fn compile_module(
     let result_clvm = convert_to_clvm_rs(context.allocator(), compiled_result)?;
     let nil = context.allocator().null();
     let runner = context.runner();
-    let run_result_clvm = runner.run_program(
-        context.allocator(),
-        result_clvm,
-        nil,
-        None
-    ).map_err(|_| CompileErr(loc.clone(), "failed to run intermediate module program".to_string()))?;
-    let run_result = convert_from_clvm_rs(
-        context.allocator(),
-        loc.clone(),
-        run_result_clvm.1,
-    )?;
+    let run_result_clvm = runner
+        .run_program(context.allocator(), result_clvm, nil, None)
+        .map_err(|_| {
+            CompileErr(
+                loc.clone(),
+                "failed to run intermediate module program".to_string(),
+            )
+        })?;
+    let run_result = convert_from_clvm_rs(context.allocator(), loc.clone(), run_result_clvm.1)?;
 
     // Components to use for the CompileModuleOutput, which downstream can be
     // collected for namespacing.
@@ -423,31 +451,29 @@ pub fn compile_module(
             Rc::new(SExp::Cons(
                 loc.clone(),
                 Rc::new(SExp::Atom(loc.clone(), m.name.clone())),
-                Rc::new(SExp::QuotedString(loc.clone(), b'x', m.hash.clone()))
+                Rc::new(SExp::QuotedString(loc.clone(), b'x', m.hash.clone())),
             )),
-            Rc::new(prog_output)
+            Rc::new(prog_output),
         );
 
         let mut stream = Stream::new(None);
-        let converted_func = convert_to_clvm_rs(
-            context.allocator(),
-            m.func.clone()
-        )?;
+        let converted_func = convert_to_clvm_rs(context.allocator(), m.func.clone())?;
         stream.write(sexp_as_bin(context.allocator(), converted_func));
-        let output_path = create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(&m.name))?;
+        let output_path =
+            create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(&m.name))?;
         opts.write_new_file(&output_path, stream.get_value().hex().as_bytes())?;
 
         components.push(CompileModuleComponent {
             shortname: m.name.clone(),
             filename: output_path,
             content: m.func.clone(),
-            hash: m.hash
+            hash: m.hash,
         });
     }
 
     Ok(CompileModuleOutput {
         summary: Rc::new(prog_output),
-        components
+        components,
     })
 }
 
@@ -459,9 +485,9 @@ pub fn compile_pre_forms(
     let p0 = frontend(opts.clone(), pre_forms)?;
 
     match p0 {
-        FrontendOutput::CompileForm(p0) => {
-            Ok(CompilerOutput::Program(compile_from_compileform(context, opts, p0)?))
-        }
+        FrontendOutput::CompileForm(p0) => Ok(CompilerOutput::Program(compile_from_compileform(
+            context, opts, p0,
+        )?)),
         FrontendOutput::Module(cf, exports) => {
             // cl23 always reflects optimization.
             let dialect = opts.dialect();
@@ -471,7 +497,9 @@ pub fn compile_pre_forms(
                 opts
             };
 
-            Ok(CompilerOutput::Module(compile_module(context, opts, cf, &exports)?))
+            Ok(CompilerOutput::Module(compile_module(
+                context, opts, cf, &exports,
+            )?))
         }
     }
 }
@@ -627,15 +655,15 @@ impl CompilerOpts for DefaultCompilerOpts {
         ))
     }
 
-    fn write_new_file(
-        &self,
-        target: &str,
-        content: &[u8]
-    ) -> Result<(), CompileErr> {
+    fn write_new_file(&self, target: &str, content: &[u8]) -> Result<(), CompileErr> {
         fs::write(target, content).map_err(|_| {
             CompileErr(
                 Srcloc::start(&self.filename()),
-                format!("could not write output file {} for {}", target, self.filename())
+                format!(
+                    "could not write output file {} for {}",
+                    target,
+                    self.filename()
+                ),
             )
         })?;
         Ok(())

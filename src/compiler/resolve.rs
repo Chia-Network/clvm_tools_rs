@@ -5,8 +5,12 @@ use std::rc::Rc;
 
 use crate::compiler::codegen::toposort_assign_bindings;
 use crate::compiler::compiler::is_at_capture;
-use crate::compiler::comptypes::{Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData, DefmacData, DefunData, DeftypeData, HelperForm, ImportLongName, LambdaData, LetData, LetFormKind, LongNameTranslation, ModuleImportSpec, NamespaceData, map_m};
-use crate::compiler::frontend::{HelperFormResult, generate_type_helpers};
+use crate::compiler::comptypes::{
+    map_m, Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData,
+    DefmacData, DeftypeData, DefunData, HelperForm, ImportLongName, LambdaData, LetData,
+    LetFormKind, LongNameTranslation, ModuleImportSpec, NamespaceData,
+};
+use crate::compiler::frontend::{generate_type_helpers, HelperFormResult};
 use crate::compiler::sexp::{decode_string, SExp};
 
 fn capture_scope(in_scope: &mut HashSet<Vec<u8>>, args: Rc<SExp>) {
@@ -23,25 +27,25 @@ fn capture_scope(in_scope: &mut HashSet<Vec<u8>>, args: Rc<SExp>) {
         SExp::Atom(_, a) => {
             in_scope.insert(a.clone());
         }
-        _ => { }
+        _ => {}
     }
 }
 
 pub struct FindNamespaceLookingAtHelpers<'a> {
     hlist: &'a [HelperForm],
     namespace: Option<&'a ImportLongName>,
-    offset: usize
+    offset: usize,
 }
 
 pub struct TourNamespaces<'a> {
     helpers: &'a [HelperForm],
-    look_stack: Vec<FindNamespaceLookingAtHelpers<'a>>
+    look_stack: Vec<FindNamespaceLookingAtHelpers<'a>>,
 }
 
 pub struct FoundHelper<'a> {
     pub helpers: &'a [HelperForm],
     pub namespace: Option<&'a ImportLongName>,
-    pub helper: &'a HelperForm
+    pub helper: &'a HelperForm,
 }
 
 impl<'a> Iterator for TourNamespaces<'a> {
@@ -53,7 +57,7 @@ impl<'a> Iterator for TourNamespaces<'a> {
                 return None;
             }
 
-            let ls_at = self.look_stack.len()-1;
+            let ls_at = self.look_stack.len() - 1;
             let ls_len = self.look_stack[ls_at].hlist.len();
 
             if self.look_stack[ls_at].offset >= ls_len {
@@ -77,41 +81,38 @@ impl<'a> Iterator for TourNamespaces<'a> {
             return Some(FoundHelper {
                 helpers: self.helpers,
                 namespace: self.look_stack[ls_at].namespace.clone(),
-                helper: current
+                helper: current,
             });
         }
     }
 }
 
-fn namespace_helper(
-    name: &ImportLongName,
-    value: &HelperForm
-) -> HelperFormResult {
+fn namespace_helper(name: &ImportLongName, value: &HelperForm) -> HelperFormResult {
     match value {
-        HelperForm::Defun(inline,dd) => {
-            HelperFormResult::new(&[
-                HelperForm::Defun(*inline, DefunData {
+        HelperForm::Defun(inline, dd) => HelperFormResult::new(
+            &[HelperForm::Defun(
+                *inline,
+                DefunData {
                     name: name.as_u8_vec(LongNameTranslation::Namespace),
-                    .. dd.clone()
-                })
-            ], None)
-        }
-        HelperForm::Defconstant(dc) => {
-            HelperFormResult::new(&[
-                HelperForm::Defconstant(DefconstData {
-                    name: name.as_u8_vec(LongNameTranslation::Namespace),
-                    .. dc.clone()
-                })
-            ], None)
-        }
-        HelperForm::Defmacro(dm) => {
-            HelperFormResult::new(&[
-                HelperForm::Defmacro(DefmacData {
-                    name: name.as_u8_vec(LongNameTranslation::Namespace),
-                    .. dm.clone()
-                })
-            ], None)
-        }
+                    ..dd.clone()
+                },
+            )],
+            None,
+        ),
+        HelperForm::Defconstant(dc) => HelperFormResult::new(
+            &[HelperForm::Defconstant(DefconstData {
+                name: name.as_u8_vec(LongNameTranslation::Namespace),
+                ..dc.clone()
+            })],
+            None,
+        ),
+        HelperForm::Defmacro(dm) => HelperFormResult::new(
+            &[HelperForm::Defmacro(DefmacData {
+                name: name.as_u8_vec(LongNameTranslation::Namespace),
+                ..dm.clone()
+            })],
+            None,
+        ),
         HelperForm::Deftype(ty) => {
             let new_helpers = generate_type_helpers(&ty.parsed);
             let mut result_helpers = Vec::new();
@@ -127,20 +128,18 @@ fn namespace_helper(
             }
             HelperFormResult::new(&result_helpers, None)
         }
-        _ => HelperFormResult::new(&[value.clone()], None)
+        _ => HelperFormResult::new(&[value.clone()], None),
     }
 }
 
-pub fn tour_helpers<'a>(
-    helpers: &'a [HelperForm],
-) -> TourNamespaces<'a> {
+pub fn tour_helpers<'a>(helpers: &'a [HelperForm]) -> TourNamespaces<'a> {
     TourNamespaces {
         helpers,
         look_stack: vec![FindNamespaceLookingAtHelpers {
             hlist: &helpers,
             namespace: None,
             offset: 0,
-        }]
+        }],
     }
 }
 
@@ -149,7 +148,7 @@ pub fn find_helper_target<'a>(
     helpers: &'a [HelperForm],
     parent_ns: Option<&ImportLongName>,
     orig_name: &[u8],
-    name: &ImportLongName
+    name: &ImportLongName,
 ) -> Option<(ImportLongName, HelperForm)> {
     // XXX speed this up, remove iteration.
     // Decompose into parent and child.
@@ -157,9 +156,10 @@ pub fn find_helper_target<'a>(
 
     // Get a list namespace refs from the namespace identified by parent_ns.
     let tour_helpers: Vec<FoundHelper> = tour_helpers(&helpers).collect();
-    let home_ns: Vec<&FoundHelper> = tour_helpers.iter().filter(|found| {
-        found.namespace == parent_ns
-    }).collect();
+    let home_ns: Vec<&FoundHelper> = tour_helpers
+        .iter()
+        .filter(|found| found.namespace == parent_ns)
+        .collect();
 
     // check the matching namespace to the one specified to see if we can find the
     // target.
@@ -180,13 +180,12 @@ pub fn find_helper_target<'a>(
             }
         }
         if h.helper.name() == &child {
-            let combined =
-                if let Some(p) = parent_ns {
-                    p.with_child(&child)
-                } else {
-                    let (_, p) = ImportLongName::parse(&child);
-                    p
-                };
+            let combined = if let Some(p) = parent_ns {
+                p.with_child(&child)
+            } else {
+                let (_, p) = ImportLongName::parse(&child);
+                p
+            };
             return Some((combined, h.helper.clone()));
         }
     }
@@ -226,7 +225,7 @@ pub fn find_helper_target<'a>(
                             helpers,
                             Some(&ns_spec.longname),
                             orig_name,
-                            &target_name
+                            &target_name,
                         ) {
                             return Some(helper.clone());
                         }
@@ -282,7 +281,10 @@ pub fn find_helper_target<'a>(
 
 fn display_namespace(parent_ns: Option<&ImportLongName>) -> String {
     if let Some(p) = parent_ns {
-        format!("namespace {}", decode_string(&p.as_u8_vec(LongNameTranslation::Namespace)))
+        format!(
+            "namespace {}",
+            decode_string(&p.as_u8_vec(LongNameTranslation::Namespace))
+        )
     } else {
         "the root module".to_string()
     }
@@ -297,18 +299,16 @@ fn add_binding_names(bindings: &mut HashSet<Vec<u8>>, pattern: &BindingPattern) 
         BindingPattern::Name(n) => {
             bindings.insert(n.clone());
         }
-        BindingPattern::Complex(c) => {
-            match c.borrow() {
-                SExp::Cons(_, a, b) => {
-                    add_binding_names(bindings, &BindingPattern::Complex(a.clone()));
-                    add_binding_names(bindings, &BindingPattern::Complex(b.clone()));
-                }
-                SExp::Atom(_, a) => {
-                    bindings.insert(a.clone());
-                }
-                _ => { }
+        BindingPattern::Complex(c) => match c.borrow() {
+            SExp::Cons(_, a, b) => {
+                add_binding_names(bindings, &BindingPattern::Complex(a.clone()));
+                add_binding_names(bindings, &BindingPattern::Complex(b.clone()));
             }
-        }
+            SExp::Atom(_, a) => {
+                bindings.insert(a.clone());
+            }
+            _ => {}
+        },
     }
 }
 
@@ -318,23 +318,22 @@ fn resolve_namespaces_in_expr(
     program: &CompileForm,
     parent_ns: Option<&ImportLongName>,
     in_scope: &HashSet<Vec<u8>>,
-    expr: Rc<BodyForm>
+    expr: Rc<BodyForm>,
 ) -> Result<Rc<BodyForm>, CompileErr> {
     match expr.borrow() {
         BodyForm::Call(loc, args, tail) => {
-            let new_tail =
-                if let Some(t) = tail.as_ref() {
-                    Some(resolve_namespaces_in_expr(
-                        resolved_helpers,
-                        opts.clone(),
-                        program,
-                        parent_ns,
-                        in_scope,
-                        t.clone()
-                    )?)
-                } else {
-                    None
-                };
+            let new_tail = if let Some(t) = tail.as_ref() {
+                Some(resolve_namespaces_in_expr(
+                    resolved_helpers,
+                    opts.clone(),
+                    program,
+                    parent_ns,
+                    in_scope,
+                    t.clone(),
+                )?)
+            } else {
+                None
+            };
 
             Ok(Rc::new(BodyForm::Call(
                 loc.clone(),
@@ -346,12 +345,12 @@ fn resolve_namespaces_in_expr(
                             program,
                             parent_ns,
                             in_scope,
-                            e.clone()
+                            e.clone(),
                         )
                     },
-                    &args
+                    &args,
                 )?,
-                new_tail
+                new_tail,
             )))
         }
         BodyForm::Value(SExp::Atom(nl, name)) => {
@@ -379,23 +378,36 @@ fn resolve_namespaces_in_expr(
                 }
             }
 
-            let (target_full_name, target_helper) =
-                if let Some((target_full_name, target_helper)) = find_helper_target(
+            let (target_full_name, target_helper) = if let Some((target_full_name, target_helper)) =
+                find_helper_target(
                     opts.clone(),
                     &program.helpers,
                     parent_ns,
                     &name,
-                    &parsed_name
+                    &parsed_name,
                 ) {
-                    (target_full_name, target_helper)
-                } else if is_compiler_builtin(&name) {
-                    return Ok(expr.clone());
-                } else {
-                    return Err(CompileErr(expr.loc(), format!("could not find helper {} in {}", decode_string(&name), display_namespace(parent_ns.clone()))));
-                };
+                (target_full_name, target_helper)
+            } else if is_compiler_builtin(&name) {
+                return Ok(expr.clone());
+            } else {
+                return Err(CompileErr(
+                    expr.loc(),
+                    format!(
+                        "could not find helper {} in {}",
+                        decode_string(&name),
+                        display_namespace(parent_ns.clone())
+                    ),
+                ));
+            };
 
-            resolved_helpers.insert(target_full_name.clone(), HelperFormResult::new(&[target_helper.clone()], None));
-            Ok(Rc::new(BodyForm::Value(SExp::Atom(nl.clone(), target_full_name.as_u8_vec(LongNameTranslation::Namespace)))))
+            resolved_helpers.insert(
+                target_full_name.clone(),
+                HelperFormResult::new(&[target_helper.clone()], None),
+            );
+            Ok(Rc::new(BodyForm::Value(SExp::Atom(
+                nl.clone(),
+                target_full_name.as_u8_vec(LongNameTranslation::Namespace),
+            ))))
         }
         BodyForm::Value(_) => Ok(expr.clone()),
         BodyForm::Quoted(_) => Ok(expr.clone()),
@@ -411,25 +423,28 @@ fn resolve_namespaces_in_expr(
                         program,
                         parent_ns,
                         &new_scope,
-                        b.body.clone()
+                        b.body.clone(),
                     )?,
-                    .. b_borrowed.clone()
+                    ..b_borrowed.clone()
                 };
                 new_bindings.push(Rc::new(new_binding));
                 add_binding_names(&mut new_scope, &b.pattern);
             }
-            Ok(Rc::new(BodyForm::Let(LetFormKind::Sequential, Box::new(LetData {
-                bindings: new_bindings,
-                body: resolve_namespaces_in_expr(
-                    resolved_helpers,
-                    opts.clone(),
-                    program,
-                    parent_ns,
-                    &new_scope,
-                    ld.body.clone()
-                )?,
-                .. *ld.clone()
-            }))))
+            Ok(Rc::new(BodyForm::Let(
+                LetFormKind::Sequential,
+                Box::new(LetData {
+                    bindings: new_bindings,
+                    body: resolve_namespaces_in_expr(
+                        resolved_helpers,
+                        opts.clone(),
+                        program,
+                        parent_ns,
+                        &new_scope,
+                        ld.body.clone(),
+                    )?,
+                    ..*ld.clone()
+                }),
+            )))
         }
         BodyForm::Let(LetFormKind::Parallel, ld) => {
             let mut new_scope = in_scope.clone();
@@ -443,25 +458,28 @@ fn resolve_namespaces_in_expr(
                         program,
                         parent_ns,
                         in_scope,
-                        b.body.clone()
+                        b.body.clone(),
                     )?,
-                    .. b_borrowed.clone()
+                    ..b_borrowed.clone()
                 };
                 new_bindings.push(Rc::new(new_binding));
                 add_binding_names(&mut new_scope, &b.pattern);
             }
-            Ok(Rc::new(BodyForm::Let(LetFormKind::Sequential, Box::new(LetData {
-                bindings: new_bindings,
-                body: resolve_namespaces_in_expr(
-                    resolved_helpers,
-                    opts.clone(),
-                    program,
-                    parent_ns,
-                    &new_scope,
-                    ld.body.clone()
-                )?,
-                .. *ld.clone()
-            }))))
+            Ok(Rc::new(BodyForm::Let(
+                LetFormKind::Sequential,
+                Box::new(LetData {
+                    bindings: new_bindings,
+                    body: resolve_namespaces_in_expr(
+                        resolved_helpers,
+                        opts.clone(),
+                        program,
+                        parent_ns,
+                        &new_scope,
+                        ld.body.clone(),
+                    )?,
+                    ..*ld.clone()
+                }),
+            )))
         }
         BodyForm::Let(LetFormKind::Assign, ld) => {
             let mut new_scope = in_scope.clone();
@@ -476,25 +494,28 @@ fn resolve_namespaces_in_expr(
                         program,
                         parent_ns,
                         &new_scope,
-                        b_borrowed.body.clone()
+                        b_borrowed.body.clone(),
                     )?,
-                    .. b_borrowed.clone()
+                    ..b_borrowed.clone()
                 };
                 new_bindings.push(Rc::new(new_binding));
                 add_binding_names(&mut new_scope, &b_borrowed.pattern);
             }
-            Ok(Rc::new(BodyForm::Let(LetFormKind::Assign, Box::new(LetData {
-                bindings: new_bindings,
-                body: resolve_namespaces_in_expr(
-                    resolved_helpers,
-                    opts.clone(),
-                    program,
-                    parent_ns,
-                    &new_scope,
-                    ld.body.clone()
-                )?,
-                .. *ld.clone()
-            }))))
+            Ok(Rc::new(BodyForm::Let(
+                LetFormKind::Assign,
+                Box::new(LetData {
+                    bindings: new_bindings,
+                    body: resolve_namespaces_in_expr(
+                        resolved_helpers,
+                        opts.clone(),
+                        program,
+                        parent_ns,
+                        &new_scope,
+                        ld.body.clone(),
+                    )?,
+                    ..*ld.clone()
+                }),
+            )))
         }
         BodyForm::Mod(_, _) => Ok(expr.clone()),
         BodyForm::Lambda(ld) => {
@@ -504,7 +525,7 @@ fn resolve_namespaces_in_expr(
                 program,
                 parent_ns,
                 in_scope,
-                ld.captures.clone()
+                ld.captures.clone(),
             )?;
             let mut scope_inside_lambda = in_scope.clone();
             capture_scope(&mut scope_inside_lambda, ld.capture_args.clone());
@@ -515,12 +536,12 @@ fn resolve_namespaces_in_expr(
                 program,
                 parent_ns,
                 &scope_inside_lambda,
-                ld.body.clone()
+                ld.body.clone(),
             )?;
             Ok(Rc::new(BodyForm::Lambda(Box::new(LambdaData {
                 captures: new_captures,
                 body: new_body,
-                .. *ld.clone()
+                ..*ld.clone()
             }))))
         }
     }
@@ -535,12 +556,11 @@ fn resolve_namespaces_in_helper(
 ) -> Result<HelperFormResult, CompileErr> {
     match helper {
         HelperForm::Defnamespace(ns) => {
-            let combined_ns =
-                if let Some(p) = parent_ns {
-                    p.combine(&ns.longname)
-                } else {
-                    ns.longname.clone()
-                };
+            let combined_ns = if let Some(p) = parent_ns {
+                p.combine(&ns.longname)
+            } else {
+                ns.longname.clone()
+            };
 
             let mut result_helpers = Vec::new();
 
@@ -550,33 +570,37 @@ fn resolve_namespaces_in_helper(
                     opts.clone(),
                     program,
                     Some(&combined_ns),
-                    h
+                    h,
                 )?;
                 result_helpers.extend(newly_created.new_helpers);
             }
 
-            Ok(HelperFormResult::new(&[
-                HelperForm::Defnamespace(NamespaceData {
+            Ok(HelperFormResult::new(
+                &[HelperForm::Defnamespace(NamespaceData {
                     helpers: result_helpers,
-                    .. ns.clone()
-                })
-            ], None))
+                    ..ns.clone()
+                })],
+                None,
+            ))
         }
         HelperForm::Defnsref(_) => Ok(HelperFormResult::new(&[helper.clone()], None)),
         HelperForm::Defun(inline, dd) => {
             let mut in_scope = HashSet::new();
             capture_scope(&mut in_scope, dd.args.clone());
-            let new_defun = HelperForm::Defun(*inline, DefunData {
-                body: resolve_namespaces_in_expr(
-                    resolved_helpers,
-                    opts.clone(),
-                    program,
-                    parent_ns.clone(),
-                    &in_scope,
-                    dd.body.clone()
-                )?,
-                .. dd.clone()
-            });
+            let new_defun = HelperForm::Defun(
+                *inline,
+                DefunData {
+                    body: resolve_namespaces_in_expr(
+                        resolved_helpers,
+                        opts.clone(),
+                        program,
+                        parent_ns.clone(),
+                        &in_scope,
+                        dd.body.clone(),
+                    )?,
+                    ..dd.clone()
+                },
+            );
             Ok(HelperFormResult::new(&[new_defun], None))
         }
         HelperForm::Defconstant(dc) => {
@@ -588,9 +612,9 @@ fn resolve_namespaces_in_helper(
                     program,
                     parent_ns.clone(),
                     &in_scope,
-                    dc.body.clone()
+                    dc.body.clone(),
                 )?,
-                .. dc.clone()
+                ..dc.clone()
             });
             Ok(HelperFormResult::new(&[new_defconst], None))
         }
@@ -603,21 +627,24 @@ fn resolve_namespaces_in_helper(
                     opts.clone(),
                     program,
                     parent_ns.clone(),
-                    h
+                    h,
                 )?;
                 result_helpers.extend(results.new_helpers);
             }
             Ok(HelperFormResult::new(&result_helpers, None))
         }
         HelperForm::Defmacro(_) => {
-            return Err(CompileErr(helper.loc(), "Classic macros are deprecated in module style chialisp".to_string()));
+            return Err(CompileErr(
+                helper.loc(),
+                "Classic macros are deprecated in module style chialisp".to_string(),
+            ));
         }
     }
 }
 
 pub fn resolve_namespaces(
     opts: Rc<dyn CompilerOpts>,
-    program: &CompileForm
+    program: &CompileForm,
 ) -> Result<CompileForm, CompileErr> {
     let mut resolved_helpers: BTreeMap<ImportLongName, HelperFormResult> = BTreeMap::new();
     let mut new_resolved_helpers: BTreeMap<ImportLongName, HelperFormResult> = BTreeMap::new();
@@ -632,14 +659,15 @@ pub fn resolve_namespaces(
         program,
         None,
         &program_scope,
-        program.exp.clone()
+        program.exp.clone(),
     )?;
 
     // Since we're resolving names now ahead of compilation, take this opportunity
     // to do it definitely by visiting every reachable helper from the main
     // expression.
     while !new_resolved_helpers.is_empty() {
-        let mut round_resolved_helpers: BTreeMap<ImportLongName, HelperFormResult> = BTreeMap::new();
+        let mut round_resolved_helpers: BTreeMap<ImportLongName, HelperFormResult> =
+            BTreeMap::new();
         for (name, helpers) in new_resolved_helpers.iter() {
             if resolved_helpers.contains_key(name) {
                 continue;
@@ -672,7 +700,7 @@ pub fn resolve_namespaces(
                         opts.clone(),
                         program,
                         parent.as_ref(),
-                        h
+                        h,
                     )?;
 
                     result_helpers.extend(results.new_helpers.clone());
@@ -694,6 +722,6 @@ pub fn resolve_namespaces(
     Ok(CompileForm {
         helpers: all_helpers,
         exp: new_expr.clone(),
-        .. program.clone()
+        ..program.clone()
     })
 }

@@ -133,7 +133,11 @@ impl Repl {
             )),
         );
         let start_program_fe = frontend(opts.clone(), &[starter_empty_program]).unwrap();
-        let evaluator = Evaluator::new(opts.clone(), runner.clone(), start_program_fe.compileform().helpers.clone());
+        let evaluator = Evaluator::new(
+            opts.clone(),
+            runner.clone(),
+            start_program_fe.compileform().helpers.clone(),
+        );
 
         Repl {
             depth: 0,

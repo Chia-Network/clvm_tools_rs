@@ -658,7 +658,9 @@ pub fn cldb(args: &[String]) {
                 &mut includes,
             );
             if do_optimize {
-                unopt_res.and_then(|x| run_optimizer(&mut allocator, runner.clone(), Rc::new(x.to_sexp())))
+                unopt_res.and_then(|x| {
+                    run_optimizer(&mut allocator, runner.clone(), Rc::new(x.to_sexp()))
+                })
             } else {
                 unopt_res.map(|x| Rc::new(x.to_sexp()))
             }
@@ -931,7 +933,8 @@ fn perform_preprocessing(
     let (stepping_form_text, parsed) =
         parse_module_and_get_sigil(opts.clone(), input_file, program_text)?;
     let frontend = frontend(opts, &parsed)?;
-    let whole_mod = render_mod_with_sigil(input_file, &stepping_form_text, &frontend.compileform())?;
+    let whole_mod =
+        render_mod_with_sigil(input_file, &stepping_form_text, &frontend.compileform())?;
 
     stdout.write_str(&format!("{}", whole_mod));
     Ok(())
@@ -1429,8 +1432,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 .and_then(|pre_forms| {
                     let context = standard_type_context();
                     let compileform = frontend(opts.clone(), &pre_forms)?;
-                    let target_type =
-                        context.typecheck_chialisp_program(opts.clone(), &compileform.compileform())?;
+                    let target_type = context
+                        .typecheck_chialisp_program(opts.clone(), &compileform.compileform())?;
                     Ok(context.reify(&target_type, None))
                 })
             {

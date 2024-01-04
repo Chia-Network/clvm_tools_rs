@@ -15,10 +15,14 @@ use crate::compiler::clvm;
 use crate::compiler::clvm::{convert_from_clvm_rs, sha256tree, truthy};
 use crate::compiler::compiler::{compile_from_compileform, compile_module, compile_pre_forms};
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, CompilerOutput, ConstantKind, DefconstData, HelperForm, ImportLongName, IncludeDesc, IncludeProcessType, LongNameTranslation, ModuleImportSpec, NamespaceData, NamespaceRefData, QualifiedModuleInfo, TypeAnnoKind,
+    BodyForm, CompileErr, CompileForm, CompilerOpts, CompilerOutput, ConstantKind, DefconstData,
+    HelperForm, ImportLongName, IncludeDesc, IncludeProcessType, LongNameTranslation,
+    ModuleImportSpec, NamespaceData, NamespaceRefData, QualifiedModuleInfo, TypeAnnoKind,
 };
-use crate::compiler::dialect::{AcceptedDialect, detect_modern, KNOWN_DIALECTS};
-use crate::compiler::frontend::{augment_fun_type_with_args, compile_helperform, compile_nsref, frontend};
+use crate::compiler::dialect::{detect_modern, AcceptedDialect, KNOWN_DIALECTS};
+use crate::compiler::frontend::{
+    augment_fun_type_with_args, compile_helperform, compile_nsref, frontend,
+};
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::preprocessor::macros::PreprocessorExtension;
 use crate::compiler::rename::rename_args_helperform;
@@ -28,8 +32,8 @@ use crate::compiler::sexp::{
     decode_string, enlist, parse_sexp, Atom, First, NodeSel, SExp, SelectNode, ThisNode,
 };
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::types::ast::Polytype;
 use crate::compiler::typecheck::parse_type_sexp;
+use crate::compiler::types::ast::Polytype;
 use crate::compiler::CompileContextWrapper;
 use crate::util::ErrInto;
 
@@ -56,7 +60,7 @@ struct ImportNameMap {
 #[derive(Debug)]
 pub enum StoredMacro {
     Waiting(HelperForm),
-    Compiled(Rc<SExp>)
+    Compiled(Rc<SExp>),
 }
 
 pub struct Preprocessor {
@@ -187,7 +191,7 @@ fn import_name_to_module_name(
 
         return Err(CompileErr(
             loc,
-            "Relative module name requested from a module entry file".to_string()
+            "Relative module name requested from a module entry file".to_string(),
         ));
     }
 
@@ -202,7 +206,10 @@ fn make_namespace_container(
 ) -> Result<Rc<SExp>, CompileErr> {
     let mut result_vec = vec![
         Rc::new(SExp::Atom(loc.clone(), b"namespace".to_vec())),
-        Rc::new(SExp::Atom(nl.clone(), target.as_u8_vec(LongNameTranslation::Namespace)))
+        Rc::new(SExp::Atom(
+            nl.clone(),
+            target.as_u8_vec(LongNameTranslation::Namespace),
+        )),
     ];
     result_vec.extend(helpers);
     Ok(Rc::new(enlist(loc.clone(), &result_vec)))
@@ -221,14 +228,16 @@ fn make_namespace_ref(
         nl: nl.clone(),
         rendered_name: target.as_u8_vec(LongNameTranslation::Namespace),
         longname: target.clone(),
-        specification: spec.clone()
+        specification: spec.clone(),
     })
 }
 
-pub fn detect_chialisp_module(
-    pre_forms: &[Rc<SExp>],
-) -> Option<AcceptedDialect> {
-    let mut dialect = KNOWN_DIALECTS.get("*standard-cl-23*").unwrap().accepted.clone();
+pub fn detect_chialisp_module(pre_forms: &[Rc<SExp>]) -> Option<AcceptedDialect> {
+    let mut dialect = KNOWN_DIALECTS
+        .get("*standard-cl-23*")
+        .unwrap()
+        .accepted
+        .clone();
 
     if pre_forms.is_empty() {
         return None;
@@ -236,16 +245,12 @@ pub fn detect_chialisp_module(
 
     if pre_forms.len() > 1 {
         for p in pre_forms.iter() {
-            if let Ok(NodeSel::Cons(
-                kl,
-                NodeSel::Cons(
-                    (nl, name),
-                    _
-                )
-            )) = NodeSel::Cons(
+            if let Ok(NodeSel::Cons(kl, NodeSel::Cons((nl, name), _))) = NodeSel::Cons(
                 Atom::Here("include"),
-                NodeSel::Cons(Atom::Here(()), Atom::Here(""))
-            ).select_nodes(p.clone()) {
+                NodeSel::Cons(Atom::Here(()), Atom::Here("")),
+            )
+            .select_nodes(p.clone())
+            {
                 if let Some(use_dialect) = KNOWN_DIALECTS.get(&decode_string(&name)) {
                     return Some(use_dialect.accepted.clone());
                 }
@@ -284,7 +289,7 @@ pub enum ToplevelModParseResult {
 
 pub fn parse_toplevel_mod(
     opts: Rc<dyn CompilerOpts>,
-    pre_forms: &[Rc<SExp>]
+    pre_forms: &[Rc<SExp>],
 ) -> Result<ToplevelModParseResult, CompileErr> {
     if pre_forms.is_empty() {
         return Err(CompileErr(
@@ -379,26 +384,25 @@ impl Preprocessor {
     pub fn current_module_name(&self) -> Option<ImportLongName> {
         if self.namespace_stack.is_empty() {
             None
-        } else if let Some(name) = &self.namespace_stack[self.namespace_stack.len()-1].name {
+        } else if let Some(name) = &self.namespace_stack[self.namespace_stack.len() - 1].name {
             Some(name.clone())
         } else {
             None
         }
     }
 
-    fn make_namespace_helper(
-        &self,
-        loc: &Srcloc,
-        name: &ImportLongName,
-    ) -> HelperForm {
-        let helpers =
-            if self.opts.stdenv() {
-                vec![
-                    make_namespace_ref(&loc, &loc, &loc, &ImportLongName::parse(b"std.prelude").1, &ModuleImportSpec::Hiding(loc.clone(), vec![]))
-                ]
-            } else {
-                vec![]
-            };
+    fn make_namespace_helper(&self, loc: &Srcloc, name: &ImportLongName) -> HelperForm {
+        let helpers = if self.opts.stdenv() {
+            vec![make_namespace_ref(
+                &loc,
+                &loc,
+                &loc,
+                &ImportLongName::parse(b"std.prelude").1,
+                &ModuleImportSpec::Hiding(loc.clone(), vec![]),
+            )]
+        } else {
+            vec![]
+        };
 
         HelperForm::Defnamespace(NamespaceData {
             loc: loc.clone(),
@@ -416,7 +420,7 @@ impl Preprocessor {
     pub fn import_name_to_module_name(
         &self,
         loc: Srcloc,
-        name: &[u8]
+        name: &[u8],
     ) -> Result<ImportLongName, CompileErr> {
         let reference_name = self.current_module_name();
         import_name_to_module_name(loc, reference_name.as_ref(), name)
@@ -466,7 +470,7 @@ impl Preprocessor {
         includes: &mut Vec<IncludeDesc>,
         _import_name: &ImportLongName,
         filename: &str,
-        content: &[u8]
+        content: &[u8],
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
         let srcloc = Srcloc::start(filename);
         let mut allocator = Allocator::new();
@@ -479,10 +483,17 @@ impl Preprocessor {
                 (true, dialect, allocator.null())
             } else {
                 let classic_parse = assemble(&mut allocator, &program_text).map_err(|_| {
-                    CompileErr(srcloc.clone(), format!("Could not parse {filename} to determine dialect"))
+                    CompileErr(
+                        srcloc.clone(),
+                        format!("Could not parse {filename} to determine dialect"),
+                    )
                 })?;
 
-                (false, detect_modern(&mut allocator, classic_parse), classic_parse)
+                (
+                    false,
+                    detect_modern(&mut allocator, classic_parse),
+                    classic_parse,
+                )
             };
 
         let make_constant = |name: &[u8], s: SExp| {
@@ -495,7 +506,8 @@ impl Preprocessor {
                 tabled: true,
                 ty: None,
                 body: Rc::new(BodyForm::Quoted(s)),
-            }).to_sexp()
+            })
+            .to_sexp()
         };
 
         if !have_module {
@@ -512,16 +524,16 @@ impl Preprocessor {
                     &filename,
                     true,
                 )
-                    .map_err(|e| CompileErr(srcloc.clone(), format!("Subcompile failed: {}", e.1)))?;
-                let converted = convert_from_clvm_rs(
-                    &mut allocator,
-                    srcloc.clone(),
-                    newly_compiled
-                )?;
+                .map_err(|e| CompileErr(srcloc.clone(), format!("Subcompile failed: {}", e.1)))?;
+                let converted =
+                    convert_from_clvm_rs(&mut allocator, srcloc.clone(), newly_compiled)?;
                 let converted_borrowed: &SExp = converted.borrow();
                 return Ok(vec![
                     make_constant(b"program", converted_borrowed.clone()),
-                    make_constant(b"program_hash", SExp::QuotedString(srcloc.clone(), b'x', sha256tree(converted)))
+                    make_constant(
+                        b"program_hash",
+                        SExp::QuotedString(srcloc.clone(), b'x', sha256tree(converted)),
+                    ),
                 ]);
             }
         }
@@ -535,11 +547,7 @@ impl Preprocessor {
             includes,
         );
 
-        match compile_pre_forms(
-            &mut context_wrapper.context,
-            self.opts.clone(),
-            &pre_forms
-        )? {
+        match compile_pre_forms(&mut context_wrapper.context, self.opts.clone(), &pre_forms)? {
             CompilerOutput::Module(module_output) => {
                 let mut output = Vec::new();
                 for c in module_output.components.iter() {
@@ -547,14 +555,24 @@ impl Preprocessor {
                     output.push(make_constant(&c.shortname, borrowed_content.clone()));
                     let mut hash_name = c.shortname.clone();
                     hash_name.extend(b"_hash".to_vec());
-                    output.push(make_constant(&hash_name, SExp::QuotedString(srcloc.clone(), b'x', c.hash.clone())));
+                    output.push(make_constant(
+                        &hash_name,
+                        SExp::QuotedString(srcloc.clone(), b'x', c.hash.clone()),
+                    ));
                 }
                 return Ok(output);
             }
             CompilerOutput::Program(compile_output) => {
                 return Ok(vec![
                     make_constant(b"program", compile_output.clone()),
-                    make_constant(b"program_hash", SExp::QuotedString(srcloc.clone(), b'x', sha256tree(Rc::new(compile_output))))
+                    make_constant(
+                        b"program_hash",
+                        SExp::QuotedString(
+                            srcloc.clone(),
+                            b'x',
+                            sha256tree(Rc::new(compile_output)),
+                        ),
+                    ),
                 ]);
             }
         }
@@ -564,14 +582,17 @@ impl Preprocessor {
         &mut self,
         loc: Srcloc,
         includes: &mut Vec<IncludeDesc>,
-        import_name: &ImportLongName
+        import_name: &ImportLongName,
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
-        let filename_clsp = decode_string(&import_name.as_u8_vec(LongNameTranslation::Filename(".clsp".to_string())));
-        let filename_clinc = decode_string(&import_name.as_u8_vec(LongNameTranslation::Filename(".clinc".to_string())));
+        let filename_clsp = decode_string(
+            &import_name.as_u8_vec(LongNameTranslation::Filename(".clsp".to_string())),
+        );
+        let filename_clinc = decode_string(
+            &import_name.as_u8_vec(LongNameTranslation::Filename(".clinc".to_string())),
+        );
 
-        if let Ok((full_name, content)) = self
-            .opts
-            .read_new_file(self.opts.filename(), filename_clsp)
+        if let Ok((full_name, content)) =
+            self.opts.read_new_file(self.opts.filename(), filename_clsp)
         {
             return self.import_program(includes, import_name, &full_name, &content);
         }
@@ -586,7 +607,16 @@ impl Preprocessor {
         let mut out_forms = vec![];
 
         if self.opts.stdenv() {
-            out_forms.push(make_namespace_ref(&loc, &loc, &loc, &ImportLongName::parse(b"std.prelude").1, &ModuleImportSpec::Hiding(loc.clone(), vec![])).to_sexp());
+            out_forms.push(
+                make_namespace_ref(
+                    &loc,
+                    &loc,
+                    &loc,
+                    &ImportLongName::parse(b"std.prelude").1,
+                    &ModuleImportSpec::Hiding(loc.clone(), vec![]),
+                )
+                .to_sexp(),
+            );
         }
 
         self.namespace_stack.push(ImportNameMap {
@@ -611,7 +641,7 @@ impl Preprocessor {
         nl: Srcloc,
         includes: &mut Vec<IncludeDesc>,
         spec: &ModuleImportSpec,
-        import_name: &[u8]
+        import_name: &[u8],
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
         // The name of a module needs more processing.
         let full_import_name = self.import_name_to_module_name(loc.clone(), import_name)?;
@@ -631,7 +661,7 @@ impl Preprocessor {
         let imported_content = self.import_new_module(loc.clone(), includes, &full_import_name)?;
         let helper_forms: Vec<Rc<SExp>> = vec![
             make_namespace_container(&loc, &nl, &full_import_name, imported_content)?,
-            ns_helper.to_sexp()
+            ns_helper.to_sexp(),
         ];
 
         self.imported_modules.insert(full_import_name.clone());
@@ -663,44 +693,44 @@ impl Preprocessor {
             .opts
             .read_new_file(self.opts.filename(), fname.to_string())?;
 
-        let content =
-            if let IncludeProcessType::Bin = &kind {
-                Rc::new(SExp::Atom(loc.clone(), content))
-            } else if let IncludeProcessType::Hex = &kind {
-                hex_to_modern_sexp(
-                    &mut allocator,
-                    &HashMap::new(),
-                    loc.clone(),
-                    &decode_string(&content),
-                )
-                    .map_err(run_to_compile_err)?
-            } else if let IncludeProcessType::Compiled = &kind {
-                let decoded_content = decode_string(&content);
-                let mut symtab = HashMap::new();
-                let mut includes = Vec::new();
-                let newly_compiled = compile_clvm_text_maybe_opt(
-                    &mut allocator,
-                    self.subcompile_opts.optimize(),
-                    self.subcompile_opts.clone(),
-                    &mut symtab,
-                    &mut includes,
-                    &decoded_content,
-                    &full_name,
-                    true,
-                )
-                    .map_err(|e| CompileErr(loc.clone(), format!("Subcompile failed: {}", e.1)))?;
+        let content = if let IncludeProcessType::Bin = &kind {
+            Rc::new(SExp::Atom(loc.clone(), content))
+        } else if let IncludeProcessType::Hex = &kind {
+            hex_to_modern_sexp(
+                &mut allocator,
+                &HashMap::new(),
+                loc.clone(),
+                &decode_string(&content),
+            )
+            .map_err(run_to_compile_err)?
+        } else if let IncludeProcessType::Compiled = &kind {
+            let decoded_content = decode_string(&content);
+            let mut symtab = HashMap::new();
+            let mut includes = Vec::new();
+            let newly_compiled = compile_clvm_text_maybe_opt(
+                &mut allocator,
+                self.subcompile_opts.optimize(),
+                self.subcompile_opts.clone(),
+                &mut symtab,
+                &mut includes,
+                &decoded_content,
+                &full_name,
+                true,
+            )
+            .map_err(|e| CompileErr(loc.clone(), format!("Subcompile failed: {}", e.1)))?;
 
-                convert_from_clvm_rs(&mut allocator, loc.clone(), newly_compiled)
-                    .map_err(run_to_compile_err)?
-            } else { // IncludeProcessType::SExpression
-                let parsed = parse_sexp(Srcloc::start(&full_name), content.iter().copied())
-                    .map_err(|e| CompileErr(e.0, e.1))?;
-                if parsed.len() != 1 {
-                    return Err(CompileErr(loc, format!("More than one form in {fname}")));
-                }
+            convert_from_clvm_rs(&mut allocator, loc.clone(), newly_compiled)
+                .map_err(run_to_compile_err)?
+        } else {
+            // IncludeProcessType::SExpression
+            let parsed = parse_sexp(Srcloc::start(&full_name), content.iter().copied())
+                .map_err(|e| CompileErr(e.0, e.1))?;
+            if parsed.len() != 1 {
+                return Err(CompileErr(loc, format!("More than one form in {fname}")));
+            }
 
-                parsed[0].clone()
-            };
+            parsed[0].clone()
+        };
 
         Ok(vec![compose_defconst(loc, constant_name, content)])
     }
@@ -713,12 +743,15 @@ impl Preprocessor {
         desc: IncludeDesc,
     ) -> Result<(), CompileErr> {
         // Process an import
-        let name_string =
-            if let Some(IncludeProcessType::Module(_)) = kind {
-                decode_string(&self.import_name_to_module_name(desc.nl.clone(), &desc.name)?.as_u8_vec(LongNameTranslation::Filename(".clinc".to_string())))
-            } else {
-                decode_string(&desc.name)
-            };
+        let name_string = if let Some(IncludeProcessType::Module(_)) = kind {
+            decode_string(
+                &self
+                    .import_name_to_module_name(desc.nl.clone(), &desc.name)?
+                    .as_u8_vec(LongNameTranslation::Filename(".clinc".to_string())),
+            )
+        } else {
+            decode_string(&desc.name)
+        };
 
         if KNOWN_DIALECTS.contains_key(&name_string) {
             return Ok(());
@@ -755,7 +788,9 @@ impl Preprocessor {
             return None;
         }
 
-        self.namespace_stack[self.namespace_stack.len()-1].name.clone()
+        self.namespace_stack[self.namespace_stack.len() - 1]
+            .name
+            .clone()
     }
 
     fn add_helper(&mut self, h: HelperForm) {
@@ -777,60 +812,51 @@ impl Preprocessor {
     fn add_macro(&mut self, h: &HelperForm) {
         let current_module_name = self.current_module_name();
         let (_, helper_name) = ImportLongName::parse(h.name());
-        let full_name =
-            if let Some(module_name) = &current_module_name {
-                module_name.with_child(h.name())
-            } else {
-                helper_name
-            };
-        self.stored_macros.insert(full_name, StoredMacro::Waiting(h.clone()));
+        let full_name = if let Some(module_name) = &current_module_name {
+            module_name.with_child(h.name())
+        } else {
+            helper_name
+        };
+        self.stored_macros
+            .insert(full_name, StoredMacro::Waiting(h.clone()));
         self.add_helper(h.clone());
     }
 
-    fn find_macro(
-        &mut self,
-        loc: Srcloc,
-        name: &[u8],
-    ) -> Result<Option<Rc<SExp>>, CompileErr> {
+    fn find_macro(&mut self, loc: Srcloc, name: &[u8]) -> Result<Option<Rc<SExp>>, CompileErr> {
         let mut allocator = Allocator::new();
         let current_module_name = self.current_module_name();
         let (_, parsed_name) = ImportLongName::parse(name);
-        let (parent_name, clean_last_name_component) =
-            parsed_name.parent_and_name();
+        let (parent_name, clean_last_name_component) = parsed_name.parent_and_name();
 
         let last_name_component = make_defmac_name(&clean_last_name_component);
-        let updated_name =
-            if let Some(parent) = &parent_name {
-                parent.with_child(&last_name_component)
-            } else {
-                let (_, parsed_name) = ImportLongName::parse(&last_name_component);
-                parsed_name
-            };
+        let updated_name = if let Some(parent) = &parent_name {
+            parent.with_child(&last_name_component)
+        } else {
+            let (_, parsed_name) = ImportLongName::parse(&last_name_component);
+            parsed_name
+        };
 
         let current_module_name_ref = current_module_name.as_ref().map(|n| n);
-        let found_name =
-            if let Some((tname, _helper)) = find_helper_target(
-                self.opts.clone(),
-                &self.prototype_program,
-                current_module_name_ref,
-                &clean_last_name_component,
-                &updated_name
-            ) {
-                if let Some(mac) = self.stored_macros.get_mut(&tname) {
-                    match mac {
-                        StoredMacro::Compiled(use_macro) => {
-                            return Ok(Some(use_macro.clone()));
-                        }
-                        StoredMacro::Waiting(_h) => {
-                            tname
-                        }
+        let found_name = if let Some((tname, _helper)) = find_helper_target(
+            self.opts.clone(),
+            &self.prototype_program,
+            current_module_name_ref,
+            &clean_last_name_component,
+            &updated_name,
+        ) {
+            if let Some(mac) = self.stored_macros.get_mut(&tname) {
+                match mac {
+                    StoredMacro::Compiled(use_macro) => {
+                        return Ok(Some(use_macro.clone()));
                     }
-                } else {
-                    return Ok(None);
+                    StoredMacro::Waiting(_h) => tname,
                 }
             } else {
                 return Ok(None);
-            };
+            }
+        } else {
+            return Ok(None);
+        };
 
         // as inline defuns because they're closest to that semantically.
         let optimizer = get_optimizer(&loc, self.opts.clone())?;
@@ -859,7 +885,7 @@ impl Preprocessor {
                     kw: loc.clone(),
                     name: parent.clone(),
                     target: None,
-                })
+                }),
             }));
         }
 
@@ -870,23 +896,26 @@ impl Preprocessor {
             helpers: main_helpers,
             exp: Rc::new(BodyForm::Call(
                 loc.clone(),
-                vec![
-                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), found_name.as_u8_vec(LongNameTranslation::Namespace))))
-                ],
-                Some(Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), b"__chia__arg".to_vec()))))
+                vec![Rc::new(BodyForm::Value(SExp::Atom(
+                    loc.clone(),
+                    found_name.as_u8_vec(LongNameTranslation::Namespace),
+                )))],
+                Some(Rc::new(BodyForm::Value(SExp::Atom(
+                    loc.clone(),
+                    b"__chia__arg".to_vec(),
+                )))),
             )),
             ty: None,
         };
 
         let new_program = resolve_namespaces(self.opts.clone(), &starting_program)?;
 
-        let compiled_program = compile_from_compileform(
-            &mut wrapper.context,
-            self.opts.clone(),
-            new_program,
-        )?;
-        self.stored_macros
-            .insert(found_name.clone(), StoredMacro::Compiled(Rc::new(compiled_program.clone())));
+        let compiled_program =
+            compile_from_compileform(&mut wrapper.context, self.opts.clone(), new_program)?;
+        self.stored_macros.insert(
+            found_name.clone(),
+            StoredMacro::Compiled(Rc::new(compiled_program.clone())),
+        );
         return Ok(Some(Rc::new(compiled_program)));
     }
 
@@ -931,8 +960,8 @@ impl Preprocessor {
                         Some(ppext),
                         None,
                     )
-                        .map(nilize)
-                        .map_err(CompileErr::from)?;
+                    .map(nilize)
+                    .map_err(CompileErr::from)?;
 
                     if let Some(final_result) = self.expand_macros(res.clone(), true)? {
                         return Ok(Some(final_result));
@@ -1002,25 +1031,28 @@ impl Preprocessor {
         Ok(None)
     }
 
-    fn parse_import(&mut self, loc: Srcloc, form: &[SExp]) -> Result<Option<IncludeType>, CompileErr> {
+    fn parse_import(
+        &mut self,
+        loc: Srcloc,
+        form: &[SExp],
+    ) -> Result<Option<IncludeType>, CompileErr> {
         if form.is_empty() {
             return Ok(None);
         }
 
-        let import =
-            if let SExp::Atom(_, name) = &form[0] {
-                if name != b"import" {
-                    return Ok(None);
-                }
-
-                if let HelperForm::Defnsref(import) = compile_nsref(loc.clone(), form)? {
-                    import
-                } else {
-                    return Err(CompileErr(loc, "asked to parse import".to_string()));
-                }
-            } else {
+        let import = if let SExp::Atom(_, name) = &form[0] {
+            if name != b"import" {
                 return Ok(None);
-            };
+            }
+
+            if let HelperForm::Defnsref(import) = compile_nsref(loc.clone(), form)? {
+                import
+            } else {
+                return Err(CompileErr(loc, "asked to parse import".to_string()));
+            }
+        } else {
+            return Ok(None);
+        };
 
         let mod_kind = IncludeProcessType::Module(import.specification.clone());
         let fname = import.longname.as_u8_vec(LongNameTranslation::Namespace);
@@ -1033,7 +1065,7 @@ impl Preprocessor {
                 kind: Some(mod_kind.clone()),
             },
             mod_kind,
-            fname.clone()
+            fname.clone(),
         )))
     }
 
@@ -1151,7 +1183,7 @@ impl Preprocessor {
                     name: fname.clone(),
                 },
                 IncludeProcessType::Compiled,
-                name.clone()
+                name.clone(),
             )));
         }
 
@@ -1201,11 +1233,11 @@ impl Preprocessor {
         if let Some(IncludeType::Basic(i)) = &included {
             self.recurse_dependencies(includes, None, i.clone())?;
             self.process_include(includes, i)
-        } else if let Some(IncludeType::Processed(f, IncludeProcessType::Module(spec), name)) = &included {
+        } else if let Some(IncludeType::Processed(f, IncludeProcessType::Module(spec), name)) =
+            &included
+        {
             if self.namespace_stack.is_empty() {
-                self.namespace_stack.push(ImportNameMap {
-                    name: None,
-                });
+                self.namespace_stack.push(ImportNameMap { name: None });
             }
             self.import_module(body.loc(), f.kw.clone(), f.nl.clone(), includes, spec, name)
         } else if let Some(IncludeType::Processed(f, kind, name)) = &included {
@@ -1257,10 +1289,7 @@ impl Preprocessor {
             ));
         }
         let m = self.run(includes, cmod)?;
-        Ok(PreprocessResult {
-            modules: true,
-            .. m
-        })
+        Ok(PreprocessResult { modules: true, ..m })
     }
 }
 

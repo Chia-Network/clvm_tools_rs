@@ -9,12 +9,15 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
     list_to_cons, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType, CompileErr,
-    CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData, Export, FrontendOutput,
-    HelperForm, ImportLongName, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, NamespaceData, NamespaceRefData, StructDef,
-    StructMember, SyntheticType, TypeAnnoKind,
+    CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData,
+    Export, FrontendOutput, HelperForm, ImportLongName, IncludeDesc, LetData, LetFormInlineHint,
+    LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, NamespaceData, NamespaceRefData,
+    StructDef, StructMember, SyntheticType, TypeAnnoKind,
 };
 use crate::compiler::lambda::handle_lambda;
-use crate::compiler::preprocessor::{detect_chialisp_module, parse_toplevel_mod, preprocess, Preprocessor, ToplevelModParseResult};
+use crate::compiler::preprocessor::{
+    detect_chialisp_module, parse_toplevel_mod, preprocess, Preprocessor, ToplevelModParseResult,
+};
 use crate::compiler::rename::{rename_assign_bindings, rename_children_compileform};
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::{HasLoc, Srcloc};
@@ -947,10 +950,7 @@ pub fn augment_fun_type_with_args(
     }
 }
 
-fn create_constructor_code(
-    sdef: &StructDef,
-    proto: Rc<SExp>
-) -> BodyForm {
+fn create_constructor_code(sdef: &StructDef, proto: Rc<SExp>) -> BodyForm {
     match proto.atomize() {
         SExp::Atom(l, n) => BodyForm::Value(SExp::Atom(l, n)),
         SExp::Cons(l, a, b) => BodyForm::Call(
@@ -1149,7 +1149,7 @@ fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
 
 pub fn match_export_form(
     opts: Rc<dyn CompilerOpts>,
-    form: Rc<SExp>
+    form: Rc<SExp>,
 ) -> Result<Option<Export>, CompileErr> {
     if let Some(lst) = form.proper_list() {
         // Empty form isn't export
@@ -1172,7 +1172,7 @@ pub fn match_export_form(
             let expr = compile_bodyform(opts.clone(), Rc::new(lst[2].clone()))?;
             return Ok(Some(Export::MainProgram(
                 Rc::new(lst[1].clone()),
-                Rc::new(expr)
+                Rc::new(expr),
             )));
         }
 
@@ -1196,7 +1196,7 @@ impl HelperFormResult {
     pub fn new(helpers: &[HelperForm], ty: Option<ChiaType>) -> Self {
         HelperFormResult {
             chia_type: ty,
-            new_helpers: helpers.iter().cloned().collect()
+            new_helpers: helpers.iter().cloned().collect(),
         }
     }
 }
@@ -1204,18 +1204,20 @@ impl HelperFormResult {
 pub fn compile_namespace(
     opts: Rc<dyn CompilerOpts>,
     loc: Srcloc,
-    internal: &[SExp]
+    internal: &[SExp],
 ) -> Result<HelperForm, CompileErr> {
     if internal.len() < 2 {
         return Err(CompileErr(loc, "Namespace must have a name".to_string()));
     }
 
-    let (_, parsed) =
-        if let SExp::Atom(_, name) = &internal[1] {
-            ImportLongName::parse(&name)
-        } else {
-            return Err(CompileErr(internal[1].loc(), "Namespace name must be an atom".to_string()));
-        };
+    let (_, parsed) = if let SExp::Atom(_, name) = &internal[1] {
+        ImportLongName::parse(&name)
+    } else {
+        return Err(CompileErr(
+            internal[1].loc(),
+            "Namespace name must be an atom".to_string(),
+        ));
+    };
 
     let mut helpers = Vec::new();
     for sexp in internal.iter().skip(2) {
@@ -1224,7 +1226,10 @@ pub fn compile_namespace(
                 helpers.push(h.clone());
             }
         } else {
-            return Err(CompileErr(sexp.loc(), "Namespaces must contain only definitions".to_string()));
+            return Err(CompileErr(
+                sexp.loc(),
+                "Namespaces must contain only definitions".to_string(),
+            ));
         }
     }
 
@@ -1238,12 +1243,12 @@ pub fn compile_namespace(
     }))
 }
 
-pub fn compile_nsref(
-    loc: Srcloc,
-    internal: &[SExp]
-) -> Result<HelperForm, CompileErr> {
+pub fn compile_nsref(loc: Srcloc, internal: &[SExp]) -> Result<HelperForm, CompileErr> {
     if internal.len() < 2 {
-        return Err(CompileErr(loc.clone(), "import must import a module".to_string()));
+        return Err(CompileErr(
+            loc.clone(),
+            "import must import a module".to_string(),
+        ));
     }
 
     let import_spec = ModuleImportSpec::parse(loc.clone(), internal[0].loc(), internal, 1)?;
@@ -1254,16 +1259,18 @@ pub fn compile_nsref(
             nl: q.nl.clone(),
             rendered_name: q.name.as_u8_vec(LongNameTranslation::Namespace),
             longname: q.name.clone(),
-            specification: import_spec.clone()
+            specification: import_spec.clone(),
         }));
     }
 
-    let (_, parsed) =
-        if let SExp::Atom(_nl, name) = &internal[1] {
-            ImportLongName::parse(&name)
-        } else {
-            return Err(CompileErr(internal[1].loc(), "Import name must be an atom".to_string()));
-        };
+    let (_, parsed) = if let SExp::Atom(_nl, name) = &internal[1] {
+        ImportLongName::parse(&name)
+    } else {
+        return Err(CompileErr(
+            internal[1].loc(),
+            "Import name must be an atom".to_string(),
+        ));
+    };
 
     Ok(HelperForm::Defnsref(NamespaceRefData {
         loc,
@@ -1271,7 +1278,7 @@ pub fn compile_nsref(
         nl: import_spec.name_loc(),
         rendered_name: parsed.as_u8_vec(LongNameTranslation::Namespace),
         longname: parsed,
-        specification: import_spec
+        specification: import_spec,
     }))
 }
 
@@ -1412,7 +1419,7 @@ pub fn compile_helperform(
         } else {
             Err(CompileErr(
                 matched.body.loc(),
-                format!("unknown keyword in helper {body}")
+                format!("unknown keyword in helper {body}"),
             ))
         }
     } else {
@@ -1530,9 +1537,7 @@ fn frontend_start(
                 tm.parsed_type,
             )
         }
-        ToplevelModParseResult::Simple(t) => {
-            frontend_step_finish(opts.clone(), includes, &t)
-        }
+        ToplevelModParseResult::Simple(t) => frontend_step_finish(opts.clone(), includes, &t),
     }
 }
 
@@ -1592,13 +1597,13 @@ pub fn frontend(
         let mut found_main = false;
 
         let mut preprocessor = Preprocessor::new(opts.clone());
-        let output_forms = preprocessor.run_modules(
-            &mut includes,
-            pre_forms,
-        )?;
+        let output_forms = preprocessor.run_modules(&mut includes, pre_forms)?;
 
         if output_forms.forms.is_empty() {
-            return Err(CompileErr(Srcloc::start(&opts.filename()), "Module style chialisp programs require at least one export".to_string()));
+            return Err(CompileErr(
+                Srcloc::start(&opts.filename()),
+                "Module style chialisp programs require at least one export".to_string(),
+            ));
         }
 
         for form in output_forms.forms.iter() {
@@ -1621,7 +1626,9 @@ pub fn frontend(
             ty: None,
         };
 
-        let loc = output_forms.forms[0].loc().ext(&output_forms.forms[output_forms.forms.len()-1].loc());
+        let loc = output_forms.forms[0]
+            .loc()
+            .ext(&output_forms.forms[output_forms.forms.len() - 1].loc());
 
         return Ok(FrontendOutput::Module(program, exports));
     }

@@ -330,14 +330,13 @@ fn constant_fun_result(
 
                 let mut symbols = HashMap::new();
                 let mut includes = Vec::new();
-                let mut wrapper =
-                    CompileContextWrapper::new(
-                        allocator,
-                        runner.clone(),
-                        &mut symbols,
-                        optimizer,
-                        &mut includes,
-                    );
+                let mut wrapper = CompileContextWrapper::new(
+                    allocator,
+                    runner.clone(),
+                    &mut symbols,
+                    optimizer,
+                    &mut includes,
+                );
                 if let Ok(code) = codegen(&mut wrapper.context, opts.clone(), &to_compile) {
                     code
                 } else {

@@ -21,7 +21,15 @@ fn compile_string(content: &String) -> Result<String, CompileErr> {
     let runner = Rc::new(DefaultProgramRunner::new());
     let opts = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
 
-    compile_file(&mut allocator, runner, opts, &content, &mut HashMap::new(), &mut Vec::new()).map(|x| x.to_sexp().to_string())
+    compile_file(
+        &mut allocator,
+        runner,
+        opts,
+        &content,
+        &mut HashMap::new(),
+        &mut Vec::new(),
+    )
+    .map(|x| x.to_sexp().to_string())
 }
 
 fn run_string_maybe_opt(
@@ -265,8 +273,13 @@ fn run_test_4_opt() {
 }
 
 fn run_test_5_maybe_opt(opt: bool) {
-    let result =
-        run_string_maybe_opt(&"(mod (a) (list 1 2))".to_string(), &"()".to_string(), opt, false).unwrap();
+    let result = run_string_maybe_opt(
+        &"(mod (a) (list 1 2))".to_string(),
+        &"()".to_string(),
+        opt,
+        false,
+    )
+    .unwrap();
     assert_eq!(result.to_string(), "(1 2)".to_string());
 }
 

@@ -2,7 +2,7 @@ use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::preprocessor::preprocess;
-use crate::compiler::sexp::{SExp, parse_sexp};
+use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use std::rc::Rc;
 
@@ -528,10 +528,17 @@ fn test_preprocess_basic_list() {
             strict: true,
         });
     let mut includes = Vec::new();
-    let parsed_lst: Vec<Rc<SExp>> = parsed_forms[0].proper_list().expect("was a list").into_iter().map(Rc::new).collect();
-    let pp = preprocess(opts.clone(), &mut includes, &parsed_lst)
-        .expect("should preprocess");
-    assert_eq!(pp.forms[pp.forms.len() - 1].to_string(), "(4 1 (4 2 (4 3 ())))");
+    let parsed_lst: Vec<Rc<SExp>> = parsed_forms[0]
+        .proper_list()
+        .expect("was a list")
+        .into_iter()
+        .map(Rc::new)
+        .collect();
+    let pp = preprocess(opts.clone(), &mut includes, &parsed_lst).expect("should preprocess");
+    assert_eq!(
+        pp.forms[pp.forms.len() - 1].to_string(),
+        "(4 1 (4 2 (4 3 ())))"
+    );
 }
 
 #[test]
@@ -567,7 +574,12 @@ fn test_preprocessor_tours_includes_properly() {
             strict: true,
         });
     let parsed = parse_sexp(Srcloc::start(pname), prog.bytes()).expect("should parse");
-    let parsed_lst: Vec<Rc<SExp>> = parsed[0].proper_list().expect("was a list").into_iter().map(Rc::new).collect();
+    let parsed_lst: Vec<Rc<SExp>> = parsed[0]
+        .proper_list()
+        .expect("was a list")
+        .into_iter()
+        .map(Rc::new)
+        .collect();
     let mut includes = Vec::new();
     let res = preprocess(opts, &mut includes, &parsed_lst).expect("should preprocess");
     let expected_lines = &[

@@ -30,7 +30,11 @@ fn main() {
         .err_into()
         .and_then(|parsed_program| frontend(opts.clone(), &parsed_program))
         .and_then(|program| {
-            let e = Evaluator::new(opts.clone(), runner.clone(), program.compileform().helpers.clone());
+            let e = Evaluator::new(
+                opts.clone(),
+                runner.clone(),
+                program.compileform().helpers.clone(),
+            );
             e.shrink_bodyform(
                 &mut allocator,
                 program.compileform().args.clone(),

@@ -1,4 +1,4 @@
-use std::cell::{RefCell, Ref, RefMut};
+use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::fs;
 use std::rc::Rc;
@@ -10,32 +10,32 @@ use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm_tools::binutils::{assemble, disassemble};
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 
-use crate::compiler::BasicCompileContext;
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, PrimaryCodegen};
-use crate::compiler::dialect::{AcceptedDialect, detect_modern};
-use crate::compiler::sexp::{decode_string, enlist, SExp, parse_sexp};
+use crate::compiler::dialect::{detect_modern, AcceptedDialect};
+use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::BasicCompileContext;
 
 #[derive(Clone)]
 struct TestModuleCompilerOpts {
     opts: Rc<dyn CompilerOpts>,
-    written_files: Rc<RefCell<HashMap<String, Vec<u8>>>>
+    written_files: Rc<RefCell<HashMap<String, Vec<u8>>>>,
 }
 
 impl TestModuleCompilerOpts {
     pub fn new(opts: Rc<dyn CompilerOpts>) -> Self {
         TestModuleCompilerOpts {
             opts: opts,
-            written_files: Rc::new(RefCell::new(HashMap::new()))
+            written_files: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
     fn new_opts(&self, opts: Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts> {
         Rc::new(TestModuleCompilerOpts {
             opts,
-            written_files: self.written_files.clone()
+            written_files: self.written_files.clone(),
         })
     }
 
@@ -123,11 +123,7 @@ impl CompilerOpts for TestModuleCompilerOpts {
     ) -> Result<(String, Vec<u8>), CompileErr> {
         self.opts.read_new_file(inc_from, filename)
     }
-    fn write_new_file(
-        &self,
-        target: &str,
-        content: &[u8]
-    ) -> Result<(), CompileErr> {
+    fn write_new_file(&self, target: &str, content: &[u8]) -> Result<(), CompileErr> {
         let mut wf: RefMut<'_, HashMap<String, Vec<u8>>> = self.written_files.borrow_mut();
         wf.insert(target.to_string(), content.to_vec());
         Ok(())
@@ -144,13 +140,13 @@ impl CompilerOpts for TestModuleCompilerOpts {
 struct HexArgumentOutcome<'a> {
     hexfile: &'a str,
     argument: &'a str,
-    outcome: Option<&'a str>
+    outcome: Option<&'a str>,
 }
 
 fn test_compile_and_run_program_with_modules(
     filename: &str,
     content: &str,
-    runs: &[HexArgumentOutcome]
+    runs: &[HexArgumentOutcome],
 ) {
     let loc = Srcloc::start(filename);
     let parsed: Vec<Rc<SExp>> = parse_sexp(loc.clone(), content.bytes()).expect("should parse");
@@ -158,9 +154,9 @@ fn test_compile_and_run_program_with_modules(
     let mut allocator = Allocator::new();
     let nodeptr = convert_to_clvm_rs(&mut allocator, listed.clone()).expect("should convert");
     let dialect = detect_modern(&mut allocator, nodeptr);
-    let orig_opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(filename)).set_dialect(dialect).set_search_paths(&[
-        "resources/tests/module".to_string()
-    ]);
+    let orig_opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(filename))
+        .set_dialect(dialect)
+        .set_search_paths(&["resources/tests/module".to_string()]);
     let source_opts = TestModuleCompilerOpts::new(orig_opts);
     let opts: Rc<dyn CompilerOpts> = Rc::new(source_opts.clone());
     let mut symbol_table = HashMap::new();
@@ -173,20 +169,29 @@ fn test_compile_and_run_program_with_modules(
         &content,
         &mut symbol_table,
         &mut includes,
-    ).expect("should compile");
+    )
+    .expect("should compile");
 
     for run in runs.iter() {
-        let hex_data = source_opts.get_written_file(run.hexfile).expect("should have written hex data beside the source file");
-        let mut hex_stream = Stream::new(Some(Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(decode_string(&hex_data)))).expect("should be valid hex")));
-        let compiled_node = sexp_from_stream(&mut allocator, &mut hex_stream, Box::new(SimpleCreateCLVMObject {})).expect("hex data should decode as sexp").1;
+        let hex_data = source_opts
+            .get_written_file(run.hexfile)
+            .expect("should have written hex data beside the source file");
+        let mut hex_stream = Stream::new(Some(
+            Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(decode_string(
+                &hex_data,
+            ))))
+            .expect("should be valid hex"),
+        ));
+        let compiled_node = sexp_from_stream(
+            &mut allocator,
+            &mut hex_stream,
+            Box::new(SimpleCreateCLVMObject {}),
+        )
+        .expect("hex data should decode as sexp")
+        .1;
 
         let assembled_env = assemble(&mut allocator, run.argument).expect("should assemble");
-        let run_result = runner.run_program(
-            &mut allocator,
-            compiled_node,
-            assembled_env,
-            None
-        );
+        let run_result = runner.run_program(&mut allocator, compiled_node, assembled_env, None);
         if let Some(res) = &run.outcome {
             let have_outcome = run_result.expect("expected success").1;
             assert_eq!(&disassemble(&mut allocator, have_outcome, None), res);
@@ -209,14 +214,14 @@ fn test_simple_module_compliation() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(3)",
-                outcome: Some("3")
+                outcome: Some("3"),
             },
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(13)",
-                outcome: None
-            }
-        ]
+                outcome: None,
+            },
+        ],
     );
 }
 
@@ -233,14 +238,14 @@ fn test_simple_module_compliation_assign_rewrite() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(3)",
-                outcome: Some("3")
+                outcome: Some("3"),
             },
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(13)",
-                outcome: None
-            }
-        ]
+                outcome: None,
+            },
+        ],
     );
 }
 
@@ -257,14 +262,14 @@ fn test_simple_module_compliation_lambda_rewrite() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(3 13)",
-                outcome: Some("16")
+                outcome: Some("16"),
             },
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(13 3)",
-                outcome: None
-            }
-        ]
+                outcome: None,
+            },
+        ],
     );
 }
 
@@ -281,14 +286,14 @@ fn test_simple_module_compliation_lambda_rewrite_with_body() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(3 13)",
-                outcome: Some("(+ 39)")
+                outcome: Some("(+ 39)"),
             },
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(13 3)",
-                outcome: None
-            }
-        ]
+                outcome: None,
+            },
+        ],
     );
 }
 
@@ -358,13 +363,11 @@ fn test_simple_module_compliation_simple_type_1() {
     test_compile_and_run_program_with_modules(
         filename,
         &content,
-        &[
-            HexArgumentOutcome {
-                hexfile: hex_filename,
-                argument: "(13 17)",
-                outcome: Some("13")
-            }
-        ]
+        &[HexArgumentOutcome {
+            hexfile: hex_filename,
+            argument: "(13 17)",
+            outcome: Some("13"),
+        }],
     );
 }
 
@@ -377,12 +380,10 @@ fn test_simple_module_compliation_simple_type_2() {
     test_compile_and_run_program_with_modules(
         filename,
         &content,
-        &[
-            HexArgumentOutcome {
-                hexfile: hex_filename,
-                argument: "(13 17)",
-                outcome: Some("13")
-            }
-        ]
+        &[HexArgumentOutcome {
+            hexfile: hex_filename,
+            argument: "(13 17)",
+            outcome: Some("13"),
+        }],
     );
 }
