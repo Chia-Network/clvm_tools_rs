@@ -15,9 +15,9 @@ use crate::compiler::clvm;
 use crate::compiler::clvm::{convert_from_clvm_rs, sha256tree, truthy};
 use crate::compiler::compiler::{compile_from_compileform, compile_module, compile_pre_forms};
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, ConstantKind, DefconstData, HelperForm, ImportLongName, IncludeDesc, IncludeProcessType, LongNameTranslation, ModuleImportSpec, NamespaceData, NamespaceRefData, QualifiedModuleInfo, TypeAnnoKind,
+    BodyForm, CompileErr, CompileForm, CompilerOpts, CompilerOutput, ConstantKind, DefconstData, HelperForm, ImportLongName, IncludeDesc, IncludeProcessType, LongNameTranslation, ModuleImportSpec, NamespaceData, NamespaceRefData, QualifiedModuleInfo, TypeAnnoKind,
 };
-use crate::compiler::dialect::{detect_modern, KNOWN_DIALECTS};
+use crate::compiler::dialect::{AcceptedDialect, detect_modern, KNOWN_DIALECTS};
 use crate::compiler::frontend::{augment_fun_type_with_args, compile_helperform, compile_nsref, frontend};
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::preprocessor::macros::PreprocessorExtension;
@@ -25,7 +25,7 @@ use crate::compiler::rename::rename_args_helperform;
 use crate::compiler::resolve::{find_helper_target, resolve_namespaces};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{
-    decode_string, enlist, parse_sexp, Atom, NodeSel, SExp, SelectNode, ThisNode,
+    decode_string, enlist, parse_sexp, Atom, First, NodeSel, SExp, SelectNode, ThisNode,
 };
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::types::ast::Polytype;
@@ -227,20 +227,40 @@ fn make_namespace_ref(
 
 pub fn detect_chialisp_module(
     pre_forms: &[Rc<SExp>],
-) -> bool {
+) -> Option<AcceptedDialect> {
+    let mut dialect = KNOWN_DIALECTS.get("*standard-cl-23*").unwrap().accepted.clone();
+
     if pre_forms.is_empty() {
-        return false;
+        return None;
     }
 
     if pre_forms.len() > 1 {
-        return true;
+        for p in pre_forms.iter() {
+            if let Ok(NodeSel::Cons(
+                kl,
+                NodeSel::Cons(
+                    (nl, name),
+                    _
+                )
+            )) = NodeSel::Cons(
+                Atom::Here("include"),
+                NodeSel::Cons(Atom::Here(()), Atom::Here(""))
+            ).select_nodes(p.clone()) {
+                if let Some(use_dialect) = KNOWN_DIALECTS.get(&decode_string(&name)) {
+                    return Some(use_dialect.accepted.clone());
+                }
+            }
+        }
+        return Some(dialect);
     }
 
     if let Some(lst) = pre_forms[0].proper_list() {
-        return matches!(lst[0].borrow(), SExp::Cons(_, _, _));
+        if matches!(lst[0].borrow(), SExp::Cons(_, _, _)) {
+            return Some(dialect);
+        }
     }
 
-    false
+    None
 }
 
 #[test]
@@ -248,7 +268,7 @@ pub fn test_detect_chialisp_module_classic() {
     let filename = "resources/tests/module/programs/classic.clsp";
     let content = "(mod (X) (* X 13))";
     let parsed = parse_sexp(Srcloc::start(filename), content.bytes()).expect("should parse");
-    assert!(!detect_chialisp_module(&parsed));
+    assert!(detect_chialisp_module(&parsed).is_none());
 }
 
 pub struct ToplevelMod {
@@ -271,52 +291,50 @@ pub fn parse_toplevel_mod(
             Srcloc::start(&opts.filename()),
             "empty source file not allowed".to_string(),
         ));
-    } else {
-        if let Some(x) = pre_forms[0].proper_list() {
-            if x.is_empty() {
-                return Ok(ToplevelModParseResult::Simple(pre_forms.to_vec()));
+    } else if let Some(x) = pre_forms[0].proper_list() {
+        if x.is_empty() {
+            return Ok(ToplevelModParseResult::Simple(pre_forms.to_vec()));
+        }
+
+        if let SExp::Atom(_, mod_atom) = &x[0] {
+            if pre_forms.len() > 1 {
+                return Err(CompileErr(
+                    pre_forms[0].loc(),
+                    "one toplevel mod form allowed".to_string(),
+                ));
             }
 
-            if let SExp::Atom(_, mod_atom) = &x[0] {
-                if pre_forms.len() > 1 {
-                    return Err(CompileErr(
-                        pre_forms[0].loc(),
-                        "one toplevel mod form allowed".to_string(),
-                    ));
+            if *mod_atom == b"mod" {
+                let args = Rc::new(x[1].atomize());
+                let mut skip_idx = 2;
+                let mut ty: Option<TypeAnnoKind> = None;
+
+                if x.len() < 3 {
+                    return Err(CompileErr(x[0].loc(), "incomplete mod form".to_string()));
                 }
 
-                if *mod_atom == b"mod" {
-                    let args = Rc::new(x[1].atomize());
-                    let mut skip_idx = 2;
-                    let mut ty: Option<TypeAnnoKind> = None;
-
-                    if x.len() < 3 {
-                        return Err(CompileErr(x[0].loc(), "incomplete mod form".to_string()));
+                if let SExp::Atom(_, colon) = &x[2].atomize() {
+                    if *colon == vec![b':'] && x.len() > 3 {
+                        let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
+                        ty = Some(TypeAnnoKind::Colon(use_ty));
+                        skip_idx += 2;
+                    } else if *colon == vec![b'-', b'>'] && x.len() > 3 {
+                        let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
+                        ty = Some(TypeAnnoKind::Arrow(use_ty));
+                        skip_idx += 2;
                     }
-
-                    if let SExp::Atom(_, colon) = &x[2].atomize() {
-                        if *colon == vec![b':'] && x.len() > 3 {
-                            let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
-                            ty = Some(TypeAnnoKind::Colon(use_ty));
-                            skip_idx += 2;
-                        } else if *colon == vec![b'-', b'>'] && x.len() > 3 {
-                            let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
-                            ty = Some(TypeAnnoKind::Arrow(use_ty));
-                            skip_idx += 2;
-                        }
-                    }
-                    let (stripped_args, parsed_type) = augment_fun_type_with_args(args, ty)?;
-
-                    return Ok(ToplevelModParseResult::Mod(ToplevelMod {
-                        forms: x
-                            .iter()
-                            .skip(skip_idx)
-                            .map(|s| Rc::new(s.clone()))
-                            .collect(),
-                        stripped_args,
-                        parsed_type,
-                    }));
                 }
+                let (stripped_args, parsed_type) = augment_fun_type_with_args(args, ty)?;
+
+                return Ok(ToplevelModParseResult::Mod(ToplevelMod {
+                    forms: x
+                        .iter()
+                        .skip(skip_idx)
+                        .map(|s| Rc::new(s.clone()))
+                        .collect(),
+                    stripped_args,
+                    parsed_type,
+                }));
             }
         }
     }
@@ -450,12 +468,22 @@ impl Preprocessor {
         filename: &str,
         content: &[u8]
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
-        eprintln!("import program {}", filename);
         let srcloc = Srcloc::start(filename);
         let mut allocator = Allocator::new();
         let mut symbol_table = HashMap::new();
+        let program_text = decode_string(&content);
         let runner = Rc::new(DefaultProgramRunner::new());
         let pre_forms = parse_sexp(srcloc.clone(), content.iter().copied())?;
+        let (have_module, dialect, classic_parse) =
+            if let Some(dialect) = detect_chialisp_module(&pre_forms) {
+                (true, dialect, allocator.null())
+            } else {
+                let classic_parse = assemble(&mut allocator, &program_text).map_err(|_| {
+                    CompileErr(srcloc.clone(), format!("Could not parse {filename} to determine dialect"))
+                })?;
+
+                (false, detect_modern(&mut allocator, classic_parse), classic_parse)
+            };
 
         let make_constant = |name: &[u8], s: SExp| {
             HelperForm::Defconstant(DefconstData {
@@ -470,65 +498,32 @@ impl Preprocessor {
             }).to_sexp()
         };
 
-        if detect_chialisp_module(&pre_forms) {
-            let mut context_wrapper = CompileContextWrapper::new(
-                &mut allocator,
-                runner,
-                &mut symbol_table,
-                get_optimizer(&srcloc, self.subcompile_opts.clone())?,
-                includes,
-            );
-            let pp = preprocess(
-                self.subcompile_opts.clone(),
-                context_wrapper.context.includes(),
-                &pre_forms
-            )?;
-            let module_output = compile_module(
-                &mut context_wrapper.context,
-                self.subcompile_opts.clone(),
-                &pp.forms
-            )?;
-            let mut output = Vec::new();
-            for c in module_output.components.iter() {
-                let borrowed_content: &SExp = c.content.borrow();
-                output.push(make_constant(&c.shortname, borrowed_content.clone()));
-                let mut hash_name = c.shortname.clone();
-                hash_name.extend(b"_hash".to_vec());
-                output.push(make_constant(&hash_name, SExp::QuotedString(srcloc.clone(), b'x', c.hash.clone())));
+        if !have_module {
+            let dialect = detect_modern(&mut allocator, classic_parse);
+            if dialect.stepping.is_none() {
+                // Classic compile.
+                let newly_compiled = compile_clvm_text_maybe_opt(
+                    &mut allocator,
+                    self.subcompile_opts.optimize(),
+                    self.subcompile_opts.clone(),
+                    &mut symbol_table,
+                    includes,
+                    &program_text,
+                    &filename,
+                    true,
+                )
+                    .map_err(|e| CompileErr(srcloc.clone(), format!("Subcompile failed: {}", e.1)))?;
+                let converted = convert_from_clvm_rs(
+                    &mut allocator,
+                    srcloc.clone(),
+                    newly_compiled
+                )?;
+                let converted_borrowed: &SExp = converted.borrow();
+                return Ok(vec![
+                    make_constant(b"program", converted_borrowed.clone()),
+                    make_constant(b"program_hash", SExp::QuotedString(srcloc.clone(), b'x', sha256tree(converted)))
+                ]);
             }
-            return Ok(output);
-        }
-
-        let program_text = decode_string(&content);
-        let classic_parse = assemble(&mut allocator, &program_text).map_err(|_| {
-            CompileErr(srcloc.clone(), format!("Could not parse {filename} to determine dialect"))
-        })?;
-
-        eprintln!("compile {}", disassemble(&mut allocator, classic_parse, None));
-        let dialect = detect_modern(&mut allocator, classic_parse);
-        if dialect.stepping.is_none() {
-            // Classic compile.
-            let newly_compiled = compile_clvm_text_maybe_opt(
-                &mut allocator,
-                self.subcompile_opts.optimize(),
-                self.subcompile_opts.clone(),
-                &mut symbol_table,
-                includes,
-                &program_text,
-                &filename,
-                true,
-            )
-                .map_err(|e| CompileErr(srcloc.clone(), format!("Subcompile failed: {}", e.1)))?;
-            let converted = convert_from_clvm_rs(
-                &mut allocator,
-                srcloc.clone(),
-                newly_compiled
-            )?;
-            let converted_borrowed: &SExp = converted.borrow();
-            return Ok(vec![
-                make_constant(b"program", converted_borrowed.clone()),
-                make_constant(b"program_hash", SExp::QuotedString(srcloc.clone(), b'x', sha256tree(converted)))
-            ]);
         }
 
         let opts = self.subcompile_opts.set_dialect(dialect);
@@ -540,11 +535,29 @@ impl Preprocessor {
             includes,
         );
 
-        let compile_output = compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)?;
-        return Ok(vec![
-            make_constant(b"program", compile_output.clone()),
-            make_constant(b"program_hash", SExp::QuotedString(srcloc.clone(), b'x', sha256tree(Rc::new(compile_output))))
-        ]);
+        match compile_pre_forms(
+            &mut context_wrapper.context,
+            self.opts.clone(),
+            &pre_forms
+        )? {
+            CompilerOutput::Module(module_output) => {
+                let mut output = Vec::new();
+                for c in module_output.components.iter() {
+                    let borrowed_content: &SExp = c.content.borrow();
+                    output.push(make_constant(&c.shortname, borrowed_content.clone()));
+                    let mut hash_name = c.shortname.clone();
+                    hash_name.extend(b"_hash".to_vec());
+                    output.push(make_constant(&hash_name, SExp::QuotedString(srcloc.clone(), b'x', c.hash.clone())));
+                }
+                return Ok(output);
+            }
+            CompilerOutput::Program(compile_output) => {
+                return Ok(vec![
+                    make_constant(b"program", compile_output.clone()),
+                    make_constant(b"program_hash", SExp::QuotedString(srcloc.clone(), b'x', sha256tree(Rc::new(compile_output))))
+                ]);
+            }
+        }
     }
 
     fn import_new_module(
@@ -786,7 +799,6 @@ impl Preprocessor {
             parsed_name.parent_and_name();
 
         let last_name_component = make_defmac_name(&clean_last_name_component);
-        eprintln!("try to lookup {}", decode_string(&last_name_component));
         let updated_name =
             if let Some(parent) = &parent_name {
                 parent.with_child(&last_name_component)

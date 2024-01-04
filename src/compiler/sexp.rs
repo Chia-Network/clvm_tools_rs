@@ -1010,10 +1010,12 @@ pub enum ThisNode {
     Here,
 }
 
+#[derive(Debug, Clone)]
 pub enum Atom<T> {
     Here(T),
 }
 
+#[derive(Debug, Clone)]
 pub enum AtomValue<T> {
     Here(T),
 }

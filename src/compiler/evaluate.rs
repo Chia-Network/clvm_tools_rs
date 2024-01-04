@@ -12,7 +12,7 @@ use crate::compiler::clvm::run;
 use crate::compiler::codegen::{codegen, hoist_assign_form};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
-    Binding, BindingPattern, BodyForm, CallSpec, CompileErr, CompileForm, CompilerOpts, DefunData,
+    Binding, BindingPattern, BodyForm, CallSpec, CompileErr, CompileForm, CompilerOpts, CompilerOutput, DefunData,
     HelperForm, LambdaData, LetData, LetFormInlineHint, LetFormKind,
 };
 use crate::compiler::frontend::frontend;
@@ -1670,10 +1670,16 @@ impl<'info> Evaluator {
             optimizer,
             &mut includes
         );
-        let com_result = updated_opts.compile_program(
-            &mut context_wrapper.context,
-            use_body,
-        )?;
+        let com_result =
+            match updated_opts.compile_program(
+                &mut context_wrapper.context,
+                use_body,
+            )? {
+                CompilerOutput::Program(p) => p,
+                CompilerOutput::Module(_) => {
+                    todo!();
+                }
+            };
 
         Ok(Rc::new(com_result))
     }

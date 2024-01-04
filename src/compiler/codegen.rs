@@ -12,7 +12,7 @@ use crate::compiler::clvm::{run, truthy};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, CallSpec,
-    Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall,
+    Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, CompilerOutput, ConstantKind, DefunCall,
     DefunData, HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind, PrimaryCodegen,
     RawCallSpec, SyntheticType,
 };
@@ -642,17 +642,24 @@ fn compile_call(
 
                     let mut unused_symbol_table = HashMap::new();
                     let mut context_wrapper = CompileContextWrapper::from_context(context, &mut unused_symbol_table);
-                    updated_opts
+                    let code =
+                        updated_opts
                         .compile_program(
                             &mut context_wrapper.context,
                             Rc::new(use_body),
-                        )
-                        .map(|code| {
-                            CompiledCode(
+                        )?;
+
+                    match code {
+                        CompilerOutput::Program(code) => {
+                            Ok(CompiledCode(
                                 call.loc.clone(),
                                 Rc::new(primquote(call.loc.clone(), Rc::new(code))),
-                            )
-                        })
+                            ))
+                        }
+                        CompilerOutput::Module(_) => {
+                            todo!();
+                        }
+                    }
                 } else {
                     error.clone()
                 }
@@ -913,11 +920,18 @@ fn codegen_(
                             context,
                             &mut unused_symbol_table
                         );
-                        updated_opts
+                        let code =
+                            updated_opts
                             .compile_program(
                                 &mut context_wrapper.context,
                                 Rc::new(tocompile),
-                            )?
+                            )?;
+                        match code {
+                            CompilerOutput::Program(p) => p,
+                            CompilerOutput::Module(_) => {
+                                todo!();
+                            }
+                        }
                     };
 
                 let code = context.post_codegen_function_optimize(opts.clone(), Some(h), Rc::new(code))?;
@@ -1413,10 +1427,17 @@ fn start_codegen(
                         context,
                         &mut unused_symbols
                     );
-                    let code = updated_opts.compile_program(
-                        &mut context_wrapper.context,
-                        Rc::new(expand_program),
-                    )?;
+                    let code =
+                        match updated_opts.compile_program(
+                            &mut context_wrapper.context,
+                            Rc::new(expand_program),
+                        )? {
+                            CompilerOutput::Program(code) => code,
+                            CompilerOutput::Module(_) => {
+                                todo!();
+                            }
+                        };
+
                     run(
                         context_wrapper.context.allocator(),
                         runner,
@@ -1497,10 +1518,16 @@ fn start_codegen(
                     context,
                     &mut unused_symbols
                 );
-                let code = updated_opts.compile_program(
-                    &mut context_wrapper.context,
-                    macro_program,
-                )?;
+                let code =
+                    match updated_opts.compile_program(
+                        &mut context_wrapper.context,
+                        macro_program,
+                    )? {
+                        CompilerOutput::Program(p) => p,
+                        CompilerOutput::Module(_) => {
+                            todo!();
+                        }
+                    };
 
                 let optimized_code =
                     context_wrapper.context.macro_optimization(opts.clone(), Rc::new(code.clone()))?;

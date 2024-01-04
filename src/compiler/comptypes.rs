@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -891,7 +892,7 @@ pub trait CompilerOpts {
         &self,
         context: &mut BasicCompileContext,
         sexp: Rc<SExp>,
-    ) -> Result<SExp, CompileErr>;
+    ) -> Result<CompilerOutput, CompileErr>;
 }
 
 /// Frontend uses this to accumulate frontend forms, used internally.
@@ -1435,7 +1436,7 @@ pub fn with_heading(l: Srcloc, name: &str, body: Rc<SExp>) -> SExp {
     SExp::Cons(l.clone(), Rc::new(SExp::atom_from_string(l, name)), body)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CompileModuleComponent {
     pub shortname: Vec<u8>,
     pub filename: String,
@@ -1443,29 +1444,33 @@ pub struct CompileModuleComponent {
     pub hash: Vec<u8>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CompileModuleOutput {
     pub summary: Rc<SExp>,
     pub components: Vec<CompileModuleComponent>
 }
 
+#[derive(Debug, Clone, Serialize)]
 pub enum CompilerOutput {
     Program(SExp),
-    Module(Vec<CompileModuleComponent>, SExp)
+    Module(CompileModuleOutput)
 }
 
 impl CompilerOutput {
     pub fn to_sexp(&self) -> SExp {
         match self {
             CompilerOutput::Program(x) => x.clone(),
-            CompilerOutput::Module(_, x) => x.clone(),
+            CompilerOutput::Module(x) => {
+                let borrowed: &SExp = x.summary.borrow();
+                borrowed.clone()
+            }
         }
     }
 
     pub fn loc(&self) -> Srcloc {
         match self {
             CompilerOutput::Program(x) => x.loc(),
-            CompilerOutput::Module(_, x) => x.loc(),
+            CompilerOutput::Module(x) => x.summary.loc(),
         }
     }
 }
@@ -1479,14 +1484,14 @@ pub enum Export {
 #[derive(Debug, Clone, Serialize)]
 pub enum FrontendOutput {
     CompileForm(CompileForm),
-    Module(CompileForm, Vec<Export>, Rc<BodyForm>)
+    Module(CompileForm, Vec<Export>)
 }
 
 impl FrontendOutput {
     pub fn compileform<'a>(&'a self) -> &'a CompileForm {
         match self {
             FrontendOutput::CompileForm(cf) => &cf,
-            FrontendOutput::Module(cf, _, _) => &cf,
+            FrontendOutput::Module(cf, _) => &cf,
         }
     }
 }

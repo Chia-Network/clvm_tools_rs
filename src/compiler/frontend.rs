@@ -14,7 +14,7 @@ use crate::compiler::comptypes::{
     StructMember, SyntheticType, TypeAnnoKind,
 };
 use crate::compiler::lambda::handle_lambda;
-use crate::compiler::preprocessor::{parse_toplevel_mod, preprocess, ToplevelModParseResult};
+use crate::compiler::preprocessor::{detect_chialisp_module, parse_toplevel_mod, preprocess, Preprocessor, ToplevelModParseResult};
 use crate::compiler::rename::{rename_assign_bindings, rename_children_compileform};
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::{HasLoc, Srcloc};
@@ -1585,7 +1585,48 @@ pub fn frontend(
     pre_forms: &[Rc<SExp>],
 ) -> Result<FrontendOutput, CompileErr> {
     let mut includes = Vec::new();
-    let started = frontend_start(opts.clone(), &mut includes, pre_forms)?;
+
+    if let Some(dialect) = detect_chialisp_module(&pre_forms) {
+        let mut other_forms = vec![];
+        let mut exports = vec![];
+        let mut found_main = false;
+
+        let mut preprocessor = Preprocessor::new(opts.clone());
+        let output_forms = preprocessor.run_modules(
+            &mut includes,
+            pre_forms,
+        )?;
+
+        if output_forms.forms.is_empty() {
+            return Err(CompileErr(Srcloc::start(&opts.filename()), "Module style chialisp programs require at least one export".to_string()));
+        }
+
+        for form in output_forms.forms.iter() {
+            if let Some(export) = match_export_form(opts.clone(), form.clone())? {
+                exports.push(export);
+            } else if let Some(helper) = compile_helperform(opts.clone(), form.clone())? {
+                for h in helper.new_helpers.iter() {
+                    other_forms.push(h.clone());
+                }
+            }
+        }
+
+        let loc = output_forms.forms[0].loc();
+        let mut program = CompileForm {
+            loc: loc.clone(),
+            include_forms: includes.to_vec(),
+            args: Rc::new(SExp::Nil(loc.clone())),
+            helpers: other_forms.clone(),
+            exp: Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone()))),
+            ty: None,
+        };
+
+        let loc = output_forms.forms[0].loc().ext(&output_forms.forms[output_forms.forms.len()-1].loc());
+
+        return Ok(FrontendOutput::Module(program, exports));
+    }
+
+    let started = frontend_start(opts.clone(), &mut includes, &pre_forms)?;
 
     for i in includes.iter() {
         started.add_include(i.clone());

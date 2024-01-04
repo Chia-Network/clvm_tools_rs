@@ -13,7 +13,7 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::{convert_to_clvm_rs, convert_from_clvm_rs, sha256tree};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
-use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, CompilerOutput, CompileModuleComponent, CompileModuleOutput, DefunData, Export, HelperForm, IncludeDesc, PrimaryCodegen, SyntheticType};
+use crate::compiler::comptypes::{BodyForm, CompileErr, CompileForm, CompilerOpts, CompilerOutput, CompileModuleComponent, CompileModuleOutput, DefunData, Export, FrontendOutput, HelperForm, IncludeDesc, PrimaryCodegen, SyntheticType};
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::{compile_bodyform, compile_helperform, frontend, match_export_form};
 use crate::compiler::optimize::get_optimizer;
@@ -199,18 +199,18 @@ fn break_down_module_output(loc: Srcloc, run_result: Rc<SExp>) -> Result<Vec<Mod
             ));
         };
 
-    if list_data.len() % 3 != 0 {
-        return Err(CompileErr(loc, "output length from intermediate module program should have been divisible by 3".to_string()));
+    if list_data.len() % 2 != 0 {
+        return Err(CompileErr(loc, "output length from intermediate module program should have been divisible by 2".to_string()));
     }
 
     let mut result = Vec::new();
-    for tuple_idx in 0..(list_data.len() / 3) {
-        let i = tuple_idx * 3;
-        if let (SExp::Atom(_, name), SExp::Atom(_, hash)) = (list_data[i].atomize(), list_data[i+1].atomize()) {
+    for tuple_idx in 0..(list_data.len() / 2) {
+        let i = tuple_idx * 2;
+        if let SExp::Atom(_, name) = list_data[i].atomize() {
             result.push(ModuleOutputEntry {
                 name: name.clone(),
-                hash: hash.clone(),
-                func: Rc::new(list_data[i+2].clone()),
+                hash: sha256tree(Rc::new(list_data[i+1].clone())),
+                func: Rc::new(list_data[i+1].clone()),
             });
         } else {
             return Err(CompileErr(loc.clone(), format!("output from intermediate module program wasn't in triplets of atom, atom, program {} {} {}", list_data[i], list_data[i+1], list_data[i+2])));
@@ -222,9 +222,14 @@ fn break_down_module_output(loc: Srcloc, run_result: Rc<SExp>) -> Result<Vec<Mod
 
 fn create_hex_output_path(loc: Srcloc, file_path: &str, func: &str) -> Result<String, CompileErr> {
     let mut dir = PathBuf::from(file_path);
+    let mut filename = PathBuf::from(file_path).with_extension("").file_name().map(|f| {
+        f.to_string_lossy().to_string()
+    }).unwrap_or_else(|| "program".to_string());
     dir.pop();
-    let func_dot_hex = &[func.to_string(), "hex".to_string()];
-    dir.push(func_dot_hex.join("."));
+    let func_dot_hex_list = &[func.to_string(), "hex".to_string()];
+    let func_dot_hex = func_dot_hex_list.join(".");
+    let name_with_func_list = &[filename.to_string(), func_dot_hex];
+    dir.push(name_with_func_list.join("_"));
     dir.into_os_string().into_string().map_err(|_| {
         CompileErr(
             loc,
@@ -246,42 +251,11 @@ fn create_hex_output_path(loc: Srcloc, file_path: &str, func: &str) -> Result<St
 pub fn compile_module(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
-    pre_forms: &[Rc<SExp>]
+    mut program: CompileForm,
+    exports: &[Export],
 ) -> Result<CompileModuleOutput, CompileErr> {
-    let mut other_forms = vec![];
-    let mut exports = vec![];
-    let mut found_main = false;
-
-    let loc = pre_forms[0].loc().ext(&pre_forms[pre_forms.len()-1].loc());
-
-    for p in pre_forms.iter() {
-        if let Some(export) = match_export_form(opts.clone(), p.clone())? {
-            if matches!(export, Export::MainProgram(_, _)) {
-                if found_main || !exports.is_empty() {
-                    return Err(CompileErr(
-                        loc.clone(),
-                        "Only one main export is allowed, otherwise export functions".to_string()
-                    ));
-                }
-
-                found_main = true;
-            } else if found_main {
-                return Err(CompileErr(
-                    loc.clone(),
-                    "A chialisp module may only export a main or a set of functions".to_string()
-                ));
-            }
-
-            exports.push(export);
-        } else if let Some(helpers) = compile_helperform(opts.clone(), p.clone())? {
-            // Macros have been eliminated by this point.
-            for helper in helpers.new_helpers.iter() {
-                if !matches!(helper, HelperForm::Defmacro(_)) {
-                    other_forms.push(helper.clone());
-                }
-            }
-        }
-    }
+    let loc = program.loc();
+    let opts = opts.set_optimize(true);
 
     if exports.is_empty() {
         return Err(CompileErr(
@@ -289,15 +263,6 @@ pub fn compile_module(
             "A chialisp module should have at least one export".to_string()
         ));
     }
-
-    let mut program = CompileForm {
-        loc: loc.clone(),
-        include_forms: context.includes().to_vec(),
-        args: Rc::new(SExp::Nil(loc.clone())),
-        helpers: other_forms.clone(),
-        exp: Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone()))),
-        ty: None,
-    };
 
     if exports.len() == 1 {
         if let Export::MainProgram(args, expr) = &exports[0] {
@@ -372,7 +337,7 @@ pub fn compile_module(
                 return Err(CompileErr(loc.clone(), "got program, wanted fun".to_string()));
             };
 
-        let mut found_helper: Vec<Option<HelperForm>> = other_forms.iter().filter(|f| {
+        let mut found_helper: Vec<Option<HelperForm>> = program.helpers.iter().filter(|f| {
             f.name() == &fun_name && matches!(f, HelperForm::Defun(_, _))
         }).cloned().map(Some).collect();
 
@@ -393,25 +358,11 @@ pub fn compile_module(
                         loc.clone(),
                         vec![
                             Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), b"c".to_vec()))),
-                            Rc::new(BodyForm::Call(
-                                loc.clone(),
-                                vec![
-                                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), new_name.clone())))
-                                ],
-                                None
-                            )),
-                            Rc::new(BodyForm::Call(
-                                loc.clone(),
-                                vec![
-                                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), b"c".to_vec()))),
-                                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), fun_name.clone()))),
-                                    function_list
-                                ],
-                                None
-                            ))
+                            Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), fun_name.clone()))),
+                            function_list
                         ],
                         None
-                    )),
+                    ))
                 ],
                 None
             ));
@@ -486,8 +437,6 @@ pub fn compile_module(
         let output_path = create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(&m.name))?;
         opts.write_new_file(&output_path, stream.get_value().hex().as_bytes())?;
 
-        eprintln!("make output for {} dialect {:?} opt {} fe_opt {}", decode_string(&m.name), opts.dialect(), opts.optimize(), opts.frontend_opt());
-
         components.push(CompileModuleComponent {
             shortname: m.name.clone(),
             filename: output_path,
@@ -506,16 +455,31 @@ pub fn compile_pre_forms(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>],
-) -> Result<SExp, CompileErr> {
+) -> Result<CompilerOutput, CompileErr> {
     let p0 = frontend(opts.clone(), pre_forms)?;
 
-    compile_from_compileform(context, opts, p0.compileform().clone())
+    match p0 {
+        FrontendOutput::CompileForm(p0) => {
+            Ok(CompilerOutput::Program(compile_from_compileform(context, opts, p0)?))
+        }
+        FrontendOutput::Module(cf, exports) => {
+            // cl23 always reflects optimization.
+            let dialect = opts.dialect();
+            let opts = if let Some(stepping) = dialect.stepping.as_ref() {
+                opts.set_optimize(*stepping > 21)
+            } else {
+                opts
+            };
+
+            Ok(CompilerOutput::Module(compile_module(context, opts, cf, &exports)?))
+        }
+    }
 }
 
 pub fn compile_file(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
-    mut opts: Rc<dyn CompilerOpts>,
+    opts: Rc<dyn CompilerOpts>,
     content: &str,
     symbol_table: &mut HashMap<String, String>,
     includes: &mut Vec<IncludeDesc>,
@@ -530,34 +494,7 @@ pub fn compile_file(
         includes,
     );
 
-    let dialect = opts.dialect();
-    if detect_chialisp_module(&pre_forms) && dialect.strict {
-        // cl23 always reflects optimization.
-        opts = if let Some(stepping) = dialect.stepping.as_ref() {
-            opts.set_optimize(*stepping > 21)
-        } else {
-            opts
-        };
-
-        let mut preprocessor = Preprocessor::new(opts.clone());
-        let output_forms = preprocessor.run_modules(
-            context_wrapper.context.includes(),
-            &pre_forms,
-        )?;
-        let compiled = compile_module(
-            &mut context_wrapper.context,
-            opts,
-            &output_forms.forms
-        )?;
-        let borrowed_summary: &SExp = compiled.summary.borrow();
-        return Ok(CompilerOutput::Module(
-            compiled.components.clone(),
-            borrowed_summary.clone()
-        ));
-    }
-
-    let program = compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)?;
-    Ok(CompilerOutput::Program(program))
+    compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
 }
 
 impl CompilerOpts for DefaultCompilerOpts {
@@ -708,7 +645,7 @@ impl CompilerOpts for DefaultCompilerOpts {
         &self,
         context: &mut BasicCompileContext,
         sexp: Rc<SExp>,
-    ) -> Result<SExp, CompileErr> {
+    ) -> Result<CompilerOutput, CompileErr> {
         let me = Rc::new(self.clone());
         compile_pre_forms(context, me, &[sexp])
     }

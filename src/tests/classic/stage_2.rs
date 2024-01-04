@@ -18,7 +18,7 @@ use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_sear
 use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file, read_file};
 
 use crate::compiler::BasicCompileContext;
-use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, PrimaryCodegen};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -409,7 +409,7 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
         &self,
         _context: &mut BasicCompileContext,
         _sexp: Rc<SExp>,
-    ) -> Result<SExp, CompileErr> {
+    ) -> Result<CompilerOutput, CompileErr> {
         Err(CompileErr(
             Srcloc::start(&self.filename),
             "test object only".to_string(),
