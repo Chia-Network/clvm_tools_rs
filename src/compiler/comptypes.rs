@@ -688,7 +688,7 @@ fn test_helperform_import_qualified_0() {
     let srcloc = Srcloc::start("*test-import*");
     let (_, name) = ImportLongName::parse(b"foo.bar");
     assert_eq!(
-        HelperForm::Defnsref(NamespaceRefData {
+        HelperForm::Defnsref(Box::new(NamespaceRefData {
             loc: srcloc.clone(),
             kw: srcloc.clone(),
             nl: srcloc.clone(),
@@ -701,7 +701,7 @@ fn test_helperform_import_qualified_0() {
                 name: name,
                 target: None,
             }))
-        })
+        }))
         .to_sexp()
         .to_string(),
         "(import qualified foo.bar)"
@@ -715,13 +715,13 @@ fn test_helperform_import_qualified_1() {
     let (relative, target) = ImportLongName::parse(b"FB");
 
     assert_eq!(
-        HelperForm::Defnsref(NamespaceRefData {
+        HelperForm::Defnsref(Box::new(NamespaceRefData {
             loc: srcloc.clone(),
             kw: srcloc.clone(),
             nl: srcloc.clone(),
             rendered_name: name.as_u8_vec(LongNameTranslation::Namespace),
             longname: name.clone(),
-            specification: ModuleImportSpec::Qualified(QualifiedModuleInfo {
+            specification: ModuleImportSpec::Qualified(Box::new(QualifiedModuleInfo {
                 loc: srcloc.clone(),
                 nl: srcloc.clone(),
                 kw: srcloc.clone(),
@@ -732,8 +732,8 @@ fn test_helperform_import_qualified_1() {
                     name: target,
                     relative
                 })
-            })
-        })
+            }))
+        }))
         .to_sexp()
         .to_string(),
         "(import qualified foo.bar as FB)"
