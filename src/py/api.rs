@@ -77,7 +77,8 @@ fn compile_clvm(
     };
 
     let mut symbols = HashMap::new();
-    let compiled = clvmc::compile_clvm(&path_string, &output_path, &search_paths, &mut symbols)
+    let mut includes = Vec::new();
+    let compiled = clvmc::compile_clvm(&path_string, &output_path, &search_paths, &mut symbols, &mut includes)
         .map_err(PyException::new_err)?;
 
     Python::with_gil(|py| {
