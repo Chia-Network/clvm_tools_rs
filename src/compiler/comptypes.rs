@@ -694,13 +694,13 @@ fn test_helperform_import_qualified_0() {
             nl: srcloc.clone(),
             rendered_name: name.as_u8_vec(LongNameTranslation::Namespace),
             longname: name.clone(),
-            specification: ModuleImportSpec::Qualified(QualifiedModuleInfo {
+            specification: ModuleImportSpec::Qualified(Box::new(QualifiedModuleInfo {
                 loc: srcloc.clone(),
                 nl: srcloc.clone(),
                 kw: srcloc.clone(),
                 name: name,
                 target: None,
-            })
+            }))
         })
         .to_sexp()
         .to_string(),
