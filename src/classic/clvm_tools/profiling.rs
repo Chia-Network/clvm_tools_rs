@@ -47,3 +47,15 @@ impl<'a> Drop for Profiler<'a> {
 impl Drop for Profiler {
     fn drop(self: &mut Profiler) {}
 }
+
+// Smoke test that just invokes the profiler.
+#[test]
+fn test_profiler() {
+    {
+        let testfile = "test.svg";
+        let _ = Profiler::new(testfile);
+        eprintln!("doing something");
+    }
+    #[cfg(feature = "profiling")]
+    let _ = fs::metadata(testfile).expect("svg should have been written");
+}
