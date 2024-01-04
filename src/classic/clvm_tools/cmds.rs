@@ -616,10 +616,7 @@ pub fn cldb(args: &[String]) {
             _ => None,
         });
 
-    let only_print = parsed_args
-        .get("only_print")
-        .map(|_| true)
-        .unwrap_or(false);
+    let only_print = parsed_args.get("only_print").map(|_| true).unwrap_or(false);
 
     let do_optimize = parsed_args
         .get("optimize")
