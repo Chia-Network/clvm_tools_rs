@@ -542,7 +542,6 @@ pub fn cldb(args: &[String]) {
             .set_type(Rc::new(PathOrCodeConv {}))
             .set_help("path to symbol file".to_string()),
     );
-    #[cfg(feature = "debug-print")]
     parser.add_argument(
         vec!["-p".to_string(), "--only-print".to_string()],
         Argument::new()
@@ -618,7 +617,7 @@ pub fn cldb(args: &[String]) {
         });
 
     let only_print = parsed_args
-        .get("debug_print")
+        .get("only_print")
         .map(|_| true)
         .unwrap_or(false);
 
