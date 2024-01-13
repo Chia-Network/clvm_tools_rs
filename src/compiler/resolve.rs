@@ -144,7 +144,9 @@ pub fn tour_helpers(helpers: &[HelperForm]) -> TourNamespaces {
     }
 }
 
-pub fn rename_args_named_helper(pair: (ImportLongName, HelperForm)) -> Result<(ImportLongName, HelperForm), CompileErr> {
+pub fn rename_args_named_helper(
+    pair: (ImportLongName, HelperForm),
+) -> Result<(ImportLongName, HelperForm), CompileErr> {
     Ok((pair.0.clone(), rename_args_helperform(&pair.1)?))
 }
 

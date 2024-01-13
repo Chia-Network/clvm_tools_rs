@@ -529,136 +529,138 @@ fn compile_call(
         )
         .and_then(|calltype| {
             match calltype {
-            Callable::CallMacro(l, code) => {
-                process_macro_call(context, opts.clone(), compiler, l, tl, Rc::new(code))
-            }
-
-            Callable::CallInline(l, inline) => replace_in_inline(
-                context,
-                opts.clone(),
-                compiler,
-                l.clone(),
-                &inline,
-                l,
-                &tl,
-                call.tail.clone(),
-            ),
-
-            Callable::CallDefun(l, lookup) => generate_args_code(
-                context,
-                opts.clone(),
-                compiler,
-                // A callspec is a way to collect some info about a call, mainly
-                // to reduce the number of arguments to pass through.
-                &CallSpec {
-                    loc: l.clone(),
-                    name: an,
-                    args: &tl,
-                    tail: call.tail.clone(),
-                    original: call.original.clone(),
-                },
-                true,
-            )
-            .and_then(|args| {
-                process_defun_call(opts.clone(), compiler, l.clone(), args, Rc::new(lookup))
-            }),
-            Callable::CallPrim(l, p) => generate_args_code(
-                context,
-                opts,
-                compiler,
-                &CallSpec {
-                    name: an,
-                    loc: l.clone(),
-                    args: &tl,
-                    tail: None,
-                    original: call.original.clone(),
-                },
-                false,
-            )
-            .map(|args| CompiledCode(l.clone(), Rc::new(SExp::Cons(l, Rc::new(p), args)))),
-
-            Callable::EnvPath => {
-                if tl.len() == 1 {
-                    match tl[0].borrow() {
-                        BodyForm::Value(SExp::Integer(l, i)) => Ok(CompiledCode(
-                            l.clone(),
-                            Rc::new(SExp::Integer(l.clone(), i.clone())),
-                        )),
-                        BodyForm::Quoted(SExp::Integer(l, i)) => Ok(CompiledCode(
-                            l.clone(),
-                            Rc::new(SExp::Integer(l.clone(), i.clone())),
-                        )),
-                        _ => Err(CompileErr(
-                            al.clone(),
-                            "@ form only accepts integers at present".to_string(),
-                        )),
-                    }
-                } else if tl.len() == 2 {
-                    match (tl[0].borrow(), tl[1].borrow()) {
-                        (
-                            BodyForm::Value(SExp::Atom(_al, a)),
-                            BodyForm::Value(SExp::Integer(_il, i)),
-                        ) => produce_argument_check(compiler, call.loc.clone(), a, i.clone()),
-                        (
-                            BodyForm::Value(SExp::Atom(_al, a)),
-                            BodyForm::Quoted(SExp::Integer(_il, i)),
-                        ) => produce_argument_check(compiler, call.loc.clone(), a, i.clone()),
-                        _ => Err(CompileErr(
-                            al.clone(),
-                            "@ form with two arguments requires argument and integer".to_string(),
-                        )),
-                    }
-                } else {
-                    Err(CompileErr(
-                        al.clone(),
-                        "@ form accepts one argument".to_string(),
-                    ))
+                Callable::CallMacro(l, code) => {
+                    process_macro_call(context, opts.clone(), compiler, l, tl, Rc::new(code))
                 }
-            }
 
-            Callable::RunCompiler => {
-                if call.args.len() >= 2 {
-                    let updated_opts = opts
-                        .set_stdenv(false)
-                        .set_in_defun(true)
-                        .set_frontend_opt(false)
-                        .set_start_env(Some(compiler.env.clone()))
-                        .set_code_generator(compiler.clone());
+                Callable::CallInline(l, inline) => replace_in_inline(
+                    context,
+                    opts.clone(),
+                    compiler,
+                    l.clone(),
+                    &inline,
+                    l,
+                    &tl,
+                    call.tail.clone(),
+                ),
 
-                    let use_body = SExp::Cons(
-                        call.loc.clone(),
-                        Rc::new(SExp::Atom(call.loc.clone(), "mod".as_bytes().to_vec())),
-                        Rc::new(SExp::Cons(
-                            call.loc.clone(),
-                            Rc::new(SExp::Nil(call.loc.clone())),
-                            Rc::new(SExp::Cons(
-                                call.args[1].loc(),
-                                call.args[1].to_sexp(),
-                                Rc::new(SExp::Nil(call.loc.clone())),
+                Callable::CallDefun(l, lookup) => generate_args_code(
+                    context,
+                    opts.clone(),
+                    compiler,
+                    // A callspec is a way to collect some info about a call, mainly
+                    // to reduce the number of arguments to pass through.
+                    &CallSpec {
+                        loc: l.clone(),
+                        name: an,
+                        args: &tl,
+                        tail: call.tail.clone(),
+                        original: call.original.clone(),
+                    },
+                    true,
+                )
+                .and_then(|args| {
+                    process_defun_call(opts.clone(), compiler, l.clone(), args, Rc::new(lookup))
+                }),
+                Callable::CallPrim(l, p) => generate_args_code(
+                    context,
+                    opts,
+                    compiler,
+                    &CallSpec {
+                        name: an,
+                        loc: l.clone(),
+                        args: &tl,
+                        tail: None,
+                        original: call.original.clone(),
+                    },
+                    false,
+                )
+                .map(|args| CompiledCode(l.clone(), Rc::new(SExp::Cons(l, Rc::new(p), args)))),
+
+                Callable::EnvPath => {
+                    if tl.len() == 1 {
+                        match tl[0].borrow() {
+                            BodyForm::Value(SExp::Integer(l, i)) => Ok(CompiledCode(
+                                l.clone(),
+                                Rc::new(SExp::Integer(l.clone(), i.clone())),
                             )),
-                        )),
-                    );
-
-                    let mut unused_symbol_table = HashMap::new();
-                    let mut context_wrapper =
-                        CompileContextWrapper::from_context(context, &mut unused_symbol_table);
-                    let code = updated_opts
-                        .compile_program(&mut context_wrapper.context, Rc::new(use_body))?;
-
-                    match code {
-                        CompilerOutput::Program(code) => Ok(CompiledCode(
-                            call.loc.clone(),
-                            Rc::new(primquote(call.loc.clone(), Rc::new(code))),
-                        )),
-                        CompilerOutput::Module(_) => {
-                            todo!();
+                            BodyForm::Quoted(SExp::Integer(l, i)) => Ok(CompiledCode(
+                                l.clone(),
+                                Rc::new(SExp::Integer(l.clone(), i.clone())),
+                            )),
+                            _ => Err(CompileErr(
+                                al.clone(),
+                                "@ form only accepts integers at present".to_string(),
+                            )),
                         }
+                    } else if tl.len() == 2 {
+                        match (tl[0].borrow(), tl[1].borrow()) {
+                            (
+                                BodyForm::Value(SExp::Atom(_al, a)),
+                                BodyForm::Value(SExp::Integer(_il, i)),
+                            ) => produce_argument_check(compiler, call.loc.clone(), a, i.clone()),
+                            (
+                                BodyForm::Value(SExp::Atom(_al, a)),
+                                BodyForm::Quoted(SExp::Integer(_il, i)),
+                            ) => produce_argument_check(compiler, call.loc.clone(), a, i.clone()),
+                            _ => Err(CompileErr(
+                                al.clone(),
+                                "@ form with two arguments requires argument and integer"
+                                    .to_string(),
+                            )),
+                        }
+                    } else {
+                        Err(CompileErr(
+                            al.clone(),
+                            "@ form accepts one argument".to_string(),
+                        ))
                     }
-                } else {
-                    error.clone()
+                }
+
+                Callable::RunCompiler => {
+                    if call.args.len() >= 2 {
+                        let updated_opts = opts
+                            .set_stdenv(false)
+                            .set_in_defun(true)
+                            .set_frontend_opt(false)
+                            .set_start_env(Some(compiler.env.clone()))
+                            .set_code_generator(compiler.clone());
+
+                        let use_body = SExp::Cons(
+                            call.loc.clone(),
+                            Rc::new(SExp::Atom(call.loc.clone(), "mod".as_bytes().to_vec())),
+                            Rc::new(SExp::Cons(
+                                call.loc.clone(),
+                                Rc::new(SExp::Nil(call.loc.clone())),
+                                Rc::new(SExp::Cons(
+                                    call.args[1].loc(),
+                                    call.args[1].to_sexp(),
+                                    Rc::new(SExp::Nil(call.loc.clone())),
+                                )),
+                            )),
+                        );
+
+                        let mut unused_symbol_table = HashMap::new();
+                        let mut context_wrapper =
+                            CompileContextWrapper::from_context(context, &mut unused_symbol_table);
+                        let code = updated_opts
+                            .compile_program(&mut context_wrapper.context, Rc::new(use_body))?;
+
+                        match code {
+                            CompilerOutput::Program(code) => Ok(CompiledCode(
+                                call.loc.clone(),
+                                Rc::new(primquote(call.loc.clone(), Rc::new(code))),
+                            )),
+                            CompilerOutput::Module(_) => {
+                                todo!();
+                            }
+                        }
+                    } else {
+                        error.clone()
+                    }
                 }
             }
-            }})
+        })
     };
 
     match call.args[0].borrow() {
