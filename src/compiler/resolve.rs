@@ -11,6 +11,7 @@ use crate::compiler::comptypes::{
     LongNameTranslation, ModuleImportSpec, NamespaceData,
 };
 use crate::compiler::frontend::{generate_type_helpers, HelperFormResult};
+use crate::compiler::rename::rename_args_helperform;
 use crate::compiler::sexp::{decode_string, SExp};
 
 fn capture_scope(in_scope: &mut HashSet<Vec<u8>>, args: Rc<SExp>) {
@@ -143,13 +144,17 @@ pub fn tour_helpers(helpers: &[HelperForm]) -> TourNamespaces {
     }
 }
 
+pub fn rename_args_named_helper(pair: (ImportLongName, HelperForm)) -> Result<(ImportLongName, HelperForm), CompileErr> {
+    Ok((pair.0.clone(), rename_args_helperform(&pair.1)?))
+}
+
 pub fn find_helper_target(
     opts: Rc<dyn CompilerOpts>,
     helpers: &[HelperForm],
     parent_ns: Option<&ImportLongName>,
     orig_name: &[u8],
     name: &ImportLongName,
-) -> Option<(ImportLongName, HelperForm)> {
+) -> Result<Option<(ImportLongName, HelperForm)>, CompileErr> {
     // XXX speed this up, remove iteration.
     // Decompose into parent and child.
     let (parent, child) = name.parent_and_name();
@@ -175,7 +180,7 @@ pub fn find_helper_target(
                         let (_, p) = ImportLongName::parse(&child);
                         p
                     };
-                    return Some((combined, h.helper.clone()));
+                    return Ok(Some((combined, h.helper.clone())));
                 }
             }
         }
@@ -186,7 +191,7 @@ pub fn find_helper_target(
                 let (_, p) = ImportLongName::parse(&child);
                 p
             };
-            return Some((combined, h.helper.clone()));
+            return Ok(Some((combined, h.helper.clone())));
         }
     }
 
@@ -212,8 +217,8 @@ pub fn find_helper_target(
                             Some(&ns_spec.longname),
                             orig_name,
                             &target_name,
-                        ) {
-                            return Some(helper.clone());
+                        )? {
+                            return Ok(Some(rename_args_named_helper(helper)?));
                         }
                     }
                 } else {
@@ -226,8 +231,8 @@ pub fn find_helper_target(
                             Some(&ns_spec.longname),
                             orig_name,
                             &target_name,
-                        ) {
-                            return Some(helper.clone());
+                        )? {
+                            return Ok(Some(rename_args_named_helper(helper)?));
                         }
                     }
                 }
@@ -246,8 +251,8 @@ pub fn find_helper_target(
                             Some(&ns_spec.longname),
                             orig_name,
                             &target_name,
-                        ) {
-                            return Some(helper.clone());
+                        )? {
+                            return Ok(Some(rename_args_named_helper(helper)?));
                         }
                     }
                 }
@@ -269,14 +274,14 @@ pub fn find_helper_target(
                     Some(&ns_spec.longname),
                     orig_name,
                     &target_name,
-                ) {
-                    return Some(helper.clone());
+                )? {
+                    return Ok(Some(rename_args_named_helper(helper)?));
                 }
             }
         }
     }
 
-    None
+    Ok(None)
 }
 
 fn display_namespace(parent_ns: Option<&ImportLongName>) -> String {
@@ -385,7 +390,7 @@ fn resolve_namespaces_in_expr(
                     parent_ns,
                     name,
                     &parsed_name,
-                ) {
+                )? {
                 (target_full_name, target_helper)
             } else if is_compiler_builtin(name) {
                 return Ok(expr.clone());

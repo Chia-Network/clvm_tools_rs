@@ -61,6 +61,7 @@ impl InlineFunction {
 
 /// Specifies the type of application that any form (X ...) invokes in an
 /// expression position.
+#[derive(Debug, Clone)]
 pub enum Callable {
     /// The expression is a macro expansion (list, if etc.)
     CallMacro(Srcloc, SExp),

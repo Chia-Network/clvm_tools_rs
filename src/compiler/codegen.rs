@@ -527,7 +527,8 @@ fn compile_call(
             call.loc.clone(),
             Rc::new(SExp::Atom(al.clone(), an.to_vec())),
         )
-        .and_then(|calltype| match calltype {
+        .and_then(|calltype| {
+            match calltype {
             Callable::CallMacro(l, code) => {
                 process_macro_call(context, opts.clone(), compiler, l, tl, Rc::new(code))
             }
@@ -657,7 +658,7 @@ fn compile_call(
                     error.clone()
                 }
             }
-        })
+            }})
     };
 
     match call.args[0].borrow() {

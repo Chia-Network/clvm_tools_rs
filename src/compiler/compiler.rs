@@ -282,6 +282,7 @@ pub fn compile_module(
             program.exp = expr.clone();
 
             program = resolve_namespaces(opts.clone(), &program)?;
+            eprintln!("program = {}", program.to_sexp());
 
             let output = Rc::new(compile_from_compileform(context, opts.clone(), program)?);
             let converted = convert_to_clvm_rs(context.allocator(), output.clone())?;

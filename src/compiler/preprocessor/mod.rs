@@ -837,7 +837,7 @@ impl Preprocessor {
             current_module_name_ref,
             &clean_last_name_component,
             &updated_name,
-        ) {
+        )? {
             if let Some(mac) = self.stored_macros.get_mut(&tname) {
                 match mac {
                     StoredMacro::Compiled(use_macro) => {
@@ -1193,6 +1193,9 @@ impl Preprocessor {
         let body = self
             .expand_macros(unexpanded_body.clone(), true)?
             .unwrap_or_else(|| unexpanded_body.clone());
+        if unexpanded_body != body {
+            eprintln!("{} => {}", unexpanded_body, body);
+        }
         // Support using the preprocessor to collect dependencies recursively.
         let as_list: Option<Vec<SExp>> = body
             .proper_list()
