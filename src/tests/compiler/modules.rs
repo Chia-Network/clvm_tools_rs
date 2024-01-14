@@ -387,3 +387,20 @@ fn test_simple_module_compliation_simple_type_2() {
         }],
     );
 }
+
+#[test]
+fn test_function_with_argument_names_overlapping_primitives() {
+    let filename = "resources/tests/module/test_prepend.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_filename = "resources/tests/module/test_prepend.hex";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[HexArgumentOutcome {
+            hexfile: hex_filename,
+            argument: "((1 2 3) (4 5 6))",
+            outcome: Some("(q 2 3 4 5 6)"),
+        }],
+    );
+}
