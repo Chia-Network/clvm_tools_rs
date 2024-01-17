@@ -186,7 +186,14 @@ pub fn find_helper_target(
                 }
             }
         }
-        if h.helper.name() == &child {
+        if h.helper.name() == &child
+            && !matches!(
+                h.helper,
+                HelperForm::Defnsref(_) | HelperForm::Defnamespace(_)
+            )
+        {
+            // A nsref or namespace doesn't name a helper, so don't match it
+            // by name.
             let combined = if let Some(p) = parent_ns {
                 p.with_child(&child)
             } else {

@@ -12,8 +12,8 @@
 (import std.partition)
 (import std.append)
 
-(import cards.handcalc exposing handcalc)
-(import cards.onehandcalc exposing onehandcalc)
+(import handcalc exposing handcalc)
+(import onehandcalc exposing onehandcalc)
 
 (defun cards-by-bitmask (mask cards)
   (if cards

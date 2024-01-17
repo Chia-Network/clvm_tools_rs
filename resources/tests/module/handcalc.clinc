@@ -5,7 +5,7 @@
 (import std.partition)
 (import std.append)
 (import std.reverse)
-(import cards.onehandcalc)
+(import onehandcalc)
 
 ; ranks are 2-14 with 2 being two, 13 being king, and 14 being ace
 ; suits are 1-4 with no particular labelling

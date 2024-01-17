@@ -585,6 +585,8 @@ impl Preprocessor {
             &import_name.as_u8_vec(LongNameTranslation::Filename(".clinc".to_string())),
         );
 
+        eprintln!("filename_clinc {}", filename_clinc);
+
         if let Ok((full_name, content)) =
             self.opts.read_new_file(self.opts.filename(), filename_clsp)
         {
