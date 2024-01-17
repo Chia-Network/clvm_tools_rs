@@ -376,22 +376,6 @@ fn resolve_namespaces_in_expr(
             let (_, parsed_name) = ImportLongName::parse(name);
             let (parent, child) = parsed_name.parent_and_name();
 
-            // If not namespaced, then it could be a primitive
-            if parent.is_none() {
-                let prim_map = opts.prim_map();
-                if prim_map.get(&child).is_some() {
-                    return Ok(expr.clone());
-                }
-
-                let child_sexp = SExp::Atom(nl.clone(), name.clone());
-                for v in prim_map.values() {
-                    let v_borrowed: &SExp = v.borrow();
-                    if v_borrowed == &child_sexp {
-                        return Ok(expr.clone());
-                    }
-                }
-            }
-
             let (target_full_name, target_helper) = if let Some((target_full_name, target_helper)) =
                 find_helper_target(
                     opts.clone(),
@@ -400,19 +384,35 @@ fn resolve_namespaces_in_expr(
                     name,
                     &parsed_name,
                 )? {
-                (target_full_name, target_helper)
-            } else if is_compiler_builtin(name) {
-                return Ok(expr.clone());
-            } else {
-                return Err(CompileErr(
-                    expr.loc(),
-                    format!(
-                        "could not find helper {} in {}",
-                        decode_string(name),
-                        display_namespace(parent_ns)
-                    ),
-                ));
-            };
+                    (target_full_name, target_helper)
+                } else if is_compiler_builtin(name) {
+                    return Ok(expr.clone());
+                } else {
+                    // If not namespaced, then it could be a primitive
+                    if parent.is_none() {
+                        let prim_map = opts.prim_map();
+                        if prim_map.get(&child).is_some() {
+                            return Ok(expr.clone());
+                        }
+
+                        let child_sexp = SExp::Atom(nl.clone(), name.clone());
+                        for v in prim_map.values() {
+                            let v_borrowed: &SExp = v.borrow();
+                            if v_borrowed == &child_sexp {
+                                return Ok(expr.clone());
+                            }
+                        }
+                    }
+
+                    return Err(CompileErr(
+                        expr.loc(),
+                        format!(
+                            "could not find helper {} in {}",
+                            decode_string(name),
+                            display_namespace(parent_ns)
+                        ),
+                    ));
+                };
 
             resolved_helpers.insert(
                 target_full_name.clone(),
