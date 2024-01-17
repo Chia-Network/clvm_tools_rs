@@ -422,7 +422,6 @@ fn test_handcalc() {
     );
 }
 
-
 #[test]
 fn test_factorial() {
     let filename = "resources/tests/module/test_factorial.clsp";
@@ -437,5 +436,39 @@ fn test_factorial() {
             argument: "(4)",
             outcome: Some("24"),
         }],
+    );
+}
+
+#[test]
+fn test_deep_compare() {
+    let filename = "resources/tests/module/test_deep_compare.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_filename = "resources/tests/module/test_deep_compare.hex";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "(() 1)",
+                outcome: Some("-1"),
+            },
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "(1 ())",
+                outcome: Some("1"),
+            },
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "((1 2 3) (1 2 3))",
+                outcome: Some("()"),
+            },
+            HexArgumentOutcome {
+                hexfile: hex_filename,
+                argument: "((1 2 3) (1 2 4))",
+                outcome: Some("-1"),
+            },
+        ],
     );
 }

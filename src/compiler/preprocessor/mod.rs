@@ -585,8 +585,6 @@ impl Preprocessor {
             &import_name.as_u8_vec(LongNameTranslation::Filename(".clinc".to_string())),
         );
 
-        eprintln!("filename_clinc {}", filename_clinc);
-
         if let Ok((full_name, content)) =
             self.opts.read_new_file(self.opts.filename(), filename_clsp)
         {
@@ -1008,7 +1006,8 @@ impl Preprocessor {
                     ));
                     if let Some(helpers) = compile_helperform(self.opts.clone(), target_defun)? {
                         for h in helpers.new_helpers.iter() {
-                            self.add_macro(h);
+                            let renamed = rename_args_helperform(h)?;
+                            self.add_macro(&renamed);
                         }
                     } else {
                         return Err(CompileErr(
@@ -1018,7 +1017,8 @@ impl Preprocessor {
                     }
                 } else if let Some(helpers) = compile_helperform(self.opts.clone(), definition)? {
                     for h in helpers.new_helpers.iter() {
-                        self.add_helper(rename_args_helperform(h)?);
+                        let renamed_helper = rename_args_helperform(h)?;
+                        self.add_helper(renamed_helper);
                     }
                 }
             }
@@ -1195,9 +1195,6 @@ impl Preprocessor {
         let body = self
             .expand_macros(unexpanded_body.clone(), true)?
             .unwrap_or_else(|| unexpanded_body.clone());
-        if unexpanded_body != body {
-            eprintln!("{} => {}", unexpanded_body, body);
-        }
         // Support using the preprocessor to collect dependencies recursively.
         let as_list: Option<Vec<SExp>> = body
             .proper_list()

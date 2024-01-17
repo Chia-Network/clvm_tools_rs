@@ -384,39 +384,39 @@ fn resolve_namespaces_in_expr(
                     name,
                     &parsed_name,
                 )? {
-                    (target_full_name, target_helper)
-                } else if is_compiler_builtin(name) {
-                    return Ok(expr.clone());
-                } else {
-                    // If not namespaced, then it could be a primitive
-                    if parent.is_none() {
-                        let prim_map = opts.prim_map();
-                        if prim_map.get(&child).is_some() {
-                            return Ok(expr.clone());
-                        }
-
-                        let child_sexp = SExp::Atom(nl.clone(), name.clone());
-                        for v in prim_map.values() {
-                            let v_borrowed: &SExp = v.borrow();
-                            if v_borrowed == &child_sexp {
-                                return Ok(expr.clone());
-                            }
-                        }
+                (target_full_name, target_helper)
+            } else if is_compiler_builtin(name) {
+                return Ok(expr.clone());
+            } else {
+                // If not namespaced, then it could be a primitive
+                if parent.is_none() {
+                    let prim_map = opts.prim_map();
+                    if prim_map.get(&child).is_some() {
+                        return Ok(expr.clone());
                     }
 
-                    return Err(CompileErr(
-                        expr.loc(),
-                        format!(
-                            "could not find helper {} in {}",
-                            decode_string(name),
-                            display_namespace(parent_ns)
-                        ),
-                    ));
-                };
+                    let child_sexp = SExp::Atom(nl.clone(), name.clone());
+                    for v in prim_map.values() {
+                        let v_borrowed: &SExp = v.borrow();
+                        if v_borrowed == &child_sexp {
+                            return Ok(expr.clone());
+                        }
+                    }
+                }
+
+                return Err(CompileErr(
+                    expr.loc(),
+                    format!(
+                        "could not find helper {} in {}",
+                        decode_string(name),
+                        display_namespace(parent_ns)
+                    ),
+                ));
+            };
 
             resolved_helpers.insert(
                 target_full_name.clone(),
-                HelperFormResult::new(&[target_helper.clone()], None),
+                HelperFormResult::new(&[rename_args_helperform(&target_helper)?], None),
             );
             Ok(Rc::new(BodyForm::Value(SExp::Atom(
                 nl.clone(),
