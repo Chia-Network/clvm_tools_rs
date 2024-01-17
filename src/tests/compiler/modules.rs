@@ -414,12 +414,10 @@ fn test_handcalc() {
     test_compile_and_run_program_with_modules(
         filename,
         &content,
-        &[
-            HexArgumentOutcome {
-                hexfile: hex_filename,
-                argument: "()",
-                outcome: Some("()"),
-            },
-        ],
+        &[HexArgumentOutcome {
+            hexfile: hex_filename,
+            argument: "()",
+            outcome: Some("()"),
+        }],
     );
 }
