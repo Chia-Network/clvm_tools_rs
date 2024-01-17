@@ -649,7 +649,7 @@ impl Preprocessor {
 
         // Add an empty namespace to be added to while working.
         let empty_ns = self.make_namespace_helper(&loc, &full_import_name);
-        self.add_helper(empty_ns);
+        self.prototype_program.push(empty_ns);
 
         // Process this module.
         let imported_content = self.import_new_module(loc.clone(), includes, &full_import_name)?;
