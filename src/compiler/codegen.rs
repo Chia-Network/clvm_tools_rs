@@ -200,10 +200,8 @@ fn create_name_lookup_(
         _ => Err(CompileErr(
             l,
             format!(
-                "operator or function atom {} not found checking {} in {}",
+                "operator or function atom {} not found",
                 decode_string(name),
-                find,
-                env
             ),
         )),
     }
