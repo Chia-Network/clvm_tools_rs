@@ -472,3 +472,20 @@ fn test_deep_compare() {
         ],
     );
 }
+
+#[test]
+fn test_import_constant() {
+    let filename = "resources/tests/module/test-import-constant.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_filename = "resources/tests/module/test-import-constant.hex";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[HexArgumentOutcome {
+            hexfile: hex_filename,
+            argument: "(5)",
+            outcome: Some("6"),
+        }],
+    );
+}

@@ -374,6 +374,7 @@ fn constant_fun_result(
                 // we constructed above.
                 None,
             );
+            eprintln!("new_body {}", new_body.to_sexp());
 
             return Some(Rc::new(new_body));
         }
