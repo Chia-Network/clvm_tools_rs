@@ -489,3 +489,20 @@ fn test_import_constant() {
         }],
     );
 }
+
+#[test]
+fn test_export_constant() {
+    let filename = "resources/tests/module/test-export-constant.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_filename = "resources/tests/module/test-export-constant_add-5-and-9.hex";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[HexArgumentOutcome {
+            hexfile: hex_filename,
+            argument: "()",
+            outcome: Some("14"),
+        }],
+    );
+}

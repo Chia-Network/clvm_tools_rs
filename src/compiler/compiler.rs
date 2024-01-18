@@ -11,18 +11,21 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, Stream};
 use crate::classic::clvm::sexp::sexp_as_bin;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
-use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
+use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, run, sha256tree};
+use crate::compiler::codegen::{
+    codegen, hoist_body_let_binding, process_helper_let_bindings, CONST_EVAL_LIMIT,
+};
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompileModuleComponent, CompileModuleOutput, CompilerOpts,
-    CompilerOutput, DefunData, Export, FrontendOutput, HelperForm, IncludeDesc, PrimaryCodegen,
-    SyntheticType,
+    CompilerOutput, ConstantKind, DefconstData, DefunData, Export, FrontendOutput, HelperForm,
+    IncludeDesc, PrimaryCodegen, SyntheticType,
 };
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::prims;
 use crate::compiler::resolve::resolve_namespaces;
+use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
@@ -249,6 +252,83 @@ fn create_hex_output_path(loc: Srcloc, file_path: &str, func: &str) -> Result<St
     })
 }
 
+pub fn find_exported_helper(
+    program: &CompileForm,
+    fun_name: &[u8],
+) -> Result<Option<HelperForm>, CompileErr> {
+    let found_helper: Vec<Option<HelperForm>> = program
+        .helpers
+        .iter()
+        .filter(|f| {
+            f.name() == fun_name
+                && matches!(f, HelperForm::Defun(_, _) | HelperForm::Defconstant(_))
+        })
+        .cloned()
+        .map(Some)
+        .collect();
+
+    if found_helper.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(found_helper[0].clone())
+}
+
+fn form_hash_expression(inner_exp: Rc<BodyForm>) -> Rc<BodyForm> {
+    Rc::new(BodyForm::Call(
+        inner_exp.loc(),
+        vec![
+            Rc::new(BodyForm::Value(SExp::Atom(
+                inner_exp.loc(),
+                b"__chia__sha256tree".to_vec(),
+            ))),
+            inner_exp,
+        ],
+        None,
+    ))
+}
+
+fn get_hash_of_constant(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    name: &[u8],
+    program: &CompileForm,
+    dc: &DefconstData,
+) -> Result<Vec<u8>, CompileErr> {
+    let constant_program = CompileForm {
+        exp: dc.body.clone(),
+        ..program.clone()
+    };
+    let compiled = compile_from_compileform(context, opts.clone(), constant_program)?;
+    let runner = context.runner();
+    let evaluated = run(
+        context.allocator(),
+        runner,
+        opts.prim_map(),
+        Rc::new(compiled),
+        Rc::new(SExp::Nil(program.loc())),
+        None,
+        Some(CONST_EVAL_LIMIT),
+    )
+    .map_err(|r| match r {
+        RunFailure::RunExn(l, e) => CompileErr(
+            l.clone(),
+            format!(
+                "Error evaluating export constant {}: exception throwing {e}",
+                decode_string(name)
+            ),
+        ),
+        RunFailure::RunErr(l, e) => CompileErr(
+            l.clone(),
+            format!(
+                "Error evaluating export constant {}: {e}",
+                decode_string(name)
+            ),
+        ),
+    })?;
+    Ok(sha256tree(evaluated))
+}
+
 /// Exports are returned main programs:
 ///
 /// Single main
@@ -347,44 +427,46 @@ pub fn compile_module(
             ));
         };
 
-        let mut found_helper: Vec<Option<HelperForm>> = program
-            .helpers
-            .iter()
-            .filter(|f| f.name() == &fun_name && matches!(f, HelperForm::Defun(_, _)))
-            .cloned()
-            .map(Some)
-            .collect();
-
-        if found_helper.is_empty() {
-            found_helper.push(None);
-        }
-
-        if let Some(HelperForm::Defun(_, dd)) = &found_helper[0] {
-            let mut new_name = fun_name.clone();
-            new_name.extend(b"_hash".to_vec());
-
-            function_list = Rc::new(BodyForm::Call(
+        let append_to_function_list = |function_list: &mut Rc<BodyForm>, fun_name: &[u8]| {
+            *function_list = Rc::new(BodyForm::Call(
                 loc.clone(),
                 vec![
-                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), b"c".to_vec()))),
+                    Rc::new(BodyForm::Value(SExp::Integer(
+                        loc.clone(),
+                        4_u32.to_bigint().unwrap(),
+                    ))),
                     Rc::new(BodyForm::Quoted(SExp::QuotedString(
                         loc.clone(),
                         b'"',
-                        fun_name.clone(),
+                        fun_name.to_vec(),
                     ))),
                     Rc::new(BodyForm::Call(
                         loc.clone(),
                         vec![
-                            Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), b"c".to_vec()))),
-                            Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), fun_name.clone()))),
-                            function_list,
+                            Rc::new(BodyForm::Value(SExp::Integer(
+                                loc.clone(),
+                                4_u32.to_bigint().unwrap(),
+                            ))),
+                            Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), fun_name.to_vec()))),
+                            function_list.clone(),
                         ],
                         None,
                     )),
                 ],
                 None,
             ));
+        };
 
+        let exported = find_exported_helper(&program, &fun_name)?;
+        if let Some(HelperForm::Defun(_, dd)) = &exported {
+            let mut new_name = fun_name.clone();
+            new_name.extend(b"_hash".to_vec());
+
+            append_to_function_list(&mut function_list, &fun_name);
+            let make_hash_of = Rc::new(BodyForm::Value(SExp::Atom(
+                dd.loc.clone(),
+                fun_name.clone(),
+            )));
             program.helpers.push(HelperForm::Defun(
                 false,
                 DefunData {
@@ -394,21 +476,45 @@ pub fn compile_module(
                     name: new_name,
                     args: Rc::new(SExp::Nil(dd.loc.clone())),
                     orig_args: Rc::new(SExp::Nil(dd.loc.clone())),
-                    body: Rc::new(BodyForm::Call(
-                        dd.loc.clone(),
-                        vec![
-                            Rc::new(BodyForm::Value(SExp::Atom(
-                                dd.loc.clone(),
-                                b"__chia__sha256tree".to_vec(),
-                            ))),
-                            Rc::new(BodyForm::Value(SExp::Atom(
-                                dd.loc.clone(),
-                                fun_name.clone(),
-                            ))),
-                        ],
-                        None,
-                    )),
+                    body: form_hash_expression(make_hash_of),
                     synthetic: Some(SyntheticType::WantNonInline),
+                    ty: None,
+                },
+            ));
+        } else if let Some(HelperForm::Defconstant(dc)) = &exported {
+            let mut new_name = fun_name.clone();
+            new_name.extend(b"_hash".to_vec());
+            let hash_of_constant =
+                get_hash_of_constant(context, opts.clone(), &dc.name, &program, dc)?;
+
+            let mut underscore_name = new_name.clone();
+            underscore_name.insert(0, b'_');
+
+            append_to_function_list(&mut function_list, &fun_name);
+
+            program.helpers.push(HelperForm::Defconstant(DefconstData {
+                kind: ConstantKind::Complex,
+                name: underscore_name.clone(),
+                body: Rc::new(BodyForm::Quoted(SExp::Atom(
+                    dc.loc.clone(),
+                    hash_of_constant,
+                ))),
+                tabled: true,
+                ty: None,
+                ..dc.clone()
+            }));
+
+            program.helpers.push(HelperForm::Defun(
+                true,
+                DefunData {
+                    loc: dc.loc.clone(),
+                    nl: dc.nl.clone(),
+                    kw: None,
+                    name: new_name.clone(),
+                    args: Rc::new(SExp::Nil(dc.loc.clone())),
+                    orig_args: Rc::new(SExp::Nil(dc.loc.clone())),
+                    body: Rc::new(BodyForm::Value(SExp::Atom(dc.loc.clone(), new_name))),
+                    synthetic: Some(SyntheticType::NoInlinePreference),
                     ty: None,
                 },
             ));
