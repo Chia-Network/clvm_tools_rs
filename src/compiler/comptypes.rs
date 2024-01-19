@@ -1503,7 +1503,7 @@ impl CompilerOutput {
 #[derive(Debug, Clone, Serialize)]
 pub enum Export {
     MainProgram(Rc<SExp>, Rc<BodyForm>),
-    Function(Vec<u8>),
+    Function(Vec<u8>, Option<Vec<u8>>),
 }
 
 #[derive(Debug, Clone, Serialize)]

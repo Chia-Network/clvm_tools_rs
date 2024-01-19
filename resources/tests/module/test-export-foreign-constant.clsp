@@ -1,0 +1,3 @@
+(import qualified test-data.one as one)
+
+(export one.QUOTED_ONE as ONE)

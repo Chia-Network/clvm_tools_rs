@@ -18,13 +18,13 @@ use crate::compiler::codegen::{
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompileModuleComponent, CompileModuleOutput, CompilerOpts,
     CompilerOutput, ConstantKind, DefconstData, DefunData, Export, FrontendOutput, HelperForm,
-    IncludeDesc, PrimaryCodegen, SyntheticType,
+    ImportLongName, IncludeDesc, PrimaryCodegen, SyntheticType,
 };
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::prims;
-use crate::compiler::resolve::resolve_namespaces;
+use crate::compiler::resolve::{find_helper_target, resolve_namespaces};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -253,25 +253,18 @@ fn create_hex_output_path(loc: Srcloc, file_path: &str, func: &str) -> Result<St
 }
 
 pub fn find_exported_helper(
+    opts: Rc<dyn CompilerOpts>,
     program: &CompileForm,
     fun_name: &[u8],
 ) -> Result<Option<HelperForm>, CompileErr> {
-    let found_helper: Vec<Option<HelperForm>> = program
-        .helpers
-        .iter()
-        .filter(|f| {
-            f.name() == fun_name
-                && matches!(f, HelperForm::Defun(_, _) | HelperForm::Defconstant(_))
-        })
-        .cloned()
-        .map(Some)
-        .collect();
-
-    if found_helper.is_empty() {
-        return Ok(None);
-    }
-
-    Ok(found_helper[0].clone())
+    let (_, parsed_name) = ImportLongName::parse(fun_name);
+    Ok(find_helper_target(
+        opts.clone(),
+        &program.helpers,
+        None,
+        fun_name,
+        &parsed_name
+    )?.map(|(_,result)| result.clone()))
 }
 
 fn form_hash_expression(inner_exp: Rc<BodyForm>) -> Rc<BodyForm> {
@@ -355,6 +348,8 @@ pub fn compile_module(
         ));
     }
 
+    eprintln!("process exports from {}", program.to_sexp());
+
     if exports.len() == 1 {
         if let Export::MainProgram(args, expr) = &exports[0] {
             // Single program.
@@ -418,8 +413,8 @@ pub fn compile_module(
     let mut prog_output = SExp::Nil(loc.clone());
 
     for fun in exports.iter() {
-        let fun_name = if let Export::Function(name) = fun {
-            name.clone()
+        let (fun_name, export_name) = if let Export::Function(name, as_name) = fun {
+            (name.clone(), as_name.as_ref().map(|c| c.clone()).unwrap_or_else(|| name.to_vec()))
         } else {
             return Err(CompileErr(
                 loc.clone(),
@@ -427,7 +422,7 @@ pub fn compile_module(
             ));
         };
 
-        let append_to_function_list = |function_list: &mut Rc<BodyForm>, fun_name: &[u8]| {
+        let append_to_function_list = |function_list: &mut Rc<BodyForm>, fun_name: &[u8], export_name: &[u8]| {
             *function_list = Rc::new(BodyForm::Call(
                 loc.clone(),
                 vec![
@@ -438,7 +433,7 @@ pub fn compile_module(
                     Rc::new(BodyForm::Quoted(SExp::QuotedString(
                         loc.clone(),
                         b'"',
-                        fun_name.to_vec(),
+                        export_name.to_vec(),
                     ))),
                     Rc::new(BodyForm::Call(
                         loc.clone(),
@@ -457,12 +452,12 @@ pub fn compile_module(
             ));
         };
 
-        let exported = find_exported_helper(&program, &fun_name)?;
+        let exported = find_exported_helper(opts.clone(), &program, &fun_name)?;
         if let Some(HelperForm::Defun(_, dd)) = &exported {
             let mut new_name = fun_name.clone();
             new_name.extend(b"_hash".to_vec());
 
-            append_to_function_list(&mut function_list, &fun_name);
+            append_to_function_list(&mut function_list, &fun_name, &export_name);
             let make_hash_of = Rc::new(BodyForm::Value(SExp::Atom(
                 dd.loc.clone(),
                 fun_name.clone(),
@@ -490,7 +485,7 @@ pub fn compile_module(
             let mut underscore_name = new_name.clone();
             underscore_name.insert(0, b'_');
 
-            append_to_function_list(&mut function_list, &fun_name);
+            append_to_function_list(&mut function_list, &fun_name, &export_name);
 
             program.helpers.push(HelperForm::Defconstant(DefconstData {
                 kind: ConstantKind::Complex,
@@ -559,11 +554,14 @@ pub fn compile_module(
             Rc::new(prog_output),
         );
 
+        eprintln!("prog_output {prog_output}");
+
         let mut stream = Stream::new(None);
         let converted_func = convert_to_clvm_rs(context.allocator(), m.func.clone())?;
         stream.write(sexp_as_bin(context.allocator(), converted_func));
         let output_path =
             create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(&m.name))?;
+        eprintln!("output_path {output_path}");
         opts.write_new_file(&output_path, stream.get_value().hex().as_bytes())?;
 
         components.push(CompileModuleComponent {

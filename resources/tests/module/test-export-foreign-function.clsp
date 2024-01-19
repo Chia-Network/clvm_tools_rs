@@ -1,0 +1,3 @@
+(import std.factorial)
+
+(export ! as factorial)

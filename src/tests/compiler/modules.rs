@@ -506,3 +506,37 @@ fn test_export_constant() {
         }],
     );
 }
+
+#[test]
+fn test_export_foreign_function() {
+    let filename = "resources/tests/module/test-export-foreign-function.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_filename = "resources/tests/module/test-export-foreign-function_factorial.hex";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[HexArgumentOutcome {
+            hexfile: hex_filename,
+            argument: "(4)",
+            outcome: Some("24"),
+        }],
+    );
+}
+
+#[test]
+fn test_export_foreign_constant() {
+    let filename = "resources/tests/module/test-export-foreign-constant.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_filename = "resources/tests/module/test-export-foreign-constant_ONE.hex";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[HexArgumentOutcome {
+            hexfile: hex_filename,
+            argument: "()",
+            outcome: Some("1"),
+        }],
+    );
+}

@@ -1147,6 +1147,43 @@ fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
     ))
 }
 
+pub fn match_export_named(
+    lst: &[SExp]
+) -> Option<(Vec<u8>, Option<Vec<u8>>)> {
+    if lst.len() != 2 && lst.len() != 4 {
+        return None;
+    }
+
+    let export_name =
+        if lst.len() == 4 {
+            if let SExp::Atom(_, as_atom) = lst[2].borrow() {
+                // Not 'as'
+                if as_atom != b"as" {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+
+            if let SExp::Atom(_, as_name) = lst[3].borrow() {
+                Some(as_name.clone())
+            } else {
+                return None;
+            }
+        } else {
+            None
+        };
+
+    let from_name =
+        if let SExp::Atom(_, from_name) = lst[1].borrow() {
+            from_name.clone()
+        } else {
+            return None;
+        };
+
+    Some((from_name, export_name))
+}
+
 pub fn match_export_form(
     opts: Rc<dyn CompilerOpts>,
     form: Rc<SExp>,
@@ -1167,20 +1204,20 @@ pub fn match_export_form(
             return Ok(None);
         }
 
+        if let Some((fun_name, export_name)) = match_export_named(&lst) {
+            return Ok(Some(Export::Function(fun_name, export_name)));
+        }
+
         // A main export
-        if lst.len() == 3 {
-            let expr = compile_bodyform(opts.clone(), Rc::new(lst[2].clone()))?;
-            return Ok(Some(Export::MainProgram(
-                Rc::new(lst[1].clone()),
-                Rc::new(expr),
-            )));
+        if lst.len() != 3 {
+            return Err(CompileErr(form.loc(), format!("Malformed export {form}")));
         }
 
-        if let SExp::Atom(_, fun_name) = lst[1].borrow() {
-            return Ok(Some(Export::Function(fun_name.clone())));
-        }
-
-        return Err(CompileErr(form.loc(), format!("Malformed export {form}")));
+        let expr = compile_bodyform(opts.clone(), Rc::new(lst[2].clone()))?;
+        return Ok(Some(Export::MainProgram(
+            Rc::new(lst[1].clone()),
+            Rc::new(expr),
+        )));
     }
 
     Ok(None)
