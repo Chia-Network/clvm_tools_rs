@@ -261,7 +261,7 @@ pub fn find_helper_target(
 
                 for exposed in x.iter() {
                     if exposed_name_matches(exposed, orig_name) {
-                        let target_name = ns_spec.longname.with_child(exposed.name);
+                        let target_name = ns_spec.longname.with_child(&exposed.name);
                         if let Some(helper) = find_helper_target(
                             opts.clone(),
                             helpers,
