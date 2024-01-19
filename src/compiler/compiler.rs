@@ -258,13 +258,10 @@ pub fn find_exported_helper(
     fun_name: &[u8],
 ) -> Result<Option<HelperForm>, CompileErr> {
     let (_, parsed_name) = ImportLongName::parse(fun_name);
-    Ok(find_helper_target(
-        opts.clone(),
-        &program.helpers,
-        None,
-        fun_name,
-        &parsed_name
-    )?.map(|(_,result)| result.clone()))
+    Ok(
+        find_helper_target(opts.clone(), &program.helpers, None, fun_name, &parsed_name)?
+            .map(|(_, result)| result.clone()),
+    )
 }
 
 fn form_hash_expression(inner_exp: Rc<BodyForm>) -> Rc<BodyForm> {
@@ -348,8 +345,6 @@ pub fn compile_module(
         ));
     }
 
-    eprintln!("process exports from {}", program.to_sexp());
-
     if exports.len() == 1 {
         if let Export::MainProgram(args, expr) = &exports[0] {
             // Single program.
@@ -414,7 +409,10 @@ pub fn compile_module(
 
     for fun in exports.iter() {
         let (fun_name, export_name) = if let Export::Function(name, as_name) = fun {
-            (name.clone(), as_name.as_ref().map(|c| c.clone()).unwrap_or_else(|| name.to_vec()))
+            (
+                name.clone(),
+                as_name.as_ref().cloned().unwrap_or_else(|| name.to_vec()),
+            )
         } else {
             return Err(CompileErr(
                 loc.clone(),
@@ -422,7 +420,9 @@ pub fn compile_module(
             ));
         };
 
-        let append_to_function_list = |function_list: &mut Rc<BodyForm>, fun_name: &[u8], export_name: &[u8]| {
+        let append_to_function_list = |function_list: &mut Rc<BodyForm>,
+                                       fun_name: &[u8],
+                                       export_name: &[u8]| {
             *function_list = Rc::new(BodyForm::Call(
                 loc.clone(),
                 vec![
@@ -554,14 +554,11 @@ pub fn compile_module(
             Rc::new(prog_output),
         );
 
-        eprintln!("prog_output {prog_output}");
-
         let mut stream = Stream::new(None);
         let converted_func = convert_to_clvm_rs(context.allocator(), m.func.clone())?;
         stream.write(sexp_as_bin(context.allocator(), converted_func));
         let output_path =
             create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(&m.name))?;
-        eprintln!("output_path {output_path}");
         opts.write_new_file(&output_path, stream.get_value().hex().as_bytes())?;
 
         components.push(CompileModuleComponent {

@@ -1147,39 +1147,35 @@ fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
     ))
 }
 
-pub fn match_export_named(
-    lst: &[SExp]
-) -> Option<(Vec<u8>, Option<Vec<u8>>)> {
+pub fn match_export_named(lst: &[SExp]) -> Option<(Vec<u8>, Option<Vec<u8>>)> {
     if lst.len() != 2 && lst.len() != 4 {
         return None;
     }
 
-    let export_name =
-        if lst.len() == 4 {
-            if let SExp::Atom(_, as_atom) = lst[2].borrow() {
-                // Not 'as'
-                if as_atom != b"as" {
-                    return None;
-                }
-            } else {
+    let export_name = if lst.len() == 4 {
+        if let SExp::Atom(_, as_atom) = lst[2].borrow() {
+            // Not 'as'
+            if as_atom != b"as" {
                 return None;
             }
-
-            if let SExp::Atom(_, as_name) = lst[3].borrow() {
-                Some(as_name.clone())
-            } else {
-                return None;
-            }
-        } else {
-            None
-        };
-
-    let from_name =
-        if let SExp::Atom(_, from_name) = lst[1].borrow() {
-            from_name.clone()
         } else {
             return None;
-        };
+        }
+
+        if let SExp::Atom(_, as_name) = lst[3].borrow() {
+            Some(as_name.clone())
+        } else {
+            return None;
+        }
+    } else {
+        None
+    };
+
+    let from_name = if let SExp::Atom(_, from_name) = lst[1].borrow() {
+        from_name.clone()
+    } else {
+        return None;
+    };
 
     Some((from_name, export_name))
 }
