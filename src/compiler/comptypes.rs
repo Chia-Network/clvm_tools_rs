@@ -465,6 +465,31 @@ pub struct QualifiedModuleInfo {
 pub struct ModuleImportListedName {
     pub nl: Srcloc,
     pub name: Vec<u8>,
+    pub alias: Option<Vec<u8>>,
+}
+
+impl ModuleImportListedName {
+    pub fn to_sexp(&self) -> Rc<SExp> {
+        let as_atom = Rc::new(SExp::Atom(self.nl.clone(), b"as".to_vec()));
+        let name_atom = Rc::new(SExp::Atom(self.nl.clone(), self.name.clone()));
+        if let Some(alias) = self.alias.as_ref() {
+            Rc::new(SExp::Cons(
+                self.nl.clone(),
+                name_atom,
+                Rc::new(SExp::Cons(
+                    self.nl.clone(),
+                    as_atom.clone(),
+                    Rc::new(SExp::Cons(
+                        self.nl.clone(),
+                        Rc::new(SExp::Atom(self.nl.clone(), alias.clone())),
+                        Rc::new(SExp::Nil(self.nl.clone())),
+                    )),
+                )),
+            ))
+        } else {
+            name_atom
+        }
+    }
 }
 
 /// Specification of how to name imported items from the target namespace.
@@ -476,6 +501,45 @@ pub enum ModuleImportSpec {
     Exposing(Srcloc, Vec<ModuleImportListedName>),
     /// All but these names are in the toplevel namespace after the import.
     Hiding(Srcloc, Vec<ModuleImportListedName>),
+}
+
+pub fn match_as_named(lst: &[SExp], offset: usize) -> Option<(Srcloc, Vec<u8>, Option<Vec<u8>>)> {
+    let name_offset = offset;
+    let small = 1 + offset;
+    let as_kw = 1 + offset;
+    let as_name_offset = 2 + offset;
+    let large = 3 + offset;
+
+    if lst.len() != small && lst.len() != large {
+        return None;
+    }
+
+    let export_name = if lst.len() == large {
+        if let SExp::Atom(_, as_atom) = lst[as_kw].borrow() {
+            // Not 'as'
+            if as_atom != b"as" {
+                return None;
+            }
+        } else {
+            return None;
+        }
+
+        if let SExp::Atom(_, as_name) = lst[as_name_offset].borrow() {
+            Some(as_name.clone())
+        } else {
+            return None;
+        }
+    } else {
+        None
+    };
+
+    let from_name = if let SExp::Atom(_, from_name) = lst[name_offset].borrow() {
+        from_name.clone()
+    } else {
+        return None;
+    };
+
+    Some((lst[name_offset].loc(), from_name, export_name))
 }
 
 impl ModuleImportSpec {
@@ -571,10 +635,19 @@ impl ModuleImportSpec {
         if let SExp::Atom(kw_loc, kw) = &forms[skip] {
             let mut words = vec![];
             for atom in forms.iter().skip(skip + 1) {
-                if let SExp::Atom(name_loc, name) = atom {
+                if let Some((import_name_loc, import_name, export_name)) =
+                    atom.proper_list().and_then(|lst| match_as_named(&lst, 0))
+                {
+                    words.push(ModuleImportListedName {
+                        nl: import_name_loc,
+                        name: import_name,
+                        alias: export_name,
+                    });
+                } else if let SExp::Atom(name_loc, name) = atom {
                     words.push(ModuleImportListedName {
                         nl: name_loc.clone(),
                         name: name.clone(),
+                        alias: None,
                     });
                 } else {
                     return Err(CompileErr(
@@ -620,7 +693,7 @@ impl ModuleImportSpec {
                 result_vec.extend(
                     exposed_names
                         .iter()
-                        .map(|e| Rc::new(SExp::Atom(e.nl.clone(), e.name.clone())))
+                        .map(|e| e.to_sexp())
                         .collect::<Vec<Rc<SExp>>>(),
                 );
                 Rc::new(enlist(kl.clone(), &result_vec))

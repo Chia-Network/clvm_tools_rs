@@ -8,7 +8,7 @@ use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     map_m, Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData,
     DefmacData, DefunData, HelperForm, ImportLongName, LambdaData, LetData, LetFormKind,
-    LongNameTranslation, ModuleImportSpec, NamespaceData,
+    LongNameTranslation, ModuleImportListedName, ModuleImportSpec, NamespaceData,
 };
 use crate::compiler::frontend::{generate_type_helpers, HelperFormResult};
 use crate::compiler::rename::rename_args_helperform;
@@ -150,6 +150,14 @@ pub fn rename_args_named_helper(
     Ok((pair.0.clone(), rename_args_helperform(&pair.1)?))
 }
 
+fn exposed_name_matches(exposed: &ModuleImportListedName, orig_name: &[u8]) -> bool {
+    if let Some(alias) = exposed.alias.as_ref() {
+        orig_name == alias
+    } else {
+        orig_name == &exposed.name
+    }
+}
+
 pub fn find_helper_target(
     opts: Rc<dyn CompilerOpts>,
     helpers: &[HelperForm],
@@ -252,8 +260,8 @@ pub fn find_helper_target(
                 }
 
                 for exposed in x.iter() {
-                    if exposed.name == orig_name {
-                        let target_name = ns_spec.longname.with_child(&child);
+                    if exposed_name_matches(exposed, orig_name) {
+                        let target_name = ns_spec.longname.with_child(exposed.name);
                         if let Some(helper) = find_helper_target(
                             opts.clone(),
                             helpers,

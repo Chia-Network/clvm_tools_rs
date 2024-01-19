@@ -540,3 +540,20 @@ fn test_export_foreign_constant() {
         }],
     );
 }
+
+#[test]
+fn test_import_renamed() {
+    let filename = "resources/tests/module/test_factorial_renamed.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_filename = "resources/tests/module/test_factorial_renamed.hex";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[HexArgumentOutcome {
+            hexfile: hex_filename,
+            argument: "(5)",
+            outcome: Some("120"),
+        }],
+    );
+}
