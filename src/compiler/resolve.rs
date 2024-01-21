@@ -154,7 +154,7 @@ fn exposed_name_matches(exposed: &ModuleImportListedName, orig_name: &[u8]) -> b
     if let Some(alias) = exposed.alias.as_ref() {
         orig_name == alias
     } else {
-        orig_name == &exposed.name
+        orig_name == exposed.name
     }
 }
 
@@ -272,7 +272,7 @@ pub fn find_helper_target(
                         // If we're matching a macro name, then we must propogate
                         // the search for a macro name.
 
-                        let target_name = if is_macro_name(&name) {
+                        let target_name = if is_macro_name(name) {
                             let (_, child) = name.parent_and_name();
                             ns_spec.longname.with_child(&child)
                         } else {
