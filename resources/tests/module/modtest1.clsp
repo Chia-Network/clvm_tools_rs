@@ -1,4 +1,4 @@
-(include *strict-cl-21*)
+(include *standard-cl-23*)
 (import std.assert exposing assert)
 
 (export (X)

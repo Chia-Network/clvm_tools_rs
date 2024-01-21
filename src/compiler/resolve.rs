@@ -158,6 +158,14 @@ fn exposed_name_matches(exposed: &ModuleImportListedName, orig_name: &[u8]) -> b
     }
 }
 
+pub fn is_macro_name(name: &ImportLongName) -> bool {
+    if name.components.is_empty() {
+        return false;
+    }
+
+    name.components[name.components.len() - 1].starts_with(b"__chia__defmac__")
+}
+
 pub fn find_helper_target(
     opts: Rc<dyn CompilerOpts>,
     helpers: &[HelperForm],
@@ -261,7 +269,16 @@ pub fn find_helper_target(
 
                 for exposed in x.iter() {
                     if exposed_name_matches(exposed, orig_name) {
-                        let target_name = ns_spec.longname.with_child(&exposed.name);
+                        // If we're matching a macro name, then we must propogate
+                        // the search for a macro name.
+
+                        let target_name = if is_macro_name(&name) {
+                            let (_, child) = name.parent_and_name();
+                            ns_spec.longname.with_child(&child)
+                        } else {
+                            ns_spec.longname.with_child(&exposed.name)
+                        };
+
                         if let Some(helper) = find_helper_target(
                             opts.clone(),
                             helpers,

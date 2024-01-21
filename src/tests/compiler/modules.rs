@@ -202,7 +202,7 @@ fn test_compile_and_run_program_with_modules(
 }
 
 #[test]
-fn test_simple_module_compliation() {
+fn test_simple_module_compilation() {
     let filename = "resources/tests/module/modtest1.clsp";
     let content = fs::read_to_string(filename).expect("file should exist");
     let hex_filename = "resources/tests/module/modtest1.hex";
@@ -226,7 +226,7 @@ fn test_simple_module_compliation() {
 }
 
 #[test]
-fn test_simple_module_compliation_assign_rewrite() {
+fn test_simple_module_compilation_assign_rewrite() {
     let filename = "resources/tests/module/modtest1_assign.clsp";
     let content = fs::read_to_string(filename).expect("file should exist");
     let hex_filename = "resources/tests/module/modtest1_assign.hex";
@@ -250,7 +250,7 @@ fn test_simple_module_compliation_assign_rewrite() {
 }
 
 #[test]
-fn test_simple_module_compliation_lambda_rewrite() {
+fn test_simple_module_compilation_lambda_rewrite() {
     let filename = "resources/tests/module/modtest1_lambda.clsp";
     let content = fs::read_to_string(filename).expect("file should exist");
     let hex_filename = "resources/tests/module/modtest1_lambda.hex";
@@ -274,7 +274,7 @@ fn test_simple_module_compliation_lambda_rewrite() {
 }
 
 #[test]
-fn test_simple_module_compliation_lambda_rewrite_with_body() {
+fn test_simple_module_compilation_lambda_rewrite_with_body() {
     let filename = "resources/tests/module/modtest2_lambda.clsp";
     let content = fs::read_to_string(filename).expect("file should exist");
     let hex_filename = "resources/tests/module/modtest2_lambda.hex";
@@ -298,7 +298,7 @@ fn test_simple_module_compliation_lambda_rewrite_with_body() {
 }
 
 #[test]
-fn test_simple_module_compliation_import_program_0() {
+fn test_simple_module_compilation_import_program_0() {
     let filename = "resources/tests/module/basic_program_import.clsp";
     let content = fs::read_to_string(filename).expect("file should exist");
     let hex_filename = "resources/tests/module/basic_program_import.hex";
@@ -317,7 +317,7 @@ fn test_simple_module_compliation_import_program_0() {
 }
 
 #[test]
-fn test_simple_module_compliation_import_program_1() {
+fn test_simple_module_compilation_import_program_1() {
     let filename = "resources/tests/module/two_program_import.clsp";
     let content = fs::read_to_string(filename).expect("file should exist");
     let hex_filename = "resources/tests/module/two_program_import.hex";
@@ -336,7 +336,7 @@ fn test_simple_module_compliation_import_program_1() {
 }
 
 #[test]
-fn test_simple_module_compliation_import_classic_program() {
+fn test_simple_module_compilation_import_classic_program() {
     let filename = "resources/tests/module/classic_program_import.clsp";
     let content = fs::read_to_string(filename).expect("file should exist");
     let hex_filename = "resources/tests/module/classic_program_import.hex";
@@ -355,7 +355,7 @@ fn test_simple_module_compliation_import_classic_program() {
 }
 
 #[test]
-fn test_simple_module_compliation_simple_type_1() {
+fn test_simple_module_compilation_simple_type_1() {
     let filename = "resources/tests/module/modtest1_current_module_type.clsp";
     let content = fs::read_to_string(filename).expect("file should exist");
     let hex_filename = "resources/tests/module/modtest1_current_module_type.hex";
@@ -372,7 +372,7 @@ fn test_simple_module_compliation_simple_type_1() {
 }
 
 #[test]
-fn test_simple_module_compliation_simple_type_2() {
+fn test_simple_module_compilation_simple_type_2() {
     let filename = "resources/tests/module/modtest1_other_module_type.clsp";
     let content = fs::read_to_string(filename).expect("file should exist");
     let hex_filename = "resources/tests/module/modtest1_other_module_type.hex";
