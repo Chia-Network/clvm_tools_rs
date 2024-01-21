@@ -2,11 +2,11 @@ use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::preprocessor::preprocess;
-use crate::compiler::sexp::parse_sexp;
+use crate::compiler::sexp::{parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use std::rc::Rc;
 
-use crate::tests::compiler::compiler::run_string;
+use crate::tests::compiler::compiler::run_string_strict;
 
 #[test]
 fn test_defmac_basic_0() {
@@ -18,7 +18,7 @@ fn test_defmac_basic_0() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "9");
 }
 
@@ -33,7 +33,7 @@ fn test_defmac_basic_shared_constant() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(\"2\" . 9)");
 }
 
@@ -48,7 +48,7 @@ fn test_defmac_basic_shared_constant_not_string_with_string_operator() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string());
+    let res = run_string_strict(&prog, &"(3)".to_string());
     assert!(res.is_err());
 }
 
@@ -64,7 +64,7 @@ fn test_defmac_basic_shared_constant_not_string_with_string_operator_fun() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(\"2\" . 9)");
 }
 
@@ -82,7 +82,7 @@ fn test_defmac_basic_test_is_string_pos() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(3 1 . \"test\")");
 }
 
@@ -96,12 +96,12 @@ fn test_defmac_basic_test_is_string_neg() {
           (qq (c 2 (unquote S)))
           )
         )
-      (c X (classify test))
+      (c X (classify 99))
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
-    assert_eq!(res.to_string(), "(3 2 . test)");
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(3 2 . 99)");
 }
 
 #[test]
@@ -110,7 +110,7 @@ fn test_defmac_basic_test_is_symbol_pos() {
     (mod (X)
       (defmac classify (S)
         (if (symbol? S)
-          (qq (c 1 (unquote S)))
+          (qq (c 1 (unquote (symbol->string S))))
           (qq (c 2 (unquote S)))
           )
         )
@@ -118,8 +118,8 @@ fn test_defmac_basic_test_is_symbol_pos() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
-    assert_eq!(res.to_string(), "(3 1 . test)");
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
+    assert_eq!(res.to_string(), "(3 1 . \"test\")");
 }
 
 #[test]
@@ -136,7 +136,7 @@ fn test_defmac_basic_test_is_symbol_neg() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(3 2 . \"test\")");
 }
 
@@ -154,7 +154,7 @@ fn test_defmac_basic_test_is_number_pos() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(3 1 . 7)");
 }
 
@@ -172,7 +172,7 @@ fn test_defmac_basic_test_is_number_neg() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(3 2 . \"test\")");
 }
 
@@ -186,7 +186,7 @@ fn test_defmac_extension_from_function() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(3 . \"X\")");
 }
 
@@ -200,7 +200,7 @@ fn test_defmac_if_extension() {
       )
     "}
     .to_string();
-    let res = run_string(&prog, &"(9)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(9)".to_string()).unwrap();
     assert_eq!(res.to_string(), "\"1\"");
 }
 
@@ -325,13 +325,13 @@ fn test_defmac_create_match_form() {
         (match X
           ((16 x y) (c 1 (+ x y)))
           ((3 () b c) c)
-          ((3 (q . 1) b c) b)
+          ((3 1 b c) b)
           (x x)
           )
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"(3 () 1001 1002)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(3 () 1001 1002)".to_string()).unwrap();
     assert_eq!(res.to_string(), "1002");
 }
 
@@ -344,7 +344,7 @@ fn test_defmac_stringq() {
          )
     "}
     .to_string();
-    let res = run_string(&prog, &"()".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "(() 1 ())");
 }
 
@@ -357,7 +357,7 @@ fn test_defmac_numberq() {
          )
     "}
     .to_string();
-    let res = run_string(&prog, &"()".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "(() () 1)");
 }
 
@@ -370,7 +370,7 @@ fn test_defmac_symbolq() {
          )
     "}
     .to_string();
-    let res = run_string(&prog, &"()".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "(1 () ())");
 }
 
@@ -383,7 +383,7 @@ fn test_defmac_string_to_symbol() {
          )
     "}
     .to_string();
-    let res = run_string(&prog, &"()".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "(1 () ())");
 }
 
@@ -396,7 +396,7 @@ fn test_defmac_string_to_symbol_converts() {
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"(5)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(5)".to_string()).unwrap();
     assert_eq!(res.to_string(), "31420");
 }
 
@@ -409,7 +409,8 @@ fn test_defmac_string_needs_conversion() {
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"(5)".to_string());
+    let res = run_string_strict(&prog, &"(5)".to_string());
+    eprintln!("res {res:?}");
     assert!(res.is_err());
 }
 
@@ -426,7 +427,7 @@ fn test_defmac_string_substr_0() {
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"(5999)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(5999)".to_string()).unwrap();
     assert_eq!(res.to_string(), "(\"X\" . 5999)");
 }
 
@@ -446,7 +447,7 @@ fn test_defmac_string_substr_bad() {
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"((87 89 91))".to_string());
+    let res = run_string_strict(&prog, &"((87 89 91))".to_string());
     assert!(res.is_err());
 }
 
@@ -467,7 +468,7 @@ fn test_defmac_string_to_number_0() {
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"(31)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(31)".to_string()).unwrap();
     assert_eq!(res.to_string(), "38");
 }
 
@@ -476,7 +477,7 @@ fn test_defmac_string_to_number_bad() {
     let prog = indoc! {"
       (mod (X_A)
         (defmac add-n-to (X)
-          (let
+          (let*
             ((stringified (symbol->string X))
              (slen (string-length stringified))
              (number-part (substring stringified (- slen 1) slen))
@@ -488,7 +489,7 @@ fn test_defmac_string_to_number_bad() {
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"(31)".to_string());
+    let res = run_string_strict(&prog, &"(31)".to_string());
     assert!(res.is_err());
 }
 
@@ -508,7 +509,7 @@ fn test_defmac_number_to_string() {
         )
     "}
     .to_string();
-    let res = run_string(&prog, &"(37)".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"(37)".to_string()).unwrap();
     assert_eq!(res.to_string(), "136");
 }
 
@@ -527,9 +528,17 @@ fn test_preprocess_basic_list() {
             strict: true,
         });
     let mut includes = Vec::new();
-    let pp = preprocess(opts.clone(), &mut includes, parsed_forms[0].clone())
-        .expect("should preprocess");
-    assert_eq!(pp[pp.len() - 1].to_string(), "(4 1 (4 2 (4 3 ())))");
+    let parsed_lst: Vec<Rc<SExp>> = parsed_forms[0]
+        .proper_list()
+        .expect("was a list")
+        .into_iter()
+        .map(Rc::new)
+        .collect();
+    let pp = preprocess(opts.clone(), &mut includes, &parsed_lst).expect("should preprocess");
+    assert_eq!(
+        pp.forms[pp.forms.len() - 1].to_string(),
+        "(4 1 (4 2 (4 3 ())))"
+    );
 }
 
 #[test]
@@ -542,7 +551,7 @@ fn test_preprocess_expansion_makes_numeric_operators() {
          )
     "}
     .to_string();
-    let res = run_string(&prog, &"()".to_string()).unwrap();
+    let res = run_string_strict(&prog, &"()".to_string()).unwrap();
     assert_eq!(res.to_string(), "(\"test\")");
 }
 
@@ -550,7 +559,7 @@ fn test_preprocess_expansion_makes_numeric_operators() {
 fn test_preprocessor_tours_includes_properly() {
     let prog = indoc! {"
       ( ;; Note: preprocessing is run in the list of the body forms.
-        (include *standard-cl-23*)
+        (include *strict-cl-21*)
         (include condition_codes.clvm)
         (include curry-and-treehash.clinc)
         ()
@@ -561,12 +570,18 @@ fn test_preprocessor_tours_includes_properly() {
     let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(pname))
         .set_search_paths(&["resources/tests".to_string()])
         .set_dialect(AcceptedDialect {
-            stepping: Some(23),
+            stepping: Some(21),
             strict: true,
         });
     let parsed = parse_sexp(Srcloc::start(pname), prog.bytes()).expect("should parse");
+    let parsed_lst: Vec<Rc<SExp>> = parsed[0]
+        .proper_list()
+        .expect("was a list")
+        .into_iter()
+        .map(Rc::new)
+        .collect();
     let mut includes = Vec::new();
-    let res = preprocess(opts, &mut includes, parsed[0].clone()).expect("should preprocess");
+    let res = preprocess(opts, &mut includes, &parsed_lst).expect("should preprocess");
     let expected_lines = &[
         "(defmac __chia__primitive__if (A B C) (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @)))",
         "(defun __chia__if (ARGS) (a (i (r (r (r ARGS))) (com (qq (a (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (com (unquote (__chia__if (r (r ARGS)))))) @))) (com (qq (a (i (unquote (f ARGS)) (com (unquote (f (r ARGS)))) (com (unquote (f (r (r ARGS)))))) @)))) @))",
@@ -574,6 +589,7 @@ fn test_preprocessor_tours_includes_properly() {
         "(defun __chia__compile-list (args) (a (i args (com (c 4 (c (f args) (c (__chia__compile-list (r args)) ())))) (com ())) @))",
         "(defmac list ARGS (__chia__compile-list ARGS))",
         "(defun-inline / (A B) (f (divmod A B)))",
+        "(defun __chia__sha256tree (t) (a (i (l t) (com (sha256 2 (__chia__sha256tree (f t)) (__chia__sha256tree (r t)))) (com (sha256 1 t))) @))",
         "(defun-inline c* (A B) (c A B))",
         "(defun-inline a* (A B) (a A B))",
         "(defun-inline coerce (X) : (Any -> Any) X)",
@@ -581,7 +597,7 @@ fn test_preprocessor_tours_includes_properly() {
         "(defun-inline bless (X) : (forall a ((Pair a Unit) -> (Exec a))) (coerce X))",
         "(defun-inline lift (X V) : (forall a (forall b ((Pair (Exec a) (Pair b Unit)) -> (Exec (Pair a b))))) (coerce X))",
         "(defun-inline unlift (X) : (forall a (forall b ((Pair (Exec (Pair a b)) Unit) -> (Exec b)))) (coerce X))",
-        "(defconstant *chialisp-version* 23)",
+        "(defconstant *chialisp-version* 22)",
         "(defconstant AGG_SIG_UNSAFE 49)",
         "(defconstant AGG_SIG_ME 50)",
         "(defconstant CREATE_COIN 51)",
@@ -609,8 +625,8 @@ fn test_preprocessor_tours_includes_properly() {
         "(defun puzzle-hash-of-curried-function (function-hash . reversed-curry-parameter-hashes) (tree-hash-of-apply function-hash (build-curry-list reversed-curry-parameter-hashes (sha256 ONE ONE))))",
         "()",
     ];
-    for (i, r) in res.iter().enumerate() {
+    for (i, r) in res.forms.iter().enumerate() {
         assert_eq!(r.to_string(), expected_lines[i]);
     }
-    assert_eq!(res.len(), expected_lines.len());
+    assert_eq!(res.forms.len(), expected_lines.len());
 }

@@ -70,8 +70,14 @@ impl Optimization for Strategy23 {
         cf: CompileForm,
     ) -> Result<CompileForm, CompileErr> {
         let mut symbols = HashMap::new();
-        let mut wrapper =
-            CompileContextWrapper::new(allocator, runner, &mut symbols, self.duplicate());
+        let mut includes = Vec::new();
+        let mut wrapper = CompileContextWrapper::new(
+            allocator,
+            runner,
+            &mut symbols,
+            self.duplicate(),
+            &mut includes,
+        );
         deinline_opt(&mut wrapper.context, opts.clone(), cf)
     }
 

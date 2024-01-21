@@ -42,12 +42,14 @@ impl ClvmHamt {
         }
 
         let mut symbols = HashMap::new();
+        let mut includes = Vec::new();
         let program = compile_file(
             &mut allocator,
             runner.clone(),
             opts,
             &program_text,
             &mut symbols,
+            &mut includes,
         )
         .expect("should compile");
         eprintln!("compiled");
@@ -60,7 +62,7 @@ impl ClvmHamt {
             prim_map: Rc::new(prim_map),
             program_name: program_name.to_string(),
             program_lines: Rc::new(program_lines),
-            program: Rc::new(program),
+            program: Rc::new(program.to_sexp()),
             symbols,
             hamt: nil.clone(),
         };

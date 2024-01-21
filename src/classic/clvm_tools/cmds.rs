@@ -542,7 +542,6 @@ pub fn cldb(args: &[String]) {
             .set_type(Rc::new(PathOrCodeConv {}))
             .set_help("path to symbol file".to_string()),
     );
-    #[cfg(feature = "debug-print")]
     parser.add_argument(
         vec!["-p".to_string(), "--only-print".to_string()],
         Argument::new()
@@ -617,10 +616,7 @@ pub fn cldb(args: &[String]) {
             _ => None,
         });
 
-    let only_print = parsed_args
-        .get("debug_print")
-        .map(|_| true)
-        .unwrap_or(false);
+    let only_print = parsed_args.get("only_print").map(|_| true).unwrap_or(false);
 
     let do_optimize = parsed_args
         .get("optimize")
@@ -635,6 +631,7 @@ pub fn cldb(args: &[String]) {
         .set_search_paths(&search_paths);
 
     let mut use_symbol_table = symbol_table.unwrap_or_default();
+    let mut includes = Vec::new();
     let mut output = Vec::new();
 
     let res = match parsed_args.get("hex") {
@@ -654,11 +651,14 @@ pub fn cldb(args: &[String]) {
                 opts.clone(),
                 &input_program,
                 &mut use_symbol_table,
+                &mut includes,
             );
             if do_optimize {
-                unopt_res.and_then(|x| run_optimizer(&mut allocator, runner.clone(), Rc::new(x)))
+                unopt_res.and_then(|x| {
+                    run_optimizer(&mut allocator, runner.clone(), Rc::new(x.to_sexp()))
+                })
             } else {
-                unopt_res.map(Rc::new)
+                unopt_res.map(|x| Rc::new(x.to_sexp()))
             }
         }
     };
@@ -929,7 +929,7 @@ fn perform_preprocessing(
     let (stepping_form_text, parsed) =
         parse_module_and_get_sigil(opts.clone(), input_file, program_text)?;
     let frontend = frontend(opts, &parsed)?;
-    let whole_mod = render_mod_with_sigil(input_file, &stepping_form_text, &frontend)?;
+    let whole_mod = render_mod_with_sigil(input_file, &stepping_form_text, frontend.compileform())?;
 
     stdout.write_str(&format!("{}", whole_mod));
     Ok(())
@@ -950,9 +950,10 @@ fn perform_desugaring(
         runner.clone(),
         HashMap::new(),
         get_optimizer(&srcloc, opts.clone())?,
+        Vec::new(),
     );
     let p0 = frontend(opts.clone(), &parsed)?;
-    let p1 = context.frontend_optimization(opts.clone(), p0)?;
+    let p1 = context.frontend_optimization(opts.clone(), p0.compileform().clone())?;
 
     // Resolve includes, convert program source to lexemes
     let p2 = do_desugar(&p1)?;
@@ -1426,8 +1427,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 .and_then(|pre_forms| {
                     let context = standard_type_context();
                     let compileform = frontend(opts.clone(), &pre_forms)?;
-                    let target_type =
-                        context.typecheck_chialisp_program(opts.clone(), &compileform)?;
+                    let target_type = context
+                        .typecheck_chialisp_program(opts.clone(), compileform.compileform())?;
                     Ok(context.reify(&target_type, None))
                 })
             {
@@ -1462,6 +1463,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_frontend_opt(stepping > 21)
             .set_disassembly_ver(get_disassembly_ver(&parsed_args));
         let mut symbol_table = HashMap::new();
+        let mut includes = Vec::new();
 
         // Short circuit preprocessing display.
         if parsed_args.get("preprocess").is_some() {
@@ -1486,11 +1488,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             opts.clone(),
             &input_program,
             &mut symbol_table,
+            &mut includes,
         );
         let res = if do_optimize {
-            unopt_res.and_then(|x| run_optimizer(&mut allocator, runner, Rc::new(x)))
+            unopt_res.and_then(|x| run_optimizer(&mut allocator, runner, Rc::new(x.to_sexp())))
         } else {
-            unopt_res.map(Rc::new)
+            unopt_res.map(|x| x.to_sexp()).map(Rc::new)
         };
 
         match res {

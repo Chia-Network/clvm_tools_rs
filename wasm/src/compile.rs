@@ -8,13 +8,11 @@ use wasm_bindgen::{JsCast, JsValue};
 use clvmr::Allocator;
 
 use clvm_tools_rs::classic::clvm::__type_compatibility__::Stream;
-use clvm_tools_rs::classic::clvm_tools::stages::stage_0::TRunProgram;
 use clvm_tools_rs::classic::clvm_tools::clvmc::compile_clvm_inner;
-use clvm_tools_rs::compiler::CompileContextWrapper;
+use clvm_tools_rs::compiler::BasicCompileContext;
 use clvm_tools_rs::compiler::compiler::{DefaultCompilerOpts, compile_pre_forms};
-use clvm_tools_rs::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
+use clvm_tools_rs::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, PrimaryCodegen};
 use clvm_tools_rs::compiler::dialect::AcceptedDialect;
-use clvm_tools_rs::compiler::optimize::get_optimizer;
 use clvm_tools_rs::compiler::preprocessor::gather_dependencies;
 use clvm_tools_rs::compiler::sexp::{decode_string, SExp};
 use clvm_tools_rs::compiler::srcloc::Srcloc;
@@ -221,21 +219,16 @@ impl CompilerOpts for JsCompilerOpts {
             format!("could not find {filename} to include"),
         ))
     }
+    fn write_new_file(&self, _: &str, _: &[u8]) -> Result<(), CompileErr> {
+        todo!()
+    }
     fn compile_program(
         &self,
-        allocator: &mut Allocator,
-        runner: Rc<dyn TRunProgram>,
+        context: &mut BasicCompileContext,
         sexp: Rc<SExp>,
-        symbol_table: &mut HashMap<String, String>,
-    ) -> Result<SExp, CompileErr> {
+    ) -> Result<CompilerOutput, CompileErr> {
         let me = Rc::new(self.clone());
-        let mut context_wrapper = CompileContextWrapper::new(
-            allocator,
-            runner,
-            symbol_table,
-            get_optimizer(&sexp.loc(), me.clone())?,
-        );
-        compile_pre_forms(&mut context_wrapper.context, me, &[sexp])
+        compile_pre_forms(context, me, &[sexp])
     }
 }
 
@@ -263,6 +256,7 @@ fn convert_search_paths(search_paths_js: &[JsValue]) -> Result<Vec<String>, Stri
 pub fn compile(input_js: JsValue, filename_js: JsValue, search_paths_js: Vec<JsValue>, options: JsValue) -> JsValue {
     let mut allocator = Allocator::new();
     let mut symbol_table = HashMap::new();
+    let mut includes = Vec::new();
     let mut result_stream = Stream::new(None);
 
     let input = input_js.as_string().unwrap();
@@ -283,6 +277,7 @@ pub fn compile(input_js: JsValue, filename_js: JsValue, search_paths_js: Vec<JsV
         &mut allocator,
         opts,
         &mut symbol_table,
+        &mut includes,
         &filename,
         &input,
         &mut result_stream,
