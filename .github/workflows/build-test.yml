@@ -88,14 +88,6 @@ jobs:
           # Find and install the newly built wheel
           pip install --no-index --find-links target/wheels/ clvm_tools_rs
 
-      - name: Run Cargo tests
-        if: startsWith(matrix.os, 'ubuntu')
-        run: cargo test
-
-      - name: Exhaustive Cargo assign tests
-        if: startsWith(matrix.os, 'ubuntu')
-        run: cargo test -- --include-ignored assign
-
       - name: Check coverage
         if: startsWith(matrix.os, 'ubuntu')
         run: |
@@ -384,7 +376,7 @@ jobs:
         run: cargo fmt -- --files-with-diff --check
 
   clippy:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
@@ -400,8 +392,8 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
   unit_tests:
-    runs-on: ubuntu-20.04
-    name: Unit tests
+    runs-on: ubuntu-latest
+    name: Cargo Unit tests on ubuntu-latest
     steps:
       - uses: actions/checkout@v3
         with:
@@ -413,6 +405,8 @@ jobs:
           components: rustfmt, clippy
       - name: cargo test
         run: cargo test
+      - name: Exhaustive Cargo assign tests
+        run: cargo test -- --include-ignored assign
 
   coverage:
     runs-on: ubuntu-latest
