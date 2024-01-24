@@ -17,7 +17,9 @@ use std::thread;
 use clvm_rs::allocator::Allocator;
 use clvm_rs::serde::node_to_bytes;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream, UnvalidatedBytesFromType};
+use crate::classic::clvm::__type_compatibility__::{
+    Bytes, BytesFromType, Stream, UnvalidatedBytesFromType,
+};
 use crate::classic::clvm::serialize::sexp_to_stream;
 use crate::classic::clvm_tools::clvmc;
 use crate::classic::clvm_tools::cmds;
@@ -58,7 +60,7 @@ enum CompileClvmSource<'a> {
 
 enum CompileClvmAction {
     CheckDependencies,
-    CompileCode(Option<String>)
+    CompileCode(Option<String>),
 }
 
 fn get_source_from_input(input_code: CompileClvmSource) -> PyResult<(String, String)> {
@@ -87,9 +89,7 @@ fn get_source_from_input(input_code: CompileClvmSource) -> PyResult<(String, Str
             let file_data = fs::read_to_string(&path_string).map_err(PyException::new_err)?;
             Ok((path_string, file_data))
         }
-        CompileClvmSource::SourceCode(name, code) => {
-            Ok((name.clone(), code.clone()))
-        }
+        CompileClvmSource::SourceCode(name, code) => Ok((name.clone(), code.clone())),
     }
 }
 
@@ -103,8 +103,7 @@ fn run_clvm_compilation(
     let (path_string, file_content) = get_source_from_input(input_code)?;
 
     // Load up our compiler opts.
-    let def_opts: Rc<dyn CompilerOpts> =
-        Rc::new(DefaultCompilerOpts::new(&path_string));
+    let def_opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&path_string));
     let opts = def_opts.set_search_paths(&search_paths);
 
     match action {
@@ -113,28 +112,31 @@ fn run_clvm_compilation(
             let mut symbols = HashMap::new();
 
             // Output is a program represented as clvm data in allocator.
-            let clvm_result =
-                clvmc::compile_clvm_text(
-                    &mut allocator,
-                    opts,
-                    &mut symbols,
-                    &file_content,
-                    &path_string,
-                    true
-                ).map_err(|e| CompError::new_err(format!("{}", e)))?;
+            let clvm_result = clvmc::compile_clvm_text(
+                &mut allocator,
+                opts,
+                &mut symbols,
+                &file_content,
+                &path_string,
+                true,
+            )
+            .map_err(|e| CompError::new_err(format!("{}", e)))?;
 
             // Get the text representation, which will go either to the output file
             // or result.
-            let mut hex_text = Bytes::new(Some(BytesFromType::Raw(node_to_bytes(&allocator, clvm_result)?))).hex();
-            let compiled =
-                if let Some(output_file) = output {
-                    // Write output with eol.
-                    hex_text += "\n";
-                    fs::write(&output_file, hex_text).map_err(PyException::new_err)?;
-                    output_file.to_string()
-                } else {
-                    hex_text
-                };
+            let mut hex_text = Bytes::new(Some(BytesFromType::Raw(node_to_bytes(
+                &allocator,
+                clvm_result,
+            )?)))
+            .hex();
+            let compiled = if let Some(output_file) = output {
+                // Write output with eol.
+                hex_text += "\n";
+                fs::write(&output_file, hex_text).map_err(PyException::new_err)?;
+                output_file.to_string()
+            } else {
+                hex_text
+            };
 
             // Produce compiled output according to whether output with symbols
             // or just the standard result is required.
@@ -153,8 +155,8 @@ fn run_clvm_compilation(
             // Produce dependency results.
             let result_deps: Vec<String> =
                 gather_dependencies(opts, &path_string.to_string(), &file_content)
-                .map_err(|e| CompError::new_err(format!("{}: {}", e.0, e.1)))
-                .map(|rlist| rlist.iter().map(|i| decode_string(&i.name)).collect())?;
+                    .map_err(|e| CompError::new_err(format!("{}: {}", e.0, e.1)))
+                    .map(|rlist| rlist.iter().map(|i| decode_string(&i.name)).collect())?;
 
             // Return all visited files.
             Python::with_gil(|py| Ok(result_deps.into_py(py)))
@@ -173,7 +175,7 @@ fn compile_clvm(
         CompileClvmSource::SourcePath(input_path),
         CompileClvmAction::CompileCode(Some(output_path)),
         search_paths,
-        export_symbols
+        export_symbols,
     )
 }
 
@@ -187,7 +189,7 @@ fn compile(
         CompileClvmSource::SourceCode("*inline*".to_string(), source),
         CompileClvmAction::CompileCode(None),
         search_paths,
-        export_symbols
+        export_symbols,
     )
 }
 
