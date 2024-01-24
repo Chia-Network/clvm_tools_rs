@@ -205,6 +205,11 @@ jobs:
           git add mand_output.txt
           git rm --force mand_output.txt
 
+      - name: Install pytest
+        run: |
+          . ./activate
+          pip install pytest pytest-asyncio
+
       - name: Verify recompilation of old sources match with new compiler
         if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
         run: |
@@ -231,11 +236,9 @@ jobs:
       - name: Test Classic command line tools with pytest
         if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
         run: |
-          python -m pip install pytest
-          # This script installs the wheel built during this workflow.
-          pip install --no-index --find-links wheel/target/wheels/ clvm_tools_rs
+          . ./activate
           # TODO: bring in the other tests in resources/tests/cmdline/tests besides cmds_test.py
-          (cd resources/tests/cmdline/tests && py.test cmds_test.py )
+          (cd resources/tests/cmdline/tests && pytest cmds_test.py )
 
       - name: Verify recompilation of cl21 sources
         if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
@@ -243,22 +246,13 @@ jobs:
           . ./activate
           # We need chia-rs for the following.
           pip install chia-rs
-          # Ensure we're using the sources we have.  This is a hedge against
-          # changes made by any other step doing operations on pip.
-          # This script installs the wheel built during this workflow.
-          pip install --no-index --find-links wheel/target/wheels/ clvm_tools_rs
           (cd resources/tests && python check-recompiles.py)
 
       - name: Verify recompilation follows date and modification rules
         if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
         run: |
-          pip install --no-index --find-links wheel/target/wheels/ clvm_tools_rs
-          python resources/tests/test-clvm-recompile-behavior.py
-
-      - name: Install pytest
-        run: |
           . ./activate
-          pip install pytest pytest-asyncio
+          python resources/tests/test-clvm-recompile-behavior.py
 
       - name: Run tests from clvm
         run: |
