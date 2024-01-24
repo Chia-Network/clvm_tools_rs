@@ -5,7 +5,7 @@ use std::rc::Rc;
 use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, Stream, BytesFromType};
+use crate::classic::clvm::__type_compatibility__::Stream;
 use crate::classic::clvm::serialize::sexp_to_stream;
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble};
 use crate::classic::clvm_tools::ir::reader::read_ir;
@@ -159,8 +159,8 @@ pub fn compile_clvm(
             false,
         )?;
 
-        result_stream.write(Bytes::new(Some(BytesFromType::Raw(b"\n".to_vec()))));
-        let target_data = result_stream.get_value().hex();
+        let mut target_data = result_stream.get_value().hex();
+        target_data += "\n";
 
         // Try to detect whether we'd put the same output in the output file.
         // Don't proceed if true.
