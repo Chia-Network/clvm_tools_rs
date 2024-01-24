@@ -57,14 +57,14 @@ jobs:
           source venv/bin/activate
           maturin build -i python --release --strip
 
-      - name: Build Linux in manylinux2010 with maturin on Python 3.8
+      - name: Build Linux in manylinux2014 with maturin on Python 3.8
         if: startsWith(matrix.os, 'ubuntu')
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/ws --workdir=/ws \
             ghcr.io/chia-network/build-images/centos-pypa-rust-x86_64 \
             bash -exc '\
-              yum -y install libc6 openssl-devel && \
+              yum -y install --disablerepo=epel openssl-devel && \
               source $HOME/.cargo/env && \
               rustup target add x86_64-unknown-linux-musl && \
               rm -rf venv && \
