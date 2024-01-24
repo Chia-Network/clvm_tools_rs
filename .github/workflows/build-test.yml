@@ -117,6 +117,7 @@ jobs:
 
   test_wheels:
     name: Test Wheel on ${{ matrix.os }} py-${{ matrix.python }}
+    needs: build_wheels
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
