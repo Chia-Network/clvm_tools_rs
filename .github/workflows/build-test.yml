@@ -88,13 +88,6 @@ jobs:
           # Find and install the newly built wheel
           pip install --no-index --find-links target/wheels/ clvm_tools_rs
 
-      # - name: Check coverage
-      #   if: startsWith(matrix.os, 'ubuntu')
-      #   run: |
-      #     cargo install grcov
-      #     rustup component add llvm-tools-preview
-      #     python ./resources/coverage/run_coverage.py --require-percent 60
-
       - name: Build alpine wheel via docker
         if: startsWith(matrix.os, 'ubuntu')
         run: |
@@ -115,7 +108,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
-        python: [3.8, 3.9, "3.10", 3.11, 3.12]
+        python: [3.8, 3.9, 3.10, 3.11]
 
     steps:
       - uses: actions/checkout@v3
@@ -133,10 +126,6 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Update pip
-        run: |
-          python -m pip install --upgrade pip
-
       - name: Set up rust
         uses: actions-rs/toolchain@v1
         with:
@@ -148,12 +137,9 @@ jobs:
           python -m venv venv
           ln -s venv/bin/activate
           . ./activate
+          pythom -m pip install --upgrade pip
           ls target/wheels/
-          # this mess puts the name of the `.whl` file into `$WHEEL_PATH`
-          # remove the dot, use the `glob` lib to grab the file from the directory
-          export WHEEL_PATH=$(echo ${{ matrix.python }} | python -c 'DOTLESS=input().replace(".", ""); import glob; print(" ".join(filter(lambda x: "musl" not in x, glob.glob("target/wheels/clvm_tools_rs-*-cp*-*.whl"))))' )
-          echo ${WHEEL_PATH}
-          pip install ${WHEEL_PATH}
+          pip install --no-index --find-links target/wheels/ clvm_tools_rs
 
       - name: Install clvm_tools_rs wheel (windows)
         if: ${{ startsWith(matrix.os, 'windows') }}
@@ -161,6 +147,7 @@ jobs:
           python -m venv venv
           echo ". .\venv\Scripts\Activate.ps1" > activate.ps1
           . ./activate
+          python -m pip install --upgrade pip
           ls target/wheels/
           pip install --no-index --find-links target/wheels/ clvm_tools_rs
 
@@ -418,6 +405,12 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+      - name: Internal coverage check
+        run: |
+          cargo install grcov
+          rustup component add llvm-tools-preview
+          python ./resources/coverage/run_coverage.py --require-percent 60
+
       - name: Run for coverage
         run: |
           sudo apt-get update
