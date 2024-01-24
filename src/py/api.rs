@@ -15,9 +15,11 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 
 use clvm_rs::allocator::Allocator;
+use clvm_rs::serde::node_to_bytes;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
 use crate::classic::clvm::serialize::sexp_to_stream;
+use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::clvmc;
 use crate::classic::clvm_tools::cmds;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
@@ -89,6 +91,54 @@ fn compile_clvm(
             Ok(result_dict.into_py(py))
         } else {
             Ok(compiled.into_py(py))
+        }
+    })
+}
+
+#[pyfunction(arg2 = "[]", arg3 = "None")]
+fn compile(
+    source: String,
+    search_paths: Vec<String>,
+    export_symbols: Option<bool>,
+) -> PyResult<PyObject> {
+    let mut symbols = HashMap::new();
+
+    let mut allocator = Allocator::new();
+    let input_name = "*inline*";
+    let def_opts: Rc<dyn CompilerOpts> =
+        Rc::new(DefaultCompilerOpts::new(input_name));
+    let opts = def_opts.set_search_paths(&search_paths);
+    let mut includes = Vec::new();
+
+    let compiled_node = clvmc::compile_clvm_text(
+        &mut allocator,
+        opts,
+        &mut symbols,
+        &mut includes,
+        &source,
+        input_name,
+        true,
+    )
+    .map_err(|x| {
+        format!(
+            "error {} compiling {}",
+            x.1,
+            disassemble(&mut allocator, x.0, None)
+        )
+    })
+    .map_err(PyException::new_err)?;
+
+    let blob =
+        node_to_bytes(&allocator, compiled_node).map_err(PyException::new_err)?;
+
+    Python::with_gil(|py| {
+        if export_symbols == Some(true) {
+            let mut result_dict = HashMap::new();
+            result_dict.insert("output".to_string(), blob.into_py(py));
+            result_dict.insert("symbols".to_string(), symbols.into_py(py));
+            Ok(result_dict.into_py(py))
+        } else {
+            Ok(blob.into_py(py))
         }
     })
 }
@@ -413,6 +463,7 @@ fn clvm_tools_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add("CompError", py.get_type::<CompError>())?;
 
     m.add_function(wrap_pyfunction!(compile_clvm, m)?)?;
+    m.add_function(wrap_pyfunction!(compile, m)?)?;
     m.add_function(wrap_pyfunction!(get_version, m)?)?;
     m.add_function(wrap_pyfunction!(start_clvm_program, m)?)?;
     m.add_function(wrap_pyfunction!(launch_tool, m)?)?;
