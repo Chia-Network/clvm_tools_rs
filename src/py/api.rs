@@ -105,16 +105,13 @@ fn compile(
 
     let mut allocator = Allocator::new();
     let input_name = "*inline*";
-    let def_opts: Rc<dyn CompilerOpts> =
-        Rc::new(DefaultCompilerOpts::new(input_name));
+    let def_opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(input_name));
     let opts = def_opts.set_search_paths(&search_paths);
-    let mut includes = Vec::new();
 
     let compiled_node = clvmc::compile_clvm_text(
         &mut allocator,
         opts,
         &mut symbols,
-        &mut includes,
         &source,
         input_name,
         true,
@@ -128,8 +125,7 @@ fn compile(
     })
     .map_err(PyException::new_err)?;
 
-    let blob =
-        node_to_bytes(&allocator, compiled_node).map_err(PyException::new_err)?;
+    let blob = node_to_bytes(&allocator, compiled_node).map_err(PyException::new_err)?;
 
     Python::with_gil(|py| {
         if export_symbols == Some(true) {
