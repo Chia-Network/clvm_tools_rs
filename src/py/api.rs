@@ -17,9 +17,8 @@ use std::thread;
 use clvm_rs::allocator::Allocator;
 use clvm_rs::serde::node_to_bytes;
 
-use crate::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
+use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream, UnvalidatedBytesFromType};
 use crate::classic::clvm::serialize::sexp_to_stream;
-use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::clvmc;
 use crate::classic::clvm_tools::cmds;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
@@ -52,6 +51,117 @@ fn get_version() -> PyResult<String> {
     Ok(version())
 }
 
+enum CompileClvmSource<'a> {
+    SourcePath(&'a PyAny),
+    SourceCode(String, String),
+}
+
+enum CompileClvmAction {
+    CheckDependencies,
+    CompileCode(Option<String>)
+}
+
+fn get_source_from_input(input_code: CompileClvmSource) -> PyResult<(String, String)> {
+    match input_code {
+        CompileClvmSource::SourcePath(input_path) => {
+            let has_atom = input_path.hasattr("atom")?;
+            let has_pair = input_path.hasattr("pair")?;
+
+            let real_input_path = if has_atom {
+                input_path.getattr("atom").and_then(|x| x.str())
+            } else if has_pair {
+                input_path
+                    .getattr("pair")
+                    .and_then(|x| x.get_item(0))
+                    .and_then(|x| x.str())
+            } else {
+                input_path.extract()
+            }?;
+
+            let mut path_string = real_input_path.to_string();
+
+            if !std::path::Path::new(&path_string).exists() && !path_string.ends_with(".clvm") {
+                path_string += ".clvm";
+            }
+
+            let file_data = fs::read_to_string(&path_string).map_err(PyException::new_err)?;
+            Ok((path_string, file_data))
+        }
+        CompileClvmSource::SourceCode(name, code) => {
+            Ok((name.clone(), code.clone()))
+        }
+    }
+}
+
+fn run_clvm_compilation(
+    input_code: CompileClvmSource,
+    action: CompileClvmAction,
+    search_paths: Vec<String>,
+    export_symbols: Option<bool>,
+) -> PyResult<PyObject> {
+    // Resolve the input, get the indicated path and content.
+    let (path_string, file_content) = get_source_from_input(input_code)?;
+
+    // Load up our compiler opts.
+    let def_opts: Rc<dyn CompilerOpts> =
+        Rc::new(DefaultCompilerOpts::new(&path_string));
+    let opts = def_opts.set_search_paths(&search_paths);
+
+    match action {
+        CompileClvmAction::CompileCode(output) => {
+            let mut allocator = Allocator::new();
+            let mut symbols = HashMap::new();
+
+            // Output is a program represented as clvm data in allocator.
+            let clvm_result =
+                clvmc::compile_clvm_text(
+                    &mut allocator,
+                    opts,
+                    &mut symbols,
+                    &file_content,
+                    &path_string,
+                    true
+                ).map_err(|e| CompError::new_err(format!("{}", e)))?;
+
+            // Get the text representation, which will go either to the output file
+            // or result.
+            let mut hex_text = Bytes::new(Some(BytesFromType::Raw(node_to_bytes(&allocator, clvm_result)?))).hex();
+            let compiled =
+                if let Some(output_file) = output {
+                    // Write output with eol.
+                    hex_text += "\n";
+                    fs::write(&output_file, hex_text).map_err(PyException::new_err)?;
+                    output_file.to_string()
+                } else {
+                    hex_text
+                };
+
+            // Produce compiled output according to whether output with symbols
+            // or just the standard result is required.
+            Python::with_gil(|py| {
+                if export_symbols == Some(true) {
+                    let mut result_dict = HashMap::new();
+                    result_dict.insert("output".to_string(), compiled.into_py(py));
+                    result_dict.insert("symbols".to_string(), symbols.into_py(py));
+                    Ok(result_dict.into_py(py))
+                } else {
+                    Ok(compiled.into_py(py))
+                }
+            })
+        }
+        CompileClvmAction::CheckDependencies => {
+            // Produce dependency results.
+            let result_deps: Vec<String> =
+                gather_dependencies(opts, &path_string.to_string(), &file_content)
+                .map_err(|e| CompError::new_err(format!("{}: {}", e.0, e.1)))
+                .map(|rlist| rlist.iter().map(|i| decode_string(&i.name)).collect())?;
+
+            // Return all visited files.
+            Python::with_gil(|py| Ok(result_deps.into_py(py)))
+        }
+    }
+}
+
 #[pyfunction(arg3 = "[]", arg4 = "None")]
 fn compile_clvm(
     input_path: &PyAny,
@@ -59,40 +169,12 @@ fn compile_clvm(
     search_paths: Vec<String>,
     export_symbols: Option<bool>,
 ) -> PyResult<PyObject> {
-    let has_atom = input_path.hasattr("atom")?;
-    let has_pair = input_path.hasattr("pair")?;
-
-    let real_input_path = if has_atom {
-        input_path.getattr("atom").and_then(|x| x.str())
-    } else if has_pair {
-        input_path
-            .getattr("pair")
-            .and_then(|x| x.get_item(0))
-            .and_then(|x| x.str())
-    } else {
-        input_path.extract()
-    }?;
-
-    let mut path_string = real_input_path.to_string();
-
-    if !std::path::Path::new(&path_string).exists() && !path_string.ends_with(".clvm") {
-        path_string += ".clvm";
-    };
-
-    let mut symbols = HashMap::new();
-    let compiled = clvmc::compile_clvm(&path_string, &output_path, &search_paths, &mut symbols)
-        .map_err(PyException::new_err)?;
-
-    Python::with_gil(|py| {
-        if export_symbols == Some(true) {
-            let mut result_dict = HashMap::new();
-            result_dict.insert("output".to_string(), compiled.into_py(py));
-            result_dict.insert("symbols".to_string(), symbols.into_py(py));
-            Ok(result_dict.into_py(py))
-        } else {
-            Ok(compiled.into_py(py))
-        }
-    })
+    run_clvm_compilation(
+        CompileClvmSource::SourcePath(input_path),
+        CompileClvmAction::CompileCode(Some(output_path)),
+        search_paths,
+        export_symbols
+    )
 }
 
 #[pyfunction(arg2 = "[]", arg3 = "None")]
@@ -101,74 +183,22 @@ fn compile(
     search_paths: Vec<String>,
     export_symbols: Option<bool>,
 ) -> PyResult<PyObject> {
-    let mut symbols = HashMap::new();
-
-    let mut allocator = Allocator::new();
-    let input_name = "*inline*";
-    let def_opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(input_name));
-    let opts = def_opts.set_search_paths(&search_paths);
-
-    let compiled_node = clvmc::compile_clvm_text(
-        &mut allocator,
-        opts,
-        &mut symbols,
-        &source,
-        input_name,
-        true,
+    run_clvm_compilation(
+        CompileClvmSource::SourceCode("*inline*".to_string(), source),
+        CompileClvmAction::CompileCode(None),
+        search_paths,
+        export_symbols
     )
-    .map_err(|x| {
-        format!(
-            "error {} compiling {}",
-            x.1,
-            disassemble(&mut allocator, x.0, None)
-        )
-    })
-    .map_err(PyException::new_err)?;
-
-    let blob = node_to_bytes(&allocator, compiled_node).map_err(PyException::new_err)?;
-
-    Python::with_gil(|py| {
-        if export_symbols == Some(true) {
-            let mut result_dict = HashMap::new();
-            result_dict.insert("output".to_string(), blob.into_py(py));
-            result_dict.insert("symbols".to_string(), symbols.into_py(py));
-            Ok(result_dict.into_py(py))
-        } else {
-            Ok(blob.into_py(py))
-        }
-    })
 }
 
 #[pyfunction(arg2 = "[]")]
 fn check_dependencies(input_path: &PyAny, search_paths: Vec<String>) -> PyResult<PyObject> {
-    let has_atom = input_path.hasattr("atom")?;
-    let has_pair = input_path.hasattr("pair")?;
-
-    let real_input_path = if has_atom {
-        input_path.getattr("atom").and_then(|x| x.str())
-    } else if has_pair {
-        input_path
-            .getattr("pair")
-            .and_then(|x| x.get_item(0))
-            .and_then(|x| x.str())
-    } else {
-        input_path.extract()
-    }?;
-
-    let file_content = fs::read_to_string(&real_input_path.to_string())
-        .map_err(|_| CompError::new_err("failed to read file"))?;
-
-    let def_opts: Rc<dyn CompilerOpts> =
-        Rc::new(DefaultCompilerOpts::new(&real_input_path.to_string()));
-    let opts = def_opts.set_search_paths(&search_paths);
-
-    let result_deps: Vec<String> =
-        gather_dependencies(opts, &real_input_path.to_string(), &file_content)
-            .map_err(|e| CompError::new_err(format!("{}: {}", e.0, e.1)))
-            .map(|rlist| rlist.iter().map(|i| decode_string(&i.name)).collect())?;
-
-    // Return all visited files.
-    Python::with_gil(|py| Ok(result_deps.into_py(py)))
+    run_clvm_compilation(
+        CompileClvmSource::SourcePath(input_path),
+        CompileClvmAction::CheckDependencies,
+        search_paths,
+        None,
+    )
 }
 
 #[pyclass]
