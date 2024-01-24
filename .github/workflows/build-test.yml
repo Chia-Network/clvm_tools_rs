@@ -145,6 +145,8 @@ jobs:
       - name: Install clvm_tools_rs wheel (linux/macos)
         if: ${{ !startsWith(matrix.os, 'windows') }}
         run: |
+          python -m venv venv
+          ln -s venv/bin/activate
           . ./activate
           ls target/wheels/
           # this mess puts the name of the `.whl` file into `$WHEEL_PATH`
@@ -156,6 +158,7 @@ jobs:
       - name: Install clvm_tools_rs wheel (windows)
         if: ${{ startsWith(matrix.os, 'windows') }}
         run: |
+          python -m venv venv
           echo ". .\venv\Scripts\Activate.ps1" > activate.ps1
           . ./activate
           ls target/wheels/
