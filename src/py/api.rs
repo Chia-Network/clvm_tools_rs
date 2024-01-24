@@ -38,7 +38,7 @@ use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 
-use crate::util::version;
+use crate::util::{gentle_overwrite, version};
 
 use crate::py::pyval::{clvm_value_to_python, python_value_to_clvm};
 
@@ -86,7 +86,7 @@ fn get_source_from_input(input_code: CompileClvmSource) -> PyResult<(String, Str
                 path_string += ".clvm";
             }
 
-            let file_data = fs::read_to_string(&path_string).map_err(PyException::new_err)?;
+            let file_data = fs::read_to_string(&path_string).map_err(|e| PyException::new_err(format!("error reading {path_string}: {e:?}")))?;
             Ok((path_string, file_data))
         }
         CompileClvmSource::SourceCode(name, code) => Ok((name.clone(), code.clone())),
@@ -132,7 +132,7 @@ fn run_clvm_compilation(
             let compiled = if let Some(output_file) = output {
                 // Write output with eol.
                 hex_text += "\n";
-                fs::write(&output_file, hex_text).map_err(PyException::new_err)?;
+                gentle_overwrite(&path_string, &output_file, &hex_text).map_err(PyException::new_err)?;
                 output_file.to_string()
             } else {
                 hex_text

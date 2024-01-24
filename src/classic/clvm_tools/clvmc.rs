@@ -1,15 +1,11 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::Write;
-use std::path::Path;
 use std::rc::Rc;
-
-use tempfile::NamedTempFile;
 
 use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;
 
-use crate::classic::clvm::__type_compatibility__::Stream;
+use crate::classic::clvm::__type_compatibility__::{Bytes, Stream, BytesFromType};
 use crate::classic::clvm::serialize::sexp_to_stream;
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble};
 use crate::classic::clvm_tools::ir::reader::read_ir;
@@ -26,6 +22,7 @@ use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::dialect::detect_modern;
 use crate::compiler::optimize::maybe_finalize_program_via_classic_optimizer;
 use crate::compiler::runtypes::RunFailure;
+use crate::util::gentle_overwrite;
 
 pub fn write_sym_output(
     compiled_lookup: &HashMap<String, String>,
@@ -162,55 +159,12 @@ pub fn compile_clvm(
             false,
         )?;
 
+        result_stream.write(Bytes::new(Some(BytesFromType::Raw(b"\n".to_vec()))));
         let target_data = result_stream.get_value().hex();
-
-        let write_file = |output_path: &str, target_data: &str| -> Result<(), String> {
-            let output_path_obj = Path::new(output_path);
-            let output_dir = output_path_obj
-                .parent()
-                .map(Ok)
-                .unwrap_or_else(|| Err("could not get parent of output path"))?;
-
-            // Make the contents appear atomically so that other test processes
-            // won't mistake an empty file for intended output.
-            let mut temp_output_file = NamedTempFile::new_in(output_dir).map_err(|e| {
-                format!("error creating temporary compiler output for {input_path}: {e:?}")
-            })?;
-
-            let err_text = format!("failed to write to {:?}", temp_output_file.path());
-            let translate_err = |_| err_text.clone();
-
-            temp_output_file
-                .write_all(target_data.as_bytes())
-                .map_err(translate_err)?;
-
-            temp_output_file.write_all(b"\n").map_err(translate_err)?;
-
-            temp_output_file.persist(output_path).map_err(|e| {
-                format!("error persisting temporary compiler output {output_path}: {e:?}")
-            })?;
-
-            Ok(())
-        };
 
         // Try to detect whether we'd put the same output in the output file.
         // Don't proceed if true.
-        if let Ok(prev_content) = fs::read_to_string(output_path) {
-            let prev_trimmed = prev_content.trim();
-            let trimmed = target_data.trim();
-            if prev_trimmed == trimmed {
-                // We should try to overwrite here, but not fail if it doesn't
-                // work.  This will accomodate both the read only scenario and
-                // the scenario where a target file is newer and people want the
-                // date to be updated.
-                write_file(output_path, &target_data).ok();
-
-                // It's the same program, bail regardless.
-                return Ok(output_path.to_string());
-            }
-        }
-
-        write_file(output_path, &target_data)?;
+        gentle_overwrite(input_path, output_path, &target_data)?;
     }
 
     Ok(output_path.to_string())
