@@ -155,7 +155,7 @@ jobs:
         cd resources/tests && \
             python test_clvm_step.py && \
             python mandelbrot-cldb.py && \
-            python test_compile_from_from_string.py
+            python test_compile_from_string.py
 
     - name: "Test step run with mandelbrot, setting print only"
       run: |
