@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   build_wheels:
-    name: Wheel on ${{ matrix.os }} with Python 3.8
+    name: Build Wheel on ${{ matrix.os }} with Python 3.8
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -116,7 +116,7 @@ jobs:
           path: ./target/wheels/
 
   test_wheels:
-    name: Wheel on ${{ matrix.os }} py-${{ matrix.python }}
+    name: Test Wheel on ${{ matrix.os }} py-${{ matrix.python }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
