@@ -8,7 +8,7 @@ on:
     types: [published]
   pull_request:
     branches:
-      - '**'
+      - "**"
 
 concurrency:
   # SHA is added to the end if on `main` to let all main workflows run
@@ -31,9 +31,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up rusts
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           components: rustfmt, clippy
 
       - name: install wasm-pack
@@ -45,7 +44,7 @@ jobs:
       - name: Setup Node 16.x
         uses: actions/setup-node@v3
         with:
-          node-version: '16.x'
+          node-version: "16.x"
 
       # Cargo.toml won't allow an "@" in the name, so we just update the package name this way for NPM
       - name: Update package name for npm
