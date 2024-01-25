@@ -31,12 +31,10 @@ jobs:
       - name: Set up
         run: |
           echo "${PATH}"
-          yum -y install openssl-devel
           source /root/.cargo/env
           rustup default stable
           rustup target add aarch64-unknown-linux-musl
           rm -rf venv
-          export PATH="${PATH}:/opt/python/cp38-cp38/bin/"
 
       - name: Build Python wheels
         run: |
