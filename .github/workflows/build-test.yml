@@ -373,8 +373,12 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
   unit_tests:
-    runs-on: ubuntu-latest
-    name: Cargo Unit tests on ubuntu-latest
+    name: Run cargo test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -386,6 +390,7 @@ jobs:
       - name: cargo test
         run: cargo test
       - name: Exhaustive Cargo assign tests
+        if: startsWith(matrix.os, 'ubuntu')
         run: cargo test -- --include-ignored assign
 
   coverage:
