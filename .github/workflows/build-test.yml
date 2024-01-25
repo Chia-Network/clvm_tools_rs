@@ -66,6 +66,7 @@ jobs:
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
         run: |
+          . ./activate
           maturin build -i python --release --strip
 
       - name: Build Linux in manylinux2014 with maturin on Python ${{ matrix.python }}
@@ -80,6 +81,7 @@ jobs:
       - name: Build Windows with maturin on Python ${{ matrix.python }}
         if: startsWith(matrix.os, 'windows')
         run: |
+          . ./activate
           maturin build -i python --release --strip
           # Find and install the newly built wheel
           pip install --no-index --find-links target/wheels/ clvm_tools_rs
@@ -87,6 +89,7 @@ jobs:
       - name: Install clvm_tools_rs wheel
         if: ${{ !startsWith(matrix.os, 'windows') }}
         run: |
+          . ./activate
           ls target/wheels/
           # this mess puts the name of the `.whl` file into `$WHEEL_PATH`
           # remove the dot, use the `glob` lib to grab the file from the directory
@@ -96,11 +99,13 @@ jobs:
 
       - name: Install other wheels
         run: |
+          . ./activate
           python -m pip install pytest
           python -m pip install blspy
 
       - name: install clvm & clvm_tools
         run: |
+          . ./activate
           git clone https://github.com/Chia-Network/clvm.git --branch=main --single-branch
           python -m pip install ./clvm
 
@@ -115,6 +120,7 @@ jobs:
 
       - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed
         run: |
+          . ./activate
           python -c 'import clvm'
           python -c 'import clvm; print(clvm.__file__)'
           python -c 'import clvm_rs; print(clvm_rs.__file__)'
@@ -124,6 +130,7 @@ jobs:
       # Test cldb output both run from python and via its command line tool.
       - name: "Run step run tests"
         run: |
+          . ./activate
           cargo build
           # This finds and installs a compatible wheel from the target directory on linux.
           # We do it here as a hedge against changes in the python environment that might
@@ -136,6 +143,7 @@ jobs:
 
       - name: "Test step run with mandelbrot, setting print only"
         run: |
+          . ./activate
           python ./resources/tests/lib/steprun.py ./resources/tests/mandelbrot/mandelbrot.clvm.hex resources/tests/mandelbrot/mand_args.txt ./resources/tests/mandelbrot/mandelbrot.sym > mand_output.txt
           # git diff invoked this way returns 0 (as /bin/true) if there is no difference or 1 if there is.
           git diff --no-index -s --quiet -- mand_output.txt ./resources/tests/mandelbrot/mand_test.txt
@@ -147,6 +155,7 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
         run: |
           set -x
+          . ./activate
           # Build cmd line tools
           PYO3_PYTHON=`which python` cargo build --release
 
