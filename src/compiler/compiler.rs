@@ -1,6 +1,6 @@
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -23,6 +23,7 @@ use crate::compiler::comptypes::{
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::get_optimizer;
+use crate::compiler::optimize::depgraph::{DepgraphOptions, FunctionDependencyGraph};
 use crate::compiler::prims;
 use crate::compiler::resolve::{find_helper_target, resolve_namespaces};
 use crate::compiler::runtypes::RunFailure;
@@ -319,6 +320,39 @@ fn get_hash_of_constant(
     Ok(sha256tree(evaluated))
 }
 
+// Find any constant that names a function in a variable-like position.
+fn find_constants_referencing_functions(
+    program: &CompileForm,
+    depgraph: &FunctionDependencyGraph,
+) -> HashSet<Vec<u8>> {
+    let mut must_table_set = HashSet::new();
+    for h in program.helpers.iter() {
+        if let HelperForm::Defconstant(dc) = h {
+            // We found a constant, get what it depends on.
+            let mut depends_on_set = HashSet::new();
+            depgraph.get_full_depends_on(&mut depends_on_set, h.name());
+            // Functions depended on by this constant.
+            // XXX distinguish called vs used by value.
+            let depends_on_helpers: Vec<HelperForm> = program.helpers.iter().filter(|h| {
+                depends_on_set.contains(h.name()) && matches!(h, HelperForm::Defun(_, _))
+            }).cloned().collect();
+            if depends_on_helpers.is_empty() {
+                continue;
+            }
+
+            // It matched
+            must_table_set.insert(h.name().to_vec());
+
+            let mut depended_on_by = HashSet::new();
+            depgraph.get_full_depended_on_by(&mut depended_on_by, h.name());
+            for d in depended_on_by.iter() {
+                must_table_set.insert(h.name().to_vec());
+            }
+        }
+    }
+    return must_table_set;
+}
+
 /// Exports are returned main programs:
 ///
 /// Single main
@@ -523,6 +557,60 @@ pub fn compile_module(
 
     program.exp = function_list;
     program = resolve_namespaces(opts.clone(), &program)?;
+
+    // Stable constant resolution.
+    // We generate the dependency graph including constants and identify all
+    // constants that reference functions.  If there is a cycle involving any
+    // constant, we must terminate.
+    //
+    // Mark all constants that tangle with functions, and every constant that
+    // depends on one of the as SyntheticType::WantNonInline.
+    //
+    // We generate the program once, then compute each constant value to a
+    // quoted expression, then finalize the program.
+    let depgraph = FunctionDependencyGraph::new_with_options(&program, DepgraphOptions {
+        with_constants: true
+    });
+
+    let constants_that_reference_functions = find_constants_referencing_functions(
+        &program,
+        &depgraph
+    );
+
+    // Ensure every affected constant is tabled.
+    let mut shatree_seed = sha256tree(program.to_sexp());
+    let hash_atom = Rc::new(SExp::QuotedString(program.loc(), b'x', shatree_seed.clone()));
+    for h in program.helpers.iter_mut() {
+        let h_name = h.name().to_vec();
+        if constants_that_reference_functions.contains(h.name()) {
+            if let HelperForm::Defconstant(d) = h {
+                d.body = Rc::new(BodyForm::Quoted(SExp::Cons(
+                    d.loc.clone(),
+                    hash_atom.clone(),
+                    Rc::new(SExp::Atom(d.loc.clone(), h_name)),
+                )));
+                d.tabled = true;
+            }
+        }
+    }
+
+    // Every constant is now replaced with (hash_atom . name)
+    // Generate the program in this form, given that all constants are tabled.
+    // For each function in the program, generate a program that produces the
+    // exising output and that function's body like:
+    //
+    // (if (not @) <function> body)
+    //
+    // Run the program with () and collect the result, storing it in a map.
+    //
+    // For each constant in our affected constant set, tour the constant,
+    // the replacing calls to any function in the above map with
+    //
+    //   (a compiled-func (list args))
+    //
+    // and each occurrence via variable with compiled-func.
+    //
+    // Now compile the full program with these constants.
 
     let compiled_result = Rc::new(compile_from_compileform(context, opts.clone(), program)?);
     let result_clvm = convert_to_clvm_rs(context.allocator(), compiled_result)?;
