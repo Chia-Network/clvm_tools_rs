@@ -40,7 +40,7 @@ serde = { version = "1.0", features = ["derive", "rc"] }
 regex = "1.8.4"
 
 [dependencies.pyo3]
-version = "0.14.2"
+version = "0.20.2"
 features = ["abi3-py38", "extension-module"]
 optional = true
 
