@@ -40,7 +40,7 @@ jobs:
           python -m pip install --upgrade pip
 
       - name: Set up rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
 
@@ -72,8 +72,6 @@ jobs:
           python -m venv venv
           .\venv\Scripts\Activate.ps1
           maturin build -i python --release --strip
-          # Find and install the newly built wheel
-          pip install --no-index --find-links target/wheels/ clvm_tools_rs
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
@@ -128,7 +126,7 @@ jobs:
           python-version: ${{ matrix.python }}
 
       - name: Set up rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
 
@@ -352,10 +350,8 @@ jobs:
         with:
           fetch-depth: 1
       - name: Install rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          override: true
           components: rustfmt, clippy
       - name: fmt
         run: cargo fmt -- --files-with-diff --check
@@ -384,9 +380,8 @@ jobs:
         with:
           fetch-depth: 1
       - name: Install rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           components: rustfmt, clippy
       - name: cargo test
         run: cargo test
