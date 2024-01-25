@@ -9,7 +9,7 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 
 use crate::compiler::clvm::{run, truthy};
-use crate::compiler::compiler::is_at_capture;
+use crate::compiler::compiler::{compile_from_compileform, is_at_capture};
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, CallSpec,
     Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, CompilerOutput, ConstantKind,
@@ -1478,6 +1478,16 @@ fn start_codegen(
                             ),
                         ));
                     }
+                }
+                ConstantKind::Module => {
+                    let use_program = CompileForm {
+                        exp: defc.body.clone(),
+                        .. program.clone()
+                    };
+                    eprintln!("use_program {}", use_program.to_sexp());
+                    todo!();
+                    let compiled = compile_from_compileform(context, opts.clone(), use_program)?;
+                    todo!();
                 }
             },
             HelperForm::Defmacro(mac) => {

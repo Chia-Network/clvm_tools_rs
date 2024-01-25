@@ -353,6 +353,21 @@ fn find_constants_referencing_functions(
     return must_table_set;
 }
 
+fn modernize_constants(helpers: &mut Vec<HelperForm>) {
+    for h in helpers.iter_mut() {
+        match h {
+            HelperForm::Defconstant(d) => {
+                // Ensure that we upgrade the constant type.
+                d.kind = ConstantKind::Module;
+            }
+            HelperForm::Defnamespace(ns) => {
+                modernize_constants(&mut ns.helpers);
+            }
+            _ => {}
+        }
+    }
+}
+
 /// Exports are returned main programs:
 ///
 /// Single main
@@ -378,6 +393,8 @@ pub fn compile_module(
             "A chialisp module should have at least one export".to_string(),
         ));
     }
+
+    modernize_constants(&mut program.helpers);
 
     if exports.len() == 1 {
         if let Export::MainProgram(args, expr) = &exports[0] {
@@ -582,8 +599,10 @@ pub fn compile_module(
     let hash_atom = Rc::new(SExp::QuotedString(program.loc(), b'x', shatree_seed.clone()));
     for h in program.helpers.iter_mut() {
         let h_name = h.name().to_vec();
-        if constants_that_reference_functions.contains(h.name()) {
-            if let HelperForm::Defconstant(d) = h {
+        if let HelperForm::Defconstant(d) = h {
+            // Ensure that we upgrade the constant type.
+            d.kind = ConstantKind::Module;
+            if constants_that_reference_functions.contains(&h_name) {
                 d.body = Rc::new(BodyForm::Quoted(SExp::Cons(
                     d.loc.clone(),
                     hash_atom.clone(),
