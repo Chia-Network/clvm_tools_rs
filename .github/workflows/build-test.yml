@@ -66,7 +66,7 @@ jobs:
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
         run: |
-          . ./activate
+
           maturin build -i python --release --strip
 
       - name: Build Linux in manylinux2014 with maturin on Python ${{ matrix.python }}
@@ -83,19 +83,11 @@ jobs:
         run: |
           . ./activate
           maturin build -i python --release --strip
-          # Find and install the newly built wheel
-          pip install --no-index --find-links target/wheels/ clvm_tools_rs
 
       - name: Install clvm_tools_rs wheel
-        if: ${{ !startsWith(matrix.os, 'windows') }}
         run: |
           . ./activate
-          ls target/wheels/
-          # this mess puts the name of the `.whl` file into `$WHEEL_PATH`
-          # remove the dot, use the `glob` lib to grab the file from the directory
-          export WHEEL_PATH=$(echo ${{ matrix.python }} | python -c 'DOTLESS=input().replace(".", ""); import glob; print(" ".join(filter(lambda x: "musl" not in x, glob.glob("target/wheels/clvm_tools_rs-*-cp*-*.whl"))))' )
-          echo ${WHEEL_PATH}
-          pip install ${WHEEL_PATH}
+          pip install --no-index --find-links target/wheels/ clvm_tools_rs
 
       - name: Install other wheels
         run: |
@@ -177,9 +169,10 @@ jobs:
       - name: Test Classic command line tools with pytest
         if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
         run: |
+          . ./activate
           python -m pip install pytest
           # This script installs the wheel built during this workflow.
-          pip install --no-index --find-links wheel/target/wheels/ clvm_tools_rs
+          pip install --no-index --find-links target/wheels/ clvm_tools_rs
           # TODO: bring in the other tests in resources/tests/cmdline/tests besides cmds_test.py
           (cd resources/tests/cmdline/tests && py.test cmds_test.py )
 
@@ -198,7 +191,8 @@ jobs:
       - name: Verify recompilation follows date and modification rules
         if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
         run: |
-          pip install --no-index --find-links wheel/target/wheels/ clvm_tools_rs
+          . ./activate
+          pip install --no-index --find-links target/wheels/ clvm_tools_rs
           python resources/tests/test-clvm-recompile-behavior.py
 
       - name: Install pytest
