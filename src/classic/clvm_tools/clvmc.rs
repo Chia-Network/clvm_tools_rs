@@ -22,7 +22,52 @@ use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::dialect::detect_modern;
 use crate::compiler::optimize::maybe_finalize_program_via_classic_optimizer;
 use crate::compiler::runtypes::RunFailure;
+use crate::compiler::srcloc::Srcloc;
 use crate::util::gentle_overwrite;
+
+#[derive(Debug, Clone)]
+pub enum CompileError {
+    Modern(Srcloc, String),
+    Classic(NodePtr, String),
+}
+
+impl From<EvalErr> for CompileError {
+    fn from(e: EvalErr) -> Self {
+        CompileError::Classic(e.0, e.1)
+    }
+}
+
+impl From<CompileErr> for CompileError {
+    fn from(r: CompileErr) -> Self {
+        CompileError::Modern(r.0, r.1)
+    }
+}
+
+impl From<RunFailure> for CompileError {
+    fn from(r: RunFailure) -> Self {
+        match r {
+            RunFailure::RunErr(l, x) => CompileError::Modern(l, x),
+            RunFailure::RunExn(l, x) => CompileError::Modern(l, x.to_string()),
+        }
+    }
+}
+
+impl CompileError {
+    pub fn format(&self, allocator: &Allocator, opts: Rc<dyn CompilerOpts>) -> String {
+        match self {
+            CompileError::Classic(node, message) => {
+                format!(
+                    "error {} compiling {}",
+                    message,
+                    disassemble(allocator, *node, opts.disassembly_ver())
+                )
+            }
+            CompileError::Modern(loc, message) => {
+                format!("{}: {}", loc, message)
+            }
+        }
+    }
+}
 
 pub fn write_sym_output(
     compiled_lookup: &HashMap<String, String>,
@@ -44,7 +89,7 @@ pub fn compile_clvm_text_maybe_opt(
     text: &str,
     input_path: &str,
     classic_with_opts: bool,
-) -> Result<NodePtr, EvalErr> {
+) -> Result<NodePtr, CompileError> {
     let ir_src = read_ir(text).map_err(|s| EvalErr(allocator.null(), s.to_string()))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
 
@@ -61,18 +106,16 @@ pub fn compile_clvm_text_maybe_opt(
             .set_optimize(do_optimize || stepping > 22) // Would apply to cl23
             .set_frontend_opt(stepping == 22);
 
-        let unopt_res = compile_file(allocator, runner.clone(), opts.clone(), text, symbol_table);
-        let res = unopt_res.and_then(|x| {
-            maybe_finalize_program_via_classic_optimizer(allocator, runner, opts, do_optimize, &x)
-        });
+        let unopt_res = compile_file(allocator, runner.clone(), opts.clone(), text, symbol_table)?;
+        let res = maybe_finalize_program_via_classic_optimizer(
+            allocator,
+            runner,
+            opts,
+            do_optimize,
+            &unopt_res,
+        )?;
 
-        res.and_then(|x| {
-            convert_to_clvm_rs(allocator, x).map_err(|r| match r {
-                RunFailure::RunErr(l, x) => CompileErr(l, x),
-                RunFailure::RunExn(l, x) => CompileErr(l, x.to_string()),
-            })
-        })
-        .map_err(|s| EvalErr(allocator.null(), s.1))
+        Ok(convert_to_clvm_rs(allocator, res)?)
     } else {
         let compile_invoke_code = run(allocator);
         let input_sexp = allocator.new_pair(assembled_sexp, allocator.null())?;
@@ -93,7 +136,7 @@ pub fn compile_clvm_text(
     text: &str,
     input_path: &str,
     classic_with_opts: bool,
-) -> Result<NodePtr, EvalErr> {
+) -> Result<NodePtr, CompileError> {
     compile_clvm_text_maybe_opt(
         allocator,
         true,
@@ -122,13 +165,7 @@ pub fn compile_clvm_inner(
         filename,
         classic_with_opts,
     )
-    .map_err(|x| {
-        format!(
-            "error {} compiling {}",
-            x.1,
-            disassemble(allocator, x.0, opts.disassembly_ver())
-        )
-    })?;
+    .map_err(|e| e.format(allocator, opts))?;
     sexp_to_stream(allocator, result, result_stream);
     Ok(())
 }

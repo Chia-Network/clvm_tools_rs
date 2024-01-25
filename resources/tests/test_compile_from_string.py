@@ -21,6 +21,9 @@ expected_cl23 = "ff02ffff01ff02ff02ffff04ff02ffff04ff05ffff04ff0bff8080808080fff
 
 expected_deinline = "ff02ffff01ff02ff02ffff04ff02ffff04ff03ffff04ffff10ff05ffff01830f424080ff8080808080ffff04ffff01ff10ff0bff0bff0bff0bff0bff0b80ff018080"
 
+classic_error = "(mod (X) (xxx X))"
+cl23_error = "(mod (X) (include *standard-cl-23*) (+ X X1))"
+
 compiled_code = clvm_tools_rs.compile(
     classic_code,
     ["."],
@@ -70,3 +73,16 @@ dependencies = clvm_tools_rs.check_dependencies(
 )
 assert len(dependencies) == 1
 assert Path(dependencies[0]) == game_referee / 'reverse.clinc'
+
+# Better error reporting
+try:
+    clvm_tools_rs.compile(classic_error, [])
+    assert False
+except Exception as e:
+    assert e.args[0] == "error can't compile (\"xxx\" 88), unknown operator compiling (\"xxx\" 88)"
+
+try:
+    clvm_tools_rs.compile(cl23_error, [])
+    assert False
+except Exception as e:
+    assert e.args[0] == "*inline*(1):42-*inline*(1):44: Unbound use of X1 as a variable name"

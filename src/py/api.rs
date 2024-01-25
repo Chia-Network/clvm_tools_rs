@@ -115,13 +115,13 @@ fn run_clvm_compilation(
             // Output is a program represented as clvm data in allocator.
             let clvm_result = clvmc::compile_clvm_text(
                 &mut allocator,
-                opts,
+                opts.clone(),
                 &mut symbols,
                 &file_content,
                 &path_string,
                 true,
             )
-            .map_err(|e| CompError::new_err(format!("{}", e)))?;
+            .map_err(|e| CompError::new_err(e.format(&allocator, opts)))?;
 
             // Get the text representation, which will go either to the output file
             // or result.
