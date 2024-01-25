@@ -212,21 +212,6 @@ jobs:
           cd clvm_tools
           pytest tests
 
-      - name: Run tests
-        if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
-        run: cargo test
-
-      - name: Exhaustive assign tests
-        if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
-        run: cargo test -- --include-ignored assign
-
-      - name: Check coverage
-        if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
-        run: |
-          cargo install grcov
-          rustup component add llvm-tools-preview
-          python ./resources/coverage/run_coverage.py --require-percent 60
-
       - name: Build alpine wheel via docker
         if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
         run: |
@@ -349,7 +334,11 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
   unit_tests:
-    runs-on: ubuntu-20.04
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
     name: Unit tests
     steps:
       - uses: actions/checkout@v3
@@ -362,6 +351,9 @@ jobs:
           components: rustfmt, clippy
       - name: cargo test
         run: cargo test
+      - name: Exhaustive assign tests on ubuntu
+        if: startsWith(matrix.os, 'ubuntu')
+        run: cargo test -- --include-ignored assign
 
   coverage:
     runs-on: ubuntu-latest
@@ -370,7 +362,12 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-      - name: Run for coverage
+      - name: Check coverage
+        run: |
+          cargo install grcov
+          rustup component add llvm-tools-preview
+          python ./resources/coverage/run_coverage.py --require-percent 60
+      - name: Run for coveralls coverage
         run: |
           sudo apt-get update
           sudo apt-get install lcov -y
