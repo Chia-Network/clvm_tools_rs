@@ -22,6 +22,7 @@ use crate::compiler::frontend::{compile_bodyform, make_provides_set};
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
 use crate::compiler::lambda::lambda_codegen;
+use crate::compiler::optimize::depgraph::{FunctionDependencyGraph, DepgraphOptions};
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, printable, SExp};
@@ -337,10 +338,13 @@ pub fn get_callable(
                 }
                 (_, _, _, _, true, _) => Ok(Callable::RunCompiler),
                 (_, _, _, _, _, true) => Ok(Callable::EnvPath),
-                _ => Err(CompileErr(
-                    l.clone(),
-                    format!("no such callable '{}'", decode_string(name)),
-                )),
+                _ => {
+                    todo!();
+                    Err(CompileErr(
+                        l.clone(),
+                        format!("no such callable '{}'", decode_string(name)),
+                    ))
+                }
             }
         }
         SExp::Integer(_, v) => Ok(Callable::CallPrim(l.clone(), SExp::Integer(l, v.clone()))),
@@ -954,6 +958,7 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
         prims: prim_map,
         constants: HashMap::new(),
         tabled_constants: HashMap::new(),
+        module_constants: HashSet::new(),
         inlines: HashMap::new(),
         macros: HashMap::new(),
         defuns: HashMap::new(),
@@ -1480,14 +1485,8 @@ fn start_codegen(
                     }
                 }
                 ConstantKind::Module => {
-                    let use_program = CompileForm {
-                        exp: defc.body.clone(),
-                        .. program.clone()
-                    };
-                    eprintln!("use_program {}", use_program.to_sexp());
-                    todo!();
-                    let compiled = compile_from_compileform(context, opts.clone(), use_program)?;
-                    todo!();
+                    // Delay generation of module constants.
+                    code_generator.add_module_constant(&defc.name, Rc::new(SExp::Nil(defc.loc.clone())))
                 }
             },
             HelperForm::Defmacro(mac) => {
@@ -1683,6 +1682,71 @@ fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileE
     )
 }
 
+// Find any constant that names a function in a variable-like position.
+fn find_constants_referencing_functions(
+    program: &CompileForm,
+    depgraph: &FunctionDependencyGraph,
+) -> HashSet<Vec<u8>> {
+    let mut must_table_set = HashSet::new();
+    for h in program.helpers.iter() {
+        if let HelperForm::Defconstant(dc) = h {
+            // We found a constant, get what it depends on.
+            let mut depends_on_set = HashSet::new();
+            depgraph.get_full_depends_on(&mut depends_on_set, h.name());
+            // Functions depended on by this constant.
+            // XXX distinguish called vs used by value.
+            let depends_on_helpers: Vec<HelperForm> = program.helpers.iter().filter(|h| {
+                depends_on_set.contains(h.name()) && matches!(h, HelperForm::Defun(_, _))
+            }).cloned().collect();
+            if depends_on_helpers.is_empty() {
+                continue;
+            }
+
+            // It matched
+            must_table_set.insert(h.name().to_vec());
+
+            let mut depended_on_by = HashSet::new();
+            depgraph.get_full_depended_on_by(&mut depended_on_by, h.name());
+            for d in depended_on_by.iter() {
+                must_table_set.insert(h.name().to_vec());
+            }
+        }
+    }
+    return must_table_set;
+}
+
+fn compute_module_constants_in_depgraph_order(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    primary_codegen: PrimaryCodegen,
+    program: &CompileForm,
+) -> Result<PrimaryCodegen, CompileErr> {
+    // Stable constant resolution.
+    // We generate the dependency graph including constants and identify all
+    // constants that reference functions.  If there is a cycle involving any
+    // constant, we must terminate.
+    //
+    // Mark all constants that tangle with functions, and every constant that
+    // depends on one of the as SyntheticType::WantNonInline.
+    //
+    // We generate the program once, then compute each constant value to a
+    // quoted expression, then finalize the program.
+    let depgraph = FunctionDependencyGraph::new_with_options(&program, DepgraphOptions {
+        with_constants: true
+    });
+
+    let constants_that_reference_functions = find_constants_referencing_functions(
+        &program,
+        &depgraph
+    );
+
+    eprintln!("constants that reference functions:");
+    for c in constants_that_reference_functions.iter() {
+        eprintln!("- {}", decode_string(c));
+    }
+    todo!();
+}
+
 pub fn codegen(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
@@ -1765,6 +1829,16 @@ pub fn codegen(
 
                     Ok(final_code)
                 } else if code_generator.left_env {
+                    if !code_generator.module_constants.is_empty() {
+                        // Compute constants in depgraph order.
+                        code_generator = compute_module_constants_in_depgraph_order(
+                            context,
+                            opts.clone(),
+                            code_generator,
+                            cmod,
+                        )?;
+                    }
+
                     let final_code = primapply(
                         code.0.clone(),
                         Rc::new(primquote(code.0.clone(), code.1)),

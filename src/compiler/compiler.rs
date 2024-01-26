@@ -320,45 +320,13 @@ fn get_hash_of_constant(
     Ok(sha256tree(evaluated))
 }
 
-// Find any constant that names a function in a variable-like position.
-fn find_constants_referencing_functions(
-    program: &CompileForm,
-    depgraph: &FunctionDependencyGraph,
-) -> HashSet<Vec<u8>> {
-    let mut must_table_set = HashSet::new();
-    for h in program.helpers.iter() {
-        if let HelperForm::Defconstant(dc) = h {
-            // We found a constant, get what it depends on.
-            let mut depends_on_set = HashSet::new();
-            depgraph.get_full_depends_on(&mut depends_on_set, h.name());
-            // Functions depended on by this constant.
-            // XXX distinguish called vs used by value.
-            let depends_on_helpers: Vec<HelperForm> = program.helpers.iter().filter(|h| {
-                depends_on_set.contains(h.name()) && matches!(h, HelperForm::Defun(_, _))
-            }).cloned().collect();
-            if depends_on_helpers.is_empty() {
-                continue;
-            }
-
-            // It matched
-            must_table_set.insert(h.name().to_vec());
-
-            let mut depended_on_by = HashSet::new();
-            depgraph.get_full_depended_on_by(&mut depended_on_by, h.name());
-            for d in depended_on_by.iter() {
-                must_table_set.insert(h.name().to_vec());
-            }
-        }
-    }
-    return must_table_set;
-}
-
 fn modernize_constants(helpers: &mut Vec<HelperForm>) {
     for h in helpers.iter_mut() {
         match h {
             HelperForm::Defconstant(d) => {
                 // Ensure that we upgrade the constant type.
                 d.kind = ConstantKind::Module;
+                d.tabled = true;
             }
             HelperForm::Defnamespace(ns) => {
                 modernize_constants(&mut ns.helpers);
@@ -528,42 +496,42 @@ pub fn compile_module(
                 },
             ));
         } else if let Some(HelperForm::Defconstant(dc)) = &exported {
-            let mut new_name = fun_name.clone();
-            new_name.extend(b"_hash".to_vec());
-            let hash_of_constant =
-                get_hash_of_constant(context, opts.clone(), &dc.name, &program, dc)?;
+            // let mut new_name = fun_name.clone();
+            // new_name.extend(b"_hash".to_vec());
+            // let hash_of_constant =
+            //     get_hash_of_constant(context, opts.clone(), &dc.name, &program, dc)?;
 
-            let mut underscore_name = new_name.clone();
-            underscore_name.insert(0, b'_');
+            // let mut underscore_name = new_name.clone();
+            // underscore_name.insert(0, b'_');
 
-            append_to_function_list(&mut function_list, &fun_name, &export_name);
+            // append_to_function_list(&mut function_list, &fun_name, &export_name);
 
-            program.helpers.push(HelperForm::Defconstant(DefconstData {
-                kind: ConstantKind::Complex,
-                name: underscore_name.clone(),
-                body: Rc::new(BodyForm::Quoted(SExp::Atom(
-                    dc.loc.clone(),
-                    hash_of_constant,
-                ))),
-                tabled: true,
-                ty: None,
-                ..dc.clone()
-            }));
+            // program.helpers.push(HelperForm::Defconstant(DefconstData {
+            //     kind: ConstantKind::Complex,
+            //     name: underscore_name.clone(),
+            //     body: Rc::new(BodyForm::Quoted(SExp::Atom(
+            //         dc.loc.clone(),
+            //         hash_of_constant,
+            //     ))),
+            //     tabled: true,
+            //     ty: None,
+            //     ..dc.clone()
+            // }));
 
-            program.helpers.push(HelperForm::Defun(
-                true,
-                DefunData {
-                    loc: dc.loc.clone(),
-                    nl: dc.nl.clone(),
-                    kw: None,
-                    name: new_name.clone(),
-                    args: Rc::new(SExp::Nil(dc.loc.clone())),
-                    orig_args: Rc::new(SExp::Nil(dc.loc.clone())),
-                    body: Rc::new(BodyForm::Value(SExp::Atom(dc.loc.clone(), new_name))),
-                    synthetic: Some(SyntheticType::NoInlinePreference),
-                    ty: None,
-                },
-            ));
+            // program.helpers.push(HelperForm::Defun(
+            //     true,
+            //     DefunData {
+            //         loc: dc.loc.clone(),
+            //         nl: dc.nl.clone(),
+            //         kw: None,
+            //         name: new_name.clone(),
+            //         args: Rc::new(SExp::Nil(dc.loc.clone())),
+            //         orig_args: Rc::new(SExp::Nil(dc.loc.clone())),
+            //         body: Rc::new(BodyForm::Value(SExp::Atom(dc.loc.clone(), new_name))),
+            //         synthetic: Some(SyntheticType::NoInlinePreference),
+            //         ty: None,
+            //     },
+            // ));
         } else {
             return Err(CompileErr(
                 loc.clone(),
@@ -574,62 +542,6 @@ pub fn compile_module(
 
     program.exp = function_list;
     program = resolve_namespaces(opts.clone(), &program)?;
-
-    // Stable constant resolution.
-    // We generate the dependency graph including constants and identify all
-    // constants that reference functions.  If there is a cycle involving any
-    // constant, we must terminate.
-    //
-    // Mark all constants that tangle with functions, and every constant that
-    // depends on one of the as SyntheticType::WantNonInline.
-    //
-    // We generate the program once, then compute each constant value to a
-    // quoted expression, then finalize the program.
-    let depgraph = FunctionDependencyGraph::new_with_options(&program, DepgraphOptions {
-        with_constants: true
-    });
-
-    let constants_that_reference_functions = find_constants_referencing_functions(
-        &program,
-        &depgraph
-    );
-
-    // Ensure every affected constant is tabled.
-    let mut shatree_seed = sha256tree(program.to_sexp());
-    let hash_atom = Rc::new(SExp::QuotedString(program.loc(), b'x', shatree_seed.clone()));
-    for h in program.helpers.iter_mut() {
-        let h_name = h.name().to_vec();
-        if let HelperForm::Defconstant(d) = h {
-            // Ensure that we upgrade the constant type.
-            d.kind = ConstantKind::Module;
-            if constants_that_reference_functions.contains(&h_name) {
-                d.body = Rc::new(BodyForm::Quoted(SExp::Cons(
-                    d.loc.clone(),
-                    hash_atom.clone(),
-                    Rc::new(SExp::Atom(d.loc.clone(), h_name)),
-                )));
-                d.tabled = true;
-            }
-        }
-    }
-
-    // Every constant is now replaced with (hash_atom . name)
-    // Generate the program in this form, given that all constants are tabled.
-    // For each function in the program, generate a program that produces the
-    // exising output and that function's body like:
-    //
-    // (if (not @) <function> body)
-    //
-    // Run the program with () and collect the result, storing it in a map.
-    //
-    // For each constant in our affected constant set, tour the constant,
-    // the replacing calls to any function in the above map with
-    //
-    //   (a compiled-func (list args))
-    //
-    // and each occurrence via variable with compiled-func.
-    //
-    // Now compile the full program with these constants.
 
     let compiled_result = Rc::new(compile_from_compileform(context, opts.clone(), program)?);
     let result_clvm = convert_to_clvm_rs(context.allocator(), compiled_result)?;
