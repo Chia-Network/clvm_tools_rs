@@ -92,7 +92,7 @@ jobs:
         run: |
           docker run --rm --platform linux/amd64 \
           -v ${{ github.workspace }}:/ws --workdir=/ws \
-          ghcr.io/chia-network/build-images/alpine-builder:sha-6bf60fe42006e1513d7279442110865decbe5960@sha256:5cd5206a0d962edbd6384204696b07eea2ed91905c4eec142c7ac0ccadb65d84 \
+          chianetwork/alpine-builder \
           bash -exc '\
           pyenv global 3.10 && \
           python -m venv venv && \
