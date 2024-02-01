@@ -557,3 +557,20 @@ fn test_import_renamed() {
         }],
     );
 }
+
+#[test]
+fn test_stable_constants() {
+    let filename = "resources/tests/module/test-stable-constant-carrier-1.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_filename = "resources/tests/module/test-stable_constant-carrier-1.hex";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[HexArgumentOutcome {
+            hexfile: hex_filename,
+            argument: "()",
+            outcome: Some("1"),
+        }],
+    );
+}

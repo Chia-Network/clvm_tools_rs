@@ -9,11 +9,11 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 
 use crate::compiler::clvm::{run, truthy};
-use crate::compiler::compiler::is_at_capture;
+use crate::compiler::compiler::{compile_from_compileform, is_at_capture};
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, CallSpec,
     Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, CompilerOutput, ConstantKind,
-    DefunCall, DefunData, HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind,
+    DefconstData, DefunCall, DefunData, HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind,
     PrimaryCodegen, RawCallSpec, SyntheticType,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
@@ -22,6 +22,7 @@ use crate::compiler::frontend::{compile_bodyform, make_provides_set};
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
 use crate::compiler::lambda::lambda_codegen;
+use crate::compiler::optimize::depgraph::{DepgraphOptions, FunctionDependencyGraph};
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, printable, SExp};
@@ -30,8 +31,39 @@ use crate::compiler::StartOfCodegenOptimization;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::{toposort, u8_from_number, Number, TopoSortItem};
 
+use std::sync::atomic::{AtomicI32, Ordering};
+use std::fmt::{Display, Error, Formatter};
+
 const MACRO_TIME_LIMIT: usize = 1000000;
 pub const CONST_EVAL_LIMIT: usize = 1000000;
+
+lazy_static! {
+    pub static ref INDENT: AtomicI32 = AtomicI32::new(0);
+}
+
+struct Indent { indent: i32 }
+
+impl Indent {
+    pub fn new() -> Self {
+        let indent = INDENT.fetch_add(1, Ordering::SeqCst);
+        Indent { indent }
+    }
+}
+
+impl Display for Indent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        for _ in 0..self.indent {
+            write!(f, "  ")?;
+        }
+        Ok(())
+    }
+}
+
+impl Drop for Indent {
+    fn drop(&mut self) {
+        INDENT.fetch_add(-1, Ordering::SeqCst);
+    }
+}
 
 /* As in the python code, produce a pair whose (thanks richard)
  *
@@ -337,10 +369,12 @@ pub fn get_callable(
                 }
                 (_, _, _, _, true, _) => Ok(Callable::RunCompiler),
                 (_, _, _, _, _, true) => Ok(Callable::EnvPath),
-                _ => Err(CompileErr(
-                    l.clone(),
-                    format!("no such callable '{}'", decode_string(name)),
-                )),
+                _ => {
+                    Err(CompileErr(
+                        l.clone(),
+                        format!("no such callable '{}'", decode_string(name)),
+                    ))
+                }
             }
         }
         SExp::Integer(_, v) => Ok(Callable::CallPrim(l.clone(), SExp::Integer(l, v.clone()))),
@@ -525,6 +559,10 @@ fn compile_call(
             call.loc.clone(),
             Rc::new(SExp::Atom(al.clone(), an.to_vec())),
         )
+            .map_err(|e| {
+                eprintln!("giving up looking for {} in {}", decode_string(&an), call.original.to_sexp());
+                todo!();
+            })
         .and_then(|calltype| {
             match calltype {
                 Callable::CallMacro(l, code) => {
@@ -954,6 +992,7 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
         prims: prim_map,
         constants: HashMap::new(),
         tabled_constants: HashMap::new(),
+        module_constants: HashMap::new(),
         inlines: HashMap::new(),
         macros: HashMap::new(),
         defuns: HashMap::new(),
@@ -1382,6 +1421,10 @@ fn start_codegen(
     opts: Rc<dyn CompilerOpts>,
     program: CompileForm,
 ) -> Result<PrimaryCodegen, CompileErr> {
+    let I = Indent::new();
+
+    eprintln!("{I}start_codegen {}", program.to_sexp());
+
     // Choose code generator configuration
     let mut code_generator = match opts.code_generator() {
         None => empty_compiler(opts.prim_map(), program.loc.clone()),
@@ -1478,6 +1521,13 @@ fn start_codegen(
                             ),
                         ));
                     }
+                }
+                ConstantKind::Module => {
+                    eprintln!("{I}add module constant {}", decode_string(&defc.name));
+                    if matches!(code_generator.module_constants.get(&defc.name), Some(_)) {
+                        todo!();
+                    }
+                    code_generator.add_module_constant(&defc.name, defc.body.clone())
                 }
             },
             HelperForm::Defmacro(mac) => {
@@ -1595,6 +1645,7 @@ fn finalize_env_(
             if c.parentfns.get(v).is_some() {
                 Ok(Rc::new(SExp::Nil(l.clone())))
             } else {
+                todo!();
                 Err(CompileErr(
                     l.clone(),
                     format!(
@@ -1673,15 +1724,173 @@ fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileE
     )
 }
 
+// Generate a set of names and an environment which will slot into the main env
+// where __chia__extras lives.  This will allow these computations to use functions
+// and constants that have been ejected from the main program.
+fn make_chia_extras(
+    loc: &Srcloc,
+    helper_defs: &[(Vec<u8>, Rc<SExp>)],
+    start: usize,
+    end: usize,
+) -> (Rc<SExp>, Rc<SExp>) {
+    if end - start == 0 {
+        let nil = Rc::new(SExp::Nil(loc.clone()));
+        (nil.clone(), nil)
+    } else if end - start == 1 {
+        let (name, value) = &helper_defs[0];
+        (Rc::new(SExp::Atom(value.loc(), name.clone())), value.clone())
+    } else {
+        let mid = start + (end - start) / 2;
+        let (lnames, lvalues) = make_chia_extras(loc, helper_defs, start, mid);
+        let (rnames, rvalues) = make_chia_extras(loc, helper_defs, mid, end);
+        (
+            Rc::new(SExp::Cons(
+                lnames.loc().clone(),
+                lnames,
+                rnames
+            )),
+            Rc::new(SExp::Cons(
+                rvalues.loc().clone(),
+                lvalues,
+                rvalues
+            ))
+        )
+    }
+}
+
+            // match h {
+            //     HelperForm::Defun(_, dd) => {
+            //         if let Some(d) = c.defuns.get(&dd.name) {
+            //             // Defuns we've already generated.
+            //             continue;
+            //         }
+
+            //         eprintln!("re-process defun {}", decode_string(h.name()));
+            //         let program = CompileForm {
+            //             args: dd.args.clone(),
+            //             helpers: code_generator.original_helpers.iter().filter(|fh| {
+            //                 fh.name() != h.name()
+            //             }).cloned().collect(),
+            //             exp: dd.body.clone(),
+            //             .. cmod.clone()
+            //         };
+
+            //         let compiled_program = compile_from_compileform(
+            //             context,
+            //             opts.clone(),
+            //             program
+            //         )?;
+
+            //         // We'll expect this to be called with a left env,
+            //         // which we'll strip.
+            //         todo!();
+            //     }
+            //     HelperForm::Defconstant(dc) => {
+            //         eprintln!("re-process constant {}", decode_string(h.name()));
+
+            //         // This constant value is a fallback for ones that
+            //         // are not tabled into the main program.  It will
+            //         // never include a constant that depends on a function
+            //         // and anything computed here will replace
+            //         // __chia__extras in the environment.
+            //         //
+            //         // __chia__extras is placed last in the environment
+            //         // so that we'll only match there for things that
+            //         // do not appear in the program's runtime env, so
+            //         // the values here are just ones that can be safely
+            //         // computed without the real runtime env.
+            //         let program = CompileForm {
+            //             args: Rc::new(SExp::Nil(h.loc())),
+            //             helpers: code_generator.original_helpers.iter().filter(|fh| {
+            //                 fh.name() != h.name()
+            //             }).cloned().collect(),
+            //             exp: dc.body.clone(),
+            //             .. cmod.clone()
+            //         };
+
+            //         let compiled_program = compile_from_compileform(
+            //             context,
+            //             opts.clone(),
+            //             program
+            //         )?;
+
+            //         // The result of running this code is the constant
+            //         // value.
+            //         let runner = context.runner();
+            //         let result = run(
+            //             context.allocator(),
+            //             runner,
+            //             opts.prim_map(),
+            //             Rc::new(compiled_program),
+            //             Rc::new(SExp::Nil(h.loc())),
+            //             None,
+            //             Some(CONST_EVAL_LIMIT)
+            //         ).map_err(|r| {
+            //             CompileErr(h.loc(), format!("Error evaluating constant: {r}"))
+            //         })?;
+
+            //         compiled_helpers.push((h.name().to_vec(), result));
+            //     }
+            //     _ => {
+            //         continue;
+            //     }
+            // };
+
+fn replace_by_name(
+    env: Rc<SExp>,
+    target_name: &[u8],
+    new_value: Rc<SExp>,
+) -> Rc<SExp> {
+    if let SExp::Cons(l, a, b) = env.borrow() {
+        let a_replaced = replace_by_name(a.clone(), target_name, new_value.clone());
+        let b_replaced = replace_by_name(b.clone(), target_name, new_value.clone());
+        if Rc::as_ptr(&a_replaced) == Rc::as_ptr(a) && Rc::as_ptr(&b_replaced) == Rc::as_ptr(b) {
+            env
+        } else {
+            Rc::new(SExp::Cons(l.clone(), a_replaced, b_replaced))
+        }
+    } else if let SExp::Atom(l, a) = env.borrow() {
+        if a == target_name {
+            new_value
+        } else {
+            env
+        }
+    } else {
+        env
+    }
+}
+
+// Replace in codegen helpers the value of the new constants that slot into
+// __chia__extras.
+fn replace_constant_value(
+    helpers: &mut Vec<HelperForm>,
+    cname: &[u8],
+    new_value: &SExp
+) {
+    for h in helpers.iter_mut() {
+        if let HelperForm::Defconstant(dc) = h {
+            if &dc.name == cname {
+                dc.body = Rc::new(BodyForm::Quoted(new_value.clone()));
+                dc.kind = ConstantKind::Complex;
+            }
+        }
+    }
+}
+
 pub fn codegen(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     cmod: &CompileForm,
 ) -> Result<SExp, CompileErr> {
+    let I = Indent::new();
+    eprintln!("{I}codegen {} {}", opts.in_defun(), cmod.to_sexp());
     let mut start_of_codegen_optimization = StartOfCodegenOptimization {
         program: cmod.clone(),
         code_generator: dummy_functions(&start_codegen(context, opts.clone(), cmod.clone())?)?,
     };
+
+    let helpers_in_cmod: Vec<String> = cmod.helpers.iter().map(|h| decode_string(h.name())).collect();
+    eprintln!("helpers_in_cmod {helpers_in_cmod:?}");
 
     // This is a tree-shaking loop.  It results in the minimum number of emitted
     // helpers in the environment by taking only those still alive after each
@@ -1696,8 +1905,12 @@ pub fn codegen(
             break;
         }
 
+        eprintln!("{I}tree shaking loop start");
+
         let newly_optimized_start = context
             .start_of_codegen_optimization(opts.clone(), start_of_codegen_optimization.clone())?;
+
+        eprintln!("{I}newly optimized_start.program {}", newly_optimized_start.program.to_sexp());
 
         // We got back the same program, so nothing will change anymore.
         if newly_optimized_start.program.to_sexp()
@@ -1715,11 +1928,56 @@ pub fn codegen(
             program: program.clone(),
             code_generator: dummy_functions(&start_codegen(context, opts.clone(), program)?)?,
         };
+        eprintln!("{I}tree shaking loop end");
     }
 
     let mut code_generator = start_of_codegen_optimization.code_generator;
-    let to_process = code_generator.to_process.clone();
 
+    if !opts.in_defun() && !code_generator.module_constants.is_empty() {
+        todo!();
+        // Add a constant here that we'll use for the extra definitions needed at
+        // full constant resolution time.
+        let name = b"__chia__extras".to_vec();
+        let value = SExp::Nil(cmod.loc());
+        code_generator.tabled_constants.insert(name.clone(), Rc::new(value.clone()));
+        code_generator.to_process.push(HelperForm::Defconstant(DefconstData {
+            loc: cmod.loc(),
+            nl: cmod.loc(),
+            name,
+            kw: None,
+            kind: ConstantKind::Complex,
+            tabled: true,
+            body: Rc::new(BodyForm::Quoted(value)),
+            ty: None,
+        }));
+
+        // Inject our env injection point and recompute the inputs to compilation.
+        //
+        // The __chia__extras point is used to add definitions for constant time
+        // evaluation that are relevant to constant time but not included in the
+        // program's runtime environment.  This exploits our ability to have
+        // definition farther left override definitions that are farther right.
+        //
+        // We place a nil definition as the rightmost definition in our environment
+        // so anything compiled based on it observes the things injected down the
+        // injection point after all other (live) definitions.
+        let only_defuns: Vec<HelperForm> = code_generator.to_process
+            .iter()
+            .filter(|x| is_defun_or_tabled_const(x))
+            .cloned()
+            .collect();
+
+        code_generator.env = match opts.start_env() {
+            Some(env) => env,
+            None => Rc::new(compute_env_shape(
+                cmod.loc.clone(),
+                cmod.args.clone(),
+                &only_defuns,
+            )),
+        };
+    }
+
+    let to_process = code_generator.to_process.clone();
     for f in to_process {
         code_generator = codegen_(context, opts.clone(), &code_generator, &f)?;
     }
@@ -1732,45 +1990,182 @@ pub fn codegen(
         .symbols()
         .insert("source_file".to_string(), opts.filename());
 
-    final_codegen(context, opts.clone(), &code_generator).and_then(|c| {
-        let final_env = finalize_env(context, opts.clone(), &c)?;
+    let mut c = final_codegen(context, opts.clone(), &code_generator)?;
+    let mut final_env = finalize_env(context, opts.clone(), &c)?;
 
-        match c.final_code {
-            None => Err(CompileErr(
-                Srcloc::start(&opts.filename()),
-                "Failed to generate code".to_string(),
-            )),
-            Some(code) => {
-                // Capture symbols now that we have the final form of the produced code.
-                context
-                    .symbols()
-                    .insert("__chia__main_arguments".to_string(), cmod.args.to_string());
+    if !opts.in_defun() && !code_generator.module_constants.is_empty() {
+        // We need to fix up tabled module constants in the program.
+        //
+        // This means that the existing environment has bogus values for the
+        // tabled module constants we've listed here.
+        //
+        // We need to compute their real values in order.
+        //
+        // For each, we need to have the full program... that means even
+        // functions which were optimized out via tree shaking, because they
+        // could be used to compute constants.
+        //
+        // The constant needs two sources of definitions.  It needs the full
+        // pool of definitions from c.orig_helpers but also anything in the
+        // final_env needs to be referenced where it is.
+        //
+        // One way to deal with this is to require an empty right tail in all
+        // programs that are built this way so that we can insert standalone
+        // compiled definitions for each of the definitions in orig_helpers as
+        // standalone programs.  That way things that look up in the left env
+        // will continue to work and the subset that are new can live in the
+        // right most constant space where they'll be looked up last.
 
-                if opts.in_defun() {
-                    let final_code = primapply(
+        // Create a whole sub environment containing standalone definitions
+        // of each constant and function in orig_helpers.
+
+        let to_eval_mod_constant: Vec<(Vec<u8>, Rc<BodyForm>)> = c.module_constants.iter().map(|(constant_name, constant_def)| {
+            (constant_name.to_vec(), constant_def.clone())
+        }).collect();
+
+        let mut all_constant_exp = Rc::new(BodyForm::Quoted(SExp::Nil(cmod.loc.clone())));
+
+        for (cname, cdef) in to_eval_mod_constant.iter() {
+            all_constant_exp = Rc::new(BodyForm::Call(
+                cdef.loc(),
+                vec![
+                    Rc::new(BodyForm::Value(SExp::Integer(cdef.loc(), 4_u32.to_bigint().unwrap()))),
+                    Rc::new(BodyForm::Value(SExp::Atom(cdef.loc(), cname.clone()))),
+                    all_constant_exp
+                ],
+                None
+            ));
+        }
+
+        let depgraph_program = CompileForm {
+            exp: all_constant_exp,
+            .. cmod.clone()
+        };
+
+        eprintln!("make depgraph with constants?");
+        let depgraph = FunctionDependencyGraph::new_with_options(
+            &depgraph_program,
+            DepgraphOptions {
+                with_constants: true
+            }
+        );
+
+        let mut compiled_helpers = Vec::new();
+        eprintln!("{I}depgraph {}", depgraph.to_sexp());
+
+        eprintln!("{I}Constant dependencies");
+        for (cname, cdef) in to_eval_mod_constant.iter() {
+            eprintln!("{I}process constant {}", decode_string(&cname));
+            // This constant value is a fallback for ones that
+            // are not tabled into the main program.  It will
+            // never include a constant that depends on a function
+            // and anything computed here will replace
+            // __chia__extras in the environment.
+            //
+            // __chia__extras is placed last in the environment
+            // so that we'll only match there for things that
+            // do not appear in the program's runtime env, so
+            // the values here are just ones that can be safely
+            // computed without the real runtime env.
+            let program = CompileForm {
+                args: Rc::new(SExp::Nil(cdef.loc())),
+                helpers: code_generator.original_helpers.iter().filter(|fh| {
+                    fh.name() != cname
+                }).cloned().collect(),
+                exp: cdef.clone(),
+                .. cmod.clone()
+            };
+
+            let compiled_program = compile_from_compileform(
+                context,
+                opts.clone(),
+                program
+            )?;
+
+            // The result of running this code is the constant
+            // value.
+            let runner = context.runner();
+            let result = run(
+                context.allocator(),
+                runner,
+                opts.prim_map(),
+                Rc::new(compiled_program),
+                Rc::new(SExp::Nil(cdef.loc())),
+                None,
+                Some(CONST_EVAL_LIMIT)
+            ).map_err(|r| {
+                CompileErr(cdef.loc(), format!("Error evaluating constant: {r}"))
+            })?;
+
+            eprintln!("Pushing new constant {}", decode_string(cname));
+            compiled_helpers.push((cname.to_vec(), result));
+        }
+
+        let (chia_extras_names, chia_extras_data) = make_chia_extras(
+            &cmod.loc(),
+            &compiled_helpers,
+            0,
+            compiled_helpers.len()
+        );
+
+        eprintln!("{I}chia_extras_names {chia_extras_names}");
+        eprintln!("{I}chia_extras_data  {chia_extras_data}");
+
+        // Replace the constant value of __chia__extras in the env with this
+        // subtree and in c.env.
+        let replacement_env = replace_by_name(c.env.clone(), b"__chia__extras", chia_extras_names);
+        replace_constant_value(
+            &mut c.to_process,
+            b"__chia__extras",
+            chia_extras_data.borrow()
+        );
+        replace_constant_value(
+            &mut c.original_helpers,
+            b"__chia__extras",
+            chia_extras_data.borrow()
+        );
+
+        // Actually set up the replaced data.
+        c.tabled_constants.insert(b"__chia__extras".to_vec(), chia_extras_data);
+        final_env = finalize_env(context, opts.clone(), &c)?;
+        c.env = replacement_env;
+    }
+
+    match c.final_code {
+        None => Err(CompileErr(
+            Srcloc::start(&opts.filename()),
+            "Failed to generate code".to_string(),
+        )),
+        Some(code) => {
+            // Capture symbols now that we have the final form of the produced code.
+            context
+                .symbols()
+                .insert("__chia__main_arguments".to_string(), cmod.args.to_string());
+
+            if opts.in_defun() {
+                let final_code = primapply(
+                    code.0.clone(),
+                    Rc::new(primquote(code.0.clone(), code.1)),
+                    Rc::new(SExp::Integer(code.0, bi_one())),
+                );
+
+                Ok(final_code)
+            } else if code_generator.left_env {
+                let final_code = primapply(
+                    code.0.clone(),
+                    Rc::new(primquote(code.0.clone(), code.1)),
+                    Rc::new(primcons(
                         code.0.clone(),
-                        Rc::new(primquote(code.0.clone(), code.1)),
+                        Rc::new(primquote(code.0.clone(), final_env)),
                         Rc::new(SExp::Integer(code.0, bi_one())),
-                    );
+                    )),
+                );
 
-                    Ok(final_code)
-                } else if code_generator.left_env {
-                    let final_code = primapply(
-                        code.0.clone(),
-                        Rc::new(primquote(code.0.clone(), code.1)),
-                        Rc::new(primcons(
-                            code.0.clone(),
-                            Rc::new(primquote(code.0.clone(), final_env)),
-                            Rc::new(SExp::Integer(code.0, bi_one())),
-                        )),
-                    );
-
-                    Ok(final_code)
-                } else {
-                    let code_borrowed: &SExp = code.1.borrow();
-                    Ok(code_borrowed.clone())
-                }
+                Ok(final_code)
+            } else {
+                let code_borrowed: &SExp = code.1.borrow();
+                Ok(code_borrowed.clone())
             }
         }
-    })
+    }
 }

@@ -328,6 +328,9 @@ pub struct DeftypeData {
 pub enum ConstantKind {
     Complex,
     Simple,
+    /// Module toplevel constants have extra guarantees which need a different
+    /// resolution style.
+    Module,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -900,6 +903,7 @@ pub struct PrimaryCodegen {
     pub prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     pub constants: HashMap<Vec<u8>, Rc<SExp>>,
     pub tabled_constants: HashMap<Vec<u8>, Rc<SExp>>,
+    pub module_constants: HashMap<Vec<u8>, Rc<BodyForm>>,
     pub macros: HashMap<Vec<u8>, Rc<SExp>>,
     pub inlines: HashMap<Vec<u8>, InlineFunction>,
     pub defuns: HashMap<Vec<u8>, DefunCall>,
@@ -1257,23 +1261,20 @@ impl HelperForm {
                     tail,
                 ))
             }
-            HelperForm::Defconstant(defc) => match defc.kind {
-                ConstantKind::Simple => Rc::new(list_to_cons(
+            HelperForm::Defconstant(defc) => {
+                let dc_kw = match defc.kind {
+                    ConstantKind::Simple => "defconstant",
+                    _ => "defconst"
+                };
+
+                Rc::new(list_to_cons(
                     defc.loc.clone(),
                     &[
-                        Rc::new(SExp::atom_from_string(defc.loc.clone(), "defconstant")),
+                        Rc::new(SExp::atom_from_string(defc.loc.clone(), dc_kw)),
                         Rc::new(SExp::atom_from_vec(defc.loc.clone(), &defc.name)),
                         defc.body.to_sexp(),
                     ],
-                )),
-                ConstantKind::Complex => Rc::new(list_to_cons(
-                    defc.loc.clone(),
-                    &[
-                        Rc::new(SExp::atom_from_string(defc.loc.clone(), "defconst")),
-                        Rc::new(SExp::atom_from_vec(defc.loc.clone(), &defc.name)),
-                        defc.body.to_sexp(),
-                    ],
-                )),
+                ))
             },
             HelperForm::Defmacro(mac) => generate_defmacro_sexp(mac),
             HelperForm::Defun(inline, defun) => {
@@ -1490,6 +1491,13 @@ impl PrimaryCodegen {
     pub fn add_tabled_constant(&self, name: &[u8], value: Rc<SExp>) -> Self {
         let mut codegen_copy = self.clone();
         codegen_copy.tabled_constants.insert(name.to_owned(), value);
+        codegen_copy
+    }
+
+    pub fn add_module_constant(&self, name: &[u8], value: Rc<BodyForm>) -> Self {
+        let mut codegen_copy = self.clone();
+        codegen_copy.tabled_constants.insert(name.to_owned(), Rc::new(SExp::Nil(value.loc())));
+        codegen_copy.module_constants.insert(name.to_owned(), value);
         codegen_copy
     }
 

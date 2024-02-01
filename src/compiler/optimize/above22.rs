@@ -7,7 +7,7 @@ use clvmr::allocator::Allocator;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
+    BodyForm, CompileErr, CompileForm, CompilerOpts, ConstantKind, DefunData, HelperForm, PrimaryCodegen,
 };
 use crate::compiler::frontend::compute_live_helpers;
 use crate::compiler::optimize::brief::brief_path_selection;
@@ -17,7 +17,7 @@ use crate::compiler::optimize::double_apply::remove_double_apply;
 use crate::compiler::optimize::{
     null_optimization, optimize_expr, run_optimizer, CompileContextWrapper, Optimization,
 };
-use crate::compiler::sexp::SExp;
+use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::StartOfCodegenOptimization;
 
 /// Captures the strategy for cl23 and above.
@@ -92,26 +92,38 @@ impl Optimization for Strategy23 {
             .program
             .helpers
             .iter()
-            .map(|h| {
-                if let HelperForm::Defun(inline, defun) = h {
-                    let new_body = optimize_expr(
-                        allocator,
-                        opts.clone(),
-                        runner.clone(),
-                        &to_optimize.code_generator,
-                        defun.body.clone(),
-                    )
-                    .map(|x| x.1)
-                    .unwrap_or_else(|| defun.body.clone());
-                    HelperForm::Defun(
-                        *inline,
-                        DefunData {
-                            body: new_body,
-                            ..defun.clone()
-                        },
-                    )
-                } else {
-                    h.clone()
+            .filter_map(|h| {
+                match h {
+                    HelperForm::Defun(inline, defun) => {
+                        eprintln!("optimize function {}", h.to_sexp());
+                        let new_body = optimize_expr(
+                            allocator,
+                            opts.clone(),
+                            runner.clone(),
+                            &to_optimize.code_generator,
+                            defun.body.clone(),
+                        )
+                            .map(|x| x.1)
+                            .unwrap_or_else(|| defun.body.clone());
+                        Some(HelperForm::Defun(
+                            *inline,
+                            DefunData {
+                                body: new_body,
+                                ..defun.clone()
+                            },
+                        ))
+                    }
+                    HelperForm::Defconstant(dc) => {
+                        if !matches!(dc.kind, ConstantKind::Module) {
+                            eprintln!("adding optimize {}", decode_string(&dc.name));
+                            Some(h.clone())
+                        } else {
+                            None
+                        }
+                    }
+                    _ => {
+                        Some(h.clone())
+                    }
                 }
             })
             .collect();
@@ -127,13 +139,21 @@ impl Optimization for Strategy23 {
         .map(|x| x.1)
         .unwrap_or_else(|| to_optimize.program.exp.clone());
 
+        eprintln!("compute live helpers");
+
         let used_helpers = compute_live_helpers(
             opts,
             &to_optimize.program.helpers,
             to_optimize.program.exp.clone(),
         );
 
+        let live_helpers: Vec<String> = used_helpers.iter().map(|h| decode_string(h.name())).collect();
+
+        eprintln!("live helpers {live_helpers:?}");
+
         to_optimize.program.helpers = used_helpers;
+
+        eprintln!("to_optimize program {}", to_optimize.program.to_sexp());
 
         Ok(to_optimize)
     }

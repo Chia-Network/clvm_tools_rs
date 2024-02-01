@@ -319,6 +319,25 @@ fn get_hash_of_constant(
     Ok(sha256tree(evaluated))
 }
 
+fn modernize_constants(helpers: &mut Vec<HelperForm>) {
+    for h in helpers.iter_mut() {
+        match h {
+            HelperForm::Defconstant(d) => {
+                // Ensure that we upgrade the constant type.
+                d.kind = ConstantKind::Module;
+                d.tabled = true;
+            }
+            HelperForm::Defnamespace(ns) => {
+                modernize_constants(&mut ns.helpers);
+            }
+            _ => {}
+        }
+    }
+}
+
+#[deprecated]
+fn todo_false() -> bool { false }
+
 /// Exports are returned main programs:
 ///
 /// Single main
@@ -345,13 +364,17 @@ pub fn compile_module(
         ));
     }
 
+    modernize_constants(&mut program.helpers);
+
     if exports.len() == 1 {
         if let Export::MainProgram(args, expr) = &exports[0] {
             // Single program.
             program.args = args.clone();
             program.exp = expr.clone();
 
+            eprintln!("PRE  NAMESPACE RESOLUTION {}", program.to_sexp());
             program = resolve_namespaces(opts.clone(), &program)?;
+            eprintln!("POST NAMESPACE RESOLUTION {}", program.to_sexp());
 
             let output = Rc::new(compile_from_compileform(context, opts.clone(), program)?);
             let converted = convert_to_clvm_rs(context.allocator(), output.clone())?;
@@ -462,25 +485,31 @@ pub fn compile_module(
                 dd.loc.clone(),
                 fun_name.clone(),
             )));
-            program.helpers.push(HelperForm::Defun(
-                false,
-                DefunData {
-                    loc: dd.loc.clone(),
-                    kw: None,
-                    nl: dd.nl.clone(),
-                    name: new_name,
-                    args: Rc::new(SExp::Nil(dd.loc.clone())),
-                    orig_args: Rc::new(SExp::Nil(dd.loc.clone())),
-                    body: form_hash_expression(make_hash_of),
-                    synthetic: Some(SyntheticType::WantNonInline),
-                    ty: None,
-                },
-            ));
+            if todo_false() {
+                program.helpers.push(HelperForm::Defun(
+                    false,
+                    DefunData {
+                        loc: dd.loc.clone(),
+                        kw: None,
+                        nl: dd.nl.clone(),
+                        name: new_name,
+                        args: Rc::new(SExp::Nil(dd.loc.clone())),
+                        orig_args: Rc::new(SExp::Nil(dd.loc.clone())),
+                        body: form_hash_expression(make_hash_of),
+                        synthetic: Some(SyntheticType::WantNonInline),
+                        ty: None,
+                    },
+                ));
+            }
         } else if let Some(HelperForm::Defconstant(dc)) = &exported {
             let mut new_name = fun_name.clone();
             new_name.extend(b"_hash".to_vec());
             let hash_of_constant =
-                get_hash_of_constant(context, opts.clone(), &dc.name, &program, dc)?;
+                if todo_false() {
+                    get_hash_of_constant(context, opts.clone(), &dc.name, &program, dc)?
+                } else {
+                    Vec::new()
+                };
 
             let mut underscore_name = new_name.clone();
             underscore_name.insert(0, b'_');
@@ -499,20 +528,22 @@ pub fn compile_module(
                 ..dc.clone()
             }));
 
-            program.helpers.push(HelperForm::Defun(
-                true,
-                DefunData {
-                    loc: dc.loc.clone(),
-                    nl: dc.nl.clone(),
-                    kw: None,
-                    name: new_name.clone(),
-                    args: Rc::new(SExp::Nil(dc.loc.clone())),
-                    orig_args: Rc::new(SExp::Nil(dc.loc.clone())),
-                    body: Rc::new(BodyForm::Value(SExp::Atom(dc.loc.clone(), new_name))),
-                    synthetic: Some(SyntheticType::NoInlinePreference),
-                    ty: None,
-                },
-            ));
+            if todo_false() {
+                program.helpers.push(HelperForm::Defun(
+                    true,
+                    DefunData {
+                        loc: dc.loc.clone(),
+                        nl: dc.nl.clone(),
+                        kw: None,
+                        name: new_name.clone(),
+                        args: Rc::new(SExp::Nil(dc.loc.clone())),
+                        orig_args: Rc::new(SExp::Nil(dc.loc.clone())),
+                        body: Rc::new(BodyForm::Value(SExp::Atom(dc.loc.clone(), underscore_name))),
+                        synthetic: Some(SyntheticType::NoInlinePreference),
+                        ty: None,
+                    },
+                ));
+            }
         } else {
             return Err(CompileErr(
                 loc.clone(),
@@ -522,7 +553,9 @@ pub fn compile_module(
     }
 
     program.exp = function_list;
+    eprintln!("PRE  NAMESPACE RESOLUTION {}", program.to_sexp());
     program = resolve_namespaces(opts.clone(), &program)?;
+    eprintln!("POST NAMESPACE RESOLUTION {}", program.to_sexp());
 
     let compiled_result = Rc::new(compile_from_compileform(context, opts.clone(), program)?);
     let result_clvm = convert_to_clvm_rs(context.allocator(), compiled_result)?;
