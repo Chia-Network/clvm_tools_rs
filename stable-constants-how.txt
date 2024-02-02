@@ -1,0 +1,63 @@
+Needs:
+
+We have *a* generated program.  It has () in its constants and hashes.
+We can detect that we are in a module based program and that we need to generate
+  the constants properly.
+I isolated the sha256tree function as a standalone program and put it in the hash
+  generator.  We can use that to generate hashes when we're looking at the env.
+We need to be able to patch the envrionment --
+  PrimaryCodegen has the env shape and also the values during codegen.
+  We store the names of the constants.  We need to be able to inject names of
+  functions that are not in the constant tree.  I think i need the __chia__extras
+  entry to be inserted.  It will be () when generating the program, but we can
+  replace it in the environment and the program's env object with a full list of
+  functions and constants that were originally part of the program and this list is
+  not culled.  Since it's a constant, we'll evaluate it at constant time
+  (as pairs of name and nil here the first time).
+
+  Codegen must ensure that __chia__extras is the leftmost env entry.  We should
+  detect and swap the current leftmost with it in the env and the env value.
+
+  codegen will find this value __chia__extras, and scan it, taking the name and
+  value pairs and adding the names in place of the __chia__extras name in the
+  environment.  We will then do finalize_env again causing the program to generate
+  these extra values into the env based on the full helper set.  They're initially
+  all pairs of name and ().
+
+  Constants may reference functions that aren't in the main environment.  We'll
+  traverse all functions and generate each one as a stanadlone program:
+
+    - Make a program with the function's args and body and the full program's full
+      helper set.
+
+    - Generate that as a standalone program.
+
+    - Store the full representation of it in the PrimaryCodegen.
+
+    - Replace the value in __chia__extras corresponding to each generated function
+      with the one we just created (a standalone program).
+
+  Codegen then sorts the constants in topological order and processes each one.
+
+    - As they're generated, replace each in the __chia__extras value.
+
+There are a few cases of things we can reference in a constant created this way:
+
+ - It references other constant values.  Fine because they're in dependency order
+   and have their final values if a solution is possible.
+
+ - It references a function that appears in the program's env in a value context.
+   It will be looked up in the program's env and be consistent in representation.
+   We'll ensure that when generating code for functions in the main env that we
+   filter out __chia__extras pollution by ensuring that the rightmost env element
+   appears to be nil when combined with this function so the function's export and
+   constant personality will be consistent.
+
+ - It references a function that does not appear in the program's env.  These
+   were all generated as above and stored.  This function carries it's own
+   environment and thus code generation will work properly.
+
+ - We run the generated code and replace the tabled constant definition with the
+   output we just generated.
+
+
