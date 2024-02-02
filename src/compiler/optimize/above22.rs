@@ -94,6 +94,7 @@ impl Optimization for Strategy23 {
             .iter()
             .map(|h| {
                 if let HelperForm::Defun(inline, defun) = h {
+                    eprintln!("optimize helper {}", h.to_sexp());
                     let new_body = optimize_expr(
                         allocator,
                         opts.clone(),
@@ -117,6 +118,7 @@ impl Optimization for Strategy23 {
             .collect();
 
         to_optimize.program.helpers = new_helpers;
+        eprintln!("optimize main expr of program: {}", to_optimize.program.to_sexp());
         to_optimize.program.exp = optimize_expr(
             allocator,
             opts.clone(),

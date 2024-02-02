@@ -82,17 +82,6 @@ lazy_static! {
 
             (defun-inline / (A B) (f (divmod A B)))
 
-            (defun __chia__sha256tree (t)
-              (a
-                (i
-                  (l t)
-                  (com (sha256 2 (__chia__sha256tree (f t)) (__chia__sha256tree (r t))))
-                  (com (sha256 1 t))
-                  )
-                @
-                )
-              )
-
             (defun-inline c* (A B) (c A B))
             (defun-inline a* (A B) (a A B))
             (defun-inline coerce (X) : (Any -> Any) X)
@@ -265,14 +254,25 @@ pub fn find_exported_helper(
 }
 
 fn form_hash_expression(inner_exp: Rc<BodyForm>) -> Rc<BodyForm> {
+    let sha256tree_program_clvm = "(a (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) (c (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) 1))";
+    let shloc = Srcloc::start("*sha256tree*");
+    let parsed = parse_sexp(shloc.clone(), sha256tree_program_clvm.bytes()).expect("should have parsed");
+    let p0_borrowed: &SExp = parsed[0].borrow();
+
     Rc::new(BodyForm::Call(
         inner_exp.loc(),
         vec![
-            Rc::new(BodyForm::Value(SExp::Atom(
+            Rc::new(BodyForm::Value(SExp::Integer(inner_exp.loc(), 2_u32.to_bigint().unwrap()))),
+            Rc::new(BodyForm::Quoted(p0_borrowed.clone())),
+            Rc::new(BodyForm::Call(
                 inner_exp.loc(),
-                b"__chia__sha256tree".to_vec(),
-            ))),
-            inner_exp,
+                vec![
+                    Rc::new(BodyForm::Value(SExp::Integer(inner_exp.loc(), 4_u32.to_bigint().unwrap()))),
+                    inner_exp.clone(),
+                    Rc::new(BodyForm::Quoted(SExp::Nil(inner_exp.loc()))),
+                ],
+                None
+            )),
         ],
         None,
     ))
@@ -285,38 +285,55 @@ fn get_hash_of_constant(
     program: &CompileForm,
     dc: &DefconstData,
 ) -> Result<Vec<u8>, CompileErr> {
-    let constant_program = CompileForm {
-        exp: dc.body.clone(),
-        ..program.clone()
-    };
-    let compiled = compile_from_compileform(context, opts.clone(), constant_program)?;
-    let runner = context.runner();
-    let evaluated = run(
-        context.allocator(),
-        runner,
-        opts.prim_map(),
-        Rc::new(compiled),
-        Rc::new(SExp::Nil(program.loc())),
-        None,
-        Some(CONST_EVAL_LIMIT),
-    )
-    .map_err(|r| match r {
-        RunFailure::RunExn(l, e) => CompileErr(
-            l.clone(),
-            format!(
-                "Error evaluating export constant {}: exception throwing {e}",
-                decode_string(name)
-            ),
-        ),
-        RunFailure::RunErr(l, e) => CompileErr(
-            l.clone(),
-            format!(
-                "Error evaluating export constant {}: {e}",
-                decode_string(name)
-            ),
-        ),
-    })?;
-    Ok(sha256tree(evaluated))
+    // let constant_program = CompileForm {
+    //     exp: dc.body.clone(),
+    //     ..program.clone()
+    // };
+    // let compiled = compile_from_compileform(context, opts.clone(), constant_program)?;
+    // let runner = context.runner();
+    // let evaluated = run(
+    //     context.allocator(),
+    //     runner,
+    //     opts.prim_map(),
+    //     Rc::new(compiled),
+    //     Rc::new(SExp::Nil(program.loc())),
+    //     None,
+    //     Some(CONST_EVAL_LIMIT),
+    // )
+    // .map_err(|r| match r {
+    //     RunFailure::RunExn(l, e) => CompileErr(
+    //         l.clone(),
+    //         format!(
+    //             "Error evaluating export constant {}: exception throwing {e}",
+    //             decode_string(name)
+    //         ),
+    //     ),
+    //     RunFailure::RunErr(l, e) => CompileErr(
+    //         l.clone(),
+    //         format!(
+    //             "Error evaluating export constant {}: {e}",
+    //             decode_string(name)
+    //         ),
+    //     ),
+    // })?;
+    // Ok(sha256tree(evaluated))
+    Ok(Vec::new())
+}
+
+fn modernize_constants(helpers: &mut Vec<HelperForm>) {
+    for h in helpers.iter_mut() {
+        match h {
+            HelperForm::Defconstant(d) => {
+                // Ensure that we upgrade the constant type.
+                d.kind = ConstantKind::Module;
+                d.tabled = true;
+            }
+            HelperForm::Defnamespace(ns) => {
+                modernize_constants(&mut ns.helpers);
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Exports are returned main programs:
@@ -344,6 +361,7 @@ pub fn compile_module(
             "A chialisp module should have at least one export".to_string(),
         ));
     }
+    modernize_constants(&mut program.helpers);
 
     if exports.len() == 1 {
         if let Export::MainProgram(args, expr) = &exports[0] {

@@ -337,10 +337,14 @@ pub fn get_callable(
                 }
                 (_, _, _, _, true, _) => Ok(Callable::RunCompiler),
                 (_, _, _, _, _, true) => Ok(Callable::EnvPath),
-                _ => Err(CompileErr(
-                    l.clone(),
-                    format!("no such callable '{}'", decode_string(name)),
-                )),
+                _ => {
+                    eprintln!("no such callable '{}'", decode_string(name));
+                    todo!();
+                    Err(CompileErr(
+                        l.clone(),
+                        format!("no such callable '{}'", decode_string(name)),
+                    ))
+                }
             }
         }
         SExp::Integer(_, v) => Ok(Callable::CallPrim(l.clone(), SExp::Integer(l, v.clone()))),
@@ -954,6 +958,7 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
         prims: prim_map,
         constants: HashMap::new(),
         tabled_constants: HashMap::new(),
+        module_constants: HashMap::new(),
         inlines: HashMap::new(),
         macros: HashMap::new(),
         defuns: HashMap::new(),
@@ -1478,6 +1483,9 @@ fn start_codegen(
                             ),
                         ));
                     }
+                }
+                ConstantKind::Module => {
+                    code_generator.add_tabled_constant(&defc.name, Rc::new(SExp::Nil(defc.loc.clone())))
                 }
             },
             HelperForm::Defmacro(mac) => {

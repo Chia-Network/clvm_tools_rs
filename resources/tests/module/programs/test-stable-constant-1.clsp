@@ -6,10 +6,10 @@
 
 (defconst C F)
 
-;; (defconst FHASH (shatree F))
+(defconst FHASH (shatree F))
 (defconst CHASH (shatree C))
 
 (export F)
 (export C)
-;; (export FHASH)
+(export FHASH)
 (export CHASH)
