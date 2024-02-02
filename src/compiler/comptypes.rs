@@ -912,6 +912,7 @@ pub struct PrimaryCodegen {
     pub to_process: Vec<HelperForm>,
     pub original_helpers: Vec<HelperForm>,
     pub final_expr: Rc<BodyForm>,
+    pub final_env: Rc<SExp>,
     pub final_code: Option<CompiledCode>,
     pub function_symbols: HashMap<String, String>,
     pub left_env: bool,

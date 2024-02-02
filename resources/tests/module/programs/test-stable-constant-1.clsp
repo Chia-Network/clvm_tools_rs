@@ -5,11 +5,13 @@
 (defun F (A B) (+ A B))
 
 (defconst C F)
+(defconst Cprime (c "hithere" F))
 
 (defconst FHASH (shatree F))
 (defconst CHASH (shatree C))
 
 (export F)
 (export C)
+(export Cprime)
 (export FHASH)
 (export CHASH)
