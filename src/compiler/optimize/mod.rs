@@ -390,7 +390,6 @@ pub fn optimize_expr(
     compiler: &PrimaryCodegen,
     body: Rc<BodyForm>,
 ) -> Option<(bool, Rc<BodyForm>)> {
-    eprintln!("optimize_expr {}", body.to_sexp());
     match body.borrow() {
         BodyForm::Quoted(_) => Some((true, body)),
         BodyForm::Call(l, forms, tail) => {

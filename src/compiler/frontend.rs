@@ -1548,10 +1548,13 @@ pub fn compute_live_helpers(
     helper_list: &[HelperForm],
     main_exp: Rc<BodyForm>,
 ) -> Vec<HelperForm> {
-    let expr_names: HashSet<Vec<u8>> = collect_used_names_bodyform(main_exp.borrow())
+    let mut expr_names: HashSet<Vec<u8>> = collect_used_names_bodyform(main_exp.borrow())
         .iter()
         .map(|x| x.to_vec())
         .collect();
+
+    // For modules: ensure we don't weed out __chia__extras.
+    expr_names.insert(b"__chia__extras".to_vec());
 
     let mut helper_map = HashMap::new();
 

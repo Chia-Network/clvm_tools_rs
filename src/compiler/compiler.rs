@@ -336,42 +336,6 @@ fn modernize_constants(helpers: &mut Vec<HelperForm>) {
     }
 }
 
-fn make_extras_constant(helpers: &mut Vec<HelperForm>) {
-    // Generate the first body of __chia__extras.  The code generator will assume
-    // it's safe to generate this and will populate it in dependency order.
-    let extras_data =
-        if !helpers.is_empty() {
-            let mut extras_data = SExp::Nil(helpers[0].loc());
-            for h in helpers.iter() {
-                // Make an entry for each helper, regardless.  This will go as the
-                // leftmost object in the env, so anything that appears in the
-                // real environment will make the corresponding entry here
-                // redundant, but we don't precisely know what the env will look
-                // like yet.
-                extras_data = SExp::Cons(
-                    h.loc(),
-                    Rc::new(SExp::Atom(h.loc(), h.name().to_vec())),
-                    Rc::new(extras_data)
-                );
-            }
-            extras_data
-        } else {
-            SExp::Nil(Srcloc::start("*no-constants*"))
-        };
-
-    // Make a defconst for this.
-    helpers.push(HelperForm::Defconstant(DefconstData {
-        loc: extras_data.loc(),
-        nl: extras_data.loc(),
-        tabled: true,
-        kw: None,
-        name: b"__chia__extras".to_vec(),
-        kind: ConstantKind::Complex,
-        body: Rc::new(BodyForm::Quoted(extras_data)),
-        ty: None,
-    }));
-}
-
 /// Exports are returned main programs:
 ///
 /// Single main
@@ -400,9 +364,6 @@ pub fn compile_module(
 
     // Stable constant support.
     modernize_constants(&mut program.helpers);
-    // Generate a __chia__extras constant as a placeholder for extra objects which
-    // should appear in the constant tree when constants are evaluated.
-    make_extras_constant(&mut program.helpers);
 
     if exports.len() == 1 {
         if let Export::MainProgram(args, expr) = &exports[0] {
