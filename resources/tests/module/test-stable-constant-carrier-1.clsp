@@ -2,5 +2,6 @@
 (import std.shatree)
 (import qualified programs.test-stable-constant-1 as TC)
 
+(export shatree)
 (export TC.C as C)
 (export TC.CHASH as CHASH)

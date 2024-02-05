@@ -137,10 +137,20 @@ impl CompilerOpts for TestModuleCompilerOpts {
     }
 }
 
+enum DesiredOutcome<'a> {
+    Error,
+    ContentEquals,
+    Run(&'a str),
+}
+
+use DesiredOutcome::Error;
+use DesiredOutcome::ContentEquals;
+use DesiredOutcome::Run;
+
 struct HexArgumentOutcome<'a> {
     hexfile: &'a str,
     argument: &'a str,
-    outcome: Option<&'a str>,
+    outcome: DesiredOutcome<'a>
 }
 
 fn test_compile_and_run_program_with_modules(
@@ -190,9 +200,16 @@ fn test_compile_and_run_program_with_modules(
         .expect("hex data should decode as sexp")
         .1;
 
+        if matches!(&run.outcome, ContentEquals) {
+            let disassembled = disassemble(&allocator, compiled_node, None);
+            assert_eq!(run.argument, disassembled);
+            return;
+        }
+
         let assembled_env = assemble(&mut allocator, run.argument).expect("should assemble");
+
         let run_result = runner.run_program(&mut allocator, compiled_node, assembled_env, None);
-        if let Some(res) = &run.outcome {
+        if let Run(res) = &run.outcome {
             let have_outcome = run_result.expect("expected success").1;
             assert_eq!(&disassemble(&mut allocator, have_outcome, None), res);
         } else {
@@ -214,12 +231,12 @@ fn test_simple_module_compilation() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(3)",
-                outcome: Some("3"),
+                outcome: Run("3"),
             },
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(13)",
-                outcome: None,
+                outcome: Error,
             },
         ],
     );
@@ -238,12 +255,12 @@ fn test_simple_module_compilation_assign_rewrite() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(3)",
-                outcome: Some("3"),
+                outcome: Run("3"),
             },
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(13)",
-                outcome: None,
+                outcome: Error,
             },
         ],
     );
@@ -262,12 +279,12 @@ fn test_simple_module_compilation_lambda_rewrite() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(3 13)",
-                outcome: Some("16"),
+                outcome: Run("16"),
             },
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(13 3)",
-                outcome: None,
+                outcome: Error,
             },
         ],
     );
@@ -286,12 +303,12 @@ fn test_simple_module_compilation_lambda_rewrite_with_body() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(3 13)",
-                outcome: Some("(+ 39)"),
+                outcome: Run("(+ 39)"),
             },
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(13 3)",
-                outcome: None,
+                outcome: Error,
             },
         ],
     );
@@ -310,7 +327,7 @@ fn test_simple_module_compilation_import_program_0() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "()",
-                outcome: Some("(0x9df8d4d222276747372a532a1cd736cdd5c6800c39906c9695489d36286ed215 (+ 2 (q . 1)))")
+                outcome: Run("(0x9df8d4d222276747372a532a1cd736cdd5c6800c39906c9695489d36286ed215 (+ 2 (q . 1)))")
             }
         ]
     );
@@ -329,7 +346,7 @@ fn test_simple_module_compilation_import_program_1() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(13 73)",
-                outcome: Some("(0xd85eec1bed9af4d6d161663e846857ae27010ad2a80b3ab8ccbb9fbd2c3bfa46 14 (a (q 16 5 (q . 1)) (c (q (+ 5 (q . 1)) 18 5 (q . 2)) 1)) 0x91a9f6736103e339a1d3b25e9d1dbc57de2bf643494c00f82b462ddf4912b11c 146 (a (q 18 5 (q . 2)) (c (q (+ 5 (q . 1)) 18 5 (q . 2)) 1)))")
+                outcome: Run("(0xd85eec1bed9af4d6d161663e846857ae27010ad2a80b3ab8ccbb9fbd2c3bfa46 14 (a (q 16 5 (q . 1)) (c (q (+ 5 (q . 1)) 18 5 (q . 2)) 1)) 0x91a9f6736103e339a1d3b25e9d1dbc57de2bf643494c00f82b462ddf4912b11c 146 (a (q 18 5 (q . 2)) (c (q (+ 5 (q . 1)) 18 5 (q . 2)) 1)))")
             }
         ]
     );
@@ -348,7 +365,7 @@ fn test_simple_module_compilation_import_classic_program() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "()",
-                outcome: Some("(0x27a343d6617931e67a7eb27a41f7c4650b5fa79d8b5132af1b4eae959bdf2272 (* 2 (q . 13)))")
+                outcome: Run("(0x27a343d6617931e67a7eb27a41f7c4650b5fa79d8b5132af1b4eae959bdf2272 (* 2 (q . 13)))")
             }
         ]
     );
@@ -366,7 +383,7 @@ fn test_simple_module_compilation_simple_type_1() {
         &[HexArgumentOutcome {
             hexfile: hex_filename,
             argument: "(13 17)",
-            outcome: Some("13"),
+            outcome: Run("13"),
         }],
     );
 }
@@ -383,7 +400,7 @@ fn test_simple_module_compilation_simple_type_2() {
         &[HexArgumentOutcome {
             hexfile: hex_filename,
             argument: "(13 17)",
-            outcome: Some("13"),
+            outcome: Run("13"),
         }],
     );
 }
@@ -400,7 +417,7 @@ fn test_function_with_argument_names_overlapping_primitives() {
         &[HexArgumentOutcome {
             hexfile: hex_filename,
             argument: "((1 2 3) (4 5 6))",
-            outcome: Some("(q 2 3 4 5 6)"),
+            outcome: Run("(q 2 3 4 5 6)"),
         }],
     );
 }
@@ -417,7 +434,7 @@ fn test_handcalc() {
         &[HexArgumentOutcome {
             hexfile: hex_filename,
             argument: "()",
-            outcome: Some("()"),
+            outcome: Run("()"),
         }],
     );
 }
@@ -434,7 +451,7 @@ fn test_factorial() {
         &[HexArgumentOutcome {
             hexfile: hex_filename,
             argument: "(4)",
-            outcome: Some("24"),
+            outcome: Run("24"),
         }],
     );
 }
@@ -452,22 +469,22 @@ fn test_deep_compare() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(() 1)",
-                outcome: Some("-1"),
+                outcome: Run("-1"),
             },
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(1 ())",
-                outcome: Some("1"),
+                outcome: Run("1"),
             },
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "((1 2 3) (1 2 3))",
-                outcome: Some("()"),
+                outcome: Run("()"),
             },
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "((1 2 3) (1 2 4))",
-                outcome: Some("-1"),
+                outcome: Run("-1"),
             },
         ],
     );
@@ -485,7 +502,7 @@ fn test_import_constant() {
         &[HexArgumentOutcome {
             hexfile: hex_filename,
             argument: "(5)",
-            outcome: Some("6"),
+            outcome: Run("6"),
         }],
     );
 }
@@ -502,7 +519,7 @@ fn test_export_constant() {
         &[HexArgumentOutcome {
             hexfile: hex_filename,
             argument: "()",
-            outcome: Some("14"),
+            outcome: Run("14"),
         }],
     );
 }
@@ -519,7 +536,7 @@ fn test_export_foreign_function() {
         &[HexArgumentOutcome {
             hexfile: hex_filename,
             argument: "(4)",
-            outcome: Some("24"),
+            outcome: Run("24"),
         }],
     );
 }
@@ -536,7 +553,7 @@ fn test_export_foreign_constant() {
         &[HexArgumentOutcome {
             hexfile: hex_filename,
             argument: "()",
-            outcome: Some("1"),
+            outcome: Run("1"),
         }],
     );
 }
@@ -553,7 +570,7 @@ fn test_import_renamed() {
         &[HexArgumentOutcome {
             hexfile: hex_filename,
             argument: "(5)",
-            outcome: Some("120"),
+            outcome: Run("120"),
         }],
     );
 }
@@ -562,15 +579,34 @@ fn test_import_renamed() {
 fn test_stable_constants() {
     let filename = "resources/tests/module/test-stable-constant-carrier-1.clsp";
     let content = fs::read_to_string(filename).expect("file should exist");
-    let hex_filename = "resources/tests/module/test-stable_constant-carrier-1.hex";
+    let c_hex_filename =
+        "resources/tests/module/test-stable_constant-carrier-1_C.hex";
+    let c_hash_hex_filename =
+        "resources/tests/module/test-stable_constant-carrier-1_CHASH.hex";
+    let shatree_filename =
+        "resources/tests/module/test-stable_constant-carrier-1_shatree.hex";
+    let c_hash = "0xf6d9071a00c372c2e1d6b67d441a1f3d5b46e466492d7325bb589caaa2a274f5";
+    let c_disassembled = "(a (q 16 5 11) (c (q (() ()) (() 16 5 11) () 2 (i (l 5) (q 11 (q . 2) (a 30 (c 2 (c 9 ()))) (a 30 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) 1))";
 
     test_compile_and_run_program_with_modules(
         filename,
         &content,
-        &[HexArgumentOutcome {
-            hexfile: hex_filename,
-            argument: "()",
-            outcome: Some("1"),
-        }],
+        &[
+            HexArgumentOutcome {
+                hexfile: c_hex_filename,
+                argument: "(3 4)",
+                outcome: Run("7"),
+            },
+            HexArgumentOutcome {
+                hexfile: shatree_filename,
+                argument: c_disassembled,
+                outcome: Run(c_hash),
+            },
+            HexArgumentOutcome {
+                hexfile: c_hash_hex_filename,
+                argument: c_hash,
+                outcome: ContentEquals,
+            }
+        ],
     );
 }
