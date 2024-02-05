@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::compiler::optimize::SyntheticType;
-use crate::compiler::sexp::enlist;
 use crate::compiler::sexp::decode_string;
+use crate::compiler::sexp::enlist;
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::{BodyForm, CompileForm, DefunData, HelperForm, SExp};
 
@@ -80,7 +80,7 @@ impl FunctionDependencyEntry {
 
 #[derive(Debug, Clone, Default)]
 pub struct DepgraphOptions {
-    pub with_constants: bool
+    pub with_constants: bool,
 }
 
 pub struct FunctionDependencyGraph {
@@ -203,7 +203,6 @@ impl FunctionDependencyGraph {
         }
     }
 
-
     pub fn new_with_options(program: &CompileForm, options: DepgraphOptions) -> Self {
         let mut helpers: HashMap<Vec<u8>, FunctionDependencyEntry> = HashMap::new();
 
@@ -211,7 +210,12 @@ impl FunctionDependencyGraph {
             if let HelperForm::Defun(inline, d) = h {
                 helpers.insert(
                     h.name().to_vec(),
-                    FunctionDependencyEntry::new(h.name(), h.loc(), status_from_defun(*inline, d), DepgraphOrigin::Function),
+                    FunctionDependencyEntry::new(
+                        h.name(),
+                        h.loc(),
+                        status_from_defun(*inline, d),
+                        DepgraphOrigin::Function,
+                    ),
                 );
             }
             if matches!(h, HelperForm::Defconstant(_)) {
@@ -221,7 +225,12 @@ impl FunctionDependencyGraph {
 
                 helpers.insert(
                     h.name().to_vec(),
-                    FunctionDependencyEntry::new(h.name(), h.loc(), DepgraphKind::Synthetic(SyntheticType::NoInlinePreference), DepgraphOrigin::Constant)
+                    FunctionDependencyEntry::new(
+                        h.name(),
+                        h.loc(),
+                        DepgraphKind::Synthetic(SyntheticType::NoInlinePreference),
+                        DepgraphOrigin::Constant,
+                    ),
                 );
             }
         }

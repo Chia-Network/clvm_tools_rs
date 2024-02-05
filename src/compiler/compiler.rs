@@ -256,22 +256,29 @@ pub fn find_exported_helper(
 fn form_hash_expression(inner_exp: Rc<BodyForm>) -> Rc<BodyForm> {
     let sha256tree_program_clvm = "(a (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) (c (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) 1))";
     let shloc = Srcloc::start("*sha256tree*");
-    let parsed = parse_sexp(shloc.clone(), sha256tree_program_clvm.bytes()).expect("should have parsed");
+    let parsed =
+        parse_sexp(shloc.clone(), sha256tree_program_clvm.bytes()).expect("should have parsed");
     let p0_borrowed: &SExp = parsed[0].borrow();
 
     Rc::new(BodyForm::Call(
         inner_exp.loc(),
         vec![
-            Rc::new(BodyForm::Value(SExp::Integer(inner_exp.loc(), 2_u32.to_bigint().unwrap()))),
+            Rc::new(BodyForm::Value(SExp::Integer(
+                inner_exp.loc(),
+                2_u32.to_bigint().unwrap(),
+            ))),
             Rc::new(BodyForm::Quoted(p0_borrowed.clone())),
             Rc::new(BodyForm::Call(
                 inner_exp.loc(),
                 vec![
-                    Rc::new(BodyForm::Value(SExp::Integer(inner_exp.loc(), 4_u32.to_bigint().unwrap()))),
+                    Rc::new(BodyForm::Value(SExp::Integer(
+                        inner_exp.loc(),
+                        4_u32.to_bigint().unwrap(),
+                    ))),
                     inner_exp.clone(),
                     Rc::new(BodyForm::Quoted(SExp::Nil(inner_exp.loc()))),
                 ],
-                None
+                None,
             )),
         ],
         None,

@@ -1265,7 +1265,7 @@ impl HelperForm {
             HelperForm::Defconstant(defc) => {
                 let dc_kw = match defc.kind {
                     ConstantKind::Simple => "defconstant",
-                    _ => "defconst"
+                    _ => "defconst",
                 };
 
                 Rc::new(list_to_cons(
@@ -1276,7 +1276,7 @@ impl HelperForm {
                         defc.body.to_sexp(),
                     ],
                 ))
-            },
+            }
             HelperForm::Defmacro(mac) => generate_defmacro_sexp(mac),
             HelperForm::Defun(inline, defun) => {
                 let di_string = "defun-inline".to_string();
@@ -1497,7 +1497,9 @@ impl PrimaryCodegen {
 
     pub fn add_module_constant(&self, name: &[u8], value: Rc<BodyForm>) -> Self {
         let mut codegen_copy = self.clone();
-        codegen_copy.tabled_constants.insert(name.to_owned(), Rc::new(SExp::Nil(value.loc())));
+        codegen_copy
+            .tabled_constants
+            .insert(name.to_owned(), Rc::new(SExp::Nil(value.loc())));
         codegen_copy.module_constants.insert(name.to_owned(), value);
         codegen_copy
     }

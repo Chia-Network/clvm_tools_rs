@@ -118,7 +118,10 @@ impl Optimization for Strategy23 {
             .collect();
 
         to_optimize.program.helpers = new_helpers;
-        eprintln!("optimize main expr of program: {}", to_optimize.program.to_sexp());
+        eprintln!(
+            "optimize main expr of program: {}",
+            to_optimize.program.to_sexp()
+        );
         to_optimize.program.exp = optimize_expr(
             allocator,
             opts.clone(),
