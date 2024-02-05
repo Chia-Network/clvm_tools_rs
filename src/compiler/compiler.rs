@@ -541,16 +541,20 @@ pub fn compile_module(
         }
     }
 
+    eprintln!("function_list {}", function_list.to_sexp());
     program.exp = function_list;
     program = resolve_namespaces(opts.clone(), &program)?;
 
     let compiled_result = Rc::new(compile_from_compileform(context, opts.clone(), program)?);
+    eprintln!("compiled_result {compiled_result}");
     let result_clvm = convert_to_clvm_rs(context.allocator(), compiled_result)?;
     let nil = context.allocator().null();
     let runner = context.runner();
     let run_result_clvm = runner
         .run_program(context.allocator(), result_clvm, nil, None)
-        .map_err(|_| {
+        .map_err(|e| {
+            eprintln!("run error {e:?}");
+            todo!();
             CompileErr(
                 loc.clone(),
                 "failed to run intermediate module program".to_string(),

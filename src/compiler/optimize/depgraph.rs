@@ -196,7 +196,6 @@ impl FunctionDependencyGraph {
             }
             HelperForm::Defconstant(dc) => {
                 if self.options.with_constants {
-                    eprintln!("DG: process_expr {}", dc.body.to_sexp());
                     self.process_expr(&dc.name, dc.body.clone());
                 }
             }
