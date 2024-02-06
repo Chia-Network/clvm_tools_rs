@@ -83,6 +83,9 @@ impl CompilerOpts for TestModuleCompilerOpts {
     fn get_search_paths(&self) -> Vec<String> {
         self.opts.get_search_paths()
     }
+    fn set_filename(&self, filename: &str) -> Rc<dyn CompilerOpts> {
+        self.new_opts(self.opts.set_filename(filename))
+    }
     fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
         self.new_opts(self.opts.set_dialect(dialect))
     }
@@ -585,6 +588,7 @@ fn test_stable_constants() {
     let shatree_filename = "resources/tests/module/test-stable-constant-carrier-1_shatree.hex";
     let c_hash = "0x63071666881973a065a38991c5a91c35486ed545f6031b40436af151d2fca5e0";
     let c_disassembled = "((a (q 16 5 11) (c (q (() ()) (() 16 5 11) () 2 (i (l 5) (q 2 (q 11 (q . 2) (a 30 (c 2 (c (f 5) ()))) (a 30 (c 2 (c (r 5) ())))) 1) (q 2 (q 11 (q . 1) 5) 1)) 1) 1)))";
+    let want_built_under_programs = "resources/tests/module/programs/test-stable-constant-1_C.hex";
 
     test_compile_and_run_program_with_modules(
         filename,
@@ -605,6 +609,37 @@ fn test_stable_constants() {
                 argument: c_disassembled,
                 outcome: Run(c_hash),
             },
+            HexArgumentOutcome {
+                hexfile: want_built_under_programs,
+                argument: c_hash,
+                outcome: ContentEquals,
+            },
         ],
+    );
+}
+
+#[test]
+fn test_program_exporting_constant_from_program() {
+    let filename = "resources/tests/module/test-export-constant-from-program.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let c_hex_filename = "resources/tests/module/test-export-constant-from-program_C.hex";
+    let c_program_hex_filename = "resources/tests/module/programs/single-constant_C.hex";
+    let c_value = "10197";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[
+            HexArgumentOutcome {
+                hexfile: c_hex_filename,
+                argument: c_value,
+                outcome: ContentEquals,
+            },
+            HexArgumentOutcome {
+                hexfile: c_program_hex_filename,
+                argument: c_value,
+                outcome: ContentEquals,
+            }
+        ]
     );
 }

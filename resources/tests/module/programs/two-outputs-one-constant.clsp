@@ -1,0 +1,10 @@
+(include *standard-cl-23*)
+(export F)
+(export G)
+(export H)
+(export I)
+
+(defun F (X) (+ X 1))
+(defconst G (* 99 (F 100)))
+(defconst H (G_hash))
+(defconst I (q (a (q (a (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) (c (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) 1))) (list (G_hash)))))

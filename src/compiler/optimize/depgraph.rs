@@ -3,7 +3,6 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::compiler::optimize::SyntheticType;
-use crate::compiler::sexp::decode_string;
 use crate::compiler::sexp::enlist;
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::{BodyForm, CompileForm, DefunData, HelperForm, SExp};

@@ -472,6 +472,7 @@ impl Preprocessor {
         filename: &str,
         content: &[u8],
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
+        eprintln!("import_program {filename}");
         let srcloc = Srcloc::start(filename);
         let mut allocator = Allocator::new();
         let mut symbol_table = HashMap::new();
@@ -538,7 +539,7 @@ impl Preprocessor {
             }
         }
 
-        let opts = self.subcompile_opts.set_dialect(dialect);
+        let opts = self.subcompile_opts.set_dialect(dialect).set_filename(filename);
         let mut context_wrapper = CompileContextWrapper::new(
             &mut allocator,
             runner,
@@ -547,7 +548,7 @@ impl Preprocessor {
             includes,
         );
 
-        match compile_pre_forms(&mut context_wrapper.context, self.opts.clone(), &pre_forms)? {
+        match compile_pre_forms(&mut context_wrapper.context, opts.clone(), &pre_forms)? {
             CompilerOutput::Module(module_output) => {
                 let mut output = Vec::new();
                 for c in module_output.components.iter() {

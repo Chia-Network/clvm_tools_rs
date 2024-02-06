@@ -11,10 +11,9 @@ use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, Stream};
 use crate::classic::clvm::sexp::sexp_as_bin;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, run, sha256tree};
+use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::{
-    codegen, hoist_body_let_binding, process_helper_let_bindings, CONST_EVAL_LIMIT,
-};
+    codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompileModuleComponent, CompileModuleOutput, CompilerOpts,
     CompilerOutput, ConstantKind, DefconstData, DefunData, Export, FrontendOutput, HelperForm,
@@ -25,7 +24,6 @@ use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::prims;
 use crate::compiler::resolve::{find_helper_target, resolve_namespaces};
-use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
@@ -327,7 +325,7 @@ fn get_hash_of_constant(
     Ok(Vec::new())
 }
 
-fn modernize_constants(helpers: &mut Vec<HelperForm>) {
+fn modernize_constants(helpers: &mut [HelperForm]) {
     for h in helpers.iter_mut() {
         match h {
             HelperForm::Defconstant(d) => {
@@ -526,7 +524,7 @@ pub fn compile_module(
                 ..dc.clone()
             }));
 
-            program.helpers.push(HelperForm::Defun(
+            let inline_hash_helper = HelperForm::Defun(
                 true,
                 DefunData {
                     loc: dc.loc.clone(),
@@ -539,7 +537,9 @@ pub fn compile_module(
                     synthetic: Some(SyntheticType::NoInlinePreference),
                     ty: None,
                 },
-            ));
+            );
+            eprintln!("inline_hash_helper = {}", inline_hash_helper.to_sexp());
+            program.helpers.push(inline_hash_helper);
         } else {
             return Err(CompileErr(
                 loc.clone(),
@@ -559,14 +559,10 @@ pub fn compile_module(
     let runner = context.runner();
     let run_result_clvm = runner
         .run_program(context.allocator(), result_clvm, nil, None)
-        .map_err(|e| {
-            eprintln!("run error {e:?}");
-            todo!();
-            CompileErr(
-                loc.clone(),
-                "failed to run intermediate module program".to_string(),
-            )
-        })?;
+        .map_err(|_| CompileErr(
+            loc.clone(),
+            "failed to run intermediate module program".to_string(),
+        ))?;
     let run_result = convert_from_clvm_rs(context.allocator(), loc.clone(), run_result_clvm.1)?;
 
     // Components to use for the CompileModuleOutput, which downstream can be
@@ -590,6 +586,7 @@ pub fn compile_module(
         stream.write(sexp_as_bin(context.allocator(), converted_func));
         let output_path =
             create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(&m.name))?;
+        eprintln!("compile_module: opts.filename {} output_path {}", opts.filename(), output_path);
         opts.write_new_file(&output_path, stream.get_value().hex().as_bytes())?;
 
         components.push(CompileModuleComponent {
@@ -692,6 +689,11 @@ impl CompilerOpts for DefaultCompilerOpts {
         self.include_dirs.clone()
     }
 
+    fn set_filename(&self, new_file: &str) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.filename = new_file.to_string();
+        Rc::new(copy)
+    }
     fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.dialect = dialect;

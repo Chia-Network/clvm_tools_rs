@@ -9,7 +9,7 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 
 use crate::compiler::clvm::{run, truthy};
-use crate::compiler::compiler::{compile_from_compileform, is_at_capture};
+use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, CallSpec,
     Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, CompilerOutput, ConstantKind,
@@ -339,8 +339,6 @@ pub fn get_callable(
                 (_, _, _, _, true, _) => Ok(Callable::RunCompiler),
                 (_, _, _, _, _, true) => Ok(Callable::EnvPath),
                 _ => {
-                    eprintln!("no such callable '{}'", decode_string(name));
-                    todo!();
                     Err(CompileErr(
                         l.clone(),
                         format!("no such callable '{}'", decode_string(name)),
@@ -937,7 +935,7 @@ fn codegen_(
                     },
                 ))
             } else {
-                let code = codegen_defun(context, opts.clone(), compiler, h, &defun)?;
+                let code = codegen_defun(context, opts.clone(), compiler, h, defun)?;
                 let code =
                     fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)?;
                 let code = fail_if_present(defun.loc.clone(), &compiler.defuns, &defun.name, code)?;
@@ -1405,7 +1403,7 @@ fn find_named_path(
 ) -> Option<(Number, Rc<SExp>)> {
     let this_path = mask.clone() | parent.clone();
     match env.borrow() {
-        SExp::Cons(l, a, b) => {
+        SExp::Cons(_, a, b) => {
             let next_mask = mask * 2_u32.to_bigint().unwrap();
             if let Some((found_path, found_env)) =
                 find_named_path(a.clone(), name, next_mask.clone(), parent)
@@ -1420,7 +1418,7 @@ fn find_named_path(
 
             None
         }
-        SExp::Atom(l, a) => {
+        SExp::Atom(_, a) => {
             if a == name {
                 return Some((this_path, env));
             }
@@ -1457,28 +1455,6 @@ fn replace_by_paths(
     }
 
     env
-}
-
-fn select_by_path(mut env: Rc<SExp>, mut path: Number) -> Rc<SExp> {
-    loop {
-        if path == bi_zero() {
-            return Rc::new(SExp::Nil(env.loc()));
-        } else if path == bi_one() {
-            return env;
-        }
-
-        let odd = path.clone() & bi_one();
-        if let SExp::Cons(l, a, b) = env.borrow() {
-            path = path / 2;
-            if odd != bi_zero() {
-                env = b.clone();
-            } else {
-                env = a.clone();
-            }
-        } else {
-            return env;
-        }
-    }
 }
 
 // Given a function to generate as a freestanding program, compile the program
@@ -1570,7 +1546,6 @@ fn generate_constant_body_for_constants(
 }
 
 fn find_satisfied_constants(
-    ce: &CompileForm,
     depgraph: &FunctionDependencyGraph,
     function_set: &HashSet<Vec<u8>>,
     constant_set: &HashSet<Vec<u8>>,
@@ -1580,6 +1555,12 @@ fn find_satisfied_constants(
         .iter()
         .filter(|c| {
             let mut constant_deps = HashSet::new();
+
+            // We've already processed it or it isn't a module style constant.
+            if !constant_set.contains(c.name()) {
+                return false;
+            }
+
             depgraph.get_full_depends_on(&mut constant_deps, c.name());
             let uncovered_deps: Vec<Vec<u8>> = constant_deps
                 .iter()
@@ -1589,6 +1570,8 @@ fn find_satisfied_constants(
                 })
                 .cloned()
                 .collect();
+            let deps_list: Vec<String> = uncovered_deps.iter().map(|d| decode_string(d)).collect();
+            eprintln!("constant {} has deps {deps_list:?}", decode_string(c.name()));
             uncovered_deps.is_empty()
         })
         .cloned()
@@ -1599,9 +1582,34 @@ fn find_satisfied_functions(
     ce: &CompileForm,
     depgraph: &FunctionDependencyGraph,
     function_set: &HashSet<Vec<u8>>,
+    constant_set: &HashSet<Vec<u8>>,
     functions: &[HelperForm],
 ) -> Vec<HelperForm> {
-    todo!();
+    functions
+        .iter()
+        .filter(|f| {
+            let mut function_deps = HashSet::new();
+
+            // Don't try something we already processed.
+            if !function_set.contains(f.name()) {
+                return false;
+            }
+
+            depgraph.get_full_depends_on(&mut function_deps, f.name());
+            let uncovered_deps: Vec<Vec<u8>> = function_deps
+                .iter()
+                .filter(|h| {
+                    let hname: &[u8] = h;
+                    !(function_set.contains(hname) || constant_set.contains(hname))
+                })
+                .cloned()
+                .collect();
+            let deps_list: Vec<String> = uncovered_deps.iter().map(|d| decode_string(d)).collect();
+            eprintln!("function {} has deps {deps_list:?}", decode_string(f.name()));
+            uncovered_deps.is_empty()
+        })
+        .cloned()
+        .collect()
 }
 
 fn find_easiest_constant(
@@ -1610,7 +1618,30 @@ fn find_easiest_constant(
     constant_set: &HashSet<Vec<u8>>,
     constants: &[HelperForm],
 ) -> Option<HelperForm> {
-    todo!();
+    let constants_in_set: Vec<HelperForm> = constants
+        .iter()
+        .filter(|c| constant_set.contains(c.name()))
+        .cloned()
+        .collect();
+
+    if constants_in_set.is_empty() {
+        return None;
+    }
+
+    let mut chosen_idx = 0;
+    let mut best_dep_set = 0;
+
+    for (i, h) in constants_in_set.iter().enumerate() {
+        let mut deps_of_constant = HashSet::new();
+        depgraph.get_full_depends_on(&mut deps_of_constant, h.name());
+        let how_many_deps = deps_of_constant.len();
+        if i == 0 || how_many_deps < best_dep_set {
+            chosen_idx = i;
+            best_dep_set = how_many_deps;
+        }
+    }
+
+    Some(constants_in_set[chosen_idx].clone())
 }
 
 // Output a viable order for constant and constant-time function generation which
@@ -1628,7 +1659,7 @@ fn decide_constant_generation_order(
             HelperForm::Defconstant(dc) => {
                 matches!(dc.kind, ConstantKind::Module)
             }
-            HelperForm::Defun(false, dd) => true,
+            HelperForm::Defun(false, _) => true,
             _ => false,
         };
 
@@ -1669,13 +1700,19 @@ fn decide_constant_generation_order(
         .cloned()
         .collect();
     let mut constant_set: HashSet<Vec<u8>> = constants.iter().map(|h| h.name().to_vec()).collect();
-
     let mut functions: Vec<HelperForm> = helpers
         .iter()
         .filter(|h| matches!(h, HelperForm::Defun(false, dd)))
         .cloned()
         .collect();
-    let mut function_set: HashSet<Vec<u8>> = functions.iter().map(|h| h.name().to_vec()).collect();
+
+    // We don't generate bodies for inline helpers, but they appear pre-fulfilled
+    // in our function set.
+    let mut function_set: HashSet<Vec<u8>> = helpers
+        .iter()
+        .filter(|h| matches!(h, HelperForm::Defun(_, _)))
+        .map(|h| h.name().to_vec())
+        .collect();
 
     let depgraph = FunctionDependencyGraph::new_with_options(
         &ce,
@@ -1687,8 +1724,13 @@ fn decide_constant_generation_order(
     let mut result = Vec::new();
 
     while !constant_set.is_empty() {
+        let remaining_constants: Vec<String> = constant_set.iter().map(|c| decode_string(c)).collect();
+        eprintln!("constant_set {remaining_constants:?}");
         let new_satisfied_constants =
-            find_satisfied_constants(&ce, &depgraph, &function_set, &constant_set, &constants);
+            find_satisfied_constants(&depgraph, &function_set, &constant_set, &constants);
+        let new_satcon: Vec<String> = new_satisfied_constants.iter().map(|c| decode_string(c.name())).collect();
+        eprintln!("processing satisfied constants {new_satcon:?}");
+
         if !new_satisfied_constants.is_empty() {
             for c in new_satisfied_constants.iter() {
                 constant_set.remove(c.name());
@@ -1698,7 +1740,7 @@ fn decide_constant_generation_order(
         }
 
         let new_satisfied_functions =
-            find_satisfied_functions(&ce, &depgraph, &function_set, &functions);
+            find_satisfied_functions(&ce, &depgraph, &function_set, &constant_set, &functions);
         if !new_satisfied_functions.is_empty() {
             for f in new_satisfied_functions.iter() {
                 function_set.remove(f.name());
@@ -1712,6 +1754,7 @@ fn decide_constant_generation_order(
         if let Some(least_constant) =
             find_easiest_constant(&ce, &depgraph, &constant_set, &constants)
         {
+            eprintln!("least_constant {}", least_constant.to_sexp());
             let mut functions_it_depends_on_hash = HashSet::new();
             depgraph.get_full_depends_on(&mut functions_it_depends_on_hash, least_constant.name());
             let mut functions_it_depends_on = functions
@@ -1936,9 +1979,9 @@ fn name_in_env(env: Rc<SExp>, name: &[u8]) -> bool {
 }
 
 // Ensure that the environment data at __chia__extras becomes nil.
-fn purge_chia_extras(compiler: &mut PrimaryCodegen) {
+fn purge_chia_extras(compiler: &mut PrimaryCodegen, orig_env: Rc<SExp>) {
     if let Some((chia_extras_path, old_val)) =
-        find_named_path(compiler.env.clone(), b"__chia__extras", bi_one(), bi_zero())
+        find_named_path(orig_env, b"__chia__extras", bi_one(), bi_zero())
     {
         compiler.final_env = replace_by_paths(
             compiler.final_env.clone(),
@@ -2231,13 +2274,13 @@ pub fn codegen(
                 HelperForm::Defun(false, dd) => {
                     todo!();
                     if !name_in_env(correct_env.clone(), &dd.name) {
-                        generate_function_body_for_constants(context, &mut c, opts.clone(), &dd)?;
+                        generate_function_body_for_constants(context, &mut c, opts.clone(), dd)?;
                     }
                 }
                 HelperForm::Defconstant(dc) => {
                     if matches!(dc.kind, ConstantKind::Module) {
                         eprintln!("Generate constant body for {}", decode_string(&dc.name));
-                        generate_constant_body_for_constants(context, &mut c, opts.clone(), &dc)?;
+                        generate_constant_body_for_constants(context, &mut c, opts.clone(), dc)?;
                     }
                 }
                 _ => {}
@@ -2245,8 +2288,7 @@ pub fn codegen(
         }
 
         // Erase our additions to the environment.
-        // c.env = correct_env;
-        // purge_chia_extras(&mut c);
+        purge_chia_extras(&mut c, correct_env);
     }
 
     // Capture symbols now that we have the final form of the produced code.

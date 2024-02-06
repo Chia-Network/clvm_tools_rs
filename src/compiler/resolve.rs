@@ -429,7 +429,6 @@ fn resolve_namespaces_in_expr(
                     }
                 }
 
-                todo!();
                 return Err(CompileErr(
                     expr.loc(),
                     format!(

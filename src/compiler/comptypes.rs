@@ -958,6 +958,8 @@ pub trait CompilerOpts {
     /// Specifies the search paths we're carrying.
     fn get_search_paths(&self) -> Vec<String>;
 
+    /// Set main file, creating an opts that treats this file as its main file.
+    fn set_filename(&self, new_file: &str) -> Rc<dyn CompilerOpts>;
     /// Set the dialect.
     fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts>;
     /// Set search paths.
