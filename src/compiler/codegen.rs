@@ -1472,6 +1472,7 @@ fn generate_function_body_for_constants(
     opts: Rc<dyn CompilerOpts>,
     to_generate: &DefunData,
 ) -> Result<(), CompileErr> {
+    let opts = opts.set_optimize(true);
     todo!();
 }
 
@@ -1500,6 +1501,7 @@ fn generate_constant_body_for_constants(
     opts: Rc<dyn CompilerOpts>,
     to_generate: &DefconstData,
 ) -> Result<(), CompileErr> {
+    let opts = opts.set_optimize(true);
     let args = Rc::new(SExp::Nil(to_generate.loc.clone()));
     let defun_data = DefunData {
         loc: to_generate.loc.clone(),

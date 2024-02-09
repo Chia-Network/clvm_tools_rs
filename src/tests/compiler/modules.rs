@@ -168,7 +168,6 @@ fn test_compile_and_run_program_with_modules(
     let dialect = detect_modern(&mut allocator, nodeptr);
     let orig_opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(filename))
         .set_dialect(dialect)
-        .set_optimize(true)
         .set_search_paths(&["resources/tests/module".to_string()]);
     let source_opts = TestModuleCompilerOpts::new(orig_opts);
     let opts: Rc<dyn CompilerOpts> = Rc::new(source_opts.clone());
@@ -666,7 +665,7 @@ fn test_program_exporting_constant_with_function_and_hashes() {
             },
             HexArgumentOutcome {
                 hexfile: h_hex_filename,
-                argument: "(20394 (a (q 16 5 20) (c (q (() 10197 16 5 20) () () 2 (i (l 5) (q 11 (q . 2) (a 30 (c 2 (c 9 ()))) (a 30 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) 1)) () 0xb521c5eef82aecac14fee15ba9ebd13b727eee5d690abf0d2a0239f277f702c7 0x87d1b5fc4cbe844c3f228253ac78156c639d1d51a173f1db2ccf42e5dc5c9774 0xb521c5eef82aecac14fee15ba9ebd13b727eee5d690abf0d2a0239f277f702c7)",
+                argument: "(20394 (a (q 16 5 20) (c (q (() 10197 16 5 20) () () 2 (i (l 5) (q 2 (q 11 (q . 2) (a 30 (c 2 (c (f 5) ()))) (a 30 (c 2 (c (r 5) ())))) 1) (q 2 (q 11 (q . 1) 5) 1)) 1) 1)) () 0xa6f2160624cd4d9d7bf8aa079e42cf95b7e51ddb6ce349f744a32baa20e2f5e3 0x87d1b5fc4cbe844c3f228253ac78156c639d1d51a173f1db2ccf42e5dc5c9774 0xa6f2160624cd4d9d7bf8aa079e42cf95b7e51ddb6ce349f744a32baa20e2f5e3)",
                 outcome: ContentEquals,
             },
         ]
