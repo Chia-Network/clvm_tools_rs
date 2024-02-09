@@ -168,6 +168,7 @@ fn test_compile_and_run_program_with_modules(
     let dialect = detect_modern(&mut allocator, nodeptr);
     let orig_opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(filename))
         .set_dialect(dialect)
+        .set_optimize(true)
         .set_search_paths(&["resources/tests/module".to_string()]);
     let source_opts = TestModuleCompilerOpts::new(orig_opts);
     let opts: Rc<dyn CompilerOpts> = Rc::new(source_opts.clone());
@@ -647,6 +648,8 @@ fn test_program_exporting_constant_with_function_and_hashes() {
     let filename = "resources/tests/module/test-constant-and-hash.clsp";
     let content = fs::read_to_string(filename).expect("file should exist");
     let c_hex_filename = "resources/tests/module/test-constant-and-hash_C.hex";
+    let f_hex_filename = "resources/tests/module/test-constant-and-hash_F.hex";
+    let h_hex_filename = "resources/tests/module/test-constant-and-hash_H.hex";
     test_compile_and_run_program_with_modules(
         filename,
         &content,
@@ -654,6 +657,16 @@ fn test_program_exporting_constant_with_function_and_hashes() {
             HexArgumentOutcome {
                 hexfile: c_hex_filename,
                 argument: "10197",
+                outcome: ContentEquals,
+            },
+            HexArgumentOutcome {
+                hexfile: f_hex_filename,
+                argument: "(3)",
+                outcome: Run("10200"),
+            },
+            HexArgumentOutcome {
+                hexfile: h_hex_filename,
+                argument: "(20394 (a (q 16 5 20) (c (q (() 10197 16 5 20) () () 2 (i (l 5) (q 11 (q . 2) (a 30 (c 2 (c 9 ()))) (a 30 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) 1)) () 0xb521c5eef82aecac14fee15ba9ebd13b727eee5d690abf0d2a0239f277f702c7 0x87d1b5fc4cbe844c3f228253ac78156c639d1d51a173f1db2ccf42e5dc5c9774 0xb521c5eef82aecac14fee15ba9ebd13b727eee5d690abf0d2a0239f277f702c7)",
                 outcome: ContentEquals,
             },
         ]

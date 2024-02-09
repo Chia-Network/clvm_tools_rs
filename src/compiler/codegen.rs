@@ -533,7 +533,6 @@ fn compile_call(
             Rc::new(SExp::Atom(al.clone(), an.to_vec())),
         )
         .and_then(|calltype| {
-            eprintln!("calltype {calltype:?}");
             match calltype {
                 Callable::CallMacro(l, code) => {
                     process_macro_call(context, opts.clone(), compiler, l, tl, Rc::new(code))
@@ -729,7 +728,6 @@ pub fn generate_expr_code(
     compiler: &PrimaryCodegen,
     expr: Rc<BodyForm>,
 ) -> Result<CompiledCode, CompileErr> {
-    eprintln!("generate_expr_code {}", expr.to_sexp());
     match expr.borrow() {
         BodyForm::Let(LetFormKind::Parallel, letdata) => {
             /* Depends on a defun having been desugared from this let and the let
