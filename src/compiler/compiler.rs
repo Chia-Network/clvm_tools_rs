@@ -82,17 +82,6 @@ lazy_static! {
 
             (defun-inline / (A B) (f (divmod A B)))
 
-            (defun __chia__sha256tree (t)
-              (a
-                (i
-                  (l t)
-                  (com (sha256 2 (__chia__sha256tree (f t)) (__chia__sha256tree (r t))))
-                  (com (sha256 1 t))
-                  )
-                @
-                )
-              )
-
             (defun-inline c* (A B) (c A B))
             (defun-inline a* (A B) (a A B))
             (defun-inline coerce (X) : (Any -> Any) X)
@@ -265,14 +254,32 @@ pub fn find_exported_helper(
 }
 
 fn form_hash_expression(inner_exp: Rc<BodyForm>) -> Rc<BodyForm> {
+    let sha256tree_program_clvm = "(2 (1 2 (3 (l 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) (4 (1 2 (3 (l 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) 1))";
+    let shloc = Srcloc::start("*sha256tree*");
+    let parsed =
+        parse_sexp(shloc.clone(), sha256tree_program_clvm.bytes()).expect("should have parsed");
+    let p0_borrowed: &SExp = parsed[0].borrow();
+
     Rc::new(BodyForm::Call(
         inner_exp.loc(),
         vec![
-            Rc::new(BodyForm::Value(SExp::Atom(
+            Rc::new(BodyForm::Value(SExp::Integer(
                 inner_exp.loc(),
-                b"__chia__sha256tree".to_vec(),
+                2_u32.to_bigint().unwrap(),
             ))),
-            inner_exp,
+            Rc::new(BodyForm::Quoted(p0_borrowed.clone())),
+            Rc::new(BodyForm::Call(
+                inner_exp.loc(),
+                vec![
+                    Rc::new(BodyForm::Value(SExp::Integer(
+                        inner_exp.loc(),
+                        4_u32.to_bigint().unwrap(),
+                    ))),
+                    inner_exp.clone(),
+                    Rc::new(BodyForm::Quoted(SExp::Nil(inner_exp.loc()))),
+                ],
+                None,
+            )),
         ],
         None,
     ))
