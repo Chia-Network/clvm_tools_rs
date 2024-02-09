@@ -111,6 +111,8 @@ fn choose_path(
 ) -> Result<Rc<SExp>, RunFailure> {
     if p == bi_one() {
         Ok(context)
+    } else if p == bi_zero() {
+        Ok(Rc::new(SExp::Nil(l.clone())))
     } else {
         match context.borrow() {
             SExp::Cons(l, a, b) => {

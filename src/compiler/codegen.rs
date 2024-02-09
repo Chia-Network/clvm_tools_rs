@@ -533,6 +533,7 @@ fn compile_call(
             Rc::new(SExp::Atom(al.clone(), an.to_vec())),
         )
         .and_then(|calltype| {
+            eprintln!("calltype {calltype:?}");
             match calltype {
                 Callable::CallMacro(l, code) => {
                     process_macro_call(context, opts.clone(), compiler, l, tl, Rc::new(code))
@@ -728,6 +729,7 @@ pub fn generate_expr_code(
     compiler: &PrimaryCodegen,
     expr: Rc<BodyForm>,
 ) -> Result<CompiledCode, CompileErr> {
+    eprintln!("generate_expr_code {}", expr.to_sexp());
     match expr.borrow() {
         BodyForm::Let(LetFormKind::Parallel, letdata) => {
             /* Depends on a defun having been desugared from this let and the let
@@ -754,6 +756,7 @@ pub fn generate_expr_code(
                             .map(|f| Ok(CompiledCode(l.clone(), f)))
                             .unwrap_or_else(|_| {
                                 if opts.dialect().strict && printable(atom, false) {
+                                    let xx: Vec<String> = compiler.inlines.iter().map(|(n,b)| decode_string(n)).collect();
                                     return Err(CompileErr(
                                         l.clone(),
                                         format!(
@@ -819,7 +822,8 @@ pub fn generate_expr_code(
                     "created a call with no forms".to_string(),
                 ))
             } else {
-                compile_call(
+                eprintln!("compile call {}", expr.to_sexp());
+                let call_result = compile_call(
                     context,
                     opts,
                     compiler,
@@ -830,7 +834,9 @@ pub fn generate_expr_code(
                         tail: tail.clone(),
                         original: expr.clone(),
                     },
-                )
+                )?;
+                eprintln!("call result {}", call_result.1);
+                Ok(call_result)
             }
         }
         BodyForm::Mod(_, program) => do_mod_codegen(context, opts, program),
@@ -1471,6 +1477,20 @@ fn generate_function_body_for_constants(
     todo!();
 }
 
+fn show_variables_in_env(env: Rc<SExp>, data: Rc<SExp>) -> Rc<SExp> {
+    if let (SExp::Cons(l, a, b), SExp::Cons(_, c, d)) = (env.borrow(), data.borrow()) {
+        let new_a = show_variables_in_env(a.clone(), c.clone());
+        let new_b = show_variables_in_env(b.clone(), d.clone());
+        Rc::new(SExp::Cons(env.loc(), new_a, new_b))
+    } else {
+        Rc::new(SExp::Cons(
+            env.loc(),
+            env.clone(),
+            data.clone()
+        ))
+    }
+}
+
 // Given a constant to generate, generate its program given the compiler's current
 // environment and then run the program given the current environment value.  The
 // result is a constant that consistently observes the post-optimization full
@@ -1503,22 +1523,29 @@ fn generate_constant_body_for_constants(
         &defun_data,
     )?;
     let runner = context.runner();
+    let whole_env = Rc::new(SExp::Cons(
+        to_generate.loc.clone(),
+        compiler.final_env.clone(),
+        args.clone(),
+    ));
+    eprintln!("final_env for constant generation {}", whole_env);
+    eprintln!("with env {}", compiler.env);
+    eprintln!("variables in env: {}", show_variables_in_env(compiler.env.clone(), whole_env.clone()));
     let run_result = run(
         context.allocator(),
         runner,
         opts.prim_map(),
-        generated_code,
+        generated_code.clone(),
         // Pass program's environment plus what's been generated.
         // It's expected because we did a function style generation.
-        Rc::new(SExp::Cons(
-            to_generate.loc.clone(),
-            compiler.final_env.clone(),
-            args.clone(),
-        )),
+        whole_env,
         None,
         Some(MACRO_TIME_LIMIT),
     )
-    .map_err(|e| run_failure_to_compile_err(to_generate.loc.clone(), &e))?;
+    .map_err(|e| {
+        eprintln!("generating constant {}, we ran program {} and got error {e}", decode_string(&to_generate.name), generated_code);
+        run_failure_to_compile_err(to_generate.loc.clone(), &e)
+    })?;
 
     compiler
         .tabled_constants
@@ -1762,6 +1789,7 @@ fn decide_constant_generation_order(
                 .filter(|h| functions_it_depends_on_hash.contains(h.name()))
                 .cloned()
                 .collect();
+            constant_set.remove(least_constant.name());
             result.append(&mut functions_it_depends_on);
             result.push(least_constant.clone());
             continue;
@@ -1929,6 +1957,21 @@ fn start_codegen(
     }
 
     if !opts.in_defun() && !code_generator.module_constants.is_empty() {
+        // Process inlines early because we may not have a chance later.
+        // They could be eliminated.
+        for h in program.helpers.iter() {
+            if let HelperForm::Defun(true, defun) = h {
+                code_generator = code_generator.add_inline(
+                    &defun.name,
+                    &InlineFunction {
+                        name: defun.name.clone(),
+                        args: defun.args.clone(),
+                        body: defun.body.clone(),
+                    },
+                );
+            }
+        }
+
         // Generate a __chia__extras constant as a placeholder for extra objects which
         // should appear in the constant tree when constants are evaluated.
         make_extras_constant(&mut program.helpers);
@@ -1959,6 +2002,12 @@ fn start_codegen(
     eprintln!("our env {}", code_generator.env);
 
     code_generator.to_process = program.helpers.clone();
+    let mut code_generator_to_process_list: Vec<String> = code_generator.to_process.iter().map(|h| decode_string(h.name())).collect();
+    for (n,i) in code_generator.inlines.iter() {
+        code_generator_to_process_list.push(decode_string(n));
+    }
+    eprintln!("proceed with code generation: {code_generator_to_process_list:?}");
+
     // Ensure that we have the synthesis of the previous codegen's helpers and
     // The ones provided with the new form if any.
     let mut combined_helpers_for_codegen = program.helpers.clone();
@@ -2081,7 +2130,10 @@ fn finalize_env_(
                     &arg_list,
                     arg_tail,
                 )
-                .map(|x| x.1);
+                .map(|x| {
+                    eprintln!("replace_in_inline {}", x.1);
+                    x.1
+                });
             }
 
             /* Parentfns are functions in progress in the parent */
@@ -2135,7 +2187,11 @@ fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileE
             }
             HelperForm::Defun(true, defun) => Ok(compiler)
                 .and_then(|comp| {
-                    fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, comp)
+                    if compiler.module_constants.is_empty() {
+                        fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, comp)
+                    } else {
+                        Ok(compiler)
+                    }
                 })
                 .and_then(|comp| {
                     fail_if_present(defun.loc.clone(), &compiler.defuns, &defun.name, comp)
@@ -2272,8 +2328,8 @@ pub fn codegen(
         for h in generation_order.iter() {
             match h {
                 HelperForm::Defun(false, dd) => {
-                    todo!();
                     if !name_in_env(correct_env.clone(), &dd.name) {
+                        todo!();
                         generate_function_body_for_constants(context, &mut c, opts.clone(), dd)?;
                     }
                 }

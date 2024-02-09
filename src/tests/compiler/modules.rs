@@ -147,9 +147,7 @@ enum DesiredOutcome<'a> {
     Run(&'a str),
 }
 
-use DesiredOutcome::ContentEquals;
-use DesiredOutcome::Error;
-use DesiredOutcome::Run;
+use DesiredOutcome::{ContentEquals, Error, Run};
 
 struct HexArgumentOutcome<'a> {
     hexfile: &'a str,
@@ -207,7 +205,7 @@ fn test_compile_and_run_program_with_modules(
         if matches!(&run.outcome, ContentEquals) {
             let disassembled = disassemble(&allocator, compiled_node, None);
             assert_eq!(run.argument, disassembled);
-            return;
+            continue;
         }
 
         let assembled_env = assemble(&mut allocator, run.argument).expect("should assemble");
@@ -587,7 +585,7 @@ fn test_stable_constants() {
     let c_hash_hex_filename = "resources/tests/module/test-stable-constant-carrier-1_CHASH.hex";
     let shatree_filename = "resources/tests/module/test-stable-constant-carrier-1_shatree.hex";
     let c_hash = "0x63071666881973a065a38991c5a91c35486ed545f6031b40436af151d2fca5e0";
-    let c_disassembled = "((a (q 16 5 11) (c (q (() ()) (() 16 5 11) () 2 (i (l 5) (q 2 (q 11 (q . 2) (a 30 (c 2 (c (f 5) ()))) (a 30 (c 2 (c (r 5) ())))) 1) (q 2 (q 11 (q . 1) 5) 1)) 1) 1)))";
+    let c_disassembled = "(a (q 16 5 11) (c (q (() ()) (() 16 5 11) () 2 (i (l 5) (q 2 (q 11 (q . 2) (a 30 (c 2 (c (f 5) ()))) (a 30 (c 2 (c (r 5) ())))) 1) (q 2 (q 11 (q . 1) 5) 1)) 1) 1))";
     let want_built_under_programs = "resources/tests/module/programs/test-stable-constant-1_C.hex";
 
     test_compile_and_run_program_with_modules(
@@ -605,14 +603,14 @@ fn test_stable_constants() {
                 outcome: ContentEquals,
             },
             HexArgumentOutcome {
-                hexfile: shatree_filename,
+                hexfile: want_built_under_programs,
                 argument: c_disassembled,
-                outcome: Run(c_hash),
+                outcome: ContentEquals,
             },
             HexArgumentOutcome {
-                hexfile: want_built_under_programs,
-                argument: c_hash,
-                outcome: ContentEquals,
+                hexfile: shatree_filename,
+                argument: &format!("({})", c_disassembled),
+                outcome: Run(c_hash),
             },
         ],
     );
@@ -640,6 +638,24 @@ fn test_program_exporting_constant_from_program() {
                 argument: c_value,
                 outcome: ContentEquals,
             }
+        ]
+    );
+}
+
+#[test]
+fn test_program_exporting_constant_with_function_and_hashes() {
+    let filename = "resources/tests/module/test-constant-and-hash.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let c_hex_filename = "resources/tests/module/test-constant-and-hash_C.hex";
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[
+            HexArgumentOutcome {
+                hexfile: c_hex_filename,
+                argument: "10197",
+                outcome: ContentEquals,
+            },
         ]
     );
 }

@@ -252,7 +252,7 @@ pub fn find_exported_helper(
 }
 
 fn form_hash_expression(inner_exp: Rc<BodyForm>) -> Rc<BodyForm> {
-    let sha256tree_program_clvm = "(a (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) (c (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) 1))";
+    let sha256tree_program_clvm = "(2 (1 2 (3 (l 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) (4 (1 2 (3 (l 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) 1))";
     let shloc = Srcloc::start("*sha256tree*");
     let parsed =
         parse_sexp(shloc.clone(), sha256tree_program_clvm.bytes()).expect("should have parsed");
@@ -488,7 +488,7 @@ pub fn compile_module(
                 fun_name.clone(),
             )));
             program.helpers.push(HelperForm::Defun(
-                false,
+                true,
                 DefunData {
                     loc: dd.loc.clone(),
                     kw: None,
@@ -533,12 +533,11 @@ pub fn compile_module(
                     name: new_name.clone(),
                     args: Rc::new(SExp::Nil(dc.loc.clone())),
                     orig_args: Rc::new(SExp::Nil(dc.loc.clone())),
-                    body: Rc::new(BodyForm::Value(SExp::Atom(dc.loc.clone(), new_name))),
+                    body: Rc::new(BodyForm::Value(SExp::Atom(dc.loc.clone(), underscore_name))),
                     synthetic: Some(SyntheticType::NoInlinePreference),
                     ty: None,
                 },
             );
-            eprintln!("inline_hash_helper = {}", inline_hash_helper.to_sexp());
             program.helpers.push(inline_hash_helper);
         } else {
             return Err(CompileErr(
