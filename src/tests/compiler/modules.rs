@@ -83,6 +83,9 @@ impl CompilerOpts for TestModuleCompilerOpts {
     fn get_search_paths(&self) -> Vec<String> {
         self.opts.get_search_paths()
     }
+    fn set_filename(&self, filename: &str) -> Rc<dyn CompilerOpts> {
+        self.new_opts(self.opts.set_filename(filename))
+    }
     fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
         self.new_opts(self.opts.set_dialect(dialect))
     }

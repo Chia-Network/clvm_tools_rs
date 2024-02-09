@@ -661,6 +661,11 @@ impl CompilerOpts for DefaultCompilerOpts {
         self.include_dirs.clone()
     }
 
+    fn set_filename(&self, filename: &str) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.filename = filename.to_string();
+        Rc::new(copy)
+    }
     fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.dialect = dialect;

@@ -954,15 +954,17 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
         prims: prim_map,
         constants: HashMap::new(),
         tabled_constants: HashMap::new(),
+        module_constants: HashMap::new(),
         inlines: HashMap::new(),
         macros: HashMap::new(),
         defuns: HashMap::new(),
         parentfns: HashSet::new(),
-        env: Rc::new(SExp::Cons(l, nil_rc.clone(), nil_rc)),
+        env: Rc::new(SExp::Cons(l, nil_rc.clone(), nil_rc.clone())),
         to_process: Vec::new(),
         original_helpers: Vec::new(),
         final_expr: Rc::new(BodyForm::Quoted(nil)),
         final_code: None,
+        final_env: nil_rc,
         function_symbols: HashMap::new(),
         left_env: true,
     }
@@ -1478,6 +1480,9 @@ fn start_codegen(
                             ),
                         ));
                     }
+                }
+                ConstantKind::Module => {
+                    todo!();
                 }
             },
             HelperForm::Defmacro(mac) => {
