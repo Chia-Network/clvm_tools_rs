@@ -22,6 +22,7 @@ use crate::compiler::frontend::{compile_bodyform, make_provides_set};
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
 use crate::compiler::lambda::lambda_codegen;
+use crate::compiler::optimize::depgraph::{FunctionDependencyGraph, DepgraphOptions};
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, printable, SExp};
@@ -1377,6 +1378,243 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
     }
 
     Ok(result)
+}
+
+fn find_satisfied_functions(
+    ce: &CompileForm,
+    depgraph: &FunctionDependencyGraph,
+    function_set: &HashSet<Vec<u8>>,
+    constant_set: &HashSet<Vec<u8>>,
+    functions: &[HelperForm],
+) -> Vec<HelperForm> {
+    functions
+        .iter()
+        .filter(|f| {
+            let mut function_deps = HashSet::new();
+
+            // Don't try something we already processed.
+            if !function_set.contains(f.name()) {
+                return false;
+            }
+
+            depgraph.get_full_depends_on(&mut function_deps, f.name());
+            let uncovered_deps: Vec<Vec<u8>> = function_deps
+                .iter()
+                .filter(|h| {
+                    let hname: &[u8] = h;
+                    !(function_set.contains(hname) || constant_set.contains(hname))
+                })
+                .cloned()
+                .collect();
+            let deps_list: Vec<String> = uncovered_deps.iter().map(|d| decode_string(d)).collect();
+            eprintln!("function {} has deps {deps_list:?}", decode_string(f.name()));
+            uncovered_deps.is_empty()
+        })
+        .cloned()
+        .collect()
+}
+
+fn find_easiest_constant(
+    ce: &CompileForm,
+    depgraph: &FunctionDependencyGraph,
+    constant_set: &HashSet<Vec<u8>>,
+    constants: &[HelperForm],
+) -> Option<HelperForm> {
+    let constants_in_set: Vec<HelperForm> = constants
+        .iter()
+        .filter(|c| constant_set.contains(c.name()))
+        .cloned()
+        .collect();
+
+    if constants_in_set.is_empty() {
+        return None;
+    }
+
+    let mut chosen_idx = 0;
+    let mut best_dep_set = 0;
+
+    for (i, h) in constants_in_set.iter().enumerate() {
+        let mut deps_of_constant = HashSet::new();
+        depgraph.get_full_depends_on(&mut deps_of_constant, h.name());
+        let how_many_deps = deps_of_constant.len();
+        if i == 0 || how_many_deps < best_dep_set {
+            chosen_idx = i;
+            best_dep_set = how_many_deps;
+        }
+    }
+
+    Some(constants_in_set[chosen_idx].clone())
+}
+
+// Output a viable order for constant and constant-time function generation which
+// allows the constants to observe a consistent, useful viewpoint on the program
+// and any functions that they depend on outside the main program.
+fn decide_constant_generation_order(
+    loc: &Srcloc,
+    compiler: &PrimaryCodegen,
+    helpers: &[HelperForm],
+) -> Result<Vec<HelperForm>, CompileErr> {
+    let mut exp = Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone())));
+
+    for h in helpers.iter() {
+        let do_include = match h {
+            HelperForm::Defconstant(dc) => {
+                matches!(dc.kind, ConstantKind::Module)
+            }
+            HelperForm::Defun(false, _) => true,
+            _ => false,
+        };
+
+        if do_include {
+            exp = Rc::new(BodyForm::Call(
+                loc.clone(),
+                vec![
+                    Rc::new(BodyForm::Value(SExp::Integer(
+                        loc.clone(),
+                        4_u32.to_bigint().unwrap(),
+                    ))),
+                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), h.name().clone()))),
+                    exp,
+                ],
+                None,
+            ));
+        }
+    }
+
+    let ce = CompileForm {
+        loc: loc.clone(),
+        include_forms: Vec::new(),
+        args: Rc::new(SExp::Nil(loc.clone())),
+        helpers: helpers.to_vec(),
+        exp,
+        ty: None,
+    };
+
+    let mut constants: Vec<HelperForm> = helpers
+        .iter()
+        .filter(|h| {
+            if let HelperForm::Defconstant(dc) = h {
+                return matches!(dc.kind, ConstantKind::Module);
+            }
+
+            false
+        })
+        .cloned()
+        .collect();
+    let mut constant_set: HashSet<Vec<u8>> = constants.iter().map(|h| h.name().to_vec()).collect();
+    let mut functions: Vec<HelperForm> = helpers
+        .iter()
+        .filter(|h| matches!(h, HelperForm::Defun(false, dd)))
+        .cloned()
+        .collect();
+
+    // We don't generate bodies for inline helpers, but they appear pre-fulfilled
+    // in our function set.
+    let mut function_set: HashSet<Vec<u8>> = helpers
+        .iter()
+        .filter(|h| matches!(h, HelperForm::Defun(_, _)))
+        .map(|h| h.name().to_vec())
+        .collect();
+
+    let depgraph = FunctionDependencyGraph::new_with_options(
+        &ce,
+        DepgraphOptions {
+            with_constants: true,
+        },
+    );
+
+    let mut result = Vec::new();
+
+    while !constant_set.is_empty() {
+        let remaining_constants: Vec<String> = constant_set.iter().map(|c| decode_string(c)).collect();
+        eprintln!("constant_set {remaining_constants:?}");
+        let new_satisfied_constants =
+            find_satisfied_constants(&depgraph, &function_set, &constant_set, &constants);
+        let new_satcon: Vec<String> = new_satisfied_constants.iter().map(|c| decode_string(c.name())).collect();
+        eprintln!("processing satisfied constants {new_satcon:?}");
+
+        if !new_satisfied_constants.is_empty() {
+            for c in new_satisfied_constants.iter() {
+                constant_set.remove(c.name());
+                result.push(c.clone());
+            }
+            continue;
+        }
+
+        let new_satisfied_functions =
+            find_satisfied_functions(&ce, &depgraph, &function_set, &constant_set, &functions);
+        if !new_satisfied_functions.is_empty() {
+            for f in new_satisfied_functions.iter() {
+                function_set.remove(f.name());
+                result.push(f.clone());
+            }
+            continue;
+        }
+
+        // Break blocks.  We need to unblock a constant so we'll choose the easiest
+        // one generate any functions it needs which we haven't generated yet.
+        if let Some(least_constant) =
+            find_easiest_constant(&ce, &depgraph, &constant_set, &constants)
+        {
+            eprintln!("least_constant {}", least_constant.to_sexp());
+            let mut functions_it_depends_on_hash = HashSet::new();
+            depgraph.get_full_depends_on(&mut functions_it_depends_on_hash, least_constant.name());
+            let mut functions_it_depends_on = functions
+                .iter()
+                .filter(|h| functions_it_depends_on_hash.contains(h.name()))
+                .cloned()
+                .collect();
+            constant_set.remove(least_constant.name());
+            result.append(&mut functions_it_depends_on);
+            result.push(least_constant.clone());
+            continue;
+        }
+
+        let mod_constant_names: Vec<String> =
+            constants.iter().map(|h| decode_string(h.name())).collect();
+        return Err(CompileErr(
+            loc.clone(),
+            format!("Deadlock generating module constants {mod_constant_names:?}"),
+        ));
+    }
+
+    let result_order: Vec<String> = result.iter().map(|h| decode_string(h.name())).collect();
+    eprintln!("result order {result_order:?}");
+
+    Ok(result)
+}
+
+fn find_satisfied_constants(
+    depgraph: &FunctionDependencyGraph,
+    function_set: &HashSet<Vec<u8>>,
+    constant_set: &HashSet<Vec<u8>>,
+    constants: &[HelperForm],
+) -> Vec<HelperForm> {
+    constants
+        .iter()
+        .filter(|c| {
+            let mut constant_deps = HashSet::new();
+
+            // We've already processed it or it isn't a module style constant.
+            if !constant_set.contains(c.name()) {
+                return false;
+            }
+
+            depgraph.get_full_depends_on(&mut constant_deps, c.name());
+            let uncovered_deps: Vec<Vec<u8>> = constant_deps
+                .iter()
+                .filter(|h| {
+                    let hname: &[u8] = h;
+                    !(function_set.contains(hname) || constant_set.contains(hname))
+                })
+                .cloned()
+                .collect();
+            let deps_list: Vec<String> = uncovered_deps.iter().map(|d| decode_string(d)).collect();
+            eprintln!("constant {} has deps {deps_list:?}", decode_string(c.name()));
+            uncovered_deps.is_empty()
+        })
+        .cloned()
+        .collect()
 }
 
 fn start_codegen(
