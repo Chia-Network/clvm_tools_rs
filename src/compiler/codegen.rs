@@ -13,7 +13,7 @@ use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, CallSpec,
     Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, CompilerOutput, ConstantKind,
-    DefunCall, DefunData, HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind,
+    DefconstData, DefunCall, DefunData, HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind,
     PrimaryCodegen, RawCallSpec, SyntheticType,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
@@ -1620,7 +1620,7 @@ fn find_satisfied_constants(
 fn start_codegen(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
-    program: CompileForm,
+    mut program: CompileForm,
 ) -> Result<PrimaryCodegen, CompileErr> {
     // Choose code generator configuration
     let mut code_generator = match opts.code_generator() {
@@ -1720,7 +1720,7 @@ fn start_codegen(
                     }
                 }
                 ConstantKind::Module => {
-                    todo!();
+                    code_generator.add_module_constant(&defc.name, defc.body.clone())
                 }
             },
             HelperForm::Defmacro(mac) => {
@@ -1759,6 +1759,27 @@ fn start_codegen(
         };
     }
 
+    if !opts.in_defun() && !code_generator.module_constants.is_empty() {
+        // Process inlines early because we may not have a chance later.
+        // They could be eliminated.
+        for h in program.helpers.iter() {
+            if let HelperForm::Defun(true, defun) = h {
+                code_generator = code_generator.add_inline(
+                    &defun.name,
+                    &InlineFunction {
+                        name: defun.name.clone(),
+                        args: defun.args.clone(),
+                        body: defun.body.clone(),
+                    },
+                );
+            }
+        }
+
+        // Generate a __chia__extras constant as a placeholder for extra objects which
+        // should appear in the constant tree when constants are evaluated.
+        make_extras_constant(&mut program.helpers);
+    }
+
     let only_defuns: Vec<HelperForm> = program
         .helpers
         .iter()
@@ -1784,6 +1805,44 @@ fn start_codegen(
     code_generator.final_expr = program.exp;
 
     Ok(code_generator)
+}
+
+fn make_extras_constant(helpers: &mut Vec<HelperForm>) {
+    // Generate the first body of __chia__extras.  The code generator will assume
+    // it's safe to generate this and will populate it in dependency order.
+    let extras_data = if !helpers.is_empty() {
+        let mut extras_data = SExp::Nil(helpers[0].loc());
+        for h in helpers.iter() {
+            // Make an entry for each helper, regardless.  This will go as the
+            // leftmost object in the env, so anything that appears in the
+            // real environment will make the corresponding entry here
+            // redundant, but we don't precisely know what the env will look
+            // like yet.
+            extras_data = SExp::Cons(
+                h.loc(),
+                Rc::new(SExp::Atom(h.loc(), h.name().to_vec())),
+                Rc::new(extras_data),
+            );
+        }
+        extras_data
+    } else {
+        SExp::Nil(Srcloc::start("*no-constants*"))
+    };
+
+    // Make a defconst for this.
+    helpers.insert(
+        0,
+        HelperForm::Defconstant(DefconstData {
+            loc: extras_data.loc(),
+            nl: extras_data.loc(),
+            tabled: true,
+            kw: None,
+            name: b"__chia__extras".to_vec(),
+            kind: ConstantKind::Complex,
+            body: Rc::new(BodyForm::Quoted(extras_data)),
+            ty: None,
+        }),
+    );
 }
 
 fn final_codegen(
@@ -1975,45 +2034,46 @@ pub fn codegen(
         .symbols()
         .insert("source_file".to_string(), opts.filename());
 
-    final_codegen(context, opts.clone(), &code_generator).and_then(|c| {
-        let final_env = finalize_env(context, opts.clone(), &c)?;
+    let mut c = final_codegen(context, opts.clone(), &code_generator)?;
+    c.final_env = finalize_env(context, opts.clone(), &c)?;
 
-        match c.final_code {
-            None => Err(CompileErr(
+    let code =
+        if let Some(code) = c.final_code {
+            code
+        } else {
+            return Err(CompileErr(
                 Srcloc::start(&opts.filename()),
                 "Failed to generate code".to_string(),
+            ));
+        };
+
+    // Capture symbols now that we have the final form of the produced code.
+    context
+        .symbols()
+        .insert("__chia__main_arguments".to_string(), cmod.args.to_string());
+
+    if opts.in_defun() {
+        let final_code = primapply(
+            code.0.clone(),
+            Rc::new(primquote(code.0.clone(), code.1)),
+            Rc::new(SExp::Integer(code.0, bi_one())),
+        );
+
+        Ok(final_code)
+    } else if code_generator.left_env {
+        let final_code = primapply(
+            code.0.clone(),
+            Rc::new(primquote(code.0.clone(), code.1)),
+            Rc::new(primcons(
+                code.0.clone(),
+                Rc::new(primquote(code.0.clone(), c.final_env)),
+                Rc::new(SExp::Integer(code.0, bi_one())),
             )),
-            Some(code) => {
-                // Capture symbols now that we have the final form of the produced code.
-                context
-                    .symbols()
-                    .insert("__chia__main_arguments".to_string(), cmod.args.to_string());
+        );
 
-                if opts.in_defun() {
-                    let final_code = primapply(
-                        code.0.clone(),
-                        Rc::new(primquote(code.0.clone(), code.1)),
-                        Rc::new(SExp::Integer(code.0, bi_one())),
-                    );
-
-                    Ok(final_code)
-                } else if code_generator.left_env {
-                    let final_code = primapply(
-                        code.0.clone(),
-                        Rc::new(primquote(code.0.clone(), code.1)),
-                        Rc::new(primcons(
-                            code.0.clone(),
-                            Rc::new(primquote(code.0.clone(), final_env)),
-                            Rc::new(SExp::Integer(code.0, bi_one())),
-                        )),
-                    );
-
-                    Ok(final_code)
-                } else {
-                    let code_borrowed: &SExp = code.1.borrow();
-                    Ok(code_borrowed.clone())
-                }
-            }
-        }
-    })
+        Ok(final_code)
+    } else {
+        let code_borrowed: &SExp = code.1.borrow();
+        Ok(code_borrowed.clone())
+    }
 }

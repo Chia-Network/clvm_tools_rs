@@ -574,3 +574,29 @@ fn test_import_renamed() {
         }],
     );
 }
+
+#[test]
+fn test_program_exporting_constant_from_program() {
+    let filename = "resources/tests/module/test-export-constant-from-program.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let c_hex_filename = "resources/tests/module/test-export-constant-from-program_C.hex";
+    let c_program_hex_filename = "resources/tests/module/programs/single-constant_C.hex";
+    let c_value = "10197";
+
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[
+            HexArgumentOutcome {
+                hexfile: c_hex_filename,
+                argument: c_value,
+                outcome: ContentEquals,
+            },
+            HexArgumentOutcome {
+                hexfile: c_program_hex_filename,
+                argument: c_value,
+                outcome: ContentEquals,
+            }
+        ]
+    );
+}

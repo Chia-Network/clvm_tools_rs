@@ -326,6 +326,22 @@ fn get_hash_of_constant(
     Ok(sha256tree(evaluated))
 }
 
+fn modernize_constants(helpers: &mut [HelperForm]) {
+    for h in helpers.iter_mut() {
+        match h {
+            HelperForm::Defconstant(d) => {
+                // Ensure that we upgrade the constant type.
+                d.kind = ConstantKind::Module;
+                d.tabled = true;
+            }
+            HelperForm::Defnamespace(ns) => {
+                modernize_constants(&mut ns.helpers);
+            }
+            _ => {}
+        }
+    }
+}
+
 /// Exports are returned main programs:
 ///
 /// Single main
@@ -593,7 +609,7 @@ pub fn compile_pre_forms(
         FrontendOutput::CompileForm(p0) => Ok(CompilerOutput::Program(compile_from_compileform(
             context, opts, p0,
         )?)),
-        FrontendOutput::Module(cf, exports) => {
+        FrontendOutput::Module(mut cf, exports) => {
             // cl23 always reflects optimization.
             let dialect = opts.dialect();
             let opts = if let Some(stepping) = dialect.stepping.as_ref() {
@@ -601,6 +617,8 @@ pub fn compile_pre_forms(
             } else {
                 opts
             };
+
+            modernize_constants(&mut cf.helpers);
 
             Ok(CompilerOutput::Module(compile_module(
                 context, opts, cf, &exports,
