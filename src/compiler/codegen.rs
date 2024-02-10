@@ -58,6 +58,13 @@ pub const CONST_EVAL_LIMIT: usize = 1000000;
  *         )
  */
 
+fn run_failure_to_compile_err(l: Srcloc, e: &RunFailure) -> CompileErr {
+    match e {
+        RunFailure::RunExn(ml, x) => CompileErr(l, format!("macro aborted at {ml} with {x}")),
+        RunFailure::RunErr(rl, e) => CompileErr(l, format!("error executing macro: {rl} {e}")),
+    }
+}
+
 fn cons_bodyform(loc: Srcloc, left: Rc<BodyForm>, right: Rc<BodyForm>) -> BodyForm {
     BodyForm::Call(
         loc.clone(),
@@ -859,6 +866,56 @@ fn fail_if_present<T, R>(
     }
 }
 
+fn codegen_defun(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    compiler: &PrimaryCodegen,
+    h: &HelperForm,
+    defun: &DefunData,
+) -> Result<Rc<SExp>, CompileErr> {
+    let updated_opts = opts
+        .set_code_generator(compiler.clone())
+        .set_in_defun(true)
+        .set_stdenv(false)
+        .set_frontend_opt(false)
+        .set_start_env(Some(combine_defun_env(
+            compiler.env.clone(),
+            defun.args.clone(),
+        )));
+
+    let opt = context.pre_codegen_function_optimize(opts.clone(), compiler, defun)?;
+
+    let tocompile = SExp::Cons(
+        defun.loc.clone(),
+        Rc::new(SExp::Atom(defun.loc.clone(), "mod".as_bytes().to_vec())),
+        Rc::new(SExp::Cons(
+            defun.loc.clone(),
+            defun.args.clone(),
+            Rc::new(SExp::Cons(
+                defun.loc.clone(),
+                opt.to_sexp(),
+                Rc::new(SExp::Nil(defun.loc.clone())),
+            )),
+        )),
+    );
+
+    let mut unused_symbol_table = HashMap::new();
+    let code = {
+        let mut context_wrapper =
+            CompileContextWrapper::from_context(context, &mut unused_symbol_table);
+        let code =
+            updated_opts.compile_program(&mut context_wrapper.context, Rc::new(tocompile))?;
+        match code {
+            CompilerOutput::Program(p) => p,
+            CompilerOutput::Module(_) => {
+                todo!();
+            }
+        }
+    };
+
+    context.post_codegen_function_optimize(opts.clone(), Some(h), Rc::new(code))
+}
+
 fn codegen_(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
@@ -879,48 +936,7 @@ fn codegen_(
                     },
                 ))
             } else {
-                let updated_opts = opts
-                    .set_code_generator(compiler.clone())
-                    .set_in_defun(true)
-                    .set_stdenv(false)
-                    .set_frontend_opt(false)
-                    .set_start_env(Some(combine_defun_env(
-                        compiler.env.clone(),
-                        defun.args.clone(),
-                    )));
-
-                let opt = context.pre_codegen_function_optimize(opts.clone(), compiler, defun)?;
-
-                let tocompile = SExp::Cons(
-                    defun.loc.clone(),
-                    Rc::new(SExp::Atom(defun.loc.clone(), "mod".as_bytes().to_vec())),
-                    Rc::new(SExp::Cons(
-                        defun.loc.clone(),
-                        defun.args.clone(),
-                        Rc::new(SExp::Cons(
-                            defun.loc.clone(),
-                            opt.to_sexp(),
-                            Rc::new(SExp::Nil(defun.loc.clone())),
-                        )),
-                    )),
-                );
-
-                let mut unused_symbol_table = HashMap::new();
-                let code = {
-                    let mut context_wrapper =
-                        CompileContextWrapper::from_context(context, &mut unused_symbol_table);
-                    let code = updated_opts
-                        .compile_program(&mut context_wrapper.context, Rc::new(tocompile))?;
-                    match code {
-                        CompilerOutput::Program(p) => p,
-                        CompilerOutput::Module(_) => {
-                            todo!();
-                        }
-                    }
-                };
-
-                let code =
-                    context.post_codegen_function_optimize(opts.clone(), Some(h), Rc::new(code))?;
+                let code = codegen_defun(context, opts.clone(), compiler, h, defun)?;
                 let code =
                     fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)?;
                 let code = fail_if_present(defun.loc.clone(), &compiler.defuns, &defun.name, code)?;
@@ -1335,6 +1351,31 @@ pub fn hoist_body_let_binding(
     }
 }
 
+// True if the name appears in the env shape specified.
+fn name_in_env(env: Rc<SExp>, name: &[u8]) -> bool {
+    match env.borrow() {
+        SExp::Cons(_, a, b) => name_in_env(a.clone(), name) || name_in_env(b.clone(), name),
+        SExp::Atom(_, n) => n == name,
+        _ => false,
+    }
+}
+
+// Ensure that the environment data at __chia__extras becomes nil.
+fn purge_chia_extras(compiler: &mut PrimaryCodegen, orig_env: Rc<SExp>) {
+    if let Some((chia_extras_path, old_val)) =
+        find_named_path(orig_env, b"__chia__extras", bi_one(), bi_zero())
+    {
+        compiler.final_env = replace_by_paths(
+            compiler.final_env.clone(),
+            bi_one(),
+            bi_zero(),
+            &[(chia_extras_path >> 1, Rc::new(SExp::Nil(old_val.loc())))],
+        );
+    } else {
+        todo!();
+    }
+}
+
 /// Turn the helpers for a program into the fully desugared set of helpers for
 /// that program.  This expands and re-processes the helper set until all
 /// desugarable body forms have been transformed to a state where no more
@@ -1380,6 +1421,116 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
     Ok(result)
 }
 
+// Given a function to generate as a freestanding program, compile the program
+// using compile_from_helperform and install it in the compiler's notion of
+// __chia__extras.  Functions may be generated in any order but only after all
+// constants depended upon by every function dependency of to_generate has been
+// produced.  If the order can't be determined, then we must fail.
+fn generate_function_body_for_constants(
+    context: &mut BasicCompileContext,
+    compiler: &mut PrimaryCodegen,
+    opts: Rc<dyn CompilerOpts>,
+    to_generate: &DefunData,
+) -> Result<(), CompileErr> {
+    let opts = opts.set_optimize(true);
+    todo!();
+}
+
+fn show_variables_in_env(env: Rc<SExp>, data: Rc<SExp>) -> Rc<SExp> {
+    if let (SExp::Cons(l, a, b), SExp::Cons(_, c, d)) = (env.borrow(), data.borrow()) {
+        let new_a = show_variables_in_env(a.clone(), c.clone());
+        let new_b = show_variables_in_env(b.clone(), d.clone());
+        Rc::new(SExp::Cons(env.loc(), new_a, new_b))
+    } else {
+        Rc::new(SExp::Cons(
+            env.loc(),
+            env.clone(),
+            data.clone()
+        ))
+    }
+}
+
+// Given a constant to generate, generate its program given the compiler's current
+// environment and then run the program given the current environment value.  The
+// result is a constant that consistently observes the post-optimization full
+// program if every function and constant it relies on is generated.  If the
+// order can't be solved then we must fail.
+fn generate_constant_body_for_constants(
+    context: &mut BasicCompileContext,
+    compiler: &mut PrimaryCodegen,
+    opts: Rc<dyn CompilerOpts>,
+    to_generate: &DefconstData,
+) -> Result<(), CompileErr> {
+    let opts = opts.set_optimize(true);
+    let args = Rc::new(SExp::Nil(to_generate.loc.clone()));
+    let defun_data = DefunData {
+        loc: to_generate.loc.clone(),
+        kw: to_generate.kw.clone(),
+        nl: to_generate.nl.clone(),
+        name: to_generate.name.clone(),
+        args: args.clone(),
+        orig_args: args.clone(),
+        synthetic: Some(SyntheticType::WantNonInline),
+        body: to_generate.body.clone(),
+        ty: None,
+    };
+    let generate_value_function = HelperForm::Defun(false, defun_data.clone());
+    let generated_code = codegen_defun(
+        context,
+        opts.clone(),
+        compiler,
+        &generate_value_function,
+        &defun_data,
+    )?;
+    let runner = context.runner();
+    let whole_env = Rc::new(SExp::Cons(
+        to_generate.loc.clone(),
+        compiler.final_env.clone(),
+        args.clone(),
+    ));
+    eprintln!("final_env for constant generation {}", whole_env);
+    eprintln!("with env {}", compiler.env);
+    eprintln!("variables in env: {}", show_variables_in_env(compiler.env.clone(), whole_env.clone()));
+    let run_result = run(
+        context.allocator(),
+        runner,
+        opts.prim_map(),
+        generated_code.clone(),
+        // Pass program's environment plus what's been generated.
+        // It's expected because we did a function style generation.
+        whole_env,
+        None,
+        Some(MACRO_TIME_LIMIT),
+    )
+        .map_err(|e| {
+            eprintln!("generating constant {}, we ran program {} and got error {e}", decode_string(&to_generate.name), generated_code);
+            run_failure_to_compile_err(to_generate.loc.clone(), &e)
+        })?;
+
+    compiler
+        .tabled_constants
+        .insert(to_generate.name.clone(), run_result.clone());
+    compiler.module_constants.remove(&to_generate.name);
+    if let Some((path_to_constant, _)) =
+        find_named_path(compiler.env.clone(), &to_generate.name, bi_one(), bi_zero())
+    {
+        eprintln!(
+            "constant {} (path {path_to_constant} in {}) = {run_result}",
+            decode_string(&to_generate.name),
+            compiler.env
+        );
+        compiler.final_env = replace_by_paths(
+            compiler.final_env.clone(),
+            bi_one(),
+            bi_zero(),
+            &[(path_to_constant >> 1, run_result)],
+        );
+        eprintln!("final_env {}", compiler.final_env);
+    } else {
+        todo!();
+    }
+    Ok(())
+}
 fn find_satisfied_functions(
     ce: &CompileForm,
     depgraph: &FunctionDependencyGraph,
@@ -1444,6 +1595,101 @@ fn find_easiest_constant(
     }
 
     Some(constants_in_set[chosen_idx].clone())
+}
+
+fn find_satisfied_constants(
+    depgraph: &FunctionDependencyGraph,
+    function_set: &HashSet<Vec<u8>>,
+    constant_set: &HashSet<Vec<u8>>,
+    constants: &[HelperForm],
+) -> Vec<HelperForm> {
+    constants
+        .iter()
+        .filter(|c| {
+            let mut constant_deps = HashSet::new();
+
+            // We've already processed it or it isn't a module style constant.
+            if !constant_set.contains(c.name()) {
+                return false;
+            }
+
+            depgraph.get_full_depends_on(&mut constant_deps, c.name());
+            let uncovered_deps: Vec<Vec<u8>> = constant_deps
+                .iter()
+                .filter(|h| {
+                    let hname: &[u8] = h;
+                    !(function_set.contains(hname) || constant_set.contains(hname))
+                })
+                .cloned()
+                .collect();
+            let deps_list: Vec<String> = uncovered_deps.iter().map(|d| decode_string(d)).collect();
+            eprintln!("constant {} has deps {deps_list:?}", decode_string(c.name()));
+            uncovered_deps.is_empty()
+        })
+        .cloned()
+        .collect()
+}
+
+fn find_named_path(
+    env: Rc<SExp>,
+    name: &[u8],
+    mask: Number,
+    parent: Number,
+) -> Option<(Number, Rc<SExp>)> {
+    let this_path = mask.clone() | parent.clone();
+    match env.borrow() {
+        SExp::Cons(_, a, b) => {
+            let next_mask = mask * 2_u32.to_bigint().unwrap();
+            if let Some((found_path, found_env)) =
+                find_named_path(a.clone(), name, next_mask.clone(), parent)
+            {
+                return Some((found_path, found_env));
+            }
+            if let Some((found_path, found_env)) =
+                find_named_path(b.clone(), name, next_mask, this_path)
+            {
+                return Some((found_path, found_env));
+            }
+
+            None
+        }
+        SExp::Atom(_, a) => {
+            if a == name {
+                return Some((this_path, env));
+            }
+
+            None
+        }
+
+        _ => None,
+    }
+}
+
+fn replace_by_paths(
+    env: Rc<SExp>,
+    mask: Number,
+    parent: Number,
+    collection: &[(Number, Rc<SExp>)],
+) -> Rc<SExp> {
+    let this_path = mask.clone() | parent.clone();
+
+    for (p, v) in collection.iter() {
+        if *p == this_path {
+            eprintln!("replace {v} at path {p}");
+            return v.clone();
+        }
+    }
+
+    let next_mask = mask * 2_u32.to_bigint().unwrap();
+    if let SExp::Cons(l, a, b) = env.borrow() {
+        let left = replace_by_paths(a.clone(), next_mask.clone(), parent, collection);
+        let right = replace_by_paths(b.clone(), next_mask, this_path, collection);
+        if Rc::as_ptr(&left) != Rc::as_ptr(a) || Rc::as_ptr(&right) != Rc::as_ptr(b) {
+            return Rc::new(SExp::Cons(l.clone(), left, right));
+        }
+    }
+
+    env
 }
 
 // Output a viable order for constant and constant-time function generation which
@@ -1582,39 +1828,6 @@ fn decide_constant_generation_order(
     eprintln!("result order {result_order:?}");
 
     Ok(result)
-}
-
-fn find_satisfied_constants(
-    depgraph: &FunctionDependencyGraph,
-    function_set: &HashSet<Vec<u8>>,
-    constant_set: &HashSet<Vec<u8>>,
-    constants: &[HelperForm],
-) -> Vec<HelperForm> {
-    constants
-        .iter()
-        .filter(|c| {
-            let mut constant_deps = HashSet::new();
-
-            // We've already processed it or it isn't a module style constant.
-            if !constant_set.contains(c.name()) {
-                return false;
-            }
-
-            depgraph.get_full_depends_on(&mut constant_deps, c.name());
-            let uncovered_deps: Vec<Vec<u8>> = constant_deps
-                .iter()
-                .filter(|h| {
-                    let hname: &[u8] = h;
-                    !(function_set.contains(hname) || constant_set.contains(hname))
-                })
-                .cloned()
-                .collect();
-            let deps_list: Vec<String> = uncovered_deps.iter().map(|d| decode_string(d)).collect();
-            eprintln!("constant {} has deps {deps_list:?}", decode_string(c.name()));
-            uncovered_deps.is_empty()
-        })
-        .cloned()
-        .collect()
 }
 
 fn start_codegen(
@@ -2038,14 +2251,66 @@ pub fn codegen(
     c.final_env = finalize_env(context, opts.clone(), &c)?;
 
     let code =
-        if let Some(code) = c.final_code {
-            code
+        if let Some(code) = c.final_code.as_ref() {
+            code.clone()
         } else {
             return Err(CompileErr(
                 Srcloc::start(&opts.filename()),
                 "Failed to generate code".to_string(),
             ));
         };
+
+    // If we have delayed constants to generate, do them here as we have the final
+    // form of the exported program's environment.  We must generate anything
+    // needed by the constant time environment, replace the module constants and
+    // then erase the intermediate work.  If we're able to do that then we have
+    // a consistent constant time view.
+    if !opts.in_defun() && !c.module_constants.is_empty() {
+        // Install names in the environment based on the contents of the
+        // __chia__extras helper.
+        let correct_env = c.env.clone();
+        if let Some((chia_extras_path, old_val)) =
+            find_named_path(c.env.clone(), b"__chia__extras", bi_one(), bi_zero())
+        {
+            eprintln!(
+                "ENSURE PATH IN VALUES IS AVAILABLE {chia_extras_path}: {}",
+                c.final_env
+            );
+        }
+        // We have module style constants so there is more work to do.
+        // Get a viable generation order for the constant generation or fail.
+        let generation_order =
+            decide_constant_generation_order(&cmod.loc, &c, &c.original_helpers)?;
+
+        let gen_order_strings: Vec<String> = generation_order
+            .iter()
+            .map(|h| decode_string(h.name()))
+            .collect();
+        eprintln!("generation order {gen_order_strings:?}");
+
+        // For each helper in the indicated generation order, generate it, updating
+        // our notion of the enviornment.
+        for h in generation_order.iter() {
+            match h {
+                HelperForm::Defun(false, dd) => {
+                    if !name_in_env(correct_env.clone(), &dd.name) {
+                        todo!();
+                        generate_function_body_for_constants(context, &mut c, opts.clone(), dd)?;
+                    }
+                }
+                HelperForm::Defconstant(dc) => {
+                    if matches!(dc.kind, ConstantKind::Module) {
+                        eprintln!("Generate constant body for {}", decode_string(&dc.name));
+                        generate_constant_body_for_constants(context, &mut c, opts.clone(), dc)?;
+                    }
+                }
+                _ => {}
+             }
+         }
+
+        // Erase our additions to the environment.
+        purge_chia_extras(&mut c, correct_env);
+    }
 
     // Capture symbols now that we have the final form of the produced code.
     context
@@ -2066,7 +2331,7 @@ pub fn codegen(
             Rc::new(primquote(code.0.clone(), code.1)),
             Rc::new(primcons(
                 code.0.clone(),
-                Rc::new(primquote(code.0.clone(), c.final_env)),
+                Rc::new(primquote(code.0.clone(), c.final_env.clone())),
                 Rc::new(SExp::Integer(code.0, bi_one())),
             )),
         );
