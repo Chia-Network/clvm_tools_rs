@@ -429,6 +429,13 @@ fn resolve_namespaces_in_expr(
                     }
                 }
 
+                eprintln!(
+                    "could not find helper {} in {}",
+                    decode_string(name),
+                    display_namespace(parent_ns)
+                );
+                eprintln!("program {}", program.to_sexp());
+                todo!();
                 return Err(CompileErr(
                     expr.loc(),
                     format!(

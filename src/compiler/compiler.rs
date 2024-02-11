@@ -285,47 +285,6 @@ fn form_hash_expression(inner_exp: Rc<BodyForm>) -> Rc<BodyForm> {
     ))
 }
 
-fn get_hash_of_constant(
-    context: &mut BasicCompileContext,
-    opts: Rc<dyn CompilerOpts>,
-    name: &[u8],
-    program: &CompileForm,
-    dc: &DefconstData,
-) -> Result<Vec<u8>, CompileErr> {
-    let constant_program = CompileForm {
-        exp: dc.body.clone(),
-        ..program.clone()
-    };
-    let compiled = compile_from_compileform(context, opts.clone(), constant_program)?;
-    let runner = context.runner();
-    let evaluated = run(
-        context.allocator(),
-        runner,
-        opts.prim_map(),
-        Rc::new(compiled),
-        Rc::new(SExp::Nil(program.loc())),
-        None,
-        Some(CONST_EVAL_LIMIT),
-    )
-    .map_err(|r| match r {
-        RunFailure::RunExn(l, e) => CompileErr(
-            l.clone(),
-            format!(
-                "Error evaluating export constant {}: exception throwing {e}",
-                decode_string(name)
-            ),
-        ),
-        RunFailure::RunErr(l, e) => CompileErr(
-            l.clone(),
-            format!(
-                "Error evaluating export constant {}: {e}",
-                decode_string(name)
-            ),
-        ),
-    })?;
-    Ok(sha256tree(evaluated))
-}
-
 fn modernize_constants(helpers: &mut [HelperForm]) {
     for h in helpers.iter_mut() {
         match h {
@@ -486,7 +445,7 @@ pub fn compile_module(
                 fun_name.clone(),
             )));
             program.helpers.push(HelperForm::Defun(
-                false,
+                true,
                 DefunData {
                     loc: dd.loc.clone(),
                     kw: None,
@@ -502,8 +461,10 @@ pub fn compile_module(
         } else if let Some(HelperForm::Defconstant(dc)) = &exported {
             let mut new_name = fun_name.clone();
             new_name.extend(b"_hash".to_vec());
-            let hash_of_constant =
-                get_hash_of_constant(context, opts.clone(), &dc.name, &program, dc)?;
+            let make_hash_of = Rc::new(BodyForm::Value(SExp::Atom(
+                dc.loc.clone(),
+                fun_name.clone(),
+            )));
 
             let mut underscore_name = new_name.clone();
             underscore_name.insert(0, b'_');
@@ -513,10 +474,7 @@ pub fn compile_module(
             program.helpers.push(HelperForm::Defconstant(DefconstData {
                 kind: ConstantKind::Complex,
                 name: underscore_name.clone(),
-                body: Rc::new(BodyForm::Quoted(SExp::Atom(
-                    dc.loc.clone(),
-                    hash_of_constant,
-                ))),
+                body: form_hash_expression(make_hash_of),
                 tabled: true,
                 ty: None,
                 ..dc.clone()
@@ -531,7 +489,7 @@ pub fn compile_module(
                     name: new_name.clone(),
                     args: Rc::new(SExp::Nil(dc.loc.clone())),
                     orig_args: Rc::new(SExp::Nil(dc.loc.clone())),
-                    body: Rc::new(BodyForm::Value(SExp::Atom(dc.loc.clone(), new_name))),
+                    body: Rc::new(BodyForm::Value(SExp::Atom(dc.loc.clone(), underscore_name))),
                     synthetic: Some(SyntheticType::NoInlinePreference),
                     ty: None,
                 },
@@ -545,6 +503,7 @@ pub fn compile_module(
     }
 
     program.exp = function_list;
+    eprintln!("program after adding export related stuff {}", program.to_sexp());
     program = resolve_namespaces(opts.clone(), &program)?;
 
     let compiled_result = Rc::new(compile_from_compileform(context, opts.clone(), program)?);

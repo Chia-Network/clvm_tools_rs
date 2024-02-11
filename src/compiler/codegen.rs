@@ -58,13 +58,6 @@ pub const CONST_EVAL_LIMIT: usize = 1000000;
  *         )
  */
 
-fn run_failure_to_compile_err(l: Srcloc, e: &RunFailure) -> CompileErr {
-    match e {
-        RunFailure::RunExn(ml, x) => CompileErr(l, format!("macro aborted at {ml} with {x}")),
-        RunFailure::RunErr(rl, e) => CompileErr(l, format!("error executing macro: {rl} {e}")),
-    }
-}
-
 fn cons_bodyform(loc: Srcloc, left: Rc<BodyForm>, right: Rc<BodyForm>) -> BodyForm {
     BodyForm::Call(
         loc.clone(),
@@ -345,14 +338,29 @@ pub fn get_callable(
                 }
                 (_, _, _, _, true, _) => Ok(Callable::RunCompiler),
                 (_, _, _, _, _, true) => Ok(Callable::EnvPath),
-                _ => Err(CompileErr(
-                    l.clone(),
-                    format!("no such callable '{}'", decode_string(name)),
-                )),
+                _ => {
+                    eprintln!("failed to lookup a callable: {}", decode_string(name));
+                    let orig_helper_names: Vec<String> = compiler.original_helpers.iter().map(|h| decode_string(h.name())).collect();
+                    eprintln!("original helpers {orig_helper_names:?}");
+                    let to_process_names: Vec<String> = compiler.to_process.iter().map(|h| decode_string(h.name())).collect();
+                    eprintln!("process  helpers {to_process_names:?}");
+                    todo!();
+                    Err(CompileErr(
+                        l.clone(),
+                        format!("no such callable '{}'", decode_string(name)),
+                    ))
+                }
             }
         }
         SExp::Integer(_, v) => Ok(Callable::CallPrim(l.clone(), SExp::Integer(l, v.clone()))),
         _ => Err(CompileErr(atom.loc(), format!("can't call object {atom}"))),
+    }
+}
+
+fn run_failure_to_compile_err(l: Srcloc, e: &RunFailure) -> CompileErr {
+    match e {
+        RunFailure::RunExn(ml, x) => CompileErr(l, format!("macro aborted at {ml} with {x}")),
+        RunFailure::RunErr(rl, e) => CompileErr(l, format!("error executing macro: {rl} {e}")),
     }
 }
 
@@ -379,10 +387,7 @@ pub fn process_macro_call(
         None,
         Some(MACRO_TIME_LIMIT),
     )
-    .map_err(|e| match e {
-        RunFailure::RunExn(ml, x) => CompileErr(l, format!("macro aborted at {ml} with {x}")),
-        RunFailure::RunErr(rl, e) => CompileErr(l, format!("error executing macro: {rl} {e}")),
-    })
+    .map_err(|e| run_failure_to_compile_err(l, &e))
     .and_then(|v| {
         let relabeled_expr = relabel(&swap_table, &v);
         compile_bodyform(opts.clone(), Rc::new(relabeled_expr))
@@ -2157,7 +2162,11 @@ fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileE
             }
             HelperForm::Defun(true, defun) => Ok(compiler)
                 .and_then(|comp| {
-                    fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, comp)
+                    if compiler.module_constants.is_empty() {
+                        fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, comp)
+                    } else {
+                        Ok(compiler)
+                    }
                 })
                 .and_then(|comp| {
                     fail_if_present(defun.loc.clone(), &compiler.defuns, &defun.name, comp)

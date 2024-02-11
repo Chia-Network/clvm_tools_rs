@@ -600,3 +600,21 @@ fn test_program_exporting_constant_from_program() {
         ]
     );
 }
+
+#[test]
+fn test_program_export_constant_and_function() {
+    let filename = "resources/tests/module/test-export-constant-and-function.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let d_hex_filename = "resources/tests/module/test-export-constant-and-function_D.hex";
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[
+            HexArgumentOutcome {
+                hexfile: d_hex_filename,
+                argument: "",
+                outcome: ContentEquals,
+            },
+        ]
+    );
+}
