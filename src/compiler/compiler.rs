@@ -1,6 +1,6 @@
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -9,6 +9,7 @@ use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, Stream};
 use crate::classic::clvm::sexp::sexp_as_bin;
+use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, run, sha256tree};
@@ -22,6 +23,7 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::frontend;
+use crate::compiler::optimize::depgraph::{FunctionDependencyGraph, DepgraphOptions};
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::prims;
 use crate::compiler::resolve::{find_helper_target, resolve_namespaces};
@@ -81,17 +83,6 @@ lazy_static! {
             (defmac list ARGS (__chia__compile-list ARGS))
 
             (defun-inline / (A B) (f (divmod A B)))
-
-            (defun __chia__sha256tree (t)
-              (a
-                (i
-                  (l t)
-                  (com (sha256 2 (__chia__sha256tree (f t)) (__chia__sha256tree (r t))))
-                  (com (sha256 1 t))
-                  )
-                @
-                )
-              )
 
             (defun-inline c* (A B) (c A B))
             (defun-inline a* (A B) (a A B))
@@ -265,58 +256,52 @@ pub fn find_exported_helper(
 }
 
 fn form_hash_expression(inner_exp: Rc<BodyForm>) -> Rc<BodyForm> {
+    let sha256tree_program_clvm = "(2 (1 2 (3 (7 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) (4 (1 2 (3 (7 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) 1))";
+    let shloc = Srcloc::start("*sha256tree*");
+    let parsed =
+        parse_sexp(shloc.clone(), sha256tree_program_clvm.bytes()).expect("should have parsed");
+    let p0_borrowed: &SExp = parsed[0].borrow();
+
     Rc::new(BodyForm::Call(
         inner_exp.loc(),
         vec![
-            Rc::new(BodyForm::Value(SExp::Atom(
+            Rc::new(BodyForm::Value(SExp::Integer(
                 inner_exp.loc(),
-                b"__chia__sha256tree".to_vec(),
+                2_u32.to_bigint().unwrap(),
             ))),
-            inner_exp,
+            Rc::new(BodyForm::Quoted(p0_borrowed.clone())),
+            Rc::new(BodyForm::Call(
+                inner_exp.loc(),
+                vec![
+                    Rc::new(BodyForm::Value(SExp::Integer(
+                        inner_exp.loc(),
+                        4_u32.to_bigint().unwrap(),
+                    ))),
+                    inner_exp.clone(),
+                    Rc::new(BodyForm::Quoted(SExp::Nil(inner_exp.loc()))),
+                ],
+                None,
+            )),
         ],
         None,
     ))
 }
 
-fn get_hash_of_constant(
-    context: &mut BasicCompileContext,
-    opts: Rc<dyn CompilerOpts>,
-    name: &[u8],
-    program: &CompileForm,
-    dc: &DefconstData,
-) -> Result<Vec<u8>, CompileErr> {
-    let constant_program = CompileForm {
-        exp: dc.body.clone(),
-        ..program.clone()
-    };
-    let compiled = compile_from_compileform(context, opts.clone(), constant_program)?;
-    let runner = context.runner();
-    let evaluated = run(
-        context.allocator(),
-        runner,
-        opts.prim_map(),
-        Rc::new(compiled),
-        Rc::new(SExp::Nil(program.loc())),
-        None,
-        Some(CONST_EVAL_LIMIT),
-    )
-    .map_err(|r| match r {
-        RunFailure::RunExn(l, e) => CompileErr(
-            l.clone(),
-            format!(
-                "Error evaluating export constant {}: exception throwing {e}",
-                decode_string(name)
-            ),
-        ),
-        RunFailure::RunErr(l, e) => CompileErr(
-            l.clone(),
-            format!(
-                "Error evaluating export constant {}: {e}",
-                decode_string(name)
-            ),
-        ),
-    })?;
-    Ok(sha256tree(evaluated))
+fn modernize_constants(helpers: &mut [HelperForm], standalone_constants: &HashSet<Vec<u8>>) {
+    for h in helpers.iter_mut() {
+        match h {
+            HelperForm::Defconstant(d) => {
+                // Ensure that we upgrade the constant type.
+                d.kind = ConstantKind::Module;
+                let should_table = !standalone_constants.contains(&d.name);
+                d.tabled = should_table;
+            }
+            HelperForm::Defnamespace(ns) => {
+                modernize_constants(&mut ns.helpers, standalone_constants);
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Exports are returned main programs:
@@ -463,7 +448,7 @@ pub fn compile_module(
                 fun_name.clone(),
             )));
             program.helpers.push(HelperForm::Defun(
-                false,
+                true,
                 DefunData {
                     loc: dd.loc.clone(),
                     kw: None,
@@ -479,8 +464,10 @@ pub fn compile_module(
         } else if let Some(HelperForm::Defconstant(dc)) = &exported {
             let mut new_name = fun_name.clone();
             new_name.extend(b"_hash".to_vec());
-            let hash_of_constant =
-                get_hash_of_constant(context, opts.clone(), &dc.name, &program, dc)?;
+            let make_hash_of = Rc::new(BodyForm::Value(SExp::Atom(
+                dc.loc.clone(),
+                fun_name.clone(),
+            )));
 
             let mut underscore_name = new_name.clone();
             underscore_name.insert(0, b'_');
@@ -488,12 +475,9 @@ pub fn compile_module(
             append_to_function_list(&mut function_list, &fun_name, &export_name);
 
             program.helpers.push(HelperForm::Defconstant(DefconstData {
-                kind: ConstantKind::Complex,
+                kind: ConstantKind::Module,
                 name: underscore_name.clone(),
-                body: Rc::new(BodyForm::Quoted(SExp::Atom(
-                    dc.loc.clone(),
-                    hash_of_constant,
-                ))),
+                body: form_hash_expression(make_hash_of),
                 tabled: true,
                 ty: None,
                 ..dc.clone()
@@ -508,7 +492,7 @@ pub fn compile_module(
                     name: new_name.clone(),
                     args: Rc::new(SExp::Nil(dc.loc.clone())),
                     orig_args: Rc::new(SExp::Nil(dc.loc.clone())),
-                    body: Rc::new(BodyForm::Value(SExp::Atom(dc.loc.clone(), new_name))),
+                    body: Rc::new(BodyForm::Value(SExp::Atom(dc.loc.clone(), underscore_name))),
                     synthetic: Some(SyntheticType::NoInlinePreference),
                     ty: None,
                 },
@@ -522,15 +506,19 @@ pub fn compile_module(
     }
 
     program.exp = function_list;
+    eprintln!("program after adding export related stuff {}", program.to_sexp());
     program = resolve_namespaces(opts.clone(), &program)?;
 
     let compiled_result = Rc::new(compile_from_compileform(context, opts.clone(), program)?);
+    eprintln!("compiled_result {compiled_result}");
     let result_clvm = convert_to_clvm_rs(context.allocator(), compiled_result)?;
     let nil = context.allocator().null();
     let runner = context.runner();
     let run_result_clvm = runner
         .run_program(context.allocator(), result_clvm, nil, None)
-        .map_err(|_| {
+        .map_err(|e| {
+            let dis = disassemble(context.allocator(), e.0, None);
+            eprintln!("error {e:?} running module program ({dis})");
             CompileErr(
                 loc.clone(),
                 "failed to run intermediate module program".to_string(),
@@ -586,7 +574,7 @@ pub fn compile_pre_forms(
         FrontendOutput::CompileForm(p0) => Ok(CompilerOutput::Program(compile_from_compileform(
             context, opts, p0,
         )?)),
-        FrontendOutput::Module(cf, exports) => {
+        FrontendOutput::Module(mut cf, exports) => {
             // cl23 always reflects optimization.
             let dialect = opts.dialect();
             let opts = if let Some(stepping) = dialect.stepping.as_ref() {
@@ -594,6 +582,33 @@ pub fn compile_pre_forms(
             } else {
                 opts
             };
+
+            // We make a dependency graph of constants and functions.  There must
+            // be a solveable hierarchy for constants, that is some must be top
+            // level constants that are not depended on.  Thse will not be tabled
+            // with the rest, but computed once.  Practially, these will be
+            // constants that are computed only for export and no other constants
+            // or functions depend on them.  Specifically, any constant that is
+            // not used by a constant or function is forced to be inline.  We will
+            // expand it when generating the constant output.
+            let depgraph = FunctionDependencyGraph::new_with_options(
+                &cf, DepgraphOptions {
+                    with_constants: true
+                }
+            );
+
+            let all_constants: HashSet<Vec<u8>> = cf.helpers.iter().filter(|h| matches!(h, HelperForm::Defconstant(_))).map(|h| h.name().to_vec()).collect();
+            let mut standalone_constants = HashSet::new();
+
+            for h in cf.helpers.iter() {
+                let mut constant_is_depended = HashSet::new();
+                depgraph.get_full_depended_on_by(&mut constant_is_depended, h.name());
+                if constant_is_depended.is_empty() {
+                    eprintln!("constant {} is stand alone", decode_string(h.name()));
+                    standalone_constants.insert(h.name().to_vec());
+                }
+            }
+            modernize_constants(&mut cf.helpers, &standalone_constants);
 
             Ok(CompilerOutput::Module(compile_module(
                 context, opts, cf, &exports,
@@ -661,6 +676,11 @@ impl CompilerOpts for DefaultCompilerOpts {
         self.include_dirs.clone()
     }
 
+    fn set_filename(&self, filename: &str) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.filename = filename.to_string();
+        Rc::new(copy)
+    }
     fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.dialect = dialect;

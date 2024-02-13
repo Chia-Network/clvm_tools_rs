@@ -589,7 +589,6 @@ fn test_preprocessor_tours_includes_properly() {
         "(defun __chia__compile-list (args) (a (i args (com (c 4 (c (f args) (c (__chia__compile-list (r args)) ())))) (com ())) @))",
         "(defmac list ARGS (__chia__compile-list ARGS))",
         "(defun-inline / (A B) (f (divmod A B)))",
-        "(defun __chia__sha256tree (t) (a (i (l t) (com (sha256 2 (__chia__sha256tree (f t)) (__chia__sha256tree (r t)))) (com (sha256 1 t))) @))",
         "(defun-inline c* (A B) (c A B))",
         "(defun-inline a* (A B) (a A B))",
         "(defun-inline coerce (X) : (Any -> Any) X)",
