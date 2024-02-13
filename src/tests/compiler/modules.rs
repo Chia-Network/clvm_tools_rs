@@ -612,7 +612,7 @@ fn test_program_export_constant_and_function() {
         &[
             HexArgumentOutcome {
                 hexfile: d_hex_filename,
-                argument: "",
+                argument: "(19191 (a (q 16 (q . 19191) 5) (c (q (()) (+ (q . 19191) 5)) 1)) 0x3e6c399d8b10babad835468467a4b837036357ddfb8c320ba39a914c63152967 0x1fa8b8d2e2602ab69cc28db4b962bb13d32194d9fd4538478d08a03393fd4809)",
                 outcome: ContentEquals,
             },
         ]

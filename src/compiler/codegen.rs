@@ -786,8 +786,6 @@ pub fn generate_expr_code(
                                     eprintln!("want to use {} as a variable", decode_string(atom));
                                     if let Some(c) = compiler.module_constants.get(atom) {
                                         todo!();
-                                    } else {
-                                        todo!();
                                     }
 
                                     return Err(CompileErr(
