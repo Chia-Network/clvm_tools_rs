@@ -173,15 +173,19 @@ fn test_compile_and_run_program_with_modules(
     let mut symbol_table = HashMap::new();
     let mut includes = Vec::new();
     let runner = Rc::new(DefaultProgramRunner::new());
-    let _ = compile_file(
+    let compile_result = compile_file(
         &mut allocator,
         runner.clone(),
         opts,
         &content,
         &mut symbol_table,
         &mut includes,
-    )
-    .expect("should compile");
+    );
+
+    if runs.is_empty() {
+        assert!(compile_result.is_err());
+        return;
+    }
 
     for run in runs.iter() {
         let hex_data = source_opts
@@ -606,15 +610,33 @@ fn test_program_export_constant_and_function() {
     let filename = "resources/tests/module/test-export-constant-and-function.clsp";
     let content = fs::read_to_string(filename).expect("file should exist");
     let d_hex_filename = "resources/tests/module/test-export-constant-and-function_D.hex";
+    let f_hex_filename = "resources/tests/module/test-export-constant-and-function_F.hex";
     test_compile_and_run_program_with_modules(
         filename,
         &content,
         &[
             HexArgumentOutcome {
                 hexfile: d_hex_filename,
-                argument: "(19191 (a (q 16 (q . 19191) 5) (c (q (()) (+ (q . 19191) 5)) 1)) 0x3e6c399d8b10babad835468467a4b837036357ddfb8c320ba39a914c63152967 0x1fa8b8d2e2602ab69cc28db4b962bb13d32194d9fd4538478d08a03393fd4809)",
+                argument: "(19191 (a (q 16 12 5) (c (q (() . 19191) (+ 12 5) . 0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a) 1)) 0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a 0xf2fbdc1198b7d4879c160e0d28b3e59463ce11d4a34442266f6a1afe5b192f44)",
                 outcome: ContentEquals,
             },
+            HexArgumentOutcome {
+                hexfile: f_hex_filename,
+                argument: "(a (q 16 12 5) (c (q (() . 19191) (+ 12 5) . 0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a) 1))",
+                outcome: ContentEquals,
+            },
+        ]
+    );
+}
+
+#[test]
+fn test_detect_illegal_constant_arrangement() {
+    let filename = "resources/tests/module/illegal-constant-arrangement-1.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[
         ]
     );
 }

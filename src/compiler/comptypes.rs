@@ -332,7 +332,7 @@ pub enum ConstantKind {
     Simple,
     /// Module toplevel constants have extra guarantees which need a different
     /// resolution style.
-    Module,
+    Module(bool),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -1540,11 +1540,13 @@ impl PrimaryCodegen {
         codegen_copy
     }
 
-    pub fn add_module_constant(&self, name: &[u8], value: Rc<BodyForm>) -> Self {
+    pub fn add_module_constant(&self, name: &[u8], tabled: bool, value: Rc<BodyForm>) -> Self {
         let mut codegen_copy = self.clone();
-        codegen_copy
-            .tabled_constants
-            .insert(name.to_owned(), Rc::new(SExp::Nil(value.loc())));
+        if tabled {
+            codegen_copy
+                .tabled_constants
+                .insert(name.to_owned(), Rc::new(SExp::Nil(value.loc())));
+        }
         codegen_copy.module_constants.insert(name.to_owned(), value);
         codegen_copy
     }

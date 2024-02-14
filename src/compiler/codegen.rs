@@ -198,13 +198,15 @@ fn create_name_lookup_(
                     })
             }
         }
-        _ => Err(CompileErr(
-            l,
-            format!(
-                "operator or function atom {} not found",
-                decode_string(name),
-            ),
-        )),
+        _ => {
+            Err(CompileErr(
+                l,
+                format!(
+                    "operator or function atom {} not found",
+                    decode_string(name),
+                ),
+            ))
+        }
     }
 }
 
@@ -295,7 +297,7 @@ fn create_name_lookup(
             }
         } else {
             find_program
-            }
+        }
     })
 }
 
@@ -736,6 +738,32 @@ fn addresses_user_env(call: &[Rc<BodyForm>]) -> bool {
     call.len() == 2 && is_cons(call[0].borrow()) && is_at_env(call[1].borrow())
 }
 
+#[deprecated]
+pub fn generate_constant_expr_code(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    compiler: &PrimaryCodegen,
+    expr: Rc<BodyForm>,
+    atom: &[u8],
+) -> Result<CompiledCode, CompileErr> {
+    if let Some(_) = compiler.tabled_constants.get(atom) {
+        eprintln!("{} is a tabled constant, our env is {}", decode_string(atom), compiler.env);
+        let target_select = create_name_lookup(
+            compiler,
+            expr.loc(),
+            atom,
+            true,
+        )?;
+        eprintln!("got tabled constant {} with path {target_select}", decode_string(atom));
+        eprintln!("looking in generated env {}", compiler.env);
+        eprintln!("generated env {}", compiler.final_env);
+        return Ok(CompiledCode(expr.loc(), target_select));
+    }
+
+    eprintln!("generate constant {}: {}", decode_string(atom), expr.to_sexp());
+    generate_expr_code(context, opts, compiler, expr)
+}
+
 pub fn generate_expr_code(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
@@ -771,11 +799,13 @@ pub fn generate_expr_code(
                             // If we get here, we have a standalone module style constant which
                             // observes the full environment.  It does not exist _in_ the environment
                             // because nothing but the exports depend on it.
-                            return generate_expr_code(
+                            eprintln!("constant expr code via {} {}", decode_string(atom), mconstant.to_sexp());
+                            return generate_constant_expr_code(
                                 context,
                                 opts.clone(),
                                 compiler,
-                                mconstant.clone()
+                                mconstant.clone(),
+                                atom,
                             );
                         }
 
@@ -1496,6 +1526,7 @@ fn generate_constant_body_for_constants(
     context: &mut BasicCompileContext,
     compiler: &mut PrimaryCodegen,
     opts: Rc<dyn CompilerOpts>,
+    tabled: bool,
     to_generate: &DefconstData,
 ) -> Result<(), CompileErr> {
     let opts = opts.set_optimize(true);
@@ -1544,10 +1575,12 @@ fn generate_constant_body_for_constants(
             run_failure_to_compile_err(to_generate.loc.clone(), &e)
         })?;
 
-    compiler
-        .tabled_constants
-        .insert(to_generate.name.clone(), run_result.clone());
-    compiler.module_constants.remove(&to_generate.name);
+    if tabled {
+        compiler
+            .tabled_constants
+            .insert(to_generate.name.clone(), run_result.clone());
+    }
+    // compiler.module_constants.remove(&to_generate.name);
     if let ProgramEnvData::Module(path_to_constants, final_env) = &compiler.final_env {
         eprintln!("extras path {path_to_constants}");
         let orig_final_env = compiler.final_env.to_sexp();
@@ -1744,7 +1777,7 @@ fn decide_constant_generation_order(
     for h in helpers.iter() {
         let do_include = match h {
             HelperForm::Defconstant(dc) => {
-                matches!(dc.kind, ConstantKind::Module)
+                matches!(dc.kind, ConstantKind::Module(_))
             }
             HelperForm::Defun(false, _) => true,
             _ => false,
@@ -1779,7 +1812,7 @@ fn decide_constant_generation_order(
         .iter()
         .filter(|h| {
             if let HelperForm::Defconstant(dc) = h {
-                return matches!(dc.kind, ConstantKind::Module);
+                return matches!(dc.kind, ConstantKind::Module(_));
             }
 
             false
@@ -1971,8 +2004,9 @@ fn start_codegen(
                         ));
                     }
                 }
-                ConstantKind::Module => {
-                    code_generator.add_module_constant(&defc.name, defc.body.clone())
+                ConstantKind::Module(tabled) => {
+                    eprintln!("add module constant {} tabled {} t {}", decode_string(&defc.name), tabled, defc.tabled);
+                    code_generator.add_module_constant(&defc.name, tabled, defc.body.clone())
                 }
             },
             HelperForm::Defmacro(mac) => {
@@ -2115,13 +2149,13 @@ fn final_codegen(
 ) -> Result<PrimaryCodegen, CompileErr> {
     let opt_final_expr = context.pre_final_codegen_optimize(opts.clone(), compiler)?;
     let optimizer_opts = opts.clone();
-    generate_expr_code(context, opts, compiler, opt_final_expr).and_then(|code| {
-        let mut final_comp = compiler.clone();
-        let optimized_code =
-            context.post_codegen_function_optimize(optimizer_opts.clone(), None, code.1.clone())?;
-        final_comp.final_code = Some(CompiledCode(code.0, optimized_code));
-        Ok(final_comp)
-    })
+    eprintln!("final_codegen: opt_final_expr = {}", opt_final_expr.to_sexp());
+    let code = generate_expr_code(context, opts, compiler, opt_final_expr)?;
+    let mut final_comp = compiler.clone();
+    let optimized_code =
+        context.post_codegen_function_optimize(optimizer_opts.clone(), None, code.1.clone())?;
+    final_comp.final_code = Some(CompiledCode(code.0, optimized_code));
+    Ok(final_comp)
 }
 
 fn finalize_env_(
@@ -2325,16 +2359,6 @@ pub fn codegen(
             ProgramEnvData::Simple(finalize_env(context, opts.clone(), &c)?)
         };
 
-    let code =
-        if let Some(code) = c.final_code.as_ref() {
-            code.clone()
-        } else {
-            return Err(CompileErr(
-                Srcloc::start(&opts.filename()),
-                "Failed to generate code".to_string(),
-            ));
-        };
-
     // If we have delayed constants to generate, do them here as we have the final
     // form of the exported program's environment.  We must generate anything
     // needed by the constant time environment, replace the module constants and
@@ -2400,9 +2424,10 @@ pub fn codegen(
         // quineable way everywhere when module constants exist.
         let mut prev_repr = ProgramEnvData::Simple(Rc::new(SExp::Nil(c.final_env.loc())));
         let mut this_repr = c.final_env.clone();
-        eprintln!("start constant generation {this_repr}");
 
         while prev_repr != this_repr {
+            eprintln!("start constant generation {this_repr}");
+
             for h in generation_order.iter() {
                 match h {
                     HelperForm::Defun(false, dd) => {
@@ -2412,9 +2437,9 @@ pub fn codegen(
                         }
                     }
                     HelperForm::Defconstant(dc) => {
-                        if matches!(dc.kind, ConstantKind::Module) {
+                        if let ConstantKind::Module(tabled) = &dc.kind {
                             eprintln!("Generate constant body for {}", decode_string(&dc.name));
-                            generate_constant_body_for_constants(context, &mut c, opts.clone(), dc)?;
+                            generate_constant_body_for_constants(context, &mut c, opts.clone(), *tabled, dc)?;
                         }
                     }
                     _ => {}
@@ -2423,12 +2448,34 @@ pub fn codegen(
 
             prev_repr = this_repr;
             this_repr = c.final_env.clone();
+
+            eprintln!("regenerate: old repr {prev_repr}");
             eprintln!("regenerate: new repr {this_repr}");
         }
+
+        c = final_codegen(context, opts.clone(), &c)?;
+        c.final_env =
+            if !opts.in_defun() && !c.module_constants.is_empty() {
+                compose_final_env(context, opts.clone(), &c)?
+            } else {
+                ProgramEnvData::Simple(finalize_env(context, opts.clone(), &c)?)
+            };
 
         // Erase our additions to the environment.
         purge_chia_extras(&mut c, correct_env);
     }
+
+    let code =
+        if let Some(code) = c.final_code.as_ref() {
+            code.clone()
+        } else {
+            return Err(CompileErr(
+                Srcloc::start(&opts.filename()),
+                "Failed to generate code".to_string(),
+            ));
+        };
+
+    eprintln!("finalization will run code {}", code.1);
 
     // Capture symbols now that we have the final form of the produced code.
     context
@@ -2443,7 +2490,7 @@ pub fn codegen(
         );
 
         Ok(final_code)
-    } else if code_generator.left_env {
+    } else if c.left_env {
         let final_code = primapply(
             code.0.clone(),
             Rc::new(primquote(code.0.clone(), code.1)),
@@ -2453,6 +2500,8 @@ pub fn codegen(
                 Rc::new(SExp::Integer(code.0, bi_one())),
             )),
         );
+
+        eprintln!("FINAL CODE {}", final_code);
 
         Ok(final_code)
     } else {

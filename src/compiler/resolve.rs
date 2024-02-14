@@ -434,8 +434,6 @@ fn resolve_namespaces_in_expr(
                     decode_string(name),
                     display_namespace(parent_ns)
                 );
-                eprintln!("program {}", program.to_sexp());
-                todo!();
                 return Err(CompileErr(
                     expr.loc(),
                     format!(

@@ -292,8 +292,9 @@ fn modernize_constants(helpers: &mut [HelperForm], standalone_constants: &HashSe
         match h {
             HelperForm::Defconstant(d) => {
                 // Ensure that we upgrade the constant type.
-                d.kind = ConstantKind::Module;
                 let should_table = !standalone_constants.contains(&d.name);
+                eprintln!("upgrade constant {} tabled {}", decode_string(&d.name), should_table);
+                d.kind = ConstantKind::Module(should_table);
                 d.tabled = should_table;
             }
             HelperForm::Defnamespace(ns) => {
@@ -475,7 +476,7 @@ pub fn compile_module(
             append_to_function_list(&mut function_list, &fun_name, &export_name);
 
             program.helpers.push(HelperForm::Defconstant(DefconstData {
-                kind: ConstantKind::Module,
+                kind: ConstantKind::Module(true),
                 name: underscore_name.clone(),
                 body: form_hash_expression(make_hash_of),
                 tabled: true,
