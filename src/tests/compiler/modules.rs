@@ -617,12 +617,12 @@ fn test_program_export_constant_and_function() {
         &[
             HexArgumentOutcome {
                 hexfile: d_hex_filename,
-                argument: "(19191 (a (q 16 12 5) (c (q (() . 19191) (+ 12 5) . 0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a) 1)) 0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a 0xf2fbdc1198b7d4879c160e0d28b3e59463ce11d4a34442266f6a1afe5b192f44)",
+                argument: "(19191 (a (q 16 12 5) (c (q (() . 19191) (+ 12 5) . 0x3e6c399d8b10babad835468467a4b837036357ddfb8c320ba39a914c63152967) 1)) 0x3e6c399d8b10babad835468467a4b837036357ddfb8c320ba39a914c63152967 0x4d97c7350789cf972b8496c4393bfeae09f0e36d051ed0daa9fd1cfae9456e72)",
                 outcome: ContentEquals,
             },
             HexArgumentOutcome {
                 hexfile: f_hex_filename,
-                argument: "(a (q 16 12 5) (c (q (() . 19191) (+ 12 5) . 0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a) 1))",
+                argument: "(a (q 16 12 5) (c (q (() . 19191) (+ 12 5) . 0x3e6c399d8b10babad835468467a4b837036357ddfb8c320ba39a914c63152967) 1))",
                 outcome: ContentEquals,
             },
         ]
@@ -637,6 +637,24 @@ fn test_detect_illegal_constant_arrangement() {
         filename,
         &content,
         &[
+        ]
+    );
+}
+
+#[test]
+fn test_legal_all_tabled() {
+    let filename = "resources/tests/module/legal-all-tabled.clsp";
+    let content = fs::read_to_string(filename).expect("file should exist");
+    let hex_file = "resources/tests/module/legal-all-tabled_F.hex";
+    test_compile_and_run_program_with_modules(
+        filename,
+        &content,
+        &[
+            HexArgumentOutcome {
+                hexfile: hex_file,
+                argument: "(3)",
+                outcome: Run("6")
+            },
         ]
     );
 }

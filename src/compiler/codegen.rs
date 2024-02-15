@@ -33,6 +33,7 @@ use crate::util::{toposort, u8_from_number, Number, TopoSortItem};
 
 const MACRO_TIME_LIMIT: usize = 1000000;
 pub const CONST_EVAL_LIMIT: usize = 1000000;
+const CONSTANT_GENERATIONS_ALLOWED: usize = 50;
 
 /* As in the python code, produce a pair whose (thanks richard)
  *
@@ -1580,23 +1581,27 @@ fn generate_constant_body_for_constants(
             .tabled_constants
             .insert(to_generate.name.clone(), run_result.clone());
     }
-    // compiler.module_constants.remove(&to_generate.name);
-    if let ProgramEnvData::Module(path_to_constants, final_env) = &compiler.final_env {
-        eprintln!("extras path {path_to_constants}");
-        let orig_final_env = compiler.final_env.to_sexp();
-        eprintln!("replace path {} with {}", path_to_constants.clone() >> 1, run_result);
+    let final_env = compiler.final_env.to_sexp();
+    if let Some((cpath, _)) = find_named_path(compiler.env.clone(), &to_generate.name, bi_one(), bi_zero()) {
+        if let ProgramEnvData::Module(path_to_constants, final_env) = &compiler.final_env {
+            eprintln!("extras path {path_to_constants}");
+            let orig_final_env = compiler.final_env.to_sexp();
+            eprintln!("constant {}, replace path {} with {}", decode_string(&to_generate.name), path_to_constants.clone() >> 1, run_result);
 
-        compiler.final_env = ProgramEnvData::Module(
-            path_to_constants.clone(),
-            replace_by_paths(
-                final_env.clone(),
-                bi_one(),
-                bi_zero(),
-                &[(path_to_constants >> 1, run_result)],
-            )
-        );
-        eprintln!("orig_env  {orig_final_env}");
-        eprintln!("final_env {}", compiler.final_env);
+            compiler.final_env = ProgramEnvData::Module(
+                path_to_constants.clone(),
+                replace_by_paths(
+                    final_env.clone(),
+                    bi_one(),
+                    bi_zero(),
+                    &[(cpath >> 1, run_result)],
+                )
+            );
+            eprintln!("orig_env  {orig_final_env}");
+            eprintln!("final_env {}", compiler.final_env);
+        } else {
+            todo!();
+        }
     } else {
         todo!();
     }
@@ -1777,7 +1782,7 @@ fn decide_constant_generation_order(
     for h in helpers.iter() {
         let do_include = match h {
             HelperForm::Defconstant(dc) => {
-                matches!(dc.kind, ConstantKind::Module(_))
+                matches!(dc.kind, ConstantKind::Module(true))
             }
             HelperForm::Defun(false, _) => true,
             _ => false,
@@ -1812,7 +1817,7 @@ fn decide_constant_generation_order(
         .iter()
         .filter(|h| {
             if let HelperForm::Defconstant(dc) = h {
-                return matches!(dc.kind, ConstantKind::Module(_));
+                return matches!(dc.kind, ConstantKind::Module(true));
             }
 
             false
@@ -2424,8 +2429,9 @@ pub fn codegen(
         // quineable way everywhere when module constants exist.
         let mut prev_repr = ProgramEnvData::Simple(Rc::new(SExp::Nil(c.final_env.loc())));
         let mut this_repr = c.final_env.clone();
+        let mut steps = 0;
 
-        while prev_repr != this_repr {
+        while prev_repr != this_repr && steps < CONSTANT_GENERATIONS_ALLOWED {
             eprintln!("start constant generation {this_repr}");
 
             for h in generation_order.iter() {
@@ -2451,6 +2457,15 @@ pub fn codegen(
 
             eprintln!("regenerate: old repr {prev_repr}");
             eprintln!("regenerate: new repr {this_repr}");
+
+            steps += 1;
+        }
+
+        if steps == CONSTANT_GENERATIONS_ALLOWED {
+            return Err(CompileErr(
+                Srcloc::start(&opts.filename()),
+                "Constant generation didn't converge in allowed iteration limit".to_string(),
+            ));
         }
 
         c = final_codegen(context, opts.clone(), &c)?;
