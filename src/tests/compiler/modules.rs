@@ -1,5 +1,8 @@
+use rand::SeedableRng;
+use rand_chacha::ChaCha8Rng;
+use std::borrow::Borrow;
 use std::cell::{Ref, RefCell, RefMut};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::rc::Rc;
 
@@ -14,6 +17,7 @@ use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, PrimaryCodegen};
 use crate::compiler::dialect::{detect_modern, AcceptedDialect};
+use crate::compiler::fuzz::{FuzzGenerator, Rule};
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::BasicCompileContext;
@@ -48,7 +52,8 @@ impl TestModuleCompilerOpts {
     }
 
     pub fn get_written_file<'a>(&'a self, name: &str) -> Option<Vec<u8>> {
-        let files: Ref<'_, HashMap<String, Vec<u8>>> = self.written_files.borrow();
+        let files_ref: &RefCell<HashMap<String, Vec<u8>>> = self.written_files.borrow();
+        let files: &HashMap<String, Vec<u8>> = &files_ref.borrow();
         files.get(name).map(|f| f.to_vec())
     }
 }
@@ -154,17 +159,22 @@ struct HexArgumentOutcome<'a> {
     outcome: DesiredOutcome<'a>,
 }
 
-fn test_compile_and_run_program_with_modules(
+struct PerformCompileResult {
+    compiled: CompilerOutput,
+    source_opts: TestModuleCompilerOpts,
+}
+
+fn perform_compile_of_file(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
     filename: &str,
     content: &str,
-    runs: &[HexArgumentOutcome],
-) {
+) -> Result<PerformCompileResult, CompileErr> {
     let loc = Srcloc::start(filename);
     let parsed: Vec<Rc<SExp>> = parse_sexp(loc.clone(), content.bytes()).expect("should parse");
     let listed = Rc::new(enlist(loc.clone(), &parsed));
-    let mut allocator = Allocator::new();
-    let nodeptr = convert_to_clvm_rs(&mut allocator, listed.clone()).expect("should convert");
-    let dialect = detect_modern(&mut allocator, nodeptr);
+    let nodeptr = convert_to_clvm_rs(allocator, listed.clone()).expect("should convert");
+    let dialect = detect_modern(allocator, nodeptr);
     let orig_opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(filename))
         .set_dialect(dialect)
         .set_search_paths(&["resources/tests/module".to_string()]);
@@ -172,23 +182,44 @@ fn test_compile_and_run_program_with_modules(
     let opts: Rc<dyn CompilerOpts> = Rc::new(source_opts.clone());
     let mut symbol_table = HashMap::new();
     let mut includes = Vec::new();
-    let runner = Rc::new(DefaultProgramRunner::new());
-    let compile_result = compile_file(
-        &mut allocator,
+    let compiled = compile_file(
+        allocator,
         runner.clone(),
         opts,
         &content,
         &mut symbol_table,
         &mut includes,
+    )?;
+    Ok(PerformCompileResult {
+        compiled,
+        source_opts,
+    })
+}
+
+fn test_compile_and_run_program_with_modules(
+    filename: &str,
+    content: &str,
+    runs: &[HexArgumentOutcome],
+) {
+    let mut allocator = Allocator::new();
+    let runner = Rc::new(DefaultProgramRunner::new());
+    let compile_result = perform_compile_of_file(
+        &mut allocator,
+        runner.clone(),
+        filename,
+        content
     );
 
-    if runs.is_empty() {
-        assert!(compile_result.is_err());
-        return;
-    }
+    let compile_result =
+        if runs.is_empty() {
+            assert!(compile_result.is_err());
+            return;
+        } else {
+            compile_result.expect("Was expected to compile")
+        };
 
     for run in runs.iter() {
-        let hex_data = source_opts
+        let hex_data = compile_result.source_opts
             .get_written_file(run.hexfile)
             .expect("should have written hex data beside the source file");
         let mut hex_stream = Stream::new(Some(
@@ -657,4 +688,144 @@ fn test_legal_all_tabled() {
             },
         ]
     );
+}
+
+// Property test of sorts:
+//
+// Make 1-5 constants with any of these expression types:
+//   let or assign form
+//   lambda (and a corresponding constant applying it either directly or via map
+//   or filter)?
+//   a few basic operators
+// Constants generated one at a time, depending on each other in tiers.
+// Constants generated all at once, depending on any arrangement of the others.
+//
+// Do the above arrangement but adding 1 or 2 functions that depend on the
+// constants and each other.
+//
+// Maybe put some more thought into fuzzing infra?
+struct ModuleConstantExpectation {
+    constants_and_values: HashMap<Vec<u8>, Rc<SExp>>,
+    exports: HashSet<Vec<u8>>,
+}
+impl ModuleConstantExpectation {
+    fn new() -> Self {
+        ModuleConstantExpectation {
+            exports: HashSet::new(),
+            constants_and_values: HashMap::new()
+        }
+    }
+}
+
+struct TestModuleConstantFuzzTopRule { another_constant: bool }
+impl TestModuleConstantFuzzTopRule {
+    fn new(c: bool) -> Self {
+        TestModuleConstantFuzzTopRule { another_constant: c }
+    }
+}
+impl Rule<ModuleConstantExpectation> for TestModuleConstantFuzzTopRule {
+    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Option<Rc<SExp>> {
+        let heritage_list: Vec<String> = heritage.iter().map(|h| h.to_string()).collect();
+        eprintln!("T rule check {} {idx} term {terminate} {heritage_list:?}", decode_string(tag));
+        if tag == b"top" {
+            if self.another_constant {
+                let start_program = parse_sexp(Srcloc::start("*top*"), format!("( (include *standard-cl-23*) ${{{idx}:constant}} . ${{{}:constant-program-tail}})", idx + 1).bytes()).expect("should parse");
+                return Some(start_program[0].clone());
+            } else {
+                let start_program = parse_sexp(Srcloc::start("*top*"), format!("( (include *standard-cl-23*) (defconstant A ${{{idx}:constant-body}}) (export A))").bytes()).expect("should parse");
+                state.exports.insert(b"A".to_vec());
+                return Some(start_program[0].clone());
+            }
+        }
+
+        None
+    }
+}
+
+struct TestModuleConstantFuzzConstantBodyRule { }
+impl TestModuleConstantFuzzConstantBodyRule {
+    fn new() -> Self { TestModuleConstantFuzzConstantBodyRule { } }
+}
+
+fn get_constant_id(heritage: &[Rc<SExp>]) -> Option<Vec<u8>> {
+    if heritage.len() < 2 {
+        return None;
+    }
+
+    if let SExp::Cons(_, c, _) = heritage[heritage.len() - 2].borrow() {
+        if let SExp::Atom(_, a) = c.borrow() {
+            return Some(a.to_vec());
+        }
+    }
+
+    None
+}
+
+impl Rule<ModuleConstantExpectation> for TestModuleConstantFuzzConstantBodyRule {
+    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Option<Rc<SExp>> {
+        let heritage_list: Vec<String> = heritage.iter().map(|h| h.to_string()).collect();
+        eprintln!("C rule check {} {idx} term {terminate} {heritage_list:?}", decode_string(tag));
+
+        if tag == b"constant-body" {
+            let body = parse_sexp(Srcloc::start("*constant-body*"), format!("1").bytes()).expect("should parse");
+            let constant_id =
+                if let Some(constant_id) = get_constant_id(heritage) {
+                    constant_id
+                } else {
+                    todo!();
+                };
+
+            state.constants_and_values.insert(constant_id, body[0].clone());
+            return Some(body[0].clone());
+        }
+
+        None
+    }
+}
+
+#[test]
+fn test_property_fuzz_stable_constants() {
+    let mut rng = ChaCha8Rng::from_seed([
+        1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,
+        2,2,2,2,2,2,2,2,
+        2,2,2,2,2,2,2,2,
+    ]);
+    let mut fuzzgen = FuzzGenerator::new(&[
+        Rc::new(TestModuleConstantFuzzTopRule::new(false)),
+        Rc::new(TestModuleConstantFuzzTopRule::new(true)),
+        Rc::new(TestModuleConstantFuzzConstantBodyRule::new()),
+    ]);
+
+    let mut idx = 0;
+    let mut mc = ModuleConstantExpectation::new();
+    while fuzzgen.expand(&mut mc, idx < 100, &mut rng).expect("should expand") {
+        idx += 1;
+    }
+
+    let forms =
+        if let Some(flist) = fuzzgen.result().proper_list() {
+            flist
+        } else {
+            todo!();
+        };
+
+    let program_text = forms.iter().map(|f| f.to_string()).collect::<Vec<String>>().join("\n");
+    eprintln!("program_text\n{program_text}");
+    let mut allocator = Allocator::new();
+    let runner = Rc::new(DefaultProgramRunner::new());
+    let compiled = perform_compile_of_file(
+        &mut allocator,
+        runner.clone(),
+        "test.clsp",
+        &program_text,
+    ).expect("should compile");
+    for cname in mc.exports.iter() {
+        if let Some(cval) = mc.constants_and_values.get(cname) {
+            eprintln!("{} = {cval}", decode_string(cname));
+        } else {
+            todo!();
+        }
+    }
+    todo!();
 }
