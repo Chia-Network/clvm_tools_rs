@@ -13,7 +13,7 @@ use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm_tools::binutils::{assemble, disassemble};
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 
-use crate::compiler::clvm::convert_to_clvm_rs;
+use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs};
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, PrimaryCodegen};
 use crate::compiler::dialect::{detect_modern, AcceptedDialect};
@@ -196,6 +196,22 @@ fn perform_compile_of_file(
     })
 }
 
+fn hex_to_clvm(allocator: &mut Allocator, hex_data: &[u8]) -> clvmr::allocator::NodePtr {
+    let mut hex_stream = Stream::new(Some(
+        Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(decode_string(
+            &hex_data,
+        ))))
+            .expect("should be valid hex"),
+    ));
+    sexp_from_stream(
+        allocator,
+        &mut hex_stream,
+        Box::new(SimpleCreateCLVMObject {}),
+    )
+        .expect("hex data should decode as sexp")
+        .1
+}
+
 fn test_compile_and_run_program_with_modules(
     filename: &str,
     content: &str,
@@ -222,19 +238,7 @@ fn test_compile_and_run_program_with_modules(
         let hex_data = compile_result.source_opts
             .get_written_file(run.hexfile)
             .expect("should have written hex data beside the source file");
-        let mut hex_stream = Stream::new(Some(
-            Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(decode_string(
-                &hex_data,
-            ))))
-            .expect("should be valid hex"),
-        ));
-        let compiled_node = sexp_from_stream(
-            &mut allocator,
-            &mut hex_stream,
-            Box::new(SimpleCreateCLVMObject {}),
-        )
-        .expect("hex data should decode as sexp")
-        .1;
+        let compiled_node = hex_to_clvm(&mut allocator, &hex_data);
 
         if matches!(&run.outcome, ContentEquals) {
             let disassembled = disassemble(&allocator, compiled_node, None);
@@ -822,10 +826,15 @@ fn test_property_fuzz_stable_constants() {
     ).expect("should compile");
     for cname in mc.exports.iter() {
         if let Some(cval) = mc.constants_and_values.get(cname) {
-            eprintln!("{} = {cval}", decode_string(cname));
+            let hex_file_name = format!("test_{}.hex", decode_string(cname));
+            let hex_data = compiled.source_opts.get_written_file(&hex_file_name).expect("hex file should exist");
+            let compiled_node = hex_to_clvm(&mut allocator, &hex_data);
+            let converted_node = convert_from_clvm_rs(&mut allocator, cval.loc(), compiled_node).expect("should convert to sexp objects");
+            assert_eq!(cval, &converted_node);
         } else {
             todo!();
         }
     }
-    todo!();
+
+    // We've checked all predicted values.
 }
