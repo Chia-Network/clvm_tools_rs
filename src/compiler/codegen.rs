@@ -1469,7 +1469,6 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
                     inline,
                     DefunData {
                         body: hoisted_body,
-                        ty: defun.ty.clone(),
                         ..defun.clone()
                     },
                 );
@@ -1478,6 +1477,26 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
 
                 for (j, hh) in hoisted_helpers.iter().enumerate() {
                     result.insert(i + j, hh.clone());
+                }
+            }
+            HelperForm::Defconstant(defconst) => {
+                if matches!(defconst.kind, ConstantKind::Module(_)) {
+                    let helper_result =
+                        hoist_body_let_binding(None, Rc::new(SExp::Nil(defconst.loc.clone())), defconst.body.clone())?;
+                    let hoisted_helpers = helper_result.0;
+                    let hoisted_body = helper_result.1.clone();
+                    result[i] = HelperForm::Defconstant(DefconstData {
+                        body: hoisted_body,
+                        ..defconst.clone()
+                    });
+
+                    i += 1;
+
+                    for (j, hh) in hoisted_helpers.iter().enumerate() {
+                        result.insert(i + j, hh.clone());
+                    }
+                } else {
+                    i += 1;
                 }
             }
             _ => {
@@ -1912,6 +1931,8 @@ fn start_codegen(
     opts: Rc<dyn CompilerOpts>,
     mut program: CompileForm,
 ) -> Result<PrimaryCodegen, CompileErr> {
+    eprintln!("start_codegen: {}", program.to_sexp());
+
     // Choose code generator configuration
     let mut code_generator = match opts.code_generator() {
         None => empty_compiler(opts.prim_map(), program.loc.clone()),

@@ -175,6 +175,7 @@ pub fn compile_from_compileform(
 
     // Resolve includes, convert program source to lexemes
     let p2 = do_desugar(&p1)?;
+    eprintln!("DESUGARED PROGRAM: {}", p2.to_sexp());
 
     finish_compilation(context, opts, p2)
 }
