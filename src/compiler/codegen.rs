@@ -9,7 +9,7 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 
 use crate::compiler::clvm::{run, truthy};
-use crate::compiler::compiler::{compile_from_compileform, is_at_capture};
+use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, CallSpec,
     Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, CompilerOutput, ConstantKind,
@@ -30,6 +30,16 @@ use crate::compiler::srcloc::Srcloc;
 use crate::compiler::StartOfCodegenOptimization;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::{toposort, u8_from_number, Number, TopoSortItem};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+lazy_static! {
+    pub static ref COUNT: AtomicUsize = AtomicUsize::new(0);
+}
+
+pub fn count_tick() {
+    let count = COUNT.fetch_add(1, Ordering::SeqCst);
+    assert!(count < 147);
+}
 
 const MACRO_TIME_LIMIT: usize = 1000000;
 pub const CONST_EVAL_LIMIT: usize = 1000000;
@@ -669,7 +679,7 @@ fn compile_call(
                             .compile_program(&mut context_wrapper.context, Rc::new(use_body))?;
 
                         match code {
-                            CompilerOutput::Program(code) => Ok(CompiledCode(
+                            CompilerOutput::Program(_, code) => Ok(CompiledCode(
                                 call.loc.clone(),
                                 Rc::new(primquote(call.loc.clone(), Rc::new(code))),
                             )),
@@ -748,20 +758,15 @@ pub fn generate_constant_expr_code(
     atom: &[u8],
 ) -> Result<CompiledCode, CompileErr> {
     if let Some(_) = compiler.tabled_constants.get(atom) {
-        eprintln!("{} is a tabled constant, our env is {}", decode_string(atom), compiler.env);
         let target_select = create_name_lookup(
             compiler,
             expr.loc(),
             atom,
             true,
         )?;
-        eprintln!("got tabled constant {} with path {target_select}", decode_string(atom));
-        eprintln!("looking in generated env {}", compiler.env);
-        eprintln!("generated env {}", compiler.final_env);
         return Ok(CompiledCode(expr.loc(), target_select));
     }
 
-    eprintln!("generate constant {}: {}", decode_string(atom), expr.to_sexp());
     generate_expr_code(context, opts, compiler, expr)
 }
 
@@ -970,7 +975,7 @@ fn codegen_defun(
         let code =
             updated_opts.compile_program(&mut context_wrapper.context, Rc::new(tocompile))?;
         match code {
-            CompilerOutput::Program(p) => p,
+            CompilerOutput::Program(_, p) => p,
             CompilerOutput::Module(_) => {
                 todo!();
             }
@@ -1576,9 +1581,6 @@ fn generate_constant_body_for_constants(
         compiler.final_env.to_sexp(),
         args.clone(),
     ));
-    eprintln!("final_env for constant generation {}", whole_env);
-    eprintln!("with env {}", compiler.env);
-    eprintln!("variables in env: {}", show_variables_in_env(compiler.env.clone(), whole_env.clone()));
     let run_result = run(
         context.allocator(),
         runner,
@@ -1591,7 +1593,6 @@ fn generate_constant_body_for_constants(
         Some(MACRO_TIME_LIMIT),
     )
         .map_err(|e| {
-            eprintln!("generating constant {}, we ran program {} and got error {e}", decode_string(&to_generate.name), generated_code);
             run_failure_to_compile_err(to_generate.loc.clone(), &e)
         })?;
 
@@ -1603,9 +1604,7 @@ fn generate_constant_body_for_constants(
     let final_env = compiler.final_env.to_sexp();
     if let Some((cpath, _)) = find_named_path(compiler.env.clone(), &to_generate.name, bi_one(), bi_zero()) {
         if let ProgramEnvData::Module(path_to_constants, final_env) = &compiler.final_env {
-            eprintln!("extras path {path_to_constants}");
             let orig_final_env = compiler.final_env.to_sexp();
-            eprintln!("constant {}, replace path {} with {}", decode_string(&to_generate.name), path_to_constants.clone() >> 1, run_result);
 
             compiler.final_env = ProgramEnvData::Module(
                 path_to_constants.clone(),
@@ -1616,8 +1615,6 @@ fn generate_constant_body_for_constants(
                     &[(cpath >> 1, run_result)],
                 )
             );
-            eprintln!("orig_env  {orig_final_env}");
-            eprintln!("final_env {}", compiler.final_env);
         } else {
             todo!();
         }
@@ -1719,7 +1716,6 @@ fn find_satisfied_constants(
                 .cloned()
                 .collect();
             let deps_list: Vec<String> = uncovered_deps.iter().map(|d| decode_string(d)).collect();
-            eprintln!("constant {} has deps {deps_list:?}", decode_string(c.name()));
             uncovered_deps.is_empty()
         })
         .cloned()
@@ -1771,7 +1767,6 @@ fn replace_by_paths(
 
     for (p, v) in collection.iter() {
         if *p == this_path {
-            eprintln!("replace {v} at path {p}");
             return v.clone();
         }
     }
@@ -1869,11 +1864,9 @@ fn decide_constant_generation_order(
 
     while !constant_set.is_empty() {
         let remaining_constants: Vec<String> = constant_set.iter().map(|c| decode_string(c)).collect();
-        eprintln!("constant_set {remaining_constants:?}");
         let new_satisfied_constants =
             find_satisfied_constants(&depgraph, &function_set, &constant_set, &constants);
         let new_satcon: Vec<String> = new_satisfied_constants.iter().map(|c| decode_string(c.name())).collect();
-        eprintln!("processing satisfied constants {new_satcon:?}");
 
         if !new_satisfied_constants.is_empty() {
             for c in new_satisfied_constants.iter() {
@@ -1898,7 +1891,6 @@ fn decide_constant_generation_order(
         if let Some(least_constant) =
             find_easiest_constant(&ce, &depgraph, &constant_set, &constants)
         {
-            eprintln!("least_constant {}", least_constant.to_sexp());
             let mut functions_it_depends_on_hash = HashSet::new();
             depgraph.get_full_depends_on(&mut functions_it_depends_on_hash, least_constant.name());
             let mut functions_it_depends_on = functions
@@ -1921,7 +1913,6 @@ fn decide_constant_generation_order(
     }
 
     let result_order: Vec<String> = result.iter().map(|h| decode_string(h.name())).collect();
-    eprintln!("result order {result_order:?}");
 
     Ok(result)
 }
@@ -1931,7 +1922,6 @@ fn start_codegen(
     opts: Rc<dyn CompilerOpts>,
     mut program: CompileForm,
 ) -> Result<PrimaryCodegen, CompileErr> {
-    eprintln!("start_codegen: {}", program.to_sexp());
 
     // Choose code generator configuration
     let mut code_generator = match opts.code_generator() {
@@ -1965,7 +1955,7 @@ fn start_codegen(
                     let code = match updated_opts
                         .compile_program(&mut context_wrapper.context, Rc::new(expand_program))?
                     {
-                        CompilerOutput::Program(code) => code,
+                        CompilerOutput::Program(_, code) => code,
                         CompilerOutput::Module(_) => {
                             todo!();
                         }
@@ -2031,7 +2021,6 @@ fn start_codegen(
                     }
                 }
                 ConstantKind::Module(tabled) => {
-                    eprintln!("add module constant {} tabled {} t {}", decode_string(&defc.name), tabled, defc.tabled);
                     code_generator.add_module_constant(&defc.name, tabled, defc.body.clone())
                 }
             },
@@ -2055,7 +2044,7 @@ fn start_codegen(
                 let code = match updated_opts
                     .compile_program(&mut context_wrapper.context, macro_program)?
                 {
-                    CompilerOutput::Program(p) => p,
+                    CompilerOutput::Program(_, p) => p,
                     CompilerOutput::Module(_) => {
                         todo!();
                     }
@@ -2175,7 +2164,6 @@ fn final_codegen(
 ) -> Result<PrimaryCodegen, CompileErr> {
     let opt_final_expr = context.pre_final_codegen_optimize(opts.clone(), compiler)?;
     let optimizer_opts = opts.clone();
-    eprintln!("final_codegen: opt_final_expr = {}", opt_final_expr.to_sexp());
     let code = generate_expr_code(context, opts, compiler, opt_final_expr)?;
     let mut final_comp = compiler.clone();
     let optimized_code =
@@ -2394,14 +2382,6 @@ pub fn codegen(
         // Install names in the environment based on the contents of the
         // __chia__extras helper.
         let correct_env = c.env.clone();
-        if let Some((chia_extras_path, old_val)) =
-            find_named_path(c.env.clone(), b"__chia__extras", bi_one(), bi_zero())
-        {
-            eprintln!(
-                "ENSURE PATH IN VALUES IS AVAILABLE {chia_extras_path}: {}",
-                c.final_env
-            );
-        }
         // We have module style constants so there is more work to do.
         // Get a viable generation order for the constant generation or fail.
         let generation_order =
@@ -2411,7 +2391,6 @@ pub fn codegen(
             .iter()
             .map(|h| decode_string(h.name()))
             .collect();
-        eprintln!("generation order {gen_order_strings:?}");
 
         // We've got an order for generation that will allow us to have correct
         // constant order.  At this point we know that the constant order is
@@ -2453,8 +2432,6 @@ pub fn codegen(
         let mut steps = 0;
 
         while prev_repr != this_repr && steps < CONSTANT_GENERATIONS_ALLOWED {
-            eprintln!("start constant generation {this_repr}");
-
             for h in generation_order.iter() {
                 match h {
                     HelperForm::Defun(false, dd) => {
@@ -2465,7 +2442,6 @@ pub fn codegen(
                     }
                     HelperForm::Defconstant(dc) => {
                         if let ConstantKind::Module(tabled) = &dc.kind {
-                            eprintln!("Generate constant body for {}", decode_string(&dc.name));
                             generate_constant_body_for_constants(context, &mut c, opts.clone(), *tabled, dc)?;
                         }
                     }
@@ -2475,9 +2451,6 @@ pub fn codegen(
 
             prev_repr = this_repr;
             this_repr = c.final_env.clone();
-
-            eprintln!("regenerate: old repr {prev_repr}");
-            eprintln!("regenerate: new repr {this_repr}");
 
             steps += 1;
         }
@@ -2511,8 +2484,6 @@ pub fn codegen(
             ));
         };
 
-    eprintln!("finalization will run code {}", code.1);
-
     // Capture symbols now that we have the final form of the produced code.
     context
         .symbols()
@@ -2536,9 +2507,6 @@ pub fn codegen(
                 Rc::new(SExp::Integer(code.0, bi_one())),
             )),
         );
-
-        eprintln!("FINAL CODE {}", final_code);
-
         Ok(final_code)
     } else {
         let code_borrowed: &SExp = code.1.borrow();

@@ -48,7 +48,6 @@ pub fn deinline_opt(
     let depgraph = FunctionDependencyGraph::new(&compileform);
 
     let mut best_compileform = compileform.clone();
-    eprintln!("start deinline with baseline {}", best_compileform.to_sexp());
     let generated_program = codegen(context, opts.clone(), &best_compileform)?;
     let mut metric = sexp_scale(&generated_program);
     let flip_helper = |h: &mut HelperForm| {
@@ -204,7 +203,6 @@ pub fn deinline_opt(
                     continue;
                 }
 
-                eprintln!("deinline_opt try program {}", compileform.to_sexp());
                 let maybe_smaller_program = codegen(context, opts.clone(), &compileform)?;
                 let new_metric = sexp_scale(&maybe_smaller_program);
 

@@ -175,7 +175,6 @@ pub fn compile_from_compileform(
 
     // Resolve includes, convert program source to lexemes
     let p2 = do_desugar(&p1)?;
-    eprintln!("DESUGARED PROGRAM: {}", p2.to_sexp());
 
     finish_compilation(context, opts, p2)
 }
@@ -294,7 +293,6 @@ fn modernize_constants(helpers: &mut [HelperForm], standalone_constants: &HashSe
             HelperForm::Defconstant(d) => {
                 // Ensure that we upgrade the constant type.
                 let should_table = !standalone_constants.contains(&d.name);
-                eprintln!("upgrade constant {} tabled {}", decode_string(&d.name), should_table);
                 d.kind = ConstantKind::Module(should_table);
                 d.tabled = should_table;
             }
@@ -340,7 +338,7 @@ pub fn compile_module(
 
             program = resolve_namespaces(opts.clone(), &program)?;
 
-            let output = Rc::new(compile_from_compileform(context, opts.clone(), program)?);
+            let output = Rc::new(compile_from_compileform(context, opts.clone(), program.clone())?);
             let converted = convert_to_clvm_rs(context.allocator(), output.clone())?;
 
             let mut output_path = PathBuf::from(&opts.filename());
@@ -351,6 +349,7 @@ pub fn compile_module(
             opts.write_new_file(&output_path_str, stream.get_value().hex().as_bytes())?;
             return Ok(CompileModuleOutput {
                 summary: Rc::new(SExp::Nil(loc.clone())),
+                includes: program.include_forms.clone(),
                 components: vec![CompileModuleComponent {
                     shortname: b"program".to_vec(),
                     filename: output_path_str,
@@ -508,11 +507,9 @@ pub fn compile_module(
     }
 
     program.exp = function_list;
-    eprintln!("program after adding export related stuff {}", program.to_sexp());
     program = resolve_namespaces(opts.clone(), &program)?;
 
-    let compiled_result = Rc::new(compile_from_compileform(context, opts.clone(), program)?);
-    eprintln!("compiled_result {compiled_result}");
+    let compiled_result = Rc::new(compile_from_compileform(context, opts.clone(), program.clone())?);
     let result_clvm = convert_to_clvm_rs(context.allocator(), compiled_result)?;
     let nil = context.allocator().null();
     let runner = context.runner();
@@ -520,7 +517,6 @@ pub fn compile_module(
         .run_program(context.allocator(), result_clvm, nil, None)
         .map_err(|e| {
             let dis = disassemble(context.allocator(), e.0, None);
-            eprintln!("error {e:?} running module program ({dis})");
             CompileErr(
                 loc.clone(),
                 "failed to run intermediate module program".to_string(),
@@ -561,6 +557,7 @@ pub fn compile_module(
 
     Ok(CompileModuleOutput {
         summary: Rc::new(prog_output),
+        includes: program.include_forms.clone(),
         components,
     })
 }
@@ -573,10 +570,13 @@ pub fn compile_pre_forms(
     let p0 = frontend(opts.clone(), pre_forms)?;
 
     match p0 {
-        FrontendOutput::CompileForm(p0) => Ok(CompilerOutput::Program(compile_from_compileform(
+        FrontendOutput::CompileForm(p0) => Ok(CompilerOutput::Program(p0.include_forms.clone(), compile_from_compileform(
             context, opts, p0,
         )?)),
         FrontendOutput::Module(mut cf, exports) => {
+            let imports: Vec<String> = cf.include_forms.iter().map(|i| decode_string(&i.name)).collect();
+            eprintln!("{} -> {imports:?}", opts.filename());
+
             // cl23 always reflects optimization.
             let dialect = opts.dialect();
             let opts = if let Some(stepping) = dialect.stepping.as_ref() {
@@ -606,7 +606,6 @@ pub fn compile_pre_forms(
                 let mut constant_is_depended = HashSet::new();
                 depgraph.get_full_depended_on_by(&mut constant_is_depended, h.name());
                 if constant_is_depended.is_empty() {
-                    eprintln!("constant {} is stand alone", decode_string(h.name()));
                     standalone_constants.insert(h.name().to_vec());
                 }
             }

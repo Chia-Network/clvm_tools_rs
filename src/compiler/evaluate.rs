@@ -1679,7 +1679,7 @@ impl<'info> Evaluator {
         );
         let com_result =
             match updated_opts.compile_program(&mut context_wrapper.context, use_body)? {
-                CompilerOutput::Program(p) => p,
+                CompilerOutput::Program(_, p) => p,
                 CompilerOutput::Module(_) => {
                     todo!();
                 }

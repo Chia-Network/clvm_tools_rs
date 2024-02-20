@@ -560,9 +560,12 @@ impl Preprocessor {
                         SExp::QuotedString(srcloc.clone(), b'x', c.hash.clone()),
                     ));
                 }
+                let mut module_output_includes = module_output.includes.clone();
+                drop(context_wrapper);
+                includes.append(&mut module_output_includes);
                 Ok(output)
             }
-            CompilerOutput::Program(compile_output) => Ok(vec![
+            CompilerOutput::Program(_, compile_output) => Ok(vec![
                 make_constant(b"program", compile_output.clone()),
                 make_constant(
                     b"program_hash",
@@ -575,8 +578,11 @@ impl Preprocessor {
     fn import_new_module(
         &mut self,
         loc: Srcloc,
+        kw: &Srcloc,
+        nl: &Srcloc,
         includes: &mut Vec<IncludeDesc>,
         import_name: &ImportLongName,
+        kind: &ModuleImportSpec,
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
         let filename_clsp = decode_string(
             &import_name.as_u8_vec(LongNameTranslation::Filename(".clsp".to_string())),
@@ -588,6 +594,12 @@ impl Preprocessor {
         if let Ok((full_name, content)) =
             self.opts.read_new_file(self.opts.filename(), filename_clsp)
         {
+            includes.push(IncludeDesc {
+                kw: kw.clone(),
+                nl: nl.clone(),
+                name: full_name.as_bytes().to_vec(),
+                kind: Some(IncludeProcessType::Module(Box::new(kind.clone()))),
+            });
             return self.import_program(includes, import_name, &full_name, &content);
         }
 
@@ -625,6 +637,13 @@ impl Preprocessor {
 
         self.namespace_stack.pop();
 
+        includes.push(IncludeDesc {
+            kw: kw.clone(),
+            nl: nl.clone(),
+            name: full_name.as_bytes().to_vec(),
+            kind: Some(IncludeProcessType::Module(Box::new(kind.clone()))),
+        });
+
         Ok(out_forms)
     }
 
@@ -652,7 +671,7 @@ impl Preprocessor {
         self.prototype_program.push(empty_ns);
 
         // Process this module.
-        let imported_content = self.import_new_module(loc.clone(), includes, &full_import_name)?;
+        let imported_content = self.import_new_module(loc.clone(), &kw, &nl, includes, &full_import_name, spec)?;
         let helper_forms: Vec<Rc<SExp>> = vec![
             make_namespace_container(&loc, &nl, &full_import_name, imported_content)?,
             ns_helper.to_sexp(),

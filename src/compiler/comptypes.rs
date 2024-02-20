@@ -1603,19 +1603,20 @@ pub struct CompileModuleComponent {
 #[derive(Debug, Clone, Serialize)]
 pub struct CompileModuleOutput {
     pub summary: Rc<SExp>,
+    pub includes: Vec<IncludeDesc>,
     pub components: Vec<CompileModuleComponent>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub enum CompilerOutput {
-    Program(SExp),
+    Program(Vec<IncludeDesc>, SExp),
     Module(CompileModuleOutput),
 }
 
 impl CompilerOutput {
     pub fn to_sexp(&self) -> SExp {
         match self {
-            CompilerOutput::Program(x) => x.clone(),
+            CompilerOutput::Program(_, x) => x.clone(),
             CompilerOutput::Module(x) => {
                 let borrowed: &SExp = x.summary.borrow();
                 borrowed.clone()
@@ -1625,7 +1626,7 @@ impl CompilerOutput {
 
     pub fn loc(&self) -> Srcloc {
         match self {
-            CompilerOutput::Program(x) => x.loc(),
+            CompilerOutput::Program(_, x) => x.loc(),
             CompilerOutput::Module(x) => x.summary.loc(),
         }
     }
