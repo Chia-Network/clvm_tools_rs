@@ -294,7 +294,6 @@ fn modernize_constants(helpers: &mut [HelperForm], standalone_constants: &HashSe
         match h {
             HelperForm::Defconstant(d) => {
                 let standalone_constant_names: Vec<String> = standalone_constants.iter().map(|d| decode_string(d)).collect();
-                eprintln!("constant {} check standalone {standalone_constant_names:?}", decode_string(&d.name));
                 // Ensure that we upgrade the constant type.
                 let should_table = !standalone_constants.contains(&d.name);
                 d.kind = ConstantKind::Module(should_table);
@@ -319,7 +318,6 @@ fn capture_standalone_constants(
         if let HelperForm::Defconstant(dc) = h {
             depgraph.get_full_depended_on_by(&mut constant_is_depended, h.name());
             let depended_list: Vec<String> = constant_is_depended.iter().map(|d| decode_string(d)).collect();
-            eprintln!("constant {} is depended on by {depended_list:?}", h.to_sexp());
             if constant_is_depended.is_empty() {
                 standalone_constants.insert(h.name().to_vec());
             }
@@ -677,7 +675,6 @@ pub fn try_to_use_existing_hex_outputs(
 
             for e in exports.iter() {
                 let hex_file_name = get_hex_name_of_export(opts.clone(), &cf.loc, e)?;
-                eprintln!("hex_file_name {hex_file_name}");
                 let (_, hex_data) = opts.read_new_file(opts.filename(), hex_file_name.clone())?;
                 let loaded_hex_data = hex_to_modern_sexp(
                     context.allocator(),
@@ -692,12 +689,13 @@ pub fn try_to_use_existing_hex_outputs(
                         b"program".to_vec()
                     };
 
+                let hash = sha256tree(loaded_hex_data.clone());
                 summary = Rc::new(SExp::Cons(
                     cf.loc.clone(),
                     Rc::new(SExp::Cons(
                         cf.loc.clone(),
                         Rc::new(SExp::QuotedString(cf.loc.clone(), b'"', shortname.clone())),
-                        loaded_hex_data.clone()
+                        Rc::new(SExp::QuotedString(cf.loc.clone(), b'x', hash.clone()))
                     )),
                     summary,
                 ));
@@ -705,8 +703,8 @@ pub fn try_to_use_existing_hex_outputs(
                 components.push(CompileModuleComponent {
                     shortname,
                     filename: hex_file_name,
-                    content: loaded_hex_data.clone(),
-                    hash: sha256tree(loaded_hex_data),
+                    content: loaded_hex_data,
+                    hash,
                 });
             }
 

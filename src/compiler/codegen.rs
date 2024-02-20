@@ -32,19 +32,6 @@ use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::{toposort, u8_from_number, Number, TopoSortItem};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-lazy_static! {
-    pub static ref COUNT: AtomicUsize = AtomicUsize::new(0);
-}
-
-pub fn count_tick() -> usize {
-    let count = COUNT.fetch_add(1, Ordering::SeqCst);
-    count
-}
-
-pub fn check_count() -> bool {
-    COUNT.fetch_add(0, Ordering::SeqCst) > 0
-}
-
 const MACRO_TIME_LIMIT: usize = 1000000;
 pub const CONST_EVAL_LIMIT: usize = 1000000;
 const CONSTANT_GENERATIONS_ALLOWED: usize = 50;
@@ -1565,11 +1552,6 @@ fn generate_constant_body_for_constants(
         ty: None,
     };
     let generate_value_function = HelperForm::Defun(false, defun_data.clone());
-    if to_generate.name == b"calpoker_generate.calpoker_template" {
-        count_tick();
-        eprintln!("calpoker_generate.calpoker_template {}", generate_value_function.to_sexp());
-    }
-
     let generated_code = codegen_defun(
         context,
         opts.clone(),
@@ -1699,7 +1681,6 @@ fn find_satisfied_constants(
     constants: &[HelperForm],
 ) -> Vec<HelperForm> {
     let constant_set_list: Vec<String> = constant_set.iter().map(|c| decode_string(c)).collect();
-    eprintln!("constant_set_list {constant_set_list:?}");
     constants
         .iter()
         .filter(|c| {
@@ -2399,12 +2380,6 @@ pub fn codegen(
         // Get a viable generation order for the constant generation or fail.
         let generation_order =
             decide_constant_generation_order(&cmod.loc, &c, &c.original_helpers)?;
-
-        let gen_order_strings: Vec<String> = generation_order
-            .iter()
-            .map(|h| decode_string(h.name()))
-            .collect();
-        eprintln!("constant generation order {gen_order_strings:?}");
 
         // We've got an order for generation that will allow us to have correct
         // constant order.  At this point we know that the constant order is
