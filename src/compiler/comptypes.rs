@@ -1035,6 +1035,13 @@ pub trait CompilerOpts {
         filename: String,
     ) -> Result<(String, Vec<u8>), CompileErr>;
 
+    /// Give the modified date for the indicated file.
+    fn get_file_mod_date(
+        &self,
+        loc: &Srcloc,
+        fiilename: &str
+    ) -> Result<u64, CompileErr>;
+
     /// Fully write a file to the filesystem.
     fn write_new_file(&self, target_path: &str, content: &[u8]) -> Result<(), CompileErr>;
 

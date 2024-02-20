@@ -400,6 +400,9 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
             format!("could not read {filename}"),
         ))
     }
+    fn get_file_mod_date(&self, loc: &Srcloc, filename: &str) -> Result<u64, CompileErr> {
+        Err(CompileErr(loc.clone(), format!("could not get date of {filename}")))
+    }
     fn write_new_file(&self, _target: &str, _content: &[u8]) -> Result<(), CompileErr> {
         panic!("should not be writing from tests depending on this opts");
     }

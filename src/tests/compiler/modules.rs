@@ -139,6 +139,14 @@ impl CompilerOpts for TestModuleCompilerOpts {
     ) -> Result<(String, Vec<u8>), CompileErr> {
         self.opts.read_new_file(inc_from, filename)
     }
+    fn get_file_mod_date(
+        &self,
+        loc: &Srcloc,
+        filename: &str
+    ) -> Result<u64, CompileErr> {
+        Err(CompileErr(loc.clone(), format!("could not get mod date of {filename}")))
+    }
+
     fn write_new_file(&self, target: &str, content: &[u8]) -> Result<(), CompileErr> {
         let mut wf: RefMut<'_, HashMap<String, Vec<u8>>> = self.written_files.borrow_mut();
         wf.insert(target.to_string(), content.to_vec());

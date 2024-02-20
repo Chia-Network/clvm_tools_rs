@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::time::UNIX_EPOCH;
 
 use clvm_rs::allocator::Allocator;
 
@@ -12,6 +13,7 @@ use crate::classic::clvm::sexp::sexp_as_bin;
 use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
+use crate::compiler::cldb::hex_to_modern_sexp;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, run, sha256tree};
 use crate::compiler::codegen::{
     codegen, hoist_body_let_binding, process_helper_let_bindings, CONST_EVAL_LIMIT,
@@ -562,6 +564,135 @@ pub fn compile_module(
     })
 }
 
+fn get_hex_name_of_export(
+    opts: Rc<dyn CompilerOpts>,
+    loc: &Srcloc,
+    export: &Export
+) -> Result<String, CompileErr> {
+    match export {
+        Export::MainProgram(_, _) => {
+            let mut output_path = PathBuf::from(&opts.filename());
+            output_path.set_extension("hex");
+            Ok(output_path.into_os_string().to_string_lossy().to_string())
+        }
+        Export::Function(name, as_name) => {
+            let use_name = decode_string(as_name.as_ref().unwrap_or_else(|| &name));
+            create_hex_output_path(loc.clone(), &opts.filename(), &use_name)
+        }
+    }
+}
+
+fn determine_hex_file_names(
+    opts: Rc<dyn CompilerOpts>,
+    loc: &Srcloc,
+    exports: &[Export]
+) -> Result<Vec<String>, CompileErr> {
+    let mut result = Vec::new();
+    for e in exports.iter() {
+        result.push(get_hex_name_of_export(opts.clone(), loc, e)?);
+    }
+    Ok(result)
+}
+
+pub fn try_to_use_existing_hex_outputs(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    cf: &CompileForm,
+    exports: &[Export]
+) -> Result<Option<CompilerOutput>, CompileErr> {
+    let mut imports: Vec<String> = cf.include_forms.iter().map(|i| decode_string(&i.name)).collect();
+    imports.push(opts.filename());
+
+    // Get earliest date of any hex file.
+    let hex_files = determine_hex_file_names(opts.clone(), &cf.loc, exports)?;
+    let mut earliest_hex_date: Option<u64> = None;
+    for file in hex_files.iter() {
+        if let Ok(mod_date) = opts.get_file_mod_date(&cf.loc, &file) {
+            let should_set =
+                if let Some(hex_date) = earliest_hex_date.as_ref() {
+                    *hex_date > mod_date
+                } else {
+                    true
+                };
+
+            if should_set {
+                earliest_hex_date = Some(mod_date);
+            }
+        } else {
+            // One of them doesn't exist so we must build.
+            break;
+        }
+    }
+
+    let mut latest_file_date: Option<u64> = None;
+    for file in imports.iter() {
+        if let Ok(mod_date) = opts.get_file_mod_date(&cf.loc, &file) {
+            let should_set =
+                if let Some(input_date) = latest_file_date.as_ref() {
+                    *input_date < mod_date
+                } else {
+                    true
+                };
+
+            if should_set {
+                latest_file_date = Some(mod_date);
+            }
+        } else {
+            // Could not get the mod date of an input.
+            break;
+        }
+    }
+
+    if let (Some(earliest_hex_date), Some(latest_file_date)) = (earliest_hex_date, latest_file_date) {
+        if earliest_hex_date > latest_file_date {
+            let mut summary = Rc::new(SExp::Nil(cf.loc.clone()));
+            let mut components = Vec::new();
+
+            for e in exports.iter() {
+                let hex_file_name = get_hex_name_of_export(opts.clone(), &cf.loc, e)?;
+                eprintln!("hex_file_name {hex_file_name}");
+                let (_, hex_data) = opts.read_new_file(opts.filename(), hex_file_name.clone())?;
+                let loaded_hex_data = hex_to_modern_sexp(
+                    context.allocator(),
+                    &HashMap::new(),
+                    cf.loc.clone(),
+                    &decode_string(&hex_data)
+                )?;
+                let shortname =
+                    if let Export::Function(name, _) = e {
+                        name.clone()
+                    } else {
+                        b"program".to_vec()
+                    };
+
+                summary = Rc::new(SExp::Cons(
+                    cf.loc.clone(),
+                    Rc::new(SExp::Cons(
+                        cf.loc.clone(),
+                        Rc::new(SExp::QuotedString(cf.loc.clone(), b'"', shortname.clone())),
+                        loaded_hex_data.clone()
+                    )),
+                    summary,
+                ));
+                components.push(CompileModuleComponent {
+                    shortname,
+                    filename: hex_file_name,
+                    content: loaded_hex_data.clone(),
+                    hash: sha256tree(loaded_hex_data),
+                });
+            }
+
+            return Ok(Some(CompilerOutput::Module(CompileModuleOutput {
+                summary,
+                components,
+                includes: cf.include_forms.clone(),
+            })));
+        }
+    }
+
+    Ok(None)
+}
+
 pub fn compile_pre_forms(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
@@ -574,8 +705,14 @@ pub fn compile_pre_forms(
             context, opts, p0,
         )?)),
         FrontendOutput::Module(mut cf, exports) => {
-            let imports: Vec<String> = cf.include_forms.iter().map(|i| decode_string(&i.name)).collect();
-            eprintln!("{} -> {imports:?}", opts.filename());
+            if let Some(result) = try_to_use_existing_hex_outputs(
+                context,
+                opts.clone(),
+                &cf,
+                &exports
+            )? {
+                return Ok(result);
+            }
 
             // cl23 always reflects optimization.
             let dialect = opts.dialect();
@@ -772,6 +909,21 @@ impl CompilerOpts for DefaultCompilerOpts {
             Srcloc::start(&inc_from),
             format!("could not find {filename} to include"),
         ))
+    }
+
+    fn get_file_mod_date(&self, loc: &Srcloc, filename: &str) -> Result<u64, CompileErr> {
+        fs::metadata(&filename)
+            .map_err(|e| format!("could not get metadata for {filename}: {e:?}"))
+            .and_then(|m| {
+                m.modified()
+                    .map_err(|e| format!("could not get modified time for {filename}: {e:?}"))
+            })
+            .and_then(|m| {
+                m.duration_since(UNIX_EPOCH)
+                    .map_err(|e| format!("Could not convert modified time of {filename} to seconds since unix epoch: {e:?}"))
+            })
+            .map(|m| m.as_secs())
+            .map_err(|e| CompileErr(loc.clone(), e))
     }
 
     fn write_new_file(&self, target: &str, content: &[u8]) -> Result<(), CompileErr> {
