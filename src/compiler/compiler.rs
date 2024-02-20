@@ -293,6 +293,8 @@ fn modernize_constants(helpers: &mut [HelperForm], standalone_constants: &HashSe
     for h in helpers.iter_mut() {
         match h {
             HelperForm::Defconstant(d) => {
+                let standalone_constant_names: Vec<String> = standalone_constants.iter().map(|d| decode_string(d)).collect();
+                eprintln!("constant {} check standalone {standalone_constant_names:?}", decode_string(&d.name));
                 // Ensure that we upgrade the constant type.
                 let should_table = !standalone_constants.contains(&d.name);
                 d.kind = ConstantKind::Module(should_table);
@@ -302,6 +304,31 @@ fn modernize_constants(helpers: &mut [HelperForm], standalone_constants: &HashSe
                 modernize_constants(&mut ns.helpers, standalone_constants);
             }
             _ => {}
+        }
+    }
+}
+
+fn capture_standalone_constants(
+    standalone_constants: &mut HashSet<Vec<u8>>,
+    depgraph: &FunctionDependencyGraph,
+    helpers: &[HelperForm]
+) {
+    // Find constants on which nothing depends (they're only output).
+    for h in helpers.iter() {
+        let mut constant_is_depended = HashSet::new();
+        if let HelperForm::Defconstant(dc) = h {
+            depgraph.get_full_depended_on_by(&mut constant_is_depended, h.name());
+            let depended_list: Vec<String> = constant_is_depended.iter().map(|d| decode_string(d)).collect();
+            eprintln!("constant {} is depended on by {depended_list:?}", h.to_sexp());
+            if constant_is_depended.is_empty() {
+                standalone_constants.insert(h.name().to_vec());
+            }
+        } else if let HelperForm::Defnamespace(ns) = h {
+            capture_standalone_constants(
+                standalone_constants,
+                depgraph,
+                &ns.helpers
+            )
         }
     }
 }
@@ -674,6 +701,7 @@ pub fn try_to_use_existing_hex_outputs(
                     )),
                     summary,
                 ));
+
                 components.push(CompileModuleComponent {
                     shortname,
                     filename: hex_file_name,
@@ -739,13 +767,11 @@ pub fn compile_pre_forms(
             let all_constants: HashSet<Vec<u8>> = cf.helpers.iter().filter(|h| matches!(h, HelperForm::Defconstant(_))).map(|h| h.name().to_vec()).collect();
             let mut standalone_constants = HashSet::new();
 
-            for h in cf.helpers.iter() {
-                let mut constant_is_depended = HashSet::new();
-                depgraph.get_full_depended_on_by(&mut constant_is_depended, h.name());
-                if constant_is_depended.is_empty() {
-                    standalone_constants.insert(h.name().to_vec());
-                }
-            }
+            capture_standalone_constants(
+                &mut standalone_constants,
+                &depgraph,
+                &cf.helpers
+            );
             modernize_constants(&mut cf.helpers, &standalone_constants);
 
             Ok(CompilerOutput::Module(compile_module(

@@ -36,9 +36,13 @@ lazy_static! {
     pub static ref COUNT: AtomicUsize = AtomicUsize::new(0);
 }
 
-pub fn count_tick() {
+pub fn count_tick() -> usize {
     let count = COUNT.fetch_add(1, Ordering::SeqCst);
-    assert!(count < 147);
+    count
+}
+
+pub fn check_count() -> bool {
+    COUNT.fetch_add(0, Ordering::SeqCst) > 0
 }
 
 const MACRO_TIME_LIMIT: usize = 1000000;
@@ -360,11 +364,8 @@ pub fn get_callable(
                 (_, _, _, _, true, _) => Ok(Callable::RunCompiler),
                 (_, _, _, _, _, true) => Ok(Callable::EnvPath),
                 _ => {
-                    eprintln!("failed to lookup a callable: {}", decode_string(name));
                     let orig_helper_names: Vec<String> = compiler.original_helpers.iter().map(|h| decode_string(h.name())).collect();
-                    eprintln!("original helpers {orig_helper_names:?}");
                     let to_process_names: Vec<String> = compiler.to_process.iter().map(|h| decode_string(h.name())).collect();
-                    eprintln!("process  helpers {to_process_names:?}");
                     todo!();
                     Err(CompileErr(
                         l.clone(),
@@ -805,7 +806,6 @@ pub fn generate_expr_code(
                             // If we get here, we have a standalone module style constant which
                             // observes the full environment.  It does not exist _in_ the environment
                             // because nothing but the exports depend on it.
-                            eprintln!("constant expr code via {} {}", decode_string(atom), mconstant.to_sexp());
                             return generate_constant_expr_code(
                                 context,
                                 opts.clone(),
@@ -819,7 +819,6 @@ pub fn generate_expr_code(
                             .map(|f| Ok(CompiledCode(l.clone(), f)))
                             .unwrap_or_else(|_| {
                                 if opts.dialect().strict && printable(atom, false) {
-                                    eprintln!("want to use {} as a variable", decode_string(atom));
                                     if let Some(c) = compiler.module_constants.get(atom) {
                                         todo!();
                                     }
@@ -1439,8 +1438,6 @@ fn purge_chia_extras(compiler: &mut PrimaryCodegen, orig_env: Rc<SExp>) {
             chia_extras_path.clone(),
             replace_by_paths(
                 source_env,
-                bi_one(),
-                bi_zero(),
                 &[(chia_extras_path >> 1, Rc::new(SExp::Nil(old_val.loc())))],
             )
         )
@@ -1568,6 +1565,11 @@ fn generate_constant_body_for_constants(
         ty: None,
     };
     let generate_value_function = HelperForm::Defun(false, defun_data.clone());
+    if to_generate.name == b"calpoker_generate.calpoker_template" {
+        count_tick();
+        eprintln!("calpoker_generate.calpoker_template {}", generate_value_function.to_sexp());
+    }
+
     let generated_code = codegen_defun(
         context,
         opts.clone(),
@@ -1596,25 +1598,26 @@ fn generate_constant_body_for_constants(
             run_failure_to_compile_err(to_generate.loc.clone(), &e)
         })?;
 
+    // eprintln!("generate {tabled} {} => {run_result}", decode_string(&to_generate.name));
+
     if tabled {
         compiler
             .tabled_constants
             .insert(to_generate.name.clone(), run_result.clone());
     }
-    let final_env = compiler.final_env.to_sexp();
     if let Some((cpath, _)) = find_named_path(compiler.env.clone(), &to_generate.name, bi_one(), bi_zero()) {
-        if let ProgramEnvData::Module(path_to_constants, final_env) = &compiler.final_env {
+        if let ProgramEnvData::Module(path_to_constants, _) = &compiler.final_env {
             let orig_final_env = compiler.final_env.to_sexp();
-
             compiler.final_env = ProgramEnvData::Module(
                 path_to_constants.clone(),
                 replace_by_paths(
-                    final_env.clone(),
-                    bi_one(),
-                    bi_zero(),
-                    &[(cpath >> 1, run_result)],
+                    compiler.final_env.to_sexp(),
+                    &[(cpath >> 1, run_result.clone())],
                 )
             );
+            //eprintln!("place {}\n{run_result}", decode_string(&to_generate.name));
+            // eprintln!("into\n{orig_final_env}");
+            // eprintln!("giving\n{}", compiler.final_env);
         } else {
             todo!();
         }
@@ -1651,7 +1654,6 @@ fn find_satisfied_functions(
                 .cloned()
                 .collect();
             let deps_list: Vec<String> = uncovered_deps.iter().map(|d| decode_string(d)).collect();
-            eprintln!("function {} has deps {deps_list:?}", decode_string(f.name()));
             uncovered_deps.is_empty()
         })
         .cloned()
@@ -1696,6 +1698,8 @@ fn find_satisfied_constants(
     constant_set: &HashSet<Vec<u8>>,
     constants: &[HelperForm],
 ) -> Vec<HelperForm> {
+    let constant_set_list: Vec<String> = constant_set.iter().map(|c| decode_string(c)).collect();
+    eprintln!("constant_set_list {constant_set_list:?}");
     constants
         .iter()
         .filter(|c| {
@@ -1707,11 +1711,12 @@ fn find_satisfied_constants(
             }
 
             depgraph.get_full_depends_on(&mut constant_deps, c.name());
+            let raw_deps_list: Vec<String> = constant_deps.iter().map(|c| decode_string(c)).collect();
             let uncovered_deps: Vec<Vec<u8>> = constant_deps
                 .iter()
                 .filter(|h| {
                     let hname: &[u8] = h;
-                    !(function_set.contains(hname) || constant_set.contains(hname))
+                    (function_set.contains(hname) || constant_set.contains(hname))
                 })
                 .cloned()
                 .collect();
@@ -1757,29 +1762,37 @@ fn find_named_path(
     }
 }
 
-fn replace_by_paths(
+fn replace_by_path(
     env: Rc<SExp>,
-    mask: Number,
-    parent: Number,
+    target: Number,
+    new_value: Rc<SExp>
+) -> Rc<SExp> {
+    if target == bi_zero() {
+        env
+    } else if target == bi_one() {
+        new_value
+    } else {
+        if let SExp::Cons(l, a, b) = env.borrow() {
+            let odd = (target.clone() & bi_one()) == bi_one();
+            let next = target >> 1;
+            if odd {
+                return Rc::new(SExp::Cons(l.clone(), a.clone(), replace_by_path(b.clone(), next, new_value)));
+            } else {
+                return Rc::new(SExp::Cons(l.clone(), replace_by_path(a.clone(), next, new_value), b.clone()));
+            }
+        }
+
+        env
+    }
+}
+
+fn replace_by_paths(
+    mut env: Rc<SExp>,
     collection: &[(Number, Rc<SExp>)],
 ) -> Rc<SExp> {
-    let this_path = mask.clone() | parent.clone();
-
     for (p, v) in collection.iter() {
-        if *p == this_path {
-            return v.clone();
-        }
+        env = replace_by_path(env, p.clone(), v.clone());
     }
-
-    let next_mask = mask * 2_u32.to_bigint().unwrap();
-    if let SExp::Cons(l, a, b) = env.borrow() {
-        let left = replace_by_paths(a.clone(), next_mask.clone(), parent, collection);
-        let right = replace_by_paths(b.clone(), next_mask, this_path, collection);
-        if Rc::as_ptr(&left) != Rc::as_ptr(a) || Rc::as_ptr(&right) != Rc::as_ptr(b) {
-            return Rc::new(SExp::Cons(l.clone(), left, right));
-        }
-    }
-
     env
 }
 
@@ -2391,6 +2404,7 @@ pub fn codegen(
             .iter()
             .map(|h| decode_string(h.name()))
             .collect();
+        eprintln!("constant generation order {gen_order_strings:?}");
 
         // We've got an order for generation that will allow us to have correct
         // constant order.  At this point we know that the constant order is

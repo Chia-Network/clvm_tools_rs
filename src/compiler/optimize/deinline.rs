@@ -48,8 +48,6 @@ pub fn deinline_opt(
     let depgraph = FunctionDependencyGraph::new(&compileform);
 
     let mut best_compileform = compileform.clone();
-    let generated_program = codegen(context, opts.clone(), &best_compileform)?;
-    let mut metric = sexp_scale(&generated_program);
     let flip_helper = |h: &mut HelperForm| {
         if let HelperForm::Defun(inline, defun) = h {
             if matches!(&defun.synthetic, Some(SyntheticType::NoInlinePreference)) {
@@ -181,6 +179,13 @@ pub fn deinline_opt(
             (root_set.clone(), full_tree_set)
         })
         .collect();
+
+    if root_set_to_inline_tree.is_empty() {
+        return Ok(best_compileform);
+    }
+
+    let generated_program = codegen(context, opts.clone(), &best_compileform)?;
+    let mut metric = sexp_scale(&generated_program);
 
     for (_, function_set) in root_set_to_inline_tree.iter() {
         loop {
