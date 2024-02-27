@@ -1,19 +1,25 @@
 use rand::prelude::*;
-use std::borrow::Borrow;
-use std::collections::BTreeMap;
 use std::rc::Rc;
 
+pub trait FuzzTypeParams {
+    type Tag: Eq + Clone;
+    type Expr: Eq + Clone + ExprModifier<Item = Self::Expr, Tag = Self::Tag>;
+    type Error: for<'a> From<&'a str>;
+    type State;
+}
+
 #[derive(Clone, Debug)]
-pub struct FuzzChoice<Expr> {
-    pub tag: Vec<u8>,
-    pub atom: Expr,
+pub struct FuzzChoice<Item,Tag> {
+    pub tag: Tag,
+    pub atom: Item,
 }
 
 pub trait ExprModifier {
+    type Tag;
     type Item;
 
     /// Add identified in-progress expansions into waiters.
-    fn find_waiters(&self, waiters: &mut Vec<FuzzChoice<Self::Item>>);
+    fn find_waiters(&self, waiters: &mut Vec<FuzzChoice<Self::Item,Self::Tag>>);
 
     /// Replace a value where it appears in the structure with a new value.
     fn replace_node(&self, to_replace: &Self::Item, new_value: Self::Item) -> Self::Item;
@@ -23,37 +29,33 @@ pub trait ExprModifier {
     fn find_in_structure(&self, target: &Self::Item) -> Option<Vec<Self::Item>>;
 }
 
-pub trait Rule<State,Expr,Error> {
-    fn check(&self, state: &mut State, tag: &[u8], idx: usize, terminate: bool, parents: &[Expr]) -> Result<Option<Expr>, Error>;
+pub trait Rule<FT: FuzzTypeParams> {
+    fn check(&self, state: &mut FT::State, tag: &FT::Tag, idx: usize, terminate: bool, parents: &[FT::Expr]) -> Result<Option<FT::Expr>, FT::Error>;
 }
 
-pub struct FuzzGenerator<State,Expr,Error: for<'a> From<&'a str>> {
+pub struct FuzzGenerator<FT: FuzzTypeParams> {
     idx: usize,
-    structure: Expr,
-    waiting: Vec<FuzzChoice<Expr>>,
-    rules: Vec<Rc<dyn Rule<State,Expr,Error>>>,
+    structure: FT::Expr,
+    waiting: Vec<FuzzChoice<FT::Expr,FT::Tag>>,
+    rules: Vec<Rc<dyn Rule<FT>>>,
 }
 
-impl<State,Expr,Error: for<'a> From<&'a str>> FuzzGenerator<State,Expr,Error>
-where
-    Expr: Eq + Clone + ExprModifier<Item = Expr>
-{
-    pub fn new(node: Expr, rules: &[Rc<dyn Rule<State,Expr,Error>>]) -> Self {
+impl<FT: FuzzTypeParams> FuzzGenerator<FT> {
+    pub fn new(node: FT::Expr, rules: &[Rc<dyn Rule<FT>>]) -> Self {
+        let mut waiting = Vec::new();
+        node.find_waiters(&mut waiting);
         FuzzGenerator {
             idx: 1,
-            structure: node.clone(),
-            waiting: vec![FuzzChoice {
-                tag: b"top".to_vec(),
-                atom: node,
-            }],
+            structure: node,
+            waiting,
             rules: rules.to_vec(),
         }
     }
 
-    pub fn result(&self) -> Expr { self.structure.clone() }
+    pub fn result<'a>(&'a self) -> &'a FT::Expr { &self.structure }
 
-    fn remove_waiting(&mut self, waiting_atom: &Expr) -> Result<(), Error> {
-        let mut to_remove_waiting: Vec<usize> = self.waiting.iter().enumerate().filter_map(|(i,w)| {
+    fn remove_waiting(&mut self, waiting_atom: &FT::Expr) -> Result<(), FT::Error> {
+        let to_remove_waiting: Vec<usize> = self.waiting.iter().enumerate().filter_map(|(i,w)| {
             if w.atom == *waiting_atom {
                 Some(i)
             } else {
@@ -69,7 +71,7 @@ where
         Ok(())
     }
 
-    pub fn expand<R: Rng + Sized>(&mut self, state: &mut State, terminate: bool, rng: &mut R) -> Result<bool, Error> {
+    pub fn expand<R: Rng + Sized>(&mut self, state: &mut FT::State, terminate: bool, rng: &mut R) -> Result<bool, FT::Error> {
         let mut waiting = self.waiting.clone();
 
         while !waiting.is_empty() {

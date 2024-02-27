@@ -14,7 +14,7 @@ use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::{BodyForm, CompilerOpts, DefconstData, HelperForm};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::frontend::compile_helperform;
-use crate::compiler::fuzz::{FuzzGenerator, Rule};
+use crate::compiler::fuzz::{FuzzGenerator, FuzzTypeParams, Rule};
 use crate::compiler::prims::primquote;
 use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -37,8 +37,6 @@ fn compose_sexp(loc: Srcloc, s: &str) -> Rc<SExp> {
 //
 // Do the above arrangement but adding 1 or 2 functions that depend on the
 // constants and each other.
-//
-// Maybe put some more thought into fuzzing infra?
 struct ModuleConstantExpectation {
     constants_and_values: BTreeMap<Vec<u8>, Rc<SExp>>,
     waiting_constants: usize,
@@ -64,6 +62,20 @@ impl ModuleConstantExpectation {
     }
 }
 
+#[derive(Debug)]
+struct GenError { message: String }
+impl From<&str> for GenError {
+    fn from(m: &str) -> GenError { GenError { message: m.to_string() } }
+}
+
+struct FuzzT { }
+impl FuzzTypeParams for FuzzT {
+    type Tag = Vec<u8>;
+    type Expr = Rc<SExp>;
+    type Error = GenError;
+    type State = ModuleConstantExpectation;
+}
+
 struct TestModuleConstantFuzzTopRule { another_constant: bool }
 impl TestModuleConstantFuzzTopRule {
     fn new(c: bool) -> Self {
@@ -71,14 +83,8 @@ impl TestModuleConstantFuzzTopRule {
     }
 }
 
-#[derive(Debug)]
-struct GenError { message: String }
-impl From<&str> for GenError {
-    fn from(m: &str) -> GenError { GenError { message: m.to_string() } }
-}
-
-impl Rule<ModuleConstantExpectation,Rc<SExp>,GenError> for TestModuleConstantFuzzTopRule {
-    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
+impl Rule<FuzzT> for TestModuleConstantFuzzTopRule {
+    fn check(&self, state: &mut ModuleConstantExpectation, tag: &Vec<u8>, idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
         let heritage_list: Vec<String> = heritage.iter().map(|h| h.to_string()).collect();
         if tag != b"top" {
             return Ok(None);
@@ -118,8 +124,8 @@ fn get_constant_id(heritage: &[Rc<SExp>]) -> Option<Vec<u8>> {
     None
 }
 
-impl Rule<ModuleConstantExpectation,Rc<SExp>,GenError> for TestModuleConstantFuzzConstantBodyRule {
-    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
+impl Rule<FuzzT> for TestModuleConstantFuzzConstantBodyRule {
+    fn check(&self, state: &mut ModuleConstantExpectation, tag: &Vec<u8>, idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
         let heritage_list: Vec<String> = heritage.iter().map(|h| h.to_string()).collect();
         eprintln!("C rule check {} {idx} term {terminate} {heritage_list:?}", decode_string(tag));
 
@@ -144,8 +150,8 @@ struct TestModuleConstantFuzzApplyOperation {
     op: u32,
     other_value: Rc<SExp>
 }
-impl Rule<ModuleConstantExpectation,Rc<SExp>,GenError> for TestModuleConstantFuzzApplyOperation {
-    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
+impl Rule<FuzzT> for TestModuleConstantFuzzApplyOperation {
+    fn check(&self, state: &mut ModuleConstantExpectation, tag: &Vec<u8>, idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
 
         let heritage_list: Vec<String> = heritage.iter().map(|h| h.to_string()).collect();
         eprintln!("ApplyOperation {} {heritage_list:?}", decode_string(tag));
@@ -219,8 +225,8 @@ impl Rule<ModuleConstantExpectation,Rc<SExp>,GenError> for TestModuleConstantFuz
 struct TestModuleConstantFuzzMoreConstants {
     want_more: bool,
 }
-impl Rule<ModuleConstantExpectation,Rc<SExp>,GenError> for TestModuleConstantFuzzMoreConstants {
-    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
+impl Rule<FuzzT> for TestModuleConstantFuzzMoreConstants {
+    fn check(&self, state: &mut ModuleConstantExpectation, tag: &Vec<u8>, idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
         if tag != b"constant-program-tail" {
             return Ok(None);
         }
@@ -278,8 +284,8 @@ fn find_all_constants(opts: Rc<dyn CompilerOpts>, heritage: &[Rc<SExp>], abort_o
 }
 
 struct TestModuleConstantFuzzExports { }
-impl Rule<ModuleConstantExpectation, Rc<SExp>,GenError> for TestModuleConstantFuzzExports {
-    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
+impl Rule<FuzzT> for TestModuleConstantFuzzExports {
+    fn check(&self, state: &mut ModuleConstantExpectation, tag: &Vec<u8>, idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
         if tag != b"exports" || state.waiting_constants > 0 {
             return Ok(None);
         }
@@ -313,8 +319,8 @@ impl Rule<ModuleConstantExpectation, Rc<SExp>,GenError> for TestModuleConstantFu
 }
 
 struct TestModuleConstantNew { }
-impl Rule<ModuleConstantExpectation, Rc<SExp>,GenError> for TestModuleConstantNew {
-    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>, GenError> {
+impl Rule<FuzzT> for TestModuleConstantNew {
+    fn check(&self, state: &mut ModuleConstantExpectation, tag: &Vec<u8>, idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>, GenError> {
         if tag != b"constant" {
             return Ok(None);
         }
@@ -339,7 +345,7 @@ fn test_property_fuzz_stable_constants() {
 
     let srcloc = Srcloc::start("*value*");
     let one = Rc::new(SExp::Integer(srcloc.clone(), bi_one()));
-    let rules: Vec<Rc<dyn Rule<ModuleConstantExpectation, Rc<SExp>, GenError>>> = vec![
+    let rules: Vec<Rc<dyn Rule<FuzzT>>> = vec![
         Rc::new(TestModuleConstantFuzzTopRule::new(false)),
         Rc::new(TestModuleConstantFuzzTopRule::new(true)),
         Rc::new(TestModuleConstantFuzzConstantBodyRule::new()),
@@ -348,7 +354,7 @@ fn test_property_fuzz_stable_constants() {
         Rc::new(TestModuleConstantFuzzMoreConstants { want_more: false }),
         Rc::new(TestModuleConstantFuzzExports {}),
         Rc::new(TestModuleConstantFuzzApplyOperation { op: 16, other_value: one.clone() }),
-        Rc::new(TestModuleConstantFuzzApplyOperation { op: 17, other_value: one.clone() })
+        Rc::new(TestModuleConstantFuzzApplyOperation { op: 17, other_value: one.clone() }),
     ];
     let top_node = Rc::new(SExp::Atom(srcloc.clone(), b"${0:top}".to_vec()));
 

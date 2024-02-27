@@ -1282,9 +1282,11 @@ fn find_in_structure_inner(
 
 impl ExprModifier for Rc<SExp> {
     type Item = Self;
+    type Tag = Vec<u8>;
+
     fn find_waiters(
         &self,
-        waiters: &mut Vec<FuzzChoice<Self::Item>>,
+        waiters: &mut Vec<FuzzChoice<Self::Item,Self::Tag>>,
     ) {
         match self.borrow() {
             SExp::Cons(_, a, b) => {
