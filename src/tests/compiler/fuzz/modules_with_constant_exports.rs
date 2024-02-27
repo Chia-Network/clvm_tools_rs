@@ -70,11 +70,18 @@ impl TestModuleConstantFuzzTopRule {
         TestModuleConstantFuzzTopRule { another_constant: c }
     }
 }
-impl Rule<ModuleConstantExpectation,Rc<SExp>> for TestModuleConstantFuzzTopRule {
-    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Option<Rc<SExp>> {
+
+#[derive(Debug)]
+struct GenError { message: String }
+impl From<&str> for GenError {
+    fn from(m: &str) -> GenError { GenError { message: m.to_string() } }
+}
+
+impl Rule<ModuleConstantExpectation,Rc<SExp>,GenError> for TestModuleConstantFuzzTopRule {
+    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
         let heritage_list: Vec<String> = heritage.iter().map(|h| h.to_string()).collect();
         if tag != b"top" {
-            return None;
+            return Ok(None);
         }
 
         eprintln!("T rule check {} {idx} term {terminate} {heritage_list:?}", decode_string(tag));
@@ -83,11 +90,11 @@ impl Rule<ModuleConstantExpectation,Rc<SExp>> for TestModuleConstantFuzzTopRule 
             let start_program = compose_sexp(state.loc(), &format!("( (include *standard-cl-23*) ${{{idx}:constant}} . ${{{}:constant-program-tail}})", idx + 1));
             state.waiting_constants += 1;
             eprintln!("waiting_constants: {}", state.waiting_constants);
-            Some(start_program.clone())
+            Ok(Some(start_program.clone()))
         } else {
             let start_program = compose_sexp(state.loc(), &format!("( (include *standard-cl-23*) (defconstant A ${{{idx}:constant-body}}) (export A))"));
             state.exports.insert(b"A".to_vec());
-            Some(start_program.clone())
+            Ok(Some(start_program.clone()))
         }
     }
 }
@@ -111,13 +118,13 @@ fn get_constant_id(heritage: &[Rc<SExp>]) -> Option<Vec<u8>> {
     None
 }
 
-impl Rule<ModuleConstantExpectation,Rc<SExp>> for TestModuleConstantFuzzConstantBodyRule {
-    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Option<Rc<SExp>> {
+impl Rule<ModuleConstantExpectation,Rc<SExp>,GenError> for TestModuleConstantFuzzConstantBodyRule {
+    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
         let heritage_list: Vec<String> = heritage.iter().map(|h| h.to_string()).collect();
         eprintln!("C rule check {} {idx} term {terminate} {heritage_list:?}", decode_string(tag));
 
         if tag != b"constant-body" {
-            return None;
+            return Ok(None);
         }
 
         let body = compose_sexp(state.loc(), "1");
@@ -129,7 +136,7 @@ impl Rule<ModuleConstantExpectation,Rc<SExp>> for TestModuleConstantFuzzConstant
             };
 
         state.constants_and_values.insert(constant_id, body.clone());
-        Some(body.clone())
+        Ok(Some(body.clone()))
     }
 }
 
@@ -137,20 +144,20 @@ struct TestModuleConstantFuzzApplyOperation {
     op: u32,
     other_value: Rc<SExp>
 }
-impl Rule<ModuleConstantExpectation,Rc<SExp>> for TestModuleConstantFuzzApplyOperation {
-    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Option<Rc<SExp>> {
+impl Rule<ModuleConstantExpectation,Rc<SExp>,GenError> for TestModuleConstantFuzzApplyOperation {
+    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
 
         let heritage_list: Vec<String> = heritage.iter().map(|h| h.to_string()).collect();
         eprintln!("ApplyOperation {} {heritage_list:?}", decode_string(tag));
         if tag != b"constant-body" {
-            return None;
+            return Ok(None);
         }
 
         let my_id =
             if let Some(constant_id) = get_constant_id(heritage) {
                 constant_id
             } else {
-                return None;
+                return Ok(None);
             };
 
         // Get the existing constants.
@@ -158,12 +165,12 @@ impl Rule<ModuleConstantExpectation,Rc<SExp>> for TestModuleConstantFuzzApplyOpe
             if let Some(c) = find_all_constants(state.opts.clone(), heritage, false) {
                 c
             } else {
-                return None;
+                return Ok(None);
             };
 
         // No constants are finished.
         if constants_with_values.is_empty() {
-            return None;
+            return Ok(None);
         }
 
         // Choose a constant to base it on.
@@ -177,10 +184,10 @@ impl Rule<ModuleConstantExpectation,Rc<SExp>> for TestModuleConstantFuzzApplyOpe
                 if let Ok(number) = chosen_value.get_number() {
                     number
                 } else {
-                    return None;
+                    return Ok(None);
                 }
             } else {
-                return None;
+                return Ok(None);
             };
 
         let nil = Rc::new(SExp::Nil(state.loc()));
@@ -205,26 +212,26 @@ impl Rule<ModuleConstantExpectation,Rc<SExp>> for TestModuleConstantFuzzApplyOpe
         state.constants_and_values.insert(my_id, new_value);
 
         // Add one to any constant that already has a body.
-        Some(make_expr(state.loc(), Rc::new(SExp::Atom(state.loc(), chosen.name.clone())), self.other_value.clone()))
+        Ok(Some(make_expr(state.loc(), Rc::new(SExp::Atom(state.loc(), chosen.name.clone())), self.other_value.clone())))
     }
 }
 
 struct TestModuleConstantFuzzMoreConstants {
     want_more: bool,
 }
-impl Rule<ModuleConstantExpectation,Rc<SExp>> for TestModuleConstantFuzzMoreConstants {
-    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Option<Rc<SExp>> {
+impl Rule<ModuleConstantExpectation,Rc<SExp>,GenError> for TestModuleConstantFuzzMoreConstants {
+    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
         if tag != b"constant-program-tail" {
-            return None;
+            return Ok(None);
         }
 
         if !terminate && self.want_more {
             let body = compose_sexp(state.loc(), &format!("(${{{}:constant}} . ${{{}:constant-program-tail}})", idx, idx + 1));
             state.waiting_constants += 1;
-            Some(body.clone())
+            Ok(Some(body.clone()))
         } else {
             let body = compose_sexp(state.loc(), &format!("${{{}:exports}}", idx));
-            Some(body.clone())
+            Ok(Some(body.clone()))
         }
     }
 }
@@ -271,17 +278,17 @@ fn find_all_constants(opts: Rc<dyn CompilerOpts>, heritage: &[Rc<SExp>], abort_o
 }
 
 struct TestModuleConstantFuzzExports { }
-impl Rule<ModuleConstantExpectation, Rc<SExp>> for TestModuleConstantFuzzExports {
-    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Option<Rc<SExp>> {
+impl Rule<ModuleConstantExpectation, Rc<SExp>,GenError> for TestModuleConstantFuzzExports {
+    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
         if tag != b"exports" || state.waiting_constants > 0 {
-            return None;
+            return Ok(None);
         }
 
         let have_constants =
             if let Some(c) = find_all_constants(state.opts.clone(), heritage, true) {
                 c
             } else {
-                return None;
+                return Ok(None);
             };
 
         let nil = Rc::new(SExp::Nil(state.loc()));
@@ -301,15 +308,15 @@ impl Rule<ModuleConstantExpectation, Rc<SExp>> for TestModuleConstantFuzzExports
             state.exports.insert(h.name.clone());
         }
 
-        Some(result)
+        Ok(Some(result))
     }
 }
 
 struct TestModuleConstantNew { }
-impl Rule<ModuleConstantExpectation, Rc<SExp>> for TestModuleConstantNew {
-    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Option<Rc<SExp>> {
+impl Rule<ModuleConstantExpectation, Rc<SExp>,GenError> for TestModuleConstantNew {
+    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>, GenError> {
         if tag != b"constant" {
-            return None;
+            return Ok(None);
         }
 
         let name = format!("C{idx}");
@@ -317,7 +324,7 @@ impl Rule<ModuleConstantExpectation, Rc<SExp>> for TestModuleConstantNew {
         let heritage_list: Vec<String> = heritage.iter().map(|h| h.to_string()).collect();
         eprintln!("CN waiting_constants: {} {heritage_list:?}", state.waiting_constants);
         state.waiting_constants -= 1;
-        Some(body.clone())
+        Ok(Some(body.clone()))
     }
 }
 
@@ -332,7 +339,7 @@ fn test_property_fuzz_stable_constants() {
 
     let srcloc = Srcloc::start("*value*");
     let one = Rc::new(SExp::Integer(srcloc.clone(), bi_one()));
-    let rules: Vec<Rc<dyn Rule<ModuleConstantExpectation, Rc<SExp>>>> = vec![
+    let rules: Vec<Rc<dyn Rule<ModuleConstantExpectation, Rc<SExp>, GenError>>> = vec![
         Rc::new(TestModuleConstantFuzzTopRule::new(false)),
         Rc::new(TestModuleConstantFuzzTopRule::new(true)),
         Rc::new(TestModuleConstantFuzzConstantBodyRule::new()),
