@@ -1,5 +1,3 @@
-use rand::SeedableRng;
-use rand_chacha::ChaCha8Rng;
 use std::borrow::Borrow;
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::{HashMap, HashSet};
@@ -22,7 +20,7 @@ use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::BasicCompileContext;
 
-enum DesiredOutcome<'a> {
+pub enum DesiredOutcome<'a> {
     Error,
     ContentEquals,
     Run(&'a str),
@@ -31,7 +29,7 @@ enum DesiredOutcome<'a> {
 use DesiredOutcome::{ContentEquals, Error, Run};
 
 #[derive(Clone)]
-struct TestModuleCompilerOpts {
+pub struct TestModuleCompilerOpts {
     opts: Rc<dyn CompilerOpts>,
     written_files: Rc<RefCell<HashMap<String, Vec<u8>>>>,
 }
@@ -161,18 +159,18 @@ impl CompilerOpts for TestModuleCompilerOpts {
     }
 }
 
-struct HexArgumentOutcome<'a> {
-    hexfile: &'a str,
-    argument: &'a str,
-    outcome: DesiredOutcome<'a>,
+pub struct HexArgumentOutcome<'a> {
+    pub hexfile: &'a str,
+    pub argument: &'a str,
+    pub outcome: DesiredOutcome<'a>,
 }
 
-struct PerformCompileResult {
-    compiled: CompilerOutput,
-    source_opts: TestModuleCompilerOpts,
+pub struct PerformCompileResult {
+    pub compiled: CompilerOutput,
+    pub source_opts: TestModuleCompilerOpts,
 }
 
-fn perform_compile_of_file(
+pub fn perform_compile_of_file(
     allocator: &mut Allocator,
     runner: Rc<dyn TRunProgram>,
     filename: &str,
@@ -204,7 +202,7 @@ fn perform_compile_of_file(
     })
 }
 
-fn hex_to_clvm(allocator: &mut Allocator, hex_data: &[u8]) -> clvmr::allocator::NodePtr {
+pub fn hex_to_clvm(allocator: &mut Allocator, hex_data: &[u8]) -> clvmr::allocator::NodePtr {
     let mut hex_stream = Stream::new(Some(
         Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(decode_string(
             &hex_data,
@@ -718,149 +716,4 @@ fn test_constant_with_lambda() {
             }
         ]
     );
-}
-
-// Property test of sorts:
-//
-// Make 1-5 constants with any of these expression types:
-//   let or assign form
-//   lambda (and a corresponding constant applying it either directly or via map
-//   or filter)?
-//   a few basic operators
-// Constants generated one at a time, depending on each other in tiers.
-// Constants generated all at once, depending on any arrangement of the others.
-//
-// Do the above arrangement but adding 1 or 2 functions that depend on the
-// constants and each other.
-//
-// Maybe put some more thought into fuzzing infra?
-struct ModuleConstantExpectation {
-    constants_and_values: HashMap<Vec<u8>, Rc<SExp>>,
-    exports: HashSet<Vec<u8>>,
-}
-impl ModuleConstantExpectation {
-    fn new() -> Self {
-        ModuleConstantExpectation {
-            exports: HashSet::new(),
-            constants_and_values: HashMap::new()
-        }
-    }
-}
-
-struct TestModuleConstantFuzzTopRule { another_constant: bool }
-impl TestModuleConstantFuzzTopRule {
-    fn new(c: bool) -> Self {
-        TestModuleConstantFuzzTopRule { another_constant: c }
-    }
-}
-impl Rule<ModuleConstantExpectation> for TestModuleConstantFuzzTopRule {
-    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Option<Rc<SExp>> {
-        let heritage_list: Vec<String> = heritage.iter().map(|h| h.to_string()).collect();
-        eprintln!("T rule check {} {idx} term {terminate} {heritage_list:?}", decode_string(tag));
-        if tag == b"top" {
-            if self.another_constant {
-                let start_program = parse_sexp(Srcloc::start("*top*"), format!("( (include *standard-cl-23*) ${{{idx}:constant}} . ${{{}:constant-program-tail}})", idx + 1).bytes()).expect("should parse");
-                return Some(start_program[0].clone());
-            } else {
-                let start_program = parse_sexp(Srcloc::start("*top*"), format!("( (include *standard-cl-23*) (defconstant A ${{{idx}:constant-body}}) (export A))").bytes()).expect("should parse");
-                state.exports.insert(b"A".to_vec());
-                return Some(start_program[0].clone());
-            }
-        }
-
-        None
-    }
-}
-
-struct TestModuleConstantFuzzConstantBodyRule { }
-impl TestModuleConstantFuzzConstantBodyRule {
-    fn new() -> Self { TestModuleConstantFuzzConstantBodyRule { } }
-}
-
-fn get_constant_id(heritage: &[Rc<SExp>]) -> Option<Vec<u8>> {
-    if heritage.len() < 2 {
-        return None;
-    }
-
-    if let SExp::Cons(_, c, _) = heritage[heritage.len() - 2].borrow() {
-        if let SExp::Atom(_, a) = c.borrow() {
-            return Some(a.to_vec());
-        }
-    }
-
-    None
-}
-
-impl Rule<ModuleConstantExpectation> for TestModuleConstantFuzzConstantBodyRule {
-    fn check(&self, state: &mut ModuleConstantExpectation, tag: &[u8], idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Option<Rc<SExp>> {
-        let heritage_list: Vec<String> = heritage.iter().map(|h| h.to_string()).collect();
-        eprintln!("C rule check {} {idx} term {terminate} {heritage_list:?}", decode_string(tag));
-
-        if tag == b"constant-body" {
-            let body = parse_sexp(Srcloc::start("*constant-body*"), format!("1").bytes()).expect("should parse");
-            let constant_id =
-                if let Some(constant_id) = get_constant_id(heritage) {
-                    constant_id
-                } else {
-                    todo!();
-                };
-
-            state.constants_and_values.insert(constant_id, body[0].clone());
-            return Some(body[0].clone());
-        }
-
-        None
-    }
-}
-
-#[test]
-fn test_property_fuzz_stable_constants() {
-    let mut rng = ChaCha8Rng::from_seed([
-        1,1,1,1,1,1,1,1,
-        1,1,1,1,1,1,1,1,
-        2,2,2,2,2,2,2,2,
-        2,2,2,2,2,2,2,2,
-    ]);
-    let mut fuzzgen = FuzzGenerator::new(&[
-        Rc::new(TestModuleConstantFuzzTopRule::new(false)),
-        Rc::new(TestModuleConstantFuzzTopRule::new(true)),
-        Rc::new(TestModuleConstantFuzzConstantBodyRule::new()),
-    ]);
-
-    let mut idx = 0;
-    let mut mc = ModuleConstantExpectation::new();
-    while fuzzgen.expand(&mut mc, idx < 100, &mut rng).expect("should expand") {
-        idx += 1;
-    }
-
-    let forms =
-        if let Some(flist) = fuzzgen.result().proper_list() {
-            flist
-        } else {
-            todo!();
-        };
-
-    let program_text = forms.iter().map(|f| f.to_string()).collect::<Vec<String>>().join("\n");
-    eprintln!("program_text\n{program_text}");
-    let mut allocator = Allocator::new();
-    let runner = Rc::new(DefaultProgramRunner::new());
-    let compiled = perform_compile_of_file(
-        &mut allocator,
-        runner.clone(),
-        "test.clsp",
-        &program_text,
-    ).expect("should compile");
-    for cname in mc.exports.iter() {
-        if let Some(cval) = mc.constants_and_values.get(cname) {
-            let hex_file_name = format!("test_{}.hex", decode_string(cname));
-            let hex_data = compiled.source_opts.get_written_file(&hex_file_name).expect("hex file should exist");
-            let compiled_node = hex_to_clvm(&mut allocator, &hex_data);
-            let converted_node = convert_from_clvm_rs(&mut allocator, cval.loc(), compiled_node).expect("should convert to sexp objects");
-            assert_eq!(cval, &converted_node);
-        } else {
-            todo!();
-        }
-    }
-
-    // We've checked all predicted values.
 }

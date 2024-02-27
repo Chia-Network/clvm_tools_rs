@@ -1697,7 +1697,7 @@ fn find_satisfied_constants(
                 .iter()
                 .filter(|h| {
                     let hname: &[u8] = h;
-                    (function_set.contains(hname) || constant_set.contains(hname))
+                    function_set.contains(hname) || constant_set.contains(hname)
                 })
                 .cloned()
                 .collect();

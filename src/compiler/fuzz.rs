@@ -149,17 +149,19 @@ impl<S> FuzzGenerator<S> {
     pub fn result(&self) -> Rc<SExp> { self.structure.clone() }
 
     fn remove_waiting(&mut self, waiting_atom: Rc<SExp>) {
-        let mut to_remove_waiting = self.waiting.iter().enumerate().filter_map(|(i,w)| {
+        let mut to_remove_waiting: Vec<usize> = self.waiting.iter().enumerate().filter_map(|(i,w)| {
             if w.atom == waiting_atom {
                 Some(i)
             } else {
                 None
             }
-        });
+        }).collect();
 
-        if let Some(i) = to_remove_waiting.next() {
-            self.waiting.remove(i);
+        if to_remove_waiting.is_empty() {
+            panic!("remove_waiting must succeed");
         }
+
+        self.waiting.remove(to_remove_waiting[0]);
     }
 
     pub fn expand<R: Rng + Sized>(&mut self, state: &mut S, terminate: bool, rng: &mut R) -> Result<bool, ()> {
