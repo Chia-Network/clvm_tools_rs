@@ -30,7 +30,6 @@ use crate::compiler::srcloc::Srcloc;
 use crate::compiler::StartOfCodegenOptimization;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::{toposort, u8_from_number, Number, TopoSortItem};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 const MACRO_TIME_LIMIT: usize = 1000000;
 pub const CONST_EVAL_LIMIT: usize = 1000000;

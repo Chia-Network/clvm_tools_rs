@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
-use std::cell::{Ref, RefCell, RefMut};
-use std::collections::{HashMap, HashSet};
+use std::cell::{RefCell, RefMut};
+use std::collections::HashMap;
 use std::fs;
 use std::rc::Rc;
 
@@ -11,11 +11,10 @@ use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm_tools::binutils::{assemble, disassemble};
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 
-use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs};
+use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, PrimaryCodegen};
 use crate::compiler::dialect::{detect_modern, AcceptedDialect};
-use crate::compiler::fuzz::{FuzzGenerator, Rule};
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::BasicCompileContext;

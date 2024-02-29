@@ -9,7 +9,6 @@ use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 
 use crate::compiler::clvm::{sha256tree, truthy};
 use crate::compiler::dialect::AcceptedDialect;
-use crate::compiler::optimize::depgraph::{FunctionDependencyGraph, DepgraphOptions};
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::typecheck::TheoryToSExp;

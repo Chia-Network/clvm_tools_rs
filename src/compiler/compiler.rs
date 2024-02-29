@@ -14,10 +14,9 @@ use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::cldb::hex_to_modern_sexp;
-use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, run, sha256tree};
+use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use crate::compiler::codegen::{
-    codegen, hoist_body_let_binding, process_helper_let_bindings, CONST_EVAL_LIMIT,
-};
+    codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompileModuleComponent, CompileModuleOutput, CompilerOpts,
     CompilerOutput, ConstantKind, DefconstData, DefunData, Export, FrontendOutput, HelperForm,
@@ -29,7 +28,6 @@ use crate::compiler::optimize::depgraph::{FunctionDependencyGraph, DepgraphOptio
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::prims;
 use crate::compiler::resolve::{find_helper_target, resolve_namespaces};
-use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};

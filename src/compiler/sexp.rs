@@ -10,7 +10,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
-use std::string::String;
 
 use binascii::{bin2hex, hex2bin};
 use num_traits::{zero, Num};
