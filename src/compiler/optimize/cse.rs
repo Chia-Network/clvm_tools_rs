@@ -329,7 +329,7 @@ pub fn detect_conditions(bf: &BodyForm) -> Result<Vec<CSECondition>, CompileErr>
 // for either c_path + [CallArgument(1)] or both
 // c_path + [CallArgument(2)] and c_path + [CallArgument(3)]
 fn cse_is_covering(c_path: &[BodyformPathArc], instances: &[CSEInstance]) -> bool {
-    let mut target_paths = vec![c_path.to_vec(), c_path.to_vec(), c_path.to_vec()];
+    let mut target_paths = [c_path.to_vec(), c_path.to_vec(), c_path.to_vec()];
     target_paths[0].push(BodyformPathArc::CallArgument(1));
     target_paths[1].push(BodyformPathArc::CallArgument(2));
     target_paths[2].push(BodyformPathArc::CallArgument(3));

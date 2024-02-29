@@ -9,7 +9,6 @@ use std::borrow::Borrow;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
-use std::string::String;
 
 use binascii::{bin2hex, hex2bin};
 use num_traits::{zero, Num};
@@ -41,9 +40,11 @@ pub enum SExp {
     /// content of the list, but may not depending on the construction of the
     /// list.
     Cons(Srcloc, Rc<SExp>, Rc<SExp>),
-    ///
+    /// Contains an integer which is presented normalized.
     Integer(Srcloc, Number),
+    /// Contains a quoted string or hex constant to reproduce exactly.
     QuotedString(Srcloc, u8, Vec<u8>),
+    /// Contains an identifier like atom.
     Atom(Srcloc, Vec<u8>),
 }
 
