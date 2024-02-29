@@ -1581,7 +1581,7 @@ fn finalize_env_(
             }
 
             /* Parentfns are functions in progress in the parent */
-            if c.parentfns.get(v).is_some() {
+            if c.parentfns.contains(v) {
                 Ok(Rc::new(SExp::Nil(l.clone())))
             } else {
                 Err(CompileErr(
