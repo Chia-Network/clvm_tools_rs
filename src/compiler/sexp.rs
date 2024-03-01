@@ -21,6 +21,7 @@ use serde::Serialize;
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType};
 use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes_clvm, TConvertOption};
+#[cfg(any(test,feature="fuzz"))]
 use crate::compiler::fuzz::{ExprModifier, FuzzChoice};
 use crate::compiler::prims::prims;
 use crate::compiler::srcloc::Srcloc;
@@ -1280,6 +1281,7 @@ fn find_in_structure_inner(
     structure == *target
 }
 
+#[cfg(any(test,feature="fuzz"))]
 impl ExprModifier for Rc<SExp> {
     type Item = Self;
     type Tag = Vec<u8>;

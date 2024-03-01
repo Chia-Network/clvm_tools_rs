@@ -35,6 +35,9 @@ use crate::compiler::srcloc::Srcloc;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::Number;
 
+pub const SHA256TREE_PROGRAM_CLVM: &'static str = "(2 (1 2 (3 (7 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) (4 (1 2 (3 (7 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) 1))";
+
+
 lazy_static! {
     pub static ref STANDARD_MACROS: String = {
         indoc! {"(
@@ -258,10 +261,9 @@ pub fn find_exported_helper(
 }
 
 fn form_hash_expression(inner_exp: Rc<BodyForm>) -> Rc<BodyForm> {
-    let sha256tree_program_clvm = "(2 (1 2 (3 (7 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) (4 (1 2 (3 (7 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) 1))";
     let shloc = Srcloc::start("*sha256tree*");
     let parsed =
-        parse_sexp(shloc.clone(), sha256tree_program_clvm.bytes()).expect("should have parsed");
+        parse_sexp(shloc.clone(), SHA256TREE_PROGRAM_CLVM.bytes()).expect("should have parsed");
     let p0_borrowed: &SExp = parsed[0].borrow();
 
     Rc::new(BodyForm::Call(
