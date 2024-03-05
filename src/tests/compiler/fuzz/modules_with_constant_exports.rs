@@ -14,7 +14,7 @@ use crate::compiler::compiler::{DefaultCompilerOpts, SHA256TREE_PROGRAM_CLVM};
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOutput, CompilerOpts, DefconstData, DefunData, HelperForm};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::frontend::compile_helperform;
-use crate::compiler::fuzz::{FuzzGenerator, FuzzTypeParams, Rule};
+use crate::compiler::fuzz::{ExprModifier, FuzzGenerator, FuzzTypeParams, Rule};
 use crate::compiler::prims::primquote;
 use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -182,7 +182,6 @@ impl ValueSpecification {
 struct ModuleConstantExpectation {
     constants_and_values: BTreeMap<Vec<u8>, Rc<ValueSpecification>>,
     functions: BTreeSet<Vec<u8>>,
-    waiting_constants: usize,
     opts: Rc<dyn CompilerOpts>,
     counter: usize,
     loc: Srcloc,
@@ -192,7 +191,6 @@ impl ModuleConstantExpectation {
         ModuleConstantExpectation {
             constants_and_values: BTreeMap::new(),
             functions: BTreeSet::new(),
-            waiting_constants: 1,
             opts,
             counter: 0,
             loc: Srcloc::start("*constant-test*"),
@@ -230,9 +228,7 @@ impl Rule<FuzzT> for TestModuleConstantFuzzTopRule {
 
         if self.another_constant && !terminate {
             let start_program = compose_sexp(state.loc(), &format!("( (include *standard-cl-23*) (defconst TIMES 3) ${{{idx}:constant}} . ${{{}:constant-program-tail}})", idx + 1));
-            state.waiting_constants += 1;
             state.constants_and_values.insert(b"TIMES".to_vec(), Rc::new(ValueSpecification::ConstantValue(compose_sexp(state.loc(), "3"))));
-            eprintln!("waiting_constants: {}", state.waiting_constants);
             Ok(Some(start_program.clone()))
         } else {
             let start_program = compose_sexp(state.loc(), &format!("( (include *standard-cl-23*) (defconst A ${{{idx}:constant-body}}) (export A))"));
@@ -278,7 +274,6 @@ impl Rule<FuzzT> for TestModuleConstantFuzzConstantBodyRule {
             };
 
         state.constants_and_values.insert(constant_id.clone(), Rc::new(ValueSpecification::ConstantValue(body.clone())));
-        state.waiting_constants -= 1;
 
         Ok(Some(body.clone()))
     }
@@ -330,7 +325,6 @@ impl Rule<FuzzT> for TestModuleConstantFuzzApplyOperation {
             Rc::new(ValueSpecification::ConstantRef(chosen.name.clone()))
         ));
         state.constants_and_values.insert(my_id.clone(), new_value.clone());
-        state.waiting_constants -= 1;
 
         // Add one to any constant that already has a body.
         Ok(Some(new_value.to_sexp(&state.loc())))
@@ -348,7 +342,6 @@ impl Rule<FuzzT> for TestModuleConstantFuzzMoreConstants {
 
         if !terminate && self.want_more {
             let body = compose_sexp(state.loc(), &format!("(${{{}:constant}} . ${{{}:constant-program-tail}})", idx, idx + 1));
-            state.waiting_constants += 1;
             Ok(Some(body))
         } else {
             let body = compose_sexp(state.loc(), &format!("${{{}:exports}}", idx));
@@ -365,7 +358,7 @@ impl Rule<FuzzT> for TestModuleConstantMoreFunctions {
         }
 
         let name = format!("F{idx}");
-        let body = compose_sexp(state.loc(), &format!("((defun {name} (TIMES X) (if (> () TIMES) X (+ X ${{{}:function-or-arg}}))) . ${{{}:constant-program-tail}})", idx+1, idx+2));
+        let body = compose_sexp(state.loc(), &format!("((defun {name} (TIMES X) (if (not (> () TIMES)) (+ X ${{{}:function-or-arg}}) X)) . ${{{}:constant-program-tail}})", idx+1, idx+2));
         state.functions.insert(name.as_bytes().to_vec());
         Ok(Some(body))
     }
@@ -390,7 +383,6 @@ impl Rule<FuzzT> for TestModuleConstantTerminateProgramTail {
         }
 
         eprintln!("terminate constant tail");
-        state.waiting_constants -= 1;
         Ok(Some(compose_sexp(state.loc(), &format!("${{{idx}:exports}}"))))
     }
 }
@@ -534,11 +526,22 @@ fn find_all_functions(opts: Rc<dyn CompilerOpts>, heritage: &[Rc<SExp>]) -> Resu
     }, heritage)
 }
 
+// Only do exports if it's the only replacement left
+fn only_export_left(heritage: &[Rc<SExp>]) -> bool {
+    if heritage.is_empty() {
+        return true;
+    }
+
+    let mut waiters = Vec::new();
+    heritage[0].find_waiters(&mut waiters);
+
+    waiters.len() == 1
+}
+
 struct TestModuleConstantFuzzExports { }
 impl Rule<FuzzT> for TestModuleConstantFuzzExports {
     fn check(&self, state: &mut ModuleConstantExpectation, tag: &Vec<u8>, idx: usize, terminate: bool, heritage: &[Rc<SExp>]) -> Result<Option<Rc<SExp>>,GenError> {
-        eprintln!("try exports, waiting = {}", state.waiting_constants);
-        if tag != b"exports" || state.waiting_constants > 0 {
+        if tag != b"exports" || !only_export_left(heritage) {
             return Ok(None);
         }
 
@@ -548,6 +551,9 @@ impl Rule<FuzzT> for TestModuleConstantFuzzExports {
         let mut result = nil.clone();
         let export_names = |result: &mut Rc<SExp>, names: &[String]| {
             for h in names.iter() {
+                if h == "X" {
+                    continue;
+                }
                 *result = Rc::new(SExp::Cons(
                     state.loc(),
                     compose_sexp(
@@ -580,7 +586,7 @@ impl Rule<FuzzT> for TestModuleConstantNew {
         let name = format!("C{idx}");
         let body = compose_sexp(state.loc(), &format!("(defconst {name} ${{{}:constant-body}})", idx));
         let heritage_list: Vec<String> = heritage.iter().map(|h| h.to_string()).collect();
-        eprintln!("CN waiting_constants: {} {heritage_list:?}", state.waiting_constants);
+        eprintln!("CN {heritage_list:?}");
         Ok(Some(body.clone()))
     }
 }
@@ -621,7 +627,6 @@ impl Rule<FuzzT> for TestModuleConstantBasedOnFunctionHash {
         let chosen: &DefunData = &all_functions[choice];
         let value = Rc::new(ValueSpecification::HashOfFunction(chosen.name.clone()));
         state.constants_and_values.insert(my_id, value.clone());
-        state.waiting_constants -= 1;
         Ok(Some(value.to_sexp(&state.loc())))
     }
 }
@@ -656,7 +661,7 @@ fn test_property_fuzz_stable_constants() {
     ];
     let top_node = Rc::new(SExp::Atom(srcloc.clone(), b"${0:top}".to_vec()));
 
-    for _ in 0..20 {
+    for _ in 0..30 {
         let mut fuzzgen = FuzzGenerator::new(top_node.clone(), &rules);
         let mut idx = 0;
         let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("*test*"));
@@ -666,7 +671,6 @@ fn test_property_fuzz_stable_constants() {
         }).set_optimize(true));
         while fuzzgen.expand(&mut mc, idx > 15, &mut rng).expect("should expand") {
             idx += 1;
-            eprintln!("fuzzgen waiting {}: {}", mc.waiting_constants, fuzzgen.result());
             assert!(idx < 100);
         }
 
@@ -694,6 +698,7 @@ fn test_property_fuzz_stable_constants() {
         let results =
             if let CompilerOutput::Module(x) = &compiled.compiled {
                 for component in x.components.iter() {
+                    eprintln!("{} ({}) = {}", decode_string(&component.shortname), SExp::QuotedString(mc.loc(), b'x', component.hash.clone()), component.content);
                     actual_values.insert(component.shortname.clone(), component.content.clone());
                     hashes.insert(component.shortname.clone(), component.hash.clone());
                 }
@@ -701,7 +706,7 @@ fn test_property_fuzz_stable_constants() {
                 assert!(false);
             };
 
-        for cname in mc.constants_and_values.keys() {
+        for cname in mc.constants_and_values.keys().filter(|k| *k != b"X") {
             if let Some(cval) = mc.constants_and_values.get(cname) {
                 let desired_value = cval.interpret(mc.opts.clone(), &mc.loc(), &actual_values, &hashes);
                 eprintln!("checking for {} = {desired_value}", decode_string(cname));
