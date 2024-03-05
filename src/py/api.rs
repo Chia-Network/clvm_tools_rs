@@ -166,7 +166,8 @@ fn run_clvm_compilation(
     }
 }
 
-#[pyfunction(arg3 = "[]", arg4 = "None")]
+#[pyfunction]
+#[pyo3(signature = (input_path, output_path, search_paths = Vec::new(), export_symbols = None))]
 fn compile_clvm(
     input_path: &PyAny,
     output_path: String,
@@ -181,7 +182,8 @@ fn compile_clvm(
     )
 }
 
-#[pyfunction(arg2 = "[]", arg3 = "None")]
+#[pyfunction]
+#[pyo3(signature = (source, search_paths = Vec::new(), export_symbols = None))]
 fn compile(
     source: String,
     search_paths: Vec<String>,
@@ -195,7 +197,8 @@ fn compile(
     )
 }
 
-#[pyfunction(arg2 = "[]")]
+#[pyfunction]
+#[pyo3(signature = (input_path, search_paths=Vec::new()))]
 fn check_dependencies(input_path: &PyAny, search_paths: Vec<String>) -> PyResult<PyObject> {
     run_clvm_compilation(
         CompileClvmSource::SourcePath(input_path),
@@ -282,12 +285,14 @@ impl CldbSingleBespokeOverride for CldbSinglePythonOverride {
                 .pycode
                 .call1(py, PyTuple::new(py, &vec![arg_value]))
                 .map_err(|e| RunFailure::RunErr(env.loc(), format!("{}", e)))?;
-            python_value_to_clvm(py, res)
+            let res_ref: &PyAny = res.as_ref(py);
+            python_value_to_clvm(res_ref)
         })
     }
 }
 
-#[pyfunction(arg4 = "None", arg5 = "None")]
+#[pyfunction]
+#[pyo3(signature = (hex_prog, hex_args, symbol_table, overrides=None, run_options=None))]
 fn start_clvm_program(
     hex_prog: String,
     hex_args: String,
@@ -298,17 +303,18 @@ fn start_clvm_program(
     let (command_tx, command_rx) = mpsc::channel();
     let (result_tx, result_rx) = mpsc::channel();
 
-    let gil = Python::acquire_gil();
-    let py = gil.python();
+    let print_only_value = Python::with_gil(|py| {
+        let print_only_option = run_options
+            .and_then(|h| h.get("print").map(|p| p.clone()))
+            .unwrap_or_else(|| {
+                let any: Py<PyAny> = PyBool::new(py, false).into();
+                any
+            });
 
-    let print_only_option = run_options
-        .and_then(|h| h.get("print").map(|p| p.clone()))
-        .unwrap_or_else(|| {
-            let any: Py<PyAny> = PyBool::new(py, false).into();
-            any
-        });
+        PyBool::new(py, true).compare(print_only_option)
+    })?;
 
-    let print_only = PyBool::new(py, true).compare(print_only_option)? == Ordering::Equal;
+    let print_only = print_only_value == Ordering::Equal;
 
     thread::spawn(move || {
         let mut allocator = Allocator::new();
@@ -386,7 +392,8 @@ fn start_clvm_program(
     })
 }
 
-#[pyfunction(arg3 = 2)]
+#[pyfunction]
+#[pyo3(signature = (tool_name, args, default_stage=2))]
 fn launch_tool(tool_name: String, args: Vec<String>, default_stage: u32) -> Vec<u8> {
     let mut stdout = Stream::new(None);
     cmds::launch_tool(&mut stdout, &args, &tool_name, default_stage);
