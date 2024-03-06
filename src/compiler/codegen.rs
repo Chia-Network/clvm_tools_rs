@@ -1006,6 +1006,7 @@ fn generate_let_defun(
             args: inner_function_args,
             body,
             synthetic: Some(SyntheticType::NoInlinePreference),
+            ty: None,
         }),
     )
 }
@@ -1317,6 +1318,7 @@ pub fn hoist_body_let_binding(
                     args: new_function_args,
                     body: new_body,
                     synthetic: Some(SyntheticType::WantNonInline),
+                    ty: None,
                 }),
             );
             new_helpers_from_body.push(function);

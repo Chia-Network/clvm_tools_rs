@@ -292,6 +292,7 @@ impl Preprocessor {
                                 include_forms: vec![],
                                 helpers: self.helpers.clone(),
                                 exp: mdata.body.clone(),
+                                ty: None,
                             };
 
                             let program_sexp = Rc::new(SExp::Cons(
@@ -368,16 +369,20 @@ impl Preprocessor {
                             Rc::new(SExp::Cons(args.loc(), args.clone(), body)),
                         )),
                     ));
-                    if let Some(helper) = compile_helperform(self.opts.clone(), target_defun)? {
-                        self.add_helper(rename_args_helperform(&helper)?);
+                    if let Some(helpers) = compile_helperform(self.opts.clone(), target_defun)? {
+                        for helper in helpers.new_helpers.iter() {
+                            self.add_helper(rename_args_helperform(&helper)?);
+                        }
                     } else {
                         return Err(CompileErr(
                             definition.loc(),
                             "defmac found but couldn't be converted to function".to_string(),
                         ));
                     }
-                } else if let Some(helper) = compile_helperform(self.opts.clone(), definition)? {
-                    self.add_helper(rename_args_helperform(&helper)?);
+                } else if let Some(helpers) = compile_helperform(self.opts.clone(), definition)? {
+                    for helper in helpers.new_helpers.iter() {
+                        self.add_helper(rename_args_helperform(&helper)?);
+                    }
                 }
             }
         }
