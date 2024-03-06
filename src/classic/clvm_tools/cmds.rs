@@ -36,6 +36,7 @@ use crate::classic::clvm_tools::debug::{
     trace_to_text,
 };
 use crate::classic::clvm_tools::ir::reader::read_ir;
+use crate::classic::clvm_tools::log;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{
@@ -318,7 +319,7 @@ impl ArgumentValueConv for OperatorsVersion {
 }
 
 pub fn run(args: &[String]) {
-    env_logger::init();
+    log::init();
 
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, "run", 2);
@@ -502,7 +503,7 @@ pub fn cldb_hierarchy(
 }
 
 pub fn cldb(args: &[String]) {
-    env_logger::init();
+    log::init();
 
     let tool_name = "cldb".to_string();
     let props = TArgumentParserProps {

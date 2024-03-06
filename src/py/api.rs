@@ -23,6 +23,7 @@ use crate::classic::clvm::__type_compatibility__::{
 use crate::classic::clvm::serialize::sexp_to_stream;
 use crate::classic::clvm_tools::clvmc;
 use crate::classic::clvm_tools::cmds;
+use crate::classic::clvm_tools::log;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::cldb::{
     hex_to_modern_sexp, CldbOverrideBespokeCode, CldbRun, CldbRunEnv, CldbSingleBespokeOverride,
@@ -494,6 +495,8 @@ pub fn compose_run_function(
 
 #[pymodule]
 fn clvm_tools_rs(py: Python, m: &PyModule) -> PyResult<()> {
+    log::init();
+
     m.add_submodule(create_cmds_module(py)?)?;
 
     m.add("CldbError", py.get_type::<CldbError>())?;
