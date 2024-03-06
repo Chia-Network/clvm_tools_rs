@@ -346,7 +346,7 @@ fn decons_args(formed_tail: Rc<BodyForm>) -> ArgInputs {
     }
 }
 
-fn build_argument_captures(
+pub fn build_argument_captures(
     l: &Srcloc,
     arguments_to_convert: &[Rc<BodyForm>],
     tail: Option<Rc<BodyForm>>,
