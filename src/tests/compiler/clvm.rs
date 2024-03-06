@@ -1,8 +1,6 @@
 #[cfg(test)]
 use rand::prelude::*;
 #[cfg(test)]
-use rand::Rng;
-#[cfg(test)]
 use rand_chacha::ChaChaRng;
 
 use num_bigint::ToBigInt;
@@ -25,7 +23,7 @@ use crate::tests::classic::run::RandomClvmNumber;
 
 use crate::util::Number;
 
-const TEST_TIMEOUT: usize = 1000000;
+pub const TEST_TIMEOUT: usize = 1000000;
 
 fn test_compiler_clvm(to_run: &String, args: &String) -> Result<Rc<SExp>, RunFailure> {
     let mut allocator = Allocator::new();

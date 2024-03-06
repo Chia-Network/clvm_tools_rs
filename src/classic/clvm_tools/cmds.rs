@@ -1,5 +1,6 @@
 use core::cell::RefCell;
 
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io;
@@ -42,7 +43,6 @@ use crate::classic::clvm_tools::stages::stage_0::{
 };
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::platform::PathJoin;
-use crate::compiler::dialect::detect_modern;
 
 use crate::classic::platform::argparse::{
     Argument, ArgumentParser, ArgumentValue, ArgumentValueConv, IntConversion, NArgsSpec,
@@ -52,10 +52,12 @@ use crate::classic::platform::argparse::{
 use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
 use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
 use crate::compiler::clvm::start_step;
-use crate::compiler::compiler::{compile_file, run_optimizer, DefaultCompilerOpts};
+use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
+use crate::compiler::dialect::detect_modern;
 use crate::compiler::frontend::frontend;
+use crate::compiler::optimize::maybe_finalize_program_via_classic_optimizer;
 use crate::compiler::preprocessor::gather_dependencies;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
@@ -190,7 +192,7 @@ pub fn call_tool(
         return Ok(());
     }
 
-    let args_path_or_code_val = match args.get(&"path_or_code".to_string()) {
+    let args_path_or_code_val = match args.get("path_or_code") {
         None => ArgumentValue::ArgArray(vec![]),
         Some(v) => v.clone(),
     };
@@ -210,7 +212,7 @@ pub fn call_tool(
                 let conv_result = task.conv.invoke(allocator, &s)?;
                 let sexp = *conv_result.first();
                 let text = conv_result.rest();
-                if args.contains_key(&"script_hash".to_string()) {
+                if args.contains_key("script_hash") {
                     let data: Vec<u8> = sha256tree(allocator, sexp).hex().bytes().collect();
                     stream.write(Bytes::new(Some(BytesFromType::Raw(data))));
                 } else if !text.is_empty() {
@@ -537,6 +539,12 @@ pub fn cldb(args: &[String]) {
             .set_help("path to symbol file".to_string()),
     );
     parser.add_argument(
+        vec!["-p".to_string(), "--only-print".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("only show printing from the program".to_string()),
+    );
+    parser.add_argument(
         vec!["-t".to_string(), "--tree".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
@@ -604,6 +612,8 @@ pub fn cldb(args: &[String]) {
             _ => None,
         });
 
+    let only_print = parsed_args.get("only_print").map(|_| true).unwrap_or(false);
+
     let do_optimize = parsed_args
         .get("optimize")
         .map(|x| matches!(x, ArgumentValue::ArgBool(true)))
@@ -637,11 +647,15 @@ pub fn cldb(args: &[String]) {
                 &input_program,
                 &mut use_symbol_table,
             );
-            if do_optimize {
-                unopt_res.and_then(|x| run_optimizer(&mut allocator, runner.clone(), Rc::new(x)))
-            } else {
-                unopt_res.map(Rc::new)
-            }
+            unopt_res.and_then(|x| {
+                maybe_finalize_program_via_classic_optimizer(
+                    &mut allocator,
+                    runner.clone(),
+                    opts,
+                    false,
+                    &x,
+                )
+            })
         }
     };
 
@@ -712,7 +726,7 @@ pub fn cldb(args: &[String]) {
         Box::new(CldbNoOverride::new_symbols(use_symbol_table.clone())),
     );
 
-    if parsed_args.get("tree").is_some() {
+    if parsed_args.contains_key("tree") {
         let result = cldb_hierarchy(
             runner,
             Rc::new(prim_map),
@@ -731,6 +745,16 @@ pub fn cldb(args: &[String]) {
 
     let step = start_step(program, args);
     let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
+    let print_tree = |output: &mut Vec<_>, result: &BTreeMap<String, String>| {
+        let mut cvt_subtree = BTreeMap::new();
+        for (k, v) in result.iter() {
+            cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
+        }
+        output.push(cvt_subtree);
+    };
+
+    cldbrun.set_print_only(only_print);
+
     loop {
         if cldbrun.is_ended() {
             println!("{}", yamlette_string(&output));
@@ -738,11 +762,22 @@ pub fn cldb(args: &[String]) {
         }
 
         if let Some(result) = cldbrun.step(&mut allocator) {
-            let mut cvt_subtree = BTreeMap::new();
-            for (k, v) in result.iter() {
-                cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
+            if only_print {
+                if let Some(p) = result.get("Print") {
+                    let mut only_print = BTreeMap::new();
+                    only_print.insert("Print".to_string(), YamlElement::String(p.clone()));
+                    output.push(only_print);
+                } else {
+                    let is_final = result.contains_key("Final");
+                    let is_throw = result.contains_key("Throw");
+                    let is_failure = result.contains_key("Failure");
+                    if is_final || is_throw || is_failure {
+                        print_tree(&mut output, &result);
+                    }
+                }
+            } else {
+                print_tree(&mut output, &result);
             }
-            output.push(cvt_subtree);
         }
     }
 }
@@ -812,6 +847,70 @@ fn fix_log(
             })
         });
     }
+}
+
+// A function which performs preprocessing on a whole program and renders the
+// output to the user.
+//
+// This is used in the same way as cc -E in a C compiler; to see what
+// preprocessing did to the source so you can debug and improve your macros.
+//
+// Without this, it's difficult for some to visualize how macro are functioning
+// and what forms they output.
+fn perform_preprocessing(
+    stdout: &mut Stream,
+    opts: Rc<dyn CompilerOpts>,
+    input_file: &str,
+    program_text: &str,
+) -> Result<(), CompileErr> {
+    let srcloc = Srcloc::start(input_file);
+    // Parse the source file.
+    let parsed = parse_sexp(srcloc.clone(), program_text.bytes())?;
+    // Get the detected dialect and compose a sigil that matches.
+    // Classic preprocessing (also shared by standard sigil 21 and 21) does macro
+    // expansion during the compile process, making all macros available to all
+    // code regardless of its lexical order and therefore isn't rendered in a
+    // unified way (for example, 'com' and 'mod' forms invoke macros when
+    // encountered and expanded.  By contrast strict mode reads the macros and
+    // evaluates them in that order (as in C).
+    //
+    // The result is fully rendered before the next stage of compilation so that
+    // it can be inspected and so that the execution environment for macros is
+    // fully and cleanly separated from compile time.
+    let stepping_form_text = match opts.dialect().stepping {
+        Some(21) => Some("(include *strict-cl-21*)".to_string()),
+        Some(n) => Some(format!("(include *standard-cl-{n}*)")),
+        _ => None,
+    };
+    let frontend = frontend(opts, &parsed)?;
+    let fe_sexp = frontend.to_sexp();
+    let with_stepping = if let Some(s) = stepping_form_text {
+        let parsed_stepping_form = parse_sexp(srcloc.clone(), s.bytes())?;
+        if let sexp::SExp::Cons(_, a, rest) = fe_sexp.borrow() {
+            Rc::new(sexp::SExp::Cons(
+                srcloc.clone(),
+                a.clone(),
+                Rc::new(sexp::SExp::Cons(
+                    srcloc.clone(),
+                    parsed_stepping_form[0].clone(),
+                    rest.clone(),
+                )),
+            ))
+        } else {
+            fe_sexp
+        }
+    } else {
+        fe_sexp
+    };
+
+    let whole_mod = sexp::SExp::Cons(
+        srcloc.clone(),
+        Rc::new(sexp::SExp::Atom(srcloc, b"mod".to_vec())),
+        with_stepping,
+    );
+
+    stdout.write_str(&format!("{}", whole_mod));
+    Ok(())
 }
 
 fn get_disassembly_ver(p: &HashMap<String, ArgumentValue>) -> Option<usize> {
@@ -965,6 +1064,18 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         Argument::new()
             .set_type(Rc::new(PathJoin {}))
             .set_default(ArgumentValue::ArgString(None, "main.sym".to_string())),
+    );
+    parser.add_argument(
+        vec!["--strict".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("For modern dialects, don't treat unknown names as constants".to_string()),
+    );
+    parser.add_argument(
+        vec!["-E".to_string(), "--preprocess".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("Perform strict mode preprocessing and show the result".to_string()),
     );
     parser.add_argument(
         vec!["--operators-version".to_string()],
@@ -1212,7 +1323,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         emit_symbol_output = true;
     }
 
-    if parsed_args.get("table").is_some() {
+    if parsed_args.contains_key("table") {
         emit_symbol_output = true;
     }
 
@@ -1279,8 +1390,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .unwrap_or_else(|| "main.sym".to_string());
 
     // In testing: short circuit for modern compilation.
-    // Now stepping is the optional part.
-    if let Some(dialect) = dialect.and_then(|d| d.stepping) {
+    if let Some(stepping) = dialect.as_ref().and_then(|d| d.stepping) {
         let do_optimize = parsed_args
             .get("optimize")
             .map(|x| matches!(x, ArgumentValue::ArgBool(true)))
@@ -1288,11 +1398,20 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         let runner = Rc::new(DefaultProgramRunner::new());
         let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
         let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
-            .set_optimize(do_optimize)
+            .set_dialect(dialect.unwrap_or_default())
+            .set_optimize(do_optimize || stepping > 22)
             .set_search_paths(&search_paths)
-            .set_frontend_opt(dialect > 21)
+            .set_frontend_opt(stepping == 22)
             .set_disassembly_ver(get_disassembly_ver(&parsed_args));
         let mut symbol_table = HashMap::new();
+
+        // Short circuit preprocessing display.
+        if parsed_args.contains_key("preprocess") {
+            if let Err(e) = perform_preprocessing(stdout, opts, &use_filename, &input_program) {
+                stdout.write_str(&format!("{}: {}", e.0, e.1));
+            }
+            return;
+        }
 
         let unopt_res = compile_file(
             &mut allocator,
@@ -1301,11 +1420,15 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             &input_program,
             &mut symbol_table,
         );
-        let res = if do_optimize {
-            unopt_res.and_then(|x| run_optimizer(&mut allocator, runner, Rc::new(x)))
-        } else {
-            unopt_res.map(Rc::new)
-        };
+        let res = unopt_res.and_then(|x| {
+            maybe_finalize_program_via_classic_optimizer(
+                &mut allocator,
+                runner,
+                opts,
+                do_optimize,
+                &x,
+            )
+        });
 
         match res {
             Ok(r) => {
@@ -1481,7 +1604,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             let result = run_program_result.1;
             let time_done = SystemTime::now();
 
-            if parsed_args.get("cost").is_some() {
+            if parsed_args.contains_key("cost") {
                 if cost > 0 {
                     cost += cost_offset;
                 }
@@ -1489,7 +1612,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             };
 
             if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("time") {
-                if parsed_args.get("hex").is_some() {
+                if parsed_args.contains_key("hex") {
                     stdout.write_str(&format!(
                         "read_hex: {}\n",
                         time_read_hex
@@ -1571,13 +1694,15 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .unwrap_or_else(|| false);
 
     if emit_symbol_output {
-        if parsed_args.get("table").is_some() {
+        if parsed_args.contains_key("table") {
             trace_to_table(
                 &mut allocator,
                 stdout,
                 only_exn,
                 &log_content,
                 symbol_table,
+                // Clippy: disassemble no longer requires mutability,
+                // but this callback interface delivers it.
                 &|allocator, p| disassemble(allocator, p, disassembly_ver),
             );
         } else {
@@ -1588,6 +1713,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 only_exn,
                 &log_content,
                 symbol_table,
+                // Same as above.
                 &|allocator, p| disassemble(allocator, p, disassembly_ver),
             );
         }

@@ -30,3 +30,25 @@ Skipped
 - &rest arguments.
 - new bls and sec256 operators.
 
+## 0.1.36
+
+- modern lambda added
+- updated some internal data strucutres and call interfaces to support env variable renaming at during closure generation / lambda capture, or any step during transformation.
+
+## 0.1.37
+
+- First npm publish with a Program-like object reminiscent of
+  chia.types.blockchain_format.program.Program
+
+## 0.1.38
+
+- Uncurry fix, typescript type improvements for npm personality.
+
+## 0.1.39
+
+- Support conversion from Uint8Array to IProgram in wasm.
+
+## 0.1.40
+
+- New language sigil ```*standard-cl-23*``` is here which is the same language as that introduced by ```*strict-cl-21*``` but has much better optimization.
+- Syntactic tree lists using #(...) syntax in cl21 and cl23 (matt-o-how).

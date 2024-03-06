@@ -1,6 +1,6 @@
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
@@ -10,11 +10,12 @@ use crate::compiler::codegen::{generate_expr_code, get_call_name, get_callable};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     ArgsAndTail, BodyForm, CallSpec, Callable, CompileErr, CompiledCode, CompilerOpts,
-    InlineFunction, PrimaryCodegen,
+    InlineFunction, LambdaData, PrimaryCodegen,
 };
+use crate::compiler::lambda::make_cons;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::BasicCompileContext;
+use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 
 use crate::util::Number;
 
@@ -440,10 +441,55 @@ fn replace_inline_body(
                 }
             }
         }
-        BodyForm::Value(SExp::Atom(_, a)) => {
+        BodyForm::Value(SExp::Atom(l, a)) => {
+            if a == b"@*env*" {
+                // Reify the environment as it looks from here.
+                let left_env = Rc::new(BodyForm::Call(
+                    l.clone(),
+                    vec![
+                        Rc::new(BodyForm::Value(SExp::Atom(l.clone(), b"@".to_vec()))),
+                        Rc::new(BodyForm::Value(SExp::Integer(
+                            l.clone(),
+                            2_u32.to_bigint().unwrap(),
+                        ))),
+                    ],
+                    // Builtin
+                    None,
+                ));
+                let mut env = Rc::new(BodyForm::Quoted(SExp::Nil(l.clone())));
+                for arg in args.iter().rev() {
+                    env = Rc::new(make_cons(l.clone(), arg.clone(), env));
+                }
+                env = Rc::new(make_cons(l.clone(), left_env, env));
+                return Ok(env);
+            } else if a == b"@" {
+                return Ok(Rc::new(BodyForm::Value(SExp::Atom(
+                    l.clone(),
+                    b"@".to_vec(),
+                ))));
+            }
+
             let alookup = arg_lookup(callsite, inline.args.clone(), args, tail, a.clone())?
                 .unwrap_or_else(|| expr.clone());
             Ok(alookup)
+        }
+        BodyForm::Lambda(ldata) => {
+            let rewritten_captures = replace_inline_body(
+                visited_inlines,
+                runner,
+                opts,
+                compiler,
+                loc,
+                inline,
+                args,
+                tail,
+                callsite,
+                ldata.captures.clone(),
+            )?;
+            Ok(Rc::new(BodyForm::Lambda(Box::new(LambdaData {
+                captures: rewritten_captures,
+                ..*ldata.clone()
+            }))))
         }
         _ => Ok(expr.clone()),
     }
@@ -491,5 +537,12 @@ pub fn replace_in_inline(
         callsite,
         inline.body.clone(),
     )
-    .and_then(|x| generate_expr_code(context, opts, compiler, x))
+    .and_then(|x| {
+        let mut symbols = HashMap::new();
+        let runner = context.runner();
+        let optimizer = context.optimizer.duplicate();
+        let mut context_wrapper =
+            CompileContextWrapper::new(context.allocator(), runner, &mut symbols, optimizer);
+        generate_expr_code(&mut context_wrapper.context, opts, compiler, x)
+    })
 }
