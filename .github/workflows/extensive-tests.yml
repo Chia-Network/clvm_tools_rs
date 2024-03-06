@@ -27,13 +27,13 @@ jobs:
     - name: Set up rusts
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: stable
+        toolchain: nightly
         components: rustfmt, clippy
 
     - name: Set up rust (stable)
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: stable
+        toolchain: nightly
         components: rustfmt, clippy
 
     - uses: actions/setup-python@v4
