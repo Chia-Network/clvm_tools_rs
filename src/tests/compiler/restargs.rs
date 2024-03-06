@@ -907,8 +907,10 @@ fn test_repl_10() {
 fn test_rest_type_good() {
     let prog_good = indoc! {"
 (mod (X)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
+
   (defun F (A B . C) : ((Pair Atom (Pair Atom (List Atom))) -> Atom) (* A B (f C)))
+
   (F 5 7 &rest (list 9))
   )"}
     .to_string();
@@ -923,9 +925,12 @@ fn test_rest_type_good() {
 fn test_rest_type_bad() {
     let prog_bad = indoc! {"
 (mod (X)
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
+
   (deftype Foo ())
+
   (defun F (A B . C) : ((Pair Atom (Pair Atom (List Foo))) -> Atom) (* A B (f C)))
+
   (F 5 7 &rest (list 9))
   )"}
     .to_string();

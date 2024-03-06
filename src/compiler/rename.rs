@@ -5,7 +5,7 @@ use std::rc::Rc;
 use crate::compiler::codegen::toposort_assign_bindings;
 use crate::compiler::comptypes::{
     map_m, map_m_reverse, Binding, BindingPattern, BodyForm, CompileErr, CompileForm, DefconstData,
-    DefmacData, DefunData, HelperForm, LetData, LetFormKind,
+    DefmacData, DefunData, HelperForm, LambdaData, LetData, LetFormKind,
 };
 use crate::compiler::gensym::gensym;
 use crate::compiler::sexp::SExp;
@@ -128,10 +128,8 @@ fn make_binding_unique(b: &Binding) -> InnerRenameList {
             InnerRenameList {
                 bindings: single_name_map,
                 from_wing: Binding {
-                    loc: b.loc.clone(),
-                    nl: b.nl.clone(),
                     pattern: BindingPattern::Name(new_name),
-                    body: b.body.clone(),
+                    ..b.clone()
                 },
             }
         }
@@ -147,10 +145,8 @@ fn make_binding_unique(b: &Binding) -> InnerRenameList {
             InnerRenameList {
                 bindings: new_names,
                 from_wing: Binding {
-                    loc: b.loc.clone(),
-                    nl: b.nl.clone(),
                     pattern: BindingPattern::Complex(renamed_pattern),
-                    body: b.body.clone(),
+                    ..b.clone()
                 },
             }
         }
@@ -164,7 +160,7 @@ pub fn rename_assign_bindings(
 ) -> Result<(BodyForm, Vec<Rc<Binding>>), CompileErr> {
     // Order the bindings.
     let sorted_bindings = toposort_assign_bindings(l, bindings)?;
-    let mut renames = HashMap::new();
+    let mut renames: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
     // Process in reverse order so we rename from inner to outer.
     let bindings_to_rename: Vec<TopoSortItem<_>> = sorted_bindings.to_vec();
     let renamed_bindings = map_m_reverse(
@@ -175,9 +171,11 @@ pub fn rename_assign_bindings(
                 for (name, renamed) in new_names.iter() {
                     renames.insert(name.clone(), renamed.clone());
                 }
+
+                let renamed_in_body = Rc::new(rename_args_bodyform(b.body.borrow())?);
                 Ok(Rc::new(Binding {
                     pattern: BindingPattern::Complex(rename_in_cons(&renames, p.clone(), false)),
-                    body: Rc::new(rename_in_bodyform(&renames, b.body.clone())?),
+                    body: Rc::new(rename_in_bodyform(&renames, renamed_in_body)?),
                     ..b.clone()
                 }))
             } else {
@@ -186,7 +184,8 @@ pub fn rename_assign_bindings(
         },
         &bindings_to_rename,
     )?;
-    Ok((rename_in_bodyform(&renames, body)?, renamed_bindings))
+    let new_body = Rc::new(rename_args_bodyform(body.borrow())?);
+    Ok((rename_in_bodyform(&renames, new_body)?, renamed_bindings))
 }
 
 fn rename_in_bodyform(
@@ -197,11 +196,10 @@ fn rename_in_bodyform(
         BodyForm::Let(kind, letdata) => {
             let new_bindings = map_m(
                 &|b: &Rc<Binding>| -> Result<Rc<Binding>, CompileErr> {
+                    let b_borrowed: &Binding = b.borrow();
                     Ok(Rc::new(Binding {
-                        loc: b.loc(),
-                        nl: b.nl.clone(),
-                        pattern: b.pattern.clone(),
                         body: Rc::new(rename_in_bodyform(namemap, b.body.clone())?),
+                        ..b_borrowed.clone()
                     }))
                 },
                 &letdata.bindings,
@@ -255,9 +253,26 @@ fn rename_in_bodyform(
         }
 
         BodyForm::Mod(l, prog) => Ok(BodyForm::Mod(l.clone(), prog.clone())),
+        // Rename lambda arguments down the lexical scope.
+        BodyForm::Lambda(ldata) => {
+            let renamed_capture_inputs =
+                Rc::new(rename_in_bodyform(namemap, ldata.captures.clone())?);
+            let renamed_capture_outputs =
+                rename_in_cons(namemap, ldata.capture_args.clone(), false);
+            let renamed_body = Rc::new(rename_args_bodyform(ldata.body.borrow())?);
+            let outer_renamed_body = rename_in_bodyform(namemap, renamed_body)?;
+            Ok(BodyForm::Lambda(Box::new(LambdaData {
+                captures: renamed_capture_inputs,
+                capture_args: renamed_capture_outputs,
+                body: Rc::new(outer_renamed_body),
+                ..*ldata.clone()
+            })))
+        }
     }
 }
 
+/// Given a set of sequential bindings, create a stack of let forms that have
+/// the same meaning.  This is used to propogate renaming.
 pub fn desugar_sequential_let_bindings(
     bindings: &[Rc<Binding>],
     body: &BodyForm,
@@ -368,6 +383,20 @@ fn rename_args_bodyform(b: &BodyForm) -> Result<BodyForm, CompileErr> {
             Ok(BodyForm::Call(l.clone(), new_vs, new_tail))
         }
         BodyForm::Mod(l, program) => Ok(BodyForm::Mod(l.clone(), program.clone())),
+        BodyForm::Lambda(ldata) => {
+            let mut own_args = HashMap::new();
+            for (n, v) in invent_new_names_sexp(ldata.args.clone()).iter() {
+                own_args.insert(n.clone(), v.clone());
+            }
+            let new_args = rename_in_cons(&own_args, ldata.args.clone(), false);
+            let new_body = rename_args_bodyform(ldata.body.borrow())?;
+            let renamed_with_own_args = rename_in_bodyform(&own_args, Rc::new(new_body))?;
+            Ok(BodyForm::Lambda(Box::new(LambdaData {
+                args: new_args,
+                body: Rc::new(renamed_with_own_args),
+                ..*ldata.clone()
+            })))
+        }
     }
 }
 
@@ -378,49 +407,29 @@ fn rename_in_helperform(
     match h {
         HelperForm::Deftype(_) => Ok(h.clone()),
         HelperForm::Defconstant(defc) => Ok(HelperForm::Defconstant(DefconstData {
-            loc: defc.loc.clone(),
-            kind: defc.kind.clone(),
-            name: defc.name.to_vec(),
-            nl: defc.nl.clone(),
-            kw: defc.kw.clone(),
             body: Rc::new(rename_in_bodyform(namemap, defc.body.clone())?),
-            ty: defc.ty.clone(),
+            ..defc.clone()
         })),
         HelperForm::Defmacro(mac) => Ok(HelperForm::Defmacro(DefmacData {
-            loc: mac.loc.clone(),
-            kw: mac.kw.clone(),
-            nl: mac.nl.clone(),
-            name: mac.name.to_vec(),
-            args: mac.args.clone(),
             program: Rc::new(rename_in_compileform(namemap, mac.program.clone())?),
+            ..mac.clone()
         })),
         HelperForm::Defun(inline, defun) => Ok(HelperForm::Defun(
             *inline,
-            DefunData {
-                loc: defun.loc.clone(),
-                kw: defun.kw.clone(),
-                nl: defun.nl.clone(),
-                name: defun.name.to_vec(),
-                orig_args: defun.orig_args.clone(),
-                args: defun.args.clone(),
+            Box::new(DefunData {
                 body: Rc::new(rename_in_bodyform(namemap, defun.body.clone())?),
-                ty: defun.ty.clone(),
-            },
+                ..*defun.clone()
+            }),
         )),
     }
 }
 
-fn rename_args_helperform(h: &HelperForm) -> Result<HelperForm, CompileErr> {
+pub fn rename_args_helperform(h: &HelperForm) -> Result<HelperForm, CompileErr> {
     match h {
         HelperForm::Deftype(_) => Ok(h.clone()),
         HelperForm::Defconstant(defc) => Ok(HelperForm::Defconstant(DefconstData {
-            loc: defc.loc.clone(),
-            kind: defc.kind.clone(),
-            nl: defc.nl.clone(),
-            kw: defc.kw.clone(),
-            name: defc.name.clone(),
             body: Rc::new(rename_args_bodyform(defc.body.borrow())?),
-            ty: defc.ty.clone(),
+            ..defc.clone()
         })),
         HelperForm::Defmacro(mac) => {
             let mut new_names: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
@@ -434,15 +443,12 @@ fn rename_args_helperform(h: &HelperForm) -> Result<HelperForm, CompileErr> {
             let local_renamed_arg = rename_in_cons(&local_namemap, mac.args.clone(), true);
             let local_renamed_body = rename_args_compileform(mac.program.borrow())?;
             Ok(HelperForm::Defmacro(DefmacData {
-                loc: mac.loc.clone(),
-                kw: mac.kw.clone(),
-                nl: mac.nl.clone(),
-                name: mac.name.clone(),
                 args: local_renamed_arg,
                 program: Rc::new(rename_in_compileform(
                     &local_namemap,
                     Rc::new(local_renamed_body),
                 )?),
+                ..mac.clone()
             }))
         }
         HelperForm::Defun(inline, defun) => {
@@ -455,19 +461,14 @@ fn rename_args_helperform(h: &HelperForm) -> Result<HelperForm, CompileErr> {
             let local_renamed_body = rename_args_bodyform(defun.body.borrow())?;
             Ok(HelperForm::Defun(
                 *inline,
-                DefunData {
-                    loc: defun.loc.clone(),
-                    nl: defun.nl.clone(),
-                    kw: defun.kw.clone(),
-                    name: defun.name.clone(),
-                    orig_args: defun.orig_args.clone(),
+                Box::new(DefunData {
                     args: local_renamed_arg,
                     body: Rc::new(rename_in_bodyform(
                         &local_namemap,
                         Rc::new(local_renamed_body),
                     )?),
-                    ty: defun.ty.clone(),
-                },
+                    ..*defun.clone()
+                }),
             ))
         }
     }
@@ -477,29 +478,32 @@ fn rename_in_compileform(
     namemap: &HashMap<Vec<u8>, Vec<u8>>,
     c: Rc<CompileForm>,
 ) -> Result<CompileForm, CompileErr> {
+    let c_ref: &CompileForm = c.borrow();
     Ok(CompileForm {
-        loc: c.loc.clone(),
-        args: c.args.clone(),
-        include_forms: c.include_forms.clone(),
         helpers: map_m(|x| rename_in_helperform(namemap, x), &c.helpers)?,
         exp: Rc::new(rename_in_bodyform(namemap, c.exp.clone())?),
-        ty: c.ty.clone(),
+        ..c_ref.clone()
     })
 }
 
+/// For all the HelperForms in a CompileForm, do renaming in them so that all
+/// unique variable bindings in the program have unique names.
 pub fn rename_children_compileform(c: &CompileForm) -> Result<CompileForm, CompileErr> {
     let local_renamed_helpers = map_m(&rename_args_helperform, &c.helpers)?;
     let local_renamed_body = rename_args_bodyform(c.exp.borrow())?;
     Ok(CompileForm {
-        loc: c.loc.clone(),
-        args: c.args.clone(),
-        include_forms: c.include_forms.clone(),
         helpers: local_renamed_helpers,
         exp: Rc::new(local_renamed_body),
-        ty: c.ty.clone(),
+        ..c.clone()
     })
 }
 
+/// Given a compileform, perform renaming in descendants so that every variable
+/// name that lives in a different scope has a unique name.  This allows
+/// compilation to treat identical forms as equivalent and ensures that forms
+/// that look the same but refer to different variables are different.  It also
+/// ensures that future tricky variable name uses decide on one binding from their
+/// lexical scope.
 pub fn rename_args_compileform(c: &CompileForm) -> Result<CompileForm, CompileErr> {
     let new_names = invent_new_names_sexp(c.args.clone());
     let mut local_namemap = HashMap::new();

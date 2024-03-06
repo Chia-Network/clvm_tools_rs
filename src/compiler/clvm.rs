@@ -20,6 +20,16 @@ use crate::compiler::srcloc::Srcloc;
 
 use crate::util::{number_from_u8, u8_from_number, Number};
 
+/// Provide a way of intercepting and running new primitives.
+pub trait PrimOverride {
+    fn try_handle(
+        &self,
+        head: Rc<SExp>,
+        context: Rc<SExp>,
+        tail: Rc<SExp>,
+    ) -> Result<Option<Rc<SExp>>, RunFailure>;
+}
+
 /// An object which contains the state of a running CLVM program in a compact
 /// form.
 ///
@@ -161,7 +171,15 @@ fn translate_head(
             Some(v) => Ok(Rc::new(v.with_loc(l.clone()))),
         },
         SExp::Cons(_l, _a, nil) => match nil.borrow() {
-            SExp::Nil(_l1) => run(allocator, runner, prim_map, sexp.clone(), context, None),
+            SExp::Nil(_l1) => run(
+                allocator,
+                runner,
+                prim_map,
+                sexp.clone(),
+                context,
+                None,
+                None,
+            ),
             _ => Err(RunFailure::RunErr(
                 sexp.loc(),
                 format!("Unexpected head form in clvm {sexp}"),
@@ -393,6 +411,7 @@ pub fn run_step(
     runner: Rc<dyn TRunProgram>,
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     step_: &RunStep,
+    prim_override: Option<&dyn PrimOverride>,
 ) -> Result<RunStep, RunFailure> {
     let mut step = step_.clone();
 
@@ -496,7 +515,7 @@ pub fn run_step(
                 }
             }
         }
-        RunStep::Op(head, _context, tail, None, parent) => {
+        RunStep::Op(head, context, tail, None, parent) => {
             let aval = atom_value(head.clone())?;
             let apply_atom = 2_i32.to_bigint().unwrap();
             let if_atom = 3_i32.to_bigint().unwrap();
@@ -513,6 +532,12 @@ pub fn run_step(
             } else {
                 -1
             };
+
+            if let Some(ovr) = prim_override {
+                if let Some(res) = ovr.try_handle(head.clone(), context.clone(), tail.clone())? {
+                    return Ok(RunStep::OpResult(res.loc(), res.clone(), parent.clone()));
+                }
+            }
 
             let op = if aval == apply_atom {
                 "apply".to_string()
@@ -629,6 +654,7 @@ pub fn run(
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     sexp_: Rc<SExp>,
     context_: Rc<SExp>,
+    prim_override: Option<&dyn PrimOverride>,
     iter_limit: Option<usize>,
 ) -> Result<Rc<SExp>, RunFailure> {
     let mut step = start_step(sexp_, context_);
@@ -641,7 +667,13 @@ pub fn run(
             }
         }
         iters += 1;
-        step = run_step(allocator, runner.clone(), prim_map.clone(), &step)?;
+        step = run_step(
+            allocator,
+            runner.clone(),
+            prim_map.clone(),
+            &step,
+            prim_override,
+        )?;
         if let RunStep::Done(_, x) = step {
             return Ok(x);
         }
@@ -681,6 +713,7 @@ pub fn parse_and_run(
             prim_map,
             code[0].clone(),
             args[0].clone(),
+            None,
             step_limit,
         )
     }
