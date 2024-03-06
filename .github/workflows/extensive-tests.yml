@@ -27,18 +27,14 @@ jobs:
     - name: Set up rusts
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: stable
+        toolchain: 1.71
         components: rustfmt, clippy
-        env:
-          RUSTC: 1.71
 
     - name: Set up rust (stable)
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: stable
+        toolchain: 1.71
         components: rustfmt, clippy
-        env:
-          RUSTC: 1.71
 
     - uses: actions/setup-python@v4
       name: Install Python 3.11
@@ -52,7 +48,7 @@ jobs:
     - name: Set up rust
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: stable
+        toolchain: 1.71
 
     - name: Install dependencies
       run: |
