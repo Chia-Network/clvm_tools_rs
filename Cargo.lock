@@ -211,7 +211,6 @@ dependencies = [
  "derivative",
  "do-notation",
  "encoding8",
- "env_filter",
  "env_logger",
  "getrandom",
  "hex",
