@@ -328,7 +328,7 @@ fn test_type_strip_1() {
             "run".to_string(),
             "(mod ((A : Atom)) (defun-inline foo (X Y . Z) (i X Y . Z)) (foo A 2 3))".to_string()
         ])
-            .trim(),
+        .trim(),
         "(i 2 (q . 2) (q . 3))"
     );
 }
@@ -371,7 +371,7 @@ fn test_type_strip_2() {
             "run".to_string(),
             "(mod (A) -> Atom (defun-inline foo (X Y . Z) (i X Y . Z)) (foo A 2 3))".to_string()
         ])
-            .trim(),
+        .trim(),
         "(i 2 (q . 2) (q . 3))"
     );
 }
@@ -423,7 +423,7 @@ fn test_type_def_1() {
    )"}
             .to_string()
         ])
-            .trim(),
+        .trim(),
         "(a (q . 2) (c 2 (q . 3)))"
     );
 }
