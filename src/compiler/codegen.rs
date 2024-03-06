@@ -852,7 +852,7 @@ fn codegen_(
     compiler: &PrimaryCodegen,
     h: &HelperForm,
 ) -> Result<PrimaryCodegen, CompileErr> {
-    match &h {
+    match h {
         HelperForm::Defun(inline, defun) => {
             if *inline {
                 // Note: this just replaces a dummy function inserted earlier.
@@ -1326,7 +1326,7 @@ pub fn hoist_body_let_binding(
             // new_expr is the generated code at the call site.  The reference
             // to the actual function additionally is enriched by a left-env
             // reference that gives it access to the program.
-            let new_expr = lambda_codegen(&new_function_name, letdata);
+            let new_expr = lambda_codegen(&new_function_name, letdata)?;
             Ok((new_helpers_from_body, Rc::new(new_expr)))
         }
         _ => Ok((Vec::new(), body.clone())),

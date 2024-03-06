@@ -102,7 +102,3 @@ path = "src/classic/bins/clisp_to_json.rs"
 [[bin]]
 name = "repl"
 path = "src/classic/bins/repl.rs"
-
-[[bin]]
-name = "typetest"
-path = "src/classic/bins/typetest.rs"

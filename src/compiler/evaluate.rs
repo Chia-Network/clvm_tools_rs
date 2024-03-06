@@ -8,7 +8,7 @@ use num_bigint::ToBigInt;
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::{run, PrimOverride};
+use crate::compiler::clvm::{run, truthy};
 use crate::compiler::codegen::{codegen, hoist_assign_form};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
@@ -25,7 +25,7 @@ use crate::compiler::CompileContextWrapper;
 use crate::util::{number_from_u8, u8_from_number, Number};
 
 const PRIM_RUN_LIMIT: usize = 1000000;
-pub const EVAL_STACK_LIMIT: usize = 190;
+pub const EVAL_STACK_LIMIT: usize = 200;
 
 // Stack depth checker.
 #[derive(Clone, Debug, Default)]
@@ -81,43 +81,6 @@ pub enum ArgInputs {
     Pair(Rc<ArgInputs>, Rc<ArgInputs>),
 }
 
-/// EvalExtension provides internal capabilities to the evaluator that function
-/// as extra primitives.  They work entirely at the semantic layer of chialisp
-/// and are preferred compared to CLVM primitives.  These operate on BodyForm
-/// so they have some ability to work on the semantics of chialisp values in
-/// addition to reified values.
-///
-/// These provide the primitive, value aware capabilities to the defmac system
-/// which runs entirely in evaluator space.  This is done because evaluator deals
-/// in high level frontend values...  Rather than having integers, symbols and
-/// strings all crushed into a single atom value space, these observe the
-/// differences and are able to judge and convert them in ways the user specifies.
-///
-/// This allows these macros to pass on programs to the chialisp compiler that
-/// are symbol and constant aware; it's able to write (for example) a matcher
-/// that takes lists of mixed symbols and constants, isolate each and produce
-/// lists of let bindings and match checks that pick out each.  Since atoms are
-/// passed on when appropriate vs constants and such, we can have macros produce
-/// code and be completely certain that any atom landing in the chialisp compiler
-/// was intended to be bound in some way and return an error if it isn't, having
-/// the result plainly be an error if not.
-///
-/// I also anticipate using EvalExtensions to analyze and control code shrinking
-/// during some kinds of optimization.
-pub trait EvalExtension {
-    #[allow(clippy::too_many_arguments)]
-    fn try_eval(
-        &self,
-        evaluator: &Evaluator,
-        prog_args: Rc<SExp>,
-        env: &HashMap<Vec<u8>, Rc<BodyForm>>,
-        loc: &Srcloc,
-        name: &[u8],
-        args: &[Rc<BodyForm>],
-        body: Rc<BodyForm>,
-    ) -> Result<Option<Rc<BodyForm>>, CompileErr>;
-}
-
 /// Evaluator is an object that simplifies expressions, given the helpers
 /// (helpers are forms that are reusable parts of programs, such as defconst,
 /// defun or defmacro) from a program.  In the simplest form, it can be used to
@@ -139,65 +102,10 @@ pub struct Evaluator {
     opts: Rc<dyn CompilerOpts>,
     runner: Rc<dyn TRunProgram>,
     prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
-    extensions: Vec<Rc<dyn EvalExtension>>,
     helpers: Vec<HelperForm>,
     mash_conditions: bool,
     ignore_exn: bool,
     disable_calls: bool,
-}
-
-fn compile_to_run_err(e: CompileErr) -> RunFailure {
-    match e {
-        CompileErr(l, e) => RunFailure::RunErr(l, e),
-    }
-}
-
-impl PrimOverride for Evaluator {
-    fn try_handle(
-        &self,
-        head: Rc<SExp>,
-        _context: Rc<SExp>,
-        tail: Rc<SExp>,
-    ) -> Result<Option<Rc<SExp>>, RunFailure> {
-        let have_args: Vec<Rc<BodyForm>> = if let Some(args_list) = tail.proper_list() {
-            args_list
-                .iter()
-                .map(|e| Rc::new(BodyForm::Quoted(e.clone())))
-                .collect()
-        } else {
-            return Ok(None);
-        };
-
-        if let SExp::Atom(hl, head_atom) = head.borrow() {
-            let mut call_args = vec![Rc::new(BodyForm::Value(SExp::Atom(
-                hl.clone(),
-                head_atom.clone(),
-            )))];
-            call_args.append(&mut have_args.clone());
-            let call_form = Rc::new(BodyForm::Call(head.loc(), call_args, None));
-
-            for x in self.extensions.iter() {
-                if let Some(res) = x
-                    .try_eval(
-                        self,
-                        Rc::new(SExp::Nil(head.loc())),
-                        &HashMap::new(),
-                        &head.loc(),
-                        head_atom,
-                        &have_args,
-                        call_form.clone(),
-                    )
-                    .map_err(compile_to_run_err)?
-                {
-                    return dequote(head.loc(), res)
-                        .map_err(compile_to_run_err)
-                        .map(Some);
-                }
-            }
-        }
-
-        Ok(None)
-    }
 }
 
 fn select_helper(bindings: &[HelperForm], name: &[u8]) -> Option<HelperForm> {
@@ -432,6 +340,16 @@ fn arg_inputs_primitive(arginputs: Rc<ArgInputs>) -> bool {
     }
 }
 
+fn decons_args(formed_tail: Rc<BodyForm>) -> ArgInputs {
+    if let Some((head, tail)) = match_cons(formed_tail.clone()) {
+        let arg_head = decons_args(head.clone());
+        let arg_tail = decons_args(tail.clone());
+        ArgInputs::Pair(Rc::new(arg_head), Rc::new(arg_tail))
+    } else {
+        ArgInputs::Whole(formed_tail)
+    }
+}
+
 pub fn build_argument_captures(
     l: &Srcloc,
     arguments_to_convert: &[Rc<BodyForm>],
@@ -439,7 +357,7 @@ pub fn build_argument_captures(
     args: Rc<SExp>,
 ) -> Result<HashMap<Vec<u8>, Rc<BodyForm>>, CompileErr> {
     let formed_tail = tail.unwrap_or_else(|| Rc::new(BodyForm::Quoted(SExp::Nil(l.clone()))));
-    let mut formed_arguments = ArgInputs::Whole(formed_tail);
+    let mut formed_arguments = decons_args(formed_tail);
 
     for i_reverse in 0..arguments_to_convert.len() {
         let i = arguments_to_convert.len() - i_reverse - 1;
@@ -759,6 +677,27 @@ pub fn eval_dont_expand_let(inline_hint: &Option<LetFormInlineHint>) -> bool {
     matches!(inline_hint, Some(LetFormInlineHint::NonInline(_)))
 }
 
+pub fn filter_capture_args(args: Rc<SExp>, name_map: &HashMap<Vec<u8>, Rc<BodyForm>>) -> Rc<SExp> {
+    match args.borrow() {
+        SExp::Cons(l, a, b) => {
+            let a_filtered = filter_capture_args(a.clone(), name_map);
+            let b_filtered = filter_capture_args(b.clone(), name_map);
+            if !truthy(a_filtered.clone()) && !truthy(b_filtered.clone()) {
+                return Rc::new(SExp::Nil(l.clone()));
+            }
+            Rc::new(SExp::Cons(l.clone(), a_filtered, b_filtered))
+        }
+        SExp::Atom(l, n) => {
+            if name_map.contains_key(n) {
+                Rc::new(SExp::Nil(l.clone()))
+            } else {
+                args
+            }
+        }
+        _ => Rc::new(SExp::Nil(args.loc())),
+    }
+}
+
 impl<'info> Evaluator {
     pub fn new(
         opts: Rc<dyn CompilerOpts>,
@@ -772,7 +711,6 @@ impl<'info> Evaluator {
             helpers,
             mash_conditions: false,
             ignore_exn: false,
-            extensions: Vec::new(),
             disable_calls: false,
         }
     }
@@ -1213,20 +1151,6 @@ impl<'info> Evaluator {
         env: &HashMap<Vec<u8>, Rc<BodyForm>>,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
-        for ext in self.extensions.iter() {
-            if let Some(res) = ext.try_eval(
-                self,
-                prog_args.clone(),
-                env,
-                &call.loc,
-                call.name,
-                arguments_to_convert,
-                call.original.clone(),
-            )? {
-                return Ok(res);
-            }
-        }
-
         let helper = select_helper(&self.helpers, call.name);
         match helper {
             Some(HelperForm::Defmacro(mac)) => {
@@ -1285,10 +1209,22 @@ impl<'info> Evaluator {
                     )));
                 }
 
+                let translated_tail = if let Some(t) = call.tail.as_ref() {
+                    Some(self.shrink_bodyform_visited(
+                        allocator,
+                        visited,
+                        prog_args.clone(),
+                        env,
+                        t.clone(),
+                        only_inline,
+                    )?)
+                } else {
+                    None
+                };
                 let argument_captures_untranslated = build_argument_captures(
                     &call.loc,
                     arguments_to_convert,
-                    call.tail.clone(),
+                    translated_tail,
                     defun.args.clone(),
                 )?;
 
@@ -1341,19 +1277,65 @@ impl<'info> Evaluator {
         ldata: &LambdaData,
         only_inline: bool,
     ) -> Result<Rc<BodyForm>, CompileErr> {
+        if !truthy(ldata.capture_args.clone()) {
+            return Ok(Rc::new(BodyForm::Lambda(Box::new(ldata.clone()))));
+        }
+
         // Rewrite the captures based on what we know at the call site.
         let new_captures = self.shrink_bodyform_visited(
             allocator,
             visited,
-            prog_args,
+            prog_args.clone(),
             env,
             ldata.captures.clone(),
             only_inline,
         )?;
 
+        // Break up and make binding map.
+        let deconsed_args = decons_args(new_captures.clone());
+        let mut arg_captures = HashMap::new();
+        create_argument_captures(
+            &mut arg_captures,
+            &deconsed_args,
+            ldata.capture_args.clone(),
+        )?;
+
+        // Filter out elements that are not interpretable yet.
+        let mut interpretable_captures = HashMap::new();
+        for (n, v) in arg_captures.iter() {
+            if dequote(v.loc(), v.clone()).is_ok() {
+                // This capture has already been made into a literal.
+                // We will substitute it in the lambda body and remove it
+                // from the capture set.
+                interpretable_captures.insert(n.clone(), v.clone());
+            }
+        }
+
+        let combined_args = Rc::new(SExp::Cons(
+            ldata.loc.clone(),
+            ldata.capture_args.clone(),
+            ldata.args.clone(),
+        ));
+
+        // Eliminate the captures via beta substituion.
+        let simplified_body = self.shrink_bodyform_visited(
+            allocator,
+            visited,
+            combined_args.clone(),
+            &interpretable_captures,
+            ldata.body.clone(),
+            only_inline,
+        )?;
+
+        let new_capture_args =
+            filter_capture_args(ldata.capture_args.clone(), &interpretable_captures);
+
         // This is the first part of eta-conversion.
         Ok(Rc::new(BodyForm::Lambda(Box::new(LambdaData {
+            args: ldata.args.clone(),
+            capture_args: new_capture_args,
             captures: new_captures,
+            body: simplified_body,
             ..ldata.clone()
         }))))
     }
@@ -1700,7 +1682,7 @@ impl<'info> Evaluator {
             self.prims.clone(),
             prim,
             args,
-            Some(self),
+            None,
             Some(PRIM_RUN_LIMIT),
         )
         .map_err(|e| match e {
@@ -1746,10 +1728,6 @@ impl<'info> Evaluator {
             }
         }
         self.helpers.push(h.clone());
-    }
-
-    pub fn add_extension(&mut self, e: Rc<dyn EvalExtension>) {
-        self.extensions.push(e);
     }
 
     // The evaluator treats the forms coming up from constants as live.

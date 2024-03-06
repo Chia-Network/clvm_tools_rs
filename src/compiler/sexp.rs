@@ -277,7 +277,7 @@ fn from_hex(l: Srcloc, v: &[u8]) -> SExp {
     SExp::QuotedString(l, b'x', result)
 }
 
-pub fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
+fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
     let alen = v.len();
     if alen > 1 && v[0] == b'#' {
         // Search prims for appropriate primitive
@@ -490,7 +490,7 @@ impl SExp {
                 (SExp::Cons(_, r, s), SExp::Cons(_, t, u)) => r.equal_to(t) && s.equal_to(u),
                 (SExp::Cons(_, _, _), _) => false,
                 (_, SExp::Cons(_, _, _)) => false,
-                (SExp::Integer(_, _), b) => self.atomize() == *b,
+                (SExp::Integer(l, a), b) => SExp::Atom(l.clone(), u8_from_number(a.clone())) == *b,
                 (SExp::QuotedString(l, _, a), b) => SExp::Atom(l.clone(), a.clone()) == *b,
                 (SExp::Nil(l), b) => SExp::Atom(l.clone(), Vec::new()) == *b,
                 (SExp::Atom(_, _), SExp::Integer(_, _)) => other == self,

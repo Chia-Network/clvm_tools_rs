@@ -207,7 +207,6 @@ pub enum BodyForm {
     Lambda(Box<LambdaData>),
 }
 
-/// Convey information about synthetically generated helper forms.
 #[derive(Clone, Debug, Serialize)]
 pub enum SyntheticType {
     NoInlinePreference,
@@ -236,7 +235,7 @@ pub struct DefunData {
     pub body: Rc<BodyForm>,
     /// Whether this defun was created during desugaring.
     pub synthetic: Option<SyntheticType>,
-    /// Type of this defun, if specified.
+    /// Type annotation if given.
     pub ty: Option<Polytype>,
 }
 
@@ -279,7 +278,7 @@ pub struct DefconstData {
     pub body: Rc<BodyForm>,
     /// This constant should exist in the left env rather than be inlined.
     pub tabled: bool,
-    /// Type given of this constant if any.
+    /// Type annotation if given.
     pub ty: Option<Polytype>,
 }
 
@@ -401,6 +400,7 @@ pub struct CompileForm {
     pub helpers: Vec<HelperForm>,
     /// The expression the program evaluates, using the declared helpers.
     pub exp: Rc<BodyForm>,
+    /// Type if specified.
     pub ty: Option<Polytype>,
 }
 
@@ -520,6 +520,7 @@ pub struct ModAccum {
     pub loc: Srcloc,
     pub includes: Vec<IncludeDesc>,
     pub helpers: Vec<HelperForm>,
+    pub left_capture: bool,
     pub exp_form: Option<CompileForm>,
 }
 
@@ -556,6 +557,7 @@ impl ModAccum {
             loc: self.loc.clone(),
             includes: self.includes.clone(),
             helpers: self.helpers.clone(),
+            left_capture: self.left_capture,
             exp_form: Some(c.clone()),
         }
     }
@@ -567,6 +569,7 @@ impl ModAccum {
             loc: self.loc.clone(),
             includes: new_includes,
             helpers: self.helpers.clone(),
+            left_capture: self.left_capture,
             exp_form: self.exp_form.clone(),
         }
     }
@@ -579,15 +582,17 @@ impl ModAccum {
             loc: self.loc.clone(),
             includes: self.includes.clone(),
             helpers: hs,
+            left_capture: self.left_capture,
             exp_form: self.exp_form.clone(),
         }
     }
 
-    pub fn new(loc: Srcloc) -> ModAccum {
+    pub fn new(loc: Srcloc, left_capture: bool) -> ModAccum {
         ModAccum {
             loc,
             includes: Vec::new(),
             helpers: Vec::new(),
+            left_capture,
             exp_form: None,
         }
     }

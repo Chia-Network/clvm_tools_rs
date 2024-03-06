@@ -4,7 +4,6 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use log::debug;
-
 use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
@@ -16,7 +15,7 @@ use crate::compiler::comptypes::{
 };
 use crate::compiler::lambda::handle_lambda;
 use crate::compiler::preprocessor::preprocess;
-use crate::compiler::rename::rename_children_compileform;
+use crate::compiler::rename::{rename_assign_bindings, rename_children_compileform};
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::{HasLoc, Srcloc};
 use crate::compiler::typecheck::{parse_type_sexp, parse_type_var};
@@ -264,17 +263,12 @@ fn make_let_bindings(
     body: Rc<SExp>,
 ) -> Result<Vec<Rc<Binding>>, CompileErr> {
     let err = Err(CompileErr(body.loc(), format!("Bad binding tail {body:?}")));
-    let do_atomize = if !opts.dialect().strict {
-        |a: &SExp| -> SExp { a.atomize() }
-    } else {
-        |a: &SExp| -> SExp { a.clone() }
-    };
     match body.borrow() {
         SExp::Nil(_) => Ok(vec![]),
         SExp::Cons(_, head, tl) => head
             .proper_list()
             .filter(|x| x.len() == 2)
-            .map(|x| match (do_atomize(&x[0]), &x[1]) {
+            .map(|x| match (x[0].clone(), &x[1]) {
                 (SExp::Atom(l, name), expr) => {
                     let compiled_body = compile_bodyform(opts.clone(), Rc::new(expr.clone()))?;
                     let mut result = Vec::new();
@@ -309,6 +303,10 @@ pub fn make_provides_set(provides_set: &mut HashSet<Vec<u8>>, body_sexp: Rc<SExp
     }
 }
 
+fn at_or_above_23(opts: Rc<dyn CompilerOpts>) -> bool {
+    opts.dialect().stepping.unwrap_or(0) > 22
+}
+
 fn handle_assign_form(
     opts: Rc<dyn CompilerOpts>,
     l: Srcloc,
@@ -328,7 +326,6 @@ fn handle_assign_form(
     for idx in (0..(v.len() - 1) / 2).map(|idx| idx * 2) {
         let destructure_pattern = Rc::new(v[idx].clone());
         let binding_body = compile_bodyform(opts.clone(), Rc::new(v[idx + 1].clone()))?;
-
         // Ensure bindings aren't duplicated as we won't be able to
         // guarantee their order during toposort.
         let mut this_provides = HashSet::new();
@@ -352,11 +349,18 @@ fn handle_assign_form(
         }));
     }
 
-    let compiled_body = compile_bodyform(opts.clone(), Rc::new(v[v.len() - 1].clone()))?;
+    let mut compiled_body = compile_bodyform(opts.clone(), Rc::new(v[v.len() - 1].clone()))?;
     // We don't need to do much if there were no bindings.
     if bindings.is_empty() {
         return Ok(compiled_body);
     }
+
+    if at_or_above_23(opts) {
+        let (new_compiled_body, new_bindings) =
+            rename_assign_bindings(&l, &bindings, Rc::new(compiled_body))?;
+        compiled_body = new_compiled_body;
+        bindings = new_bindings;
+    };
 
     // Return a precise representation of this assign while storing up the work
     // we did breaking it down.
@@ -459,7 +463,7 @@ pub fn compile_bodyform(
                                         Some(LetFormInlineHint::NoChoice)
                                     },
                                 )
-                            } else if *atom_name == "quote".as_bytes().to_vec() {
+                            } else if *atom_name == b"quote" {
                                 if v.len() != 1 {
                                     return finish_err("quote");
                                 }
@@ -1138,6 +1142,7 @@ fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
     ))
 }
 
+#[derive(Debug, Clone)]
 pub struct HelperFormResult {
     pub chia_type: Option<ChiaType>,
     pub new_helpers: Vec<HelperForm>,
@@ -1152,6 +1157,7 @@ pub fn compile_helperform(
 
     if let Some(matched) = plist.and_then(|pl| match_op_name_4(&pl)) {
         let inline = matched.op_name == "defun-inline".as_bytes().to_vec();
+        let is_defmac = matched.op_name == "defmac".as_bytes().to_vec();
         if matched.op_name == "defconstant".as_bytes().to_vec() {
             let definition = compile_defconstant(
                 opts,
@@ -1179,7 +1185,14 @@ pub fn compile_helperform(
                 chia_type: None,
                 new_helpers: vec![definition],
             }))
-        } else if matched.op_name == b"defmacro" || matched.op_name == b"defmac" {
+        } else if matched.op_name == b"defmacro" || is_defmac {
+            if is_defmac {
+                return Ok(Some(HelperFormResult {
+                    chia_type: None,
+                    new_helpers: vec![],
+                }));
+            }
+
             let definition = compile_defmacro(
                 opts,
                 l,
@@ -1375,10 +1388,14 @@ fn frontend_start(
                         ));
                     }
 
-                    if *mod_atom == "mod".as_bytes().to_vec() {
+                    if *mod_atom == b"mod" {
                         let args = Rc::new(x[1].atomize());
                         let mut skip_idx = 2;
                         let mut ty: Option<TypeAnnoKind> = None;
+
+                        if x.len() < 3 {
+                            return Err(CompileErr(x[0].loc(), "incomplete mod form".to_string()));
+                        }
 
                         if let SExp::Atom(_, colon) = &x[2].atomize() {
                             if *colon == vec![b':'] && x.len() > 3 {
@@ -1401,7 +1418,7 @@ fn frontend_start(
                         let body = Rc::new(enlist(pre_forms[0].loc(), &body_vec));
 
                         let ls = preprocess(opts.clone(), includes, body)?;
-                        let mut ma = ModAccum::new(l.clone());
+                        let mut ma = ModAccum::new(l.clone(), false);
                         for form in ls.iter().take(ls.len() - 1) {
                             ma = ma.compile_mod_helper(
                                 opts.clone(),
@@ -1449,7 +1466,11 @@ pub fn compute_live_helpers(
 
     helper_list
         .iter()
-        .filter(|h| !opts.frontend_check_live() || helper_names.contains(h.name()))
+        .filter(|h| {
+            matches!(h, HelperForm::Deftype(_))
+                || !opts.frontend_check_live()
+                || helper_names.contains(h.name())
+        })
         .cloned()
         .collect()
 }
@@ -1491,37 +1512,12 @@ pub fn frontend(
 
     let our_mod = rename_children_compileform(&compiled?)?;
 
-    let expr_names: HashSet<Vec<u8>> = collect_used_names_bodyform(our_mod.exp.borrow())
-        .iter()
-        .map(|x| x.to_vec())
-        .collect();
-
-    let helper_list = our_mod.helpers.iter().map(|h| (h.name(), h));
-    let mut helper_map = HashMap::new();
-
-    for hpair in helper_list {
-        helper_map.insert(hpair.0.clone(), hpair.1.clone());
-    }
-
-    let helper_names = calculate_live_helpers(&HashSet::new(), &expr_names, &helper_map);
-
-    let mut live_helpers = Vec::new();
-    for h in our_mod.helpers {
-        if matches!(h, HelperForm::Deftype(_))
-            || !opts.frontend_check_live()
-            || helper_names.contains(h.name())
-        {
-            live_helpers.push(h);
-        }
-    }
+    let live_helpers = compute_live_helpers(opts.clone(), &our_mod.helpers, our_mod.exp.clone());
 
     Ok(CompileForm {
-        loc: our_mod.loc.clone(),
         include_forms: includes.to_vec(),
-        args: our_mod.args.clone(),
         helpers: live_helpers,
-        exp: our_mod.exp.clone(),
-        ty: our_mod.ty.clone(),
+        ..our_mod
     })
 }
 

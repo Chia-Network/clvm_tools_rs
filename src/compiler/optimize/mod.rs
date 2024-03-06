@@ -320,7 +320,7 @@ fn constant_fun_result(
                         // single capture argument.
                         None,
                     )),
-                    ty: None
+                    ty: None,
                 };
                 let optimizer = if let Ok(res) = get_optimizer(&call_spec.loc, opts.clone()) {
                     res
