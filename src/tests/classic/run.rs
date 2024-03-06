@@ -322,6 +322,18 @@ fn test_get_dependencies_1() {
 }
 
 #[test]
+fn test_type_strip_1() {
+    assert_eq!(
+        do_basic_run(&vec![
+            "run".to_string(),
+            "(mod ((A : Atom)) (defun-inline foo (X Y . Z) (i X Y . Z)) (foo A 2 3))".to_string()
+        ])
+            .trim(),
+        "(i 2 (q . 2) (q . 3))"
+    );
+}
+
+#[test]
 fn test_treehash_constant_embedded_classic() {
     let result_text = do_basic_run(&vec![
         "run".to_string(),
@@ -349,6 +361,18 @@ fn test_treehash_constant_embedded_classic() {
     assert_eq!(
         result_hash,
         "0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9874"
+    );
+}
+
+#[test]
+fn test_type_strip_2() {
+    assert_eq!(
+        do_basic_run(&vec![
+            "run".to_string(),
+            "(mod (A) -> Atom (defun-inline foo (X Y . Z) (i X Y . Z)) (foo A 2 3))".to_string()
+        ])
+            .trim(),
+        "(i 2 (q . 2) (q . 3))"
     );
 }
 
@@ -383,6 +407,24 @@ fn test_treehash_constant_embedded_fancy_order() {
     assert_eq!(
         result_hash,
         "0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f98df"
+    );
+}
+
+#[test]
+fn test_type_def_1() {
+    assert_eq!(
+        do_basic_run(&vec![
+            "run".to_string(),
+            indoc! {"
+(mod (A) -> Atom
+   (deftype Struct ((A : Atom) . (B : Atom32)))
+   (defun-inline foo (X) (new_Struct X 3))
+   (get_Struct_A (foo A))
+   )"}
+            .to_string()
+        ])
+            .trim(),
+        "(a (q . 2) (c 2 (q . 3)))"
     );
 }
 
@@ -2063,6 +2105,61 @@ fn test_chialisp_web_example_embed() {
         outcome,
         "0x26c60a61d01db5836ca70fefd44a6a016620413c8ef5f259a6c5612d4f79d3b8"
     );
+}
+
+#[test]
+fn test_chialisp_types_23() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/typesmoke.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let program2 = do_basic_run(&vec![
+        "run".to_string(),
+        "--typecheck".to_string(),
+        "resources/tests/strict/typesmoke.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(program, program2);
+    assert_eq!(program, "(2 (1 . 2) (4 2 ()))");
+}
+
+#[test]
+fn test_chialisp_type_lambda_23() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/typesmoke-lambda.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let program2 = do_basic_run(&vec![
+        "run".to_string(),
+        "--typecheck".to_string(),
+        "resources/tests/strict/typesmoke-lambda.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(program, program2);
+}
+
+#[test]
+fn test_chialisp_type_lambda_23_anno() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "resources/tests/strict/typesmoke-lambda-anno.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let program2 = do_basic_run(&vec![
+        "run".to_string(),
+        "--typecheck".to_string(),
+        "resources/tests/strict/typesmoke-lambda-anno.clsp".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(program, program2);
 }
 
 #[test]

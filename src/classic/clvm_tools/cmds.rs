@@ -1368,7 +1368,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 .and_then(|pre_forms| {
                     let context = standard_type_context();
                     let compileform = frontend(opts.clone(), &pre_forms)?;
-                    let target_type = context.typecheck_chialisp_program(&compileform)?;
+                    let target_type = context.typecheck_chialisp_program(opts, &compileform)?;
                     Ok(context.reify(&target_type, None))
                 })
             {
