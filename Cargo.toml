@@ -50,6 +50,7 @@ optional = true
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 lfsr = "0.3.0"
+ctor = "0.2.7"
 
 [lib]
 name = "clvm_tools_rs"
