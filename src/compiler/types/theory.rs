@@ -268,8 +268,7 @@ impl Context {
                 return self.instantiate_r(a, alpha);
             }
 
-            _ => {
-            }
+            _ => {}
         }
 
         Err(CompileErr(
@@ -425,38 +424,34 @@ impl Context {
 
         // InstRReach
         match a {
-            Type::TNullable(a1) => {
-                match monotype(a1) {
-                    Some(mta) => {
-                        return Ok(Box::new(self.appends_wf(vec![
-                            ContextElim::CForall(alpha.clone()),
-                            ContextElim::CExistsSolved(alpha.clone(), mta),
-                        ])));
-                    }
-                    _ => {
-                        return Err(CompileErr(
-                            a.loc(),
-                            format!("no monotype: {}", a1.to_sexp()),
-                        ));
-                    }
+            Type::TNullable(a1) => match monotype(a1) {
+                Some(mta) => {
+                    return Ok(Box::new(self.appends_wf(vec![
+                        ContextElim::CForall(alpha.clone()),
+                        ContextElim::CExistsSolved(alpha.clone(), mta),
+                    ])));
                 }
-            }
-            Type::TExec(a1) => {
-                match monotype(a1) {
-                    Some(mta) => {
-                        return Ok(Box::new(self.appends_wf(vec![
-                            ContextElim::CForall(alpha.clone()),
-                            ContextElim::CExistsSolved(alpha.clone(), mta),
-                        ])));
-                    }
-                    _ => {
-                        return Err(CompileErr(
-                            a.loc(),
-                            format!("no monotype: {}", a1.to_sexp()),
-                        ));
-                    }
+                _ => {
+                    return Err(CompileErr(
+                        a.loc(),
+                        format!("no monotype: {}", a1.to_sexp()),
+                    ));
                 }
-            }
+            },
+            Type::TExec(a1) => match monotype(a1) {
+                Some(mta) => {
+                    return Ok(Box::new(self.appends_wf(vec![
+                        ContextElim::CForall(alpha.clone()),
+                        ContextElim::CExistsSolved(alpha.clone(), mta),
+                    ])));
+                }
+                _ => {
+                    return Err(CompileErr(
+                        a.loc(),
+                        format!("no monotype: {}", a1.to_sexp()),
+                    ));
+                }
+            },
             Type::TPair(a1, a2) => {
                 let alpha1 = fresh_tvar(a1.loc());
                 let alpha2 = fresh_tvar(a2.loc());
@@ -649,9 +644,7 @@ impl Context {
                     ])
                     .drop_marker(
                         ContextElim::CVar(xprime, Type::TExists(alpha.clone())),
-                        |gamma| {
-                            gamma.typecheck(&subst_res, &Type::TExists(beta.clone()))
-                        },
+                        |gamma| gamma.typecheck(&subst_res, &Type::TExists(beta.clone())),
                     )
                     .map(|delta| {
                         (

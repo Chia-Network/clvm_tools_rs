@@ -278,8 +278,7 @@ impl Context {
         let mut gamma_l_copy = gamma_l.0;
         result_list.append(&mut theta_copy);
         result_list.append(&mut gamma_l_copy);
-        let res = Context::new_wf(result_list);
-        res
+        Context::new_wf(result_list)
     }
 
     pub fn apply_(&self, visited: &mut HashSet<Polytype>, typ: &Polytype) -> Polytype {
@@ -360,11 +359,7 @@ impl GContext<CONTEXT_INCOMPLETE> {
             .0
             .iter()
             .position(|e| *e == m)
-            .map(|idx| {
-                GContext(res.0[idx + 1..].to_vec())
-            })
-            .unwrap_or_else(|| {
-                GContext(Vec::new())
-            }))
+            .map(|idx| GContext(res.0[idx + 1..].to_vec()))
+            .unwrap_or_else(|| GContext(Vec::new())))
     }
 }
