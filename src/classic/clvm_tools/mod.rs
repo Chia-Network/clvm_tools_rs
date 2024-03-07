@@ -4,7 +4,6 @@ pub mod cmds;
 pub mod curry;
 pub mod debug;
 pub mod ir;
-pub mod log;
 pub mod node_path;
 pub mod pattern_match;
 pub mod sha256tree;
