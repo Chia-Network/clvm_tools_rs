@@ -405,7 +405,7 @@ jobs:
           source venv/bin/activate
           git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
           pip install ./clvm_tools
-          pip install maturin pytest
+          pip install maturin==1.4.0 pytest
           maturin develop --release
           echo 'PYTEST'
           (cd resources/tests/cmdline/tests && pytest)
