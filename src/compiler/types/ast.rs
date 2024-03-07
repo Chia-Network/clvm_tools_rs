@@ -5,7 +5,6 @@ use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
-use log::debug;
 use serde::Serialize;
 
 use crate::compiler::srcloc::{HasLoc, Srcloc};
@@ -282,17 +281,10 @@ impl<const A: usize> GContext<A> {
             .iter()
             .position(|e| *e == m)
             .map(|idx| {
-                let res = (
+                (
                     GContext(res.0[..idx].to_vec()),
                     GContext(res.0[idx + 1..].to_vec()),
-                );
-                debug!(
-                    "break_marker {} {} from {}",
-                    m.to_sexp().to_string(),
-                    res.0.to_sexp().to_string(),
-                    res.1.to_sexp().to_string()
-                );
-                res
+                )
             })
             .unwrap_or_else(|| (GContext(Vec::new()), GContext(res.0.clone()))))
     }

@@ -2,8 +2,6 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use log::debug;
-
 use num_bigint::ToBigInt;
 
 use clvmr::allocator::Allocator;
@@ -827,10 +825,6 @@ impl Context {
                 }
                 let exists_solved =
                     ContextElim::CExistsSolved(TypeVar(tname.clone(), deft.loc.clone()), result_ty);
-                debug!(
-                    "struct exists_solved {}",
-                    exists_solved.to_sexp().to_string()
-                );
                 context = context.appends_wf(vec![exists_solved]);
             }
         }

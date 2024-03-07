@@ -1,8 +1,6 @@
 // Based on MIT licensed code from
 // https://github.com/kwanghoon/bidi
 
-use log::Level::Debug;
-use log::{debug, log_enabled};
 use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -153,11 +151,6 @@ impl Context {
                 // If tau is a simple recursive definition then alpha should
                 // appear in it.  Backstop alpha free in tau.
                 gamma.0.insert(0, ContextElim::CExists(alpha));
-                debug!(
-                    "gonna check typewf on {} in {}",
-                    tau.to_sexp().to_string(),
-                    gamma.to_sexp().to_string()
-                );
                 no_existentials && gamma.typewf(&tau)
             }
             ContextElim::CMarker(alpha) => {
@@ -184,7 +177,6 @@ impl Context {
                     unrecurse(&new_tvar, t1, t2, &finished_type_rec)
                         .and_then(|finished_type| monotype(&finished_type))
                         .map(|tmono| {
-                            debug!("tabls unrecurse");
                             let new_ctx = self.appends_wf(vec![ContextElim::CExistsSolved(
                                 new_tvar.clone(),
                                 tmono,
@@ -214,25 +206,14 @@ impl Context {
             Type::TForall(alpha, a) => self.snoc_wf(ContextElim::CForall(alpha.clone())).typewf(a),
             Type::TExists(alpha) => self.existentials().elem(alpha),
             Type::TAbs(s, t) => {
-                debug!(
-                    "typewf {} {}?",
-                    s.to_sexp().to_string(),
-                    t.to_sexp().to_string()
-                );
                 let checktype: Type<A> = Type::TForall(s.clone(), Rc::new(polytype(t.borrow())));
                 self.typewf(&checktype)
             }
             Type::TApp(t1, t2) => {
-                debug!("check well formed {}", t1.to_sexp().to_string());
                 if !self.typewf(t1.borrow()) {
                     return false;
                 }
 
-                debug!(
-                    "check_newtype {} {}",
-                    t1.to_sexp().to_string(),
-                    t2.to_sexp().to_string()
-                );
                 let t1poly = polytype(t1.borrow());
                 let t2poly = polytype(t2.borrow());
                 if let Some((nt, ctx)) = self.newtype::<A>(&t1poly, &t2poly) {
@@ -292,24 +273,12 @@ impl Context {
 
     pub fn insert_at(&self, c: &TypeVar, theta: Context) -> Context {
         let (gamma_l, gamma_r) = self.inspect_context(c);
-        debug!(
-            "insert_at {} left  {}",
-            c.to_sexp().to_string(),
-            gamma_l.to_sexp().to_string()
-        );
-        debug!(
-            "insert_at {} right {}",
-            c.to_sexp().to_string(),
-            gamma_r.to_sexp().to_string()
-        );
         let mut result_list = gamma_r.0;
         let mut theta_copy = theta.0;
         let mut gamma_l_copy = gamma_l.0;
         result_list.append(&mut theta_copy);
         result_list.append(&mut gamma_l_copy);
-        let res = Context::new_wf(result_list);
-        debug!("insert_at {}", res.to_sexp().to_string());
-        res
+        Context::new_wf(result_list)
     }
 
     pub fn apply_(&self, visited: &mut HashSet<Polytype>, typ: &Polytype) -> Polytype {
@@ -318,7 +287,6 @@ impl Context {
             return typ.clone();
         }
 
-        debug!("apply {}", typ.to_sexp().to_string());
         visited.insert(typ.clone());
 
         match typ {
@@ -365,27 +333,15 @@ impl GContext<CONTEXT_INCOMPLETE> {
         &self,
         v: Vec<ContextElim<CONTEXT_INCOMPLETE>>,
     ) -> GContext<CONTEXT_INCOMPLETE> {
-        let gamma = self.appends(v);
-        if log_enabled!(Debug) && !gamma.wf() {
-            panic!("not well formed {}", gamma.to_sexp());
-        }
-        gamma
+        self.appends(v)
     }
 
     pub fn snoc_wf(&self, c: ContextElim<CONTEXT_INCOMPLETE>) -> GContext<CONTEXT_INCOMPLETE> {
-        let gamma = self.snoc(c);
-        if log_enabled!(Debug) && !gamma.wf() {
-            panic!("not well formed {}", gamma.to_sexp());
-        }
-        gamma
+        self.snoc(c)
     }
 
     pub fn new_wf(elems: Vec<ContextElim<CONTEXT_INCOMPLETE>>) -> GContext<CONTEXT_INCOMPLETE> {
-        let ctx = GContext(elems);
-        if log_enabled!(Debug) && !ctx.wf() {
-            panic!("not well formed {}", ctx.to_sexp());
-        }
-        ctx
+        GContext(elems)
     }
 
     pub fn drop_marker<E, X, F>(
@@ -399,24 +355,11 @@ impl GContext<CONTEXT_INCOMPLETE> {
     {
         let marked = self.snoc_wf(m.clone());
         let res: GContext<CONTEXT_INCOMPLETE> = f(marked).map(|x| x.extract())?;
-        debug!("drop_marker, got back {}", res.to_sexp().to_string());
         Ok(res
             .0
             .iter()
             .position(|e| *e == m)
-            .map(|idx| {
-                let out = GContext(res.0[idx + 1..].to_vec());
-                debug!(
-                    "drop_marker, index {} D {} K {}",
-                    idx,
-                    GContext(res.0[..idx].to_vec()).to_sexp().to_string(),
-                    out.to_sexp().to_string()
-                );
-                out
-            })
-            .unwrap_or_else(|| {
-                debug!("drop_marker; not found: {}", m.to_sexp().to_string());
-                GContext(Vec::new())
-            }))
+            .map(|idx| GContext(res.0[idx + 1..].to_vec()))
+            .unwrap_or_else(|| GContext(Vec::new())))
     }
 }
