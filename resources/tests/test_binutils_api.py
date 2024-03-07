@@ -15,8 +15,8 @@ test_cases = [
 ]
 
 def extend_atom():
-    n_choice = randint(0,10)
-    if n_choice == 0:
+    n_choice = randint(0,14)
+    if n_choice > 10:
         return ""
     return f"{chr(n_choice+97)}@"
 
@@ -30,7 +30,7 @@ def extend_hex():
     n_choice = randint(0,400)
     if n_choice > 255:
         return ""
-    return pad(2,"0",hex(n_choice)[2:])
+    return f"{pad(2,'0',hex(n_choice)[2:])}^"
 
 def any_item():
     keys = list(filter(lambda k: k not in "&^", production_rules.keys()))
