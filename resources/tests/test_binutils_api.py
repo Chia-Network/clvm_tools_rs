@@ -39,9 +39,8 @@ def any_item():
 
 production_rules = {
     "!": lambda: "()",
-    "%": lambda: "(* . *)",
     "~": lambda: "(*&",
-    "&": lambda: [")", " *&"][randint(0,1)],
+    "&": lambda: [")", " *&", " . *)"][randint(0,2)],
     "#": lambda: str(randint(0,2**48) - (2**47)),
     "@": lambda: f"{chr(randint(0,10)+97)}{extend_atom()}",
     "$": lambda: f"0x{pad(2,'0',hex(randint(0,255))[2:])}^",
