@@ -1,5 +1,5 @@
 from clvm_tools_rs import binutils
-from clvm_tools.binutils import assemble
+from clvm_tools.binutils import assemble, disassemble
 from clvm_rs.program import Program
 from random import randint
 
@@ -75,3 +75,7 @@ for t in test_cases:
     print(expected, assembled)
 
     assert expected == assembled
+
+    disassembled = binutils.disassemble_generic(bytes(assembled))
+    expected_dis = disassemble(expected)
+    assert expected_dis == disassembled

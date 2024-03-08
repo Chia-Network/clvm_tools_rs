@@ -1,17 +1,14 @@
 use std::collections::HashMap;
 
-use crate::classic::clvm::__type_compatibility__::t;
+use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
-use crate::classic::clvm::sexp::{sexp_as_bin, First, NodeSel, Rest, SelectNode, ThisNode};
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
-use clvm_rs::reduction::EvalErr;
 
-use pyo3::prelude::*;
 use pyo3::exceptions::PyException;
-use pyo3::types::{PyBytes,PyTuple};
+use pyo3::prelude::*;
+use pyo3::types::{PyBytes, PyTuple};
 
 use crate::classic::clvm_tools::binutils;
-use crate::classic::clvm_tools::ir::reader::read_ir;
 
 create_exception!(mymodule, ConvError, PyException);
 
@@ -75,16 +72,34 @@ fn convert_to_external(
 }
 
 #[pyfunction]
-pub fn assemble_generic(cons: &PyAny, from_bytes: &PyAny, args: String) -> PyResult<PyObject>
-{
+pub fn assemble_generic(cons: &PyAny, from_bytes: &PyAny, args: String) -> PyResult<PyObject> {
     let mut allocator = Allocator::new();
-    let assembled = binutils::assemble(&mut allocator, &args)
-        .map_err(|e| ConvError::new_err(e.to_string()))?;
+    let assembled =
+        binutils::assemble(&mut allocator, &args).map_err(|e| ConvError::new_err(e.to_string()))?;
     convert_to_external(&allocator, cons, from_bytes, assembled)
+}
+
+#[pyfunction]
+pub fn disassemble_generic(program_bytes: &PyBytes) -> PyResult<String> {
+    let mut allocator = Allocator::new();
+    let mut stream = Stream::new(Some(Bytes::new(Some(BytesFromType::Raw(
+        program_bytes.as_bytes().to_vec(),
+    )))));
+
+    let sexp = sexp_from_stream(
+        &mut allocator,
+        &mut stream,
+        Box::new(SimpleCreateCLVMObject {}),
+    )
+    .map_err(|e| ConvError::new_err(e.to_string()))?;
+
+    let disassembled = binutils::disassemble(&allocator, sexp.1, None);
+    Ok(disassembled)
 }
 
 pub fn create_binutils_module(py: Python) -> PyResult<&'_ PyModule> {
     let m = PyModule::new(py, "binutils")?;
     m.add_function(wrap_pyfunction!(assemble_generic, m)?)?;
+    m.add_function(wrap_pyfunction!(disassemble_generic, m)?)?;
     Ok(m)
 }
