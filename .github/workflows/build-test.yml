@@ -142,6 +142,7 @@ jobs:
 
     # Test cldb output both run from python and via its command line tool.
     - name: "Run step run tests"
+      shell: bash
       run: |
         . ./activate
         cargo build
