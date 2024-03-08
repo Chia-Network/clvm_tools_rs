@@ -142,7 +142,6 @@ jobs:
 
     # Test cldb output both run from python and via its command line tool.
     - name: "Run step run tests"
-      shell: bash
       run: |
         . ./activate
         cargo build
@@ -153,7 +152,6 @@ jobs:
         pip install --no-index --find-links target/wheels/ clvm_tools_rs
         pip install clvm_rs
         pip install clvm_tools
-        set -e
         cd resources/tests
         python test_clvm_step.py
         python mandelbrot-cldb.py
