@@ -15,66 +15,63 @@ use crate::classic::clvm_tools::ir::reader::read_ir;
 
 create_exception!(mymodule, ConvError, PyException);
 
-fn convert_to_external(allocator: &Allocator, cons: &PyAny, from_bytes: &PyAny, node: NodePtr) -> PyResult<PyObject> {
-    let mut stack: Vec<NodePtr> = vec![node];
+fn convert_to_external(
+    allocator: &Allocator,
+    cons: &PyAny,
+    from_bytes: &PyAny,
+    root_node: NodePtr,
+) -> PyResult<PyObject> {
+    let mut stack: Vec<NodePtr> = vec![root_node];
     let mut finished = HashMap::new();
-    let mut conv_map = HashMap::new();
 
-    while let Some(n) = stack.pop() {
-        match allocator.sexp(n) {
-            SExp::Pair(a,b) => {
-                stack.push(a);
-                stack.push(b);
-                conv_map.insert(n, (a, b));
+    while let Some(node) = stack.last() {
+        let node = *node; // To avoid borrowing issues with the stack
+        match allocator.sexp(node) {
+            SExp::Pair(left, right) => {
+                let left_finished = finished.contains_key(&left);
+                let right_finished = finished.contains_key(&right);
+
+                if left_finished && right_finished {
+                    stack.pop();
+
+                    let result: PyObject = Python::with_gil(|py| {
+                        let a = finished.get(&left).unwrap();
+                        let b = finished.get(&right).unwrap();
+                        let args = PyTuple::new(py, &[a, b]);
+                        cons.call1(args)
+                    })?
+                    .into();
+
+                    finished.insert(node, result);
+                } else {
+                    if !left_finished {
+                        stack.push(left);
+                    }
+                    if !right_finished {
+                        stack.push(right);
+                    }
+                }
             }
             SExp::Atom => {
-                let converted: PyObject =
-                    Python::with_gil(|py| {
-                        let bytes = PyBytes::new(py, allocator.atom(n));
+                stack.pop();
+
+                if !finished.contains_key(&node) {
+                    let converted: PyObject = Python::with_gil(|py| {
+                        let bytes = PyBytes::new(py, allocator.atom(node));
                         let args = PyTuple::new(py, &[bytes]);
                         from_bytes.call1(args)
-                    })?.into();
-                finished.insert(n, converted);
+                    })?
+                    .into();
+                    finished.insert(node, converted);
+                }
             }
         }
     }
 
-    let check_cvt_map = |conv_map: &HashMap<NodePtr, (NodePtr, NodePtr)>, n| -> Option<(NodePtr, NodePtr)> {
-        if let Some(res) = conv_map.get(&n) {
-            return Some(res.clone());
-        }
-
-        None
-    };
-
-    // Convert conses.
-    stack.push(node);
-    while let Some(n) = stack.pop() {
-        if let Some(res) = finished.get(&n) {
-            continue;
-        }
-        if let Some((a, b)) = check_cvt_map(&conv_map, n) {
-            if let (Some(a), Some(b)) = (finished.get(&a), finished.get(&b)) {
-                let result: PyObject = Python::with_gil(|py| {
-                    let args = PyTuple::new(py, &[&a, &b]);
-                    cons.call1(args)
-                })?.into();
-                conv_map.remove(&n);
-                finished.insert(n, result);
-                continue;
-            }
-
-            stack.push(n);
-            stack.push(a);
-            stack.push(b);
-        }
-    }
-
-    if let Some(res) = finished.get(&node) {
-        return Ok(res.clone());
-    } else {
-        return Err(ConvError::new_err("error converting assembled value"));
-    }
+    finished
+        .get(&root_node)
+        .cloned()
+        .ok_or_else(|| ConvError::new_err("error converting assembled value"))
 }
 
 #[pyfunction]
