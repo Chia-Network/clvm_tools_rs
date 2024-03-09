@@ -62,7 +62,7 @@ jobs:
     container:
       image: ghcr.io/chia-network/build-images/centos-pypa-rust-aarch64:latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 1
       - name: Install rust
