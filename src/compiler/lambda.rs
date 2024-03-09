@@ -129,12 +129,13 @@ pub fn lambda_codegen(name: &[u8], ldata: &LambdaData) -> BodyForm {
 
 pub fn handle_lambda(
     opts: Rc<dyn CompilerOpts>,
+    site_loc: Srcloc,
     kw_loc: Option<Srcloc>,
     v: &[SExp],
 ) -> Result<BodyForm, CompileErr> {
     if v.len() < 2 {
         return Err(CompileErr(
-            v[0].loc(),
+            site_loc,
             "Must provide at least arguments and body to lambda".to_string(),
         ));
     }

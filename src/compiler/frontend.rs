@@ -471,7 +471,7 @@ pub fn compile_bodyform(
                                 let subparse = frontend(opts, &[body.clone()])?;
                                 Ok(BodyForm::Mod(op.loc(), subparse))
                             } else if *atom_name == b"lambda" {
-                                handle_lambda(opts, Some(l.clone()), &v)
+                                handle_lambda(opts, body.loc(), Some(l.clone()), &v)
                             } else {
                                 application()
                             }
