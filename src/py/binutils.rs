@@ -93,7 +93,7 @@ pub fn disassemble_generic(program_bytes: &PyBytes) -> PyResult<String> {
     )
     .map_err(|e| ConvError::new_err(e.to_string()))?;
 
-    let disassembled = binutils::disassemble(&allocator, sexp.1, None);
+    let disassembled = binutils::disassemble(&allocator, sexp.1, Some(0));
     Ok(disassembled)
 }
 
