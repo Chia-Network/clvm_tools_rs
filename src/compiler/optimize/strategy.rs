@@ -7,7 +7,7 @@ use clvmr::allocator::Allocator;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
+    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, ModulePhase, PrimaryCodegen,
 };
 use crate::compiler::optimize::deinline::deinline_opt;
 use crate::compiler::optimize::{

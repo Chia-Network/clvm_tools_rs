@@ -1,6 +1,5 @@
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
-use std::fmt;
 use std::rc::Rc;
 
 use serde::Serialize;
@@ -897,47 +896,16 @@ pub struct DefunCall {
     pub code: Rc<SExp>,
 }
 
-/// Describes how the program passes on its environment to functions so they can
-/// recursively use the environment.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ProgramEnvData {
-    Simple(Rc<SExp>),
-    Module(Number, Rc<SExp>),
+/// If compiling modules, tell what module phase we're in.  It affects how the
+/// environment is passed on to functions when treated as values.  In this
+/// position, a function that is exported or common between more than one exported
+/// constant must use the common environment without the additions from the local
+/// environment of the constant being evaluated.
+#[derive(Clone, Debug)]
+pub enum ModulePhase {
+    CommonPhase,
+    StandalonePhase,
 }
-
-impl fmt::Display for ProgramEnvData {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ProgramEnvData::Simple(r) => {
-                write!(f, "Simple({r})")
-            }
-            ProgramEnvData::Module(n,r) => {
-                write!(f, "Module({n},{r})")
-            }
-        }
-    }
-}
-
-impl ProgramEnvData {
-    pub fn to_sexp(&self) -> Rc<SExp> {
-        match self {
-            ProgramEnvData::Simple(r) => r.clone(),
-            ProgramEnvData::Module(_, r) => r.clone()
-        }
-    }
-
-    pub fn loc(&self) -> Srcloc {
-        match self {
-            ProgramEnvData::Simple(r) => r.loc(),
-            ProgramEnvData::Module(_, r) => r.loc()
-        }
-    }
-
-    pub fn set_path(&self, n: Number) -> Self {
-        ProgramEnvData::Module(n, self.to_sexp())
-    }
-}
-
 /// PrimaryCodegen is an object used by codegen to accumulate and use state needed
 /// during code generation.  It's mostly used internally.
 #[derive(Clone, Debug)]
@@ -954,10 +922,11 @@ pub struct PrimaryCodegen {
     pub to_process: Vec<HelperForm>,
     pub original_helpers: Vec<HelperForm>,
     pub final_expr: Rc<BodyForm>,
-    pub final_env: ProgramEnvData,
+    pub final_env: Rc<SExp>,
     pub final_code: Option<CompiledCode>,
     pub function_symbols: HashMap<String, String>,
     pub left_env: bool,
+    pub module_phase: Option<ModulePhase>,
 }
 
 /// The CompilerOpts specifies global options used during compilation.
@@ -991,6 +960,8 @@ pub trait CompilerOpts {
     /// Specifies whether forms not reachable at runtime are included in the
     /// resulting CompileForm.
     fn frontend_check_live(&self) -> bool;
+    /// Phase of module generation.
+    fn module_phase(&self) -> Option<ModulePhase>;
     /// Specifies the shape of the environment to use.  This allows injection of
     /// the parent program's left environment when some form is compiled in the
     /// parent's context.
@@ -1019,6 +990,8 @@ pub trait CompilerOpts {
     /// Set whether to filter out each HelperForm that isn't reachable at
     /// run time.
     fn set_frontend_check_live(&self, check: bool) -> Rc<dyn CompilerOpts>;
+    /// Set module generation phase (for stable constants).
+    fn set_module_phase(&self, module_phase: Option<ModulePhase>) -> Rc<dyn CompilerOpts>;
     /// Set the codegen object to be used downstream.
     fn set_code_generator(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts>;
     /// Set the environment shape to assume.

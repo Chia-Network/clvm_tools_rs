@@ -20,7 +20,7 @@ use crate::compiler::codegen::{
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompileModuleComponent, CompileModuleOutput, CompilerOpts,
     CompilerOutput, ConstantKind, DefconstData, DefunData, Export, FrontendOutput, HelperForm,
-    ImportLongName, IncludeDesc, PrimaryCodegen, SyntheticType,
+    ImportLongName, IncludeDesc, ModulePhase, PrimaryCodegen, SyntheticType,
 };
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::frontend;
@@ -114,6 +114,7 @@ pub struct DefaultCompilerOpts {
     pub disassembly_ver: Option<usize>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     pub dialect: AcceptedDialect,
+    pub module_phase: Option<ModulePhase>,
 }
 
 pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
@@ -293,11 +294,11 @@ fn modernize_constants(helpers: &mut [HelperForm], standalone_constants: &HashSe
     for h in helpers.iter_mut() {
         match h {
             HelperForm::Defconstant(d) => {
-                let standalone_constant_names: Vec<String> = standalone_constants.iter().map(|d| decode_string(d)).collect();
                 // Ensure that we upgrade the constant type.
-                let should_table = !standalone_constants.contains(&d.name);
-                d.kind = ConstantKind::Module(should_table);
-                d.tabled = should_table;
+                if standalone_constants.contains(&d.name) {
+                    d.kind = ConstantKind::Module(false);
+                    d.tabled = false;
+                }
             }
             HelperForm::Defnamespace(ns) => {
                 modernize_constants(&mut ns.helpers, standalone_constants);
@@ -310,12 +311,23 @@ fn modernize_constants(helpers: &mut [HelperForm], standalone_constants: &HashSe
 fn capture_standalone_constants(
     standalone_constants: &mut HashSet<Vec<u8>>,
     depgraph: &FunctionDependencyGraph,
-    helpers: &[HelperForm]
+    helpers: &[HelperForm],
+    exports: &[Export],
 ) {
     // Find constants on which nothing depends (they're only output).
     for h in helpers.iter() {
         let mut constant_is_depended = HashSet::new();
         if let HelperForm::Defconstant(dc) = h {
+            let match_exports = exports.iter().any(|e| match e {
+                Export::MainProgram(_, _) => false,
+                Export::Function(name, _) => name == h.name()
+            });
+
+            // It isn't exported so it isn't standalone.
+            if !match_exports {
+                continue;
+            }
+
             depgraph.get_full_depended_on_by(&mut constant_is_depended, h.name());
             let depended_list: Vec<String> = constant_is_depended.iter().map(|d| decode_string(d)).collect();
             if constant_is_depended.is_empty() {
@@ -325,7 +337,8 @@ fn capture_standalone_constants(
             capture_standalone_constants(
                 standalone_constants,
                 depgraph,
-                &ns.helpers
+                &ns.helpers,
+                exports,
             )
         }
     }
@@ -344,6 +357,7 @@ fn capture_standalone_constants(
 pub fn compile_module(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
+    standalone_constants: &HashSet<Vec<u8>>,
     mut program: CompileForm,
     exports: &[Export],
 ) -> Result<CompileModuleOutput, CompileErr> {
@@ -768,12 +782,13 @@ pub fn compile_pre_forms(
             capture_standalone_constants(
                 &mut standalone_constants,
                 &depgraph,
-                &cf.helpers
+                &cf.helpers,
+                &exports,
             );
             modernize_constants(&mut cf.helpers, &standalone_constants);
 
             Ok(CompilerOutput::Module(compile_module(
-                context, opts, cf, &exports,
+                context, opts, &standalone_constants, cf, &exports,
             )?))
         }
     }
@@ -821,6 +836,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     }
     fn frontend_opt(&self) -> bool {
         self.frontend_opt
+    }
+    fn module_phase(&self) -> Option<ModulePhase> {
+        self.module_phase.clone()
     }
     fn frontend_check_live(&self) -> bool {
         self.frontend_check_live
@@ -881,6 +899,11 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn set_frontend_check_live(&self, check: bool) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.frontend_check_live = check;
+        Rc::new(copy)
+    }
+    fn set_module_phase(&self, module_phase: Option<ModulePhase>) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.module_phase = module_phase;
         Rc::new(copy)
     }
     fn set_code_generator(&self, new_code_generator: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
@@ -989,6 +1012,7 @@ impl DefaultCompilerOpts {
             dialect: AcceptedDialect::default(),
             prim_map: create_prim_map(),
             disassembly_ver: None,
+            module_phase: None,
         }
     }
 }

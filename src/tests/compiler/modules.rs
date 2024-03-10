@@ -13,7 +13,7 @@ use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProg
 
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
-use crate::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, PrimaryCodegen};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, ModulePhase, PrimaryCodegen};
 use crate::compiler::dialect::{detect_modern, AcceptedDialect};
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -81,6 +81,9 @@ impl CompilerOpts for TestModuleCompilerOpts {
     fn frontend_check_live(&self) -> bool {
         self.opts.frontend_check_live()
     }
+    fn module_phase(&self) -> Option<ModulePhase> {
+        self.opts.module_phase()
+    }
     fn start_env(&self) -> Option<Rc<SExp>> {
         self.opts.start_env()
     }
@@ -116,6 +119,9 @@ impl CompilerOpts for TestModuleCompilerOpts {
     }
     fn set_frontend_check_live(&self, check: bool) -> Rc<dyn CompilerOpts> {
         self.new_opts(self.opts.set_frontend_check_live(check))
+    }
+    fn set_module_phase(&self, module_phase: Option<ModulePhase>) -> Rc<dyn CompilerOpts> {
+        self.new_opts(self.opts.set_module_phase(module_phase))
     }
     fn set_code_generator(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
         self.new_opts(self.opts.set_code_generator(new_compiler))

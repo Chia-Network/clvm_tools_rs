@@ -16,7 +16,7 @@ use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file, read_file};
 
-use crate::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, PrimaryCodegen};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, ModulePhase, PrimaryCodegen};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -338,6 +338,9 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
     fn frontend_check_live(&self) -> bool {
         false
     }
+    fn module_phase(&self) -> Option<ModulePhase> {
+        None
+    }
     fn start_env(&self) -> Option<Rc<SExp>> {
         None
     }
@@ -372,6 +375,9 @@ impl CompilerOpts for TestCompilerOptsPresentsOwnFiles {
         Rc::new(self.clone())
     }
     fn set_frontend_check_live(&self, _check: bool) -> Rc<dyn CompilerOpts> {
+        Rc::new(self.clone())
+    }
+    fn set_module_phase(&self, _mp: Option<ModulePhase>) -> Rc<dyn CompilerOpts> {
         Rc::new(self.clone())
     }
     fn set_code_generator(&self, _new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
