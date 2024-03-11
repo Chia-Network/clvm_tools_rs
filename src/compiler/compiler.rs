@@ -629,9 +629,11 @@ pub fn compile_module(
         let second_stage_program =
             match find_exported_helper(opts.clone(), &program, &fun_name)? {
                 Some(HelperForm::Defun(_, dd)) => {
-                    // Second stage program is the function applied to the
-                    // environment, so we just emit a reference.
-                    todo!();
+                    // Second stage program is the function applied to the env.
+                    CompileForm {
+                        exp: Rc::new(BodyForm::Value(SExp::Atom(dd.loc.clone(), fun_name.to_vec()))),
+                        .. common_program.clone()
+                    }
                 }
                 Some(HelperForm::Defconstant(dc)) => {
                     // Second stage program generates the constant.
@@ -669,38 +671,38 @@ pub fn compile_module(
         captured_export_map.insert(export_name.clone(), run_result);
     }
 
-    todo!();
-
     // Components to use for the CompileModuleOutput, which downstream can be
     // collected for namespacing.
-    /*
     let mut components = vec![];
-    let modules = break_down_module_output(loc.clone(), run_result)?;
+    let mut prog_output = SExp::Nil(program.loc());
 
-    for m in modules.into_iter() {
+    for (export_name, export_value) in captured_export_map.iter() {
+        let output_path =
+            create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(&export_name))?;
+
+        let m = CompileModuleComponent {
+            shortname: export_name.to_vec(),
+            filename: output_path.clone(),
+            content: export_value.clone(),
+            hash: sha256tree(export_value.clone()),
+        };
+
         prog_output = SExp::Cons(
             loc.clone(),
             Rc::new(SExp::Cons(
                 loc.clone(),
-                Rc::new(SExp::Atom(loc.clone(), m.name.clone())),
+                Rc::new(SExp::Atom(loc.clone(), m.shortname.clone())),
                 Rc::new(SExp::QuotedString(loc.clone(), b'x', m.hash.clone())),
             )),
             Rc::new(prog_output),
         );
 
         let mut stream = Stream::new(None);
-        let converted_func = convert_to_clvm_rs(context.allocator(), m.func.clone())?;
+        let converted_func = convert_to_clvm_rs(context.allocator(), m.content.clone())?;
         stream.write(sexp_as_bin(context.allocator(), converted_func));
-        let output_path =
-            create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(&m.name))?;
         opts.write_new_file(&output_path, stream.get_value().hex().as_bytes())?;
 
-        components.push(CompileModuleComponent {
-            shortname: m.name.clone(),
-            filename: output_path,
-            content: m.func.clone(),
-            hash: m.hash,
-        });
+        components.push(m);
     }
 
     Ok(CompileModuleOutput {
@@ -708,7 +710,6 @@ pub fn compile_module(
         includes: program.include_forms.clone(),
         components,
     })
-    */
 }
 
 fn get_hex_name_of_export(

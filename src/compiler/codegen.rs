@@ -1,6 +1,5 @@
 use std::borrow::Borrow;
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::mem::swap;
 use std::rc::Rc;
 
@@ -1726,6 +1725,56 @@ fn do_start_codegen_optimization_and_dead_code_elimination(
     Ok(start_of_codegen_optimization)
 }
 
+fn collect_env_names(env: Rc<SExp>) -> Vec<Rc<SExp>> {
+    let mut result = Vec::new();
+    let mut stack = Vec::new();
+    stack.push(env);
+    while let Some(e) = stack.pop() {
+        match e.borrow() {
+            SExp::Cons(_, a, b) => {
+                stack.push(a.clone());
+                stack.push(b.clone());
+            }
+            SExp::Atom(_, n) => {
+                result.push(e.clone());
+            }
+            _ => { }
+        }
+    }
+    result
+}
+
+fn make_env_tree(loc: &Srcloc, env: &[Rc<SExp>], start: usize, end: usize) -> Rc<SExp> {
+    if start + 1 > end {
+        Rc::new(SExp::Nil(loc.clone()))
+    } else if start + 1 == end {
+        env[start].clone()
+    } else {
+        let mid = (start + end) / 2;
+        let left = make_env_tree(loc, env, start, mid);
+        let right = make_env_tree(loc, env, mid, end);
+        Rc::new(SExp::Cons(loc.clone(), left, right))
+    }
+}
+
+fn patch_module_env(target: Rc<SExp>, env: Rc<SExp>, extras_tree: Rc<SExp>) -> Rc<SExp> {
+    if target == env {
+        return extras_tree;
+    }
+
+    if let SExp::Cons(l, a, b) = env.borrow() {
+        let a_patch = patch_module_env(target.clone(), a.clone(), extras_tree.clone());
+        let b_patch = patch_module_env(target.clone(), b.clone(), extras_tree.clone());
+        if Rc::as_ptr(&a_patch) == Rc::as_ptr(a) && Rc::as_ptr(&b_patch) == Rc::as_ptr(b) {
+            return env;
+        }
+
+        return Rc::new(SExp::Cons(l.clone(), a_patch, b_patch));
+    }
+
+    env
+}
+
 pub fn codegen(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
@@ -1750,8 +1799,19 @@ pub fn codegen(
             // gives us a sleight of hand.  Everything that's referenced by any
             // export from the common set has the same env path in this export's
             // build and can sit alongside the env elements of this one.
-            eprintln!("standalone phase: patch env");
-            todo!();
+            let common_env_data = collect_env_names(env.clone());
+            let mut extra_env_data = Vec::new();
+            for h in start_of_codegen_optimization.code_generator.to_process.iter() {
+                let name_atom = Rc::new(SExp::Atom(h.loc(), h.name().to_vec()));
+                if common_env_data.contains(&name_atom) {
+                    extra_env_data.push(name_atom.clone());
+                }
+            }
+
+            let extra_env_tree = make_env_tree(&env.loc(), &extra_env_data, 0, extra_env_data.len());
+            let extras_target = Rc::new(SExp::Atom(env.loc(), b"__chia__extras".to_vec()));
+            start_of_codegen_optimization.code_generator.env = patch_module_env(extras_target, env, extra_env_tree);
+            eprintln!("patched env {}", start_of_codegen_optimization.code_generator.env);
         }
     }
 
@@ -1834,8 +1894,8 @@ pub fn codegen(
             ))
         }
         (false, Some(ModulePhase::StandalonePhase(env, env_value)), Some(code)) => {
-            // The program generates one constant or function with a catch.
-            todo!();
+            // The program generates one constant or function.
+            Ok(normal_produce_code(code))
         }
     }
 }
