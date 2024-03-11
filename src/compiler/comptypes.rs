@@ -904,7 +904,7 @@ pub struct DefunCall {
 #[derive(Clone, Debug)]
 pub enum ModulePhase {
     CommonPhase,
-    StandalonePhase,
+    StandalonePhase(Rc<SExp>, Rc<SExp>),
 }
 /// PrimaryCodegen is an object used by codegen to accumulate and use state needed
 /// during code generation.  It's mostly used internally.
@@ -926,7 +926,6 @@ pub struct PrimaryCodegen {
     pub final_code: Option<CompiledCode>,
     pub function_symbols: HashMap<String, String>,
     pub left_env: bool,
-    pub module_phase: Option<ModulePhase>,
 }
 
 /// The CompilerOpts specifies global options used during compilation.

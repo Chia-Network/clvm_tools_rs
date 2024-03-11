@@ -1,6 +1,6 @@
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -14,7 +14,7 @@ use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::cldb::hex_to_modern_sexp;
-use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
+use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, run, sha256tree};
 use crate::compiler::codegen::{
     codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
@@ -344,142 +344,103 @@ fn capture_standalone_constants(
     }
 }
 
-/// Exports are returned main programs:
-///
-/// Single main
-///
-/// (export (X) (do-stuff X))
-///
-/// Multiple mains
-///
-/// (export foo)
-/// (export bar)
-pub fn compile_module(
-    context: &mut BasicCompileContext,
-    opts: Rc<dyn CompilerOpts>,
+fn form_module_program_common_body(
     standalone_constants: &HashSet<Vec<u8>>,
     mut program: CompileForm,
-    exports: &[Export],
-) -> Result<CompileModuleOutput, CompileErr> {
-    let loc = program.loc();
-    let opts = opts.set_optimize(true);
+    exports: &[Export]
+) -> Result<CompileForm, CompileErr> {
+    program.helpers = program.helpers.iter().filter(|h| {
+        !standalone_constants.contains(h.name())
+    }).cloned().collect();
 
-    if exports.is_empty() {
-        return Err(CompileErr(
-            loc.clone(),
-            "A chialisp module should have at least one export".to_string(),
+    // The body should contain anything that is in the exports but not standalone
+    // constants.
+    let mut body = Rc::new(BodyForm::Quoted(SExp::Nil(program.loc())));
+
+    // Ensure that __chia__extras gets injected.
+    program.helpers.push(HelperForm::Defconstant(DefconstData {
+        loc: program.loc.clone(),
+        kw: None,
+        name: b"__chia__extras".to_vec(),
+        nl: program.loc.clone(),
+        body: body.clone(),
+        kind: ConstantKind::Simple,
+        tabled: false,
+        ty: None,
+    }));
+
+    let cons = Rc::new(BodyForm::Value(SExp::Integer(program.loc(), 4_u32.to_bigint().unwrap())));
+
+    let add_export = |body: &mut Rc<BodyForm>, e: &[u8]| {
+        *body = Rc::new(BodyForm::Call(
+            program.loc(),
+            vec![
+                cons.clone(),
+                Rc::new(BodyForm::Call(
+                    program.loc(),
+                    vec![
+                        cons.clone(),
+                        Rc::new(BodyForm::Value(SExp::QuotedString(program.loc(), b'"', e.to_vec()))),
+                        Rc::new(BodyForm::Value(SExp::Atom(program.loc(), e.to_vec()))),
+                    ],
+                    None
+                )),
+                body.clone(),
+            ],
+            None
         ));
-    }
+    };
 
-    if exports.len() == 1 {
-        if let Export::MainProgram(args, expr) = &exports[0] {
-            // Single program.
-            program.args = args.clone();
-            program.exp = expr.clone();
-
-            program = resolve_namespaces(opts.clone(), &program)?;
-
-            let output = Rc::new(compile_from_compileform(context, opts.clone(), program.clone())?);
-            let converted = convert_to_clvm_rs(context.allocator(), output.clone())?;
-
-            let mut output_path = PathBuf::from(&opts.filename());
-            output_path.set_extension("hex");
-            let output_path_str = output_path.into_os_string().to_string_lossy().to_string();
-            let mut stream = Stream::new(None);
-            stream.write(sexp_as_bin(context.allocator(), converted));
-            opts.write_new_file(&output_path_str, stream.get_value().hex().as_bytes())?;
-            return Ok(CompileModuleOutput {
-                summary: Rc::new(SExp::Nil(loc.clone())),
-                includes: program.include_forms.clone(),
-                components: vec![CompileModuleComponent {
-                    shortname: b"program".to_vec(),
-                    filename: output_path_str,
-                    content: output.clone(),
-                    hash: sha256tree(output),
-                }],
-            });
+    for e in exports.iter().filter_map(|e| {
+        if let Export::Function(name, _) = e {
+            if !standalone_constants.contains(name) {
+                return Some(name);
+            }
         }
+
+        None
+    }) {
+        add_export(&mut body, e);
     }
 
-    // So we can most optimistically know a peer module hash in this
-    // way:
-    //
-    // using a guid placeholder, define an out-of-line function *env-hash*.
-    //
-    // for each exported function, define a out-of-line function
-    // *<fun>-hash* using a guid placeholder.
-    //
-    // Compile this program.
-    //
-    // Now each exported function's body has its final representation.
-    // The function's final hash is the tree hash of
-    //
-    // (4 (1 . 2) (4 (4 (1 . 1) n) (4 (4 (1 . 1) (f @)) (4 (1 . 1) ()))))
-    //
-    // Where n is the path into the environment of the function.
-    //
-    // For each function, we retrieve its representation from the environment
-    // and hash it, replacing the placeholder guid with a program that takes
-    // the above wrapping with a sped-up treehash which replaces n in the
-    // treehash with the function body's literal hash and 2 with an invocation
-    // of *env-hash*.  We place this computation in *<fun>-hash*.
-    //
-    // Now, the last part is to find the path to *env-hash* and replace its
-    // body with a tree hash coimputation that short circuits each left or
-    // right branch, computing its own hash via sha256tree on its own
-    // env reference.
+    add_export(&mut body, b"__chia__extras");
 
-    // XXX write this the simple way for now
+    Ok(program)
+}
 
-    let mut function_list = program.exp.clone();
-    let mut prog_output = SExp::Nil(loc.clone());
+fn populate_export_map(
+    context: &mut BasicCompileContext,
+    export_map: &mut BTreeMap<Vec<u8>, Rc<SExp>>,
+    opts: Rc<dyn CompilerOpts>,
+    code: Rc<SExp>
+) -> Result<(), CompileErr> {
+    let runner = context.runner.clone();
+    let mut result = run(
+        context.allocator(),
+        runner,
+        opts.prim_map(),
+        code.clone(),
+        Rc::new(SExp::Nil(code.loc())),
+        None,
+        None
+    )?;
 
-    for fun in exports.iter() {
-        let (fun_name, export_name) = if let Export::Function(name, as_name) = fun {
-            (
-                name.clone(),
-                as_name.as_ref().cloned().unwrap_or_else(|| name.to_vec()),
-            )
-        } else {
-            return Err(CompileErr(
-                loc.clone(),
-                "got program, wanted fun".to_string(),
-            ));
+    while let SExp::Cons(_, first, rest) = result.borrow() {
+        if let SExp::Cons(_, name, value) = first.borrow() {
+            if let SExp::Atom(_, name) = name.atomize().borrow() {
+                export_map.insert(name.clone(), value.clone());
+                result = rest.clone();
+                continue;
+            }
         };
 
-        let append_to_function_list = |function_list: &mut Rc<BodyForm>,
-                                       fun_name: &[u8],
-                                       export_name: &[u8]| {
-            *function_list = Rc::new(BodyForm::Call(
-                loc.clone(),
-                vec![
-                    Rc::new(BodyForm::Value(SExp::Integer(
-                        loc.clone(),
-                        4_u32.to_bigint().unwrap(),
-                    ))),
-                    Rc::new(BodyForm::Quoted(SExp::QuotedString(
-                        loc.clone(),
-                        b'"',
-                        export_name.to_vec(),
-                    ))),
-                    Rc::new(BodyForm::Call(
-                        loc.clone(),
-                        vec![
-                            Rc::new(BodyForm::Value(SExp::Integer(
-                                loc.clone(),
-                                4_u32.to_bigint().unwrap(),
-                            ))),
-                            Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), fun_name.to_vec()))),
-                            function_list.clone(),
-                        ],
-                        None,
-                    )),
-                ],
-                None,
-            ));
-        };
+        todo!();
+    }
 
-        let exported = find_exported_helper(opts.clone(), &program, &fun_name)?;
+    Ok(())
+}
+
+/*
         if let Some(HelperForm::Defun(_, dd)) = &exported {
             let mut new_name = fun_name.clone();
             new_name.extend(b"_hash".to_vec());
@@ -545,28 +506,174 @@ pub fn compile_module(
                 format!("exported function {} not found", decode_string(&fun_name)),
             ));
         }
+*/
+
+/// Exports are returned main programs:
+///
+/// Single main
+///
+/// (export (X) (do-stuff X))
+///
+/// Multiple mains
+///
+/// (export foo)
+/// (export bar)
+pub fn compile_module(
+    context: &mut BasicCompileContext,
+    mut opts: Rc<dyn CompilerOpts>,
+    standalone_constants: &HashSet<Vec<u8>>,
+    mut program: CompileForm,
+    exports: &[Export],
+) -> Result<CompileModuleOutput, CompileErr> {
+    let loc = program.loc();
+    opts = opts.set_optimize(true);
+
+    if exports.is_empty() {
+        return Err(CompileErr(
+            loc.clone(),
+            "A chialisp module should have at least one export".to_string(),
+        ));
     }
 
-    program.exp = function_list;
-    program = resolve_namespaces(opts.clone(), &program)?;
+    if exports.len() == 1 {
+        if let Export::MainProgram(args, expr) = &exports[0] {
+            // Single program.
+            program.args = args.clone();
+            program.exp = expr.clone();
 
-    let compiled_result = Rc::new(compile_from_compileform(context, opts.clone(), program.clone())?);
-    let result_clvm = convert_to_clvm_rs(context.allocator(), compiled_result)?;
-    let nil = context.allocator().null();
-    let runner = context.runner();
-    let run_result_clvm = runner
-        .run_program(context.allocator(), result_clvm, nil, None)
-        .map_err(|e| {
-            let dis = disassemble(context.allocator(), e.0, None);
-            CompileErr(
-                loc.clone(),
-                "failed to run intermediate module program".to_string(),
+            program = resolve_namespaces(opts.clone(), &program)?;
+
+            let output = Rc::new(compile_from_compileform(context, opts.clone(), program.clone())?);
+            let converted = convert_to_clvm_rs(context.allocator(), output.clone())?;
+
+            let mut output_path = PathBuf::from(&opts.filename());
+            output_path.set_extension("hex");
+            let output_path_str = output_path.into_os_string().to_string_lossy().to_string();
+            let mut stream = Stream::new(None);
+            stream.write(sexp_as_bin(context.allocator(), converted));
+            opts.write_new_file(&output_path_str, stream.get_value().hex().as_bytes())?;
+            return Ok(CompileModuleOutput {
+                summary: Rc::new(SExp::Nil(loc.clone())),
+                includes: program.include_forms.clone(),
+                components: vec![CompileModuleComponent {
+                    shortname: b"program".to_vec(),
+                    filename: output_path_str,
+                    content: output.clone(),
+                    hash: sha256tree(output),
+                }],
+            });
+        }
+    }
+
+    // First pass compilation: remove standalone constant helpers and produce
+    // a body which contains all the non-standalone exports.
+    let common_opts = opts.set_module_phase(Some(ModulePhase::CommonPhase));
+    let common_program = form_module_program_common_body(
+        &standalone_constants,
+        program.clone(),
+        exports
+    )?;
+    eprintln!("common program {}", common_program.to_sexp());
+    let common_output = compile_from_compileform(
+        context,
+        common_opts,
+        common_program.clone()
+    )?;
+    eprintln!("common_output {}", common_output);
+
+    let mut captured_export_map: BTreeMap<Vec<u8>, Rc<SExp>> = BTreeMap::new();
+    // Capture exports that are members of the common set.
+    // We get a triple of output: (env_shape env code)
+    let (env_shape, env, code) = (|| {
+        if let Some(lst) = common_output.proper_list() {
+            if lst.len() == 3 {
+                return (Rc::new(lst[0].clone()), Rc::new(lst[1].clone()), Rc::new(lst[2].clone()));
+            }
+        }
+
+        todo!();
+    })();
+
+    populate_export_map(
+        context,
+        &mut captured_export_map,
+        opts.clone(),
+        code
+    )?;
+
+    let keys_strings: Vec<String> = captured_export_map.keys().map(|k| decode_string(k)).collect();
+    eprintln!("have common export keys {keys_strings:?}");
+
+    // Second pass compilation: for each export in standalone constants
+    let second_stage_opts = opts.set_module_phase(Some(ModulePhase::StandalonePhase(env_shape, env)));
+    for fun in exports.iter() {
+        let (fun_name, export_name) = if let Export::Function(name, as_name) = fun {
+            // We've already processed non-standalone (common) constants in the
+            // common environment, so skip those.
+            if captured_export_map.contains_key(name) {
+                continue;
+            }
+
+            // Otherwise, capture it to produce to the output.
+            (
+                name.clone(),
+                as_name.as_ref().cloned().unwrap_or_else(|| name.to_vec()),
             )
-        })?;
-    let run_result = convert_from_clvm_rs(context.allocator(), loc.clone(), run_result_clvm.1)?;
+        } else {
+            return Err(CompileErr(
+                loc.clone(),
+                "got program, wanted fun".to_string(),
+            ));
+        };
+
+        let second_stage_program =
+            match find_exported_helper(opts.clone(), &program, &fun_name)? {
+                Some(HelperForm::Defun(_, dd)) => {
+                    // Second stage program is the function applied to the
+                    // environment, so we just emit a reference.
+                    todo!();
+                }
+                Some(HelperForm::Defconstant(dc)) => {
+                    // Second stage program generates the constant.
+                    CompileForm {
+                        exp: dc.body.clone(),
+                        .. common_program.clone()
+                    }
+                }
+                _ => {
+                    todo!();
+                }
+            };
+
+        let compiled_result = Rc::new(compile_from_compileform(
+            context,
+            second_stage_opts.clone(),
+            second_stage_program
+        )?);
+
+        eprintln!("export_output {compiled_result}");
+
+        let result_clvm = convert_to_clvm_rs(context.allocator(), compiled_result)?;
+        let nil = context.allocator().null();
+        let runner = context.runner();
+        let run_result_clvm = runner
+            .run_program(context.allocator(), result_clvm, nil, None)
+            .map_err(|e| {
+                let dis = disassemble(context.allocator(), e.0, None);
+                CompileErr(
+                    loc.clone(),
+                    "failed to run intermediate module program".to_string(),
+                )
+            })?;
+        let run_result = convert_from_clvm_rs(context.allocator(), loc.clone(), run_result_clvm.1)?;
+        captured_export_map.insert(export_name.clone(), run_result);
+    }
+
+    todo!();
 
     // Components to use for the CompileModuleOutput, which downstream can be
     // collected for namespacing.
+    /*
     let mut components = vec![];
     let modules = break_down_module_output(loc.clone(), run_result)?;
 
@@ -601,6 +708,7 @@ pub fn compile_module(
         includes: program.include_forms.clone(),
         components,
     })
+    */
 }
 
 fn get_hex_name_of_export(
@@ -786,7 +894,6 @@ pub fn compile_pre_forms(
                 &exports,
             );
             modernize_constants(&mut cf.helpers, &standalone_constants);
-
             Ok(CompilerOutput::Module(compile_module(
                 context, opts, &standalone_constants, cf, &exports,
             )?))
@@ -903,6 +1010,7 @@ impl CompilerOpts for DefaultCompilerOpts {
     }
     fn set_module_phase(&self, module_phase: Option<ModulePhase>) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
+        eprintln!("set module_phase {module_phase:?}");
         copy.module_phase = module_phase;
         Rc::new(copy)
     }
@@ -993,6 +1101,7 @@ impl CompilerOpts for DefaultCompilerOpts {
         sexp: Rc<SExp>,
     ) -> Result<CompilerOutput, CompileErr> {
         let me = Rc::new(self.clone());
+        assert!(self.module_phase().is_none());
         compile_pre_forms(context, me, &[sexp])
     }
 }

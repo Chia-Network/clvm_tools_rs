@@ -677,7 +677,7 @@ pub fn do_mod_codegen(
     program: &CompileForm,
 ) -> Result<CompiledCode, CompileErr> {
     // A mod form yields the compiled code.
-    let without_env = opts.set_start_env(None).set_in_defun(false);
+    let without_env = opts.set_start_env(None).set_in_defun(false).set_module_phase(None);
     let mut throwaway_symbols = HashMap::new();
     let mut context_wrapper = CompileContextWrapper::from_context(context, &mut throwaway_symbols);
     let code = codegen(&mut context_wrapper.context, without_env, program)?;
@@ -881,6 +881,7 @@ fn codegen_(
                 let updated_opts = opts
                     .set_code_generator(compiler.clone())
                     .set_in_defun(true)
+                    .set_module_phase(None)
                     .set_stdenv(false)
                     .set_frontend_opt(false)
                     .set_start_env(Some(combine_defun_env(
@@ -967,7 +968,6 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
         final_env: nil_rc,
         function_symbols: HashMap::new(),
         left_env: true,
-        module_phase: None,
     }
 }
 
@@ -1409,7 +1409,7 @@ fn start_codegen(
                             )),
                         )),
                     );
-                    let updated_opts = opts.set_code_generator(code_generator.clone());
+                    let updated_opts = opts.set_code_generator(code_generator.clone()).set_module_phase(None);
                     let mut unused_symbols = HashMap::new();
                     let runner = context.runner();
                     let mut context_wrapper =
@@ -1423,6 +1423,7 @@ fn start_codegen(
                         }
                     };
 
+                    eprintln!("evaluate code for constant {}: {code}", decode_string(&defc.name));
                     run(
                         context_wrapper.context.allocator(),
                         runner,
@@ -1454,7 +1455,7 @@ fn start_codegen(
                 }
                 ConstantKind::Complex => {
                     let evaluator =
-                        Evaluator::new(opts.clone(), context.runner(), program.helpers.clone());
+                        Evaluator::new(opts.set_module_phase(None), context.runner(), program.helpers.clone());
                     let constant_result = evaluator.shrink_bodyform(
                         context.allocator(),
                         Rc::new(SExp::Nil(defc.loc.clone())),
@@ -1485,7 +1486,7 @@ fn start_codegen(
                 ConstantKind::Module(_tabled) => {
                     return Err(CompileErr(
                         defc.loc.clone(),
-                        "standalone constant passed as normal constant to code generation".to_string()
+                        format!("standalone constant {} passed as normal constant to code generation", decode_string(h.name()))
                     ));
                 }
             },
@@ -1501,6 +1502,7 @@ fn start_codegen(
                     .set_in_defun(false)
                     .set_stdenv(false)
                     .set_start_env(None)
+                    .set_module_phase(None)
                     .set_frontend_opt(false);
 
                 let mut unused_symbols = HashMap::new();
@@ -1734,11 +1736,25 @@ pub fn codegen(
         code_generator: dummy_functions(&start_codegen(context, opts.clone(), cmod.clone())?)?,
     };
 
-    if matches!(opts.module_phase(), Some(_)) {
-        todo!();
+    start_of_codegen_optimization = do_start_codegen_optimization_and_dead_code_elimination(context, opts.clone(), start_of_codegen_optimization)?;
+
+    if let Some(ModulePhase::StandalonePhase(env, env_value)) = opts.module_phase() {
+        if !opts.in_defun() {
+            // Patch environment:
+            // We must use env as the shape and env_value.
+            //
+            // We collect additional environment objects that aren't in the main
+            // env into a new btree and replace __chia__extras with it.
+            // When generating the environment values, their paths will be longer
+            // than those in the common program build but not by much and this
+            // gives us a sleight of hand.  Everything that's referenced by any
+            // export from the common set has the same env path in this export's
+            // build and can sit alongside the env elements of this one.
+            eprintln!("standalone phase: patch env");
+            todo!();
+        }
     }
 
-    start_of_codegen_optimization = do_start_codegen_optimization_and_dead_code_elimination(context, opts.clone(), start_of_codegen_optimization)?;
 
     let mut code_generator = start_of_codegen_optimization.code_generator;
     let to_process = code_generator.to_process.clone();
@@ -1755,45 +1771,71 @@ pub fn codegen(
         .symbols()
         .insert("source_file".to_string(), opts.filename());
 
-    final_codegen(context, opts.clone(), &code_generator).and_then(|c| {
-        let final_env = finalize_env(context, opts.clone(), &c)?;
+    let c = final_codegen(context, opts.clone(), &code_generator)?;
+    let final_env = finalize_env(context, opts.clone(), &c)?;
 
-        match c.final_code {
-            None => Err(CompileErr(
-                Srcloc::start(&opts.filename()),
-                "Failed to generate code".to_string(),
-            )),
-            Some(code) => {
-                // Capture symbols now that we have the final form of the produced code.
-                context
-                    .symbols()
-                    .insert("__chia__main_arguments".to_string(), cmod.args.to_string());
+    let normal_produce_code = |code: CompiledCode| {
+        // Capture symbols now that we have the final form of the produced code.
+        context
+            .symbols()
+            .insert("__chia__main_arguments".to_string(), cmod.args.to_string());
 
-                if opts.in_defun() {
-                    let final_code = primapply(
-                        code.0.clone(),
-                        Rc::new(primquote(code.0.clone(), code.1)),
-                        Rc::new(SExp::Integer(code.0, bi_one())),
-                    );
+        if opts.in_defun() {
+            let final_code = primapply(
+                code.0.clone(),
+                Rc::new(primquote(code.0.clone(), code.1)),
+                Rc::new(SExp::Integer(code.0, bi_one())),
+            );
 
-                    Ok(final_code)
-                } else if code_generator.left_env {
-                    let final_code = primapply(
-                        code.0.clone(),
-                        Rc::new(primquote(code.0.clone(), code.1)),
-                        Rc::new(primcons(
-                            code.0.clone(),
-                            Rc::new(primquote(code.0.clone(), final_env)),
-                            Rc::new(SExp::Integer(code.0, bi_one())),
-                        )),
-                    );
-
-                    Ok(final_code)
-                } else {
-                    let code_borrowed: &SExp = code.1.borrow();
-                    Ok(code_borrowed.clone())
-                }
-            }
+            final_code
+        } else if code_generator.left_env {
+            let final_code = primapply(
+                code.0.clone(),
+                Rc::new(primquote(code.0.clone(), code.1)),
+                Rc::new(primcons(
+                    code.0.clone(),
+                    Rc::new(primquote(code.0.clone(), final_env)),
+                    Rc::new(SExp::Integer(code.0, bi_one())),
+                )),
+            );
+            final_code
+        } else {
+            let code_borrowed: &SExp = code.1.borrow();
+            code_borrowed.clone()
         }
-    })
+    };
+
+    eprintln!("code generation {:?} {:?}", opts.in_defun(), opts.module_phase());
+    match (opts.in_defun(), opts.module_phase(), c.final_code) {
+        (_, _, None) => Err(CompileErr(
+            Srcloc::start(&opts.filename()),
+            "Failed to generate code".to_string(),
+        )),
+        (true, _, Some(code)) => {
+            Ok(normal_produce_code(code))
+        }
+        (_, None, Some(code)) => {
+            Ok(normal_produce_code(code))
+        }
+        (false, Some(ModulePhase::CommonPhase), Some(code)) => {
+            // Produce a triple of env shape, env, output code
+            Ok(SExp::Cons(
+                c.env.loc(),
+                c.env.clone(),
+                Rc::new(SExp::Cons(
+                    c.final_env.loc(),
+                    c.final_env.clone(),
+                    Rc::new(SExp::Cons(
+                        code.1.loc(),
+                        code.1.clone(),
+                        Rc::new(SExp::Nil(code.0.clone()))
+                    ))
+                ))
+            ))
+        }
+        (false, Some(ModulePhase::StandalonePhase(env, env_value)), Some(code)) => {
+            // The program generates one constant or function with a catch.
+            todo!();
+        }
+    }
 }

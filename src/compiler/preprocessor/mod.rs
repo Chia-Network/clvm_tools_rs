@@ -359,7 +359,7 @@ impl Preprocessor {
         let opts_prims = ppext.enrich_prims(opts.clone());
         let srcloc = Srcloc::start(&opts.filename());
         Preprocessor {
-            subcompile_opts: opts.clone(),
+            subcompile_opts: opts.set_module_phase(None),
             opts: opts_prims,
             ppext,
             runner,
@@ -924,7 +924,7 @@ impl Preprocessor {
         let new_program = resolve_namespaces(self.opts.clone(), &starting_program)?;
 
         let compiled_program =
-            compile_from_compileform(&mut wrapper.context, self.opts.clone(), new_program)?;
+            compile_from_compileform(&mut wrapper.context, self.opts.set_module_phase(None), new_program)?;
         self.stored_macros.insert(
             found_name.clone(),
             StoredMacro::Compiled(Rc::new(compiled_program.clone())),
