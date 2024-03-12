@@ -1605,6 +1605,31 @@ fn final_codegen(
     })
 }
 
+fn get_env_data_from_common_env(
+    name: &[u8],
+    common_env: Rc<SExp>,
+    common_env_value: Rc<SExp>
+) -> Option<Rc<SExp>> {
+    eprintln!("get env data {} {common_env} {common_env_value}", decode_string(name));
+    if let (SExp::Cons(_, le, re), SExp::Cons(_, lv, rv)) = (common_env.borrow(), common_env_value.borrow()) {
+        if let Some(l) = get_env_data_from_common_env(name, le.clone(), lv.clone()) {
+            return Some(l);
+        }
+
+        if let Some(r) = get_env_data_from_common_env(name, re.clone(), rv.clone()) {
+            return Some(r);
+        }
+    }
+
+    if let SExp::Atom(_, match_name) = common_env.borrow() {
+        if match_name == name {
+            return Some(common_env_value);
+        }
+    }
+
+    None
+}
+
 fn finalize_env_(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
@@ -1644,8 +1669,12 @@ fn finalize_env_(
 
             eprintln!("module_phase {:?}", c.module_phase);
             if let Some(ModulePhase::StandalonePhase(env, env_value)) = c.module_phase.as_ref() {
-                // XXX this should be fine but decide with to do formally.
-                return Ok(Rc::new(SExp::Nil(l.clone())));
+                let wrapped_env_value = Rc::new(SExp::Cons(env_value.loc(), env_value.clone(), Rc::new(SExp::Nil(env_value.loc()))));
+                if let Some(res) = get_env_data_from_common_env(v, env.clone(), wrapped_env_value.clone()) {
+                    eprintln!("get_env_data: {} => {res}", decode_string(v));
+                    return Ok(res);
+                }
+                eprintln!("standalone: failed to lookup {} in {env} with values {env_value}", decode_string(v));
             }
 
             todo!();
@@ -1879,8 +1908,9 @@ pub fn codegen(
         .symbols()
         .insert("source_file".to_string(), opts.filename());
 
-    let c = final_codegen(context, opts.clone(), &code_generator)?;
+    let mut c = final_codegen(context, opts.clone(), &code_generator)?;
     let final_env = finalize_env(context, opts.clone(), &c)?;
+    c.final_env = final_env.clone();
 
     let normal_produce_code = |code: CompiledCode| {
         // Capture symbols now that we have the final form of the produced code.
@@ -1928,6 +1958,7 @@ pub fn codegen(
         (false, Some(ModulePhase::CommonPhase), Some(code)) => {
             // Produce a triple of env shape, env, output code
             eprintln!("common phase env {}", c.env);
+            eprintln!("final_env {}", c.final_env);
             Ok(SExp::Cons(
                 c.env.loc(),
                 c.env.clone(),
