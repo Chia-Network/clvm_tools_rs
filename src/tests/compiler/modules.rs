@@ -396,7 +396,7 @@ fn test_simple_module_compilation_import_program_1() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(13 73)",
-                outcome: Run("(0xd85eec1bed9af4d6d161663e846857ae27010ad2a80b3ab8ccbb9fbd2c3bfa46 14 (a (q 16 5 (q . 1)) (c (q (+ 5 (q . 1)) 18 5 (q . 2)) 1)) 0x91a9f6736103e339a1d3b25e9d1dbc57de2bf643494c00f82b462ddf4912b11c 146 (a (q 18 5 (q . 2)) (c (q (+ 5 (q . 1)) 18 5 (q . 2)) 1)))")
+                outcome: Run("(0x1eed358b67f00f0b838300f2e7bcc8f6ace8c8eac5e931ab11b8559b96a206bb 14 (a (q 16 5 (q . 1)) (c (q 16 5 (q . 1)) 1)) 0x6d8ed6530d383c703bfa57dc502a71bec5cb5e5cb501d41b2a238c8bd4c44325 146 (a (q 18 5 (q . 2)) (c (q 18 5 (q . 2)) 1)))")
             }
         ]
     );
@@ -663,12 +663,12 @@ fn test_program_export_constant_and_function() {
         &[
             HexArgumentOutcome {
                 hexfile: d_hex_filename,
-                argument: "(19191 (a (q 16 12 5) (c (q (() . 19191) (+ 12 5) . 0x3e6c399d8b10babad835468467a4b837036357ddfb8c320ba39a914c63152967) 1)) 0x3e6c399d8b10babad835468467a4b837036357ddfb8c320ba39a914c63152967 0x4d97c7350789cf972b8496c4393bfeae09f0e36d051ed0daa9fd1cfae9456e72)",
+                argument: "(19191 (a (q 16 4 5) (c (q 19191 (+ 4 5) (a (q 2 (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) (c (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) 1)) (c 4 (q))) 2 (q 2 (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) (c (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) 1)) (c (c (q . 2) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q))) 1)) 0x3e6c399d8b10babad835468467a4b837036357ddfb8c320ba39a914c63152967 0x2cb2e584a20425c6475203ad2f2358619abdc5947e0850f6c0a16c81481193c3)",
                 outcome: ContentEquals,
             },
             HexArgumentOutcome {
                 hexfile: f_hex_filename,
-                argument: "(a (q 16 12 5) (c (q (() . 19191) (+ 12 5) . 0x3e6c399d8b10babad835468467a4b837036357ddfb8c320ba39a914c63152967) 1))",
+                argument: "(a (q 16 4 5) (c (q 19191 (+ 4 5)) 1))",
                 outcome: ContentEquals,
             },
         ]
