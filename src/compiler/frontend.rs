@@ -11,7 +11,7 @@ use crate::compiler::comptypes::{
     list_to_cons, match_as_named, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType,
     CompileErr, CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData,
     DefunData, Export, FrontendOutput, HelperForm, ImportLongName, IncludeDesc, LetData,
-    LetFormInlineHint, LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, NamespaceData,
+    LetFormInlineHint, LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, ModulePhase, NamespaceData,
     NamespaceRefData, StructDef, StructMember, SyntheticType, TypeAnnoKind,
 };
 use crate::compiler::lambda::handle_lambda;

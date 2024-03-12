@@ -926,6 +926,7 @@ pub struct PrimaryCodegen {
     pub final_code: Option<CompiledCode>,
     pub function_symbols: HashMap<String, String>,
     pub left_env: bool,
+    pub module_phase: Option<ModulePhase>,
 }
 
 /// The CompilerOpts specifies global options used during compilation.

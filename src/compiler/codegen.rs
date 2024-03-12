@@ -972,6 +972,7 @@ pub fn empty_compiler(prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>, l: Srcloc) -> Pr
         final_env: nil_rc,
         function_symbols: HashMap::new(),
         left_env: true,
+        module_phase: None,
     }
 }
 
@@ -1395,6 +1396,10 @@ fn start_codegen(
         Some(c) => c,
     };
 
+    if code_generator.module_phase.is_none() {
+        code_generator.module_phase = opts.module_phase();
+    }
+
     // Start compiler with all macros and constants
     for h in program.helpers.iter() {
         code_generator = match h {
@@ -1634,16 +1639,23 @@ fn finalize_env_(
 
             /* Parentfns are functions in progress in the parent */
             if c.parentfns.get(v).is_some() {
-                Ok(Rc::new(SExp::Nil(l.clone())))
-            } else {
-                Err(CompileErr(
-                    l.clone(),
-                    format!(
-                        "A defun was referenced in the defun env but not found {}",
-                        decode_string(v)
-                    ),
-                ))
+                return Ok(Rc::new(SExp::Nil(l.clone())));
             }
+
+            eprintln!("module_phase {:?}", c.module_phase);
+            if let Some(ModulePhase::StandalonePhase(env, env_value)) = c.module_phase.as_ref() {
+                // XXX this should be fine but decide with to do formally.
+                return Ok(Rc::new(SExp::Nil(l.clone())));
+            }
+
+            todo!();
+            Err(CompileErr(
+                l.clone(),
+                format!(
+                    "A defun was referenced in the defun env but not found {}",
+                    decode_string(v)
+                ),
+            ))
         }
 
         SExp::Cons(l, h, r) => finalize_env_(context, opts.clone(), c, l.clone(), h.clone())
