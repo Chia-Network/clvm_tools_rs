@@ -248,7 +248,7 @@ fn test_compile_and_run_program_with_modules(
     for run in runs.iter() {
         let hex_data = compile_result.source_opts
             .get_written_file(run.hexfile)
-            .expect("should have written hex data beside the source file");
+            .expect(&format!("should have written hex data {} beside the source file", run.hexfile));
         let compiled_node = hex_to_clvm(&mut allocator, &hex_data);
 
         if matches!(&run.outcome, ContentEquals) {

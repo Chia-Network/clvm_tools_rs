@@ -183,50 +183,6 @@ pub fn compile_from_compileform(
     finish_compilation(context, opts, p2)
 }
 
-struct ModuleOutputEntry {
-    name: Vec<u8>,
-    hash: Vec<u8>,
-    func: Rc<SExp>,
-}
-
-fn break_down_module_output(
-    loc: Srcloc,
-    run_result: Rc<SExp>,
-) -> Result<Vec<ModuleOutputEntry>, CompileErr> {
-    let list_data = if let Some(lst) = run_result.proper_list() {
-        lst
-    } else {
-        return Err(CompileErr(
-            loc,
-            "output from intermediate module program should have been a proper list".to_string(),
-        ));
-    };
-
-    if list_data.len() % 2 != 0 {
-        return Err(CompileErr(
-            loc,
-            "output length from intermediate module program should have been divisible by 2"
-                .to_string(),
-        ));
-    }
-
-    let mut result = Vec::new();
-    for tuple_idx in 0..(list_data.len() / 2) {
-        let i = tuple_idx * 2;
-        if let SExp::Atom(_, name) = list_data[i].atomize() {
-            result.push(ModuleOutputEntry {
-                name: name.clone(),
-                hash: sha256tree(Rc::new(list_data[i + 1].clone())),
-                func: Rc::new(list_data[i + 1].clone()),
-            });
-        } else {
-            return Err(CompileErr(loc.clone(), format!("output from intermediate module program wasn't in triplets of atom, atom, program {} {} {}", list_data[i], list_data[i+1], list_data[i+2])));
-        }
-    }
-
-    Ok(result)
-}
-
 fn create_hex_output_path(loc: Srcloc, file_path: &str, func: &str) -> Result<String, CompileErr> {
     let mut dir = PathBuf::from(file_path);
     let filename = PathBuf::from(file_path)
@@ -316,8 +272,14 @@ fn capture_standalone_constants(
 ) {
     // Find constants on which nothing depends (they're only output).
     for h in helpers.iter() {
-        let mut constant_is_depended = HashSet::new();
-        if let HelperForm::Defconstant(dc) = h {
+        if let HelperForm::Defnamespace(ns) = h {
+            capture_standalone_constants(
+                standalone_constants,
+                depgraph,
+                &ns.helpers,
+                exports,
+            )
+        } else if matches!(h, HelperForm::Defconstant(_) | HelperForm::Defun(_, _)) {
             let match_exports = exports.iter().any(|e| match e {
                 Export::MainProgram(_, _) => false,
                 Export::Function(name, _) => name == h.name()
@@ -328,20 +290,57 @@ fn capture_standalone_constants(
                 continue;
             }
 
+            let mut constant_is_depended = HashSet::new();
             depgraph.get_full_depended_on_by(&mut constant_is_depended, h.name());
             let depended_list: Vec<String> = constant_is_depended.iter().map(|d| decode_string(d)).collect();
             if constant_is_depended.is_empty() {
+                eprintln!("[X] standalone {}", decode_string(h.name()));
                 standalone_constants.insert(h.name().to_vec());
+            } else {
+                eprintln!("[ ] standalone {}", decode_string(h.name()));
             }
-        } else if let HelperForm::Defnamespace(ns) = h {
-            capture_standalone_constants(
-                standalone_constants,
-                depgraph,
-                &ns.helpers,
-                exports,
-            )
         }
     }
+}
+
+fn add_inline_hash_for_constant(program: &mut CompileForm, loc: &Srcloc, fun_name: &[u8]) {
+    let mut new_name = fun_name.to_vec();
+    new_name.extend(b"_hash".to_vec());
+    let make_hash_of = Rc::new(BodyForm::Value(SExp::Atom(
+        loc.clone(),
+        fun_name.to_vec(),
+    )));
+
+    let mut underscore_name = new_name.clone();
+    underscore_name.insert(0, b'_');
+
+    /*
+    program.helpers.push(HelperForm::Defconstant(DefconstData {
+        loc: loc.clone(),
+        nl: loc.clone(),
+        kw: None,
+        name: underscore_name.clone(),
+    body: form_hash_expression(Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), fun_name.to_vec())))),
+        kind: ConstantKind::Complex,
+        tabled: true,
+        ty: None
+    }));
+    */
+    program.helpers.push(HelperForm::Defun(
+        true,
+        DefunData {
+            loc: loc.clone(),
+            nl: loc.clone(),
+            kw: None,
+            name: new_name.clone(),
+            args: Rc::new(SExp::Nil(loc.clone())),
+            orig_args: Rc::new(SExp::Nil(loc.clone())),
+            body: form_hash_expression(Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), fun_name.to_vec())))),
+            // Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), underscore_name))),
+            synthetic: Some(SyntheticType::WantInline),
+            ty: None,
+        },
+    ));
 }
 
 fn form_module_program_common_body(
@@ -355,7 +354,7 @@ fn form_module_program_common_body(
 
     // The body should contain anything that is in the exports but not standalone
     // constants.
-    let mut body = Rc::new(BodyForm::Quoted(SExp::Nil(program.loc())));
+    let mut body = Rc::new(BodyForm::Value(SExp::Nil(program.loc())));
 
     // Ensure that __chia__extras gets injected.
     program.helpers.push(HelperForm::Defconstant(DefconstData {
@@ -365,23 +364,25 @@ fn form_module_program_common_body(
         nl: program.loc.clone(),
         body: body.clone(),
         kind: ConstantKind::Simple,
-        tabled: false,
+        tabled: true,
         ty: None,
     }));
 
     let cons = Rc::new(BodyForm::Value(SExp::Integer(program.loc(), 4_u32.to_bigint().unwrap())));
 
-    let add_export = |body: &mut Rc<BodyForm>, e: &[u8]| {
+    // XXX Give exports locations.
+    let hash_loc = program.loc.clone();
+    let add_export = |body: &mut Rc<BodyForm>, target_name: &[u8], capture: &[u8]| {
         *body = Rc::new(BodyForm::Call(
-            program.loc(),
+            hash_loc.clone(),
             vec![
                 cons.clone(),
                 Rc::new(BodyForm::Call(
-                    program.loc(),
+                    hash_loc.clone(),
                     vec![
                         cons.clone(),
-                        Rc::new(BodyForm::Value(SExp::QuotedString(program.loc(), b'"', e.to_vec()))),
-                        Rc::new(BodyForm::Value(SExp::Atom(program.loc(), e.to_vec()))),
+                        Rc::new(BodyForm::Value(SExp::QuotedString(hash_loc.clone(), b'"', target_name.to_vec()))),
+                        Rc::new(BodyForm::Value(SExp::Atom(hash_loc.clone(), capture.to_vec()))),
                     ],
                     None
                 )),
@@ -391,19 +392,21 @@ fn form_module_program_common_body(
         ));
     };
 
-    for e in exports.iter().filter_map(|e| {
-        if let Export::Function(name, _) = e {
+    for (target_name, capture) in exports.iter().filter_map(|e| {
+        if let Export::Function(name, as_name) = e {
+            let target_name = as_name.as_ref().map(|e| e.clone()).unwrap_or_else(|| name.clone());
             if !standalone_constants.contains(name) {
-                return Some(name);
+                return Some((target_name, name.clone()));
             }
         }
 
         None
     }) {
-        add_export(&mut body, e);
+        add_export(&mut body, &target_name, &capture);
     }
 
-    add_export(&mut body, b"__chia__extras");
+    add_export(&mut body, b"__chia__extras", b"__chia__extras");
+    program.exp = body;
 
     Ok(program)
 }
@@ -424,89 +427,42 @@ fn populate_export_map(
         None,
         None
     )?;
+    eprintln!("populate_export_map: list {result}");
 
     while let SExp::Cons(_, first, rest) = result.borrow() {
+        eprintln!("{first} . {rest}");
         if let SExp::Cons(_, name, value) = first.borrow() {
             if let SExp::Atom(_, name) = name.atomize().borrow() {
+                let mut hash_name: Vec<u8> = name.clone();
+                hash_name.append(&mut b"_hash".to_vec());
+                eprintln!("{}", decode_string(&hash_name));
+                export_map.insert(hash_name, Rc::new(SExp::Atom(value.loc(), sha256tree(value.clone()))));
+                eprintln!("{} = {value}", decode_string(&name));
                 export_map.insert(name.clone(), value.clone());
-                result = rest.clone();
-                continue;
             }
-        };
-
-        todo!();
+        }
+        result = rest.clone();
     }
 
     Ok(())
 }
 
-/*
-        if let Some(HelperForm::Defun(_, dd)) = &exported {
-            let mut new_name = fun_name.clone();
-            new_name.extend(b"_hash".to_vec());
-
-            append_to_function_list(&mut function_list, &fun_name, &export_name);
-            let make_hash_of = Rc::new(BodyForm::Value(SExp::Atom(
-                dd.loc.clone(),
-                fun_name.clone(),
-            )));
-            program.helpers.push(HelperForm::Defun(
-                true,
-                DefunData {
-                    loc: dd.loc.clone(),
-                    kw: None,
-                    nl: dd.nl.clone(),
-                    name: new_name,
-                    args: Rc::new(SExp::Nil(dd.loc.clone())),
-                    orig_args: Rc::new(SExp::Nil(dd.loc.clone())),
-                    body: form_hash_expression(make_hash_of),
-                    synthetic: Some(SyntheticType::WantNonInline),
-                    ty: None,
-                },
-            ));
-        } else if let Some(HelperForm::Defconstant(dc)) = &exported {
-            let mut new_name = fun_name.clone();
-            new_name.extend(b"_hash".to_vec());
-            let make_hash_of = Rc::new(BodyForm::Value(SExp::Atom(
-                dc.loc.clone(),
-                fun_name.clone(),
-            )));
-
-            let mut underscore_name = new_name.clone();
-            underscore_name.insert(0, b'_');
-
-            append_to_function_list(&mut function_list, &fun_name, &export_name);
-
-            program.helpers.push(HelperForm::Defconstant(DefconstData {
-                kind: ConstantKind::Module(true),
-                name: underscore_name.clone(),
-                body: form_hash_expression(make_hash_of),
-                tabled: true,
-                ty: None,
-                ..dc.clone()
-            }));
-
-            program.helpers.push(HelperForm::Defun(
-                true,
-                DefunData {
-                    loc: dc.loc.clone(),
-                    nl: dc.nl.clone(),
-                    kw: None,
-                    name: new_name.clone(),
-                    args: Rc::new(SExp::Nil(dc.loc.clone())),
-                    orig_args: Rc::new(SExp::Nil(dc.loc.clone())),
-                    body: Rc::new(BodyForm::Value(SExp::Atom(dc.loc.clone(), underscore_name))),
-                    synthetic: Some(SyntheticType::NoInlinePreference),
-                    ty: None,
-                },
-            ));
-        } else {
-            return Err(CompileErr(
-                loc.clone(),
-                format!("exported function {} not found", decode_string(&fun_name)),
-            ));
+fn remove_standalone_constant(program: &mut CompileForm, fun_name: &[u8]) {
+    program.helpers = program.helpers.iter().map(|h| {
+        if h.name() == fun_name {
+            if let HelperForm::Defconstant(dc) = h {
+                eprintln!("treat standalone {}", h.to_sexp());
+                return HelperForm::Defconstant(DefconstData {
+                    // kind: ConstantKind::Complex,
+                    tabled: true,
+                    .. dc.clone()
+                });
+            }
         }
-*/
+
+        h.clone()
+    }).collect();
+}
 
 /// Exports are returned main programs:
 ///
@@ -565,13 +521,29 @@ pub fn compile_module(
         }
     }
 
+    // Add hash functions for exports.
+    let hash_loc = program.loc();
+    for e in exports.iter() {
+        if let Export::Function(fun_name, _) = &e {
+            if !standalone_constants.contains(fun_name) {
+                eprintln!("add inline hash function for export {}", decode_string(&fun_name));
+                add_inline_hash_for_constant(&mut program, &hash_loc, &fun_name);
+            }
+        }
+    }
+
+    eprintln!("program with hashes {}", program.to_sexp());
+
     // First pass compilation: remove standalone constant helpers and produce
     // a body which contains all the non-standalone exports.
     let common_opts = opts.set_module_phase(Some(ModulePhase::CommonPhase));
-    let common_program = form_module_program_common_body(
-        &standalone_constants,
-        program.clone(),
-        exports
+    let common_program = resolve_namespaces(
+        common_opts.clone(),
+        &form_module_program_common_body(
+            &standalone_constants,
+            program.clone(),
+            exports
+        )?
     )?;
     eprintln!("common program {}", common_program.to_sexp());
     let common_output = compile_from_compileform(
@@ -605,12 +577,14 @@ pub fn compile_module(
     eprintln!("have common export keys {keys_strings:?}");
 
     // Second pass compilation: for each export in standalone constants
+    let cons = Rc::new(BodyForm::Value(SExp::Integer(program.loc(), 4_u32.to_bigint().unwrap())));
     let second_stage_opts = opts.set_module_phase(Some(ModulePhase::StandalonePhase(env_shape, env)));
     for fun in exports.iter() {
         let (fun_name, export_name) = if let Export::Function(name, as_name) = fun {
             // We've already processed non-standalone (common) constants in the
             // common environment, so skip those.
             if captured_export_map.contains_key(name) {
+                eprintln!("skip {}", decode_string(name));
                 continue;
             }
 
@@ -626,49 +600,54 @@ pub fn compile_module(
             ));
         };
 
-        let second_stage_program =
-            match find_exported_helper(opts.clone(), &program, &fun_name)? {
-                Some(HelperForm::Defun(_, dd)) => {
-                    // Second stage program is the function applied to the env.
-                    CompileForm {
-                        exp: Rc::new(BodyForm::Value(SExp::Atom(dd.loc.clone(), fun_name.to_vec()))),
-                        .. common_program.clone()
-                    }
+        eprintln!("process export {}", decode_string(&export_name));
+        let mut second_stage_program =
+            if let Some(h) = find_exported_helper(opts.clone(), &program, &fun_name)? {
+                CompileForm {
+                    exp: Rc::new(BodyForm::Call(
+                        h.loc(),
+                        vec![
+                            cons.clone(),
+                            Rc::new(BodyForm::Call(
+                                h.loc(),
+                                vec![
+                                    cons.clone(),
+                                    Rc::new(BodyForm::Value(SExp::QuotedString(h.loc(), b'"', export_name.to_vec()))),
+                                    Rc::new(BodyForm::Value(SExp::Atom(h.loc(), fun_name.to_vec())))
+                                ],
+                                None
+                            )),
+                            Rc::new(BodyForm::Value(SExp::Nil(h.loc()))),
+                        ],
+                        None
+                    )),
+                    .. program.clone()
                 }
-                Some(HelperForm::Defconstant(dc)) => {
-                    // Second stage program generates the constant.
-                    CompileForm {
-                        exp: dc.body.clone(),
-                        .. common_program.clone()
-                    }
-                }
-                _ => {
-                    todo!();
-                }
+            } else {
+                return Err(CompileErr(program.loc(), format!("export helper {} not present while generating standalone constant code", decode_string(&fun_name))));
             };
+
+        eprintln!("resolve namespaces in program {}", second_stage_program.to_sexp());
+        // remove_standalone_constant(&mut second_stage_program, &fun_name);
+        let constant_culled_second_stage_program = resolve_namespaces(
+            second_stage_opts.clone(),
+            &second_stage_program,
+        )?;
+        eprintln!("standalone program for {}: {}", decode_string(&fun_name), constant_culled_second_stage_program.to_sexp());
 
         let compiled_result = Rc::new(compile_from_compileform(
             context,
             second_stage_opts.clone(),
-            second_stage_program
+            constant_culled_second_stage_program
         )?);
+        eprintln!("compiled_result {compiled_result}");
 
-        eprintln!("export_output {compiled_result}");
-
-        let result_clvm = convert_to_clvm_rs(context.allocator(), compiled_result)?;
-        let nil = context.allocator().null();
-        let runner = context.runner();
-        let run_result_clvm = runner
-            .run_program(context.allocator(), result_clvm, nil, None)
-            .map_err(|e| {
-                let dis = disassemble(context.allocator(), e.0, None);
-                CompileErr(
-                    loc.clone(),
-                    "failed to run intermediate module program".to_string(),
-                )
-            })?;
-        let run_result = convert_from_clvm_rs(context.allocator(), loc.clone(), run_result_clvm.1)?;
-        captured_export_map.insert(export_name.clone(), run_result);
+        populate_export_map(
+            context,
+            &mut captured_export_map,
+            opts.clone(),
+            compiled_result
+        )?;
     }
 
     // Components to use for the CompileModuleOutput, which downstream can be
