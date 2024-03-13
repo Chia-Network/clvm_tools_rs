@@ -270,8 +270,8 @@ fn create_name_lookup(
     name: &[u8],
     as_variable: bool,
 ) -> Result<Rc<SExp>, CompileErr> {
-    if let Some(ModulePhase::StandalonePhase(e, v)) = opts.module_phase() {
-        eprintln!("lookup {} with standalone env {e}", decode_string(name));
+    if let Some(ModulePhase::StandalonePhase(sp)) = opts.module_phase() {
+        eprintln!("lookup {} with standalone env {}", sp.env, decode_string(name));
     }
     compiler
         .constants
@@ -1668,13 +1668,13 @@ fn finalize_env_(
             }
 
             eprintln!("module_phase {:?}", c.module_phase);
-            if let Some(ModulePhase::StandalonePhase(env, env_value)) = c.module_phase.as_ref() {
-                let wrapped_env_value = Rc::new(SExp::Cons(env_value.loc(), env_value.clone(), Rc::new(SExp::Nil(env_value.loc()))));
-                if let Some(res) = get_env_data_from_common_env(v, env.clone(), wrapped_env_value.clone()) {
+            if let Some(ModulePhase::StandalonePhase(sp)) = c.module_phase.as_ref() {
+                let wrapped_env_value = Rc::new(SExp::Cons(sp.left_env_value.loc(), sp.left_env_value.clone(), Rc::new(SExp::Nil(sp.left_env_value.loc()))));
+                if let Some(res) = get_env_data_from_common_env(v, sp.env.clone(), wrapped_env_value.clone()) {
                     eprintln!("get_env_data: {} => {res}", decode_string(v));
                     return Ok(res);
                 }
-                eprintln!("standalone: failed to lookup {} in {env} with values {env_value}", decode_string(v));
+                eprintln!("standalone: failed to lookup {} in {env} with values {}", decode_string(v), sp.left_env_value);
             }
 
             todo!();
@@ -1859,7 +1859,7 @@ pub fn codegen(
 
     start_of_codegen_optimization = do_start_codegen_optimization_and_dead_code_elimination(context, opts.clone(), start_of_codegen_optimization)?;
 
-    if let Some(ModulePhase::StandalonePhase(env, env_value)) = opts.module_phase() {
+    if let Some(ModulePhase::StandalonePhase(sp)) = opts.module_phase() {
         eprintln!("my program {}", cmod.to_sexp());
         if !opts.in_defun() {
             // Patch environment:
@@ -1872,8 +1872,8 @@ pub fn codegen(
             // gives us a sleight of hand.  Everything that's referenced by any
             // export from the common set has the same env path in this export's
             // build and can sit alongside the env elements of this one.
-            let common_env_data = collect_env_names(env.clone());
-            eprintln!("env {env}");
+            let common_env_data = collect_env_names(sp.env.clone());
+            eprintln!("env {}", sp.env);
             let mut extra_env_data = Vec::new();
             for h in start_of_codegen_optimization.code_generator.to_process.iter() {
                 let name_atom = Rc::new(SExp::Atom(h.loc(), h.name().to_vec()));
@@ -1884,10 +1884,10 @@ pub fn codegen(
 
             let extra_env_data_strings: Vec<String> = extra_env_data.iter().map(|e| e.to_string()).collect();
             eprintln!("extra_env_data_strings {extra_env_data_strings:?}");
-            let extra_env_tree = make_env_tree(&env.loc(), &extra_env_data, 0, extra_env_data.len());
+            let extra_env_tree = make_env_tree(&sp.env.loc(), &extra_env_data, 0, extra_env_data.len());
             eprintln!("extra_env_tree {extra_env_tree}");
-            let extras_target = Rc::new(SExp::Atom(env.loc(), b"__chia__extras".to_vec()));
-            start_of_codegen_optimization.code_generator.env = patch_module_env(extras_target, env, extra_env_tree);
+            let extras_target = Rc::new(SExp::Atom(sp.env.loc(), b"__chia__extras".to_vec()));
+            start_of_codegen_optimization.code_generator.env = patch_module_env(extras_target, sp.env, extra_env_tree);
             eprintln!("patched env {}", start_of_codegen_optimization.code_generator.env);
         }
     }
@@ -1973,7 +1973,7 @@ pub fn codegen(
                 ))
             ))
         }
-        (false, Some(ModulePhase::StandalonePhase(env, env_value)), Some(code)) => {
+        (false, Some(ModulePhase::StandalonePhase(_)), Some(code)) => {
             // The program generates one constant or function.
             Ok(normal_produce_code(code))
         }

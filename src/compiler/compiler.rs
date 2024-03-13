@@ -20,7 +20,7 @@ use crate::compiler::codegen::{
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompileModuleComponent, CompileModuleOutput, CompilerOpts,
     CompilerOutput, ConstantKind, DefconstData, DefunData, Export, FrontendOutput, HelperForm,
-    ImportLongName, IncludeDesc, ModulePhase, PrimaryCodegen, SyntheticType,
+    ImportLongName, IncludeDesc, ModulePhase, PrimaryCodegen, StandalonePhaseInfo, SyntheticType,
 };
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::frontend;
@@ -314,18 +314,6 @@ fn add_inline_hash_for_constant(program: &mut CompileForm, loc: &Srcloc, fun_nam
     let mut underscore_name = new_name.clone();
     underscore_name.insert(0, b'_');
 
-    /*
-    program.helpers.push(HelperForm::Defconstant(DefconstData {
-        loc: loc.clone(),
-        nl: loc.clone(),
-        kw: None,
-        name: underscore_name.clone(),
-    body: form_hash_expression(Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), fun_name.to_vec())))),
-        kind: ConstantKind::Complex,
-        tabled: true,
-        ty: None
-    }));
-    */
     program.helpers.push(HelperForm::Defun(
         true,
         DefunData {
@@ -336,7 +324,6 @@ fn add_inline_hash_for_constant(program: &mut CompileForm, loc: &Srcloc, fun_nam
             args: Rc::new(SExp::Nil(loc.clone())),
             orig_args: Rc::new(SExp::Nil(loc.clone())),
             body: form_hash_expression(Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), fun_name.to_vec())))),
-            // Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), underscore_name))),
             synthetic: Some(SyntheticType::WantInline),
             ty: None,
         },
@@ -578,7 +565,10 @@ pub fn compile_module(
 
     // Second pass compilation: for each export in standalone constants
     let cons = Rc::new(BodyForm::Value(SExp::Integer(program.loc(), 4_u32.to_bigint().unwrap())));
-    let second_stage_opts = opts.set_module_phase(Some(ModulePhase::StandalonePhase(env_shape, env)));
+    let second_stage_opts = opts.set_module_phase(Some(ModulePhase::StandalonePhase(StandalonePhaseInfo {
+        env: env_shape,
+        left_env_value: env
+    })));
     for fun in exports.iter() {
         let (fun_name, export_name) = if let Export::Function(name, as_name) = fun {
             // We've already processed non-standalone (common) constants in the

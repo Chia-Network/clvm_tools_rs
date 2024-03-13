@@ -896,6 +896,14 @@ pub struct DefunCall {
     pub code: Rc<SExp>,
 }
 
+/// A structure that contains info needed to do separate standalone generation
+/// on top of the common part of module constant generation.
+#[derive(Clone, Debug)]
+pub struct StandalonePhaseInfo {
+    pub env: Rc<SExp>,
+    pub left_env_value: Rc<SExp>,
+}
+
 /// If compiling modules, tell what module phase we're in.  It affects how the
 /// environment is passed on to functions when treated as values.  In this
 /// position, a function that is exported or common between more than one exported
@@ -904,7 +912,7 @@ pub struct DefunCall {
 #[derive(Clone, Debug)]
 pub enum ModulePhase {
     CommonPhase,
-    StandalonePhase(Rc<SExp>, Rc<SExp>),
+    StandalonePhase(StandalonePhaseInfo),
 }
 /// PrimaryCodegen is an object used by codegen to accumulate and use state needed
 /// during code generation.  It's mostly used internally.

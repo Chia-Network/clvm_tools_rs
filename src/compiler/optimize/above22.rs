@@ -78,7 +78,7 @@ impl Optimization for Strategy23 {
             self.duplicate(),
             &mut includes,
         );
-        if matches!(opts.module_phase(), Some(ModulePhase::StandalonePhase(_, _))) {
+        if matches!(opts.module_phase(), Some(ModulePhase::StandalonePhase(sp))) {
             return Ok(cf);
         }
 
