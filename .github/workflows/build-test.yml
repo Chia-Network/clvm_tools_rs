@@ -49,19 +49,24 @@ jobs:
       run: |
           python -m pip install maturin==1.1.0
 
+    - uses: chia-network/actions/create-venv@main
+      id: create-venv
+
+    - uses: chia-network/actions/activate-venv@main
+      with:
+        directories: ${{ steps.create-venv.outputs.activate-venv-directories }}
+
     - name: Build MacOs with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'macos')
       env:
         MACOSX_DEPLOYMENT_TARGET: '11.0'
       run: |
-        python -m venv venv
-        ln -s venv/bin/activate
-        . ./activate
         maturin build -i python --release --strip
 
     - name: Build Linux in manylinux2010 with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'ubuntu')
       run: |
+        # TODO: does this need to be outside the env?
         docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.1.0 build --release --strip --manylinux 2014
         # Refresh in case any ownerships changed.
         mv target target.docker && cp -r target.docker target
@@ -71,9 +76,6 @@ jobs:
     - name: Build Windows with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'windows')
       run: |
-        python -m venv venv
-        echo ". .\venv\Scripts\Activate.ps1" > activate.ps1
-        . ./activate
         maturin build -i python --release --strip
         # Find and install the newly built wheel
         pip install --no-index --find-links target/wheels/ clvm_tools_rs
@@ -81,7 +83,6 @@ jobs:
     - name: Install clvm_tools_rs wheel
       if: ${{ !startsWith(matrix.os, 'windows') }}
       run: |
-        . ./activate
         ls target/wheels/
         # this mess puts the name of the `.whl` file into `$WHEEL_PATH`
         # remove the dot, use the `glob` lib to grab the file from the directory
@@ -91,13 +92,11 @@ jobs:
 
     - name: Install other wheels
       run: |
-        . ./activate
         python -m pip install pytest
         python -m pip install blspy
 
     - name: install clvm & clvm_tools
       run: |
-        . ./activate
         git clone https://github.com/Chia-Network/clvm.git --branch=main --single-branch
         python -m pip install ./clvm
 
@@ -112,7 +111,6 @@ jobs:
 
     - name: Ensure clvm, clvm_rs, clvm_tools_rs are installed
       run: |
-        . ./activate
         python -c 'import clvm'
         python -c 'import clvm; print(clvm.__file__)'
         python -c 'import clvm_rs; print(clvm_rs.__file__)'
@@ -122,7 +120,6 @@ jobs:
     # Test cldb output both run from python and via its command line tool.
     - name: "Run step run tests"
       run: |
-        . ./activate
         cargo build
         # This finds and installs a compatible wheel from the target directory on linux.
         # We do it here as a hedge against changes in the python environment that might
@@ -135,7 +132,6 @@ jobs:
 
     - name: "Test step run with mandelbrot, setting print only"
       run: |
-        . ./activate
         python ./resources/tests/lib/steprun.py ./resources/tests/mandelbrot/mandelbrot.clvm.hex resources/tests/mandelbrot/mand_args.txt ./resources/tests/mandelbrot/mandelbrot.sym > mand_output.txt
         # git diff invoked this way returns 0 (as /bin/true) if there is no difference or 1 if there is.
         git diff --no-index -s --quiet -- mand_output.txt ./resources/tests/mandelbrot/mand_test.txt
@@ -148,7 +144,6 @@ jobs:
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
         set -x
-        . ./activate
         # Build cmd line tools
         PYO3_PYTHON=`which python` cargo build --release
 
@@ -170,6 +165,7 @@ jobs:
     - name: Test Classic command line tools with pytest
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
+        # TODO: does this need to be outside the env?
         python -m pip install pytest
         # This script installs the wheel built during this workflow.
         pip install --no-index --find-links wheel/target/wheels/ clvm_tools_rs
@@ -179,7 +175,6 @@ jobs:
     - name: Verify recompilation of cl21 sources
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
-        . ./activate
         # We need chia-rs for the following.
         pip install chia-rs
         # Ensure we're using the sources we have.  This is a hedge against
@@ -191,23 +186,21 @@ jobs:
     - name: Verify recompilation follows date and modification rules
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
+        # TODO: does this need to be outside the env?
         pip install --no-index --find-links wheel/target/wheels/ clvm_tools_rs
         python resources/tests/test-clvm-recompile-behavior.py
 
     - name: Install pytest
       run: |
-        . ./activate
         pip install pytest pytest-asyncio
 
     - name: Run tests from clvm
       run: |
-        . ./activate
         cd clvm
         pytest tests
 
     - name: Run tests from clvm_tools
       run: |
-        . ./activate
         cd clvm_tools
         pytest tests
 
