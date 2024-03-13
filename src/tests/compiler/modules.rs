@@ -396,7 +396,7 @@ fn test_simple_module_compilation_import_program_1() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(13 73)",
-                outcome: Run("(0x1eed358b67f00f0b838300f2e7bcc8f6ace8c8eac5e931ab11b8559b96a206bb 14 (a (q 16 5 (q . 1)) (c (q 16 5 (q . 1)) 1)) 0x6d8ed6530d383c703bfa57dc502a71bec5cb5e5cb501d41b2a238c8bd4c44325 146 (a (q 18 5 (q . 2)) (c (q 18 5 (q . 2)) 1)))")
+                outcome: Run("(0x48f575e60f9bb7a8262e7c77316d8d52d1cc00759d2db182593a25f4075d82f0 14 (a (q 16 5 (q . 1)) (c (q (()) 16 5 (q . 1)) 1)) 0xc49035d156846530047c8ee3c5cb052b9f0e21d6c10ec55f0f2cd1c1c53520ae 146 (a (q 18 5 (q . 2)) (c (q (()) 18 5 (q . 2)) 1)))")
             }
         ]
     );

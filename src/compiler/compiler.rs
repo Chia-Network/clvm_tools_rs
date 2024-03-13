@@ -342,19 +342,6 @@ fn form_module_program_common_body(
     // The body should contain anything that is in the exports but not standalone
     // constants.
     let mut body = Rc::new(BodyForm::Value(SExp::Nil(program.loc())));
-
-    // Ensure that __chia__extras gets injected.
-    program.helpers.push(HelperForm::Defconstant(DefconstData {
-        loc: program.loc.clone(),
-        kw: None,
-        name: b"__chia__extras".to_vec(),
-        nl: program.loc.clone(),
-        body: body.clone(),
-        kind: ConstantKind::Simple,
-        tabled: true,
-        ty: None,
-    }));
-
     let cons = Rc::new(BodyForm::Value(SExp::Integer(program.loc(), 4_u32.to_bigint().unwrap())));
 
     // XXX Give exports locations.
@@ -392,7 +379,6 @@ fn form_module_program_common_body(
         add_export(&mut body, &target_name, &capture);
     }
 
-    add_export(&mut body, b"__chia__extras", b"__chia__extras");
     program.exp = body;
 
     Ok(program)

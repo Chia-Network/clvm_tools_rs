@@ -139,10 +139,60 @@ fn compute_code_shape(l: Srcloc, helpers: &[HelperForm]) -> SExp {
     }
 }
 
-fn compute_env_shape(l: Srcloc, args: Rc<SExp>, helpers: &[HelperForm]) -> SExp {
-    let car = compute_code_shape(l.clone(), helpers);
-    let cdr = args;
-    SExp::Cons(l, Rc::new(car), cdr)
+fn compute_env_shape(
+    module_phase: Option<&ModulePhase>,
+    l: Srcloc,
+    args: Rc<SExp>,
+    helpers: &[HelperForm]
+) -> SExp {
+    match module_phase {
+        Some(ModulePhase::StandalonePhase(sp)) => {
+            let common_env_data = collect_env_names(sp.env.clone());
+            let mut extra_env_data = Vec::new();
+            for h in helpers.iter() {
+                let name_atom = Rc::new(SExp::Atom(h.loc(), h.name().to_vec()));
+                if !common_env_data.contains(&name_atom) {
+                    extra_env_data.push(name_atom.clone());
+                }
+            }
+
+            let extra_env_data_strings: Vec<String> = extra_env_data.iter().map(|e| e.to_string()).collect();
+            eprintln!("extra_env_data_strings {extra_env_data_strings:?}");
+            let extra_env_tree = make_env_tree(&sp.env.loc(), &extra_env_data, 0, extra_env_data.len());
+            let car = sp.env.clone();
+            if let SExp::Cons(l, old_env, _) = sp.env.borrow() {
+                SExp::Cons(
+                    l.clone(),
+                    Rc::new(SExp::Cons(
+                        l.clone(),
+                        old_env.clone(),
+                        extra_env_tree,
+                    )),
+                    args
+                )
+            } else {
+                todo!();
+            }
+        }
+        Some(ModulePhase::CommonPhase) => {
+            let car = compute_code_shape(l.clone(), helpers);
+            SExp::Cons(
+                l.clone(),
+                Rc::new(SExp::Cons(
+                    l.clone(),
+                    Rc::new(car),
+                    Rc::new(SExp::Nil(l.clone()))
+                )),
+                args
+            )
+        }
+        None => {
+            let car = compute_code_shape(l.clone(), helpers);
+            let cdr = args;
+            SExp::Cons(l, Rc::new(car), cdr)
+        }
+    }
+
 }
 
 fn create_name_lookup_(
@@ -1492,7 +1542,7 @@ fn start_codegen(
                         ));
                     }
                 }
-                ConstantKind::Module(_tabled) => {
+                ConstantKind::Module(tabled) => {
                     eprintln!("do module constants {}", h.to_sexp());
                     let constant_program = CompileForm {
                         helpers: program.helpers.iter().filter(|other| {
@@ -1521,7 +1571,12 @@ fn start_codegen(
                         CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
                     })
                     .map(|res| {
-                        code_generator.add_tabled_constant(&defc.name, res)
+                        if defc.tabled {
+                            code_generator.add_tabled_constant(&defc.name, res)
+                        } else {
+                            let quoted = primquote(defc.loc.clone(), res);
+                            code_generator.add_constant(&defc.name, Rc::new(quoted))
+                        }
                     })?
                 }
             },
@@ -1569,14 +1624,21 @@ fn start_codegen(
         .cloned()
         .collect();
 
+    let only_defuns_list: Vec<String> = only_defuns.iter().map(|h| h.to_sexp().to_string()).collect();
+    eprintln!("about to compute env shape with helpers: {only_defuns_list:?}");
+
     code_generator.env = match opts.start_env() {
         Some(env) => env,
         None => Rc::new(compute_env_shape(
+            code_generator.module_phase.as_ref(),
             program.loc.clone(),
             program.args,
             &only_defuns,
         )),
     };
+
+    eprintln!("phase {:?}", code_generator.module_phase.as_ref());
+    eprintln!("env {}", code_generator.env);
 
     code_generator.to_process = program.helpers.clone();
     // Ensure that we have the synthesis of the previous codegen's helpers and
@@ -1667,8 +1729,8 @@ fn finalize_env_(
                 return Ok(Rc::new(SExp::Nil(l.clone())));
             }
 
-            eprintln!("module_phase {:?}", c.module_phase);
             if let Some(ModulePhase::StandalonePhase(sp)) = c.module_phase.as_ref() {
+                eprintln!("Standalone mode: {}", sp.env);
                 let wrapped_env_value = Rc::new(SExp::Cons(sp.left_env_value.loc(), sp.left_env_value.clone(), Rc::new(SExp::Nil(sp.left_env_value.loc()))));
                 if let Some(res) = get_env_data_from_common_env(v, sp.env.clone(), wrapped_env_value.clone()) {
                     eprintln!("get_env_data: {} => {res}", decode_string(v));
@@ -1858,40 +1920,6 @@ pub fn codegen(
     };
 
     start_of_codegen_optimization = do_start_codegen_optimization_and_dead_code_elimination(context, opts.clone(), start_of_codegen_optimization)?;
-
-    if let Some(ModulePhase::StandalonePhase(sp)) = opts.module_phase() {
-        eprintln!("my program {}", cmod.to_sexp());
-        if !opts.in_defun() {
-            // Patch environment:
-            // We must use env as the shape and env_value.
-            //
-            // We collect additional environment objects that aren't in the main
-            // env into a new btree and replace __chia__extras with it.
-            // When generating the environment values, their paths will be longer
-            // than those in the common program build but not by much and this
-            // gives us a sleight of hand.  Everything that's referenced by any
-            // export from the common set has the same env path in this export's
-            // build and can sit alongside the env elements of this one.
-            let common_env_data = collect_env_names(sp.env.clone());
-            eprintln!("env {}", sp.env);
-            let mut extra_env_data = Vec::new();
-            for h in start_of_codegen_optimization.code_generator.to_process.iter() {
-                let name_atom = Rc::new(SExp::Atom(h.loc(), h.name().to_vec()));
-                if !common_env_data.contains(&name_atom) {
-                    extra_env_data.push(name_atom.clone());
-                }
-            }
-
-            let extra_env_data_strings: Vec<String> = extra_env_data.iter().map(|e| e.to_string()).collect();
-            eprintln!("extra_env_data_strings {extra_env_data_strings:?}");
-            let extra_env_tree = make_env_tree(&sp.env.loc(), &extra_env_data, 0, extra_env_data.len());
-            eprintln!("extra_env_tree {extra_env_tree}");
-            let extras_target = Rc::new(SExp::Atom(sp.env.loc(), b"__chia__extras".to_vec()));
-            start_of_codegen_optimization.code_generator.env = patch_module_env(extras_target, sp.env, extra_env_tree);
-            eprintln!("patched env {}", start_of_codegen_optimization.code_generator.env);
-        }
-    }
-
 
     let mut code_generator = start_of_codegen_optimization.code_generator;
     let to_process = code_generator.to_process.clone();

@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 use std::rc::Rc;
 
 use serde::Serialize;
@@ -898,10 +899,16 @@ pub struct DefunCall {
 
 /// A structure that contains info needed to do separate standalone generation
 /// on top of the common part of module constant generation.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct StandalonePhaseInfo {
     pub env: Rc<SExp>,
     pub left_env_value: Rc<SExp>,
+}
+
+impl Debug for StandalonePhaseInfo {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(formatter, "{}, {}", self.env, self.left_env_value)
+    }
 }
 
 /// If compiling modules, tell what module phase we're in.  It affects how the
@@ -909,11 +916,21 @@ pub struct StandalonePhaseInfo {
 /// position, a function that is exported or common between more than one exported
 /// constant must use the common environment without the additions from the local
 /// environment of the constant being evaluated.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum ModulePhase {
     CommonPhase,
     StandalonePhase(StandalonePhaseInfo),
 }
+
+impl Debug for ModulePhase {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            ModulePhase::CommonPhase => write!(formatter, "CommonPhase"),
+            ModulePhase::StandalonePhase(sp) => write!(formatter, "StandalonePhase({sp:?})")
+        }
+    }
+}
+
 /// PrimaryCodegen is an object used by codegen to accumulate and use state needed
 /// during code generation.  It's mostly used internally.
 #[derive(Clone, Debug)]
