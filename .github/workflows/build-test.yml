@@ -36,18 +36,10 @@ jobs:
       with:
         python-version: ${{ matrix.python }}
 
-    - name: Update pip
-      run: |
-          python -m pip install --upgrade pip
-
     - name: Set up rust
       uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
-
-    - name: Install dependencies
-      run: |
-          python -m pip install maturin==1.1.0
 
     - uses: chia-network/actions/create-venv@main
       id: create-venv
@@ -55,6 +47,11 @@ jobs:
     - uses: chia-network/actions/activate-venv@main
       with:
         directories: ${{ steps.create-venv.outputs.activate-venv-directories }}
+
+    - name: Install dependencies
+      run: |
+          python -m pip install --upgrade pip
+          python -m pip install maturin==1.1.0
 
     - name: Build MacOs with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'macos')
@@ -183,7 +180,6 @@ jobs:
     - name: Verify recompilation follows date and modification rules
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
-        # TODO: does this need to be outside the env?
         pip install --no-index --find-links wheel/target/wheels/ clvm_tools_rs
         python resources/tests/test-clvm-recompile-behavior.py
 
