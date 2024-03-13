@@ -66,7 +66,6 @@ jobs:
     - name: Build Linux in manylinux2010 with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'ubuntu')
       run: |
-        # TODO: does this need to be outside the env?
         docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.1.0 build --release --strip --manylinux 2014
         # Refresh in case any ownerships changed.
         mv target target.docker && cp -r target.docker target
@@ -165,8 +164,6 @@ jobs:
     - name: Test Classic command line tools with pytest
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')
       run: |
-        # TODO: does this need to be outside the env?
-        python -m pip install pytest
         # This script installs the wheel built during this workflow.
         pip install --no-index --find-links wheel/target/wheels/ clvm_tools_rs
         # TODO: bring in the other tests in resources/tests/cmdline/tests besides cmds_test.py
