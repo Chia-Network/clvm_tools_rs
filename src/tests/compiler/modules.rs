@@ -663,12 +663,12 @@ fn test_program_export_constant_and_function() {
         &[
             HexArgumentOutcome {
                 hexfile: d_hex_filename,
-                argument: "(19191 (a (q 16 4 5) (c (q 19191 (+ 4 5) (a (q 2 (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) (c (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) 1)) (c 4 (q))) 2 (q 2 (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) (c (q 2 (i (l 5) (q 11 (q . 2) (a 2 (c 2 (c 9 ()))) (a 2 (c 2 (c 13 ())))) (q 11 (q . 1) 5)) 1) 1)) (c (c (q . 2) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q))) 1)) 0x3e6c399d8b10babad835468467a4b837036357ddfb8c320ba39a914c63152967 0x2cb2e584a20425c6475203ad2f2358619abdc5947e0850f6c0a16c81481193c3)",
+                argument: "(19191 (a (q 16 16 5) (c (q ((19191 16 16 5))) 1)) 0x3e6c399d8b10babad835468467a4b837036357ddfb8c320ba39a914c63152967 0xc21b5ba319e46ed4e29c0d9efcb7d719d1b38376956de5024e975d151abeaf03)",
                 outcome: ContentEquals,
             },
             HexArgumentOutcome {
                 hexfile: f_hex_filename,
-                argument: "(a (q 16 4 5) (c (q 19191 (+ 4 5)) 1))",
+                argument: "(a (q 16 8 5) (c (q (19191 16 8 5)) 1))",
                 outcome: ContentEquals,
             },
         ]

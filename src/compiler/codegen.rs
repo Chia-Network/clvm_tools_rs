@@ -278,16 +278,41 @@ fn make_list(loc: Srcloc, elements: Vec<Rc<SExp>>) -> Rc<SExp> {
 //
 // Write an expression that conses the left env.
 //
-// (list (q . 2) (c (q . 1) n) (list (q . 4) (c (q . 1) 2) (q . 1)))
+// (list (q . 2) (c (q . 1) n) (list (q . 4) (c (q . 1)    2    ) (q . 1)))
 //
 // Something like:
 //   (apply (quoted (expanded n)) (cons (quoted (expanded 2)) given-args))
 //
-fn lambda_for_defun(opts: Rc<dyn CompilerOpts>, loc: Srcloc, lookup: Rc<SExp>) -> Rc<SExp> {
+// If the function is in the common env, and we're in standalone phase, filter
+// 6 from the env so the env image is only the common part.
+//
+// (list (q . 2) (c (q . 1) n) (list (q . 4) (c (q . 1) (c 4 ())) (q . 1)))
+//
+fn lambda_for_defun(compiler: &PrimaryCodegen, opts: Rc<dyn CompilerOpts>, loc: Srcloc, name: &[u8], lookup: Rc<SExp>) -> Rc<SExp> {
     let one_atom = Rc::new(SExp::Atom(loc.clone(), vec![1]));
     let two_atom = Rc::new(SExp::Atom(loc.clone(), vec![2]));
     let apply_atom = two_atom.clone();
     let cons_atom = Rc::new(SExp::Atom(loc.clone(), vec![4]));
+    let four_atom = cons_atom.clone();
+    let env_expr =
+        if let Some(ModulePhase::StandalonePhase(sp)) = compiler.module_phase.as_ref() {
+            // Check whether the function is part of the common env.  If so, filter.
+            if create_name_lookup_(loc.clone(), name, sp.env.clone(), sp.env.clone()).is_ok() {
+                // The environment we construct replaces path 6 with ().
+                Rc::new(primcons(
+                    loc.clone(),
+                    four_atom.clone(),
+                    Rc::new(SExp::Nil(loc.clone()))
+                ))
+            } else {
+                two_atom.clone()
+            }
+        } else {
+            two_atom.clone()
+        };
+
+    // Lambda-ize normally by composing an env with the left env as first
+    // and the args as rest.
     make_list(
         loc.clone(),
         vec![
@@ -304,7 +329,7 @@ fn lambda_for_defun(opts: Rc<dyn CompilerOpts>, loc: Srcloc, lookup: Rc<SExp>) -
                     Rc::new(primcons(
                         loc.clone(),
                         Rc::new(primquote(loc.clone(), one_atom.clone())),
-                        two_atom,
+                        env_expr,
                     )),
                     Rc::new(primquote(loc, one_atom)),
                 ],
@@ -334,7 +359,10 @@ fn create_name_lookup(
                     // callable like a lambda by repeating the left env into it.
                     let find_program = Rc::new(SExp::Integer(l.clone(), i.to_bigint().unwrap()));
                     if as_variable && is_defun_in_codegen(compiler, name) {
-                        lambda_for_defun(opts.clone(), l.clone(), find_program)
+                        let l = lambda_for_defun(compiler, opts.clone(), l.clone(), name, find_program);
+                        eprintln!("lambda for defun {}: {l}", decode_string(name));
+                        eprintln!("env was {}", compiler.env);
+                        l
                     } else {
                         find_program
                     }
