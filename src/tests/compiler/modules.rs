@@ -396,7 +396,7 @@ fn test_simple_module_compilation_import_program_1() {
             HexArgumentOutcome {
                 hexfile: hex_filename,
                 argument: "(13 73)",
-                outcome: Run("(0x48f575e60f9bb7a8262e7c77316d8d52d1cc00759d2db182593a25f4075d82f0 14 (a (q 16 5 (q . 1)) (c (q (()) 16 5 (q . 1)) 1)) 0xc49035d156846530047c8ee3c5cb052b9f0e21d6c10ec55f0f2cd1c1c53520ae 146 (a (q 18 5 (q . 2)) (c (q (()) 18 5 (q . 2)) 1)))")
+                outcome: Run("(0xfab05b1fd610159ee4a46a120ece34b5a947f88057c4287f4506e513910a5d29 14 (a (q 16 5 (q . 1)) (c (q () 16 5 (q . 1)) 1)) 0x225de92687b39de0e3228e15d54bc9896f275027d5b6bb6bde309afbfb22b519 146 (a (q 18 5 (q . 2)) (c (q () 18 5 (q . 2)) 1)))")
             }
         ]
     );
@@ -663,7 +663,7 @@ fn test_program_export_constant_and_function() {
         &[
             HexArgumentOutcome {
                 hexfile: d_hex_filename,
-                argument: "(19191 (a (q 16 16 5) (c (q ((19191 16 16 5))) 1)) 0x3e6c399d8b10babad835468467a4b837036357ddfb8c320ba39a914c63152967 0xc21b5ba319e46ed4e29c0d9efcb7d719d1b38376956de5024e975d151abeaf03)",
+                argument: "(19191 (a (q 16 8 5) (c (q (19191 16 8 5)) 1)) 0x3e6c399d8b10babad835468467a4b837036357ddfb8c320ba39a914c63152967 0xce4692944e33a3b0812e16504a1f342e619b8e13bf39de25fa24f1465e1c101c)",
                 outcome: ContentEquals,
             },
             HexArgumentOutcome {

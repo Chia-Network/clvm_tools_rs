@@ -70,7 +70,7 @@ impl ValueSpecification {
                 Rc::new(SExp::Atom(srcloc.clone(), c.clone()))
             }
             ValueSpecification::HashOfFunction(f) => {
-                compose_sexp(srcloc.clone(), &format!("(a (q . {SHA256TREE_PROGRAM_CLVM}) {})", decode_string(&f)))
+                compose_sexp(srcloc.clone(), &format!("(a (q . {SHA256TREE_PROGRAM_CLVM}) (list {}))", decode_string(&f)))
             }
             ValueSpecification::ApplyFunction(name, v) => {
                 Rc::new(SExp::Cons(

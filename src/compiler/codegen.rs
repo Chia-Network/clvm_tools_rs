@@ -160,19 +160,21 @@ fn compute_env_shape(
             eprintln!("extra_env_data_strings {extra_env_data_strings:?}");
             let extra_env_tree = make_env_tree(&sp.env.loc(), &extra_env_data, 0, extra_env_data.len());
             let car = sp.env.clone();
-            if let SExp::Cons(l, old_env, _) = sp.env.borrow() {
-                SExp::Cons(
-                    l.clone(),
-                    Rc::new(SExp::Cons(
+            if let SExp::Cons(l, all_env, _) = sp.env.borrow() {
+                if let SExp::Cons(l, old_env, _) = all_env.borrow() {
+                    return SExp::Cons(
                         l.clone(),
-                        old_env.clone(),
-                        extra_env_tree,
-                    )),
-                    args
-                )
-            } else {
-                todo!();
+                        Rc::new(SExp::Cons(
+                            l.clone(),
+                            old_env.clone(),
+                            extra_env_tree,
+                        )),
+                        args
+                    );
+                }
             }
+
+            todo!();
         }
         Some(ModulePhase::CommonPhase) => {
             let car = compute_code_shape(l.clone(), helpers);
@@ -1585,6 +1587,7 @@ fn start_codegen(
                     let mut context_wrapper =
                         CompileContextWrapper::from_context(context, &mut unused_symbols);
                     let code = compile_from_compileform(&mut context_wrapper.context, updated_opts.clone(), constant_program)?;
+                    eprintln!("evaluate constant code for {}: {}", decode_string(h.name()), code);
 
                     run(
                         context_wrapper.context.allocator(),
@@ -1917,24 +1920,6 @@ fn make_env_tree(loc: &Srcloc, env: &[Rc<SExp>], start: usize, end: usize) -> Rc
         let right = make_env_tree(loc, env, mid, end);
         Rc::new(SExp::Cons(loc.clone(), left, right))
     }
-}
-
-fn patch_module_env(target: Rc<SExp>, env: Rc<SExp>, extras_tree: Rc<SExp>) -> Rc<SExp> {
-    if target == env {
-        return extras_tree;
-    }
-
-    if let SExp::Cons(l, a, b) = env.borrow() {
-        let a_patch = patch_module_env(target.clone(), a.clone(), extras_tree.clone());
-        let b_patch = patch_module_env(target.clone(), b.clone(), extras_tree.clone());
-        if Rc::as_ptr(&a_patch) == Rc::as_ptr(a) && Rc::as_ptr(&b_patch) == Rc::as_ptr(b) {
-            return env;
-        }
-
-        return Rc::new(SExp::Cons(l.clone(), a_patch, b_patch));
-    }
-
-    env
 }
 
 pub fn codegen(
