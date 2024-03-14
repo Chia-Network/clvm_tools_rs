@@ -722,5 +722,4 @@ fn test_property_fuzz_stable_constants() {
     }
 
     // We've checked all predicted values.
-    todo!();
 }

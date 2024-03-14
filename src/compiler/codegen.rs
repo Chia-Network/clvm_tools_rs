@@ -12,7 +12,7 @@ use crate::compiler::compiler::{compile_from_compileform, is_at_capture};
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, CallSpec,
     Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, CompilerOutput, ConstantKind,
-    DefunCall, DefunData, HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind,
+    DefconstData, DefunCall, DefunData, HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind,
     ModulePhase, PrimaryCodegen, RawCallSpec, SyntheticType,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
@@ -21,6 +21,7 @@ use crate::compiler::frontend::{compile_bodyform, make_provides_set};
 use crate::compiler::gensym::gensym;
 use crate::compiler::inline::{replace_in_inline, synthesize_args};
 use crate::compiler::lambda::lambda_codegen;
+use crate::compiler::optimize::depgraph::{DepgraphOptions, FunctionDependencyGraph};
 use crate::compiler::prims::{primapply, primcons, primquote};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, printable, SExp};
@@ -1465,6 +1466,420 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
     Ok(result)
 }
 
+fn find_satisfied_functions(
+    ce: &CompileForm,
+    depgraph: &FunctionDependencyGraph,
+    function_set: &HashSet<Vec<u8>>,
+    constant_set: &HashSet<Vec<u8>>,
+    functions: &[HelperForm],
+) -> Vec<HelperForm> {
+    functions
+        .iter()
+        .filter(|f| {
+            let mut function_deps = HashSet::new();
+
+            // Don't try something we already processed.
+            if !function_set.contains(f.name()) {
+                return false;
+            }
+
+            depgraph.get_full_depends_on(&mut function_deps, f.name());
+            let uncovered_deps: Vec<Vec<u8>> = function_deps
+                .iter()
+                .filter(|h| {
+                    let hname: &[u8] = h;
+                    !(function_set.contains(hname) || constant_set.contains(hname))
+                })
+                .cloned()
+                .collect();
+            let deps_list: Vec<String> = uncovered_deps.iter().map(|d| decode_string(d)).collect();
+            uncovered_deps.is_empty()
+        })
+        .cloned()
+        .collect()
+}
+
+fn find_easiest_constant(
+    ce: &CompileForm,
+    depgraph: &FunctionDependencyGraph,
+    constant_set: &HashSet<Vec<u8>>,
+    constants: &[HelperForm],
+) -> Option<HelperForm> {
+    let constants_in_set: Vec<HelperForm> = constants
+        .iter()
+        .filter(|c| constant_set.contains(c.name()))
+        .cloned()
+        .collect();
+
+    if constants_in_set.is_empty() {
+        return None;
+    }
+
+    let mut chosen_idx = 0;
+    let mut best_dep_set = 0;
+
+    for (i, h) in constants_in_set.iter().enumerate() {
+        let mut deps_of_constant = HashSet::new();
+        depgraph.get_full_depends_on(&mut deps_of_constant, h.name());
+        let how_many_deps = deps_of_constant.len();
+        if i == 0 || how_many_deps < best_dep_set {
+            chosen_idx = i;
+            best_dep_set = how_many_deps;
+        }
+    }
+
+    Some(constants_in_set[chosen_idx].clone())
+}
+
+fn find_satisfied_constants(
+    depgraph: &FunctionDependencyGraph,
+    function_set: &HashSet<Vec<u8>>,
+    constant_set: &HashSet<Vec<u8>>,
+    constants: &[HelperForm],
+) -> Vec<HelperForm> {
+    let constant_set_list: Vec<String> = constant_set.iter().map(|c| decode_string(c)).collect();
+    constants
+        .iter()
+        .filter(|c| {
+            let mut constant_deps = HashSet::new();
+
+            // We've already processed it or it isn't a module style constant.
+            if !constant_set.contains(c.name()) {
+                return false;
+            }
+
+            depgraph.get_full_depends_on(&mut constant_deps, c.name());
+            let raw_deps_list: Vec<String> = constant_deps.iter().map(|c| decode_string(c)).collect();
+            let uncovered_deps: Vec<Vec<u8>> = constant_deps
+                .iter()
+                .filter(|h| {
+                    let hname: &[u8] = h;
+                    function_set.contains(hname) || constant_set.contains(hname)
+                })
+                .cloned()
+                .collect();
+            let deps_list: Vec<String> = uncovered_deps.iter().map(|d| decode_string(d)).collect();
+            uncovered_deps.is_empty()
+        })
+        .cloned()
+        .collect()
+}
+
+// Output a viable order for constant and constant-time function generation which
+// allows the constants to observe a consistent, useful viewpoint on the program
+// and any functions that they depend on outside the main program.
+fn decide_constant_generation_order(
+    loc: &Srcloc,
+    compiler: &PrimaryCodegen,
+    helpers: &[HelperForm],
+) -> Result<Vec<HelperForm>, CompileErr> {
+    let mut exp = Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone())));
+
+    for h in helpers.iter() {
+        eprintln!("decide_constant_generation_order {}", h.to_sexp());
+
+        let do_include = match h {
+            HelperForm::Defconstant(dc) => {
+                eprintln!("{:?} {}", dc.kind, decode_string(&dc.name));
+                matches!(dc.kind, ConstantKind::Module(false))
+            }
+            HelperForm::Defun(false, _) => true,
+            _ => false,
+        };
+
+        if do_include {
+            exp = Rc::new(BodyForm::Call(
+                loc.clone(),
+                vec![
+                    Rc::new(BodyForm::Value(SExp::Integer(
+                        loc.clone(),
+                        4_u32.to_bigint().unwrap(),
+                    ))),
+                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), h.name().clone()))),
+                    exp,
+                ],
+                None,
+            ));
+        }
+    }
+
+    let ce = CompileForm {
+        loc: loc.clone(),
+        include_forms: Vec::new(),
+        args: Rc::new(SExp::Nil(loc.clone())),
+        helpers: helpers.to_vec(),
+        exp,
+        ty: None,
+    };
+
+    let mut constants: Vec<HelperForm> = helpers
+        .iter()
+        .filter(|h| {
+            if let HelperForm::Defconstant(dc) = h {
+                return matches!(dc.kind, ConstantKind::Module(true));
+            }
+
+            false
+        })
+        .cloned()
+        .collect();
+    let mut constant_set: HashSet<Vec<u8>> = constants.iter().map(|h| h.name().to_vec()).collect();
+    let mut functions: Vec<HelperForm> = helpers
+        .iter()
+        .filter(|h| matches!(h, HelperForm::Defun(false, dd)))
+        .cloned()
+        .collect();
+
+    // We don't generate bodies for inline helpers, but they appear pre-fulfilled
+    // in our function set.
+    let mut function_set: HashSet<Vec<u8>> = helpers
+        .iter()
+        .filter(|h| matches!(h, HelperForm::Defun(_, _)))
+        .map(|h| h.name().to_vec())
+        .collect();
+
+    let depgraph = FunctionDependencyGraph::new_with_options(
+        &ce,
+        DepgraphOptions {
+            with_constants: true,
+        },
+    );
+
+    let mut result = Vec::new();
+
+    while !constant_set.is_empty() {
+        let remaining_constants: Vec<String> = constant_set.iter().map(|c| decode_string(c)).collect();
+        let new_satisfied_constants =
+            find_satisfied_constants(&depgraph, &function_set, &constant_set, &constants);
+        let new_satcon: Vec<String> = new_satisfied_constants.iter().map(|c| decode_string(c.name())).collect();
+
+        if !new_satisfied_constants.is_empty() {
+            for c in new_satisfied_constants.iter() {
+                constant_set.remove(c.name());
+                result.push(c.clone());
+            }
+            continue;
+        }
+
+        let new_satisfied_functions =
+            find_satisfied_functions(&ce, &depgraph, &function_set, &constant_set, &functions);
+        if !new_satisfied_functions.is_empty() {
+            for f in new_satisfied_functions.iter() {
+                function_set.remove(f.name());
+                result.push(f.clone());
+            }
+            continue;
+        }
+
+        // Break blocks.  We need to unblock a constant so we'll choose the easiest
+        // one generate any functions it needs which we haven't generated yet.
+        if let Some(least_constant) =
+            find_easiest_constant(&ce, &depgraph, &constant_set, &constants)
+        {
+            let mut functions_it_depends_on_hash = HashSet::new();
+            depgraph.get_full_depends_on(&mut functions_it_depends_on_hash, least_constant.name());
+            let mut functions_it_depends_on = functions
+                .iter()
+                .filter(|h| functions_it_depends_on_hash.contains(h.name()))
+                .cloned()
+                .collect();
+            constant_set.remove(least_constant.name());
+            result.append(&mut functions_it_depends_on);
+            result.push(least_constant.clone());
+            continue;
+        }
+
+        let mod_constant_names: Vec<String> =
+            constants.iter().map(|h| decode_string(h.name())).collect();
+        return Err(CompileErr(
+            loc.clone(),
+            format!("Deadlock generating module constants {mod_constant_names:?}"),
+        ));
+    }
+
+    let result_order: Vec<String> = result.iter().map(|h| decode_string(h.name())).collect();
+
+    Ok(result)
+}
+
+fn generate_helper_body(
+    context: &mut BasicCompileContext,
+    code_generator: PrimaryCodegen,
+    opts: Rc<dyn CompilerOpts>,
+    program: CompileForm,
+    h: &HelperForm,
+) -> Result<PrimaryCodegen, CompileErr> {
+    match h {
+        HelperForm::Defconstant(defc) => match defc.kind {
+            ConstantKind::Simple => {
+                let expand_program = SExp::Cons(
+                    defc.loc.clone(),
+                    Rc::new(SExp::Atom(defc.loc.clone(), "mod".as_bytes().to_vec())),
+                    Rc::new(SExp::Cons(
+                        defc.loc.clone(),
+                        Rc::new(SExp::Nil(defc.loc.clone())),
+                        Rc::new(SExp::Cons(
+                            defc.loc.clone(),
+                            Rc::new(primquote(defc.loc.clone(), defc.body.to_sexp())),
+                            Rc::new(SExp::Nil(defc.loc.clone())),
+                        )),
+                    )),
+                );
+                let updated_opts = opts.set_code_generator(code_generator.clone()).set_module_phase(None);
+                let mut unused_symbols = HashMap::new();
+                let runner = context.runner();
+                let mut context_wrapper =
+                    CompileContextWrapper::from_context(context, &mut unused_symbols);
+                let code = match updated_opts
+                    .compile_program(&mut context_wrapper.context, Rc::new(expand_program))?
+                {
+                    CompilerOutput::Program(_, code) => code,
+                    CompilerOutput::Module(_) => {
+                        todo!();
+                    }
+                };
+
+                run(
+                    context_wrapper.context.allocator(),
+                    runner,
+                    opts.prim_map(),
+                    Rc::new(code),
+                    Rc::new(SExp::Nil(defc.loc.clone())),
+                    None,
+                    Some(CONST_EVAL_LIMIT),
+                )
+                    .map_err(|r| {
+                        CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
+                    })
+                    .and_then(|res| {
+                        fail_if_present(
+                            defc.loc.clone(),
+                            &code_generator.constants,
+                            &defc.name,
+                            res,
+                        )
+                    })
+                    .map(|res| {
+                        if defc.tabled {
+                            Ok(code_generator.add_tabled_constant(&defc.name, res))
+                        } else {
+                            let quoted = primquote(defc.loc.clone(), res);
+                            Ok(code_generator.add_constant(&defc.name, Rc::new(quoted)))
+                        }
+                    })?
+            }
+            ConstantKind::Complex => {
+                eprintln!("evaluate code for constant {}: {}", decode_string(&defc.name), defc.body.to_sexp());
+                let evaluator =
+                    Evaluator::new(opts.set_module_phase(None), context.runner(), program.helpers.clone());
+                let constant_result = evaluator.shrink_bodyform(
+                    context.allocator(),
+                    Rc::new(SExp::Nil(defc.loc.clone())),
+                    &HashMap::new(),
+                    defc.body.clone(),
+                    false,
+                    Some(EVAL_STACK_LIMIT),
+                )?;
+                if let BodyForm::Quoted(q) = constant_result.borrow() {
+                    let res = Rc::new(q.clone());
+                    if defc.tabled {
+                        Ok(code_generator.add_tabled_constant(&defc.name, res))
+                    } else {
+                        let quoted = primquote(defc.loc.clone(), res);
+                        Ok(code_generator.add_constant(&defc.name, Rc::new(quoted)))
+                    }
+                } else {
+                    return Err(CompileErr(
+                        defc.loc.clone(),
+                        format!(
+                            "constant definition didn't reduce to constant value {}, got {}",
+                            h.to_sexp(),
+                            constant_result.to_sexp()
+                        ),
+                    ));
+                }
+            }
+            ConstantKind::Module(_) => {
+                eprintln!("do module constants {}", h.to_sexp());
+                let constant_program = CompileForm {
+                    helpers: program.helpers.iter().filter(|other| {
+                        other.name() != h.name()
+                    }).cloned().collect(),
+                    exp: defc.body.clone(),
+                    .. program.clone()
+                };
+                let updated_opts = opts.set_code_generator(code_generator.clone());
+                let mut unused_symbols = HashMap::new();
+                let runner = context.runner();
+                let mut context_wrapper =
+                    CompileContextWrapper::from_context(context, &mut unused_symbols);
+                let code = compile_from_compileform(&mut context_wrapper.context, updated_opts.clone(), constant_program)?;
+                eprintln!("evaluate constant code for {}: {}", decode_string(h.name()), code);
+
+                run(
+                    context_wrapper.context.allocator(),
+                    runner,
+                    opts.prim_map(),
+                    Rc::new(code),
+                    Rc::new(SExp::Nil(defc.loc.clone())),
+                    None,
+                    Some(CONST_EVAL_LIMIT),
+                )
+                    .map_err(|r| {
+                        CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
+                    })
+                    .map(|res| {
+                        if defc.tabled {
+                            Ok(code_generator.add_tabled_constant(&defc.name, res))
+                        } else {
+                            let quoted = primquote(defc.loc.clone(), res);
+                            Ok(code_generator.add_constant(&defc.name, Rc::new(quoted)))
+                        }
+                    })?
+            }
+            /*
+            ConstantKind::Module(false) => {
+                todo!();
+            }
+            */
+        },
+        HelperForm::Defmacro(mac) => {
+            let macro_program = Rc::new(SExp::Cons(
+                mac.loc.clone(),
+                Rc::new(SExp::Atom(mac.loc.clone(), "mod".as_bytes().to_vec())),
+                mac.program.to_sexp(),
+            ));
+
+            let updated_opts = opts
+                .set_code_generator(code_generator.clone())
+                .set_in_defun(false)
+                .set_stdenv(false)
+                .set_start_env(None)
+                .set_module_phase(None)
+                .set_frontend_opt(false);
+
+            let mut unused_symbols = HashMap::new();
+            let mut context_wrapper =
+                CompileContextWrapper::from_context(context, &mut unused_symbols);
+            let code = match updated_opts
+                .compile_program(&mut context_wrapper.context, macro_program)?
+            {
+                CompilerOutput::Program(_, p) => p,
+                CompilerOutput::Module(_) => {
+                    todo!();
+                }
+            };
+
+            let optimized_code = context_wrapper
+                .context
+                .macro_optimization(opts.clone(), Rc::new(code.clone()))?;
+
+            Ok(code_generator.add_macro(&mac.name, optimized_code))
+        }
+        _ => Ok(code_generator),
+    }
+}
+
 fn start_codegen(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
@@ -1480,172 +1895,66 @@ fn start_codegen(
         code_generator.module_phase = opts.module_phase();
     }
 
-    // Start compiler with all macros and constants
-    for h in program.helpers.iter() {
-        code_generator = match h {
-            HelperForm::Defconstant(defc) => match defc.kind {
-                ConstantKind::Simple => {
-                    let expand_program = SExp::Cons(
-                        defc.loc.clone(),
-                        Rc::new(SExp::Atom(defc.loc.clone(), "mod".as_bytes().to_vec())),
-                        Rc::new(SExp::Cons(
-                            defc.loc.clone(),
-                            Rc::new(SExp::Nil(defc.loc.clone())),
-                            Rc::new(SExp::Cons(
-                                defc.loc.clone(),
-                                Rc::new(primquote(defc.loc.clone(), defc.body.to_sexp())),
-                                Rc::new(SExp::Nil(defc.loc.clone())),
-                            )),
-                        )),
-                    );
-                    let updated_opts = opts.set_code_generator(code_generator.clone()).set_module_phase(None);
-                    let mut unused_symbols = HashMap::new();
-                    let runner = context.runner();
-                    let mut context_wrapper =
-                        CompileContextWrapper::from_context(context, &mut unused_symbols);
-                    let code = match updated_opts
-                        .compile_program(&mut context_wrapper.context, Rc::new(expand_program))?
-                    {
-                        CompilerOutput::Program(_, code) => code,
-                        CompilerOutput::Module(_) => {
-                            todo!();
-                        }
-                    };
+    let mut processed_helpers = HashSet::new();
 
-                    run(
-                        context_wrapper.context.allocator(),
-                        runner,
-                        opts.prim_map(),
-                        Rc::new(code),
-                        Rc::new(SExp::Nil(defc.loc.clone())),
-                        None,
-                        Some(CONST_EVAL_LIMIT),
-                    )
-                    .map_err(|r| {
-                        CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
-                    })
-                    .and_then(|res| {
-                        fail_if_present(
-                            defc.loc.clone(),
-                            &code_generator.constants,
-                            &defc.name,
-                            res,
-                        )
-                    })
-                    .map(|res| {
-                        if defc.tabled {
-                            code_generator.add_tabled_constant(&defc.name, res)
-                        } else {
-                            let quoted = primquote(defc.loc.clone(), res);
-                            code_generator.add_constant(&defc.name, Rc::new(quoted))
-                        }
-                    })?
-                }
-                ConstantKind::Complex => {
-                    eprintln!("evaluate code for constant {}: {}", decode_string(&defc.name), defc.body.to_sexp());
-                    let evaluator =
-                        Evaluator::new(opts.set_module_phase(None), context.runner(), program.helpers.clone());
-                    let constant_result = evaluator.shrink_bodyform(
-                        context.allocator(),
-                        Rc::new(SExp::Nil(defc.loc.clone())),
-                        &HashMap::new(),
-                        defc.body.clone(),
-                        false,
-                        Some(EVAL_STACK_LIMIT),
+    eprintln!("start_codegen: module_phase = {:?}", code_generator.module_phase);
+    if let Some(ModulePhase::CommonPhase) = code_generator.module_phase.as_ref() {
+        let generation_order = decide_constant_generation_order(
+            &program.loc,
+            &code_generator,
+            &code_generator.original_helpers)?;
+
+        let generation_order_strings: Vec<String> = generation_order.iter().map(|h| decode_string(h.name())).collect();
+        eprintln!("generation_order {generation_order_strings:?}");
+
+        // Pre-generate nils for all module constants.
+        for h in program.helpers.iter() {
+            let nil_value = Rc::new(BodyForm::Value(SExp::Nil(h.loc())));
+            if let HelperForm::Defconstant(dc) = h {
+                if matches!(dc.kind, ConstantKind::Module(_)) {
+                    let new_const = HelperForm::Defconstant(DefconstData {
+                        body: nil_value,
+                        .. dc.clone()
+                    });
+                    eprintln!("make dummy nil for {}", h.to_sexp());
+                    code_generator = generate_helper_body(
+                        context,
+                        code_generator,
+                        opts.clone(),
+                        program.clone(),
+                        &new_const
                     )?;
-                    if let BodyForm::Quoted(q) = constant_result.borrow() {
-                        let res = Rc::new(q.clone());
-                        if defc.tabled {
-                            code_generator.add_tabled_constant(&defc.name, res)
-                        } else {
-                            let quoted = primquote(defc.loc.clone(), res);
-                            code_generator.add_constant(&defc.name, Rc::new(quoted))
-                        }
-                    } else {
-                        return Err(CompileErr(
-                            defc.loc.clone(),
-                            format!(
-                                "constant definition didn't reduce to constant value {}, got {}",
-                                h.to_sexp(),
-                                constant_result.to_sexp()
-                            ),
-                        ));
-                    }
                 }
-                ConstantKind::Module(tabled) => {
-                    eprintln!("do module constants {}", h.to_sexp());
-                    let constant_program = CompileForm {
-                        helpers: program.helpers.iter().filter(|other| {
-                            other.name() != h.name()
-                        }).cloned().collect(),
-                        exp: defc.body.clone(),
-                        .. program.clone()
-                    };
-                    let updated_opts = opts.set_code_generator(code_generator.clone());
-                    let mut unused_symbols = HashMap::new();
-                    let runner = context.runner();
-                    let mut context_wrapper =
-                        CompileContextWrapper::from_context(context, &mut unused_symbols);
-                    let code = compile_from_compileform(&mut context_wrapper.context, updated_opts.clone(), constant_program)?;
-                    eprintln!("evaluate constant code for {}: {}", decode_string(h.name()), code);
-
-                    run(
-                        context_wrapper.context.allocator(),
-                        runner,
-                        opts.prim_map(),
-                        Rc::new(code),
-                        Rc::new(SExp::Nil(defc.loc.clone())),
-                        None,
-                        Some(CONST_EVAL_LIMIT),
-                    )
-                    .map_err(|r| {
-                        CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
-                    })
-                    .map(|res| {
-                        if defc.tabled {
-                            code_generator.add_tabled_constant(&defc.name, res)
-                        } else {
-                            let quoted = primquote(defc.loc.clone(), res);
-                            code_generator.add_constant(&defc.name, Rc::new(quoted))
-                        }
-                    })?
-                }
-            },
-            HelperForm::Defmacro(mac) => {
-                let macro_program = Rc::new(SExp::Cons(
-                    mac.loc.clone(),
-                    Rc::new(SExp::Atom(mac.loc.clone(), "mod".as_bytes().to_vec())),
-                    mac.program.to_sexp(),
-                ));
-
-                let updated_opts = opts
-                    .set_code_generator(code_generator.clone())
-                    .set_in_defun(false)
-                    .set_stdenv(false)
-                    .set_start_env(None)
-                    .set_module_phase(None)
-                    .set_frontend_opt(false);
-
-                let mut unused_symbols = HashMap::new();
-                let mut context_wrapper =
-                    CompileContextWrapper::from_context(context, &mut unused_symbols);
-                let code = match updated_opts
-                    .compile_program(&mut context_wrapper.context, macro_program)?
-                {
-                    CompilerOutput::Program(_, p) => p,
-                    CompilerOutput::Module(_) => {
-                        todo!();
-                    }
-                };
-
-                let optimized_code = context_wrapper
-                    .context
-                    .macro_optimization(opts.clone(), Rc::new(code.clone()))?;
-
-                code_generator.add_macro(&mac.name, optimized_code)
             }
-            _ => code_generator,
-        };
+        }
+
+        // Generate constants in our target order.
+        for h in generation_order.iter() {
+            eprintln!("generate constant {}", h.to_sexp());
+            processed_helpers.insert(h.name().to_vec());
+            code_generator = generate_helper_body(
+                context,
+                code_generator,
+                opts.clone(),
+                program.clone(),
+                h
+            )?;
+        }
+    };
+
+    // Generate the bodies of classic style constants and macros.
+    for h in program.helpers.iter() {
+        if processed_helpers.contains(h.name()) {
+            continue;
+        }
+
+        code_generator = generate_helper_body(
+            context,
+            code_generator,
+            opts.clone(),
+            program.clone(),
+            h
+        )?;
     }
 
     let only_defuns: Vec<HelperForm> = program
@@ -1851,7 +2160,7 @@ fn dummy_functions(compiler: &PrimaryCodegen) -> Result<PrimaryCodegen, CompileE
 fn do_start_codegen_optimization_and_dead_code_elimination(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
-    mut start_of_codegen_optimization: StartOfCodegenOptimization
+    mut start_of_codegen_optimization: StartOfCodegenOptimization,
 ) -> Result<StartOfCodegenOptimization, CompileErr> {
     // This is a tree-shaking loop.  It results in the minimum number of emitted
     // helpers in the environment by taking only those still alive after each
