@@ -938,7 +938,6 @@ pub struct PrimaryCodegen {
     pub prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     pub constants: HashMap<Vec<u8>, Rc<SExp>>,
     pub tabled_constants: HashMap<Vec<u8>, Rc<SExp>>,
-    pub module_constants: HashMap<Vec<u8>, Rc<BodyForm>>,
     pub macros: HashMap<Vec<u8>, Rc<SExp>>,
     pub inlines: HashMap<Vec<u8>, InlineFunction>,
     pub defuns: HashMap<Vec<u8>, DefunCall>,
@@ -1541,17 +1540,6 @@ impl PrimaryCodegen {
     pub fn add_tabled_constant(&self, name: &[u8], value: Rc<SExp>) -> Self {
         let mut codegen_copy = self.clone();
         codegen_copy.tabled_constants.insert(name.to_owned(), value);
-        codegen_copy
-    }
-
-    pub fn add_module_constant(&self, name: &[u8], tabled: bool, value: Rc<BodyForm>) -> Self {
-        let mut codegen_copy = self.clone();
-        if tabled {
-            codegen_copy
-                .tabled_constants
-                .insert(name.to_owned(), Rc::new(SExp::Nil(value.loc())));
-        }
-        codegen_copy.module_constants.insert(name.to_owned(), value);
         codegen_copy
     }
 
