@@ -1844,53 +1844,6 @@ fn generate_helper_body(
     }
 }
 
-/*
-    eprintln!("start_codegen: module_phase = {:?}", code_generator.module_phase);
-    if let Some(ModulePhase::CommonPhase) = code_generator.module_phase.as_ref() {
-        let generation_order = decide_constant_generation_order(
-            &program.loc,
-            &code_generator,
-            &code_generator.original_helpers)?;
-
-        let generation_order_strings: Vec<String> = generation_order.iter().map(|h| decode_string(h.name())).collect();
-        eprintln!("generation_order {generation_order_strings:?}");
-
-        // Pre-generate nils for all module constants.
-        for h in program.helpers.iter() {
-            let nil_value = Rc::new(BodyForm::Value(SExp::Nil(h.loc())));
-            if let HelperForm::Defconstant(dc) = h {
-                if matches!(dc.kind, ConstantKind::Module(_)) {
-                    let new_const = HelperForm::Defconstant(DefconstData {
-                        body: nil_value,
-                        .. dc.clone()
-                    });
-                    eprintln!("make dummy nil for {}", h.to_sexp());
-                    code_generator = generate_helper_body(
-                        context,
-                        code_generator,
-                        opts.clone(),
-                        program.clone(),
-                        &new_const
-                    )?;
-                }
-            }
-        }
-
-        // Generate constants in our target order.
-        for h in generation_order.iter() {
-            eprintln!("generate constant {}", h.to_sexp());
-            processed_helpers.insert(h.name().to_vec());
-            code_generator = generate_helper_body(
-                context,
-                code_generator,
-                opts.clone(),
-                program.clone(),
-                h
-            )?;
-        }
-    };
-*/
-
 fn start_codegen(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
