@@ -663,12 +663,12 @@ fn test_program_export_constant_and_function() {
         &[
             HexArgumentOutcome {
                 hexfile: d_hex_filename,
-                argument: "(19191 (a (q 16 8 5) (c (q (19191 16 8 5)) 1)) 0x3e6c399d8b10babad835468467a4b837036357ddfb8c320ba39a914c63152967 0xce4692944e33a3b0812e16504a1f342e619b8e13bf39de25fa24f1465e1c101c)",
+                argument: "(19191 (a (q 16 (q . 19191) 5) (c (q (+ (q . 19191) 5)) 1)) 0x3e6c399d8b10babad835468467a4b837036357ddfb8c320ba39a914c63152967 0xda99392a41a05d70cc42102af36ba888e964e57b587016e14e5e3faf66807dff)",
                 outcome: ContentEquals,
             },
             HexArgumentOutcome {
                 hexfile: f_hex_filename,
-                argument: "(a (q 16 8 5) (c (q (19191 16 8 5)) 1))",
+                argument: "(a (q 16 (q . 19191) 5) (c (q (+ (q . 19191) 5)) 1))",
                 outcome: ContentEquals,
             },
         ]

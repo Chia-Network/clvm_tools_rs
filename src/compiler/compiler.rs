@@ -251,9 +251,9 @@ fn modernize_constants(helpers: &mut [HelperForm], standalone_constants: &HashSe
         match h {
             HelperForm::Defconstant(d) => {
                 // Ensure that we upgrade the constant type.
+                d.tabled = false;
                 if standalone_constants.contains(&d.name) {
                     d.kind = ConstantKind::Module(false);
-                    d.tabled = false;
                 }
             }
             HelperForm::Defnamespace(ns) => {
