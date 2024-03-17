@@ -1469,39 +1469,6 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
     Ok(result)
 }
 
-fn find_satisfied_functions(
-    ce: &CompileForm,
-    depgraph: &FunctionDependencyGraph,
-    function_set: &HashSet<Vec<u8>>,
-    constant_set: &HashSet<Vec<u8>>,
-    functions: &[HelperForm],
-) -> Vec<HelperForm> {
-    functions
-        .iter()
-        .filter(|f| {
-            let mut function_deps = HashSet::new();
-
-            // Don't try something we already processed.
-            if !function_set.contains(f.name()) {
-                return false;
-            }
-
-            depgraph.get_full_depends_on(&mut function_deps, f.name());
-            let uncovered_deps: Vec<Vec<u8>> = function_deps
-                .iter()
-                .filter(|h| {
-                    let hname: &[u8] = h;
-                    !(function_set.contains(hname) || constant_set.contains(hname))
-                })
-                .cloned()
-                .collect();
-            let deps_list: Vec<String> = uncovered_deps.iter().map(|d| decode_string(d)).collect();
-            uncovered_deps.is_empty()
-        })
-        .cloned()
-        .collect()
-}
-
 fn find_easiest_constant(
     ce: &CompileForm,
     depgraph: &FunctionDependencyGraph,
@@ -1660,16 +1627,6 @@ fn decide_constant_generation_order(
             for c in new_satisfied_constants.iter() {
                 constant_set.remove(c.name());
                 result.push(c.clone());
-            }
-            continue;
-        }
-
-        let new_satisfied_functions =
-            find_satisfied_functions(&ce, &depgraph, &function_set, &constant_set, &functions);
-        if !new_satisfied_functions.is_empty() {
-            for f in new_satisfied_functions.iter() {
-                function_set.remove(f.name());
-                result.push(f.clone());
             }
             continue;
         }
