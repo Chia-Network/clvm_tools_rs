@@ -1558,20 +1558,22 @@ fn decide_constant_generation_order(
             _ => false,
         };
 
-        if do_include {
-            exp = Rc::new(BodyForm::Call(
-                loc.clone(),
-                vec![
-                    Rc::new(BodyForm::Value(SExp::Integer(
-                        loc.clone(),
-                        4_u32.to_bigint().unwrap(),
-                    ))),
-                    Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), h.name().clone()))),
-                    exp,
-                ],
-                None,
-            ));
+        if! do_include {
+            continue;
         }
+
+        exp = Rc::new(BodyForm::Call(
+            loc.clone(),
+            vec![
+                Rc::new(BodyForm::Value(SExp::Integer(
+                    loc.clone(),
+                    4_u32.to_bigint().unwrap(),
+                ))),
+                Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), h.name().clone()))),
+                exp,
+            ],
+            None,
+        ));
     }
 
     let ce = CompileForm {
