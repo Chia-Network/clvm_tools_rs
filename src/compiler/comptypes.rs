@@ -919,6 +919,7 @@ impl Debug for StandalonePhaseInfo {
 #[derive(Clone)]
 pub enum ModulePhase {
     CommonPhase,
+    CommonConstant(SExp),
     StandalonePhase(StandalonePhaseInfo),
 }
 
@@ -926,6 +927,7 @@ impl Debug for ModulePhase {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
             ModulePhase::CommonPhase => write!(formatter, "CommonPhase"),
+            ModulePhase::CommonConstant(env) => write!(formatter, "CommonConstant({env})"),
             ModulePhase::StandalonePhase(sp) => write!(formatter, "StandalonePhase({sp:?})")
         }
     }

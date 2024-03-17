@@ -189,6 +189,10 @@ fn compute_env_shape(
                 args
             )
         }
+        Some(ModulePhase::CommonConstant(env)) => {
+            // We use the env that was specified in the phase.
+            env.clone()
+        }
         None => {
             let car = compute_code_shape(l.clone(), helpers);
             let cdr = args;
@@ -2321,6 +2325,9 @@ pub fn codegen(
                     ))
                 ))
             ))
+        }
+        (false, Some(ModulePhase::CommonConstant(_)), Some(code)) => {
+            Ok(normal_produce_code(code))
         }
         (false, Some(ModulePhase::StandalonePhase(_)), Some(code)) => {
             // The program generates one constant or function.
