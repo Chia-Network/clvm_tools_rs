@@ -254,6 +254,9 @@ fn modernize_constants(helpers: &mut [HelperForm], standalone_constants: &HashSe
                 if standalone_constants.contains(&d.name) {
                     d.kind = ConstantKind::Module(false);
                     d.tabled = false;
+                } else {
+                    d.kind = ConstantKind::Module(true);
+                    d.tabled = true;
                 }
             }
             HelperForm::Defnamespace(ns) => {
