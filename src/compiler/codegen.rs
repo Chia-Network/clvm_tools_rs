@@ -32,6 +32,7 @@ use crate::util::{toposort, u8_from_number, Number, TopoSortItem};
 
 const MACRO_TIME_LIMIT: usize = 1000000;
 pub const CONST_EVAL_LIMIT: usize = 1000000;
+const CONSTANT_GENERATIONS_ALLOWED: usize = 50;
 
 /* As in the python code, produce a pair whose (thanks richard)
  *
@@ -1843,23 +1844,7 @@ fn generate_helper_body(
     }
 }
 
-fn start_codegen(
-    context: &mut BasicCompileContext,
-    opts: Rc<dyn CompilerOpts>,
-    program: CompileForm,
-) -> Result<PrimaryCodegen, CompileErr> {
-    // Choose code generator configuration
-    let mut code_generator = match opts.code_generator() {
-        None => empty_compiler(opts.prim_map(), program.loc.clone()),
-        Some(c) => c,
-    };
-
-    if code_generator.module_phase.is_none() {
-        code_generator.module_phase = opts.module_phase();
-    }
-
-    let mut processed_helpers = HashSet::new();
-
+/*
     eprintln!("start_codegen: module_phase = {:?}", code_generator.module_phase);
     if let Some(ModulePhase::CommonPhase) = code_generator.module_phase.as_ref() {
         let generation_order = decide_constant_generation_order(
@@ -1904,13 +1889,25 @@ fn start_codegen(
             )?;
         }
     };
+*/
+
+fn start_codegen(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    program: CompileForm,
+) -> Result<PrimaryCodegen, CompileErr> {
+    // Choose code generator configuration
+    let mut code_generator = match opts.code_generator() {
+        None => empty_compiler(opts.prim_map(), program.loc.clone()),
+        Some(c) => c,
+    };
+
+    if code_generator.module_phase.is_none() {
+        code_generator.module_phase = opts.module_phase();
+    }
 
     // Generate the bodies of classic style constants and macros.
     for h in program.helpers.iter() {
-        if processed_helpers.contains(h.name()) {
-            continue;
-        }
-
         code_generator = generate_helper_body(
             context,
             code_generator,
