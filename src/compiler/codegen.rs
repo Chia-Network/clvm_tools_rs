@@ -1472,6 +1472,7 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
 fn find_easiest_constant(
     ce: &CompileForm,
     depgraph: &FunctionDependencyGraph,
+    function_set: &HashSet<Vec<u8>>,
     constant_set: &HashSet<Vec<u8>>,
     constants: &[HelperForm],
 ) -> Option<HelperForm> {
@@ -1491,7 +1492,8 @@ fn find_easiest_constant(
     for (i, h) in constants_in_set.iter().enumerate() {
         let mut deps_of_constant = HashSet::new();
         depgraph.get_full_depends_on(&mut deps_of_constant, h.name());
-        let how_many_deps = deps_of_constant.len();
+        let only_constant_deps: HashSet<Vec<u8>> = deps_of_constant.difference(&function_set).cloned().collect();
+        let how_many_deps = only_constant_deps.len();
         if i == 0 || how_many_deps < best_dep_set {
             chosen_idx = i;
             best_dep_set = how_many_deps;
@@ -1503,7 +1505,6 @@ fn find_easiest_constant(
 
 fn find_satisfied_constants(
     depgraph: &FunctionDependencyGraph,
-    function_set: &HashSet<Vec<u8>>,
     constant_set: &HashSet<Vec<u8>>,
     constants: &[HelperForm],
 ) -> Vec<HelperForm> {
@@ -1524,7 +1525,7 @@ fn find_satisfied_constants(
                 .iter()
                 .filter(|h| {
                     let hname: &[u8] = h;
-                    function_set.contains(hname) || constant_set.contains(hname)
+                    constant_set.contains(hname)
                 })
                 .cloned()
                 .collect();
@@ -1620,7 +1621,7 @@ fn decide_constant_generation_order(
     while !constant_set.is_empty() {
         let remaining_constants: Vec<String> = constant_set.iter().map(|c| decode_string(c)).collect();
         let new_satisfied_constants =
-            find_satisfied_constants(&depgraph, &function_set, &constant_set, &constants);
+            find_satisfied_constants(&depgraph, &constant_set, &constants);
         let new_satcon: Vec<String> = new_satisfied_constants.iter().map(|c| decode_string(c.name())).collect();
 
         if !new_satisfied_constants.is_empty() {
@@ -1634,7 +1635,7 @@ fn decide_constant_generation_order(
         // Break blocks.  We need to unblock a constant so we'll choose the easiest
         // one generate any functions it needs which we haven't generated yet.
         if let Some(least_constant) =
-            find_easiest_constant(&ce, &depgraph, &constant_set, &constants)
+            find_easiest_constant(&ce, &depgraph, &function_set, &constant_set, &constants)
         {
             let mut functions_it_depends_on_hash = HashSet::new();
             depgraph.get_full_depends_on(&mut functions_it_depends_on_hash, least_constant.name());
