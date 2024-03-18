@@ -124,7 +124,11 @@ jobs:
         pip install --no-index --find-links target/wheels/ clvm_tools_rs
         pip install clvm_rs
         pip install clvm_tools
-        cd resources/tests && python test_clvm_step.py && python mandelbrot-cldb.py && python test_compile_from_string.py
+        cd resources/tests
+        python test_clvm_step.py
+        python mandelbrot-cldb.py
+        python test_compile_from_string.py
+        python test_binutils_api.py
 
     - name: "Test step run with mandelbrot, setting print only"
       run: |
