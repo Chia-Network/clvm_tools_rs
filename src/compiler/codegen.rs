@@ -1671,6 +1671,179 @@ fn decide_constant_generation_order(
     Ok(result)
 }
 
+fn generate_simple_constant_body(
+    context: &mut BasicCompileContext,
+    code_generator: PrimaryCodegen,
+    opts: Rc<dyn CompilerOpts>,
+    program: CompileForm,
+    h: &HelperForm,
+    defc: &DefconstData,
+) -> Result<PrimaryCodegen, CompileErr> {
+    let expand_program = SExp::Cons(
+        defc.loc.clone(),
+        Rc::new(SExp::Atom(defc.loc.clone(), "mod".as_bytes().to_vec())),
+        Rc::new(SExp::Cons(
+            defc.loc.clone(),
+            Rc::new(SExp::Nil(defc.loc.clone())),
+            Rc::new(SExp::Cons(
+                defc.loc.clone(),
+                Rc::new(primquote(defc.loc.clone(), defc.body.to_sexp())),
+                Rc::new(SExp::Nil(defc.loc.clone())),
+            )),
+        )),
+    );
+    let updated_opts = opts.set_code_generator(PrimaryCodegen {
+        module_phase: None,
+        .. code_generator.clone()
+    }).set_module_phase(None);
+    let mut unused_symbols = HashMap::new();
+    let runner = context.runner();
+    let mut context_wrapper =
+        CompileContextWrapper::from_context(context, &mut unused_symbols);
+    let code = match updated_opts
+        .compile_program(&mut context_wrapper.context, Rc::new(expand_program))?
+    {
+        CompilerOutput::Program(_, code) => code,
+        CompilerOutput::Module(_) => {
+            todo!();
+        }
+    };
+
+    run(
+        context_wrapper.context.allocator(),
+        runner,
+        opts.prim_map(),
+        Rc::new(code),
+        Rc::new(SExp::Nil(defc.loc.clone())),
+        None,
+        Some(CONST_EVAL_LIMIT),
+    )
+        .map_err(|r| {
+            CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
+        })
+        .and_then(|res| {
+            fail_if_present(
+                defc.loc.clone(),
+                &code_generator.constants,
+                &defc.name,
+                res,
+            )
+        })
+        .map(|res| {
+            if defc.tabled {
+                Ok(code_generator.add_tabled_constant(&defc.name, res))
+            } else {
+                let quoted = primquote(defc.loc.clone(), res);
+                Ok(code_generator.add_constant(&defc.name, Rc::new(quoted)))
+            }
+        })?
+}
+
+fn generate_complex_constant_body(
+    context: &mut BasicCompileContext,
+    code_generator: PrimaryCodegen,
+    opts: Rc<dyn CompilerOpts>,
+    mut program: CompileForm,
+    h: &HelperForm,
+    defc: &DefconstData,
+) -> Result<PrimaryCodegen, CompileErr> {
+    eprintln!("evaluate code for constant {}: {}", decode_string(&defc.name), defc.body.to_sexp());
+    let evaluator =
+        Evaluator::new(opts.set_module_phase(None), context.runner(), program.helpers.clone());
+    let constant_result = evaluator.shrink_bodyform(
+        context.allocator(),
+        Rc::new(SExp::Nil(defc.loc.clone())),
+        &HashMap::new(),
+        defc.body.clone(),
+        false,
+        Some(EVAL_STACK_LIMIT),
+    )?;
+    if let BodyForm::Quoted(q) = constant_result.borrow() {
+        let res = Rc::new(q.clone());
+        if defc.tabled {
+            eprintln!("add_tabled_constant {} = {res}", decode_string(&defc.name));
+            Ok(code_generator.add_tabled_constant(&defc.name, res))
+        } else {
+            eprintln!("add_constant {} = {res}", decode_string(&defc.name));
+            let quoted = primquote(defc.loc.clone(), res);
+            Ok(code_generator.add_constant(&defc.name, Rc::new(quoted)))
+        }
+    } else {
+        return Err(CompileErr(
+            defc.loc.clone(),
+            format!(
+                "constant definition didn't reduce to constant value {}, got {}",
+                h.to_sexp(),
+                constant_result.to_sexp()
+            ),
+        ));
+    }
+}
+
+fn generate_module_constant_body(
+    context: &mut BasicCompileContext,
+    code_generator: PrimaryCodegen,
+    opts: Rc<dyn CompilerOpts>,
+    program: CompileForm,
+    module_constant_type: bool,
+    h: &HelperForm,
+    defc: &DefconstData,
+) -> Result<PrimaryCodegen, CompileErr> {
+    if module_constant_type {
+        let env: &SExp = code_generator.env.borrow();
+        let cg = PrimaryCodegen {
+            module_phase: code_generator.module_phase.as_ref().map(|_| {
+                ModulePhase::CommonConstant(env.clone())
+            }),
+            .. code_generator.clone()
+        };
+        return generate_complex_constant_body(
+            context,
+            cg,
+            opts,
+            program,
+            h,
+            defc
+        );
+    }
+
+    let constant_program = CompileForm {
+        helpers: program.helpers.iter().filter(|other| {
+            other.name() != h.name()
+        }).cloned().collect(),
+        exp: defc.body.clone(),
+        .. program.clone()
+    };
+    let updated_opts = opts.set_code_generator(code_generator.clone());
+    let mut unused_symbols = HashMap::new();
+    let runner = context.runner();
+    let mut context_wrapper =
+        CompileContextWrapper::from_context(context, &mut unused_symbols);
+    let code = compile_from_compileform(&mut context_wrapper.context, updated_opts.clone(), constant_program)?;
+    eprintln!("evaluate constant code for {}: {}", decode_string(h.name()), code);
+
+    run(
+        context_wrapper.context.allocator(),
+        runner,
+        opts.prim_map(),
+        Rc::new(code),
+        Rc::new(SExp::Nil(defc.loc.clone())),
+        None,
+        Some(CONST_EVAL_LIMIT),
+    )
+        .map_err(|r| {
+            CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
+        })
+        .map(|res| {
+            if defc.tabled {
+                Ok(code_generator.add_tabled_constant(&defc.name, res))
+            } else {
+                let quoted = primquote(defc.loc.clone(), res);
+                Ok(code_generator.add_constant(&defc.name, Rc::new(quoted)))
+            }
+        })?
+}
+
 fn generate_helper_body(
     context: &mut BasicCompileContext,
     code_generator: PrimaryCodegen,
@@ -1681,130 +1854,35 @@ fn generate_helper_body(
     match h {
         HelperForm::Defconstant(defc) => match defc.kind {
             ConstantKind::Simple => {
-                let expand_program = SExp::Cons(
-                    defc.loc.clone(),
-                    Rc::new(SExp::Atom(defc.loc.clone(), "mod".as_bytes().to_vec())),
-                    Rc::new(SExp::Cons(
-                        defc.loc.clone(),
-                        Rc::new(SExp::Nil(defc.loc.clone())),
-                        Rc::new(SExp::Cons(
-                            defc.loc.clone(),
-                            Rc::new(primquote(defc.loc.clone(), defc.body.to_sexp())),
-                            Rc::new(SExp::Nil(defc.loc.clone())),
-                        )),
-                    )),
-                );
-                let updated_opts = opts.set_code_generator(code_generator.clone()).set_module_phase(None);
-                let mut unused_symbols = HashMap::new();
-                let runner = context.runner();
-                let mut context_wrapper =
-                    CompileContextWrapper::from_context(context, &mut unused_symbols);
-                let code = match updated_opts
-                    .compile_program(&mut context_wrapper.context, Rc::new(expand_program))?
-                {
-                    CompilerOutput::Program(_, code) => code,
-                    CompilerOutput::Module(_) => {
-                        todo!();
-                    }
-                };
-
-                run(
-                    context_wrapper.context.allocator(),
-                    runner,
-                    opts.prim_map(),
-                    Rc::new(code),
-                    Rc::new(SExp::Nil(defc.loc.clone())),
-                    None,
-                    Some(CONST_EVAL_LIMIT),
+                generate_simple_constant_body(
+                    context,
+                    code_generator,
+                    opts,
+                    program,
+                    h,
+                    defc,
                 )
-                    .map_err(|r| {
-                        CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
-                    })
-                    .and_then(|res| {
-                        fail_if_present(
-                            defc.loc.clone(),
-                            &code_generator.constants,
-                            &defc.name,
-                            res,
-                        )
-                    })
-                    .map(|res| {
-                        if defc.tabled {
-                            Ok(code_generator.add_tabled_constant(&defc.name, res))
-                        } else {
-                            let quoted = primquote(defc.loc.clone(), res);
-                            Ok(code_generator.add_constant(&defc.name, Rc::new(quoted)))
-                        }
-                    })?
             }
             ConstantKind::Complex => {
-                eprintln!("evaluate code for constant {}: {}", decode_string(&defc.name), defc.body.to_sexp());
-                let evaluator =
-                    Evaluator::new(opts.set_module_phase(None), context.runner(), program.helpers.clone());
-                let constant_result = evaluator.shrink_bodyform(
-                    context.allocator(),
-                    Rc::new(SExp::Nil(defc.loc.clone())),
-                    &HashMap::new(),
-                    defc.body.clone(),
-                    false,
-                    Some(EVAL_STACK_LIMIT),
-                )?;
-                if let BodyForm::Quoted(q) = constant_result.borrow() {
-                    let res = Rc::new(q.clone());
-                    if defc.tabled {
-                        Ok(code_generator.add_tabled_constant(&defc.name, res))
-                    } else {
-                        let quoted = primquote(defc.loc.clone(), res);
-                        Ok(code_generator.add_constant(&defc.name, Rc::new(quoted)))
-                    }
-                } else {
-                    return Err(CompileErr(
-                        defc.loc.clone(),
-                        format!(
-                            "constant definition didn't reduce to constant value {}, got {}",
-                            h.to_sexp(),
-                            constant_result.to_sexp()
-                        ),
-                    ));
-                }
-            }
-            ConstantKind::Module(_) => {
-                eprintln!("do module constants {}", h.to_sexp());
-                let constant_program = CompileForm {
-                    helpers: program.helpers.iter().filter(|other| {
-                        other.name() != h.name()
-                    }).cloned().collect(),
-                    exp: defc.body.clone(),
-                    .. program.clone()
-                };
-                let updated_opts = opts.set_code_generator(code_generator.clone());
-                let mut unused_symbols = HashMap::new();
-                let runner = context.runner();
-                let mut context_wrapper =
-                    CompileContextWrapper::from_context(context, &mut unused_symbols);
-                let code = compile_from_compileform(&mut context_wrapper.context, updated_opts.clone(), constant_program)?;
-                eprintln!("evaluate constant code for {}: {}", decode_string(h.name()), code);
-
-                run(
-                    context_wrapper.context.allocator(),
-                    runner,
-                    opts.prim_map(),
-                    Rc::new(code),
-                    Rc::new(SExp::Nil(defc.loc.clone())),
-                    None,
-                    Some(CONST_EVAL_LIMIT),
+                generate_complex_constant_body(
+                    context,
+                    code_generator,
+                    opts,
+                    program,
+                    h,
+                    defc,
                 )
-                    .map_err(|r| {
-                        CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
-                    })
-                    .map(|res| {
-                        if defc.tabled {
-                            Ok(code_generator.add_tabled_constant(&defc.name, res))
-                        } else {
-                            let quoted = primquote(defc.loc.clone(), res);
-                            Ok(code_generator.add_constant(&defc.name, Rc::new(quoted)))
-                        }
-                    })?
+            }
+            ConstantKind::Module(mtype) => {
+                generate_module_constant_body(
+                    context,
+                    code_generator,
+                    opts,
+                    program,
+                    mtype,
+                    h,
+                    defc,
+                )
             }
             /*
             ConstantKind::Module(false) => {
