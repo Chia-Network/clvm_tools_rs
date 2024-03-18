@@ -1056,8 +1056,7 @@ impl CompilerOpts for DefaultCompilerOpts {
         context: &mut BasicCompileContext,
         sexp: Rc<SExp>,
     ) -> Result<CompilerOutput, CompileErr> {
-        let me = Rc::new(self.clone());
-        assert!(self.module_phase().is_none());
+        let me = self.set_module_phase(None);
         compile_pre_forms(context, me, &[sexp])
     }
 }
