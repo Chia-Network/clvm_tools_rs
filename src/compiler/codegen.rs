@@ -2232,6 +2232,7 @@ pub fn codegen(
     opts: Rc<dyn CompilerOpts>,
     cmod: &CompileForm,
 ) -> Result<SExp, CompileErr> {
+    eprintln!("codegen( {} )", cmod.to_sexp());
     let mut start_of_codegen_optimization = StartOfCodegenOptimization {
         program: cmod.clone(),
         code_generator: dummy_functions(&start_codegen(context, opts.clone(), cmod.clone())?)?,
@@ -2241,8 +2242,36 @@ pub fn codegen(
 
     let mut code_generator = start_of_codegen_optimization.code_generator;
     let to_process = code_generator.to_process.clone();
+    let mut already_processed = HashSet::new();
+
+    if !opts.in_defun() && matches!(code_generator.module_phase, Some(ModulePhase::CommonPhase)) {
+        eprintln!("common phase\n");
+        let generation_order =
+            decide_constant_generation_order(
+                &cmod.loc,
+                &code_generator,
+                &code_generator.to_process
+            )?;
+
+        let generation_order_strings: Vec<String> = generation_order.iter().map(|h| decode_string(h.name())).collect();
+        eprintln!("generation_order {generation_order_strings:?}");
+
+        // Generate constants in our target order.  This must come after we've computed
+        // the environment shape so if function bodies or computations that depend on
+        // them are captured, they've been computed.
+        for h in generation_order.iter() {
+            eprintln!("generate constant {}", h.to_sexp());
+            already_processed.insert(h.name().to_vec());
+            code_generator = codegen_(context, opts.clone(), &code_generator, h)?;
+        }
+    }
 
     for f in to_process {
+        if already_processed.contains(f.name()) {
+            continue;
+        }
+
+        eprintln!("generate normal helper {}", decode_string(f.name()));
         code_generator = codegen_(context, opts.clone(), &code_generator, &f)?;
     }
 
