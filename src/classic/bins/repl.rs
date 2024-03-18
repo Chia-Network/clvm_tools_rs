@@ -1,7 +1,6 @@
 extern crate clvmr as clvm_rs;
 
 use std::io::{self, BufRead, Write};
-
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;

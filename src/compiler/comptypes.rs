@@ -13,6 +13,9 @@ use crate::compiler::clvm::{sha256tree, truthy};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::typecheck::TheoryToSExp;
+use crate::compiler::types::ast::{Polytype, TypeVar};
+use crate::util::Number;
 
 // Note: only used in tests, not normally dependencies.
 #[cfg(test)]
@@ -204,7 +207,6 @@ pub enum BodyForm {
     Lambda(Box<LambdaData>),
 }
 
-/// Convey information about synthetically generated helper forms.
 #[derive(Clone, Debug, Serialize)]
 pub enum SyntheticType {
     NoInlinePreference,
@@ -233,6 +235,8 @@ pub struct DefunData {
     pub body: Rc<BodyForm>,
     /// Whether this defun was created during desugaring.
     pub synthetic: Option<SyntheticType>,
+    /// Type annotation if given.
+    pub ty: Option<Polytype>,
 }
 
 /// Specifies the information extracted from a macro definition allowing the
@@ -274,6 +278,48 @@ pub struct DefconstData {
     pub body: Rc<BodyForm>,
     /// This constant should exist in the left env rather than be inlined.
     pub tabled: bool,
+    /// Type annotation if given.
+    pub ty: Option<Polytype>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StructMember {
+    pub loc: Srcloc,
+    pub name: Vec<u8>,
+    pub path: Number,
+    pub ty: Polytype,
+}
+
+#[derive(Clone, Debug)]
+pub struct StructDef {
+    pub loc: Srcloc,
+    pub name: Vec<u8>,
+    pub vars: Vec<TypeVar>,
+    pub members: Vec<StructMember>,
+    pub proto: Rc<SExp>,
+    pub ty: Polytype,
+}
+
+#[derive(Clone, Debug)]
+pub enum ChiaType {
+    Abstract(Srcloc, Vec<u8>),
+    Struct(StructDef),
+}
+
+#[derive(Clone, Debug)]
+pub enum TypeAnnoKind {
+    Colon(Polytype),
+    Arrow(Polytype),
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct DeftypeData {
+    pub kw: Srcloc,
+    pub nl: Srcloc,
+    pub loc: Srcloc,
+    pub name: Vec<u8>,
+    pub args: Vec<TypeVar>,
+    pub ty: Option<Polytype>,
 }
 
 /// Specifies where a constant is the classic kind (unevaluated) or a proper
@@ -290,6 +336,8 @@ pub enum ConstantKind {
 /// individually parsable and represent the atomic units of the program.
 #[derive(Clone, Debug, Serialize)]
 pub enum HelperForm {
+    /// A type definition.
+    Deftype(DeftypeData),
     /// A constant definition (see DefconstData).
     Defconstant(DefconstData),
     /// A macro definition (see DefmacData).
@@ -352,6 +400,8 @@ pub struct CompileForm {
     pub helpers: Vec<HelperForm>,
     /// The expression the program evaluates, using the declared helpers.
     pub exp: Rc<BodyForm>,
+    /// Type if specified.
+    pub ty: Option<Polytype>,
 }
 
 /// Represents a call to a defun, used by code generation.
@@ -465,11 +515,12 @@ pub trait CompilerOpts {
 }
 
 /// Frontend uses this to accumulate frontend forms, used internally.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ModAccum {
     pub loc: Srcloc,
     pub includes: Vec<IncludeDesc>,
     pub helpers: Vec<HelperForm>,
+    pub left_capture: bool,
     pub exp_form: Option<CompileForm>,
 }
 
@@ -506,6 +557,7 @@ impl ModAccum {
             loc: self.loc.clone(),
             includes: self.includes.clone(),
             helpers: self.helpers.clone(),
+            left_capture: self.left_capture,
             exp_form: Some(c.clone()),
         }
     }
@@ -517,6 +569,7 @@ impl ModAccum {
             loc: self.loc.clone(),
             includes: new_includes,
             helpers: self.helpers.clone(),
+            left_capture: self.left_capture,
             exp_form: self.exp_form.clone(),
         }
     }
@@ -529,15 +582,17 @@ impl ModAccum {
             loc: self.loc.clone(),
             includes: self.includes.clone(),
             helpers: hs,
+            left_capture: self.left_capture,
             exp_form: self.exp_form.clone(),
         }
     }
 
-    pub fn new(loc: Srcloc) -> ModAccum {
+    pub fn new(loc: Srcloc, left_capture: bool) -> ModAccum {
         ModAccum {
             loc,
             includes: Vec::new(),
             helpers: Vec::new(),
+            left_capture,
             exp_form: None,
         }
     }
@@ -576,6 +631,7 @@ impl CompileForm {
                 .cloned()
                 .collect(),
             exp: self.exp.clone(),
+            ty: self.ty.clone(),
         }
     }
 
@@ -600,6 +656,7 @@ impl CompileForm {
             args: self.args.clone(),
             helpers: new_helpers,
             exp: self.exp.clone(),
+            ty: self.ty.clone(),
         }
     }
 }
@@ -640,6 +697,7 @@ impl HelperForm {
     /// Get a reference to the HelperForm's name.
     pub fn name(&self) -> &Vec<u8> {
         match self {
+            HelperForm::Deftype(deft) => &deft.name,
             HelperForm::Defconstant(defc) => &defc.name,
             HelperForm::Defmacro(mac) => &mac.name,
             HelperForm::Defun(_, defun) => &defun.name,
@@ -649,6 +707,7 @@ impl HelperForm {
     /// Get the location of the HelperForm's name.
     pub fn name_loc(&self) -> &Srcloc {
         match self {
+            HelperForm::Deftype(deft) => &deft.nl,
             HelperForm::Defconstant(defc) => &defc.nl,
             HelperForm::Defmacro(mac) => &mac.nl,
             HelperForm::Defun(_, defun) => &defun.nl,
@@ -658,6 +717,7 @@ impl HelperForm {
     /// Return a general location for the whole HelperForm.
     pub fn loc(&self) -> Srcloc {
         match self {
+            HelperForm::Deftype(deft) => deft.loc.clone(),
             HelperForm::Defconstant(defc) => defc.loc.clone(),
             HelperForm::Defmacro(mac) => mac.loc.clone(),
             HelperForm::Defun(_, defun) => defun.loc.clone(),
@@ -668,6 +728,22 @@ impl HelperForm {
     /// be re-parsed if needed.
     pub fn to_sexp(&self) -> Rc<SExp> {
         match self {
+            HelperForm::Deftype(deft) => {
+                let mut result_vec = vec![
+                    Rc::new(SExp::atom_from_string(deft.loc.clone(), "deftype")),
+                    Rc::new(SExp::Atom(deft.loc.clone(), deft.name.clone())),
+                ];
+
+                for a in deft.args.iter() {
+                    result_vec.push(Rc::new(a.to_sexp()));
+                }
+
+                if let Some(ty) = &deft.ty {
+                    result_vec.push(Rc::new(ty.to_sexp()));
+                }
+
+                Rc::new(list_to_cons(deft.loc.clone(), &result_vec))
+            }
             HelperForm::Defconstant(defc) => match defc.kind {
                 ConstantKind::Simple => Rc::new(list_to_cons(
                     defc.loc.clone(),

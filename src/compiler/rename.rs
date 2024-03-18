@@ -405,6 +405,7 @@ fn rename_in_helperform(
     h: &HelperForm,
 ) -> Result<HelperForm, CompileErr> {
     match h {
+        HelperForm::Deftype(_) => Ok(h.clone()),
         HelperForm::Defconstant(defc) => Ok(HelperForm::Defconstant(DefconstData {
             body: Rc::new(rename_in_bodyform(namemap, defc.body.clone())?),
             ..defc.clone()
@@ -425,6 +426,7 @@ fn rename_in_helperform(
 
 pub fn rename_args_helperform(h: &HelperForm) -> Result<HelperForm, CompileErr> {
     match h {
+        HelperForm::Deftype(_) => Ok(h.clone()),
         HelperForm::Defconstant(defc) => Ok(HelperForm::Defconstant(DefconstData {
             body: Rc::new(rename_args_bodyform(defc.body.borrow())?),
             ..defc.clone()
@@ -523,5 +525,6 @@ pub fn rename_args_compileform(c: &CompileForm) -> Result<CompileForm, CompileEr
             &local_namemap,
             Rc::new(local_renamed_body),
         )?),
+        ty: c.ty.clone(),
     })
 }
