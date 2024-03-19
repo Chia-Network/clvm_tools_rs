@@ -2413,23 +2413,19 @@ pub fn codegen(
             // Regenerate constants.
             for h in to_process.iter() {
                 if let HelperForm::Defconstant(dc) = h {
-                    if matches!(dc.kind, ConstantKind::Complex) {
-                        code_generator = generate_helper_body(
-                            context,
-                            code_generator,
-                            opts.clone(),
-                            cmod.clone(),
-                            h
-                        )?;
-                    }
+                    code_generator = generate_helper_body(
+                        context,
+                        code_generator,
+                        opts.clone(),
+                        cmod.clone(),
+                        h
+                    )?;
                 }
             }
 
             for h in to_process.iter() {
-                if let HelperForm::Defun(false, dd) = h {
-                    // Regenerate representations of functions.
-                    code_generator = codegen_(context, opts.clone(), &code_generator, h, true)?;
-                }
+                // Regenerate representations of functions.
+                code_generator = codegen_(context, opts.clone(), &code_generator, h, true)?;
             }
 
             prev_repr = this_repr;
