@@ -176,19 +176,23 @@ fn compute_env_shape(
                 }
             }
 
+            eprintln!("Weird env {} trying to add {extra_env_tree}", sp.env);
             todo!();
         }
         Some(ModulePhase::CommonPhase) => {
             let car = compute_code_shape(l.clone(), helpers);
-            SExp::Cons(
+            eprintln!("about to compute env shape with helpers: {car}");
+            let res = SExp::Cons(
                 l.clone(),
                 Rc::new(SExp::Cons(
                     l.clone(),
-                    Rc::new(car),
+                    Rc::new(car.clone()),
                     Rc::new(SExp::Nil(l.clone()))
                 )),
                 args
-            )
+            );
+            eprintln!("common phase computed shape {car}");
+            res
         }
         Some(ModulePhase::CommonConstant(env)) => {
             // We use the env that was specified in the phase.
@@ -1722,6 +1726,11 @@ fn generate_simple_constant_body(
             CompileErr(defc.loc.clone(), format!("Error evaluating constant: {r}"))
         })
         .and_then(|res| {
+            if matches!(code_generator.module_phase, Some(ModulePhase::CommonPhase)) {
+                eprintln!("XXX Allow redefinition in common constant phase");
+                return Ok(res);
+            }
+
             fail_if_present(
                 defc.loc.clone(),
                 &code_generator.constants,
@@ -1748,6 +1757,26 @@ fn generate_complex_constant_body(
     defc: &DefconstData,
 ) -> Result<PrimaryCodegen, CompileErr> {
     eprintln!("evaluate code for constant {}: {}", decode_string(&defc.name), defc.body.to_sexp());
+    if matches!(code_generator.module_phase, Some(ModulePhase::CommonPhase)) {
+        eprintln!("module constant env {}", code_generator.env);
+        if code_generator.env.to_string() == "(())" {
+            todo!();
+        }
+        let env_borrow: &SExp = code_generator.env.borrow();
+        let new_phase = Some(ModulePhase::CommonConstant(env_borrow.clone()));
+        return generate_module_constant_body(
+            context,
+            PrimaryCodegen {
+                module_phase: new_phase.clone(),
+                .. code_generator
+            },
+            opts.set_module_phase(new_phase),
+            program,
+            false,
+            h,
+            defc,
+        );
+    }
     let evaluator =
         Evaluator::new(opts.set_module_phase(None), context.runner(), program.helpers.clone());
     let constant_result = evaluator.shrink_bodyform(
@@ -1942,15 +1971,42 @@ fn start_codegen(
         code_generator.module_phase = opts.module_phase();
     }
 
-    // Generate the bodies of classic style constants and macros.
-    for h in program.helpers.iter() {
-        code_generator = generate_helper_body(
-            context,
-            code_generator,
-            opts.clone(),
-            program.clone(),
-            h
-        )?;
+    if matches!(code_generator.module_phase, Some(ModulePhase::CommonPhase)) {
+        for h in program.helpers.iter() {
+            let helper =
+                if let HelperForm::Defconstant(dc) = h {
+                    HelperForm::Defconstant(DefconstData {
+                        body: Rc::new(BodyForm::Value(SExp::Nil(h.loc()))),
+                        kind: ConstantKind::Simple,
+                        .. dc.clone()
+                    })
+                } else {
+                    h.clone()
+                };
+            let old_phase = code_generator.module_phase.clone();
+            code_generator = generate_helper_body(
+                context,
+                PrimaryCodegen {
+                    module_phase: None,
+                    .. code_generator.clone()
+                },
+                opts.set_module_phase(None),
+                program.clone(),
+                &helper,
+            )?;
+            code_generator.module_phase = old_phase;
+        }
+    } else {
+        // Generate the bodies of classic style constants and macros.
+        for h in program.helpers.iter() {
+            code_generator = generate_helper_body(
+                context,
+                code_generator,
+                opts.clone(),
+                program.clone(),
+                h
+            )?;
+        }
     }
 
     let only_defuns: Vec<HelperForm> = program
@@ -1961,17 +2017,30 @@ fn start_codegen(
         .collect();
 
     let only_defuns_list: Vec<String> = only_defuns.iter().map(|h| h.to_sexp().to_string()).collect();
-    eprintln!("about to compute env shape with helpers: {only_defuns_list:?}");
 
     code_generator.env = match opts.start_env() {
         Some(env) => env,
         None => Rc::new(compute_env_shape(
             code_generator.module_phase.as_ref(),
             program.loc.clone(),
-            program.args,
+            program.args.clone(),
             &only_defuns,
         )),
     };
+
+    if matches!(code_generator.module_phase, Some(ModulePhase::CommonPhase)) {
+        // Generate constants after the generation of the main environment in
+        // stable constant mode.  This captures the environment shape.
+        for h in program.helpers.iter() {
+            code_generator = generate_helper_body(
+                context,
+                code_generator,
+                opts.clone(),
+                program.clone(),
+                h
+            )?;
+        }
+    }
 
     eprintln!("phase {:?}", code_generator.module_phase.as_ref());
     eprintln!("env {}", code_generator.env);
@@ -2232,7 +2301,7 @@ pub fn codegen(
     opts: Rc<dyn CompilerOpts>,
     cmod: &CompileForm,
 ) -> Result<SExp, CompileErr> {
-    eprintln!("codegen( {} )", cmod.to_sexp());
+    eprintln!("codegen( {:?} {} )", opts.module_phase(), cmod.to_sexp());
     let mut start_of_codegen_optimization = StartOfCodegenOptimization {
         program: cmod.clone(),
         code_generator: dummy_functions(&start_codegen(context, opts.clone(), cmod.clone())?)?,
@@ -2277,6 +2346,91 @@ pub fn codegen(
 
     // If stepping 23 or greater, we support no-env mode.
     enable_nil_env_mode_for_stepping_23_or_greater(opts.clone(), &mut code_generator);
+
+    if matches!(code_generator.module_phase, Some(ModulePhase::CommonPhase)) {
+        // We've got an order for generation that will allow us to have correct
+        // constant order.  At this point we know that the constant order is
+        // resolvable and doesn't have direct cycles.  It may be the case that
+        // some functions didn't have their target constants avaialble, but the
+        // functions generated are in their final representations.
+        //
+        // We start by generating all functions, then all constants and repeat
+        // until the representation converges.
+        //
+        // Consider this program:
+        //
+        // (include *standard-cl-23*)
+        //
+        // (defconst C 19191)
+        // (defun F (X) (+ C X))
+        // (defconst D (list C F (C_hash) (F_hash)))
+        //
+        // (export C)
+        // (export D)
+        // (export F)
+        //
+        // D will contain the full environment, including itself via F.
+        //
+        // We must ensure that the representation of the environment is quineable.
+        //
+        // Therefore, we need an environment expression that we're able to express
+        // in a function-as-callable context without causing the environment to
+        // multiply.  I originally envisioned a method for this.
+        //
+        // The method is that we'll know the path to __chia__extras and write the
+        // environment as an expression that takes unaffected left and right sub
+        // trees and places a separately determined value in its place.
+        //
+        // One thing we must do is produce saturated functions consistently in the
+        // quineable way everywhere when module constants exist.
+        let mut prev_repr = Rc::new(SExp::Nil(code_generator.final_env.loc()));
+        let mut this_repr = code_generator.final_env.clone();
+        let mut steps = 0;
+
+        while prev_repr != this_repr && steps < CONSTANT_GENERATIONS_ALLOWED {
+            // Regenerate constants.
+            todo!();
+
+            for h in code_generator.to_process.iter() {
+                if let HelperForm::Defconstant(dc) = h {
+                    if matches!(dc.kind, ConstantKind::Complex) {
+                        code_generator = generate_helper_body(
+                            context,
+                            code_generator,
+                            opts.clone(),
+                            cmod.clone(),
+                            h
+                        )?;
+                    }
+                }
+            }
+
+            for h in code_generator.to_process.iter() {
+                if let HelperForm::Defun(false, dd) = h {
+                    // Regenerate representations of functions.
+                    code_generator = generate_helper_body(
+                        context,
+                        code_generator,
+                        opts.clone(),
+                        cmod.clone(),
+                        h
+                    )?;
+                }
+            }
+
+            prev_repr = this_repr;
+            this_repr = code_generator.final_env.clone();
+
+            steps += 1;
+        }
+
+        if steps == CONSTANT_GENERATIONS_ALLOWED {
+            return Err(CompileErr(
+                Srcloc::start(&opts.filename()),
+                "Constant generation didn't converge in allowed iteration limit".to_string(),
+            ));
+        }
+    }
 
     *context.symbols() = code_generator.function_symbols.clone();
     context
