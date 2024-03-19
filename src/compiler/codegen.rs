@@ -198,10 +198,6 @@ fn compute_env_shape(
             // We use the env that was specified in the phase.
             env.clone()
         }
-        Some(ModulePhase::CommonFunction(env)) => {
-            // We use the env that was specified in the phase.
-            env.clone()
-        }
         None => {
             let car = compute_code_shape(l.clone(), helpers);
             let cdr = args;
@@ -981,7 +977,7 @@ fn codegen_(
                 let updated_opts = opts
                     .set_code_generator(compiler.clone())
                     .set_in_defun(true)
-                    .set_module_phase(compiler.module_phase.as_ref().map(|_| ModulePhase::CommonFunction(env.clone())))
+                    .set_module_phase(compiler.module_phase.as_ref().map(|_| ModulePhase::CommonConstant(env.clone())))
                     .set_stdenv(false)
                     .set_frontend_opt(false)
                     .set_start_env(Some(combine_defun_env(
@@ -2513,9 +2509,6 @@ pub fn codegen(
             ))
         }
         (false, Some(ModulePhase::CommonConstant(_)), Some(code)) => {
-            Ok(normal_produce_code(code))
-        }
-        (false, Some(ModulePhase::CommonFunction(_)), Some(code)) => {
             Ok(normal_produce_code(code))
         }
         (false, Some(ModulePhase::StandalonePhase(_)), Some(code)) => {

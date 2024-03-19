@@ -920,7 +920,6 @@ impl Debug for StandalonePhaseInfo {
 pub enum ModulePhase {
     CommonPhase,
     CommonConstant(SExp),
-    CommonFunction(SExp),
     StandalonePhase(StandalonePhaseInfo),
 }
 
@@ -929,7 +928,6 @@ impl Debug for ModulePhase {
         match self {
             ModulePhase::CommonPhase => write!(formatter, "CommonPhase"),
             ModulePhase::CommonConstant(env) => write!(formatter, "CommonConstant({env})"),
-            ModulePhase::CommonFunction(env) => write!(formatter, "CommonFunction({env})"),
             ModulePhase::StandalonePhase(sp) => write!(formatter, "StandalonePhase({sp:?})")
         }
     }
