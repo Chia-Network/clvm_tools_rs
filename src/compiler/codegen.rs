@@ -961,6 +961,7 @@ fn codegen_(
     opts: Rc<dyn CompilerOpts>,
     compiler: &PrimaryCodegen,
     h: &HelperForm,
+    allow_redef: bool,
 ) -> Result<PrimaryCodegen, CompileErr> {
     match &h {
         HelperForm::Defun(inline, defun) => {
@@ -1021,8 +1022,18 @@ fn codegen_(
                 let code =
                     context.post_codegen_function_optimize(opts.clone(), Some(h), Rc::new(code))?;
                 let code =
-                    fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)?;
-                let code = fail_if_present(defun.loc.clone(), &compiler.defuns, &defun.name, code)?;
+                    if allow_redef {
+                        code
+                    } else {
+                        fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)?
+                    };
+                let code =
+                    if allow_redef {
+                        code
+                    } else {
+                        fail_if_present(defun.loc.clone(), &compiler.defuns, &defun.name, code)?
+                    };
+
                 Ok(compiler.add_defun(
                     &defun.name,
                     defun.orig_args.clone(),
@@ -1759,9 +1770,6 @@ fn generate_complex_constant_body(
     eprintln!("evaluate code for constant {}: {}", decode_string(&defc.name), defc.body.to_sexp());
     if matches!(code_generator.module_phase, Some(ModulePhase::CommonPhase)) {
         eprintln!("module constant env {}", code_generator.env);
-        if code_generator.env.to_string() == "(())" {
-            todo!();
-        }
         let env_borrow: &SExp = code_generator.env.borrow();
         let new_phase = Some(ModulePhase::CommonConstant(env_borrow.clone()));
         return generate_module_constant_body(
@@ -2314,7 +2322,21 @@ pub fn codegen(
     let mut already_processed = HashSet::new();
 
     if !opts.in_defun() && matches!(code_generator.module_phase, Some(ModulePhase::CommonPhase)) {
-        eprintln!("common phase\n");
+        // Process defuns first in case they're needed.
+        for h in to_process.iter() {
+            eprintln!("generate function (first time) {}", decode_string(h.name()));
+            if let HelperForm::Defun(_, _) = h {
+                already_processed.insert(h.name().to_vec());
+                code_generator = codegen_(context, opts.clone(), &code_generator, h, true)?;
+            }
+        }
+
+        // Generate a viable env for the first time.
+        code_generator = final_codegen(context, opts.clone(), &code_generator)?;
+        let final_env = finalize_env(context, opts.clone(), &code_generator)?;
+        code_generator.final_env = final_env.clone();
+
+        eprintln!("common phase");
         let generation_order =
             decide_constant_generation_order(
                 &cmod.loc,
@@ -2331,17 +2353,17 @@ pub fn codegen(
         for h in generation_order.iter() {
             eprintln!("generate constant {}", h.to_sexp());
             already_processed.insert(h.name().to_vec());
-            code_generator = codegen_(context, opts.clone(), &code_generator, h)?;
+            code_generator = codegen_(context, opts.clone(), &code_generator, h, true)?;
         }
     }
 
-    for f in to_process {
+    for f in to_process.iter() {
         if already_processed.contains(f.name()) {
             continue;
         }
 
         eprintln!("generate normal helper {}", decode_string(f.name()));
-        code_generator = codegen_(context, opts.clone(), &code_generator, &f)?;
+        code_generator = codegen_(context, opts.clone(), &code_generator, &f, false)?;
     }
 
     // If stepping 23 or greater, we support no-env mode.
@@ -2389,9 +2411,7 @@ pub fn codegen(
 
         while prev_repr != this_repr && steps < CONSTANT_GENERATIONS_ALLOWED {
             // Regenerate constants.
-            todo!();
-
-            for h in code_generator.to_process.iter() {
+            for h in to_process.iter() {
                 if let HelperForm::Defconstant(dc) = h {
                     if matches!(dc.kind, ConstantKind::Complex) {
                         code_generator = generate_helper_body(
@@ -2405,16 +2425,10 @@ pub fn codegen(
                 }
             }
 
-            for h in code_generator.to_process.iter() {
+            for h in to_process.iter() {
                 if let HelperForm::Defun(false, dd) = h {
                     // Regenerate representations of functions.
-                    code_generator = generate_helper_body(
-                        context,
-                        code_generator,
-                        opts.clone(),
-                        cmod.clone(),
-                        h
-                    )?;
+                    code_generator = codegen_(context, opts.clone(), &code_generator, h, true)?;
                 }
             }
 
