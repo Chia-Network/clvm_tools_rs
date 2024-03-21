@@ -471,6 +471,7 @@ pub fn compile_module(
             program.exp = expr.clone();
 
             program = resolve_namespaces(opts.clone(), &program)?;
+            modernize_constants(&mut program.helpers, &standalone_constants);
 
             let output = Rc::new(compile_from_compileform(context, opts.clone(), program.clone())?);
             let converted = convert_to_clvm_rs(context.allocator(), output.clone())?;
@@ -510,7 +511,7 @@ pub fn compile_module(
     // First pass compilation: remove standalone constant helpers and produce
     // a body which contains all the non-standalone exports.
     let common_opts = opts.set_module_phase(Some(ModulePhase::CommonPhase));
-    let common_program = resolve_namespaces(
+    let mut common_program = resolve_namespaces(
         common_opts.clone(),
         &form_module_program_common_body(
             &standalone_constants,
@@ -518,6 +519,7 @@ pub fn compile_module(
             exports
         )?
     )?;
+    modernize_constants(&mut common_program.helpers, &standalone_constants);
     eprintln!("common program {}", common_program.to_sexp());
     let common_output = compile_from_compileform(
         context,
@@ -605,10 +607,11 @@ pub fn compile_module(
 
         eprintln!("resolve namespaces in program {}", second_stage_program.to_sexp());
         // remove_standalone_constant(&mut second_stage_program, &fun_name);
-        let constant_culled_second_stage_program = resolve_namespaces(
+        let mut constant_culled_second_stage_program = resolve_namespaces(
             second_stage_opts.clone(),
             &second_stage_program,
         )?;
+        modernize_constants(&mut constant_culled_second_stage_program.helpers, &standalone_constants);
         eprintln!("standalone program for {}: {}", decode_string(&fun_name), constant_culled_second_stage_program.to_sexp());
 
         let compiled_result = Rc::new(compile_from_compileform(
@@ -849,7 +852,6 @@ pub fn compile_pre_forms(
                 &cf.helpers,
                 &exports,
             );
-            modernize_constants(&mut cf.helpers, &standalone_constants);
             Ok(CompilerOutput::Module(compile_module(
                 context, opts, &standalone_constants, cf, &exports,
             )?))
