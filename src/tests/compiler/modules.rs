@@ -741,7 +741,6 @@ fn test_constant_single_round() {
     );
 }
 
-/*
 #[test]
 fn test_constant_multiple_rounds() {
     let filename = "resources/tests/module/test_staged_constants_multiple_iters.clsp";
@@ -753,10 +752,9 @@ fn test_constant_multiple_rounds() {
         &[
             HexArgumentOutcome {
                 hexfile: f_hex_file,
-                argument: "",
+                argument: "(0x930f21b24db8799bc5a496643a8cfa81648421140318ce7f5eb7a67037fbb266 (a (q 16 5 (q . 3)) (c (q (+ 5 (q . 3))) 1)))",
                 outcome: ContentEquals
             }
         ]
     );
 }
-*/

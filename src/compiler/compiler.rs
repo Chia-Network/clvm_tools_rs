@@ -559,13 +559,6 @@ pub fn compile_module(
     })));
     for fun in exports.iter() {
         let (fun_name, export_name) = if let Export::Function(name, as_name) = fun {
-            // We've already processed non-standalone (common) constants in the
-            // common environment, so skip those.
-            if captured_export_map.contains_key(name) {
-                eprintln!("skip {}", decode_string(name));
-                continue;
-            }
-
             // Otherwise, capture it to produce to the output.
             (
                 name.clone(),

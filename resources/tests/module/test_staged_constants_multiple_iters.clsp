@@ -2,11 +2,9 @@
 
 (import std.shatree exposing shatree)
 
-(defconst B (+ H 3))
-(defconst FH (shatree F))
-(defconst GH (shatree G))
-(defun F (X) (+ X GH))
-(defun G (X) (+ X FH))
+(defun F-internal (X) (+ X 3))
 
+(defconst F (list (F-internal_hash) F-internal))
+
+(export F-internal)
 (export F)
-(export G)
