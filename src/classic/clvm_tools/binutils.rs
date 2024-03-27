@@ -2,9 +2,6 @@ use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use encoding8::ascii::is_printable;
-use unicode_segmentation::UnicodeSegmentation;
-
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
@@ -16,11 +13,11 @@ use crate::classic::clvm_tools::ir::reader::IRReader;
 use crate::classic::clvm_tools::ir::writer::write_ir;
 
 lazy_static! {
-    pub static ref printable_chars: HashSet<char> =
+    pub static ref PRINTABLE_CHARS: HashSet<char> =
         "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ ".chars().collect();
 }
 pub fn is_printable_string(s: &str) -> bool {
-    s.chars().all(|s_char| printable_chars.contains(&s_char))
+    s.chars().all(|s_char| PRINTABLE_CHARS.contains(&s_char))
 }
 
 pub fn assemble_from_ir(
