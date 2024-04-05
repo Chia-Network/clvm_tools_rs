@@ -5,7 +5,7 @@
     (assign
       first (list 1 2 3)
       copies (list (r first) (r first))
-      copies
+      (c (r first) copies)
       )
     )
   (test-f blob)

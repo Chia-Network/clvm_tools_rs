@@ -534,6 +534,10 @@ fn detect_merge_into_host_assign(
     // Lifting out of a parallel let can't cause bound variables to move out
     // of their scope.
     if let BodyForm::Let(kind, letdata) = &root_expr {
+        // Sequential let forms are degraded to parallel let stacks earlier.
+        // Parallel let forms don't have interdependent bindings, so no need to
+        // treat them here.
+        assert!(!matches!(kind, LetFormKind::Sequential));
         if matches!(kind, LetFormKind::Parallel) {
             return false;
         }
@@ -570,8 +574,6 @@ fn merge_cse_binding(body: &BodyForm, binding: Rc<Binding>) -> BodyForm {
                 bindings: new_bindings,
                 .. *letdata.clone()
             }));
-        } else { // Sequential
-            todo!();
         }
     }
 
@@ -742,7 +744,9 @@ pub fn cse_optimize_bodyform(
                         .map(|site| {
                             // Detect whether this binding should be merged into its own
                             // host assign form.  That depends on whether
-                            // (1) target_path names that assign or let* form.
+                            // (1) target_path names that assign form. let* forms
+                            //   have been broken down by this point into a stack
+                            //   of let forms.
                             // (2) it uses bindings from that assign form.
                             let rc_binding = Rc::new(site.binding.clone());
                             let should_merge = detect_merge_into_host_assign(
