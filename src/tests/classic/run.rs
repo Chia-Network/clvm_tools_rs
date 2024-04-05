@@ -2361,12 +2361,32 @@ fn test_assign_rename_tricky() {
         program.clone(),
         "(11)".to_string(),
     ])
-    .trim()
-    .to_string();
+        .trim()
+        .to_string();
     assert_eq!(run_result_11, "506");
 
     let run_result_41 = do_basic_brun(&vec!["brun".to_string(), program, "(41)".to_string()])
         .trim()
         .to_string();
     assert_eq!(run_result_41, "15375");
+}
+
+#[test]
+fn test_cse_breakage_example() {
+    let filename = "resources/tests/cse-bad.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+
+    eprintln!(">> {program}");
+    assert!(program.starts_with("("));
+
+    let run_result_11 = do_basic_brun(&vec![
+        "brun".to_string(),
+        program.clone(),
+        "(())".to_string(),
+    ])
+        .trim()
+        .to_string();
+    assert_eq!(run_result_11, "((a 3) (a 3))");
 }
