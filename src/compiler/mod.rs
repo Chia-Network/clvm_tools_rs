@@ -18,7 +18,7 @@ pub mod debug;
 pub mod dialect;
 pub mod evaluate;
 pub mod frontend;
-#[cfg(feature="fuzz")]
+#[cfg(any(test, feature="fuzz"))]
 pub mod fuzz;
 pub mod gensym;
 mod inline;

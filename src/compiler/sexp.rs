@@ -19,6 +19,8 @@ use serde::Serialize;
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType};
 use crate::classic::clvm::casts::{bigint_from_bytes, bigint_to_bytes_clvm, TConvertOption};
+#[cfg(any(test,feature="fuzz"))]
+use crate::compiler::fuzz::{ExprModifier, FuzzChoice};
 use crate::compiler::prims::prims;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::{number_from_u8, u8_from_number, Number};
@@ -1216,6 +1218,104 @@ where
             Ok(NodeSel::Cons(first, rest))
         } else {
             Err(E::from((s.loc(), "not a cons".to_string())))
+        }
+    }
+}
+
+//
+// Fuzzing support for SExp
+//
+fn find_in_structure_inner(
+    parents: &mut Vec<Rc<SExp>>,
+    structure: Rc<SExp>,
+    target: &Rc<SExp>,
+) -> bool {
+    if let SExp::Cons(_, a, b) = structure.borrow() {
+        parents.push(structure.clone());
+        if find_in_structure_inner(
+            parents,
+            a.clone(),
+            target,
+        ) {
+            return true;
+        }
+        if find_in_structure_inner(
+            parents,
+            b.clone(),
+            target,
+        ) {
+            return true;
+        }
+
+        parents.pop();
+    }
+
+    structure == *target
+}
+
+#[cfg(any(test,feature="fuzz"))]
+impl ExprModifier for Rc<SExp> {
+    type Item = Self;
+    type Tag = Vec<u8>;
+
+    fn find_waiters(
+        &self,
+        waiters: &mut Vec<FuzzChoice<Self::Item,Self::Tag>>,
+    ) {
+        match self.borrow() {
+            SExp::Cons(_, a, b) => {
+                a.find_waiters(waiters);
+                b.find_waiters(waiters);
+            }
+            SExp::Atom(_, a) => {
+                if a.starts_with(b"${") && a.ends_with(b"}") {
+                    let mut found_colon = a.iter().enumerate().filter_map(|(i,c)| if *c == b':' { Some(i) } else { None });
+                    if let Some(c_idx) = found_colon.next() {
+                        let tag_str: Vec<u8> = a.iter().take(a.len() - 1).skip(c_idx + 1).copied().collect();
+                        waiters.push(FuzzChoice {
+                            tag: tag_str,
+                            atom: self.clone()
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn replace_node(
+        &self,
+        to_replace: &Self::Item,
+        new_value: Self::Item,
+    ) -> Self::Item {
+        if let SExp::Cons(l, a, b) = self.borrow() {
+            let new_a = a.replace_node(to_replace, new_value.clone());
+            let new_b = b.replace_node(to_replace, new_value.clone());
+            if Rc::as_ptr(&new_a) != Rc::as_ptr(a) || Rc::as_ptr(&new_b) != Rc::as_ptr(b) {
+                return Rc::new(SExp::Cons(l.clone(), new_a, new_b));
+            }
+        }
+
+        if self == to_replace {
+            return new_value;
+        }
+
+        self.clone()
+    }
+
+    fn find_in_structure(
+        &self,
+        target: &Self::Item,
+    ) -> Option<Vec<Self::Item>> {
+        let mut parents = Vec::new();
+        if find_in_structure_inner(
+            &mut parents,
+            self.clone(),
+            target,
+        ) {
+            Some(parents)
+        } else {
+            None
         }
     }
 }
