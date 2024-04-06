@@ -953,3 +953,12 @@ fn test_generate_tricky_cse() {
         test_generated_cse(10000 + i);
     }
 }
+
+#[test]
+#[cfg(feature="fuzz")]
+fn test_cse_tricky_assign_fuzz() {
+    // Tests for not noticing that we should merge a cse form into an assign rather
+    // than lift it above by noticing that the expression that got lifted out
+    // depends on another binding in the assign form.
+    todo!();
+}

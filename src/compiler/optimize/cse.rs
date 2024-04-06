@@ -513,7 +513,6 @@ impl CSEBindingInfo {
     }
 }
 
-#[deprecated]
 fn detect_merge_into_host_assign(
     target: &[BodyformPathArc],
     body: &BodyForm,
