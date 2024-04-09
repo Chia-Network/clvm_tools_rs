@@ -2410,3 +2410,13 @@ fn test_cse_breakage_example_letstar() {
         .to_string();
     assert_eq!(run_result_11, "((a 3) (a 3) (a 3))");
 }
+
+#[test]
+fn test_representation_of_tricky_nested_assigns() {
+    let filename = "resources/tests/cse-overlap.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+    let wanted_repr = "(2 (1 2 4 (4 2 (4 (4 5 (4 (1 . 99) (4 (1 . 100) (4 (1 . 101) (4 (1 . 102) ()))))) ()))) (4 (1 (2 10 (4 2 (4 (6 (4 2 (4 3 (4 29 ())))) (4 29 ())))) (2 14 (4 2 (4 3 (4 (4 (4 11 21) (4 21 ())) (4 (4 11 49) ()))))) 4 21 (4 23 (4 (4 23 41) (4 11 ())))) 1))";
+    assert_eq!(program, wanted_repr);
+}
