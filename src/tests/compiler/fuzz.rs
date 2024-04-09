@@ -158,6 +158,8 @@ pub fn perform_compile_of_file(
     let nodeptr = convert_to_clvm_rs(allocator, listed.clone()).expect("should convert");
     let dialect = detect_modern(allocator, nodeptr);
     let orig_opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(filename))
+        .set_optimize(true)
+        .set_frontend_opt(false)
         .set_dialect(dialect)
         .set_search_paths(&["resources/tests/module".to_string()]);
     let source_opts = TestModuleCompilerOpts::new(orig_opts);

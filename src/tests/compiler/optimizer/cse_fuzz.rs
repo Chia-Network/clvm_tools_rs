@@ -170,7 +170,7 @@ impl Rule<FuzzT> for TestTrickyAssignFuzzTopRule {
         }
 
         state.count = self.defs;
-        let start_program = compose_sexp(state.loc(), &format!("(mod (X) (include *standard-cl-23*) (assign . ${{{}:assign-test-form}}))", idx));
+        let start_program = compose_sexp(state.loc(), &format!("(mod (X) (include *standard-cl-23*) (defun F (X) (assign . ${{{}:assign-test-form}})) (F X))", idx));
         Ok(Some(start_program.clone()))
     }
 }
@@ -324,8 +324,8 @@ fn test_property_fuzz_cse_binding() {
         ).expect("should compile");
 
         // Collect output values from compiled.
-        let nil = Rc::new(SExp::Nil(compiled.compiled.loc()));
-        let run_result = simple_run(opts.clone(), compiled.compiled.clone(), nil).expect("should run");
+        let arg = compose_sexp(srcloc.clone(), "(3)");
+        let run_result = simple_run(opts.clone(), compiled.compiled.clone(), arg).expect("should run");
         let want_result = mc.compute();
         eprintln!("run_result {run_result} have {want_result}");
         assert_eq!(run_result, want_result);
