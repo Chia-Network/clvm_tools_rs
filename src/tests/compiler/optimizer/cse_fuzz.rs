@@ -18,92 +18,7 @@ use crate::compiler::prims::primquote;
 use crate::compiler::sexp::{AtomValue, decode_string, parse_sexp, NodeSel, SelectNode, SExp, ThisNode};
 use crate::compiler::srcloc::Srcloc;
 
-use crate::tests::compiler::fuzz::{compose_sexp, GenError, perform_compile_of_file, PropertyTest, PropertyTestState, simple_run, simple_seeded_rng};
-
-#[derive(Debug, Clone)]
-enum SupportedOperators {
-    Plus,
-    Minus,
-    Times,
-}
-
-impl SupportedOperators {
-    fn to_sexp(&self, srcloc: &Srcloc) -> Rc<SExp> {
-        match self {
-            SupportedOperators::Plus => compose_sexp(srcloc.clone(), "16"),
-            SupportedOperators::Minus => compose_sexp(srcloc.clone(), "17"),
-            SupportedOperators::Times => compose_sexp(srcloc.clone(), "18")
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-enum ValueSpecification {
-    ConstantValue(Rc<SExp>),
-    VarRef(Vec<u8>),
-    ClvmBinop(SupportedOperators, Rc<ValueSpecification>, Rc<ValueSpecification>),
-}
-
-impl ValueSpecification {
-    fn to_sexp(&self, srcloc: &Srcloc) -> Rc<SExp> {
-        match self {
-            ValueSpecification::ConstantValue(c) => {
-                c.clone()
-            }
-            ValueSpecification::VarRef(c) => {
-                Rc::new(SExp::Atom(srcloc.clone(), c.clone()))
-            }
-            ValueSpecification::ClvmBinop(op, left, right) => {
-                Rc::new(SExp::Cons(
-                    srcloc.clone(),
-                    op.to_sexp(srcloc),
-                    Rc::new(SExp::Cons(
-                        srcloc.clone(),
-                        left.to_sexp(srcloc),
-                        Rc::new(SExp::Cons(
-                            srcloc.clone(),
-                            right.to_sexp(srcloc),
-                            Rc::new(SExp::Nil(srcloc.clone()))
-                        ))
-                    ))
-                ))
-            }
-        }
-    }
-
-    fn interpret(&self, opts: Rc<dyn CompilerOpts>, srcloc: &Srcloc, value_map: &BTreeMap<Vec<u8>, Rc<ValueSpecification>>) -> Rc<SExp> {
-        match self {
-            ValueSpecification::ConstantValue(c) => c.clone(),
-            ValueSpecification::VarRef(c) => {
-                if let Some(value) = value_map.get(c) {
-                    value.interpret(opts, srcloc, value_map)
-                } else {
-                    todo!();
-                }
-            }
-            ValueSpecification::ClvmBinop(op, left, right) => {
-                let operator = op.to_sexp(srcloc);
-                let left_val = left.interpret(opts.clone(), srcloc, value_map);
-                let right_val = right.interpret(opts.clone(), srcloc, value_map);
-                let nil = Rc::new(SExp::Nil(srcloc.clone()));
-                let expr = Rc::new(SExp::Cons(
-                    srcloc.clone(),
-                    operator,
-                    Rc::new(SExp::Cons(
-                        srcloc.clone(),
-                        Rc::new(primquote(srcloc.clone(), left_val)),
-                        Rc::new(SExp::Cons(
-                            srcloc.clone(),
-                            Rc::new(primquote(srcloc.clone(), right_val)),
-                            nil.clone()
-                        ))
-                    ))
-                ));
-                simple_run(opts, expr, nil).expect("should succeed")
-            }
-        }
-    }
-}
+use crate::tests::compiler::fuzz::{compose_sexp, GenError, HasVariableStore, perform_compile_of_file, PropertyTest, PropertyTestState, simple_run, simple_seeded_rng, SupportedOperators, ValueSpecification};
 
 struct TrickyAssignExpectation {
     opts: Rc<dyn CompilerOpts>,
@@ -113,6 +28,13 @@ struct TrickyAssignExpectation {
     final_var: Option<Rc<ValueSpecification>>,
     var_defs: BTreeMap<Vec<u8>, Rc<ValueSpecification>>,
 }
+
+impl HasVariableStore for TrickyAssignExpectation {
+    fn get(&self, name: &[u8]) -> Option<Rc<ValueSpecification>> {
+        self.var_defs.get(name).cloned()
+    }
+}
+
 impl TrickyAssignExpectation {
     fn new(opts: Rc<dyn CompilerOpts>) -> Self {
         TrickyAssignExpectation {
@@ -134,7 +56,7 @@ impl TrickyAssignExpectation {
         val.interpret(
             self.opts.clone(),
             &self.loc,
-            &self.var_defs
+            self,
         )
     }
 }
@@ -299,22 +221,6 @@ fn test_property_fuzz_cse_binding() {
     test.run(&mut rng);
 }
 
-// Stages:
-//
-// Generate n function names and their parameter lists.
-// Generate body expressions:
-//
-// - Simple arith
-// - if expr
-// - assign
-// - let
-// - let*
-//
-// Each will have references to random names in scope ${n:scope-name} which
-// we'll resolve when expanded.  These scope-name variables always refer to
-// a name in scope but we'll choose a random one.
-//
-// For these programs it's not necessary to interpret them as we're looking
-// for a specific representation.  We could assign random indices to the
-// scope variables and track them that way.
-//
+#[test]
+fn test_property_code_is_generated_compatibly() {
+}

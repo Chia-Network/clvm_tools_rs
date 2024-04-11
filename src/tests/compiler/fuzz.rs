@@ -15,6 +15,7 @@ use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
 use crate::compiler::dialect::{AcceptedDialect, detect_modern};
 use crate::compiler::fuzz::{ExprModifier, FuzzGenerator, FuzzTypeParams, Rule};
+use crate::compiler::prims::primquote;
 use crate::compiler::sexp::{enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
@@ -267,5 +268,97 @@ impl<FT: FuzzTypeParams> PropertyTest<FT> {
         }
 
         // We've checked all predicted values.
+    }
+}
+
+// A generic, simple representation of expressions that allow us to evaluate
+// simple expressions.  We can add stuff that increases this capability for
+// all consumers.
+#[derive(Debug, Clone)]
+pub enum SupportedOperators {
+    Plus,
+    Minus,
+    Times,
+}
+
+impl SupportedOperators {
+    pub fn to_sexp(&self, srcloc: &Srcloc) -> Rc<SExp> {
+        match self {
+            SupportedOperators::Plus => compose_sexp(srcloc.clone(), "16"),
+            SupportedOperators::Minus => compose_sexp(srcloc.clone(), "17"),
+            SupportedOperators::Times => compose_sexp(srcloc.clone(), "18")
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ValueSpecification {
+    ConstantValue(Rc<SExp>),
+    VarRef(Vec<u8>),
+    ClvmBinop(SupportedOperators, Rc<ValueSpecification>, Rc<ValueSpecification>),
+}
+
+pub trait HasVariableStore {
+    fn get(&self, name: &[u8]) -> Option<Rc<ValueSpecification>>;
+}
+
+impl ValueSpecification {
+    pub fn to_sexp(&self, srcloc: &Srcloc) -> Rc<SExp> {
+        match self {
+            ValueSpecification::ConstantValue(c) => {
+                c.clone()
+            }
+            ValueSpecification::VarRef(c) => {
+                Rc::new(SExp::Atom(srcloc.clone(), c.clone()))
+            }
+            ValueSpecification::ClvmBinop(op, left, right) => {
+                Rc::new(SExp::Cons(
+                    srcloc.clone(),
+                    op.to_sexp(srcloc),
+                    Rc::new(SExp::Cons(
+                        srcloc.clone(),
+                        left.to_sexp(srcloc),
+                        Rc::new(SExp::Cons(
+                            srcloc.clone(),
+                            right.to_sexp(srcloc),
+                            Rc::new(SExp::Nil(srcloc.clone()))
+                        ))
+                    ))
+                ))
+            }
+        }
+    }
+
+    pub fn interpret<Store: HasVariableStore>(&self, opts: Rc<dyn CompilerOpts>, srcloc: &Srcloc, value_map: &Store) -> Rc<SExp> {
+        match self {
+            ValueSpecification::ConstantValue(c) => c.clone(),
+            ValueSpecification::VarRef(c) => {
+                if let Some(value) = value_map.get(c) {
+                    value.interpret(opts, srcloc, value_map)
+                } else {
+                    todo!();
+                }
+            }
+            ValueSpecification::ClvmBinop(op, left, right) => {
+                let operator = op.to_sexp(srcloc);
+                let left_val = left.interpret(opts.clone(), srcloc, value_map);
+                let right_val = right.interpret(opts.clone(), srcloc, value_map);
+                let nil = Rc::new(SExp::Nil(srcloc.clone()));
+                let expr = Rc::new(SExp::Cons(
+                    srcloc.clone(),
+                    operator,
+                    Rc::new(SExp::Cons(
+                        srcloc.clone(),
+                        Rc::new(primquote(srcloc.clone(), left_val)),
+                        Rc::new(SExp::Cons(
+                            srcloc.clone(),
+                            Rc::new(primquote(srcloc.clone(), right_val)),
+                            nil.clone()
+                        ))
+                    ))
+                ));
+                simple_run(opts, expr, nil).expect("should succeed")
+            }
+        }
     }
 }

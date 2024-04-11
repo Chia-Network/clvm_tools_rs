@@ -36,14 +36,17 @@ impl Optimization for Strategy23 {
         &mut self,
         _allocator: &mut Allocator,
         _runner: Rc<dyn TRunProgram>,
-        _opts: Rc<dyn CompilerOpts>,
+        opts: Rc<dyn CompilerOpts>,
         mut p0: CompileForm,
     ) -> Result<CompileForm, CompileErr> {
         let mut rebuilt_helpers = Vec::new();
+        // XXX Come up with a good way to do this.
+        #[deprecated]
+        let disable_merge_for_tests = !opts.filename().starts_with("*cl23-pre-fix");
         for h in p0.helpers.iter() {
             if let HelperForm::Defun(inline, d) = h {
                 eprintln!("cse optimize helper {}", h.to_sexp());
-                let function_body = cse_optimize_bodyform(&h.loc(), h.name(), d.body.borrow())?;
+                let function_body = cse_optimize_bodyform(&h.loc(), h.name(), disable_merge_for_tests, d.body.borrow())?;
                 // Ok we've got a body that is now a let stack.
                 let new_helper = HelperForm::Defun(
                     *inline,

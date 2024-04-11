@@ -3,7 +3,6 @@ use std::cmp::min;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::{Error, Formatter, Debug};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::compiler::clvm::sha256tree;
 use crate::compiler::comptypes::{
@@ -585,6 +584,7 @@ type CSEReplacementTargetAndBindings<'a> = Vec<&'a (Vec<BodyformPathArc>, Vec<Bi
 pub fn cse_optimize_bodyform(
     loc: &Srcloc,
     name: &[u8],
+    allow_merge: bool,
     b: &BodyForm,
 ) -> Result<BodyForm, CompileErr> {
     let conditions = detect_conditions(b)?;
@@ -749,7 +749,7 @@ pub fn cse_optimize_bodyform(
                             //   of let forms.
                             // (2) it uses bindings from that assign form.
                             let rc_binding = Rc::new(site.binding.clone());
-                            let should_merge = detect_merge_into_host_assign(
+                            let should_merge = allow_merge && detect_merge_into_host_assign(
                                 target_path,
                                 &function_body,
                                 rc_binding.clone(),
