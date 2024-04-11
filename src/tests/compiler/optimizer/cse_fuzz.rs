@@ -178,6 +178,7 @@ impl PropertyTestState for TrickyAssignExpectation {
             strict: true,
         }).set_optimize(true))
     }
+    fn filename(&self) -> String { "test.clsp".to_string() }
     fn run_args(&self) -> String { "(3)".to_string() }
     fn check(&self, run_result: Rc<SExp>) {
         let want_result = self.compute();
@@ -219,8 +220,4 @@ fn test_property_fuzz_cse_binding() {
     };
 
     test.run(&mut rng);
-}
-
-#[test]
-fn test_property_code_is_generated_compatibly() {
 }

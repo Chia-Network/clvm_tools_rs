@@ -213,6 +213,7 @@ pub fn simple_seeded_rng(seed: u32) -> ChaCha8Rng {
 
 pub trait PropertyTestState {
     fn new_state<R: Rng>(rng: &mut R) -> Self;
+    fn filename(&self) -> String;
     fn run_args(&self) -> String;
     fn check(&self, run_result: Rc<SExp>);
 }
@@ -256,7 +257,7 @@ impl<FT: FuzzTypeParams> PropertyTest<FT> {
             let compiled = perform_compile_of_file(
                 &mut allocator,
                 runner.clone(),
-                "test.clsp",
+                &mc.filename(),
                 &program_text,
             ).expect("should compile");
 

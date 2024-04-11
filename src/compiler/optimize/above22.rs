@@ -42,7 +42,7 @@ impl Optimization for Strategy23 {
         let mut rebuilt_helpers = Vec::new();
         // XXX Come up with a good way to do this.
         #[deprecated]
-        let disable_merge_for_tests = !opts.filename().starts_with("*cl23-pre-fix");
+        let disable_merge_for_tests = !opts.filename().starts_with("*cl23-pre-cse-merge-fix");
         for h in p0.helpers.iter() {
             if let HelperForm::Defun(inline, d) = h {
                 eprintln!("cse optimize helper {}", h.to_sexp());
