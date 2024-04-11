@@ -1,6 +1,5 @@
 use num_bigint::ToBigInt;
-use rand::SeedableRng;
-use rand_chacha::ChaCha8Rng;
+use rand::{Rng, SeedableRng};
 use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -19,21 +18,7 @@ use crate::compiler::prims::primquote;
 use crate::compiler::sexp::{AtomValue, decode_string, parse_sexp, NodeSel, SelectNode, SExp, ThisNode};
 use crate::compiler::srcloc::Srcloc;
 
-use crate::tests::compiler::fuzz::{compose_sexp, GenError, perform_compile_of_file};
-
-fn simple_run(opts: Rc<dyn CompilerOpts>, expr: Rc<SExp>, env: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
-    let mut allocator = Allocator::new();
-    let runner: Rc<dyn TRunProgram> = Rc::new(DefaultProgramRunner::new());
-    Ok(run(
-        &mut allocator,
-        runner,
-        opts.prim_map(),
-        expr,
-        env,
-        None,
-        None
-    )?)
-}
+use crate::tests::compiler::fuzz::{compose_sexp, GenError, perform_compile_of_file, PropertyTest, PropertyTestState, simple_run, simple_seeded_rng};
 
 #[derive(Debug, Clone)]
 enum SupportedOperators {
@@ -220,14 +205,13 @@ impl Rule<FuzzT> for TestTrickyAssignVarDefBinopRule {
             return Ok(None);
         }
 
+        state.actions += 13;
         let my_name = find_var_name_in_heritage(heritage);
 
         // We'll choose one other value and compose with the existing value.
         let to_skip = state.actions % state.var_defs.len();
         let (k, _) = state.var_defs.iter().skip(to_skip).next().unwrap();
         let my_value = Rc::new(ValueSpecification::VarRef(k.to_vec()));
-
-        state.actions += 13;
 
         let spec = Rc::new(ValueSpecification::ClvmBinop(self.op.clone(), Rc::new(ValueSpecification::ConstantValue(self.other.clone())), my_value));
         state.var_defs.insert(my_name.clone(), spec.clone());
@@ -264,72 +248,73 @@ impl Rule <FuzzT> for TestTrickyAssignFinalBinopRule {
     }
 }
 
-#[test]
-fn test_property_fuzz_cse_binding() {
-    let mut rng = ChaCha8Rng::from_seed([
-        1,1,1,1,1,1,1,1,
-        1,1,1,1,1,1,1,1,
-        2,2,2,2,2,2,2,2,
-        2,2,2,2,2,2,2,2,
-    ]);
-
-    let srcloc = Srcloc::start("*value*");
-    let one = Rc::new(SExp::Integer(srcloc.clone(), bi_one()));
-    let two = Rc::new(SExp::Integer(srcloc.clone(), 2_u32.to_bigint().unwrap()));
-
-    let rules: Vec<Rc<dyn Rule<FuzzT>>> = vec![
-        Rc::new(TestTrickyAssignFuzzTopRule { defs: 1 }),
-        Rc::new(TestTrickyAssignFuzzTopRule { defs: 2 }),
-        Rc::new(TestTrickyAssignFuzzTopRule { defs: 3 }),
-        Rc::new(TestTrickyAssignFuzzTopRule { defs: 4 }),
-        Rc::new(TestTrickyAssignFuzzTopRule { defs: 5 }),
-        Rc::new(TestTrickyAssignFuzzTestFormRule { }),
-        Rc::new(TestTrickyAssignVarDefConstantRule {
-            value: compose_sexp(srcloc.clone(), "1")
-        }),
-        Rc::new(TestTrickyAssignVarDefBinopRule {
-            op: SupportedOperators::Times,
-            other: two.clone()
-        }),
-        Rc::new(TestTrickyAssignFinalExpr { }),
-        Rc::new(TestTrickyAssignFinalBinopRule {
-            op: SupportedOperators::Times,
-            other: two.clone()
-        }),
-    ];
-    let top_node = Rc::new(SExp::Atom(srcloc.clone(), b"${0:top}".to_vec()));
-
-    for _ in 0..500 {
-        let mut fuzzgen = FuzzGenerator::new(top_node.clone(), &rules);
-        let mut idx = 0;
+impl PropertyTestState for TrickyAssignExpectation {
+    fn new_state<R: Rng>(r: &mut R) -> Self {
         let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("*test*"));
-        let mut mc = TrickyAssignExpectation::new(opts.set_dialect(AcceptedDialect {
+        TrickyAssignExpectation::new(opts.set_dialect(AcceptedDialect {
             stepping: Some(23),
             strict: true,
-        }).set_optimize(true));
-        while fuzzgen.expand(&mut mc, idx > 20, &mut rng).expect("should expand") {
-            idx += 1;
-            assert!(idx < 100);
-        }
-
-        let mut allocator = Allocator::new();
-        let runner = Rc::new(DefaultProgramRunner::new());
-        let program_text = fuzzgen.result().to_string();
-        eprintln!("program_text {program_text}");
-        let compiled = perform_compile_of_file(
-            &mut allocator,
-            runner.clone(),
-            "test.clsp",
-            &program_text,
-        ).expect("should compile");
-
-        // Collect output values from compiled.
-        let arg = compose_sexp(srcloc.clone(), "(3)");
-        let run_result = simple_run(opts.clone(), compiled.compiled.clone(), arg).expect("should run");
-        let want_result = mc.compute();
+        }).set_optimize(true))
+    }
+    fn run_args(&self) -> String { "(3)".to_string() }
+    fn check(&self, run_result: Rc<SExp>) {
+        let want_result = self.compute();
         eprintln!("run_result {run_result} have {want_result}");
         assert_eq!(run_result, want_result);
     }
-
-    // We've checked all predicted values.
 }
+
+#[test]
+fn test_property_fuzz_cse_binding() {
+    let srcloc = Srcloc::start("*value*");
+    let mut rng = simple_seeded_rng(0x02020202);
+    let test = PropertyTest {
+        run_times: 500,
+        run_cutoff: 100,
+        run_expansion: 20,
+
+        top_node: compose_sexp(srcloc.clone(), "${0:top}"),
+        rules: vec![
+            Rc::new(TestTrickyAssignFuzzTopRule { defs: 1 }),
+            Rc::new(TestTrickyAssignFuzzTopRule { defs: 2 }),
+            Rc::new(TestTrickyAssignFuzzTopRule { defs: 3 }),
+            Rc::new(TestTrickyAssignFuzzTopRule { defs: 4 }),
+            Rc::new(TestTrickyAssignFuzzTopRule { defs: 5 }),
+            Rc::new(TestTrickyAssignFuzzTestFormRule { }),
+            Rc::new(TestTrickyAssignVarDefConstantRule {
+                value: compose_sexp(srcloc.clone(), "1")
+            }),
+            Rc::new(TestTrickyAssignVarDefBinopRule {
+                op: SupportedOperators::Times,
+                other: compose_sexp(srcloc.clone(), "2")
+            }),
+            Rc::new(TestTrickyAssignFinalExpr { }),
+            Rc::new(TestTrickyAssignFinalBinopRule {
+                op: SupportedOperators::Times,
+                other: compose_sexp(srcloc, "2")
+            }),
+        ]
+    };
+
+    test.run(&mut rng);
+}
+
+// Stages:
+//
+// Generate n function names and their parameter lists.
+// Generate body expressions:
+//
+// - Simple arith
+// - if expr
+// - assign
+// - let
+// - let*
+//
+// Each will have references to random names in scope ${n:scope-name} which
+// we'll resolve when expanded.  These scope-name variables always refer to
+// a name in scope but we'll choose a random one.
+//
+// For these programs it's not necessary to interpret them as we're looking
+// for a specific representation.  We could assign random indices to the
+// scope variables and track them that way.
+//

@@ -3,6 +3,7 @@ use std::cmp::min;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::{Error, Formatter, Debug};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::compiler::clvm::sha256tree;
 use crate::compiler::comptypes::{

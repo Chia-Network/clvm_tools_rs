@@ -1,16 +1,20 @@
+use rand_chacha::ChaCha8Rng;
+use rand::{Rng, SeedableRng};
 use std::borrow::Borrow;
+use std::fmt::{Debug, Display};
 use std::rc::Rc;
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
 
 use clvmr::Allocator;
 
-use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
+use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 use crate::compiler::BasicCompileContext;
-use crate::compiler::clvm::convert_to_clvm_rs;
+use crate::compiler::clvm::{convert_to_clvm_rs, run};
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
 use crate::compiler::dialect::{AcceptedDialect, detect_modern};
+use crate::compiler::fuzz::{ExprModifier, FuzzGenerator, FuzzTypeParams, Rule};
 use crate::compiler::sexp::{enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
@@ -176,4 +180,92 @@ pub fn perform_compile_of_file(
         compiled: Rc::new(compiled),
         source_opts,
     })
+}
+
+pub fn simple_run(opts: Rc<dyn CompilerOpts>, expr: Rc<SExp>, env: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
+    let mut allocator = Allocator::new();
+    let runner: Rc<dyn TRunProgram> = Rc::new(DefaultProgramRunner::new());
+    Ok(run(
+        &mut allocator,
+        runner,
+        opts.prim_map(),
+        expr,
+        env,
+        None,
+        None
+    )?)
+}
+
+pub fn simple_seeded_rng(seed: u32) -> ChaCha8Rng {
+    ChaCha8Rng::from_seed([
+        1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,
+        2,2,2,2,2,2,2,2,
+        2,2,2,2,
+        ((seed >> 24) & 0xff) as u8,
+        ((seed >> 16) & 0xff) as u8,
+        ((seed >> 8) & 0xff) as u8,
+        (seed & 0xff) as u8,
+    ])
+
+}
+
+pub trait PropertyTestState {
+    fn new_state<R: Rng>(rng: &mut R) -> Self;
+    fn run_args(&self) -> String;
+    fn check(&self, run_result: Rc<SExp>);
+}
+
+pub struct PropertyTest<FT: FuzzTypeParams> {
+    pub run_times: usize,
+    pub run_cutoff: usize,
+    pub run_expansion: usize,
+
+    pub top_node: FT::Expr,
+    pub rules: Vec<Rc<dyn Rule<FT>>>,
+}
+
+impl<FT: FuzzTypeParams> PropertyTest<FT> {
+    pub fn run<R>(
+        &self,
+        rng: &mut R,
+    )
+    where
+        R: Rng + Sized,
+        FT::State: PropertyTestState,
+        FT::Error: Debug,
+        FT::Expr: ToString + Display,
+    {
+        let srcloc = Srcloc::start("*value*");
+        let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("*test*"));
+
+        for i in 0..self.run_times {
+            let mut idx = 0;
+            let mut fuzzgen = FuzzGenerator::new(self.top_node.clone(), &self.rules);
+            let mut mc = FT::State::new_state(rng);
+            while fuzzgen.expand(&mut mc, idx > self.run_expansion, rng).expect("should expand") {
+                idx += 1;
+                assert!(idx < self.run_cutoff);
+            }
+
+            let mut allocator = Allocator::new();
+            let runner = Rc::new(DefaultProgramRunner::new());
+            let program_text = fuzzgen.result().to_string();
+            eprintln!("program_text {program_text}");
+            let compiled = perform_compile_of_file(
+                &mut allocator,
+                runner.clone(),
+                "test.clsp",
+                &program_text,
+            ).expect("should compile");
+
+            // Collect output values from compiled.
+            let run_args = mc.run_args();
+            let arg = compose_sexp(srcloc.clone(), &run_args);
+            let run_result = simple_run(opts.clone(), compiled.compiled.clone(), arg).expect("should run");
+            mc.check(run_result);
+        }
+
+        // We've checked all predicted values.
+    }
 }
