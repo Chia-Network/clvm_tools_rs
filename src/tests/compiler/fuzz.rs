@@ -1,5 +1,7 @@
 use rand_chacha::ChaCha8Rng;
 use rand::{Rng, SeedableRng};
+use rand::distributions::Standard;
+use rand::prelude::Distribution;
 use std::borrow::Borrow;
 use std::fmt::{Debug, Display};
 use std::rc::Rc;
@@ -334,6 +336,16 @@ impl SupportedOperators {
             SupportedOperators::Plus => compose_sexp(srcloc.clone(), "16"),
             SupportedOperators::Minus => compose_sexp(srcloc.clone(), "17"),
             SupportedOperators::Times => compose_sexp(srcloc.clone(), "18")
+        }
+    }
+}
+
+impl Distribution<SupportedOperators> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SupportedOperators {
+        match rng.gen::<u8>() % 3 {
+            0 => SupportedOperators::Plus,
+            1 => SupportedOperators::Minus,
+            _ => SupportedOperators::Times
         }
     }
 }

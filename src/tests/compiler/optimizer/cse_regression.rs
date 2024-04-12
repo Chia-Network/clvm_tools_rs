@@ -18,7 +18,7 @@ use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::frontend::compile_helperform;
 use crate::compiler::fuzz::{ExprModifier, FuzzGenerator, FuzzTypeParams, Rule};
 use crate::compiler::prims::primquote;
-use crate::compiler::sexp::{AtomValue, decode_string, parse_sexp, NodeSel, SelectNode, SExp, ThisNode};
+use crate::compiler::sexp::{AtomValue, decode_string, enlist, parse_sexp, NodeSel, SelectNode, SExp, ThisNode};
 use crate::compiler::srcloc::Srcloc;
 
 use crate::tests::compiler::fuzz::{compose_sexp, GenError, HasVariableStore, perform_compile_of_file, PropertyTest, PropertyTestState, simple_run, simple_seeded_rng, SupportedOperators, ValueSpecification};
@@ -45,7 +45,7 @@ impl FuzzTypeParams for ExprCreationFuzzT {
     type State = ExprCreationState;
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct ExprVariableUsage {
     toplevel: BTreeSet<Vec<u8>>,
     bindings: BTreeMap<Vec<u8>, Vec<Vec<u8>>>
@@ -65,6 +65,150 @@ impl ExprVariableUsage {
 
         Ok(())
     }
+
+    // Find the parent of this var.
+    fn find_parent_of_var<'a>(&'a self, var: &[u8]) -> Option<&'a Vec<u8>> {
+        for (parent, bindings) in self.bindings.iter() {
+                if bindings.iter().any(|c| c == var) {
+                    return Some(parent);
+                }
+        }
+
+        None
+    }
+
+    // Find the path to this var.
+    fn find_path_to_var<'a>(&'a self, var: &[u8]) -> Vec<&'a Vec<u8>> {
+        let mut result = Vec::new();
+        let mut checking = var;
+        while let Some(parent) = self.find_parent_of_var(checking) {
+            checking = parent;
+            result.push(parent);
+        }
+        result
+    }
+
+    // Give the set of variables in scope for the definition of var.
+    fn variables_in_scope<'a>(&'a self, var: &[u8]) -> Vec<&'a Vec<u8>> {
+        // If this variable itself use an assign form as its definition, then
+        // all the innermost bindings are in scope.
+        let mut result = self.bindings.get(var).map(|v| {
+            v.iter().map(|e| &(*e)).collect()
+        }).unwrap_or_else(|| vec![]);
+
+        // Get the parents of var.
+        let parents = self.find_path_to_var(var);
+
+        // If there are no parents, then the variables in scope are the toplevel
+        // ones that appear before var.
+        let mut from_scopes =
+            if parents.is_empty() {
+                self.toplevel.iter().take_while(|t| *t != var).map(|t| &(*t)).collect()
+            } else {
+                let mut scopes = Vec::new();
+                let mut target = var;
+                for p in parents.iter().rev() {
+                    let p_borrowed: &[u8] = &p;
+                    if let Some(children) = self.bindings.get(p_borrowed) {
+                        let mut appear_before_in_parent: Vec<&'a Vec<u8>> = children.iter().take_while(|c| *c != target).map(|t| &(*t)).collect();
+                        scopes.append(&mut appear_before_in_parent);
+                        target = p;
+                    }
+                }
+                scopes
+            };
+
+        // Add the visible toplevel definitions if they won
+        result.append(&mut from_scopes);
+        result
+    }
+
+    // Generate an expression to define one variable.
+    fn generate_expression<R: Rng>(&self, srcloc: &Srcloc, wanted_complexity: usize, rng: &mut R, args: &[Vec<u8>], var: &[u8]) -> (Rc<ValueSpecification>, Rc<SExp>) {
+        let mut in_scope: Vec<&Vec<u8>> = args.iter().collect();
+        let mut assignments_in_scope = self.variables_in_scope(var);
+        in_scope.append(&mut assignments_in_scope);
+
+        let generate_constant = |rng: &mut R| {
+            // Constant value
+            let random_number: i8 = rng.gen();
+            let sexp = Rc::new(SExp::Integer(srcloc.clone(), random_number.to_bigint().unwrap()));
+            let definition = Rc::new(ValueSpecification::ConstantValue(sexp.clone()));
+            (definition, sexp)
+        };
+
+        let generate_reference = |rng: &mut R| {
+            let variable_choice: usize = rng.gen();
+            let variable = in_scope[variable_choice % in_scope.len()].to_vec();
+            let var_sexp = Rc::new(SExp::Atom(srcloc.clone(), variable.clone()));
+            let reference = Rc::new(ValueSpecification::VarRef(variable.clone()));
+            (reference, var_sexp)
+        };
+
+        let generate_simple = |rng: &mut R| {
+            if in_scope.is_empty() || rng.gen() {
+                generate_constant(rng)
+            } else {
+                generate_reference(rng)
+            }
+        };
+
+        let (mut value, mut result) = generate_simple(rng);
+        let complexity: usize = rng.gen();
+
+        // Generate up to a certain number of operations.
+        for i in 0..(complexity % wanted_complexity) {
+            // Generate the other branch.
+            let (other_value, other_sexp) = generate_simple(rng);
+
+            // Generate a binop.
+            let random_op: SupportedOperators = rng.gen();
+            let (left_value, right_value, left_sexp, right_sexp) =
+                if rng.gen() {
+                    (value.clone(), other_value, result.clone(), other_sexp)
+                } else {
+                    (other_value, value.clone(), other_sexp, result.clone())
+                };
+
+            result = Rc::new(enlist(srcloc.clone(), &[
+                random_op.to_sexp(&srcloc),
+                result,
+                left_sexp,
+                right_sexp,
+            ]));
+
+            value = Rc::new(ValueSpecification::ClvmBinop(
+                random_op,
+                left_value,
+                right_value
+            ));
+        }
+
+        (value, result)
+    }
+}
+
+#[test]
+fn test_expr_variable_usage() {
+    let srcloc = Srcloc::start("*test*");
+    let mut rng = simple_seeded_rng(0x02020202);
+    let vars = create_variable_set(srcloc, 5);
+    let structure_graph = create_structure_from_variables(&mut rng, &vars);
+
+    assert_eq!(
+        format!("{structure_graph:?}"),
+        indoc!{"
+        v0:
+          v4:
+          v1:
+        v2:
+        v3:
+        "});
+    assert_eq!(structure_graph.find_parent_of_var(b"v1"), Some(&b"v0".to_vec()));
+    assert_eq!(structure_graph.find_path_to_var(b"v1"), vec![b"v0"]);
+    assert_eq!(structure_graph.variables_in_scope(b"v1"), vec![b"v4"]);
+    assert_eq!(structure_graph.variables_in_scope(b"v0"), vec![b"v4", b"v1"]);
+    assert_eq!(structure_graph.variables_in_scope(b"v3"), vec![b"v0", b"v2"]);
 }
 
 impl Debug for ExprVariableUsage {
@@ -155,10 +299,6 @@ impl Rule<ExprCreationFuzzT> for TopExprBinopRule {
             return Ok(None);
         }
 
-        let varlen = state.start_variables.len();
-        let ct1 = state.rng.gen::<usize>() % varlen;
-
-        eprintln!("vargen\n{:?}", state.structure_graph);
         todo!();
     }
 }
