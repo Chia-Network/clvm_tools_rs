@@ -211,11 +211,14 @@ pub fn simple_seeded_rng(seed: u32) -> ChaCha8Rng {
 
 }
 
-pub trait PropertyTestState {
+pub trait PropertyTestState<FT: FuzzTypeParams> {
     fn new_state<R: Rng>(rng: &mut R) -> Self;
-    fn filename(&self) -> String;
-    fn run_args(&self) -> String;
-    fn check(&self, run_result: Rc<SExp>);
+    fn examine(&self, result: &FT::Expr) { }
+}
+pub trait PropertyTestRun {
+    fn filename(&self) -> String { "test.clsp".to_string() }
+    fn run_args(&self) -> String { "()".to_string() }
+    fn check(&self, run_result: Rc<SExp>) { }
 }
 
 pub struct PropertyTest<FT: FuzzTypeParams> {
@@ -228,31 +231,43 @@ pub struct PropertyTest<FT: FuzzTypeParams> {
 }
 
 impl<FT: FuzzTypeParams> PropertyTest<FT> {
+    pub fn generate<R: Rng, S: PropertyTestState<FT>>(
+        rng: &mut R,
+        top_node: FT::Expr,
+        rules: &[Rc<dyn Rule<FT>>]
+    ) -> (FT::State, FT::Expr)
+    where
+        FT::State: PropertyTestState<FT>,
+        FT::Error: Debug
+    {
+        let pt = PropertyTest {
+            run_times: 0,
+            run_cutoff: 0,
+            run_expansion: 0,
+
+            top_node,
+            rules: rules.to_vec()
+        };
+        pt.make_result(rng)
+    }
+
     pub fn run<R>(
         &self,
         rng: &mut R,
     )
     where
         R: Rng + Sized,
-        FT::State: PropertyTestState,
+        FT::State: PropertyTestState<FT> + PropertyTestRun,
         FT::Error: Debug,
         FT::Expr: ToString + Display,
     {
-        let srcloc = Srcloc::start("*value*");
-        let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("*test*"));
 
         for i in 0..self.run_times {
-            let mut idx = 0;
-            let mut fuzzgen = FuzzGenerator::new(self.top_node.clone(), &self.rules);
-            let mut mc = FT::State::new_state(rng);
-            while fuzzgen.expand(&mut mc, idx > self.run_expansion, rng).expect("should expand") {
-                idx += 1;
-                assert!(idx < self.run_cutoff);
-            }
+            let (mc, result) = self.make_result(rng);
+            let program_text = result.to_string();
 
             let mut allocator = Allocator::new();
             let runner = Rc::new(DefaultProgramRunner::new());
-            let program_text = fuzzgen.result().to_string();
             eprintln!("program_text {program_text}");
             let compiled = perform_compile_of_file(
                 &mut allocator,
@@ -262,6 +277,8 @@ impl<FT: FuzzTypeParams> PropertyTest<FT> {
             ).expect("should compile");
 
             // Collect output values from compiled.
+            let srcloc = Srcloc::start("*value*");
+            let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("*test*"));
             let run_args = mc.run_args();
             let arg = compose_sexp(srcloc.clone(), &run_args);
             let run_result = simple_run(opts.clone(), compiled.compiled.clone(), arg).expect("should run");
@@ -269,6 +286,35 @@ impl<FT: FuzzTypeParams> PropertyTest<FT> {
         }
 
         // We've checked all predicted values.
+    }
+
+    fn make_result<R>(
+        &self,
+        rng: &mut R,
+    ) -> (FT::State, FT::Expr)
+    where
+        R: Rng + Sized,
+        FT::Error: Debug,
+        FT::State: PropertyTestState<FT>
+    {
+        let srcloc = Srcloc::start("*value*");
+        let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("*test*"));
+
+        let mut idx = 0;
+        let mut fuzzgen = FuzzGenerator::new(self.top_node.clone(), &self.rules);
+        let mut mc = FT::State::new_state(rng);
+        while fuzzgen.expand(&mut mc, idx > self.run_expansion, rng).expect("should expand") {
+            let mut idx = 0;
+            let mut fuzzgen = FuzzGenerator::new(self.top_node.clone(), &self.rules);
+            let mut mc = FT::State::new_state(rng);
+            while fuzzgen.expand(&mut mc, idx > self.run_expansion, rng).expect("should expand") {
+                idx += 1;
+                mc.examine(fuzzgen.result());
+                assert!(idx < self.run_cutoff);
+            }
+        }
+
+        (mc, fuzzgen.result().clone())
     }
 }
 

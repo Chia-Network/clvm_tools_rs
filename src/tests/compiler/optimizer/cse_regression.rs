@@ -1,7 +1,10 @@
 use num_bigint::ToBigInt;
 use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Debug;
+use std::io::Error;
 use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
@@ -18,9 +21,175 @@ use crate::compiler::prims::primquote;
 use crate::compiler::sexp::{AtomValue, decode_string, parse_sexp, NodeSel, SelectNode, SExp, ThisNode};
 use crate::compiler::srcloc::Srcloc;
 
-use crate::tests::compiler::fuzz::{compose_sexp, GenError, HasVariableStore, perform_compile_of_file, PropertyTest, PropertyTestRun, PropertyTestState, simple_run, simple_seeded_rng, SupportedOperators, ValueSpecification};
+use crate::tests::compiler::fuzz::{compose_sexp, GenError, HasVariableStore, perform_compile_of_file, PropertyTest, PropertyTestState, simple_run, simple_seeded_rng, SupportedOperators, ValueSpecification};
 
-struct TrickyAssignExpectation {
+fn create_variable_set(srcloc: Srcloc, vars: usize) -> BTreeSet<Vec<u8>> {
+    (0..vars).map(|n| format!("v{n}").bytes().collect()).collect()
+}
+
+struct AssignExprData {
+    bindings: BTreeMap<Vec<u8>, Rc<ComplexAssignExpression>>,
+    body: Rc<ComplexAssignExpression>
+}
+
+enum ComplexAssignExpression {
+    Assign(Rc<AssignExprData>),
+    Simple(Rc<ValueSpecification>)
+}
+
+struct ExprCreationFuzzT { }
+impl FuzzTypeParams for ExprCreationFuzzT {
+    type Tag = Vec<u8>;
+    type Expr = Rc<SExp>;
+    type Error = GenError;
+    type State = ExprCreationState;
+}
+
+#[derive(Default)]
+struct ExprVariableUsage {
+    toplevel: BTreeSet<Vec<u8>>,
+    bindings: BTreeMap<Vec<u8>, Vec<Vec<u8>>>
+}
+
+impl ExprVariableUsage {
+    fn fmtvar(&self, writer: &mut std::fmt::Formatter<'_>, lvl: usize, v: &[u8]) -> Result<(), std::fmt::Error> {
+        for i in 0..(2*lvl) {
+            write!(writer, " ")?;
+        }
+        writeln!(writer, "{}:", decode_string(v));
+        if let Some(children) = self.bindings.get(v) {
+            for c in children.iter() {
+                self.fmtvar(writer, lvl + 1, c)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Debug for ExprVariableUsage {
+    fn fmt(&self, writer: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        for t in self.toplevel.iter() {
+            self.fmtvar(writer, 0, t)?;
+        }
+        Ok(())
+    }
+}
+
+// Precompute dependency graph of inner variables?
+//
+// Map v -> list<v> where v appears once and never downstream of itself.
+struct ExprCreationState {
+    rng: ChaCha8Rng,
+    structure_graph: ExprVariableUsage,
+    start_variables: BTreeSet<Vec<u8>>,
+    bindings: BTreeMap<Vec<u8>, Rc<ComplexAssignExpression>>,
+}
+
+fn create_structure_from_variables<R: Rng>(rng: &mut R, v: &BTreeSet<Vec<u8>>) -> ExprVariableUsage {
+    let mut v_start = v.clone();
+    let mut usage = ExprVariableUsage::default();
+
+    while !v_start.is_empty() {
+        // Choose a variable.
+        let chosen_idx: usize = rng.gen();
+        let chosen = v_start.iter().skip(chosen_idx % v_start.len()).next().cloned().unwrap();
+
+        // Decide whether it's toplevel (we always choose one if there are
+        // no toplevel choices.
+        let coin_flip_toplevel: usize = rng.gen();
+        if (usage.toplevel.is_empty() || (coin_flip_toplevel % 3) == 0) && usage.toplevel.len() < 5 {
+            // if so, copy it to the toplevel set.
+            usage.toplevel.insert(chosen.clone());
+        } else {
+            // otherwise, choose a key from result, add it there.
+            let parent_idx: usize = rng.gen();
+            let parent = usage.bindings.keys().skip(parent_idx % usage.bindings.len()).next().cloned().unwrap();
+            if let Some(children) = usage.bindings.get_mut(&parent) {
+                children.push(chosen.clone());
+            }
+        }
+
+        // Remove the chosen var from v_start, add an empty entry to result.
+        v_start.remove(&chosen);
+        usage.bindings.insert(chosen, Vec::new());
+    }
+
+    usage
+}
+
+impl PropertyTestState<ExprCreationFuzzT> for ExprCreationState {
+    fn new_state<R: Rng>(r: &mut R) -> Self {
+        let srcloc = Srcloc::start("*cl23-pre-cse-merge-fix");
+        let mut rng = simple_seeded_rng(0x02020202);
+        let vars = create_variable_set(srcloc, 5);
+        let structure_graph = create_structure_from_variables(&mut rng, &vars);
+
+        ExprCreationState {
+            rng: rng.clone(),
+            start_variables: vars,
+            structure_graph,
+            bindings: BTreeMap::default(),
+        }
+    }
+    fn examine(&self, result: &Rc<SExp>) {
+        eprintln!("state: {}", result);
+    }
+}
+
+struct ExprCreationGenerator {
+    rules: Vec<Rc<dyn Rule<ExprCreationFuzzT>>>
+}
+
+struct TopExprBinopRule { op: SupportedOperators }
+impl Rule<ExprCreationFuzzT> for TopExprBinopRule {
+    fn check(
+        &self,
+        state: &mut <ExprCreationFuzzT as FuzzTypeParams>::State,
+        tag: &<ExprCreationFuzzT as FuzzTypeParams>::Tag,
+        idx: usize,
+        terminate: bool,
+        parents: &[<ExprCreationFuzzT as FuzzTypeParams>::Expr]
+    ) -> Result<Option<<ExprCreationFuzzT as FuzzTypeParams>::Expr>, <ExprCreationFuzzT as FuzzTypeParams>::Error> {
+        if tag != b"top" {
+            return Ok(None);
+        }
+
+        let varlen = state.start_variables.len();
+        let ct1 = state.rng.gen::<usize>() % varlen;
+
+        eprintln!("vargen\n{:?}", state.structure_graph);
+        todo!();
+    }
+}
+
+impl ExprCreationGenerator {
+    fn new() -> Self {
+        // Make rules
+        ExprCreationGenerator {
+            rules: vec![
+                Rc::new(TopExprBinopRule { op: SupportedOperators::Plus }),
+            ]
+        }
+    }
+
+    fn generate<R: Rng>(&self, rng: &mut R) -> (ExprCreationState, Rc<ComplexAssignExpression>) {
+        let srcloc = Srcloc::start("*cl23-pre-cse-merge-fix");
+        let generated = PropertyTest::generate::<R, ExprCreationState>(rng, compose_sexp(srcloc.clone(), "${0:top}"), &self.rules);
+        todo!();
+    }
+}
+
+#[test]
+fn test_cse_merge_regression() {
+    let mut rng = simple_seeded_rng(13);
+    let eg = ExprCreationGenerator::new();
+    let (state, expression) = eg.generate(&mut rng);
+    todo!();
+}
+
+/*
+struct TrickyAssignRegression {
     opts: Rc<dyn CompilerOpts>,
     loc: Srcloc,
     count: usize,
@@ -170,7 +339,7 @@ impl Rule <FuzzT> for TestTrickyAssignFinalBinopRule {
     }
 }
 
-impl PropertyTestState<FuzzT> for TrickyAssignExpectation {
+impl PropertyTestState for TrickyAssignExpectation {
     fn new_state<R: Rng>(r: &mut R) -> Self {
         let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("*test*"));
         TrickyAssignExpectation::new(opts.set_dialect(AcceptedDialect {
@@ -178,8 +347,9 @@ impl PropertyTestState<FuzzT> for TrickyAssignExpectation {
             strict: true,
         }).set_optimize(true))
     }
-}
-impl PropertyTestRun for TrickyAssignExpectation {
+    fn filename(&self) -> String {
+        "*cl23-pre-cse-merge-fix-test.clsp".to_string()
+    }
     fn run_args(&self) -> String { "(3)".to_string() }
     fn check(&self, run_result: Rc<SExp>) {
         let want_result = self.compute();
@@ -189,7 +359,7 @@ impl PropertyTestRun for TrickyAssignExpectation {
 }
 
 #[test]
-fn test_property_fuzz_cse_binding() {
+fn test_property_fuzz_cse_regression() {
     let srcloc = Srcloc::start("*value*");
     let mut rng = simple_seeded_rng(0x02020202);
     let test = PropertyTest {
@@ -222,3 +392,4 @@ fn test_property_fuzz_cse_binding() {
 
     test.run(&mut rng);
 }
+*/
