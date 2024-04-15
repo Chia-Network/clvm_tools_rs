@@ -6,7 +6,7 @@ use std::borrow::Borrow;
 use std::fmt::{Debug, Display};
 use std::rc::Rc;
 use std::cell::{RefCell, RefMut};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use clvmr::Allocator;
 
@@ -378,6 +378,26 @@ impl ValueSpecification {
                 ]))
             }
         }
+    }
+
+    pub fn get_free_vars<'a>(&'a self) -> BTreeSet<Vec<u8>> {
+        let mut stack = vec![Rc::new(self.clone())];
+        let mut result = BTreeSet::default();
+
+        while let Some(v) = stack.pop() {
+            match v.borrow() {
+                ValueSpecification::VarRef(c) => {
+                    result.insert(c.clone());
+                }
+                ValueSpecification::ClvmBinop(_, l, r) => {
+                    stack.push(l.clone());
+                    stack.push(r.clone());
+                }
+                _ => { }
+            }
+        }
+
+        result
     }
 
     pub fn interpret<Store: HasVariableStore>(&self, opts: Rc<dyn CompilerOpts>, srcloc: &Srcloc, value_map: &Store) -> Rc<SExp> {

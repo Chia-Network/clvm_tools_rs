@@ -256,6 +256,8 @@ fn test_expr_variable_usage() {
             Rc::new(ValueSpecification::VarRef(b"a1".to_vec()))
         ))
     )));
+    let free_vars: Vec<Vec<u8>> = v1.get_free_vars().into_iter().collect();
+    assert_eq!(free_vars, vec![b"a1".to_vec(), b"v4".to_vec()]);
 }
 
 impl Debug for ExprVariableUsage {
