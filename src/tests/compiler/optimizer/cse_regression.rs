@@ -172,7 +172,6 @@ impl ExprVariableUsage {
 
             result = Rc::new(enlist(srcloc.clone(), &[
                 random_op.to_sexp(&srcloc),
-                result,
                 left_sexp,
                 right_sexp,
             ]));
@@ -192,7 +191,7 @@ impl ExprVariableUsage {
 fn test_expr_variable_usage() {
     let srcloc = Srcloc::start("*test*");
     let mut rng = simple_seeded_rng(0x02020202);
-    let vars = create_variable_set(srcloc, 5);
+    let vars = create_variable_set(srcloc.clone(), 5);
     let structure_graph = create_structure_from_variables(&mut rng, &vars);
 
     assert_eq!(
@@ -209,6 +208,54 @@ fn test_expr_variable_usage() {
     assert_eq!(structure_graph.variables_in_scope(b"v1"), vec![b"v4"]);
     assert_eq!(structure_graph.variables_in_scope(b"v0"), vec![b"v4", b"v1"]);
     assert_eq!(structure_graph.variables_in_scope(b"v3"), vec![b"v0", b"v2"]);
+    let (v3, e3) = structure_graph.generate_expression(&srcloc, 5, &mut rng, &[b"a1".to_vec(), b"a2".to_vec()], b"v3");
+    assert_eq!(e3.to_string(), "(18 (16 122 (17 a1 43)) -53)");
+    assert_eq!(v3, Rc::new(ValueSpecification::ClvmBinop(
+        SupportedOperators::Times,
+        Rc::new(ValueSpecification::ClvmBinop(
+            SupportedOperators::Plus,
+            Rc::new(ValueSpecification::ConstantValue(
+                Rc::new(SExp::Integer(srcloc.clone(), 122.to_bigint().unwrap()))
+            )),
+            Rc::new(ValueSpecification::ClvmBinop(
+                SupportedOperators::Minus,
+                Rc::new(ValueSpecification::VarRef(b"a1".to_vec())),
+                Rc::new(ValueSpecification::ConstantValue(
+                    Rc::new(SExp::Integer(srcloc.clone(), 43.to_bigint().unwrap()))
+                ))
+            )),
+        )),
+        Rc::new(ValueSpecification::ConstantValue(
+            Rc::new(SExp::Integer(srcloc.clone(), -53.to_bigint().unwrap()))
+        ))
+    )));
+    let (v1, e1) = structure_graph.generate_expression(&srcloc, 10, &mut rng, &[b"a1".to_vec()], b"v1");
+    assert_eq!(e1.to_string(), "(16 v4 (16 (17 (17 (16 v4 v4) 29) 109) a1))");
+    assert_eq!(v1, Rc::new(ValueSpecification::ClvmBinop(
+        SupportedOperators::Plus,
+        Rc::new(ValueSpecification::VarRef(b"v4".to_vec())),
+        Rc::new(ValueSpecification::ClvmBinop(
+            SupportedOperators::Plus,
+            Rc::new(ValueSpecification::ClvmBinop(
+                SupportedOperators::Minus,
+                Rc::new(ValueSpecification::ClvmBinop(
+                    SupportedOperators::Minus,
+                    Rc::new(ValueSpecification::ClvmBinop(
+                        SupportedOperators::Plus,
+                        Rc::new(ValueSpecification::VarRef(b"v4".to_vec())),
+                        Rc::new(ValueSpecification::VarRef(b"v4".to_vec()))
+                    )),
+                    Rc::new(ValueSpecification::ConstantValue(
+                        Rc::new(SExp::Integer(srcloc.clone(), 29.to_bigint().unwrap()))
+                    ))
+                )),
+                Rc::new(ValueSpecification::ConstantValue(
+                    Rc::new(SExp::Integer(srcloc.clone(), 109.to_bigint().unwrap()))
+                ))
+            )),
+            Rc::new(ValueSpecification::VarRef(b"a1".to_vec()))
+        ))
+    )));
 }
 
 impl Debug for ExprVariableUsage {

@@ -323,7 +323,7 @@ impl<FT: FuzzTypeParams> PropertyTest<FT> {
 // A generic, simple representation of expressions that allow us to evaluate
 // simple expressions.  We can add stuff that increases this capability for
 // all consumers.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum SupportedOperators {
     Plus,
     Minus,
@@ -350,7 +350,7 @@ impl Distribution<SupportedOperators> for Standard {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ValueSpecification {
     ConstantValue(Rc<SExp>),
     VarRef(Vec<u8>),
@@ -371,19 +371,11 @@ impl ValueSpecification {
                 Rc::new(SExp::Atom(srcloc.clone(), c.clone()))
             }
             ValueSpecification::ClvmBinop(op, left, right) => {
-                Rc::new(SExp::Cons(
-                    srcloc.clone(),
+                Rc::new(enlist(srcloc.clone(), &[
                     op.to_sexp(srcloc),
-                    Rc::new(SExp::Cons(
-                        srcloc.clone(),
-                        left.to_sexp(srcloc),
-                        Rc::new(SExp::Cons(
-                            srcloc.clone(),
-                            right.to_sexp(srcloc),
-                            Rc::new(SExp::Nil(srcloc.clone()))
-                        ))
-                    ))
-                ))
+                    left.to_sexp(srcloc),
+                    right.to_sexp(srcloc),
+                ]))
             }
         }
     }
