@@ -5,7 +5,7 @@ use rand::prelude::Distribution;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::borrow::Borrow;
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::{Debug, Display};
 use std::rc::Rc;
@@ -17,15 +17,14 @@ use crate::compiler::clvm::{convert_to_clvm_rs, run};
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, PrimaryCodegen};
 use crate::compiler::dialect::{detect_modern, AcceptedDialect};
-use crate::compiler::fuzz::{ExprModifier, FuzzGenerator, FuzzTypeParams, Rule};
+use crate::compiler::fuzz::{FuzzGenerator, FuzzTypeParams, Rule};
 use crate::compiler::prims::primquote;
 use crate::compiler::sexp::{enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::BasicCompileContext;
 
 #[derive(Debug)]
 pub struct GenError {
-    message: String,
+    pub message: String,
 }
 impl From<&str> for GenError {
     fn from(m: &str) -> GenError {
@@ -58,12 +57,6 @@ impl TestModuleCompilerOpts {
             opts,
             written_files: self.written_files.clone(),
         })
-    }
-
-    pub fn get_written_file<'a>(&'a self, name: &str) -> Option<Vec<u8>> {
-        let files_ref: &RefCell<HashMap<String, Vec<u8>>> = self.written_files.borrow();
-        let files: &HashMap<String, Vec<u8>> = &files_ref.borrow();
-        files.get(name).map(|f| f.to_vec())
     }
 }
 
@@ -245,7 +238,7 @@ pub fn simple_seeded_rng(seed: u32) -> ChaCha8Rng {
 
 pub trait PropertyTestState<FT: FuzzTypeParams> {
     fn new_state<R: Rng>(rng: &mut R) -> Self;
-    fn examine(&self, result: &FT::Expr) {}
+    fn examine(&self, _result: &FT::Expr) {}
 }
 pub trait PropertyTestRun {
     fn filename(&self) -> String {
@@ -254,7 +247,7 @@ pub trait PropertyTestRun {
     fn run_args(&self) -> String {
         "()".to_string()
     }
-    fn check(&self, run_result: Rc<SExp>) {}
+    fn check(&self, _run_result: Rc<SExp>) {}
 }
 
 pub struct PropertyTest<FT: FuzzTypeParams> {
@@ -267,26 +260,6 @@ pub struct PropertyTest<FT: FuzzTypeParams> {
 }
 
 impl<FT: FuzzTypeParams> PropertyTest<FT> {
-    pub fn generate<R: Rng, S: PropertyTestState<FT>>(
-        rng: &mut R,
-        top_node: FT::Expr,
-        rules: &[Rc<dyn Rule<FT>>],
-    ) -> (FT::State, FT::Expr)
-    where
-        FT::State: PropertyTestState<FT>,
-        FT::Error: Debug,
-    {
-        let pt = PropertyTest {
-            run_times: 0,
-            run_cutoff: 0,
-            run_expansion: 0,
-
-            top_node,
-            rules: rules.to_vec(),
-        };
-        pt.make_result(rng)
-    }
-
     pub fn run<R>(&self, rng: &mut R)
     where
         R: Rng + Sized,
@@ -294,7 +267,7 @@ impl<FT: FuzzTypeParams> PropertyTest<FT> {
         FT::Error: Debug,
         FT::Expr: ToString + Display,
     {
-        for i in 0..self.run_times {
+        for _ in 0..self.run_times {
             let (mc, result) = self.make_result(rng);
             let program_text = result.to_string();
 
@@ -328,9 +301,6 @@ impl<FT: FuzzTypeParams> PropertyTest<FT> {
         FT::Error: Debug,
         FT::State: PropertyTestState<FT>,
     {
-        let srcloc = Srcloc::start("*value*");
-        let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("*test*"));
-
         let mut idx = 0;
         let mut fuzzgen = FuzzGenerator::new(self.top_node.clone(), &self.rules);
         let mut mc = FT::State::new_state(rng);
@@ -338,7 +308,6 @@ impl<FT: FuzzTypeParams> PropertyTest<FT> {
             .expand(&mut mc, idx > self.run_expansion, rng)
             .expect("should expand")
         {
-            let mut idx = 0;
             let mut fuzzgen = FuzzGenerator::new(self.top_node.clone(), &self.rules);
             let mut mc = FT::State::new_state(rng);
             while fuzzgen

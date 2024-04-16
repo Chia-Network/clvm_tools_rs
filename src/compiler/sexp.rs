@@ -1225,6 +1225,7 @@ where
 //
 // Fuzzing support for SExp
 //
+#[cfg(any(test, feature = "fuzz"))]
 fn find_in_structure_inner(
     parents: &mut Vec<Rc<SExp>>,
     structure: Rc<SExp>,

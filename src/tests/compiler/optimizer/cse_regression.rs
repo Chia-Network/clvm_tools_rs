@@ -1,60 +1,30 @@
 use num_bigint::ToBigInt;
-use rand::{Rng, SeedableRng};
+use rand::Rng;
 use rand_chacha::ChaCha8Rng;
-use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Debug;
-use std::io::Error;
 use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::bi_one;
-use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
-use crate::compiler::clvm::{convert_from_clvm_rs, run};
-use crate::compiler::compiler::{compile_from_compileform, DefaultCompilerOpts};
+use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::{
-    Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData,
-    DefunData, HelperForm, LetData, LetFormKind,
+    Binding, BindingPattern, BodyForm, CompileForm, CompilerOpts, DefunData, HelperForm, LetData,
+    LetFormKind,
 };
 use crate::compiler::dialect::AcceptedDialect;
-use crate::compiler::frontend::compile_helperform;
-use crate::compiler::fuzz::{ExprModifier, FuzzGenerator, FuzzTypeParams, Rule};
-use crate::compiler::optimize::get_optimizer;
-use crate::compiler::prims::primquote;
-use crate::compiler::sexp::{
-    decode_string, enlist, parse_sexp, AtomValue, NodeSel, SExp, SelectNode, ThisNode,
-};
+use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::BasicCompileContext;
 
 use crate::tests::compiler::fuzz::{
-    compose_sexp, perform_compile_of_file, simple_run, simple_seeded_rng, GenError,
-    HasVariableStore, PropertyTest, PropertyTestState, SupportedOperators, ValueSpecification,
+    compose_sexp, simple_seeded_rng, SupportedOperators, ValueSpecification,
 };
 
-fn create_variable_set(srcloc: Srcloc, vars: usize) -> BTreeSet<Vec<u8>> {
+fn create_variable_set(_srcloc: Srcloc, vars: usize) -> BTreeSet<Vec<u8>> {
     (0..vars)
         .map(|n| format!("v{n}").bytes().collect())
         .collect()
-}
-
-struct AssignExprData {
-    bindings: BTreeMap<Vec<u8>, Rc<ComplexAssignExpression>>,
-    body: Rc<ComplexAssignExpression>,
-}
-
-enum ComplexAssignExpression {
-    Assign(Rc<AssignExprData>),
-    Simple(Rc<ValueSpecification>),
-}
-
-struct ExprCreationFuzzT {}
-impl FuzzTypeParams for ExprCreationFuzzT {
-    type Tag = Vec<u8>;
-    type Expr = Rc<SExp>;
-    type Error = GenError;
-    type State = ExprCreationState;
 }
 
 #[derive(Default, Clone)]
@@ -76,7 +46,7 @@ impl ExprVariableUsage {
         lvl: usize,
         v: &[u8],
     ) -> Result<(), std::fmt::Error> {
-        for i in 0..(2 * lvl) {
+        for _ in 0..(2 * lvl) {
             write!(writer, " ")?;
         }
         writeln!(writer, "{}:", decode_string(v))?;
@@ -218,7 +188,7 @@ impl ExprVariableUsage {
         let complexity: usize = rng.gen();
 
         // Generate up to a certain number of operations.
-        for i in 0..(complexity % wanted_complexity) {
+        for _ in 0..(complexity % wanted_complexity) {
             // Generate the other branch.
             let other_result = generate_simple(rng);
 
@@ -446,16 +416,6 @@ impl Debug for ExprVariableUsage {
     }
 }
 
-// Precompute dependency graph of inner variables?
-//
-// Map v -> list<v> where v appears once and never downstream of itself.
-struct ExprCreationState {
-    rng: ChaCha8Rng,
-    structure_graph: ExprVariableUsage,
-    start_variables: BTreeSet<Vec<u8>>,
-    bindings: BTreeMap<Vec<u8>, Rc<ComplexAssignExpression>>,
-}
-
 fn create_structure_from_variables<R: Rng>(
     rng: &mut R,
     v: &BTreeSet<Vec<u8>>,
@@ -503,25 +463,6 @@ fn create_structure_from_variables<R: Rng>(
     usage
 }
 
-impl PropertyTestState<ExprCreationFuzzT> for ExprCreationState {
-    fn new_state<R: Rng>(r: &mut R) -> Self {
-        let srcloc = Srcloc::start("*cl23-pre-cse-merge-fix");
-        let mut rng = simple_seeded_rng(0x02020202);
-        let vars = create_variable_set(srcloc, 5);
-        let structure_graph = create_structure_from_variables(&mut rng, &vars);
-
-        ExprCreationState {
-            rng: rng.clone(),
-            start_variables: vars,
-            structure_graph,
-            bindings: BTreeMap::default(),
-        }
-    }
-    fn examine(&self, result: &Rc<SExp>) {
-        eprintln!("state: {}", result);
-    }
-}
-
 // Produce a program that provides a valid regression test for the cse merge fix.
 fn produce_valid_cse_regression_merge_test<R: Rng>(
     srcloc: &Srcloc,
@@ -537,7 +478,6 @@ fn produce_valid_cse_regression_merge_test<R: Rng>(
     let args: Vec<Vec<u8>> = vec![b"a1".to_vec()];
 
     // Get the generated variable graph.
-    let vars: Vec<Vec<u8>> = structure_graph.bindings.keys().cloned().collect();
     eprintln!("vars\n{structure_graph:?}");
 
     // For each variable in the graph, generate some candidate expressions to

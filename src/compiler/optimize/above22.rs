@@ -25,6 +25,16 @@ use crate::compiler::StartOfCodegenOptimization;
 #[derive(Default, Clone)]
 pub struct Strategy23 {}
 
+#[cfg(feature = "fuzz")]
+fn enable_cse_merge_fix_so_can_be_disabled_for_tests(opts: Rc<dyn CompilerOpts>) -> bool {
+    !opts.filename().starts_with("*cl23-pre-cse-merge-fix")
+}
+
+#[cfg(not(feature = "fuzz"))]
+fn enable_cse_merge_fix_so_can_be_disabled_for_tests(opts: Rc<dyn CompilerOpts>) -> bool {
+    true
+}
+
 impl Strategy23 {
     pub fn new() -> Self {
         Strategy23 {}
@@ -40,10 +50,8 @@ impl Optimization for Strategy23 {
         mut p0: CompileForm,
     ) -> Result<CompileForm, CompileErr> {
         let mut rebuilt_helpers = Vec::new();
-        // XXX Come up with a good way to do this.
-        #[deprecated]
         let enable_merge_disable_for_tests =
-            !opts.filename().starts_with("*cl23-pre-cse-merge-fix");
+            enable_cse_merge_fix_so_can_be_disabled_for_tests(opts.clone());
         for h in p0.helpers.iter() {
             if let HelperForm::Defun(inline, d) = h {
                 eprintln!("cse optimize helper {}", h.to_sexp());

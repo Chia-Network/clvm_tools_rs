@@ -589,6 +589,11 @@ fn merge_cse_binding(body: &BodyForm, binding: Rc<Binding>) -> BodyForm {
 
 type CSEReplacementTargetAndBindings<'a> = Vec<&'a (Vec<BodyformPathArc>, Vec<BindingStackEntry>)>;
 
+/// Given a bodyform, CSE analyze and produce a semantically equivalent bodyform
+/// that has common expressions removed into assignments to variables prefixed
+/// with cse.
+///
+/// Note: allow_merge is an option only for regression testing.
 pub fn cse_optimize_bodyform(
     loc: &Srcloc,
     name: &[u8],

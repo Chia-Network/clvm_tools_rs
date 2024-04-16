@@ -1,31 +1,17 @@
-use num_bigint::ToBigInt;
-use rand::{Rng, SeedableRng};
-use std::borrow::Borrow;
-use std::collections::{BTreeMap, BTreeSet};
+use rand::Rng;
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use clvmr::allocator::Allocator;
-
-use crate::classic::clvm::__type_compatibility__::bi_one;
-use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
-use crate::compiler::clvm::{convert_from_clvm_rs, run};
 use crate::compiler::compiler::DefaultCompilerOpts;
-use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompilerOpts, DefconstData, DefunData, HelperForm,
-};
+use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::dialect::AcceptedDialect;
-use crate::compiler::frontend::compile_helperform;
-use crate::compiler::fuzz::{ExprModifier, FuzzGenerator, FuzzTypeParams, Rule};
-use crate::compiler::prims::primquote;
-use crate::compiler::sexp::{
-    decode_string, parse_sexp, AtomValue, NodeSel, SExp, SelectNode, ThisNode,
-};
+use crate::compiler::fuzz::{FuzzTypeParams, Rule};
+use crate::compiler::sexp::{AtomValue, NodeSel, SExp, SelectNode, ThisNode};
 use crate::compiler::srcloc::Srcloc;
 
 use crate::tests::compiler::fuzz::{
-    compose_sexp, perform_compile_of_file, simple_run, simple_seeded_rng, GenError,
-    HasVariableStore, PropertyTest, PropertyTestRun, PropertyTestState, SupportedOperators,
-    ValueSpecification,
+    compose_sexp, simple_seeded_rng, GenError, HasVariableStore, PropertyTest, PropertyTestRun,
+    PropertyTestState, SupportedOperators, ValueSpecification,
 };
 
 struct TrickyAssignExpectation {
@@ -82,8 +68,8 @@ impl Rule<FuzzT> for TestTrickyAssignFuzzTopRule {
         state: &mut TrickyAssignExpectation,
         tag: &Vec<u8>,
         idx: usize,
-        terminate: bool,
-        heritage: &[Rc<SExp>],
+        _terminate: bool,
+        _heritage: &[Rc<SExp>],
     ) -> Result<Option<Rc<SExp>>, GenError> {
         if tag != b"top" {
             return Ok(None);
@@ -102,8 +88,8 @@ impl Rule<FuzzT> for TestTrickyAssignFuzzTestFormRule {
         state: &mut TrickyAssignExpectation,
         tag: &Vec<u8>,
         idx: usize,
-        terminate: bool,
-        heritage: &[Rc<SExp>],
+        _terminate: bool,
+        _heritage: &[Rc<SExp>],
     ) -> Result<Option<Rc<SExp>>, GenError> {
         if tag != b"assign-test-form" {
             return Ok(None);
@@ -129,7 +115,7 @@ impl Rule<FuzzT> for TestTrickyAssignFuzzTestFormRule {
 }
 
 fn find_var_name_in_heritage(heritage: &[Rc<SExp>]) -> Vec<u8> {
-    let NodeSel::Cons((varloc, varname), _) = NodeSel::Cons(AtomValue::Here(()), ThisNode)
+    let NodeSel::Cons((_varloc, varname), _) = NodeSel::Cons(AtomValue::Here(()), ThisNode)
         .select_nodes(heritage[heritage.len() - 2].clone())
         .unwrap();
     varname.clone()
@@ -143,8 +129,8 @@ impl Rule<FuzzT> for TestTrickyAssignVarDefConstantRule {
         &self,
         state: &mut TrickyAssignExpectation,
         tag: &Vec<u8>,
-        idx: usize,
-        terminate: bool,
+        _idx: usize,
+        _terminate: bool,
         heritage: &[Rc<SExp>],
     ) -> Result<Option<Rc<SExp>>, GenError> {
         if tag != b"vardef" || heritage.len() < 3 {
@@ -169,8 +155,8 @@ impl Rule<FuzzT> for TestTrickyAssignVarDefBinopRule {
         &self,
         state: &mut TrickyAssignExpectation,
         tag: &Vec<u8>,
-        idx: usize,
-        terminate: bool,
+        _idx: usize,
+        _terminate: bool,
         heritage: &[Rc<SExp>],
     ) -> Result<Option<Rc<SExp>>, GenError> {
         if tag != b"vardef" || state.var_defs.is_empty() || heritage.len() < 3 {
@@ -201,9 +187,9 @@ impl Rule<FuzzT> for TestTrickyAssignFinalExpr {
         &self,
         state: &mut TrickyAssignExpectation,
         tag: &Vec<u8>,
-        idx: usize,
-        terminate: bool,
-        heritage: &[Rc<SExp>],
+        _idx: usize,
+        _terminate: bool,
+        _heritage: &[Rc<SExp>],
     ) -> Result<Option<Rc<SExp>>, GenError> {
         if tag != b"final-expr" || state.var_defs.is_empty() {
             return Ok(None);
@@ -229,9 +215,9 @@ impl Rule<FuzzT> for TestTrickyAssignFinalBinopRule {
         &self,
         state: &mut TrickyAssignExpectation,
         tag: &Vec<u8>,
-        idx: usize,
-        terminate: bool,
-        heritage: &[Rc<SExp>],
+        _idx: usize,
+        _terminate: bool,
+        _heritage: &[Rc<SExp>],
     ) -> Result<Option<Rc<SExp>>, GenError> {
         if tag != b"final-expr" || state.var_defs.is_empty() {
             return Ok(None);
@@ -254,7 +240,7 @@ impl Rule<FuzzT> for TestTrickyAssignFinalBinopRule {
 }
 
 impl PropertyTestState<FuzzT> for TrickyAssignExpectation {
-    fn new_state<R: Rng>(r: &mut R) -> Self {
+    fn new_state<R: Rng>(_r: &mut R) -> Self {
         let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("*test*"));
         TrickyAssignExpectation::new(
             opts.set_dialect(AcceptedDialect {
@@ -282,7 +268,7 @@ fn test_property_fuzz_cse_binding() {
     let mut rng = simple_seeded_rng(0x02020202);
     let test = PropertyTest {
         run_times: 500,
-        run_cutoff: 100,
+        run_cutoff: 300,
         run_expansion: 20,
 
         top_node: compose_sexp(srcloc.clone(), "${0:top}"),

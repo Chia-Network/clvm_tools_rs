@@ -59,7 +59,7 @@ impl<FT: FuzzTypeParams> FuzzGenerator<FT> {
         }
     }
 
-    pub fn result<'a>(&'a self) -> &'a FT::Expr {
+    pub fn result(&self) -> &FT::Expr {
         &self.structure
     }
 
