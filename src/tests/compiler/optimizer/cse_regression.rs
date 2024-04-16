@@ -11,35 +11,45 @@ use clvmr::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
-use crate::compiler::BasicCompileContext;
 use crate::compiler::clvm::{convert_from_clvm_rs, run};
 use crate::compiler::compiler::{compile_from_compileform, DefaultCompilerOpts};
-use crate::compiler::comptypes::{Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData, DefunData, HelperForm, LetData, LetFormKind};
+use crate::compiler::comptypes::{
+    Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData,
+    DefunData, HelperForm, LetData, LetFormKind,
+};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::frontend::compile_helperform;
 use crate::compiler::fuzz::{ExprModifier, FuzzGenerator, FuzzTypeParams, Rule};
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::prims::primquote;
-use crate::compiler::sexp::{AtomValue, decode_string, enlist, parse_sexp, NodeSel, SelectNode, SExp, ThisNode};
+use crate::compiler::sexp::{
+    decode_string, enlist, parse_sexp, AtomValue, NodeSel, SExp, SelectNode, ThisNode,
+};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::BasicCompileContext;
 
-use crate::tests::compiler::fuzz::{compose_sexp, GenError, HasVariableStore, perform_compile_of_file, PropertyTest, PropertyTestState, simple_run, simple_seeded_rng, SupportedOperators, ValueSpecification};
+use crate::tests::compiler::fuzz::{
+    compose_sexp, perform_compile_of_file, simple_run, simple_seeded_rng, GenError,
+    HasVariableStore, PropertyTest, PropertyTestState, SupportedOperators, ValueSpecification,
+};
 
 fn create_variable_set(srcloc: Srcloc, vars: usize) -> BTreeSet<Vec<u8>> {
-    (0..vars).map(|n| format!("v{n}").bytes().collect()).collect()
+    (0..vars)
+        .map(|n| format!("v{n}").bytes().collect())
+        .collect()
 }
 
 struct AssignExprData {
     bindings: BTreeMap<Vec<u8>, Rc<ComplexAssignExpression>>,
-    body: Rc<ComplexAssignExpression>
+    body: Rc<ComplexAssignExpression>,
 }
 
 enum ComplexAssignExpression {
     Assign(Rc<AssignExprData>),
-    Simple(Rc<ValueSpecification>)
+    Simple(Rc<ValueSpecification>),
 }
 
-struct ExprCreationFuzzT { }
+struct ExprCreationFuzzT {}
 impl FuzzTypeParams for ExprCreationFuzzT {
     type Tag = Vec<u8>;
     type Expr = Rc<SExp>;
@@ -50,7 +60,7 @@ impl FuzzTypeParams for ExprCreationFuzzT {
 #[derive(Default, Clone)]
 struct ExprVariableUsage {
     toplevel: BTreeSet<Vec<u8>>,
-    bindings: BTreeMap<Vec<u8>, Vec<Vec<u8>>>
+    bindings: BTreeMap<Vec<u8>, Vec<Vec<u8>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,8 +70,13 @@ struct GeneratedExpr {
 }
 
 impl ExprVariableUsage {
-    fn fmtvar(&self, writer: &mut std::fmt::Formatter<'_>, lvl: usize, v: &[u8]) -> Result<(), std::fmt::Error> {
-        for i in 0..(2*lvl) {
+    fn fmtvar(
+        &self,
+        writer: &mut std::fmt::Formatter<'_>,
+        lvl: usize,
+        v: &[u8],
+    ) -> Result<(), std::fmt::Error> {
+        for i in 0..(2 * lvl) {
             write!(writer, " ")?;
         }
         writeln!(writer, "{}:", decode_string(v))?;
@@ -77,9 +92,9 @@ impl ExprVariableUsage {
     // Find the parent of this var.
     fn find_parent_of_var<'a>(&'a self, var: &[u8]) -> Option<&'a Vec<u8>> {
         for (parent, bindings) in self.bindings.iter() {
-                if bindings.iter().any(|c| c == var) {
-                    return Some(parent);
-                }
+            if bindings.iter().any(|c| c == var) {
+                return Some(parent);
+            }
         }
 
         None
@@ -100,9 +115,11 @@ impl ExprVariableUsage {
     fn variables_in_scope<'a>(&'a self, var: &[u8]) -> Vec<&'a Vec<u8>> {
         // If this variable itself use an assign form as its definition, then
         // all the innermost bindings are in scope.
-        let mut result = self.bindings.get(var).map(|v| {
-            v.iter().map(|e| &(*e)).collect()
-        }).unwrap_or_else(|| vec![]);
+        let mut result = self
+            .bindings
+            .get(var)
+            .map(|v| v.iter().map(|e| &(*e)).collect())
+            .unwrap_or_else(|| vec![]);
 
         // Get the parents of var.
         let parents = self.find_path_to_var(var);
@@ -113,24 +130,36 @@ impl ExprVariableUsage {
 
         // If there are no parents, then the variables in scope are the toplevel
         // ones that appear before var.
-        let mut from_scopes =
-            if parents.is_empty() {
-                self.toplevel.iter().take_while(|t| *t != var).map(|t| &(*t)).collect()
-            } else {
-                let mut scopes = Vec::new();
-                let mut target = var;
-                for p in parents.iter() {
-                    let p_borrowed: &[u8] = &p;
-                    if let Some(children) = self.bindings.get(p_borrowed) {
-                        eprintln!("checking parent: {}", decode_string(p));
-                        let mut appear_before_in_parent: Vec<&'a Vec<u8>> = children.iter().take_while(|c| *c != target).map(|t| &(*t)).collect();
-                        eprintln!("{} in scope with parent {} of {}", appear_before_in_parent.len(), decode_string(p), decode_string(var));
-                        scopes.append(&mut appear_before_in_parent);
-                        target = p;
-                    }
+        let mut from_scopes = if parents.is_empty() {
+            self.toplevel
+                .iter()
+                .take_while(|t| *t != var)
+                .map(|t| &(*t))
+                .collect()
+        } else {
+            let mut scopes = Vec::new();
+            let mut target = var;
+            for p in parents.iter() {
+                let p_borrowed: &[u8] = &p;
+                if let Some(children) = self.bindings.get(p_borrowed) {
+                    eprintln!("checking parent: {}", decode_string(p));
+                    let mut appear_before_in_parent: Vec<&'a Vec<u8>> = children
+                        .iter()
+                        .take_while(|c| *c != target)
+                        .map(|t| &(*t))
+                        .collect();
+                    eprintln!(
+                        "{} in scope with parent {} of {}",
+                        appear_before_in_parent.len(),
+                        decode_string(p),
+                        decode_string(var)
+                    );
+                    scopes.append(&mut appear_before_in_parent);
+                    target = p;
                 }
-                scopes
-            };
+            }
+            scopes
+        };
 
         // Add the visible toplevel definitions if they won
         result.append(&mut from_scopes);
@@ -138,7 +167,14 @@ impl ExprVariableUsage {
     }
 
     // Generate an expression to define one variable.
-    fn generate_expression<R: Rng>(&self, srcloc: &Srcloc, wanted_complexity: usize, rng: &mut R, args: &[Vec<u8>], var: &[u8]) -> GeneratedExpr {
+    fn generate_expression<R: Rng>(
+        &self,
+        srcloc: &Srcloc,
+        wanted_complexity: usize,
+        rng: &mut R,
+        args: &[Vec<u8>],
+        var: &[u8],
+    ) -> GeneratedExpr {
         let mut in_scope: Vec<&Vec<u8>> = args.iter().collect();
         let mut assignments_in_scope = self.variables_in_scope(var);
         in_scope.append(&mut assignments_in_scope);
@@ -150,11 +186,12 @@ impl ExprVariableUsage {
         let generate_constant = |rng: &mut R| {
             // Constant value
             let random_number: i8 = rng.gen();
-            let sexp = Rc::new(SExp::Integer(srcloc.clone(), random_number.to_bigint().unwrap()));
+            let sexp = Rc::new(SExp::Integer(
+                srcloc.clone(),
+                random_number.to_bigint().unwrap(),
+            ));
             let definition = Rc::new(ValueSpecification::ConstantValue(sexp.clone()));
-            GeneratedExpr {
-                definition, sexp
-            }
+            GeneratedExpr { definition, sexp }
         };
 
         let generate_reference = |rng: &mut R| {
@@ -165,7 +202,7 @@ impl ExprVariableUsage {
 
             GeneratedExpr {
                 definition: reference,
-                sexp: var_sexp
+                sexp: var_sexp,
             }
         };
 
@@ -187,24 +224,22 @@ impl ExprVariableUsage {
 
             // Generate a binop.
             let random_op: SupportedOperators = rng.gen();
-            let (left, right) =
-                if rng.gen() {
-                    (result, other_result)
-                } else {
-                    (other_result, result)
-                };
+            let (left, right) = if rng.gen() {
+                (result, other_result)
+            } else {
+                (other_result, result)
+            };
 
             result = GeneratedExpr {
-                sexp: Rc::new(enlist(srcloc.clone(), &[
-                    Rc::new(random_op.to_sexp(&srcloc)),
-                    left.sexp,
-                    right.sexp,
-                ])),
+                sexp: Rc::new(enlist(
+                    srcloc.clone(),
+                    &[Rc::new(random_op.to_sexp(&srcloc)), left.sexp, right.sexp],
+                )),
                 definition: Rc::new(ValueSpecification::ClvmBinop(
                     random_op,
                     left.definition,
                     right.definition,
-                ))
+                )),
             };
         }
 
@@ -212,7 +247,12 @@ impl ExprVariableUsage {
     }
 
     // Create the assignments for the assign form.
-    fn create_assign_form_for_var(&self, srcloc: &Srcloc, expressions: &BTreeMap<Vec<u8>, GeneratedExpr>, var: &[u8]) -> BodyForm {
+    fn create_assign_form_for_var(
+        &self,
+        srcloc: &Srcloc,
+        expressions: &BTreeMap<Vec<u8>, GeneratedExpr>,
+        var: &[u8],
+    ) -> BodyForm {
         let bound_in_var = self.bindings.get(var).cloned().unwrap_or_else(|| vec![]);
         let expr = expressions.get(var).unwrap();
 
@@ -221,45 +261,76 @@ impl ExprVariableUsage {
             return expr.definition.to_bodyform(srcloc);
         }
 
-        let bindings: Vec<Rc<Binding>> = bound_in_var.iter().map(|t| {
-            let body = self.create_assign_form_for_var(srcloc, expressions, t);
-            Rc::new(Binding {
-                loc: srcloc.clone(),
-                nl: srcloc.clone(),
-                body: Rc::new(body),
-                pattern: BindingPattern::Complex(Rc::new(SExp::Atom(srcloc.clone(), t.to_vec())))
+        let bindings: Vec<Rc<Binding>> = bound_in_var
+            .iter()
+            .map(|t| {
+                let body = self.create_assign_form_for_var(srcloc, expressions, t);
+                Rc::new(Binding {
+                    loc: srcloc.clone(),
+                    nl: srcloc.clone(),
+                    body: Rc::new(body),
+                    pattern: BindingPattern::Complex(Rc::new(SExp::Atom(
+                        srcloc.clone(),
+                        t.to_vec(),
+                    ))),
+                })
             })
-        }).collect();
+            .collect();
 
-        BodyForm::Let(LetFormKind::Assign, Box::new(LetData {
-            kw: None,
-            loc: srcloc.clone(),
-            bindings,
-            body: Rc::new(expr.definition.to_bodyform(srcloc)),
-            inline_hint: None
-        }))
+        BodyForm::Let(
+            LetFormKind::Assign,
+            Box::new(LetData {
+                kw: None,
+                loc: srcloc.clone(),
+                bindings,
+                body: Rc::new(expr.definition.to_bodyform(srcloc)),
+                inline_hint: None,
+            }),
+        )
     }
 
-    fn create_assign_form(&self, srcloc: &Srcloc, expressions: &BTreeMap<Vec<u8>, GeneratedExpr>) -> BodyForm {
+    fn create_assign_form(
+        &self,
+        srcloc: &Srcloc,
+        expressions: &BTreeMap<Vec<u8>, GeneratedExpr>,
+    ) -> BodyForm {
         assert!(!self.toplevel.is_empty());
-        let last_top = self.toplevel.iter().skip(self.toplevel.len()-1).next().unwrap();
-        let bindings: Vec<Rc<Binding>> = self.toplevel.iter().map(|t| {
-            let body = self.create_assign_form_for_var(srcloc, expressions, t);
-            Rc::new(Binding {
-                loc: srcloc.clone(),
-                nl: srcloc.clone(),
-                body: Rc::new(body),
-                pattern: BindingPattern::Complex(Rc::new(SExp::Atom(srcloc.clone(), t.to_vec())))
+        let last_top = self
+            .toplevel
+            .iter()
+            .skip(self.toplevel.len() - 1)
+            .next()
+            .unwrap();
+        let bindings: Vec<Rc<Binding>> = self
+            .toplevel
+            .iter()
+            .map(|t| {
+                let body = self.create_assign_form_for_var(srcloc, expressions, t);
+                Rc::new(Binding {
+                    loc: srcloc.clone(),
+                    nl: srcloc.clone(),
+                    body: Rc::new(body),
+                    pattern: BindingPattern::Complex(Rc::new(SExp::Atom(
+                        srcloc.clone(),
+                        t.to_vec(),
+                    ))),
+                })
             })
-        }).collect();
+            .collect();
 
-        BodyForm::Let(LetFormKind::Assign, Box::new(LetData {
-            loc: srcloc.clone(),
-            kw: None,
-            bindings,
-            inline_hint: None,
-            body: Rc::new(BodyForm::Value(SExp::Atom(srcloc.clone(), last_top.clone())))
-        }))
+        BodyForm::Let(
+            LetFormKind::Assign,
+            Box::new(LetData {
+                loc: srcloc.clone(),
+                kw: None,
+                bindings,
+                inline_hint: None,
+                body: Rc::new(BodyForm::Value(SExp::Atom(
+                    srcloc.clone(),
+                    last_top.clone(),
+                ))),
+            }),
+        )
     }
 }
 
@@ -272,66 +343,96 @@ fn test_expr_variable_usage() {
 
     assert_eq!(
         format!("{structure_graph:?}"),
-        indoc!{"
+        indoc! {"
         v0:
           v4:
           v1:
         v2:
         v3:
-        "});
-    assert_eq!(structure_graph.find_parent_of_var(b"v1"), Some(&b"v0".to_vec()));
+        "}
+    );
+    assert_eq!(
+        structure_graph.find_parent_of_var(b"v1"),
+        Some(&b"v0".to_vec())
+    );
     assert_eq!(structure_graph.find_path_to_var(b"v1"), vec![b"v0"]);
     assert_eq!(structure_graph.variables_in_scope(b"v1"), vec![b"v4"]);
-    assert_eq!(structure_graph.variables_in_scope(b"v0"), vec![b"v4", b"v1"]);
-    assert_eq!(structure_graph.variables_in_scope(b"v3"), vec![b"v0", b"v2"]);
-    let g3 = structure_graph.generate_expression(&srcloc, 5, &mut rng, &[b"a1".to_vec(), b"a2".to_vec()], b"v3");
+    assert_eq!(
+        structure_graph.variables_in_scope(b"v0"),
+        vec![b"v4", b"v1"]
+    );
+    assert_eq!(
+        structure_graph.variables_in_scope(b"v3"),
+        vec![b"v0", b"v2"]
+    );
+    let g3 = structure_graph.generate_expression(
+        &srcloc,
+        5,
+        &mut rng,
+        &[b"a1".to_vec(), b"a2".to_vec()],
+        b"v3",
+    );
     assert_eq!(g3.sexp.to_string(), "(18 (16 122 (17 a1 43)) -53)");
-    assert_eq!(g3.definition, Rc::new(ValueSpecification::ClvmBinop(
-        SupportedOperators::Times,
+    assert_eq!(
+        g3.definition,
         Rc::new(ValueSpecification::ClvmBinop(
-            SupportedOperators::Plus,
-            Rc::new(ValueSpecification::ConstantValue(
-                Rc::new(SExp::Integer(srcloc.clone(), 122.to_bigint().unwrap()))
-            )),
+            SupportedOperators::Times,
             Rc::new(ValueSpecification::ClvmBinop(
-                SupportedOperators::Minus,
-                Rc::new(ValueSpecification::VarRef(b"a1".to_vec())),
-                Rc::new(ValueSpecification::ConstantValue(
-                    Rc::new(SExp::Integer(srcloc.clone(), 43.to_bigint().unwrap()))
-                ))
+                SupportedOperators::Plus,
+                Rc::new(ValueSpecification::ConstantValue(Rc::new(SExp::Integer(
+                    srcloc.clone(),
+                    122.to_bigint().unwrap()
+                )))),
+                Rc::new(ValueSpecification::ClvmBinop(
+                    SupportedOperators::Minus,
+                    Rc::new(ValueSpecification::VarRef(b"a1".to_vec())),
+                    Rc::new(ValueSpecification::ConstantValue(Rc::new(SExp::Integer(
+                        srcloc.clone(),
+                        43.to_bigint().unwrap()
+                    ))))
+                )),
             )),
-        )),
-        Rc::new(ValueSpecification::ConstantValue(
-            Rc::new(SExp::Integer(srcloc.clone(), -53.to_bigint().unwrap()))
+            Rc::new(ValueSpecification::ConstantValue(Rc::new(SExp::Integer(
+                srcloc.clone(),
+                -53.to_bigint().unwrap()
+            ))))
         ))
-    )));
+    );
     let g1 = structure_graph.generate_expression(&srcloc, 10, &mut rng, &[b"a1".to_vec()], b"v1");
-    assert_eq!(g1.sexp.to_string(), "(16 v4 (16 (17 (17 (16 v4 v4) 29) 109) a1))");
-    assert_eq!(g1.definition, Rc::new(ValueSpecification::ClvmBinop(
-        SupportedOperators::Plus,
-        Rc::new(ValueSpecification::VarRef(b"v4".to_vec())),
+    assert_eq!(
+        g1.sexp.to_string(),
+        "(16 v4 (16 (17 (17 (16 v4 v4) 29) 109) a1))"
+    );
+    assert_eq!(
+        g1.definition,
         Rc::new(ValueSpecification::ClvmBinop(
             SupportedOperators::Plus,
+            Rc::new(ValueSpecification::VarRef(b"v4".to_vec())),
             Rc::new(ValueSpecification::ClvmBinop(
-                SupportedOperators::Minus,
+                SupportedOperators::Plus,
                 Rc::new(ValueSpecification::ClvmBinop(
                     SupportedOperators::Minus,
                     Rc::new(ValueSpecification::ClvmBinop(
-                        SupportedOperators::Plus,
-                        Rc::new(ValueSpecification::VarRef(b"v4".to_vec())),
-                        Rc::new(ValueSpecification::VarRef(b"v4".to_vec()))
+                        SupportedOperators::Minus,
+                        Rc::new(ValueSpecification::ClvmBinop(
+                            SupportedOperators::Plus,
+                            Rc::new(ValueSpecification::VarRef(b"v4".to_vec())),
+                            Rc::new(ValueSpecification::VarRef(b"v4".to_vec()))
+                        )),
+                        Rc::new(ValueSpecification::ConstantValue(Rc::new(SExp::Integer(
+                            srcloc.clone(),
+                            29.to_bigint().unwrap()
+                        ))))
                     )),
-                    Rc::new(ValueSpecification::ConstantValue(
-                        Rc::new(SExp::Integer(srcloc.clone(), 29.to_bigint().unwrap()))
-                    ))
+                    Rc::new(ValueSpecification::ConstantValue(Rc::new(SExp::Integer(
+                        srcloc.clone(),
+                        109.to_bigint().unwrap()
+                    ))))
                 )),
-                Rc::new(ValueSpecification::ConstantValue(
-                    Rc::new(SExp::Integer(srcloc.clone(), 109.to_bigint().unwrap()))
-                ))
-            )),
-            Rc::new(ValueSpecification::VarRef(b"a1".to_vec()))
+                Rc::new(ValueSpecification::VarRef(b"a1".to_vec()))
+            ))
         ))
-    )));
+    );
     let free_vars: Vec<Vec<u8>> = g1.definition.get_free_vars().into_iter().collect();
     assert_eq!(free_vars, vec![b"a1".to_vec(), b"v4".to_vec()]);
 }
@@ -355,25 +456,40 @@ struct ExprCreationState {
     bindings: BTreeMap<Vec<u8>, Rc<ComplexAssignExpression>>,
 }
 
-fn create_structure_from_variables<R: Rng>(rng: &mut R, v: &BTreeSet<Vec<u8>>) -> ExprVariableUsage {
+fn create_structure_from_variables<R: Rng>(
+    rng: &mut R,
+    v: &BTreeSet<Vec<u8>>,
+) -> ExprVariableUsage {
     let mut v_start = v.clone();
     let mut usage = ExprVariableUsage::default();
 
     while !v_start.is_empty() {
         // Choose a variable.
         let chosen_idx: usize = rng.gen();
-        let chosen = v_start.iter().skip(chosen_idx % v_start.len()).next().cloned().unwrap();
+        let chosen = v_start
+            .iter()
+            .skip(chosen_idx % v_start.len())
+            .next()
+            .cloned()
+            .unwrap();
 
         // Decide whether it's toplevel (we always choose one if there are
         // no toplevel choices.
         let coin_flip_toplevel: usize = rng.gen();
-        if (usage.toplevel.is_empty() || (coin_flip_toplevel % 3) == 0) && usage.toplevel.len() < 5 {
+        if (usage.toplevel.is_empty() || (coin_flip_toplevel % 3) == 0) && usage.toplevel.len() < 5
+        {
             // if so, copy it to the toplevel set.
             usage.toplevel.insert(chosen.clone());
         } else {
             // otherwise, choose a key from result, add it there.
             let parent_idx: usize = rng.gen();
-            let parent = usage.bindings.keys().skip(parent_idx % usage.bindings.len()).next().cloned().unwrap();
+            let parent = usage
+                .bindings
+                .keys()
+                .skip(parent_idx % usage.bindings.len())
+                .next()
+                .cloned()
+                .unwrap();
             if let Some(children) = usage.bindings.get_mut(&parent) {
                 children.push(chosen.clone());
             }
@@ -407,7 +523,10 @@ impl PropertyTestState<ExprCreationFuzzT> for ExprCreationState {
 }
 
 // Produce a program that provides a valid regression test for the cse merge fix.
-fn produce_valid_cse_regression_merge_test<R: Rng>(srcloc: &Srcloc, rng: &mut R) -> Option<CompileForm> {
+fn produce_valid_cse_regression_merge_test<R: Rng>(
+    srcloc: &Srcloc,
+    rng: &mut R,
+) -> Option<CompileForm> {
     // Strategy:
     let vars = create_variable_set(srcloc.clone(), 7);
 
@@ -423,47 +542,60 @@ fn produce_valid_cse_regression_merge_test<R: Rng>(srcloc: &Srcloc, rng: &mut R)
 
     // For each variable in the graph, generate some candidate expressions to
     // define it.
-    let candidate_definitions: BTreeMap<Vec<u8>, GeneratedExpr> = structure_graph.bindings.keys().map(|k| {
-        (k.clone(),
-         structure_graph.generate_expression(&srcloc, 10, rng, &args, k))
-    }).collect();
+    let candidate_definitions: BTreeMap<Vec<u8>, GeneratedExpr> = structure_graph
+        .bindings
+        .keys()
+        .map(|k| {
+            (
+                k.clone(),
+                structure_graph.generate_expression(&srcloc, 10, rng, &args, k),
+            )
+        })
+        .collect();
 
     let body = structure_graph.create_assign_form(srcloc, &candidate_definitions);
     let args = compose_sexp(srcloc.clone(), "(a1)");
-    let function = HelperForm::Defun(false, Box::new(DefunData {
-        loc: srcloc.clone(),
-        nl: srcloc.clone(),
-        kw: None,
-        name: b"defined-fun".to_vec(),
-        orig_args: args.clone(),
-        args: args.clone(),
-        synthetic: None,
-        body: Rc::new(body)
-    }));
+    let function = HelperForm::Defun(
+        false,
+        Box::new(DefunData {
+            loc: srcloc.clone(),
+            nl: srcloc.clone(),
+            kw: None,
+            name: b"defined-fun".to_vec(),
+            orig_args: args.clone(),
+            args: args.clone(),
+            synthetic: None,
+            body: Rc::new(body),
+        }),
+    );
 
     Some(CompileForm {
         loc: srcloc.clone(),
         args: args,
         helpers: vec![function],
         include_forms: vec![],
-        exp: Rc::new(BodyForm::Call(srcloc.clone(), vec![
-            Rc::new(BodyForm::Value(SExp::Atom(srcloc.clone(), b"defined-fun".to_vec()))),
-            Rc::new(BodyForm::Value(SExp::Atom(srcloc.clone(), b"a1".to_vec())))
-        ], None))
+        exp: Rc::new(BodyForm::Call(
+            srcloc.clone(),
+            vec![
+                Rc::new(BodyForm::Value(SExp::Atom(
+                    srcloc.clone(),
+                    b"defined-fun".to_vec(),
+                ))),
+                Rc::new(BodyForm::Value(SExp::Atom(srcloc.clone(), b"a1".to_vec()))),
+            ],
+            None,
+        )),
     })
 }
 
 #[test]
 fn test_cse_merge_regression() {
-
     let mut rng = simple_seeded_rng(1);
     let srcloc = Srcloc::start("*test*");
 
-    let produce_program = |rng: &mut ChaCha8Rng| {
-        loop {
-            if let Some(res) = produce_valid_cse_regression_merge_test(&srcloc, rng) {
-                return res;
-            }
+    let produce_program = |rng: &mut ChaCha8Rng| loop {
+        if let Some(res) = produce_valid_cse_regression_merge_test(&srcloc, rng) {
+            return res;
         }
     };
 
@@ -472,7 +604,7 @@ fn test_cse_merge_regression() {
         let program_sexp = Rc::new(SExp::Cons(
             srcloc.clone(),
             Rc::new(SExp::Atom(srcloc.clone(), b"mod".to_vec())),
-            test_program.to_sexp()
+            test_program.to_sexp(),
         ));
 
         eprintln!("test_program {}", program_sexp);
@@ -480,23 +612,29 @@ fn test_cse_merge_regression() {
             stepping: Some(23),
             strict: true,
         };
-        let new_opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("test.clsp")).set_dialect(dialect.clone()).set_optimize(true).set_frontend_opt(false);
-        let old_opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("*cl23-pre-cse-merge-fix")).set_dialect(dialect.clone()).set_optimize(true).set_frontend_opt(false);
+        let new_opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("test.clsp"))
+            .set_dialect(dialect.clone())
+            .set_optimize(true)
+            .set_frontend_opt(false);
+        let old_opts: Rc<dyn CompilerOpts> =
+            Rc::new(DefaultCompilerOpts::new("*cl23-pre-cse-merge-fix"))
+                .set_dialect(dialect.clone())
+                .set_optimize(true)
+                .set_frontend_opt(false);
         let mut allocator = Allocator::new();
         let runner = Rc::new(DefaultProgramRunner::new());
         let mut symbols = HashMap::new();
-        let new_compiled = new_opts.compile_program(
-            &mut allocator,
-            runner.clone(),
-            program_sexp.clone(),
-            &mut symbols
-        ).expect("should compile (new)");
-        let old_compiled = old_opts.compile_program(
-            &mut allocator,
-            runner.clone(),
-            program_sexp,
-            &mut symbols
-        ).expect("should compile (old)");
+        let new_compiled = new_opts
+            .compile_program(
+                &mut allocator,
+                runner.clone(),
+                program_sexp.clone(),
+                &mut symbols,
+            )
+            .expect("should compile (new)");
+        let old_compiled = old_opts
+            .compile_program(&mut allocator, runner.clone(), program_sexp, &mut symbols)
+            .expect("should compile (old)");
         assert_eq!(new_compiled, old_compiled);
     }
 }

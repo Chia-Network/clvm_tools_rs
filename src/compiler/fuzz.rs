@@ -9,7 +9,7 @@ pub trait FuzzTypeParams {
 }
 
 #[derive(Clone, Debug)]
-pub struct FuzzChoice<Item,Tag> {
+pub struct FuzzChoice<Item, Tag> {
     pub tag: Tag,
     pub atom: Item,
 }
@@ -19,7 +19,7 @@ pub trait ExprModifier {
     type Item;
 
     /// Add identified in-progress expansions into waiters.
-    fn find_waiters(&self, waiters: &mut Vec<FuzzChoice<Self::Item,Self::Tag>>);
+    fn find_waiters(&self, waiters: &mut Vec<FuzzChoice<Self::Item, Self::Tag>>);
 
     /// Replace a value where it appears in the structure with a new value.
     fn replace_node(&self, to_replace: &Self::Item, new_value: Self::Item) -> Self::Item;
@@ -30,13 +30,20 @@ pub trait ExprModifier {
 }
 
 pub trait Rule<FT: FuzzTypeParams> {
-    fn check(&self, state: &mut FT::State, tag: &FT::Tag, idx: usize, terminate: bool, parents: &[FT::Expr]) -> Result<Option<FT::Expr>, FT::Error>;
+    fn check(
+        &self,
+        state: &mut FT::State,
+        tag: &FT::Tag,
+        idx: usize,
+        terminate: bool,
+        parents: &[FT::Expr],
+    ) -> Result<Option<FT::Expr>, FT::Error>;
 }
 
 pub struct FuzzGenerator<FT: FuzzTypeParams> {
     idx: usize,
     structure: FT::Expr,
-    waiting: Vec<FuzzChoice<FT::Expr,FT::Tag>>,
+    waiting: Vec<FuzzChoice<FT::Expr, FT::Tag>>,
     rules: Vec<Rc<dyn Rule<FT>>>,
 }
 
@@ -52,16 +59,23 @@ impl<FT: FuzzTypeParams> FuzzGenerator<FT> {
         }
     }
 
-    pub fn result<'a>(&'a self) -> &'a FT::Expr { &self.structure }
+    pub fn result<'a>(&'a self) -> &'a FT::Expr {
+        &self.structure
+    }
 
     fn remove_waiting(&mut self, waiting_atom: &FT::Expr) -> Result<(), FT::Error> {
-        let to_remove_waiting: Vec<usize> = self.waiting.iter().enumerate().filter_map(|(i,w)| {
-            if w.atom == *waiting_atom {
-                Some(i)
-            } else {
-                None
-            }
-        }).collect();
+        let to_remove_waiting: Vec<usize> = self
+            .waiting
+            .iter()
+            .enumerate()
+            .filter_map(|(i, w)| {
+                if w.atom == *waiting_atom {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         if to_remove_waiting.is_empty() {
             return Err("remove_waiting must succeed".into());
@@ -71,7 +85,12 @@ impl<FT: FuzzTypeParams> FuzzGenerator<FT> {
         Ok(())
     }
 
-    pub fn expand<R: Rng + Sized>(&mut self, state: &mut FT::State, terminate: bool, rng: &mut R) -> Result<bool, FT::Error> {
+    pub fn expand<R: Rng + Sized>(
+        &mut self,
+        state: &mut FT::State,
+        terminate: bool,
+        rng: &mut R,
+    ) -> Result<bool, FT::Error> {
         let mut waiting = self.waiting.clone();
 
         while !waiting.is_empty() {
@@ -81,25 +100,20 @@ impl<FT: FuzzTypeParams> FuzzGenerator<FT> {
             let chosen = waiting[waiting_choice].clone();
             waiting.remove(waiting_choice);
 
-            let heritage =
-                if let Some(heritage) = self.structure.find_in_structure(&chosen.atom) {
-                    heritage
-                } else {
-                    return Err("Parity wasn't kept between the structure and waiting list".into());
-                };
+            let heritage = if let Some(heritage) = self.structure.find_in_structure(&chosen.atom) {
+                heritage
+            } else {
+                return Err("Parity wasn't kept between the structure and waiting list".into());
+            };
 
             while !rules.is_empty() {
                 let rule_choice: usize = rng.gen::<usize>() % rules.len();
                 let chosen_rule = rules[rule_choice].clone();
                 rules.remove(rule_choice);
 
-                if let Some(res) = chosen_rule.check(
-                    state,
-                    &chosen.tag,
-                    self.idx,
-                    terminate,
-                    &heritage
-                )? {
+                if let Some(res) =
+                    chosen_rule.check(state, &chosen.tag, self.idx, terminate, &heritage)?
+                {
                     let mut new_waiters = Vec::new();
                     res.find_waiters(&mut new_waiters);
                     for n in new_waiters.into_iter() {

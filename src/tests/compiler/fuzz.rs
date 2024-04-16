@@ -1,32 +1,38 @@
 use num_bigint::ToBigInt;
 
-use rand_chacha::ChaCha8Rng;
-use rand::{Rng, SeedableRng};
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 use std::borrow::Borrow;
-use std::fmt::{Debug, Display};
-use std::rc::Rc;
 use std::cell::{RefCell, RefMut};
 use std::collections::{BTreeSet, HashMap};
+use std::fmt::{Debug, Display};
+use std::rc::Rc;
 
 use clvmr::Allocator;
 
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
-use crate::compiler::BasicCompileContext;
 use crate::compiler::clvm::{convert_to_clvm_rs, run};
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, PrimaryCodegen};
-use crate::compiler::dialect::{AcceptedDialect, detect_modern};
+use crate::compiler::dialect::{detect_modern, AcceptedDialect};
 use crate::compiler::fuzz::{ExprModifier, FuzzGenerator, FuzzTypeParams, Rule};
 use crate::compiler::prims::primquote;
 use crate::compiler::sexp::{enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::BasicCompileContext;
 
 #[derive(Debug)]
-pub struct GenError { message: String }
+pub struct GenError {
+    message: String,
+}
 impl From<&str> for GenError {
-    fn from(m: &str) -> GenError { GenError { message: m.to_string() } }
+    fn from(m: &str) -> GenError {
+        GenError {
+            message: m.to_string(),
+        }
+    }
 }
 
 pub fn compose_sexp(loc: Srcloc, s: &str) -> Rc<SExp> {
@@ -146,7 +152,8 @@ impl CompilerOpts for TestModuleCompilerOpts {
         sexp: Rc<SExp>,
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
-        self.opts.compile_program(allocator, runner, sexp, symbol_table)
+        self.opts
+            .compile_program(allocator, runner, sexp, symbol_table)
     }
 }
 
@@ -174,20 +181,18 @@ pub fn perform_compile_of_file(
     let source_opts = TestModuleCompilerOpts::new(orig_opts);
     let opts: Rc<dyn CompilerOpts> = Rc::new(source_opts.clone());
     let mut symbol_table = HashMap::new();
-    let compiled = compile_file(
-        allocator,
-        runner.clone(),
-        opts,
-        &content,
-        &mut symbol_table,
-    )?;
+    let compiled = compile_file(allocator, runner.clone(), opts, &content, &mut symbol_table)?;
     Ok(PerformCompileResult {
         compiled: Rc::new(compiled),
         source_opts,
     })
 }
 
-pub fn simple_run(opts: Rc<dyn CompilerOpts>, expr: Rc<SExp>, env: Rc<SExp>) -> Result<Rc<SExp>, CompileErr> {
+pub fn simple_run(
+    opts: Rc<dyn CompilerOpts>,
+    expr: Rc<SExp>,
+    env: Rc<SExp>,
+) -> Result<Rc<SExp>, CompileErr> {
     let mut allocator = Allocator::new();
     let runner: Rc<dyn TRunProgram> = Rc::new(DefaultProgramRunner::new());
     Ok(run(
@@ -197,32 +202,59 @@ pub fn simple_run(opts: Rc<dyn CompilerOpts>, expr: Rc<SExp>, env: Rc<SExp>) -> 
         expr,
         env,
         None,
-        None
+        None,
     )?)
 }
 
 pub fn simple_seeded_rng(seed: u32) -> ChaCha8Rng {
     ChaCha8Rng::from_seed([
-        1,1,1,1,1,1,1,1,
-        1,1,1,1,1,1,1,1,
-        2,2,2,2,2,2,2,2,
-        2,2,2,2,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
         ((seed >> 24) & 0xff) as u8,
         ((seed >> 16) & 0xff) as u8,
         ((seed >> 8) & 0xff) as u8,
         (seed & 0xff) as u8,
     ])
-
 }
 
 pub trait PropertyTestState<FT: FuzzTypeParams> {
     fn new_state<R: Rng>(rng: &mut R) -> Self;
-    fn examine(&self, result: &FT::Expr) { }
+    fn examine(&self, result: &FT::Expr) {}
 }
 pub trait PropertyTestRun {
-    fn filename(&self) -> String { "test.clsp".to_string() }
-    fn run_args(&self) -> String { "()".to_string() }
-    fn check(&self, run_result: Rc<SExp>) { }
+    fn filename(&self) -> String {
+        "test.clsp".to_string()
+    }
+    fn run_args(&self) -> String {
+        "()".to_string()
+    }
+    fn check(&self, run_result: Rc<SExp>) {}
 }
 
 pub struct PropertyTest<FT: FuzzTypeParams> {
@@ -238,11 +270,11 @@ impl<FT: FuzzTypeParams> PropertyTest<FT> {
     pub fn generate<R: Rng, S: PropertyTestState<FT>>(
         rng: &mut R,
         top_node: FT::Expr,
-        rules: &[Rc<dyn Rule<FT>>]
+        rules: &[Rc<dyn Rule<FT>>],
     ) -> (FT::State, FT::Expr)
     where
         FT::State: PropertyTestState<FT>,
-        FT::Error: Debug
+        FT::Error: Debug,
     {
         let pt = PropertyTest {
             run_times: 0,
@@ -250,22 +282,18 @@ impl<FT: FuzzTypeParams> PropertyTest<FT> {
             run_expansion: 0,
 
             top_node,
-            rules: rules.to_vec()
+            rules: rules.to_vec(),
         };
         pt.make_result(rng)
     }
 
-    pub fn run<R>(
-        &self,
-        rng: &mut R,
-    )
+    pub fn run<R>(&self, rng: &mut R)
     where
         R: Rng + Sized,
         FT::State: PropertyTestState<FT> + PropertyTestRun,
         FT::Error: Debug,
         FT::Expr: ToString + Display,
     {
-
         for i in 0..self.run_times {
             let (mc, result) = self.make_result(rng);
             let program_text = result.to_string();
@@ -278,28 +306,27 @@ impl<FT: FuzzTypeParams> PropertyTest<FT> {
                 runner.clone(),
                 &mc.filename(),
                 &program_text,
-            ).expect("should compile");
+            )
+            .expect("should compile");
 
             // Collect output values from compiled.
             let srcloc = Srcloc::start("*value*");
             let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("*test*"));
             let run_args = mc.run_args();
             let arg = compose_sexp(srcloc.clone(), &run_args);
-            let run_result = simple_run(opts.clone(), compiled.compiled.clone(), arg).expect("should run");
+            let run_result =
+                simple_run(opts.clone(), compiled.compiled.clone(), arg).expect("should run");
             mc.check(run_result);
         }
 
         // We've checked all predicted values.
     }
 
-    fn make_result<R>(
-        &self,
-        rng: &mut R,
-    ) -> (FT::State, FT::Expr)
+    fn make_result<R>(&self, rng: &mut R) -> (FT::State, FT::Expr)
     where
         R: Rng + Sized,
         FT::Error: Debug,
-        FT::State: PropertyTestState<FT>
+        FT::State: PropertyTestState<FT>,
     {
         let srcloc = Srcloc::start("*value*");
         let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("*test*"));
@@ -307,11 +334,17 @@ impl<FT: FuzzTypeParams> PropertyTest<FT> {
         let mut idx = 0;
         let mut fuzzgen = FuzzGenerator::new(self.top_node.clone(), &self.rules);
         let mut mc = FT::State::new_state(rng);
-        while fuzzgen.expand(&mut mc, idx > self.run_expansion, rng).expect("should expand") {
+        while fuzzgen
+            .expand(&mut mc, idx > self.run_expansion, rng)
+            .expect("should expand")
+        {
             let mut idx = 0;
             let mut fuzzgen = FuzzGenerator::new(self.top_node.clone(), &self.rules);
             let mut mc = FT::State::new_state(rng);
-            while fuzzgen.expand(&mut mc, idx > self.run_expansion, rng).expect("should expand") {
+            while fuzzgen
+                .expand(&mut mc, idx > self.run_expansion, rng)
+                .expect("should expand")
+            {
                 idx += 1;
                 mc.examine(fuzzgen.result());
                 assert!(idx < self.run_cutoff);
@@ -337,7 +370,7 @@ impl SupportedOperators {
         match self {
             SupportedOperators::Plus => 16,
             SupportedOperators::Minus => 17,
-            SupportedOperators::Times => 18
+            SupportedOperators::Times => 18,
         }
     }
     pub fn to_sexp(&self, srcloc: &Srcloc) -> SExp {
@@ -354,7 +387,7 @@ impl Distribution<SupportedOperators> for Standard {
         match rng.gen::<u8>() % 3 {
             0 => SupportedOperators::Plus,
             1 => SupportedOperators::Minus,
-            _ => SupportedOperators::Times
+            _ => SupportedOperators::Times,
         }
     }
 }
@@ -363,7 +396,11 @@ impl Distribution<SupportedOperators> for Standard {
 pub enum ValueSpecification {
     ConstantValue(Rc<SExp>),
     VarRef(Vec<u8>),
-    ClvmBinop(SupportedOperators, Rc<ValueSpecification>, Rc<ValueSpecification>),
+    ClvmBinop(
+        SupportedOperators,
+        Rc<ValueSpecification>,
+        Rc<ValueSpecification>,
+    ),
 }
 
 pub trait HasVariableStore {
@@ -377,28 +414,29 @@ impl ValueSpecification {
                 let c_borrowed: &SExp = c.borrow();
                 c_borrowed.clone()
             }
-            ValueSpecification::VarRef(c) => {
-                SExp::Atom(srcloc.clone(), c.clone())
-            }
-            ValueSpecification::ClvmBinop(op, left, right) => {
-                enlist(srcloc.clone(), &[
+            ValueSpecification::VarRef(c) => SExp::Atom(srcloc.clone(), c.clone()),
+            ValueSpecification::ClvmBinop(op, left, right) => enlist(
+                srcloc.clone(),
+                &[
                     Rc::new(op.to_sexp(srcloc)),
                     Rc::new(left.to_sexp(srcloc)),
                     Rc::new(right.to_sexp(srcloc)),
-                ])
-            }
+                ],
+            ),
         }
     }
 
     pub fn to_bodyform(&self, srcloc: &Srcloc) -> BodyForm {
         match self {
-            ValueSpecification::ClvmBinop(op, left, right) => {
-                BodyForm::Call(srcloc.clone(), vec![
+            ValueSpecification::ClvmBinop(op, left, right) => BodyForm::Call(
+                srcloc.clone(),
+                vec![
                     Rc::new(op.to_bodyform(srcloc)),
                     Rc::new(left.to_bodyform(srcloc)),
-                    Rc::new(right.to_bodyform(srcloc))
-                ], None)
-            }
+                    Rc::new(right.to_bodyform(srcloc)),
+                ],
+                None,
+            ),
             ValueSpecification::ConstantValue(v) => {
                 let borrowed_sexp: &SExp = v.borrow();
                 BodyForm::Quoted(borrowed_sexp.clone())
@@ -422,14 +460,19 @@ impl ValueSpecification {
                     stack.push(l.clone());
                     stack.push(r.clone());
                 }
-                _ => { }
+                _ => {}
             }
         }
 
         result
     }
 
-    pub fn interpret<Store: HasVariableStore>(&self, opts: Rc<dyn CompilerOpts>, srcloc: &Srcloc, value_map: &Store) -> Rc<SExp> {
+    pub fn interpret<Store: HasVariableStore>(
+        &self,
+        opts: Rc<dyn CompilerOpts>,
+        srcloc: &Srcloc,
+        value_map: &Store,
+    ) -> Rc<SExp> {
         match self {
             ValueSpecification::ConstantValue(c) => c.clone(),
             ValueSpecification::VarRef(c) => {
@@ -453,9 +496,9 @@ impl ValueSpecification {
                         Rc::new(SExp::Cons(
                             srcloc.clone(),
                             Rc::new(primquote(srcloc.clone(), right_val)),
-                            nil.clone()
-                        ))
-                    ))
+                            nil.clone(),
+                        )),
+                    )),
                 ));
                 simple_run(opts, expr, nil).expect("should succeed")
             }

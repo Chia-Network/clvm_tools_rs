@@ -2361,8 +2361,8 @@ fn test_assign_rename_tricky() {
         program.clone(),
         "(11)".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     assert_eq!(run_result_11, "506");
 
     let run_result_41 = do_basic_brun(&vec!["brun".to_string(), program, "(41)".to_string()])
@@ -2386,8 +2386,8 @@ fn test_cse_breakage_example() {
         program.clone(),
         "(())".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     assert_eq!(run_result_11, "((a 3) (a 3) (a 3))");
 }
 
@@ -2406,8 +2406,8 @@ fn test_cse_breakage_example_letstar() {
         program.clone(),
         "(())".to_string(),
     ])
-        .trim()
-        .to_string();
+    .trim()
+    .to_string();
     assert_eq!(run_result_11, "((a 3) (a 3) (a 3))");
 }
 

@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 use std::cmp::min;
 use std::collections::{BTreeMap, HashSet};
-use std::fmt::{Error, Formatter, Debug};
+use std::fmt::{Debug, Error, Formatter};
 use std::rc::Rc;
 
 use crate::compiler::clvm::sha256tree;
@@ -45,7 +45,15 @@ pub struct CSEDetection {
 
 impl Debug for CSEDetection {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "CSEDetection {{ hash: {:?}, root: {:?}, saturated: {}, subexp: {}, instances: {:?} }}", self.hash, self.root, self.saturated, self.subexp.to_sexp(), self.instances)
+        write!(
+            f,
+            "CSEDetection {{ hash: {:?}, root: {:?}, saturated: {}, subexp: {}, instances: {:?} }}",
+            self.hash,
+            self.root,
+            self.saturated,
+            self.subexp.to_sexp(),
+            self.instances
+        )
     }
 }
 
@@ -516,15 +524,10 @@ impl CSEBindingInfo {
 fn detect_merge_into_host_assign(
     target: &[BodyformPathArc],
     body: &BodyForm,
-    binding: Rc<Binding>
+    binding: Rc<Binding>,
 ) -> bool {
     let root_expr =
-        if let Some(root_expr) =
-        retrieve_bodyform(
-            target,
-            body,
-            &|b: &BodyForm| { b.clone() }
-        ) {
+        if let Some(root_expr) = retrieve_bodyform(target, body, &|b: &BodyForm| b.clone()) {
             root_expr
         } else {
             return false;
@@ -541,8 +544,10 @@ fn detect_merge_into_host_assign(
             return false;
         }
 
-        let used_names: HashSet<Vec<u8>> =
-            collect_used_names_bodyform(binding.body.borrow()).iter().cloned().collect();
+        let used_names: HashSet<Vec<u8>> = collect_used_names_bodyform(binding.body.borrow())
+            .iter()
+            .cloned()
+            .collect();
 
         let mut provided_names: Vec<Vec<u8>> = Vec::new();
         for b in letdata.bindings.iter() {
@@ -569,10 +574,13 @@ fn merge_cse_binding(body: &BodyForm, binding: Rc<Binding>) -> BodyForm {
         if matches!(kind, LetFormKind::Assign) {
             let mut new_bindings = letdata.bindings.clone();
             new_bindings.push(binding.clone());
-            return BodyForm::Let(kind.clone(), Box::new(LetData {
-                bindings: new_bindings,
-                .. *letdata.clone()
-            }));
+            return BodyForm::Let(
+                kind.clone(),
+                Box::new(LetData {
+                    bindings: new_bindings,
+                    ..*letdata.clone()
+                }),
+            );
         }
     }
 
@@ -749,14 +757,15 @@ pub fn cse_optimize_bodyform(
                             //   of let forms.
                             // (2) it uses bindings from that assign form.
                             let rc_binding = Rc::new(site.binding.clone());
-                            let should_merge = allow_merge && detect_merge_into_host_assign(
-                                target_path,
-                                &function_body,
-                                rc_binding.clone(),
-                            );
+                            let should_merge = allow_merge
+                                && detect_merge_into_host_assign(
+                                    target_path,
+                                    &function_body,
+                                    rc_binding.clone(),
+                                );
                             BindingStackEntry {
                                 binding: rc_binding,
-                                merge: should_merge
+                                merge: should_merge,
                             }
                         })
                         .collect();
@@ -837,9 +846,7 @@ pub fn cse_optimize_bodyform(
                         loc: function_body.loc(),
                         kw: None,
                         inline_hint: Some(LetFormInlineHint::NonInline(loc.clone())),
-                        bindings: not_to_merge.iter().map(|b| {
-                            b.binding.clone()
-                        }).collect(),
+                        bindings: not_to_merge.iter().map(|b| b.binding.clone()).collect(),
                         body: Rc::new(output_body.clone()),
                     }),
                 )
