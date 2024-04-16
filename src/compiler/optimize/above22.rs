@@ -54,7 +54,6 @@ impl Optimization for Strategy23 {
             enable_cse_merge_fix_so_can_be_disabled_for_tests(opts.clone());
         for h in p0.helpers.iter() {
             if let HelperForm::Defun(inline, d) = h {
-                eprintln!("cse optimize helper {}", h.to_sexp());
                 let function_body = cse_optimize_bodyform(
                     &h.loc(),
                     h.name(),
@@ -70,7 +69,6 @@ impl Optimization for Strategy23 {
                     }),
                 );
 
-                eprintln!("cse optimized {}", new_helper.to_sexp());
                 rebuilt_helpers.push(new_helper);
             } else {
                 rebuilt_helpers.push(h.clone());
