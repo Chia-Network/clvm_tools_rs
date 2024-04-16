@@ -1,3 +1,5 @@
+use num_bigint::ToBigInt;
+
 use rand_chacha::ChaCha8Rng;
 use rand::{Rng, SeedableRng};
 use rand::distributions::Standard;
@@ -14,7 +16,7 @@ use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProg
 use crate::compiler::BasicCompileContext;
 use crate::compiler::clvm::{convert_to_clvm_rs, run};
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
-use crate::compiler::comptypes::{CompileErr, CompilerOpts, PrimaryCodegen};
+use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, PrimaryCodegen};
 use crate::compiler::dialect::{AcceptedDialect, detect_modern};
 use crate::compiler::fuzz::{ExprModifier, FuzzGenerator, FuzzTypeParams, Rule};
 use crate::compiler::prims::primquote;
@@ -331,12 +333,19 @@ pub enum SupportedOperators {
 }
 
 impl SupportedOperators {
-    pub fn to_sexp(&self, srcloc: &Srcloc) -> Rc<SExp> {
+    pub fn to_int(&self) -> usize {
         match self {
-            SupportedOperators::Plus => compose_sexp(srcloc.clone(), "16"),
-            SupportedOperators::Minus => compose_sexp(srcloc.clone(), "17"),
-            SupportedOperators::Times => compose_sexp(srcloc.clone(), "18")
+            SupportedOperators::Plus => 16,
+            SupportedOperators::Minus => 17,
+            SupportedOperators::Times => 18
         }
+    }
+    pub fn to_sexp(&self, srcloc: &Srcloc) -> SExp {
+        SExp::Integer(srcloc.clone(), self.to_int().to_bigint().unwrap())
+    }
+
+    pub fn to_bodyform(&self, srcloc: &Srcloc) -> BodyForm {
+        BodyForm::Value(self.to_sexp(srcloc))
     }
 }
 
@@ -362,20 +371,40 @@ pub trait HasVariableStore {
 }
 
 impl ValueSpecification {
-    pub fn to_sexp(&self, srcloc: &Srcloc) -> Rc<SExp> {
+    pub fn to_sexp(&self, srcloc: &Srcloc) -> SExp {
         match self {
             ValueSpecification::ConstantValue(c) => {
-                c.clone()
+                let c_borrowed: &SExp = c.borrow();
+                c_borrowed.clone()
             }
             ValueSpecification::VarRef(c) => {
-                Rc::new(SExp::Atom(srcloc.clone(), c.clone()))
+                SExp::Atom(srcloc.clone(), c.clone())
             }
             ValueSpecification::ClvmBinop(op, left, right) => {
-                Rc::new(enlist(srcloc.clone(), &[
-                    op.to_sexp(srcloc),
-                    left.to_sexp(srcloc),
-                    right.to_sexp(srcloc),
-                ]))
+                enlist(srcloc.clone(), &[
+                    Rc::new(op.to_sexp(srcloc)),
+                    Rc::new(left.to_sexp(srcloc)),
+                    Rc::new(right.to_sexp(srcloc)),
+                ])
+            }
+        }
+    }
+
+    pub fn to_bodyform(&self, srcloc: &Srcloc) -> BodyForm {
+        match self {
+            ValueSpecification::ClvmBinop(op, left, right) => {
+                BodyForm::Call(srcloc.clone(), vec![
+                    Rc::new(op.to_bodyform(srcloc)),
+                    Rc::new(left.to_bodyform(srcloc)),
+                    Rc::new(right.to_bodyform(srcloc))
+                ], None)
+            }
+            ValueSpecification::ConstantValue(v) => {
+                let borrowed_sexp: &SExp = v.borrow();
+                BodyForm::Quoted(borrowed_sexp.clone())
+            }
+            ValueSpecification::VarRef(v) => {
+                BodyForm::Value(SExp::Atom(srcloc.clone(), v.to_vec()))
             }
         }
     }
@@ -417,7 +446,7 @@ impl ValueSpecification {
                 let nil = Rc::new(SExp::Nil(srcloc.clone()));
                 let expr = Rc::new(SExp::Cons(
                     srcloc.clone(),
-                    operator,
+                    Rc::new(operator),
                     Rc::new(SExp::Cons(
                         srcloc.clone(),
                         Rc::new(primquote(srcloc.clone(), left_val)),

@@ -137,7 +137,7 @@ impl Rule<FuzzT> for TestTrickyAssignVarDefBinopRule {
 
         let spec = Rc::new(ValueSpecification::ClvmBinop(self.op.clone(), Rc::new(ValueSpecification::ConstantValue(self.other.clone())), my_value));
         state.var_defs.insert(my_name.clone(), spec.clone());
-        Ok(Some(spec.to_sexp(&state.loc)))
+        Ok(Some(Rc::new(spec.to_sexp(&state.loc))))
     }
 }
 
@@ -166,7 +166,7 @@ impl Rule <FuzzT> for TestTrickyAssignFinalBinopRule {
         let (k, _) = state.var_defs.iter().skip(to_skip).next().unwrap();
         let result_expr = Rc::new(ValueSpecification::ClvmBinop(self.op.clone(), Rc::new(ValueSpecification::ConstantValue(self.other.clone())), Rc::new(ValueSpecification::VarRef(k.to_vec()))));
         state.final_var = Some(result_expr.clone());
-        Ok(Some(Rc::new(SExp::Cons(state.loc.clone(), result_expr.to_sexp(&state.loc), Rc::new(SExp::Nil(state.loc.clone()))))))
+        Ok(Some(Rc::new(SExp::Cons(state.loc.clone(), Rc::new(result_expr.to_sexp(&state.loc)), Rc::new(SExp::Nil(state.loc.clone()))))))
     }
 }
 
