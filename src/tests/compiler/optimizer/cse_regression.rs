@@ -467,7 +467,7 @@ fn test_cse_merge_regression() {
         }
     };
 
-    for _ in 0..10 {
+    for _ in 0..20 {
         let test_program = produce_program(&mut rng);
         let program_sexp = Rc::new(SExp::Cons(
             srcloc.clone(),
