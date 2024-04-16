@@ -2,7 +2,7 @@ use num_bigint::ToBigInt;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::borrow::Borrow;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Debug;
 use std::io::Error;
 use std::rc::Rc;
@@ -11,12 +11,14 @@ use clvmr::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
+use crate::compiler::BasicCompileContext;
 use crate::compiler::clvm::{convert_from_clvm_rs, run};
-use crate::compiler::compiler::DefaultCompilerOpts;
+use crate::compiler::compiler::{compile_from_compileform, DefaultCompilerOpts};
 use crate::compiler::comptypes::{Binding, BindingPattern, BodyForm, CompileErr, CompileForm, CompilerOpts, DefconstData, DefunData, HelperForm, LetData, LetFormKind};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::frontend::compile_helperform;
 use crate::compiler::fuzz::{ExprModifier, FuzzGenerator, FuzzTypeParams, Rule};
+use crate::compiler::optimize::get_optimizer;
 use crate::compiler::prims::primquote;
 use crate::compiler::sexp::{AtomValue, decode_string, enlist, parse_sexp, NodeSel, SelectNode, SExp, ThisNode};
 use crate::compiler::srcloc::Srcloc;
@@ -455,7 +457,7 @@ fn produce_valid_cse_regression_merge_test<R: Rng>(srcloc: &Srcloc, rng: &mut R)
 #[test]
 fn test_cse_merge_regression() {
 
-    let mut rng = simple_seeded_rng(13);
+    let mut rng = simple_seeded_rng(1);
     let srcloc = Srcloc::start("*test*");
 
     let produce_program = |rng: &mut ChaCha8Rng| {
@@ -465,8 +467,39 @@ fn test_cse_merge_regression() {
             }
         }
     };
-    let test_program = produce_program(&mut rng);
 
-    eprintln!("test_program {}", test_program.to_sexp());
-    todo!();
+    for _ in 0..50 {
+        let test_program = produce_program(&mut rng);
+        let program_sexp = Rc::new(SExp::Cons(
+            srcloc.clone(),
+            Rc::new(SExp::Atom(srcloc.clone(), b"mod".to_vec())),
+            test_program.to_sexp()
+        ));
+
+        eprintln!("test_program {}", program_sexp);
+        let new_opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("test.clsp"));
+        let old_opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("*cl23-pre-cse-merge-fix"));
+        let dialect = AcceptedDialect {
+            stepping: Some(23),
+            strict: true,
+        };
+        new_opts.set_dialect(dialect.clone()).set_optimize(true).set_frontend_opt(false);
+        old_opts.set_dialect(dialect.clone()).set_optimize(true).set_frontend_opt(false);
+        let mut allocator = Allocator::new();
+        let runner = Rc::new(DefaultProgramRunner::new());
+        let mut symbols = HashMap::new();
+        let new_compiled = new_opts.compile_program(
+            &mut allocator,
+            runner.clone(),
+            program_sexp.clone(),
+            &mut symbols
+        ).expect("should compile (new)");
+        let old_compiled = old_opts.compile_program(
+            &mut allocator,
+            runner.clone(),
+            program_sexp,
+            &mut symbols
+        ).expect("should compile (old)");
+        assert_eq!(new_compiled, old_compiled);
+    }
 }
