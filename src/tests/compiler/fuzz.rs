@@ -418,3 +418,80 @@ fn test_random_value_spec() {
         "55"
     );
 }
+
+struct SimpleFuzzSexpTestState {
+    srcloc: Srcloc,
+    count: usize,
+}
+struct SimpleFuzzSexpTest;
+
+impl FuzzTypeParams for SimpleFuzzSexpTest {
+    type Tag = Vec<u8>;
+    type Expr = Rc<SExp>;
+    type Error = String;
+    type State = SimpleFuzzSexpTestState;
+}
+
+struct SimpleRuleAtom;
+impl Rule<SimpleFuzzSexpTest> for SimpleRuleAtom {
+    fn check(
+        &self,
+        state: &mut SimpleFuzzSexpTestState,
+        _tag: &Vec<u8>,
+        _idx: usize,
+        _terminate: bool,
+        _parents: &[Rc<SExp>],
+    ) -> Result<Option<Rc<SExp>>, String> {
+        state.count += 1;
+        Ok(Some(compose_sexp(
+            state.srcloc.clone(),
+            &format!("node-{}", state.count),
+        )))
+    }
+}
+
+struct SimpleRuleCons;
+impl Rule<SimpleFuzzSexpTest> for SimpleRuleCons {
+    fn check(
+        &self,
+        state: &mut SimpleFuzzSexpTestState,
+        _tag: &Vec<u8>,
+        idx: usize,
+        terminate: bool,
+        _parents: &[Rc<SExp>],
+    ) -> Result<Option<Rc<SExp>>, String> {
+        if terminate {
+            return Ok(None);
+        }
+
+        let l = format!("${{{idx}:expand}}").as_bytes().to_vec();
+        let r = format!("${{{}:expand}}", idx + 1).as_bytes().to_vec();
+
+        Ok(Some(Rc::new(SExp::Cons(
+            state.srcloc.clone(),
+            Rc::new(SExp::Atom(state.srcloc.clone(), l)),
+            Rc::new(SExp::Atom(state.srcloc.clone(), r)),
+        ))))
+    }
+}
+
+#[test]
+fn test_random_sexp() {
+    let mut rng = simple_seeded_rng(8);
+    let mut state = SimpleFuzzSexpTestState {
+        srcloc: Srcloc::start("*vstest*"),
+        count: 0,
+    };
+    let topnode = Rc::new(SExp::Atom(state.srcloc.clone(), b"${0:top}".to_vec()));
+    let rules: Vec<Rc<dyn Rule<SimpleFuzzSexpTest>>> =
+        vec![Rc::new(SimpleRuleAtom), Rc::new(SimpleRuleCons)];
+    let mut fuzzer = FuzzGenerator::new(topnode, &rules);
+
+    let mut idx = 0;
+    while let Ok(true) = fuzzer.expand(&mut state, idx > 5, &mut rng) {
+        // Repeat
+        idx += 1;
+    }
+
+    assert_eq!(fuzzer.result().to_string(), "((node-3 . node-1) . node-2)");
+}
