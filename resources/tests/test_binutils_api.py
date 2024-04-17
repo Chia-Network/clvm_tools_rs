@@ -76,12 +76,10 @@ for t in test_cases:
     print(t)
     expected = assemble(t)
     assembled = binutils.assemble_generic(lambda x,y: Program.to((x,y)), Program.to, t)
-    print(assembled)
     print(expected, assembled)
 
     assert expected == assembled
 
     disassembled = binutils.disassemble_generic(bytes(assembled))
-    print(disassembled)
     expected_dis = disassemble(expected)
     assert expected_dis == disassembled
