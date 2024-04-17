@@ -59,7 +59,7 @@ pub fn pybytes_repr(r: &[u8], dquoted: bool) -> String {
 
     for b in r.iter() {
         let c = *b as char;
-        if c == quote || c == '\\' {
+        if c == quote {
             s = (s + "\\") + char_to_string(c).as_str();
         } else if c == '\t' {
             s += "\\t";
