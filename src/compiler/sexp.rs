@@ -1252,11 +1252,7 @@ pub fn extract_atom_replacement<Expr: Clone>(
     a: &[u8],
 ) -> Option<FuzzChoice<Expr, Vec<u8>>> {
     if a.starts_with(b"${") && a.ends_with(b"}") {
-        let mut found_colon =
-            a.iter()
-                .enumerate()
-                .filter_map(|(i, c)| if *c == b':' { Some(i) } else { None });
-        if let Some(c_idx) = found_colon.next() {
+        if let Some(c_idx) = a.iter().position(|&c| c == b':') {
             return Some(FuzzChoice {
                 tag: a[c_idx + 1..a.len() - 1].to_vec(),
                 atom: myself.clone(),
