@@ -128,25 +128,12 @@ impl<FT: FuzzTypeParams> FuzzGenerator<FT> {
     }
 
     fn remove_waiting(&mut self, waiting_atom: &FT::Expr) -> Result<(), FT::Error> {
-        let to_remove_waiting: Vec<usize> = self
-            .waiting
-            .iter()
-            .enumerate()
-            .filter_map(|(i, w)| {
-                if w.atom == *waiting_atom {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        if to_remove_waiting.is_empty() {
-            return Err("remove_waiting must succeed".into());
+        if let Some(pos) = self.waiting.iter().position(|w| w.atom == *waiting_atom) {
+            self.waiting.remove(pos);
+            Ok(())
+        } else {
+            Err("remove_waiting must succeed".into())
         }
-
-        self.waiting.remove(to_remove_waiting[0]);
-        Ok(())
     }
 
     /// Perform one step of expansion of the Expr tree, updating State.
