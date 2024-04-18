@@ -1257,14 +1257,8 @@ pub fn extract_atom_replacement<Expr: Clone>(
                 .enumerate()
                 .filter_map(|(i, c)| if *c == b':' { Some(i) } else { None });
         if let Some(c_idx) = found_colon.next() {
-            let tag_str: Vec<u8> = a
-                .iter()
-                .take(a.len() - 1)
-                .skip(c_idx + 1)
-                .copied()
-                .collect();
             return Some(FuzzChoice {
-                tag: tag_str,
+                tag: a[c_idx + 1..a.len() - 1].to_vec(),
                 atom: myself.clone(),
             });
         }

@@ -27,7 +27,6 @@ use std::rc::Rc;
 /// separately remember what operations are being applied so a test can
 /// calculate the expected result on its own before trying something that evaluates
 /// the expression separately so some other process of evaluation can be checked.
-/// running the program.
 pub trait FuzzTypeParams {
     type Tag: Eq + Clone;
     type Expr: Eq + Clone + ExprModifier<Expr = Self::Expr, Tag = Self::Tag>;
