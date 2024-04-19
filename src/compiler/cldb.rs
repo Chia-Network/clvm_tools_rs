@@ -99,7 +99,7 @@ pub trait CldbEnvironment {
 pub struct CldbRun {
     runner: Rc<dyn TRunProgram>,
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
-    env: Box<dyn CldbEnvironment>,
+    env: Rc<dyn CldbEnvironment>,
 
     step: RunStep,
 
@@ -154,6 +154,13 @@ impl StepInfo {
     pub fn dict(&mut self) -> &BTreeMap<String, String> {
         &self.dict
     }
+
+    pub fn into_dict(&mut self) -> BTreeMap<String, String> {
+        // Swap in an empty dict and give the user our dict.
+        let mut empty = BTreeMap::new();
+        swap(&mut empty, &mut self.dict);
+        empty
+    }
 }
 
 impl CldbRun {
@@ -170,7 +177,7 @@ impl CldbRun {
         CldbRun {
             runner,
             prim_map,
-            env,
+            env: env.into(),
             step,
             ended: false,
             final_result: None,
