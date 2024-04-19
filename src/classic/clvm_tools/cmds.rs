@@ -49,7 +49,7 @@ use crate::classic::platform::argparse::{
     TArgOptionAction, TArgumentParserProps,
 };
 
-use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
+use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv, StepInfo};
 use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
 use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
@@ -496,6 +496,16 @@ pub fn cldb_hierarchy(
     result
 }
 
+struct IntArg;
+impl ArgumentValueConv for IntArg {
+    fn convert(&self, arg: &str) -> Result<ArgumentValue, String> {
+        let ver = arg
+            .parse::<i64>()
+            .map_err(|_| format!("expected number"))?;
+        Ok(ArgumentValue::ArgInt(ver))
+    }
+}
+
 pub fn cldb(args: &[String]) {
     let tool_name = "cldb".to_string();
     let props = TArgumentParserProps {
@@ -544,6 +554,12 @@ pub fn cldb(args: &[String]) {
             .set_help("new style hierarchial view of function calls and args".to_string()),
     );
     parser.add_argument(
+        vec!["--tail".to_string()],
+        Argument::new()
+            .set_type(Rc::new(IntArg))
+            .set_help("number of steps to display at the end".to_string()),
+    );
+    parser.add_argument(
         vec!["path_or_code".to_string()],
         Argument::new()
             .set_type(Rc::new(PathOrCodeConv {}))
@@ -563,6 +579,7 @@ pub fn cldb(args: &[String]) {
 
     let prog_srcloc = Srcloc::start("*program*");
     let args_srcloc = Srcloc::start("*args*");
+    let mut tail = None;
 
     let mut args = Rc::new(sexp::SExp::atom_from_string(args_srcloc.clone(), ""));
     let mut parsed_args_result: String = "".to_string();
@@ -574,6 +591,10 @@ pub fn cldb(args: &[String]) {
         }
         Ok(pa) => pa,
     };
+
+    if let Some(ArgumentValue::ArgInt(i)) = parsed_args.get("tail") {
+        tail = Some(i);
+    }
 
     if let Some(ArgumentValue::ArgArray(v)) = parsed_args.get("include") {
         for p in v {
@@ -748,9 +769,37 @@ pub fn cldb(args: &[String]) {
 
     cldbrun.set_print_only(only_print);
 
+    let mut delayed_print = Vec::new();
+    let start_idx = |l: usize| -> usize {
+        if let Some(tail) = tail {
+            if l > *tail as usize {
+                return l - *tail as usize;
+            }
+        }
+
+        0
+    };
+
     loop {
         if cldbrun.is_ended() {
-            println!("{}", yamlette_string(&output));
+            let output_slice =
+                if !delayed_print.is_empty() {
+                    // Spill delayed into output.
+                    let start_idx = start_idx(delayed_print.len());
+                    output = delayed_print.into_iter().skip(start_idx).map(|mut result: StepInfo| {
+                        let mut cvt_subtree: BTreeMap<String, YamlElement> = BTreeMap::new();
+                        for (k, v) in result.dict().iter() {
+                            cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
+                        }
+                        cvt_subtree
+                    }).collect();
+                    &output
+                } else {
+                    let start_idx = start_idx(output.len());
+                    &output[start_idx..output.len()]
+                };
+
+            println!("{}", yamlette_string(output_slice));
             return;
         }
 
@@ -758,19 +807,13 @@ pub fn cldb(args: &[String]) {
             if only_print {
                 if let Some(p) = result.print() {
                     let mut only_print = BTreeMap::new();
-                    only_print.insert("Print".to_string(), YamlElement::String(p.clone()));
+                    only_print.insert("Print".to_string(), YamlElement::String(p));
                     output.push(only_print);
-                } else {
-                    let dict = result.dict();
-                    let is_final = dict.contains_key("Final");
-                    let is_throw = dict.contains_key("Throw");
-                    let is_failure = dict.contains_key("Failure");
-                    if is_final || is_throw || is_failure {
-                        print_tree(&mut output, result.dict());
-                    }
+                } else if cldbrun.is_ended() {
+                    print_tree(&mut output, result.dict());
                 }
             } else {
-                print_tree(&mut output, result.dict());
+                delayed_print.push(result);
             }
         }
     }
