@@ -84,6 +84,8 @@ pub trait CldbEnvironment {
     fn get_override(&self, s: &RunStep) -> Option<Result<RunStep, RunFailure>>;
 }
 
+type StepDictFiller = Box<dyn Fn(&mut BTreeMap<String, String>)>;
+
 /// CldbRun is the main object used to run CLVM code in a stepwise way.  The main
 /// advantage of CldbRun over clvmr's runner is that the caller observes a new
 /// step being returned after it asks for each step to be run.  The progress of
@@ -106,7 +108,7 @@ pub struct CldbRun {
     ended: bool,
     final_result: Option<Rc<SExp>>,
     in_expr: bool,
-    fill_info: Option<Box<dyn Fn(&mut BTreeMap<String, String>)>>,
+    fill_info: Option<StepDictFiller>,
 
     row: usize,
     print_only: bool,
@@ -145,8 +147,8 @@ fn is_print_request(a: &SExp) -> Option<(Srcloc, Rc<SExp>)> {
 }
 
 pub struct StepInfo {
-    create: Option<Box<dyn Fn(&mut BTreeMap<String, String>)>>,
-    dict: BTreeMap<String, String>
+    create: Option<StepDictFiller>,
+    dict: BTreeMap<String, String>,
 }
 impl StepInfo {
     fn generate(&mut self) {
@@ -218,7 +220,7 @@ impl CldbRun {
     }
 
     pub fn step(&mut self, allocator: &mut Allocator) -> Option<StepInfo> {
-        let mut produce_result: Option<Box<dyn Fn(&mut BTreeMap<String, String>)>> = None;
+        let mut produce_result: Option<StepDictFiller> = None;
         let new_step = match self.env.get_override(&self.step) {
             Some(v) => v,
             _ => run_step(
@@ -250,17 +252,16 @@ impl CldbRun {
 
                         let mut fill_info = None;
                         swap(&mut fill_info, &mut self.fill_info);
-                        produce_result = Some(Box::new(move |to_print: &mut BTreeMap<String, String>| {
-                            to_print
-                                .insert("Result-Location".to_string(), l.to_string());
-                            to_print.insert("Value".to_string(), x.to_string());
-                            to_print
-                                .insert("Row".to_string(), row.to_string());
+                        produce_result =
+                            Some(Box::new(move |to_print: &mut BTreeMap<String, String>| {
+                                to_print.insert("Result-Location".to_string(), l.to_string());
+                                to_print.insert("Value".to_string(), x.to_string());
+                                to_print.insert("Row".to_string(), row.to_string());
 
-                            if let Some(f) = &fill_info {
-                                f(to_print);
-                            }
-                        }));
+                                if let Some(f) = &fill_info {
+                                    f(to_print);
+                                }
+                            }));
                     }
 
                     self.in_expr = false;
@@ -273,8 +274,7 @@ impl CldbRun {
                 let mut fill_info = None;
                 swap(&mut fill_info, &mut self.fill_info);
                 produce_result = Some(Box::new(move |to_print: &mut BTreeMap<String, String>| {
-                    to_print
-                        .insert("Final-Location".to_string(), l.to_string());
+                    to_print.insert("Final-Location".to_string(), l.to_string());
                     to_print.insert("Final".to_string(), x.to_string());
 
                     if let Some(f) = &fill_info {
@@ -294,12 +294,11 @@ impl CldbRun {
                     } else if v == 34_u32.to_bigint().unwrap() {
                         // Handle diagnostic output.
                         if let Some((loc, outputs)) = is_print_request(&a) {
-                            produce_result = Some(Box::new(move |to_print: &mut BTreeMap<String, String>| {
-                                to_print
-                                    .insert("Print-Location".to_string(), loc.to_string());
-                                to_print
-                                    .insert("Print".to_string(), outputs.to_string());
-                            }));
+                            produce_result =
+                                Some(Box::new(move |to_print: &mut BTreeMap<String, String>| {
+                                    to_print.insert("Print-Location".to_string(), loc.to_string());
+                                    to_print.insert("Print".to_string(), outputs.to_string());
+                                }));
                         }
                     }
                 }
@@ -308,30 +307,24 @@ impl CldbRun {
                     let env = self.env.clone();
                     let mut fill_info = None;
                     swap(&mut fill_info, &mut self.fill_info);
-                    self.fill_info = Some(Box::new(move |to_print: &mut BTreeMap<String, String>| {
-                        if let Some(f) = &fill_info {
-                            f(to_print);
-                        }
+                    self.fill_info =
+                        Some(Box::new(move |to_print: &mut BTreeMap<String, String>| {
+                            if let Some(f) = &fill_info {
+                                f(to_print);
+                            }
 
-                        env.add_context(
-                            sexp.borrow(),
-                            c.borrow(),
-                            Some(a.clone()),
-                            to_print,
-                        );
+                            env.add_context(sexp.borrow(), c.borrow(), Some(a.clone()), to_print);
 
-                        env.add_function(&sexp, to_print);
+                            env.add_function(&sexp, to_print);
 
-                        if let Some(arg_associations) = &arg_associations {
-                            let args = format_arg_inputs(&arg_associations);
-                            to_print.insert("Argument-Refs".to_string(), args);
-                        }
+                            if let Some(arg_associations) = &arg_associations {
+                                let args = format_arg_inputs(arg_associations);
+                                to_print.insert("Argument-Refs".to_string(), args);
+                            }
 
-                        to_print
-                            .insert("Operator-Location".to_string(), a.loc().to_string());
-                        to_print
-                            .insert("Operator".to_string(), sexp.to_string());
-                    }));
+                            to_print.insert("Operator-Location".to_string(), a.loc().to_string());
+                            to_print.insert("Operator".to_string(), sexp.to_string());
+                        }));
 
                     self.in_expr = true;
                 }
@@ -341,8 +334,7 @@ impl CldbRun {
                 let mut fill_info = None;
                 swap(&mut fill_info, &mut self.fill_info);
                 produce_result = Some(Box::new(move |to_print: &mut BTreeMap<String, String>| {
-                    to_print
-                        .insert("Throw-Location".to_string(), l.to_string());
+                    to_print.insert("Throw-Location".to_string(), l.to_string());
                     to_print.insert("Throw".to_string(), s.to_string());
 
                     if let Some(f) = &fill_info {
@@ -356,8 +348,7 @@ impl CldbRun {
                 let mut fill_info = None;
                 swap(&mut fill_info, &mut self.fill_info);
                 produce_result = Some(Box::new(move |to_print: &mut BTreeMap<String, String>| {
-                    to_print
-                        .insert("Failure-Location".to_string(), l.to_string());
+                    to_print.insert("Failure-Location".to_string(), l.to_string());
                     to_print.insert("Failure".to_string(), s.to_string());
 
                     if let Some(f) = &fill_info {
@@ -369,11 +360,16 @@ impl CldbRun {
             }
         }
 
-        self.step = new_step.map(|s| s.into()).unwrap_or_else(|_| self.step.clone());
+        self.step = new_step
+            .map(|s| s.into())
+            .unwrap_or_else(|_| self.step.clone());
 
         if let Some(produce_result) = produce_result {
             self.row += 1;
-            Some(StepInfo { create: Some(produce_result), dict: BTreeMap::new() })
+            Some(StepInfo {
+                create: Some(produce_result),
+                dict: BTreeMap::new(),
+            })
         } else {
             None
         }

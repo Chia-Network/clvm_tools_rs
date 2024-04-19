@@ -501,7 +501,7 @@ impl ArgumentValueConv for IntArg {
     fn convert(&self, arg: &str) -> Result<ArgumentValue, String> {
         let ver = arg
             .parse::<i64>()
-            .map_err(|_| format!("expected number"))?;
+            .map_err(|_| "expected number".to_string())?;
         Ok(ArgumentValue::ArgInt(ver))
     }
 }
@@ -636,8 +636,7 @@ pub fn cldb(args: &[String]) {
     let use_filename = input_file
         .clone()
         .unwrap_or_else(|| "*command*".to_string());
-    let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
-        .set_search_paths(&search_paths);
+    let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_search_paths(&search_paths);
 
     let mut use_symbol_table = symbol_table.unwrap_or_default();
     let mut output = Vec::new();
@@ -647,7 +646,7 @@ pub fn cldb(args: &[String]) {
         if let Some(loc) = l {
             parse_error.insert(
                 "Error-Location".to_string(),
-                YamlElement::String(loc.to_string())
+                YamlElement::String(loc.to_string()),
             );
         };
         parse_error.insert("Error".to_string(), YamlElement::String(c.to_string()));
@@ -680,14 +679,13 @@ pub fn cldb(args: &[String]) {
             };
 
             let dialect = detect_modern(&mut allocator, assembled);
-            let opts =
-                if let Some(stepping) = dialect.stepping {
-                    opts.set_dialect(dialect)
-                        .set_optimize(do_optimize || stepping > 22)
-                        .set_frontend_opt(stepping == 22)
-                } else {
-                    opts
-                };
+            let opts = if let Some(stepping) = dialect.stepping {
+                opts.set_dialect(dialect)
+                    .set_optimize(do_optimize || stepping > 22)
+                    .set_frontend_opt(stepping == 22)
+            } else {
+                opts
+            };
 
             // don't clobber a symbol table brought in via -y unless we're
             // compiling here.
@@ -717,7 +715,6 @@ pub fn cldb(args: &[String]) {
             return;
         }
     };
-
 
     match parsed_args.get("hex") {
         Some(ArgumentValue::ArgBool(true)) => {
@@ -804,22 +801,25 @@ pub fn cldb(args: &[String]) {
 
     loop {
         if cldbrun.is_ended() {
-            let output_slice =
-                if !delayed_print.is_empty() {
-                    // Spill delayed into output.
-                    let start_idx = start_idx(delayed_print.len());
-                    output = delayed_print.into_iter().skip(start_idx).map(|mut result: StepInfo| {
+            let output_slice = if !delayed_print.is_empty() {
+                // Spill delayed into output.
+                let start_idx = start_idx(delayed_print.len());
+                output = delayed_print
+                    .into_iter()
+                    .skip(start_idx)
+                    .map(|mut result: StepInfo| {
                         let mut cvt_subtree: BTreeMap<String, YamlElement> = BTreeMap::new();
                         for (k, v) in result.dict().iter() {
                             cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
                         }
                         cvt_subtree
-                    }).collect();
-                    &output
-                } else {
-                    let start_idx = start_idx(output.len());
-                    &output[start_idx..output.len()]
-                };
+                    })
+                    .collect();
+                &output
+            } else {
+                let start_idx = start_idx(output.len());
+                &output[start_idx..output.len()]
+            };
 
             println!("{}", yamlette_string(output_slice));
             return;
