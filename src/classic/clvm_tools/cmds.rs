@@ -637,11 +637,23 @@ pub fn cldb(args: &[String]) {
         .clone()
         .unwrap_or_else(|| "*command*".to_string());
     let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
-        .set_optimize(do_optimize)
         .set_search_paths(&search_paths);
 
     let mut use_symbol_table = symbol_table.unwrap_or_default();
     let mut output = Vec::new();
+
+    let quit_with_error = |l: Option<&Srcloc>, c: &str| {
+        let mut parse_error = BTreeMap::new();
+        if let Some(loc) = l {
+            parse_error.insert(
+                "Error-Location".to_string(),
+                YamlElement::String(loc.to_string())
+            );
+        };
+        parse_error.insert("Error".to_string(), YamlElement::String(c.to_string()));
+        let output = vec![parse_error.clone()];
+        println!("{}", yamlette_string(&output));
+    };
 
     let res = match parsed_args.get("hex") {
         Some(ArgumentValue::ArgBool(true)) => hex_to_modern_sexp(
@@ -652,6 +664,31 @@ pub fn cldb(args: &[String]) {
         )
         .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
         _ => {
+            let classic_parse = match read_ir(&input_program) {
+                Ok(r) => r,
+                Err(c) => {
+                    quit_with_error(None, &c.msg);
+                    return;
+                }
+            };
+            let assembled = match assemble_from_ir(&mut allocator, Rc::new(classic_parse)) {
+                Ok(r) => r,
+                Err(c) => {
+                    quit_with_error(None, &c.1);
+                    return;
+                }
+            };
+
+            let dialect = detect_modern(&mut allocator, assembled);
+            let opts =
+                if let Some(stepping) = dialect.stepping {
+                    opts.set_dialect(dialect)
+                        .set_optimize(do_optimize || stepping > 22)
+                        .set_frontend_opt(stepping == 22)
+                } else {
+                    opts
+                };
+
             // don't clobber a symbol table brought in via -y unless we're
             // compiling here.
             let unopt_res = compile_file(
@@ -676,17 +713,11 @@ pub fn cldb(args: &[String]) {
     let program = match res {
         Ok(r) => r,
         Err(c) => {
-            let mut parse_error = BTreeMap::new();
-            parse_error.insert(
-                "Error-Location".to_string(),
-                YamlElement::String(c.0.to_string()),
-            );
-            parse_error.insert("Error".to_string(), YamlElement::String(c.1));
-            output.push(parse_error.clone());
-            println!("{}", yamlette_string(&output));
+            quit_with_error(Some(&c.0), &c.1);
             return;
         }
     };
+
 
     match parsed_args.get("hex") {
         Some(ArgumentValue::ArgBool(true)) => {
@@ -700,10 +731,8 @@ pub fn cldb(args: &[String]) {
                     args = r;
                 }
                 Err(p) => {
-                    let mut parse_error = BTreeMap::new();
-                    parse_error.insert("Error".to_string(), YamlElement::String(p.to_string()));
-                    output.push(parse_error.clone());
-                    println!("{}", yamlette_string(&output));
+                    let c: CompileErr = p.into();
+                    quit_with_error(Some(&c.0), &c.1);
                     return;
                 }
             }
@@ -715,14 +744,7 @@ pub fn cldb(args: &[String]) {
                 }
             }
             Err(c) => {
-                let mut parse_error = BTreeMap::new();
-                parse_error.insert(
-                    "Error-Location".to_string(),
-                    YamlElement::String(c.0.to_string()),
-                );
-                parse_error.insert("Error".to_string(), YamlElement::String(c.1));
-                output.push(parse_error.clone());
-                println!("{}", yamlette_string(&output));
+                quit_with_error(Some(&c.0), &c.1);
                 return;
             }
         },
@@ -1204,7 +1226,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     ) {
         if let Some(filename) = &file {
             let opts = DefaultCompilerOpts::new(filename).set_search_paths(&search_paths);
-
             match gather_dependencies(opts, filename, file_content) {
                 Err(e) => {
                     stdout.write_str(&format!("{}: {}\n", e.0, e.1));
