@@ -101,7 +101,7 @@ pub struct CldbRun {
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
     env: Rc<dyn CldbEnvironment>,
 
-    step: RunStep,
+    step: Rc<RunStep>,
 
     ended: bool,
     final_result: Option<Rc<SExp>>,
@@ -178,7 +178,7 @@ impl CldbRun {
             runner,
             prim_map,
             env: env.into(),
-            step,
+            step: step.into(),
             ended: false,
             final_result: None,
             to_print: BTreeMap::new(),
@@ -318,7 +318,7 @@ impl CldbRun {
             }
         }
 
-        self.step = new_step.unwrap_or_else(|_| self.step.clone());
+        self.step = new_step.map(|s| s.into()).unwrap_or_else(|_| self.step.clone());
 
         if produce_result {
             self.row += 1;
@@ -328,8 +328,8 @@ impl CldbRun {
         }
     }
 
-    pub fn current_step(&self) -> RunStep {
-        self.step.clone()
+    pub fn current_step(&self) -> &RunStep {
+        self.step.borrow()
     }
 }
 
