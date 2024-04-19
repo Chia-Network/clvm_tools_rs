@@ -270,6 +270,7 @@ pub fn run_step(runner: i32) -> JsValue {
 
         r.cldbrun.step(&mut r.allocator)
     })
+    .map(|mut r| r.into_dict())
     .map(|result_hash| btreemap_to_object(result_hash.iter()))
     .unwrap_or_else(JsValue::null)
 }
