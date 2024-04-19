@@ -74,8 +74,8 @@ where
             return output.get("Final").cloned();
         }
 
-        if let Some(result) = cldbrun.step(&mut allocator) {
-            output = result;
+        if let Some(mut result) = cldbrun.step(&mut allocator) {
+            output = result.dict().clone();
             if !viewer.show(&cldbrun.current_step(), Some(output.clone())) {
                 return None;
             }

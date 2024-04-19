@@ -754,22 +754,23 @@ pub fn cldb(args: &[String]) {
             return;
         }
 
-        if let Some(result) = cldbrun.step(&mut allocator) {
+        if let Some(mut result) = cldbrun.step(&mut allocator) {
             if only_print {
-                if let Some(p) = result.get("Print") {
+                if let Some(p) = result.print() {
                     let mut only_print = BTreeMap::new();
                     only_print.insert("Print".to_string(), YamlElement::String(p.clone()));
                     output.push(only_print);
                 } else {
-                    let is_final = result.contains_key("Final");
-                    let is_throw = result.contains_key("Throw");
-                    let is_failure = result.contains_key("Failure");
+                    let dict = result.dict();
+                    let is_final = dict.contains_key("Final");
+                    let is_throw = dict.contains_key("Throw");
+                    let is_failure = dict.contains_key("Failure");
                     if is_final || is_throw || is_failure {
-                        print_tree(&mut output, &result);
+                        print_tree(&mut output, result.dict());
                     }
                 }
             } else {
-                print_tree(&mut output, &result);
+                print_tree(&mut output, result.dict());
             }
         }
     }

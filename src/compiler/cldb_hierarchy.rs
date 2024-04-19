@@ -389,10 +389,13 @@ impl HierarchialRunner {
         } else {
             // Not final result, we'll step the top of the stack.
             let info = self.running[idx].run.step(&mut self.allocator);
-            if let Some(i) = &info {
-                self.error |= i.get("Failure").is_some();
+            if let Some(mut i) = info {
+                let dict = i.dict();
+                self.error |= dict.get("Failure").is_some();
+                Ok(HierarchialStepResult::Info(Some(dict.clone())))
+            } else {
+                Ok(HierarchialStepResult::Info(None))
             }
-            Ok(HierarchialStepResult::Info(info))
         }
     }
 }

@@ -143,6 +143,19 @@ fn is_print_request(a: &SExp) -> Option<(Srcloc, Rc<SExp>)> {
     None
 }
 
+pub struct StepInfo {
+    dict: BTreeMap<String, String>
+}
+impl StepInfo {
+    pub fn print(&mut self) -> Option<String> {
+        self.dict.get("Print").cloned()
+    }
+
+    pub fn dict(&mut self) -> &BTreeMap<String, String> {
+        &self.dict
+    }
+}
+
 impl CldbRun {
     /// Create a new CldbRun for running a program.
     /// Takes an CldbEnvironment and a prepared RunStep, which will be stepped
@@ -185,7 +198,7 @@ impl CldbRun {
         !self.print_only
     }
 
-    pub fn step(&mut self, allocator: &mut Allocator) -> Option<BTreeMap<String, String>> {
+    pub fn step(&mut self, allocator: &mut Allocator) -> Option<StepInfo> {
         let mut produce_result = false;
         let mut result = BTreeMap::new();
         let new_step = match self.env.get_override(&self.step) {
@@ -302,7 +315,7 @@ impl CldbRun {
 
         if produce_result {
             self.row += 1;
-            Some(result)
+            Some(StepInfo { dict: result })
         } else {
             None
         }
