@@ -371,7 +371,7 @@ fn start_clvm_program(
 
                     let result = cldbrun.step(&mut allocator);
                     let is_ended = cldbrun.is_ended();
-                    match result_output.send((is_ended, result)) {
+                    match result_output.send((is_ended, result.map(|mut r| r.into_dict()))) {
                         Ok(_) => {}
                         Err(_) => {
                             return;
