@@ -23,12 +23,6 @@ struct TrickyAssignExpectation {
     var_defs: BTreeMap<Vec<u8>, Rc<ValueSpecification>>,
 }
 
-impl HasVariableStore for TrickyAssignExpectation {
-    fn get(&self, name: &[u8]) -> Option<Rc<ValueSpecification>> {
-        self.var_defs.get(name).cloned()
-    }
-}
-
 impl TrickyAssignExpectation {
     fn new(opts: Rc<dyn CompilerOpts>) -> Self {
         TrickyAssignExpectation {
@@ -48,6 +42,12 @@ impl TrickyAssignExpectation {
     fn compute(&self) -> Rc<SExp> {
         let val = self.final_var.as_ref().unwrap();
         val.interpret(self.opts.clone(), &self.loc, self)
+    }
+}
+
+impl HasVariableStore for TrickyAssignExpectation {
+    fn get(&self, name: &[u8]) -> Option<Rc<ValueSpecification>> {
+        self.var_defs.get(name).cloned()
     }
 }
 
