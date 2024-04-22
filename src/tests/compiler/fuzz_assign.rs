@@ -25,7 +25,7 @@ pub fn create_variable_set(_srcloc: Srcloc, vars: usize) -> BTreeSet<Vec<u8>> {
 ///
 /// In particular, we can ask it what variable this variable's definition
 /// contributes to in the hierarchy (find_parent_of_var), 
-pub struct ExprVariableUsage {
+pub struct ComplexAssignExpression {
     pub toplevel: BTreeSet<Vec<u8>>,
     pub bindings: BTreeMap<Vec<u8>, Vec<Vec<u8>>>,
 }
@@ -36,7 +36,7 @@ pub struct GeneratedExpr {
     sexp: Rc<SExp>,
 }
 
-impl ExprVariableUsage {
+impl ComplexAssignExpression {
     fn fmtvar(
         &self,
         writer: &mut std::fmt::Formatter<'_>,
@@ -315,11 +315,11 @@ impl ExprVariableUsage {
 }
 
 #[test]
-fn test_expr_variable_usage() {
+fn test_complex_assign_expression() {
     let srcloc = Srcloc::start("*test*");
     let mut rng = simple_seeded_rng(0x02020202);
     let vars = create_variable_set(srcloc.clone(), 5);
-    let structure_graph = create_structure_from_variables(&mut rng, &vars);
+    let structure_graph = create_complex_assign_structure(&mut rng, &vars);
 
     assert_eq!(
         format!("{structure_graph:?}"),
@@ -437,7 +437,7 @@ fn test_expr_variable_usage() {
     assert_eq!(assign_form.to_sexp().to_string(), "(assign v0 (assign v4 (q . 4) v1 (q . 1) (q)) v2 (q . 2) v3 (q . 3) v3)");
 }
 
-impl Debug for ExprVariableUsage {
+impl Debug for ComplexAssignExpression {
     fn fmt(&self, writer: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         for t in self.toplevel.iter() {
             self.fmtvar(writer, 0, t)?;
@@ -446,12 +446,15 @@ impl Debug for ExprVariableUsage {
     }
 }
 
-pub fn create_structure_from_variables<R: Rng>(
+/// Create a complex assign structure and provide methods for generating
+/// expressions that can be a candidate definition for it.
+/// Useful for fuzzing code that relates to assign forms.
+pub fn create_complex_assign_structure<R: Rng>(
     rng: &mut R,
     v: &BTreeSet<Vec<u8>>,
-) -> ExprVariableUsage {
+) -> ComplexAssignExpression {
     let mut v_start = v.clone();
-    let mut usage = ExprVariableUsage::default();
+    let mut usage = ComplexAssignExpression::default();
 
     while !v_start.is_empty() {
         // Choose a variable.
