@@ -1247,41 +1247,43 @@ fn find_in_structure_inner(
 }
 
 #[cfg(any(test, feature = "fuzz"))]
+pub fn extract_atom_replacement<Expr: Clone>(
+    myself: &Expr,
+    a: &[u8],
+) -> Option<FuzzChoice<Expr, Vec<u8>>> {
+    if a.starts_with(b"${") && a.ends_with(b"}") {
+        if let Some(c_idx) = a.iter().position(|&c| c == b':') {
+            return Some(FuzzChoice {
+                tag: a[c_idx + 1..a.len() - 1].to_vec(),
+                atom: myself.clone(),
+            });
+        }
+    }
+
+    None
+}
+
+#[cfg(any(test, feature = "fuzz"))]
 impl ExprModifier for Rc<SExp> {
-    type Item = Self;
+    type Expr = Self;
     type Tag = Vec<u8>;
 
-    fn find_waiters(&self, waiters: &mut Vec<FuzzChoice<Self::Item, Self::Tag>>) {
+    fn find_waiters(&self, waiters: &mut Vec<FuzzChoice<Self::Expr, Self::Tag>>) {
         match self.borrow() {
             SExp::Cons(_, a, b) => {
                 a.find_waiters(waiters);
                 b.find_waiters(waiters);
             }
             SExp::Atom(_, a) => {
-                if a.starts_with(b"${") && a.ends_with(b"}") {
-                    let mut found_colon =
-                        a.iter()
-                            .enumerate()
-                            .filter_map(|(i, c)| if *c == b':' { Some(i) } else { None });
-                    if let Some(c_idx) = found_colon.next() {
-                        let tag_str: Vec<u8> = a
-                            .iter()
-                            .take(a.len() - 1)
-                            .skip(c_idx + 1)
-                            .copied()
-                            .collect();
-                        waiters.push(FuzzChoice {
-                            tag: tag_str,
-                            atom: self.clone(),
-                        });
-                    }
+                if let Some(r) = extract_atom_replacement(self, a) {
+                    waiters.push(r);
                 }
             }
             _ => {}
         }
     }
 
-    fn replace_node(&self, to_replace: &Self::Item, new_value: Self::Item) -> Self::Item {
+    fn replace_node(&self, to_replace: &Self::Expr, new_value: Self::Expr) -> Self::Expr {
         if let SExp::Cons(l, a, b) = self.borrow() {
             let new_a = a.replace_node(to_replace, new_value.clone());
             let new_b = b.replace_node(to_replace, new_value.clone());
@@ -1297,7 +1299,7 @@ impl ExprModifier for Rc<SExp> {
         self.clone()
     }
 
-    fn find_in_structure(&self, target: &Self::Item) -> Option<Vec<Self::Item>> {
+    fn find_in_structure(&self, target: &Self::Expr) -> Option<Vec<Self::Expr>> {
         let mut parents = Vec::new();
         if find_in_structure_inner(&mut parents, self.clone(), target) {
             Some(parents)
