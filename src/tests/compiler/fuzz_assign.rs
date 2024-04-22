@@ -319,7 +319,7 @@ fn test_complex_assign_expression() {
     let srcloc = Srcloc::start("*test*");
     let mut rng = simple_seeded_rng(0x02020202);
     let vars = create_variable_set(srcloc.clone(), 5);
-    let structure_graph = create_complex_assign_structure(&mut rng, &vars);
+    let structure_graph = create_complex_assign_expression(&mut rng, &vars);
 
     assert_eq!(
         format!("{structure_graph:?}"),
@@ -449,7 +449,7 @@ impl Debug for ComplexAssignExpression {
 /// Create a complex assign structure and provide methods for generating
 /// expressions that can be a candidate definition for it.
 /// Useful for fuzzing code that relates to assign forms.
-pub fn create_complex_assign_structure<R: Rng>(
+pub fn create_complex_assign_expression<R: Rng>(
     rng: &mut R,
     v: &BTreeSet<Vec<u8>>,
 ) -> ComplexAssignExpression {
