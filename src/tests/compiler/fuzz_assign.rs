@@ -24,7 +24,7 @@ pub fn create_variable_set(_srcloc: Srcloc, vars: usize) -> BTreeSet<Vec<u8>> {
 /// needed information about it.
 ///
 /// In particular, we can ask it what variable this variable's definition
-/// contributes to in the hierarchy (find_parent_of_var), 
+/// contributes to in the hierarchy (find_parent_of_var),
 pub struct ComplexAssignExpression {
     pub toplevel: BTreeSet<Vec<u8>>,
     pub bindings: BTreeMap<Vec<u8>, Vec<Vec<u8>>>,
@@ -418,23 +418,25 @@ fn test_complex_assign_expression() {
 
     // Generate simple constant expressions to make it clear how these relate to
     // the definitions that are emitted.
-    let expressions: BTreeMap<Vec<u8>, GeneratedExpr> = (0..=4).map(|n| {
-        let name = format!("v{n}").as_bytes().to_vec();
-        let sexp = Rc::new(SExp::Integer(srcloc.clone(), n.to_bigint().unwrap()));
-        let expr = GeneratedExpr {
-            definition: Rc::new(ValueSpecification::ConstantValue(sexp.clone())),
-            sexp
-        };
-        (name, expr)
-    }).collect();
+    let expressions: BTreeMap<Vec<u8>, GeneratedExpr> = (0..=4)
+        .map(|n| {
+            let name = format!("v{n}").as_bytes().to_vec();
+            let sexp = Rc::new(SExp::Integer(srcloc.clone(), n.to_bigint().unwrap()));
+            let expr = GeneratedExpr {
+                definition: Rc::new(ValueSpecification::ConstantValue(sexp.clone())),
+                sexp,
+            };
+            (name, expr)
+        })
+        .collect();
 
-    let assign_form = structure_graph.create_assign_form(
-        &srcloc,
-        &expressions
-    );
+    let assign_form = structure_graph.create_assign_form(&srcloc, &expressions);
     // Each variable is defined as a constant with the same number in this
     // example elaboration.
-    assert_eq!(assign_form.to_sexp().to_string(), "(assign v0 (assign v4 (q . 4) v1 (q . 1) (q)) v2 (q . 2) v3 (q . 3) v3)");
+    assert_eq!(
+        assign_form.to_sexp().to_string(),
+        "(assign v0 (assign v4 (q . 4) v1 (q . 1) (q)) v2 (q . 2) v3 (q . 3) v3)"
+    );
 }
 
 impl Debug for ComplexAssignExpression {
