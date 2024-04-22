@@ -1,6 +1,6 @@
 [package]
 name = "clvm_tools_rs"
-version = "0.1.40"
+version = "0.1.41"
 edition = "2018"
 authors = ["Art Yerkes <art.yerkes@gmail.com>"]
 description = "tools for working with chialisp language; compiler, repl, python and wasm bindings"
@@ -40,6 +40,9 @@ yaml-rust = "0.4"
 linked-hash-map = "0.5.6"
 serde = { version = "1.0", features = ["derive", "rc"] }
 regex = "1.8.4"
+rand = { version = "0.8.5", optional = true }
+rand_chacha = { version = "0.3.1", optional = true }
+lfsr = { version = "0.3.0", optional = true }
 
 [dependencies.pyo3]
 version = "0.20.2"
@@ -58,6 +61,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 extension-module = ["dep:pyo3"]
+fuzz = ["dep:rand", "dep:rand_chacha", "dep:lfsr"]
 default = []
 
 [target.'cfg(target_family="wasm")'.dependencies]

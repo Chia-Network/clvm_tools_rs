@@ -43,6 +43,7 @@ use crate::util::{gentle_overwrite, version};
 
 use crate::py::pyval::{clvm_value_to_python, python_value_to_clvm};
 
+use super::binutils::create_binutils_module;
 use super::cmds::create_cmds_module;
 
 create_exception!(mymodule, CldbError, PyException);
@@ -498,6 +499,7 @@ fn clvm_tools_rs(py: Python, m: &PyModule) -> PyResult<()> {
     log::init();
 
     m.add_submodule(create_cmds_module(py)?)?;
+    m.add_submodule(create_binutils_module(py)?)?;
 
     m.add("CldbError", py.get_type::<CldbError>())?;
     m.add("CompError", py.get_type::<CompError>())?;

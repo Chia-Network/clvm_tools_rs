@@ -1,5 +1,11 @@
 # clvm_tools_rs Changelog
 
+## 0.1.41
+### Changed
+- Addition of assemble, disassemble and compile from string to python api.
+### Fixed
+- Issue in parsing lambdas supporting the LSP.
+
 ## 0.1.34
 ### Fixed
 - Fixed chialisp compilation issues
