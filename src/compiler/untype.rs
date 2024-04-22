@@ -5,8 +5,6 @@ use std::rc::Rc;
 use clvmr::allocator::{Allocator, NodePtr};
 use clvmr::reduction::EvalErr;
 
-use log::debug;
-
 use crate::classic::clvm::sexp::proper_list;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs};
 use crate::compiler::compiler::DefaultCompilerOpts;
@@ -112,11 +110,9 @@ fn process_helper(
         let head = lst[0].atomize();
         if let SExp::Atom(_, n) = &head {
             if n == &"deftype".as_bytes().to_vec() {
-                debug!("deftype");
                 let result = compile_helperform(opts.clone(), form.clone())
                     .map_err(|e| EvalErr(sexp, format!("{}: {}", e.0, e.1)))?;
                 if let Some(result) = result {
-                    debug!("result {:?}", result.new_helpers);
                     let mut result_forms = Vec::new();
                     for f in result.new_helpers.iter() {
                         if matches!(f, HelperForm::Defun(_, _)) {
@@ -132,7 +128,6 @@ fn process_helper(
                 }
             } else if n == &"defun".as_bytes().to_vec() || n == &"defun-inline".as_bytes().to_vec()
             {
-                debug!("defun {}", form.to_string());
                 let def = untype_definition(opts.clone(), form.loc(), sexp, &lst, 2)?
                     .unwrap_or_else(|| form.clone());
                 Ok(vec![def])
@@ -246,7 +241,6 @@ pub fn untype_code(
         }
 
         if let Some(reformed) = matches_mod(opts, loc.clone(), sexp, &converted)? {
-            debug!("reformed {}", reformed.to_string());
             return convert_to_clvm_rs(allocator, reformed)
                 .map_err(|e| run_failure_to_eval_err(sexp, &e));
         }

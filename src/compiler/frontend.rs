@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use log::debug;
 use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
@@ -1239,7 +1238,6 @@ pub fn compile_helperform(
         } else if matched.op_name == "deftype".as_bytes().to_vec() {
             let parsed_chia = parse_chia_type(matched.orig)?;
             let mut helpers = generate_type_helpers(&parsed_chia);
-            debug!("parsed_chia {:?}", parsed_chia);
             let new_form = match &parsed_chia {
                 ChiaType::Abstract(l, n) => HelperForm::Deftype(DeftypeData {
                     kw: matched.opl,
@@ -1327,7 +1325,6 @@ impl ModCompileForms for ModAccum {
         let mut mc = self.clone();
         if let Some(helpers) = compile_helperform(opts.clone(), body.clone())? {
             for form in helpers.new_helpers.iter() {
-                debug!("process helper {}", decode_string(form.name()));
                 mc = mc.add_helper(form.clone());
             }
             Ok(mc)
