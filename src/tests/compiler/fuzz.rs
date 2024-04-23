@@ -181,6 +181,21 @@ pub fn perform_compile_of_file(
     })
 }
 
+#[test]
+fn test_perform_compile_of_file() {
+    let mut allocator = Allocator::new();
+    let runner = Rc::new(DefaultProgramRunner::new());
+    let result = perform_compile_of_file(
+        &mut allocator,
+        runner,
+        "test.clsp",
+        "(mod (A) (include *standard-cl-23*) (+ A 1))",
+    )
+    .expect("should compile");
+    assert_eq!(result.source_opts.dialect().stepping, Some(23));
+    assert_eq!(result.compiled.to_string(), "(16 2 (1 . 1))");
+}
+
 pub fn simple_run(
     opts: Rc<dyn CompilerOpts>,
     expr: Rc<SExp>,

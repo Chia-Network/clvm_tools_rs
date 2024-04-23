@@ -14,7 +14,7 @@ use crate::compiler::srcloc::Srcloc;
 
 use crate::tests::compiler::fuzz::{compose_sexp, simple_seeded_rng};
 use crate::tests::compiler::fuzz_assign::{
-    create_structure_from_variables, create_variable_set, GeneratedExpr,
+    create_complex_assign_expression, create_variable_set, GeneratedExpr,
 };
 
 // Produce a program that provides a valid regression test for the cse merge fix.
@@ -26,7 +26,7 @@ fn produce_valid_cse_regression_merge_test<R: Rng>(
     let vars = create_variable_set(srcloc.clone(), 7);
 
     // Generate a definition graph including assign forms with fresh variables.
-    let structure_graph = create_structure_from_variables(rng, &vars);
+    let structure_graph = create_complex_assign_expression(rng, &vars);
 
     // Generate fresh argument variables.
     let args: Vec<Vec<u8>> = vec![b"a1".to_vec()];

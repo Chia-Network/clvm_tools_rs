@@ -10,6 +10,7 @@ use crate::compiler::srcloc::Srcloc;
 
 use crate::tests::compiler::fuzz::{simple_seeded_rng, SupportedOperators, ValueSpecification};
 
+/// Make a set of numbered variables to use for fuzzing.
 pub fn create_variable_set(_srcloc: Srcloc, vars: usize) -> BTreeSet<Vec<u8>> {
     (0..vars)
         .map(|n| format!("v{n}").bytes().collect())
@@ -17,7 +18,14 @@ pub fn create_variable_set(_srcloc: Srcloc, vars: usize) -> BTreeSet<Vec<u8>> {
 }
 
 #[derive(Default, Clone)]
-pub struct ExprVariableUsage {
+/// An object that records information about some variables that are defined in
+/// a complex, possibly multilevel assign form.  This object has the ability to
+/// both generate this relationship based on randomness and also to extract
+/// needed information about it.
+///
+/// In particular, we can ask it what variable this variable's definition
+/// contributes to in the hierarchy (find_parent_of_var),
+pub struct ComplexAssignExpression {
     pub toplevel: BTreeSet<Vec<u8>>,
     pub bindings: BTreeMap<Vec<u8>, Vec<Vec<u8>>>,
 }
@@ -28,7 +36,7 @@ pub struct GeneratedExpr {
     sexp: Rc<SExp>,
 }
 
-impl ExprVariableUsage {
+impl ComplexAssignExpression {
     fn fmtvar(
         &self,
         writer: &mut std::fmt::Formatter<'_>,
@@ -48,7 +56,9 @@ impl ExprVariableUsage {
         Ok(())
     }
 
-    // Find the parent of this var.
+    /// Find the parent of this var.
+    /// If its definition occurs in an assign form which gives another variable
+    /// its value, give the name of that variable.
     pub fn find_parent_of_var<'a>(&'a self, var: &[u8]) -> Option<&'a Vec<u8>> {
         for (parent, bindings) in self.bindings.iter() {
             if bindings.iter().any(|c| c == var) {
@@ -59,7 +69,9 @@ impl ExprVariableUsage {
         None
     }
 
-    // Find the path to this var.
+    /// Find the path to this var.
+    /// Given a variable name, return the list of parents whose values it appears
+    /// in.
     pub fn find_path_to_var<'a>(&'a self, var: &[u8]) -> Vec<&'a Vec<u8>> {
         let mut result = Vec::new();
         let mut checking = var;
@@ -70,7 +82,9 @@ impl ExprVariableUsage {
         result
     }
 
-    // Give the set of variables in scope for the definition of var.
+    /// Give the set of variables in scope for the definition of var.
+    /// This allows us, given a variable name to determine which other variables
+    /// could appear in an expression that gives the indicated var its value.
     pub fn variables_in_scope<'a>(&'a self, var: &[u8]) -> Vec<&'a Vec<u8>> {
         // If this variable itself use an assign form as its definition, then
         // all the innermost bindings are in scope.
@@ -125,7 +139,12 @@ impl ExprVariableUsage {
         result
     }
 
-    // Generate an expression to define one variable.
+    /// Generate an expression to define one variable.
+    /// Given a source of randomness, a desired complexity a set of variables that
+    /// are bound from elsewhere (args) and a variable name, generate a candidate
+    /// expression which respects the available scope at the definition of var.
+    /// The resulting expression is given as sexp (to be compiled as chialisp)
+    /// and as ValueSpecification to be separately evaulated.
     pub fn generate_expression<R: Rng>(
         &self,
         srcloc: &Srcloc,
@@ -248,6 +267,8 @@ impl ExprVariableUsage {
         )
     }
 
+    /// Output the assign form whose structure is defined by this object and given
+    /// a map of expressions to use for each variable's definition.
     pub fn create_assign_form(
         &self,
         srcloc: &Srcloc,
@@ -294,11 +315,11 @@ impl ExprVariableUsage {
 }
 
 #[test]
-fn test_expr_variable_usage() {
+fn test_complex_assign_expression() {
     let srcloc = Srcloc::start("*test*");
     let mut rng = simple_seeded_rng(0x02020202);
     let vars = create_variable_set(srcloc.clone(), 5);
-    let structure_graph = create_structure_from_variables(&mut rng, &vars);
+    let structure_graph = create_complex_assign_expression(&mut rng, &vars);
 
     assert_eq!(
         format!("{structure_graph:?}"),
@@ -394,9 +415,31 @@ fn test_expr_variable_usage() {
     );
     let free_vars: Vec<Vec<u8>> = g1.definition.get_free_vars().into_iter().collect();
     assert_eq!(free_vars, vec![b"a1".to_vec(), b"v4".to_vec()]);
+
+    // Generate simple constant expressions to make it clear how these relate to
+    // the definitions that are emitted.
+    let expressions: BTreeMap<Vec<u8>, GeneratedExpr> = (0..=4)
+        .map(|n| {
+            let name = format!("v{n}").as_bytes().to_vec();
+            let sexp = Rc::new(SExp::Integer(srcloc.clone(), n.to_bigint().unwrap()));
+            let expr = GeneratedExpr {
+                definition: Rc::new(ValueSpecification::ConstantValue(sexp.clone())),
+                sexp,
+            };
+            (name, expr)
+        })
+        .collect();
+
+    let assign_form = structure_graph.create_assign_form(&srcloc, &expressions);
+    // Each variable is defined as a constant with the same number in this
+    // example elaboration.
+    assert_eq!(
+        assign_form.to_sexp().to_string(),
+        "(assign v0 (assign v4 (q . 4) v1 (q . 1) (q)) v2 (q . 2) v3 (q . 3) v3)"
+    );
 }
 
-impl Debug for ExprVariableUsage {
+impl Debug for ComplexAssignExpression {
     fn fmt(&self, writer: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         for t in self.toplevel.iter() {
             self.fmtvar(writer, 0, t)?;
@@ -405,12 +448,15 @@ impl Debug for ExprVariableUsage {
     }
 }
 
-pub fn create_structure_from_variables<R: Rng>(
+/// Create a complex assign structure and provide methods for generating
+/// expressions that can be a candidate definition for it.
+/// Useful for fuzzing code that relates to assign forms.
+pub fn create_complex_assign_expression<R: Rng>(
     rng: &mut R,
     v: &BTreeSet<Vec<u8>>,
-) -> ExprVariableUsage {
+) -> ComplexAssignExpression {
     let mut v_start = v.clone();
-    let mut usage = ExprVariableUsage::default();
+    let mut usage = ComplexAssignExpression::default();
 
     while !v_start.is_empty() {
         // Choose a variable.
