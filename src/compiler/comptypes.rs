@@ -324,7 +324,7 @@ pub struct IncludeDesc {
 }
 
 impl IncludeDesc {
-    pub fn to_sexp(&self) -> Rc<SExp> {
+    pub fn override_to_sexp(&self) -> Rc<SExp> {
         Rc::new(SExp::Cons(
             self.kw.clone(),
             Rc::new(SExp::Atom(self.kw.clone(), b"include".to_vec())),
@@ -462,6 +462,197 @@ pub trait CompilerOpts {
         sexp: Rc<SExp>,
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr>;
+}
+
+/// A trait that simplifies implementing one's one CompilerOpts personality.
+/// This specifies to a CompilerOptsDelegator that this object contains a
+/// CompilerOpts that it uses for most of what it does, allowing end users
+/// to opt into a default implementation of all the methods via
+/// CompilerOptsDelegator and override only what's desired.
+pub trait HasCompilerOptsDelegation {
+    /// Get this object's inner CompilerOpts.
+    fn compiler_opts(&self) -> Rc<dyn CompilerOpts>;
+    /// Call a function that updates this object's CompilerOpts and use the
+    /// update our own object with the result.  Return the new wrapper.
+    fn update_compiler_opts<F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>>(&self, f: F) -> Rc<dyn CompilerOpts>;
+
+    // Defaults.
+    fn override_filename(&self) -> String {
+        self.compiler_opts().filename()
+    }
+    fn override_code_generator(&self) -> Option<PrimaryCodegen> {
+        self.compiler_opts().code_generator()
+    }
+    fn override_dialect(&self) -> AcceptedDialect {
+        self.compiler_opts().dialect()
+    }
+    fn override_disassembly_ver(&self) -> Option<usize> {
+        self.compiler_opts().disassembly_ver()
+    }
+    fn override_in_defun(&self) -> bool {
+        self.compiler_opts().in_defun()
+    }
+    fn override_stdenv(&self) -> bool {
+        self.compiler_opts().stdenv()
+    }
+    fn override_optimize(&self) -> bool {
+        self.compiler_opts().optimize()
+    }
+    fn override_frontend_opt(&self) -> bool {
+        self.compiler_opts().frontend_opt()
+    }
+    fn override_frontend_check_live(&self) -> bool {
+        self.compiler_opts().frontend_check_live()
+    }
+    fn override_start_env(&self) -> Option<Rc<SExp>> {
+        self.compiler_opts().start_env()
+    }
+    fn override_prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
+        self.compiler_opts().prim_map()
+    }
+    fn override_get_search_paths(&self) -> Vec<String> {
+        self.compiler_opts().get_search_paths()
+    }
+
+    fn override_set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_dialect(dialect))
+    }
+    fn override_set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_search_paths(dirs))
+    }
+    fn override_set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_disassembly_ver(ver))
+    }
+    fn override_set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_in_defun(new_in_defun))
+    }
+    fn override_set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_stdenv(new_stdenv))
+    }
+    fn override_set_optimize(&self, opt: bool) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_optimize(opt))
+    }
+    fn override_set_frontend_opt(&self, opt: bool) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_frontend_opt(opt))
+    }
+    fn override_set_frontend_check_live(&self, check: bool) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_frontend_check_live(check))
+    }
+    fn override_set_code_generator(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_code_generator(new_compiler))
+    }
+    fn override_set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_start_env(start_env))
+    }
+    fn override_set_prim_map(&self, new_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_prim_map(new_map))
+    }
+    fn override_read_new_file(
+        &self,
+        inc_from: String,
+        filename: String,
+    ) -> Result<(String, Vec<u8>), CompileErr> {
+        self.compiler_opts().read_new_file(inc_from, filename)
+    }
+    fn override_compile_program(
+        &self,
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        sexp: Rc<SExp>,
+        symbol_table: &mut HashMap<String, String>,
+    ) -> Result<SExp, CompileErr> {
+        self.compiler_opts().compile_program(allocator, runner, sexp, symbol_table)
+    }
+}
+
+impl<T: HasCompilerOptsDelegation> CompilerOpts for T {
+    // Defaults.
+    fn filename(&self) -> String {
+        self.override_filename()
+    }
+    fn code_generator(&self) -> Option<PrimaryCodegen> {
+        self.override_code_generator()
+    }
+    fn dialect(&self) -> AcceptedDialect {
+        self.override_dialect()
+    }
+    fn disassembly_ver(&self) -> Option<usize> {
+        self.override_disassembly_ver()
+    }
+    fn in_defun(&self) -> bool {
+        self.override_in_defun()
+    }
+    fn stdenv(&self) -> bool {
+        self.override_stdenv()
+    }
+    fn optimize(&self) -> bool {
+        self.override_optimize()
+    }
+    fn frontend_opt(&self) -> bool {
+        self.override_frontend_opt()
+    }
+    fn frontend_check_live(&self) -> bool {
+        self.override_frontend_check_live()
+    }
+    fn start_env(&self) -> Option<Rc<SExp>> {
+        self.override_start_env()
+    }
+    fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
+        self.override_prim_map()
+    }
+    fn get_search_paths(&self) -> Vec<String> {
+        self.override_get_search_paths()
+    }
+
+    fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
+        self.override_set_dialect(dialect)
+    }
+    fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
+        self.override_set_search_paths(dirs)
+    }
+    fn set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts> {
+        self.override_set_disassembly_ver(ver)
+    }
+    fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts> {
+        self.override_set_in_defun(new_in_defun)
+    }
+    fn set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts> {
+        self.override_set_stdenv(new_stdenv)
+    }
+    fn set_optimize(&self, opt: bool) -> Rc<dyn CompilerOpts> {
+        self.override_set_optimize(opt)
+    }
+    fn set_frontend_opt(&self, opt: bool) -> Rc<dyn CompilerOpts> {
+        self.override_set_frontend_opt(opt)
+    }
+    fn set_frontend_check_live(&self, check: bool) -> Rc<dyn CompilerOpts> {
+        self.override_set_frontend_check_live(check)
+    }
+    fn set_code_generator(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
+        self.override_set_code_generator(new_compiler)
+    }
+    fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts> {
+        self.override_set_start_env(start_env)
+    }
+    fn set_prim_map(&self, new_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts> {
+        self.override_set_prim_map(new_map)
+    }
+    fn read_new_file(
+        &self,
+        inc_from: String,
+        filename: String,
+    ) -> Result<(String, Vec<u8>), CompileErr> {
+        self.override_read_new_file(inc_from, filename)
+    }
+    fn compile_program(
+        &self,
+        allocator: &mut Allocator,
+        runner: Rc<dyn TRunProgram>,
+        sexp: Rc<SExp>,
+        symbol_table: &mut HashMap<String, String>,
+    ) -> Result<SExp, CompileErr> {
+        self.override_compile_program(allocator, runner, sexp, symbol_table)
+    }
 }
 
 /// Frontend uses this to accumulate frontend forms, used internally.
