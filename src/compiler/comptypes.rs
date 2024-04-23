@@ -474,7 +474,10 @@ pub trait HasCompilerOptsDelegation {
     fn compiler_opts(&self) -> Rc<dyn CompilerOpts>;
     /// Call a function that updates this object's CompilerOpts and use the
     /// update our own object with the result.  Return the new wrapper.
-    fn update_compiler_opts<F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>>(&self, f: F) -> Rc<dyn CompilerOpts>;
+    fn update_compiler_opts<F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>>(
+        &self,
+        f: F,
+    ) -> Rc<dyn CompilerOpts>;
 
     // Defaults.
     fn override_filename(&self) -> String {
@@ -544,7 +547,10 @@ pub trait HasCompilerOptsDelegation {
     fn override_set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts> {
         self.update_compiler_opts(|o| o.set_start_env(start_env))
     }
-    fn override_set_prim_map(&self, new_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts> {
+    fn override_set_prim_map(
+        &self,
+        new_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    ) -> Rc<dyn CompilerOpts> {
         self.update_compiler_opts(|o| o.set_prim_map(new_map))
     }
     fn override_read_new_file(
@@ -561,7 +567,8 @@ pub trait HasCompilerOptsDelegation {
         sexp: Rc<SExp>,
         symbol_table: &mut HashMap<String, String>,
     ) -> Result<SExp, CompileErr> {
-        self.compiler_opts().compile_program(allocator, runner, sexp, symbol_table)
+        self.compiler_opts()
+            .compile_program(allocator, runner, sexp, symbol_table)
     }
 }
 

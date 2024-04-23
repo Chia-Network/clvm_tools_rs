@@ -55,12 +55,17 @@ impl TestModuleCompilerOpts {
 }
 
 impl HasCompilerOptsDelegation for TestModuleCompilerOpts {
-    fn compiler_opts(&self) -> Rc<dyn CompilerOpts> { self.opts.clone() }
-    fn update_compiler_opts<F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>>(&self, f: F) -> Rc<dyn CompilerOpts> {
+    fn compiler_opts(&self) -> Rc<dyn CompilerOpts> {
+        self.opts.clone()
+    }
+    fn update_compiler_opts<F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>>(
+        &self,
+        f: F,
+    ) -> Rc<dyn CompilerOpts> {
         let new_opts = f(self.opts.clone());
         Rc::new(TestModuleCompilerOpts {
             opts: new_opts,
-            .. self.clone()
+            ..self.clone()
         })
     }
 }

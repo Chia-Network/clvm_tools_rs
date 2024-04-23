@@ -16,8 +16,8 @@ use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file, read_file};
 
-use crate::compiler::comptypes::{CompileErr, CompilerOpts, HasCompilerOptsDelegation};
 use crate::compiler::compiler::DefaultCompilerOpts;
+use crate::compiler::comptypes::{CompileErr, CompilerOpts, HasCompilerOptsDelegation};
 use crate::compiler::sexp::decode_string;
 use crate::compiler::srcloc::Srcloc;
 
@@ -307,7 +307,10 @@ struct TestCompilerOptsPresentsOwnFiles {
 
 impl TestCompilerOptsPresentsOwnFiles {
     fn new(filename: String, files: HashMap<String, String>) -> Self {
-        TestCompilerOptsPresentsOwnFiles { files: Rc::new(files), opts: Rc::new(DefaultCompilerOpts::new(&filename)) }
+        TestCompilerOptsPresentsOwnFiles {
+            files: Rc::new(files),
+            opts: Rc::new(DefaultCompilerOpts::new(&filename)),
+        }
     }
 }
 
@@ -316,11 +319,14 @@ impl HasCompilerOptsDelegation for TestCompilerOptsPresentsOwnFiles {
         self.opts.clone()
     }
 
-    fn update_compiler_opts<F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>>(&self, f: F) -> Rc<dyn CompilerOpts> {
+    fn update_compiler_opts<F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>>(
+        &self,
+        f: F,
+    ) -> Rc<dyn CompilerOpts> {
         let new_opts = f(self.opts.clone());
         Rc::new(TestCompilerOptsPresentsOwnFiles {
             opts: new_opts,
-            .. self.clone()
+            ..self.clone()
         })
     }
 
