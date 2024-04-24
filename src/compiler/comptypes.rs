@@ -464,7 +464,7 @@ pub trait CompilerOpts {
     ) -> Result<SExp, CompileErr>;
 }
 
-/// A trait that simplifies implementing one's one CompilerOpts personality.
+/// A trait that simplifies implementing one's own CompilerOpts personality.
 /// This specifies to a CompilerOptsDelegator that this object contains a
 /// CompilerOpts that it uses for most of what it does, allowing end users
 /// to opt into a default implementation of all the methods via
