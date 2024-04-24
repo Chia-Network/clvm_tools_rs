@@ -324,7 +324,7 @@ pub struct IncludeDesc {
 }
 
 impl IncludeDesc {
-    pub fn override_to_sexp(&self) -> Rc<SExp> {
+    pub fn to_sexp(&self) -> Rc<SExp> {
         Rc::new(SExp::Cons(
             self.kw.clone(),
             Rc::new(SExp::Atom(self.kw.clone(), b"include".to_vec())),
