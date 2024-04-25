@@ -1,12 +1,12 @@
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
 
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
-use crate::compiler::compiler::DefaultCompilerOpts;
+use crate::compiler::compiler::{DefaultCompilerOpts, FUZZ_TEST_PRE_CSE_MERGE_FIX_FLAG};
 use crate::compiler::comptypes::{BodyForm, CompileForm, CompilerOpts, DefunData, HelperForm};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::sexp::SExp;
@@ -110,11 +110,18 @@ fn test_cse_merge_regression() {
             .set_dialect(dialect.clone())
             .set_optimize(true)
             .set_frontend_opt(false);
+        let old_flags: Rc<HashSet<usize>> = Rc::new(
+            (&[FUZZ_TEST_PRE_CSE_MERGE_FIX_FLAG])
+                .iter()
+                .copied()
+                .collect(),
+        );
         let old_opts: Rc<dyn CompilerOpts> =
-            Rc::new(DefaultCompilerOpts::new("*cl23-pre-cse-merge-fix"))
+            Rc::new(DefaultCompilerOpts::new("merge-fix-regression-test.clsp"))
                 .set_dialect(dialect.clone())
                 .set_optimize(true)
-                .set_frontend_opt(false);
+                .set_frontend_opt(false)
+                .set_diag_flags(old_flags);
         let mut allocator = Allocator::new();
         let runner = Rc::new(DefaultProgramRunner::new());
         let mut symbols = HashMap::new();

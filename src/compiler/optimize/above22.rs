@@ -25,12 +25,12 @@ use crate::compiler::StartOfCodegenOptimization;
 #[derive(Default, Clone)]
 pub struct Strategy23 {}
 
-#[cfg(feature = "fuzz")]
+#[cfg(all(test, feature = "fuzz"))]
 fn enable_cse_merge_fix_so_can_be_disabled_for_tests(opts: Rc<dyn CompilerOpts>) -> bool {
-    !opts.filename().starts_with("*cl23-pre-cse-merge-fix")
+    !opts.diag_flags().contains(FUZZ_TEST_PRE_CSE_MERGE_FIX_FLAG)
 }
 
-#[cfg(not(feature = "fuzz"))]
+#[cfg(not(all(test, feature = "fuzz")))]
 fn enable_cse_merge_fix_so_can_be_disabled_for_tests(_opts: Rc<dyn CompilerOpts>) -> bool {
     true
 }
