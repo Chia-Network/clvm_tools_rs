@@ -539,7 +539,7 @@ fn detect_merge_into_host_assign(
         // Sequential let forms are degraded to parallel let stacks earlier.
         // Parallel let forms don't have interdependent bindings, so no need to
         // treat them here.
-        assert!(!matches!(kind, LetFormKind::Sequential));
+        debug_assert!(!matches!(kind, LetFormKind::Sequential));
         if matches!(kind, LetFormKind::Parallel) {
             return false;
         }
@@ -857,7 +857,7 @@ pub fn cse_optimize_bodyform(
                 )
             },
         ) {
-            assert!(res.to_sexp() != function_body.to_sexp());
+            debug_assert!(res.to_sexp() != function_body.to_sexp());
             function_body = res;
         } else {
             return Err(CompileErr(
