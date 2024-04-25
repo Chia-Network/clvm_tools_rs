@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -7,6 +6,7 @@ use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm::sexp::{
     enlist, first, flatten, fold_m, map_m, non_nil, nonempty_last, proper_list, rest, First,
     NodeSel, Rest, SelectNode, ThisNode,
@@ -148,9 +148,7 @@ fn build_used_constants_names(
             let matching_names = matching_names_1.iter().filter_map(|v| {
                 // Only v usefully in scope.
                 if let SExp::Atom = allocator.sexp(*v) {
-                    let v_atom = allocator.atom(*v);
-                    let v_borrowed: &[u8] = v_atom.borrow();
-                    Some(v_borrowed.to_vec())
+                    Some(By::new(allocator, *v).to_vec())
                 } else {
                     None
                 }
@@ -229,11 +227,10 @@ fn unquote_args(
     match allocator.sexp(code) {
         SExp::Atom => {
             // Only code in scope.
-            let code_atom = allocator.atom(code);
-            let code_atom: &[u8] = code_atom.borrow();
+            let code_atom = By::new(allocator, code);
             let matching_args = args
                 .iter()
-                .filter(|arg| *arg == code_atom)
+                .filter(|arg| *arg == code_atom.u8())
                 .cloned()
                 .collect::<Vec<Vec<u8>>>();
             if !matching_args.is_empty() {
@@ -291,18 +288,14 @@ fn defun_inline_to_macro(
         .iter()
         .filter_map(|x| {
             if let SExp::Atom = allocator.sexp(*x) {
-                // only x usefully in scope.
-                Some(allocator.atom(*x))
+                let x_buf = By::new(allocator, *x);
+                if x_buf.u8().is_empty() {
+                    None
+                } else {
+                    Some(x_buf.to_vec())
+                }
             } else {
                 None
-            }
-        })
-        .filter_map(|x| {
-            let x_borrowed: &[u8] = x.borrow();
-            if x_borrowed.is_empty() {
-                None
-            } else {
-                Some(x_borrowed.to_vec())
             }
         })
         .collect::<Vec<Vec<u8>>>();
@@ -336,20 +329,12 @@ fn parse_mod_sexp(
 
     let op = match allocator.sexp(op_node) {
         // op_node in use.
-        SExp::Atom => {
-            let op_atom = allocator.atom(op_node);
-            let op_borrowed: &[u8] = op_atom.borrow();
-            op_borrowed.to_vec()
-        }
+        SExp::Atom => By::new(allocator, op_node).to_vec(),
         _ => Vec::new(),
     };
     let name = match allocator.sexp(name_node) {
         // name_node in use.
-        SExp::Atom => {
-            let name_atom = allocator.atom(name_node);
-            let name_borrowed: &[u8] = name_atom.borrow();
-            name_borrowed.to_vec()
-        }
+        SExp::Atom => By::new(allocator, name_node).to_vec(),
         _ => Vec::new(),
     };
 

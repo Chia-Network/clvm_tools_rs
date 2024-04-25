@@ -13,9 +13,11 @@ use clvm_rs::reduction::{EvalErr, Reduction, Response};
 use clvm_rs::run_program::run_program_with_pre_eval;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+
 use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 
 use crate::classic::clvm::keyword_from_atom;
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm::sexp::proper_list;
 
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble_to_ir_with_kw};
@@ -205,10 +207,9 @@ impl CompilerOperatorsInternal {
         match allocator.sexp(sexp) {
             SExp::Pair(f, _) => match allocator.sexp(f) {
                 SExp::Atom => {
-                    let f_atom = allocator.atom(f);
-                    let f_borrowed: &[u8] = f_atom.borrow();
+                    let f_atom = By::new(allocator, f);
                     let filename =
-                        Bytes::new(Some(BytesFromType::Raw(f_borrowed.to_vec()))).decode();
+                        Bytes::new(Some(BytesFromType::Raw(f_atom.to_vec()))).decode();
                     // Use the read interface in CompilerOpts if we have one.
                     if let Some(opts) = self.get_compiler_opts() {
                         if let Ok((_, content)) =
@@ -240,10 +241,8 @@ impl CompilerOperatorsInternal {
         if let SExp::Pair(filename_sexp, r) = allocator.sexp(sexp) {
             if let SExp::Pair(data, _) = allocator.sexp(r) {
                 if let SExp::Atom = allocator.sexp(filename_sexp) {
-                    let filename_atom = allocator.atom(filename_sexp);
-                    let filename_buf: &[u8] = filename_atom.borrow();
                     let filename_bytes =
-                        Bytes::new(Some(BytesFromType::Raw(filename_buf.to_vec())));
+                        Bytes::new(Some(BytesFromType::Raw(By::new(allocator, filename_sexp).to_vec())));
                     let ir = disassemble_to_ir_with_kw(
                         allocator,
                         data,
@@ -288,11 +287,9 @@ impl CompilerOperatorsInternal {
 
         if let SExp::Pair(l, _r) = allocator.sexp(sexp) {
             if let SExp::Atom = allocator.sexp(l) {
-                let l_atom = allocator.atom(l);
-                let l_borrowed: &[u8] = l_atom.borrow();
                 // l most relevant in scope.
                 let filename =
-                    Bytes::new(Some(BytesFromType::Raw(l_borrowed.to_vec()))).decode();
+                    Bytes::new(Some(BytesFromType::Raw(By::new(allocator, l).to_vec()))).decode();
                 // If we have a compiler opts injected, let that handle reading
                 // files.  The name will bubble up to the _read function.
                 if self.get_compiler_opts().is_some() {
@@ -325,15 +322,11 @@ impl CompilerOperatorsInternal {
                 if let SExp::Pair(hash, name) = allocator.sexp(*kv) {
                     if let (SExp::Atom, SExp::Atom) = (allocator.sexp(hash), allocator.sexp(name)) {
                         // hash and name in scope.
-                        let hash_atom = allocator.atom(hash);
-                        let hash_borrowed: &[u8] = hash_atom.borrow();
                         let hash_text =
-                            Bytes::new(Some(BytesFromType::Raw(hash_borrowed.to_vec())))
+                            Bytes::new(Some(BytesFromType::Raw(By::new(allocator, hash).to_vec())))
                                 .decode();
-                        let name_atom = allocator.atom(name);
-                        let name_borrowed: &[u8] = name_atom.borrow();
                         let name_text =
-                            Bytes::new(Some(BytesFromType::Raw(name_borrowed.to_vec())))
+                            Bytes::new(Some(BytesFromType::Raw(By::new(allocator, name).to_vec())))
                                 .decode();
 
                         self.compile_outcomes.replace_with(|co| {

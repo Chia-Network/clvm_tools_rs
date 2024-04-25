@@ -215,9 +215,8 @@ fn lower_quote_(allocator: &mut Allocator, prog: NodePtr) -> Result<NodePtr, Eva
         // quote_node was Atom(q)
         let quote_node = qlist[0];
         if let SExp::Atom = allocator.sexp(quote_node) {
-            let quote_atom = allocator.atom(quote_node);
-            let quote_borrowed: &[u8] = quote_atom.borrow();
-            if quote_borrowed == "quote".as_bytes() {
+            let quote_atom = By::new(allocator, quote_node);
+            if quote_atom.u8() == b"quote" {
                 if qlist.len() != 2 {
                     // quoted list should be 2: "(quote arg)"
                     return Err(EvalErr(prog, format!("Compilation error while compiling [{}]. quote takes exactly one argument.", disassemble(allocator, prog, None))));
@@ -349,9 +348,7 @@ fn get_macro_program(
                         SExp::Atom => {
                             // was macro_name, but it's singular and probably
                             // not useful to rename.
-                            let mp_list0_atom = allocator.atom(mp_list[0]);
-                            let mp_list0_borrowed: &[u8] = mp_list0_atom.borrow();
-                            if mp_list0_borrowed == operator {
+                            if By::new(allocator, mp_list[0]).u8() == operator {
                                 return Ok(Some(value));
                             }
                         }
@@ -395,9 +392,7 @@ fn transform_program_atom(
                             SExp::Atom => {
                                 // v[0] is close by, and probably not useful to
                                 // rename here.
-                                let v0_atom = allocator.atom(v[0]);
-                                let v0_borrowed: &[u8] = v0_atom.borrow();
-                                if v0_borrowed == a {
+                                if By::new(allocator, v[0]).u8() == a {
                                     return Ok(Reduction(1, value));
                                 }
                             }
@@ -479,11 +474,10 @@ fn find_symbol_match(
                             symdef[1]
                         };
 
-                        let symbuf_atom = allocator.atom(symdef[0]);
-                        let symbuf: &[u8] = symbuf_atom.borrow();
-                        if b"*" == symbuf {
+                        let symbuf = By::new(allocator, symdef[0]);
+                        if b"*" == symbuf.u8() {
                             return Ok(Some(SymbolResult::Direct(r)));
-                        } else if opname == symbuf {
+                        } else if opname == symbuf.u8() {
                             return Ok(Some(SymbolResult::Matched(symbol, value)));
                         }
                     }
@@ -650,12 +644,7 @@ fn do_com_prog_(
         match allocator.sexp(prog) {
             SExp::Atom => {
                 // Note: can't co-borrow with allocator below.
-                let prog_bytes =
-                    {
-                        let prog_atom = allocator.atom(prog);
-                        let prog_bytes: &[u8] = prog_atom.borrow();
-                        prog_bytes.to_vec()
-                    };
+                let prog_bytes = By::new(allocator, prog).to_vec();
                 transform_program_atom(
                     allocator,
                     prog,
@@ -667,12 +656,7 @@ fn do_com_prog_(
                 match allocator.sexp(operator) {
                     SExp::Atom => {
                         // Note: can't co-borrow with allocator below.
-                        let opbuf =
-                            {
-                                let op_atom = allocator.atom(operator);
-                                let opbuf: &[u8] = op_atom.borrow();
-                                opbuf.to_vec()
-                            };
+                        let opbuf = By::new(allocator, operator).to_vec();
                         get_macro_program(allocator, &opbuf, macro_lookup).
                             and_then(|x| match x {
                                 Some(value) => {
@@ -805,9 +789,7 @@ pub fn get_compile_filename(
 
     if let SExp::Atom = allocator.sexp(cvt_prog_result) {
         // only cvt_prog_result in scope.
-        let abuf_atom = allocator.atom(cvt_prog_result);
-        let abuf: &[u8] = abuf_atom.borrow();
-        return Ok(Some(Bytes::new(Some(BytesFromType::Raw(abuf.to_vec()))).decode()));
+        return Ok(Some(Bytes::new(Some(BytesFromType::Raw(By::new(allocator, cvt_prog_result).to_vec()))).decode()));
     }
 
     Err(EvalErr(
@@ -828,11 +810,9 @@ pub fn get_search_paths(
     if let Some(l) = proper_list(allocator, search_path_result.1, true) {
         for elt in l.iter().copied() {
             if let SExp::Atom = allocator.sexp(elt) {
-                let elt_atom = allocator.atom(elt);
-                let elt_borrowed: &[u8] = elt_atom.borrow();
                 // Only elt in scope.
                 res.push(
-                    Bytes::new(Some(BytesFromType::Raw(elt_borrowed.to_vec()))).decode(),
+                    Bytes::new(Some(BytesFromType::Raw(By::new(allocator, elt).to_vec()))).decode(),
                 );
             }
         }
