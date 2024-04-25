@@ -1388,7 +1388,12 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         } else {
             Some(max_cost as u64)
         },
-        pre_eval_f: Some(&mut runlog),
+        pre_eval_f:
+        if emit_symbol_output {
+            Some(&mut runlog)
+        } else {
+            None
+        },
         strict: parsed_args
             .get("strict")
             .map(|_| true)

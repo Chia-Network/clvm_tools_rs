@@ -110,8 +110,6 @@ impl<'a> PreEval for RunLog<'a> {
         let recognized = self.symbol_table
             .as_ref()
             .and_then(|symbol_table| symbol_table.get(&h.hex()).map(|x| x.to_string()));
-        eprintln!("recognized {} symbol_table {}", recognized.is_some(), self.symbol_table.is_some());
-
         if recognized.is_none() && self.symbol_table.is_some() {
             Ok(PreEvalResult::Done)
         } else {
