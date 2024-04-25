@@ -13,7 +13,6 @@ use linked_hash_map::LinkedHashMap;
 use yaml_rust::{Yaml, YamlEmitter};
 
 use clvm_rs::allocator::{Allocator, NodePtr};
-use clvm_rs::reduction::{EvalErr, Reduction};
 
 use crate::classic::clvm::__type_compatibility__::{
     t, Bytes, BytesFromType, Stream, Tuple, UnvalidatedBytesFromType,
@@ -35,7 +34,7 @@ use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{
     DefaultProgramRunner, RunProgramOption, TRunProgram,
 };
-use crate::classic::clvm_tools::stages::stage_2::operators::{CompilerOperators, run_program_for_search_paths};
+use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::platform::PathJoin;
 
 use crate::classic::platform::argparse::{
@@ -863,31 +862,6 @@ fn get_disassembly_ver(p: &HashMap<String, ArgumentValue>) -> Option<usize> {
     None
 }
 
-pub fn run_program_with_log(allocator: &mut Allocator, runlog: &mut RunLog, run_program: &CompilerOperators, input_sexp: Option<NodePtr>, max_cost: i64, run_script: NodePtr, strict: bool) -> Result<Reduction, EvalErr> {
-    let options: RunProgramOption = RunProgramOption {
-        max_cost: if max_cost == 0 {
-            None
-        } else {
-            Some(max_cost as u64)
-        },
-        pre_eval_f: Some(runlog),
-        strict,
-    };
-
-    // In the case of table tracing, we don't want to emit the startup steps for
-    // brun, which involves excuting (2 2 3) on the program and its args.
-    //
-    // Here, if we're in that mode, we'll produce the hash of the input program so
-    // that we can recognize it and start the output for the table trace.
-    run_program
-        .run_program(
-            allocator,
-            run_script,
-            input_sexp.unwrap(),
-            Some(options),
-        )
-}
-
 pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, default_stage: u32) {
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
@@ -1408,18 +1382,31 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     };
     let time_parse_input = SystemTime::now();
 
-    let res = run_program_with_log(
-        &mut allocator,
-        &mut runlog,
-        run_program.borrow(),
-        input_sexp,
-        max_cost,
-        run_script,
-        parsed_args
+    let options: RunProgramOption = RunProgramOption {
+        max_cost: if max_cost == 0 {
+            None
+        } else {
+            Some(max_cost as u64)
+        },
+        pre_eval_f: Some(&mut runlog),
+        strict: parsed_args
             .get("strict")
             .map(|_| true)
             .unwrap_or_else(|| false)
-    )
+    };
+
+    // In the case of table tracing, we don't want to emit the startup steps for
+    // brun, which involves excuting (2 2 3) on the program and its args.
+    //
+    // Here, if we're in that mode, we'll produce the hash of the input program so
+    // that we can recognize it and start the output for the table trace.
+    let res = run_program
+        .run_program(
+            &mut allocator,
+            run_script,
+            input_sexp.unwrap(),
+            Some(options),
+        )
         .map(|run_program_result| {
             let mut cost: i64 = run_program_result.0 as i64;
             let result = run_program_result.1;

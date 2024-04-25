@@ -6,6 +6,7 @@ use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::{EvalErr, Reduction, Response};
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm::sexp::{enlist, first, map_m, non_nil, proper_list, rest};
 use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
@@ -130,9 +131,8 @@ pub fn compile_qq(
         SExp::Pair(op, sexp_rest) => {
             if let SExp::Atom = allocator.sexp(op) {
                 // opbuf => op
-                let op_atom = allocator.atom(op);
-                let op_borrowed: &[u8] = op_atom.borrow();
-                if op_borrowed == qq_atom() {
+                let opbuf = By::new(allocator, op);
+                if opbuf.borrow() == qq_atom() {
                     return m! {
                         cons_atom <- allocator.new_atom(&[4]);
                         subexp <-
@@ -142,7 +142,7 @@ pub fn compile_qq(
                         run_list <- enlist(allocator, &[cons_atom, op, consed]);
                         com_qq(allocator, "qq sexp pair".to_string(), macro_lookup, symbol_table, runner, run_list)
                     };
-                } else if op_borrowed == unquote_atom() {
+                } else if opbuf.borrow() == unquote_atom() {
                     // opbuf
                     if level == 1 {
                         // (qq (unquote X)) => X
