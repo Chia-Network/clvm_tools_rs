@@ -241,7 +241,7 @@ impl TConversion for OpcConversion {
             .and_then(|ir_sexp| assemble_from_ir(allocator, Rc::new(ir_sexp)).map_err(|e| e.1))
             .map(|sexp| t(sexp, sexp_as_bin(allocator, sexp).hex()))
             .map(Ok) // Flatten result type to Ok
-            .unwrap_or_else(|err| Ok(t(allocator.null(), err))) // Original code printed error messages on stdout, ret 0 on CLVM error
+            .unwrap_or_else(|err| Ok(t(allocator.nil(), err))) // Original code printed error messages on stdout, ret 0 on CLVM error
     }
 }
 
@@ -812,7 +812,7 @@ fn calculate_cost_offset(
      This is a hack and need to go away, probably when we do dialects for real,
      and then the dialect can have a `run_program` API.
     */
-    let almost_empty_list = enlist(allocator, &[allocator.null()]).unwrap();
+    let almost_empty_list = enlist(allocator, &[allocator.nil()]).unwrap();
     let cost = run_program
         .run_program(allocator, run_script, almost_empty_list, None)
         .map(|x| x.0)

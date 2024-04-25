@@ -8,6 +8,7 @@ use clvm_rs::reduction::EvalErr;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Record, Stream};
 use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm_tools::ir::r#type::IRRepr;
 use crate::classic::clvm_tools::ir::reader::IRReader;
 use crate::classic::clvm_tools::ir::writer::write_ir;
@@ -25,7 +26,7 @@ pub fn assemble_from_ir(
     ir_sexp: Rc<IRRepr>,
 ) -> Result<NodePtr, EvalErr> {
     match ir_sexp.borrow() {
-        IRRepr::Null => Ok(allocator.null()),
+        IRRepr::Null => Ok(allocator.nil()),
         IRRepr::Quotes(b) => allocator.new_atom(b.data()),
         IRRepr::Int(b, _signed) => allocator.new_atom(b.data()),
         IRRepr::Hex(b) => allocator.new_atom(b.data()),
@@ -127,7 +128,7 @@ pub fn disassemble_to_ir_with_kw(
 
         SExp::Atom => {
             // sexp is the only node in scope.
-            let bytes = Bytes::new(Some(BytesFromType::Raw(allocator.atom(sexp).to_vec())));
+            let bytes = Bytes::new(Some(BytesFromType::Raw(By::new(allocator, sexp).to_vec())));
             ir_for_atom(&bytes, allow_keyword, keyword_from_atom)
         }
     }
@@ -157,6 +158,6 @@ pub fn assemble(allocator: &mut Allocator, s: &str) -> Result<NodePtr, EvalErr> 
     let mut reader = IRReader::new(stream);
     reader
         .read_expr()
-        .map_err(|e| EvalErr(allocator.null(), e.to_string()))
+        .map_err(|e| EvalErr(allocator.nil(), e.to_string()))
         .and_then(|ir| assemble_from_ir(allocator, Rc::new(ir)))
 }

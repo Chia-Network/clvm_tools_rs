@@ -5,6 +5,7 @@ use clvmr::allocator::{Allocator, NodePtr, SExp};
 use clvmr::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{proper_list, rest};
 use crate::classic::clvm_tools::stages::assemble;
@@ -32,7 +33,7 @@ pub fn convert_hex_to_sexp(
     let content_bytes = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(decode_string(
         file_data,
     ))))
-    .map_err(|e| EvalErr(allocator.null(), e.to_string()))?;
+    .map_err(|e| EvalErr(allocator.nil(), e.to_string()))?;
     let mut reader_stream = Stream::new(Some(content_bytes));
     Ok(sexp_from_stream(
         allocator,
@@ -97,38 +98,42 @@ pub fn process_embed_file(
         ) {
             // Note: we don't want to keep borrowing here because we
             // need the mutable borrow below.
-            let name_buf = allocator.atom(l[0]).to_vec();
-            let kind_buf = allocator.atom(l[1]);
-            let filename_buf = allocator.atom(l[2]).to_vec();
-            let file_data = if kind_buf == b"bin" {
+            let (name, kind, filename) =
+            {
+                (By::new(allocator, l[0]).to_vec(),
+                 By::new(allocator, l[1]).to_vec(),
+                 By::new(allocator, l[2]).to_vec()
+                )
+            };
+            let file_data = if &kind == b"bin" {
                 let file = read_file(
                     runner,
                     allocator,
                     declaration_sexp,
-                    &decode_string(&filename_buf),
+                    &decode_string(&filename),
                 )?;
                 allocator.new_atom(&file.data)?
-            } else if kind_buf == b"hex" {
+            } else if &kind == b"hex" {
                 let file = read_file(
                     runner,
                     allocator,
                     declaration_sexp,
-                    &decode_string(&filename_buf),
+                    &decode_string(&filename),
                 )?;
                 convert_hex_to_sexp(allocator, &file.data)?
-            } else if kind_buf == b"sexp" {
+            } else if &kind == b"sexp" {
                 let file = read_file(
                     runner,
                     allocator,
                     declaration_sexp,
-                    &decode_string(&filename_buf),
+                    &decode_string(&filename),
                 )?;
                 assemble(allocator, &decode_string(&file.data))?
             } else {
                 return Err(EvalErr(declaration_sexp, "no such embed kind".to_string()));
             };
 
-            Ok((name_buf.to_vec(), quote(allocator, file_data)?))
+            Ok((name, quote(allocator, file_data)?))
         } else {
             Err(EvalErr(
                 declaration_sexp,

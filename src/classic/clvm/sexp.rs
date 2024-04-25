@@ -8,6 +8,7 @@ use clvm_rs::reduction::EvalErr;
 use bls12_381::G1Affine;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm::serialize::sexp_to_stream;
 use crate::util::{u8_from_number, Number};
 
@@ -43,7 +44,7 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
 
         let top = match stack.pop() {
             None => {
-                return Err(EvalErr(allocator.null(), "empty value stack".to_string()));
+                return Err(EvalErr(allocator.nil(), "empty value stack".to_string()));
             }
             Some(rc) => rc,
         };
@@ -57,7 +58,7 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
                     }
                     CastableType::TupleOf(left, right) => {
                         let target_index = stack.len();
-                        match allocator.new_pair(allocator.null(), allocator.null()) {
+                        match allocator.new_pair(allocator.nil(), allocator.nil()) {
                             Ok(pair) => {
                                 stack.push(Rc::new(CastableType::CLVMObject(pair)));
                             }
@@ -75,7 +76,7 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
                     }
                     CastableType::ListOf(_sel, v) => {
                         let target_index = stack.len();
-                        stack.push(Rc::new(CastableType::CLVMObject(allocator.null())));
+                        stack.push(Rc::new(CastableType::CLVMObject(allocator.nil())));
                         for vi in v.iter().take(v.len() - 1) {
                             stack.push(vi.clone());
                             ops.push(SexpStackOp::OpPrepend(target_index));
@@ -158,14 +159,14 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
                     },
                     _ => {
                         return Err(EvalErr(
-                            allocator.null(),
+                            allocator.nil(),
                             format!("Setting wing of non pair {:?}", stack[target]),
                         ));
                     }
                 },
                 _ => {
                     return Err(EvalErr(
-                        allocator.null(),
+                        allocator.nil(),
                         format!("op_set_pair on atom item {target:?} in vec {stack:?} ops {ops:?}"),
                     ));
                 }
@@ -183,14 +184,14 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
                     },
                     _ => {
                         return Err(EvalErr(
-                            allocator.null(),
+                            allocator.nil(),
                             format!("unrealized pair prepended {:?}", stack[target]),
                         ));
                     }
                 },
                 _ => {
                     return Err(EvalErr(
-                        allocator.null(),
+                        allocator.nil(),
                         format!("unrealized prepend {top:?}"),
                     ));
                 }
@@ -200,17 +201,17 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
 
     if stack.len() != 1 {
         return Err(EvalErr(
-            allocator.null(),
+            allocator.nil(),
             format!("too many values left on op stack {stack:?}"),
         ));
     }
 
     return match stack.pop() {
-        None => Err(EvalErr(allocator.null(), "stack empty".to_string())),
+        None => Err(EvalErr(allocator.nil(), "stack empty".to_string())),
         Some(top) => match top.borrow() {
             CastableType::CLVMObject(o) => Ok(*o),
             _ => Err(EvalErr(
-                allocator.null(),
+                allocator.nil(),
                 format!("unimplemented {:?}", stack[0]),
             )),
         },
@@ -227,7 +228,7 @@ pub fn bool_sexp(allocator: &Allocator, b: bool) -> NodePtr {
     if b {
         allocator.one()
     } else {
-        allocator.null()
+        allocator.nil()
     }
 }
 
@@ -355,7 +356,7 @@ pub fn rest(allocator: &Allocator, sexp: NodePtr) -> Result<NodePtr, EvalErr> {
 
 pub fn atom(allocator: &Allocator, sexp: NodePtr) -> Result<Vec<u8>, EvalErr> {
     match allocator.sexp(sexp) {
-        SExp::Atom => Ok(allocator.atom(sexp).to_vec()), // only sexp in scope
+        SExp::Atom => Ok(By::new(allocator, sexp).to_vec()), // only sexp in scope
         _ => Err(EvalErr(sexp, "not an atom".to_string())),
     }
 }
@@ -383,7 +384,7 @@ pub fn proper_list(allocator: &Allocator, sexp: NodePtr, store: bool) -> Option<
 }
 
 pub fn enlist(allocator: &mut Allocator, vec: &[NodePtr]) -> Result<NodePtr, EvalErr> {
-    let mut built = allocator.null();
+    let mut built = allocator.nil();
 
     for i_reverse in 0..vec.len() {
         let i = vec.len() - i_reverse - 1;

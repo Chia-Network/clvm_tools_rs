@@ -61,7 +61,8 @@ pub fn build_table_mut<X>(
             let treehash = sha256(
                 Bytes::new(Some(BytesFromType::Raw(vec![2])))
                     .concat(&left)
-                    .concat(&right),
+                    .concat(&right)
+                    .data(),
             );
             code_map.entry(treehash.hex()).or_insert_with(|| tx(code));
             treehash
@@ -69,7 +70,8 @@ pub fn build_table_mut<X>(
         SExp::Atom(_, a) => {
             let treehash = sha256(
                 Bytes::new(Some(BytesFromType::Raw(vec![1])))
-                    .concat(&Bytes::new(Some(BytesFromType::Raw(a.clone())))),
+                    .concat(&Bytes::new(Some(BytesFromType::Raw(a.clone()))))
+                    .data(),
             );
             code_map.insert(treehash.hex(), tx(code));
             treehash

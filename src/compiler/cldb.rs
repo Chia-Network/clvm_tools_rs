@@ -563,7 +563,7 @@ fn hex_to_modern_sexp_inner(
         ))),
         _ => convert_from_clvm_rs(allocator, srcloc, program).map_err(|_| {
             EvalErr(
-                Allocator::null(allocator),
+                allocator.nil(),
                 "clvm_rs allocator failed".to_string(),
             )
         }),

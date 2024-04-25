@@ -1,7 +1,9 @@
 use num_bigint::ToBigInt;
+use std::borrow::Borrow;
 
 use clvm_rs::allocator::Allocator;
 use clvm_rs::reduction::EvalErr;
+use clvm_rs::{Atom, NodePtr};
 
 use crate::classic::clvm::__type_compatibility__::{
     bi_one, bi_zero, get_u32, Bytes, BytesFromType,
@@ -21,7 +23,7 @@ pub fn int_from_bytes(
         return Ok(0);
     } else if b.length() * 8 > 64 {
         return Err(EvalErr(
-            allocator.null(),
+            allocator.nil(),
             "Cannot convert Bytes to Integer larger than 64bit. Use bigint_from_bytes instead."
                 .to_string(),
         ));
@@ -148,3 +150,22 @@ pub fn bigint_to_bytes_clvm(v: &Number) -> Bytes {
 // export function limbs_for_int(v: number|bigint): number {
 //   return ((v >= 0 ? v : -v).toString(2).length + 7) >> 3;
 // }
+
+pub struct By<'a> { atom: Atom<'a> }
+impl<'a> By<'a> {
+    pub fn new(allocator: &'a Allocator, node: NodePtr) -> Self {
+        By { atom: allocator.atom(node) }
+    }
+    pub fn u8(&self) -> &[u8] {
+        self.atom.borrow()
+    }
+    pub fn to_vec(&self) -> Vec<u8> {
+        let borrowed: &[u8] = self.atom.borrow();
+        borrowed.to_vec()
+    }
+}
+impl<'a> Borrow<[u8]> for By<'a> {
+    fn borrow(&self) -> &[u8] {
+        self.u8()
+    }
+}

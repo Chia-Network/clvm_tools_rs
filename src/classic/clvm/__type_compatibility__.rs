@@ -214,8 +214,8 @@ impl Display for Bytes {
     }
 }
 
-pub fn sha256(value: Bytes) -> Bytes {
-    let hashed = Sha256::digest(&value.data()[..]);
+pub fn sha256(value: &[u8]) -> Bytes {
+    let hashed = Sha256::digest(value);
     let hashed_iter = hashed.into_iter();
     let newvec: Vec<u8> = hashed_iter.collect();
     Bytes::new(Some(BytesFromType::Raw(newvec)))

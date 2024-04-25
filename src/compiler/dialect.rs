@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use clvmr::allocator::{Allocator, NodePtr, SExp};
 
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm::sexp::proper_list;
 
 use crate::compiler::sexp::decode_string;
@@ -92,8 +93,8 @@ fn include_dialect(allocator: &Allocator, e: &[NodePtr]) -> Option<AcceptedDiale
         allocator.sexp(include_keyword_sexp),
         allocator.sexp(name_sexp),
     ) {
-        if allocator.atom(include_keyword_sexp) == "include".as_bytes().to_vec() {
-            if let Some(dialect) = KNOWN_DIALECTS.get(&decode_string(allocator.atom(name_sexp))) {
+        if By::new(allocator, include_keyword_sexp).u8() == b"include" {
+            if let Some(dialect) = KNOWN_DIALECTS.get(&decode_string(By::new(allocator, name_sexp).u8())) {
                 return Some(dialect.accepted.clone());
             }
         }
