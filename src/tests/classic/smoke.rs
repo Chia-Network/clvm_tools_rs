@@ -1,6 +1,5 @@
 use num_bigint::ToBigInt;
 
-use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fs;
 use std::io;
@@ -13,6 +12,7 @@ use clvm_rs::reduction::EvalErr;
 use crate::classic::clvm::__type_compatibility__::{
     pybytes_repr, t, Bytes, Stream, UnvalidatedBytesFromType,
 };
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{sexp_as_bin, First, NodeSel, Rest, SelectNode, ThisNode};
 use crate::classic::clvm::syntax_error::SyntaxErr;
@@ -151,9 +151,7 @@ fn mid_negative_value_bin() {
     )
     .expect("should be able to make nodeptr");
     if let SExp::Atom = allocator.sexp(atom.1) {
-        let atom_1 = allocator.atom(atom.1);
-        let res_bytes: &[u8] = atom_1.borrow();
-        assert_eq!(res_bytes, &[0xff, 0xff]);
+        assert_eq!(By::new(&allocator, atom.1).u8(), &[0xff, 0xff]);
     } else {
         assert!(false);
     }
@@ -291,9 +289,7 @@ fn can_run_from_source_nil() {
     let res = run_from_source(&mut allocator, "()".to_string());
     match allocator.sexp(res) {
         SExp::Atom => {
-            let res_atom = allocator.atom(res);
-            let res_bytes: &[u8] = res_atom.borrow();
-            assert_eq!(res_bytes.len(), 0);
+            assert_eq!(By::new(&allocator, res).u8().len(), 0);
         }
         _ => {
             assert_eq!("expected atom", "");
@@ -307,9 +303,7 @@ fn can_echo_quoted_nil() {
     let res = run_from_source(&mut allocator, "(1)".to_string());
     match allocator.sexp(res) {
         SExp::Atom => {
-            let res_atom = allocator.atom(res);
-            let res_bytes: &[u8] = res_atom.borrow();
-            assert_eq!(res_bytes.len(), 0);
+            assert_eq!(By::new(&allocator, res).u8().len(), 0);
         }
         _ => {
             assert_eq!("expected atom", "");
@@ -339,10 +333,9 @@ fn can_echo_quoted_atom() {
     let res = run_from_source(&mut allocator, "(1 . 3)".to_string());
     match allocator.sexp(res) {
         SExp::Atom => {
-            let res_atom = allocator.atom(res);
-            let res_bytes: &[u8] = res_atom.borrow();
-            assert_eq!(res_bytes.len(), 1);
-            assert_eq!(res_bytes[0], 3);
+            let res_bytes = By::new(&allocator, res);
+            assert_eq!(res_bytes.u8().len(), 1);
+            assert_eq!(res_bytes.u8()[0], 3);
         }
         _ => {
             assert_eq!("expected atom", "");
@@ -356,10 +349,9 @@ fn can_do_operations() {
     let res = run_from_source(&mut allocator, "(16 (1 . 3) (1 . 5))".to_string());
     match allocator.sexp(res) {
         SExp::Atom => {
-            let res_atom = allocator.atom(res);
-            let res_bytes: &[u8] = res_atom.borrow();
-            assert_eq!(res_bytes.len(), 1);
-            assert_eq!(res_bytes[0], 8);
+            let res_bytes = By::new(&allocator, res);
+            assert_eq!(res_bytes.u8().len(), 1);
+            assert_eq!(res_bytes.u8()[0], 8);
         }
         _ => {
             assert_eq!("expected atom", "");
@@ -373,10 +365,9 @@ fn can_do_operations_kw() {
     let res = run_from_source(&mut allocator, "(+ (q . 3) (q . 5))".to_string());
     match allocator.sexp(res) {
         SExp::Atom => {
-            let res = allocator.atom(res);
-            let res_bytes: &[u8] = res.borrow();
-            assert_eq!(res_bytes.len(), 1);
-            assert_eq!(res_bytes[0], 8);
+            let res_bytes = By::new(&allocator, res);
+            assert_eq!(res_bytes.u8().len(), 1);
+            assert_eq!(res_bytes.u8()[0], 8);
         }
         _ => {
             assert_eq!("expected atom", "");

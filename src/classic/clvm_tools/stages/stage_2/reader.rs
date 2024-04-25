@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::fs;
 use std::rc::Rc;
 
@@ -6,6 +5,7 @@ use clvmr::allocator::{Allocator, NodePtr, SExp};
 use clvmr::reduction::EvalErr;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use crate::classic::clvm::sexp::{proper_list, rest};
 use crate::classic::clvm_tools::stages::assemble;
@@ -100,13 +100,10 @@ pub fn process_embed_file(
             // need the mutable borrow below.
             let (name, kind, filename) =
             {
-                let name_atom = allocator.atom(l[0]);
-                let name_buf: &[u8] = name_atom.borrow();
-                let kind_atom = allocator.atom(l[1]);
-                let kind_buf: &[u8] = kind_atom.borrow();
-                let filename_atom = allocator.atom(l[2]);
-                let filename_buf: &[u8] = filename_atom.borrow();
-                (name_buf.to_vec(), kind_buf.to_vec(), filename_buf.to_vec())
+                (By::new(allocator, l[0]).to_vec(),
+                 By::new(allocator, l[1]).to_vec(),
+                 By::new(allocator, l[2]).to_vec()
+                )
             };
             let file_data = if &kind == b"bin" {
                 let file = read_file(

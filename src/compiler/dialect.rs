@@ -1,8 +1,8 @@
-use std::borrow::Borrow;
 use std::collections::HashMap;
 
 use clvmr::allocator::{Allocator, NodePtr, SExp};
 
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm::sexp::proper_list;
 
 use crate::compiler::sexp::decode_string;
@@ -93,12 +93,8 @@ fn include_dialect(allocator: &Allocator, e: &[NodePtr]) -> Option<AcceptedDiale
         allocator.sexp(include_keyword_sexp),
         allocator.sexp(name_sexp),
     ) {
-        let ik_atom = allocator.atom(include_keyword_sexp);
-        let ik_borrowed: &[u8] = ik_atom.borrow();
-        if ik_borrowed == "include".as_bytes().to_vec() {
-            let name_atom = allocator.atom(name_sexp);
-            let name_borrowed: &[u8] = name_atom.borrow();
-            if let Some(dialect) = KNOWN_DIALECTS.get(&decode_string(name_borrowed)) {
+        if By::new(allocator, include_keyword_sexp).u8() == b"include" {
+            if let Some(dialect) = KNOWN_DIALECTS.get(&decode_string(By::new(allocator, name_sexp).u8())) {
                 return Some(dialect.accepted.clone());
             }
         }

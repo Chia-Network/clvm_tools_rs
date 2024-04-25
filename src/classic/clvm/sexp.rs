@@ -8,6 +8,7 @@ use clvm_rs::reduction::EvalErr;
 use bls12_381::G1Affine;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm::serialize::sexp_to_stream;
 use crate::util::{u8_from_number, Number};
 
@@ -356,9 +357,8 @@ pub fn rest(allocator: &Allocator, sexp: NodePtr) -> Result<NodePtr, EvalErr> {
 pub fn atom(allocator: &Allocator, sexp: NodePtr) -> Result<Vec<u8>, EvalErr> {
     match allocator.sexp(sexp) {
         SExp::Atom => {
-            let sexp_atom = allocator.atom(sexp);
-            let sexp_borrowed: &[u8] = sexp_atom.borrow();
-            Ok(sexp_borrowed.to_vec()) // only sexp in scope
+            let sexp_atom = By::new(allocator, sexp);
+            Ok(sexp_atom.to_vec()) // only sexp in scope
         }
         _ => Err(EvalErr(sexp, "not an atom".to_string())),
     }

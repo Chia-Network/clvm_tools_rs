@@ -11,6 +11,7 @@ use sha2::Digest;
 use sha2::Sha256;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::prims;
@@ -264,15 +265,14 @@ pub fn convert_from_clvm_rs(
 ) -> Result<Rc<SExp>, RunFailure> {
     match allocator.sexp(head) {
         allocator::SExp::Atom => {
-            let head_atom = allocator.atom(head);
-            let atom_data: &[u8] = head_atom.borrow();
-            if atom_data.is_empty() {
+            let atom_data = By::new(allocator, head);
+            if atom_data.u8().is_empty() {
                 Ok(Rc::new(SExp::Nil(loc)))
             } else {
-                let integer = number_from_u8(atom_data);
+                let integer = number_from_u8(atom_data.u8());
                 // Ensure that atom values that don't evaluate equal to integers
                 // are represented faithfully as atoms.
-                if u8_from_number(integer.clone()) == atom_data {
+                if u8_from_number(integer.clone()) == atom_data.u8() {
                     Ok(Rc::new(SExp::Integer(loc, integer)))
                 } else {
                     Ok(Rc::new(SExp::Atom(loc, atom_data.to_vec())))

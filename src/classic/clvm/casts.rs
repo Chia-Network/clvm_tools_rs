@@ -153,12 +153,19 @@ pub fn bigint_to_bytes_clvm(v: &Number) -> Bytes {
 
 pub struct By<'a> { atom: Atom<'a> }
 impl<'a> By<'a> {
-    pub fn new(allocator: &'a mut Allocator, node: NodePtr) -> Self {
+    pub fn new(allocator: &'a Allocator, node: NodePtr) -> Self {
         By { atom: allocator.atom(node) }
+    }
+    pub fn u8(&self) -> &[u8] {
+        self.atom.borrow()
+    }
+    pub fn to_vec(&self) -> Vec<u8> {
+        let borrowed: &[u8] = self.atom.borrow();
+        borrowed.to_vec()
     }
 }
 impl<'a> Borrow<[u8]> for By<'a> {
     fn borrow(&self) -> &[u8] {
-        self.atom.borrow()
+        self.u8()
     }
 }
