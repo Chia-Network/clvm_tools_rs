@@ -356,10 +356,7 @@ pub fn rest(allocator: &Allocator, sexp: NodePtr) -> Result<NodePtr, EvalErr> {
 
 pub fn atom(allocator: &Allocator, sexp: NodePtr) -> Result<Vec<u8>, EvalErr> {
     match allocator.sexp(sexp) {
-        SExp::Atom => {
-            let sexp_atom = By::new(allocator, sexp);
-            Ok(sexp_atom.to_vec()) // only sexp in scope
-        }
+        SExp::Atom => Ok(By::new(allocator, sexp).to_vec()), // only sexp in scope
         _ => Err(EvalErr(sexp, "not an atom".to_string())),
     }
 }

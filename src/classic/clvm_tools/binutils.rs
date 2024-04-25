@@ -8,6 +8,7 @@ use clvm_rs::reduction::EvalErr;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Record, Stream};
 use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm_tools::ir::r#type::IRRepr;
 use crate::classic::clvm_tools::ir::reader::IRReader;
 use crate::classic::clvm_tools::ir::writer::write_ir;
@@ -127,9 +128,7 @@ pub fn disassemble_to_ir_with_kw(
 
         SExp::Atom => {
             // sexp is the only node in scope.
-            let sexp_atom = allocator.atom(sexp);
-            let sexp_borrowed: &[u8] = sexp_atom.borrow();
-            let bytes = Bytes::new(Some(BytesFromType::Raw(sexp_borrowed.to_vec())));
+            let bytes = Bytes::new(Some(BytesFromType::Raw(By::new(allocator, sexp).to_vec())));
             ir_for_atom(&bytes, allow_keyword, keyword_from_atom)
         }
     }
