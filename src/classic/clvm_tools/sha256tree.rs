@@ -30,7 +30,7 @@ pub fn sha256tree(allocator: &mut Allocator, v: NodePtr) -> Bytes {
             let left = sha256tree(allocator, l);
             let right = sha256tree(allocator, r);
             sha256(
-                &Bytes::new(Some(BytesFromType::Raw(vec![2])))
+                Bytes::new(Some(BytesFromType::Raw(vec![2])))
                     .concat(&left)
                     .concat(&right)
                     .data(),
@@ -39,7 +39,7 @@ pub fn sha256tree(allocator: &mut Allocator, v: NodePtr) -> Bytes {
         SExp::Atom => {
             let v_atom = By::new(allocator, v);
             sha256(
-                &Bytes::new(Some(BytesFromType::Raw(vec![1])))
+                Bytes::new(Some(BytesFromType::Raw(vec![1])))
                     .concat(&Bytes::new(Some(
                         // only v in scope.
                         BytesFromType::Raw(v_atom.to_vec()),

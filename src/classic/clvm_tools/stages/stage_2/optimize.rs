@@ -423,7 +423,7 @@ pub fn children_optimizer(
             }
             if let SExp::Atom = allocator.sexp(list[0]) {
                 let list0_atom = By::new(allocator, list[0]);
-                if list0_atom.u8() == &[1] {
+                if list0_atom.u8() == [1] {
                     return Ok(r);
                 }
             }
@@ -691,7 +691,7 @@ pub fn optimize_sexp_(
             }
             SExp::Pair(_, _) => {
                 for opt in optimizers.iter() {
-                    name = opt.name.clone();
+                    name.clone_from(&opt.name);
                     match opt.invoke(allocator, memo, r, eval_f.clone()) {
                         Err(e) => {
                             return Err(e);

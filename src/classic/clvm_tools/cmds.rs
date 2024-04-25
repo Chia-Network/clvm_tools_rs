@@ -584,8 +584,8 @@ pub fn cldb(args: &[String]) {
     }
 
     if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("path_or_code") {
-        input_file = file.clone();
-        input_program = path_or_code.to_string();
+        input_file.clone_from(file);
+        input_program.clone_from(path_or_code);
     }
 
     if let Some(ArgumentValue::ArgString(_, s)) = parsed_args.get("env") {
@@ -1117,8 +1117,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let mut input_program = "()".to_string();
 
     if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("path_or_code") {
-        input_file = file.clone();
-        input_program = path_or_code.to_string();
+        input_file.clone_from(file);
+        input_program.clone_from(path_or_code);
     }
 
     let reported_input_file = input_file
@@ -1179,8 +1179,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     }
 
     if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("env") {
-        input_file = file.clone();
-        input_args = path_or_code.to_string();
+        input_file.clone_from(file);
+        input_args.clone_from(path_or_code);
     }
 
     let special_runner =
@@ -1244,8 +1244,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             if let Some(ArgumentValue::ArgString(f, content)) = parsed_args.get("path_or_code") {
                 match read_ir(content) {
                     Ok(s) => {
-                        input_program = content.clone();
-                        input_file = f.clone();
+                        input_program.clone_from(content);
+                        input_file.clone_from(f);
                         src_sexp = s;
                     }
                     Err(e) => {

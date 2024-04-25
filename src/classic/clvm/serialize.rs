@@ -100,7 +100,7 @@ impl<'a> Iterator for SExpToBytesIterator<'a> {
                 SExp::Atom => {
                     // The only node we have in scope is x, so this atom
                     // capture is trivial.
-                    let buf = By::new(&mut self.allocator, x);
+                    let buf = By::new(self.allocator, x);
                     let bytes = Bytes::new(Some(BytesFromType::Raw(buf.to_vec())));
                     match atom_size_blob(&bytes) {
                         Ok((original, b)) => {
