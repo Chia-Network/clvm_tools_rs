@@ -6,11 +6,11 @@ use clvmr::allocator::Allocator;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
+#[cfg(any(test, feature = "fuzz"))]
+use crate::compiler::compiler::FUZZ_TEST_PRE_CSE_MERGE_FIX_FLAG;
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
 };
-#[cfg(any(test, feature = "fuzz"))]
-use crate::compiler::compiler::FUZZ_TEST_PRE_CSE_MERGE_FIX_FLAG;
 use crate::compiler::frontend::compute_live_helpers;
 use crate::compiler::optimize::brief::brief_path_selection;
 use crate::compiler::optimize::cse::cse_optimize_bodyform;
@@ -29,7 +29,9 @@ pub struct Strategy23 {}
 
 #[cfg(any(test, feature = "fuzz"))]
 fn enable_cse_merge_fix_so_can_be_disabled_for_tests(opts: Rc<dyn CompilerOpts>) -> bool {
-    !opts.diag_flags().contains(&FUZZ_TEST_PRE_CSE_MERGE_FIX_FLAG)
+    !opts
+        .diag_flags()
+        .contains(&FUZZ_TEST_PRE_CSE_MERGE_FIX_FLAG)
 }
 
 #[cfg(not(any(test, feature = "fuzz")))]
