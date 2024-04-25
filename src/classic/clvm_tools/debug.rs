@@ -3,11 +3,10 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
-use clvm_rs::run_program::{PreEval, PreEvalResult};
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 use crate::classic::clvm::serialize::sexp_to_stream;
-use crate::classic::clvm::sexp::{enlist, rest, First, SelectNode, ThisNode};
+use crate::classic::clvm::sexp::{enlist, proper_list, rest, First, SelectNode, ThisNode};
 
 use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
@@ -93,68 +92,6 @@ pub struct FunctionExtraInfo {
 //     // @todo Implement here if original python code is fixed.
 // }
 // */
-pub struct RunLogEntry {
-    pub sexp: NodePtr,
-    pub args: NodePtr,
-    pub result: Option<NodePtr>
-}
-
-pub struct RunLog<'a> {
-    pub log_entries: Vec<RunLogEntry>,
-    pub symbol_table: Option<&'a HashMap<String, String>>,
-}
-
-impl<'a> PreEval for RunLog<'a> {
-    fn pre_eval(&mut self, allocator: &mut Allocator, sexp: NodePtr, args: NodePtr) -> Result<PreEvalResult, EvalErr> {
-        let h = sha256tree(allocator, sexp);
-        let recognized = self.symbol_table
-            .as_ref()
-            .and_then(|symbol_table| symbol_table.get(&h.hex()).map(|x| x.to_string()));
-        if recognized.is_none() && self.symbol_table.is_some() {
-            Ok(PreEvalResult::Done)
-        } else {
-            let idx = self.log_entries.len();
-            self.log_entries.push(RunLogEntry {
-                sexp,
-                args,
-                result: None
-            });
-            Ok(PreEvalResult::CallPostEval(idx))
-        }
-    }
-
-    fn post_eval(&mut self, _allocator: &mut Allocator, idx: usize, result: Option<NodePtr>) -> Result<(), EvalErr> {
-        self.log_entries[idx].result = result;
-        Ok(())
-    }
-}
-
-impl<'a> RunLog<'a> {
-    pub fn update_operator(&mut self, index: usize, outcome: Option<NodePtr>) {
-        self.log_entries[index].result = outcome;
-    }
-
-    pub fn start_log_after(
-        &mut self,
-        allocator: &mut Allocator,
-        maybe_program_hash: Option<Bytes>,
-    ) {
-        if let Some(hash) = maybe_program_hash {
-            if let Some(idx) = self.log_entries.iter().position(|e| {
-                if let Ok(program_hash) = program_hash_from_program_env_cons(allocator, e.sexp) {
-                    // Match the program's hash.
-                    program_hash.data() == hash.data()
-                } else {
-                    false
-                }
-            }) {
-                eprintln!("drain {idx}");
-                self.log_entries.drain(0..idx);
-            }
-        }
-    }
-}
-
 pub fn build_symbol_dump(
     allocator: &mut Allocator,
     constants_lookup: &HashMap<Vec<u8>, NodePtr>,
@@ -276,20 +213,21 @@ fn display_trace(
     allocator: &mut Allocator,
     stdout: &mut Stream,
     only_exn: bool,
-    trace: &[RunLogEntry],
+    trace: &[NodePtr],
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
     symbol_table: Option<HashMap<String, String>>,
     display_fun: &DisplayTraceFun,
 ) {
     for item in trace {
-        let form = item.sexp;
-        let env = item.args;
-        let (rv, not_exn) =
-            if let Some(rv) = item.result.as_ref() {
-                (disassemble_f(allocator, *rv), true)
-            } else {
-                ("(didn't finish)".to_string(), false)
-            };
+        let item_vec = proper_list(allocator, *item, true).unwrap();
+        let form = item_vec[0];
+        let env = item_vec[1];
+        let not_exn = item_vec.len() > 2;
+        let rv = if not_exn {
+            disassemble_f(allocator, item_vec[2])
+        } else {
+            "(didn't finish)".to_string()
+        };
 
         let h = sha256tree(allocator, form).hex();
         let symbol = symbol_table
@@ -307,7 +245,7 @@ pub fn trace_to_text(
     allocator: &mut Allocator,
     stdout: &mut Stream,
     only_exn: bool,
-    trace: &[RunLogEntry],
+    trace: &[NodePtr],
     symbol_table: Option<HashMap<String, String>>,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
 ) {
@@ -326,7 +264,7 @@ pub fn trace_to_table(
     allocator: &mut Allocator,
     stdout: &mut Stream,
     only_exn: bool,
-    trace: &[RunLogEntry],
+    trace: &[NodePtr],
     symbol_table: Option<HashMap<String, String>>,
     disassemble_f: &dyn Fn(&mut Allocator, NodePtr) -> String,
 ) {
@@ -339,6 +277,29 @@ pub fn trace_to_table(
         symbol_table,
         &table_trace,
     );
+}
+
+pub fn trace_pre_eval(
+    allocator: &mut Allocator,
+    append_log: &dyn Fn(&mut Allocator, NodePtr),
+    symbol_table: Option<HashMap<String, String>>,
+    sexp: NodePtr,
+    args: NodePtr,
+) -> Result<Option<NodePtr>, EvalErr> {
+    let h = sha256tree(allocator, sexp);
+    let recognized = symbol_table
+        .as_ref()
+        .and_then(|symbol_table| symbol_table.get(&h.hex()).map(|x| x.to_string()));
+
+    if recognized.is_none() && symbol_table.is_some() {
+        Ok(None)
+    } else {
+        m! {
+            log_entry <- enlist(allocator, &[sexp, args]);
+            let _ = append_log(allocator, log_entry);
+            Ok(Some(log_entry))
+        }
+    }
 }
 
 pub fn check_unused(
@@ -370,4 +331,25 @@ pub fn program_hash_from_program_env_cons(
 ) -> Result<Bytes, EvalErr> {
     let First::Here(program) = First::Here(ThisNode::Here).select_nodes(allocator, prog_pair)?;
     Ok(sha256tree(allocator, program))
+}
+
+pub fn start_log_after(
+    allocator: &mut Allocator,
+    maybe_program_hash: Option<Bytes>,
+    log: Vec<NodePtr>,
+) -> Vec<NodePtr> {
+    if let Some(hash) = maybe_program_hash {
+        log.into_iter()
+            .skip_while(|e| {
+                if let Ok(program_hash) = program_hash_from_program_env_cons(allocator, *e) {
+                    // Skip while we haven't found the hash we want.
+                    program_hash.data() != hash.data()
+                } else {
+                    true
+                }
+            })
+            .collect()
+    } else {
+        log
+    }
 }

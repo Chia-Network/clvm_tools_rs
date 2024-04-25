@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::fs;
@@ -13,11 +12,10 @@ use clvm_rs::reduction::{EvalErr, Reduction, Response};
 use clvm_rs::run_program::run_program_with_pre_eval;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
-
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 
 use crate::classic::clvm::keyword_from_atom;
-use crate::classic::clvm::casts::By;
 use crate::classic::clvm::sexp::proper_list;
 
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble_to_ir_with_kw};
@@ -207,9 +205,8 @@ impl CompilerOperatorsInternal {
         match allocator.sexp(sexp) {
             SExp::Pair(f, _) => match allocator.sexp(f) {
                 SExp::Atom => {
-                    let f_atom = By::new(allocator, f);
                     let filename =
-                        Bytes::new(Some(BytesFromType::Raw(f_atom.to_vec()))).decode();
+                        Bytes::new(Some(BytesFromType::Raw(By::new(allocator, f).to_vec()))).decode();
                     // Use the read interface in CompilerOpts if we have one.
                     if let Some(opts) = self.get_compiler_opts() {
                         if let Ok((_, content)) =
@@ -390,27 +387,26 @@ impl Dialect for CompilerOperatorsInternal {
         match allocator.sexp(op) {
             SExp::Atom => {
                 // use of op obvious.
-                let op_atom = allocator.atom(op);
-                let opbuf: &[u8] = op_atom.borrow();
-                if opbuf == "_read".as_bytes() {
+                let opbuf = By::new(allocator, op);
+                if opbuf.u8() == b"_read" {
                     self.read(allocator, sexp)
-                } else if opbuf == "_write".as_bytes() {
+                } else if opbuf.u8() == b"_write" {
                     self.write(allocator, sexp)
-                } else if opbuf == "com".as_bytes() {
+                } else if opbuf.u8() == b"com" {
                     do_com_prog_for_dialect(self.get_runner(), allocator, sexp)
-                } else if opbuf == "opt".as_bytes() {
+                } else if opbuf.u8() == b"opt" {
                     do_optimize(self.get_runner(), allocator, &self.opt_memo, sexp)
-                } else if opbuf == "_set_symbol_table".as_bytes() {
+                } else if opbuf.u8() == b"_set_symbol_table" {
                     self.set_symbol_table(allocator, sexp)
-                } else if opbuf == "_get_compile_filename".as_bytes() {
+                } else if opbuf.u8() == b"_get_compile_filename" {
                     self.get_compile_filename(allocator)
-                } else if opbuf == "_get_include_paths".as_bytes() {
+                } else if opbuf.u8() == b"_get_include_paths" {
                     self.get_include_paths(allocator)
-                } else if opbuf == "_full_path_for_name".as_bytes() {
+                } else if opbuf.u8() == b"_full_path_for_name" {
                     self.get_full_path_for_filename(allocator, sexp)
-                } else if opbuf == "_symbols_extra_info".as_bytes() {
+                } else if opbuf.u8() == b"_symbols_extra_info" {
                     self.symbols_extra_info(allocator)
-                } else if opbuf == "_get_source_file".as_bytes() {
+                } else if opbuf.u8() == b"_get_source_file" {
                     self.get_source_file(allocator)
                 } else {
                     self.base_dialect.op(
@@ -458,12 +454,12 @@ impl CompilerOperators {
 }
 
 impl TRunProgram for CompilerOperatorsInternal {
-    fn run_program<'inside, 'a: 'inside>(
-        &'a self,
-        allocator: &'a mut Allocator,
+    fn run_program(
+        &self,
+        allocator: &mut Allocator,
         program: NodePtr,
         args: NodePtr,
-        option: Option<RunProgramOption<'inside>>,
+        option: Option<RunProgramOption>,
     ) -> Response {
         let max_cost = option.as_ref().and_then(|o| o.max_cost).unwrap_or(0);
         run_program_with_pre_eval(
@@ -472,18 +468,18 @@ impl TRunProgram for CompilerOperatorsInternal {
             program,
             args,
             max_cost,
-            option.and_then(|o| o.pre_eval_f)
+            option.and_then(|o| o.pre_eval_f),
         )
     }
 }
 
 impl TRunProgram for CompilerOperators {
-    fn run_program<'inside, 'a: 'inside>(
-        &'a self,
-        allocator: &'a mut Allocator,
+    fn run_program(
+        &self,
+        allocator: &mut Allocator,
         program: NodePtr,
         args: NodePtr,
-        option: Option<RunProgramOption<'inside>>,
+        option: Option<RunProgramOption>,
     ) -> Response {
         self.parent.run_program(allocator, program, args, option)
     }
