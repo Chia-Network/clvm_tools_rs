@@ -789,7 +789,12 @@ pub fn get_compile_filename(
 
     if let SExp::Atom = allocator.sexp(cvt_prog_result) {
         // only cvt_prog_result in scope.
-        return Ok(Some(Bytes::new(Some(BytesFromType::Raw(By::new(allocator, cvt_prog_result).to_vec()))).decode()));
+        return Ok(Some(
+            Bytes::new(Some(BytesFromType::Raw(
+                By::new(allocator, cvt_prog_result).to_vec(),
+            )))
+            .decode(),
+        ));
     }
 
     Err(EvalErr(

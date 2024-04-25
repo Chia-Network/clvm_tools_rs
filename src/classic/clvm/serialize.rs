@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 use crate::classic::clvm::as_rust::{TToSexpF, TValStack};
-use crate::classic::clvm::casts::{By, int_from_bytes};
+use crate::classic::clvm::casts::{int_from_bytes, By};
 use crate::classic::clvm::sexp::{to_sexp_type, CastableType};
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::{EvalErr, Reduction, Response};

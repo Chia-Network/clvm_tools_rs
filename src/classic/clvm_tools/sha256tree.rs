@@ -32,16 +32,19 @@ pub fn sha256tree(allocator: &mut Allocator, v: NodePtr) -> Bytes {
             sha256(
                 &Bytes::new(Some(BytesFromType::Raw(vec![2])))
                     .concat(&left)
-                    .concat(&right).data(),
+                    .concat(&right)
+                    .data(),
             )
         }
         SExp::Atom => {
             let v_atom = By::new(allocator, v);
             sha256(
-                &Bytes::new(Some(BytesFromType::Raw(vec![1]))).concat(&Bytes::new(Some(
-                    // only v in scope.
-                    BytesFromType::Raw(v_atom.to_vec())
-                ))).data(),
+                &Bytes::new(Some(BytesFromType::Raw(vec![1])))
+                    .concat(&Bytes::new(Some(
+                        // only v in scope.
+                        BytesFromType::Raw(v_atom.to_vec()),
+                    )))
+                    .data(),
             )
         }
     }

@@ -151,10 +151,14 @@ pub fn bigint_to_bytes_clvm(v: &Number) -> Bytes {
 //   return ((v >= 0 ? v : -v).toString(2).length + 7) >> 3;
 // }
 
-pub struct By<'a> { atom: Atom<'a> }
+pub struct By<'a> {
+    atom: Atom<'a>,
+}
 impl<'a> By<'a> {
     pub fn new(allocator: &'a Allocator, node: NodePtr) -> Self {
-        By { atom: allocator.atom(node) }
+        By {
+            atom: allocator.atom(node),
+        }
     }
     pub fn u8(&self) -> &[u8] {
         self.atom.borrow()

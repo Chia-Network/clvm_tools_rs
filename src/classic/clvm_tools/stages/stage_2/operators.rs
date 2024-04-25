@@ -206,7 +206,8 @@ impl CompilerOperatorsInternal {
             SExp::Pair(f, _) => match allocator.sexp(f) {
                 SExp::Atom => {
                     let filename =
-                        Bytes::new(Some(BytesFromType::Raw(By::new(allocator, f).to_vec()))).decode();
+                        Bytes::new(Some(BytesFromType::Raw(By::new(allocator, f).to_vec())))
+                            .decode();
                     // Use the read interface in CompilerOpts if we have one.
                     if let Some(opts) = self.get_compiler_opts() {
                         if let Ok((_, content)) =
@@ -238,8 +239,9 @@ impl CompilerOperatorsInternal {
         if let SExp::Pair(filename_sexp, r) = allocator.sexp(sexp) {
             if let SExp::Pair(data, _) = allocator.sexp(r) {
                 if let SExp::Atom = allocator.sexp(filename_sexp) {
-                    let filename_bytes =
-                        Bytes::new(Some(BytesFromType::Raw(By::new(allocator, filename_sexp).to_vec())));
+                    let filename_bytes = Bytes::new(Some(BytesFromType::Raw(
+                        By::new(allocator, filename_sexp).to_vec(),
+                    )));
                     let ir = disassemble_to_ir_with_kw(
                         allocator,
                         data,

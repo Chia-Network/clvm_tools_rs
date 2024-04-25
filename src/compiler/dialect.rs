@@ -94,7 +94,9 @@ fn include_dialect(allocator: &Allocator, e: &[NodePtr]) -> Option<AcceptedDiale
         allocator.sexp(name_sexp),
     ) {
         if By::new(allocator, include_keyword_sexp).u8() == b"include" {
-            if let Some(dialect) = KNOWN_DIALECTS.get(&decode_string(By::new(allocator, name_sexp).u8())) {
+            if let Some(dialect) =
+                KNOWN_DIALECTS.get(&decode_string(By::new(allocator, name_sexp).u8()))
+            {
                 return Some(dialect.accepted.clone());
             }
         }

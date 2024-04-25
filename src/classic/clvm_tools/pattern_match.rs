@@ -82,9 +82,7 @@ pub fn match_sexp(
                             return unify_bindings(allocator, known_bindings, &pright_atom, sexp);
                         }
                         if pleft_atom == SEXP_MATCH {
-                            if pright_atom == SEXP_MATCH
-                                && sexp_atom == SEXP_MATCH
-                            {
+                            if pright_atom == SEXP_MATCH && sexp_atom == SEXP_MATCH {
                                 return Some(HashMap::new());
                             }
 
@@ -101,9 +99,7 @@ pub fn match_sexp(
                     }
                     SExp::Pair(sleft, sright) => {
                         let pleft_atom = By::new(allocator, pleft).to_vec();
-                        if pleft_atom == SEXP_MATCH
-                            && pright_atom != SEXP_MATCH
-                        {
+                        if pleft_atom == SEXP_MATCH && pright_atom != SEXP_MATCH {
                             return unify_bindings(
                                 allocator,
                                 known_bindings,

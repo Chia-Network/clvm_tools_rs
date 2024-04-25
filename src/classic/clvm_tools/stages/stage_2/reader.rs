@@ -98,11 +98,11 @@ pub fn process_embed_file(
         ) {
             // Note: we don't want to keep borrowing here because we
             // need the mutable borrow below.
-            let (name, kind, filename) =
-            {
-                (By::new(allocator, l[0]).to_vec(),
-                 By::new(allocator, l[1]).to_vec(),
-                 By::new(allocator, l[2]).to_vec()
+            let (name, kind, filename) = {
+                (
+                    By::new(allocator, l[0]).to_vec(),
+                    By::new(allocator, l[1]).to_vec(),
+                    By::new(allocator, l[2]).to_vec(),
                 )
             };
             let file_data = if &kind == b"bin" {
