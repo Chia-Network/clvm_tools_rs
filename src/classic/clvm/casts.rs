@@ -21,7 +21,7 @@ pub fn int_from_bytes(
         return Ok(0);
     } else if b.length() * 8 > 64 {
         return Err(EvalErr(
-            allocator.null(),
+            allocator.nil(),
             "Cannot convert Bytes to Integer larger than 64bit. Use bigint_from_bytes instead."
                 .to_string(),
         ));

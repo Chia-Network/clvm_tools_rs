@@ -228,7 +228,7 @@ pub fn convert_to_clvm_rs(
     head: Rc<SExp>,
 ) -> Result<NodePtr, RunFailure> {
     match head.borrow() {
-        SExp::Nil(_) => Ok(allocator.null()),
+        SExp::Nil(_) => Ok(allocator.nil()),
         SExp::Atom(_l, x) => allocator
             .new_atom(x)
             .map_err(|_e| RunFailure::RunErr(head.loc(), format!("failed to alloc atom {head}"))),
@@ -237,7 +237,7 @@ pub fn convert_to_clvm_rs(
             .map_err(|_e| RunFailure::RunErr(head.loc(), format!("failed to alloc string {head}"))),
         SExp::Integer(_, i) => {
             if *i == bi_zero() {
-                Ok(allocator.null())
+                Ok(allocator.nil())
             } else {
                 allocator
                     .new_atom(&u8_from_number(i.clone()))
@@ -264,7 +264,8 @@ pub fn convert_from_clvm_rs(
 ) -> Result<Rc<SExp>, RunFailure> {
     match allocator.sexp(head) {
         allocator::SExp::Atom => {
-            let atom_data = allocator.atom(head);
+            let head_atom = allocator.atom(head);
+            let atom_data: &[u8] = head_atom.borrow();
             if atom_data.is_empty() {
                 Ok(Rc::new(SExp::Nil(loc)))
             } else {

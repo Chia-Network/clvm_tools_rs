@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
 use crate::classic::clvm::sexp::equal_to;
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
@@ -61,14 +62,21 @@ pub fn match_sexp(
         }
         (SExp::Pair(pleft, pright), _) => match (allocator.sexp(pleft), allocator.sexp(pright)) {
             (SExp::Atom, SExp::Atom) => {
-                let pright_atom = allocator.atom(pright).to_vec();
+                let pright_atom = allocator.atom(pright);
+                let pright_borrow: &[u8] = pright_atom.borrow();
+                let pright_atom = pright_borrow.to_vec();
                 match allocator.sexp(sexp) {
                     SExp::Atom => {
+                        let sexp_atom = allocator.atom(sexp);
+                        let sexp_borrow: &[u8] = sexp_atom.borrow();
+
                         // Expression is ($ . $), sexp is '$', result: no capture.
                         // Avoid double borrow.
-                        if allocator.atom(pleft) == ATOM_MATCH {
-                            if allocator.atom(pright) == ATOM_MATCH {
-                                if allocator.atom(sexp) == ATOM_MATCH {
+                        let pleft_atom = allocator.atom(pleft);
+                        let pleft_borrow: &[u8] = pleft_atom.borrow();
+                        if pleft_borrow == ATOM_MATCH {
+                            if pright_borrow == ATOM_MATCH {
+                                if sexp_borrow == ATOM_MATCH {
                                     return Some(HashMap::new());
                                 }
                                 return None;
@@ -76,9 +84,9 @@ pub fn match_sexp(
 
                             return unify_bindings(allocator, known_bindings, &pright_atom, sexp);
                         }
-                        if allocator.atom(pleft) == SEXP_MATCH {
-                            if allocator.atom(pright) == SEXP_MATCH
-                                && allocator.atom(sexp) == SEXP_MATCH
+                        if pleft_borrow == SEXP_MATCH {
+                            if pright_borrow == SEXP_MATCH
+                                && sexp_borrow == SEXP_MATCH
                             {
                                 return Some(HashMap::new());
                             }
@@ -95,8 +103,10 @@ pub fn match_sexp(
                         None
                     }
                     SExp::Pair(sleft, sright) => {
-                        if allocator.atom(pleft) == SEXP_MATCH
-                            && allocator.atom(pright) != SEXP_MATCH
+                        let pleft_atom = allocator.atom(pleft);
+                        let pleft_borrow: &[u8] = pleft_atom.borrow();
+                        if pleft_borrow == SEXP_MATCH
+                            && pright_borrow != SEXP_MATCH
                         {
                             return unify_bindings(
                                 allocator,

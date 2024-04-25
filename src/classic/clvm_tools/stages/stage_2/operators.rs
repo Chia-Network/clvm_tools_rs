@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::fs;
@@ -146,7 +147,7 @@ impl CompilerOperatorsInternal {
         if self.symbols_extra_info {
             Ok(Reduction(1, allocator.new_atom(&[1])?))
         } else {
-            Ok(Reduction(1, allocator.null()))
+            Ok(Reduction(1, allocator.nil()))
         }
     }
 
@@ -195,7 +196,7 @@ impl CompilerOperatorsInternal {
         // return EvalErr.
         let parse_file_content = |allocator: &mut Allocator, content: &String| {
             read_ir(content)
-                .map_err(|e| EvalErr(allocator.null(), e.to_string()))
+                .map_err(|e| EvalErr(allocator.nil(), e.to_string()))
                 .and_then(|ir| {
                     assemble_from_ir(allocator, Rc::new(ir)).map(|ir_sexp| Reduction(1, ir_sexp))
                 })
@@ -204,8 +205,10 @@ impl CompilerOperatorsInternal {
         match allocator.sexp(sexp) {
             SExp::Pair(f, _) => match allocator.sexp(f) {
                 SExp::Atom => {
+                    let f_atom = allocator.atom(f);
+                    let f_borrowed: &[u8] = f_atom.borrow();
                     let filename =
-                        Bytes::new(Some(BytesFromType::Raw(allocator.atom(f).to_vec()))).decode();
+                        Bytes::new(Some(BytesFromType::Raw(f_borrowed.to_vec()))).decode();
                     // Use the read interface in CompilerOpts if we have one.
                     if let Some(opts) = self.get_compiler_opts() {
                         if let Ok((_, content)) =
@@ -218,16 +221,16 @@ impl CompilerOperatorsInternal {
                     // Use the filesystem like normal if the opts couldn't find
                     // the file.
                     fs::read_to_string(filename)
-                        .map_err(|_| EvalErr(allocator.null(), "Failed to read file".to_string()))
+                        .map_err(|_| EvalErr(allocator.nil(), "Failed to read file".to_string()))
                         .and_then(|content| parse_file_content(allocator, &content))
                 }
                 _ => Err(EvalErr(
-                    allocator.null(),
+                    allocator.nil(),
                     "filename is not an atom".to_string(),
                 )),
             },
             _ => Err(EvalErr(
-                allocator.null(),
+                allocator.nil(),
                 "given a program that is an atom".to_string(),
             )),
         }
@@ -237,7 +240,8 @@ impl CompilerOperatorsInternal {
         if let SExp::Pair(filename_sexp, r) = allocator.sexp(sexp) {
             if let SExp::Pair(data, _) = allocator.sexp(r) {
                 if let SExp::Atom = allocator.sexp(filename_sexp) {
-                    let filename_buf = allocator.atom(filename_sexp);
+                    let filename_atom = allocator.atom(filename_sexp);
+                    let filename_buf: &[u8] = filename_atom.borrow();
                     let filename_bytes =
                         Bytes::new(Some(BytesFromType::Raw(filename_buf.to_vec())));
                     let ir = disassemble_to_ir_with_kw(
@@ -252,7 +256,7 @@ impl CompilerOperatorsInternal {
                         .map_err(|_| {
                             EvalErr(sexp, format!("failed to write {}", filename_bytes.decode()))
                         })
-                        .map(|_| Reduction(1, allocator.null()));
+                        .map(|_| Reduction(1, allocator.nil()));
                 }
             }
         }
@@ -266,7 +270,7 @@ impl CompilerOperatorsInternal {
     }
 
     fn get_include_paths(&self, allocator: &mut Allocator) -> Response {
-        let mut converted_search_paths = allocator.null();
+        let mut converted_search_paths = allocator.nil();
         for s in self.search_paths.iter().rev() {
             let search_path_string = allocator.new_atom(s.as_bytes())?;
             converted_search_paths =
@@ -284,9 +288,11 @@ impl CompilerOperatorsInternal {
 
         if let SExp::Pair(l, _r) = allocator.sexp(sexp) {
             if let SExp::Atom = allocator.sexp(l) {
+                let l_atom = allocator.atom(l);
+                let l_borrowed: &[u8] = l_atom.borrow();
                 // l most relevant in scope.
                 let filename =
-                    Bytes::new(Some(BytesFromType::Raw(allocator.atom(l).to_vec()))).decode();
+                    Bytes::new(Some(BytesFromType::Raw(l_borrowed.to_vec()))).decode();
                 // If we have a compiler opts injected, let that handle reading
                 // files.  The name will bubble up to the _read function.
                 if self.get_compiler_opts().is_some() {
@@ -319,11 +325,15 @@ impl CompilerOperatorsInternal {
                 if let SExp::Pair(hash, name) = allocator.sexp(*kv) {
                     if let (SExp::Atom, SExp::Atom) = (allocator.sexp(hash), allocator.sexp(name)) {
                         // hash and name in scope.
+                        let hash_atom = allocator.atom(hash);
+                        let hash_borrowed: &[u8] = hash_atom.borrow();
                         let hash_text =
-                            Bytes::new(Some(BytesFromType::Raw(allocator.atom(hash).to_vec())))
+                            Bytes::new(Some(BytesFromType::Raw(hash_borrowed.to_vec())))
                                 .decode();
+                        let name_atom = allocator.atom(name);
+                        let name_borrowed: &[u8] = name_atom.borrow();
                         let name_text =
-                            Bytes::new(Some(BytesFromType::Raw(allocator.atom(name).to_vec())))
+                            Bytes::new(Some(BytesFromType::Raw(name_borrowed.to_vec())))
                                 .decode();
 
                         self.compile_outcomes.replace_with(|co| {
@@ -336,7 +346,7 @@ impl CompilerOperatorsInternal {
             }
         }
 
-        Ok(Reduction(1, allocator.null()))
+        Ok(Reduction(1, allocator.nil()))
     }
 
     fn get_disassembly_ver(&self) -> usize {
@@ -347,16 +357,16 @@ impl CompilerOperatorsInternal {
 }
 
 impl Dialect for CompilerOperatorsInternal {
-    fn quote_kw(&self) -> &[u8] {
-        &[1]
+    fn quote_kw(&self) -> u32 {
+        1
     }
 
-    fn apply_kw(&self) -> &[u8] {
-        &[2]
+    fn apply_kw(&self) -> u32 {
+        2
     }
 
-    fn softfork_kw(&self) -> &[u8] {
-        &[36]
+    fn softfork_kw(&self) -> u32 {
+        36
     }
 
     // The softfork operator comes with an extension argument.
@@ -387,7 +397,8 @@ impl Dialect for CompilerOperatorsInternal {
         match allocator.sexp(op) {
             SExp::Atom => {
                 // use of op obvious.
-                let opbuf = allocator.atom(op);
+                let op_atom = allocator.atom(op);
+                let opbuf: &[u8] = op_atom.borrow();
                 if opbuf == "_read".as_bytes() {
                     self.read(allocator, sexp)
                 } else if opbuf == "_write".as_bytes() {
@@ -454,12 +465,12 @@ impl CompilerOperators {
 }
 
 impl TRunProgram for CompilerOperatorsInternal {
-    fn run_program(
-        &self,
-        allocator: &mut Allocator,
+    fn run_program<'inside, 'a: 'inside>(
+        &'a self,
+        allocator: &'a mut Allocator,
         program: NodePtr,
         args: NodePtr,
-        option: Option<RunProgramOption>,
+        option: Option<RunProgramOption<'inside>>,
     ) -> Response {
         let max_cost = option.as_ref().and_then(|o| o.max_cost).unwrap_or(0);
         run_program_with_pre_eval(
@@ -468,18 +479,18 @@ impl TRunProgram for CompilerOperatorsInternal {
             program,
             args,
             max_cost,
-            option.and_then(|o| o.pre_eval_f),
+            option.and_then(|o| o.pre_eval_f)
         )
     }
 }
 
 impl TRunProgram for CompilerOperators {
-    fn run_program(
-        &self,
-        allocator: &mut Allocator,
+    fn run_program<'inside, 'a: 'inside>(
+        &'a self,
+        allocator: &'a mut Allocator,
         program: NodePtr,
         args: NodePtr,
-        option: Option<RunProgramOption>,
+        option: Option<RunProgramOption<'inside>>,
     ) -> Response {
         self.parent.run_program(allocator, program, args, option)
     }

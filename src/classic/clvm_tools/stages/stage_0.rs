@@ -5,27 +5,31 @@ use clvm_rs::reduction::Response;
 
 use clvm_rs::run_program::{run_program_with_pre_eval, PreEval};
 
-pub struct RunProgramOption {
+pub struct RunProgramOption<'inside> {
     pub max_cost: Option<Cost>,
-    pub pre_eval_f: Option<PreEval>,
+    pub pre_eval_f: Option<&'inside mut dyn PreEval>,
     pub strict: bool,
 }
 
 pub trait TRunProgram {
-    fn run_program(
-        &self,
-        allocator: &mut Allocator,
+    fn run_program<'inside, 'a: 'inside>(
+        &'a self,
+        allocator: &'a mut Allocator,
         program: NodePtr,
         args: NodePtr,
-        option: Option<RunProgramOption>,
+        option: Option<RunProgramOption<'inside>>,
     ) -> Response;
 }
 
-pub struct DefaultProgramRunner {}
+pub struct DefaultProgramRunner {
+    dialect: ChiaDialect
+}
 
 impl DefaultProgramRunner {
     pub fn new() -> Self {
-        DefaultProgramRunner {}
+        DefaultProgramRunner {
+            dialect: ChiaDialect::new(NO_UNKNOWN_OPS)
+        }
     }
 }
 
@@ -36,22 +40,21 @@ impl Default for DefaultProgramRunner {
 }
 
 impl TRunProgram for DefaultProgramRunner {
-    fn run_program(
-        &self,
-        allocator: &mut Allocator,
+    fn run_program<'inside, 'a: 'inside>(
+        &'a self,
+        allocator: &'a mut Allocator,
         program: NodePtr,
         args: NodePtr,
-        option: Option<RunProgramOption>,
+        option: Option<RunProgramOption<'inside>>,
     ) -> Response {
         let max_cost = option.as_ref().and_then(|o| o.max_cost).unwrap_or(0);
-
         run_program_with_pre_eval(
             allocator,
-            &ChiaDialect::new(NO_UNKNOWN_OPS),
+            &self.dialect,
             program,
             args,
             max_cost,
-            option.and_then(|o| o.pre_eval_f),
+            option.and_then(|p| p.pre_eval_f)
         )
     }
 }

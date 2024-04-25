@@ -1,5 +1,3 @@
-use core::cell::RefCell;
-
 use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
@@ -7,9 +5,6 @@ use std::io;
 use std::io::Write;
 use std::mem::swap;
 use std::rc::Rc;
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::SystemTime;
 
 use core::cmp::max;
@@ -18,22 +13,21 @@ use linked_hash_map::LinkedHashMap;
 use yaml_rust::{Yaml, YamlEmitter};
 
 use clvm_rs::allocator::{Allocator, NodePtr};
-use clvm_rs::reduction::EvalErr;
-use clvm_rs::run_program::PreEval;
+use clvm_rs::reduction::{EvalErr, Reduction};
 
 use crate::classic::clvm::__type_compatibility__::{
     t, Bytes, BytesFromType, Stream, Tuple, UnvalidatedBytesFromType,
 };
 use crate::classic::clvm::keyword_from_atom;
 use crate::classic::clvm::serialize::{sexp_from_stream, sexp_to_stream, SimpleCreateCLVMObject};
-use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
+use crate::classic::clvm::sexp::{enlist, sexp_as_bin};
 use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
 use crate::classic::clvm_tools::clvmc::write_sym_output;
 use crate::classic::clvm_tools::debug::check_unused;
 use crate::classic::clvm_tools::debug::{
-    program_hash_from_program_env_cons, start_log_after, trace_pre_eval, trace_to_table,
-    trace_to_text,
+    program_hash_from_program_env_cons, trace_to_table,
+    trace_to_text, RunLog
 };
 use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
@@ -41,7 +35,7 @@ use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{
     DefaultProgramRunner, RunProgramOption, TRunProgram,
 };
-use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
+use crate::classic::clvm_tools::stages::stage_2::operators::{CompilerOperators, run_program_for_search_paths};
 use crate::classic::platform::PathJoin;
 
 use crate::classic::platform::argparse::{
@@ -241,7 +235,7 @@ impl TConversion for OpcConversion {
             .and_then(|ir_sexp| assemble_from_ir(allocator, Rc::new(ir_sexp)).map_err(|e| e.1))
             .map(|sexp| t(sexp, sexp_as_bin(allocator, sexp).hex()))
             .map(Ok) // Flatten result type to Ok
-            .unwrap_or_else(|err| Ok(t(allocator.null(), err))) // Original code printed error messages on stdout, ret 0 on CLVM error
+            .unwrap_or_else(|err| Ok(t(allocator.nil(), err))) // Original code printed error messages on stdout, ret 0 on CLVM error
     }
 }
 
@@ -775,30 +769,6 @@ pub fn cldb(args: &[String]) {
     }
 }
 
-struct RunLog<T> {
-    log_entries: RefCell<Vec<T>>,
-}
-
-impl<T> RunLog<T> {
-    fn push(&self, new_log: T) {
-        self.log_entries.replace_with(|log| {
-            let mut empty_log = Vec::new();
-            swap(&mut empty_log, &mut *log);
-            empty_log.push(new_log);
-            empty_log
-        });
-    }
-
-    fn finish(&self) -> Vec<T> {
-        let mut empty_log = Vec::new();
-        self.log_entries.replace_with(|log| {
-            swap(&mut empty_log, &mut *log);
-            Vec::new()
-        });
-        empty_log
-    }
-}
-
 fn calculate_cost_offset(
     allocator: &mut Allocator,
     run_program: Rc<dyn TRunProgram>,
@@ -812,34 +782,13 @@ fn calculate_cost_offset(
      This is a hack and need to go away, probably when we do dialects for real,
      and then the dialect can have a `run_program` API.
     */
-    let almost_empty_list = enlist(allocator, &[allocator.null()]).unwrap();
+    let almost_empty_list = enlist(allocator, &[allocator.nil()]).unwrap();
     let cost = run_program
         .run_program(allocator, run_script, almost_empty_list, None)
         .map(|x| x.0)
         .unwrap_or_else(|_| 0);
 
     53 - cost as i64
-}
-
-fn fix_log(
-    allocator: &mut Allocator,
-    log_result: &mut [NodePtr],
-    log_updates: &[(NodePtr, Option<NodePtr>)],
-) {
-    let mut update_map: HashMap<NodePtr, Option<NodePtr>> = HashMap::new();
-    for update in log_updates {
-        update_map.insert(update.0, update.1);
-    }
-
-    for (i, entry) in log_result.to_vec().iter().enumerate() {
-        update_map.get(entry).and_then(|v| *v).map(|v| {
-            proper_list(allocator, *entry, true).map(|list| {
-                let mut updated = list.to_vec();
-                updated.push(v);
-                log_result[i] = enlist(allocator, &updated).unwrap();
-            })
-        });
-    }
 }
 
 // A function which performs preprocessing on a whole program and renders the
@@ -912,6 +861,31 @@ fn get_disassembly_ver(p: &HashMap<String, ArgumentValue>) -> Option<usize> {
     }
 
     None
+}
+
+pub fn run_program_with_log(allocator: &mut Allocator, runlog: &mut RunLog, run_program: &CompilerOperators, input_sexp: Option<NodePtr>, max_cost: i64, run_script: NodePtr, strict: bool) -> Result<Reduction, EvalErr> {
+    let options: RunProgramOption = RunProgramOption {
+        max_cost: if max_cost == 0 {
+            None
+        } else {
+            Some(max_cost as u64)
+        },
+        pre_eval_f: Some(runlog),
+        strict,
+    };
+
+    // In the case of table tracing, we don't want to emit the startup steps for
+    // brun, which involves excuting (2 2 3) on the program and its args.
+    //
+    // Here, if we're in that mode, we'll produce the hash of the input program so
+    // that we can recognize it and start the output for the table trace.
+    run_program
+        .run_program(
+            allocator,
+            run_script,
+            input_sexp.unwrap(),
+            Some(options),
+        )
 }
 
 pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, default_stage: u32) {
@@ -1275,10 +1249,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     // Symbol table related checks: should one be loaded, should one be saved.
     // This code is confusingly woven due to 'run' and 'brun' serving many roles.
-    let mut symbol_table: Option<HashMap<String, String>> = None;
-    let mut emit_symbol_output = false;
-
-    let symbol_table_clone = parsed_args
+    let symbol_table =
+        parsed_args
         .get("symbol_table")
         .and_then(|jstring| match jstring {
             ArgumentValue::ArgString(_, s) => fs::read_to_string(s).ok().and_then(|s| {
@@ -1289,10 +1261,9 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             _ => None,
         })
         .map(|st| {
-            emit_symbol_output = true;
-            symbol_table = Some(st.clone());
             st
         });
+    let mut emit_symbol_output = symbol_table.is_some();
 
     if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("verbose") {
         emit_symbol_output = true;
@@ -1402,75 +1373,13 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         return;
     }
 
-    let mut pre_eval_f: Option<PreEval> = None;
-
-    // Collections used to generate the run log.
-    let log_entries: Arc<Mutex<RunLog<NodePtr>>> = Arc::new(Mutex::new(RunLog {
-        log_entries: RefCell::new(Vec::new()),
-    }));
-    #[allow(clippy::type_complexity)]
-    let log_updates: Arc<Mutex<RunLog<(NodePtr, Option<NodePtr>)>>> =
-        Arc::new(Mutex::new(RunLog {
-            log_entries: RefCell::new(Vec::new()),
-        }));
-
-    // clvm_rs uses boxed callbacks with unspecified lifetimes so in order to
-    // support logging as intended, we must have values that can be moved so
-    // the callbacks can become immortal.  Our strategy is to use channels
-    // and threads for this.
-    let (pre_eval_req_out, pre_eval_req_in) = channel();
-    let (pre_eval_resp_out, pre_eval_resp_in): (Sender<()>, Receiver<()>) = channel();
-
-    let (post_eval_req_out, post_eval_req_in) = channel();
-    let (post_eval_resp_out, post_eval_resp_in): (Sender<()>, Receiver<()>) = channel();
-
-    let post_eval_fn: Rc<dyn Fn(NodePtr, Option<NodePtr>)> = Rc::new(move |at, n| {
-        post_eval_req_out.send((at, n)).ok();
-        post_eval_resp_in.recv().unwrap();
-    });
-
-    #[allow(clippy::type_complexity)]
-    let pre_eval_fn: Rc<dyn Fn(&mut Allocator, NodePtr)> = Rc::new(move |_allocator, new_log| {
-        pre_eval_req_out.send(new_log).ok();
-        pre_eval_resp_in.recv().unwrap();
-    });
-
-    #[allow(clippy::type_complexity)]
-    let closure: Rc<dyn Fn(NodePtr) -> Box<dyn Fn(Option<NodePtr>)>> = Rc::new(move |v| {
-        let post_eval_fn_clone = post_eval_fn.clone();
-        Box::new(move |n| {
-            let post_eval_fn_clone_2 = post_eval_fn_clone.clone();
-            (*post_eval_fn_clone_2)(v, n)
-        })
-    });
-
-    if emit_symbol_output {
-        #[allow(clippy::type_complexity)]
-        let pre_eval_f_closure: Box<
-            dyn Fn(
-                &mut Allocator,
-                NodePtr,
-                NodePtr,
-            ) -> Result<Option<Box<(dyn Fn(Option<NodePtr>))>>, EvalErr>,
-        > = Box::new(move |allocator, sexp, args| {
-            let pre_eval_clone = pre_eval_fn.clone();
-            trace_pre_eval(
-                allocator,
-                &|allocator, n| (*pre_eval_clone)(allocator, n),
-                symbol_table_clone.clone(),
-                sexp,
-                args,
-            )
-            .map(|t| {
-                t.map(|log_ent| {
-                    let closure_clone = closure.clone();
-                    (*closure_clone)(log_ent)
-                })
-            })
-        });
-
-        pre_eval_f = Some(pre_eval_f_closure);
-    }
+    let mut runlog = RunLog {
+        log_entries: Vec::new(),
+        symbol_table: symbol_table.as_ref()
+    };
+    let maybe_program_hash = parsed_args
+        .get("table")
+        .and_then(|_| program_hash_from_program_env_cons(&mut allocator, input_sexp.unwrap()).ok());
 
     let run_script = match parsed_args.get("stage") {
         Some(ArgumentValue::ArgInt(0)) => stages::brun(&mut allocator),
@@ -1494,68 +1403,23 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             &mut Stream::new(input_serialized),
             Box::new(SimpleCreateCLVMObject {}),
         )
-        .map(|x| Some(x.1))
-        .unwrap();
+            .map(|x| Some(x.1))
+            .unwrap();
     };
-
-    // Part 2 of doing pre_eval: Have a thing that receives the messages and
-    // performs some action.
-    let log_entries_clone = log_entries.clone();
-    thread::spawn(move || {
-        let pre_in = pre_eval_req_in;
-        let pre_out = pre_eval_resp_out;
-
-        while let Ok(received) = pre_in.recv() {
-            {
-                let locked = log_entries_clone.lock();
-                locked.unwrap().push(received);
-            }
-            pre_out.send(()).ok();
-        }
-    });
-
-    let log_updates_clone = log_updates.clone();
-    thread::spawn(move || {
-        let post_in = post_eval_req_in;
-        let post_out = post_eval_resp_out;
-
-        while let Ok(received) = post_in.recv() {
-            {
-                let locked = log_updates_clone.lock();
-                locked.unwrap().push(received);
-            }
-            post_out.send(()).ok();
-        }
-    });
-
-    // In the case of table tracing, we don't want to emit the startup steps for
-    // brun, which involves excuting (2 2 3) on the program and its args.
-    //
-    // Here, if we're in that mode, we'll produce the hash of the input program so
-    // that we can recognize it and start the output for the table trace.
-    let maybe_program_hash = parsed_args
-        .get("table")
-        .and_then(|_| program_hash_from_program_env_cons(&mut allocator, input_sexp.unwrap()).ok());
-
     let time_parse_input = SystemTime::now();
-    let res = run_program
-        .run_program(
-            &mut allocator,
-            run_script,
-            input_sexp.unwrap(),
-            Some(RunProgramOption {
-                max_cost: if max_cost == 0 {
-                    None
-                } else {
-                    Some(max_cost as u64)
-                },
-                pre_eval_f,
-                strict: parsed_args
-                    .get("strict")
-                    .map(|_| true)
-                    .unwrap_or_else(|| false),
-            }),
-        )
+
+    let res = run_program_with_log(
+        &mut allocator,
+        &mut runlog,
+        run_program.borrow(),
+        input_sexp,
+        max_cost,
+        run_script,
+        parsed_args
+            .get("strict")
+            .map(|_| true)
+            .unwrap_or_else(|| false)
+    )
         .map(|run_program_result| {
             let mut cost: i64 = run_program_result.0 as i64;
             let result = run_program_result.1;
@@ -1637,13 +1501,11 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     // and the pass doing the post callbacks, we can integrate them in the main
     // thread.  We didn't do this in the callbacks because we didn't want to
     // deal with a possibly escaping mutable allocator &.
-    let mut log_content = start_log_after(
+
+    runlog.start_log_after(
         &mut allocator,
         maybe_program_hash,
-        log_entries.lock().unwrap().finish(),
     );
-    let log_updates = log_updates.lock().unwrap().finish();
-    fix_log(&mut allocator, &mut log_content, &log_updates);
 
     let only_exn = parsed_args
         .get("only_exn")
@@ -1656,7 +1518,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 &mut allocator,
                 stdout,
                 only_exn,
-                &log_content,
+                &runlog.log_entries,
                 symbol_table,
                 // Clippy: disassemble no longer requires mutability,
                 // but this callback interface delivers it.
@@ -1668,7 +1530,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 &mut allocator,
                 stdout,
                 only_exn,
-                &log_content,
+                &runlog.log_entries,
                 symbol_table,
                 // Same as above.
                 &|allocator, p| disassemble(allocator, p, disassembly_ver),

@@ -1,3 +1,5 @@
+use std::borrow::Borrow;
+
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::classic::clvm::sexp::{enlist, proper_list};
 use crate::compiler::gensym::gensym;
@@ -19,7 +21,9 @@ pub fn is_at_capture(
         allocator.sexp(tree_first),
         proper_list(allocator, tree_rest, true),
     ) {
-        if allocator.atom(tree_first) == b"@" && spec.len() == 2 {
+        let tree_first_atom = allocator.atom(tree_first);
+        let tree_first_borrowed: &[u8] = tree_first_atom.borrow();
+        if tree_first_borrowed == b"@" && spec.len() == 2 {
             return Some((spec[0], spec[1]));
         }
     }
@@ -100,7 +104,9 @@ fn formulate_path_selections_for_destructuring_arg(
                         };
 
                     // Was cbuf from capture.
-                    selections.insert(allocator.atom(capture).to_vec(), tail);
+                    let capture_atom = allocator.atom(capture);
+                    let capture_borrowed: &[u8] = capture_atom.borrow();
+                    selections.insert(capture_borrowed.to_vec(), tail);
 
                     return formulate_path_selections_for_destructuring_arg(
                         allocator,
@@ -149,11 +155,15 @@ fn formulate_path_selections_for_destructuring_arg(
         }
         SExp::Atom => {
             // Note: can't co-borrow with allocator below.
-            let buf = allocator.atom(arg_sexp).to_vec();
+            let buf = {
+                let buf_atom = allocator.atom(arg_sexp);
+                let buf_borrowed: &[u8] = buf_atom.borrow();
+                buf_borrowed.to_vec()
+            };
             if !buf.is_empty() {
                 if let Some(capture) = referenced_from {
                     let tail = wrap_path_selection(allocator, arg_path + arg_depth, capture)?;
-                    selections.insert(buf, tail);
+                    selections.insert(buf.to_vec(), tail);
                     return Ok(arg_sexp);
                 }
             }
@@ -229,7 +239,8 @@ pub fn formulate_path_selections_for_destructuring(
                 let quoted_arg_list = wrap_in_unquote(allocator, capture)?;
                 let tail = wrap_in_compile_time_list(allocator, quoted_arg_list)?;
                 // Was: cbuf from capture.
-                let buf = allocator.atom(capture);
+                let buf_atom = allocator.atom(capture);
+                let buf: &[u8] = buf_atom.borrow();
                 selections.insert(buf.to_vec(), tail);
                 let newsub = formulate_path_selections_for_destructuring_arg(
                     allocator,

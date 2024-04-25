@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::HashMap;
 
 use clvmr::allocator::{Allocator, NodePtr, SExp};
@@ -92,8 +93,12 @@ fn include_dialect(allocator: &Allocator, e: &[NodePtr]) -> Option<AcceptedDiale
         allocator.sexp(include_keyword_sexp),
         allocator.sexp(name_sexp),
     ) {
-        if allocator.atom(include_keyword_sexp) == "include".as_bytes().to_vec() {
-            if let Some(dialect) = KNOWN_DIALECTS.get(&decode_string(allocator.atom(name_sexp))) {
+        let ik_atom = allocator.atom(include_keyword_sexp);
+        let ik_borrowed: &[u8] = ik_atom.borrow();
+        if ik_borrowed == "include".as_bytes().to_vec() {
+            let name_atom = allocator.atom(name_sexp);
+            let name_borrowed: &[u8] = name_atom.borrow();
+            if let Some(dialect) = KNOWN_DIALECTS.get(&decode_string(name_borrowed)) {
                 return Some(dialect.accepted.clone());
             }
         }

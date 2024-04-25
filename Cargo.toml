@@ -32,7 +32,7 @@ do-notation = "0.1.3"
 serde_json = "1.0"
 sha2 = "0.9.5"
 tempfile = "3.3.0"
-clvmr = { version = "0.3.2", features = ["pre-eval"] }
+clvmr = { version = "0.6.1", features = ["pre-eval"], path = "../clvm_rs" }
 binascii = "0.1.4"
 yaml-rust = "0.4"
 linked-hash-map = "0.5.6"
@@ -41,6 +41,7 @@ regex = "1.8.4"
 rand = { version = "0.8.5", optional = true }
 rand_chacha = { version = "0.3.1", optional = true }
 lfsr = { version = "0.3.0", optional = true }
+closure = "0.3.0"
 
 [dependencies.pyo3]
 version = "0.20.2"
