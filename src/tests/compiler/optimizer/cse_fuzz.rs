@@ -51,7 +51,7 @@ impl HasVariableStore for TrickyAssignExpectation {
     }
 }
 
-struct FuzzT {}
+struct FuzzT;
 impl FuzzTypeParams for FuzzT {
     type Tag = Vec<u8>;
     type Expr = Rc<SExp>;
@@ -81,7 +81,7 @@ impl Rule<FuzzT> for TestTrickyAssignFuzzTopRule {
     }
 }
 
-struct TestTrickyAssignFuzzTestFormRule {}
+struct TestTrickyAssignFuzzTestFormRule;
 impl Rule<FuzzT> for TestTrickyAssignFuzzTestFormRule {
     fn check(
         &self,
@@ -181,7 +181,7 @@ impl Rule<FuzzT> for TestTrickyAssignVarDefBinopRule {
     }
 }
 
-struct TestTrickyAssignFinalExpr {}
+struct TestTrickyAssignFinalExpr;
 impl Rule<FuzzT> for TestTrickyAssignFinalExpr {
     fn check(
         &self,
@@ -278,7 +278,7 @@ fn test_property_fuzz_cse_binding() {
             Rc::new(TestTrickyAssignFuzzTopRule { defs: 3 }),
             Rc::new(TestTrickyAssignFuzzTopRule { defs: 4 }),
             Rc::new(TestTrickyAssignFuzzTopRule { defs: 5 }),
-            Rc::new(TestTrickyAssignFuzzTestFormRule {}),
+            Rc::new(TestTrickyAssignFuzzTestFormRule),
             Rc::new(TestTrickyAssignVarDefConstantRule {
                 value: compose_sexp(srcloc.clone(), "1"),
             }),
@@ -286,7 +286,7 @@ fn test_property_fuzz_cse_binding() {
                 op: SupportedOperators::Times,
                 other: compose_sexp(srcloc.clone(), "2"),
             }),
-            Rc::new(TestTrickyAssignFinalExpr {}),
+            Rc::new(TestTrickyAssignFinalExpr),
             Rc::new(TestTrickyAssignFinalBinopRule {
                 op: SupportedOperators::Times,
                 other: compose_sexp(srcloc, "2"),
