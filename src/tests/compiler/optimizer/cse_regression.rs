@@ -101,7 +101,7 @@ fn test_cse_merge_regression() {
             test_program.to_sexp(),
         ));
 
-        eprintln!("test_program {}", program_sexp);
+        eprintln!("test_program {program_sexp}");
         let dialect = AcceptedDialect {
             stepping: Some(23),
             strict: true,
