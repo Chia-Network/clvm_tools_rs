@@ -33,7 +33,7 @@ fn collect_used_names_binding(body: &Binding) -> Vec<Vec<u8>> {
     collect_used_names_bodyform(body.body.borrow())
 }
 
-fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
+pub fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
     match body {
         BodyForm::Let(_, letdata) => {
             let mut result = Vec::new();

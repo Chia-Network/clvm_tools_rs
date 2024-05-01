@@ -420,6 +420,9 @@ pub trait CompilerOpts {
     fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>>;
     /// Specifies the search paths we're carrying.
     fn get_search_paths(&self) -> Vec<String>;
+    /// Specifies flags that were passed down to various consumers.  This is
+    /// open ended for various purposes, such as diagnostics.
+    fn diag_flags(&self) -> Rc<HashSet<usize>>;
 
     /// Set the dialect.
     fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts>;
@@ -444,6 +447,8 @@ pub trait CompilerOpts {
     fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts>;
     /// Set the primitive map in use so we can add custom primitives.
     fn set_prim_map(&self, new_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts>;
+    /// Set the flags this CompilerOpts holds.  Consumers can examine these.
+    fn set_diag_flags(&self, new_flags: Rc<HashSet<usize>>) -> Rc<dyn CompilerOpts>;
 
     /// Using the search paths list we have, try to read a file by name,
     /// Returning the expanded path to the file and its content.
@@ -516,6 +521,9 @@ pub trait HasCompilerOptsDelegation {
     fn override_get_search_paths(&self) -> Vec<String> {
         self.compiler_opts().get_search_paths()
     }
+    fn override_diag_flags(&self) -> Rc<HashSet<usize>> {
+        self.compiler_opts().diag_flags()
+    }
 
     fn override_set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
         self.update_compiler_opts(|o| o.set_dialect(dialect))
@@ -546,6 +554,9 @@ pub trait HasCompilerOptsDelegation {
     }
     fn override_set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts> {
         self.update_compiler_opts(|o| o.set_start_env(start_env))
+    }
+    fn override_set_diag_flags(&self, flags: Rc<HashSet<usize>>) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_diag_flags(flags))
     }
     fn override_set_prim_map(
         &self,
@@ -610,6 +621,9 @@ impl<T: HasCompilerOptsDelegation> CompilerOpts for T {
     fn get_search_paths(&self) -> Vec<String> {
         self.override_get_search_paths()
     }
+    fn diag_flags(&self) -> Rc<HashSet<usize>> {
+        self.override_diag_flags()
+    }
 
     fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
         self.override_set_dialect(dialect)
@@ -643,6 +657,9 @@ impl<T: HasCompilerOptsDelegation> CompilerOpts for T {
     }
     fn set_prim_map(&self, new_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts> {
         self.override_set_prim_map(new_map)
+    }
+    fn set_diag_flags(&self, new_flags: Rc<HashSet<usize>>) -> Rc<dyn CompilerOpts> {
+        self.override_set_diag_flags(new_flags)
     }
     fn read_new_file(
         &self,

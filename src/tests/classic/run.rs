@@ -2368,3 +2368,63 @@ fn test_assign_rename_tricky() {
         .to_string();
     assert_eq!(run_result_41, "15375");
 }
+
+#[test]
+fn test_cse_breakage_example() {
+    let filename = "resources/tests/cse-bad.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+
+    eprintln!(">> {program}");
+    assert!(program.starts_with("("));
+
+    let run_result_11 = do_basic_brun(&vec![
+        "brun".to_string(),
+        program.clone(),
+        "(())".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(run_result_11, "((a 3) (a 3) (a 3))");
+}
+
+#[test]
+fn test_cse_breakage_example_letstar() {
+    let filename = "resources/tests/cse-bad-letstar.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+
+    eprintln!(">> {program}");
+    assert!(program.starts_with("("));
+
+    let run_result_11 = do_basic_brun(&vec![
+        "brun".to_string(),
+        program.clone(),
+        "(())".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(run_result_11, "((a 3) (a 3) (a 3))");
+}
+
+#[test]
+fn test_representation_of_tricky_nested_assigns() {
+    let filename = "resources/tests/cse-overlap.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+    let wanted_repr = "(2 (1 2 4 (4 2 (4 (4 5 (4 (1 . 99) (4 (1 . 100) (4 (1 . 101) (4 (1 . 102) ()))))) ()))) (4 (1 (2 10 (4 2 (4 (6 (4 2 (4 3 (4 29 ())))) (4 29 ())))) (2 14 (4 2 (4 3 (4 (4 (4 11 21) (4 21 ())) (4 (4 11 49) ()))))) 4 21 (4 23 (4 (4 23 41) (4 11 ())))) 1))";
+    assert_eq!(program, wanted_repr);
+}
+
+#[test]
+fn test_assign_cse_tricky_2() {
+    let filename = "resources/tests/cse-tricky-basic.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+    let wanted_repr = "(2 (1 2 10 (4 2 (4 5 ()))) (4 (1 ((11 5 11) 2 8 (4 2 (4 5 (4 11 ())))) (2 22 (4 2 (4 3 (4 (18 5 (1 . 11)) (4 (16 5 (1 . 1)) ()))))) (2 30 (4 2 (4 3 (4 (1 . 121) ())))) 2 (3 (9 17 (1 . 13)) (1 2 12 (4 2 (4 45 (4 21 ())))) (1 2 (3 (9 17 (1 . 15)) (1 2 8 (4 2 (4 45 (4 21 ())))) (1 . 11)) 1)) 1) 1))";
+    assert_eq!(program, wanted_repr);
+}
