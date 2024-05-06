@@ -13,7 +13,7 @@ use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProg
 
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
-use crate::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, ModulePhase, PrimaryCodegen};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, HasCompilerOptsDelegation, ModulePhase, PrimaryCodegen};
 use crate::compiler::dialect::{detect_modern, AcceptedDialect};
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -55,107 +55,27 @@ impl TestModuleCompilerOpts {
     }
 }
 
-impl CompilerOpts for TestModuleCompilerOpts {
-    fn filename(&self) -> String {
-        self.opts.filename()
+impl HasCompilerOptsDelegation for TestModuleCompilerOpts {
+    fn compiler_opts(&self) -> Rc<dyn CompilerOpts> { self.opts.clone() }
+    fn update_compiler_opts<F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>>(&self, f: F) -> Rc<dyn CompilerOpts> {
+        Rc::new(TestModuleCompilerOpts {
+            opts: f(self.opts.clone()),
+            .. self.clone()
+        })
     }
-
-    fn code_generator(&self) -> Option<PrimaryCodegen> {
-        self.opts.code_generator()
-    }
-    fn dialect(&self) -> AcceptedDialect {
-        self.opts.dialect()
-    }
-    fn in_defun(&self) -> bool {
-        self.opts.in_defun()
-    }
-    fn stdenv(&self) -> bool {
-        self.opts.stdenv()
-    }
-    fn optimize(&self) -> bool {
-        self.opts.optimize()
-    }
-    fn frontend_opt(&self) -> bool {
-        self.opts.frontend_opt()
-    }
-    fn frontend_check_live(&self) -> bool {
-        self.opts.frontend_check_live()
-    }
-    fn module_phase(&self) -> Option<ModulePhase> {
-        self.opts.module_phase()
-    }
-    fn start_env(&self) -> Option<Rc<SExp>> {
-        self.opts.start_env()
-    }
-    fn disassembly_ver(&self) -> Option<usize> {
-        self.opts.disassembly_ver()
-    }
-    fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
-        self.opts.prim_map()
-    }
-    fn get_search_paths(&self) -> Vec<String> {
-        self.opts.get_search_paths()
-    }
-    fn set_filename(&self, filename: &str) -> Rc<dyn CompilerOpts> {
-        self.new_opts(self.opts.set_filename(filename))
-    }
-    fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
-        self.new_opts(self.opts.set_dialect(dialect))
-    }
-    fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
-        self.new_opts(self.opts.set_search_paths(dirs))
-    }
-    fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts> {
-        self.new_opts(self.opts.set_in_defun(new_in_defun))
-    }
-    fn set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts> {
-        self.new_opts(self.opts.set_stdenv(new_stdenv))
-    }
-    fn set_optimize(&self, opt: bool) -> Rc<dyn CompilerOpts> {
-        self.new_opts(self.opts.set_optimize(opt))
-    }
-    fn set_frontend_opt(&self, opt: bool) -> Rc<dyn CompilerOpts> {
-        self.new_opts(self.opts.set_frontend_opt(opt))
-    }
-    fn set_frontend_check_live(&self, check: bool) -> Rc<dyn CompilerOpts> {
-        self.new_opts(self.opts.set_frontend_check_live(check))
-    }
-    fn set_module_phase(&self, module_phase: Option<ModulePhase>) -> Rc<dyn CompilerOpts> {
-        self.new_opts(self.opts.set_module_phase(module_phase))
-    }
-    fn set_code_generator(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
-        self.new_opts(self.opts.set_code_generator(new_compiler))
-    }
-    fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts> {
-        self.new_opts(self.opts.set_start_env(start_env))
-    }
-    fn set_prim_map(&self, prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts> {
-        self.new_opts(self.opts.set_prim_map(prims))
-    }
-    fn set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts> {
-        self.new_opts(self.opts.set_disassembly_ver(ver))
-    }
-    fn read_new_file(
-        &self,
-        inc_from: String,
-        filename: String,
-    ) -> Result<(String, Vec<u8>), CompileErr> {
-        self.opts.read_new_file(inc_from, filename)
-    }
-    fn get_file_mod_date(
+    fn override_get_file_mod_date(
         &self,
         loc: &Srcloc,
         filename: &str
     ) -> Result<u64, CompileErr> {
         Err(CompileErr(loc.clone(), format!("could not get mod date of {filename}")))
     }
-
-    fn write_new_file(&self, target: &str, content: &[u8]) -> Result<(), CompileErr> {
+    fn override_write_new_file(&self, target: &str, content: &[u8]) -> Result<(), CompileErr> {
         let mut wf: RefMut<'_, HashMap<String, Vec<u8>>> = self.written_files.borrow_mut();
         wf.insert(target.to_string(), content.to_vec());
         Ok(())
     }
-    fn compile_program(
+    fn override_compile_program(
         &self,
         context: &mut BasicCompileContext,
         sexp: Rc<SExp>,

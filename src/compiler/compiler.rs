@@ -113,6 +113,7 @@ pub struct DefaultCompilerOpts {
     pub start_env: Option<Rc<SExp>>,
     pub disassembly_ver: Option<usize>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    pub diag_flags: Rc<HashSet<usize>>,
     pub dialect: AcceptedDialect,
     pub module_phase: Option<ModulePhase>,
 }
@@ -913,6 +914,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn get_search_paths(&self) -> Vec<String> {
         self.include_dirs.clone()
     }
+    fn diag_flags(&self) -> Rc<HashSet<usize>> {
+        self.diag_flags.clone()
+    }
 
     fn set_filename(&self, filename: &str) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
@@ -978,6 +982,11 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn set_prim_map(&self, prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.prim_map = prims;
+        Rc::new(copy)
+    }
+    fn set_diag_flags(&self, flags: Rc<HashSet<usize>>) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.diag_flags = flags;
         Rc::new(copy)
     }
 
@@ -1069,6 +1078,7 @@ impl DefaultCompilerOpts {
             frontend_check_live: true,
             start_env: None,
             dialect: AcceptedDialect::default(),
+            diag_flags: Rc::new(HashSet::new()),
             prim_map: create_prim_map(),
             disassembly_ver: None,
             module_phase: None,
