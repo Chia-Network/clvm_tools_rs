@@ -37,17 +37,14 @@ jobs:
         rustup target add aarch64-unknown-linux-musl
         rm -rf venv
         export PATH="${PATH}:/opt/python/cp39-cp39/bin/:/opt/python/cp38-cp38/bin/:/opt/python/cp37-cp37m/bin/"
-
     - name: Build Python wheels
       run: |
         /opt/python/cp38-cp38/bin/python -m venv venv
         if [ ! -f "activate" ]; then ln -s venv/bin/activate; fi
         . ./activate
         pip install maturin==1.1.0
-        pip install tomlkit
-        USE_FEATURES=$(./support/feature-fishing.py)
-        echo "USE_FEATURES=${USE_FEATURES}" >> "$GITHUB_ENV"
-        CC=gcc maturin build --release --strip --manylinux 2014 "--features=extension-module,${USE_FEATURES}"
+        CC=gcc maturin build --release --strip --manylinux 2014
+on-module,${USE_FEATURES}"
     - name: Upload artifacts
       uses: actions/upload-artifact@v3
       with:
@@ -76,9 +73,7 @@ jobs:
         python3 -m venv venv
         if [ ! -f "activate" ]; then ln -s venv/bin/activate; fi
         . ./activate
-        pip3 install --upgrade requests
         pip3 install setuptools_rust
-        pip3 install twine
 
     - name: Test for secrets access
       id: check_secrets
