@@ -44,7 +44,6 @@ jobs:
         . ./activate
         pip install maturin==1.1.0
         CC=gcc maturin build --release --strip --manylinux 2014
-on-module,${USE_FEATURES}"
     - name: Upload artifacts
       uses: actions/upload-artifact@v3
       with:
@@ -74,7 +73,6 @@ on-module,${USE_FEATURES}"
         if [ ! -f "activate" ]; then ln -s venv/bin/activate; fi
         . ./activate
         pip3 install setuptools_rust
-
     - name: Test for secrets access
       id: check_secrets
       shell: bash
