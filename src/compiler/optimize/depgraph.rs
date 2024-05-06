@@ -114,10 +114,7 @@ impl FunctionDependencyGraph {
         })
     }
 
-    pub fn get_depended_on_by(
-        &self,
-        helper_name: &[u8]
-    ) -> Option<HashSet<Vec<u8>>> {
+    pub fn get_depended_on_by(&self, helper_name: &[u8]) -> Option<HashSet<Vec<u8>>> {
         if let Some(helper) = self.helpers.get(helper_name) {
             return Some(helper.is_depended_on_by.clone());
         }
@@ -125,10 +122,7 @@ impl FunctionDependencyGraph {
         None
     }
 
-    pub fn get_depends_on(
-        &self,
-        helper_name: &[u8]
-    ) -> Option<HashSet<Vec<u8>>> {
+    pub fn get_depends_on(&self, helper_name: &[u8]) -> Option<HashSet<Vec<u8>>> {
         if let Some(helper) = self.helpers.get(helper_name) {
             return Some(helper.depends_on.clone());
         }

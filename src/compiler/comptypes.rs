@@ -928,7 +928,7 @@ impl Debug for ModulePhase {
         match self {
             ModulePhase::CommonPhase => write!(formatter, "CommonPhase"),
             ModulePhase::CommonConstant(env) => write!(formatter, "CommonConstant({env})"),
-            ModulePhase::StandalonePhase(sp) => write!(formatter, "StandalonePhase({sp:?})")
+            ModulePhase::StandalonePhase(sp) => write!(formatter, "StandalonePhase({sp:?})"),
         }
     }
 }
@@ -1039,11 +1039,7 @@ pub trait CompilerOpts {
     ) -> Result<(String, Vec<u8>), CompileErr>;
 
     /// Give the modified date for the indicated file.
-    fn get_file_mod_date(
-        &self,
-        loc: &Srcloc,
-        filename: &str
-    ) -> Result<u64, CompileErr>;
+    fn get_file_mod_date(&self, loc: &Srcloc, filename: &str) -> Result<u64, CompileErr>;
 
     /// Fully write a file to the filesystem.
     fn write_new_file(&self, target_path: &str, content: &[u8]) -> Result<(), CompileErr>;
@@ -1171,11 +1167,7 @@ pub trait HasCompilerOptsDelegation {
     fn override_write_new_file(&self, target_path: &str, content: &[u8]) -> Result<(), CompileErr> {
         self.compiler_opts().write_new_file(target_path, content)
     }
-    fn override_get_file_mod_date(
-        &self,
-        loc: &Srcloc,
-        filename: &str
-    ) -> Result<u64, CompileErr> {
+    fn override_get_file_mod_date(&self, loc: &Srcloc, filename: &str) -> Result<u64, CompileErr> {
         self.compiler_opts().get_file_mod_date(loc, filename)
     }
     fn override_compile_program(
@@ -1183,8 +1175,7 @@ pub trait HasCompilerOptsDelegation {
         context: &mut BasicCompileContext,
         sexp: Rc<SExp>,
     ) -> Result<CompilerOutput, CompileErr> {
-        self.compiler_opts()
-            .compile_program(context, sexp)
+        self.compiler_opts().compile_program(context, sexp)
     }
 }
 
@@ -1285,11 +1276,7 @@ impl<T: HasCompilerOptsDelegation> CompilerOpts for T {
     ) -> Result<(String, Vec<u8>), CompileErr> {
         self.override_read_new_file(inc_from, filename)
     }
-    fn get_file_mod_date(
-        &self,
-        loc: &Srcloc,
-        filename: &str
-    ) -> Result<u64, CompileErr> {
+    fn get_file_mod_date(&self, loc: &Srcloc, filename: &str) -> Result<u64, CompileErr> {
         self.override_get_file_mod_date(loc, filename)
     }
     fn compile_program(
@@ -1299,7 +1286,7 @@ impl<T: HasCompilerOptsDelegation> CompilerOpts for T {
     ) -> Result<CompilerOutput, CompileErr> {
         self.override_compile_program(context, sexp)
     }
- }
+}
 
 /// Frontend uses this to accumulate frontend forms, used internally.
 #[derive(Debug, Clone)]

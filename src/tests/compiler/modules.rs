@@ -13,7 +13,10 @@ use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProg
 
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
-use crate::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, HasCompilerOptsDelegation, ModulePhase, PrimaryCodegen};
+use crate::compiler::comptypes::{
+    CompileErr, CompilerOpts, CompilerOutput, HasCompilerOptsDelegation, ModulePhase,
+    PrimaryCodegen,
+};
 use crate::compiler::dialect::{detect_modern, AcceptedDialect};
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -56,19 +59,23 @@ impl TestModuleCompilerOpts {
 }
 
 impl HasCompilerOptsDelegation for TestModuleCompilerOpts {
-    fn compiler_opts(&self) -> Rc<dyn CompilerOpts> { self.opts.clone() }
-    fn update_compiler_opts<F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>>(&self, f: F) -> Rc<dyn CompilerOpts> {
+    fn compiler_opts(&self) -> Rc<dyn CompilerOpts> {
+        self.opts.clone()
+    }
+    fn update_compiler_opts<F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>>(
+        &self,
+        f: F,
+    ) -> Rc<dyn CompilerOpts> {
         Rc::new(TestModuleCompilerOpts {
             opts: f(self.opts.clone()),
-            .. self.clone()
+            ..self.clone()
         })
     }
-    fn override_get_file_mod_date(
-        &self,
-        loc: &Srcloc,
-        filename: &str
-    ) -> Result<u64, CompileErr> {
-        Err(CompileErr(loc.clone(), format!("could not get mod date of {filename}")))
+    fn override_get_file_mod_date(&self, loc: &Srcloc, filename: &str) -> Result<u64, CompileErr> {
+        Err(CompileErr(
+            loc.clone(),
+            format!("could not get mod date of {filename}"),
+        ))
     }
     fn override_write_new_file(&self, target: &str, content: &[u8]) -> Result<(), CompileErr> {
         let mut wf: RefMut<'_, HashMap<String, Vec<u8>>> = self.written_files.borrow_mut();
@@ -132,15 +139,15 @@ pub fn hex_to_clvm(allocator: &mut Allocator, hex_data: &[u8]) -> clvmr::allocat
         Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(decode_string(
             &hex_data,
         ))))
-            .expect("should be valid hex"),
+        .expect("should be valid hex"),
     ));
     sexp_from_stream(
         allocator,
         &mut hex_stream,
         Box::new(SimpleCreateCLVMObject {}),
     )
-        .expect("hex data should decode as sexp")
-        .1
+    .expect("hex data should decode as sexp")
+    .1
 }
 
 fn test_compile_and_run_program_with_modules(
@@ -150,25 +157,23 @@ fn test_compile_and_run_program_with_modules(
 ) {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
-    let compile_result = perform_compile_of_file(
-        &mut allocator,
-        runner.clone(),
-        filename,
-        content
-    );
+    let compile_result = perform_compile_of_file(&mut allocator, runner.clone(), filename, content);
 
-    let compile_result =
-        if runs.is_empty() {
-            assert!(compile_result.is_err());
-            return;
-        } else {
-            compile_result.expect("Was expected to compile")
-        };
+    let compile_result = if runs.is_empty() {
+        assert!(compile_result.is_err());
+        return;
+    } else {
+        compile_result.expect("Was expected to compile")
+    };
 
     for run in runs.iter() {
-        let hex_data = compile_result.source_opts
+        let hex_data = compile_result
+            .source_opts
             .get_written_file(run.hexfile)
-            .expect(&format!("should have written hex data {} beside the source file", run.hexfile));
+            .expect(&format!(
+                "should have written hex data {} beside the source file",
+                run.hexfile
+            ));
         let compiled_node = hex_to_clvm(&mut allocator, &hex_data);
 
         if matches!(&run.outcome, ContentEquals) {
@@ -566,8 +571,8 @@ fn test_program_exporting_constant_from_program() {
                 hexfile: c_program_hex_filename,
                 argument: c_value,
                 outcome: ContentEquals,
-            }
-        ]
+            },
+        ],
     );
 }
 
@@ -599,12 +604,7 @@ fn test_program_export_constant_and_function() {
 fn test_detect_illegal_constant_arrangement() {
     let filename = "resources/tests/module/illegal-constant-arrangement-1.clsp";
     let content = fs::read_to_string(filename).expect("file should exist");
-    test_compile_and_run_program_with_modules(
-        filename,
-        &content,
-        &[
-        ]
-    );
+    test_compile_and_run_program_with_modules(filename, &content, &[]);
 }
 
 #[test]
@@ -615,13 +615,11 @@ fn test_legal_all_tabled() {
     test_compile_and_run_program_with_modules(
         filename,
         &content,
-        &[
-            HexArgumentOutcome {
-                hexfile: hex_file,
-                argument: "(3)",
-                outcome: Run("6")
-            },
-        ]
+        &[HexArgumentOutcome {
+            hexfile: hex_file,
+            argument: "(3)",
+            outcome: Run("6"),
+        }],
     );
 }
 
@@ -633,13 +631,11 @@ fn test_constant_with_lambda() {
     test_compile_and_run_program_with_modules(
         filename,
         &content,
-        &[
-            HexArgumentOutcome {
-                hexfile: hex_file,
-                argument: "(1)",
-                outcome: Run("0x7ccbd86581a0f129fa2772ec828a9d46d8639d6a14d5b9e2b03d8aa039221ba4")
-            }
-        ]
+        &[HexArgumentOutcome {
+            hexfile: hex_file,
+            argument: "(1)",
+            outcome: Run("0x7ccbd86581a0f129fa2772ec828a9d46d8639d6a14d5b9e2b03d8aa039221ba4"),
+        }],
     );
 }
 
@@ -651,13 +647,11 @@ fn test_constant_single_round() {
     test_compile_and_run_program_with_modules(
         filename,
         &content,
-        &[
-            HexArgumentOutcome {
-                hexfile: hex_file,
-                argument: "31",
-                outcome: ContentEquals
-            }
-        ]
+        &[HexArgumentOutcome {
+            hexfile: hex_file,
+            argument: "31",
+            outcome: ContentEquals,
+        }],
     );
 }
 

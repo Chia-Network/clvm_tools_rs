@@ -16,8 +16,11 @@ use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
 use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file, read_file};
 
-use crate::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, HasCompilerOptsDelegation, ModulePhase, PrimaryCodegen};
 use crate::compiler::compiler::DefaultCompilerOpts;
+use crate::compiler::comptypes::{
+    CompileErr, CompilerOpts, CompilerOutput, HasCompilerOptsDelegation, ModulePhase,
+    PrimaryCodegen,
+};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
@@ -308,11 +311,11 @@ struct TestCompilerOptsPresentsOwnFiles {
 }
 
 impl TestCompilerOptsPresentsOwnFiles {
-    fn new(
-        compiler_opts: Rc<dyn CompilerOpts>,
-        files: HashMap<String, String>
-    ) -> Self {
-        TestCompilerOptsPresentsOwnFiles { compiler_opts, files }
+    fn new(compiler_opts: Rc<dyn CompilerOpts>, files: HashMap<String, String>) -> Self {
+        TestCompilerOptsPresentsOwnFiles {
+            compiler_opts,
+            files,
+        }
     }
 }
 
@@ -320,10 +323,13 @@ impl HasCompilerOptsDelegation for TestCompilerOptsPresentsOwnFiles {
     fn compiler_opts(&self) -> Rc<dyn CompilerOpts> {
         self.compiler_opts.clone()
     }
-    fn update_compiler_opts<F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>>(&self, f: F) -> Rc<dyn CompilerOpts> {
+    fn update_compiler_opts<F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>>(
+        &self,
+        f: F,
+    ) -> Rc<dyn CompilerOpts> {
         Rc::new(TestCompilerOptsPresentsOwnFiles {
             compiler_opts: f(self.compiler_opts.clone()),
-            .. self.clone()
+            ..self.clone()
         })
     }
 
@@ -357,10 +363,7 @@ fn test_classic_compiler_with_compiler_opts() {
         files.insert(k, v);
     }
     let default_opts = Rc::new(DefaultCompilerOpts::new("test.clsp"));
-    let opts = Rc::new(TestCompilerOptsPresentsOwnFiles::new(
-        default_opts,
-        files,
-    ));
+    let opts = Rc::new(TestCompilerOptsPresentsOwnFiles::new(default_opts, files));
     let to_compile = "(mod (A) (include test.clinc) (F A))";
     let mut allocator = Allocator::new();
     let mut symbols = HashMap::new();
