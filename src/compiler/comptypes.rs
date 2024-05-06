@@ -3,12 +3,9 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::rc::Rc;
 
-use clvmr::allocator::Allocator;
-
 use serde::Serialize;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
-use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::{sha256tree, truthy};
 use crate::compiler::dialect::AcceptedDialect;
@@ -1966,7 +1963,7 @@ pub fn join_vecs_to_string(sep: Vec<u8>, vecs: &[Vec<u8>]) -> String {
         s.append(&mut comma.clone());
         s.append(&mut elt.to_vec());
         if comma.is_empty() {
-            comma = sep.clone();
+            comma.clone_from(&sep);
         }
     }
 

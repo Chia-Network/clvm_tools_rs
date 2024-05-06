@@ -52,7 +52,7 @@ impl<FT: FuzzTypeParams> FuzzGenerator<FT> {
         }
     }
 
-    pub fn result<'a>(&'a self) -> &'a FT::Expr { &self.structure }
+    pub fn result(&self) -> &FT::Expr { &self.structure }
 
     fn remove_waiting(&mut self, waiting_atom: &FT::Expr) -> Result<(), FT::Error> {
         let to_remove_waiting: Vec<usize> = self.waiting.iter().enumerate().filter_map(|(i,w)| {

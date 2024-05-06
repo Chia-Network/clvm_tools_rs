@@ -688,7 +688,7 @@ pub fn optimize_sexp_(
             }
             SExp::Pair(_, _) => {
                 for opt in optimizers.iter() {
-                    name = opt.name.clone();
+                    name.clone_from(&opt.name);
                     match opt.invoke(allocator, memo, r, eval_f.clone()) {
                         Err(e) => {
                             return Err(e);
