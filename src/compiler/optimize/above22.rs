@@ -46,10 +46,10 @@ impl Optimization for Strategy23 {
                 // Ok we've got a body that is now a let stack.
                 let new_helper = HelperForm::Defun(
                     *inline,
-                    DefunData {
+                    Box::new(DefunData {
                         body: Rc::new(function_body),
-                        ..d.clone()
-                    },
+                        ..*d.clone()
+                    }),
                 );
 
                 rebuilt_helpers.push(new_helper);
@@ -109,10 +109,10 @@ impl Optimization for Strategy23 {
                     .unwrap_or_else(|| defun.body.clone());
                     HelperForm::Defun(
                         *inline,
-                        DefunData {
+                        Box::new(DefunData {
                             body: new_body,
-                            ..defun.clone()
-                        },
+                            ..*defun.clone()
+                        }),
                     )
                 } else {
                     h.clone()

@@ -1118,7 +1118,7 @@ fn generate_let_defun(
         // binary size, when permitted.  Sometimes the user will signal a
         // preference.
         should_inline_let(inline_hint),
-        DefunData {
+        Box::new(DefunData {
             loc: l.clone(),
             nl: l,
             kw: kwl,
@@ -1128,7 +1128,7 @@ fn generate_let_defun(
             body,
             synthetic: Some(SyntheticType::NoInlinePreference),
             ty: None,
-        },
+        }),
     )
 }
 
@@ -1422,7 +1422,7 @@ pub fn hoist_body_let_binding(
             let new_expr = lambda_codegen(&new_function_name, letdata)?;
             let function = HelperForm::Defun(
                 false,
-                DefunData {
+                Box::new(DefunData {
                     loc: letdata.loc.clone(),
                     name: new_function_name,
                     kw: letdata.kw.clone(),
@@ -1432,7 +1432,7 @@ pub fn hoist_body_let_binding(
                     body: new_body,
                     synthetic: Some(SyntheticType::WantNonInline),
                     ty: None,
-                },
+                }),
             );
             new_helpers_from_body.push(function);
             Ok((new_helpers_from_body, Rc::new(new_expr)))
@@ -1464,11 +1464,11 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
 
                 result[i] = HelperForm::Defun(
                     inline,
-                    DefunData {
+                    Box::new(DefunData {
                         body: hoisted_body,
                         ty: defun.ty.clone(),
-                        ..defun.clone()
-                    },
+                        ..*defun.clone()
+                    }),
                 );
 
                 i += 1;

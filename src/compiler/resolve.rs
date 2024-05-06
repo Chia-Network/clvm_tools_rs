@@ -93,10 +93,10 @@ fn namespace_helper(name: &ImportLongName, value: &HelperForm) -> HelperFormResu
         HelperForm::Defun(inline, dd) => HelperFormResult::new(
             &[HelperForm::Defun(
                 *inline,
-                DefunData {
+                Box::new(DefunData {
                     name: name.as_u8_vec(LongNameTranslation::Namespace),
-                    ..dd.clone()
-                },
+                    ..*dd.clone()
+                }),
             )],
             None,
         ),
@@ -633,7 +633,7 @@ fn resolve_namespaces_in_helper(
             capture_scope(&mut in_scope, dd.args.clone());
             let new_defun = HelperForm::Defun(
                 *inline,
-                DefunData {
+                Box::new(DefunData {
                     body: resolve_namespaces_in_expr(
                         resolved_helpers,
                         opts.clone(),
@@ -642,8 +642,8 @@ fn resolve_namespaces_in_helper(
                         &in_scope,
                         dd.body.clone(),
                     )?,
-                    ..dd.clone()
-                },
+                    ..*dd.clone()
+                }),
             );
             Ok(HelperFormResult::new(&[new_defun], None))
         }

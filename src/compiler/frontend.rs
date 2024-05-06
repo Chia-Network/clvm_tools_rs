@@ -614,7 +614,7 @@ fn compile_defun(
     compile_bodyform(opts, take_form).map(|bf| {
         HelperForm::Defun(
             data.inline,
-            DefunData {
+            Box::new(DefunData {
                 loc: data.l,
                 nl: data.nl,
                 kw: data.kwl,
@@ -624,7 +624,7 @@ fn compile_defun(
                 body: Rc::new(bf),
                 synthetic: None,
                 ty,
-            },
+            }),
         )
     })
 }
@@ -1000,7 +1000,7 @@ fn create_constructor(sdef: &StructDef) -> HelperForm {
 
     HelperForm::Defun(
         true,
-        DefunData {
+        Box::new(DefunData {
             kw: None,
             nl: sdef.loc.clone(),
             loc: sdef.loc.clone(),
@@ -1010,7 +1010,7 @@ fn create_constructor(sdef: &StructDef) -> HelperForm {
             body: Rc::new(construction),
             synthetic: Some(SyntheticType::NoInlinePreference),
             ty: Some(funty),
-        },
+        }),
     )
 }
 
@@ -1053,7 +1053,7 @@ pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
 
                     HelperForm::Defun(
                         true,
-                        DefunData {
+                        Box::new(DefunData {
                             kw: None,
                             nl: m.loc.clone(),
                             loc: m.loc.clone(),
@@ -1077,7 +1077,7 @@ pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
                             )),
                             synthetic: Some(SyntheticType::NoInlinePreference),
                             ty: Some(funty),
-                        },
+                        }),
                     )
                 })
                 .collect();

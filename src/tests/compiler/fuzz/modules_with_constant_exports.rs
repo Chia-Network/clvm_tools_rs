@@ -519,7 +519,7 @@ fn find_all_constants(opts: Rc<dyn CompilerOpts>, heritage: &[Rc<SExp>], abort_o
 fn find_all_functions(opts: Rc<dyn CompilerOpts>, heritage: &[Rc<SExp>]) -> Result<Option<Vec<DefunData>>,()> {
     find_all_members(opts, |h| {
         if let HelperForm::Defun(false, defun) = h {
-            return Ok(Some(defun.clone()));
+            return Ok(Some(*defun.clone()));
         }
 
         Ok(None)

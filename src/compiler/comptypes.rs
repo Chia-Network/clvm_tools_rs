@@ -758,7 +758,7 @@ pub enum HelperForm {
     /// A macro definition (see DefmacData).
     Defmacro(DefmacData),
     /// A function definition (see DefunData).
-    Defun(bool, DefunData),
+    Defun(bool, Box<DefunData>),
 }
 
 #[test]

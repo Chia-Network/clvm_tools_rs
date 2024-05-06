@@ -316,7 +316,7 @@ fn add_inline_hash_for_constant(program: &mut CompileForm, loc: &Srcloc, fun_nam
 
     program.helpers.push(HelperForm::Defun(
         true,
-        DefunData {
+        Box::new(DefunData {
             loc: loc.clone(),
             nl: loc.clone(),
             kw: None,
@@ -326,7 +326,7 @@ fn add_inline_hash_for_constant(program: &mut CompileForm, loc: &Srcloc, fun_nam
             body: form_hash_expression(Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), fun_name.to_vec())))),
             synthetic: Some(SyntheticType::WantInline),
             ty: None,
-        },
+        }),
     ));
 }
 
