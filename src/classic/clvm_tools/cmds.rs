@@ -194,7 +194,7 @@ pub fn call_tool(
         return Ok(());
     }
 
-    let args_path_or_code_val = match args.get(&"path_or_code".to_string()) {
+    let args_path_or_code_val = match args.get("path_or_code") {
         None => ArgumentValue::ArgArray(vec![]),
         Some(v) => v.clone(),
     };
@@ -214,7 +214,7 @@ pub fn call_tool(
                 let conv_result = task.conv.invoke(allocator, &s)?;
                 let sexp = *conv_result.first();
                 let text = conv_result.rest();
-                if args.contains_key(&"script_hash".to_string()) {
+                if args.contains_key("script_hash") {
                     let data: Vec<u8> = sha256tree(allocator, sexp).hex().bytes().collect();
                     stream.write(Bytes::new(Some(BytesFromType::Raw(data))));
                 } else if !text.is_empty() {
@@ -595,8 +595,8 @@ pub fn cldb(args: &[String]) {
     }
 
     if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("path_or_code") {
-        input_file = file.clone();
-        input_program = path_or_code.to_string();
+        input_file.clone_from(file);
+        input_program.clone_from(path_or_code);
     }
 
     if let Some(ArgumentValue::ArgString(_, s)) = parsed_args.get("env") {
@@ -730,7 +730,7 @@ pub fn cldb(args: &[String]) {
         Box::new(CldbNoOverride::new_symbols(use_symbol_table.clone())),
     );
 
-    if parsed_args.get("tree").is_some() {
+    if parsed_args.contains_key("tree") {
         let result = cldb_hierarchy(
             runner,
             Rc::new(prim_map),
@@ -771,9 +771,9 @@ pub fn cldb(args: &[String]) {
                     only_print.insert("Print".to_string(), YamlElement::String(p.clone()));
                     output.push(only_print);
                 } else {
-                    let is_final = result.get("Final").is_some();
-                    let is_throw = result.get("Throw").is_some();
-                    let is_failure = result.get("Failure").is_some();
+                    let is_final = result.contains_key("Final");
+                    let is_throw = result.contains_key("Throw");
+                    let is_failure = result.contains_key("Failure");
                     if is_final || is_throw || is_failure {
                         print_tree(&mut output, &result);
                     }
@@ -1189,8 +1189,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let mut input_program = "()".to_string();
 
     if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("path_or_code") {
-        input_file = file.clone();
-        input_program = path_or_code.to_string();
+        input_file.clone_from(file);
+        input_program.clone_from(path_or_code);
     }
 
     let reported_input_file = input_file
@@ -1252,8 +1252,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     }
 
     if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("env") {
-        input_file = file.clone();
-        input_args = path_or_code.to_string();
+        input_file.clone_from(file);
+        input_args.clone_from(path_or_code);
     }
 
     let special_runner =
@@ -1317,8 +1317,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             if let Some(ArgumentValue::ArgString(f, content)) = parsed_args.get("path_or_code") {
                 match read_ir(content) {
                     Ok(s) => {
-                        input_program = content.clone();
-                        input_file = f.clone();
+                        input_program.clone_from(content);
+                        input_file.clone_from(f);
                         src_sexp = s;
                     }
                     Err(e) => {
@@ -1382,7 +1382,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         emit_symbol_output = true;
     }
 
-    if parsed_args.get("table").is_some() {
+    if parsed_args.contains_key("table") {
         emit_symbol_output = true;
     }
 
@@ -1466,7 +1466,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         let mut includes = Vec::new();
 
         // Short circuit preprocessing display.
-        if parsed_args.get("preprocess").is_some() {
+        if parsed_args.contains_key("preprocess") {
             if let Err(e) = perform_preprocessing(stdout, opts, &use_filename, &input_program) {
                 stdout.write_str(&format!("{}: {}", e.0, e.1));
             }
@@ -1474,7 +1474,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         }
 
         // Short circuit desguaring display.
-        if parsed_args.get("desugar").is_some() {
+        if parsed_args.contains_key("desugar") {
             if let Err(e) = perform_desugaring(runner, stdout, opts, &use_filename, &input_program)
             {
                 stdout.write_str(&format!("{}: {}", e.0, e.1));
@@ -1670,7 +1670,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             let result = run_program_result.1;
             let time_done = SystemTime::now();
 
-            if parsed_args.get("cost").is_some() {
+            if parsed_args.contains_key("cost") {
                 if cost > 0 {
                     cost += cost_offset;
                 }
@@ -1678,7 +1678,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             };
 
             if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("time") {
-                if parsed_args.get("hex").is_some() {
+                if parsed_args.contains_key("hex") {
                     stdout.write_str(&format!(
                         "read_hex: {}\n",
                         time_read_hex
@@ -1760,7 +1760,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .unwrap_or_else(|| false);
 
     if emit_symbol_output {
-        if parsed_args.get("table").is_some() {
+        if parsed_args.contains_key("table") {
             trace_to_table(
                 &mut allocator,
                 stdout,
