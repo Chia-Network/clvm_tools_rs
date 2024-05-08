@@ -1299,7 +1299,7 @@ impl<'info> Evaluator {
         for h in self.helpers.iter() {
             if let HelperForm::Defun(false, dd) = &h {
                 if name == h.name() {
-                    return Some(Box::new(dd.clone()));
+                    return Some(dd.clone());
                 }
             }
         }

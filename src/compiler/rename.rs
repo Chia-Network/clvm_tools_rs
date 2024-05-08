@@ -413,10 +413,10 @@ fn rename_in_helperform(
         })),
         HelperForm::Defun(inline, defun) => Ok(HelperForm::Defun(
             *inline,
-            DefunData {
+            Box::new(DefunData {
                 body: Rc::new(rename_in_bodyform(namemap, defun.body.clone())?),
-                ..defun.clone()
-            },
+                ..*defun.clone()
+            }),
         )),
     }
 }
@@ -466,14 +466,14 @@ pub fn rename_args_helperform(h: &HelperForm) -> Result<HelperForm, CompileErr> 
             let local_renamed_body = rename_args_bodyform(defun.body.borrow())?;
             Ok(HelperForm::Defun(
                 *inline,
-                DefunData {
+                Box::new(DefunData {
                     args: local_renamed_arg,
                     body: Rc::new(rename_in_bodyform(
                         &local_namemap,
                         Rc::new(local_renamed_body),
                     )?),
-                    ..defun.clone()
-                },
+                    ..*defun.clone()
+                }),
             ))
         }
     }

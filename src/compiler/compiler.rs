@@ -1,6 +1,6 @@
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -30,6 +30,8 @@ use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::Number;
+
+pub const FUZZ_TEST_PRE_CSE_MERGE_FIX_FLAG: usize = 1;
 
 lazy_static! {
     pub static ref STANDARD_MACROS: String = {
@@ -119,6 +121,7 @@ pub struct DefaultCompilerOpts {
     pub start_env: Option<Rc<SExp>>,
     pub disassembly_ver: Option<usize>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    pub diag_flags: Rc<HashSet<usize>>,
     pub dialect: AcceptedDialect,
 }
 
@@ -464,7 +467,7 @@ pub fn compile_module(
             )));
             program.helpers.push(HelperForm::Defun(
                 false,
-                DefunData {
+                Box::new(DefunData {
                     loc: dd.loc.clone(),
                     kw: None,
                     nl: dd.nl.clone(),
@@ -474,7 +477,7 @@ pub fn compile_module(
                     body: form_hash_expression(make_hash_of),
                     synthetic: Some(SyntheticType::WantNonInline),
                     ty: None,
-                },
+                }),
             ));
         } else if let Some(HelperForm::Defconstant(dc)) = &exported {
             let mut new_name = fun_name.clone();
@@ -501,7 +504,7 @@ pub fn compile_module(
 
             program.helpers.push(HelperForm::Defun(
                 true,
-                DefunData {
+                Box::new(DefunData {
                     loc: dc.loc.clone(),
                     nl: dc.nl.clone(),
                     kw: None,
@@ -511,7 +514,7 @@ pub fn compile_module(
                     body: Rc::new(BodyForm::Value(SExp::Atom(dc.loc.clone(), new_name))),
                     synthetic: Some(SyntheticType::NoInlinePreference),
                     ty: None,
-                },
+                }),
             ));
         } else {
             return Err(CompileErr(
@@ -660,6 +663,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn get_search_paths(&self) -> Vec<String> {
         self.include_dirs.clone()
     }
+    fn diag_flags(&self) -> Rc<HashSet<usize>> {
+        self.diag_flags.clone()
+    }
 
     fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
@@ -717,6 +723,11 @@ impl CompilerOpts for DefaultCompilerOpts {
         Rc::new(copy)
     }
 
+    fn set_diag_flags(&self, flags: Rc<HashSet<usize>>) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.diag_flags = flags;
+        Rc::new(copy)
+    }
     fn read_new_file(
         &self,
         inc_from: String,
@@ -792,6 +803,7 @@ impl DefaultCompilerOpts {
             dialect: AcceptedDialect::default(),
             prim_map: create_prim_map(),
             disassembly_ver: None,
+            diag_flags: Rc::new(HashSet::default()),
         }
     }
 }

@@ -301,7 +301,6 @@ fn constant_fun_result(
                 let to_compile = CompileForm {
                     loc: call_spec.loc.clone(),
                     include_forms: Vec::new(),
-                    ty: None,
                     helpers: compiler.original_helpers.clone(),
                     args: Rc::new(SExp::Atom(call_spec.loc.clone(), b"__ARGS__".to_vec())),
                     exp: Rc::new(BodyForm::Call(
@@ -321,6 +320,8 @@ fn constant_fun_result(
                         // single capture argument.
                         None,
                     )),
+                    // XXX
+                    ty: None,
                 };
                 let optimizer = if let Ok(res) = get_optimizer(&call_spec.loc, opts.clone()) {
                     res
@@ -337,6 +338,7 @@ fn constant_fun_result(
                     optimizer,
                     &mut includes,
                 );
+
                 if let Ok(code) = codegen(&mut wrapper.context, opts.clone(), &to_compile) {
                     code
                 } else {
@@ -528,8 +530,8 @@ pub fn optimize_expr(
         BodyForm::Mod(l, cf) => {
             if let Some(stepping) = opts.dialect().stepping {
                 if stepping >= 23 {
-                    let mut throwaway_symbols = HashMap::new();
                     let mut includes = Vec::new();
+                    let mut throwaway_symbols = HashMap::new();
                     if let Ok(optimizer) = get_optimizer(l, opts.clone()) {
                         let mut wrapper = CompileContextWrapper::new(
                             allocator,
@@ -644,17 +646,10 @@ fn fe_opt(
                 )?;
                 let new_helper = HelperForm::Defun(
                     *inline,
-                    DefunData {
-                        loc: defun.loc.clone(),
-                        nl: defun.nl.clone(),
-                        kw: defun.kw.clone(),
-                        name: defun.name.clone(),
-                        args: defun.args.clone(),
-                        orig_args: defun.orig_args.clone(),
-                        synthetic: defun.synthetic.clone(),
+                    Box::new(DefunData {
                         body: body_rc.clone(),
-                        ty: defun.ty.clone(),
-                    },
+                        ..*defun.clone()
+                    }),
                 );
                 optimized_helpers.push(new_helper);
             }
@@ -725,4 +720,21 @@ pub fn get_optimizer(
     }
 
     Ok(Box::new(ExistingStrategy::new()))
+}
+
+/// This small interface takes care of various scenarios that have existed
+/// regarding mixing modern chialisp output with classic's optimizer.
+pub fn maybe_finalize_program_via_classic_optimizer(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    _opts: Rc<dyn CompilerOpts>, // Currently unused but I want this interface
+    // to consider opts in the future when required.
+    opt_flag: bool, // Command line flag and other features control this in oldest-    // versions
+    unopt_res: &SExp,
+) -> Result<Rc<SExp>, CompileErr> {
+    if opt_flag {
+        run_optimizer(allocator, runner, Rc::new(unopt_res.clone()))
+    } else {
+        Ok(Rc::new(unopt_res.clone()))
+    }
 }
