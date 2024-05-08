@@ -89,10 +89,6 @@ fn usize_value(body: Rc<SExp>) -> Result<usize, CompileErr> {
 /// needed.  These are held in a collection and looked up.  To be maximally
 /// conservative with typing and lifetime, we hold these via Rc<dyn ...>.
 pub trait ExtensionFunction {
-    fn want_interp(&self) -> bool {
-        true
-    }
-    fn required_args(&self) -> Option<usize>;
     #[allow(clippy::too_many_arguments)]
     fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr>;
 }
@@ -106,10 +102,6 @@ impl StringQ {
 }
 
 impl ExtensionFunction for StringQ {
-    fn required_args(&self) -> Option<usize> {
-        Some(1)
-    }
-
     fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let res = match match_quoted_string(args[0].clone()) {
             Ok(Some(_)) => SExp::Integer(loc.clone(), bi_one()),
@@ -129,10 +121,6 @@ impl NumberQ {
 }
 
 impl ExtensionFunction for NumberQ {
-    fn required_args(&self) -> Option<usize> {
-        Some(1)
-    }
-
     fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let res = match match_number(args[0].clone()) {
             Ok(Some(_)) => SExp::Integer(loc.clone(), bi_one()),
@@ -152,10 +140,6 @@ impl SymbolQ {
 }
 
 impl ExtensionFunction for SymbolQ {
-    fn required_args(&self) -> Option<usize> {
-        Some(1)
-    }
-
     fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let res = match match_atom(args[0].clone()) {
             Ok(Some(_)) => SExp::Integer(loc.clone(), bi_one()),
@@ -175,10 +159,6 @@ impl SymbolToString {
 }
 
 impl ExtensionFunction for SymbolToString {
-    fn required_args(&self) -> Option<usize> {
-        Some(1)
-    }
-
     fn try_eval(&self, _loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         if let Some((loc, value)) = match_atom(args[0].clone())? {
             Ok(Rc::new(SExp::QuotedString(loc, b'\"', value)))
@@ -197,10 +177,6 @@ impl StringToSymbol {
 }
 
 impl ExtensionFunction for StringToSymbol {
-    fn required_args(&self) -> Option<usize> {
-        Some(1)
-    }
-
     fn try_eval(&self, _loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
             Ok(Rc::new(SExp::Atom(loc, value)))
@@ -219,10 +195,6 @@ impl StringAppend {
 }
 
 impl ExtensionFunction for StringAppend {
-    fn required_args(&self) -> Option<usize> {
-        None
-    }
-
     fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let mut out_vec = Vec::new();
         let mut out_loc = None;
@@ -253,10 +225,6 @@ impl NumberToString {
 }
 
 impl ExtensionFunction for NumberToString {
-    fn required_args(&self) -> Option<usize> {
-        Some(1)
-    }
-
     fn try_eval(&self, _loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let match_res = match_number(args[0].clone())?;
         let (use_loc, int_val) = match &match_res {
@@ -283,10 +251,6 @@ impl StringToNumber {
 }
 
 impl ExtensionFunction for StringToNumber {
-    fn required_args(&self) -> Option<usize> {
-        Some(1)
-    }
-
     fn try_eval(&self, loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
             if let Ok(cvt_bi) = decode_string(&value).parse::<Number>() {
@@ -312,10 +276,6 @@ impl StringLength {
 }
 
 impl ExtensionFunction for StringLength {
-    fn required_args(&self) -> Option<usize> {
-        Some(1)
-    }
-
     fn try_eval(&self, _loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         if let Some((loc, value)) = match_quoted_string(args[0].clone())? {
             if let Some(len_bi) = value.len().to_bigint() {
@@ -339,10 +299,6 @@ impl Substring {
 }
 
 impl ExtensionFunction for Substring {
-    fn required_args(&self) -> Option<usize> {
-        Some(3)
-    }
-
     fn try_eval(&self, _loc: &Srcloc, args: &[Rc<SExp>]) -> Result<Rc<SExp>, CompileErr> {
         let start_element = usize_value(args[1].clone())?;
         let end_element = usize_value(args[2].clone())?;

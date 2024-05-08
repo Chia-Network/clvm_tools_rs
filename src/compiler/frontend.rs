@@ -8,13 +8,16 @@ use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
-    list_to_cons, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType, CompileErr,
-    CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData, DefunData,
-    HelperForm, IncludeDesc, LetData, LetFormInlineHint, LetFormKind, ModAccum, StructDef,
-    StructMember, SyntheticType, TypeAnnoKind,
+    list_to_cons, match_as_named, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType,
+    CompileErr, CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData,
+    DefunData, Export, FrontendOutput, HelperForm, ImportLongName, IncludeDesc, LetData,
+    LetFormInlineHint, LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, NamespaceData,
+    NamespaceRefData, StructDef, StructMember, SyntheticType, TypeAnnoKind,
 };
 use crate::compiler::lambda::handle_lambda;
-use crate::compiler::preprocessor::preprocess;
+use crate::compiler::preprocessor::{
+    detect_chialisp_module, parse_toplevel_mod, preprocess, Preprocessor, ToplevelModParseResult,
+};
 use crate::compiler::rename::{rename_assign_bindings, rename_children_compileform};
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::{HasLoc, Srcloc};
@@ -39,7 +42,7 @@ fn collect_used_names_binding(body: &Binding) -> Vec<Vec<u8>> {
     collect_used_names_bodyform(body.body.borrow())
 }
 
-fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
+pub fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
     match body {
         BodyForm::Let(_, letdata) => {
             let mut result = Vec::new();
@@ -87,6 +90,8 @@ fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
 fn collect_used_names_helperform(body: &HelperForm) -> Vec<Vec<u8>> {
     match body {
         HelperForm::Deftype(_) => Vec::new(),
+        HelperForm::Defnamespace(_ns) => Vec::new(),
+        HelperForm::Defnsref(_ns) => Vec::new(),
         HelperForm::Defconstant(defc) => collect_used_names_bodyform(defc.body.borrow()),
         HelperForm::Defmacro(mac) => {
             let mut res = collect_used_names_compileform(mac.program.borrow());
@@ -481,7 +486,7 @@ pub fn compile_bodyform(
                                 qq_to_expression(opts, Rc::new(quote_body))
                             } else if *atom_name == b"mod" {
                                 let subparse = frontend(opts, &[body.clone()])?;
-                                Ok(BodyForm::Mod(op.loc(), subparse))
+                                Ok(BodyForm::Mod(op.loc(), subparse.compileform().clone()))
                             } else if *atom_name == b"lambda" {
                                 handle_lambda(opts, Some(l.clone()), &v)
                             } else {
@@ -609,7 +614,7 @@ fn compile_defun(
     compile_bodyform(opts, take_form).map(|bf| {
         HelperForm::Defun(
             data.inline,
-            DefunData {
+            Box::new(DefunData {
                 loc: data.l,
                 nl: data.nl,
                 kw: data.kwl,
@@ -619,7 +624,7 @@ fn compile_defun(
                 body: Rc::new(bf),
                 synthetic: None,
                 ty,
-            },
+            }),
         )
     })
 }
@@ -646,7 +651,7 @@ fn compile_defmacro(
             kw: kwl,
             name,
             args: args.clone(),
-            program: Rc::new(p),
+            program: Rc::new(p.compileform().clone()),
             advanced: false,
         })
     })
@@ -898,7 +903,7 @@ fn promote_with_arg_type(argty: &Polytype, funty: &Polytype) -> Polytype {
 // If type arguments are given, the function's type signature must not be given
 // as a function type (since all functions are arity-1 in chialisp).  The final
 // result type will be enriched to include the argument types.
-fn augment_fun_type_with_args(
+pub fn augment_fun_type_with_args(
     args: Rc<SExp>,
     result_ty: Option<TypeAnnoKind>,
 ) -> Result<(Rc<SExp>, Option<Polytype>), CompileErr> {
@@ -995,7 +1000,7 @@ fn create_constructor(sdef: &StructDef) -> HelperForm {
 
     HelperForm::Defun(
         true,
-        DefunData {
+        Box::new(DefunData {
             kw: None,
             nl: sdef.loc.clone(),
             loc: sdef.loc.clone(),
@@ -1005,7 +1010,7 @@ fn create_constructor(sdef: &StructDef) -> HelperForm {
             body: Rc::new(construction),
             synthetic: Some(SyntheticType::NoInlinePreference),
             ty: Some(funty),
-        },
+        }),
     )
 }
 
@@ -1048,7 +1053,7 @@ pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
 
                     HelperForm::Defun(
                         true,
-                        DefunData {
+                        Box::new(DefunData {
                             kw: None,
                             nl: m.loc.clone(),
                             loc: m.loc.clone(),
@@ -1072,7 +1077,7 @@ pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
                             )),
                             synthetic: Some(SyntheticType::NoInlinePreference),
                             ty: Some(funty),
-                        },
+                        }),
                     )
                 })
                 .collect();
@@ -1142,10 +1147,139 @@ fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
     ))
 }
 
+pub fn match_export_form(
+    opts: Rc<dyn CompilerOpts>,
+    form: Rc<SExp>,
+) -> Result<Option<Export>, CompileErr> {
+    if let Some(lst) = form.proper_list() {
+        // Empty form isn't export
+        if lst.is_empty() {
+            return Ok(None);
+        }
+
+        // Export if it has an export keyword.
+        if let SExp::Atom(_, export_name) = lst[0].borrow() {
+            if export_name != b"export" {
+                return Ok(None);
+            }
+        } else {
+            // No export kw, not export.
+            return Ok(None);
+        }
+
+        if let Some((_, fun_name, export_name)) = match_as_named(&lst, 1) {
+            return Ok(Some(Export::Function(fun_name, export_name)));
+        }
+
+        // A main export
+        if lst.len() != 3 {
+            return Err(CompileErr(form.loc(), format!("Malformed export {form}")));
+        }
+
+        let expr = compile_bodyform(opts.clone(), Rc::new(lst[2].clone()))?;
+        return Ok(Some(Export::MainProgram(
+            Rc::new(lst[1].clone()),
+            Rc::new(expr),
+        )));
+    }
+
+    Ok(None)
+}
+
 #[derive(Debug, Clone)]
 pub struct HelperFormResult {
     pub chia_type: Option<ChiaType>,
     pub new_helpers: Vec<HelperForm>,
+}
+
+impl HelperFormResult {
+    pub fn new(helpers: &[HelperForm], ty: Option<ChiaType>) -> Self {
+        HelperFormResult {
+            chia_type: ty,
+            new_helpers: helpers.to_vec(),
+        }
+    }
+}
+
+pub fn compile_namespace(
+    opts: Rc<dyn CompilerOpts>,
+    loc: Srcloc,
+    internal: &[SExp],
+) -> Result<HelperForm, CompileErr> {
+    if internal.len() < 2 {
+        return Err(CompileErr(loc, "Namespace must have a name".to_string()));
+    }
+
+    let (_, parsed) = if let SExp::Atom(_, name) = &internal[1] {
+        ImportLongName::parse(name)
+    } else {
+        return Err(CompileErr(
+            internal[1].loc(),
+            "Namespace name must be an atom".to_string(),
+        ));
+    };
+
+    let mut helpers = Vec::new();
+    for sexp in internal.iter().skip(2) {
+        if let Some(hresult) = compile_helperform(opts.clone(), Rc::new(sexp.clone()))? {
+            for h in hresult.new_helpers.iter() {
+                helpers.push(h.clone());
+            }
+        } else {
+            return Err(CompileErr(
+                sexp.loc(),
+                "Namespaces must contain only definitions".to_string(),
+            ));
+        }
+    }
+
+    Ok(HelperForm::Defnamespace(NamespaceData {
+        loc: loc.clone(),
+        kw: internal[0].loc(),
+        nl: internal[1].loc(),
+        rendered_name: parsed.as_u8_vec(LongNameTranslation::Namespace),
+        longname: parsed,
+        helpers,
+    }))
+}
+
+pub fn compile_nsref(loc: Srcloc, internal: &[SExp]) -> Result<HelperForm, CompileErr> {
+    if internal.len() < 2 {
+        return Err(CompileErr(
+            loc.clone(),
+            "import must import a module".to_string(),
+        ));
+    }
+
+    let import_spec = ModuleImportSpec::parse(loc.clone(), internal[0].loc(), internal, 1)?;
+    if let ModuleImportSpec::Qualified(q) = &import_spec {
+        return Ok(HelperForm::Defnsref(Box::new(NamespaceRefData {
+            loc,
+            kw: internal[0].loc(),
+            nl: q.nl.clone(),
+            rendered_name: q.name.as_u8_vec(LongNameTranslation::Namespace),
+            longname: q.name.clone(),
+            specification: import_spec.clone(),
+        })));
+    }
+
+    let (_, parsed) = if let SExp::Atom(_nl, name) = &internal[1] {
+        ImportLongName::parse(name)
+    } else {
+        return Err(CompileErr(
+            internal[1].loc(),
+            "Import name must be an atom".to_string(),
+        ));
+    };
+
+    Ok(HelperForm::Defnsref(Box::new(NamespaceRefData {
+        loc,
+        kw: internal[0].loc(),
+        nl: import_spec.name_loc(),
+        rendered_name: parsed.as_u8_vec(LongNameTranslation::Namespace),
+        longname: parsed,
+        specification: import_spec,
+    })))
 }
 
 pub fn compile_helperform(
@@ -1247,6 +1381,7 @@ pub fn compile_helperform(
                     loc: l.clone(),
                     name: n.clone(),
                     args: vec![],
+                    parsed: parsed_chia.clone(),
                     ty: None,
                 }),
                 ChiaType::Struct(sdef) => {
@@ -1259,6 +1394,7 @@ pub fn compile_helperform(
                         loc: sdef.loc.clone(),
                         name: sdef.name.clone(),
                         args: sdef.vars.clone(),
+                        parsed: parsed_chia.clone(),
                         ty: Some(sdef.ty.clone()),
                     })
                 }
@@ -1268,10 +1404,22 @@ pub fn compile_helperform(
                 chia_type: Some(parsed_chia),
                 new_helpers: helpers,
             }))
+        } else if matched.op_name == "namespace".as_bytes().to_vec() {
+            let ns = compile_namespace(opts, body.loc(), &matched.orig)?;
+            Ok(Some(HelperFormResult {
+                chia_type: None,
+                new_helpers: vec![ns],
+            }))
+        } else if matched.op_name == "import".as_bytes().to_vec() {
+            let nsref = compile_nsref(body.loc(), &matched.orig)?;
+            Ok(Some(HelperFormResult {
+                chia_type: None,
+                new_helpers: vec![nsref],
+            }))
         } else {
             Err(CompileErr(
                 matched.body.loc(),
-                "unknown keyword in helper".to_string(),
+                format!("unknown keyword in helper {body}"),
             ))
         }
     } else {
@@ -1366,81 +1514,30 @@ fn frontend_start(
     includes: &mut Vec<IncludeDesc>,
     pre_forms: &[Rc<SExp>],
 ) -> Result<ModAccum, CompileErr> {
-    if pre_forms.is_empty() {
-        Err(CompileErr(
-            Srcloc::start(&opts.filename()),
-            "empty source file not allowed".to_string(),
-        ))
-    } else {
-        let l = pre_forms[0].loc();
-        pre_forms[0]
-            .proper_list()
-            .map(|x| {
-                if x.is_empty() {
-                    return frontend_step_finish(opts.clone(), includes, pre_forms);
-                }
+    match parse_toplevel_mod(opts.clone(), pre_forms)? {
+        ToplevelModParseResult::Mod(tm) => {
+            let ls = preprocess(opts.clone(), includes, &tm.forms)?;
+            let l = ls.forms[0].loc();
 
-                if let SExp::Atom(_, mod_atom) = &x[0] {
-                    if pre_forms.len() > 1 {
-                        return Err(CompileErr(
-                            pre_forms[0].loc(),
-                            "one toplevel mod form allowed".to_string(),
-                        ));
-                    }
+            let mut ma = ModAccum::new(l.clone(), false);
+            for form in ls.forms.iter().take(ls.forms.len() - 1) {
+                ma = ma.compile_mod_helper(
+                    opts.clone(),
+                    tm.stripped_args.clone(),
+                    form.clone(),
+                    tm.parsed_type.clone(),
+                )?;
+            }
 
-                    if *mod_atom == b"mod" {
-                        let args = Rc::new(x[1].atomize());
-                        let mut skip_idx = 2;
-                        let mut ty: Option<TypeAnnoKind> = None;
-
-                        if x.len() < 3 {
-                            return Err(CompileErr(x[0].loc(), "incomplete mod form".to_string()));
-                        }
-
-                        if let SExp::Atom(_, colon) = &x[2].atomize() {
-                            if *colon == vec![b':'] && x.len() > 3 {
-                                let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
-                                ty = Some(TypeAnnoKind::Colon(use_ty));
-                                skip_idx += 2;
-                            } else if *colon == vec![b'-', b'>'] && x.len() > 3 {
-                                let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
-                                ty = Some(TypeAnnoKind::Arrow(use_ty));
-                                skip_idx += 2;
-                            }
-                        }
-                        let (stripped_args, parsed_type) = augment_fun_type_with_args(args, ty)?;
-
-                        let body_vec: Vec<Rc<SExp>> = x
-                            .iter()
-                            .skip(skip_idx)
-                            .map(|s| Rc::new(s.clone()))
-                            .collect();
-                        let body = Rc::new(enlist(pre_forms[0].loc(), &body_vec));
-
-                        let ls = preprocess(opts.clone(), includes, body)?;
-                        let mut ma = ModAccum::new(l.clone(), false);
-                        for form in ls.iter().take(ls.len() - 1) {
-                            ma = ma.compile_mod_helper(
-                                opts.clone(),
-                                stripped_args.clone(),
-                                form.clone(),
-                                parsed_type.clone(),
-                            )?;
-                        }
-
-                        return ma.compile_mod_body(
-                            opts.clone(),
-                            includes.clone(),
-                            stripped_args,
-                            ls[ls.len() - 1].clone(),
-                            parsed_type,
-                        );
-                    }
-                }
-
-                frontend_step_finish(opts.clone(), includes, pre_forms)
-            })
-            .unwrap_or_else(|| frontend_step_finish(opts, includes, pre_forms))
+            ma.compile_mod_body(
+                opts.clone(),
+                includes.clone(),
+                tm.stripped_args,
+                ls.forms[ls.forms.len() - 1].clone(),
+                tm.parsed_type,
+            )
+        }
+        ToplevelModParseResult::Simple(t) => frontend_step_finish(opts.clone(), includes, &t),
     }
 }
 
@@ -1491,8 +1588,46 @@ pub fn compute_live_helpers(
 pub fn frontend(
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>],
-) -> Result<CompileForm, CompileErr> {
+) -> Result<FrontendOutput, CompileErr> {
     let mut includes = Vec::new();
+
+    if let Some(_dialect) = detect_chialisp_module(pre_forms) {
+        let mut other_forms = vec![];
+        let mut exports = vec![];
+
+        let mut preprocessor = Preprocessor::new(opts.clone());
+        let output_forms = preprocessor.run_modules(&mut includes, pre_forms)?;
+
+        if output_forms.forms.is_empty() {
+            return Err(CompileErr(
+                Srcloc::start(&opts.filename()),
+                "Module style chialisp programs require at least one export".to_string(),
+            ));
+        }
+
+        for form in output_forms.forms.iter() {
+            if let Some(export) = match_export_form(opts.clone(), form.clone())? {
+                exports.push(export);
+            } else if let Some(helper) = compile_helperform(opts.clone(), form.clone())? {
+                for h in helper.new_helpers.iter() {
+                    other_forms.push(h.clone());
+                }
+            }
+        }
+
+        let loc = output_forms.forms[0].loc();
+        let program = CompileForm {
+            loc: loc.clone(),
+            include_forms: includes.to_vec(),
+            args: Rc::new(SExp::Nil(loc.clone())),
+            helpers: other_forms.clone(),
+            exp: Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone()))),
+            ty: None,
+        };
+
+        return Ok(FrontendOutput::Module(program, exports));
+    }
+
     let started = frontend_start(opts.clone(), &mut includes, pre_forms)?;
 
     for i in includes.iter() {
@@ -1514,11 +1649,11 @@ pub fn frontend(
 
     let live_helpers = compute_live_helpers(opts.clone(), &our_mod.helpers, our_mod.exp.clone());
 
-    Ok(CompileForm {
+    Ok(FrontendOutput::CompileForm(CompileForm {
         include_forms: includes.to_vec(),
         helpers: live_helpers,
         ..our_mod
-    })
+    }))
 }
 
 fn is_quote_op(sexp: Rc<SExp>) -> bool {

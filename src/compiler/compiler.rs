@@ -1,26 +1,37 @@
 use num_bigint::ToBigInt;
 use std::borrow::Borrow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
-use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
+use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, Stream};
+use crate::classic::clvm::sexp::sexp_as_bin;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
-use crate::compiler::clvm::sha256tree;
-use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
-use crate::compiler::comptypes::{CompileErr, CompileForm, CompilerOpts, PrimaryCodegen};
+use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, run, sha256tree};
+use crate::compiler::codegen::{
+    codegen, hoist_body_let_binding, process_helper_let_bindings, CONST_EVAL_LIMIT,
+};
+use crate::compiler::comptypes::{
+    BodyForm, CompileErr, CompileForm, CompileModuleComponent, CompileModuleOutput, CompilerOpts,
+    CompilerOutput, ConstantKind, DefconstData, DefunData, Export, FrontendOutput, HelperForm,
+    ImportLongName, IncludeDesc, PrimaryCodegen, SyntheticType,
+};
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::prims;
-use crate::compiler::sexp::{parse_sexp, SExp};
+use crate::compiler::resolve::{find_helper_target, resolve_namespaces};
+use crate::compiler::runtypes::RunFailure;
+use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::Number;
+
+pub const FUZZ_TEST_PRE_CSE_MERGE_FIX_FLAG: usize = 1;
 
 lazy_static! {
     pub static ref STANDARD_MACROS: String = {
@@ -72,6 +83,18 @@ lazy_static! {
             (defmac list ARGS (__chia__compile-list ARGS))
 
             (defun-inline / (A B) (f (divmod A B)))
+
+            (defun __chia__sha256tree (t)
+              (a
+                (i
+                  (l t)
+                  (com (sha256 2 (__chia__sha256tree (f t)) (__chia__sha256tree (r t))))
+                  (com (sha256 1 t))
+                  )
+                @
+                )
+              )
+
             (defun-inline c* (A B) (c A B))
             (defun-inline a* (A B) (a A B))
             (defun-inline coerce (X) : (Any -> Any) X)
@@ -98,6 +121,7 @@ pub struct DefaultCompilerOpts {
     pub start_env: Option<Rc<SExp>>,
     pub disassembly_ver: Option<usize>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    pub diag_flags: Rc<HashSet<usize>>,
     pub dialect: AcceptedDialect,
 }
 
@@ -109,6 +133,16 @@ pub fn create_prim_map() -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
     }
 
     Rc::new(prim_map)
+}
+
+pub fn desugar_frontend(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    p0: CompileForm,
+) -> Result<CompileForm, CompileErr> {
+    let p1 = context.frontend_optimization(opts.clone(), p0)?;
+
+    do_desugar(&p1)
 }
 
 pub fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
@@ -129,16 +163,11 @@ pub fn do_desugar(program: &CompileForm) -> Result<CompileForm, CompileErr> {
     })
 }
 
-pub fn compile_from_compileform(
+pub fn finish_compilation(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
-    p0: CompileForm,
+    p2: CompileForm,
 ) -> Result<SExp, CompileErr> {
-    let p1 = context.frontend_optimization(opts.clone(), p0)?;
-
-    // Resolve includes, convert program source to lexemes
-    let p2 = do_desugar(&p1)?;
-
     let p3 = context.post_desugar_optimization(opts.clone(), p2)?;
 
     // generate code from AST, optionally with optimization
@@ -149,14 +178,431 @@ pub fn compile_from_compileform(
     Ok(g2)
 }
 
+pub fn compile_from_compileform(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    p0: CompileForm,
+) -> Result<SExp, CompileErr> {
+    let p1 = context.frontend_optimization(opts.clone(), p0)?;
+
+    // Resolve includes, convert program source to lexemes
+    let p2 = do_desugar(&p1)?;
+
+    finish_compilation(context, opts, p2)
+}
+
+struct ModuleOutputEntry {
+    name: Vec<u8>,
+    hash: Vec<u8>,
+    func: Rc<SExp>,
+}
+
+fn break_down_module_output(
+    loc: Srcloc,
+    run_result: Rc<SExp>,
+) -> Result<Vec<ModuleOutputEntry>, CompileErr> {
+    let list_data = if let Some(lst) = run_result.proper_list() {
+        lst
+    } else {
+        return Err(CompileErr(
+            loc,
+            "output from intermediate module program should have been a proper list".to_string(),
+        ));
+    };
+
+    if list_data.len() % 2 != 0 {
+        return Err(CompileErr(
+            loc,
+            "output length from intermediate module program should have been divisible by 2"
+                .to_string(),
+        ));
+    }
+
+    let mut result = Vec::new();
+    for tuple_idx in 0..(list_data.len() / 2) {
+        let i = tuple_idx * 2;
+        if let SExp::Atom(_, name) = list_data[i].atomize() {
+            result.push(ModuleOutputEntry {
+                name: name.clone(),
+                hash: sha256tree(Rc::new(list_data[i + 1].clone())),
+                func: Rc::new(list_data[i + 1].clone()),
+            });
+        } else {
+            return Err(CompileErr(loc.clone(), format!("output from intermediate module program wasn't in triplets of atom, atom, program {} {} {}", list_data[i], list_data[i+1], list_data[i+2])));
+        }
+    }
+
+    Ok(result)
+}
+
+fn create_hex_output_path(loc: Srcloc, file_path: &str, func: &str) -> Result<String, CompileErr> {
+    let mut dir = PathBuf::from(file_path);
+    let filename = PathBuf::from(file_path)
+        .with_extension("")
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_else(|| "program".to_string());
+    dir.pop();
+    let func_dot_hex_list = &[func.to_string(), "hex".to_string()];
+    let func_dot_hex = func_dot_hex_list.join(".");
+    let name_with_func_list = &[filename.to_string(), func_dot_hex];
+    dir.push(name_with_func_list.join("_"));
+    dir.into_os_string().into_string().map_err(|_| {
+        CompileErr(
+            loc,
+            format!("could not make os file path for output {func}"),
+        )
+    })
+}
+
+pub fn find_exported_helper(
+    opts: Rc<dyn CompilerOpts>,
+    program: &CompileForm,
+    fun_name: &[u8],
+) -> Result<Option<HelperForm>, CompileErr> {
+    let (_, parsed_name) = ImportLongName::parse(fun_name);
+    Ok(
+        find_helper_target(opts.clone(), &program.helpers, None, fun_name, &parsed_name)?
+            .map(|(_, result)| result.clone()),
+    )
+}
+
+fn form_hash_expression(inner_exp: Rc<BodyForm>) -> Rc<BodyForm> {
+    Rc::new(BodyForm::Call(
+        inner_exp.loc(),
+        vec![
+            Rc::new(BodyForm::Value(SExp::Atom(
+                inner_exp.loc(),
+                b"__chia__sha256tree".to_vec(),
+            ))),
+            inner_exp,
+        ],
+        None,
+    ))
+}
+
+fn get_hash_of_constant(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    name: &[u8],
+    program: &CompileForm,
+    dc: &DefconstData,
+) -> Result<Vec<u8>, CompileErr> {
+    let constant_program = CompileForm {
+        exp: dc.body.clone(),
+        ..program.clone()
+    };
+    let compiled = compile_from_compileform(context, opts.clone(), constant_program)?;
+    let runner = context.runner();
+    let evaluated = run(
+        context.allocator(),
+        runner,
+        opts.prim_map(),
+        Rc::new(compiled),
+        Rc::new(SExp::Nil(program.loc())),
+        None,
+        Some(CONST_EVAL_LIMIT),
+    )
+    .map_err(|r| match r {
+        RunFailure::RunExn(l, e) => CompileErr(
+            l.clone(),
+            format!(
+                "Error evaluating export constant {}: exception throwing {e}",
+                decode_string(name)
+            ),
+        ),
+        RunFailure::RunErr(l, e) => CompileErr(
+            l.clone(),
+            format!(
+                "Error evaluating export constant {}: {e}",
+                decode_string(name)
+            ),
+        ),
+    })?;
+    Ok(sha256tree(evaluated))
+}
+
+/// Exports are returned main programs:
+///
+/// Single main
+///
+/// (export (X) (do-stuff X))
+///
+/// Multiple mains
+///
+/// (export foo)
+/// (export bar)
+pub fn compile_module(
+    context: &mut BasicCompileContext,
+    opts: Rc<dyn CompilerOpts>,
+    mut program: CompileForm,
+    exports: &[Export],
+) -> Result<CompileModuleOutput, CompileErr> {
+    let loc = program.loc();
+    let opts = opts.set_optimize(true);
+
+    if exports.is_empty() {
+        return Err(CompileErr(
+            loc.clone(),
+            "A chialisp module should have at least one export".to_string(),
+        ));
+    }
+
+    if exports.len() == 1 {
+        if let Export::MainProgram(args, expr) = &exports[0] {
+            // Single program.
+            program.args = args.clone();
+            program.exp = expr.clone();
+
+            program = resolve_namespaces(opts.clone(), &program)?;
+
+            let output = Rc::new(compile_from_compileform(context, opts.clone(), program)?);
+            let converted = convert_to_clvm_rs(context.allocator(), output.clone())?;
+
+            let mut output_path = PathBuf::from(&opts.filename());
+            output_path.set_extension("hex");
+            let output_path_str = output_path.into_os_string().to_string_lossy().to_string();
+            let mut stream = Stream::new(None);
+            stream.write(sexp_as_bin(context.allocator(), converted));
+            opts.write_new_file(&output_path_str, stream.get_value().hex().as_bytes())?;
+            return Ok(CompileModuleOutput {
+                summary: Rc::new(SExp::Nil(loc.clone())),
+                components: vec![CompileModuleComponent {
+                    shortname: b"program".to_vec(),
+                    filename: output_path_str,
+                    content: output.clone(),
+                    hash: sha256tree(output),
+                }],
+            });
+        }
+    }
+
+    // So we can most optimistically know a peer module hash in this
+    // way:
+    //
+    // using a guid placeholder, define an out-of-line function *env-hash*.
+    //
+    // for each exported function, define a out-of-line function
+    // *<fun>-hash* using a guid placeholder.
+    //
+    // Compile this program.
+    //
+    // Now each exported function's body has its final representation.
+    // The function's final hash is the tree hash of
+    //
+    // (4 (1 . 2) (4 (4 (1 . 1) n) (4 (4 (1 . 1) (f @)) (4 (1 . 1) ()))))
+    //
+    // Where n is the path into the environment of the function.
+    //
+    // For each function, we retrieve its representation from the environment
+    // and hash it, replacing the placeholder guid with a program that takes
+    // the above wrapping with a sped-up treehash which replaces n in the
+    // treehash with the function body's literal hash and 2 with an invocation
+    // of *env-hash*.  We place this computation in *<fun>-hash*.
+    //
+    // Now, the last part is to find the path to *env-hash* and replace its
+    // body with a tree hash coimputation that short circuits each left or
+    // right branch, computing its own hash via sha256tree on its own
+    // env reference.
+
+    // XXX write this the simple way for now
+
+    let mut function_list = program.exp.clone();
+    let mut prog_output = SExp::Nil(loc.clone());
+
+    for fun in exports.iter() {
+        let (fun_name, export_name) = if let Export::Function(name, as_name) = fun {
+            (
+                name.clone(),
+                as_name.as_ref().cloned().unwrap_or_else(|| name.to_vec()),
+            )
+        } else {
+            return Err(CompileErr(
+                loc.clone(),
+                "got program, wanted fun".to_string(),
+            ));
+        };
+
+        let append_to_function_list = |function_list: &mut Rc<BodyForm>,
+                                       fun_name: &[u8],
+                                       export_name: &[u8]| {
+            *function_list = Rc::new(BodyForm::Call(
+                loc.clone(),
+                vec![
+                    Rc::new(BodyForm::Value(SExp::Integer(
+                        loc.clone(),
+                        4_u32.to_bigint().unwrap(),
+                    ))),
+                    Rc::new(BodyForm::Quoted(SExp::QuotedString(
+                        loc.clone(),
+                        b'"',
+                        export_name.to_vec(),
+                    ))),
+                    Rc::new(BodyForm::Call(
+                        loc.clone(),
+                        vec![
+                            Rc::new(BodyForm::Value(SExp::Integer(
+                                loc.clone(),
+                                4_u32.to_bigint().unwrap(),
+                            ))),
+                            Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), fun_name.to_vec()))),
+                            function_list.clone(),
+                        ],
+                        None,
+                    )),
+                ],
+                None,
+            ));
+        };
+
+        let exported = find_exported_helper(opts.clone(), &program, &fun_name)?;
+        if let Some(HelperForm::Defun(_, dd)) = &exported {
+            let mut new_name = fun_name.clone();
+            new_name.extend(b"_hash".to_vec());
+
+            append_to_function_list(&mut function_list, &fun_name, &export_name);
+            let make_hash_of = Rc::new(BodyForm::Value(SExp::Atom(
+                dd.loc.clone(),
+                fun_name.clone(),
+            )));
+            program.helpers.push(HelperForm::Defun(
+                false,
+                Box::new(DefunData {
+                    loc: dd.loc.clone(),
+                    kw: None,
+                    nl: dd.nl.clone(),
+                    name: new_name,
+                    args: Rc::new(SExp::Nil(dd.loc.clone())),
+                    orig_args: Rc::new(SExp::Nil(dd.loc.clone())),
+                    body: form_hash_expression(make_hash_of),
+                    synthetic: Some(SyntheticType::WantNonInline),
+                    ty: None,
+                }),
+            ));
+        } else if let Some(HelperForm::Defconstant(dc)) = &exported {
+            let mut new_name = fun_name.clone();
+            new_name.extend(b"_hash".to_vec());
+            let hash_of_constant =
+                get_hash_of_constant(context, opts.clone(), &dc.name, &program, dc)?;
+
+            let mut underscore_name = new_name.clone();
+            underscore_name.insert(0, b'_');
+
+            append_to_function_list(&mut function_list, &fun_name, &export_name);
+
+            program.helpers.push(HelperForm::Defconstant(DefconstData {
+                kind: ConstantKind::Complex,
+                name: underscore_name.clone(),
+                body: Rc::new(BodyForm::Quoted(SExp::Atom(
+                    dc.loc.clone(),
+                    hash_of_constant,
+                ))),
+                tabled: true,
+                ty: None,
+                ..dc.clone()
+            }));
+
+            program.helpers.push(HelperForm::Defun(
+                true,
+                Box::new(DefunData {
+                    loc: dc.loc.clone(),
+                    nl: dc.nl.clone(),
+                    kw: None,
+                    name: new_name.clone(),
+                    args: Rc::new(SExp::Nil(dc.loc.clone())),
+                    orig_args: Rc::new(SExp::Nil(dc.loc.clone())),
+                    body: Rc::new(BodyForm::Value(SExp::Atom(dc.loc.clone(), new_name))),
+                    synthetic: Some(SyntheticType::NoInlinePreference),
+                    ty: None,
+                }),
+            ));
+        } else {
+            return Err(CompileErr(
+                loc.clone(),
+                format!("exported function {} not found", decode_string(&fun_name)),
+            ));
+        }
+    }
+
+    program.exp = function_list;
+    program = resolve_namespaces(opts.clone(), &program)?;
+
+    let compiled_result = Rc::new(compile_from_compileform(context, opts.clone(), program)?);
+    let result_clvm = convert_to_clvm_rs(context.allocator(), compiled_result)?;
+    let nil = context.allocator().null();
+    let runner = context.runner();
+    let run_result_clvm = runner
+        .run_program(context.allocator(), result_clvm, nil, None)
+        .map_err(|_| {
+            CompileErr(
+                loc.clone(),
+                "failed to run intermediate module program".to_string(),
+            )
+        })?;
+    let run_result = convert_from_clvm_rs(context.allocator(), loc.clone(), run_result_clvm.1)?;
+
+    // Components to use for the CompileModuleOutput, which downstream can be
+    // collected for namespacing.
+    let mut components = vec![];
+    let modules = break_down_module_output(loc.clone(), run_result)?;
+
+    for m in modules.into_iter() {
+        prog_output = SExp::Cons(
+            loc.clone(),
+            Rc::new(SExp::Cons(
+                loc.clone(),
+                Rc::new(SExp::Atom(loc.clone(), m.name.clone())),
+                Rc::new(SExp::QuotedString(loc.clone(), b'x', m.hash.clone())),
+            )),
+            Rc::new(prog_output),
+        );
+
+        let mut stream = Stream::new(None);
+        let converted_func = convert_to_clvm_rs(context.allocator(), m.func.clone())?;
+        stream.write(sexp_as_bin(context.allocator(), converted_func));
+        let output_path =
+            create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(&m.name))?;
+        opts.write_new_file(&output_path, stream.get_value().hex().as_bytes())?;
+
+        components.push(CompileModuleComponent {
+            shortname: m.name.clone(),
+            filename: output_path,
+            content: m.func.clone(),
+            hash: m.hash,
+        });
+    }
+
+    Ok(CompileModuleOutput {
+        summary: Rc::new(prog_output),
+        components,
+    })
+}
+
 pub fn compile_pre_forms(
     context: &mut BasicCompileContext,
     opts: Rc<dyn CompilerOpts>,
     pre_forms: &[Rc<SExp>],
-) -> Result<SExp, CompileErr> {
+) -> Result<CompilerOutput, CompileErr> {
     let p0 = frontend(opts.clone(), pre_forms)?;
 
-    compile_from_compileform(context, opts, p0)
+    match p0 {
+        FrontendOutput::CompileForm(p0) => Ok(CompilerOutput::Program(compile_from_compileform(
+            context, opts, p0,
+        )?)),
+        FrontendOutput::Module(cf, exports) => {
+            // cl23 always reflects optimization.
+            let dialect = opts.dialect();
+            let opts = if let Some(stepping) = dialect.stepping.as_ref() {
+                opts.set_optimize(*stepping > 21)
+            } else {
+                opts
+            };
+
+            Ok(CompilerOutput::Module(compile_module(
+                context, opts, cf, &exports,
+            )?))
+        }
+    }
 }
 
 pub fn compile_file(
@@ -165,7 +611,8 @@ pub fn compile_file(
     opts: Rc<dyn CompilerOpts>,
     content: &str,
     symbol_table: &mut HashMap<String, String>,
-) -> Result<SExp, CompileErr> {
+    includes: &mut Vec<IncludeDesc>,
+) -> Result<CompilerOutput, CompileErr> {
     let srcloc = Srcloc::start(&opts.filename());
     let pre_forms = parse_sexp(srcloc.clone(), content.bytes())?;
     let mut context_wrapper = CompileContextWrapper::new(
@@ -173,7 +620,9 @@ pub fn compile_file(
         runner,
         symbol_table,
         get_optimizer(&srcloc, opts.clone())?,
+        includes,
     );
+
     compile_pre_forms(&mut context_wrapper.context, opts, &pre_forms)
 }
 
@@ -214,6 +663,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn get_search_paths(&self) -> Vec<String> {
         self.include_dirs.clone()
     }
+    fn diag_flags(&self) -> Rc<HashSet<usize>> {
+        self.diag_flags.clone()
+    }
 
     fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
@@ -222,7 +674,7 @@ impl CompilerOpts for DefaultCompilerOpts {
     }
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
-        copy.include_dirs = dirs.to_owned();
+        dirs.clone_into(&mut copy.include_dirs);
         Rc::new(copy)
     }
     fn set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts> {
@@ -271,6 +723,11 @@ impl CompilerOpts for DefaultCompilerOpts {
         Rc::new(copy)
     }
 
+    fn set_diag_flags(&self, flags: Rc<HashSet<usize>>) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.diag_flags = flags;
+        Rc::new(copy)
+    }
     fn read_new_file(
         &self,
         inc_from: String,
@@ -306,21 +763,28 @@ impl CompilerOpts for DefaultCompilerOpts {
             format!("could not find {filename} to include"),
         ))
     }
+
+    fn write_new_file(&self, target: &str, content: &[u8]) -> Result<(), CompileErr> {
+        fs::write(target, content).map_err(|_| {
+            CompileErr(
+                Srcloc::start(&self.filename()),
+                format!(
+                    "could not write output file {} for {}",
+                    target,
+                    self.filename()
+                ),
+            )
+        })?;
+        Ok(())
+    }
+
     fn compile_program(
         &self,
-        allocator: &mut Allocator,
-        runner: Rc<dyn TRunProgram>,
+        context: &mut BasicCompileContext,
         sexp: Rc<SExp>,
-        symbol_table: &mut HashMap<String, String>,
-    ) -> Result<SExp, CompileErr> {
+    ) -> Result<CompilerOutput, CompileErr> {
         let me = Rc::new(self.clone());
-        let mut context_wrapper = CompileContextWrapper::new(
-            allocator,
-            runner,
-            symbol_table,
-            get_optimizer(&sexp.loc(), me.clone())?,
-        );
-        compile_pre_forms(&mut context_wrapper.context, me, &[sexp])
+        compile_pre_forms(context, me, &[sexp])
     }
 }
 
@@ -339,6 +803,7 @@ impl DefaultCompilerOpts {
             dialect: AcceptedDialect::default(),
             prim_map: create_prim_map(),
             disassembly_ver: None,
+            diag_flags: Rc::new(HashSet::default()),
         }
     }
 }

@@ -861,12 +861,14 @@ pub fn compile_file(
     let search_paths = get_search_paths(runner.clone(), allocator)?;
     let opts = Rc::new(DefaultCompilerOpts::new(filename)).set_search_paths(&search_paths);
     let mut symtab = HashMap::new();
+    let mut includes = Vec::new();
     let current_filename = get_compile_filename(runner.clone(), allocator)?;
     let file = read_file(runner, allocator, parent_sexp, filename)?;
     let compiled = compile_clvm_text(
         allocator,
         opts,
         &mut symtab,
+        &mut includes,
         &decode_string(&file.data),
         &file.full_path,
         true,

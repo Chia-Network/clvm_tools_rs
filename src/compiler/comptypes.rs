@@ -1,13 +1,10 @@
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::borrow::Borrow;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use serde::Serialize;
 
-use clvm_rs::allocator::Allocator;
-
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
-use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::{sha256tree, truthy};
 use crate::compiler::dialect::AcceptedDialect;
@@ -15,6 +12,7 @@ use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::typecheck::TheoryToSExp;
 use crate::compiler::types::ast::{Polytype, TypeVar};
+use crate::compiler::BasicCompileContext;
 use crate::util::Number;
 
 // Note: only used in tests, not normally dependencies.
@@ -63,6 +61,7 @@ impl InlineFunction {
 
 /// Specifies the type of application that any form (X ...) invokes in an
 /// expression position.
+#[derive(Debug, Clone)]
 pub enum Callable {
     /// The expression is a macro expansion (list, if etc.)
     CallMacro(Srcloc, SExp),
@@ -282,7 +281,7 @@ pub struct DefconstData {
     pub ty: Option<Polytype>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct StructMember {
     pub loc: Srcloc,
     pub name: Vec<u8>,
@@ -290,7 +289,7 @@ pub struct StructMember {
     pub ty: Polytype,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct StructDef {
     pub loc: Srcloc,
     pub name: Vec<u8>,
@@ -300,7 +299,7 @@ pub struct StructDef {
     pub ty: Polytype,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum ChiaType {
     Abstract(Srcloc, Vec<u8>),
     Struct(StructDef),
@@ -319,6 +318,7 @@ pub struct DeftypeData {
     pub loc: Srcloc,
     pub name: Vec<u8>,
     pub args: Vec<TypeVar>,
+    pub parsed: ChiaType,
     pub ty: Option<Polytype>,
 }
 
@@ -330,6 +330,413 @@ pub enum ConstantKind {
     Simple,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+pub struct ImportLongName {
+    pub components: Vec<Vec<u8>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum LongNameTranslation {
+    Namespace,
+    Filename(String),
+}
+
+impl ImportLongName {
+    pub fn parse(name: &[u8]) -> (bool, Self) {
+        let (relative, skip_words) = if name.starts_with(b".") {
+            (true, 1)
+        } else {
+            (false, 0)
+        };
+
+        let components = name
+            .split(|ch| *ch == b'.')
+            .skip(skip_words)
+            .map(|x| x.to_vec())
+            .collect();
+        (relative, ImportLongName { components })
+    }
+
+    pub fn as_u8_vec(&self, filename: LongNameTranslation) -> Vec<u8> {
+        let mut result_vec = vec![];
+        let sep = if matches!(filename, LongNameTranslation::Filename(_)) {
+            b'/'
+        } else {
+            b'.'
+        };
+        for (i, c) in self.components.iter().enumerate() {
+            if i != 0 {
+                result_vec.push(sep);
+            }
+            result_vec.extend(c.clone());
+        }
+        if let LongNameTranslation::Filename(ext) = &filename {
+            result_vec.extend(ext.as_bytes().to_vec());
+        }
+        result_vec
+    }
+
+    pub fn combine(&self, with: &ImportLongName) -> Self {
+        let mut result = self.components.clone();
+        result.extend(with.components.clone());
+        ImportLongName { components: result }
+    }
+
+    /// True if parent namespace contains self.
+    pub fn is_contained_by(&self, parent: &ImportLongName) -> bool {
+        if self.components.len() < parent.components.len() {
+            return false;
+        }
+
+        for (i, p) in parent.components.iter().enumerate() {
+            if self.components[i] != *p {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    pub fn with_child(&self, name: &[u8]) -> Self {
+        let mut result = self.components.clone();
+        result.push(name.to_vec());
+        ImportLongName { components: result }
+    }
+
+    pub fn parent(&self) -> Option<Self> {
+        if self.components.len() < 2 {
+            return None;
+        }
+
+        Some(ImportLongName {
+            components: self
+                .components
+                .iter()
+                .take(self.components.len() - 1)
+                .cloned()
+                .collect(),
+        })
+    }
+
+    pub fn parent_and_name(&self) -> (Option<Self>, Vec<u8>) {
+        if self.components.is_empty() {
+            return (None, vec![]);
+        }
+
+        if self.components.len() > 1 {
+            return (
+                Some(ImportLongName {
+                    components: self
+                        .components
+                        .iter()
+                        .take(self.components.len() - 1)
+                        .cloned()
+                        .collect(),
+                }),
+                self.components[self.components.len() - 1].clone(),
+            );
+        }
+
+        (None, self.components[0].clone())
+    }
+}
+
+/// If specified, info about the qualified module import target.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct QualifiedModuleInfoTarget {
+    pub nl: Srcloc,
+    pub kw: Srcloc,
+    pub relative: bool,
+    pub name: ImportLongName,
+}
+
+/// Import qualified information
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct QualifiedModuleInfo {
+    pub loc: Srcloc,
+    pub nl: Srcloc,
+    pub kw: Srcloc,
+    pub name: ImportLongName,
+    pub target: Option<QualifiedModuleInfoTarget>,
+}
+
+/// Information about a name listed after hiding or exposing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ModuleImportListedName {
+    pub nl: Srcloc,
+    pub name: Vec<u8>,
+    pub alias: Option<Vec<u8>>,
+}
+
+impl ModuleImportListedName {
+    pub fn to_sexp(&self) -> Rc<SExp> {
+        let as_atom = Rc::new(SExp::Atom(self.nl.clone(), b"as".to_vec()));
+        let name_atom = Rc::new(SExp::Atom(self.nl.clone(), self.name.clone()));
+        if let Some(alias) = self.alias.as_ref() {
+            Rc::new(SExp::Cons(
+                self.nl.clone(),
+                name_atom,
+                Rc::new(SExp::Cons(
+                    self.nl.clone(),
+                    as_atom.clone(),
+                    Rc::new(SExp::Cons(
+                        self.nl.clone(),
+                        Rc::new(SExp::Atom(self.nl.clone(), alias.clone())),
+                        Rc::new(SExp::Nil(self.nl.clone())),
+                    )),
+                )),
+            ))
+        } else {
+            name_atom
+        }
+    }
+}
+
+/// Specification of how to name imported items from the target namespace.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub enum ModuleImportSpec {
+    /// As import qualified [as ...] in haskell.
+    Qualified(Box<QualifiedModuleInfo>),
+    /// The given names are in the toplevel namespace after the import.
+    Exposing(Srcloc, Vec<ModuleImportListedName>),
+    /// All but these names are in the toplevel namespace after the import.
+    Hiding(Srcloc, Vec<ModuleImportListedName>),
+}
+
+pub fn match_as_named(lst: &[SExp], offset: usize) -> Option<(Srcloc, Vec<u8>, Option<Vec<u8>>)> {
+    let name_offset = offset;
+    let small = 1 + offset;
+    let as_kw = 1 + offset;
+    let as_name_offset = 2 + offset;
+    let large = 3 + offset;
+
+    if lst.len() != small && lst.len() != large {
+        return None;
+    }
+
+    let export_name = if lst.len() == large {
+        if let SExp::Atom(_, as_atom) = lst[as_kw].borrow() {
+            // Not 'as'
+            if as_atom != b"as" {
+                return None;
+            }
+        } else {
+            return None;
+        }
+
+        if let SExp::Atom(_, as_name) = lst[as_name_offset].borrow() {
+            Some(as_name.clone())
+        } else {
+            return None;
+        }
+    } else {
+        None
+    };
+
+    let from_name = if let SExp::Atom(_, from_name) = lst[name_offset].borrow() {
+        from_name.clone()
+    } else {
+        return None;
+    };
+
+    Some((lst[name_offset].loc(), from_name, export_name))
+}
+
+impl ModuleImportSpec {
+    pub fn name_loc(&self) -> Srcloc {
+        match self {
+            ModuleImportSpec::Qualified(q) => q.nl.clone(),
+            ModuleImportSpec::Exposing(e, _) => e.clone(),
+            ModuleImportSpec::Hiding(e, _) => e.clone(),
+        }
+    }
+
+    pub fn parse(
+        loc: Srcloc,
+        kw: Srcloc,
+        forms: &[SExp],
+        mut skip: usize,
+    ) -> Result<Self, CompileErr> {
+        if skip >= forms.len() {
+            return Ok(ModuleImportSpec::Hiding(loc, vec![]));
+        }
+
+        // Figure out whether it's "import qualified" or
+        // "import qualified foo as bar"
+        let (first_loc, first_atom) = if let SExp::Atom(first_loc, first) = &forms[skip] {
+            (first_loc.clone(), first.clone())
+        } else {
+            return Err(CompileErr(
+                forms[skip].loc(),
+                "import must be followed by a name or 'qualified'".to_string(),
+            ));
+        };
+
+        if first_atom == b"qualified" {
+            if forms.len() < 3 {
+                return Err(CompileErr(
+                    loc.clone(),
+                    "import qualified must be followed by a name".to_string(),
+                ));
+            }
+
+            let (second_loc, second_atom) = if let SExp::Atom(second_loc, second) = &forms[2] {
+                (second_loc.clone(), second.clone())
+            } else {
+                return Err(CompileErr(
+                    forms[2].loc(),
+                    "import qualified must be followed by a name".to_string(),
+                ));
+            };
+
+            let (_, p) = ImportLongName::parse(&second_atom);
+
+            if forms.len() == 5 {
+                let qname = if let SExp::Atom(_, qname) = &forms[4] {
+                    qname.clone()
+                } else {
+                    return Err(CompileErr(
+                        forms[4].loc(),
+                        "import qualified ... as qname must be a name".to_string(),
+                    ));
+                };
+
+                let (relative_qual, import_name) = ImportLongName::parse(&qname);
+
+                return Ok(ModuleImportSpec::Qualified(Box::new(QualifiedModuleInfo {
+                    loc: loc.clone(),
+                    kw: first_loc.clone(),
+                    nl: second_loc.clone(),
+                    name: p,
+                    target: Some(QualifiedModuleInfoTarget {
+                        kw: forms[3].loc(),
+                        nl: forms[4].loc(),
+                        relative: relative_qual,
+                        name: import_name,
+                    }),
+                })));
+            } else if forms.len() == 3 {
+                return Ok(ModuleImportSpec::Qualified(Box::new(QualifiedModuleInfo {
+                    loc: loc.clone(),
+                    kw: kw.clone(),
+                    nl: second_loc.clone(),
+                    name: p,
+                    target: None,
+                })));
+            }
+        }
+
+        skip += 1;
+
+        if skip >= forms.len() {
+            return Ok(ModuleImportSpec::Hiding(loc, vec![]));
+        }
+
+        if let SExp::Atom(kw_loc, kw) = &forms[skip] {
+            let mut words = vec![];
+            for atom in forms.iter().skip(skip + 1) {
+                if let Some((import_name_loc, import_name, export_name)) =
+                    atom.proper_list().and_then(|lst| match_as_named(&lst, 0))
+                {
+                    words.push(ModuleImportListedName {
+                        nl: import_name_loc,
+                        name: import_name,
+                        alias: export_name,
+                    });
+                } else if let SExp::Atom(name_loc, name) = atom {
+                    words.push(ModuleImportListedName {
+                        nl: name_loc.clone(),
+                        name: name.clone(),
+                        alias: None,
+                    });
+                } else {
+                    return Err(CompileErr(
+                        atom.loc(),
+                        "Exposed names must be atoms".to_string(),
+                    ));
+                }
+            }
+            if kw == b"exposing" {
+                return Ok(ModuleImportSpec::Exposing(kw_loc.clone(), words));
+            } else if kw == b"hiding" {
+                return Ok(ModuleImportSpec::Hiding(loc, words));
+            }
+        }
+
+        Err(CompileErr(
+            forms[skip].loc(),
+            format!("Bad keyword {} in import", forms[skip]),
+        ))
+    }
+
+    pub fn to_sexp(&self) -> Rc<SExp> {
+        match self {
+            ModuleImportSpec::Qualified(as_name) => {
+                let mut result_vec = vec![
+                    Rc::new(SExp::Atom(as_name.kw.clone(), b"qualified".to_vec())),
+                    Rc::new(SExp::Atom(
+                        as_name.nl.clone(),
+                        as_name.name.as_u8_vec(LongNameTranslation::Namespace),
+                    )),
+                ];
+                if let Some(target) = as_name.target.as_ref() {
+                    result_vec.push(Rc::new(SExp::Atom(target.kw.clone(), b"as".to_vec())));
+                    result_vec.push(Rc::new(SExp::Atom(
+                        target.nl.clone(),
+                        target.name.as_u8_vec(LongNameTranslation::Namespace),
+                    )));
+                }
+                Rc::new(enlist(as_name.loc.clone(), &result_vec))
+            }
+            ModuleImportSpec::Exposing(kl, exposed_names) => {
+                let mut result_vec = vec![Rc::new(SExp::Atom(kl.clone(), b"exposing".to_vec()))];
+                result_vec.extend(
+                    exposed_names
+                        .iter()
+                        .map(|e| e.to_sexp())
+                        .collect::<Vec<Rc<SExp>>>(),
+                );
+                Rc::new(enlist(kl.clone(), &result_vec))
+            }
+            // All but these names are in the toplevel namespace after the import.
+            ModuleImportSpec::Hiding(kl, hidden_names) => {
+                if hidden_names.is_empty() {
+                    return Rc::new(SExp::Nil(kl.clone()));
+                }
+
+                let mut result_vec = vec![Rc::new(SExp::Atom(kl.clone(), b"hiding".to_vec()))];
+                result_vec.extend(
+                    hidden_names
+                        .iter()
+                        .map(|e| Rc::new(SExp::Atom(e.nl.clone(), e.name.clone())))
+                        .collect::<Vec<Rc<SExp>>>(),
+                );
+                Rc::new(enlist(kl.clone(), &result_vec))
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct NamespaceData {
+    pub loc: Srcloc,
+    pub kw: Srcloc,
+    pub nl: Srcloc,
+    pub rendered_name: Vec<u8>,
+    pub longname: ImportLongName,
+    pub helpers: Vec<HelperForm>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct NamespaceRefData {
+    pub loc: Srcloc,
+    pub kw: Srcloc,
+    pub nl: Srcloc,
+    pub rendered_name: Vec<u8>,
+    pub longname: ImportLongName,
+    pub specification: ModuleImportSpec,
+}
+
 /// HelperForm is a toplevel binding of some kind.
 /// Helpers are the (defconst ...) (defun ...) (defun-inline ...) (defmacro ...)
 /// forms from the source code and "help" the program do its job.  They're
@@ -338,12 +745,73 @@ pub enum ConstantKind {
 pub enum HelperForm {
     /// A type definition.
     Deftype(DeftypeData),
+    /// A namespace collection.
+    Defnamespace(NamespaceData),
+    /// A namespace reference.
+    Defnsref(Box<NamespaceRefData>),
     /// A constant definition (see DefconstData).
     Defconstant(DefconstData),
     /// A macro definition (see DefmacData).
     Defmacro(DefmacData),
     /// A function definition (see DefunData).
-    Defun(bool, DefunData),
+    Defun(bool, Box<DefunData>),
+}
+
+#[test]
+fn test_helperform_import_qualified_0() {
+    let srcloc = Srcloc::start("*test-import*");
+    let (_, name) = ImportLongName::parse(b"foo.bar");
+    assert_eq!(
+        HelperForm::Defnsref(Box::new(NamespaceRefData {
+            loc: srcloc.clone(),
+            kw: srcloc.clone(),
+            nl: srcloc.clone(),
+            rendered_name: name.as_u8_vec(LongNameTranslation::Namespace),
+            longname: name.clone(),
+            specification: ModuleImportSpec::Qualified(Box::new(QualifiedModuleInfo {
+                loc: srcloc.clone(),
+                nl: srcloc.clone(),
+                kw: srcloc.clone(),
+                name: name,
+                target: None,
+            }))
+        }))
+        .to_sexp()
+        .to_string(),
+        "(import qualified foo.bar)"
+    );
+}
+
+#[test]
+fn test_helperform_import_qualified_1() {
+    let srcloc = Srcloc::start("*test-import*");
+    let (_, name) = ImportLongName::parse(b"foo.bar");
+    let (relative, target) = ImportLongName::parse(b"FB");
+
+    assert_eq!(
+        HelperForm::Defnsref(Box::new(NamespaceRefData {
+            loc: srcloc.clone(),
+            kw: srcloc.clone(),
+            nl: srcloc.clone(),
+            rendered_name: name.as_u8_vec(LongNameTranslation::Namespace),
+            longname: name.clone(),
+            specification: ModuleImportSpec::Qualified(Box::new(QualifiedModuleInfo {
+                loc: srcloc.clone(),
+                nl: srcloc.clone(),
+                kw: srcloc.clone(),
+                name: name,
+                target: Some(QualifiedModuleInfoTarget {
+                    kw: srcloc.clone(),
+                    nl: srcloc.clone(),
+                    name: target,
+                    relative
+                })
+            }))
+        }))
+        .to_sexp()
+        .to_string(),
+        "(import qualified foo.bar as FB)"
+    );
 }
 
 /// To what purpose is the file included.
@@ -357,6 +825,8 @@ pub enum IncludeProcessType {
     SExpression,
     /// Compile a full program and return its representation.
     Compiled,
+    /// Import as a module.
+    Module(Box<ModuleImportSpec>),
 }
 
 /// A description of an include form.  Here, records the locations of the various
@@ -370,16 +840,26 @@ pub struct IncludeDesc {
     pub nl: Srcloc,
     /// The relative path to a target or a special directive name.
     pub name: Vec<u8>,
+    /// Kind of inclusion.  Determines whether dependencies are recursed and
+    /// what operation is performed on the retrieved clvm form.
     pub kind: Option<IncludeProcessType>,
 }
 
 impl IncludeDesc {
     pub fn to_sexp(&self) -> Rc<SExp> {
-        Rc::new(SExp::Cons(
-            self.kw.clone(),
-            Rc::new(SExp::Atom(self.kw.clone(), b"include".to_vec())),
-            Rc::new(SExp::QuotedString(self.nl.clone(), b'"', self.name.clone())),
-        ))
+        if let Some(IncludeProcessType::Module(_spec)) = &self.kind {
+            Rc::new(SExp::Cons(
+                self.kw.clone(),
+                Rc::new(SExp::Atom(self.kw.clone(), b"module".to_vec())),
+                Rc::new(SExp::QuotedString(self.nl.clone(), b'"', self.name.clone())),
+            ))
+        } else {
+            Rc::new(SExp::Cons(
+                self.kw.clone(),
+                Rc::new(SExp::Atom(self.kw.clone(), b"include".to_vec())),
+                Rc::new(SExp::QuotedString(self.nl.clone(), b'"', self.name.clone())),
+            ))
+        }
     }
 }
 
@@ -472,6 +952,9 @@ pub trait CompilerOpts {
     fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>>;
     /// Specifies the search paths we're carrying.
     fn get_search_paths(&self) -> Vec<String>;
+    /// Specifies flags that were passed down to various consumers.  This is
+    /// open ended for various purposes, such as diagnostics.
+    fn diag_flags(&self) -> Rc<HashSet<usize>>;
 
     /// Set the dialect.
     fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts>;
@@ -496,6 +979,8 @@ pub trait CompilerOpts {
     fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts>;
     /// Set the primitive map in use so we can add custom primitives.
     fn set_prim_map(&self, new_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts>;
+    /// Set the flags this CompilerOpts holds.  Consumers can examine these.
+    fn set_diag_flags(&self, new_flags: Rc<HashSet<usize>>) -> Rc<dyn CompilerOpts>;
 
     /// Using the search paths list we have, try to read a file by name,
     /// Returning the expanded path to the file and its content.
@@ -505,15 +990,227 @@ pub trait CompilerOpts {
         filename: String,
     ) -> Result<(String, Vec<u8>), CompileErr>;
 
+    /// Fully write a file to the filesystem.
+    fn write_new_file(&self, target_path: &str, content: &[u8]) -> Result<(), CompileErr>;
+
     /// Given a parsed SExp, compile it as an independent program based on the
     /// settings given here.  The result is bare generated code.
     fn compile_program(
         &self,
-        allocator: &mut Allocator,
-        runner: Rc<dyn TRunProgram>,
+        context: &mut BasicCompileContext,
         sexp: Rc<SExp>,
-        symbol_table: &mut HashMap<String, String>,
-    ) -> Result<SExp, CompileErr>;
+    ) -> Result<CompilerOutput, CompileErr>;
+}
+
+/// A trait that simplifies implementing one's own CompilerOpts personality.
+/// This specifies to a CompilerOptsDelegator that this object contains a
+/// CompilerOpts that it uses for most of what it does, allowing end users
+/// to opt into a default implementation of all the methods via
+/// CompilerOptsDelegator and override only what's desired.
+pub trait HasCompilerOptsDelegation {
+    /// Get this object's inner CompilerOpts.
+    fn compiler_opts(&self) -> Rc<dyn CompilerOpts>;
+    /// Call a function that updates this object's CompilerOpts and use the
+    /// update our own object with the result.  Return the new wrapper.
+    fn update_compiler_opts<F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>>(
+        &self,
+        f: F,
+    ) -> Rc<dyn CompilerOpts>;
+
+    // Defaults.
+    fn override_filename(&self) -> String {
+        self.compiler_opts().filename()
+    }
+    fn override_code_generator(&self) -> Option<PrimaryCodegen> {
+        self.compiler_opts().code_generator()
+    }
+    fn override_dialect(&self) -> AcceptedDialect {
+        self.compiler_opts().dialect()
+    }
+    fn override_disassembly_ver(&self) -> Option<usize> {
+        self.compiler_opts().disassembly_ver()
+    }
+    fn override_in_defun(&self) -> bool {
+        self.compiler_opts().in_defun()
+    }
+    fn override_stdenv(&self) -> bool {
+        self.compiler_opts().stdenv()
+    }
+    fn override_optimize(&self) -> bool {
+        self.compiler_opts().optimize()
+    }
+    fn override_frontend_opt(&self) -> bool {
+        self.compiler_opts().frontend_opt()
+    }
+    fn override_frontend_check_live(&self) -> bool {
+        self.compiler_opts().frontend_check_live()
+    }
+    fn override_start_env(&self) -> Option<Rc<SExp>> {
+        self.compiler_opts().start_env()
+    }
+    fn override_prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
+        self.compiler_opts().prim_map()
+    }
+    fn override_get_search_paths(&self) -> Vec<String> {
+        self.compiler_opts().get_search_paths()
+    }
+    fn override_diag_flags(&self) -> Rc<HashSet<usize>> {
+        self.compiler_opts().diag_flags()
+    }
+
+    fn override_set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_dialect(dialect))
+    }
+    fn override_set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_search_paths(dirs))
+    }
+    fn override_set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_disassembly_ver(ver))
+    }
+    fn override_set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_in_defun(new_in_defun))
+    }
+    fn override_set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_stdenv(new_stdenv))
+    }
+    fn override_set_optimize(&self, opt: bool) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_optimize(opt))
+    }
+    fn override_set_frontend_opt(&self, opt: bool) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_frontend_opt(opt))
+    }
+    fn override_set_frontend_check_live(&self, check: bool) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_frontend_check_live(check))
+    }
+    fn override_set_code_generator(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_code_generator(new_compiler))
+    }
+    fn override_set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_start_env(start_env))
+    }
+    fn override_set_diag_flags(&self, flags: Rc<HashSet<usize>>) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_diag_flags(flags))
+    }
+    fn override_set_prim_map(
+        &self,
+        new_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    ) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_prim_map(new_map))
+    }
+    fn override_read_new_file(
+        &self,
+        inc_from: String,
+        filename: String,
+    ) -> Result<(String, Vec<u8>), CompileErr> {
+        self.compiler_opts().read_new_file(inc_from, filename)
+    }
+    fn override_write_new_file(&self, target_path: &str, content: &[u8]) -> Result<(), CompileErr> {
+        self.compiler_opts().write_new_file(target_path, content)
+    }
+    fn override_compile_program(
+        &self,
+        context: &mut BasicCompileContext,
+        sexp: Rc<SExp>,
+    ) -> Result<CompilerOutput, CompileErr> {
+        self.compiler_opts().compile_program(context, sexp)
+    }
+}
+
+impl<T: HasCompilerOptsDelegation> CompilerOpts for T {
+    // Defaults.
+    fn filename(&self) -> String {
+        self.override_filename()
+    }
+    fn code_generator(&self) -> Option<PrimaryCodegen> {
+        self.override_code_generator()
+    }
+    fn dialect(&self) -> AcceptedDialect {
+        self.override_dialect()
+    }
+    fn disassembly_ver(&self) -> Option<usize> {
+        self.override_disassembly_ver()
+    }
+    fn in_defun(&self) -> bool {
+        self.override_in_defun()
+    }
+    fn stdenv(&self) -> bool {
+        self.override_stdenv()
+    }
+    fn optimize(&self) -> bool {
+        self.override_optimize()
+    }
+    fn frontend_opt(&self) -> bool {
+        self.override_frontend_opt()
+    }
+    fn frontend_check_live(&self) -> bool {
+        self.override_frontend_check_live()
+    }
+    fn start_env(&self) -> Option<Rc<SExp>> {
+        self.override_start_env()
+    }
+    fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
+        self.override_prim_map()
+    }
+    fn get_search_paths(&self) -> Vec<String> {
+        self.override_get_search_paths()
+    }
+    fn diag_flags(&self) -> Rc<HashSet<usize>> {
+        self.override_diag_flags()
+    }
+
+    fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
+        self.override_set_dialect(dialect)
+    }
+    fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
+        self.override_set_search_paths(dirs)
+    }
+    fn set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts> {
+        self.override_set_disassembly_ver(ver)
+    }
+    fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts> {
+        self.override_set_in_defun(new_in_defun)
+    }
+    fn set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts> {
+        self.override_set_stdenv(new_stdenv)
+    }
+    fn set_optimize(&self, opt: bool) -> Rc<dyn CompilerOpts> {
+        self.override_set_optimize(opt)
+    }
+    fn set_frontend_opt(&self, opt: bool) -> Rc<dyn CompilerOpts> {
+        self.override_set_frontend_opt(opt)
+    }
+    fn set_frontend_check_live(&self, check: bool) -> Rc<dyn CompilerOpts> {
+        self.override_set_frontend_check_live(check)
+    }
+    fn set_code_generator(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
+        self.override_set_code_generator(new_compiler)
+    }
+    fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts> {
+        self.override_set_start_env(start_env)
+    }
+    fn set_prim_map(&self, new_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts> {
+        self.override_set_prim_map(new_map)
+    }
+    fn set_diag_flags(&self, new_flags: Rc<HashSet<usize>>) -> Rc<dyn CompilerOpts> {
+        self.override_set_diag_flags(new_flags)
+    }
+    fn read_new_file(
+        &self,
+        inc_from: String,
+        filename: String,
+    ) -> Result<(String, Vec<u8>), CompileErr> {
+        self.override_read_new_file(inc_from, filename)
+    }
+    fn compile_program(
+        &self,
+        context: &mut BasicCompileContext,
+        sexp: Rc<SExp>,
+    ) -> Result<CompilerOutput, CompileErr> {
+        self.override_compile_program(context, sexp)
+    }
+    fn write_new_file(&self, target_path: &str, content: &[u8]) -> Result<(), CompileErr> {
+        self.override_write_new_file(target_path, content)
+    }
 }
 
 /// Frontend uses this to accumulate frontend forms, used internally.
@@ -700,6 +1397,8 @@ impl HelperForm {
     pub fn name(&self) -> &Vec<u8> {
         match self {
             HelperForm::Deftype(deft) => &deft.name,
+            HelperForm::Defnamespace(defn) => &defn.rendered_name,
+            HelperForm::Defnsref(defr) => &defr.rendered_name,
             HelperForm::Defconstant(defc) => &defc.name,
             HelperForm::Defmacro(mac) => &mac.name,
             HelperForm::Defun(_, defun) => &defun.name,
@@ -710,6 +1409,8 @@ impl HelperForm {
     pub fn name_loc(&self) -> &Srcloc {
         match self {
             HelperForm::Deftype(deft) => &deft.nl,
+            HelperForm::Defnamespace(defn) => &defn.nl,
+            HelperForm::Defnsref(defr) => &defr.nl,
             HelperForm::Defconstant(defc) => &defc.nl,
             HelperForm::Defmacro(mac) => &mac.nl,
             HelperForm::Defun(_, defun) => &defun.nl,
@@ -720,6 +1421,8 @@ impl HelperForm {
     pub fn loc(&self) -> Srcloc {
         match self {
             HelperForm::Deftype(deft) => deft.loc.clone(),
+            HelperForm::Defnamespace(defn) => defn.loc.clone(),
+            HelperForm::Defnsref(defr) => defr.loc.clone(),
             HelperForm::Defconstant(defc) => defc.loc.clone(),
             HelperForm::Defmacro(mac) => mac.loc.clone(),
             HelperForm::Defun(_, defun) => defun.loc.clone(),
@@ -745,6 +1448,30 @@ impl HelperForm {
                 }
 
                 Rc::new(list_to_cons(deft.loc.clone(), &result_vec))
+            }
+            HelperForm::Defnamespace(defn) => {
+                let mut result_vec = vec![
+                    Rc::new(SExp::atom_from_string(defn.kw.clone(), "namespace")),
+                    Rc::new(SExp::Atom(defn.nl.clone(), defn.rendered_name.clone())),
+                ];
+                let helpers_vec: Vec<Rc<SExp>> = defn.helpers.iter().map(|h| h.to_sexp()).collect();
+                result_vec.extend(helpers_vec);
+                Rc::new(list_to_cons(defn.loc.clone(), &result_vec))
+            }
+            HelperForm::Defnsref(defr) => {
+                let tail = match &defr.specification {
+                    ModuleImportSpec::Qualified(_q) => defr.specification.to_sexp(),
+                    _ => Rc::new(SExp::Cons(
+                        defr.loc.clone(),
+                        Rc::new(SExp::Atom(defr.nl.clone(), defr.rendered_name.clone())),
+                        defr.specification.to_sexp(),
+                    )),
+                };
+                Rc::new(SExp::Cons(
+                    defr.loc.clone(),
+                    Rc::new(SExp::Atom(defr.loc.clone(), b"import".to_vec())),
+                    tail,
+                ))
             }
             HelperForm::Defconstant(defc) => match defc.kind {
                 ConstantKind::Simple => Rc::new(list_to_cons(
@@ -1023,6 +1750,66 @@ pub fn with_heading(l: Srcloc, name: &str, body: Rc<SExp>) -> SExp {
     SExp::Cons(l.clone(), Rc::new(SExp::atom_from_string(l, name)), body)
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct CompileModuleComponent {
+    pub shortname: Vec<u8>,
+    pub filename: String,
+    pub content: Rc<SExp>,
+    pub hash: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CompileModuleOutput {
+    pub summary: Rc<SExp>,
+    pub components: Vec<CompileModuleComponent>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum CompilerOutput {
+    Program(SExp),
+    Module(CompileModuleOutput),
+}
+
+impl CompilerOutput {
+    pub fn to_sexp(&self) -> SExp {
+        match self {
+            CompilerOutput::Program(x) => x.clone(),
+            CompilerOutput::Module(x) => {
+                let borrowed: &SExp = x.summary.borrow();
+                borrowed.clone()
+            }
+        }
+    }
+
+    pub fn loc(&self) -> Srcloc {
+        match self {
+            CompilerOutput::Program(x) => x.loc(),
+            CompilerOutput::Module(x) => x.summary.loc(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum Export {
+    MainProgram(Rc<SExp>, Rc<BodyForm>),
+    Function(Vec<u8>, Option<Vec<u8>>),
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum FrontendOutput {
+    CompileForm(CompileForm),
+    Module(CompileForm, Vec<Export>),
+}
+
+impl FrontendOutput {
+    pub fn compileform(&self) -> &CompileForm {
+        match self {
+            FrontendOutput::CompileForm(cf) => cf,
+            FrontendOutput::Module(cf, _) => cf,
+        }
+    }
+}
+
 pub fn cons_of_string_map<X>(
     l: Srcloc,
     cvt_body: &dyn Fn(&X) -> Rc<SExp>,
@@ -1090,7 +1877,7 @@ pub fn join_vecs_to_string(sep: Vec<u8>, vecs: &[Vec<u8>]) -> String {
         s.append(&mut comma.clone());
         s.append(&mut elt.to_vec());
         if comma.is_empty() {
-            comma = sep.clone();
+            comma.clone_from(&sep);
         }
     }
 

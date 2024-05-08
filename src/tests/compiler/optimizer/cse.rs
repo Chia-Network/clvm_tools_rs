@@ -25,7 +25,7 @@ fn smoke_test_cse_optimization() {
     let parsed = parse_sexp(srcloc.clone(), source.bytes()).expect("should parse");
     let bodyform = compile_bodyform(opts.clone(), parsed[0].clone()).expect("should compile");
     let cse_transformed =
-        cse_optimize_bodyform(&srcloc, b"test", &bodyform).expect("should cse optimize");
+        cse_optimize_bodyform(&srcloc, b"test", true, &bodyform).expect("should cse optimize");
     let re_def = r"(let ((cse_[$]_[0-9]+ ([*] ([+] 1 Q) R))) (a (i Q (com (G (- Q 1) cse_[$]_[0-9]+)) (com cse_[$]_[0-9]+)) 1))".replace("(", r"\(").replace(")",r"\)");
     eprintln!("re_def {re_def}");
     let re = Regex::new(&re_def).expect("should become a regex");

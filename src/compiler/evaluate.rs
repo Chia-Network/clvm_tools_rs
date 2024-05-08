@@ -12,8 +12,8 @@ use crate::compiler::clvm::run;
 use crate::compiler::codegen::{codegen, hoist_assign_form};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
-    Binding, BindingPattern, BodyForm, CallSpec, CompileErr, CompileForm, CompilerOpts, DefunData,
-    HelperForm, LambdaData, LetData, LetFormInlineHint, LetFormKind,
+    Binding, BindingPattern, BodyForm, CallSpec, CompileErr, CompileForm, CompilerOpts,
+    CompilerOutput, DefunData, HelperForm, LambdaData, LetData, LetFormInlineHint, LetFormKind,
 };
 use crate::compiler::frontend::frontend;
 use crate::compiler::optimize::get_optimizer;
@@ -783,7 +783,14 @@ impl<'info> Evaluator {
             ));
 
             let program = frontend(self.opts.clone(), &[frontend_macro_input])?;
-            self.shrink_bodyform_visited(allocator, visited, prog_args, env, program.exp, false)
+            self.shrink_bodyform_visited(
+                allocator,
+                visited,
+                prog_args,
+                env,
+                program.compileform().exp.clone(),
+                false,
+            )
         } else {
             promote_program_to_bodyform(
                 macro_expansion.to_sexp(),
@@ -1292,7 +1299,7 @@ impl<'info> Evaluator {
         for h in self.helpers.iter() {
             if let HelperForm::Defun(false, dd) = &h {
                 if name == h.name() {
-                    return Some(Box::new(dd.clone()));
+                    return Some(dd.clone());
                 }
             }
         }
@@ -1499,12 +1506,14 @@ impl<'info> Evaluator {
             BodyForm::Mod(_, program) => {
                 // A mod form yields the compiled code.
                 let mut symbols = HashMap::new();
+                let mut includes = Vec::new();
                 let optimizer = get_optimizer(&program.loc(), self.opts.clone())?;
                 let mut context_wrapper = CompileContextWrapper::new(
                     allocator,
                     self.runner.clone(),
                     &mut symbols,
                     optimizer,
+                    &mut includes,
                 );
                 let code = codegen(&mut context_wrapper.context, self.opts.clone(), program)?;
                 Ok(Rc::new(BodyForm::Quoted(code)))
@@ -1658,12 +1667,23 @@ impl<'info> Evaluator {
             .set_in_defun(in_defun)
             .set_frontend_opt(false);
 
-        let com_result = updated_opts.compile_program(
+        let mut symbols = HashMap::new();
+        let mut includes = Vec::new();
+        let optimizer = get_optimizer(&use_body.loc(), updated_opts.clone())?;
+        let mut context_wrapper = CompileContextWrapper::new(
             allocator,
             self.runner.clone(),
-            use_body,
-            &mut HashMap::new(),
-        )?;
+            &mut symbols,
+            optimizer,
+            &mut includes,
+        );
+        let com_result =
+            match updated_opts.compile_program(&mut context_wrapper.context, use_body)? {
+                CompilerOutput::Program(p) => p,
+                CompilerOutput::Module(_) => {
+                    todo!();
+                }
+            };
 
         Ok(Rc::new(com_result))
     }

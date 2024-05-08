@@ -12,9 +12,9 @@ use crate::compiler::clvm::{run, truthy};
 use crate::compiler::compiler::is_at_capture;
 use crate::compiler::comptypes::{
     fold_m, join_vecs_to_string, list_to_cons, Binding, BindingPattern, BodyForm, CallSpec,
-    Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, ConstantKind, DefunCall,
-    DefunData, HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind, PrimaryCodegen,
-    RawCallSpec, SyntheticType,
+    Callable, CompileErr, CompileForm, CompiledCode, CompilerOpts, CompilerOutput, ConstantKind,
+    DefunCall, DefunData, HelperForm, InlineFunction, LetData, LetFormInlineHint, LetFormKind,
+    PrimaryCodegen, RawCallSpec, SyntheticType,
 };
 use crate::compiler::debug::{build_swap_table_mut, relabel};
 use crate::compiler::evaluate::{Evaluator, EVAL_STACK_LIMIT};
@@ -31,7 +31,7 @@ use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::{toposort, u8_from_number, Number, TopoSortItem};
 
 const MACRO_TIME_LIMIT: usize = 1000000;
-const CONST_EVAL_LIMIT: usize = 1000000;
+pub const CONST_EVAL_LIMIT: usize = 1000000;
 
 /* As in the python code, produce a pair whose (thanks richard)
  *
@@ -200,10 +200,8 @@ fn create_name_lookup_(
         _ => Err(CompileErr(
             l,
             format!(
-                "operator or function atom {} not found checking {} in {}",
+                "operator or function atom {} not found",
                 decode_string(name),
-                find,
-                env
             ),
         )),
     }
@@ -527,134 +525,137 @@ fn compile_call(
             call.loc.clone(),
             Rc::new(SExp::Atom(al.clone(), an.to_vec())),
         )
-        .and_then(|calltype| match calltype {
-            Callable::CallMacro(l, code) => {
-                process_macro_call(context, opts.clone(), compiler, l, tl, Rc::new(code))
-            }
-
-            Callable::CallInline(l, inline) => replace_in_inline(
-                context,
-                opts.clone(),
-                compiler,
-                l.clone(),
-                &inline,
-                l,
-                &tl,
-                call.tail.clone(),
-            ),
-
-            Callable::CallDefun(l, lookup) => generate_args_code(
-                context,
-                opts.clone(),
-                compiler,
-                // A callspec is a way to collect some info about a call, mainly
-                // to reduce the number of arguments to pass through.
-                &CallSpec {
-                    loc: l.clone(),
-                    name: an,
-                    args: &tl,
-                    tail: call.tail.clone(),
-                    original: call.original.clone(),
-                },
-                true,
-            )
-            .and_then(|args| {
-                process_defun_call(opts.clone(), compiler, l.clone(), args, Rc::new(lookup))
-            }),
-            Callable::CallPrim(l, p) => generate_args_code(
-                context,
-                opts,
-                compiler,
-                &CallSpec {
-                    name: an,
-                    loc: l.clone(),
-                    args: &tl,
-                    tail: None,
-                    original: call.original.clone(),
-                },
-                false,
-            )
-            .map(|args| CompiledCode(l.clone(), Rc::new(SExp::Cons(l, Rc::new(p), args)))),
-
-            Callable::EnvPath => {
-                if tl.len() == 1 {
-                    match tl[0].borrow() {
-                        BodyForm::Value(SExp::Integer(l, i)) => Ok(CompiledCode(
-                            l.clone(),
-                            Rc::new(SExp::Integer(l.clone(), i.clone())),
-                        )),
-                        BodyForm::Quoted(SExp::Integer(l, i)) => Ok(CompiledCode(
-                            l.clone(),
-                            Rc::new(SExp::Integer(l.clone(), i.clone())),
-                        )),
-                        _ => Err(CompileErr(
-                            al.clone(),
-                            "@ form only accepts integers at present".to_string(),
-                        )),
-                    }
-                } else if tl.len() == 2 {
-                    match (tl[0].borrow(), tl[1].borrow()) {
-                        (
-                            BodyForm::Value(SExp::Atom(_al, a)),
-                            BodyForm::Value(SExp::Integer(_il, i)),
-                        ) => produce_argument_check(compiler, call.loc.clone(), a, i.clone()),
-                        (
-                            BodyForm::Value(SExp::Atom(_al, a)),
-                            BodyForm::Quoted(SExp::Integer(_il, i)),
-                        ) => produce_argument_check(compiler, call.loc.clone(), a, i.clone()),
-                        _ => Err(CompileErr(
-                            al.clone(),
-                            "@ form with two arguments requires argument and integer".to_string(),
-                        )),
-                    }
-                } else {
-                    Err(CompileErr(
-                        al.clone(),
-                        "@ form accepts one argument".to_string(),
-                    ))
+        .and_then(|calltype| {
+            match calltype {
+                Callable::CallMacro(l, code) => {
+                    process_macro_call(context, opts.clone(), compiler, l, tl, Rc::new(code))
                 }
-            }
 
-            Callable::RunCompiler => {
-                if call.args.len() >= 2 {
-                    let updated_opts = opts
-                        .set_stdenv(false)
-                        .set_in_defun(true)
-                        .set_frontend_opt(false)
-                        .set_start_env(Some(compiler.env.clone()))
-                        .set_code_generator(compiler.clone());
+                Callable::CallInline(l, inline) => replace_in_inline(
+                    context,
+                    opts.clone(),
+                    compiler,
+                    l.clone(),
+                    &inline,
+                    l,
+                    &tl,
+                    call.tail.clone(),
+                ),
 
-                    let use_body = SExp::Cons(
-                        call.loc.clone(),
-                        Rc::new(SExp::Atom(call.loc.clone(), "mod".as_bytes().to_vec())),
-                        Rc::new(SExp::Cons(
-                            call.loc.clone(),
-                            Rc::new(SExp::Nil(call.loc.clone())),
-                            Rc::new(SExp::Cons(
-                                call.args[1].loc(),
-                                call.args[1].to_sexp(),
-                                Rc::new(SExp::Nil(call.loc.clone())),
+                Callable::CallDefun(l, lookup) => generate_args_code(
+                    context,
+                    opts.clone(),
+                    compiler,
+                    // A callspec is a way to collect some info about a call, mainly
+                    // to reduce the number of arguments to pass through.
+                    &CallSpec {
+                        loc: l.clone(),
+                        name: an,
+                        args: &tl,
+                        tail: call.tail.clone(),
+                        original: call.original.clone(),
+                    },
+                    true,
+                )
+                .and_then(|args| {
+                    process_defun_call(opts.clone(), compiler, l.clone(), args, Rc::new(lookup))
+                }),
+                Callable::CallPrim(l, p) => generate_args_code(
+                    context,
+                    opts,
+                    compiler,
+                    &CallSpec {
+                        name: an,
+                        loc: l.clone(),
+                        args: &tl,
+                        tail: None,
+                        original: call.original.clone(),
+                    },
+                    false,
+                )
+                .map(|args| CompiledCode(l.clone(), Rc::new(SExp::Cons(l, Rc::new(p), args)))),
+
+                Callable::EnvPath => {
+                    if tl.len() == 1 {
+                        match tl[0].borrow() {
+                            BodyForm::Value(SExp::Integer(l, i)) => Ok(CompiledCode(
+                                l.clone(),
+                                Rc::new(SExp::Integer(l.clone(), i.clone())),
                             )),
-                        )),
-                    );
+                            BodyForm::Quoted(SExp::Integer(l, i)) => Ok(CompiledCode(
+                                l.clone(),
+                                Rc::new(SExp::Integer(l.clone(), i.clone())),
+                            )),
+                            _ => Err(CompileErr(
+                                al.clone(),
+                                "@ form only accepts integers at present".to_string(),
+                            )),
+                        }
+                    } else if tl.len() == 2 {
+                        match (tl[0].borrow(), tl[1].borrow()) {
+                            (
+                                BodyForm::Value(SExp::Atom(_al, a)),
+                                BodyForm::Value(SExp::Integer(_il, i)),
+                            ) => produce_argument_check(compiler, call.loc.clone(), a, i.clone()),
+                            (
+                                BodyForm::Value(SExp::Atom(_al, a)),
+                                BodyForm::Quoted(SExp::Integer(_il, i)),
+                            ) => produce_argument_check(compiler, call.loc.clone(), a, i.clone()),
+                            _ => Err(CompileErr(
+                                al.clone(),
+                                "@ form with two arguments requires argument and integer"
+                                    .to_string(),
+                            )),
+                        }
+                    } else {
+                        Err(CompileErr(
+                            al.clone(),
+                            "@ form accepts one argument".to_string(),
+                        ))
+                    }
+                }
 
-                    let mut unused_symbol_table = HashMap::new();
-                    let runner = context.runner();
-                    updated_opts
-                        .compile_program(
-                            context.allocator(),
-                            runner.clone(),
-                            Rc::new(use_body),
-                            &mut unused_symbol_table,
-                        )
-                        .map(|code| {
-                            CompiledCode(
+                Callable::RunCompiler => {
+                    if call.args.len() >= 2 {
+                        let updated_opts = opts
+                            .set_stdenv(false)
+                            .set_in_defun(true)
+                            .set_frontend_opt(false)
+                            .set_start_env(Some(compiler.env.clone()))
+                            .set_code_generator(compiler.clone());
+
+                        let use_body = SExp::Cons(
+                            call.loc.clone(),
+                            Rc::new(SExp::Atom(call.loc.clone(), "mod".as_bytes().to_vec())),
+                            Rc::new(SExp::Cons(
+                                call.loc.clone(),
+                                Rc::new(SExp::Nil(call.loc.clone())),
+                                Rc::new(SExp::Cons(
+                                    call.args[1].loc(),
+                                    call.args[1].to_sexp(),
+                                    Rc::new(SExp::Nil(call.loc.clone())),
+                                )),
+                            )),
+                        );
+
+                        let mut unused_symbol_table = HashMap::new();
+                        let mut context_wrapper =
+                            CompileContextWrapper::from_context(context, &mut unused_symbol_table);
+                        let code = updated_opts
+                            .compile_program(&mut context_wrapper.context, Rc::new(use_body))?;
+
+                        match code {
+                            CompilerOutput::Program(code) => Ok(CompiledCode(
                                 call.loc.clone(),
                                 Rc::new(primquote(call.loc.clone(), Rc::new(code))),
-                            )
-                        })
-                } else {
-                    error.clone()
+                            )),
+                            CompilerOutput::Module(_) => {
+                                todo!();
+                            }
+                        }
+                    } else {
+                        error.clone()
+                    }
                 }
             }
         })
@@ -678,14 +679,7 @@ pub fn do_mod_codegen(
     // A mod form yields the compiled code.
     let without_env = opts.set_start_env(None).set_in_defun(false);
     let mut throwaway_symbols = HashMap::new();
-    let runner = context.runner();
-    let optimizer = context.optimizer.duplicate();
-    let mut context_wrapper = CompileContextWrapper::new(
-        context.allocator(),
-        runner.clone(),
-        &mut throwaway_symbols,
-        optimizer,
-    );
+    let mut context_wrapper = CompileContextWrapper::from_context(context, &mut throwaway_symbols);
     let code = codegen(&mut context_wrapper.context, without_env, program)?;
     Ok(CompiledCode(
         program.loc.clone(),
@@ -911,34 +905,33 @@ fn codegen_(
                 );
 
                 let mut unused_symbol_table = HashMap::new();
-                let runner = context.runner();
-                updated_opts
-                    .compile_program(
-                        context.allocator(),
-                        runner.clone(),
-                        Rc::new(tocompile),
-                        &mut unused_symbol_table,
-                    )
-                    .and_then(|code| {
-                        context.post_codegen_function_optimize(opts.clone(), Some(h), Rc::new(code))
-                    })
-                    .and_then(|code| {
-                        fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)
-                    })
-                    .and_then(|code| {
-                        fail_if_present(defun.loc.clone(), &compiler.defuns, &defun.name, code)
-                    })
-                    .map(|code| {
-                        compiler.add_defun(
-                            &defun.name,
-                            defun.orig_args.clone(),
-                            DefunCall {
-                                required_env: defun.args.clone(),
-                                code,
-                            },
-                            true, // Always take left env for now
-                        )
-                    })
+                let code = {
+                    let mut context_wrapper =
+                        CompileContextWrapper::from_context(context, &mut unused_symbol_table);
+                    let code = updated_opts
+                        .compile_program(&mut context_wrapper.context, Rc::new(tocompile))?;
+                    match code {
+                        CompilerOutput::Program(p) => p,
+                        CompilerOutput::Module(_) => {
+                            todo!();
+                        }
+                    }
+                };
+
+                let code =
+                    context.post_codegen_function_optimize(opts.clone(), Some(h), Rc::new(code))?;
+                let code =
+                    fail_if_present(defun.loc.clone(), &compiler.inlines, &defun.name, code)?;
+                let code = fail_if_present(defun.loc.clone(), &compiler.defuns, &defun.name, code)?;
+                Ok(compiler.add_defun(
+                    &defun.name,
+                    defun.orig_args.clone(),
+                    DefunCall {
+                        required_env: defun.args.clone(),
+                        code,
+                    },
+                    true, // Always take left env for now
+                ))
             }
         }
         _ => Ok(compiler.clone()),
@@ -1016,7 +1009,7 @@ fn generate_let_defun(
         // binary size, when permitted.  Sometimes the user will signal a
         // preference.
         should_inline_let(inline_hint),
-        DefunData {
+        Box::new(DefunData {
             loc: l.clone(),
             nl: l,
             kw: kwl,
@@ -1026,7 +1019,7 @@ fn generate_let_defun(
             body,
             synthetic: Some(SyntheticType::NoInlinePreference),
             ty: None,
-        },
+        }),
     )
 }
 
@@ -1320,7 +1313,7 @@ pub fn hoist_body_let_binding(
             let new_expr = lambda_codegen(&new_function_name, letdata)?;
             let function = HelperForm::Defun(
                 false,
-                DefunData {
+                Box::new(DefunData {
                     loc: letdata.loc.clone(),
                     name: new_function_name,
                     kw: letdata.kw.clone(),
@@ -1330,7 +1323,7 @@ pub fn hoist_body_let_binding(
                     body: new_body,
                     synthetic: Some(SyntheticType::WantNonInline),
                     ty: None,
-                },
+                }),
             );
             new_helpers_from_body.push(function);
             Ok((new_helpers_from_body, Rc::new(new_expr)))
@@ -1362,11 +1355,11 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
 
                 result[i] = HelperForm::Defun(
                     inline,
-                    DefunData {
+                    Box::new(DefunData {
                         body: hoisted_body,
                         ty: defun.ty.clone(),
-                        ..defun.clone()
-                    },
+                        ..*defun.clone()
+                    }),
                 );
 
                 i += 1;
@@ -1414,15 +1407,21 @@ fn start_codegen(
                         )),
                     );
                     let updated_opts = opts.set_code_generator(code_generator.clone());
+                    let mut unused_symbols = HashMap::new();
                     let runner = context.runner();
-                    let code = updated_opts.compile_program(
-                        context.allocator(),
-                        runner.clone(),
-                        Rc::new(expand_program),
-                        &mut HashMap::new(),
-                    )?;
+                    let mut context_wrapper =
+                        CompileContextWrapper::from_context(context, &mut unused_symbols);
+                    let code = match updated_opts
+                        .compile_program(&mut context_wrapper.context, Rc::new(expand_program))?
+                    {
+                        CompilerOutput::Program(code) => code,
+                        CompilerOutput::Module(_) => {
+                            todo!();
+                        }
+                    };
+
                     run(
-                        context.allocator(),
+                        context_wrapper.context.allocator(),
                         runner,
                         opts.prim_map(),
                         Rc::new(code),
@@ -1495,16 +1494,21 @@ fn start_codegen(
                     .set_start_env(None)
                     .set_frontend_opt(false);
 
-                let runner = context.runner();
-                let code = updated_opts.compile_program(
-                    context.allocator(),
-                    runner.clone(),
-                    macro_program,
-                    &mut HashMap::new(),
-                )?;
+                let mut unused_symbols = HashMap::new();
+                let mut context_wrapper =
+                    CompileContextWrapper::from_context(context, &mut unused_symbols);
+                let code = match updated_opts
+                    .compile_program(&mut context_wrapper.context, macro_program)?
+                {
+                    CompilerOutput::Program(p) => p,
+                    CompilerOutput::Module(_) => {
+                        todo!();
+                    }
+                };
 
-                let optimized_code =
-                    context.macro_optimization(opts.clone(), Rc::new(code.clone()))?;
+                let optimized_code = context_wrapper
+                    .context
+                    .macro_optimization(opts.clone(), Rc::new(code.clone()))?;
 
                 code_generator.add_macro(&mac.name, optimized_code)
             }
@@ -1528,7 +1532,7 @@ fn start_codegen(
         )),
     };
 
-    code_generator.to_process = program.helpers.clone();
+    code_generator.to_process.clone_from(&program.helpers);
     // Ensure that we have the synthesis of the previous codegen's helpers and
     // The ones provided with the new form if any.
     let mut combined_helpers_for_codegen = program.helpers.clone();
@@ -1545,7 +1549,6 @@ fn final_codegen(
     compiler: &PrimaryCodegen,
 ) -> Result<PrimaryCodegen, CompileErr> {
     let opt_final_expr = context.pre_final_codegen_optimize(opts.clone(), compiler)?;
-
     let optimizer_opts = opts.clone();
     generate_expr_code(context, opts, compiler, opt_final_expr).and_then(|code| {
         let mut final_comp = compiler.clone();
@@ -1589,7 +1592,7 @@ fn finalize_env_(
             }
 
             /* Parentfns are functions in progress in the parent */
-            if c.parentfns.get(v).is_some() {
+            if c.parentfns.contains(v) {
                 Ok(Rc::new(SExp::Nil(l.clone())))
             } else {
                 Err(CompileErr(
@@ -1724,7 +1727,9 @@ pub fn codegen(
     // If stepping 23 or greater, we support no-env mode.
     enable_nil_env_mode_for_stepping_23_or_greater(opts.clone(), &mut code_generator);
 
-    *context.symbols() = code_generator.function_symbols.clone();
+    context
+        .symbols()
+        .clone_from(&code_generator.function_symbols);
     context
         .symbols()
         .insert("source_file".to_string(), opts.filename());
