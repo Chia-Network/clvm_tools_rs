@@ -222,7 +222,7 @@ impl CompilerOpts for DefaultCompilerOpts {
     }
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
-        copy.include_dirs = dirs.to_owned();
+        dirs.clone_into(&mut copy.include_dirs);
         Rc::new(copy)
     }
     fn set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts> {
