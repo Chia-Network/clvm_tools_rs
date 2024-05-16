@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 
@@ -54,7 +55,7 @@ fn convert_to_external(
 
                 if !finished.contains_key(&node) {
                     let converted: PyObject = Python::with_gil(|py| {
-                        let bytes = PyBytes::new(py, allocator.atom(node));
+                        let bytes = PyBytes::new(py, By::new(allocator, node).u8());
                         let args = PyTuple::new(py, &[bytes]);
                         from_bytes.call1(args)
                     })?

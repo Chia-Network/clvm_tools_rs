@@ -150,9 +150,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "chia-bls"
-version = "0.3.3"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba003303bda3019f2fe94e5478555a96addff1d6a1ea84bfe207b3f075cd8420"
+checksum = "1cbbce0107fa3911890f1a204a147c6d07116687658a6af95690e64fc21ff782"
 dependencies = [
  "anyhow",
  "arbitrary",
@@ -187,16 +187,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.28",
-]
-
-[[package]]
-name = "clvm-traits"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5548b7de9921c68b2ca1101c08dd416bfa9afdf319f5b45183ecb3574ee177a3"
-dependencies = [
- "num-bigint",
- "thiserror",
 ]
 
 [[package]]
@@ -246,13 +236,12 @@ dependencies = [
 
 [[package]]
 name = "clvmr"
-version = "0.3.3"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "deabd4e4163efb64486937a7c80996e5bdfb88d21a6baa9c0f802e6b45906109"
+checksum = "deb235bb5ce94e1e64e54cede97ca5a4766590d3584dea1b4285499d8e7f56f6"
 dependencies = [
  "chia-bls",
- "clvm-traits",
- "hex",
+ "hex-literal",
  "k256",
  "lazy_static",
  "num-bigint",
@@ -506,6 +495,12 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "hex-literal"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
 
 [[package]]
 name = "hkdf"

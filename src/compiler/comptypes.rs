@@ -1227,7 +1227,7 @@ pub fn join_vecs_to_string(sep: Vec<u8>, vecs: &[Vec<u8>]) -> String {
         s.append(&mut comma.clone());
         s.append(&mut elt.to_vec());
         if comma.is_empty() {
-            comma = sep.clone();
+            comma.clone_from(&sep);
         }
     }
 

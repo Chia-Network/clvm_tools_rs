@@ -11,6 +11,7 @@ use sha2::Digest;
 use sha2::Sha256;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
+use crate::classic::clvm::casts::By;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::prims;
@@ -228,7 +229,7 @@ pub fn convert_to_clvm_rs(
     head: Rc<SExp>,
 ) -> Result<NodePtr, RunFailure> {
     match head.borrow() {
-        SExp::Nil(_) => Ok(allocator.null()),
+        SExp::Nil(_) => Ok(allocator.nil()),
         SExp::Atom(_l, x) => allocator
             .new_atom(x)
             .map_err(|_e| RunFailure::RunErr(head.loc(), format!("failed to alloc atom {head}"))),
@@ -237,7 +238,7 @@ pub fn convert_to_clvm_rs(
             .map_err(|_e| RunFailure::RunErr(head.loc(), format!("failed to alloc string {head}"))),
         SExp::Integer(_, i) => {
             if *i == bi_zero() {
-                Ok(allocator.null())
+                Ok(allocator.nil())
             } else {
                 allocator
                     .new_atom(&u8_from_number(i.clone()))
@@ -264,14 +265,14 @@ pub fn convert_from_clvm_rs(
 ) -> Result<Rc<SExp>, RunFailure> {
     match allocator.sexp(head) {
         allocator::SExp::Atom => {
-            let atom_data = allocator.atom(head);
-            if atom_data.is_empty() {
+            let atom_data = By::new(allocator, head);
+            if atom_data.u8().is_empty() {
                 Ok(Rc::new(SExp::Nil(loc)))
             } else {
-                let integer = number_from_u8(atom_data);
+                let integer = number_from_u8(atom_data.u8());
                 // Ensure that atom values that don't evaluate equal to integers
                 // are represented faithfully as atoms.
-                if u8_from_number(integer.clone()) == atom_data {
+                if u8_from_number(integer.clone()) == atom_data.u8() {
                     Ok(Rc::new(SExp::Integer(loc, integer)))
                 } else {
                     Ok(Rc::new(SExp::Atom(loc, atom_data.to_vec())))
