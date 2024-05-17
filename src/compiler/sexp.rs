@@ -124,6 +124,18 @@ impl PartialEq for SExp {
     }
 }
 
+pub fn is_canonical(a: &[u8]) -> bool {
+    if a == &[0] {
+        false
+    } else if a.len() > 1 {
+        let topbit = ((a[1] & 0x80) >> 7) as u16;
+        let extension_byte = topbit * 255;
+        a[0] != extension_byte as u8
+    } else {
+        true
+    }
+}
+
 impl Display for SExp {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
@@ -158,9 +170,11 @@ impl Display for SExp {
                     formatter.write_str("()")?;
                 } else if printable(a, false) {
                     formatter.write_str(&decode_string(a))?;
-                } else {
+                } else if is_canonical(a) {
                     formatter
                         .write_str(&SExp::Integer(l.clone(), number_from_u8(a)).to_string())?;
+                } else {
+                    SExp::QuotedString(l.clone(), b'x', a.clone()).fmt(formatter)?;
                 }
             }
         }

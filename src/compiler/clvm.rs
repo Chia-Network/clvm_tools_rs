@@ -15,7 +15,7 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::{parse_sexp, SExp};
+use crate::compiler::sexp::{parse_sexp, SExp, is_canonical};
 use crate::compiler::srcloc::Srcloc;
 
 use crate::util::{number_from_u8, u8_from_number, Number};
@@ -267,15 +267,12 @@ pub fn convert_from_clvm_rs(
             let atom_data = allocator.atom(head);
             if atom_data.is_empty() {
                 Ok(Rc::new(SExp::Nil(loc)))
-            } else {
-                let integer = number_from_u8(atom_data);
+            } else if is_canonical(atom_data) {
                 // Ensure that atom values that don't evaluate equal to integers
                 // are represented faithfully as atoms.
-                if u8_from_number(integer.clone()) == atom_data {
-                    Ok(Rc::new(SExp::Integer(loc, integer)))
-                } else {
-                    Ok(Rc::new(SExp::Atom(loc, atom_data.to_vec())))
-                }
+                Ok(Rc::new(SExp::Integer(loc, number_from_u8(atom_data))))
+            } else {
+                Ok(Rc::new(SExp::Atom(loc, atom_data.to_vec())))
             }
         }
         allocator::SExp::Pair(a, b) => {
