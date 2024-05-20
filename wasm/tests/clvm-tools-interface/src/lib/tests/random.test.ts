@@ -21,7 +21,7 @@ interface ConvertibleValue {
 //
 // Value kinds:
 //
-// Some interesting constant values and
+// Some interesting constant values to be followed by generators.
 //
 
 function rngu32(rng: MersenneTwister): number {
