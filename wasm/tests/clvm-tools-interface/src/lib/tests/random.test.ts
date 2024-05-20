@@ -525,6 +525,8 @@ describe('Program', () => {
     it('deals with a range of conversions', () => {
         let seed0 = new Uint8Array(32);
         let rng = new ChaChaRng(seed0);
+        let early_converted = Program.to(t("hi","there"));
+        let early_hash = early_converted.sha256tree();
 
         let test = (element: ConvertibleValue, i: number) => {
             console.log('test index', i);
@@ -545,5 +547,8 @@ describe('Program', () => {
         for (let i = 0; i < 1000; i++) {
             test(new StructureElement(rng, 0), i);
         }
+
+        let late_hash = early_converted.sha256tree();
+        expect(early_hash).toEqual(late_hash);
     });
 });
