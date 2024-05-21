@@ -272,7 +272,11 @@ pub fn convert_from_clvm_rs(
                 // Ensure that atom values that don't evaluate equal to integers
                 // are represented faithfully as atoms.
                 if u8_from_number(integer.clone()) == atom_data {
-                    Ok(Rc::new(SExp::Integer(loc, integer)))
+                    if atom_data == [0] {
+                        Ok(Rc::new(SExp::QuotedString(loc, b'x', atom_data.to_vec())))
+                    } else {
+                        Ok(Rc::new(SExp::Integer(loc, integer)))
+                    }
                 } else {
                     Ok(Rc::new(SExp::Atom(loc, atom_data.to_vec())))
                 }
@@ -285,6 +289,45 @@ pub fn convert_from_clvm_rs(
             })
         }
     }
+}
+
+#[test]
+fn test_convert_from_clvm_rs_00_byte() {
+    let mut allocator = Allocator::new();
+    let allocator_atom = allocator.new_atom(&[0]).expect("should convert");
+    let srcloc = Srcloc::start("*test*");
+    let result = convert_from_clvm_rs(&mut allocator, srcloc.clone(), allocator_atom)
+        .expect("should convert to mod");
+    assert_eq!(result, Rc::new(SExp::Atom(srcloc, vec![0])));
+    assert_eq!(
+        sha256tree(result.clone()),
+        &[
+            0x47, 0xdc, 0x54, 0x0c, 0x94, 0xce, 0xb7, 0x04, 0xa2, 0x38, 0x75, 0xc1, 0x12, 0x73,
+            0xe1, 0x6b, 0xb0, 0xb8, 0xa8, 0x7a, 0xed, 0x84, 0xde, 0x91, 0x1f, 0x21, 0x33, 0x56,
+            0x81, 0x15, 0xf2, 0x54
+        ]
+    );
+
+    let node = convert_to_clvm_rs(&mut allocator, result).expect("should convert from mod");
+    assert_eq!(allocator.atom(node), &[0]);
+}
+
+#[test]
+fn test_convert_to_clvm_rs_m129() {
+    let mut allocator = Allocator::new();
+    let srcloc = Srcloc::start("*test*");
+    let result = Rc::new(SExp::Integer(srcloc, -129_i32.to_bigint().unwrap()));
+    assert_eq!(
+        sha256tree(result.clone()),
+        &[
+            0x5a, 0x0c, 0x1f, 0xec, 0x64, 0x75, 0x1e, 0x82, 0xc0, 0xd4, 0x86, 0x1d, 0x0b, 0xc1,
+            0x9c, 0x75, 0x80, 0x52, 0x5d, 0x2f, 0x47, 0x66, 0x79, 0x56, 0xbb, 0xd9, 0xd7, 0x9e,
+            0x26, 0x0a, 0xae, 0x00
+        ]
+    );
+
+    let node = convert_to_clvm_rs(&mut allocator, result).expect("should convert from mod");
+    assert_eq!(allocator.atom(node), &[255, 127]);
 }
 
 fn generate_argument_refs(start: Number, sexp: Rc<SExp>) -> Rc<SExp> {

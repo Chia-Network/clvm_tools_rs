@@ -10,7 +10,7 @@ use std::convert::TryFrom;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use clvm_tools_rs::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
+use clvm_tools_rs::classic::clvm::__type_compatibility__::{bi_zero, Bytes, BytesFromType};
 use clvm_tools_rs::compiler::sexp::SExp;
 use clvm_tools_rs::compiler::srcloc::{Srcloc, Until};
 use clvm_tools_rs::util::Number;
@@ -168,7 +168,11 @@ pub fn sexp_from_js_object(sstart: Srcloc, v: &JsValue) -> Option<Rc<SExp>> {
     } else if let Some(fval) = v.as_f64() {
         (fval as i64)
             .to_bigint()
-            .map(|x| Rc::new(SExp::Integer(sstart.clone(), x)))
+            .map(|x| if x == bi_zero() {
+                Rc::new(SExp::Nil(sstart.clone()))
+            } else {
+                Rc::new(SExp::Integer(sstart.clone(), x))
+            })
     } else if let Some(g1_bytes) = detect_serializable(&sstart, v) {
         Some(g1_bytes)
     } else if let Ok(converted) = detect_convertible(v) {
