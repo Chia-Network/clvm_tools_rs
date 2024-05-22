@@ -246,6 +246,7 @@ impl PropertyTestState<FuzzT> for TrickyAssignExpectation {
             opts.set_dialect(AcceptedDialect {
                 stepping: Some(23),
                 strict: true,
+                int_fix: false,
             })
             .set_optimize(true),
         )
