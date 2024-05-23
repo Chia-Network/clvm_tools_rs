@@ -44,13 +44,8 @@ rand = { version = "0.8.5", optional = true }
 rand_chacha = { version = "0.3.1", optional = true }
 lfsr = { version = "0.3.0", optional = true }
 
-[dependencies.pprof]
-version = "0.13"
-features = ["flamegraph"]
-optional = true
-
 [dependencies.pyo3]
-version = "0.20.0"
+version = "0.20.2"
 features = ["abi3-py38", "extension-module"]
 optional = true
 
@@ -65,9 +60,8 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 extension-module = ["dep:pyo3"]
-profiling = ["dep:pprof"]
+fuzz = ["dep:rand", "dep:rand_chacha", "dep:lfsr"]
 default = []
-fuzz = ["dep:rand", "dep:rand_chacha"]
 
 [target.'cfg(target_family="wasm")'.dependencies]
 wasm-bindgen = { version = "0.2.80", features = ["serde-serialize"] }
@@ -112,7 +106,3 @@ path = "src/classic/bins/clisp_to_json.rs"
 [[bin]]
 name = "repl"
 path = "src/classic/bins/repl.rs"
-
-[[bin]]
-name = "typetest"
-path = "src/classic/bins/typetest.rs"
