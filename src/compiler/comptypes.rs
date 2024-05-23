@@ -207,6 +207,7 @@ pub enum BodyForm {
     Lambda(Box<LambdaData>),
 }
 
+/// Convey information about synthetically generated helper forms.
 #[derive(Clone, Debug, Serialize)]
 pub enum SyntheticType {
     NoInlinePreference,
