@@ -541,7 +541,7 @@ pub fn optimize_expr(
                         if let Ok(compiled) = do_mod_codegen(&mut wrapper.context, opts.clone(), cf)
                         {
                             if let Ok(NodeSel::Cons(_, body)) =
-                                NodeSel::Cons(AtomValue::Here(&[1]), ThisNode::Here)
+                                NodeSel::Cons(AtomValue::Here(&[1]), ThisNode)
                                     .select_nodes(compiled.1)
                             {
                                 let borrowed_body: &SExp = body.borrow();

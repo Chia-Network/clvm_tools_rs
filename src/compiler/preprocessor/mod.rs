@@ -962,7 +962,7 @@ impl Preprocessor {
             }
 
             if let Ok(NodeSel::Cons((_, name), args)) =
-                NodeSel::Cons(Atom::Here(()), ThisNode::Here)
+                NodeSel::Cons(Atom::Here(()), ThisNode)
                     .select_nodes(new_self.clone().unwrap_or_else(|| body.clone()))
             {
                 // See if it's a form that calls one of our macros.
@@ -1006,7 +1006,7 @@ impl Preprocessor {
             Atom::Here(()),
             NodeSel::Cons(
                 Atom::Here(()),
-                NodeSel::Cons(ThisNode::Here, ThisNode::Here),
+                NodeSel::Cons(ThisNode, ThisNode),
             ),
         )
         .select_nodes(definition.clone())
