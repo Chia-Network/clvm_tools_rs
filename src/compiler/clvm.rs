@@ -1,5 +1,7 @@
 use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::mem::swap;
 use std::rc::Rc;
 
 use clvm_rs::allocator;
@@ -15,10 +17,35 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::{parse_sexp, SExp};
+use crate::compiler::sexp::{parse_sexp, printable, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 use crate::util::{number_from_u8, u8_from_number, Number};
+
+thread_local! {
+    static NEW_COMPILATION_LEVEL_INT: RefCell<bool> = const { RefCell::new(true) };
+}
+
+pub struct NewStyleIntConversion(bool);
+
+impl NewStyleIntConversion {
+    pub fn new(mut new_val: bool) -> NewStyleIntConversion {
+        NewStyleIntConversion(NEW_COMPILATION_LEVEL_INT.with(|v| {
+            let mut val_ref = v.borrow_mut();
+            swap(&mut new_val, &mut val_ref);
+            new_val
+        }))
+    }
+    fn setting() -> bool {
+        NEW_COMPILATION_LEVEL_INT.with(|v| *v.borrow())
+    }
+}
+
+impl Drop for NewStyleIntConversion {
+    fn drop(&mut self) {
+        NEW_COMPILATION_LEVEL_INT.with(|v| *v.borrow_mut() = self.0)
+    }
+}
 
 /// Provide a way of intercepting and running new primitives.
 pub trait PrimOverride {
@@ -236,7 +263,7 @@ pub fn convert_to_clvm_rs(
             .new_atom(x)
             .map_err(|_e| RunFailure::RunErr(head.loc(), format!("failed to alloc string {head}"))),
         SExp::Integer(_, i) => {
-            if *i == bi_zero() {
+            if NewStyleIntConversion::setting() && *i == bi_zero() {
                 Ok(allocator.null())
             } else {
                 allocator
@@ -264,6 +291,7 @@ pub fn convert_from_clvm_rs(
 ) -> Result<Rc<SExp>, RunFailure> {
     match allocator.sexp(head) {
         allocator::SExp::Atom => {
+            let int_conv = NewStyleIntConversion::setting();
             let atom_data = allocator.atom(head);
             if atom_data.is_empty() {
                 Ok(Rc::new(SExp::Nil(loc)))
@@ -272,11 +300,13 @@ pub fn convert_from_clvm_rs(
                 // Ensure that atom values that don't evaluate equal to integers
                 // are represented faithfully as atoms.
                 if u8_from_number(integer.clone()) == atom_data {
-                    if atom_data == [0] {
+                    if int_conv && atom_data == [0] {
                         Ok(Rc::new(SExp::QuotedString(loc, b'x', atom_data.to_vec())))
                     } else {
                         Ok(Rc::new(SExp::Integer(loc, integer)))
                     }
+                } else if int_conv && !printable(atom_data, true) {
+                    Ok(Rc::new(SExp::QuotedString(loc, b'x', atom_data.to_vec())))
                 } else {
                     Ok(Rc::new(SExp::Atom(loc, atom_data.to_vec())))
                 }
@@ -782,7 +812,13 @@ pub fn sha256tree(s: Rc<SExp>) -> Vec<u8> {
             hasher.finalize().to_vec()
         }
         SExp::Nil(_) => sha256tree_from_atom(&[]),
-        SExp::Integer(_, i) => sha256tree_from_atom(&u8_from_number(i.clone())),
+        SExp::Integer(_, i) => {
+            if NewStyleIntConversion::setting() && *i == bi_zero() {
+                sha256tree_from_atom(&[])
+            } else {
+                sha256tree_from_atom(&u8_from_number(i.clone()))
+            }
+        }
         SExp::QuotedString(_, _, v) => sha256tree_from_atom(v),
         SExp::Atom(_, v) => sha256tree_from_atom(v),
     }

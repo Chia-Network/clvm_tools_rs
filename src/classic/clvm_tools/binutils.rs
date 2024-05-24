@@ -98,7 +98,7 @@ pub fn ir_for_atom(
 
         // Determine whether the bytes identity an integer in canonical form.
         // It's not canonical if there is oversized sign extension.
-        if !has_oversized_sign_extension(atom) {
+        if atom.data() != &[0] && !has_oversized_sign_extension(atom) {
             return IRRepr::Int(atom.clone(), true);
         }
     }

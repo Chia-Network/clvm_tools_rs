@@ -43,6 +43,7 @@ fn run_string_maybe_opt(
         opts = opts.set_dialect(AcceptedDialect {
             stepping: Some(21),
             strict: true,
+            int_fix: false,
         });
     }
 
@@ -2396,6 +2397,7 @@ fn test_handle_explicit_empty_atom() {
     let opts = Rc::new(DefaultCompilerOpts::new(filename)).set_dialect(AcceptedDialect {
         stepping: Some(21),
         strict: true,
+        int_fix: false,
     });
 
     let atom = |s: &str| Rc::new(SExp::Atom(srcloc.clone(), s.as_bytes().to_vec()));

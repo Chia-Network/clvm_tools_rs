@@ -65,6 +65,15 @@ fn large_odd_sized_neg_opd() {
 }
 
 #[test]
+fn mid_negative_value_opd_00() {
+    let mut allocator = Allocator::new();
+    let result = opd_conversion()
+        .invoke(&mut allocator, &"00".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "0x00");
+}
+
+#[test]
 fn mid_negative_value_opd_m1() {
     let mut allocator = Allocator::new();
     let result = opd_conversion()
@@ -826,4 +835,36 @@ fn test_sub_args() {
         disassemble(&mut allocator, result, None),
         "(\"body\" (f (\"test1\" \"test2\")) (f (r (\"test1\" \"test2\"))))"
     );
+}
+
+#[test]
+fn test_smoke_cl23_program_with_zero_folding() {
+    let mut s = Stream::new(None);
+    launch_tool(
+        &mut s,
+        &vec![
+            "run".to_string(),
+            "(mod () (include *standard-cl-23*) (defconst X (concat 0x00 0x00)) X)".to_string(),
+        ],
+        &"run".to_string(),
+        2,
+    );
+    let result = s.get_value().decode().trim().to_string();
+    assert_eq!(result, "(2 (1 . 2) (4 (1 . 0) 1))");
+}
+
+#[test]
+fn test_smoke_cl23_program_without_zero_folding() {
+    let mut s = Stream::new(None);
+    launch_tool(
+        &mut s,
+        &vec![
+            "run".to_string(),
+            "(mod () (include *standard-cl-23.1*) (defconst X (concat 0x00 0x00)) X)".to_string(),
+        ],
+        &"run".to_string(),
+        2,
+    );
+    let result = s.get_value().decode().trim().to_string();
+    assert_eq!(result, "(2 (1 . 2) (4 (1 . 0x0000) 1))");
 }
