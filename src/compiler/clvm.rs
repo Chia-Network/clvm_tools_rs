@@ -435,9 +435,13 @@ pub fn truthy(sexp: Rc<SExp>) -> bool {
         // The previous truthy would not have taken account of all zero bit
         // values of lengths other than zero.
         match sexp.borrow() {
-            SExp::Atom(_, a) => { return a.len() != 0; }
-            SExp::QuotedString(_, _, a) => { return a.len() != 0; }
-            _ => { }
+            SExp::Atom(_, a) => {
+                return !a.is_empty();
+            }
+            SExp::QuotedString(_, _, a) => {
+                return !a.is_empty();
+            }
+            _ => {}
         }
     }
 
