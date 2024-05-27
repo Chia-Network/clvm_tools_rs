@@ -431,6 +431,16 @@ pub fn get_history_len(step: Rc<RunStep>) -> usize {
 
 /// Generically determine whether a value is truthy.
 pub fn truthy(sexp: Rc<SExp>) -> bool {
+    if NewStyleIntConversion::setting() {
+        // The previous truthy would not have taken account of all zero bit
+        // values of lengths other than zero.
+        match sexp.borrow() {
+            SExp::Atom(_, a) => { return a.len() != 0; }
+            SExp::QuotedString(_, _, a) => { return a.len() != 0; }
+            _ => { }
+        }
+    }
+
     // Fails for cons, but cons is truthy
     atom_value(sexp).unwrap_or_else(|_| bi_one()) != bi_zero()
 }
