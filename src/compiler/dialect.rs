@@ -11,6 +11,7 @@ use crate::compiler::sexp::decode_string;
 pub struct AcceptedDialect {
     pub stepping: Option<i32>,
     pub strict: bool,
+    pub int_fix: bool,
 }
 
 /// A package containing the content we should insert when a dialect include is
@@ -44,6 +45,7 @@ lazy_static! {
                     accepted: AcceptedDialect {
                         stepping: Some(21),
                         strict: true,
+                        int_fix: false,
                     },
                     content: indoc! {"(
                     (defconstant *chialisp-version* 22)
@@ -57,6 +59,7 @@ lazy_static! {
                     accepted: AcceptedDialect {
                         stepping: Some(22),
                         strict: false,
+                        int_fix: false,
                     },
                     content: indoc! {"(
                     (defconstant *chialisp-version* 22)
@@ -70,6 +73,21 @@ lazy_static! {
                     accepted: AcceptedDialect {
                         stepping: Some(23),
                         strict: true,
+                        int_fix: false,
+                    },
+                    content: indoc! {"(
+                    (defconstant *chialisp-version* 23)
+                )"}
+                    .to_string(),
+                },
+            ),
+            (
+                "*standard-cl-23.1*",
+                DialectDescription {
+                    accepted: AcceptedDialect {
+                        stepping: Some(23),
+                        strict: true,
+                        int_fix: true,
                     },
                     content: indoc! {"(
                     (defconstant *chialisp-version* 23)

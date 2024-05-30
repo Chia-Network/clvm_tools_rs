@@ -234,7 +234,7 @@ fn make_namespace_ref(
 
 pub fn detect_chialisp_module(pre_forms: &[Rc<SExp>]) -> Option<AcceptedDialect> {
     let dialect = KNOWN_DIALECTS
-        .get("*standard-cl-23*")
+        .get("*standard-cl-23.1*")
         .unwrap()
         .accepted
         .clone();
@@ -478,7 +478,7 @@ impl Preprocessor {
         let program_text = decode_string(content);
         let runner = Rc::new(DefaultProgramRunner::new());
         let pre_forms = parse_sexp(srcloc.clone(), content.iter().copied())?;
-        let (have_module, dialect, classic_parse) =
+        let (have_module, mut dialect, classic_parse) =
             if let Some(dialect) = detect_chialisp_module(&pre_forms) {
                 (true, dialect, allocator.null())
             } else {
@@ -495,6 +495,10 @@ impl Preprocessor {
                     classic_parse,
                 )
             };
+        if have_module {
+            // Always on in module mode since it's new.
+            dialect.int_fix = true;
+        }
 
         let make_constant = |name: &[u8], s: SExp| {
             HelperForm::Defconstant(DefconstData {

@@ -444,7 +444,9 @@ pub fn compile_module(
     exports: &[Export],
 ) -> Result<CompileModuleOutput, CompileErr> {
     let loc = program.loc();
-    opts = opts.set_optimize(true);
+    let mut dialect = opts.dialect();
+    dialect.int_fix = true;
+    opts = opts.set_optimize(true).set_dialect(dialect);
 
     if exports.is_empty() {
         return Err(CompileErr(
