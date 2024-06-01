@@ -49,7 +49,7 @@ use crate::classic::platform::argparse::{
     TArgOptionAction, TArgumentParserProps,
 };
 
-use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
+use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv, StepInfo};
 use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
 use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
@@ -496,6 +496,16 @@ pub fn cldb_hierarchy(
     result
 }
 
+struct IntArg;
+impl ArgumentValueConv for IntArg {
+    fn convert(&self, arg: &str) -> Result<ArgumentValue, String> {
+        let ver = arg
+            .parse::<i64>()
+            .map_err(|_| "expected number".to_string())?;
+        Ok(ArgumentValue::ArgInt(ver))
+    }
+}
+
 pub fn cldb(args: &[String]) {
     let tool_name = "cldb".to_string();
     let props = TArgumentParserProps {
@@ -544,6 +554,12 @@ pub fn cldb(args: &[String]) {
             .set_help("new style hierarchial view of function calls and args".to_string()),
     );
     parser.add_argument(
+        vec!["--tail".to_string()],
+        Argument::new()
+            .set_type(Rc::new(IntArg))
+            .set_help("number of steps to display at the end".to_string()),
+    );
+    parser.add_argument(
         vec!["path_or_code".to_string()],
         Argument::new()
             .set_type(Rc::new(PathOrCodeConv {}))
@@ -563,6 +579,7 @@ pub fn cldb(args: &[String]) {
 
     let prog_srcloc = Srcloc::start("*program*");
     let args_srcloc = Srcloc::start("*args*");
+    let mut tail = None;
 
     let mut args = Rc::new(sexp::SExp::atom_from_string(args_srcloc.clone(), ""));
     let mut parsed_args_result: String = "".to_string();
@@ -574,6 +591,10 @@ pub fn cldb(args: &[String]) {
         }
         Ok(pa) => pa,
     };
+
+    if let Some(ArgumentValue::ArgInt(i)) = parsed_args.get("tail") {
+        tail = Some(i);
+    }
 
     if let Some(ArgumentValue::ArgArray(v)) = parsed_args.get("include") {
         for p in v {
@@ -615,12 +636,23 @@ pub fn cldb(args: &[String]) {
     let use_filename = input_file
         .clone()
         .unwrap_or_else(|| "*command*".to_string());
-    let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
-        .set_optimize(do_optimize)
-        .set_search_paths(&search_paths);
+    let opts = Rc::new(DefaultCompilerOpts::new(&use_filename)).set_search_paths(&search_paths);
 
     let mut use_symbol_table = symbol_table.unwrap_or_default();
     let mut output = Vec::new();
+
+    let quit_with_error = |l: Option<&Srcloc>, c: &str| {
+        let mut parse_error = BTreeMap::new();
+        if let Some(loc) = l {
+            parse_error.insert(
+                "Error-Location".to_string(),
+                YamlElement::String(loc.to_string()),
+            );
+        };
+        parse_error.insert("Error".to_string(), YamlElement::String(c.to_string()));
+        let output = vec![parse_error.clone()];
+        println!("{}", yamlette_string(&output));
+    };
 
     let res = match parsed_args.get("hex") {
         Some(ArgumentValue::ArgBool(true)) => hex_to_modern_sexp(
@@ -631,6 +663,30 @@ pub fn cldb(args: &[String]) {
         )
         .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
         _ => {
+            let classic_parse = match read_ir(&input_program) {
+                Ok(r) => r,
+                Err(c) => {
+                    quit_with_error(None, &c.msg);
+                    return;
+                }
+            };
+            let assembled = match assemble_from_ir(&mut allocator, Rc::new(classic_parse)) {
+                Ok(r) => r,
+                Err(c) => {
+                    quit_with_error(None, &c.1);
+                    return;
+                }
+            };
+
+            let dialect = detect_modern(&mut allocator, assembled);
+            let opts = if let Some(stepping) = dialect.stepping {
+                opts.set_dialect(dialect)
+                    .set_optimize(do_optimize || stepping > 22)
+                    .set_frontend_opt(stepping == 22)
+            } else {
+                opts
+            };
+
             // don't clobber a symbol table brought in via -y unless we're
             // compiling here.
             let unopt_res = compile_file(
@@ -655,14 +711,7 @@ pub fn cldb(args: &[String]) {
     let program = match res {
         Ok(r) => r,
         Err(c) => {
-            let mut parse_error = BTreeMap::new();
-            parse_error.insert(
-                "Error-Location".to_string(),
-                YamlElement::String(c.0.to_string()),
-            );
-            parse_error.insert("Error".to_string(), YamlElement::String(c.1));
-            output.push(parse_error.clone());
-            println!("{}", yamlette_string(&output));
+            quit_with_error(Some(&c.0), &c.1);
             return;
         }
     };
@@ -679,10 +728,8 @@ pub fn cldb(args: &[String]) {
                     args = r;
                 }
                 Err(p) => {
-                    let mut parse_error = BTreeMap::new();
-                    parse_error.insert("Error".to_string(), YamlElement::String(p.to_string()));
-                    output.push(parse_error.clone());
-                    println!("{}", yamlette_string(&output));
+                    let c: CompileErr = p.into();
+                    quit_with_error(Some(&c.0), &c.1);
                     return;
                 }
             }
@@ -694,14 +741,7 @@ pub fn cldb(args: &[String]) {
                 }
             }
             Err(c) => {
-                let mut parse_error = BTreeMap::new();
-                parse_error.insert(
-                    "Error-Location".to_string(),
-                    YamlElement::String(c.0.to_string()),
-                );
-                parse_error.insert("Error".to_string(), YamlElement::String(c.1));
-                output.push(parse_error.clone());
-                println!("{}", yamlette_string(&output));
+                quit_with_error(Some(&c.0), &c.1);
                 return;
             }
         },
@@ -748,28 +788,54 @@ pub fn cldb(args: &[String]) {
 
     cldbrun.set_print_only(only_print);
 
+    let mut delayed_print = Vec::new();
+    let start_idx = |l: usize| -> usize {
+        if let Some(tail) = tail {
+            if l > *tail as usize {
+                return l - *tail as usize;
+            }
+        }
+
+        0
+    };
+
     loop {
         if cldbrun.is_ended() {
-            println!("{}", yamlette_string(&output));
+            let output_slice = if !delayed_print.is_empty() {
+                // Spill delayed into output.
+                let start_idx = start_idx(delayed_print.len());
+                output = delayed_print
+                    .into_iter()
+                    .skip(start_idx)
+                    .map(|mut result: StepInfo| {
+                        let mut cvt_subtree: BTreeMap<String, YamlElement> = BTreeMap::new();
+                        for (k, v) in result.dict().iter() {
+                            cvt_subtree.insert(k.clone(), YamlElement::String(v.clone()));
+                        }
+                        cvt_subtree
+                    })
+                    .collect();
+                &output
+            } else {
+                let start_idx = start_idx(output.len());
+                &output[start_idx..output.len()]
+            };
+
+            println!("{}", yamlette_string(output_slice));
             return;
         }
 
-        if let Some(result) = cldbrun.step(&mut allocator) {
+        if let Some(mut result) = cldbrun.step(&mut allocator) {
             if only_print {
-                if let Some(p) = result.get("Print") {
+                if let Some(p) = result.print() {
                     let mut only_print = BTreeMap::new();
-                    only_print.insert("Print".to_string(), YamlElement::String(p.clone()));
+                    only_print.insert("Print".to_string(), YamlElement::String(p));
                     output.push(only_print);
-                } else {
-                    let is_final = result.contains_key("Final");
-                    let is_throw = result.contains_key("Throw");
-                    let is_failure = result.contains_key("Failure");
-                    if is_final || is_throw || is_failure {
-                        print_tree(&mut output, &result);
-                    }
+                } else if cldbrun.is_ended() {
+                    print_tree(&mut output, result.dict());
                 }
             } else {
-                print_tree(&mut output, &result);
+                delayed_print.push(result);
             }
         }
     }
@@ -1160,7 +1226,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     ) {
         if let Some(filename) = &file {
             let opts = DefaultCompilerOpts::new(filename).set_search_paths(&search_paths);
-
             match gather_dependencies(opts, filename, file_content) {
                 Err(e) => {
                     stdout.write_str(&format!("{}: {}\n", e.0, e.1));

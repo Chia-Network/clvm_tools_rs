@@ -365,7 +365,7 @@ impl HierarchialRunner {
             self.running[idx].env = outcome;
 
             let step = clvm::step_return_value(
-                &self.running[idx].run.current_step(),
+                self.running[idx].run.current_step(),
                 self.running[idx].env.clone(),
             );
 
@@ -381,7 +381,7 @@ impl HierarchialRunner {
             );
 
             Ok(HierarchialStepResult::ShapeChange)
-        } else if let Some(info) = relevant_run_step_info(&self.symbol_table, &current_step) {
+        } else if let Some(info) = relevant_run_step_info(&self.symbol_table, current_step) {
             // Create a frame based on the last argument.
             self.push_synthetic_stack_frame(current_env, &info);
 
@@ -389,10 +389,13 @@ impl HierarchialRunner {
         } else {
             // Not final result, we'll step the top of the stack.
             let info = self.running[idx].run.step(&mut self.allocator);
-            if let Some(i) = &info {
-                self.error |= i.get("Failure").is_some();
+            if let Some(mut i) = info {
+                let dict = i.dict();
+                self.error |= dict.get("Failure").is_some();
+                Ok(HierarchialStepResult::Info(Some(dict.clone())))
+            } else {
+                Ok(HierarchialStepResult::Info(None))
             }
-            Ok(HierarchialStepResult::Info(info))
         }
     }
 }

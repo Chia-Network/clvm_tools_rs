@@ -84,6 +84,8 @@ pub trait CldbEnvironment {
     fn get_override(&self, s: &RunStep) -> Option<Result<RunStep, RunFailure>>;
 }
 
+type StepDictFiller = Box<dyn Fn(&mut BTreeMap<String, String>)>;
+
 /// CldbRun is the main object used to run CLVM code in a stepwise way.  The main
 /// advantage of CldbRun over clvmr's runner is that the caller observes a new
 /// step being returned after it asks for each step to be run.  The progress of
@@ -99,14 +101,15 @@ pub trait CldbEnvironment {
 pub struct CldbRun {
     runner: Rc<dyn TRunProgram>,
     prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
-    env: Box<dyn CldbEnvironment>,
+    env: Rc<dyn CldbEnvironment>,
 
-    step: RunStep,
+    step: Rc<RunStep>,
 
     ended: bool,
     final_result: Option<Rc<SExp>>,
-    to_print: BTreeMap<String, String>,
     in_expr: bool,
+    fill_info: Option<StepDictFiller>,
+
     row: usize,
     print_only: bool,
 
@@ -143,6 +146,37 @@ fn is_print_request(a: &SExp) -> Option<(Srcloc, Rc<SExp>)> {
     None
 }
 
+pub struct StepInfo {
+    create: Option<StepDictFiller>,
+    dict: BTreeMap<String, String>,
+}
+impl StepInfo {
+    fn generate(&mut self) {
+        if let Some(c) = &self.create {
+            c(&mut self.dict);
+        }
+        self.create = None;
+    }
+
+    pub fn print(&mut self) -> Option<String> {
+        self.generate();
+        self.dict.get("Print").cloned()
+    }
+
+    pub fn dict(&mut self) -> &BTreeMap<String, String> {
+        self.generate();
+        &self.dict
+    }
+
+    pub fn into_dict(&mut self) -> BTreeMap<String, String> {
+        self.generate();
+        // Swap in an empty dict and give the user our dict.
+        let mut empty = BTreeMap::new();
+        swap(&mut empty, &mut self.dict);
+        empty
+    }
+}
+
 impl CldbRun {
     /// Create a new CldbRun for running a program.
     /// Takes an CldbEnvironment and a prepared RunStep, which will be stepped
@@ -157,14 +191,14 @@ impl CldbRun {
         CldbRun {
             runner,
             prim_map,
-            env,
-            step,
+            env: env.into(),
+            step: step.into(),
             ended: false,
             final_result: None,
-            to_print: BTreeMap::new(),
             in_expr: false,
+            fill_info: None,
             row: 0,
-            outputs_to_step: HashMap::<Number, PriorResult>::new(),
+            outputs_to_step: HashMap::new(),
             print_only: false,
         }
     }
@@ -185,9 +219,8 @@ impl CldbRun {
         !self.print_only
     }
 
-    pub fn step(&mut self, allocator: &mut Allocator) -> Option<BTreeMap<String, String>> {
-        let mut produce_result = false;
-        let mut result = BTreeMap::new();
+    pub fn step(&mut self, allocator: &mut Allocator) -> Option<StepInfo> {
+        let mut produce_result: Option<StepDictFiller> = None;
         let new_step = match self.env.get_override(&self.step) {
             Some(v) => v,
             _ => run_step(
@@ -201,115 +234,149 @@ impl CldbRun {
 
         // Allow overrides by consumers.
 
-        match &new_step {
+        match new_step.clone() {
             Ok(RunStep::OpResult(l, x, _p)) => {
                 if self.in_expr {
                     if self.should_print_basic_output() {
-                        self.to_print
-                            .insert("Result-Location".to_string(), l.to_string());
-                        self.to_print.insert("Value".to_string(), x.to_string());
-                        self.to_print
-                            .insert("Row".to_string(), self.row.to_string());
+                        let row = self.row;
 
-                        if let Ok(n) = x.get_number() {
+                        if let Ok(n) = x.clone().get_number() {
                             self.outputs_to_step.insert(
                                 n,
                                 PriorResult {
-                                    reference: self.row,
+                                    reference: row,
                                     // value: x.clone(), // for future
                                 },
                             );
                         }
-                        swap(&mut self.to_print, &mut result);
-                        produce_result = true;
+
+                        let mut fill_info = None;
+                        swap(&mut fill_info, &mut self.fill_info);
+                        produce_result =
+                            Some(Box::new(move |to_print: &mut BTreeMap<String, String>| {
+                                to_print.insert("Result-Location".to_string(), l.to_string());
+                                to_print.insert("Value".to_string(), x.to_string());
+                                to_print.insert("Row".to_string(), row.to_string());
+
+                                if let Some(f) = &fill_info {
+                                    f(to_print);
+                                }
+                            }));
                     }
 
                     self.in_expr = false;
                 }
             }
             Ok(RunStep::Done(l, x)) => {
-                self.to_print
-                    .insert("Final-Location".to_string(), l.to_string());
-                self.to_print.insert("Final".to_string(), x.to_string());
-
-                self.ended = true;
                 self.final_result = Some(x.clone());
-                swap(&mut self.to_print, &mut result);
-                produce_result = true;
+                self.ended = true;
+
+                let mut fill_info = None;
+                swap(&mut fill_info, &mut self.fill_info);
+                produce_result = Some(Box::new(move |to_print: &mut BTreeMap<String, String>| {
+                    to_print.insert("Final-Location".to_string(), l.to_string());
+                    to_print.insert("Final".to_string(), x.to_string());
+
+                    if let Some(f) = &fill_info {
+                        f(to_print);
+                    }
+                }));
             }
             Ok(RunStep::Step(_sexp, _c, _p)) => {}
             Ok(RunStep::Op(sexp, c, a, None, _p)) => {
                 let should_print_basic_output = self.should_print_basic_output();
-                if should_print_basic_output {
-                    self.to_print
-                        .insert("Operator-Location".to_string(), a.loc().to_string());
-                    self.to_print
-                        .insert("Operator".to_string(), sexp.to_string());
-                }
-
+                let mut arg_associations: Option<Vec<PriorResult>> = None;
                 if let Ok(v) = sexp.get_number() {
                     if v == 11_u32.to_bigint().unwrap() && should_print_basic_output {
                         // Build source tree for hashes.
-                        let arg_associations =
-                            get_arg_associations(&self.outputs_to_step, a.clone());
-                        let args = format_arg_inputs(&arg_associations);
-                        self.to_print.insert("Argument-Refs".to_string(), args);
+                        arg_associations =
+                            Some(get_arg_associations(&self.outputs_to_step, a.clone()));
                     } else if v == 34_u32.to_bigint().unwrap() {
                         // Handle diagnostic output.
-                        if let Some((loc, outputs)) = is_print_request(a) {
-                            self.to_print
-                                .insert("Print-Location".to_string(), loc.to_string());
-                            self.to_print
-                                .insert("Print".to_string(), outputs.to_string());
-                            swap(&mut self.to_print, &mut result);
-                            produce_result = true;
+                        if let Some((loc, outputs)) = is_print_request(&a) {
+                            produce_result =
+                                Some(Box::new(move |to_print: &mut BTreeMap<String, String>| {
+                                    to_print.insert("Print-Location".to_string(), loc.to_string());
+                                    to_print.insert("Print".to_string(), outputs.to_string());
+                                }));
                         }
                     }
                 }
+
                 if should_print_basic_output {
-                    self.env.add_context(
-                        sexp.borrow(),
-                        c.borrow(),
-                        Some(a.clone()),
-                        &mut self.to_print,
-                    );
-                    self.env.add_function(sexp, &mut self.to_print);
+                    let env = self.env.clone();
+                    let mut fill_info = None;
+                    swap(&mut fill_info, &mut self.fill_info);
+                    self.fill_info =
+                        Some(Box::new(move |to_print: &mut BTreeMap<String, String>| {
+                            if let Some(f) = &fill_info {
+                                f(to_print);
+                            }
+
+                            env.add_context(sexp.borrow(), c.borrow(), Some(a.clone()), to_print);
+
+                            env.add_function(&sexp, to_print);
+
+                            if let Some(arg_associations) = &arg_associations {
+                                let args = format_arg_inputs(arg_associations);
+                                to_print.insert("Argument-Refs".to_string(), args);
+                            }
+
+                            to_print.insert("Operator-Location".to_string(), a.loc().to_string());
+                            to_print.insert("Operator".to_string(), sexp.to_string());
+                        }));
+
                     self.in_expr = true;
                 }
             }
             Ok(RunStep::Op(_sexp, _c, _a, Some(_v), _p)) => {}
             Err(RunFailure::RunExn(l, s)) => {
-                self.to_print
-                    .insert("Throw-Location".to_string(), l.to_string());
-                self.to_print.insert("Throw".to_string(), s.to_string());
+                let mut fill_info = None;
+                swap(&mut fill_info, &mut self.fill_info);
+                produce_result = Some(Box::new(move |to_print: &mut BTreeMap<String, String>| {
+                    to_print.insert("Throw-Location".to_string(), l.to_string());
+                    to_print.insert("Throw".to_string(), s.to_string());
 
-                swap(&mut self.to_print, &mut result);
+                    if let Some(f) = &fill_info {
+                        f(to_print);
+                    }
+                }));
+
                 self.ended = true;
-                produce_result = true;
             }
             Err(RunFailure::RunErr(l, s)) => {
-                self.to_print
-                    .insert("Failure-Location".to_string(), l.to_string());
-                self.to_print.insert("Failure".to_string(), s.to_string());
+                let mut fill_info = None;
+                swap(&mut fill_info, &mut self.fill_info);
+                produce_result = Some(Box::new(move |to_print: &mut BTreeMap<String, String>| {
+                    to_print.insert("Failure-Location".to_string(), l.to_string());
+                    to_print.insert("Failure".to_string(), s.to_string());
 
-                swap(&mut self.to_print, &mut result);
+                    if let Some(f) = &fill_info {
+                        f(to_print);
+                    }
+                }));
+
                 self.ended = true;
-                produce_result = true;
             }
         }
 
-        self.step = new_step.unwrap_or_else(|_| self.step.clone());
+        self.step = new_step
+            .map(|s| s.into())
+            .unwrap_or_else(|_| self.step.clone());
 
-        if produce_result {
+        if let Some(produce_result) = produce_result {
             self.row += 1;
-            Some(result)
+            Some(StepInfo {
+                create: Some(produce_result),
+                dict: BTreeMap::new(),
+            })
         } else {
             None
         }
     }
 
-    pub fn current_step(&self) -> RunStep {
-        self.step.clone()
+    pub fn current_step(&self) -> &RunStep {
+        self.step.borrow()
     }
 }
 
