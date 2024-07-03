@@ -18,6 +18,7 @@ mod restargs;
 mod runtypes;
 mod singleton;
 mod srcloc;
+mod types;
 mod usecheck;
 
 #[test]

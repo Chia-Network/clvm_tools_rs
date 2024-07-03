@@ -814,6 +814,7 @@ impl GenerateTrickyCSE {
                 body: self.generate_expr(),
                 kw: None,
                 synthetic: None,
+                ty: None,
             }),
         )
     }
@@ -837,6 +838,7 @@ impl GenerateTrickyCSE {
                 None,
             )),
             helpers: vec![helper],
+            ty: None,
         }
     }
 }

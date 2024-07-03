@@ -1006,6 +1006,7 @@ fn generate_let_defun(
             args: inner_function_args,
             body,
             synthetic: Some(SyntheticType::NoInlinePreference),
+            ty: None,
         }),
     )
 }
@@ -1317,6 +1318,7 @@ pub fn hoist_body_let_binding(
                     args: new_function_args,
                     body: new_body,
                     synthetic: Some(SyntheticType::WantNonInline),
+                    ty: None,
                 }),
             );
             new_helpers_from_body.push(function);
@@ -1324,7 +1326,7 @@ pub fn hoist_body_let_binding(
             // new_expr is the generated code at the call site.  The reference
             // to the actual function additionally is enriched by a left-env
             // reference that gives it access to the program.
-            let new_expr = lambda_codegen(&new_function_name, letdata);
+            let new_expr = lambda_codegen(&new_function_name, letdata)?;
             Ok((new_helpers_from_body, Rc::new(new_expr)))
         }
         _ => Ok((Vec::new(), body.clone())),
