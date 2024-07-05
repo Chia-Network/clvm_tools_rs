@@ -30,7 +30,7 @@ use crate::classic::clvm::sexp::{enlist, proper_list, sexp_as_bin};
 use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm_tools::binutils::{assemble_from_ir, disassemble, disassemble_with_kw};
 use crate::classic::clvm_tools::clvmc::write_sym_output;
-use crate::classic::clvm_tools::comp_input::RunAndCompileInputData;
+use crate::classic::clvm_tools::comp_input::{get_disassembly_ver, RunAndCompileInputData};
 use crate::classic::clvm_tools::debug::check_unused;
 use crate::classic::clvm_tools::debug::{
     program_hash_from_program_env_cons, start_log_after, trace_pre_eval, trace_to_table,
@@ -53,11 +53,9 @@ use crate::classic::platform::argparse::{
 use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
 use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
 use crate::compiler::clvm::start_step;
-use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
+use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
-use crate::compiler::debug::build_symbol_table_mut;
 use crate::compiler::frontend::frontend;
-use crate::compiler::optimize::maybe_finalize_program_via_classic_optimizer;
 use crate::compiler::preprocessor::gather_dependencies;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
@@ -497,13 +495,15 @@ pub fn cldb_hierarchy(
 }
 
 pub fn cldb(args: &[String]) {
+    let mut allocator = Allocator::new();
+    let mut output = Vec::new();
+
     let tool_name = "cldb".to_string();
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
         prog: format!("clvm_tools {tool_name}"),
     };
 
-    let mut search_paths = Vec::new();
     let mut parser = ArgumentParser::new(Some(props));
     parser.add_argument(
         vec!["-i".to_string(), "--include".to_string()],
@@ -561,27 +561,6 @@ pub fn cldb(args: &[String]) {
     let prog_srcloc = Srcloc::start("*program*");
     let args_srcloc = Srcloc::start("*args*");
 
-    let mut args = Rc::new(sexp::SExp::atom_from_string(args_srcloc.clone(), ""));
-
-    let parsed_args: HashMap<String, ArgumentValue> = match parser.parse_args(&arg_vec) {
-        Err(e) => {
-            println!("FAIL: {e}");
-            return;
-        }
-        Ok(pa) => pa,
-    };
-
-    if let Some(ArgumentValue::ArgArray(v)) = parsed_args.get("include") {
-        for p in v {
-            if let ArgumentValue::ArgString(_, s) = p {
-                search_paths.push(s.to_string());
-            }
-        }
-    }
-
-    let mut allocator = Allocator::new();
-    let mut output = Vec::new();
-
     let errorize =
         |output: &mut Vec<BTreeMap<String, YamlElement>>, location: Option<Srcloc>, c: &str| {
             let mut parse_error = BTreeMap::new();
@@ -596,12 +575,12 @@ pub fn cldb(args: &[String]) {
             println!("{}", yamlette_string(output));
         };
 
-    let parsed = match RunAndCompileInputData::new(&mut allocator, &parsed_args) {
-        Ok(r) => r,
+    let parsed_args: HashMap<String, ArgumentValue> = match parser.parse_args(&arg_vec) {
         Err(e) => {
-            errorize(&mut output, None, &e.to_string());
+            println!("FAIL: {e}");
             return;
         }
+        Ok(pa) => pa,
     };
 
     let symbol_table = parsed_args
@@ -615,21 +594,20 @@ pub fn cldb(args: &[String]) {
             _ => None,
         });
 
+    let parsed = match RunAndCompileInputData::new(
+        &mut allocator,
+        &parsed_args
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            println!("FAIL: {e}");
+            return;
+        }
+    };
+
     let only_print = parsed_args.get("only_print").map(|_| true).unwrap_or(false);
 
-    let do_optimize = parsed_args
-        .get("optimize")
-        .map(|x| matches!(x, ArgumentValue::ArgBool(true)))
-        .unwrap_or_else(|| false);
     let runner = Rc::new(DefaultProgramRunner::new());
-    let use_filename = parsed
-        .program
-        .path
-        .clone()
-        .unwrap_or_else(|| "*command*".to_string());
-    let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
-        .set_optimize(do_optimize)
-        .set_search_paths(&search_paths);
 
     let mut use_symbol_table = symbol_table.unwrap_or_default();
 
@@ -642,24 +620,7 @@ pub fn cldb(args: &[String]) {
         )
         .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
         _ => {
-            // don't clobber a symbol table brought in via -y unless we're
-            // compiling here.
-            let unopt_res = compile_file(
-                &mut allocator,
-                runner.clone(),
-                opts.clone(),
-                &parsed.program.content,
-                &mut use_symbol_table,
-            );
-            unopt_res.and_then(|x| {
-                maybe_finalize_program_via_classic_optimizer(
-                    &mut allocator,
-                    runner.clone(),
-                    opts,
-                    false,
-                    &x,
-                )
-            })
+            parsed.compile_modern(&mut allocator, &mut use_symbol_table)
         }
     };
 
@@ -671,45 +632,48 @@ pub fn cldb(args: &[String]) {
         }
     };
 
-    match parsed_args.get("hex") {
-        Some(ArgumentValue::ArgBool(true)) => {
-            match hex_to_modern_sexp(
-                &mut allocator,
-                &HashMap::new(),
-                args_srcloc,
-                &parsed.args.content,
-            ) {
-                Ok(r) => {
-                    args = r;
+    let env_loc = Srcloc::start("*args*");
+    let env =
+        match parsed_args.get("hex") {
+            Some(ArgumentValue::ArgBool(true)) => {
+                match hex_to_modern_sexp(
+                    &mut allocator,
+                    &HashMap::new(),
+                    args_srcloc,
+                    &parsed.args.content,
+                ) {
+                    Ok(r) => r,
+                    Err(p) => {
+                        let mut parse_error = BTreeMap::new();
+                        parse_error.insert("Error".to_string(), YamlElement::String(p.to_string()));
+                        output.push(parse_error.clone());
+                        println!("{}", yamlette_string(&output));
+                        return;
+                    }
                 }
-                Err(p) => {
+            }
+
+            _ => match parse_sexp(env_loc.clone(), parsed.args.content.bytes()) {
+                Ok(r) => {
+                    if !r.is_empty() {
+                        r[0].clone()
+                    } else {
+                        Rc::new(sexp::SExp::Nil(env_loc))
+                    }
+                }
+                Err(c) => {
                     let mut parse_error = BTreeMap::new();
-                    parse_error.insert("Error".to_string(), YamlElement::String(p.to_string()));
+                    parse_error.insert(
+                        "Error-Location".to_string(),
+                        YamlElement::String(c.0.to_string()),
+                    );
+                    parse_error.insert("Error".to_string(), YamlElement::String(c.1));
                     output.push(parse_error.clone());
                     println!("{}", yamlette_string(&output));
                     return;
                 }
             }
-        }
-        _ => match parse_sexp(Srcloc::start("*arg*"), parsed.args.content.bytes()) {
-            Ok(r) => {
-                if !r.is_empty() {
-                    args = r[0].clone();
-                }
-            }
-            Err(c) => {
-                let mut parse_error = BTreeMap::new();
-                parse_error.insert(
-                    "Error-Location".to_string(),
-                    YamlElement::String(c.0.to_string()),
-                );
-                parse_error.insert("Error".to_string(), YamlElement::String(c.1));
-                output.push(parse_error.clone());
-                println!("{}", yamlette_string(&output));
-                return;
-            }
-        },
-    };
+        };
 
     let mut prim_map = HashMap::new();
     for p in prims::prims().iter() {
@@ -737,7 +701,7 @@ pub fn cldb(args: &[String]) {
             program_lines,
             Rc::new(use_symbol_table),
             program,
-            args,
+            env,
         );
 
         // Print the tree
@@ -746,7 +710,7 @@ pub fn cldb(args: &[String]) {
         return;
     }
 
-    let step = start_step(program, args);
+    let step = start_step(program, env);
     let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
     let print_tree = |output: &mut Vec<_>, result: &BTreeMap<String, String>| {
         let mut cvt_subtree = BTreeMap::new();
@@ -916,15 +880,9 @@ fn perform_preprocessing(
     Ok(())
 }
 
-fn get_disassembly_ver(p: &HashMap<String, ArgumentValue>) -> Option<usize> {
-    if let Some(ArgumentValue::ArgInt(x)) = p.get("operators_version") {
-        return Some(*x as usize);
-    }
-
-    None
-}
-
 pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, default_stage: u32) {
+    let mut allocator = Allocator::new();
+
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
         prog: format!("clvm_tools {tool_name}"),
@@ -1107,6 +1065,14 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         return;
     }
 
+    let parsed = match RunAndCompileInputData::new(&mut allocator, &parsed_args) {
+        Ok(r) => r,
+        Err(e) => {
+            stdout.write_str(&format!("FAIL: {e}\n"));
+            return;
+        }
+    };
+
     let empty_map = HashMap::new();
     let keywords = match parsed_args.get("no_keywords") {
         Some(ArgumentValue::ArgBool(_b)) => &empty_map,
@@ -1136,22 +1102,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .cloned()
         .unwrap_or_else(|| "*command*".to_string());
 
-    let search_paths = if let Some(ArgumentValue::ArgArray(v)) = parsed_args.get("include") {
-        v.iter()
-            .filter_map(|p| {
-                if let ArgumentValue::ArgString(_, s) = p {
-                    Some(s.to_string())
-                } else {
-                    None
-                }
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
-
-    let mut allocator = Allocator::new();
-
     let time_start = SystemTime::now();
     let time_read_hex = SystemTime::now();
 
@@ -1163,7 +1113,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         parsed_args.get("path_or_code"),
     ) {
         if let Some(filename) = &file {
-            let opts = DefaultCompilerOpts::new(filename).set_search_paths(&search_paths);
+            let opts = DefaultCompilerOpts::new(filename).set_search_paths(&parsed.search_paths);
 
             match gather_dependencies(opts, filename, file_content) {
                 Err(e) => {
@@ -1183,19 +1133,11 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     }
 
     let special_runner =
-        run_program_for_search_paths(&reported_input_file, &search_paths, extra_symbol_info);
+        run_program_for_search_paths(&reported_input_file, &parsed.search_paths, extra_symbol_info);
     // Ensure we know the user's wishes about the disassembly version here.
     special_runner.set_operators_version(get_disassembly_ver(&parsed_args));
     let dpr = special_runner.clone();
     let run_program = special_runner;
-
-    let parsed = match RunAndCompileInputData::new(&mut allocator, &parsed_args) {
-        Ok(r) => r,
-        Err(e) => {
-            stdout.write_str(&format!("FAIL: {e}\n"));
-            return;
-        }
-    };
 
     let time_assemble = SystemTime::now();
 
@@ -1249,7 +1191,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     if do_check_unused {
         let opts =
-            Rc::new(DefaultCompilerOpts::new(&reported_input_file)).set_search_paths(&search_paths);
+            Rc::new(DefaultCompilerOpts::new(&reported_input_file)).set_search_paths(&parsed.search_paths);
         match check_unused(opts, &input_program) {
             Ok((success, output)) => {
                 stderr_output(output);
@@ -1264,70 +1206,31 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         }
     }
 
-    let symbol_table_output = parsed_args
-        .get("symbol_output_file")
-        .and_then(|s| {
-            if let ArgumentValue::ArgString(_, v) = s {
-                Some(v.clone())
-            } else {
-                None
-            }
-        })
-        .unwrap_or_else(|| "main.sym".to_string());
-
     // In testing: short circuit for modern compilation.
-    if let Some(stepping) = parsed.dialect.stepping {
-        let do_optimize = parsed_args
-            .get("optimize")
-            .map(|x| matches!(x, ArgumentValue::ArgBool(true)))
-            .unwrap_or_else(|| false);
-        let runner = Rc::new(DefaultProgramRunner::new());
-        let use_filename = input_file.unwrap_or_else(|| "*command*".to_string());
-        let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
-            .set_dialect(parsed.dialect)
-            .set_optimize(do_optimize || stepping > 22)
-            .set_search_paths(&search_paths)
-            .set_frontend_opt(stepping == 22)
-            .set_disassembly_ver(get_disassembly_ver(&parsed_args));
-        let mut symbol_table = HashMap::new();
-
+    if parsed.dialect.stepping.is_some() {
         // Short circuit preprocessing display.
         if parsed_args.contains_key("preprocess") {
-            if let Err(e) = perform_preprocessing(stdout, opts, &use_filename, &input_program) {
+            if let Err(e) = perform_preprocessing(stdout, parsed.opts.clone(), &parsed.use_filename(), &input_program) {
                 stdout.write_str(&format!("{}: {}", e.0, e.1));
             }
             return;
         }
 
-        let unopt_res = compile_file(
-            &mut allocator,
-            runner.clone(),
-            opts.clone(),
-            &input_program,
-            &mut symbol_table,
-        );
-        let res = unopt_res.and_then(|x| {
-            maybe_finalize_program_via_classic_optimizer(
-                &mut allocator,
-                runner,
-                opts,
-                do_optimize,
-                &x,
-            )
-        });
+        let mut symbol_table = HashMap::new();
+        match parsed.compile_modern(&mut allocator, &mut symbol_table).and_then(|r| {
+            write_sym_output(&symbol_table, &parsed.symbol_table_output).map_err(|e| {
+                CompileErr(Srcloc::start(&parsed.use_filename()), format!("writing symbols: {e:?}"))
+            })?;
 
-        match res {
+            Ok(r)
+        }) {
             Ok(r) => {
                 stdout.write_str(&r.to_string());
-
-                build_symbol_table_mut(&mut symbol_table, &r);
-                write_sym_output(&symbol_table, &symbol_table_output).expect("writing symbols");
             }
             Err(c) => {
                 stdout.write_str(&format!("{}: {}", c.0, c.1));
             }
         }
-
         return;
     }
 
@@ -1547,7 +1450,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     let compile_sym_out = dpr.get_compiles();
     if !compile_sym_out.is_empty() {
-        write_sym_output(&compile_sym_out, &symbol_table_output).ok();
+        write_sym_output(&compile_sym_out, &parsed.symbol_table_output).ok();
     }
 
     stdout.write_str(&format!("{output}\n"));
