@@ -12,7 +12,7 @@ use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
-use crate::compiler::comptypes::{CompilerOpts, CompileErr};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
 use crate::compiler::dialect::{detect_modern, AcceptedDialect};
 use crate::compiler::optimize::maybe_finalize_program_via_classic_optimizer;
@@ -46,10 +46,7 @@ pub struct ParsedInputPathOrCode {
 
 impl ParsedInputPathOrCode {
     pub fn use_filename(&self) -> String {
-        self
-            .path
-            .clone()
-            .unwrap_or_else(|| "*command*".to_string())
+        self.path.clone().unwrap_or_else(|| "*command*".to_string())
     }
 }
 
@@ -149,11 +146,12 @@ impl RunAndCompileInputData {
             Vec::new()
         };
 
-        let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&program.use_filename()))
-            .set_dialect(dialect.clone())
-            .set_search_paths(&search_paths)
-            .set_optimize(do_optimize)
-            .set_disassembly_ver(get_disassembly_ver(&parsed_args));
+        let mut opts: Rc<dyn CompilerOpts> =
+            Rc::new(DefaultCompilerOpts::new(&program.use_filename()))
+                .set_dialect(dialect.clone())
+                .set_search_paths(&search_paths)
+                .set_optimize(do_optimize)
+                .set_disassembly_ver(get_disassembly_ver(parsed_args));
 
         if let Some(stepping) = dialect.stepping {
             opts = opts
@@ -184,7 +182,10 @@ impl RunAndCompileInputData {
     }
 
     pub fn use_filename(&self) -> String {
-        self.program.path.clone().unwrap_or_else(|| "*command*".to_string())
+        self.program
+            .path
+            .clone()
+            .unwrap_or_else(|| "*command*".to_string())
     }
 
     pub fn compile_modern(

@@ -594,10 +594,7 @@ pub fn cldb(args: &[String]) {
             _ => None,
         });
 
-    let parsed = match RunAndCompileInputData::new(
-        &mut allocator,
-        &parsed_args
-    ) {
+    let parsed = match RunAndCompileInputData::new(&mut allocator, &parsed_args) {
         Ok(r) => r,
         Err(e) => {
             println!("FAIL: {e}");
@@ -619,9 +616,7 @@ pub fn cldb(args: &[String]) {
             &parsed.program.content,
         )
         .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
-        _ => {
-            parsed.compile_modern(&mut allocator, &mut use_symbol_table)
-        }
+        _ => parsed.compile_modern(&mut allocator, &mut use_symbol_table),
     };
 
     let program = match res {
@@ -633,47 +628,46 @@ pub fn cldb(args: &[String]) {
     };
 
     let env_loc = Srcloc::start("*args*");
-    let env =
-        match parsed_args.get("hex") {
-            Some(ArgumentValue::ArgBool(true)) => {
-                match hex_to_modern_sexp(
-                    &mut allocator,
-                    &HashMap::new(),
-                    args_srcloc,
-                    &parsed.args.content,
-                ) {
-                    Ok(r) => r,
-                    Err(p) => {
-                        let mut parse_error = BTreeMap::new();
-                        parse_error.insert("Error".to_string(), YamlElement::String(p.to_string()));
-                        output.push(parse_error.clone());
-                        println!("{}", yamlette_string(&output));
-                        return;
-                    }
-                }
-            }
-
-            _ => match parse_sexp(env_loc.clone(), parsed.args.content.bytes()) {
-                Ok(r) => {
-                    if !r.is_empty() {
-                        r[0].clone()
-                    } else {
-                        Rc::new(sexp::SExp::Nil(env_loc))
-                    }
-                }
-                Err(c) => {
+    let env = match parsed_args.get("hex") {
+        Some(ArgumentValue::ArgBool(true)) => {
+            match hex_to_modern_sexp(
+                &mut allocator,
+                &HashMap::new(),
+                args_srcloc,
+                &parsed.args.content,
+            ) {
+                Ok(r) => r,
+                Err(p) => {
                     let mut parse_error = BTreeMap::new();
-                    parse_error.insert(
-                        "Error-Location".to_string(),
-                        YamlElement::String(c.0.to_string()),
-                    );
-                    parse_error.insert("Error".to_string(), YamlElement::String(c.1));
+                    parse_error.insert("Error".to_string(), YamlElement::String(p.to_string()));
                     output.push(parse_error.clone());
                     println!("{}", yamlette_string(&output));
                     return;
                 }
             }
-        };
+        }
+
+        _ => match parse_sexp(env_loc.clone(), parsed.args.content.bytes()) {
+            Ok(r) => {
+                if !r.is_empty() {
+                    r[0].clone()
+                } else {
+                    Rc::new(sexp::SExp::Nil(env_loc))
+                }
+            }
+            Err(c) => {
+                let mut parse_error = BTreeMap::new();
+                parse_error.insert(
+                    "Error-Location".to_string(),
+                    YamlElement::String(c.0.to_string()),
+                );
+                parse_error.insert("Error".to_string(), YamlElement::String(c.1));
+                output.push(parse_error.clone());
+                println!("{}", yamlette_string(&output));
+                return;
+            }
+        },
+    };
 
     let mut prim_map = HashMap::new();
     for p in prims::prims().iter() {
@@ -1085,23 +1079,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     // more info).
     let extra_symbol_info = parsed_args.get("extra_syms").map(|_| true).unwrap_or(false);
 
-    // Get name of included file so we can use it to initialize the compiler's
-    // runner, which contains operators used at compile time in clvm to update
-    // symbols.  This is the only means we have of communicating with the
-    // compilation process from this level.
-    let mut input_file = None;
-    let mut input_program = "()".to_string();
-
-    if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("path_or_code") {
-        input_file.clone_from(file);
-        input_program = path_or_code.to_string();
-    }
-
-    let reported_input_file = input_file
-        .as_ref()
-        .cloned()
-        .unwrap_or_else(|| "*command*".to_string());
-
     let time_start = SystemTime::now();
     let time_read_hex = SystemTime::now();
 
@@ -1132,8 +1109,11 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         return;
     }
 
-    let special_runner =
-        run_program_for_search_paths(&reported_input_file, &parsed.search_paths, extra_symbol_info);
+    let special_runner = run_program_for_search_paths(
+        &parsed.use_filename(),
+        &parsed.search_paths,
+        extra_symbol_info,
+    );
     // Ensure we know the user's wishes about the disassembly version here.
     special_runner.set_operators_version(get_disassembly_ver(&parsed_args));
     let dpr = special_runner.clone();
@@ -1190,9 +1170,9 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     };
 
     if do_check_unused {
-        let opts =
-            Rc::new(DefaultCompilerOpts::new(&reported_input_file)).set_search_paths(&parsed.search_paths);
-        match check_unused(opts, &input_program) {
+        let opts = Rc::new(DefaultCompilerOpts::new(&parsed.use_filename()))
+            .set_search_paths(&parsed.search_paths);
+        match check_unused(opts, &parsed.program.content) {
             Ok((success, output)) => {
                 stderr_output(output);
                 if !success {
@@ -1210,20 +1190,32 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     if parsed.dialect.stepping.is_some() {
         // Short circuit preprocessing display.
         if parsed_args.contains_key("preprocess") {
-            if let Err(e) = perform_preprocessing(stdout, parsed.opts.clone(), &parsed.use_filename(), &input_program) {
+            if let Err(e) = perform_preprocessing(
+                stdout,
+                parsed.opts.clone(),
+                &parsed.use_filename(),
+                &parsed.program.content,
+            ) {
                 stdout.write_str(&format!("{}: {}", e.0, e.1));
             }
             return;
         }
 
         let mut symbol_table = HashMap::new();
-        match parsed.compile_modern(&mut allocator, &mut symbol_table).and_then(|r| {
-            write_sym_output(&symbol_table, &parsed.symbol_table_output).map_err(|e| {
-                CompileErr(Srcloc::start(&parsed.use_filename()), format!("writing symbols: {e:?}"))
-            })?;
+        let res = parsed
+            .compile_modern(&mut allocator, &mut symbol_table)
+            .and_then(|r| {
+                write_sym_output(&symbol_table, &parsed.symbol_table_output).map_err(|e| {
+                    CompileErr(
+                        Srcloc::start(&parsed.use_filename()),
+                        format!("writing symbols: {e:?}"),
+                    )
+                })?;
 
-            Ok(r)
-        }) {
+                Ok(r)
+            });
+
+        match res {
             Ok(r) => {
                 stdout.write_str(&r.to_string());
             }
