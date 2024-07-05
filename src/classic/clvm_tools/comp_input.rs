@@ -3,14 +3,14 @@ use std::rc::Rc;
 
 use clvmr::{Allocator, NodePtr};
 
-use crate::classic::platform::argparse::ArgumentValue;
 use crate::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType};
-use crate::classic::clvm::serialize::{SimpleCreateCLVMObject, sexp_from_stream};
+use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
+use crate::classic::platform::argparse::ArgumentValue;
 
 use crate::classic::clvm_tools::binutils::assemble_from_ir;
 use crate::classic::clvm_tools::ir::reader::read_ir;
 
-use crate::compiler::dialect::{AcceptedDialect, detect_modern};
+use crate::compiler::dialect::{detect_modern, AcceptedDialect};
 
 fn get_string_and_filename_with_default(
     parsed_args: &HashMap<String, ArgumentValue>,
@@ -81,7 +81,7 @@ pub fn parse_tool_input_sexp(
                         path,
                         content: use_sexp_text,
                         parsed: assemble_from_ir(allocator, Rc::new(v))
-                            .map_err(|e| format!("{e:?}"))?
+                            .map_err(|e| format!("{e:?}"))?,
                     })
                 })
         }
@@ -97,26 +97,11 @@ pub struct RunAndCompileInputData {
 impl RunAndCompileInputData {
     pub fn new(
         allocator: &mut Allocator,
-        parsed_args: &HashMap<String, ArgumentValue>
+        parsed_args: &HashMap<String, ArgumentValue>,
     ) -> Result<RunAndCompileInputData, String> {
-        let program = parse_tool_input_sexp(
-            allocator,
-            "path_or_code",
-            parsed_args,
-            None,
-            None
-        )?;
-        let args = parse_tool_input_sexp(
-            allocator,
-            "env",
-            parsed_args,
-            Some("80"),
-            Some("()"),
-        )?;
-        let dialect = detect_modern(
-            allocator,
-            program.parsed
-        );
+        let program = parse_tool_input_sexp(allocator, "path_or_code", parsed_args, None, None)?;
+        let args = parse_tool_input_sexp(allocator, "env", parsed_args, Some("80"), Some("()"))?;
+        let dialect = detect_modern(allocator, program.parsed);
         Ok(RunAndCompileInputData {
             program,
             args,

@@ -596,17 +596,13 @@ pub fn cldb(args: &[String]) {
             println!("{}", yamlette_string(output));
         };
 
-    let parsed =
-        match RunAndCompileInputData::new(
-            &mut allocator,
-            &parsed_args
-        ) {
-            Ok(r) => r,
-            Err(e) => {
-                errorize(&mut output, None, &e.to_string());
-                return;
-            }
-        };
+    let parsed = match RunAndCompileInputData::new(&mut allocator, &parsed_args) {
+        Ok(r) => r,
+        Err(e) => {
+            errorize(&mut output, None, &e.to_string());
+            return;
+        }
+    };
 
     let symbol_table = parsed_args
         .get("symbol_table")
@@ -626,7 +622,8 @@ pub fn cldb(args: &[String]) {
         .map(|x| matches!(x, ArgumentValue::ArgBool(true)))
         .unwrap_or_else(|| false);
     let runner = Rc::new(DefaultProgramRunner::new());
-    let use_filename = parsed.program
+    let use_filename = parsed
+        .program
         .path
         .clone()
         .unwrap_or_else(|| "*command*".to_string());
@@ -719,7 +716,8 @@ pub fn cldb(args: &[String]) {
         prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
     }
     let program_lines: Rc<Vec<String>> = Rc::new(
-        parsed.program
+        parsed
+            .program
             .content
             .lines()
             .map(|x| x.to_string())
@@ -1191,21 +1189,19 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let dpr = special_runner.clone();
     let run_program = special_runner;
 
-    let parsed =
-        match RunAndCompileInputData::new(
-            &mut allocator,
-            &parsed_args
-        ) {
-            Ok(r) => r,
-            Err(e) => {
-                stdout.write_str(&format!("FAIL: {e}\n"));
-                return;
-            }
-        };
+    let parsed = match RunAndCompileInputData::new(&mut allocator, &parsed_args) {
+        Ok(r) => r,
+        Err(e) => {
+            stdout.write_str(&format!("FAIL: {e}\n"));
+            return;
+        }
+    };
 
     let time_assemble = SystemTime::now();
 
-    let input_sexp = allocator.new_pair(parsed.program.parsed, parsed.args.parsed).ok();
+    let input_sexp = allocator
+        .new_pair(parsed.program.parsed, parsed.args.parsed)
+        .ok();
 
     // Symbol table related checks: should one be loaded, should one be saved.
     // This code is confusingly woven due to 'run' and 'brun' serving many roles.
