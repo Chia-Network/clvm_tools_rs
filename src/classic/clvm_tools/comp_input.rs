@@ -67,12 +67,12 @@ pub fn parse_tool_input_sexp(
                 return Err("missing argument {argument}".to_string());
             };
 
-            let use_sexp_text =
-                if sexp_text.is_empty() {
-                    default_hex.unwrap_or_default()
-                } else {
-                    &sexp_text
-                }.to_string();
+            let use_sexp_text = if sexp_text.is_empty() {
+                default_hex.unwrap_or_default()
+            } else {
+                &sexp_text
+            }
+            .to_string();
 
             let sexp_serialized =
                 Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(use_sexp_text.clone())))
