@@ -59,13 +59,20 @@ pub fn parse_tool_input_sexp(
 ) -> Result<ParsedInputPathOrCode, String> {
     match parsed_args.get("hex") {
         Some(_) => {
-            let (path, use_sexp_text) = if let Some(r) =
+            let (path, sexp_text) = if let Some(r) =
                 get_string_and_filename_with_default(parsed_args, argument, default_hex)
             {
                 r
             } else {
                 return Err("missing argument {argument}".to_string());
             };
+
+            let use_sexp_text =
+                if sexp_text.is_empty() {
+                    default_hex.unwrap_or_default()
+                } else {
+                    &sexp_text
+                }.to_string();
 
             let sexp_serialized =
                 Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(use_sexp_text.clone())))
