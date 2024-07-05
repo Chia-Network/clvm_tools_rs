@@ -496,6 +496,82 @@ pub fn cldb_hierarchy(
     result
 }
 
+fn get_string_and_filename_with_default(
+    parsed_args: &HashMap<String, ArgumentValue>,
+    argument: &str,
+    default: Option<&str>,
+) -> Option<(Option<String>, String)> {
+    if let Some(ArgumentValue::ArgString(path, content)) = parsed_args.get(argument) {
+        Some((path.clone(), content.to_string()))
+    } else {
+        default.map(|p| (None, p.to_string()))
+    }
+}
+
+struct ParsedInputPathOrCode {
+    path: Option<String>,
+    content: String,
+    parsed: NodePtr,
+}
+
+fn parse_tool_input_sexp(
+    allocator: &mut Allocator,
+    argument: &str,
+    parsed_args: &HashMap<String, ArgumentValue>,
+    default_hex: Option<&str>,
+    default_sexp: Option<&str>,
+) -> Result<ParsedInputPathOrCode, String> {
+    match parsed_args.get("hex") {
+        Some(_) => {
+            let (path, use_sexp_text) = if let Some(r) =
+                get_string_and_filename_with_default(parsed_args, argument, default_hex)
+            {
+                r
+            } else {
+                return Err("missing argument {argument}".to_string());
+            };
+
+            let sexp_serialized =
+                Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(use_sexp_text.clone())))
+                    .map_err(|e| format!("{e:?}"))?;
+
+            let mut prog_stream = Stream::new(Some(sexp_serialized));
+
+            sexp_from_stream(
+                allocator,
+                &mut prog_stream,
+                Box::new(SimpleCreateCLVMObject {}),
+            )
+            .map(|x| ParsedInputPathOrCode {
+                path,
+                content: use_sexp_text,
+                parsed: x.1,
+            })
+            .map_err(|e| format!("{e:?}"))
+        }
+        _ => {
+            let (path, use_sexp_text) = if let Some(r) =
+                get_string_and_filename_with_default(parsed_args, argument, default_sexp)
+            {
+                r
+            } else {
+                return Err(format!("missing argument {argument}"));
+            };
+
+            read_ir(&use_sexp_text)
+                .map_err(|e| format!("{e:?}"))
+                .and_then(|v| {
+                    Ok(ParsedInputPathOrCode {
+                        path,
+                        content: use_sexp_text,
+                        parsed: assemble_from_ir(allocator, Rc::new(v))
+                            .map_err(|e| format!("{e:?}"))?,
+                    })
+                })
+        }
+    }
+}
+
 pub fn cldb(args: &[String]) {
     let tool_name = "cldb".to_string();
     let props = TArgumentParserProps {
@@ -558,14 +634,10 @@ pub fn cldb(args: &[String]) {
     );
     let arg_vec = args[1..].to_vec();
 
-    let mut input_file = None;
-    let mut input_program = "()".to_string();
-
     let prog_srcloc = Srcloc::start("*program*");
     let args_srcloc = Srcloc::start("*args*");
 
     let mut args = Rc::new(sexp::SExp::atom_from_string(args_srcloc.clone(), ""));
-    let mut parsed_args_result: String = "".to_string();
 
     let parsed_args: HashMap<String, ArgumentValue> = match parser.parse_args(&arg_vec) {
         Err(e) => {
@@ -583,16 +655,40 @@ pub fn cldb(args: &[String]) {
         }
     }
 
-    if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("path_or_code") {
-        input_file.clone_from(file);
-        input_program = path_or_code.to_string();
-    }
-
-    if let Some(ArgumentValue::ArgString(_, s)) = parsed_args.get("env") {
-        parsed_args_result = s.to_string();
-    }
-
     let mut allocator = Allocator::new();
+    let mut output = Vec::new();
+
+    let errorize =
+        |output: &mut Vec<BTreeMap<String, YamlElement>>, location: Option<Srcloc>, c: &str| {
+            let mut parse_error = BTreeMap::new();
+            if let Some(l) = location {
+                parse_error.insert(
+                    "Error-Location".to_string(),
+                    YamlElement::String(l.to_string()),
+                );
+            };
+            parse_error.insert("Error".to_string(), YamlElement::String(c.to_string()));
+            output.push(parse_error.clone());
+            println!("{}", yamlette_string(output));
+        };
+
+    let parsed_program_result =
+        match parse_tool_input_sexp(&mut allocator, "path_or_code", &parsed_args, None, None) {
+            Ok(r) => r,
+            Err(e) => {
+                errorize(&mut output, None, &e.to_string());
+                return;
+            }
+        };
+
+    let parsed_args_result =
+        match parse_tool_input_sexp(&mut allocator, "env", &parsed_args, Some("80"), Some("()")) {
+            Ok(r) => r,
+            Err(e) => {
+                errorize(&mut output, None, &e.to_string());
+                return;
+            }
+        };
 
     let symbol_table = parsed_args
         .get("symbol_table")
@@ -612,7 +708,8 @@ pub fn cldb(args: &[String]) {
         .map(|x| matches!(x, ArgumentValue::ArgBool(true)))
         .unwrap_or_else(|| false);
     let runner = Rc::new(DefaultProgramRunner::new());
-    let use_filename = input_file
+    let use_filename = parsed_program_result
+        .path
         .clone()
         .unwrap_or_else(|| "*command*".to_string());
     let opts = Rc::new(DefaultCompilerOpts::new(&use_filename))
@@ -620,14 +717,13 @@ pub fn cldb(args: &[String]) {
         .set_search_paths(&search_paths);
 
     let mut use_symbol_table = symbol_table.unwrap_or_default();
-    let mut output = Vec::new();
 
     let res = match parsed_args.get("hex") {
         Some(ArgumentValue::ArgBool(true)) => hex_to_modern_sexp(
             &mut allocator,
             &use_symbol_table,
             prog_srcloc.clone(),
-            &input_program,
+            &parsed_program_result.content,
         )
         .map_err(|_| CompileErr(prog_srcloc, "Failed to parse hex".to_string())),
         _ => {
@@ -637,7 +733,7 @@ pub fn cldb(args: &[String]) {
                 &mut allocator,
                 runner.clone(),
                 opts.clone(),
-                &input_program,
+                &parsed_program_result.content,
                 &mut use_symbol_table,
             );
             unopt_res.and_then(|x| {
@@ -655,14 +751,7 @@ pub fn cldb(args: &[String]) {
     let program = match res {
         Ok(r) => r,
         Err(c) => {
-            let mut parse_error = BTreeMap::new();
-            parse_error.insert(
-                "Error-Location".to_string(),
-                YamlElement::String(c.0.to_string()),
-            );
-            parse_error.insert("Error".to_string(), YamlElement::String(c.1));
-            output.push(parse_error.clone());
-            println!("{}", yamlette_string(&output));
+            errorize(&mut output, Some(c.0.clone()), &c.1);
             return;
         }
     };
@@ -673,7 +762,7 @@ pub fn cldb(args: &[String]) {
                 &mut allocator,
                 &HashMap::new(),
                 args_srcloc,
-                &parsed_args_result,
+                &parsed_args_result.content,
             ) {
                 Ok(r) => {
                     args = r;
@@ -687,7 +776,7 @@ pub fn cldb(args: &[String]) {
                 }
             }
         }
-        _ => match parse_sexp(Srcloc::start("*arg*"), parsed_args_result.bytes()) {
+        _ => match parse_sexp(Srcloc::start("*arg*"), parsed_args_result.content.bytes()) {
             Ok(r) => {
                 if !r.is_empty() {
                     args = r[0].clone();
@@ -711,10 +800,15 @@ pub fn cldb(args: &[String]) {
     for p in prims::prims().iter() {
         prim_map.insert(p.0.clone(), Rc::new(p.1.clone()));
     }
-    let program_lines: Rc<Vec<String>> =
-        Rc::new(input_program.lines().map(|x| x.to_string()).collect());
+    let program_lines: Rc<Vec<String>> = Rc::new(
+        parsed_program_result
+            .content
+            .lines()
+            .map(|x| x.to_string())
+            .collect(),
+    );
     let cldbenv = CldbRunEnv::new(
-        input_file.clone(),
+        parsed_program_result.path.clone(),
         program_lines.clone(),
         Box::new(CldbNoOverride::new_symbols(use_symbol_table.clone())),
     );
@@ -723,7 +817,7 @@ pub fn cldb(args: &[String]) {
         let result = cldb_hierarchy(
             runner,
             Rc::new(prim_map),
-            input_file,
+            parsed_program_result.path.clone(),
             program_lines,
             Rc::new(use_symbol_table),
             program,
@@ -1142,14 +1236,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
 
     let mut allocator = Allocator::new();
 
-    let input_serialized = None;
-    let mut input_sexp: Option<NodePtr> = None;
-
     let time_start = SystemTime::now();
-    let mut time_read_hex = SystemTime::now();
-    let mut time_assemble = SystemTime::now();
-
-    let mut input_args = "()".to_string();
+    let time_read_hex = SystemTime::now();
 
     if let (
         Some(ArgumentValue::ArgBool(true)),
@@ -1178,11 +1266,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         return;
     }
 
-    if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("env") {
-        input_file.clone_from(file);
-        input_args = path_or_code.to_string();
-    }
-
     let special_runner =
         run_program_for_search_paths(&reported_input_file, &search_paths, extra_symbol_info);
     // Ensure we know the user's wishes about the disassembly version here.
@@ -1190,88 +1273,26 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let dpr = special_runner.clone();
     let run_program = special_runner;
 
-    match parsed_args.get("hex") {
-        Some(_) => {
-            let assembled_serialized = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(
-                input_program.to_string(),
-            )));
-
-            let env_serialized = if input_args.is_empty() {
-                Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex("80".to_string())))
-            } else {
-                Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(input_args)))
-            };
-
-            let ee = match env_serialized {
-                Ok(x) => x,
-                Err(e) => {
-                    stdout.write_str(&format!("FAIL: {e}\n"));
-                    return;
-                }
-            };
-            time_read_hex = SystemTime::now();
-
-            let mut prog_stream = Stream::new(Some(match assembled_serialized {
-                Ok(x) => x,
-                Err(e) => {
-                    stdout.write_str(&format!("FAIL: {e}\n"));
-                    return;
-                }
-            }));
-
-            let input_prog_sexp = sexp_from_stream(
-                &mut allocator,
-                &mut prog_stream,
-                Box::new(SimpleCreateCLVMObject {}),
-            )
-            .map(|x| Some(x.1))
-            .unwrap();
-
-            let mut arg_stream = Stream::new(Some(ee));
-            let input_arg_sexp = sexp_from_stream(
-                &mut allocator,
-                &mut arg_stream,
-                Box::new(SimpleCreateCLVMObject {}),
-            )
-            .map(|x| Some(x.1))
-            .unwrap();
-            if let (Some(ip), Some(ia)) = (input_prog_sexp, input_arg_sexp) {
-                input_sexp = allocator.new_pair(ip, ia).ok();
-            }
-        }
-        _ => {
-            let src_sexp;
-            if let Some(ArgumentValue::ArgString(f, content)) = parsed_args.get("path_or_code") {
-                match read_ir(content) {
-                    Ok(s) => {
-                        input_program.clone_from(content);
-                        input_file.clone_from(f);
-                        src_sexp = s;
-                    }
-                    Err(e) => {
-                        stdout.write_str(&format!("FAIL: {e}\n"));
-                        return;
-                    }
-                }
-            } else {
-                stdout.write_str(&format!("FAIL: {}\n", "non-string argument"));
+    let assembled_sexp =
+        match parse_tool_input_sexp(&mut allocator, "path_or_code", &parsed_args, None, None) {
+            Ok(s) => s,
+            Err(e) => {
+                stdout.write_str(&format!("FAIL: {e}\n"));
                 return;
             }
+        };
 
-            let assembled_sexp = assemble_from_ir(&mut allocator, Rc::new(src_sexp)).unwrap();
-            let mut parsed_args_result = "()".to_string();
-
-            if let Some(ArgumentValue::ArgString(_f, s)) = parsed_args.get("env") {
-                parsed_args_result = s.to_string();
-            }
-
-            let env_ir = read_ir(&parsed_args_result).unwrap();
-            let env = assemble_from_ir(&mut allocator, Rc::new(env_ir)).unwrap();
-            time_assemble = SystemTime::now();
-
-            input_sexp = allocator.new_pair(assembled_sexp, env).ok();
+    let env = match parse_tool_input_sexp(&mut allocator, "env", &parsed_args, None, None) {
+        Ok(s) => s,
+        Err(e) => {
+            stdout.write_str(&format!("FAIL: {e}\n"));
+            return;
         }
-    }
+    };
+
+    let time_assemble = SystemTime::now();
+
+    let input_sexp = allocator.new_pair(assembled_sexp.parsed, env.parsed).ok();
 
     // Symbol table related checks: should one be loaded, should one be saved.
     // This code is confusingly woven due to 'run' and 'brun' serving many roles.
@@ -1487,16 +1508,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         })
         .unwrap_or_else(|| 0);
     let max_cost = max(0, max_cost);
-
-    if input_sexp.is_none() {
-        input_sexp = sexp_from_stream(
-            &mut allocator,
-            &mut Stream::new(input_serialized),
-            Box::new(SimpleCreateCLVMObject {}),
-        )
-        .map(|x| Some(x.1))
-        .unwrap();
-    };
 
     // Part 2 of doing pre_eval: Have a thing that receives the messages and
     // performs some action.
