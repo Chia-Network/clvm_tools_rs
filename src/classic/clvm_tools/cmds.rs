@@ -396,9 +396,7 @@ pub struct CldbHierarchyArgs {
     pub flags: u32,
 }
 
-pub fn cldb_hierarchy(
-    args: CldbHierarchyArgs
-) -> Vec<BTreeMap<String, YamlElement>> {
+pub fn cldb_hierarchy(args: CldbHierarchyArgs) -> Vec<BTreeMap<String, YamlElement>> {
     let mut runner = HierarchialRunner::new(
         args.runner,
         args.prim_map,
@@ -740,7 +738,7 @@ pub fn cldb(args: &[String]) {
 
     if parsed_args.contains_key("tree") {
         let result = cldb_hierarchy(CldbHierarchyArgs {
-            runner: runner,
+            runner,
             prim_map: Rc::new(prim_map),
             input_file_name: input_file,
             lines: program_lines,

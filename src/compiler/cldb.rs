@@ -594,7 +594,6 @@ fn hex_to_modern_sexp_inner(
     symbol_table: &HashMap<String, String>,
     loc: Srcloc,
     program: NodePtr,
-    flags: u32,
 ) -> Result<Rc<SExp>, EvalErr> {
     let hash = sha256tree(allocator, program);
     let hash_str = hash.hex();
@@ -606,8 +605,8 @@ fn hex_to_modern_sexp_inner(
     match allocator.sexp(program) {
         allocator::SExp::Pair(a, b) => Ok(Rc::new(SExp::Cons(
             srcloc.clone(),
-            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc.clone(), a, flags)?,
-            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc, b, flags)?,
+            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc.clone(), a)?,
+            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc, b)?,
         ))),
         _ => convert_from_clvm_rs(allocator, srcloc, program).map_err(|_| {
             EvalErr(
@@ -636,7 +635,7 @@ pub fn hex_to_modern_sexp(
         .map(|x| x.1)
         .map_err(|_| RunFailure::RunErr(loc.clone(), "Bad conversion from hex".to_string()))?;
 
-    hex_to_modern_sexp_inner(allocator, symbol_table, loc.clone(), sexp, 0).map_err(|_| {
+    hex_to_modern_sexp_inner(allocator, symbol_table, loc.clone(), sexp).map_err(|_| {
         RunFailure::RunErr(loc, "Failed to convert from classic to modern".to_string())
     })
 }
