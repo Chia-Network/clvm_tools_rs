@@ -154,14 +154,14 @@ pub fn hexize(a: Rc<SExp>, flags: u32) -> Rc<SExp> {
                 a.clone()
             }
         }
-        SExp::Cons(l, a, b) => {
-            let new_a = hexize(a.clone(), flags);
-            let new_b = hexize(b.clone(), flags);
-            if Rc::as_ptr(&new_a) == Rc::as_ptr(a) && Rc::as_ptr(&new_b) == Rc::as_ptr(b) {
+        SExp::Cons(loc, l, r) => {
+            let new_l = hexize(l.clone(), flags);
+            let new_r = hexize(r.clone(), flags);
+            if Rc::as_ptr(&new_l) == Rc::as_ptr(l) && Rc::as_ptr(&new_r) == Rc::as_ptr(r) {
                 return a.clone();
             }
 
-            Rc::new(SExp::Cons(l.clone(), new_a, new_b))
+            Rc::new(SExp::Cons(loc.clone(), new_l, new_r))
         }
         _ => a.clone(),
     }
