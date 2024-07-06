@@ -24,6 +24,8 @@ use crate::compiler::srcloc::Srcloc;
 use crate::util::u8_from_number;
 use crate::util::Number;
 
+pub const FAVOR_HEX: u32 = 1;
+
 fn print_atom() -> SExp {
     SExp::Atom(Srcloc::start("*print*"), b"$print$".to_vec())
 }
@@ -109,6 +111,7 @@ pub struct CldbRun {
     in_expr: bool,
     row: usize,
     print_only: bool,
+    flags: u32,
 
     outputs_to_step: HashMap<Number, PriorResult>,
 }
@@ -127,6 +130,37 @@ fn humanize(a: Rc<SExp>) -> Rc<SExp> {
         SExp::Cons(l, a, b) => {
             let new_a = humanize(a.clone());
             let new_b = humanize(b.clone());
+            Rc::new(SExp::Cons(l.clone(), new_a, new_b))
+        }
+        _ => a.clone(),
+    }
+}
+
+pub fn hexize(a: Rc<SExp>, flags: u32) -> Rc<SExp> {
+    match a.borrow() {
+        SExp::Atom(l, av) => {
+            if av.len() > 2 && (flags & FAVOR_HEX) != 0 {
+                Rc::new(SExp::QuotedString(l.clone(), b'x', av.clone()))
+            } else {
+                a.clone()
+            }
+        }
+        SExp::Integer(l, i) => {
+            // If it has a nice string representation then show that.
+            let bytes_of_int = u8_from_number(i.clone());
+            if bytes_of_int.len() > 2 && (flags & FAVOR_HEX) != 0 {
+                Rc::new(SExp::QuotedString(l.clone(), b'x', bytes_of_int))
+            } else {
+                a.clone()
+            }
+        }
+        SExp::Cons(l, a, b) => {
+            let new_a = hexize(a.clone(), flags);
+            let new_b = hexize(b.clone(), flags);
+            if Rc::as_ptr(&new_a) == Rc::as_ptr(a) && Rc::as_ptr(&new_b) == Rc::as_ptr(b) {
+                return a.clone();
+            }
+
             Rc::new(SExp::Cons(l.clone(), new_a, new_b))
         }
         _ => a.clone(),
@@ -166,7 +200,12 @@ impl CldbRun {
             row: 0,
             outputs_to_step: HashMap::<Number, PriorResult>::new(),
             print_only: false,
+            flags: 0,
         }
+    }
+
+    pub fn set_flags(&mut self, flags: u32) {
+        self.flags = flags;
     }
 
     pub fn set_print_only(&mut self, pronly: bool) {
@@ -207,7 +246,10 @@ impl CldbRun {
                     if self.should_print_basic_output() {
                         self.to_print
                             .insert("Result-Location".to_string(), l.to_string());
-                        self.to_print.insert("Value".to_string(), x.to_string());
+                        self.to_print.insert(
+                            "Value".to_string(),
+                            hexize(x.clone(), self.flags).to_string(),
+                        );
                         self.to_print
                             .insert("Row".to_string(), self.row.to_string());
 
@@ -228,12 +270,14 @@ impl CldbRun {
                 }
             }
             Ok(RunStep::Done(l, x)) => {
+                let final_value = hexize(x.clone(), self.flags);
                 self.to_print
                     .insert("Final-Location".to_string(), l.to_string());
-                self.to_print.insert("Final".to_string(), x.to_string());
+                self.to_print
+                    .insert("Final".to_string(), final_value.to_string());
 
                 self.ended = true;
-                self.final_result = Some(x.clone());
+                self.final_result = Some(final_value);
                 swap(&mut self.to_print, &mut result);
                 produce_result = true;
             }
@@ -269,8 +313,8 @@ impl CldbRun {
                 if should_print_basic_output {
                     self.env.add_context(
                         sexp.borrow(),
-                        c.borrow(),
-                        Some(a.clone()),
+                        hexize(c.clone(), self.flags).borrow(),
+                        Some(hexize(a.clone(), self.flags)),
                         &mut self.to_print,
                     );
                     self.env.add_function(sexp, &mut self.to_print);
@@ -281,7 +325,10 @@ impl CldbRun {
             Err(RunFailure::RunExn(l, s)) => {
                 self.to_print
                     .insert("Throw-Location".to_string(), l.to_string());
-                self.to_print.insert("Throw".to_string(), s.to_string());
+                self.to_print.insert(
+                    "Throw".to_string(),
+                    hexize(s.clone(), self.flags).to_string(),
+                );
 
                 swap(&mut self.to_print, &mut result);
                 self.ended = true;
@@ -547,6 +594,7 @@ fn hex_to_modern_sexp_inner(
     symbol_table: &HashMap<String, String>,
     loc: Srcloc,
     program: NodePtr,
+    flags: u32,
 ) -> Result<Rc<SExp>, EvalErr> {
     let hash = sha256tree(allocator, program);
     let hash_str = hash.hex();
@@ -558,8 +606,8 @@ fn hex_to_modern_sexp_inner(
     match allocator.sexp(program) {
         allocator::SExp::Pair(a, b) => Ok(Rc::new(SExp::Cons(
             srcloc.clone(),
-            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc.clone(), a)?,
-            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc, b)?,
+            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc.clone(), a, flags)?,
+            hex_to_modern_sexp_inner(allocator, symbol_table, srcloc, b, flags)?,
         ))),
         _ => convert_from_clvm_rs(allocator, srcloc, program).map_err(|_| {
             EvalErr(
@@ -588,7 +636,7 @@ pub fn hex_to_modern_sexp(
         .map(|x| x.1)
         .map_err(|_| RunFailure::RunErr(loc.clone(), "Bad conversion from hex".to_string()))?;
 
-    hex_to_modern_sexp_inner(allocator, symbol_table, loc.clone(), sexp).map_err(|_| {
+    hex_to_modern_sexp_inner(allocator, symbol_table, loc.clone(), sexp, 0).map_err(|_| {
         RunFailure::RunErr(loc, "Failed to convert from classic to modern".to_string())
     })
 }
