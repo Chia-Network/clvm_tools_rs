@@ -2433,7 +2433,7 @@ fn test_assign_cse_tricky_2() {
 fn test_classic_modpow() {
     let result = do_basic_brun(&vec![
         "brun".to_string(),
-        "(modpow (q . 2) (q . 6) (q . 5))".to_string()
+        "(modpow (q . 2) (q . 6) (q . 5))".to_string(),
     ]);
     // 64 % 5 == 4
     assert_eq!(result.trim(), "4");
@@ -2443,7 +2443,7 @@ fn test_classic_modpow() {
 fn test_classic_mod_op() {
     let result = do_basic_brun(&vec![
         "brun".to_string(),
-        "(% (q . 13) (q . 10))".to_string()
+        "(% (q . 13) (q . 10))".to_string(),
     ]);
     // 13 % 10 == 3
     assert_eq!(result.trim(), "3");
@@ -2453,7 +2453,7 @@ fn test_classic_mod_op() {
 fn test_modern_modpow() {
     let result = do_basic_brun(&vec![
         "run".to_string(),
-        "(mod (X Y Z) (include *standard-cl-23*) (modpow X Y Z))".to_string()
+        "(mod (X Y Z) (include *standard-cl-23*) (modpow X Y Z))".to_string(),
     ]);
     assert_eq!(result.trim(), "(60 2 5 11)");
 }
@@ -2462,7 +2462,7 @@ fn test_modern_modpow() {
 fn test_modern_mod_op() {
     let result = do_basic_brun(&vec![
         "run".to_string(),
-        "(mod (X Y) (include *standard-cl-23*) (% X Y))".to_string()
+        "(mod (X Y) (include *standard-cl-23*) (% X Y))".to_string(),
     ]);
     assert_eq!(result.trim(), "(61 2 5)");
 }
