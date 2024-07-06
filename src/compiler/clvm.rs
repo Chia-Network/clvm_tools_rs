@@ -305,7 +305,7 @@ pub fn convert_from_clvm_rs(
                     } else {
                         Ok(Rc::new(SExp::Integer(loc, integer)))
                     }
-                } else if int_conv && !printable(atom_data, true) {
+                } else if int_conv && !printable(atom_data, false) {
                     Ok(Rc::new(SExp::QuotedString(loc, b'x', atom_data.to_vec())))
                 } else {
                     Ok(Rc::new(SExp::Atom(loc, atom_data.to_vec())))

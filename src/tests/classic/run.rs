@@ -2428,3 +2428,17 @@ fn test_assign_cse_tricky_2() {
     let wanted_repr = "(2 (1 2 10 (4 2 (4 5 ()))) (4 (1 ((11 5 11) 2 8 (4 2 (4 5 (4 11 ())))) (2 22 (4 2 (4 3 (4 (18 5 (1 . 11)) (4 (16 5 (1 . 1)) ()))))) (2 30 (4 2 (4 3 (4 (1 . 121) ())))) 2 (3 (9 17 (1 . 13)) (1 2 12 (4 2 (4 45 (4 21 ())))) (1 2 (3 (9 17 (1 . 15)) (1 2 8 (4 2 (4 45 (4 21 ())))) (1 . 11)) 1)) 1) 1))";
     assert_eq!(program, wanted_repr);
 }
+
+#[test]
+fn test_quote_string_generation() {
+    let filename = "resources/tests/test_string_repr.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+    let wanted_repr = "(4 (1 . 0x7465737422) (4 (1 . \"test'\") (4 (1 . \"test hi\") (4 (1 . 499918271522) (4 (1 . 499918271527) (4 (1 . test_hi) ()))))))";
+    assert_eq!(program, wanted_repr);
+    let brun_result = do_basic_brun(&vec!["brun".to_string(), program])
+        .trim()
+        .to_string();
+    assert_eq!(brun_result, "(0x7465737422 \"test'\" \"test hi\" 0x7465737422 \"test'\" \"test_hi\")");
+}

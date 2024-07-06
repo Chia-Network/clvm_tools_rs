@@ -362,9 +362,10 @@ pub fn decode_string(v: &[u8]) -> String {
 
 pub fn printable(a: &[u8], quoted: bool) -> bool {
     !a.iter().any(|ch| {
-        (*ch as char).is_control()
-            || !(*ch as char).is_ascii()
-            || (!quoted && ch.is_ascii_whitespace())
+        *ch < 32
+            || *ch > 126
+            || (!quoted && ((*ch as char).is_ascii_whitespace() || *ch == b'\''))
+            || *ch == b'"'
     })
 }
 
