@@ -2440,5 +2440,8 @@ fn test_quote_string_generation() {
     let brun_result = do_basic_brun(&vec!["brun".to_string(), program])
         .trim()
         .to_string();
-    assert_eq!(brun_result, "(0x7465737422 \"test'\" \"test hi\" 0x7465737422 \"test'\" \"test_hi\")");
+    assert_eq!(
+        brun_result,
+        "(0x7465737422 \"test'\" \"test hi\" 0x7465737422 \"test'\" \"test_hi\")"
+    );
 }
