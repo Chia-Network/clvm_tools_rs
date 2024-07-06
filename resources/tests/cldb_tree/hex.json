@@ -5,13 +5,13 @@
                 "Function-Args": {},
                 "Function-Name": "test_with_hex.clsp",
                 "Output": {
-                    "Arguments": "(())",
+                    "Arguments": "(() ())",
                     "Operator": "4",
                     "Operator-Location": "test_with_hex.clsp(1):10-test_with_hex.clsp(1):16",
                     "Result-Location": "test_with_hex.clsp(1):10-test_with_hex.clsp(1):16",
                     "Function": "concat",
                     "Row": "0",
-                    "Value": "()"
+                    "Value": "(())"
                 }
             }
         ]
