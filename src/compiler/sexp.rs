@@ -366,6 +366,7 @@ pub fn printable(a: &[u8], quoted: bool) -> bool {
             || *ch > 126
             || (!quoted && ((*ch as char).is_ascii_whitespace() || *ch == b'\''))
             || *ch == b'"'
+            || *ch == b'\\'
     })
 }
 
