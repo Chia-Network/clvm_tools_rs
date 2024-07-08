@@ -2452,7 +2452,6 @@ fn test_almost_empty_lambda_gives_error() {
     assert!(format!("{res:?}").contains("Must provide at least arguments and body to lambda"));
 }
 
-
 #[test]
 fn test_exhaustive_chars() {
     // Verify that we can create a program that gives the expected output using
@@ -2476,7 +2475,7 @@ fn test_exhaustive_chars() {
                         Rc::new(SExp::Cons(
                             srcloc.clone(),
                             Rc::new(SExp::Atom(srcloc.clone(), b"*standard-cl-23.1*".to_vec())),
-                            Rc::new(SExp::Nil(srcloc.clone()))
+                            Rc::new(SExp::Nil(srcloc.clone())),
                         )),
                     )),
                     Rc::new(SExp::Cons(
@@ -2484,12 +2483,12 @@ fn test_exhaustive_chars() {
                         Rc::new(SExp::Cons(
                             srcloc.clone(),
                             Rc::new(SExp::Integer(srcloc.clone(), bi_one())),
-                            sub
+                            sub,
                         )),
-                        Rc::new(SExp::Nil(srcloc.clone()))
-                    ))
-                ))
-            ))
+                        Rc::new(SExp::Nil(srcloc.clone())),
+                    )),
+                )),
+            )),
         ))
     };
 
@@ -2499,24 +2498,21 @@ fn test_exhaustive_chars() {
         for j in 0..=255 {
             substitute[i] = j;
 
-            let sub_qe =
-                Rc::new(SExp::QuotedString(
-                    srcloc.clone(),
-                    b'"',
-                    substitute.clone()
-                ));
+            let sub_qe = Rc::new(SExp::QuotedString(srcloc.clone(), b'"', substitute.clone()));
 
             let mut allocator = Allocator::new();
             let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("*extest*"));
             let dialect = KNOWN_DIALECTS["*standard-cl-23.1*"].accepted.clone();
             opts = opts.set_dialect(dialect);
 
-            let compiled = opts.compile_program(
-                &mut allocator,
-                runner.clone(),
-                make_test_program(sub_qe),
-                &mut HashMap::new(),
-            ).expect("should compile");
+            let compiled = opts
+                .compile_program(
+                    &mut allocator,
+                    runner.clone(),
+                    make_test_program(sub_qe),
+                    &mut HashMap::new(),
+                )
+                .expect("should compile");
 
             let compiled_output = compiled.to_string();
             let result = do_basic_brun(&vec!["brun".to_string(), compiled_output])
