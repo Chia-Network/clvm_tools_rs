@@ -164,7 +164,13 @@ impl Preprocessor {
             .opts
             .read_new_file(self.opts.filename(), fname.to_string())?;
         let content = match kind {
-            IncludeProcessType::Bin => Rc::new(SExp::Atom(loc.clone(), content)),
+            IncludeProcessType::Bin => {
+                if self.opts.dialect().int_fix {
+                    Rc::new(SExp::QuotedString(loc.clone(), b'x', content))
+                } else {
+                    Rc::new(SExp::Atom(loc.clone(), content))
+                }
+            }
             IncludeProcessType::Hex => hex_to_modern_sexp(
                 &mut allocator,
                 &HashMap::new(),
