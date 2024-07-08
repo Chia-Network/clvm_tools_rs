@@ -2428,3 +2428,26 @@ fn test_assign_cse_tricky_2() {
     let wanted_repr = "(2 (1 2 10 (4 2 (4 5 ()))) (4 (1 ((11 5 11) 2 8 (4 2 (4 5 (4 11 ())))) (2 22 (4 2 (4 3 (4 (18 5 (1 . 11)) (4 (16 5 (1 . 1)) ()))))) (2 30 (4 2 (4 3 (4 (1 . 121) ())))) 2 (3 (9 17 (1 . 13)) (1 2 12 (4 2 (4 45 (4 21 ())))) (1 2 (3 (9 17 (1 . 15)) (1 2 8 (4 2 (4 45 (4 21 ())))) (1 . 11)) 1)) 1) 1))";
     assert_eq!(program, wanted_repr);
 }
+
+#[test]
+fn test_include_zero_bin() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (X) (include *standard-cl-23.1*) (embed-file lz bin lz.bin) (concat 1 lz))"
+            .to_string(),
+    ]);
+    assert_eq!(program, "(2 (1 14 (1 . 1) 2) (4 (1 . 0x0001) 1))");
+}
+
+#[test]
+fn test_include_zero_bin_pre_fix() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (X) (include *standard-cl-23*) (embed-file lz bin lz.bin) (concat 1 lz))".to_string(),
+    ]);
+    assert_eq!(program, "(2 (1 14 (1 . 1) 2) (4 (1 . 1) 1))");
+}
