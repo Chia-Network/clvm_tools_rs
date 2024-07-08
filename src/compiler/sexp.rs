@@ -276,6 +276,8 @@ fn normalize_int(v: Vec<u8>, base: u32) -> Number {
 fn from_hex(l: Srcloc, v: &[u8]) -> SExp {
     let mut result = vec![0; (v.len() - 1) / 2];
     let mut hex_const;
+    // This assigns a new reference so the vec is copied only when we need
+    // to pad it.
     let v_ref = if v.len() % 2 == 1 {
         hex_const = v.to_vec();
         hex_const.insert(2, b'0');
