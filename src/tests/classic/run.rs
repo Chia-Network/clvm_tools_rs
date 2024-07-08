@@ -2489,3 +2489,20 @@ fn test_modern_mod_op() {
     ]);
     assert_eq!(result.trim(), "(61 2 5)");
 }
+
+#[test]
+fn test_quote_string_generation() {
+    let filename = "resources/tests/test_string_repr.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+    let wanted_repr = "(4 (1 . 0x7465737422) (4 (1 . \"test'\") (4 (1 . \"test hi\") (4 (1 . 499918271522) (4 (1 . 499918271527) (4 (1 . test_hi) ()))))))";
+    assert_eq!(program, wanted_repr);
+    let brun_result = do_basic_brun(&vec!["brun".to_string(), program])
+        .trim()
+        .to_string();
+    assert_eq!(
+        brun_result,
+        "(0x7465737422 \"test'\" \"test hi\" 0x7465737422 \"test'\" \"test_hi\")"
+    );
+}

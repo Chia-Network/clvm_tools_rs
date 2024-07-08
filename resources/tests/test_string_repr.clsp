@@ -1,0 +1,8 @@
+(mod ()
+  (include *standard-cl-23*)
+  
+  (defmac M (X) (string-append "test" X))
+  (defmac A (X) (c 1 (string->symbol (string-append "test" X))))
+  
+  (list (M '"') (M "'") (M " hi") (A '"') (A "'") (A "_hi"))
+  )
