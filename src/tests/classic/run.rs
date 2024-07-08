@@ -2472,3 +2472,26 @@ fn test_modern_mod_op() {
     // 137 % 6 == 5
     assert_eq!(result.trim(), "5");
 }
+
+#[test]
+fn test_include_zero_bin() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (X) (include *standard-cl-23.1*) (embed-file lz bin lz.bin) (concat 1 lz))"
+            .to_string(),
+    ]);
+    assert_eq!(program, "(2 (1 14 (1 . 1) 2) (4 (1 . 0x0001) 1))");
+}
+
+#[test]
+fn test_include_zero_bin_pre_fix() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (X) (include *standard-cl-23*) (embed-file lz bin lz.bin) (concat 1 lz))".to_string(),
+    ]);
+    assert_eq!(program, "(2 (1 14 (1 . 1) 2) (4 (1 . 1) 1))");
+}
