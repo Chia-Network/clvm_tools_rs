@@ -274,8 +274,16 @@ fn normalize_int(v: Vec<u8>, base: u32) -> Number {
 // left to retain their sign and hex constants are considered unsigned so _not_
 // padded.
 fn from_hex(l: Srcloc, v: &[u8]) -> SExp {
-    let mut result = vec![0; (v.len() - 2) / 2];
-    hex2bin(&v[2..], &mut result).expect("should convert from hex");
+    let mut result = vec![0; (v.len() - 1) / 2];
+    let mut hex_const;
+    let v_ref = if v.len() % 2 == 1 {
+        hex_const = v.to_vec();
+        hex_const.insert(2, b'0');
+        &hex_const[2..]
+    } else {
+        &v[2..]
+    };
+    hex2bin(v_ref, &mut result).ok();
     SExp::QuotedString(l, b'x', result)
 }
 
