@@ -50,7 +50,9 @@ use crate::classic::platform::argparse::{
     TArgOptionAction, TArgumentParserProps,
 };
 
-use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
+use crate::compiler::cldb::{
+    hex_to_modern_sexp, hexize, CldbNoOverride, CldbRun, CldbRunEnv, FAVOR_HEX,
+};
 use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
 use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::DefaultCompilerOpts;
@@ -381,24 +383,29 @@ fn yamlette_string(to_print: &[BTreeMap<String, YamlElement>]) -> String {
     }
 }
 
-pub fn cldb_hierarchy(
-    runner: Rc<dyn TRunProgram>,
-    prim_map: Rc<HashMap<Vec<u8>, Rc<sexp::SExp>>>,
-    input_file_name: Option<String>,
-    lines: Rc<Vec<String>>,
-    symbol_table: Rc<HashMap<String, String>>,
-    prog: Rc<sexp::SExp>,
-    args: Rc<sexp::SExp>,
-) -> Vec<BTreeMap<String, YamlElement>> {
+pub struct CldbHierarchyArgs {
+    pub runner: Rc<dyn TRunProgram>,
+    pub prim_map: Rc<HashMap<Vec<u8>, Rc<sexp::SExp>>>,
+    pub input_file_name: Option<String>,
+    pub lines: Rc<Vec<String>>,
+    pub symbol_table: Rc<HashMap<String, String>>,
+    pub prog: Rc<sexp::SExp>,
+    pub args: Rc<sexp::SExp>,
+    pub flags: u32,
+}
+
+pub fn cldb_hierarchy(args: CldbHierarchyArgs) -> Vec<BTreeMap<String, YamlElement>> {
     let mut runner = HierarchialRunner::new(
-        runner,
-        prim_map,
-        input_file_name,
-        lines,
-        symbol_table,
-        prog,
-        args,
+        args.runner,
+        args.prim_map,
+        args.input_file_name,
+        args.lines,
+        args.symbol_table,
+        args.prog,
+        args.args,
     );
+
+    runner.set_flags(args.flags);
 
     let mut output_stack = vec![Vec::new()];
 
@@ -432,7 +439,10 @@ pub fn cldb_hierarchy(
                 );
                 let mut arg_values = BTreeMap::new();
                 for (k, v) in runner.running[run_idx].named_args.iter() {
-                    arg_values.insert(k.clone(), YamlElement::String(format!("{v}")));
+                    arg_values.insert(
+                        k.clone(),
+                        YamlElement::String(format!("{}", hexize(v.clone(), args.flags))),
+                    );
                 }
                 function_entry.insert(
                     "Function-Args".to_string(),
@@ -532,6 +542,12 @@ pub fn cldb(args: &[String]) {
             .set_help("path to symbol file".to_string()),
     );
     parser.add_argument(
+        vec!["-X".to_string(), "--favor-hex".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("favor hex output to integer".to_string()),
+    );
+    parser.add_argument(
         vec!["-p".to_string(), "--only-print".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
@@ -603,6 +619,7 @@ pub fn cldb(args: &[String]) {
     };
 
     let only_print = parsed_args.get("only_print").map(|_| true).unwrap_or(false);
+    let favor_hex = parsed_args.get("favor_hex").map(|_| true).unwrap_or(false);
 
     let runner = Rc::new(DefaultProgramRunner::new());
 
@@ -688,15 +705,16 @@ pub fn cldb(args: &[String]) {
     );
 
     if parsed_args.contains_key("tree") {
-        let result = cldb_hierarchy(
+        let result = cldb_hierarchy(CldbHierarchyArgs {
             runner,
-            Rc::new(prim_map),
-            parsed.program.path.clone(),
-            program_lines,
-            Rc::new(use_symbol_table),
-            program,
-            env,
-        );
+            prim_map: Rc::new(prim_map),
+            input_file_name: parsed.program.path.clone(),
+            lines: program_lines,
+            symbol_table: Rc::new(use_symbol_table),
+            prog: program,
+            args: env,
+            flags: if favor_hex { FAVOR_HEX } else { 0 },
+        });
 
         // Print the tree
         let string_result = yamlette_string(&result);
@@ -706,6 +724,10 @@ pub fn cldb(args: &[String]) {
 
     let step = start_step(program, env);
     let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
+    if favor_hex {
+        cldbrun.set_flags(FAVOR_HEX);
+    }
+
     let print_tree = |output: &mut Vec<_>, result: &BTreeMap<String, String>| {
         let mut cvt_subtree = BTreeMap::new();
         for (k, v) in result.iter() {
