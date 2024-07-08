@@ -2451,18 +2451,24 @@ fn test_classic_mod_op() {
 
 #[test]
 fn test_modern_modpow() {
-    let result = do_basic_brun(&vec![
+    let program = do_basic_run(&vec![
         "run".to_string(),
         "(mod (X Y Z) (include *standard-cl-23*) (modpow X Y Z))".to_string(),
     ]);
-    assert_eq!(result.trim(), "(60 2 5 11)");
+    assert_eq!(program.trim(), "(60 2 5 11)");
+    let result = do_basic_brun(&vec!["brun".to_string(), program, "(2 7 10)".to_string()]);
+    // 128 % 10 == 8
+    assert_eq!(result.trim(), "8");
 }
 
 #[test]
 fn test_modern_mod_op() {
-    let result = do_basic_brun(&vec![
+    let program = do_basic_run(&vec![
         "run".to_string(),
         "(mod (X Y) (include *standard-cl-23*) (% X Y))".to_string(),
     ]);
-    assert_eq!(result.trim(), "(61 2 5)");
+    assert_eq!(program.trim(), "(61 2 5)");
+    let result = do_basic_brun(&vec!["brun".to_string(), program, "(137 6)".to_string()]);
+    // 137 % 6 == 5
+    assert_eq!(result.trim(), "5");
 }
