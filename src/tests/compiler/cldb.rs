@@ -6,7 +6,7 @@ use clvmr::allocator::Allocator;
 
 use crate::classic::clvm_tools::cmds::{cldb_hierarchy, CldbHierarchyArgs, YamlElement};
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
-use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv, FAVOR_HEX};
+use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
 use crate::compiler::clvm::{start_step, RunStep};
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::CompilerOpts;
@@ -68,7 +68,6 @@ where
         Box::new(CldbNoOverride::new_symbols(symbols)),
     );
     let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
-    cldbrun.set_flags(flags);
 
     let mut output: BTreeMap<String, String> = BTreeMap::new();
 
