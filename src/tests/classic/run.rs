@@ -2430,6 +2430,50 @@ fn test_assign_cse_tricky_2() {
 }
 
 #[test]
+fn test_classic_modpow() {
+    let result = do_basic_brun(&vec![
+        "brun".to_string(),
+        "(modpow (q . 2) (q . 6) (q . 5))".to_string(),
+    ]);
+    // 64 % 5 == 4
+    assert_eq!(result.trim(), "4");
+}
+
+#[test]
+fn test_classic_mod_op() {
+    let result = do_basic_brun(&vec![
+        "brun".to_string(),
+        "(% (q . 13) (q . 10))".to_string(),
+    ]);
+    // 13 % 10 == 3
+    assert_eq!(result.trim(), "3");
+}
+
+#[test]
+fn test_modern_modpow() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "(mod (X Y Z) (include *standard-cl-23*) (modpow X Y Z))".to_string(),
+    ]);
+    assert_eq!(program.trim(), "(60 2 5 11)");
+    let result = do_basic_brun(&vec!["brun".to_string(), program, "(2 7 10)".to_string()]);
+    // 128 % 10 == 8
+    assert_eq!(result.trim(), "8");
+}
+
+#[test]
+fn test_modern_mod_op() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "(mod (X Y) (include *standard-cl-23*) (% X Y))".to_string(),
+    ]);
+    assert_eq!(program.trim(), "(61 2 5)");
+    let result = do_basic_brun(&vec!["brun".to_string(), program, "(137 6)".to_string()]);
+    // 137 % 6 == 5
+    assert_eq!(result.trim(), "5");
+}
+
+#[test]
 fn test_include_zero_bin() {
     let program = do_basic_run(&vec![
         "run".to_string(),
