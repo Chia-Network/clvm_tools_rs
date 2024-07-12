@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
 
-use crate::classic::clvm_tools::cmds::{cldb_hierarchy, YamlElement};
+use crate::classic::clvm_tools::cmds::{cldb_hierarchy, CldbHierarchyArgs, YamlElement};
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
 use crate::compiler::clvm::{start_step, RunStep};
@@ -49,6 +49,7 @@ fn run_clvm_in_cldb<V>(
     symbols: HashMap<String, String>,
     args: Rc<SExp>,
     viewer: &mut V,
+    flags: u32,
 ) -> Option<String>
 where
     V: StepOfCldbViewer,
@@ -67,6 +68,7 @@ where
         Box::new(CldbNoOverride::new_symbols(symbols)),
     );
     let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
+
     let mut output: BTreeMap<String, String> = BTreeMap::new();
 
     loop {
@@ -116,6 +118,7 @@ fn test_run_clvm_in_cldb() {
             symbols,
             args,
             &mut DoesntWatchCldb {},
+            0,
         ),
         Some("120".to_string())
     );
@@ -169,6 +172,7 @@ fn compile_and_run_program_with_tree(
     input_program_text: &str,
     args_text: &str,
     search_paths: &[String],
+    flags: u32,
 ) -> Vec<BTreeMap<String, YamlElement>> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
@@ -197,15 +201,16 @@ fn compile_and_run_program_with_tree(
     let program_lines: Rc<Vec<String>> =
         Rc::new(input_program_text.lines().map(|x| x.to_string()).collect());
 
-    cldb_hierarchy(
+    cldb_hierarchy(CldbHierarchyArgs {
         runner,
-        Rc::new(prim_map),
-        Some(input_file.to_owned()),
-        program_lines,
-        Rc::new(use_symbol_table),
-        Rc::new(program),
+        prim_map: Rc::new(prim_map),
+        input_file_name: Some(input_file.to_owned()),
+        lines: program_lines,
+        symbol_table: Rc::new(use_symbol_table),
+        prog: Rc::new(program),
         args,
-    )
+        flags,
+    })
 }
 
 fn run_program_as_tree_from_hex(
@@ -240,15 +245,16 @@ fn run_program_as_tree_from_hex(
     }
     let program_lines = Rc::new(vec![]);
     let runner = Rc::new(DefaultProgramRunner::new());
-    cldb_hierarchy(
+    cldb_hierarchy(CldbHierarchyArgs {
         runner,
-        Rc::new(prim_map),
-        Some(file_name.to_owned()),
-        program_lines,
-        Rc::new(symbol_table),
-        program,
+        prim_map: Rc::new(prim_map),
+        input_file_name: Some(file_name.to_owned()),
+        lines: program_lines,
+        symbol_table: Rc::new(symbol_table),
+        prog: program,
         args,
-    )
+        flags: 0,
+    })
 }
 
 fn compare_run_output(
@@ -275,7 +281,8 @@ fn test_cldb_hierarchy_mode() {
         .expect("test resources should exist: test_rec_1.cl");
     let input_file = "./test_rec_1.cl";
 
-    let result = compile_and_run_program_with_tree(&input_file, &input_program, "(3 2)", &vec![]);
+    let result =
+        compile_and_run_program_with_tree(&input_file, &input_program, "(3 2)", &vec![], 0);
 
     compare_run_output(result, run_entries);
 }
@@ -362,7 +369,8 @@ fn test_cldb_explicit_throw() {
             program,
             HashMap::new(),
             args,
-            &mut watcher
+            &mut watcher,
+            0
         ),
         None
     );
@@ -387,6 +395,7 @@ fn test_clvm_operator_with_weird_tail() {
             HashMap::new(),
             args,
             &mut DoesntWatchCldb {},
+            0,
         ),
         Some("8".to_string())
     );
