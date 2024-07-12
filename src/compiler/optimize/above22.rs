@@ -43,7 +43,8 @@ impl Optimization for Strategy23 {
         let mut rebuilt_helpers = Vec::new();
         for h in p0.helpers.iter() {
             if let HelperForm::Defun(inline, d) = h {
-                let function_body = cse_optimize_bodyform(&h.loc(), h.name(), true, d.body.borrow())?;
+                let function_body =
+                    cse_optimize_bodyform(&h.loc(), h.name(), true, d.body.borrow())?;
                 // Ok we've got a body that is now a let stack.
                 let new_helper = HelperForm::Defun(
                     *inline,

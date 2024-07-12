@@ -122,9 +122,7 @@ impl Drop for CompilerOperators {
 
 impl CompilerOperatorsInternal {
     pub fn new(source_file: &str, search_paths: Vec<String>, symbols_extra_info: bool) -> Self {
-        let base_dialect = Rc::new(ChiaDialect::new(
-            NO_UNKNOWN_OPS,
-        ));
+        let base_dialect = Rc::new(ChiaDialect::new(NO_UNKNOWN_OPS));
         let base_runner = Rc::new(DefaultProgramRunner::new());
         CompilerOperatorsInternal {
             base_dialect,

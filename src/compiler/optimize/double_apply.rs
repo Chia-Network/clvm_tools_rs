@@ -82,10 +82,7 @@ fn collapse_constant_condition(sexp: Rc<SExp>) -> (bool, Rc<SExp>) {
         AtomValue::Here(&[3]),
         NodeSel::Cons(
             ThisNode,
-            NodeSel::Cons(
-                ThisNode,
-                NodeSel::Cons(ThisNode, ThisNode),
-            ),
+            NodeSel::Cons(ThisNode, NodeSel::Cons(ThisNode, ThisNode)),
         ),
     )
     .select_nodes(sexp.clone())

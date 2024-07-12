@@ -965,9 +965,8 @@ impl Preprocessor {
                 return Ok(new_self);
             }
 
-            if let Ok(NodeSel::Cons((_, name), args)) =
-                NodeSel::Cons(Atom::Here(()), ThisNode)
-                    .select_nodes(new_self.clone().unwrap_or_else(|| body.clone()))
+            if let Ok(NodeSel::Cons((_, name), args)) = NodeSel::Cons(Atom::Here(()), ThisNode)
+                .select_nodes(new_self.clone().unwrap_or_else(|| body.clone()))
             {
                 // See if it's a form that calls one of our macros.
                 if let Some(compiled_program) = self.find_macro(body.loc(), &name)? {
@@ -1008,10 +1007,7 @@ impl Preprocessor {
             NodeSel::Cons((nl, name), NodeSel::Cons(args, body)),
         )) = NodeSel::Cons(
             Atom::Here(()),
-            NodeSel::Cons(
-                Atom::Here(()),
-                NodeSel::Cons(ThisNode, ThisNode),
-            ),
+            NodeSel::Cons(Atom::Here(()), NodeSel::Cons(ThisNode, ThisNode)),
         )
         .select_nodes(definition.clone())
         {
