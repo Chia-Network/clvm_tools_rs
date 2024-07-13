@@ -199,10 +199,13 @@ impl Preprocessor {
         desc: IncludeDesc,
     ) -> Result<(), CompileErr> {
         let name_string = decode_string(&desc.name);
-        if KNOWN_DIALECTS.contains_key(&name_string) {
+        // Terminate early checking anything with a processed include type.
+        if KNOWN_DIALECTS.contains_key(&name_string) || desc.kind.is_some() {
             return Ok(());
         }
 
+        if desc.kind.is_some() {
+        }
         let (full_name, content) = self.opts.read_new_file(self.opts.filename(), name_string)?;
         includes.push(IncludeDesc {
             name: full_name.as_bytes().to_vec(),
