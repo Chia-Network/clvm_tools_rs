@@ -2502,11 +2502,9 @@ fn test_include_bin_should_not_be_parsed() {
         "run".to_string(),
         "-i".to_string(),
         "resources/tests".to_string(),
-        "(mod (X) (include *standard-cl-23.1*) (embed-file test bin bin-quote.bin) test)".to_string()
+        "(mod (X) (include *standard-cl-23.1*) (embed-file test bin bin-quote.bin) test)"
+            .to_string(),
     ]);
-    let result = do_basic_brun(&vec![
-        "brun".to_string(),
-        program
-    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), program]);
     assert_eq!(result.trim(), "\"'test\"");
 }

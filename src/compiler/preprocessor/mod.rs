@@ -204,8 +204,6 @@ impl Preprocessor {
             return Ok(());
         }
 
-        if desc.kind.is_some() {
-        }
         let (full_name, content) = self.opts.read_new_file(self.opts.filename(), name_string)?;
         includes.push(IncludeDesc {
             name: full_name.as_bytes().to_vec(),
