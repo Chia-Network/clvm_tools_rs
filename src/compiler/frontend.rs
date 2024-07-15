@@ -8,8 +8,7 @@ use crate::compiler::comptypes::{
     list_to_cons, match_as_named, ArgsAndTail, Binding, BindingPattern, BodyForm, CompileErr,
     CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DefunData, Export,
     FrontendOutput, HelperForm, ImportLongName, IncludeDesc, LetData, LetFormInlineHint,
-    LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, NamespaceData,
-    NamespaceRefData,
+    LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, NamespaceData, NamespaceRefData,
 };
 use crate::compiler::lambda::handle_lambda;
 use crate::compiler::preprocessor::{

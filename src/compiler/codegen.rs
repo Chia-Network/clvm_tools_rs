@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::mem::swap;
 use std::rc::Rc;
@@ -394,7 +395,7 @@ fn create_name_lookup(
                     if as_variable && is_defun_in_codegen(compiler, name) {
                         // It's a defun.  Harden the result so it is callable
                         // directly by the CLVM 'a' operator.
-                        lambda_for_defun(compiler, opts.clone(), l.clone(), &name, find_program)
+                        lambda_for_defun(compiler, opts.clone(), l.clone(), name, find_program)
                     } else {
                         find_program
                     }
@@ -1564,7 +1565,7 @@ fn find_easiest_constant(
         let mut deps_of_constant = HashSet::new();
         depgraph.get_full_depends_on(&mut deps_of_constant, h.name());
         let only_constant_deps: HashSet<Vec<u8>> = deps_of_constant
-            .difference(&function_set)
+            .difference(function_set)
             .cloned()
             .collect();
         let how_many_deps = only_constant_deps.len();
@@ -1851,14 +1852,14 @@ fn generate_complex_constant_body(
             Ok(code_generator.add_constant(&defc.name, Rc::new(quoted)))
         }
     } else {
-        return Err(CompileErr(
+        Err(CompileErr(
             defc.loc.clone(),
             format!(
                 "constant definition didn't reduce to constant value {}, got {}",
                 h.to_sexp(),
                 constant_result.to_sexp()
             ),
-        ));
+        ))
     }
 }
 
@@ -2323,15 +2324,15 @@ fn collect_env_names(env: Rc<SExp>) -> Vec<Rc<SExp>> {
 }
 
 fn make_env_tree(loc: &Srcloc, env: &[Rc<SExp>], start: usize, end: usize) -> Rc<SExp> {
-    if start + 1 > end {
-        Rc::new(SExp::Nil(loc.clone()))
-    } else if start + 1 == end {
-        env[start].clone()
-    } else {
-        let mid = (start + end) / 2;
-        let left = make_env_tree(loc, env, start, mid);
-        let right = make_env_tree(loc, env, mid, end);
-        Rc::new(SExp::Cons(loc.clone(), left, right))
+    match (start + 1).cmp(&end) {
+        Ordering::Greater => Rc::new(SExp::Nil(loc.clone())),
+        Ordering::Equal => env[start].clone(),
+        _ => {
+            let mid = (start + end) / 2;
+            let left = make_env_tree(loc, env, start, mid);
+            let right = make_env_tree(loc, env, mid, end);
+            Rc::new(SExp::Cons(loc.clone(), left, right))
+        }
     }
 }
 
@@ -2399,7 +2400,7 @@ pub fn codegen(
         }
 
         eprintln!("generate normal helper {}", decode_string(f.name()));
-        code_generator = codegen_(context, opts.clone(), &code_generator, &f, false)?;
+        code_generator = codegen_(context, opts.clone(), &code_generator, f, false)?;
     }
 
     // If stepping 23 or greater, we support no-env mode.
@@ -2499,15 +2500,13 @@ pub fn codegen(
             .insert("__chia__main_arguments".to_string(), cmod.args.to_string());
 
         if opts.in_defun() {
-            let final_code = primapply(
+            primapply(
                 code.0.clone(),
                 Rc::new(primquote(code.0.clone(), code.1)),
                 Rc::new(SExp::Integer(code.0, bi_one())),
-            );
-
-            final_code
+            )
         } else if code_generator.left_env {
-            let final_code = primapply(
+            primapply(
                 code.0.clone(),
                 Rc::new(primquote(code.0.clone(), code.1)),
                 Rc::new(primcons(
@@ -2515,8 +2514,7 @@ pub fn codegen(
                     Rc::new(primquote(code.0.clone(), final_env)),
                     Rc::new(SExp::Integer(code.0, bi_one())),
                 )),
-            );
-            final_code
+            )
         } else {
             let code_borrowed: &SExp = code.1.borrow();
             code_borrowed.clone()

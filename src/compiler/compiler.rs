@@ -13,14 +13,12 @@ use crate::classic::clvm::sexp::sexp_as_bin;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::cldb::hex_to_modern_sexp;
-use crate::compiler::clvm::{
-    convert_to_clvm_rs, run, sha256tree, NewStyleIntConversion,
-};
+use crate::compiler::clvm::{convert_to_clvm_rs, run, sha256tree, NewStyleIntConversion};
 use crate::compiler::codegen::{codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompileModuleComponent, CompileModuleOutput, CompilerOpts,
-    CompilerOutput, ConstantKind, DefunData, Export, FrontendOutput, HelperForm,
-    ImportLongName, IncludeDesc, ModulePhase, PrimaryCodegen, StandalonePhaseInfo, SyntheticType,
+    CompilerOutput, ConstantKind, DefunData, Export, FrontendOutput, HelperForm, ImportLongName,
+    IncludeDesc, ModulePhase, PrimaryCodegen, StandalonePhaseInfo, SyntheticType,
 };
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::frontend;
@@ -33,7 +31,7 @@ use crate::compiler::srcloc::Srcloc;
 use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 use crate::util::Number;
 
-pub const SHA256TREE_PROGRAM_CLVM: &'static str = "(2 (1 2 (3 (7 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) (4 (1 2 (3 (7 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) 1))";
+pub const SHA256TREE_PROGRAM_CLVM: &str = "(2 (1 2 (3 (7 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) (4 (1 2 (3 (7 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) 1))";
 
 pub const FUZZ_TEST_PRE_CSE_MERGE_FIX_FLAG: usize = 1;
 
@@ -313,12 +311,7 @@ fn form_module_program_common_body(
     mut program: CompileForm,
     exports: &[Export],
 ) -> Result<CompileForm, CompileErr> {
-    program.helpers = program
-        .helpers
-        .iter()
-        .filter(|h| !standalone_constants.contains(h.name()))
-        .cloned()
-        .collect();
+    program.helpers.retain(|h| !standalone_constants.contains(h.name()));
 
     // The body should contain anything that is in the exports but not standalone
     // constants.
@@ -360,8 +353,7 @@ fn form_module_program_common_body(
     for (target_name, capture) in exports.iter().filter_map(|e| {
         if let Export::Function(name, as_name) = e {
             let target_name = as_name
-                .as_ref()
-                .map(|e| e.clone())
+                .clone()
                 .unwrap_or_else(|| name.clone());
             if !standalone_constants.contains(name) {
                 return Some((target_name, name.clone()));
@@ -407,7 +399,7 @@ fn populate_export_map(
                     hash_name,
                     Rc::new(SExp::Atom(value.loc(), sha256tree(value.clone()))),
                 );
-                eprintln!("{} = {value}", decode_string(&name));
+                eprintln!("{} = {value}", decode_string(name));
                 export_map.insert(name.clone(), value.clone());
             }
         }
@@ -451,7 +443,7 @@ pub fn compile_module(
             program.exp = expr.clone();
 
             program = resolve_namespaces(opts.clone(), &program)?;
-            modernize_constants(&mut program.helpers, &standalone_constants);
+            modernize_constants(&mut program.helpers, standalone_constants);
 
             let output = Rc::new(compile_from_compileform(
                 context,
@@ -486,9 +478,9 @@ pub fn compile_module(
             if !standalone_constants.contains(fun_name) {
                 eprintln!(
                     "add inline hash function for export {}",
-                    decode_string(&fun_name)
+                    decode_string(fun_name)
                 );
-                add_inline_hash_for_constant(&mut program, &hash_loc, &fun_name);
+                add_inline_hash_for_constant(&mut program, &hash_loc, fun_name);
             }
         }
     }
@@ -500,9 +492,9 @@ pub fn compile_module(
     let common_opts = opts.set_module_phase(Some(ModulePhase::CommonPhase));
     let mut common_program = resolve_namespaces(
         common_opts.clone(),
-        &form_module_program_common_body(&standalone_constants, program.clone(), exports)?,
+        &form_module_program_common_body(standalone_constants, program.clone(), exports)?,
     )?;
-    modernize_constants(&mut common_program.helpers, &standalone_constants);
+    modernize_constants(&mut common_program.helpers, standalone_constants);
     eprintln!("common program {}", common_program.to_sexp());
     let common_output = compile_from_compileform(context, common_opts, common_program.clone())?;
     eprintln!("common_output {}", common_output);
@@ -603,7 +595,7 @@ pub fn compile_module(
             resolve_namespaces(second_stage_opts.clone(), &second_stage_program)?;
         modernize_constants(
             &mut constant_culled_second_stage_program.helpers,
-            &standalone_constants,
+            standalone_constants,
         );
         eprintln!(
             "standalone program for {}: {}",
@@ -633,7 +625,7 @@ pub fn compile_module(
 
     for (export_name, export_value) in captured_export_map.iter() {
         let output_path =
-            create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(&export_name))?;
+            create_hex_output_path(loc.clone(), &opts.filename(), &decode_string(export_name))?;
 
         let m = CompileModuleComponent {
             shortname: export_name.to_vec(),
@@ -679,7 +671,7 @@ fn get_hex_name_of_export(
             Ok(output_path.into_os_string().to_string_lossy().to_string())
         }
         Export::Function(name, as_name) => {
-            let use_name = decode_string(as_name.as_ref().unwrap_or_else(|| &name));
+            let use_name = decode_string(as_name.as_ref().unwrap_or(name));
             create_hex_output_path(loc.clone(), &opts.filename(), &use_name)
         }
     }
@@ -714,7 +706,7 @@ pub fn try_to_use_existing_hex_outputs(
     let hex_files = determine_hex_file_names(opts.clone(), &cf.loc, exports)?;
     let mut earliest_hex_date: Option<u64> = None;
     for file in hex_files.iter() {
-        if let Ok(mod_date) = opts.get_file_mod_date(&cf.loc, &file) {
+        if let Ok(mod_date) = opts.get_file_mod_date(&cf.loc, file) {
             let should_set = if let Some(hex_date) = earliest_hex_date.as_ref() {
                 *hex_date > mod_date
             } else {
@@ -732,7 +724,7 @@ pub fn try_to_use_existing_hex_outputs(
 
     let mut latest_file_date: Option<u64> = None;
     for file in imports.iter() {
-        if let Ok(mod_date) = opts.get_file_mod_date(&cf.loc, &file) {
+        if let Ok(mod_date) = opts.get_file_mod_date(&cf.loc, file) {
             let should_set = if let Some(input_date) = latest_file_date.as_ref() {
                 *input_date < mod_date
             } else {
@@ -1035,7 +1027,7 @@ impl CompilerOpts for DefaultCompilerOpts {
     }
 
     fn get_file_mod_date(&self, loc: &Srcloc, filename: &str) -> Result<u64, CompileErr> {
-        fs::metadata(&filename)
+        fs::metadata(filename)
             .map_err(|e| format!("could not get metadata for {filename}: {e:?}"))
             .and_then(|m| {
                 m.modified()
