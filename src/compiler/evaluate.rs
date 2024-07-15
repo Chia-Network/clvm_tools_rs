@@ -1657,10 +1657,7 @@ impl<'info> Evaluator {
             get_optimizer(&Srcloc::start(&self.opts.filename()), self.opts.clone())?,
             &mut includes,
         );
-        let com_result = updated_opts.compile_program(
-            &mut context.context,
-            use_body,
-        )?;
+        let com_result = updated_opts.compile_program(&mut context.context, use_body)?;
 
         Ok(Rc::new(com_result.to_sexp()))
     }

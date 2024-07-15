@@ -90,27 +90,23 @@ impl<'a> Iterator for TourNamespaces<'a> {
 
 fn namespace_helper(name: &ImportLongName, value: &HelperForm) -> HelperFormResult {
     match value {
-        HelperForm::Defun(inline, dd) => HelperFormResult::new(
-            &[HelperForm::Defun(
-                *inline,
-                Box::new(DefunData {
-                    name: name.as_u8_vec(LongNameTranslation::Namespace),
-                    ..*dd.clone()
-                }),
-            )],
-        ),
-        HelperForm::Defconstant(dc) => HelperFormResult::new(
-            &[HelperForm::Defconstant(DefconstData {
+        HelperForm::Defun(inline, dd) => HelperFormResult::new(&[HelperForm::Defun(
+            *inline,
+            Box::new(DefunData {
+                name: name.as_u8_vec(LongNameTranslation::Namespace),
+                ..*dd.clone()
+            }),
+        )]),
+        HelperForm::Defconstant(dc) => {
+            HelperFormResult::new(&[HelperForm::Defconstant(DefconstData {
                 name: name.as_u8_vec(LongNameTranslation::Namespace),
                 ..dc.clone()
-            })],
-        ),
-        HelperForm::Defmacro(dm) => HelperFormResult::new(
-            &[HelperForm::Defmacro(DefmacData {
-                name: name.as_u8_vec(LongNameTranslation::Namespace),
-                ..dm.clone()
-            })],
-        ),
+            })])
+        }
+        HelperForm::Defmacro(dm) => HelperFormResult::new(&[HelperForm::Defmacro(DefmacData {
+            name: name.as_u8_vec(LongNameTranslation::Namespace),
+            ..dm.clone()
+        })]),
         _ => HelperFormResult::new(&[value.clone()]),
     }
 }
@@ -586,12 +582,12 @@ fn resolve_namespaces_in_helper(
                 result_helpers.extend(newly_created.new_helpers);
             }
 
-            Ok(HelperFormResult::new(
-                &[HelperForm::Defnamespace(NamespaceData {
+            Ok(HelperFormResult::new(&[HelperForm::Defnamespace(
+                NamespaceData {
                     helpers: result_helpers,
                     ..ns.clone()
-                })],
-            ))
+                },
+            )]))
         }
         HelperForm::Defnsref(_) => Ok(HelperFormResult::new(&[helper.clone()])),
         HelperForm::Defun(inline, dd) => {

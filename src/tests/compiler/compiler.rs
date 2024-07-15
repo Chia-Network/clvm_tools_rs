@@ -5,7 +5,6 @@ use clvm_rs::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
-use crate::compiler::BasicCompileContext;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
@@ -16,6 +15,7 @@ use crate::compiler::rename::rename_in_cons;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::BasicCompileContext;
 
 const TEST_TIMEOUT: usize = 1000000;
 
@@ -2507,10 +2507,7 @@ fn test_handle_explicit_empty_atom() {
         includes,
     );
     let compiled = opts
-        .compile_program(
-            &mut context,
-            program,
-        )
+        .compile_program(&mut context, program)
         .expect("should compile");
     let outcome = run(
         &mut context.allocator(),

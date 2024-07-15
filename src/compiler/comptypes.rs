@@ -880,7 +880,7 @@ impl Debug for ModulePhase {
         match self {
             ModulePhase::CommonPhase => write!(formatter, "CommonPhase"),
             ModulePhase::CommonConstant(env) => write!(formatter, "CommonConstant({env})"),
-            ModulePhase::StandalonePhase(sp) => write!(formatter, "StandalonePhase({sp:?})")
+            ModulePhase::StandalonePhase(sp) => write!(formatter, "StandalonePhase({sp:?})"),
         }
     }
 }
@@ -991,11 +991,7 @@ pub trait CompilerOpts {
     ) -> Result<(String, Vec<u8>), CompileErr>;
 
     /// Give the modified date for the indicated file.
-    fn get_file_mod_date(
-        &self,
-        loc: &Srcloc,
-        fiilename: &str
-    ) -> Result<u64, CompileErr>;
+    fn get_file_mod_date(&self, loc: &Srcloc, fiilename: &str) -> Result<u64, CompileErr>;
 
     /// Fully write a file to the filesystem.
     fn write_new_file(&self, target_path: &str, content: &[u8]) -> Result<(), CompileErr>;
@@ -1125,22 +1121,13 @@ pub trait HasCompilerOptsDelegation {
         context: &mut BasicCompileContext,
         sexp: Rc<SExp>,
     ) -> Result<CompilerOutput, CompileErr> {
-        self.compiler_opts()
-            .compile_program(context, sexp)
+        self.compiler_opts().compile_program(context, sexp)
     }
-    fn override_get_file_mod_date(
-        &self,
-        loc: &Srcloc,
-        filename: &str
-    ) -> Result<u64, CompileErr> {
+    fn override_get_file_mod_date(&self, loc: &Srcloc, filename: &str) -> Result<u64, CompileErr> {
         self.compiler_opts().get_file_mod_date(loc, filename)
     }
     /// Fully write a file to the filesystem.
-    fn override_write_new_file(
-        &self,
-        target_path: &str,
-        content: &[u8]
-    ) -> Result<(), CompileErr> {
+    fn override_write_new_file(&self, target_path: &str, content: &[u8]) -> Result<(), CompileErr> {
         self.compiler_opts().write_new_file(target_path, content)
     }
 }
@@ -1235,11 +1222,7 @@ impl<T: HasCompilerOptsDelegation> CompilerOpts for T {
     fn set_diag_flags(&self, new_flags: Rc<HashSet<usize>>) -> Rc<dyn CompilerOpts> {
         self.override_set_diag_flags(new_flags)
     }
-    fn get_file_mod_date(
-        &self,
-        loc: &Srcloc,
-        filename: &str
-    ) -> Result<u64, CompileErr> {
+    fn get_file_mod_date(&self, loc: &Srcloc, filename: &str) -> Result<u64, CompileErr> {
         self.override_get_file_mod_date(loc, filename)
     }
     fn read_new_file(

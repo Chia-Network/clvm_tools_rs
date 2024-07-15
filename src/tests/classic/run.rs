@@ -1545,7 +1545,9 @@ fn test_defmac_if_smoke_preprocess() {
         "resources/tests/strict".to_string(),
         "-E".to_string(),
         "resources/tests/strict/defmac_if_smoke.clsp".to_string(),
-    ]).trim().to_string();
+    ])
+    .trim()
+    .to_string();
     assert_eq!(
         result_prog,
         "(mod () (include *strict-cl-21*) (a (i t1 (com t2) (com t3)) @))"
@@ -1565,7 +1567,9 @@ fn test_defmac_assert_smoke_preprocess() {
         "resources/tests/strict".to_string(),
         "-E".to_string(),
         "resources/tests/strict/assert.clsp".to_string(),
-    ]).trim().to_string();
+    ])
+    .trim()
+    .to_string();
     assert_eq!(
         result_prog,
         "(mod (A) (include *strict-cl-21*) (a (i 1 (com (a (i A (com 13) (com (x))) @)) (com (x))) @))"
@@ -1576,7 +1580,9 @@ fn test_defmac_assert_smoke_preprocess() {
         "-i".to_string(),
         "resources/tests/strict".to_string(),
         "resources/tests/strict/assert.clsp".to_string(),
-    ]).trim().to_string();
+    ])
+    .trim()
+    .to_string();
     assert_eq!(result_after_preproc, result_with_preproc);
     let run_result_true = do_basic_brun(&vec![
         "brun".to_string(),
@@ -1600,7 +1606,9 @@ fn test_defmac_assert_smoke_preprocess_23() {
         "resources/tests/strict".to_string(),
         "-E".to_string(),
         "resources/tests/strict/assert23.clsp".to_string(),
-    ]).trim().to_string();
+    ])
+    .trim()
+    .to_string();
     assert_eq!(
         result_prog,
         "(mod (A) (include *standard-cl-23*) (a (i 1 (com (a (i A (com 13) (com (x))) @)) (com (x))) @))"
@@ -1611,7 +1619,9 @@ fn test_defmac_assert_smoke_preprocess_23() {
         "-i".to_string(),
         "resources/tests/strict".to_string(),
         "resources/tests/strict/assert23.clsp".to_string(),
-    ]).trim().to_string();
+    ])
+    .trim()
+    .to_string();
     assert_eq!(result_after_preproc, result_with_preproc);
     let run_result_true = do_basic_brun(&vec![
         "brun".to_string(),

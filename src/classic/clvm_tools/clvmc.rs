@@ -20,7 +20,9 @@ use crate::compiler::compiler::compile_file;
 use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, IncludeDesc};
 use crate::compiler::dialect::detect_modern;
-use crate::compiler::optimize::{get_optimizer, maybe_finalize_program_via_classic_optimizer, run_optimizer};
+use crate::compiler::optimize::{
+    get_optimizer, maybe_finalize_program_via_classic_optimizer, run_optimizer,
+};
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::srcloc::Srcloc;
 use crate::util::gentle_overwrite;

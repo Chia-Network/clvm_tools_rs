@@ -6,13 +6,13 @@ use std::rc::Rc;
 use clvmr::allocator::Allocator;
 
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
-use crate::compiler::BasicCompileContext;
 use crate::compiler::compiler::{DefaultCompilerOpts, FUZZ_TEST_PRE_CSE_MERGE_FIX_FLAG};
 use crate::compiler::comptypes::{BodyForm, CompileForm, CompilerOpts, DefunData, HelperForm};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::sexp::SExp;
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::BasicCompileContext;
 
 use crate::tests::compiler::fuzz::{compose_sexp, simple_seeded_rng};
 use crate::tests::compiler::fuzz_assign::{
@@ -127,36 +127,31 @@ fn test_cse_merge_regression() {
                 .set_diag_flags(old_flags);
         let runner = Rc::new(DefaultProgramRunner::new());
         let opt_err_loc = Srcloc::start(&new_opts.filename());
-        let new_compiled =
-            {
-                let mut context = BasicCompileContext::new(
-                    Allocator::new(),
-                    runner.clone(),
-                    HashMap::new(),
-                    get_optimizer(&opt_err_loc, new_opts.clone()).unwrap(),
-                    Vec::new()
-                );
-                new_opts
-                    .compile_program(
-                        &mut context,
-                        program_sexp.clone(),
-                    )
-                    .expect("should compile (new)")
-            };
+        let new_compiled = {
+            let mut context = BasicCompileContext::new(
+                Allocator::new(),
+                runner.clone(),
+                HashMap::new(),
+                get_optimizer(&opt_err_loc, new_opts.clone()).unwrap(),
+                Vec::new(),
+            );
+            new_opts
+                .compile_program(&mut context, program_sexp.clone())
+                .expect("should compile (new)")
+        };
 
-        let old_compiled =
-            {
-                let mut context = BasicCompileContext::new(
-                    Allocator::new(),
-                    runner,
-                    HashMap::new(),
-                    get_optimizer(&opt_err_loc, new_opts.clone()).unwrap(),
-                    Vec::new()
-                );
-                old_opts
-                    .compile_program(&mut context, program_sexp)
-                    .expect("should compile (old)")
-            };
+        let old_compiled = {
+            let mut context = BasicCompileContext::new(
+                Allocator::new(),
+                runner,
+                HashMap::new(),
+                get_optimizer(&opt_err_loc, new_opts.clone()).unwrap(),
+                Vec::new(),
+            );
+            old_opts
+                .compile_program(&mut context, program_sexp)
+                .expect("should compile (old)")
+        };
 
         assert_eq!(new_compiled.to_sexp(), old_compiled.to_sexp());
     }

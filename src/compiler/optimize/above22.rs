@@ -9,7 +9,8 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 #[cfg(any(test, feature = "fuzz"))]
 use crate::compiler::compiler::FUZZ_TEST_PRE_CSE_MERGE_FIX_FLAG;
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, ModulePhase, PrimaryCodegen,
+    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, ModulePhase,
+    PrimaryCodegen,
 };
 use crate::compiler::frontend::compute_live_helpers;
 use crate::compiler::optimize::brief::brief_path_selection;

@@ -7,14 +7,16 @@ use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
 use crate::compiler::comptypes::{
-    list_to_cons, match_as_named, ArgsAndTail, Binding, BindingPattern, BodyForm,
-    CompileErr, CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData,
-    DefunData, Export, FrontendOutput, HelperForm, ImportLongName, IncludeDesc, LetData,
-    LetFormInlineHint, LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, ModulePhase, NamespaceData,
+    list_to_cons, match_as_named, ArgsAndTail, Binding, BindingPattern, BodyForm, CompileErr,
+    CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DefunData, Export,
+    FrontendOutput, HelperForm, ImportLongName, IncludeDesc, LetData, LetFormInlineHint,
+    LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, ModulePhase, NamespaceData,
     NamespaceRefData, SyntheticType,
 };
 use crate::compiler::lambda::handle_lambda;
-use crate::compiler::preprocessor::{Preprocessor, ToplevelModParseResult, detect_chialisp_module, parse_toplevel_mod, preprocess};
+use crate::compiler::preprocessor::{
+    detect_chialisp_module, parse_toplevel_mod, preprocess, Preprocessor, ToplevelModParseResult,
+};
 use crate::compiler::rename::{rename_assign_bindings, rename_children_compileform};
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::{HasLoc, Srcloc};
@@ -596,10 +598,7 @@ pub struct CompileDefun {
     pub body: Rc<SExp>,
 }
 
-fn compile_defun(
-    opts: Rc<dyn CompilerOpts>,
-    data: CompileDefun,
-) -> Result<HelperForm, CompileErr> {
+fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun) -> Result<HelperForm, CompileErr> {
     let mut take_form = data.body.clone();
 
     if let SExp::Cons(_, f, _r) = data.body.borrow() {
@@ -617,7 +616,7 @@ fn compile_defun(
                 orig_args: data.args,
                 body: Rc::new(bf),
                 synthetic: None,
-            })
+            }),
         )
     })
 }
@@ -1023,11 +1022,7 @@ fn frontend_start(
 
             let mut ma = ModAccum::new(l.clone());
             for form in ls.forms.iter().take(ls.forms.len() - 1) {
-                ma = ma.compile_mod_helper(
-                    opts.clone(),
-                    tm.stripped_args.clone(),
-                    form.clone(),
-                )?;
+                ma = ma.compile_mod_helper(opts.clone(), tm.stripped_args.clone(), form.clone())?;
             }
 
             ma.compile_mod_body(

@@ -52,7 +52,7 @@ use crate::classic::platform::argparse::{
 
 use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
 use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
-use crate::compiler::clvm::{NewStyleIntConversion, start_step};
+use crate::compiler::clvm::{start_step, NewStyleIntConversion};
 use crate::compiler::compiler::{compile_file, do_desugar, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompileForm, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
@@ -925,11 +925,7 @@ fn perform_preprocessing(
     program_text: &str,
 ) -> Result<(), CompileErr> {
     let srcloc = Srcloc::start(input_file);
-    let (sigil, parsed) = parse_module_and_get_sigil(
-        opts.clone(),
-        input_file,
-        program_text
-    )?;
+    let (sigil, parsed) = parse_module_and_get_sigil(opts.clone(), input_file, program_text)?;
 
     let frontend = frontend(opts, &parsed)?;
     let rendered = render_mod_with_sigil(input_file, &sigil, frontend.compileform())?;

@@ -42,7 +42,8 @@ use std::rc::Rc;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, IncludeDesc, PrimaryCodegen,
+    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, IncludeDesc,
+    PrimaryCodegen,
 };
 use crate::compiler::optimize::Optimization;
 use crate::compiler::sexp::SExp;

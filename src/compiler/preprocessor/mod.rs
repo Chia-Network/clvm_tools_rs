@@ -318,7 +318,7 @@ pub fn parse_toplevel_mod(
                         .skip(skip_idx)
                         .map(|s| Rc::new(s.clone()))
                         .collect(),
-                    stripped_args: args
+                    stripped_args: args,
                 }));
             }
         }
@@ -516,7 +516,10 @@ impl Preprocessor {
             }
         }
 
-        let opts = self.subcompile_opts.set_dialect(dialect).set_filename(filename);
+        let opts = self
+            .subcompile_opts
+            .set_dialect(dialect)
+            .set_filename(filename);
         let mut context_wrapper = CompileContextWrapper::new(
             &mut allocator,
             runner,
@@ -649,7 +652,8 @@ impl Preprocessor {
         self.prototype_program.push(empty_ns);
 
         // Process this module.
-        let imported_content = self.import_new_module(loc.clone(), &kw, &nl, includes, &full_import_name, spec)?;
+        let imported_content =
+            self.import_new_module(loc.clone(), &kw, &nl, includes, &full_import_name, spec)?;
         let helper_forms: Vec<Rc<SExp>> = vec![
             make_namespace_container(&loc, &nl, &full_import_name, imported_content)?,
             ns_helper.to_sexp(),
@@ -900,8 +904,11 @@ impl Preprocessor {
 
         let new_program = resolve_namespaces(self.opts.clone(), &starting_program)?;
 
-        let compiled_program =
-            compile_from_compileform(&mut wrapper.context, self.opts.set_module_phase(None), new_program)?;
+        let compiled_program = compile_from_compileform(
+            &mut wrapper.context,
+            self.opts.set_module_phase(None),
+            new_program,
+        )?;
         self.stored_macros.insert(
             found_name.clone(),
             StoredMacro::Compiled(Rc::new(compiled_program.clone())),

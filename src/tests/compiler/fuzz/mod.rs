@@ -11,9 +11,8 @@ use rand_chacha::ChaCha8Rng;
 
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
 
-use crate::compiler::BasicCompileContext;
 use crate::compiler::clvm::{convert_to_clvm_rs, run};
-use crate::compiler::compiler::{DefaultCompilerOpts, compile_file};
+use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, HasCompilerOptsDelegation};
 use crate::compiler::dialect::detect_modern;
 use crate::compiler::fuzz::{ExprModifier, FuzzChoice, FuzzGenerator, FuzzTypeParams, Rule};
@@ -21,19 +20,25 @@ use crate::compiler::optimize::get_optimizer;
 use crate::compiler::prims::primquote;
 use crate::compiler::sexp::{enlist, extract_atom_replacement, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::BasicCompileContext;
 
 mod modules_with_constant_exports;
 
 #[derive(Debug)]
-pub struct GenError { message: String }
+pub struct GenError {
+    message: String,
+}
 impl From<&str> for GenError {
-    fn from(m: &str) -> GenError { GenError { message: m.to_string() } }
+    fn from(m: &str) -> GenError {
+        GenError {
+            message: m.to_string(),
+        }
+    }
 }
 
 pub fn compose_sexp(loc: Srcloc, s: &str) -> Rc<SExp> {
     parse_sexp(loc, s.bytes()).expect("should parse")[0].clone()
 }
-
 
 #[derive(Clone)]
 pub struct TestModuleCompilerOpts {

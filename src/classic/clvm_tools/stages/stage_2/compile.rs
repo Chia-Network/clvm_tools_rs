@@ -18,10 +18,10 @@ use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote
 use crate::classic::clvm_tools::stages::stage_2::module::compile_mod;
 use crate::classic::clvm_tools::stages::stage_2::reader::read_file;
 
-use crate::compiler::BasicCompileContext;
 use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::CompilerOpts;
 use crate::compiler::sexp::decode_string;
+use crate::compiler::BasicCompileContext;
 
 const DIAG_OUTPUT: bool = false;
 
