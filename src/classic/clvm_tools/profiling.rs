@@ -31,7 +31,10 @@ impl<'a> Drop for Profiler<'a> {
     fn drop(self: &mut Profiler<'a>) {
         if let Ok(report) = self.guard.report().build() {
             let file = fs::File::create(&self.filename).unwrap();
-            report.flamegraph(file).unwrap();
+            let fg_res = report.flamegraph(file);
+            if let Err(e) = fg_res {
+                eprintln!("flamegraph failed: {e:?}");
+            }
         };
     }
 }
