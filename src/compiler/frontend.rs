@@ -309,10 +309,6 @@ pub fn make_provides_set(provides_set: &mut HashSet<Vec<u8>>, body_sexp: Rc<SExp
     }
 }
 
-fn at_or_above_23(opts: Rc<dyn CompilerOpts>) -> bool {
-    opts.dialect().stepping.unwrap_or(0) > 22
-}
-
 fn handle_assign_form(
     opts: Rc<dyn CompilerOpts>,
     l: Srcloc,
@@ -355,18 +351,11 @@ fn handle_assign_form(
         }));
     }
 
-    let mut compiled_body = compile_bodyform(opts.clone(), Rc::new(v[v.len() - 1].clone()))?;
+    let compiled_body = compile_bodyform(opts.clone(), Rc::new(v[v.len() - 1].clone()))?;
     // We don't need to do much if there were no bindings.
     if bindings.is_empty() {
         return Ok(compiled_body);
     }
-
-    if at_or_above_23(opts) {
-        let (new_compiled_body, new_bindings) =
-            rename_assign_bindings(&l, &bindings, Rc::new(compiled_body))?;
-        compiled_body = new_compiled_body;
-        bindings = new_bindings;
-    };
 
     // Return a precise representation of this assign while storing up the work
     // we did breaking it down.

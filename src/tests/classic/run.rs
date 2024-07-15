@@ -668,48 +668,6 @@ fn test_get_dependencies_2() {
     assert_eq!(dep_set, expect_set);
 }
 
-#[test]
-fn test_treehash_constant() {
-    let result_text = do_basic_run(&vec![
-        "run".to_string(),
-        "-i".to_string(),
-        "resources/tests".to_string(),
-        "resources/tests/test_treehash_constant.cl".to_string(),
-    ])
-    .trim()
-    .to_string();
-    let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
-        .trim()
-        .to_string();
-    assert_eq!(
-        result_hash,
-        "0x34380f2097b86970818f8b026b68135d665babc5fda5afe577f86d51105e08b5"
-    );
-    fs::remove_file("test_treehash_constant.cl_secret-number.sym")
-        .expect("should have been dropped");
-}
-
-#[test]
-fn test_treehash_constant_2() {
-    let result_text = do_basic_run(&vec![
-        "run".to_string(),
-        "-i".to_string(),
-        "resources/tests".to_string(),
-        "resources/tests/test_treehash_constant_2.cl".to_string(),
-    ])
-    .trim()
-    .to_string();
-    let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
-        .trim()
-        .to_string();
-    assert_eq!(
-        result_hash,
-        "0xe2954b5f459d1cffff293498f8263c961890a06fe28d6be1a0f08412164ced80"
-    );
-    fs::remove_file("test_treehash_constant_2.cl_secret-number.sym")
-        .expect("should have been dropped");
-}
-
 fn compute_hash_of_program(disk_file: &str) -> String {
     let mut allocator = Allocator::new();
     let want_program_repr = do_basic_run(&vec![
