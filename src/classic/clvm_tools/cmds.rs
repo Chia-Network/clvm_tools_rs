@@ -36,7 +36,7 @@ use crate::classic::clvm_tools::debug::{
     trace_to_text,
 };
 use crate::classic::clvm_tools::ir::reader::read_ir;
-#[cfg(feature="profiling")]
+#[cfg(feature = "profiling")]
 use crate::classic::clvm_tools::profiling::Profiler;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages;
@@ -1083,7 +1083,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         vec!["--profiling".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
-            .set_help("Run with profiling".to_string())
+            .set_help("Run with profiling".to_string()),
     );
 
     if tool_name == "run" {
@@ -1113,12 +1113,14 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     }
 
     #[cfg(feature = "profiling")]
-    let _profiler =
-        if matches!(parsed_args.get("profiling"), Some(ArgumentValue::ArgBool(true))) { 
-           Some(Profiler::new("prof.svc"))
-        } else {
-            None
-        };
+    let _profiler = if matches!(
+        parsed_args.get("profiling"),
+        Some(ArgumentValue::ArgBool(true))
+    ) {
+        Some(Profiler::new("prof.svc"))
+    } else {
+        None
+    };
 
     let empty_map = HashMap::new();
     let keywords = match parsed_args.get("no_keywords") {
