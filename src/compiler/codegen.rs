@@ -1564,10 +1564,8 @@ fn find_easiest_constant(
     for (i, h) in constants_in_set.iter().enumerate() {
         let mut deps_of_constant = HashSet::new();
         depgraph.get_full_depends_on(&mut deps_of_constant, h.name());
-        let only_constant_deps: HashSet<Vec<u8>> = deps_of_constant
-            .difference(function_set)
-            .cloned()
-            .collect();
+        let only_constant_deps: HashSet<Vec<u8>> =
+            deps_of_constant.difference(function_set).cloned().collect();
         let how_many_deps = only_constant_deps.len();
         if i == 0 || how_many_deps < best_dep_set {
             chosen_idx = i;

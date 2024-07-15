@@ -312,7 +312,9 @@ fn form_module_program_common_body(
     mut program: CompileForm,
     exports: &[Export],
 ) -> Result<CompileForm, CompileErr> {
-    program.helpers.retain(|h| !standalone_constants.contains(h.name()));
+    program
+        .helpers
+        .retain(|h| !standalone_constants.contains(h.name()));
 
     // The body should contain anything that is in the exports but not standalone
     // constants.
@@ -353,9 +355,7 @@ fn form_module_program_common_body(
 
     for (target_name, capture) in exports.iter().filter_map(|e| {
         if let Export::Function(name, as_name) = e {
-            let target_name = as_name
-                .clone()
-                .unwrap_or_else(|| name.clone());
+            let target_name = as_name.clone().unwrap_or_else(|| name.clone());
             if !standalone_constants.contains(name) {
                 return Some((target_name, name.clone()));
             }

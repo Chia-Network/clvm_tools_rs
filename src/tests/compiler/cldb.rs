@@ -207,11 +207,11 @@ fn compile_and_run_program_with_tree(
 
     cldb_hierarchy(CldbHierarchyArgs {
         runner,
-        Rc::new(prim_map),
-        Some(input_file.to_owned()),
-        program_lines,
-        Rc::new(use_symbol_table),
-        Rc::new(program.to_sexp()),
+        prim_map: Rc::new(prim_map),
+        input_file_name: Some(input_file.to_owned()),
+        lines: program_lines,
+        symbol_table: Rc::new(use_symbol_table),
+        prog: Rc::new(program.to_sexp()),
         args,
         flags,
     })
