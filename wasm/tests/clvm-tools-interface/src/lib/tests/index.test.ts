@@ -228,7 +228,6 @@ it('can uncurry an example program', async () => {
     assert.equal(uncurried[1][1].toString(), 'a06d95dae356e32a71db5ddcb42224754a02524c615c5fc35f568c2af04774e589');
     assert.equal(uncurried[1][2].toString(), cat2_curried_program);
 });
-<<<<<<< HEAD
 
 // Thanks: fcoleman
 describe('Program', () => {
@@ -248,5 +247,3 @@ describe('Program', () => {
         expect(puzzleHash1).toEqual(puzzleHash3);
     });
 })
-=======
->>>>>>> chia/20240309-stable-constants-iii
