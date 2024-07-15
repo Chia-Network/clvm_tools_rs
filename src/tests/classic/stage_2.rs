@@ -20,7 +20,6 @@ use crate::compiler::compiler::DefaultCompilerOpts;
 use crate::compiler::comptypes::{CompileErr, CompilerOpts, HasCompilerOptsDelegation};
 use crate::compiler::sexp::decode_string;
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::BasicCompileContext;
 
 fn test_expand_macro(
     allocator: &mut Allocator,

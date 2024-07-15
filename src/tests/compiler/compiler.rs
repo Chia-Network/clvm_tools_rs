@@ -2494,9 +2494,9 @@ fn test_handle_explicit_empty_atom() {
             Rc::new(SExp::Integer(srcloc.clone(), bi_one())),
         ]),
     ]);
-    let mut allocator = Allocator::new();
-    let mut symbols = HashMap::new();
-    let mut includes = Vec::new();
+    let allocator = Allocator::new();
+    let symbols = HashMap::new();
+    let includes = Vec::new();
     let runner = Rc::new(DefaultProgramRunner::new());
 
     let mut context = BasicCompileContext::new(

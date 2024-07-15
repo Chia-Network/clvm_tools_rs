@@ -26,13 +26,6 @@ impl<'a> Profiler<'a> {
     }
 }
 
-#[cfg(not(feature = "profiling"))]
-impl Profiler {
-    pub fn new(_filename: &str) -> Self {
-        Profiler {}
-    }
-}
-
 #[cfg(feature = "profiling")]
 impl<'a> Drop for Profiler<'a> {
     fn drop(self: &mut Profiler<'a>) {
@@ -50,6 +43,7 @@ impl Drop for Profiler {
 
 // Smoke test that just invokes the profiler.
 #[test]
+#[cfg(feature = "profiling")]
 fn test_profiler() {
     let testfile = "test.svg";
     {

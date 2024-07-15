@@ -22,6 +22,7 @@ use clvm_tools_rs::classic::clvm::__type_compatibility__::{
 };
 use clvm_tools_rs::classic::clvm::serialize::sexp_to_stream;
 use clvm_tools_rs::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use clvm_tools_rs::classic::clvm_tools::clvmc::compile_clvm_inner;
 use clvm_tools_rs::compiler::cldb::{
     hex_to_modern_sexp, CldbOverrideBespokeCode, CldbRun, CldbRunEnv, CldbRunnable,
     CldbSingleBespokeOverride,
@@ -30,7 +31,7 @@ use clvm_tools_rs::compiler::clvm::{convert_to_clvm_rs, start_step};
 use clvm_tools_rs::compiler::compiler::{
     extract_program_and_env, path_to_function, rewrite_in_program, DefaultCompilerOpts,
 };
-use clvm_tools_rs::compiler::comptypes::CompileErr;
+use clvm_tools_rs::compiler::comptypes::{CompilerOpts, CompileErr};
 use clvm_tools_rs::compiler::prims;
 use clvm_tools_rs::compiler::repl::Repl;
 use clvm_tools_rs::compiler::runtypes::RunFailure;
@@ -300,6 +301,7 @@ fn make_compile_output(result_stream: &Stream, symbol_table: &HashMap<String, St
 pub fn compile(input_js: JsValue, filename_js: JsValue, search_paths_js: Vec<JsValue>) -> JsValue {
     let mut allocator = Allocator::new();
     let mut symbol_table = HashMap::new();
+    let mut includes = Vec::new();
     let mut result_stream = Stream::new(None);
     let input = input_js.as_string().unwrap();
     let filename = filename_js.as_string().unwrap();
@@ -308,11 +310,12 @@ pub fn compile(input_js: JsValue, filename_js: JsValue, search_paths_js: Vec<JsV
         .map(|j| j.as_string().unwrap())
         .collect();
 
-    let opts = Rc::new(DefaultCompilerOpts::new(&filename)).set_search_paths(&search_paths);
+    let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&filename)).set_search_paths(&search_paths);
     match compile_clvm_inner(
         &mut allocator,
         opts,
         &mut symbol_table,
+        &mut includes,
         &filename,
         &input,
         &mut result_stream,

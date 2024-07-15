@@ -163,9 +163,8 @@ fn compute_env_shape(
             eprintln!("extra_env_data_strings {extra_env_data_strings:?}");
             let extra_env_tree =
                 make_env_tree(&sp.env.loc(), &extra_env_data, 0, extra_env_data.len());
-            let car = sp.env.clone();
             if let SExp::Cons(l, all_env, _) = sp.env.borrow() {
-                if let SExp::Cons(l, old_env, _) = all_env.borrow() {
+                if let SExp::Cons(_l, old_env, _) = all_env.borrow() {
                     return SExp::Cons(
                         l.clone(),
                         Rc::new(SExp::Cons(l.clone(), old_env.clone(), extra_env_tree)),
@@ -310,7 +309,7 @@ fn make_list(loc: Srcloc, elements: Vec<Rc<SExp>>) -> Rc<SExp> {
 //
 fn lambda_for_defun(
     compiler: &PrimaryCodegen,
-    opts: Rc<dyn CompilerOpts>,
+    _opts: Rc<dyn CompilerOpts>,
     loc: Srcloc,
     name: &[u8],
     lookup: Rc<SExp>,
@@ -687,50 +686,6 @@ fn compile_call(
                     args: &tl,
                     tail: None,
                     original: Rc::new(BodyForm::Value(SExp::Nil(l.clone()))),
-                },
-                false,
-            )
-            .map(|args| CompiledCode(l.clone(), Rc::new(SExp::Cons(l, Rc::new(p), args)))),
-
-            Callable::CallInline(l, inline) => replace_in_inline(
-                context,
-                opts.clone(),
-                compiler,
-                l.clone(),
-                &inline,
-                l,
-                &tl,
-                call.tail.clone(),
-            ),
-
-            Callable::CallDefun(l, lookup) => generate_args_code(
-                context,
-                opts.clone(),
-                compiler,
-                // A callspec is a way to collect some info about a call, mainly
-                // to reduce the number of arguments to pass through.
-                &CallSpec {
-                    loc: l.clone(),
-                    name: an,
-                    args: &tl,
-                    tail: call.tail.clone(),
-                    original: call.original.clone(),
-                },
-                true,
-            )
-            .and_then(|args| {
-                process_defun_call(opts.clone(), compiler, l.clone(), args, Rc::new(lookup))
-            }),
-            Callable::CallPrim(l, p) => generate_args_code(
-                context,
-                opts,
-                compiler,
-                &CallSpec {
-                    name: an,
-                    loc: l.clone(),
-                    args: &tl,
-                    tail: None,
-                    original: call.original.clone(),
                 },
                 false,
             )
@@ -1586,7 +1541,7 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
 }
 
 fn find_easiest_constant(
-    ce: &CompileForm,
+    _ce: &CompileForm,
     depgraph: &FunctionDependencyGraph,
     function_set: &HashSet<Vec<u8>>,
     constant_set: &HashSet<Vec<u8>>,
@@ -1627,7 +1582,6 @@ fn find_satisfied_constants(
     constant_set: &HashSet<Vec<u8>>,
     constants: &[HelperForm],
 ) -> Vec<HelperForm> {
-    let constant_set_list: Vec<String> = constant_set.iter().map(|c| decode_string(c)).collect();
     constants
         .iter()
         .filter(|c| {
@@ -1639,8 +1593,6 @@ fn find_satisfied_constants(
             }
 
             depgraph.get_full_depends_on(&mut constant_deps, c.name());
-            let raw_deps_list: Vec<String> =
-                constant_deps.iter().map(|c| decode_string(c)).collect();
             let uncovered_deps: Vec<Vec<u8>> = constant_deps
                 .iter()
                 .filter(|h| {
@@ -1649,7 +1601,6 @@ fn find_satisfied_constants(
                 })
                 .cloned()
                 .collect();
-            let deps_list: Vec<String> = uncovered_deps.iter().map(|d| decode_string(d)).collect();
             uncovered_deps.is_empty()
         })
         .cloned()
@@ -1661,7 +1612,7 @@ fn find_satisfied_constants(
 // and any functions that they depend on outside the main program.
 fn decide_constant_generation_order(
     loc: &Srcloc,
-    compiler: &PrimaryCodegen,
+    _compiler: &PrimaryCodegen,
     helpers: &[HelperForm],
 ) -> Result<Vec<HelperForm>, CompileErr> {
     let mut exp = Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone())));
@@ -1704,7 +1655,7 @@ fn decide_constant_generation_order(
         exp,
     };
 
-    let mut constants: Vec<HelperForm> = helpers
+    let constants: Vec<HelperForm> = helpers
         .iter()
         .filter(|h| {
             if let HelperForm::Defconstant(dc) = h {
@@ -1716,15 +1667,15 @@ fn decide_constant_generation_order(
         .cloned()
         .collect();
     let mut constant_set: HashSet<Vec<u8>> = constants.iter().map(|h| h.name().to_vec()).collect();
-    let mut functions: Vec<HelperForm> = helpers
+    let functions: Vec<HelperForm> = helpers
         .iter()
-        .filter(|h| matches!(h, HelperForm::Defun(false, dd)))
+        .filter(|h| matches!(h, HelperForm::Defun(false, _)))
         .cloned()
         .collect();
 
     // We don't generate bodies for inline helpers, but they appear pre-fulfilled
     // in our function set.
-    let mut function_set: HashSet<Vec<u8>> = helpers
+    let function_set: HashSet<Vec<u8>> = helpers
         .iter()
         .filter(|h| matches!(h, HelperForm::Defun(_, _)))
         .map(|h| h.name().to_vec())
@@ -1740,15 +1691,8 @@ fn decide_constant_generation_order(
     let mut result = Vec::new();
 
     while !constant_set.is_empty() {
-        let remaining_constants: Vec<String> =
-            constant_set.iter().map(|c| decode_string(c)).collect();
         let new_satisfied_constants =
             find_satisfied_constants(&depgraph, &constant_set, &constants);
-        let new_satcon: Vec<String> = new_satisfied_constants
-            .iter()
-            .map(|c| decode_string(c.name()))
-            .collect();
-
         if !new_satisfied_constants.is_empty() {
             for c in new_satisfied_constants.iter() {
                 constant_set.remove(c.name());
@@ -1783,8 +1727,6 @@ fn decide_constant_generation_order(
         ));
     }
 
-    let result_order: Vec<String> = result.iter().map(|h| decode_string(h.name())).collect();
-
     Ok(result)
 }
 
@@ -1792,8 +1734,8 @@ fn generate_simple_constant_body(
     context: &mut BasicCompileContext,
     code_generator: PrimaryCodegen,
     opts: Rc<dyn CompilerOpts>,
-    program: CompileForm,
-    h: &HelperForm,
+    _program: CompileForm,
+    _h: &HelperForm,
     defc: &DefconstData,
 ) -> Result<PrimaryCodegen, CompileErr> {
     let expand_program = SExp::Cons(
@@ -1859,7 +1801,7 @@ fn generate_complex_constant_body(
     context: &mut BasicCompileContext,
     code_generator: PrimaryCodegen,
     opts: Rc<dyn CompilerOpts>,
-    mut program: CompileForm,
+    program: CompileForm,
     h: &HelperForm,
     defc: &DefconstData,
 ) -> Result<PrimaryCodegen, CompileErr> {
@@ -2105,11 +2047,6 @@ fn start_codegen(
         .cloned()
         .collect();
 
-    let only_defuns_list: Vec<String> = only_defuns
-        .iter()
-        .map(|h| h.to_sexp().to_string())
-        .collect();
-
     code_generator.env = match opts.start_env() {
         Some(env) => env,
         None => Rc::new(compute_env_shape(
@@ -2247,7 +2184,6 @@ fn finalize_env_(
                 );
             }
 
-            todo!();
             Err(CompileErr(
                 l.clone(),
                 format!(
@@ -2377,7 +2313,7 @@ fn collect_env_names(env: Rc<SExp>) -> Vec<Rc<SExp>> {
                 stack.push(a.clone());
                 stack.push(b.clone());
             }
-            SExp::Atom(_, n) => {
+            SExp::Atom(_, _) => {
                 result.push(e.clone());
             }
             _ => {}
@@ -2512,7 +2448,7 @@ pub fn codegen(
         while prev_repr != this_repr && steps < CONSTANT_GENERATIONS_ALLOWED {
             // Regenerate constants.
             for h in to_process.iter() {
-                if let HelperForm::Defconstant(dc) = h {
+                if let HelperForm::Defconstant(_) = h {
                     code_generator = generate_helper_body(
                         context,
                         code_generator,

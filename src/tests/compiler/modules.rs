@@ -14,13 +14,11 @@ use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProg
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{
-    CompileErr, CompilerOpts, CompilerOutput, HasCompilerOptsDelegation, ModulePhase,
-    PrimaryCodegen,
+    CompileErr, CompilerOpts, CompilerOutput, HasCompilerOptsDelegation,
 };
-use crate::compiler::dialect::{detect_modern, AcceptedDialect};
+use crate::compiler::dialect::detect_modern;
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::BasicCompileContext;
 
 pub enum DesiredOutcome<'a> {
     Error,

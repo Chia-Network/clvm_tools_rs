@@ -3,18 +3,15 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::rc::Rc;
 
-use clvmr::Allocator;
 use serde::Serialize;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType};
-use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::clvm::{sha256tree, truthy};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
 use crate::compiler::BasicCompileContext;
-use crate::util::Number;
 
 // Note: only used in tests, not normally dependencies.
 #[cfg(test)]

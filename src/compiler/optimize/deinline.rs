@@ -2,7 +2,6 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::compiler::codegen::codegen;
-use crate::compiler::comptypes::ModulePhase;
 use crate::compiler::optimize::depgraph::{DepgraphKind, FunctionDependencyGraph};
 use crate::compiler::optimize::{sexp_scale, SyntheticType};
 use crate::compiler::{BasicCompileContext, CompileErr, CompileForm, CompilerOpts, HelperForm};

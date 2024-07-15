@@ -1,4 +1,3 @@
-use num_bigint::ToBigInt;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use std::borrow::Borrow;
@@ -18,7 +17,7 @@ use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::frontend::compile_helperform;
 use crate::compiler::fuzz::{ExprModifier, FuzzGenerator, FuzzTypeParams, Rule};
 use crate::compiler::prims::primquote;
-use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
+use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 use crate::tests::compiler::fuzz::{compose_sexp, GenError};
@@ -333,8 +332,8 @@ impl Rule<FuzzT> for TestModuleConstantFuzzApplyOperation {
         &self,
         state: &mut ModuleConstantExpectation,
         tag: &Vec<u8>,
-        idx: usize,
-        terminate: bool,
+        _idx: usize,
+        _terminate: bool,
         heritage: &[Rc<SExp>],
     ) -> Result<Option<Rc<SExp>>, GenError> {
         let heritage_list: Vec<String> = heritage.iter().map(|h| h.to_string()).collect();
@@ -393,7 +392,7 @@ impl Rule<FuzzT> for TestModuleConstantFuzzMoreConstants {
         tag: &Vec<u8>,
         idx: usize,
         terminate: bool,
-        heritage: &[Rc<SExp>],
+        _heritage: &[Rc<SExp>],
     ) -> Result<Option<Rc<SExp>>, GenError> {
         if tag != b"constant-program-tail" {
             return Ok(None);
@@ -424,7 +423,7 @@ impl Rule<FuzzT> for TestModuleConstantMoreFunctions {
         tag: &Vec<u8>,
         idx: usize,
         terminate: bool,
-        heritage: &[Rc<SExp>],
+        _heritage: &[Rc<SExp>],
     ) -> Result<Option<Rc<SExp>>, GenError> {
         if tag != b"constant-program-tail" || terminate {
             return Ok(None);
@@ -443,9 +442,9 @@ impl Rule<FuzzT> for TestModuleConstantTerminateFunctionBody {
         &self,
         state: &mut ModuleConstantExpectation,
         tag: &Vec<u8>,
-        idx: usize,
-        terminate: bool,
-        heritage: &[Rc<SExp>],
+        _idx: usize,
+        _terminate: bool,
+        _heritage: &[Rc<SExp>],
     ) -> Result<Option<Rc<SExp>>, GenError> {
         if tag != b"function-or-arg" {
             return Ok(None);
@@ -462,8 +461,8 @@ impl Rule<FuzzT> for TestModuleConstantTerminateProgramTail {
         state: &mut ModuleConstantExpectation,
         tag: &Vec<u8>,
         idx: usize,
-        terminate: bool,
-        heritage: &[Rc<SExp>],
+        _terminate: bool,
+        _heritage: &[Rc<SExp>],
     ) -> Result<Option<Rc<SExp>>, GenError> {
         if tag != b"constant-program-tail" {
             return Ok(None);
@@ -485,7 +484,7 @@ impl Rule<FuzzT> for TestModuleConstantFunctionOrConstant {
         &self,
         state: &mut ModuleConstantExpectation,
         tag: &Vec<u8>,
-        idx: usize,
+        _idx: usize,
         terminate: bool,
         heritage: &[Rc<SExp>],
     ) -> Result<Option<Rc<SExp>>, GenError> {
@@ -660,8 +659,8 @@ impl Rule<FuzzT> for TestModuleConstantFuzzExports {
         &self,
         state: &mut ModuleConstantExpectation,
         tag: &Vec<u8>,
-        idx: usize,
-        terminate: bool,
+        _idx: usize,
+        _terminate: bool,
         heritage: &[Rc<SExp>],
     ) -> Result<Option<Rc<SExp>>, GenError> {
         if tag != b"exports" || !only_export_left(heritage) {
@@ -669,7 +668,6 @@ impl Rule<FuzzT> for TestModuleConstantFuzzExports {
         }
 
         let nil = Rc::new(SExp::Nil(state.loc()));
-        let export_atom = Rc::new(SExp::Atom(state.loc(), b"export".to_vec()));
 
         let mut result = nil.clone();
         let export_names = |result: &mut Rc<SExp>, names: &[String]| {
@@ -708,7 +706,7 @@ impl Rule<FuzzT> for TestModuleConstantNew {
         state: &mut ModuleConstantExpectation,
         tag: &Vec<u8>,
         idx: usize,
-        terminate: bool,
+        _terminate: bool,
         heritage: &[Rc<SExp>],
     ) -> Result<Option<Rc<SExp>>, GenError> {
         if tag != b"constant" {
@@ -732,8 +730,8 @@ impl Rule<FuzzT> for TestModuleConstantBasedOnFunctionHash {
         &self,
         state: &mut ModuleConstantExpectation,
         tag: &Vec<u8>,
-        idx: usize,
-        terminate: bool,
+        _idx: usize,
+        _terminate: bool,
         heritage: &[Rc<SExp>],
     ) -> Result<Option<Rc<SExp>>, GenError> {
         if tag != b"constant-body" {
@@ -743,7 +741,6 @@ impl Rule<FuzzT> for TestModuleConstantBasedOnFunctionHash {
         let my_id = if let Some(constant_id) = get_constant_id(heritage) {
             constant_id
         } else {
-            let heritage_list: Vec<String> = heritage.iter().map(|h| h.to_string()).collect();
             eprintln!("bad constant-body in BasedOnFunctionHash");
             return Ok(None);
         };
@@ -844,7 +841,7 @@ fn test_property_fuzz_stable_constants() {
         // Collect output values from compiled.
         let mut actual_values = BTreeMap::new();
         let mut hashes = BTreeMap::new();
-        let results = if let CompilerOutput::Module(x) = &compiled.compiled {
+        if let CompilerOutput::Module(x) = &compiled.compiled {
             for component in x.components.iter() {
                 eprintln!(
                     "{} ({}) = {}",

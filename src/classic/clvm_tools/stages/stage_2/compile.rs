@@ -10,18 +10,11 @@ use crate::classic::clvm::OPERATORS_LATEST_VERSION;
 use crate::classic::clvm::{keyword_from_atom, keyword_to_atom};
 
 use crate::classic::clvm_tools::binutils::{assemble, disassemble};
-use crate::classic::clvm_tools::clvmc::{compile_clvm_text, write_sym_output};
 use crate::classic::clvm_tools::node_path::NodePath;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::classic::clvm_tools::stages::stage_2::defaults::default_macro_lookup;
 use crate::classic::clvm_tools::stages::stage_2::helpers::{brun, evaluate, quote};
 use crate::classic::clvm_tools::stages::stage_2::module::compile_mod;
-use crate::classic::clvm_tools::stages::stage_2::reader::read_file;
-
-use crate::compiler::compiler::DefaultCompilerOpts;
-use crate::compiler::comptypes::CompilerOpts;
-use crate::compiler::sexp::decode_string;
-use crate::compiler::BasicCompileContext;
 
 const DIAG_OUTPUT: bool = false;
 

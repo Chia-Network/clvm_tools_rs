@@ -3,24 +3,22 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use num_bigint::ToBigInt;
-
-use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
+use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::comptypes::{
     list_to_cons, match_as_named, ArgsAndTail, Binding, BindingPattern, BodyForm, CompileErr,
     CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DefunData, Export,
     FrontendOutput, HelperForm, ImportLongName, IncludeDesc, LetData, LetFormInlineHint,
-    LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, ModulePhase, NamespaceData,
-    NamespaceRefData, SyntheticType,
+    LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, NamespaceData,
+    NamespaceRefData,
 };
 use crate::compiler::lambda::handle_lambda;
 use crate::compiler::preprocessor::{
     detect_chialisp_module, parse_toplevel_mod, preprocess, Preprocessor, ToplevelModParseResult,
 };
-use crate::compiler::rename::{rename_assign_bindings, rename_children_compileform};
+use crate::compiler::rename::rename_children_compileform;
 use crate::compiler::sexp::{decode_string, enlist, SExp};
-use crate::compiler::srcloc::{HasLoc, Srcloc};
-use crate::util::{u8_from_number, Number};
+use crate::compiler::srcloc::Srcloc;
+use crate::util::u8_from_number;
 
 pub fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
     match body.borrow() {
@@ -669,7 +667,7 @@ fn match_op_name_4(pl: &[SExp]) -> Option<OpName4Match> {
 
             match &pl[1].atomize() {
                 SExp::Atom(ll, name) => {
-                    let mut tail_idx = 3;
+                    let tail_idx = 3;
                     let mut tail_list = Vec::new();
                     for elt in pl.iter().skip(tail_idx) {
                         tail_list.push(Rc::new(elt.clone()));
