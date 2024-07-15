@@ -922,6 +922,9 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         prog: format!("clvm_tools {tool_name}"),
     };
 
+    #[cfg(feature = "profiling")]
+    let _p = Profiler::new("prof.svc");
+
     let mut parser = ArgumentParser::new(Some(props));
     parser.add_argument(
         vec!["--version".to_string()],

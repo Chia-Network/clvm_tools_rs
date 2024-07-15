@@ -306,7 +306,7 @@ pub fn parse_toplevel_mod(
 
             if *mod_atom == b"mod" {
                 let args = Rc::new(x[1].atomize());
-                let mut skip_idx = 2;
+                let skip_idx = 2;
 
                 if x.len() < 3 {
                     return Err(CompileErr(x[0].loc(), "incomplete mod form".to_string()));

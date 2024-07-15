@@ -497,7 +497,6 @@ fn rename_in_compileform(
 /// For all the HelperForms in a CompileForm, do renaming in them so that all
 /// unique variable bindings in the program have unique names.
 pub fn rename_children_compileform(c: &CompileForm) -> Result<CompileForm, CompileErr> {
-    let c_ref: &CompileForm = c;
     let local_renamed_helpers = map_m(&rename_args_helperform, &c.helpers)?;
     let local_renamed_body = rename_args_bodyform(c.exp.borrow())?;
     Ok(CompileForm {

@@ -26,13 +26,6 @@ impl<'a> Profiler<'a> {
     }
 }
 
-#[cfg(not(feature = "profiling"))]
-impl Profiler {
-    pub fn new(_filename: &str) -> Self {
-        Profiler {}
-    }
-}
-
 #[cfg(feature = "profiling")]
 impl<'a> Drop for Profiler<'a> {
     fn drop(self: &mut Profiler<'a>) {
