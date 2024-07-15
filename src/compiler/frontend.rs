@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use log::debug;
 use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
@@ -651,11 +650,6 @@ fn compile_defmacro(
     })
 }
 
-enum TypeKind {
-    Arrow,
-    Colon,
-}
-
 struct OpName4Match {
     opl: Srcloc,
     op_name: Vec<u8>,
@@ -664,7 +658,6 @@ struct OpName4Match {
     args: Rc<SExp>,
     body: Rc<SExp>,
     orig: Vec<SExp>,
-    ty: Option<(TypeKind, Rc<SExp>)>,
 }
 
 fn match_op_name_4(pl: &[SExp]) -> Option<OpName4Match> {
@@ -683,7 +676,6 @@ fn match_op_name_4(pl: &[SExp]) -> Option<OpName4Match> {
                     args: Rc::new(SExp::Nil(l.clone())),
                     body: Rc::new(SExp::Nil(l.clone())),
                     orig: pl.to_owned(),
-                    ty: None,
                 });
             }
 
@@ -691,20 +683,6 @@ fn match_op_name_4(pl: &[SExp]) -> Option<OpName4Match> {
                 SExp::Atom(ll, name) => {
                     let mut tail_idx = 3;
                     let mut tail_list = Vec::new();
-                    let mut type_anno = None;
-                    if pl.len() > 3 {
-                        if let SExp::Atom(_, colon) = &pl[3] {
-                            if *colon == vec![b':'] {
-                                // Type annotation
-                                tail_idx += 2;
-                                type_anno = Some((TypeKind::Colon, Rc::new(pl[4].clone())));
-                            } else if *colon == vec![b'-', b'>'] {
-                                // Type annotation
-                                tail_idx += 2;
-                                type_anno = Some((TypeKind::Arrow, Rc::new(pl[4].clone())));
-                            }
-                        }
-                    }
                     for elt in pl.iter().skip(tail_idx) {
                         tail_list.push(Rc::new(elt.clone()));
                     }
@@ -717,7 +695,6 @@ fn match_op_name_4(pl: &[SExp]) -> Option<OpName4Match> {
                         args: Rc::new(pl[2].clone()),
                         body: Rc::new(enlist(l.clone(), &tail_list)),
                         orig: pl.to_owned(),
-                        ty: type_anno,
                     })
                 }
                 _ => Some(OpName4Match {
@@ -728,7 +705,6 @@ fn match_op_name_4(pl: &[SExp]) -> Option<OpName4Match> {
                     args: Rc::new(SExp::Nil(l.clone())),
                     body: Rc::new(SExp::Nil(l.clone())),
                     orig: pl.to_owned(),
-                    ty: None,
                 }),
             }
         }
@@ -1002,7 +978,6 @@ impl ModCompileForms for ModAccum {
         let mut mc = self.clone();
         if let Some(helpers) = compile_helperform(opts.clone(), body.clone())? {
             for form in helpers.new_helpers.iter() {
-                debug!("process helper {}", decode_string(form.name()));
                 mc = mc.add_helper(form.clone());
             }
             Ok(mc)

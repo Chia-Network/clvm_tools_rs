@@ -317,7 +317,6 @@ impl ArgumentValueConv for OperatorsVersion {
 }
 
 pub fn run(args: &[String]) {
-    env_logger::init();
     let _profiler = Profiler::new("run-profile.svg");
 
     let mut s = Stream::new(None);
@@ -502,7 +501,6 @@ pub fn cldb_hierarchy(
 }
 
 pub fn cldb(args: &[String]) {
-    env_logger::init();
     let _profiler = Profiler::new("cldb-profile.svg");
 
     let tool_name = "cldb".to_string();
@@ -859,33 +857,6 @@ fn parse_module_and_get_sigil(
     program_text: &str,
 ) -> Result<(Option<String>, Vec<Rc<sexp::SExp>>), CompileErr> {
     let srcloc = Srcloc::start(input_file);
-    // Parse the source file.
-    let parsed = parse_sexp(srcloc, program_text.bytes())?;
-    let stepping_form_text = match opts.dialect().stepping {
-        Some(21) => Some("(include *strict-cl-21*)".to_string()),
-        Some(n) => Some(format!("(include *standard-cl-{n}*)")),
-        _ => None,
-    };
-    Ok((stepping_form_text, parsed))
-}
-
-// A function which performs preprocessing on a whole program and renders the
-// output to the user.
-//
-// This is used in the same way as cc -E in a C compiler; to see what
-// preprocessing did to the source so you can debug and improve your macros.
-//
-// Without this, it's difficult for some to visualize how macro are functioning
-// and what forms they output.
-fn perform_preprocessing(
-    stdout: &mut Stream,
-    opts: Rc<dyn CompilerOpts>,
-    input_file: &str,
-    program_text: &str,
-) -> Result<(Option<String>, Vec<Rc<sexp::SExp>>), CompileErr> {
-    let srcloc = Srcloc::start(input_file);
-    // Parse the source file.
-    let parsed = parse_sexp(srcloc.clone(), program_text.bytes())?;
     // Get the detected dialect and compose a sigil that matches.
     // Classic preprocessing (also shared by standard sigil 21 and 21) does macro
     // expansion during the compile process, making all macros available to all
@@ -897,6 +868,7 @@ fn perform_preprocessing(
     // The result is fully rendered before the next stage of compilation so that
     // it can be inspected and so that the execution environment for macros is
     // fully and cleanly separated from compile time.
+    let parsed = parse_sexp(srcloc, program_text.bytes())?;
     let stepping_form_text = match opts.dialect().stepping {
         Some(21) => Some("(include *strict-cl-21*)".to_string()),
         Some(n) => Some(format!("(include *standard-cl-{n}*)")),
@@ -936,6 +908,34 @@ fn render_mod_with_sigil(
         Rc::new(sexp::SExp::Atom(srcloc, b"mod".to_vec())),
         with_stepping,
     ))
+}
+
+// A function which performs preprocessing on a whole program and renders the
+// output to the user.
+//
+// This is used in the same way as cc -E in a C compiler; to see what
+// preprocessing did to the source so you can debug and improve your macros.
+//
+// Without this, it's difficult for some to visualize how macro are functioning
+// and what forms they output.
+fn perform_preprocessing(
+    stdout: &mut Stream,
+    opts: Rc<dyn CompilerOpts>,
+    input_file: &str,
+    program_text: &str,
+) -> Result<(), CompileErr> {
+    let srcloc = Srcloc::start(input_file);
+    let (sigil, parsed) = parse_module_and_get_sigil(
+        opts.clone(),
+        input_file,
+        program_text
+    )?;
+
+    let frontend = frontend(opts, &parsed)?;
+    let rendered = render_mod_with_sigil(input_file, &sigil, frontend.compileform())?;
+    stdout.write_str(&format!("{}\n", rendered));
+
+    Ok(())
 }
 
 fn perform_desugaring(
