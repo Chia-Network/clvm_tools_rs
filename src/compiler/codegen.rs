@@ -164,8 +164,8 @@ fn compute_env_shape(
             eprintln!("extra_env_data_strings {extra_env_data_strings:?}");
             let extra_env_tree =
                 make_env_tree(&sp.env.loc(), &extra_env_data, 0, extra_env_data.len());
-            if let SExp::Cons(_l, all_env, _) = sp.env.borrow() {
-                if let SExp::Cons(l, old_env, _) = all_env.borrow() {
+            if let SExp::Cons(l, all_env, _) = sp.env.borrow() {
+                if let SExp::Cons(_l, old_env, _) = all_env.borrow() {
                     return SExp::Cons(
                         l.clone(),
                         Rc::new(SExp::Cons(l.clone(), old_env.clone(), extra_env_tree)),
@@ -1564,8 +1564,10 @@ fn find_easiest_constant(
     for (i, h) in constants_in_set.iter().enumerate() {
         let mut deps_of_constant = HashSet::new();
         depgraph.get_full_depends_on(&mut deps_of_constant, h.name());
-        let only_constant_deps: HashSet<Vec<u8>> =
-            deps_of_constant.difference(function_set).cloned().collect();
+        let only_constant_deps: HashSet<Vec<u8>> = deps_of_constant
+            .difference(function_set)
+            .cloned()
+            .collect();
         let how_many_deps = only_constant_deps.len();
         if i == 0 || how_many_deps < best_dep_set {
             chosen_idx = i;

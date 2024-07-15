@@ -43,6 +43,7 @@ impl Drop for Profiler {
 
 // Smoke test that just invokes the profiler.
 #[test]
+#[cfg(feature = "profiling")]
 fn test_profiler() {
     let testfile = "test.svg";
     {

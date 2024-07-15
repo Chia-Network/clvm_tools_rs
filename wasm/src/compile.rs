@@ -11,8 +11,7 @@ use clvm_tools_rs::classic::clvm::__type_compatibility__::Stream;
 use clvm_tools_rs::classic::clvm_tools::clvmc::compile_clvm_inner;
 use clvm_tools_rs::compiler::BasicCompileContext;
 use clvm_tools_rs::compiler::compiler::{DefaultCompilerOpts, compile_pre_forms};
-use clvm_tools_rs::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, PrimaryCodegen};
-use clvm_tools_rs::compiler::dialect::AcceptedDialect;
+use clvm_tools_rs::compiler::comptypes::{CompileErr, CompilerOpts, CompilerOutput, HasCompilerOptsDelegation};
 use clvm_tools_rs::compiler::preprocessor::gather_dependencies;
 use clvm_tools_rs::compiler::sexp::{decode_string, SExp};
 use clvm_tools_rs::compiler::srcloc::Srcloc;
@@ -48,123 +47,23 @@ impl JsCompilerOpts {
     }
 }
 
-impl CompilerOpts for JsCompilerOpts {
-    fn filename(&self) -> String {
-        self.opts.filename()
-    }
-    fn code_generator(&self) -> Option<PrimaryCodegen> {
-        self.opts.code_generator()
-    }
-    fn dialect(&self) -> AcceptedDialect {
-        self.opts.dialect()
-    }
-    fn in_defun(&self) -> bool {
-        self.opts.in_defun()
-    }
-    fn stdenv(&self) -> bool {
-        self.opts.stdenv()
-    }
-    fn optimize(&self) -> bool {
-        self.opts.optimize()
-    }
-    fn frontend_opt(&self) -> bool {
-        self.opts.frontend_opt()
-    }
-    fn frontend_check_live(&self) -> bool {
-        self.opts.frontend_check_live()
-    }
-    fn start_env(&self) -> Option<Rc<SExp>> {
-        self.opts.start_env()
-    }
-    fn prim_map(&self) -> Rc<HashMap<Vec<u8>, Rc<SExp>>> {
-        self.opts.prim_map()
-    }
-    fn disassembly_ver(&self) -> Option<usize> {
-        self.opts.disassembly_ver()
-    }
-    fn get_search_paths(&self) -> Vec<String> {
-        self.opts.get_search_paths()
+impl HasCompilerOptsDelegation for JsCompilerOpts {
+    fn compiler_opts(&self) -> Rc<dyn CompilerOpts> {
+        todo!()
     }
 
-    fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
-        let inner_opts_new = self.opts.set_dialect(dialect);
-        Rc::new(JsCompilerOpts {
-            opts: inner_opts_new,
-            .. self.clone()
-        })
-    }
-    fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
-        let inner_opts_new = self.opts.set_search_paths(dirs);
-        Rc::new(JsCompilerOpts {
-            opts: inner_opts_new,
-            .. self.clone()
-        })
-    }
-    fn set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts> {
-        let inner_opts_new = self.opts.set_disassembly_ver(ver);
-        Rc::new(JsCompilerOpts {
-            opts: inner_opts_new,
-            .. self.clone()
-        })
-    }
-    fn set_in_defun(&self, new_in_defun: bool) -> Rc<dyn CompilerOpts> {
-        let inner_opts_new = self.opts.set_in_defun(new_in_defun);
-        Rc::new(JsCompilerOpts {
-            opts: inner_opts_new,
-            .. self.clone()
-        })
-    }
-    fn set_stdenv(&self, new_stdenv: bool) -> Rc<dyn CompilerOpts> {
-        let inner_opts_new = self.opts.set_stdenv(new_stdenv);
-        Rc::new(JsCompilerOpts {
-            opts: inner_opts_new,
-            .. self.clone()
-        })
-    }
-    fn set_optimize(&self, optimize: bool) -> Rc<dyn CompilerOpts> {
-        let inner_opts_new = self.opts.set_optimize(optimize);
-        Rc::new(JsCompilerOpts {
-            opts: inner_opts_new,
-            .. self.clone()
-        })
-    }
-    fn set_frontend_opt(&self, optimize: bool) -> Rc<dyn CompilerOpts> {
-        let inner_opts_new = self.opts.set_frontend_opt(optimize);
-        Rc::new(JsCompilerOpts {
-            opts: inner_opts_new,
-            .. self.clone()
-        })
-    }
-    fn set_frontend_check_live(&self, check: bool) -> Rc<dyn CompilerOpts> {
-        let inner_opts_new = self.opts.set_frontend_check_live(check);
-        Rc::new(JsCompilerOpts {
-            opts: inner_opts_new,
-            .. self.clone()
-        })
-    }
-    fn set_code_generator(&self, new_code_generator: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
-        let inner_opts_new = self.opts.set_code_generator(new_code_generator);
-        Rc::new(JsCompilerOpts {
-            opts: inner_opts_new,
-            .. self.clone()
-        })
-    }
-    fn set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts> {
-        let inner_opts_new = self.opts.set_start_env(start_env);
-        Rc::new(JsCompilerOpts {
-            opts: inner_opts_new,
-            .. self.clone()
-        })
-    }
-    fn set_prim_map(&self, prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts> {
-        let inner_opts_new = self.opts.set_prim_map(prims);
-        Rc::new(JsCompilerOpts {
-            opts: inner_opts_new,
-            .. self.clone()
-        })
+    fn update_compiler_opts<F>(
+        &self,
+        f: F
+    ) -> Rc<dyn CompilerOpts>
+    where
+        F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>
+    {
+        let new_opts = f(self.opts.clone());
+        Rc::new(JsCompilerOpts { opts: new_opts, options: self.options.clone() })
     }
 
-    fn read_new_file(
+    fn override_read_new_file(
         &self,
         inc_from: String,
         filename: String,
@@ -219,10 +118,10 @@ impl CompilerOpts for JsCompilerOpts {
             format!("could not find {filename} to include"),
         ))
     }
-    fn write_new_file(&self, _: &str, _: &[u8]) -> Result<(), CompileErr> {
+    fn override_write_new_file(&self, _: &str, _: &[u8]) -> Result<(), CompileErr> {
         todo!()
     }
-    fn compile_program(
+    fn override_compile_program(
         &self,
         context: &mut BasicCompileContext,
         sexp: Rc<SExp>,

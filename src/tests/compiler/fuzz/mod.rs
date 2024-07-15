@@ -16,17 +16,15 @@ use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, HasCompilerOptsDelegation};
 use crate::compiler::dialect::detect_modern;
 use crate::compiler::fuzz::{ExprModifier, FuzzChoice, FuzzGenerator, FuzzTypeParams, Rule};
-use crate::compiler::optimize::get_optimizer;
 use crate::compiler::prims::primquote;
 use crate::compiler::sexp::{enlist, extract_atom_replacement, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::BasicCompileContext;
 
 mod modules_with_constant_exports;
 
 #[derive(Debug)]
 pub struct GenError {
-    message: String,
+    pub message: String,
 }
 impl From<&str> for GenError {
     fn from(m: &str) -> GenError {
