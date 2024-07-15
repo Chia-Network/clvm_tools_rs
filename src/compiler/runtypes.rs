@@ -37,3 +37,11 @@ impl From<RunFailure> for CompileErr {
         }
     }
 }
+
+impl From<CompileErr> for RunFailure {
+    fn from(e: CompileErr) -> Self {
+        match e {
+            CompileErr(l, e) => RunFailure::RunErr(l, e),
+        }
+    }
+}

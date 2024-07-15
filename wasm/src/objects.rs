@@ -8,14 +8,18 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
-use clvmr::Allocator;
-use clvm_tools_rs::classic::clvm::__type_compatibility__::{Bytes, Stream, UnvalidatedBytesFromType, bi_one};
-use clvm_tools_rs::classic::clvm::serialize::{SimpleCreateCLVMObject, sexp_to_stream, sexp_from_stream};
+use clvm_tools_rs::classic::clvm::__type_compatibility__::{
+    bi_one, Bytes, Stream, UnvalidatedBytesFromType,
+};
+use clvm_tools_rs::classic::clvm::serialize::{
+    sexp_from_stream, sexp_to_stream, SimpleCreateCLVMObject,
+};
 use clvm_tools_rs::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
-use clvm_tools_rs::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree, truthy};
+use clvm_tools_rs::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
 use clvm_tools_rs::compiler::prims::{primapply, primcons, primquote};
 use clvm_tools_rs::compiler::sexp::SExp;
 use clvm_tools_rs::compiler::srcloc::Srcloc;
+use clvmr::Allocator;
 
 use crate::api::{create_clvm_runner_err, get_next_id};
 use crate::dialect::JsEnrichedCLVM;
@@ -42,20 +46,21 @@ struct ObjectCache {
 
 pub struct JsCacheValue {
     pub entry: i32,
-    pub content: String
+    pub content: String,
 }
 
 pub fn js_cache_value_from_js(jsval: &JsValue) -> Result<JsCacheValue, JsValue> {
-    let entry = js_sys::Reflect::get(
-        jsval,
-        &JsString::from("id")
-    )?.as_f64().ok_or(JsString::from("id was not a number"))?;
-    let content = js_sys::Reflect::get(
-        jsval,
-        &JsString::from("content")
-    )?.as_string().ok_or(JsString::from("content was not a string"))?;
+    let entry = js_sys::Reflect::get(jsval, &JsString::from("id"))?
+        .as_f64()
+        .ok_or(JsString::from("id was not a number"))?;
+    let content = js_sys::Reflect::get(jsval, &JsString::from("content"))?
+        .as_string()
+        .ok_or(JsString::from("content was not a string"))?;
 
-    Ok(JsCacheValue { entry: entry as i32, content })
+    Ok(JsCacheValue {
+        entry: entry as i32,
+        content,
+    })
 }
 
 impl Default for ObjectCache {
@@ -86,45 +91,47 @@ impl ObjectCache {
 
     fn create_entry_from_sexp(&mut self, id: i32, sexp: Rc<SExp>) -> Result<String, JsValue> {
         let mut allocator = Allocator::new();
-        let node = convert_to_clvm_rs(
-            &mut allocator,
-            sexp.clone()
-        ).map_err(|_| js_sys::JsString::from("could not convert to clvm"))?;
+        let node = convert_to_clvm_rs(&mut allocator, sexp.clone())
+            .map_err(|_| js_sys::JsString::from("could not convert to clvm"))?;
         let mut stream = Stream::new(None);
         sexp_to_stream(&mut allocator, node, &mut stream);
 
-        self.create_or_update_cache_entry(id, ObjectCacheMember {
-            modern: sexp.clone(),
-        });
+        self.create_or_update_cache_entry(
+            id,
+            ObjectCacheMember {
+                modern: sexp.clone(),
+            },
+        );
 
         Ok(stream.get_value().hex())
     }
 
-    fn find_or_create_entry_from_hex(&mut self, entry: i32, content: &str) -> Result<ObjectCacheMember, JsValue> {
+    fn find_or_create_entry_from_hex(
+        &mut self,
+        entry: i32,
+        content: &str,
+    ) -> Result<ObjectCacheMember, JsValue> {
         if let Some(res) = self.cache_data.get(&entry) {
             return Ok(res.clone());
         }
 
         let mut allocator = Allocator::new();
-        let bytes_from_hex = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(content.to_string()))).map_err(|_| JsString::from("could not parse hex"))?;
+        let bytes_from_hex =
+            Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(content.to_string())))
+                .map_err(|_| JsString::from("could not parse hex"))?;
         let mut stream = Stream::new(Some(bytes_from_hex));
         let parsed = sexp_from_stream(
             &mut allocator,
             &mut stream,
-            Box::new(SimpleCreateCLVMObject {})
+            Box::new(SimpleCreateCLVMObject {}),
         )
-            .map(|x| x.1)
-            .map_err(|_| JsString::from("could not parse sexp from hex"))?;
+        .map(|x| x.1)
+        .map_err(|_| JsString::from("could not parse sexp from hex"))?;
         let srcloc = Srcloc::start("*var*");
-        let modern = convert_from_clvm_rs(
-            &mut allocator,
-            srcloc,
-            parsed
-        ).map_err(|_| JsString::from("could not realize parsed sexp"))?;
+        let modern = convert_from_clvm_rs(&mut allocator, srcloc, parsed)
+            .map_err(|_| JsString::from("could not realize parsed sexp"))?;
 
-        let cache_entry = ObjectCacheMember {
-            modern
-        };
+        let cache_entry = ObjectCacheMember { modern };
         self.create_or_update_cache_entry(entry, cache_entry.clone());
 
         Ok(cache_entry)
@@ -224,13 +231,11 @@ static PROGRAM_FUNCTIONS: &[FunctionWrapperDesc] = &[
     },
 ];
 
-static TUPLE_FUNCTIONS: &[FunctionWrapperDesc] = &[
-    FunctionWrapperDesc {
-        export_name: "to_program",
-        member_name: "tuple_to_program_internal",
-        varargs: false
-    },
-];
+static TUPLE_FUNCTIONS: &[FunctionWrapperDesc] = &[FunctionWrapperDesc {
+    export_name: "to_program",
+    member_name: "tuple_to_program_internal",
+    varargs: false,
+}];
 
 thread_local! {
     static OBJECT_CACHE: RefCell<ObjectCache> = {
@@ -242,9 +247,6 @@ thread_local! {
 }
 
 fn create_cached_sexp(id: i32, sexp: Rc<SExp>) -> Result<String, JsValue> {
-    if !truthy(sexp.clone()) {
-        return Ok("80".to_string());
-    }
     OBJECT_CACHE.with(|ocache| {
         let mut mut_object_cache_ref: RefMut<ObjectCache> = ocache.borrow_mut();
         mut_object_cache_ref.create_entry_from_sexp(id, sexp)
@@ -258,7 +260,7 @@ fn get_srcloc() -> Srcloc {
 pub fn find_cached_sexp(entry: i32, content: &str) -> Result<ObjectCacheMember, JsValue> {
     if content == "80" {
         return Ok(ObjectCacheMember {
-            modern: Rc::new(SExp::Nil(get_srcloc()))
+            modern: Rc::new(SExp::Nil(get_srcloc())),
         });
     }
 
@@ -266,6 +268,40 @@ pub fn find_cached_sexp(entry: i32, content: &str) -> Result<ObjectCacheMember, 
         let mut mut_object_cache_ref: RefMut<ObjectCache> = ocache.borrow_mut();
         mut_object_cache_ref.find_or_create_entry_from_hex(entry, content)
     })
+}
+
+#[wasm_bindgen(typescript_custom_section)]
+const IProgram: &'static str = r#"
+interface ITuple {
+    to_program(): IProgram;
+}
+
+interface IProgram {
+    toString(): string;
+    as_pair(): ITuple;
+    listp(): boolean;
+    nullp(): boolean;
+    as_int(): number;
+    as_bigint(): bigint;
+    as_bin(): Uint8Array;
+    first(): IProgram;
+    rest(): IProgram;
+    cons(p: IProgram): IProgram;
+    run(env: IProgram): [number, IProgram];
+    list_len(): number;
+    equal_to(other: IProgram): boolean;
+    as_javascript(): any;
+    curry(args: [IProgram]): IProgram;
+    sha256tree(): Uint8Array;
+    uncurry_error(): [IProgram, Array<IProgram>];
+    uncurry(): [IProgram, Array<IProgram>|null];
+}
+"#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "IProgram")]
+    pub type IProgram;
 }
 
 // Strategy for Program objects.
@@ -286,7 +322,7 @@ pub fn find_cached_sexp(entry: i32, content: &str) -> Result<ObjectCacheMember, 
 // The object's prototype will include methods for Program, such as cons and call
 // the real static methods of Program.
 #[wasm_bindgen(inspectable)]
-pub struct Program { }
+pub struct Program {}
 
 // Build prototype
 fn get_program_prototype() -> Result<JsValue, JsValue> {
@@ -299,12 +335,11 @@ fn get_program_prototype() -> Result<JsValue, JsValue> {
 
     let program_self = js_sys::eval("Program")?;
     for func_wrapper_desc in PROGRAM_FUNCTIONS.iter() {
-        let pass_on_args =
-            if func_wrapper_desc.varargs {
-                "[args]"
-            } else {
-                "args"
-            };
+        let pass_on_args = if func_wrapper_desc.varargs {
+            "[args]"
+        } else {
+            "args"
+        };
         let to_string_fun = js_sys::Function::new_with_args(
             "",
             &format!("const t = this; return function() {{ let args = Array.prototype.slice.call(arguments); let apply_args = {pass_on_args}; apply_args.unshift(this); return t.{}.apply(null, apply_args); }}", func_wrapper_desc.member_name)
@@ -358,10 +393,7 @@ pub fn finish_new_object(id: i32, encoded_hex: &str) -> Result<JsValue, JsValue>
     let prototype = get_program_prototype()?;
 
     let new_object = js_sys::Object::new();
-    js_sys::Reflect::set_prototype_of(
-        &new_object,
-        &prototype
-    )?;
+    js_sys::Reflect::set_prototype_of(&new_object, &prototype)?;
 
     js_sys::Reflect::set(
         &new_object,
@@ -379,18 +411,38 @@ pub fn finish_new_object(id: i32, encoded_hex: &str) -> Result<JsValue, JsValue>
 
 // Return a vector of arguments if the given SExp is the expected operator
 // and has the required number of arguments.
-fn match_op(opcode: u8, expected_args: usize, opname: &str, program: Rc<SExp>) -> Result<Vec<Rc<SExp>>, JsValue> {
-    let plist =
-        if let Some(plist) = program.proper_list() {
-            plist
+fn match_op(
+    opcode: u8,
+    mut expected_args: usize,
+    opname: &str,
+    program: Rc<SExp>,
+) -> Result<Vec<Rc<SExp>>, JsValue> {
+    let plist = if expected_args == 0 {
+        if let SExp::Cons(_, a, b) = program.borrow() {
+            let a_borrowed: &SExp = a.borrow();
+            let b_borrowed: &SExp = b.borrow();
+            expected_args = 1;
+            vec![a_borrowed.clone(), b_borrowed.clone()]
         } else {
-            // Not a list so can't be an apply.
-            return Err(JsValue::from_str(&format!("program wasn't a list representing an {opname} op: {program}")));
-        };
+            return Err(JsValue::from_str(&format!(
+                "program was expected to be a cons, but wasn't: {program}"
+            )));
+        }
+    } else if let Some(plist) = program.proper_list() {
+        plist
+    } else {
+        // Not a list so can't be an apply.
+        return Err(JsValue::from_str(&format!(
+            "program wasn't a list representing an {opname} op: {program}"
+        )));
+    };
 
     // Not the right length
     if plist.len() != expected_args + 1 {
-        return Err(JsValue::from_str(&format!("program list wasn't a list of {} representing an {opname} op: {program}", expected_args + 1)));
+        return Err(JsValue::from_str(&format!(
+            "program list wasn't a list of {} representing an {opname} op: {program}",
+            expected_args + 1
+        )));
     }
 
     // Not an apply
@@ -411,18 +463,19 @@ fn cache_and_accumulate_arg(array: &Array, prog: Rc<SExp>) -> Result<(), JsValue
     Ok(())
 }
 
-pub fn convert_to_program(sexp: Rc<SExp>) -> Result<JsValue, JsValue> {
-    let result_id = get_next_id();
-    let new_cached_result = create_cached_sexp(result_id, sexp)?;
-    finish_new_object(result_id, &new_cached_result)
+fn to_iprogram(v: JsValue) -> IProgram {
+    v.unchecked_into::<IProgram>()
 }
 
 #[wasm_bindgen]
 impl Program {
-    #[wasm_bindgen]
-    pub fn to(input: &JsValue) -> Result<JsValue, JsValue> {
+    pub fn to_internal(input: &JsValue) -> Result<JsValue, JsValue> {
         let loc = get_srcloc();
-        let sexp = sexp_from_js_object(loc, input).map(Ok).unwrap_or_else(|| Err(create_clvm_runner_err(format!("unable to convert to value"))))?;
+        let sexp = sexp_from_js_object(loc, input).map(Ok).unwrap_or_else(|| {
+            Err(create_clvm_runner_err(format!(
+                "unable to convert to value"
+            )))
+        })?;
 
         let new_id = get_next_id();
 
@@ -433,18 +486,23 @@ impl Program {
     }
 
     #[wasm_bindgen]
-    pub fn from_hex(input: &str) -> Result<JsValue, JsValue> {
-        let new_id = get_next_id();
-        let obj = finish_new_object(new_id, input)?;
-        Program::to(&obj)
+    pub fn to(input: &JsValue) -> Result<IProgram, JsValue> {
+        Program::to_internal(input).map(to_iprogram)
     }
 
     #[wasm_bindgen]
-    pub fn null() -> Result<JsValue, JsValue> {
+    pub fn from_hex(input: &str) -> Result<IProgram, JsValue> {
+        let new_id = get_next_id();
+        let _ = find_cached_sexp(new_id, input)?;
+        finish_new_object(new_id, input).map(to_iprogram)
+    }
+
+    #[wasm_bindgen]
+    pub fn null() -> Result<IProgram, JsValue> {
         let new_id = get_next_id();
         let encoded = create_cached_sexp(new_id, Rc::new(SExp::Nil(get_srcloc())))?;
 
-        finish_new_object(new_id, &encoded)
+        finish_new_object(new_id, &encoded).map(to_iprogram)
     }
 
     #[wasm_bindgen]
@@ -456,10 +514,7 @@ impl Program {
 
     #[wasm_bindgen]
     pub fn to_string_internal(obj: &JsValue) -> Result<JsValue, JsValue> {
-        js_sys::Reflect::get(
-            obj,
-            &js_sys::JsString::from("content"),
-        )
+        js_sys::Reflect::get(obj, &js_sys::JsString::from("content"))
     }
 
     #[wasm_bindgen]
@@ -480,15 +535,8 @@ impl Program {
             result_value.set(0, object_a);
             result_value.set(1, object_b);
             // Support reading as a classic clvm input.
-            Reflect::set(
-                &result_value,
-                &JsString::from("pair"),
-                &result_value,
-            )?;
-            Reflect::set_prototype_of(
-                &result_value,
-                &prototype
-            )?;
+            Reflect::set(&result_value, &JsString::from("pair"), &result_value)?;
+            Reflect::set_prototype_of(&result_value, &prototype)?;
             return Ok(result_value.into());
         }
 
@@ -511,7 +559,10 @@ impl Program {
     pub fn as_int_internal(obj: &JsValue) -> Result<i32, JsValue> {
         let cacheval = js_cache_value_from_js(obj)?;
         let cached = find_cached_sexp(cacheval.entry, &cacheval.content)?;
-        let number = cached.modern.get_number().map_err(|_| JsString::from("not a number"))?;
+        let number = cached
+            .modern
+            .get_number()
+            .map_err(|_| JsString::from("not a number"))?;
         (number.to_i32()).ok_or(JsString::from("number out of range").into())
     }
 
@@ -519,40 +570,44 @@ impl Program {
     pub fn as_bigint_internal(obj: &JsValue) -> Result<js_sys::BigInt, JsValue> {
         let cacheval = js_cache_value_from_js(obj)?;
         let cached = find_cached_sexp(cacheval.entry, &cacheval.content)?;
-        let number = cached.modern.get_number().map_err(|_| JsString::from("not a number"))?;
+        let number = cached
+            .modern
+            .get_number()
+            .map_err(|_| JsString::from("not a number"))?;
         let num_string = number.to_string();
         let num_str: &str = &num_string;
-        js_sys::BigInt::new(&JsString::from(num_str)).map_err(|_| JsString::from("couldn't construct bigint").into())
+        js_sys::BigInt::new(&JsString::from(num_str))
+            .map_err(|_| JsString::from("couldn't construct bigint").into())
     }
 
     #[wasm_bindgen]
-    pub fn first_internal(obj: &JsValue) -> Result<JsValue, JsValue> {
+    pub fn first_internal(obj: &JsValue) -> Result<IProgram, JsValue> {
         let cacheval = js_cache_value_from_js(obj)?;
         let cached = find_cached_sexp(cacheval.entry, &cacheval.content)?;
         if let SExp::Cons(_, a, _) = cached.modern.borrow() {
             let id_a = get_next_id();
             let new_cached_a = create_cached_sexp(id_a, a.clone())?;
-            return finish_new_object(id_a, &new_cached_a);
+            return finish_new_object(id_a, &new_cached_a).map(to_iprogram);
         }
 
         Err(JsString::from("not a cons").into())
     }
 
     #[wasm_bindgen]
-    pub fn rest_internal(obj: &JsValue) -> Result<JsValue, JsValue> {
+    pub fn rest_internal(obj: &JsValue) -> Result<IProgram, JsValue> {
         let cacheval = js_cache_value_from_js(obj)?;
         let cached = find_cached_sexp(cacheval.entry, &cacheval.content)?;
         if let SExp::Cons(_, _, a) = cached.modern.borrow() {
             let id_a = get_next_id();
             let new_cached_a = create_cached_sexp(id_a, a.clone())?;
-            return finish_new_object(id_a, &new_cached_a);
+            return finish_new_object(id_a, &new_cached_a).map(to_iprogram);
         }
 
         Err(JsString::from("not a cons").into())
     }
 
     #[wasm_bindgen]
-    pub fn cons_internal(obj: &JsValue, other: &JsValue) -> Result<JsValue, JsValue> {
+    pub fn cons_internal(obj: &JsValue, other: &JsValue) -> Result<IProgram, JsValue> {
         let cacheval = js_cache_value_from_js(obj)?;
         let cached = find_cached_sexp(cacheval.entry, &cacheval.content)?;
 
@@ -560,9 +615,13 @@ impl Program {
         let other_cache = find_cached_sexp(other_val.entry, &other_val.content)?;
 
         let new_id = get_next_id();
-        let new_sexp = Rc::new(SExp::Cons(get_srcloc(), cached.modern.clone(), other_cache.modern.clone()));
+        let new_sexp = Rc::new(SExp::Cons(
+            get_srcloc(),
+            cached.modern.clone(),
+            other_cache.modern.clone(),
+        ));
         let new_cached = create_cached_sexp(new_id, new_sexp)?;
-        finish_new_object(new_id, &new_cached)
+        finish_new_object(new_id, &new_cached).map(to_iprogram)
     }
 
     #[wasm_bindgen]
@@ -574,21 +633,18 @@ impl Program {
         let arg_cache = find_cached_sexp(argval.entry, &argval.content)?;
 
         let mut allocator = Allocator::new();
-        let prog_classic = convert_to_clvm_rs(
-            &mut allocator,
-            prog_cache.modern.clone()
-        ).map_err(|_| {
-            let err: JsValue = JsString::from("error converting program").into();
-            err
-        })?;
-        let arg_classic = convert_to_clvm_rs(
-            &mut allocator,
-            arg_cache.modern.clone()
-        ).map_err(|_| {
-            let err: JsValue = JsString::from("error converting args").into();
-            err
-        })?;
+        let prog_classic =
+            convert_to_clvm_rs(&mut allocator, prog_cache.modern.clone()).map_err(|_| {
+                let err: JsValue = JsString::from("error converting program").into();
+                err
+            })?;
+        let arg_classic =
+            convert_to_clvm_rs(&mut allocator, arg_cache.modern.clone()).map_err(|_| {
+                let err: JsValue = JsString::from("error converting args").into();
+                err
+            })?;
 
+<<<<<<< HEAD
         let operators_val = JsValue::from_str("operators");
         let runner: Rc<dyn TRunProgram> =
             if let Ok(ops) = Reflect::get(&options, &operators_val) {
@@ -649,6 +705,24 @@ impl Program {
             run_result.1
         ).map_err(clvm_to_modern_err)?;
         let result_object = convert_to_program(modern_result)?;
+=======
+        let runner = DefaultProgramRunner::default();
+        let run_result = runner
+            .run_program(&mut allocator, prog_classic, arg_classic, None)
+            .map_err(|e| {
+                let err_str: &str = &e.1;
+                let err: JsValue = JsString::from(err_str).into();
+                err
+            })?;
+        let modern_result = convert_from_clvm_rs(&mut allocator, get_srcloc(), run_result.1)
+            .map_err(|_| {
+                let err: JsValue = JsString::from("error converting result").into();
+                err
+            })?;
+        let result_id = get_next_id();
+        let new_cached_result = create_cached_sexp(result_id, modern_result)?;
+        let result_object = finish_new_object(result_id, &new_cached_result)?;
+>>>>>>> chia/main
         let cost_and_result_array = Array::new();
         cost_and_result_array.push(&JsValue::from_f64(run_result.0 as f64));
         cost_and_result_array.push(&result_object);
@@ -656,25 +730,19 @@ impl Program {
     }
 
     #[wasm_bindgen]
-    pub fn tuple_to_program_internal(obj: &JsValue) -> Result<JsValue, JsValue> {
-        let a = js_sys::Reflect::get(
-            obj,
-            &JsString::from("0"),
-        )?;
-        let b = js_sys::Reflect::get(
-            obj,
-            &JsString::from("1"),
-        )?;
+    pub fn tuple_to_program_internal(obj: &JsValue) -> Result<IProgram, JsValue> {
+        let a = js_sys::Reflect::get(obj, &JsString::from("0"))?;
+        let b = js_sys::Reflect::get(obj, &JsString::from("1"))?;
         Program::cons_internal(&a, &b)
     }
 
     #[wasm_bindgen]
     pub fn as_bin_internal(obj: &JsValue) -> Result<Vec<u8>, JsValue> {
-        let convert = Reflect::get(
-            obj,
-            &JsString::from("content"),
-        )?.as_string().ok_or(JsString::from("content wasn't a hex string"))?;
-        let bytes = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(convert))).map_err(|_| JsString::from("could not convert to binary data"))?;
+        let convert = Reflect::get(obj, &JsString::from("content"))?
+            .as_string()
+            .ok_or(JsString::from("content wasn't a hex string"))?;
+        let bytes = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(convert)))
+            .map_err(|_| JsString::from("could not convert to binary data"))?;
         Ok(bytes.data().clone())
     }
 
@@ -732,7 +800,7 @@ impl Program {
     // Resulting in a function which places its own arguments after those
     // curried in in the form of a proper list.
     #[wasm_bindgen]
-    pub fn curry_internal(obj: &JsValue, args: Vec<JsValue>) -> Result<JsValue, JsValue> {
+    pub fn curry_internal(obj: &JsValue, args: Vec<JsValue>) -> Result<IProgram, JsValue> {
         let program_val = Program::to(obj)?;
         let cacheval = js_cache_value_from_js(&program_val)?;
         let program = find_cached_sexp(cacheval.entry, &cacheval.content)?;
@@ -745,41 +813,51 @@ impl Program {
             fixed_args = Rc::new(primcons(
                 get_srcloc(),
                 Rc::new(primquote(get_srcloc(), a_cached.modern.clone())),
-                fixed_args
+                fixed_args,
             ));
         }
 
         let result = Rc::new(primapply(
             get_srcloc(),
             Rc::new(primquote(get_srcloc(), program.modern.clone())),
-            fixed_args
+            fixed_args,
         ));
 
         let new_id = get_next_id();
         let new_cached = create_cached_sexp(new_id, result)?;
-        finish_new_object(new_id, &new_cached)
+        finish_new_object(new_id, &new_cached).map(to_iprogram)
     }
 
     #[wasm_bindgen]
-    pub fn uncurry_error_internal(obj: &JsValue) -> Result<JsValue, JsValue> {
+    pub fn uncurry_error_internal(obj: &JsValue) -> Result<Vec<IProgram>, JsValue> {
         let program_val = Program::to(obj)?;
         let cacheval = js_cache_value_from_js(&program_val)?;
         let program = find_cached_sexp(cacheval.entry, &cacheval.content)?;
 
         let apply_args = match_op(2, 2, "apply", program.modern.clone())?;
+
         // Not used in code, but detects a quoted program.
-        let quoted_prog = match_op(1, 1, "quote", apply_args[0].clone())?;
+        let quoted_prog = match_op(1, 0, "quote", apply_args[0].clone())?;
 
         let retrieved_args = Array::new();
         let mut cons_expr = match_op(4, 2, "cons", apply_args[1].clone())?;
-        cache_and_accumulate_arg(&retrieved_args, cons_expr[0].clone())?;
+
+        let decons_and_unquote = |expr: Rc<SExp>| {
+            if let Ok(unquoted_curry_argument) = match_op(1, 0, "quote", expr.clone()) {
+                unquoted_curry_argument[0].clone()
+            } else {
+                expr
+            }
+        };
+
+        cache_and_accumulate_arg(&retrieved_args, decons_and_unquote(cons_expr[0].clone()))?;
         let mut next_cons = cons_expr[1].clone();
         while matches!(next_cons.borrow(), SExp::Cons(_, _, _)) {
             cons_expr = match_op(4, 2, "cons", next_cons)?;
 
             // Convert to the external js form and insert into cache so we can
             // forego conversion if still cached.
-            cache_and_accumulate_arg(&retrieved_args, cons_expr[0].clone())?;
+            cache_and_accumulate_arg(&retrieved_args, decons_and_unquote(cons_expr[0].clone()))?;
 
             // Move on to the tail that's being built.
             next_cons = cons_expr[1].clone();
@@ -796,21 +874,21 @@ impl Program {
         let new_cached_mod = create_cached_sexp(mod_id, quoted_prog[0].clone())?;
         let mod_js = finish_new_object(mod_id, &new_cached_mod)?;
 
-        let res = Array::new();
-        res.push(&mod_js);
-        res.push(&retrieved_args);
-        Ok(res.into())
+        Ok(vec![
+            mod_js.into(),
+            retrieved_args.unchecked_into::<IProgram>(),
+        ])
     }
 
     #[wasm_bindgen]
-    pub fn uncurry_internal(obj: &JsValue) -> JsValue {
+    pub fn uncurry_internal(obj: &JsValue) -> Result<Vec<IProgram>, JsValue> {
         if let Ok(res) = Program::uncurry_error_internal(obj) {
-            res
+            Ok(res)
         } else {
-            let res = Array::new();
-            res.push(obj);
-            res.push(&JsValue::null());
-            res.into()
+            Ok(vec![
+                obj.clone().unchecked_into::<IProgram>(),
+                JsValue::null().unchecked_into::<IProgram>(),
+            ])
         }
     }
 }

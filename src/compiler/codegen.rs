@@ -268,6 +268,10 @@ fn create_name_lookup_(
     }
 }
 
+// Tell whether there's a non-inline defun called 'name' in this program.
+// If so, the reference to this name is a reference to a function, which
+// will make variable references to it capture the program's function
+// environment.
 fn is_defun_in_codegen(compiler: &PrimaryCodegen, name: &[u8]) -> bool {
     // Check for an input defun that matches the name.
     for h in compiler.original_helpers.iter() {
@@ -279,6 +283,8 @@ fn is_defun_in_codegen(compiler: &PrimaryCodegen, name: &[u8]) -> bool {
     false
 }
 
+// At the CLVM level, given a list of clvm expressios, make an expression
+// that contains that list using conses.
 fn make_list(loc: Srcloc, elements: Vec<Rc<SExp>>) -> Rc<SExp> {
     let mut res = Rc::new(SExp::Nil(loc.clone()));
     for e in elements.iter().rev() {
@@ -288,7 +294,12 @@ fn make_list(loc: Srcloc, elements: Vec<Rc<SExp>>) -> Rc<SExp> {
 }
 
 //
-// Write an expression that conses the left env.
+// Get the clvm expression that represents the indicated function as a
+// callable value using the CLVM a operator.  This value can be returned
+// and even passed to another program because it carries the required
+// environment to call functions it depends on from the call site.
+//
+// To do this, it writes an expression that conses the left env.
 //
 // (list (q . 2) (c (q . 1) n) (list (q . 4) (c (q . 1)    2    ) (q . 1)))
 //
@@ -355,6 +366,11 @@ fn create_name_lookup(
     compiler: &PrimaryCodegen,
     l: Srcloc,
     name: &[u8],
+    // If the lookup is in head position, then it is a lookup as a callable,
+    // otherwise it's a lookup as a variable, which means that if a function
+    // is named, it will be built into an expression that allows it to be
+    // called by a CLVM 'a' operator as one would expect, regardless of how
+    // it integrates with the rest of the program it lives in.
     as_variable: bool,
 ) -> Result<Rc<SExp>, CompileErr> {
     if let Some(ModulePhase::StandalonePhase(sp)) = opts.module_phase() {
@@ -371,10 +387,9 @@ fn create_name_lookup(
                     // callable like a lambda by repeating the left env into it.
                     let find_program = Rc::new(SExp::Integer(l.clone(), i.to_bigint().unwrap()));
                     if as_variable && is_defun_in_codegen(compiler, name) {
-                        let l = lambda_for_defun(compiler, opts.clone(), l.clone(), name, find_program);
-                        eprintln!("lambda for defun {}: {l}", decode_string(name));
-                        eprintln!("env was {}", compiler.env);
-                        l
+                        // It's a defun.  Harden the result so it is callable
+                        // directly by the CLVM 'a' operator.
+                        lambda_for_defun(compiler, opts.clone(), l.clone(), &name, find_program)
                     } else {
                         find_program
                     }
@@ -407,6 +422,8 @@ pub fn get_callable(
         SExp::Atom(l, name) => {
             let macro_def = compiler.macros.get(name);
             let inline = compiler.inlines.get(name);
+            // We're getting a callable, so the access requested is not as
+            // a variable.
             let defun = create_name_lookup(opts.clone(), compiler, l.clone(), name, false);
             let prim = get_prim(l.clone(), compiler.prims.clone(), name);
             let atom_is_com = *name == "com".as_bytes().to_vec();
@@ -619,137 +636,180 @@ fn compile_call(
             call.loc.clone(),
             Rc::new(SExp::Atom(al.clone(), an.to_vec())),
         )
-        .and_then(|calltype| {
-            match calltype {
-                Callable::CallMacro(l, code) => {
-                    process_macro_call(context, opts.clone(), compiler, l, tl, Rc::new(code))
-                }
+        .and_then(|calltype| match calltype {
+            Callable::CallMacro(l, code) => {
+                process_macro_call(context, opts.clone(), compiler, l, tl, Rc::new(code))
+            }
 
-                Callable::CallInline(l, inline) => replace_in_inline(
-                    context,
-                    opts.clone(),
-                    compiler,
-                    l.clone(),
-                    &inline,
-                    l,
-                    &tl,
-                    call.tail.clone(),
-                ),
+            Callable::CallInline(l, inline) => replace_in_inline(
+                context,
+                opts.clone(),
+                compiler,
+                l.clone(),
+                &inline,
+                l,
+                &tl,
+                call.tail.clone(),
+            ),
 
-                Callable::CallDefun(l, lookup) => generate_args_code(
-                    context,
-                    opts.clone(),
-                    compiler,
-                    // A callspec is a way to collect some info about a call, mainly
-                    // to reduce the number of arguments to pass through.
-                    &CallSpec {
-                        loc: l.clone(),
-                        name: an,
-                        args: &tl,
-                        tail: call.tail.clone(),
-                        original: call.original.clone(),
-                    },
-                    true,
-                )
+            Callable::CallDefun(l, lookup) => generate_args_code(
+                context,
+                opts.clone(),
+                compiler,
+                // A callspec is a way to collect some info about a call, mainly
+                // to reduce the number of arguments to pass through.
+                &CallSpec {
+                    loc: l.clone(),
+                    name: an,
+                    args: &tl,
+                    tail: call.tail.clone(),
+                    original: call.original.clone(),
+                },
+                true,
+            )
+            .and_then(|args| {
+                process_defun_call(opts.clone(), compiler, l.clone(), args, Rc::new(lookup))
+            }),
+
+            Callable::CallPrim(l, p) => generate_args_code(
+                context,
+                opts,
+                compiler,
+                &CallSpec {
+                    loc: l.clone(),
+                    name: an,
+                    args: &tl,
+                    tail: None,
+                    original: Rc::new(BodyForm::Value(SExp::Nil(l.clone()))),
+                },
+                false,
+            )
+            .map(|args| CompiledCode(l.clone(), Rc::new(SExp::Cons(l, Rc::new(p), args)))),
+
+            Callable::CallInline(l, inline) => replace_in_inline(
+                context,
+                opts.clone(),
+                compiler,
+                l.clone(),
+                &inline,
+                l,
+                &tl,
+                call.tail.clone(),
+            ),
+
+            Callable::CallDefun(l, lookup) => generate_args_code(
+                context,
+                opts.clone(),
+                compiler,
+                // A callspec is a way to collect some info about a call, mainly
+                // to reduce the number of arguments to pass through.
+                &CallSpec {
+                    loc: l.clone(),
+                    name: an,
+                    args: &tl,
+                    tail: call.tail.clone(),
+                    original: call.original.clone(),
+                },
+                true,
+            )
                 .and_then(|args| {
                     process_defun_call(opts.clone(), compiler, l.clone(), args, Rc::new(lookup))
                 }),
-                Callable::CallPrim(l, p) => generate_args_code(
-                    context,
-                    opts,
-                    compiler,
-                    &CallSpec {
-                        name: an,
-                        loc: l.clone(),
-                        args: &tl,
-                        tail: None,
-                        original: call.original.clone(),
-                    },
-                    false,
-                )
+            Callable::CallPrim(l, p) => generate_args_code(
+                context,
+                opts,
+                compiler,
+                &CallSpec {
+                    name: an,
+                    loc: l.clone(),
+                    args: &tl,
+                    tail: None,
+                    original: call.original.clone(),
+                },
+                false,
+            )
                 .map(|args| CompiledCode(l.clone(), Rc::new(SExp::Cons(l, Rc::new(p), args)))),
 
-                Callable::EnvPath => {
-                    if tl.len() == 1 {
-                        match tl[0].borrow() {
-                            BodyForm::Value(SExp::Integer(l, i)) => Ok(CompiledCode(
-                                l.clone(),
-                                Rc::new(SExp::Integer(l.clone(), i.clone())),
-                            )),
-                            BodyForm::Quoted(SExp::Integer(l, i)) => Ok(CompiledCode(
-                                l.clone(),
-                                Rc::new(SExp::Integer(l.clone(), i.clone())),
-                            )),
-                            _ => Err(CompileErr(
-                                al.clone(),
-                                "@ form only accepts integers at present".to_string(),
-                            )),
-                        }
-                    } else if tl.len() == 2 {
-                        match (tl[0].borrow(), tl[1].borrow()) {
-                            (
-                                BodyForm::Value(SExp::Atom(_al, a)),
-                                BodyForm::Value(SExp::Integer(_il, i)),
-                            ) => produce_argument_check(opts, compiler, call.loc.clone(), a, i.clone()),
-                            (
-                                BodyForm::Value(SExp::Atom(_al, a)),
-                                BodyForm::Quoted(SExp::Integer(_il, i)),
-                            ) => produce_argument_check(opts, compiler, call.loc.clone(), a, i.clone()),
-                            _ => Err(CompileErr(
-                                al.clone(),
-                                "@ form with two arguments requires argument and integer"
-                                    .to_string(),
-                            )),
-                        }
-                    } else {
-                        Err(CompileErr(
+            Callable::EnvPath => {
+                if tl.len() == 1 {
+                    match tl[0].borrow() {
+                        BodyForm::Value(SExp::Integer(l, i)) => Ok(CompiledCode(
+                            l.clone(),
+                            Rc::new(SExp::Integer(l.clone(), i.clone())),
+                        )),
+                        BodyForm::Quoted(SExp::Integer(l, i)) => Ok(CompiledCode(
+                            l.clone(),
+                            Rc::new(SExp::Integer(l.clone(), i.clone())),
+                        )),
+                        _ => Err(CompileErr(
                             al.clone(),
-                            "@ form accepts one argument".to_string(),
-                        ))
+                            "@ form only accepts integers at present".to_string(),
+                        )),
                     }
+                } else if tl.len() == 2 {
+                    match (tl[0].borrow(), tl[1].borrow()) {
+                        (
+                            BodyForm::Value(SExp::Atom(_al, a)),
+                            BodyForm::Value(SExp::Integer(_il, i)),
+                        ) => produce_argument_check(opts, compiler, call.loc.clone(), a, i.clone()),
+                        (
+                            BodyForm::Value(SExp::Atom(_al, a)),
+                            BodyForm::Quoted(SExp::Integer(_il, i)),
+                        ) => produce_argument_check(opts, compiler, call.loc.clone(), a, i.clone()),
+                        _ => Err(CompileErr(
+                            al.clone(),
+                            "@ form with two arguments requires argument and integer"
+                                .to_string(),
+                        )),
+                    }
+                } else {
+                    Err(CompileErr(
+                        al.clone(),
+                        "@ form accepts one argument".to_string(),
+                    ))
                 }
+            }
 
-                Callable::RunCompiler => {
-                    if call.args.len() >= 2 {
-                        let updated_opts = opts
-                            .set_stdenv(false)
-                            .set_in_defun(true)
-                            .set_frontend_opt(false)
-                            .set_start_env(Some(compiler.env.clone()))
-                            .set_code_generator(compiler.clone());
+            Callable::RunCompiler => {
+                if call.args.len() >= 2 {
+                    let updated_opts = opts
+                        .set_stdenv(false)
+                        .set_in_defun(true)
+                        .set_frontend_opt(false)
+                        .set_start_env(Some(compiler.env.clone()))
+                        .set_code_generator(compiler.clone());
 
-                        let use_body = SExp::Cons(
+                    let use_body = SExp::Cons(
+                        call.loc.clone(),
+                        Rc::new(SExp::Atom(call.loc.clone(), "mod".as_bytes().to_vec())),
+                        Rc::new(SExp::Cons(
                             call.loc.clone(),
-                            Rc::new(SExp::Atom(call.loc.clone(), "mod".as_bytes().to_vec())),
+                            Rc::new(SExp::Nil(call.loc.clone())),
                             Rc::new(SExp::Cons(
-                                call.loc.clone(),
+                                call.args[1].loc(),
+                                call.args[1].to_sexp(),
                                 Rc::new(SExp::Nil(call.loc.clone())),
-                                Rc::new(SExp::Cons(
-                                    call.args[1].loc(),
-                                    call.args[1].to_sexp(),
-                                    Rc::new(SExp::Nil(call.loc.clone())),
-                                )),
                             )),
-                        );
+                        )),
+                    );
 
-                        let mut unused_symbol_table = HashMap::new();
-                        let mut context_wrapper =
-                            CompileContextWrapper::from_context(context, &mut unused_symbol_table);
-                        let code = updated_opts
-                            .compile_program(&mut context_wrapper.context, Rc::new(use_body))?;
+                    let mut unused_symbol_table = HashMap::new();
+                    let mut context_wrapper =
+                        CompileContextWrapper::from_context(context, &mut unused_symbol_table);
+                    let code = updated_opts
+                        .compile_program(&mut context_wrapper.context, Rc::new(use_body))?;
 
-                        match code {
-                            CompilerOutput::Program(_, code) => Ok(CompiledCode(
-                                call.loc.clone(),
-                                Rc::new(primquote(call.loc.clone(), Rc::new(code))),
-                            )),
-                            CompilerOutput::Module(_) => {
-                                todo!();
-                            }
+                    match code {
+                        CompilerOutput::Program(_, code) => Ok(CompiledCode(
+                            call.loc.clone(),
+                            Rc::new(primquote(call.loc.clone(), Rc::new(code))),
+                        )),
+                        CompilerOutput::Module(_) => {
+                            todo!();
                         }
-                    } else {
-                        error.clone()
                     }
+                } else {
+                    error.clone()
                 }
             }
         })
@@ -836,11 +896,32 @@ pub fn generate_expr_code(
                             l.clone(),
                             Rc::new(SExp::Integer(l.clone(), bi_one())),
                         ))
+                    } else if atom.is_empty() {
+                        // Ensure that we handle empty atoms as nils.
+                        generate_expr_code(
+                            context,
+                            opts,
+                            compiler,
+                            Rc::new(BodyForm::Value(SExp::Nil(l.clone()))),
+                        )
                     } else {
+                        // This is as a variable access, given that we've got
+                        // a Value bodyform containing an Atom, so if a defun
+                        // is returned, it should be a packaged callable.
                         create_name_lookup(opts.clone(), compiler, l.clone(), atom, true)
                             .map(|f| Ok(CompiledCode(l.clone(), f)))
                             .unwrap_or_else(|_| {
                                 if opts.dialect().strict && printable(atom, false) {
+                                    // Finally enable strictness for variable names.
+                                    // This is possible because the modern macro system
+                                    // takes great care to preserve as much information
+                                    // from the source code as possible.
+                                    //
+                                    // When we come here in strict mode, we have
+                                    // a string, integer or atom depending on the
+                                    // user's desire and the explicitly generated
+                                    // result from the macro, therefore we can return
+                                    // an error if this atom didn't have a binding.
                                     return Err(CompileErr(
                                         l.clone(),
                                         format!(
@@ -863,28 +944,24 @@ pub fn generate_expr_code(
                     }
                 }
                 SExp::Integer(l, i) => {
-                    if opts.dialect().strict {
-                        return generate_expr_code(
-                            context,
-                            opts,
-                            compiler,
-                            Rc::new(BodyForm::Quoted(SExp::Integer(l.clone(), i.clone()))),
-                        );
-                    }
-
-                    // Since macros are in this language and the runtime has
-                    // a very narrow data representation, we'll need to
-                    // accomodate bare numbers coming back in place of identifiers,
-                    // but only in legacy non-strict mode.
-                    generate_expr_code(
-                        context,
-                        opts,
-                        compiler,
+                    // This code can assume that an integer is an integer because
+                    // strict mode closes the necessary loophole below.  Values
+                    // intended as variable names are never crushed into integer
+                    // like values from modern macros.
+                    let ambiguous_int_value = if opts.dialect().strict {
+                        Rc::new(BodyForm::Quoted(SExp::Integer(l.clone(), i.clone())))
+                    } else {
+                        // Since macros are in this language and the runtime has
+                        // a very narrow data representation, we'll need to
+                        // accomodate bare numbers coming back in place of identifiers,
+                        // but only in legacy non-strict mode.
                         Rc::new(BodyForm::Value(SExp::Atom(
                             l.clone(),
                             u8_from_number(i.clone()),
-                        ))),
-                    )
+                        )))
+                    };
+
+                    generate_expr_code(context, opts, compiler, ambiguous_int_value)
                 }
                 _ => Ok(CompiledCode(
                     v.loc(),
@@ -1045,7 +1122,7 @@ fn codegen_(
     }
 }
 
-fn is_defun_or_tabled_const(b: &HelperForm) -> bool {
+fn is_defun_or_tabled_constant(b: &HelperForm) -> bool {
     match b {
         HelperForm::Defun(false, _) => true,
         HelperForm::Defconstant(cdata) => cdata.tabled,
@@ -1118,7 +1195,7 @@ fn generate_let_defun(
         // binary size, when permitted.  Sometimes the user will signal a
         // preference.
         should_inline_let(inline_hint),
-        DefunData {
+        Box::new(DefunData {
             loc: l.clone(),
             nl: l,
             kw: kwl,
@@ -1127,8 +1204,7 @@ fn generate_let_defun(
             args: inner_function_args,
             body,
             synthetic: Some(SyntheticType::NoInlinePreference),
-            ty: None,
-        },
+        }),
     )
 }
 
@@ -1408,6 +1484,15 @@ pub fn hoist_body_let_binding(
             ))
         }
         BodyForm::Lambda(letdata) => {
+            // A lambda is exactly the same as
+            // 1) A function whose argument list is the captures plus the
+            //    non-capture arguments.
+            // 2) A call site which includes a reference to the function
+            //    surrounded with a structure that curries on the capture
+            //    arguments.
+
+            // Compose the function and return it as a desugared function.
+            // The functions desugared here also come from let bindings.
             let new_function_args = Rc::new(SExp::Cons(
                 letdata.loc.clone(),
                 letdata.capture_args.clone(),
@@ -1419,10 +1504,10 @@ pub fn hoist_body_let_binding(
                 new_function_args.clone(),
                 letdata.body.clone(),
             )?;
-            let new_expr = lambda_codegen(&new_function_name, letdata)?;
+            let new_expr = lambda_codegen(&new_function_name, letdata);
             let function = HelperForm::Defun(
                 false,
-                DefunData {
+                Box::new(DefunData {
                     loc: letdata.loc.clone(),
                     name: new_function_name,
                     kw: letdata.kw.clone(),
@@ -1431,10 +1516,13 @@ pub fn hoist_body_let_binding(
                     args: new_function_args,
                     body: new_body,
                     synthetic: Some(SyntheticType::WantNonInline),
-                    ty: None,
-                },
+                }),
             );
             new_helpers_from_body.push(function);
+
+            // new_expr is the generated code at the call site.  The reference
+            // to the actual function additionally is enriched by a left-env
+            // reference that gives it access to the program.
             Ok((new_helpers_from_body, Rc::new(new_expr)))
         }
         _ => Ok((Vec::new(), body.clone())),
@@ -1464,11 +1552,11 @@ pub fn process_helper_let_bindings(helpers: &[HelperForm]) -> Result<Vec<HelperF
 
                 result[i] = HelperForm::Defun(
                     inline,
-                    DefunData {
+                    Box::new(DefunData {
+                        orig_args: defun.orig_args.clone(),
                         body: hoisted_body,
-                        ty: defun.ty.clone(),
-                        ..defun.clone()
-                    },
+                        ..*defun.clone()
+                    }),
                 );
 
                 i += 1;
@@ -1599,7 +1687,6 @@ fn decide_constant_generation_order(
         args: Rc::new(SExp::Nil(loc.clone())),
         helpers: helpers.to_vec(),
         exp,
-        ty: None,
     };
 
     let mut constants: Vec<HelperForm> = helpers
@@ -2016,7 +2103,7 @@ fn start_codegen(
     let only_defuns: Vec<HelperForm> = program
         .helpers
         .iter()
-        .filter(|x| is_defun_or_tabled_const(x))
+        .filter(|x| is_defun_or_tabled_constant(x))
         .cloned()
         .collect();
 
@@ -2066,6 +2153,7 @@ fn final_codegen(
     compiler: &PrimaryCodegen,
 ) -> Result<PrimaryCodegen, CompileErr> {
     let opt_final_expr = context.pre_final_codegen_optimize(opts.clone(), compiler)?;
+
     let optimizer_opts = opts.clone();
     generate_expr_code(context, opts, compiler, opt_final_expr).and_then(|code| {
         let mut final_comp = compiler.clone();
@@ -2305,7 +2393,6 @@ pub fn codegen(
     opts: Rc<dyn CompilerOpts>,
     cmod: &CompileForm,
 ) -> Result<SExp, CompileErr> {
-    eprintln!("codegen( {:?} {} )", opts.module_phase(), cmod.to_sexp());
     let mut start_of_codegen_optimization = StartOfCodegenOptimization {
         program: cmod.clone(),
         code_generator: dummy_functions(&start_codegen(context, opts.clone(), cmod.clone())?)?,
@@ -2438,7 +2525,12 @@ pub fn codegen(
         }
     }
 
-    *context.symbols() = code_generator.function_symbols.clone();
+    // If stepping 23 or greater, we support no-env mode.
+    enable_nil_env_mode_for_stepping_23_or_greater(opts.clone(), &mut code_generator);
+
+    context
+        .symbols()
+        .clone_from(&code_generator.function_symbols);
     context
         .symbols()
         .insert("source_file".to_string(), opts.filename());

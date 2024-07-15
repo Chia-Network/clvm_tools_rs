@@ -86,22 +86,17 @@ fn run_string_get_program_and_output_dialect(
     let sexp_args =
         parse_sexp(srcloc.clone(), args.bytes()).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
 
+    let mut included = Vec::new();
     compile_file(
         &mut allocator,
         runner.clone(),
         opts,
         &content,
         &mut HashMap::new(),
-        &mut Vec::new(),
+        &mut included,
     )
     .and_then(|program| {
-        run_with_cost(
-            &mut allocator,
-            runner,
-            Rc::new(program.to_sexp()),
-            sexp_args,
-        )
-        .map_err(|e| match e {
+        run_with_cost(&mut allocator, runner, Rc::new(program.to_sexp()), sexp_args).map_err(|e| match e {
             RunFailure::RunErr(l, s) => CompileErr(l, s),
             RunFailure::RunExn(l, s) => CompileErr(l, s.to_string()),
         })
@@ -122,6 +117,7 @@ fn run_string_get_program_and_output_with_includes(
             dialect: AcceptedDialect {
                 stepping: Some(23),
                 strict: false,
+                int_fix: false,
             },
             optimize: false,
             fe_opt,
@@ -320,6 +316,7 @@ const SPEC_23: OptimizationRunSpec = OptimizationRunSpec {
     dialect: AcceptedDialect {
         stepping: Some(23),
         strict: true,
+        int_fix: false,
     },
     optimize: true,
     fe_opt: true,

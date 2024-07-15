@@ -11,6 +11,7 @@ mod compiler;
 mod evaluate;
 mod fuzz;
 mod modules;
+mod fuzz_assign;
 mod optimizer;
 mod preprocessor;
 mod repl;
@@ -18,7 +19,6 @@ mod restargs;
 mod runtypes;
 mod singleton;
 mod srcloc;
-mod types;
 mod usecheck;
 
 #[test]

@@ -26,7 +26,7 @@ use crate::classic::clvm_tools::stages::stage_2::optimize::optimize_sexp;
 use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, run};
 use crate::compiler::codegen::{codegen, do_mod_codegen, get_callable};
 use crate::compiler::comptypes::{
-    BodyForm, CallSpec, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, ModulePhase,
+    BodyForm, CallSpec, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm,
     PrimaryCodegen, SyntheticType,
 };
 use crate::compiler::evaluate::{
@@ -301,7 +301,6 @@ fn constant_fun_result(
                 let to_compile = CompileForm {
                     loc: call_spec.loc.clone(),
                     include_forms: Vec::new(),
-                    ty: None,
                     helpers: compiler.original_helpers.clone(),
                     args: Rc::new(SExp::Atom(call_spec.loc.clone(), b"__ARGS__".to_vec())),
                     exp: Rc::new(BodyForm::Call(
@@ -541,7 +540,7 @@ pub fn optimize_expr(
                         if let Ok(compiled) = do_mod_codegen(&mut wrapper.context, opts.clone(), cf)
                         {
                             if let Ok(NodeSel::Cons(_, body)) =
-                                NodeSel::Cons(AtomValue::Here(&[1]), ThisNode::Here)
+                                NodeSel::Cons(AtomValue::Here(&[1]), ThisNode)
                                     .select_nodes(compiled.1)
                             {
                                 let borrowed_body: &SExp = body.borrow();
@@ -644,17 +643,10 @@ fn fe_opt(
                 )?;
                 let new_helper = HelperForm::Defun(
                     *inline,
-                    DefunData {
-                        loc: defun.loc.clone(),
-                        nl: defun.nl.clone(),
-                        kw: defun.kw.clone(),
-                        name: defun.name.clone(),
-                        args: defun.args.clone(),
-                        orig_args: defun.orig_args.clone(),
-                        synthetic: defun.synthetic.clone(),
+                    Box::new(DefunData {
                         body: body_rc.clone(),
-                        ty: defun.ty.clone(),
-                    },
+                        ..*defun.clone()
+                    }),
                 );
                 optimized_helpers.push(new_helper);
             }
@@ -725,4 +717,21 @@ pub fn get_optimizer(
     }
 
     Ok(Box::new(ExistingStrategy::new()))
+}
+
+/// This small interface takes care of various scenarios that have existed
+/// regarding mixing modern chialisp output with classic's optimizer.
+pub fn maybe_finalize_program_via_classic_optimizer(
+    allocator: &mut Allocator,
+    runner: Rc<dyn TRunProgram>,
+    _opts: Rc<dyn CompilerOpts>, // Currently unused but I want this interface
+    // to consider opts in the future when required.
+    opt_flag: bool, // Command line flag and other features control this in oldest-    // versions
+    unopt_res: &SExp,
+) -> Result<Rc<SExp>, CompileErr> {
+    if opt_flag {
+        run_optimizer(allocator, runner, Rc::new(unopt_res.clone()))
+    } else {
+        Ok(Rc::new(unopt_res.clone()))
+    }
 }

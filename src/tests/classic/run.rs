@@ -325,18 +325,6 @@ fn test_get_dependencies_1() {
 }
 
 #[test]
-fn test_type_strip_1() {
-    assert_eq!(
-        do_basic_run(&vec![
-            "run".to_string(),
-            "(mod ((A : Atom)) (defun-inline foo (X Y . Z) (i X Y . Z)) (foo A 2 3))".to_string()
-        ])
-        .trim(),
-        "(i 2 (q . 2) (q . 3))"
-    );
-}
-
-#[test]
 fn test_treehash_constant_embedded_classic() {
     let result_text = do_basic_run(&vec![
         "run".to_string(),
@@ -364,18 +352,6 @@ fn test_treehash_constant_embedded_classic() {
     assert_eq!(
         result_hash,
         "0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f9874"
-    );
-}
-
-#[test]
-fn test_type_strip_2() {
-    assert_eq!(
-        do_basic_run(&vec![
-            "run".to_string(),
-            "(mod (A) -> Atom (defun-inline foo (X Y . Z) (i X Y . Z)) (foo A 2 3))".to_string()
-        ])
-        .trim(),
-        "(i 2 (q . 2) (q . 3))"
     );
 }
 
@@ -410,24 +386,6 @@ fn test_treehash_constant_embedded_fancy_order() {
     assert_eq!(
         result_hash,
         "0x6fcb06b1fe29d132bb37f3a21b86d7cf03d636bf6230aa206486bef5e68f98df"
-    );
-}
-
-#[test]
-fn test_type_def_1() {
-    assert_eq!(
-        do_basic_run(&vec![
-            "run".to_string(),
-            indoc! {"
-(mod (A) -> Atom
-   (deftype Struct ((A : Atom) . (B : Atom32)))
-   (defun-inline foo (X) (new_Struct X 3))
-   (get_Struct_A (foo A))
-   )"}
-            .to_string()
-        ])
-        .trim(),
-        "(a (q . 2) (c 2 (q . 3)))"
     );
 }
 
@@ -578,24 +536,6 @@ fn test_treehash_constant_embedded_modern_loop() {
 }
 
 #[test]
-fn test_compile_file_1() {
-    let program = do_basic_run(&vec![
-        "run".to_string(),
-        "-i".to_string(),
-        "resources/tests".to_string(),
-        "(mod () (compile-file foo secret_number.cl) foo)".to_string(),
-    ])
-    .trim()
-    .to_string();
-    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
-        .trim()
-        .to_string();
-    assert_eq!(run_result, "(+ 2 (q . 19))");
-    fs::remove_file("*command*_foo.sym")
-        .expect("file should have been dropped from compile process");
-}
-
-#[test]
 fn test_embed_file_2() {
     let program = do_basic_run(&vec![
         "run".to_string(),
@@ -609,22 +549,6 @@ fn test_embed_file_2() {
         .trim()
         .to_string();
     assert_eq!(run_result, "(65 66 67)");
-}
-
-#[test]
-fn test_compile_file_3() {
-    let program = do_basic_run(&vec![
-        "run".to_string(),
-        "-i".to_string(),
-        "resources/tests".to_string(),
-        "(mod () (include *standard-cl-21*) (compile-file foo secret_number.cl) foo)".to_string(),
-    ])
-    .trim()
-    .to_string();
-    let run_result = do_basic_brun(&vec!["brun".to_string(), program, "()".to_string()])
-        .trim()
-        .to_string();
-    assert_eq!(run_result, "(a (q 16 (f (r 1)) (q . 19)) (c (q) 1))");
 }
 
 #[test]
@@ -2100,7 +2024,6 @@ fn test_rosetta_code_babbage_problem() {
     assert_eq!(output, "25264");
 }
 
-#[test]
 fn test_desugar_output() {
     let desugared = do_basic_run(&vec![
         "run".to_string(),
@@ -2282,61 +2205,6 @@ fn test_chialisp_web_example_embed() {
         outcome,
         "0x26c60a61d01db5836ca70fefd44a6a016620413c8ef5f259a6c5612d4f79d3b8"
     );
-}
-
-#[test]
-fn test_chialisp_types_23() {
-    let program = do_basic_run(&vec![
-        "run".to_string(),
-        "resources/tests/strict/typesmoke.clsp".to_string(),
-    ])
-    .trim()
-    .to_string();
-    let program2 = do_basic_run(&vec![
-        "run".to_string(),
-        "--typecheck".to_string(),
-        "resources/tests/strict/typesmoke.clsp".to_string(),
-    ])
-    .trim()
-    .to_string();
-    assert_eq!(program, program2);
-    assert_eq!(program, "(2 (1 . 2) (4 2 ()))");
-}
-
-#[test]
-fn test_chialisp_type_lambda_23() {
-    let program = do_basic_run(&vec![
-        "run".to_string(),
-        "resources/tests/strict/typesmoke-lambda.clsp".to_string(),
-    ])
-    .trim()
-    .to_string();
-    let program2 = do_basic_run(&vec![
-        "run".to_string(),
-        "--typecheck".to_string(),
-        "resources/tests/strict/typesmoke-lambda.clsp".to_string(),
-    ])
-    .trim()
-    .to_string();
-    assert_eq!(program, program2);
-}
-
-#[test]
-fn test_chialisp_type_lambda_23_anno() {
-    let program = do_basic_run(&vec![
-        "run".to_string(),
-        "resources/tests/strict/typesmoke-lambda-anno.clsp".to_string(),
-    ])
-    .trim()
-    .to_string();
-    let program2 = do_basic_run(&vec![
-        "run".to_string(),
-        "--typecheck".to_string(),
-        "resources/tests/strict/typesmoke-lambda-anno.clsp".to_string(),
-    ])
-    .trim()
-    .to_string();
-    assert_eq!(program, program2);
 }
 
 #[test]
@@ -2615,5 +2483,90 @@ fn test_preprocess_can_recurse() {
     ])
     .trim()
     .to_string();
-    assert_eq!(res, "(2 (3 2 (1 18 2 (1 . 2)) (1 16 2 (1 . 1))) 1)");
+    assert_eq!(
+        res,
+        "(2 (1 2 (3 5 (1 2 (1 18 5 (1 . 2)) 1) (1 2 (1 16 5 (1 . 1)) 1)) 1) (4 (1) 1))"
+    );
+}
+
+#[test]
+fn test_assign_rename_tricky() {
+    let filename = "resources/tests/cse-complex-21.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+
+    let run_result_11 = do_basic_brun(&vec![
+        "brun".to_string(),
+        program.clone(),
+        "(11)".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(run_result_11, "506");
+
+    let run_result_41 = do_basic_brun(&vec!["brun".to_string(), program, "(41)".to_string()])
+        .trim()
+        .to_string();
+    assert_eq!(run_result_41, "15375");
+}
+
+#[test]
+fn test_cse_breakage_example() {
+    let filename = "resources/tests/cse-bad.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+
+    eprintln!(">> {program}");
+    assert!(program.starts_with("("));
+
+    let run_result_11 = do_basic_brun(&vec![
+        "brun".to_string(),
+        program.clone(),
+        "(())".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(run_result_11, "((a 3) (a 3) (a 3))");
+}
+
+#[test]
+fn test_cse_breakage_example_letstar() {
+    let filename = "resources/tests/cse-bad-letstar.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+
+    eprintln!(">> {program}");
+    assert!(program.starts_with("("));
+
+    let run_result_11 = do_basic_brun(&vec![
+        "brun".to_string(),
+        program.clone(),
+        "(())".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(run_result_11, "((a 3) (a 3) (a 3))");
+}
+
+#[test]
+fn test_representation_of_tricky_nested_assigns() {
+    let filename = "resources/tests/cse-overlap.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+    let wanted_repr = "(2 (1 2 4 (4 2 (4 (4 5 (4 (1 . 99) (4 (1 . 100) (4 (1 . 101) (4 (1 . 102) ()))))) ()))) (4 (1 (2 10 (4 2 (4 (6 (4 2 (4 3 (4 29 ())))) (4 29 ())))) (2 14 (4 2 (4 3 (4 (4 (4 11 21) (4 21 ())) (4 (4 11 49) ()))))) 4 21 (4 23 (4 (4 23 41) (4 11 ())))) 1))";
+    assert_eq!(program, wanted_repr);
+}
+
+#[test]
+fn test_assign_cse_tricky_2() {
+    let filename = "resources/tests/cse-tricky-basic.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+    let wanted_repr = "(2 (1 2 10 (4 2 (4 5 ()))) (4 (1 ((11 5 11) 2 8 (4 2 (4 5 (4 11 ())))) (2 22 (4 2 (4 3 (4 (18 5 (1 . 11)) (4 (16 5 (1 . 1)) ()))))) (2 30 (4 2 (4 3 (4 (1 . 121) ())))) 2 (3 (9 17 (1 . 13)) (1 2 12 (4 2 (4 45 (4 21 ())))) (1 2 (3 (9 17 (1 . 15)) (1 2 8 (4 2 (4 45 (4 21 ())))) (1 . 11)) 1)) 1) 1))";
+    assert_eq!(program, wanted_repr);
 }

@@ -15,8 +15,7 @@ use crate::compiler::comptypes::{
 use crate::compiler::lambda::make_cons;
 use crate::compiler::sexp::{decode_string, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::BasicCompileContext;
-use crate::compiler::CompileContextWrapper;
+use crate::compiler::{BasicCompileContext, CompileContextWrapper};
 
 use crate::util::Number;
 

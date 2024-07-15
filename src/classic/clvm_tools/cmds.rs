@@ -52,22 +52,19 @@ use crate::classic::platform::argparse::{
 
 use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
 use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
-use crate::compiler::clvm::start_step;
+use crate::compiler::clvm::{NewStyleIntConversion, start_step};
 use crate::compiler::compiler::{compile_file, do_desugar, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompileForm, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
 use crate::compiler::dialect::detect_modern;
 use crate::compiler::frontend::frontend;
-use crate::compiler::optimize::{get_optimizer, run_optimizer};
+use crate::compiler::optimize::{get_optimizer, maybe_finalize_program_via_classic_optimizer};
 use crate::compiler::preprocessor::gather_dependencies;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp;
 use crate::compiler::sexp::{decode_string, parse_sexp};
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::typechia::standard_type_context;
-use crate::compiler::types::theory::TypeTheory;
-use crate::compiler::untype::untype_code;
 use crate::compiler::BasicCompileContext;
 
 use crate::util::collapse;
@@ -194,7 +191,7 @@ pub fn call_tool(
         return Ok(());
     }
 
-    let args_path_or_code_val = match args.get(&"path_or_code".to_string()) {
+    let args_path_or_code_val = match args.get("path_or_code") {
         None => ArgumentValue::ArgArray(vec![]),
         Some(v) => v.clone(),
     };
@@ -214,7 +211,7 @@ pub fn call_tool(
                 let conv_result = task.conv.invoke(allocator, &s)?;
                 let sexp = *conv_result.first();
                 let text = conv_result.rest();
-                if args.contains_key(&"script_hash".to_string()) {
+                if args.contains_key("script_hash") {
                     let data: Vec<u8> = sha256tree(allocator, sexp).hex().bytes().collect();
                     stream.write(Bytes::new(Some(BytesFromType::Raw(data))));
                 } else if !text.is_empty() {
@@ -595,7 +592,7 @@ pub fn cldb(args: &[String]) {
     }
 
     if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("path_or_code") {
-        input_file = file.clone();
+        input_file.clone_from(file);
         input_program = path_or_code.to_string();
     }
 
@@ -653,13 +650,15 @@ pub fn cldb(args: &[String]) {
                 &mut use_symbol_table,
                 &mut includes,
             );
-            if do_optimize {
-                unopt_res.and_then(|x| {
-                    run_optimizer(&mut allocator, runner.clone(), Rc::new(x.to_sexp()))
-                })
-            } else {
-                unopt_res.map(|x| Rc::new(x.to_sexp()))
-            }
+            unopt_res.and_then(|x| {
+                maybe_finalize_program_via_classic_optimizer(
+                    &mut allocator,
+                    runner.clone(),
+                    opts,
+                    false,
+                    &x.to_sexp(),
+                )
+            })
         }
     };
 
@@ -730,7 +729,7 @@ pub fn cldb(args: &[String]) {
         Box::new(CldbNoOverride::new_symbols(use_symbol_table.clone())),
     );
 
-    if parsed_args.get("tree").is_some() {
+    if parsed_args.contains_key("tree") {
         let result = cldb_hierarchy(
             runner,
             Rc::new(prim_map),
@@ -757,6 +756,8 @@ pub fn cldb(args: &[String]) {
         output.push(cvt_subtree);
     };
 
+    cldbrun.set_print_only(only_print);
+
     loop {
         if cldbrun.is_ended() {
             println!("{}", yamlette_string(&output));
@@ -771,9 +772,9 @@ pub fn cldb(args: &[String]) {
                     only_print.insert("Print".to_string(), YamlElement::String(p.clone()));
                     output.push(only_print);
                 } else {
-                    let is_final = result.get("Final").is_some();
-                    let is_throw = result.get("Throw").is_some();
-                    let is_failure = result.get("Failure").is_some();
+                    let is_final = result.contains_key("Final");
+                    let is_throw = result.contains_key("Throw");
+                    let is_failure = result.contains_key("Failure");
                     if is_final || is_throw || is_failure {
                         print_tree(&mut output, &result);
                     }
@@ -868,6 +869,42 @@ fn parse_module_and_get_sigil(
     Ok((stepping_form_text, parsed))
 }
 
+// A function which performs preprocessing on a whole program and renders the
+// output to the user.
+//
+// This is used in the same way as cc -E in a C compiler; to see what
+// preprocessing did to the source so you can debug and improve your macros.
+//
+// Without this, it's difficult for some to visualize how macro are functioning
+// and what forms they output.
+fn perform_preprocessing(
+    stdout: &mut Stream,
+    opts: Rc<dyn CompilerOpts>,
+    input_file: &str,
+    program_text: &str,
+) -> Result<(Option<String>, Vec<Rc<sexp::SExp>>), CompileErr> {
+    let srcloc = Srcloc::start(input_file);
+    // Parse the source file.
+    let parsed = parse_sexp(srcloc.clone(), program_text.bytes())?;
+    // Get the detected dialect and compose a sigil that matches.
+    // Classic preprocessing (also shared by standard sigil 21 and 21) does macro
+    // expansion during the compile process, making all macros available to all
+    // code regardless of its lexical order and therefore isn't rendered in a
+    // unified way (for example, 'com' and 'mod' forms invoke macros when
+    // encountered and expanded.  By contrast strict mode reads the macros and
+    // evaluates them in that order (as in C).
+    //
+    // The result is fully rendered before the next stage of compilation so that
+    // it can be inspected and so that the execution environment for macros is
+    // fully and cleanly separated from compile time.
+    let stepping_form_text = match opts.dialect().stepping {
+        Some(21) => Some("(include *strict-cl-21*)".to_string()),
+        Some(n) => Some(format!("(include *standard-cl-{n}*)")),
+        _ => None,
+    };
+    Ok((stepping_form_text, parsed))
+}
+
 fn render_mod_with_sigil(
     input_file: &str,
     stepping_form_text: &Option<String>,
@@ -899,40 +936,6 @@ fn render_mod_with_sigil(
         Rc::new(sexp::SExp::Atom(srcloc, b"mod".to_vec())),
         with_stepping,
     ))
-}
-
-// A function which performs preprocessing on a whole program and renders the
-// output to the user.
-//
-// This is used in the same way as cc -E in a C compiler; to see what
-// preprocessing did to the source so you can debug and improve your macros.
-//
-// Without this, it's difficult for some to visualize how macro are functioning
-// and what forms they output.
-fn perform_preprocessing(
-    stdout: &mut Stream,
-    opts: Rc<dyn CompilerOpts>,
-    input_file: &str,
-    program_text: &str,
-) -> Result<(), CompileErr> {
-    // Get the detected dialect and compose a sigil that matches.
-    // Classic preprocessing (also shared by standard sigil 21 and 21) does macro
-    // expansion during the compile process, making all macros available to all
-    // code regardless of its lexical order and therefore isn't rendered in a
-    // unified way (for example, 'com' and 'mod' forms invoke macros when
-    // encountered and expanded.  By contrast strict mode reads the macros and
-    // evaluates them in that order (as in C).
-    //
-    // The result is fully rendered before the next stage of compilation so that
-    // it can be inspected and so that the execution environment for macros is
-    // fully and cleanly separated from compile time.
-    let (stepping_form_text, parsed) =
-        parse_module_and_get_sigil(opts.clone(), input_file, program_text)?;
-    let frontend = frontend(opts, &parsed)?;
-    let whole_mod = render_mod_with_sigil(input_file, &stepping_form_text, frontend.compileform())?;
-
-    stdout.write_str(&format!("{}", whole_mod));
-    Ok(())
 }
 
 fn perform_desugaring(
@@ -1086,12 +1089,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_help("run optimizer".to_string()),
     );
     parser.add_argument(
-        vec!["--typecheck".to_string()],
-        Argument::new()
-            .set_action(TArgOptionAction::StoreTrue)
-            .set_help("type check".to_string()),
-    );
-    parser.add_argument(
         vec!["--only-exn".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
@@ -1189,7 +1186,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let mut input_program = "()".to_string();
 
     if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("path_or_code") {
-        input_file = file.clone();
+        input_file.clone_from(file);
         input_program = path_or_code.to_string();
     }
 
@@ -1220,7 +1217,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let time_start = SystemTime::now();
     let mut time_read_hex = SystemTime::now();
     let mut time_assemble = SystemTime::now();
-    let typecheck = parsed_args.get("typecheck").map(|_| true).unwrap_or(false);
 
     let mut input_args = "()".to_string();
 
@@ -1252,7 +1248,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     }
 
     if let Some(ArgumentValue::ArgString(file, path_or_code)) = parsed_args.get("env") {
-        input_file = file.clone();
+        input_file.clone_from(file);
         input_args = path_or_code.to_string();
     }
 
@@ -1317,8 +1313,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             if let Some(ArgumentValue::ArgString(f, content)) = parsed_args.get("path_or_code") {
                 match read_ir(content) {
                     Ok(s) => {
-                        input_program = content.clone();
-                        input_file = f.clone();
+                        input_program.clone_from(content);
+                        input_file.clone_from(f);
                         src_sexp = s;
                     }
                     Err(e) => {
@@ -1336,13 +1332,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 .clone()
                 .unwrap_or_else(|| "*command*".to_string());
 
-            let untyped_sexp_err =
-                untype_code(&mut allocator, Srcloc::start(&use_filename), assembled_sexp);
-            if let Err(e) = untyped_sexp_err {
-                stdout.write_str(&format!("{}: failed to strip type annotations", e.1));
-                return;
-            }
-            let untyped_sexp = untyped_sexp_err.unwrap();
             let mut parsed_args_result = "()".to_string();
 
             if let Some(ArgumentValue::ArgString(_f, s)) = parsed_args.get("env") {
@@ -1353,7 +1342,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             let env = assemble_from_ir(&mut allocator, Rc::new(env_ir)).unwrap();
             time_assemble = SystemTime::now();
 
-            input_sexp = allocator.new_pair(untyped_sexp, env).ok();
+            input_sexp = allocator.new_pair(assembled_sexp, env).ok();
         }
     }
 
@@ -1382,7 +1371,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         emit_symbol_output = true;
     }
 
-    if parsed_args.get("table").is_some() {
+    if parsed_args.contains_key("table") {
         emit_symbol_output = true;
     }
 
@@ -1402,7 +1391,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         }
     };
 
-    if do_check_unused || typecheck {
+    if do_check_unused {
         let opts =
             Rc::new(DefaultCompilerOpts::new(&reported_input_file)).set_search_paths(&search_paths);
         if do_check_unused {
@@ -1419,23 +1408,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 }
             }
         }
-
-        if typecheck {
-            let loc = Srcloc::start(&reported_input_file);
-            if let Err(e) = parse_sexp(loc, input_program.bytes())
-                .map_err(|e| CompileErr(e.0.clone(), e.1))
-                .and_then(|pre_forms| {
-                    let context = standard_type_context();
-                    let compileform = frontend(opts.clone(), &pre_forms)?;
-                    let target_type = context
-                        .typecheck_chialisp_program(opts.clone(), compileform.compileform())?;
-                    Ok(context.reify(&target_type, None))
-                })
-            {
-                stderr_output(format!("{}: {}\n", e.0, e.1));
-                return;
-            }
-        }
     }
 
     let symbol_table_output = parsed_args
@@ -1449,6 +1421,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         })
         .unwrap_or_else(|| "main.sym".to_string());
 
+    // In testing: short circuit for modern compilation.
     if let Some(stepping) = dialect.as_ref().and_then(|d| d.stepping) {
         let do_optimize = parsed_args
             .get("optimize")
@@ -1460,13 +1433,13 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             .set_dialect(dialect.unwrap_or_default())
             .set_optimize(do_optimize || stepping > 22)
             .set_search_paths(&search_paths)
-            .set_frontend_opt(stepping > 21)
+            .set_frontend_opt(stepping == 22)
             .set_disassembly_ver(get_disassembly_ver(&parsed_args));
         let mut symbol_table = HashMap::new();
         let mut includes = Vec::new();
 
         // Short circuit preprocessing display.
-        if parsed_args.get("preprocess").is_some() {
+        if parsed_args.contains_key("preprocess") {
             if let Err(e) = perform_preprocessing(stdout, opts, &use_filename, &input_program) {
                 stdout.write_str(&format!("{}: {}", e.0, e.1));
             }
@@ -1490,11 +1463,15 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             &mut symbol_table,
             &mut includes,
         );
-        let res = if do_optimize {
-            unopt_res.and_then(|x| run_optimizer(&mut allocator, runner, Rc::new(x.to_sexp())))
-        } else {
-            unopt_res.map(|x| x.to_sexp()).map(Rc::new)
-        };
+        let res = unopt_res.and_then(|x| {
+            maybe_finalize_program_via_classic_optimizer(
+                &mut allocator,
+                runner,
+                opts,
+                do_optimize,
+                &x.to_sexp(),
+            )
+        });
 
         match res {
             Ok(r) => {
@@ -1670,7 +1647,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             let result = run_program_result.1;
             let time_done = SystemTime::now();
 
-            if parsed_args.get("cost").is_some() {
+            if parsed_args.contains_key("cost") {
                 if cost > 0 {
                     cost += cost_offset;
                 }
@@ -1678,7 +1655,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             };
 
             if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("time") {
-                if parsed_args.get("hex").is_some() {
+                if parsed_args.contains_key("hex") {
                     stdout.write_str(&format!(
                         "read_hex: {}\n",
                         time_read_hex
@@ -1760,7 +1737,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         .unwrap_or_else(|| false);
 
     if emit_symbol_output {
-        if parsed_args.get("table").is_some() {
+        if parsed_args.contains_key("table") {
             trace_to_table(
                 &mut allocator,
                 stdout,

@@ -3,15 +3,18 @@ use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
 
+use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
+use crate::compiler::BasicCompileContext;
 use crate::compiler::clvm::run;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::frontend::{collect_used_names_sexp, frontend};
+use crate::compiler::optimize::get_optimizer;
 use crate::compiler::rename::rename_in_cons;
 use crate::compiler::runtypes::RunFailure;
-use crate::compiler::sexp::{decode_string, parse_sexp, SExp};
+use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
 
 const TEST_TIMEOUT: usize = 1000000;
@@ -50,6 +53,7 @@ fn run_string_maybe_opt(
         opts = opts.set_dialect(AcceptedDialect {
             stepping: Some(21),
             strict: true,
+            int_fix: false,
         });
     }
 
@@ -179,6 +183,89 @@ fn compile_test_6() {
         result,
         "(2 (1 4 (1 . 1) (4 (1 . 2) (4 (1 . 3) (1)))) (4 (1) 1))".to_string()
     );
+}
+
+// odd numbered list
+#[test]
+fn compile_test_8() {
+    let result =
+        compile_string(&"(mod (S) (c S (q . #(2000 3000 4000 5000 6000 7000 8000))))".to_string())
+            .unwrap();
+    assert_eq!(
+        result,
+        "(2 (1 4 5 (1 (2000 3000 . 4000) (5000 . 6000) 7000 . 8000)) (4 (1) 1))".to_string()
+    );
+}
+
+// even numbered list
+#[test]
+fn compile_test_9() {
+    let result = compile_string(&"(mod (S) (c S (q . #(a b c d))))".to_string()).unwrap();
+    assert_eq!(
+        result,
+        "(2 (1 4 5 (1 (a . b) c . d)) (4 (1) 1))".to_string()
+    );
+}
+
+// word
+#[test]
+fn compile_test_10() {
+    let result = compile_string(&"(mod (S) (c S #fake))".to_string()).unwrap();
+    assert_eq!(result, "(2 (1 4 5 (1 . fake)) (4 (1) 1))".to_string());
+}
+
+// op letter
+#[test]
+fn compile_test_11() {
+    let result = compile_string(&"(mod (S) (c S #a))".to_string()).unwrap();
+    assert_eq!(result, "(2 (1 4 5 (1 . 2)) (4 (1) 1))".to_string());
+}
+
+// length 1 list
+#[test]
+fn compile_test_12() {
+    let result = compile_string(&"(mod (S) (c S (q . #(100))))".to_string()).unwrap();
+    assert_eq!(result, "(2 (1 4 5 (1 . 100)) (4 (1) 1))".to_string());
+}
+
+// length 0 list
+#[test]
+fn compile_test_13() {
+    let result = compile_string(&"(mod (S) (c S (q . #())))".to_string()).unwrap();
+    assert_eq!(result, "(2 (1 4 5 (1)) (4 (1) 1))".to_string());
+}
+
+// length 2 list
+#[test]
+fn compile_test_14() {
+    let result = compile_string(&"(mod (S) (c S (q . #(a b))))".to_string()).unwrap();
+    assert_eq!(result, "(2 (1 4 5 (1 a . b)) (4 (1) 1))".to_string());
+}
+
+// use structured list in solution
+#[test]
+fn compile_test_15() {
+    let result = run_string_maybe_opt(
+        &"(mod #(a b c) (- (+ a c) b))".to_string(),
+        &"(100 20 . 10)".to_string(),
+        true,
+        false,
+    )
+    .unwrap();
+    assert_eq!(result.to_string(), "90".to_string());
+}
+
+// use structured list in solution
+#[test]
+fn compile_test_16() {
+    let result = run_string_maybe_opt(
+        &"(mod #(a b c) (- (+ a c) b))".to_string(),
+        &"#(100 20 10)".to_string(),
+        true,
+        false,
+    )
+    .unwrap();
+    assert_eq!(result.to_string(), "90".to_string());
 }
 
 fn run_test_1_maybe_opt(opt: bool) {
@@ -1960,6 +2047,36 @@ fn test_simple_rest_call_inline() {
 }
 
 #[test]
+fn test_simple_rest_lambda() {
+    let prog = indoc! {"
+(mod (Z X)
+  (include *standard-cl-21*)
+
+  (defun silly-lambda-consumer (Q F) (a F (list Q)))
+
+  (silly-lambda-consumer &rest (list X (lambda ((& Z) X) (* Z X))))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(13 51)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "663");
+}
+
+#[test]
+fn test_lambda_in_lambda() {
+    let prog = indoc! {"
+(mod (Z X)
+  (include *standard-cl-21*)
+
+  (defun silly-lambda-consumer (Q F) (a F (list Q)))
+
+  (a (silly-lambda-consumer X (lambda ((& Z) X) (lambda ((& Z X)) (* Z X)))) ())
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(13 51)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "663");
+}
+
+#[test]
 fn test_let_in_rest_0() {
     let prog = indoc! {"
 (mod (Z X)
@@ -1987,6 +2104,243 @@ fn test_let_in_rest_1() {
     .to_string();
     let res = run_string(&prog, &"(3 2)".to_string()).expect("should compile and run");
     assert_eq!(res.to_string(), "108");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_capture() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden)))
+      (lambda ((& overridden) z) (+ overridden z))
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "50");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_let_in_lambda_1() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden)))
+      (lambda ((& overridden) z)
+        (let
+          ((z (+ 123 z)))
+          (+ overridden z)
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "173");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_let_in_lambda_2() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden)))
+      (lambda ((& overridden) z)
+        (let
+          ((overridden (+ 123 overridden)))
+          (+ overridden z)
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "173");
+}
+
+#[test]
+fn test_lambda_override_name_arg_assign_with_assign_in_lambda_1() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (Z)
+    (assign overridden (* 3 Z)
+      (lambda ((& overridden) z)
+        (let
+          ((z (+ 123 z)))
+          (+ overridden z)
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "173");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_assign_in_lambda_1() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) z) ;; overridden = 33
+        (assign overridden (+ 123 z) ;; overridden = 17 + 123 = 140
+          (+ overridden z) ;; 157
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "157");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_let_in_lambda_3() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) z) ;; overridden = 33
+        (let ((overridden (+ 123 z))) ;; overridden = 17 + 123 = 140
+          (+ overridden z) ;; 157
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "157");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_assign_twice_in_lambda() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) y z) ;; overridden = 33
+        (assign
+          overridden (+ 123 z) ;; overridden = 123 + 17 = 140
+          y (+ 191 z overridden) ;; y = 191 + 17 + 140 = 348
+          (+ overridden z y) ;; 505
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 13 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "505");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_let_twice_in_lambda() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) y z) ;; overridden = 33
+        (let
+          ((overridden (+ 123 z))) ;; overridden = 123 + 17 = 140
+          (let ((y (+ 191 z overridden))) ;; y = 191 + 17 + 140 = 348
+            (+ overridden z y) ;; 505
+            )
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 13 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "505");
+}
+
+#[test]
+fn test_lambda_override_name_arg_let_with_let_star_twice_in_lambda() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) y z) ;; overridden = 33
+        (let*
+          ((overridden (+ 123 z)) ;; overridden = 123 + 17 = 140
+           (y (+ 191 z overridden))) ;; y = 191 + 17 + 140 = 348
+          (+ overridden z y) ;; 505
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 13 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "505");
+}
+
+#[test]
+fn test_lambda_let_override_in_binding() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+
+  (defun F (overridden)
+    (let ((overridden (* 3 overridden))) ;; overridden = 33
+      (lambda ((& overridden) y z) ;; overridden = 33
+        (let
+          ((y (+ 191 z (let ((overridden (+ 123 z))) overridden)))) ;; overridden = 123 + 17 = 140, y = 191 + 17 + 140 = 348
+          (+ overridden z y) ;; 33 + 17 + 348 = 398
+          )
+        )
+      )
+    )
+
+  (a (F X) (list 13 17))
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"(11)".to_string()).expect("should compile and run");
+    assert_eq!(res.to_string(), "398");
 }
 
 #[test]
@@ -2112,4 +2466,74 @@ fn test_check_for_argument_presence_1() {
             assert!(false);
         }
     }
+}
+
+#[test]
+fn test_handle_explicit_empty_atom() {
+    let filename = "*empty-atom-test*";
+    let srcloc = Srcloc::start(filename);
+    let opts = Rc::new(DefaultCompilerOpts::new(filename)).set_dialect(AcceptedDialect {
+        stepping: Some(21),
+        strict: true,
+        int_fix: false,
+    });
+
+    let atom = |s: &str| Rc::new(SExp::Atom(srcloc.clone(), s.as_bytes().to_vec()));
+
+    let sublist = |l: &[Rc<SExp>]| Rc::new(enlist(srcloc.clone(), l));
+
+    let nil = Rc::new(SExp::Nil(srcloc.clone()));
+
+    let program = sublist(&[
+        atom("mod"),
+        nil.clone(),
+        sublist(&[atom("include"), atom("*strict-cl-21*")]),
+        sublist(&[
+            atom("+"),
+            atom(""),
+            Rc::new(SExp::Integer(srcloc.clone(), bi_one())),
+        ]),
+    ]);
+    let mut allocator = Allocator::new();
+    let mut symbols = HashMap::new();
+    let mut includes = Vec::new();
+    let runner = Rc::new(DefaultProgramRunner::new());
+
+    let mut context = BasicCompileContext::new(
+        allocator,
+        runner.clone(),
+        symbols,
+        get_optimizer(&Srcloc::start(&opts.filename()), opts.clone()).unwrap(),
+        includes,
+    );
+    let compiled = opts
+        .compile_program(
+            &mut context,
+            program,
+        )
+        .expect("should compile");
+    let outcome = run(
+        &mut context.allocator(),
+        runner,
+        opts.prim_map(),
+        Rc::new(compiled.to_sexp()),
+        nil,
+        None,
+        None,
+    )
+    .expect("should run");
+    assert_eq!(outcome.to_string(), "1");
+}
+
+#[test]
+fn test_almost_empty_lambda_gives_error() {
+    let prog = indoc! {"
+(mod (X)
+  (include *standard-cl-21*)
+  (lambda)
+  )"}
+    .to_string();
+    let res = run_string(&prog, &"()".to_string());
+    assert!(res.is_err());
+    assert!(format!("{res:?}").contains("Must provide at least arguments and body to lambda"));
 }

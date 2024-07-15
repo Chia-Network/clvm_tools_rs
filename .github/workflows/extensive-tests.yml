@@ -54,7 +54,7 @@ jobs:
       run: |
           python -m pip install maturin==1.1.0
 
-    - name: Build Linux in manylinux2010 with maturin on Python ${{ matrix.python }}
+    - name: Build Linux in manylinux_2_28 with maturin on Python ${{ matrix.python }}
       run: |
         podman run --rm=true \
           -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
@@ -77,18 +77,11 @@ jobs:
             . ./activate && \
             pip install --upgrade pip
           '
-        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.1.0 build --release --strip --manylinux 2014
+        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.1.0 build --release --strip --manylinux 2_28
         # Refresh in case any ownerships changed.
         mv target target.docker && cp -r target.docker target
         # Ensure an empty .cargo-lock file exists.
         touch target/release/.cargo-lock
-
-    - name: Set up feature flags to use
-      shell: bash
-      run: |
-          python -m pip install tomlkit
-          USE_FEATURES=$(./support/feature-fishing.py)
-          echo "USE_FEATURES=${USE_FEATURES}" >> "$GITHUB_ENV"
 
     - name: Install clvm_tools_rs wheel
       if: ${{ !startsWith(matrix.os, 'windows') }}
@@ -124,8 +117,6 @@ jobs:
       run: |
         . ./activate
         cp support/test-game-referee.sh .
-        sh test-game-referee.sh
-
-    - name: Large HAMT structure test
-      run: |
-        cargo test -- --ignored --nocapture hamt
+        sh test-game-referee.sh resources/tests/game-referee-in-cl23
+        sh test-game-referee.sh resources/tests/game-referee-in-cl21
+        sh test-game-referee.sh resources/tests/game-referee-after-cl21

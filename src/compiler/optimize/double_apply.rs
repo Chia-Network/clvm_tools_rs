@@ -30,9 +30,9 @@ pub fn change_double_to_single_apply(sexp: Rc<SExp>) -> (bool, Rc<SExp>) {
             NodeSel::Cons(
                 // quoted program
                 AtomValue::Here(&[1]),
-                ThisNode::Here,
+                ThisNode,
             ),
-            NodeSel::Cons(AtomValue::Here(&[1]), ThisNode::Here),
+            NodeSel::Cons(AtomValue::Here(&[1]), ThisNode),
         ),
     )
     .select_nodes(sexp.clone())
@@ -61,9 +61,9 @@ fn change_apply_double_quote(sexp: Rc<SExp>) -> (bool, Rc<SExp>) {
         NodeSel::Cons(
             NodeSel::Cons(
                 AtomValue::Here(&[1]),
-                NodeSel::Cons(AtomValue::Here(&[1]), ThisNode::Here),
+                NodeSel::Cons(AtomValue::Here(&[1]), ThisNode),
             ),
-            ThisNode::Here,
+            ThisNode,
         ),
     )
     .select_nodes(sexp.clone())
@@ -81,11 +81,8 @@ fn collapse_constant_condition(sexp: Rc<SExp>) -> (bool, Rc<SExp>) {
     )) = NodeSel::Cons(
         AtomValue::Here(&[3]),
         NodeSel::Cons(
-            ThisNode::Here,
-            NodeSel::Cons(
-                ThisNode::Here,
-                NodeSel::Cons(ThisNode::Here, ThisNode::Here),
-            ),
+            ThisNode,
+            NodeSel::Cons(ThisNode, NodeSel::Cons(ThisNode, ThisNode)),
         ),
     )
     .select_nodes(sexp.clone())
@@ -95,7 +92,7 @@ fn collapse_constant_condition(sexp: Rc<SExp>) -> (bool, Rc<SExp>) {
         // The following filters away a non-const condition and leaves
         // the remaining as either Some(true) or Some(false), then
         // chooses a wing based on that.
-        return NodeSel::Cons(AtomValue::Here(&[1]), ThisNode::Here)
+        return NodeSel::Cons(AtomValue::Here(&[1]), ThisNode)
             .select_nodes(cond.clone())
             .ok()
             .map(|NodeSel::Cons(_, cond_quoted)| Some(truthy(cond_quoted)))
@@ -116,7 +113,7 @@ pub fn remove_double_apply(mut sexp: Rc<SExp>, spine: bool) -> (bool, Rc<SExp>) 
     // Don't descend into quoted expressions.
     if spine {
         if let Ok(NodeSel::Cons(_, _)) =
-            NodeSel::Cons(AtomValue::Here(&[1]), ThisNode::Here).select_nodes(sexp.clone())
+            NodeSel::Cons(AtomValue::Here(&[1]), ThisNode).select_nodes(sexp.clone())
         {
             return (false, sexp);
         }

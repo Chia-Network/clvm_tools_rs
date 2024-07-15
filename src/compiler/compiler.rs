@@ -14,7 +14,7 @@ use crate::classic::clvm_tools::binutils::disassemble;
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 
 use crate::compiler::cldb::hex_to_modern_sexp;
-use crate::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, run, sha256tree};
+use crate::compiler::clvm::{NewStyleIntConversion, convert_from_clvm_rs, convert_to_clvm_rs, run, sha256tree};
 use crate::compiler::codegen::{
     codegen, hoist_body_let_binding, process_helper_let_bindings};
 use crate::compiler::comptypes::{
@@ -35,6 +35,7 @@ use crate::util::Number;
 
 pub const SHA256TREE_PROGRAM_CLVM: &'static str = "(2 (1 2 (3 (7 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) (4 (1 2 (3 (7 5) (1 11 (1 . 2) (2 2 (4 2 (4 9 ()))) (2 2 (4 2 (4 13 ())))) (1 11 (1 . 1) 5)) 1) 1))";
 
+pub const FUZZ_TEST_PRE_CSE_MERGE_FIX_FLAG: usize = 1;
 
 lazy_static! {
     pub static ref STANDARD_MACROS: String = {
@@ -86,14 +87,6 @@ lazy_static! {
             (defmac list ARGS (__chia__compile-list ARGS))
 
             (defun-inline / (A B) (f (divmod A B)))
-
-            (defun-inline c* (A B) (c A B))
-            (defun-inline a* (A B) (a A B))
-            (defun-inline coerce (X) : (Any -> Any) X)
-            (defun-inline explode (X) : (forall a ((Exec a) -> a)) X)
-            (defun-inline bless (X) : (forall a ((Pair a Unit) -> (Exec a))) (coerce X))
-            (defun-inline lift (X V) : (forall a (forall b ((Pair (Exec a) (Pair b Unit)) -> (Exec (Pair a b))))) (coerce X))
-            (defun-inline unlift (X) : (forall a (forall b ((Pair (Exec (Pair a b)) Unit) -> (Exec b)))) (coerce X))
             )
             "}
         .to_string()
@@ -113,6 +106,7 @@ pub struct DefaultCompilerOpts {
     pub start_env: Option<Rc<SExp>>,
     pub disassembly_ver: Option<usize>,
     pub prim_map: Rc<HashMap<Vec<u8>, Rc<SExp>>>,
+    pub diag_flags: Rc<HashSet<usize>>,
     pub dialect: AcceptedDialect,
     pub module_phase: Option<ModulePhase>,
 }
@@ -316,7 +310,7 @@ fn add_inline_hash_for_constant(program: &mut CompileForm, loc: &Srcloc, fun_nam
 
     program.helpers.push(HelperForm::Defun(
         true,
-        DefunData {
+        Box::new(DefunData {
             loc: loc.clone(),
             nl: loc.clone(),
             kw: None,
@@ -325,8 +319,7 @@ fn add_inline_hash_for_constant(program: &mut CompileForm, loc: &Srcloc, fun_nam
             orig_args: Rc::new(SExp::Nil(loc.clone())),
             body: form_hash_expression(Rc::new(BodyForm::Value(SExp::Atom(loc.clone(), fun_name.to_vec())))),
             synthetic: Some(SyntheticType::WantInline),
-            ty: None,
-        },
+        }),
     ));
 }
 
@@ -860,6 +853,7 @@ pub fn compile_file(
     symbol_table: &mut HashMap<String, String>,
     includes: &mut Vec<IncludeDesc>,
 ) -> Result<CompilerOutput, CompileErr> {
+    let _int_conversion_bug = NewStyleIntConversion::new(opts.dialect().int_fix);
     let srcloc = Srcloc::start(&opts.filename());
     let pre_forms = parse_sexp(srcloc.clone(), content.bytes())?;
     let mut context_wrapper = CompileContextWrapper::new(
@@ -913,6 +907,9 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn get_search_paths(&self) -> Vec<String> {
         self.include_dirs.clone()
     }
+    fn diag_flags(&self) -> Rc<HashSet<usize>> {
+        self.diag_flags.clone()
+    }
 
     fn set_filename(&self, filename: &str) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
@@ -926,7 +923,7 @@ impl CompilerOpts for DefaultCompilerOpts {
     }
     fn set_search_paths(&self, dirs: &[String]) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
-        copy.include_dirs = dirs.to_owned();
+        dirs.clone_into(&mut copy.include_dirs);
         Rc::new(copy)
     }
     fn set_disassembly_ver(&self, ver: Option<usize>) -> Rc<dyn CompilerOpts> {
@@ -978,6 +975,11 @@ impl CompilerOpts for DefaultCompilerOpts {
     fn set_prim_map(&self, prims: Rc<HashMap<Vec<u8>, Rc<SExp>>>) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
         copy.prim_map = prims;
+        Rc::new(copy)
+    }
+    fn set_diag_flags(&self, flags: Rc<HashSet<usize>>) -> Rc<dyn CompilerOpts> {
+        let mut copy = self.clone();
+        copy.diag_flags = flags;
         Rc::new(copy)
     }
 
@@ -1051,6 +1053,7 @@ impl CompilerOpts for DefaultCompilerOpts {
         context: &mut BasicCompileContext,
         sexp: Rc<SExp>,
     ) -> Result<CompilerOutput, CompileErr> {
+    let _int_conversion_bug = NewStyleIntConversion::new(self.dialect.int_fix);
         let me = self.set_module_phase(None);
         compile_pre_forms(context, me, &[sexp])
     }
@@ -1072,6 +1075,7 @@ impl DefaultCompilerOpts {
             prim_map: create_prim_map(),
             disassembly_ver: None,
             module_phase: None,
+            diag_flags: Rc::new(HashSet::default()),
         }
     }
 }

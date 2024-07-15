@@ -526,6 +526,7 @@ fn test_preprocess_basic_list() {
         Rc::new(DefaultCompilerOpts::new(file)).set_dialect(AcceptedDialect {
             stepping: Some(21),
             strict: true,
+            int_fix: false,
         });
     let mut includes = Vec::new();
     let parsed_lst: Vec<Rc<SExp>> = parsed_forms[0]
@@ -572,6 +573,7 @@ fn test_preprocessor_tours_includes_properly() {
         .set_dialect(AcceptedDialect {
             stepping: Some(21),
             strict: true,
+            int_fix: false,
         });
     let parsed = parse_sexp(Srcloc::start(pname), prog.bytes()).expect("should parse");
     let parsed_lst: Vec<Rc<SExp>> = parsed[0]
@@ -589,13 +591,6 @@ fn test_preprocessor_tours_includes_properly() {
         "(defun __chia__compile-list (args) (a (i args (com (c 4 (c (f args) (c (__chia__compile-list (r args)) ())))) (com ())) @))",
         "(defmac list ARGS (__chia__compile-list ARGS))",
         "(defun-inline / (A B) (f (divmod A B)))",
-        "(defun-inline c* (A B) (c A B))",
-        "(defun-inline a* (A B) (a A B))",
-        "(defun-inline coerce (X) : (Any -> Any) X)",
-        "(defun-inline explode (X) : (forall a ((Exec a) -> a)) X)",
-        "(defun-inline bless (X) : (forall a ((Pair a Unit) -> (Exec a))) (coerce X))",
-        "(defun-inline lift (X V) : (forall a (forall b ((Pair (Exec a) (Pair b Unit)) -> (Exec (Pair a b))))) (coerce X))",
-        "(defun-inline unlift (X) : (forall a (forall b ((Pair (Exec (Pair a b)) Unit) -> (Exec b)))) (coerce X))",
         "(defconstant *chialisp-version* 22)",
         "(defconstant AGG_SIG_UNSAFE 49)",
         "(defconstant AGG_SIG_ME 50)",

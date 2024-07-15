@@ -1,8 +1,6 @@
 use std::borrow::Borrow;
+use std::collections::HashSet;
 use std::rc::Rc;
-
-use encoding8::ascii::is_printable;
-use unicode_segmentation::UnicodeSegmentation;
 
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
@@ -14,15 +12,12 @@ use crate::classic::clvm_tools::ir::r#type::IRRepr;
 use crate::classic::clvm_tools::ir::reader::IRReader;
 use crate::classic::clvm_tools::ir::writer::write_ir;
 
+lazy_static! {
+    pub static ref PRINTABLE_CHARS: HashSet<char> =
+        "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ ".chars().collect();
+}
 pub fn is_printable_string(s: &str) -> bool {
-    for ch in s.graphemes(true) {
-        if ch.chars().next().unwrap() > 0xff as char
-            || !is_printable(ch.chars().next().unwrap() as u8)
-        {
-            return false;
-        }
-    }
-    true
+    s.chars().all(|s_char| PRINTABLE_CHARS.contains(&s_char))
 }
 
 pub fn assemble_from_ir(
@@ -55,12 +50,14 @@ pub fn assemble_from_ir(
 }
 
 fn has_oversized_sign_extension(atom: &Bytes) -> bool {
+    let data = atom.data();
+
     // Can't have an extra sign extension if the number is too short.
+    // With the exception of 0.
     if atom.length() < 2 {
-        return false;
+        return data.len() == 1 && data[0] == 0;
     }
 
-    let data = atom.data();
     if data[0] == 0 {
         // This is a canonical value.  The opposite is non-canonical.
         // 0x0080 -> 128
@@ -101,7 +98,7 @@ pub fn ir_for_atom(
 
         // Determine whether the bytes identity an integer in canonical form.
         // It's not canonical if there is oversized sign extension.
-        if !has_oversized_sign_extension(atom) {
+        if atom.data() != &[0] && !has_oversized_sign_extension(atom) {
             return IRRepr::Int(atom.clone(), true);
         }
     }

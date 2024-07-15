@@ -397,7 +397,7 @@ impl ArgumentParser {
             }
         }
 
-        if params.get(&"help".to_string()).is_some() {
+        if params.contains_key("help") {
             let usage = self.compile_help_messages();
             return Err(usage);
         }
@@ -491,10 +491,7 @@ impl ArgumentParser {
                 }
 
                 let name = &self.optional_args[k].names[index as usize];
-                let index2 = match arg.find(name) {
-                    Some(i) => i,
-                    _ => 0,
-                } + name.len();
+                let index2 = arg.find(name).unwrap_or_default() + name.len();
                 let value = &arg[index2..].to_string();
 
                 norm.push(name.to_string());

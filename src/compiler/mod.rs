@@ -33,10 +33,6 @@ pub mod runtypes;
 pub mod sexp;
 pub mod srcloc;
 pub mod stackvisit;
-pub mod typecheck;
-pub mod typechia;
-pub mod types;
-pub mod untype;
 pub mod usecheck;
 
 use clvmr::allocator::Allocator;
@@ -46,8 +42,7 @@ use std::rc::Rc;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, IncludeDesc,
-    PrimaryCodegen,
+    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, IncludeDesc, PrimaryCodegen,
 };
 use crate::compiler::optimize::Optimization;
 use crate::compiler::sexp::SExp;

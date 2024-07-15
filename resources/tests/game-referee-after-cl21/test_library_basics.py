@@ -70,7 +70,7 @@ def test_smoke_compare():
     compare_program.run(Program.to([]))
 
 def test_handcalc():
-    diag_run_clvm(test_handcalc_program, Program.to([]), 'test_handcalc.sym')
+    diag_run_clvm(test_handcalc_program, Program.to([]), 'test_handcalc.sym', {'print': True})
 
 def proper_list_inner(result,cl):
     if hasattr(cl, 'pair') and cl.pair is not None:
@@ -137,20 +137,32 @@ def test_permutations_2():
     all_b_string = 0x626262626262
     for try_list in [[all_a_string,all_b_string], [all_b_string,all_a_string]]:
         want_set = list([list(v) for v in sorted(permutations(try_list))])
+<<<<<<< HEAD
         listed_result = diag_run_clvm(smoke_test_permutations_program, Program.to([try_list]), 'smoke_test_permutations.sym')
+=======
+        listed_result = diag_run_clvm(smoke_test_permutations_program, Program.to([try_list]), 'smoke_test_permutations.sym', {'print': True})
+>>>>>>> chia/main
         pl = proper_list(listed_result)
         perms_result = sorted([int_list(x) for x in de_none_list(pl)])
         assert want_set == perms_result
 
 def test_chialisp_sort_program():
+<<<<<<< HEAD
     diag_run_clvm(test_sort_program, Program.to([]), 'test_sort.sym')
+=======
+    diag_run_clvm(test_sort_program, Program.to([]), 'test_sort.sym', {'print': True})
+>>>>>>> chia/main
 
 def test_permutations_n():
     for i in range(3,6):
         do_test_permutations_of_size_n(i)
 
 def test_chialisp_permutations_program():
+<<<<<<< HEAD
     diag_run_clvm(test_permutations_program, Program.to([3, 5]), 'test_permutations.sym')
+=======
+    diag_run_clvm(test_permutations_program, Program.to([3, 5]), 'test_permutations.sym', {'print': True})
+>>>>>>> chia/main
 
 def test_smoke_sort():
     for length in range(7): # 0-7 length
