@@ -383,23 +383,26 @@ fn yamlette_string(to_print: &[BTreeMap<String, YamlElement>]) -> String {
     }
 }
 
-pub fn cldb_hierarchy(
-    runner: Rc<dyn TRunProgram>,
-    prim_map: Rc<HashMap<Vec<u8>, Rc<sexp::SExp>>>,
-    input_file_name: Option<String>,
-    lines: Rc<Vec<String>>,
-    symbol_table: Rc<HashMap<String, String>>,
-    prog: Rc<sexp::SExp>,
-    args: Rc<sexp::SExp>,
-) -> Vec<BTreeMap<String, YamlElement>> {
+pub struct CldbHierarchyArgs {
+    pub runner: Rc<dyn TRunProgram>,
+    pub prim_map: Rc<HashMap<Vec<u8>, Rc<sexp::SExp>>>,
+    pub input_file_name: Option<String>,
+    pub lines: Rc<Vec<String>>,
+    pub symbol_table: Rc<HashMap<String, String>>,
+    pub prog: Rc<sexp::SExp>,
+    pub args: Rc<sexp::SExp>,
+    pub flags: u32,
+}
+
+pub fn cldb_hierarchy(args: CldbHierarchyArgs) -> Vec<BTreeMap<String, YamlElement>> {
     let mut runner = HierarchialRunner::new(
-        runner,
-        prim_map,
-        input_file_name,
-        lines,
-        symbol_table,
-        prog,
-        args,
+        args.runner,
+        args.prim_map,
+        args.input_file_name,
+        args.lines,
+        args.symbol_table,
+        args.prog,
+        args.args,
     );
 
     let mut output_stack = vec![Vec::new()];
@@ -434,7 +437,7 @@ pub fn cldb_hierarchy(
                 );
                 let mut arg_values = BTreeMap::new();
                 for (k, v) in runner.running[run_idx].named_args.iter() {
-                    arg_values.insert(k.clone(), YamlElement::String(format!("{v}")));
+                    arg_values.insert(k.clone(), YamlElement::String(format!("{}", v.clone())));
                 }
                 function_entry.insert(
                     "Function-Args".to_string(),
@@ -720,15 +723,16 @@ pub fn cldb(args: &[String]) {
     );
 
     if parsed_args.contains_key("tree") {
-        let result = cldb_hierarchy(
+        let result = cldb_hierarchy(CldbHierarchyArgs {
             runner,
-            Rc::new(prim_map),
-            input_file,
-            program_lines,
-            Rc::new(use_symbol_table),
-            program,
+            prim_map: Rc::new(prim_map),
+            input_file_name: input_file,
+            lines: program_lines,
+            symbol_table: Rc::new(use_symbol_table),
+            prog: program,
             args,
-        );
+            flags: 0,
+        });
 
         // Print the tree
         let string_result = yamlette_string(&result);

@@ -2527,3 +2527,13 @@ fn test_exhaustive_chars() {
         }
     }
 }
+
+#[test]
+fn test_odd_hex_works() {
+    let res = run_string(
+        &"(mod () (include *standard-cl-23*) (+ 1 0xf))".to_string(),
+        &"()".to_string(),
+    )
+    .expect("should work");
+    assert_eq!(res.to_string(), "16");
+}
