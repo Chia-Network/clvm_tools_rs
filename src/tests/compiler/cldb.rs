@@ -49,7 +49,7 @@ fn run_clvm_in_cldb<V>(
     symbols: HashMap<String, String>,
     args: Rc<SExp>,
     viewer: &mut V,
-    flags: u32,
+    _flags: u32,
 ) -> Option<String>
 where
     V: StepOfCldbViewer,
