@@ -1,17 +1,16 @@
-use num_bigint::ToBigInt;
-
-use rand::distributions::Standard;
-use rand::prelude::Distribution;
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
 use std::borrow::Borrow;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::{Debug, Display};
 use std::rc::Rc;
 
 use clvmr::Allocator;
+use num_bigint::ToBigInt;
+use rand::distributions::Standard;
+use rand::prelude::*;
+use rand_chacha::ChaCha8Rng;
 
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
+
 use crate::compiler::clvm::{convert_to_clvm_rs, run};
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, HasCompilerOptsDelegation};
@@ -20,6 +19,8 @@ use crate::compiler::fuzz::{ExprModifier, FuzzChoice, FuzzGenerator, FuzzTypePar
 use crate::compiler::prims::primquote;
 use crate::compiler::sexp::{enlist, extract_atom_replacement, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+
+mod modules_with_constant_exports;
 
 #[derive(Debug)]
 pub struct GenError {
@@ -94,9 +95,17 @@ pub fn perform_compile_of_file(
     let source_opts = TestModuleCompilerOpts::new(orig_opts);
     let opts: Rc<dyn CompilerOpts> = Rc::new(source_opts.clone());
     let mut symbol_table = HashMap::new();
-    let compiled = compile_file(allocator, runner.clone(), opts, &content, &mut symbol_table)?;
+    let mut includes = Vec::new();
+    let compiled = compile_file(
+        allocator,
+        runner,
+        opts,
+        &content,
+        &mut symbol_table,
+        &mut includes,
+    )?;
     Ok(PerformCompileResult {
-        compiled: Rc::new(compiled),
+        compiled: Rc::new(compiled.to_sexp()),
         source_opts,
     })
 }
