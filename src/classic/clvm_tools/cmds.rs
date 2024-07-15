@@ -36,7 +36,6 @@ use crate::classic::clvm_tools::debug::{
     trace_to_text,
 };
 use crate::classic::clvm_tools::ir::reader::read_ir;
-use crate::classic::clvm_tools::profiling::Profiler;
 use crate::classic::clvm_tools::sha256tree::sha256tree;
 use crate::classic::clvm_tools::stages;
 use crate::classic::clvm_tools::stages::stage_0::{
@@ -52,20 +51,19 @@ use crate::classic::platform::argparse::{
 
 use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
 use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
-use crate::compiler::clvm::{start_step, NewStyleIntConversion};
-use crate::compiler::compiler::{compile_file, do_desugar, DefaultCompilerOpts};
-use crate::compiler::comptypes::{CompileErr, CompileForm, CompilerOpts};
+use crate::compiler::clvm::start_step;
+use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::debug::build_symbol_table_mut;
 use crate::compiler::dialect::detect_modern;
 use crate::compiler::frontend::frontend;
-use crate::compiler::optimize::{get_optimizer, maybe_finalize_program_via_classic_optimizer};
+use crate::compiler::optimize::maybe_finalize_program_via_classic_optimizer;
 use crate::compiler::preprocessor::gather_dependencies;
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp;
 use crate::compiler::sexp::{decode_string, parse_sexp};
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::BasicCompileContext;
 
 use crate::util::collapse;
 use crate::util::version;
@@ -317,8 +315,6 @@ impl ArgumentValueConv for OperatorsVersion {
 }
 
 pub fn run(args: &[String]) {
-    let _profiler = Profiler::new("run-profile.svg");
-
     let mut s = Stream::new(None);
     launch_tool(&mut s, args, "run", 2);
     io::stdout()
@@ -501,8 +497,6 @@ pub fn cldb_hierarchy(
 }
 
 pub fn cldb(args: &[String]) {
-    let _profiler = Profiler::new("cldb-profile.svg");
-
     let tool_name = "cldb".to_string();
     let props = TArgumentParserProps {
         description: "Execute a clvm script.".to_string(),
@@ -759,7 +753,6 @@ pub fn cldb(args: &[String]) {
     loop {
         if cldbrun.is_ended() {
             println!("{}", yamlette_string(&output));
-
             return;
         }
 
@@ -851,12 +844,23 @@ fn fix_log(
     }
 }
 
-fn parse_module_and_get_sigil(
+// A function which performs preprocessing on a whole program and renders the
+// output to the user.
+//
+// This is used in the same way as cc -E in a C compiler; to see what
+// preprocessing did to the source so you can debug and improve your macros.
+//
+// Without this, it's difficult for some to visualize how macro are functioning
+// and what forms they output.
+fn perform_preprocessing(
+    stdout: &mut Stream,
     opts: Rc<dyn CompilerOpts>,
     input_file: &str,
     program_text: &str,
-) -> Result<(Option<String>, Vec<Rc<sexp::SExp>>), CompileErr> {
+) -> Result<(), CompileErr> {
     let srcloc = Srcloc::start(input_file);
+    // Parse the source file.
+    let parsed = parse_sexp(srcloc.clone(), program_text.bytes())?;
     // Get the detected dialect and compose a sigil that matches.
     // Classic preprocessing (also shared by standard sigil 21 and 21) does macro
     // expansion during the compile process, making all macros available to all
@@ -868,22 +872,13 @@ fn parse_module_and_get_sigil(
     // The result is fully rendered before the next stage of compilation so that
     // it can be inspected and so that the execution environment for macros is
     // fully and cleanly separated from compile time.
-    let parsed = parse_sexp(srcloc, program_text.bytes())?;
     let stepping_form_text = match opts.dialect().stepping {
         Some(21) => Some("(include *strict-cl-21*)".to_string()),
         Some(n) => Some(format!("(include *standard-cl-{n}*)")),
         _ => None,
     };
-    Ok((stepping_form_text, parsed))
-}
-
-fn render_mod_with_sigil(
-    input_file: &str,
-    stepping_form_text: &Option<String>,
-    frontend: &CompileForm,
-) -> Result<sexp::SExp, CompileErr> {
-    let srcloc = Srcloc::start(input_file);
-    let fe_sexp = frontend.to_sexp();
+    let frontend = frontend(opts, &parsed)?;
+    let fe_sexp = frontend.compileform().to_sexp();
     let with_stepping = if let Some(s) = stepping_form_text {
         let parsed_stepping_form = parse_sexp(srcloc.clone(), s.bytes())?;
         if let sexp::SExp::Cons(_, a, rest) = fe_sexp.borrow() {
@@ -903,60 +898,11 @@ fn render_mod_with_sigil(
         fe_sexp
     };
 
-    Ok(sexp::SExp::Cons(
+    let whole_mod = sexp::SExp::Cons(
         srcloc.clone(),
         Rc::new(sexp::SExp::Atom(srcloc, b"mod".to_vec())),
         with_stepping,
-    ))
-}
-
-// A function which performs preprocessing on a whole program and renders the
-// output to the user.
-//
-// This is used in the same way as cc -E in a C compiler; to see what
-// preprocessing did to the source so you can debug and improve your macros.
-//
-// Without this, it's difficult for some to visualize how macro are functioning
-// and what forms they output.
-fn perform_preprocessing(
-    stdout: &mut Stream,
-    opts: Rc<dyn CompilerOpts>,
-    input_file: &str,
-    program_text: &str,
-) -> Result<(), CompileErr> {
-    let srcloc = Srcloc::start(input_file);
-    let (sigil, parsed) = parse_module_and_get_sigil(opts.clone(), input_file, program_text)?;
-
-    let frontend = frontend(opts, &parsed)?;
-    let rendered = render_mod_with_sigil(input_file, &sigil, frontend.compileform())?;
-    stdout.write_str(&format!("{}\n", rendered));
-
-    Ok(())
-}
-
-fn perform_desugaring(
-    runner: Rc<dyn TRunProgram>,
-    stdout: &mut Stream,
-    opts: Rc<dyn CompilerOpts>,
-    input_file: &str,
-    program_text: &str,
-) -> Result<(), CompileErr> {
-    let (stepping_form_text, parsed) =
-        parse_module_and_get_sigil(opts.clone(), input_file, program_text)?;
-    let srcloc = Srcloc::start(input_file);
-    let mut context = BasicCompileContext::new(
-        Allocator::new(),
-        runner.clone(),
-        HashMap::new(),
-        get_optimizer(&srcloc, opts.clone())?,
-        Vec::new(),
     );
-    let p0 = frontend(opts.clone(), &parsed)?;
-    let p1 = context.frontend_optimization(opts.clone(), p0.compileform().clone())?;
-
-    // Resolve includes, convert program source to lexemes
-    let p2 = do_desugar(&p1)?;
-    let whole_mod = render_mod_with_sigil(input_file, &stepping_form_text, &p2)?;
 
     stdout.write_str(&format!("{}", whole_mod));
     Ok(())
@@ -1119,15 +1065,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
             .set_help("Perform strict mode preprocessing and show the result".to_string()),
-    );
-    parser.add_argument(
-        vec!["-D".to_string(), "--desugar".to_string()],
-        Argument::new()
-            .set_action(TArgOptionAction::StoreTrue)
-            .set_help(
-                "Perform desugaring and output a program made up exclusively of helper forms"
-                    .to_string(),
-            ),
     );
     parser.add_argument(
         vec!["--operators-version".to_string()],
@@ -1324,10 +1261,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             }
 
             let assembled_sexp = assemble_from_ir(&mut allocator, Rc::new(src_sexp)).unwrap();
-            let use_filename = input_file
-                .clone()
-                .unwrap_or_else(|| "*command*".to_string());
-
             let mut parsed_args_result = "()".to_string();
 
             if let Some(ArgumentValue::ArgString(_f, s)) = parsed_args.get("env") {
@@ -1390,18 +1323,16 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     if do_check_unused {
         let opts =
             Rc::new(DefaultCompilerOpts::new(&reported_input_file)).set_search_paths(&search_paths);
-        if do_check_unused {
-            match check_unused(opts.clone(), &input_program) {
-                Ok((success, output)) => {
-                    stderr_output(output);
-                    if !success {
-                        return;
-                    }
-                }
-                Err(e) => {
-                    stderr_output(format!("{}: {}\n", e.0, e.1));
+        match check_unused(opts, &input_program) {
+            Ok((success, output)) => {
+                stderr_output(output);
+                if !success {
                     return;
                 }
+            }
+            Err(e) => {
+                stderr_output(format!("{}: {}\n", e.0, e.1));
+                return;
             }
         }
     }
@@ -1437,15 +1368,6 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         // Short circuit preprocessing display.
         if parsed_args.contains_key("preprocess") {
             if let Err(e) = perform_preprocessing(stdout, opts, &use_filename, &input_program) {
-                stdout.write_str(&format!("{}: {}", e.0, e.1));
-            }
-            return;
-        }
-
-        // Short circuit desguaring display.
-        if parsed_args.get("desugar").is_some() {
-            if let Err(e) = perform_desugaring(runner, stdout, opts, &use_filename, &input_program)
-            {
                 stdout.write_str(&format!("{}: {}", e.0, e.1));
             }
             return;
