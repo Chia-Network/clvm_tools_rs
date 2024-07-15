@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [tool.maturin]
 bindings = "pyo3"
-features = ["extension-module","debug-print"]
+features = ["extension-module"]
 python-source = "python"
 
 [project]

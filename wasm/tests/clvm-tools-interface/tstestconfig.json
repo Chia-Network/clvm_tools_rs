@@ -3,7 +3,11 @@
     "compilerOptions": {
       "emitDeclarationOnly": false,
       "noEmitOnError": true,
+<<<<<<< HEAD
       "strict": true
+=======
+      "strict": true,
+>>>>>>> chia/20240309-stable-constants-iii
     },
     "include": ["src/lib/**/tests"],
     "exclude": []
