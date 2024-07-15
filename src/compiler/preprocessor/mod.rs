@@ -689,7 +689,11 @@ impl Preprocessor {
             .read_new_file(self.opts.filename(), fname.to_string())?;
 
         let content = if let IncludeProcessType::Bin = &kind {
-            Rc::new(SExp::Atom(loc.clone(), content))
+                if self.opts.dialect().int_fix {
+                    Rc::new(SExp::QuotedString(loc.clone(), b'x', content))
+                } else {
+                    Rc::new(SExp::Atom(loc.clone(), content))
+                }
         } else if let IncludeProcessType::Hex = &kind {
             hex_to_modern_sexp(
                 &mut allocator,
