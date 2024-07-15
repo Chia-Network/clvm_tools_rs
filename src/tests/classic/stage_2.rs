@@ -17,14 +17,9 @@ use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_sear
 use crate::classic::clvm_tools::stages::stage_2::reader::{process_embed_file, read_file};
 
 use crate::compiler::compiler::DefaultCompilerOpts;
-use crate::compiler::comptypes::{
-    CompileErr, CompilerOpts, CompilerOutput, HasCompilerOptsDelegation, ModulePhase,
-    PrimaryCodegen,
-};
-use crate::compiler::dialect::AcceptedDialect;
-use crate::compiler::sexp::{decode_string, SExp};
+use crate::compiler::comptypes::{CompileErr, CompilerOpts, HasCompilerOptsDelegation};
+use crate::compiler::sexp::decode_string;
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::BasicCompileContext;
 
 fn test_expand_macro(
     allocator: &mut Allocator,
@@ -306,29 +301,31 @@ fn test_process_embed_file_as_hex() {
 
 #[derive(Clone)]
 struct TestCompilerOptsPresentsOwnFiles {
-    compiler_opts: Rc<dyn CompilerOpts>,
-    files: HashMap<String, String>,
+    files: Rc<HashMap<String, String>>,
+    opts: Rc<dyn CompilerOpts>,
 }
 
 impl TestCompilerOptsPresentsOwnFiles {
-    fn new(compiler_opts: Rc<dyn CompilerOpts>, files: HashMap<String, String>) -> Self {
+    fn new(filename: String, files: HashMap<String, String>) -> Self {
         TestCompilerOptsPresentsOwnFiles {
-            compiler_opts,
-            files,
+            files: Rc::new(files),
+            opts: Rc::new(DefaultCompilerOpts::new(&filename)),
         }
     }
 }
 
 impl HasCompilerOptsDelegation for TestCompilerOptsPresentsOwnFiles {
     fn compiler_opts(&self) -> Rc<dyn CompilerOpts> {
-        self.compiler_opts.clone()
+        self.opts.clone()
     }
+
     fn update_compiler_opts<F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>>(
         &self,
         f: F,
     ) -> Rc<dyn CompilerOpts> {
+        let new_opts = f(self.opts.clone());
         Rc::new(TestCompilerOptsPresentsOwnFiles {
-            compiler_opts: f(self.compiler_opts.clone()),
+            opts: new_opts,
             ..self.clone()
         })
     }
@@ -362,8 +359,10 @@ fn test_classic_compiler_with_compiler_opts() {
     for (k, v) in files_vec.into_iter() {
         files.insert(k, v);
     }
-    let default_opts = Rc::new(DefaultCompilerOpts::new("test.clsp"));
-    let opts = Rc::new(TestCompilerOptsPresentsOwnFiles::new(default_opts, files));
+    let opts = Rc::new(TestCompilerOptsPresentsOwnFiles::new(
+        "test.clsp".to_string(),
+        files,
+    ));
     let to_compile = "(mod (A) (include test.clinc) (F A))";
     let mut allocator = Allocator::new();
     let mut symbols = HashMap::new();

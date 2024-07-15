@@ -1,6 +1,5 @@
 use crate::tests::compiler::compiler::run_string;
 use crate::tests::compiler::repl::test_repl_outcome;
-use crate::tests::compiler::types::chialisp::test_chialisp_program_typecheck;
 
 // All tests needed for rest calls:
 //
@@ -901,45 +900,6 @@ fn test_repl_10() {
         .unwrap(),
         "(q 5 7 101)"
     );
-}
-
-#[test]
-fn test_rest_type_good() {
-    let prog_good = indoc! {"
-(mod (X)
-  (include *standard-cl-23*)
-
-  (defun F (A B . C) : ((Pair Atom (Pair Atom (List Atom))) -> Atom) (* A B (f C)))
-
-  (F 5 7 &rest (list 9))
-  )"}
-    .to_string();
-
-    let typecheck_result = test_chialisp_program_typecheck(&prog_good, true);
-
-    // Good result
-    assert!(typecheck_result.is_ok());
-}
-
-#[test]
-fn test_rest_type_bad() {
-    let prog_bad = indoc! {"
-(mod (X)
-  (include *standard-cl-23*)
-
-  (deftype Foo ())
-
-  (defun F (A B . C) : ((Pair Atom (Pair Atom (List Foo))) -> Atom) (* A B (f C)))
-
-  (F 5 7 &rest (list 9))
-  )"}
-    .to_string();
-
-    let typecheck_result = test_chialisp_program_typecheck(&prog_bad, true);
-
-    // Bad result
-    eprintln!("tc {typecheck_result:?}");
-    assert!(typecheck_result.is_err());
 }
 
 #[test]

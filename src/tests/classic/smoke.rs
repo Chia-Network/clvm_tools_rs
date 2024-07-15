@@ -13,8 +13,9 @@ use crate::classic::clvm::__type_compatibility__::{
     pybytes_repr, t, Bytes, Stream, UnvalidatedBytesFromType,
 };
 use crate::classic::clvm::serialize::{sexp_from_stream, SimpleCreateCLVMObject};
-use crate::classic::clvm::sexp::{First, NodeSel, Rest, SelectNode, ThisNode};
+use crate::classic::clvm::sexp::{sexp_as_bin, First, NodeSel, Rest, SelectNode, ThisNode};
 use crate::classic::clvm::syntax_error::SyntaxErr;
+use crate::classic::clvm_tools::binutils;
 use crate::classic::clvm_tools::cmds::{launch_tool, OpcConversion, OpdConversion, TConversion};
 
 use crate::classic::clvm_tools::binutils::{assemble, assemble_from_ir, disassemble};
@@ -61,6 +62,15 @@ fn large_odd_sized_neg_opd() {
         .invoke(&mut allocator, &"ff8afde1e61f36454dc0000180".to_string())
         .unwrap();
     assert_eq!(result.rest(), "(0xfde1e61f36454dc00001)");
+}
+
+#[test]
+fn mid_negative_value_opd_00() {
+    let mut allocator = Allocator::new();
+    let result = opd_conversion()
+        .invoke(&mut allocator, &"00".to_string())
+        .unwrap();
+    assert_eq!(result.rest(), "0x00");
 }
 
 #[test]
@@ -256,6 +266,17 @@ fn compile_program<'a>(
     let res = runner.run_program(allocator, run_script, input_sexp, None);
 
     return res.map(|x| disassemble(allocator, x.1, Some(0)));
+}
+
+#[test]
+fn binutils_assemble() {
+    let mut allocator = Allocator::new();
+    let src = "(q)".to_string();
+    let assembled = binutils::assemble(&mut allocator, &src)
+        .map_err(|e| e.to_string())
+        .map(|sexp| t(sexp, sexp_as_bin(&mut allocator, sexp).hex()))
+        .unwrap();
+    assert_eq!(assembled.rest(), "ff0180");
 }
 
 #[test]
@@ -777,7 +798,7 @@ fn test_io_err_from_syntax_err() {
 fn test_bytes_to_pybytes_repr_0() {
     let b = b"\x11\x01abc\r\ntest\ttest\r\n";
     assert_eq!(
-        pybytes_repr(b, false),
+        pybytes_repr(b, false, true),
         "b'\\x11\\x01abc\\r\\ntest\\ttest\\r\\n'"
     );
 }
@@ -814,4 +835,36 @@ fn test_sub_args() {
         disassemble(&mut allocator, result, None),
         "(\"body\" (f (\"test1\" \"test2\")) (f (r (\"test1\" \"test2\"))))"
     );
+}
+
+#[test]
+fn test_smoke_cl23_program_with_zero_folding() {
+    let mut s = Stream::new(None);
+    launch_tool(
+        &mut s,
+        &vec![
+            "run".to_string(),
+            "(mod () (include *standard-cl-23*) (defconst X (concat 0x00 0x00)) X)".to_string(),
+        ],
+        &"run".to_string(),
+        2,
+    );
+    let result = s.get_value().decode().trim().to_string();
+    assert_eq!(result, "(2 (1 . 2) (4 (1 . 0) 1))");
+}
+
+#[test]
+fn test_smoke_cl23_program_without_zero_folding() {
+    let mut s = Stream::new(None);
+    launch_tool(
+        &mut s,
+        &vec![
+            "run".to_string(),
+            "(mod () (include *standard-cl-23.1*) (defconst X (concat 0x00 0x00)) X)".to_string(),
+        ],
+        &"run".to_string(),
+        2,
+    );
+    let result = s.get_value().decode().trim().to_string();
+    assert_eq!(result, "(2 (1 . 2) (4 (1 . 0x0000) 1))");
 }

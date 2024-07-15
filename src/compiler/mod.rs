@@ -33,10 +33,6 @@ pub mod runtypes;
 pub mod sexp;
 pub mod srcloc;
 pub mod stackvisit;
-pub mod typecheck;
-pub mod typechia;
-pub mod types;
-pub mod untype;
 pub mod usecheck;
 
 use clvmr::allocator::Allocator;

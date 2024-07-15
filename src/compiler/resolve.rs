@@ -10,7 +10,7 @@ use crate::compiler::comptypes::{
     DefmacData, DefunData, HelperForm, ImportLongName, LambdaData, LetData, LetFormKind,
     LongNameTranslation, ModuleImportListedName, ModuleImportSpec, NamespaceData,
 };
-use crate::compiler::frontend::{generate_type_helpers, HelperFormResult};
+use crate::compiler::frontend::HelperFormResult;
 use crate::compiler::rename::rename_args_helperform;
 use crate::compiler::sexp::{decode_string, SExp};
 
@@ -90,46 +90,24 @@ impl<'a> Iterator for TourNamespaces<'a> {
 
 fn namespace_helper(name: &ImportLongName, value: &HelperForm) -> HelperFormResult {
     match value {
-        HelperForm::Defun(inline, dd) => HelperFormResult::new(
-            &[HelperForm::Defun(
-                *inline,
-                Box::new(DefunData {
-                    name: name.as_u8_vec(LongNameTranslation::Namespace),
-                    ..*dd.clone()
-                }),
-            )],
-            None,
-        ),
-        HelperForm::Defconstant(dc) => HelperFormResult::new(
-            &[HelperForm::Defconstant(DefconstData {
+        HelperForm::Defun(inline, dd) => HelperFormResult::new(&[HelperForm::Defun(
+            *inline,
+            Box::new(DefunData {
+                name: name.as_u8_vec(LongNameTranslation::Namespace),
+                ..*dd.clone()
+            }),
+        )]),
+        HelperForm::Defconstant(dc) => {
+            HelperFormResult::new(&[HelperForm::Defconstant(DefconstData {
                 name: name.as_u8_vec(LongNameTranslation::Namespace),
                 ..dc.clone()
-            })],
-            None,
-        ),
-        HelperForm::Defmacro(dm) => HelperFormResult::new(
-            &[HelperForm::Defmacro(DefmacData {
-                name: name.as_u8_vec(LongNameTranslation::Namespace),
-                ..dm.clone()
-            })],
-            None,
-        ),
-        HelperForm::Deftype(ty) => {
-            let new_helpers = generate_type_helpers(&ty.parsed);
-            let mut result_helpers = Vec::new();
-            for h in new_helpers.into_iter() {
-                let new_helper_name = if let Some(p) = name.parent() {
-                    p.with_child(h.name())
-                } else {
-                    let (_, parsed) = ImportLongName::parse(h.name());
-                    parsed
-                };
-                let results = namespace_helper(&new_helper_name, &h);
-                result_helpers.extend(results.new_helpers);
-            }
-            HelperFormResult::new(&result_helpers, None)
+            })])
         }
-        _ => HelperFormResult::new(&[value.clone()], None),
+        HelperForm::Defmacro(dm) => HelperFormResult::new(&[HelperForm::Defmacro(DefmacData {
+            name: name.as_u8_vec(LongNameTranslation::Namespace),
+            ..dm.clone()
+        })]),
+        _ => HelperFormResult::new(&[value.clone()]),
     }
 }
 
@@ -187,21 +165,6 @@ pub fn find_helper_target(
     // check the matching namespace to the one specified to see if we can find the
     // target.
     for h in home_ns.iter() {
-        if let HelperForm::Deftype(dt) = &h.helper {
-            let new_helpers = generate_type_helpers(&dt.parsed);
-            for gh in new_helpers.iter() {
-                // Resolve helper.
-                if gh.name() == &child {
-                    let combined = if let Some(p) = parent_ns {
-                        p.with_child(&child)
-                    } else {
-                        let (_, p) = ImportLongName::parse(&child);
-                        p
-                    };
-                    return Ok(Some((combined, h.helper.clone())));
-                }
-            }
-        }
         if h.helper.name() == &child
             && !matches!(
                 h.helper,
@@ -446,7 +409,7 @@ fn resolve_namespaces_in_expr(
 
             resolved_helpers.insert(
                 target_full_name.clone(),
-                HelperFormResult::new(&[rename_args_helperform(&target_helper)?], None),
+                HelperFormResult::new(&[rename_args_helperform(&target_helper)?]),
             );
             Ok(Rc::new(BodyForm::Value(SExp::Atom(
                 nl.clone(),
@@ -619,15 +582,14 @@ fn resolve_namespaces_in_helper(
                 result_helpers.extend(newly_created.new_helpers);
             }
 
-            Ok(HelperFormResult::new(
-                &[HelperForm::Defnamespace(NamespaceData {
+            Ok(HelperFormResult::new(&[HelperForm::Defnamespace(
+                NamespaceData {
                     helpers: result_helpers,
                     ..ns.clone()
-                })],
-                None,
-            ))
+                },
+            )]))
         }
-        HelperForm::Defnsref(_) => Ok(HelperFormResult::new(&[helper.clone()], None)),
+        HelperForm::Defnsref(_) => Ok(HelperFormResult::new(&[helper.clone()])),
         HelperForm::Defun(inline, dd) => {
             let mut in_scope = HashSet::new();
             capture_scope(&mut in_scope, dd.args.clone());
@@ -645,7 +607,7 @@ fn resolve_namespaces_in_helper(
                     ..*dd.clone()
                 }),
             );
-            Ok(HelperFormResult::new(&[new_defun], None))
+            Ok(HelperFormResult::new(&[new_defun]))
         }
         HelperForm::Defconstant(dc) => {
             let in_scope = HashSet::new();
@@ -660,22 +622,7 @@ fn resolve_namespaces_in_helper(
                 )?,
                 ..dc.clone()
             });
-            Ok(HelperFormResult::new(&[new_defconst], None))
-        }
-        HelperForm::Deftype(dt) => {
-            let mut new_helpers = generate_type_helpers(&dt.parsed);
-            let mut result_helpers = Vec::new();
-            for h in new_helpers.iter_mut() {
-                let results = resolve_namespaces_in_helper(
-                    resolved_helpers,
-                    opts.clone(),
-                    program,
-                    parent_ns,
-                    h,
-                )?;
-                result_helpers.extend(results.new_helpers);
-            }
-            Ok(HelperFormResult::new(&result_helpers, None))
+            Ok(HelperFormResult::new(&[new_defconst]))
         }
         HelperForm::Defmacro(_) => Err(CompileErr(
             helper.loc(),
@@ -746,7 +693,7 @@ pub fn resolve_namespaces(
                     )?;
 
                     result_helpers.extend(results.new_helpers.clone());
-                    resolved_helpers.insert(full_name, HelperFormResult::new(&[], None));
+                    resolved_helpers.insert(full_name, HelperFormResult::new(&[]));
                 }
 
                 renamed_helpers.new_helpers = result_helpers;

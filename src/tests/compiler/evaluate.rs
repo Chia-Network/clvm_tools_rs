@@ -14,12 +14,14 @@ use crate::compiler::srcloc::Srcloc;
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
 use crate::util::ErrInto;
 
+use crate::tests::compiler::compiler::squash_name_differences;
+
 fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
     let mut allocator = Allocator::new();
     let runner = Rc::new(DefaultProgramRunner::new());
     let opts = Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));
     let loc = Srcloc::start(&"*program*".to_string());
-    parse_sexp(loc.clone(), s.bytes())
+    let result = parse_sexp(loc.clone(), s.bytes())
         .err_into()
         .and_then(|parsed_program| {
             return frontend(opts.clone(), &parsed_program);
@@ -34,8 +36,11 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
                 false,
                 Some(EVAL_STACK_LIMIT),
             );
-        })
-        .map(|result| result.to_sexp().to_string())
+        })?;
+
+    let result_sexp =
+        squash_name_differences(result.to_sexp()).map_err(|e| CompileErr(loc.clone(), e))?;
+    Ok(result_sexp.to_string())
 }
 
 #[test]
@@ -128,26 +133,18 @@ fn test_simple_fe_opt_compile_1() {
 }
 
 #[test]
+fn test_lambda_eval_1() {
+    assert_eq!(
+        shrink_expr_from_string("(lambda (X) (+ X 1))".to_string()).unwrap(),
+        "(lambda (X_$_A) (+ X_$_A 1))".to_string()
+    );
+}
+
+#[test]
 fn test_assign_simple_form_0() {
     assert_eq!(
         shrink_expr_from_string("(assign A (* Z 3) X 3 Y 4 Z (+ X Y) A)".to_string()).unwrap(),
         "(q . 21)"
-    );
-}
-
-#[test]
-fn test_lambda_eval_1() {
-    assert_eq!(
-        shrink_expr_from_string("(lambda (X) (+ X 1))".to_string()).unwrap(),
-        "(lambda (X) (+ X 1))".to_string()
-    );
-}
-
-#[test]
-fn test_assign_simple_form_1() {
-    assert_eq!(
-        shrink_expr_from_string("(assign A (* Z 3) Z 2 A)".to_string()).unwrap(),
-        "(q . 6)"
     );
 }
 
@@ -160,9 +157,9 @@ fn test_lambda_eval_2() {
 }
 
 #[test]
-fn test_assign_simple_form_2() {
+fn test_assign_simple_form_1() {
     assert_eq!(
-        shrink_expr_from_string("(assign Z 2 A (* Z 3) A)".to_string()).unwrap(),
+        shrink_expr_from_string("(assign A (* Z 3) Z 2 A)".to_string()).unwrap(),
         "(q . 6)"
     );
 }
@@ -186,5 +183,13 @@ fn test_lambda_eval_4() {
         )
         .unwrap(),
         "(q . 13)".to_string()
+    );
+}
+
+#[test]
+fn test_assign_simple_form_2() {
+    assert_eq!(
+        shrink_expr_from_string("(assign Z 2 A (* Z 3) A)".to_string()).unwrap(),
+        "(q . 6)"
     );
 }

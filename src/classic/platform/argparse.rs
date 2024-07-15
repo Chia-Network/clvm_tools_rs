@@ -153,7 +153,7 @@ impl ArgumentParser {
     pub fn new(props: Option<TArgumentParserProps>) -> ArgumentParser {
         let mut start = ArgumentParser {
             prog: props
-                .as_ref()
+                .clone()
                 .map(|x| x.prog.clone())
                 .unwrap_or_else(|| "prog".to_string()),
             // FIXME: use desc

@@ -775,14 +775,6 @@ fn chialisp_to_expr(
     }
 }
 
-fn typecheck_chialisp_body_with_context(
-    context_: &Context,
-    expr: &Expr,
-) -> Result<Polytype, CompileErr> {
-    let res = context_.typesynth(expr).map(|(res, _)| res)?;
-    Ok(res)
-}
-
 fn handle_function_type(
     context: &Context,
     loc: Srcloc,
@@ -807,93 +799,3 @@ fn handle_function_type(
     }
 }
 
-// Given a compileform, typecheck
-impl Context {
-    pub fn typecheck_chialisp_program(
-        &self,
-        opts: Rc<dyn CompilerOpts>,
-        comp: &CompileForm,
-    ) -> Result<Polytype, CompileErr> {
-        let mut context = self.clone();
-
-        // Extract type definitions
-        for h in comp.helpers.iter() {
-            if let HelperForm::Deftype(deft) = &h {
-                let tname = decode_string(&deft.name);
-                let n_encoding = number_from_u8(format!("struct {tname}").as_bytes());
-                // Ensure that we build up a unique type involving all variables so we won't try to solve it to some specific type
-                let mut result_ty = Type::TAtom(h.loc(), Some(n_encoding));
-                for a in deft.args.iter().rev() {
-                    result_ty = Type::TPair(Rc::new(Type::TVar(a.clone())), Rc::new(result_ty));
-                }
-                result_ty = Type::TExec(Rc::new(result_ty));
-                for a in deft.args.iter().rev() {
-                    result_ty = Type::TAbs(a.clone(), Rc::new(result_ty));
-                }
-                let exists_solved =
-                    ContextElim::CExistsSolved(TypeVar(tname.clone(), deft.loc.clone()), result_ty);
-                debug!(
-                    "struct exists_solved {}",
-                    exists_solved.to_sexp().to_string()
-                );
-                context = context.appends_wf(vec![exists_solved]);
-            }
-        }
-
-        // Extract constants
-        for h in comp.helpers.iter() {
-            if let HelperForm::Defconstant(defc) = &h {
-                let tname = decode_string(&defc.name);
-                if let Some(ty) = &defc.ty {
-                    context = context
-                        .snoc_wf(ContextElim::CVar(Var(tname, defc.loc.clone()), ty.clone()));
-                } else {
-                    context = context.snoc_wf(ContextElim::CVar(
-                        Var(tname, defc.loc.clone()),
-                        Type::TAny(defc.loc.clone()),
-                    ));
-                }
-            }
-        }
-
-        // Extract functions
-        for h in comp.helpers.iter() {
-            if let HelperForm::Defun(_, defun) = &h {
-                let tname = decode_string(&defun.name);
-                let ty = type_of_defun(defun.loc.clone(), &defun.ty);
-                context = context.snoc_wf(ContextElim::CVar(Var(tname, defun.loc.clone()), ty));
-            }
-        }
-
-        // Typecheck helper functions
-        for h in comp.helpers.iter() {
-            if let HelperForm::Defun(_, defun) = &h {
-                let ty = type_of_defun(defun.loc.clone(), &defun.ty);
-                let (context_with_args, result_ty) =
-                    handle_function_type(&context, h.loc(), defun.args.clone(), &ty)?;
-                typecheck_chialisp_body_with_context(
-                    &context_with_args,
-                    &Expr::EAnno(
-                        Rc::new(chialisp_to_expr(
-                            opts.clone(),
-                            comp,
-                            defun.args.clone(),
-                            defun.body.clone(),
-                        )?),
-                        result_ty,
-                    ),
-                )?;
-            }
-        }
-
-        // Typecheck main expression
-        let ty = type_of_defun(comp.exp.loc(), &comp.ty);
-        let (context_with_args, result_ty) =
-            handle_function_type(&context, comp.exp.loc(), comp.args.clone(), &ty)?;
-        let clexpr = chialisp_to_expr(opts, comp, comp.args.clone(), comp.exp.clone())?;
-        typecheck_chialisp_body_with_context(
-            &context_with_args,
-            &Expr::EAnno(Rc::new(clexpr), result_ty),
-        )
-    }
-}

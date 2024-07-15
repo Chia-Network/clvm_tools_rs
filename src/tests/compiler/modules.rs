@@ -14,13 +14,11 @@ use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProg
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{
-    CompileErr, CompilerOpts, CompilerOutput, HasCompilerOptsDelegation, ModulePhase,
-    PrimaryCodegen,
+    CompileErr, CompilerOpts, CompilerOutput, HasCompilerOptsDelegation,
 };
-use crate::compiler::dialect::{detect_modern, AcceptedDialect};
+use crate::compiler::dialect::detect_modern;
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::BasicCompileContext;
 
 pub enum DesiredOutcome<'a> {
     Error,
@@ -44,13 +42,6 @@ impl TestModuleCompilerOpts {
         }
     }
 
-    fn new_opts(&self, opts: Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts> {
-        Rc::new(TestModuleCompilerOpts {
-            opts,
-            written_files: self.written_files.clone(),
-        })
-    }
-
     pub fn get_written_file<'a>(&'a self, name: &str) -> Option<Vec<u8>> {
         let files_ref: &RefCell<HashMap<String, Vec<u8>>> = self.written_files.borrow();
         let files: &HashMap<String, Vec<u8>> = &files_ref.borrow();
@@ -62,32 +53,22 @@ impl HasCompilerOptsDelegation for TestModuleCompilerOpts {
     fn compiler_opts(&self) -> Rc<dyn CompilerOpts> {
         self.opts.clone()
     }
+
     fn update_compiler_opts<F: FnOnce(Rc<dyn CompilerOpts>) -> Rc<dyn CompilerOpts>>(
         &self,
         f: F,
     ) -> Rc<dyn CompilerOpts> {
+        let new_opts = f(self.opts.clone());
         Rc::new(TestModuleCompilerOpts {
-            opts: f(self.opts.clone()),
-            ..self.clone()
+            written_files: self.written_files.clone(),
+            opts: new_opts,
         })
     }
-    fn override_get_file_mod_date(&self, loc: &Srcloc, filename: &str) -> Result<u64, CompileErr> {
-        Err(CompileErr(
-            loc.clone(),
-            format!("could not get mod date of {filename}"),
-        ))
-    }
+
     fn override_write_new_file(&self, target: &str, content: &[u8]) -> Result<(), CompileErr> {
         let mut wf: RefMut<'_, HashMap<String, Vec<u8>>> = self.written_files.borrow_mut();
         wf.insert(target.to_string(), content.to_vec());
         Ok(())
-    }
-    fn override_compile_program(
-        &self,
-        context: &mut BasicCompileContext,
-        sexp: Rc<SExp>,
-    ) -> Result<CompilerOutput, CompileErr> {
-        self.opts.compile_program(context, sexp)
     }
 }
 
@@ -343,40 +324,6 @@ fn test_simple_module_compilation_import_classic_program() {
                 outcome: Run("(0x27a343d6617931e67a7eb27a41f7c4650b5fa79d8b5132af1b4eae959bdf2272 (* 2 (q . 13)))")
             }
         ]
-    );
-}
-
-#[test]
-fn test_simple_module_compilation_simple_type_1() {
-    let filename = "resources/tests/module/modtest1_current_module_type.clsp";
-    let content = fs::read_to_string(filename).expect("file should exist");
-    let hex_filename = "resources/tests/module/modtest1_current_module_type.hex";
-
-    test_compile_and_run_program_with_modules(
-        filename,
-        &content,
-        &[HexArgumentOutcome {
-            hexfile: hex_filename,
-            argument: "(13 17)",
-            outcome: Run("13"),
-        }],
-    );
-}
-
-#[test]
-fn test_simple_module_compilation_simple_type_2() {
-    let filename = "resources/tests/module/modtest1_other_module_type.clsp";
-    let content = fs::read_to_string(filename).expect("file should exist");
-    let hex_filename = "resources/tests/module/modtest1_other_module_type.hex";
-
-    test_compile_and_run_program_with_modules(
-        filename,
-        &content,
-        &[HexArgumentOutcome {
-            hexfile: hex_filename,
-            argument: "(13 17)",
-            outcome: Run("13"),
-        }],
     );
 }
 

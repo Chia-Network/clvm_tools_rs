@@ -34,6 +34,7 @@ impl ClvmHamt {
             .set_dialect(AcceptedDialect {
                 stepping: Some(23),
                 strict: true,
+                int_fix: true,
             })
             .set_optimize(true);
         let mut prim_map = HashMap::new();

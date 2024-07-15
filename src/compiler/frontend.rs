@@ -3,27 +3,21 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use log::debug;
-use num_bigint::ToBigInt;
-
-use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
+use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::comptypes::{
-    list_to_cons, match_as_named, ArgsAndTail, Binding, BindingPattern, BodyForm, ChiaType,
-    CompileErr, CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DeftypeData,
-    DefunData, Export, FrontendOutput, HelperForm, ImportLongName, IncludeDesc, LetData,
-    LetFormInlineHint, LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, NamespaceData,
-    NamespaceRefData, StructDef, StructMember, SyntheticType, TypeAnnoKind,
+    list_to_cons, match_as_named, ArgsAndTail, Binding, BindingPattern, BodyForm, CompileErr,
+    CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DefunData, Export,
+    FrontendOutput, HelperForm, ImportLongName, IncludeDesc, LetData, LetFormInlineHint,
+    LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, NamespaceData, NamespaceRefData,
 };
 use crate::compiler::lambda::handle_lambda;
 use crate::compiler::preprocessor::{
     detect_chialisp_module, parse_toplevel_mod, preprocess, Preprocessor, ToplevelModParseResult,
 };
-use crate::compiler::rename::{rename_assign_bindings, rename_children_compileform};
+use crate::compiler::rename::rename_children_compileform;
 use crate::compiler::sexp::{decode_string, enlist, SExp};
-use crate::compiler::srcloc::{HasLoc, Srcloc};
-use crate::compiler::typecheck::{parse_type_sexp, parse_type_var};
-use crate::compiler::types::ast::{Polytype, Type, TypeVar};
-use crate::util::{u8_from_number, Number};
+use crate::compiler::srcloc::Srcloc;
+use crate::util::u8_from_number;
 
 pub fn collect_used_names_sexp(body: Rc<SExp>) -> Vec<Vec<u8>> {
     match body.borrow() {
@@ -89,7 +83,6 @@ pub fn collect_used_names_bodyform(body: &BodyForm) -> Vec<Vec<u8>> {
 
 fn collect_used_names_helperform(body: &HelperForm) -> Vec<Vec<u8>> {
     match body {
-        HelperForm::Deftype(_) => Vec::new(),
         HelperForm::Defnamespace(_ns) => Vec::new(),
         HelperForm::Defnsref(_ns) => Vec::new(),
         HelperForm::Defconstant(defc) => collect_used_names_bodyform(defc.body.borrow()),
@@ -268,12 +261,17 @@ fn make_let_bindings(
     body: Rc<SExp>,
 ) -> Result<Vec<Rc<Binding>>, CompileErr> {
     let err = Err(CompileErr(body.loc(), format!("Bad binding tail {body:?}")));
+    let do_atomize = if !opts.dialect().strict {
+        |a: &SExp| -> SExp { a.atomize() }
+    } else {
+        |a: &SExp| -> SExp { a.clone() }
+    };
     match body.borrow() {
         SExp::Nil(_) => Ok(vec![]),
         SExp::Cons(_, head, tl) => head
             .proper_list()
             .filter(|x| x.len() == 2)
-            .map(|x| match (x[0].clone(), &x[1]) {
+            .map(|x| match (do_atomize(&x[0]), &x[1]) {
                 (SExp::Atom(l, name), expr) => {
                     let compiled_body = compile_bodyform(opts.clone(), Rc::new(expr.clone()))?;
                     let mut result = Vec::new();
@@ -306,10 +304,6 @@ pub fn make_provides_set(provides_set: &mut HashSet<Vec<u8>>, body_sexp: Rc<SExp
         }
         _ => {}
     }
-}
-
-fn at_or_above_23(opts: Rc<dyn CompilerOpts>) -> bool {
-    opts.dialect().stepping.unwrap_or(0) > 22
 }
 
 fn handle_assign_form(
@@ -354,18 +348,11 @@ fn handle_assign_form(
         }));
     }
 
-    let mut compiled_body = compile_bodyform(opts.clone(), Rc::new(v[v.len() - 1].clone()))?;
+    let compiled_body = compile_bodyform(opts.clone(), Rc::new(v[v.len() - 1].clone()))?;
     // We don't need to do much if there were no bindings.
     if bindings.is_empty() {
         return Ok(compiled_body);
     }
-
-    if at_or_above_23(opts) {
-        let (new_compiled_body, new_bindings) =
-            rename_assign_bindings(&l, &bindings, Rc::new(compiled_body))?;
-        compiled_body = new_compiled_body;
-        bindings = new_bindings;
-    };
 
     // Return a precise representation of this assign while storing up the work
     // we did breaking it down.
@@ -468,7 +455,7 @@ pub fn compile_bodyform(
                                         Some(LetFormInlineHint::NoChoice)
                                     },
                                 )
-                            } else if *atom_name == b"quote" {
+                            } else if *atom_name == "quote".as_bytes().to_vec() {
                                 if v.len() != 1 {
                                     return finish_err("quote");
                                 }
@@ -488,7 +475,7 @@ pub fn compile_bodyform(
                                 let subparse = frontend(opts, &[body.clone()])?;
                                 Ok(BodyForm::Mod(op.loc(), subparse.compileform().clone()))
                             } else if *atom_name == b"lambda" {
-                                handle_lambda(opts, Some(l.clone()), &v)
+                                handle_lambda(opts, body.loc(), Some(l.clone()), &v)
                             } else {
                                 application()
                             }
@@ -540,7 +527,6 @@ fn compile_defconst(
         name: name.to_vec(),
         body: Rc::new(bf),
         tabled: opts.frontend_opt() || opts.dialect().stepping.unwrap_or(0) > 22,
-        ty: None,
     }))
 }
 
@@ -551,7 +537,6 @@ fn compile_defconstant(
     kl: Option<Srcloc>,
     name: Vec<u8>,
     body: Rc<SExp>,
-    ty: Option<Polytype>,
 ) -> Result<HelperForm, CompileErr> {
     let body_borrowed: &SExp = body.borrow();
     if let SExp::Cons(_, _, _) = body_borrowed {
@@ -563,7 +548,6 @@ fn compile_defconstant(
             name: name.to_vec(),
             body: Rc::new(BodyForm::Value(body_borrowed.clone())),
             tabled: false,
-            ty,
         }))
     } else {
         compile_bodyform(opts, body).map(|bf| {
@@ -575,7 +559,6 @@ fn compile_defconstant(
                 name: name.to_vec(),
                 body: Rc::new(bf),
                 tabled: false,
-                ty,
             })
         })
     }
@@ -601,11 +584,7 @@ pub struct CompileDefun {
     pub body: Rc<SExp>,
 }
 
-fn compile_defun(
-    opts: Rc<dyn CompilerOpts>,
-    data: CompileDefun,
-    ty: Option<Polytype>,
-) -> Result<HelperForm, CompileErr> {
+fn compile_defun(opts: Rc<dyn CompilerOpts>, data: CompileDefun) -> Result<HelperForm, CompileErr> {
     let mut take_form = data.body.clone();
 
     if let SExp::Cons(_, f, _r) = data.body.borrow() {
@@ -623,7 +602,6 @@ fn compile_defun(
                 orig_args: data.args,
                 body: Rc::new(bf),
                 synthetic: None,
-                ty,
             }),
         )
     })
@@ -657,11 +635,6 @@ fn compile_defmacro(
     })
 }
 
-enum TypeKind {
-    Arrow,
-    Colon,
-}
-
 struct OpName4Match {
     opl: Srcloc,
     op_name: Vec<u8>,
@@ -670,7 +643,6 @@ struct OpName4Match {
     args: Rc<SExp>,
     body: Rc<SExp>,
     orig: Vec<SExp>,
-    ty: Option<(TypeKind, Rc<SExp>)>,
 }
 
 fn match_op_name_4(pl: &[SExp]) -> Option<OpName4Match> {
@@ -689,28 +661,13 @@ fn match_op_name_4(pl: &[SExp]) -> Option<OpName4Match> {
                     args: Rc::new(SExp::Nil(l.clone())),
                     body: Rc::new(SExp::Nil(l.clone())),
                     orig: pl.to_owned(),
-                    ty: None,
                 });
             }
 
             match &pl[1].atomize() {
                 SExp::Atom(ll, name) => {
-                    let mut tail_idx = 3;
+                    let tail_idx = 3;
                     let mut tail_list = Vec::new();
-                    let mut type_anno = None;
-                    if pl.len() > 3 {
-                        if let SExp::Atom(_, colon) = &pl[3] {
-                            if *colon == vec![b':'] {
-                                // Type annotation
-                                tail_idx += 2;
-                                type_anno = Some((TypeKind::Colon, Rc::new(pl[4].clone())));
-                            } else if *colon == vec![b'-', b'>'] {
-                                // Type annotation
-                                tail_idx += 2;
-                                type_anno = Some((TypeKind::Arrow, Rc::new(pl[4].clone())));
-                            }
-                        }
-                    }
                     for elt in pl.iter().skip(tail_idx) {
                         tail_list.push(Rc::new(elt.clone()));
                     }
@@ -723,7 +680,6 @@ fn match_op_name_4(pl: &[SExp]) -> Option<OpName4Match> {
                         args: Rc::new(pl[2].clone()),
                         body: Rc::new(enlist(l.clone(), &tail_list)),
                         orig: pl.to_owned(),
-                        ty: type_anno,
                     })
                 }
                 _ => Some(OpName4Match {
@@ -734,417 +690,11 @@ fn match_op_name_4(pl: &[SExp]) -> Option<OpName4Match> {
                     args: Rc::new(SExp::Nil(l.clone())),
                     body: Rc::new(SExp::Nil(l.clone())),
                     orig: pl.to_owned(),
-                    ty: None,
                 }),
             }
         }
         _ => None,
     }
-}
-
-fn extract_type_variables_from_forall_stack(tvars: &mut Vec<TypeVar>, t: &Polytype) -> Polytype {
-    if let Type::TForall(v, t1) = t {
-        tvars.push(v.clone());
-        extract_type_variables_from_forall_stack(tvars, t1.borrow())
-    } else {
-        t.clone()
-    }
-}
-
-pub struct ArgTypeResult {
-    pub stripped_args: Rc<SExp>,
-    pub arg_names: Vec<Vec<u8>>,
-    pub individual_types: HashMap<Vec<u8>, Polytype>,
-    pub individual_paths: HashMap<Vec<u8>, Number>,
-    pub individual_locs: HashMap<Vec<u8>, Srcloc>,
-    pub whole_args: Polytype,
-}
-
-#[allow(clippy::too_many_arguments)]
-fn recover_arg_type_inner(
-    arg_names: &mut Vec<Vec<u8>>,
-    individual_types: &mut HashMap<Vec<u8>, Polytype>,
-    individual_paths: &mut HashMap<Vec<u8>, Number>,
-    individual_locs: &mut HashMap<Vec<u8>, Srcloc>,
-    depth: Number,
-    path: Number,
-    args: Rc<SExp>,
-    have_anno: bool,
-) -> Result<(bool, Rc<SExp>, Polytype), CompileErr> {
-    match &args.atomize() {
-        SExp::Nil(l) => Ok((have_anno, args.clone(), Type::TUnit(l.clone()))),
-        SExp::Atom(l, n) => {
-            arg_names.push(n.clone());
-            individual_types.insert(n.clone(), Type::TAny(l.clone()));
-            individual_paths.insert(n.clone(), depth + path);
-            individual_locs.insert(n.clone(), l.clone());
-            Ok((false, args.clone(), Type::TAny(l.clone())))
-        }
-        SExp::Cons(l, a, b) => {
-            // There are a few cases:
-            // (normal destructuring)
-            // (@ name sub)
-            // (@ name sub : ty)
-            // (X : ty)
-            // We want to catch the final case and pass through its unannotated
-            // counterpart.
-            let next_depth = depth.clone() * 2_u32.to_bigint().unwrap();
-            if let Some(lst) = args.proper_list() {
-                // Dive in
-                if lst.len() == 5 {
-                    if let (SExp::Atom(l, n), SExp::Atom(_l2, n2)) =
-                        (&lst[0].atomize(), &lst[3].atomize())
-                    {
-                        if n == &vec![b'@'] && n2 == &vec![b':'] {
-                            // At capture with annotation
-                            return Err(CompileErr(l.clone(), "An at-capture with a type alias is currently unsupported.  A struct can be used instead.".to_string()));
-                        };
-                    };
-                } else if lst.len() == 3 {
-                    if let (SExp::Atom(l0, n0), SExp::Atom(_l1, n1)) =
-                        (&lst[0].atomize(), &lst[1].atomize())
-                    {
-                        if n1 == &vec![b':'] {
-                            // Name with annotation
-                            let ty = parse_type_sexp(Rc::new(lst[2].clone()))?;
-                            arg_names.push(n0.clone());
-                            individual_types.insert(n0.clone(), ty.clone());
-                            individual_paths.insert(n0.clone(), depth + path);
-                            individual_locs.insert(n0.clone(), l0.clone());
-                            return Ok((true, Rc::new(lst[0].clone()), ty));
-                        };
-                    };
-                }
-            }
-
-            let (got_ty_a, stripped_a, ty_a) = recover_arg_type_inner(
-                arg_names,
-                individual_types,
-                individual_paths,
-                individual_locs,
-                next_depth.clone(),
-                path.clone(),
-                a.clone(),
-                have_anno,
-            )?;
-            let (got_ty_b, stripped_b, ty_b) = recover_arg_type_inner(
-                arg_names,
-                individual_types,
-                individual_paths,
-                individual_locs,
-                next_depth,
-                path + depth,
-                b.clone(),
-                have_anno,
-            )?;
-            Ok((
-                got_ty_a || got_ty_b,
-                Rc::new(SExp::Cons(l.clone(), stripped_a, stripped_b)),
-                Type::TPair(Rc::new(ty_a), Rc::new(ty_b)),
-            ))
-        }
-        _ => Err(CompileErr(
-            args.loc(),
-            "unrecognized argument form".to_string(),
-        )),
-    }
-}
-
-pub fn recover_arg_type(args: Rc<SExp>, always: bool) -> Result<Option<ArgTypeResult>, CompileErr> {
-    let mut arg_names = Vec::new();
-    let mut individual_types = HashMap::new();
-    let mut individual_paths = HashMap::new();
-    let mut individual_locs = HashMap::new();
-    let (got_any, stripped, ty) = recover_arg_type_inner(
-        &mut arg_names,
-        &mut individual_types,
-        &mut individual_paths,
-        &mut individual_locs,
-        bi_one(),
-        bi_zero(),
-        args,
-        false,
-    )?;
-    if got_any || always {
-        Ok(Some(ArgTypeResult {
-            arg_names,
-            stripped_args: stripped,
-            individual_types,
-            individual_paths,
-            individual_locs,
-            whole_args: ty,
-        }))
-    } else {
-        Ok(None)
-    }
-}
-
-// Given type recovered argument type and a candidate return type (possibly with
-// a forall stack), construct the user's expected function type. If no arg types
-// were given, the arg type is Any. If the bottom of the stack is a function
-// type, its left hand type is replaced with the given arg type or Any. If it
-// isn't a function type, it's promoted to be a function taking the given arg
-// type or Any.
-fn promote_with_arg_type(argty: &Polytype, funty: &Polytype) -> Polytype {
-    match funty {
-        Type::TForall(v, t) => {
-            Type::TForall(v.clone(), Rc::new(promote_with_arg_type(argty, t.borrow())))
-        }
-        Type::TFun(_t1, t2) => Type::TFun(Rc::new(argty.clone()), t2.clone()),
-        _ => Type::TFun(Rc::new(argty.clone()), Rc::new(funty.clone())),
-    }
-}
-
-// Returns None if result_ty is None and there are no type signatures recovered
-// from the args.
-//
-// If the function's type signature is given with a TForall, the type variables
-// given will be in scope for the arguments.
-// If type arguments are given, the function's type signature must not be given
-// as a function type (since all functions are arity-1 in chialisp).  The final
-// result type will be enriched to include the argument types.
-pub fn augment_fun_type_with_args(
-    args: Rc<SExp>,
-    result_ty: Option<TypeAnnoKind>,
-) -> Result<(Rc<SExp>, Option<Polytype>), CompileErr> {
-    if let Some(atr) = recover_arg_type(args.clone(), false)? {
-        let mut tvars = Vec::new();
-
-        let actual_result_ty = if let Some(TypeAnnoKind::Arrow(rty)) = result_ty {
-            extract_type_variables_from_forall_stack(&mut tvars, &rty)
-        } else if let Some(TypeAnnoKind::Colon(rty)) = result_ty {
-            let want_rty = extract_type_variables_from_forall_stack(&mut tvars, &rty);
-            // If it's a function type, we have to give it as "args"
-            if let Type::TFun(t1, t2) = want_rty {
-                let t1_borrowed: &Polytype = t1.borrow();
-                if t1_borrowed != &Type::TVar(TypeVar("args".to_string(), t1.loc())) {
-                    return Err(CompileErr(t1.loc(), "When arguments are annotated, if the full function type is given, it must be given as (args -> ...).  The 'args' type variable will contain the type implied by the individual argument annotations.".to_string()));
-                }
-
-                let t2_borrowed: &Polytype = t2.borrow();
-                t2_borrowed.clone()
-            } else {
-                want_rty
-            }
-        } else {
-            Type::TAny(args.loc())
-        };
-
-        Ok((
-            atr.stripped_args.clone(),
-            Some(promote_with_arg_type(&atr.whole_args, &actual_result_ty)),
-        ))
-    } else {
-        // No arg types were given.  If a type was given for the result (non-fun)
-        // use Any -> Any
-        // else use the whole thing.
-        Ok(result_ty
-            .map(|rty| match rty {
-                TypeAnnoKind::Colon(t) => (args.clone(), Some(t)),
-                TypeAnnoKind::Arrow(t) => (
-                    args.clone(),
-                    Some(Type::TFun(Rc::new(Type::TAny(args.loc())), Rc::new(t))),
-                ),
-            })
-            .unwrap_or_else(|| (args.clone(), None)))
-    }
-}
-
-fn create_constructor_code(sdef: &StructDef, proto: Rc<SExp>) -> BodyForm {
-    match proto.atomize() {
-        SExp::Atom(l, n) => BodyForm::Value(SExp::Atom(l, n)),
-        SExp::Cons(l, a, b) => BodyForm::Call(
-            l.clone(),
-            vec![
-                Rc::new(BodyForm::Value(SExp::Atom(l, b"c*".to_vec()))),
-                Rc::new(create_constructor_code(sdef, a)),
-                Rc::new(create_constructor_code(sdef, b)),
-            ],
-            None,
-        ),
-        _ => BodyForm::Quoted(SExp::Nil(sdef.loc.clone())),
-    }
-}
-
-fn create_constructor(sdef: &StructDef) -> HelperForm {
-    let mut access_name = "new_".as_bytes().to_vec();
-    access_name.append(&mut sdef.name.clone());
-
-    // Iterate through the arguments in reverse to build up a linear argument
-    // list.
-    // Build up the type list in the same way.
-    let mut arguments = Rc::new(SExp::Nil(sdef.loc.clone()));
-    let mut argtype = Type::TUnit(sdef.loc.clone());
-
-    for m in sdef.members.iter().rev() {
-        argtype = Type::TPair(Rc::new(m.ty.clone()), Rc::new(argtype));
-        arguments = Rc::new(SExp::Cons(
-            m.loc.clone(),
-            Rc::new(SExp::Atom(m.loc.clone(), m.name.clone())),
-            arguments,
-        ));
-    }
-
-    let construction = create_constructor_code(sdef, sdef.proto.clone());
-    let mut target_ty = Type::TVar(TypeVar(decode_string(&sdef.name), sdef.loc.clone()));
-
-    for a in sdef.vars.iter().rev() {
-        target_ty = Type::TApp(Rc::new(target_ty), Rc::new(Type::TVar(a.clone())));
-    }
-
-    let mut funty = Type::TFun(Rc::new(argtype), Rc::new(target_ty));
-
-    for a in sdef.vars.iter().rev() {
-        funty = Type::TForall(a.clone(), Rc::new(funty));
-    }
-
-    HelperForm::Defun(
-        true,
-        Box::new(DefunData {
-            kw: None,
-            nl: sdef.loc.clone(),
-            loc: sdef.loc.clone(),
-            name: access_name,
-            orig_args: arguments.clone(),
-            args: arguments,
-            body: Rc::new(construction),
-            synthetic: Some(SyntheticType::NoInlinePreference),
-            ty: Some(funty),
-        }),
-    )
-}
-
-pub fn generate_type_helpers(ty: &ChiaType) -> Vec<HelperForm> {
-    match ty {
-        ChiaType::Abstract(_, _) => vec![],
-        ChiaType::Struct(sdef) => {
-            // Construct ((S : <type>))
-            let struct_argument = Rc::new(SExp::Cons(
-                sdef.loc.clone(),
-                Rc::new(SExp::Atom(sdef.loc.clone(), vec![b'S'])),
-                Rc::new(SExp::Nil(sdef.loc.clone())),
-            ));
-            let mut members: Vec<HelperForm> = sdef
-                .members
-                .iter()
-                .map(|m| {
-                    let mut access_name = "get_".as_bytes().to_vec();
-                    access_name.append(&mut sdef.name.clone());
-                    access_name.push(b'_');
-                    access_name.append(&mut m.name.clone());
-
-                    let mut argty = Type::TVar(TypeVar(decode_string(&sdef.name), m.loc.clone()));
-
-                    for a in sdef.vars.iter().rev() {
-                        argty = Type::TApp(Rc::new(argty), Rc::new(Type::TVar(a.clone())));
-                    }
-
-                    let mut funty = Type::TFun(
-                        Rc::new(Type::TPair(
-                            Rc::new(argty),
-                            Rc::new(Type::TUnit(m.loc.clone())),
-                        )),
-                        Rc::new(m.ty.clone()),
-                    );
-
-                    for a in sdef.vars.iter().rev() {
-                        funty = Type::TForall(a.clone(), Rc::new(funty));
-                    }
-
-                    HelperForm::Defun(
-                        true,
-                        Box::new(DefunData {
-                            kw: None,
-                            nl: m.loc.clone(),
-                            loc: m.loc.clone(),
-                            name: access_name,
-                            orig_args: struct_argument.clone(),
-                            args: struct_argument.clone(),
-                            body: Rc::new(BodyForm::Call(
-                                m.loc.clone(),
-                                vec![
-                                    Rc::new(BodyForm::Value(SExp::Atom(
-                                        m.loc.clone(),
-                                        vec![b'a', b'*'],
-                                    ))),
-                                    Rc::new(BodyForm::Quoted(SExp::Integer(
-                                        m.loc.clone(),
-                                        m.path.clone(),
-                                    ))),
-                                    Rc::new(BodyForm::Value(SExp::Atom(m.loc.clone(), vec![b'S']))),
-                                ],
-                                None,
-                            )),
-                            synthetic: Some(SyntheticType::NoInlinePreference),
-                            ty: Some(funty),
-                        }),
-                    )
-                })
-                .collect();
-
-            let ctor = create_constructor(sdef);
-            members.push(ctor);
-            members
-        }
-    }
-}
-
-fn parse_chia_type(v: Vec<SExp>) -> Result<ChiaType, CompileErr> {
-    // (deftype name args... (def))
-    if let SExp::Atom(l, n) = &v[1].atomize() {
-        // Name
-        if v.len() == 2 {
-            // An abstract type
-            return Ok(ChiaType::Abstract(v[1].loc(), n.clone()));
-        }
-
-        let vars: Vec<SExp> = v.iter().skip(2).take(v.len() - 3).cloned().collect();
-        let expr = Rc::new(v[v.len() - 1].clone());
-
-        let mut var_vec = Vec::new();
-        for var in vars.iter() {
-            var_vec.push(parse_type_var(Rc::new(var.clone()))?);
-        }
-
-        let type_of_body = recover_arg_type(expr, true)?.unwrap();
-        let mut member_vec = Vec::new();
-        for k in type_of_body.arg_names.iter() {
-            let arg_path = type_of_body
-                .individual_paths
-                .get(k)
-                .cloned()
-                .unwrap_or_else(bi_one);
-            let arg_loc = type_of_body
-                .individual_locs
-                .get(k)
-                .cloned()
-                .unwrap_or_else(|| l.clone());
-            let arg_type = type_of_body
-                .individual_types
-                .get(k)
-                .cloned()
-                .unwrap_or_else(|| Type::TAny(arg_loc.clone()));
-            member_vec.push(StructMember {
-                loc: arg_loc,
-                name: k.clone(),
-                path: arg_path,
-                ty: arg_type,
-            });
-        }
-        return Ok(ChiaType::Struct(StructDef {
-            loc: l.clone(),
-            name: n.clone(),
-            vars: var_vec,
-            members: member_vec,
-            proto: type_of_body.stripped_args,
-            ty: type_of_body.whole_args,
-        }));
-    }
-
-    Err(CompileErr(
-        v[0].loc(),
-        "Don't know how to interpret as type definition".to_string(),
-    ))
 }
 
 pub fn match_export_form(
@@ -1188,14 +738,12 @@ pub fn match_export_form(
 
 #[derive(Debug, Clone)]
 pub struct HelperFormResult {
-    pub chia_type: Option<ChiaType>,
     pub new_helpers: Vec<HelperForm>,
 }
 
 impl HelperFormResult {
-    pub fn new(helpers: &[HelperForm], ty: Option<ChiaType>) -> Self {
+    pub fn new(helpers: &[HelperForm]) -> Self {
         HelperFormResult {
-            chia_type: ty,
             new_helpers: helpers.to_vec(),
         }
     }
@@ -1300,10 +848,8 @@ pub fn compile_helperform(
                 Some(matched.opl),
                 matched.name.to_vec(),
                 matched.args,
-                None,
             )?;
             Ok(Some(HelperFormResult {
-                chia_type: None,
                 new_helpers: vec![definition],
             }))
         } else if matched.op_name == b"defconst" {
@@ -1316,13 +862,11 @@ pub fn compile_helperform(
                 matched.args,
             )?;
             Ok(Some(HelperFormResult {
-                chia_type: None,
                 new_helpers: vec![definition],
             }))
         } else if matched.op_name == b"defmacro" || is_defmac {
             if is_defmac {
                 return Ok(Some(HelperFormResult {
-                    chia_type: None,
                     new_helpers: vec![],
                 }));
             }
@@ -1337,22 +881,9 @@ pub fn compile_helperform(
                 matched.body,
             )?;
             Ok(Some(HelperFormResult {
-                chia_type: None,
                 new_helpers: vec![definition],
             }))
         } else if matched.op_name == "defun".as_bytes().to_vec() || inline {
-            let use_type_anno = if let Some((k, ty)) = matched.ty {
-                match k {
-                    TypeKind::Arrow => Some(TypeAnnoKind::Arrow(parse_type_sexp(ty)?)),
-                    TypeKind::Colon => Some(TypeAnnoKind::Colon(parse_type_sexp(ty)?)),
-                }
-            } else {
-                None
-            };
-
-            let (stripped_args, parsed_type) =
-                augment_fun_type_with_args(matched.args.clone(), use_type_anno)?;
-
             let definition = compile_defun(
                 opts,
                 CompileDefun {
@@ -1361,59 +892,21 @@ pub fn compile_helperform(
                     kwl: Some(matched.opl),
                     inline,
                     name: matched.name.to_vec(),
-                    args: stripped_args,
+                    args: matched.args.clone(),
                     body: matched.body,
                 },
-                parsed_type,
             )?;
             Ok(Some(HelperFormResult {
-                chia_type: None,
                 new_helpers: vec![definition],
-            }))
-        } else if matched.op_name == "deftype".as_bytes().to_vec() {
-            let parsed_chia = parse_chia_type(matched.orig)?;
-            let mut helpers = generate_type_helpers(&parsed_chia);
-            debug!("parsed_chia {:?}", parsed_chia);
-            let new_form = match &parsed_chia {
-                ChiaType::Abstract(l, n) => HelperForm::Deftype(DeftypeData {
-                    kw: matched.opl,
-                    nl: matched.nl,
-                    loc: l.clone(),
-                    name: n.clone(),
-                    args: vec![],
-                    parsed: parsed_chia.clone(),
-                    ty: None,
-                }),
-                ChiaType::Struct(sdef) => {
-                    if let SExp::Atom(_, _) = sdef.proto.borrow() {
-                        return Err(CompileErr(sdef.loc.clone(), "A struct with a single element acting as an alias is currently a hazard.  This will be fixed in the future.".to_string()));
-                    }
-                    HelperForm::Deftype(DeftypeData {
-                        kw: matched.opl,
-                        nl: matched.nl,
-                        loc: sdef.loc.clone(),
-                        name: sdef.name.clone(),
-                        args: sdef.vars.clone(),
-                        parsed: parsed_chia.clone(),
-                        ty: Some(sdef.ty.clone()),
-                    })
-                }
-            };
-            helpers.insert(0, new_form);
-            Ok(Some(HelperFormResult {
-                chia_type: Some(parsed_chia),
-                new_helpers: helpers,
             }))
         } else if matched.op_name == "namespace".as_bytes().to_vec() {
             let ns = compile_namespace(opts, body.loc(), &matched.orig)?;
             Ok(Some(HelperFormResult {
-                chia_type: None,
                 new_helpers: vec![ns],
             }))
         } else if matched.op_name == "import".as_bytes().to_vec() {
             let nsref = compile_nsref(body.loc(), &matched.orig)?;
             Ok(Some(HelperFormResult {
-                chia_type: None,
                 new_helpers: vec![nsref],
             }))
         } else {
@@ -1434,7 +927,6 @@ trait ModCompileForms {
         include_forms: Vec<IncludeDesc>,
         args: Rc<SExp>,
         body: Rc<SExp>,
-        ty: Option<Polytype>,
     ) -> Result<ModAccum, CompileErr>;
 
     fn compile_mod_helper(
@@ -1442,7 +934,6 @@ trait ModCompileForms {
         opts: Rc<dyn CompilerOpts>,
         args: Rc<SExp>,
         body: Rc<SExp>,
-        ty: Option<Polytype>,
     ) -> Result<ModAccum, CompileErr>;
 }
 
@@ -1453,7 +944,6 @@ impl ModCompileForms for ModAccum {
         include_forms: Vec<IncludeDesc>,
         args: Rc<SExp>,
         body: Rc<SExp>,
-        ty: Option<Polytype>,
     ) -> Result<ModAccum, CompileErr> {
         Ok(self.set_final(&CompileForm {
             loc: self.loc.clone(),
@@ -1461,7 +951,6 @@ impl ModCompileForms for ModAccum {
             include_forms,
             helpers: self.helpers.clone(),
             exp: Rc::new(compile_bodyform(opts, body)?),
-            ty,
         }))
     }
 
@@ -1470,12 +959,10 @@ impl ModCompileForms for ModAccum {
         opts: Rc<dyn CompilerOpts>,
         _args: Rc<SExp>,
         body: Rc<SExp>,
-        _ty: Option<Polytype>,
     ) -> Result<ModAccum, CompileErr> {
         let mut mc = self.clone();
         if let Some(helpers) = compile_helperform(opts.clone(), body.clone())? {
             for form in helpers.new_helpers.iter() {
-                debug!("process helper {}", decode_string(form.name()));
                 mc = mc.add_helper(form.clone());
             }
             Ok(mc)
@@ -1519,14 +1006,9 @@ fn frontend_start(
             let ls = preprocess(opts.clone(), includes, &tm.forms)?;
             let l = ls.forms[0].loc();
 
-            let mut ma = ModAccum::new(l.clone(), false);
+            let mut ma = ModAccum::new(l.clone());
             for form in ls.forms.iter().take(ls.forms.len() - 1) {
-                ma = ma.compile_mod_helper(
-                    opts.clone(),
-                    tm.stripped_args.clone(),
-                    form.clone(),
-                    tm.parsed_type.clone(),
-                )?;
+                ma = ma.compile_mod_helper(opts.clone(), tm.stripped_args.clone(), form.clone())?;
             }
 
             ma.compile_mod_body(
@@ -1534,7 +1016,6 @@ fn frontend_start(
                 includes.clone(),
                 tm.stripped_args,
                 ls.forms[ls.forms.len() - 1].clone(),
-                tm.parsed_type,
             )
         }
         ToplevelModParseResult::Simple(t) => frontend_step_finish(opts.clone(), includes, &t),
@@ -1563,11 +1044,7 @@ pub fn compute_live_helpers(
 
     helper_list
         .iter()
-        .filter(|h| {
-            matches!(h, HelperForm::Deftype(_))
-                || !opts.frontend_check_live()
-                || helper_names.contains(h.name())
-        })
+        .filter(|h| !opts.frontend_check_live() || helper_names.contains(h.name()))
         .cloned()
         .collect()
 }
@@ -1622,7 +1099,6 @@ pub fn frontend(
             args: Rc::new(SExp::Nil(loc.clone())),
             helpers: other_forms.clone(),
             exp: Rc::new(BodyForm::Quoted(SExp::Nil(loc.clone()))),
-            ty: None,
         };
 
         return Ok(FrontendOutput::Module(program, exports));

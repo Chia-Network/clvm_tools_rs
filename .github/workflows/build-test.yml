@@ -60,10 +60,10 @@ jobs:
       run: |
         maturin build -i python --release --strip
 
-    - name: Build Linux in manylinux2010 with maturin on Python ${{ matrix.python }}
+    - name: Build Linux in manylinux_2_28 with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'ubuntu')
       run: |
-        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.1.0 build --release --strip --manylinux 2014
+        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.1.0 build --release --strip --manylinux 2_28
         # Refresh in case any ownerships changed.
         mv target target.docker && cp -r target.docker target
         # Ensure an empty .cargo-lock file exists.
@@ -153,7 +153,7 @@ jobs:
 
         # Check that recompiling deployed puzzles match with their deployed hashes
         cp support/install_deps.sh support/verify_compiler_version.sh chia-blockchain
-        (cd chia-blockchain && python -m venv venv && . venv/bin/activate && pip install --upgrade pip && \
+        (cd chia-blockchain && python -m venv .venv && . .venv/bin/activate && pip install --upgrade pip && \
           python -m pip install maturin==1.1.0 && \
           cd .. && pip install --no-index --find-links target/wheels/ clvm_tools_rs && \
           cd chia-blockchain && \
@@ -215,7 +215,7 @@ jobs:
       run: |
         cargo install grcov
         rustup component add llvm-tools-preview
-        python ./resources/coverage/run_coverage.py --require-percent 60
+        python ./resources/coverage/run_coverage.py --require-percent 60 --test-args="--features=profiling"
 
     - name: Build alpine wheel via docker
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.8')

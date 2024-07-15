@@ -17,12 +17,10 @@ use crate::compiler::compiler::{compile_from_compileform, compile_pre_forms};
 use crate::compiler::comptypes::{
     BodyForm, CompileErr, CompileForm, CompilerOpts, CompilerOutput, ConstantKind, DefconstData,
     HelperForm, ImportLongName, IncludeDesc, IncludeProcessType, LongNameTranslation,
-    ModuleImportSpec, NamespaceData, NamespaceRefData, QualifiedModuleInfo, TypeAnnoKind,
+    ModuleImportSpec, NamespaceData, NamespaceRefData, QualifiedModuleInfo,
 };
 use crate::compiler::dialect::{detect_modern, AcceptedDialect, KNOWN_DIALECTS};
-use crate::compiler::frontend::{
-    augment_fun_type_with_args, compile_helperform, compile_nsref, frontend,
-};
+use crate::compiler::frontend::{compile_helperform, compile_nsref, frontend};
 use crate::compiler::optimize::get_optimizer;
 use crate::compiler::preprocessor::macros::PreprocessorExtension;
 use crate::compiler::rename::rename_args_helperform;
@@ -32,8 +30,6 @@ use crate::compiler::sexp::{
     decode_string, enlist, parse_sexp, Atom, NodeSel, SExp, SelectNode, ThisNode,
 };
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::typecheck::parse_type_sexp;
-use crate::compiler::types::ast::Polytype;
 use crate::compiler::CompileContextWrapper;
 use crate::util::ErrInto;
 
@@ -234,7 +230,7 @@ fn make_namespace_ref(
 
 pub fn detect_chialisp_module(pre_forms: &[Rc<SExp>]) -> Option<AcceptedDialect> {
     let dialect = KNOWN_DIALECTS
-        .get("*standard-cl-23.1*")
+        .get("*standard-cl-23*")
         .unwrap()
         .accepted
         .clone();
@@ -279,7 +275,6 @@ pub fn test_detect_chialisp_module_classic() {
 pub struct ToplevelMod {
     pub forms: Vec<Rc<SExp>>,
     pub stripped_args: Rc<SExp>,
-    pub parsed_type: Option<Polytype>,
 }
 
 pub enum ToplevelModParseResult {
@@ -311,25 +306,11 @@ pub fn parse_toplevel_mod(
 
             if *mod_atom == b"mod" {
                 let args = Rc::new(x[1].atomize());
-                let mut skip_idx = 2;
-                let mut ty: Option<TypeAnnoKind> = None;
+                let skip_idx = 2;
 
                 if x.len() < 3 {
                     return Err(CompileErr(x[0].loc(), "incomplete mod form".to_string()));
                 }
-
-                if let SExp::Atom(_, colon) = &x[2].atomize() {
-                    if *colon == vec![b':'] && x.len() > 3 {
-                        let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
-                        ty = Some(TypeAnnoKind::Colon(use_ty));
-                        skip_idx += 2;
-                    } else if *colon == vec![b'-', b'>'] && x.len() > 3 {
-                        let use_ty = parse_type_sexp(Rc::new(x[3].atomize()))?;
-                        ty = Some(TypeAnnoKind::Arrow(use_ty));
-                        skip_idx += 2;
-                    }
-                }
-                let (stripped_args, parsed_type) = augment_fun_type_with_args(args, ty)?;
 
                 return Ok(ToplevelModParseResult::Mod(ToplevelMod {
                     forms: x
@@ -337,8 +318,7 @@ pub fn parse_toplevel_mod(
                         .skip(skip_idx)
                         .map(|s| Rc::new(s.clone()))
                         .collect(),
-                    stripped_args,
-                    parsed_type,
+                    stripped_args: args,
                 }));
             }
         }
@@ -441,7 +421,6 @@ impl Preprocessor {
 
         // Because we're also subsequently returning CompileErr later in the pipe,
         // this needs an explicit err map.
-
         let parsed: Vec<Rc<SExp>> = parse_sexp(start_of_file.clone(), content.iter().copied())
             .err_into()
             .and_then(|x| match x[0].proper_list() {
@@ -478,7 +457,7 @@ impl Preprocessor {
         let program_text = decode_string(content);
         let runner = Rc::new(DefaultProgramRunner::new());
         let pre_forms = parse_sexp(srcloc.clone(), content.iter().copied())?;
-        let (have_module, mut dialect, classic_parse) =
+        let (have_module, dialect, classic_parse) =
             if let Some(dialect) = detect_chialisp_module(&pre_forms) {
                 (true, dialect, allocator.null())
             } else {
@@ -495,10 +474,6 @@ impl Preprocessor {
                     classic_parse,
                 )
             };
-        if have_module {
-            // Always on in module mode since it's new.
-            dialect.int_fix = true;
-        }
 
         let make_constant = |name: &[u8], s: SExp| {
             HelperForm::Defconstant(DefconstData {
@@ -508,7 +483,6 @@ impl Preprocessor {
                 kw: None,
                 nl: srcloc.clone(),
                 tabled: true,
-                ty: None,
                 body: Rc::new(BodyForm::Quoted(s)),
             })
             .to_sexp()
@@ -528,7 +502,7 @@ impl Preprocessor {
                     filename,
                     true,
                 )
-                .map_err(|e| CompileErr(srcloc.clone(), format!("Subcompile failed: {}", e.1)))?;
+                .map_err(|e| CompileErr(srcloc.clone(), format!("Subcompile failed: {:?}", e)))?;
                 let converted =
                     convert_from_clvm_rs(&mut allocator, srcloc.clone(), newly_compiled)?;
                 let converted_borrowed: &SExp = converted.borrow();
@@ -715,7 +689,11 @@ impl Preprocessor {
             .read_new_file(self.opts.filename(), fname.to_string())?;
 
         let content = if let IncludeProcessType::Bin = &kind {
-            Rc::new(SExp::Atom(loc.clone(), content))
+            if self.opts.dialect().int_fix {
+                Rc::new(SExp::QuotedString(loc.clone(), b'x', content))
+            } else {
+                Rc::new(SExp::Atom(loc.clone(), content))
+            }
         } else if let IncludeProcessType::Hex = &kind {
             hex_to_modern_sexp(
                 &mut allocator,
@@ -738,7 +716,7 @@ impl Preprocessor {
                 &full_name,
                 true,
             )
-            .map_err(|e| CompileErr(loc.clone(), format!("Subcompile failed: {}", e.1)))?;
+            .map_err(|e| CompileErr(loc.clone(), format!("Subcompile failed: {:?}", e)))?;
 
             convert_from_clvm_rs(&mut allocator, loc.clone(), newly_compiled)
                 .map_err(run_to_compile_err)?
@@ -926,7 +904,6 @@ impl Preprocessor {
                     b"__chia__arg".to_vec(),
                 )))),
             )),
-            ty: None,
         };
 
         let new_program = resolve_namespaces(self.opts.clone(), &starting_program)?;

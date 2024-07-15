@@ -11,10 +11,7 @@ use crate::compiler::clvm::{sha256tree, truthy};
 use crate::compiler::dialect::AcceptedDialect;
 use crate::compiler::sexp::{decode_string, enlist, SExp};
 use crate::compiler::srcloc::Srcloc;
-use crate::compiler::typecheck::TheoryToSExp;
-use crate::compiler::types::ast::{Polytype, TypeVar};
 use crate::compiler::BasicCompileContext;
-use crate::util::Number;
 
 // Note: only used in tests, not normally dependencies.
 #[cfg(test)]
@@ -236,8 +233,6 @@ pub struct DefunData {
     pub body: Rc<BodyForm>,
     /// Whether this defun was created during desugaring.
     pub synthetic: Option<SyntheticType>,
-    /// Type annotation if given.
-    pub ty: Option<Polytype>,
 }
 
 /// Specifies the information extracted from a macro definition allowing the
@@ -279,49 +274,6 @@ pub struct DefconstData {
     pub body: Rc<BodyForm>,
     /// This constant should exist in the left env rather than be inlined.
     pub tabled: bool,
-    /// Type annotation if given.
-    pub ty: Option<Polytype>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct StructMember {
-    pub loc: Srcloc,
-    pub name: Vec<u8>,
-    pub path: Number,
-    pub ty: Polytype,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct StructDef {
-    pub loc: Srcloc,
-    pub name: Vec<u8>,
-    pub vars: Vec<TypeVar>,
-    pub members: Vec<StructMember>,
-    pub proto: Rc<SExp>,
-    pub ty: Polytype,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub enum ChiaType {
-    Abstract(Srcloc, Vec<u8>),
-    Struct(StructDef),
-}
-
-#[derive(Clone, Debug)]
-pub enum TypeAnnoKind {
-    Colon(Polytype),
-    Arrow(Polytype),
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct DeftypeData {
-    pub kw: Srcloc,
-    pub nl: Srcloc,
-    pub loc: Srcloc,
-    pub name: Vec<u8>,
-    pub args: Vec<TypeVar>,
-    pub parsed: ChiaType,
-    pub ty: Option<Polytype>,
 }
 
 /// Specifies where a constant is the classic kind (unevaluated) or a proper
@@ -748,8 +700,6 @@ pub struct NamespaceRefData {
 /// individually parsable and represent the atomic units of the program.
 #[derive(Clone, Debug, Serialize)]
 pub enum HelperForm {
-    /// A type definition.
-    Deftype(DeftypeData),
     /// A namespace collection.
     Defnamespace(NamespaceData),
     /// A namespace reference.
@@ -887,8 +837,6 @@ pub struct CompileForm {
     pub helpers: Vec<HelperForm>,
     /// The expression the program evaluates, using the declared helpers.
     pub exp: Rc<BodyForm>,
-    /// Type if specified.
-    pub ty: Option<Polytype>,
 }
 
 /// Represents a call to a defun, used by code generation.
@@ -1040,7 +988,7 @@ pub trait CompilerOpts {
     ) -> Result<(String, Vec<u8>), CompileErr>;
 
     /// Give the modified date for the indicated file.
-    fn get_file_mod_date(&self, loc: &Srcloc, filename: &str) -> Result<u64, CompileErr>;
+    fn get_file_mod_date(&self, loc: &Srcloc, fiilename: &str) -> Result<u64, CompileErr>;
 
     /// Fully write a file to the filesystem.
     fn write_new_file(&self, target_path: &str, content: &[u8]) -> Result<(), CompileErr>;
@@ -1088,9 +1036,6 @@ pub trait HasCompilerOptsDelegation {
     fn override_stdenv(&self) -> bool {
         self.compiler_opts().stdenv()
     }
-    fn override_module_phase(&self) -> Option<ModulePhase> {
-        self.compiler_opts().module_phase()
-    }
     fn override_optimize(&self) -> bool {
         self.compiler_opts().optimize()
     }
@@ -1109,12 +1054,15 @@ pub trait HasCompilerOptsDelegation {
     fn override_get_search_paths(&self) -> Vec<String> {
         self.compiler_opts().get_search_paths()
     }
+    fn override_module_phase(&self) -> Option<ModulePhase> {
+        self.compiler_opts().module_phase()
+    }
     fn override_diag_flags(&self) -> Rc<HashSet<usize>> {
         self.compiler_opts().diag_flags()
     }
 
-    fn override_set_filename(&self, new_file: &str) -> Rc<dyn CompilerOpts> {
-        self.update_compiler_opts(|o| o.set_filename(new_file))
+    fn override_set_filename(&self, new_filename: &str) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_filename(new_filename))
     }
     fn override_set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
         self.update_compiler_opts(|o| o.set_dialect(dialect))
@@ -1140,14 +1088,14 @@ pub trait HasCompilerOptsDelegation {
     fn override_set_frontend_check_live(&self, check: bool) -> Rc<dyn CompilerOpts> {
         self.update_compiler_opts(|o| o.set_frontend_check_live(check))
     }
-    fn override_set_module_phase(&self, mp: Option<ModulePhase>) -> Rc<dyn CompilerOpts> {
-        self.update_compiler_opts(|o| o.set_module_phase(mp))
-    }
     fn override_set_code_generator(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
         self.update_compiler_opts(|o| o.set_code_generator(new_compiler))
     }
     fn override_set_start_env(&self, start_env: Option<Rc<SExp>>) -> Rc<dyn CompilerOpts> {
         self.update_compiler_opts(|o| o.set_start_env(start_env))
+    }
+    fn override_set_module_phase(&self, module_phase: Option<ModulePhase>) -> Rc<dyn CompilerOpts> {
+        self.update_compiler_opts(|o| o.set_module_phase(module_phase))
     }
     fn override_set_diag_flags(&self, flags: Rc<HashSet<usize>>) -> Rc<dyn CompilerOpts> {
         self.update_compiler_opts(|o| o.set_diag_flags(flags))
@@ -1165,18 +1113,19 @@ pub trait HasCompilerOptsDelegation {
     ) -> Result<(String, Vec<u8>), CompileErr> {
         self.compiler_opts().read_new_file(inc_from, filename)
     }
-    fn override_write_new_file(&self, target_path: &str, content: &[u8]) -> Result<(), CompileErr> {
-        self.compiler_opts().write_new_file(target_path, content)
-    }
-    fn override_get_file_mod_date(&self, loc: &Srcloc, filename: &str) -> Result<u64, CompileErr> {
-        self.compiler_opts().get_file_mod_date(loc, filename)
-    }
     fn override_compile_program(
         &self,
         context: &mut BasicCompileContext,
         sexp: Rc<SExp>,
     ) -> Result<CompilerOutput, CompileErr> {
         self.compiler_opts().compile_program(context, sexp)
+    }
+    fn override_get_file_mod_date(&self, loc: &Srcloc, filename: &str) -> Result<u64, CompileErr> {
+        self.compiler_opts().get_file_mod_date(loc, filename)
+    }
+    /// Fully write a file to the filesystem.
+    fn override_write_new_file(&self, target_path: &str, content: &[u8]) -> Result<(), CompileErr> {
+        self.compiler_opts().write_new_file(target_path, content)
     }
 }
 
@@ -1209,9 +1158,6 @@ impl<T: HasCompilerOptsDelegation> CompilerOpts for T {
     fn frontend_check_live(&self) -> bool {
         self.override_frontend_check_live()
     }
-    fn module_phase(&self) -> Option<ModulePhase> {
-        self.override_module_phase()
-    }
     fn start_env(&self) -> Option<Rc<SExp>> {
         self.override_start_env()
     }
@@ -1224,13 +1170,19 @@ impl<T: HasCompilerOptsDelegation> CompilerOpts for T {
     fn diag_flags(&self) -> Rc<HashSet<usize>> {
         self.override_diag_flags()
     }
-    fn write_new_file(&self, target_path: &str, content: &[u8]) -> Result<(), CompileErr> {
-        self.override_write_new_file(target_path, content)
+
+    fn module_phase(&self) -> Option<ModulePhase> {
+        self.override_module_phase()
     }
 
-    fn set_filename(&self, new_file: &str) -> Rc<dyn CompilerOpts> {
-        self.override_set_filename(new_file)
+    fn set_filename(&self, new_filename: &str) -> Rc<dyn CompilerOpts> {
+        self.override_set_filename(new_filename)
     }
+
+    fn set_module_phase(&self, module_phase: Option<ModulePhase>) -> Rc<dyn CompilerOpts> {
+        self.override_set_module_phase(module_phase)
+    }
+
     fn set_dialect(&self, dialect: AcceptedDialect) -> Rc<dyn CompilerOpts> {
         self.override_set_dialect(dialect)
     }
@@ -1255,9 +1207,6 @@ impl<T: HasCompilerOptsDelegation> CompilerOpts for T {
     fn set_frontend_check_live(&self, check: bool) -> Rc<dyn CompilerOpts> {
         self.override_set_frontend_check_live(check)
     }
-    fn set_module_phase(&self, module_phase: Option<ModulePhase>) -> Rc<dyn CompilerOpts> {
-        self.override_set_module_phase(module_phase)
-    }
     fn set_code_generator(&self, new_compiler: PrimaryCodegen) -> Rc<dyn CompilerOpts> {
         self.override_set_code_generator(new_compiler)
     }
@@ -1270,6 +1219,9 @@ impl<T: HasCompilerOptsDelegation> CompilerOpts for T {
     fn set_diag_flags(&self, new_flags: Rc<HashSet<usize>>) -> Rc<dyn CompilerOpts> {
         self.override_set_diag_flags(new_flags)
     }
+    fn get_file_mod_date(&self, loc: &Srcloc, filename: &str) -> Result<u64, CompileErr> {
+        self.override_get_file_mod_date(loc, filename)
+    }
     fn read_new_file(
         &self,
         inc_from: String,
@@ -1277,15 +1229,15 @@ impl<T: HasCompilerOptsDelegation> CompilerOpts for T {
     ) -> Result<(String, Vec<u8>), CompileErr> {
         self.override_read_new_file(inc_from, filename)
     }
-    fn get_file_mod_date(&self, loc: &Srcloc, filename: &str) -> Result<u64, CompileErr> {
-        self.override_get_file_mod_date(loc, filename)
-    }
     fn compile_program(
         &self,
         context: &mut BasicCompileContext,
         sexp: Rc<SExp>,
     ) -> Result<CompilerOutput, CompileErr> {
         self.override_compile_program(context, sexp)
+    }
+    fn write_new_file(&self, target_path: &str, content: &[u8]) -> Result<(), CompileErr> {
+        self.override_write_new_file(target_path, content)
     }
 }
 
@@ -1295,7 +1247,6 @@ pub struct ModAccum {
     pub loc: Srcloc,
     pub includes: Vec<IncludeDesc>,
     pub helpers: Vec<HelperForm>,
-    pub left_capture: bool,
     pub exp_form: Option<CompileForm>,
 }
 
@@ -1332,7 +1283,6 @@ impl ModAccum {
             loc: self.loc.clone(),
             includes: self.includes.clone(),
             helpers: self.helpers.clone(),
-            left_capture: self.left_capture,
             exp_form: Some(c.clone()),
         }
     }
@@ -1344,7 +1294,6 @@ impl ModAccum {
             loc: self.loc.clone(),
             includes: new_includes,
             helpers: self.helpers.clone(),
-            left_capture: self.left_capture,
             exp_form: self.exp_form.clone(),
         }
     }
@@ -1357,17 +1306,15 @@ impl ModAccum {
             loc: self.loc.clone(),
             includes: self.includes.clone(),
             helpers: hs,
-            left_capture: self.left_capture,
             exp_form: self.exp_form.clone(),
         }
     }
 
-    pub fn new(loc: Srcloc, left_capture: bool) -> ModAccum {
+    pub fn new(loc: Srcloc) -> ModAccum {
         ModAccum {
             loc,
             includes: Vec::new(),
             helpers: Vec::new(),
-            left_capture,
             exp_form: None,
         }
     }
@@ -1406,7 +1353,6 @@ impl CompileForm {
                 .cloned()
                 .collect(),
             exp: self.exp.clone(),
-            ty: self.ty.clone(),
         }
     }
 
@@ -1431,7 +1377,6 @@ impl CompileForm {
             args: self.args.clone(),
             helpers: new_helpers,
             exp: self.exp.clone(),
-            ty: self.ty.clone(),
         }
     }
 }
@@ -1472,7 +1417,6 @@ impl HelperForm {
     /// Get a reference to the HelperForm's name.
     pub fn name(&self) -> &Vec<u8> {
         match self {
-            HelperForm::Deftype(deft) => &deft.name,
             HelperForm::Defnamespace(defn) => &defn.rendered_name,
             HelperForm::Defnsref(defr) => &defr.rendered_name,
             HelperForm::Defconstant(defc) => &defc.name,
@@ -1484,7 +1428,6 @@ impl HelperForm {
     /// Get the location of the HelperForm's name.
     pub fn name_loc(&self) -> &Srcloc {
         match self {
-            HelperForm::Deftype(deft) => &deft.nl,
             HelperForm::Defnamespace(defn) => &defn.nl,
             HelperForm::Defnsref(defr) => &defr.nl,
             HelperForm::Defconstant(defc) => &defc.nl,
@@ -1496,7 +1439,6 @@ impl HelperForm {
     /// Return a general location for the whole HelperForm.
     pub fn loc(&self) -> Srcloc {
         match self {
-            HelperForm::Deftype(deft) => deft.loc.clone(),
             HelperForm::Defnamespace(defn) => defn.loc.clone(),
             HelperForm::Defnsref(defr) => defr.loc.clone(),
             HelperForm::Defconstant(defc) => defc.loc.clone(),
@@ -1509,22 +1451,6 @@ impl HelperForm {
     /// be re-parsed if needed.
     pub fn to_sexp(&self) -> Rc<SExp> {
         match self {
-            HelperForm::Deftype(deft) => {
-                let mut result_vec = vec![
-                    Rc::new(SExp::atom_from_string(deft.loc.clone(), "deftype")),
-                    Rc::new(SExp::Atom(deft.loc.clone(), deft.name.clone())),
-                ];
-
-                for a in deft.args.iter() {
-                    result_vec.push(Rc::new(a.to_sexp()));
-                }
-
-                if let Some(ty) = &deft.ty {
-                    result_vec.push(Rc::new(ty.to_sexp()));
-                }
-
-                Rc::new(list_to_cons(deft.loc.clone(), &result_vec))
-            }
             HelperForm::Defnamespace(defn) => {
                 let mut result_vec = vec![
                     Rc::new(SExp::atom_from_string(defn.kw.clone(), "namespace")),

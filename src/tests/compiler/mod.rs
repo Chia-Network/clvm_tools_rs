@@ -10,6 +10,7 @@ mod clvm;
 mod compiler;
 mod evaluate;
 mod fuzz;
+mod fuzz_assign;
 mod modules;
 mod optimizer;
 mod preprocessor;
@@ -18,7 +19,6 @@ mod restargs;
 mod runtypes;
 mod singleton;
 mod srcloc;
-mod types;
 mod usecheck;
 
 #[test]

@@ -1,5 +1,5 @@
 (mod (X)
-  (include *standard-cl-23*)
+  (include *strict-cl-21*)
 
   (include test-inner-include.clinc)
 

@@ -404,3 +404,68 @@ fn test_eval_new_bls_operator() {
         "(q)"
     );
 }
+
+#[test]
+fn test_repl_base_lambda_case() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defun F (X F) (a F (list X)))".to_string(),
+                "(F 3 (lambda (Y) (+ Y 9)))".to_string(),
+            ],
+            None
+        )
+        .unwrap()
+        .unwrap(),
+        "(q . 12)"
+    );
+}
+
+#[test]
+fn test_repl_rest_lambda_case() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defun F (X F) (a F (list X)))".to_string(),
+                "(F &rest (list 3 (lambda (Y) (+ Y 9))))".to_string()
+            ],
+            None
+        )
+        .unwrap()
+        .unwrap(),
+        "(q . 12)"
+    );
+}
+
+#[test]
+fn test_repl_lambda_with_captures_rest() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defun map (F L) (if L (c (a F (list (f L))) (map F (r L))) ()))".to_string(),
+                "(defun F (X L) (map &rest (list (lambda ((& X) Y) (+ X Y)) L)))".to_string(),
+                "(F 3 (list 99 101 103))".to_string()
+            ],
+            None
+        )
+        .unwrap()
+        .unwrap(),
+        "(q 102 104 106)"
+    );
+}
+
+#[test]
+fn test_repl_lambda_with_captures_out_of_own_function() {
+    assert_eq!(
+        test_repl_outcome_with_stack_limit(
+            vec![
+                "(defun F (X) (lambda ((& X) Y) (+ X Y)))".to_string(),
+                "(a (F 3) (list 4))".to_string(),
+            ],
+            None
+        )
+        .unwrap()
+        .unwrap(),
+        "(q . 7)"
+    );
+}
