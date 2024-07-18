@@ -2448,3 +2448,13 @@ fn test_almost_empty_lambda_gives_error() {
     assert!(res.is_err());
     assert!(format!("{res:?}").contains("Must provide at least arguments and body to lambda"));
 }
+
+#[test]
+fn test_odd_hex_works() {
+    let res = run_string(
+        &"(mod () (include *standard-cl-23*) (+ 1 0xf))".to_string(),
+        &"()".to_string(),
+    )
+    .expect("should work");
+    assert_eq!(res.to_string(), "16");
+}

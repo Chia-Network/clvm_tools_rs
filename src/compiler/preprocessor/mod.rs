@@ -199,7 +199,8 @@ impl Preprocessor {
         desc: IncludeDesc,
     ) -> Result<(), CompileErr> {
         let name_string = decode_string(&desc.name);
-        if KNOWN_DIALECTS.contains_key(&name_string) {
+        // Terminate early checking anything with a processed include type.
+        if KNOWN_DIALECTS.contains_key(&name_string) || desc.kind.is_some() {
             return Ok(());
         }
 
