@@ -440,3 +440,18 @@ fn test_cldb_hierarchy_hex() {
 
     compare_run_output(result, run_entries);
 }
+
+#[test]
+fn test_cldb_hierarchy_before_hex() {
+    let json_text = fs::read_to_string("resources/tests/cldb_tree/pre_hex.json")
+        .expect("test resources should exist: test.json");
+    let run_entries: Vec<serde_json::Value> =
+        serde_json::from_str(&json_text).expect("should contain json");
+    let input_program = "(mod () (concat 1 1122334455))".to_string();
+
+    let input_file = "test_with_hex.clsp";
+
+    let result = compile_and_run_program_with_tree(&input_file, &input_program, "()", &vec![], 0);
+
+    compare_run_output(result, run_entries);
+}

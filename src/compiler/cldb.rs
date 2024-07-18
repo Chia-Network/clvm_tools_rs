@@ -136,7 +136,7 @@ fn humanize(a: Rc<SExp>) -> Rc<SExp> {
     }
 }
 
-pub fn hexize(a: Rc<SExp>, flags: u32) -> Rc<SExp> {
+pub fn improve_presentation(a: Rc<SExp>, flags: u32) -> Rc<SExp> {
     match a.borrow() {
         SExp::Atom(l, av) => {
             if av.len() > 2 && (flags & FAVOR_HEX) != 0 {
@@ -155,8 +155,8 @@ pub fn hexize(a: Rc<SExp>, flags: u32) -> Rc<SExp> {
             }
         }
         SExp::Cons(loc, l, r) => {
-            let new_l = hexize(l.clone(), flags);
-            let new_r = hexize(r.clone(), flags);
+            let new_l = improve_presentation(l.clone(), flags);
+            let new_r = improve_presentation(r.clone(), flags);
             if Rc::as_ptr(&new_l) == Rc::as_ptr(l) && Rc::as_ptr(&new_r) == Rc::as_ptr(r) {
                 return a.clone();
             }
@@ -248,7 +248,7 @@ impl CldbRun {
                             .insert("Result-Location".to_string(), l.to_string());
                         self.to_print.insert(
                             "Value".to_string(),
-                            hexize(x.clone(), self.flags).to_string(),
+                            improve_presentation(x.clone(), self.flags).to_string(),
                         );
                         self.to_print
                             .insert("Row".to_string(), self.row.to_string());
@@ -270,7 +270,7 @@ impl CldbRun {
                 }
             }
             Ok(RunStep::Done(l, x)) => {
-                let final_value = hexize(x.clone(), self.flags);
+                let final_value = improve_presentation(x.clone(), self.flags);
                 self.to_print
                     .insert("Final-Location".to_string(), l.to_string());
                 self.to_print
@@ -313,8 +313,8 @@ impl CldbRun {
                 if should_print_basic_output {
                     self.env.add_context(
                         sexp.borrow(),
-                        hexize(c.clone(), self.flags).borrow(),
-                        Some(hexize(a.clone(), self.flags)),
+                        improve_presentation(c.clone(), self.flags).borrow(),
+                        Some(improve_presentation(a.clone(), self.flags)),
                         &mut self.to_print,
                     );
                     self.env.add_function(sexp, &mut self.to_print);
@@ -327,7 +327,7 @@ impl CldbRun {
                     .insert("Throw-Location".to_string(), l.to_string());
                 self.to_print.insert(
                     "Throw".to_string(),
-                    hexize(s.clone(), self.flags).to_string(),
+                    improve_presentation(s.clone(), self.flags).to_string(),
                 );
 
                 swap(&mut self.to_print, &mut result);
