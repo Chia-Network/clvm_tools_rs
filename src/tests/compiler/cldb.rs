@@ -6,7 +6,7 @@ use clvmr::allocator::Allocator;
 
 use crate::classic::clvm_tools::cmds::{cldb_hierarchy, CldbHierarchyArgs, YamlElement};
 use crate::classic::clvm_tools::stages::stage_0::DefaultProgramRunner;
-use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
+use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv, FAVOR_HEX};
 use crate::compiler::clvm::{start_step, RunStep};
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::CompilerOpts;
@@ -68,6 +68,7 @@ where
         Box::new(CldbNoOverride::new_symbols(symbols)),
     );
     let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
+    cldbrun.set_flags(flags);
 
     let mut output: BTreeMap<String, String> = BTreeMap::new();
 
@@ -399,4 +400,58 @@ fn test_clvm_operator_with_weird_tail() {
         ),
         Some("8".to_string())
     );
+}
+
+#[test]
+fn test_cldb_with_favor_hex() {
+    let filename = "favor_hex.clvm";
+    let loc = Srcloc::start(filename);
+    let program = "(concat (1 . 1) (1 . 1122334455))";
+    let parsed = parse_sexp(loc.clone(), program.as_bytes().iter().copied()).expect("should parse");
+    let args = Rc::new(SExp::Nil(loc));
+    let program_lines = Rc::new(vec![program.to_string()]);
+
+    assert_eq!(
+        run_clvm_in_cldb(
+            filename,
+            program_lines,
+            parsed[0].clone(),
+            HashMap::new(),
+            args,
+            &mut DoesntWatchCldb {},
+            FAVOR_HEX,
+        ),
+        Some("0x0142e576f7".to_string())
+    );
+}
+
+#[test]
+fn test_cldb_hierarchy_hex() {
+    let json_text = fs::read_to_string("resources/tests/cldb_tree/hex.json")
+        .expect("test resources should exist: test.json");
+    let run_entries: Vec<serde_json::Value> =
+        serde_json::from_str(&json_text).expect("should contain json");
+    let input_program = "(mod () (concat 1 1122334455))".to_string();
+
+    let input_file = "test_with_hex.clsp";
+
+    let result =
+        compile_and_run_program_with_tree(&input_file, &input_program, "()", &vec![], FAVOR_HEX);
+
+    compare_run_output(result, run_entries);
+}
+
+#[test]
+fn test_cldb_hierarchy_before_hex() {
+    let json_text = fs::read_to_string("resources/tests/cldb_tree/pre_hex.json")
+        .expect("test resources should exist: test.json");
+    let run_entries: Vec<serde_json::Value> =
+        serde_json::from_str(&json_text).expect("should contain json");
+    let input_program = "(mod () (concat 1 1122334455))".to_string();
+
+    let input_file = "test_with_hex.clsp";
+
+    let result = compile_and_run_program_with_tree(&input_file, &input_program, "()", &vec![], 0);
+
+    compare_run_output(result, run_entries);
 }
