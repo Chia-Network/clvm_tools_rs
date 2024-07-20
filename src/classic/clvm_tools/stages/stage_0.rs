@@ -1,5 +1,5 @@
 use clvm_rs::allocator::{Allocator, NodePtr};
-use clvm_rs::chia_dialect::{ChiaDialect, NO_UNKNOWN_OPS, ENABLE_BLS_OPS_OUTSIDE_GUARD};
+use clvm_rs::chia_dialect::{ChiaDialect, ENABLE_BLS_OPS_OUTSIDE_GUARD, NO_UNKNOWN_OPS};
 use clvm_rs::cost::Cost;
 use clvm_rs::reduction::Response;
 
