@@ -13,7 +13,7 @@ use sha2::Digest;
 use sha2::Sha256;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero};
-use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
+use crate::classic::clvm_tools::stages::stage_0::{TRunProgram, RunProgramOption};
 
 use crate::compiler::prims;
 use crate::compiler::runtypes::RunFailure;
@@ -396,7 +396,10 @@ fn apply_op(
     let converted_args = convert_to_clvm_rs(allocator, wrapped_args.clone())?;
 
     runner
-        .run_program(allocator, converted_app, converted_args, None)
+        .run_program(allocator, converted_app, converted_args, Some(RunProgramOption {
+            new_operators: true,
+            .. RunProgramOption::default()
+        }))
         .map_err(|e| {
             RunFailure::RunErr(
                 head.loc(),

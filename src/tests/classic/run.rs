@@ -2543,15 +2543,3 @@ fn test_include_bin_should_not_be_parsed() {
     let result = do_basic_brun(&vec!["brun".to_string(), program]);
     assert_eq!(result.trim(), "\"'test\"");
 }
-
-#[test]
-fn test_coinid_outside_guard() {
-    let result = do_basic_run(&vec![
-        "run".to_string(),
-        "(coinid (sha256 3) (sha256 3) 4)".to_string(),
-    ]);
-    assert_eq!(
-        result.trim(),
-        "0x9f7f12b86a583805a4442879b7b5b531469e45c7e753e5fd431058e90bf3fbec"
-    );
-}

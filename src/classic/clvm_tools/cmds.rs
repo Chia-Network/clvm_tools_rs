@@ -1575,6 +1575,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                     Some(max_cost as u64)
                 },
                 pre_eval_f,
+                new_operators: false,
                 strict: parsed_args
                     .get("strict")
                     .map(|_| true)
