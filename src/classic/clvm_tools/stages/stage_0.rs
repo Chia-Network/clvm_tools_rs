@@ -50,7 +50,9 @@ impl TRunProgram for DefaultProgramRunner {
 
         run_program_with_pre_eval(
             allocator,
-            &ChiaDialect::new(NO_UNKNOWN_OPS | ((new_operators as u32) * ENABLE_BLS_OPS_OUTSIDE_GUARD)),
+            &ChiaDialect::new(
+                NO_UNKNOWN_OPS | ((new_operators as u32) * ENABLE_BLS_OPS_OUTSIDE_GUARD),
+            ),
             program,
             args,
             max_cost,
