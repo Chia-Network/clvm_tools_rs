@@ -78,6 +78,7 @@ where
         }
 
         if let Some(result) = cldbrun.step(&mut allocator) {
+            eprintln!("{:?}", result);
             output = result;
             if !viewer.show(&cldbrun.current_step(), Some(output.clone())) {
                 return None;
@@ -454,4 +455,27 @@ fn test_cldb_hierarchy_before_hex() {
     let result = compile_and_run_program_with_tree(&input_file, &input_program, "()", &vec![], 0);
 
     compare_run_output(result, run_entries);
+}
+
+#[test]
+fn test_cldb_coinid_outside_guard() {
+    let filename = "coinid.clvm";
+    let loc = Srcloc::start(filename);
+    let program = "(coinid (sha256 (q . 3)) (sha256 (q . 3)) (q . 4))";
+    let parsed = parse_sexp(loc.clone(), program.as_bytes().iter().copied()).expect("should parse");
+    let args = Rc::new(SExp::Nil(loc));
+    let program_lines = Rc::new(vec![program.to_string()]);
+
+    assert_eq!(
+        run_clvm_in_cldb(
+            filename,
+            program_lines,
+            parsed[0].clone(),
+            HashMap::new(),
+            args,
+            &mut DoesntWatchCldb {},
+            FAVOR_HEX,
+        ),
+        Some("0x9f7f12b86a583805a4442879b7b5b531469e45c7e753e5fd431058e90bf3fbec".to_string())
+    );
 }
