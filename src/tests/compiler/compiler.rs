@@ -2453,16 +2453,6 @@ fn test_almost_empty_lambda_gives_error() {
 }
 
 #[test]
-fn test_odd_hex_works() {
-    let res = run_string(
-        &"(mod () (include *standard-cl-23*) (+ 1 0xf))".to_string(),
-        &"()".to_string(),
-    )
-    .expect("should work");
-    assert_eq!(res.to_string(), "16");
-}
-
-#[test]
 fn test_exhaustive_chars() {
     // Verify that we can create a program that gives the expected output using
     // every byte value in the first, mid and last position of a value.
@@ -2536,4 +2526,14 @@ fn test_exhaustive_chars() {
             substitute[i] = b'x';
         }
     }
+}
+
+#[test]
+fn test_odd_hex_works() {
+    let res = run_string(
+        &"(mod () (include *standard-cl-23*) (+ 1 0xf))".to_string(),
+        &"()".to_string(),
+    )
+    .expect("should work");
+    assert_eq!(res.to_string(), "16");
 }

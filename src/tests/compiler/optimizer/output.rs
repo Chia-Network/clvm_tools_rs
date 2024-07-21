@@ -47,8 +47,7 @@ fn run_with_cost(
             as_classic_env,
             Some(RunProgramOption {
                 max_cost: Some(MAX_RUN_COST),
-                pre_eval_f: None,
-                strict: false,
+                ..RunProgramOption::default()
             }),
         )
         .map_err(|e| RunFailure::RunErr(sexp.loc(), format!("{} in {} {}", e.1, sexp, env)))

@@ -51,7 +51,7 @@ use crate::classic::platform::argparse::{
 };
 
 use crate::compiler::cldb::{
-    hex_to_modern_sexp, hexize, CldbNoOverride, CldbRun, CldbRunEnv, FAVOR_HEX,
+    hex_to_modern_sexp, improve_presentation, CldbNoOverride, CldbRun, CldbRunEnv, FAVOR_HEX,
 };
 use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
 use crate::compiler::clvm::start_step;
@@ -441,7 +441,10 @@ pub fn cldb_hierarchy(args: CldbHierarchyArgs) -> Vec<BTreeMap<String, YamlEleme
                 for (k, v) in runner.running[run_idx].named_args.iter() {
                     arg_values.insert(
                         k.clone(),
-                        YamlElement::String(format!("{}", hexize(v.clone(), args.flags))),
+                        YamlElement::String(format!(
+                            "{}",
+                            improve_presentation(v.clone(), args.flags)
+                        )),
                     );
                 }
                 function_entry.insert(
@@ -1386,6 +1389,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                     Some(max_cost as u64)
                 },
                 pre_eval_f,
+                new_operators: false,
                 strict: parsed_args
                     .get("strict")
                     .map(|_| true)

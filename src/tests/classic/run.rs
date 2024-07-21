@@ -2430,6 +2430,41 @@ fn test_assign_cse_tricky_2() {
 }
 
 #[test]
+fn test_quote_string_generation() {
+    // The program run here produces a list of strings and quoted atoms that have
+    // representations that must be flattened in various ways in this test.
+    let filename = "resources/tests/test_string_repr.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+    // The proram produces this list
+    //   (list (qs '"') (qs "'") (qs " hi") (atom '"') (atom "'") (atom "_hi"))
+    //
+    // where qs puts "test" in front of the given string and atom puts test in front of the
+    // given string, converts it to an atom and quotes it so that it won't be interpreted
+    // as an identifier.
+    //
+    // in other words
+    //   (list 'test"' "test'" "test hi"
+    //     (q . (string->symbol (string-append "test" '"')))
+    //     (q . (string->symbol (string-append "test" "'")))
+    //     (q . test_hi)
+    //     )
+    //
+    // The result below shows that the strings and atoms are reproduced as expected.
+    let wanted_repr = "(4 (1 . 0x7465737422) (4 (1 . \"test'\") (4 (1 . \"test hi\") (4 (1 . 499918271522) (4 (1 . 499918271527) (4 (1 . test_hi) ()))))))";
+    assert_eq!(program, wanted_repr);
+    let brun_result = do_basic_brun(&vec!["brun".to_string(), program])
+        .trim()
+        .to_string();
+    // This shows that brun interpreted and passed through the values successfully.
+    assert_eq!(
+        brun_result,
+        "(0x7465737422 \"test'\" \"test hi\" 0x7465737422 \"test'\" \"test_hi\")"
+    );
+}
+
+#[test]
 fn test_classic_modpow() {
     let result = do_basic_brun(&vec![
         "brun".to_string(),
@@ -2471,23 +2506,6 @@ fn test_modern_mod_op() {
     let result = do_basic_brun(&vec!["brun".to_string(), program, "(137 6)".to_string()]);
     // 137 % 6 == 5
     assert_eq!(result.trim(), "5");
-}
-
-#[test]
-fn test_quote_string_generation() {
-    let filename = "resources/tests/test_string_repr.clsp";
-    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
-        .trim()
-        .to_string();
-    let wanted_repr = "(4 (1 . 0x7465737422) (4 (1 . \"test'\") (4 (1 . \"test hi\") (4 (1 . 499918271522) (4 (1 . 499918271527) (4 (1 . test_hi) ()))))))";
-    assert_eq!(program, wanted_repr);
-    let brun_result = do_basic_brun(&vec!["brun".to_string(), program])
-        .trim()
-        .to_string();
-    assert_eq!(
-        brun_result,
-        "(0x7465737422 \"test'\" \"test hi\" 0x7465737422 \"test'\" \"test_hi\")"
-    );
 }
 
 #[test]
