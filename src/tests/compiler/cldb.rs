@@ -78,7 +78,6 @@ where
         }
 
         if let Some(result) = cldbrun.step(&mut allocator) {
-            eprintln!("{:?}", result);
             output = result;
             if !viewer.show(&cldbrun.current_step(), Some(output.clone())) {
                 return None;
@@ -335,7 +334,6 @@ impl ExpectFailure {
 
 impl StepOfCldbViewer for ExpectFailure {
     fn show(&mut self, _step: &RunStep, output: Option<BTreeMap<String, String>>) -> bool {
-        eprintln!("{:?}", output);
         if let Some(o) = output {
             if let Some(_) = o.get("Failure") {
                 let did_throw = o.get("Operator") == Some(&"8".to_string());
