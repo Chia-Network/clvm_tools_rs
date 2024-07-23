@@ -454,3 +454,51 @@ fn test_cldb_hierarchy_before_hex() {
 
     compare_run_output(result, run_entries);
 }
+
+#[test]
+fn test_cldb_operators_outside_guard() {
+    let filename = "coinid.clvm";
+    let loc = Srcloc::start(filename);
+    let inputs_outputs = [
+        (
+            "(coinid (sha256 (q . 3)) (sha256 (q . 3)) (q . 4))",
+            "()",
+            "0x9f7f12b86a583805a4442879b7b5b531469e45c7e753e5fd431058e90bf3fbec"
+        ),
+        (
+            "(modpow (q . 2) (q . 8) (q . 10))",
+            "()",
+            "6"
+        ),
+        (
+            "(% (q . 13) (q . 5))",
+            "()",
+            "3"
+        ),
+        (
+            // resources/tests/bls/modern-bls-verify-signature.clsp
+            "(2 (1 59 (1 . 0xb00ab9a8af54804b43067531d96c176710c05980fccf8eee1ae12a4fd543df929cce860273af931fe4fdbc407d495f73114ab7d17ef08922e56625daada0497582340ecde841a9e997f2f557653c21c070119662dd2efa47e2d6c5e2de00eefa) (1 . 0x86243290bbcbfd9ae75bdece7981965350208eb5e99b04d5cd24e955ada961f8c0a162dee740be7bdc6c3c0613ba2eb1) 5) (4 (1) 1))",
+            "(0x0102030405)",
+            "()"
+        )
+    ];
+
+    for (program, arg_str, expected) in inputs_outputs {
+        let parsed = parse_sexp(loc.clone(), program.bytes()).expect("should parse");
+        let args_parsed = parse_sexp(loc.clone(), arg_str.bytes()).expect("should parse");
+        let program_lines = Rc::new(vec![program.to_string()]);
+
+        assert_eq!(
+            run_clvm_in_cldb(
+                filename,
+                program_lines,
+                parsed[0].clone(),
+                HashMap::new(),
+                args_parsed[0].clone(),
+                &mut DoesntWatchCldb {},
+                FAVOR_HEX,
+            ),
+            Some(expected.to_string())
+        );
+    }
+}
