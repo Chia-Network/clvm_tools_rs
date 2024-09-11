@@ -52,7 +52,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-          python -m pip install maturin==1.1.0
+          python -m pip install maturin==1.7.0
 
     - name: Build Linux in manylinux_2_28 with maturin on Python ${{ matrix.python }}
       run: |
@@ -77,7 +77,7 @@ jobs:
             . ./activate && \
             pip install --upgrade pip
           '
-        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.1.0 build --release --strip --manylinux 2_28
+        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.7.0 build --release --strip --manylinux 2_28
         # Refresh in case any ownerships changed.
         mv target target.docker && cp -r target.docker target
         # Ensure an empty .cargo-lock file exists.
