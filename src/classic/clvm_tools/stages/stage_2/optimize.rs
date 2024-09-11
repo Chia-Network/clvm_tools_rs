@@ -737,14 +737,15 @@ pub fn optimize_sexp(
     if DIAG_OPTIMIZATIONS {
         println!("START OPTIMIZE {}", disassemble(allocator, r, None));
     }
-    optimize_sexp_(allocator, &optimized, r, eval_f).inspect(|x| {
+    optimize_sexp_(allocator, &optimized, r, eval_f).map(|x| {
         if DIAG_OPTIMIZATIONS {
             println!(
                 "OPTIMIZE_SEXP {} GIVING {}",
                 disassemble(allocator, r, None),
-                disassemble(allocator, *x, None)
+                disassemble(allocator, x, None)
             );
         }
+        x
     })
 }
 
