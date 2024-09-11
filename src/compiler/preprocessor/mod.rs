@@ -752,7 +752,7 @@ impl Preprocessor {
             decode_string(&desc.name)
         };
 
-        if KNOWN_DIALECTS.contains_key(&name_string) || desc.kind.is_some() {
+        if KNOWN_DIALECTS.contains_key(&name_string) && !matches!(desc.kind, Some(IncludeProcessType::Compiled)) {
             return Ok(());
         }
 
