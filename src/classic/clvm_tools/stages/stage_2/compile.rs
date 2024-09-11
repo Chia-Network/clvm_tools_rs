@@ -599,7 +599,7 @@ pub fn do_com_prog(
             disassemble(allocator, symbol_table, None),
         );
     }
-    do_com_prog_(allocator, prog, macro_lookup, symbol_table, run_program).map(|x| {
+    do_com_prog_(allocator, prog, macro_lookup, symbol_table, run_program).inspect(|x| {
         if DIAG_OUTPUT {
             println!(
                 "DO_COM_PROG {}: {} MACRO {} SYMBOLS {} RESULT {}",
@@ -610,7 +610,6 @@ pub fn do_com_prog(
                 disassemble(allocator, x.1, None)
             );
         }
-        x
     })
 }
 

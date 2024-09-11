@@ -50,7 +50,9 @@ use crate::classic::platform::argparse::{
     TArgOptionAction, TArgumentParserProps,
 };
 
-use crate::compiler::cldb::{hex_to_modern_sexp, CldbNoOverride, CldbRun, CldbRunEnv};
+use crate::compiler::cldb::{
+    hex_to_modern_sexp, improve_presentation, CldbNoOverride, CldbRun, CldbRunEnv, FAVOR_HEX,
+};
 use crate::compiler::cldb_hierarchy::{HierarchialRunner, HierarchialStepResult, RunPurpose};
 use crate::compiler::clvm::start_step;
 use crate::compiler::compiler::DefaultCompilerOpts;
@@ -403,6 +405,8 @@ pub fn cldb_hierarchy(args: CldbHierarchyArgs) -> Vec<BTreeMap<String, YamlEleme
         args.args,
     );
 
+    runner.set_flags(args.flags);
+
     let mut output_stack = vec![Vec::new()];
 
     loop {
@@ -435,7 +439,13 @@ pub fn cldb_hierarchy(args: CldbHierarchyArgs) -> Vec<BTreeMap<String, YamlEleme
                 );
                 let mut arg_values = BTreeMap::new();
                 for (k, v) in runner.running[run_idx].named_args.iter() {
-                    arg_values.insert(k.clone(), YamlElement::String(format!("{}", v.clone())));
+                    arg_values.insert(
+                        k.clone(),
+                        YamlElement::String(format!(
+                            "{}",
+                            improve_presentation(v.clone(), args.flags)
+                        )),
+                    );
                 }
                 function_entry.insert(
                     "Function-Args".to_string(),
@@ -535,6 +545,12 @@ pub fn cldb(args: &[String]) {
             .set_help("path to symbol file".to_string()),
     );
     parser.add_argument(
+        vec!["-X".to_string(), "--favor-hex".to_string()],
+        Argument::new()
+            .set_action(TArgOptionAction::StoreTrue)
+            .set_help("favor hex output to integer".to_string()),
+    );
+    parser.add_argument(
         vec!["-p".to_string(), "--only-print".to_string()],
         Argument::new()
             .set_action(TArgOptionAction::StoreTrue)
@@ -606,6 +622,7 @@ pub fn cldb(args: &[String]) {
     };
 
     let only_print = parsed_args.get("only_print").map(|_| true).unwrap_or(false);
+    let favor_hex = parsed_args.get("favor_hex").map(|_| true).unwrap_or(false);
 
     let runner = Rc::new(DefaultProgramRunner::new());
 
@@ -699,7 +716,7 @@ pub fn cldb(args: &[String]) {
             symbol_table: Rc::new(use_symbol_table),
             prog: program,
             args: env,
-            flags: 0,
+            flags: if favor_hex { FAVOR_HEX } else { 0 },
         });
 
         // Print the tree
@@ -710,6 +727,10 @@ pub fn cldb(args: &[String]) {
 
     let step = start_step(program, env);
     let mut cldbrun = CldbRun::new(runner, Rc::new(prim_map), Box::new(cldbenv), step);
+    if favor_hex {
+        cldbrun.set_flags(FAVOR_HEX);
+    }
+
     let print_tree = |output: &mut Vec<_>, result: &BTreeMap<String, String>| {
         let mut cvt_subtree = BTreeMap::new();
         for (k, v) in result.iter() {
@@ -1144,10 +1165,9 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             }),
             _ => None,
         })
-        .map(|st| {
+        .inspect(|st| {
             emit_symbol_output = true;
             symbol_table = Some(st.clone());
-            st
         });
 
     if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("verbose") {
@@ -1368,6 +1388,7 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                     Some(max_cost as u64)
                 },
                 pre_eval_f,
+                new_operators: false,
                 strict: parsed_args
                     .get("strict")
                     .map(|_| true)

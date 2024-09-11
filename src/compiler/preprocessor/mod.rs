@@ -752,7 +752,7 @@ impl Preprocessor {
             decode_string(&desc.name)
         };
 
-        if KNOWN_DIALECTS.contains_key(&name_string) {
+        if KNOWN_DIALECTS.contains_key(&name_string) || desc.kind.is_some() {
             return Ok(());
         }
 

@@ -24,6 +24,7 @@ mod modules_with_constant_exports;
 
 #[derive(Debug)]
 pub struct GenError {
+    #[allow(dead_code)]
     pub message: String,
 }
 impl From<&str> for GenError {
