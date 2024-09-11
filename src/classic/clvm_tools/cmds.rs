@@ -1165,10 +1165,9 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
             }),
             _ => None,
         })
-        .map(|st| {
+        .inspect(|st| {
             emit_symbol_output = true;
             symbol_table = Some(st.clone());
-            st
         });
 
     if let Some(ArgumentValue::ArgBool(true)) = parsed_args.get("verbose") {
