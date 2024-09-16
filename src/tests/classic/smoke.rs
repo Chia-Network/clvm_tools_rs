@@ -160,7 +160,7 @@ fn mid_negative_value_bin() {
     .expect("should be able to make nodeptr");
     if let SExp::Atom = allocator.sexp(atom.1) {
         let res_bytes = allocator.atom(atom.1);
-        assert_eq!(res_bytes, &[0xff, 0xff]);
+        assert_eq!(res_bytes.as_ref(), &[0xff, 0xff]);
     } else {
         assert!(false);
     }
@@ -246,9 +246,8 @@ fn run_from_source<'a>(allocator: &'a mut Allocator, src: String) -> NodePtr {
     let ir = read_ir(&src).unwrap();
     let assembled = assemble_from_ir(allocator, Rc::new(ir)).unwrap();
     let runner = DefaultProgramRunner::new();
-    let null = allocator.null();
     let res = runner
-        .run_program(allocator, assembled, null, None)
+        .run_program(allocator, assembled, NodePtr::NIL, None)
         .unwrap();
     return res.1;
 }
@@ -262,7 +261,7 @@ fn compile_program<'a>(
     let runner = run_program_for_search_paths("*test*", &vec![include_path], false);
     let input_ir = read_ir(&src);
     let input_program = assemble_from_ir(allocator, Rc::new(input_ir.unwrap())).unwrap();
-    let input_sexp = allocator.new_pair(input_program, allocator.null()).unwrap();
+    let input_sexp = allocator.new_pair(input_program, NodePtr::NIL).unwrap();
     let res = runner.run_program(allocator, run_script, input_sexp, None);
 
     return res.map(|x| disassemble(allocator, x.1, Some(0)));
@@ -298,8 +297,8 @@ fn can_run_from_source_nil() {
     let res = run_from_source(&mut allocator, "()".to_string());
     match allocator.sexp(res) {
         SExp::Atom => {
-            let res_bytes = allocator.atom(res);
-            assert_eq!(res_bytes.len(), 0);
+            let res_bytes = allocator.atom_len(res);
+            assert_eq!(res_bytes, 0);
         }
         _ => {
             assert_eq!("expected atom", "");
@@ -313,8 +312,8 @@ fn can_echo_quoted_nil() {
     let res = run_from_source(&mut allocator, "(1)".to_string());
     match allocator.sexp(res) {
         SExp::Atom => {
-            let res_bytes = allocator.atom(res);
-            assert_eq!(res_bytes.len(), 0);
+            let res_bytes = allocator.atom_len(res);
+            assert_eq!(res_bytes, 0);
         }
         _ => {
             assert_eq!("expected atom", "");
@@ -325,12 +324,11 @@ fn can_echo_quoted_nil() {
 #[test]
 fn can_echo_quoted() {
     let mut allocator = Allocator::new();
-    let null = allocator.null();
     let res = run_from_source(&mut allocator, "(1 ())".to_string());
     match allocator.sexp(res) {
         SExp::Pair(l, r) => {
-            assert_eq!(l, null);
-            assert_eq!(r, null);
+            assert_eq!(l, NodePtr::NIL);
+            assert_eq!(r, NodePtr::NIL);
         }
         _ => {
             assert_eq!("expected pair", "");
@@ -345,8 +343,8 @@ fn can_echo_quoted_atom() {
     match allocator.sexp(res) {
         SExp::Atom => {
             let res_bytes = allocator.atom(res);
-            assert_eq!(res_bytes.len(), 1);
-            assert_eq!(res_bytes[0], 3);
+            assert_eq!(res_bytes.as_ref().len(), 1);
+            assert_eq!(res_bytes.as_ref()[0], 3);
         }
         _ => {
             assert_eq!("expected atom", "");
@@ -361,8 +359,8 @@ fn can_do_operations() {
     match allocator.sexp(res) {
         SExp::Atom => {
             let res_bytes = allocator.atom(res);
-            assert_eq!(res_bytes.len(), 1);
-            assert_eq!(res_bytes[0], 8);
+            assert_eq!(res_bytes.as_ref().len(), 1);
+            assert_eq!(res_bytes.as_ref()[0], 8);
         }
         _ => {
             assert_eq!("expected atom", "");
@@ -377,8 +375,8 @@ fn can_do_operations_kw() {
     match allocator.sexp(res) {
         SExp::Atom => {
             let res_bytes = allocator.atom(res);
-            assert_eq!(res_bytes.len(), 1);
-            assert_eq!(res_bytes[0], 8);
+            assert_eq!(res_bytes.as_ref().len(), 1);
+            assert_eq!(res_bytes.as_ref()[0], 8);
         }
         _ => {
             assert_eq!("expected atom", "");

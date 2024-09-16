@@ -241,7 +241,7 @@ impl TConversion for OpcConversion {
             .and_then(|ir_sexp| assemble_from_ir(allocator, Rc::new(ir_sexp)).map_err(|e| e.1))
             .map(|sexp| t(sexp, sexp_as_bin(allocator, sexp).hex()))
             .map(Ok) // Flatten result type to Ok
-            .unwrap_or_else(|err| Ok(t(allocator.null(), err))) // Original code printed error messages on stdout, ret 0 on CLVM error
+            .unwrap_or_else(|err| Ok(t(NodePtr::NIL, err))) // Original code printed error messages on stdout, ret 0 on CLVM error
     }
 }
 
@@ -805,7 +805,7 @@ fn calculate_cost_offset(
      This is a hack and need to go away, probably when we do dialects for real,
      and then the dialect can have a `run_program` API.
     */
-    let almost_empty_list = enlist(allocator, &[allocator.null()]).unwrap();
+    let almost_empty_list = enlist(allocator, &[NodePtr::NIL]).unwrap();
     let cost = run_program
         .run_program(allocator, run_script, almost_empty_list, None)
         .map(|x| x.0)
@@ -1284,13 +1284,14 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     });
 
     #[allow(clippy::type_complexity)]
-    let closure: Rc<dyn Fn(NodePtr) -> Box<dyn Fn(Option<NodePtr>)>> = Rc::new(move |v| {
-        let post_eval_fn_clone = post_eval_fn.clone();
-        Box::new(move |n| {
-            let post_eval_fn_clone_2 = post_eval_fn_clone.clone();
-            (*post_eval_fn_clone_2)(v, n)
-        })
-    });
+    let closure: Rc<dyn Fn(NodePtr) -> Box<dyn Fn(&mut Allocator, Option<NodePtr>)>> =
+        Rc::new(move |v| {
+            let post_eval_fn_clone = post_eval_fn.clone();
+            Box::new(move |_allocator, n| {
+                let post_eval_fn_clone_2 = post_eval_fn_clone.clone();
+                (*post_eval_fn_clone_2)(v, n)
+            })
+        });
 
     if emit_symbol_output {
         #[allow(clippy::type_complexity)]
@@ -1299,7 +1300,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 &mut Allocator,
                 NodePtr,
                 NodePtr,
-            ) -> Result<Option<Box<(dyn Fn(Option<NodePtr>))>>, EvalErr>,
+            )
+                -> Result<Option<Box<(dyn Fn(&mut Allocator, Option<NodePtr>))>>, EvalErr>,
         > = Box::new(move |allocator, sexp, args| {
             let pre_eval_clone = pre_eval_fn.clone();
             trace_pre_eval(

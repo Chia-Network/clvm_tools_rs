@@ -262,7 +262,8 @@ fn test_integer_0_to_clvm() {
     let mut allocator = Allocator::new();
     let clvm_target = convert_to_clvm_rs(&mut allocator, value).expect("ok");
     let empty: [u8; 0] = [];
-    assert_eq!(allocator.atom(clvm_target), &empty);
+    let atom = allocator.atom(clvm_target);
+    assert_eq!(atom.as_ref(), &empty);
 }
 
 #[test]

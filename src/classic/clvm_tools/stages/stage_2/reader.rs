@@ -32,7 +32,7 @@ pub fn convert_hex_to_sexp(
     let content_bytes = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(decode_string(
         file_data,
     ))))
-    .map_err(|e| EvalErr(allocator.null(), e.to_string()))?;
+    .map_err(|e| EvalErr(NodePtr::NIL, e.to_string()))?;
     let mut reader_stream = Stream::new(Some(content_bytes));
     Ok(sexp_from_stream(
         allocator,
@@ -97,9 +97,12 @@ pub fn process_embed_file(
         ) {
             // Note: we don't want to keep borrowing here because we
             // need the mutable borrow below.
-            let name_buf = allocator.atom(l[0]).to_vec();
-            let kind_buf = allocator.atom(l[1]);
-            let filename_buf = allocator.atom(l[2]).to_vec();
+            let name_atom = allocator.atom(l[0]);
+            let kind_atom = allocator.atom(l[1]);
+            let filename_atom = allocator.atom(l[2]);
+            let name_buf = name_atom.as_ref().to_vec();
+            let kind_buf = kind_atom.as_ref().to_vec();
+            let filename_buf = filename_atom.as_ref().to_vec();
             let file_data = if kind_buf == b"bin" {
                 let file = read_file(
                     runner,
