@@ -255,7 +255,7 @@ pub fn convert_to_clvm_rs(
     head: Rc<SExp>,
 ) -> Result<NodePtr, RunFailure> {
     match head.borrow() {
-        SExp::Nil(_) => Ok(allocator.null()),
+        SExp::Nil(_) => Ok(NodePtr::NIL),
         SExp::Atom(_l, x) => allocator
             .new_atom(x)
             .map_err(|_e| RunFailure::RunErr(head.loc(), format!("failed to alloc atom {head}"))),
@@ -264,7 +264,7 @@ pub fn convert_to_clvm_rs(
             .map_err(|_e| RunFailure::RunErr(head.loc(), format!("failed to alloc string {head}"))),
         SExp::Integer(_, i) => {
             if NewStyleIntConversion::setting() && *i == bi_zero() {
-                Ok(allocator.null())
+                Ok(NodePtr::NIL)
             } else {
                 allocator
                     .new_atom(&u8_from_number(i.clone()))
@@ -292,7 +292,8 @@ pub fn convert_from_clvm_rs(
     match allocator.sexp(head) {
         allocator::SExp::Atom => {
             let int_conv = NewStyleIntConversion::setting();
-            let atom_data = allocator.atom(head);
+            let atom = allocator.atom(head);
+            let atom_data = atom.as_ref();
             if atom_data.is_empty() {
                 Ok(Rc::new(SExp::Nil(loc)))
             } else {
@@ -339,7 +340,8 @@ fn test_convert_from_clvm_rs_00_byte() {
     );
 
     let node = convert_to_clvm_rs(&mut allocator, result).expect("should convert from mod");
-    assert_eq!(allocator.atom(node), &[0]);
+    let atom = allocator.atom(node);
+    assert_eq!(atom.as_ref(), &[0]);
 }
 
 #[test]
@@ -357,7 +359,8 @@ fn test_convert_to_clvm_rs_m129() {
     );
 
     let node = convert_to_clvm_rs(&mut allocator, result).expect("should convert from mod");
-    assert_eq!(allocator.atom(node), &[255, 127]);
+    let atom = allocator.atom(node);
+    assert_eq!(atom.as_ref(), &[255, 127]);
 }
 
 fn generate_argument_refs(start: Number, sexp: Rc<SExp>) -> Rc<SExp> {

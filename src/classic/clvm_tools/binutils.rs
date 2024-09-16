@@ -25,7 +25,7 @@ pub fn assemble_from_ir(
     ir_sexp: Rc<IRRepr>,
 ) -> Result<NodePtr, EvalErr> {
     match ir_sexp.borrow() {
-        IRRepr::Null => Ok(allocator.null()),
+        IRRepr::Null => Ok(NodePtr::NIL),
         IRRepr::Quotes(b) => allocator.new_atom(b.data()),
         IRRepr::Int(b, _signed) => allocator.new_atom(b.data()),
         IRRepr::Hex(b) => allocator.new_atom(b.data()),
@@ -127,7 +127,8 @@ pub fn disassemble_to_ir_with_kw(
 
         SExp::Atom => {
             // sexp is the only node in scope.
-            let bytes = Bytes::new(Some(BytesFromType::Raw(allocator.atom(sexp).to_vec())));
+            let atom = allocator.atom(sexp);
+            let bytes = Bytes::new(Some(BytesFromType::Raw(atom.as_ref().to_vec())));
             ir_for_atom(&bytes, allow_keyword, keyword_from_atom)
         }
     }
@@ -157,6 +158,6 @@ pub fn assemble(allocator: &mut Allocator, s: &str) -> Result<NodePtr, EvalErr> 
     let mut reader = IRReader::new(stream);
     reader
         .read_expr()
-        .map_err(|e| EvalErr(allocator.null(), e.to_string()))
+        .map_err(|e| EvalErr(NodePtr::NIL, e.to_string()))
         .and_then(|ir| assemble_from_ir(allocator, Rc::new(ir)))
 }
