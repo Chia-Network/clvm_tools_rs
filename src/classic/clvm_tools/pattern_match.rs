@@ -64,6 +64,8 @@ pub fn match_sexp(
                 let left_atom = allocator.atom(pleft);
                 let right_atom = allocator.atom(pright);
 
+                // This is a false positive due to Allocator lifetime.
+                #[allow(clippy::unnecessary_to_owned)]
                 match allocator.sexp(sexp) {
                     SExp::Atom => {
                         // Expression is ($ . $), sexp is '$', result: no capture.

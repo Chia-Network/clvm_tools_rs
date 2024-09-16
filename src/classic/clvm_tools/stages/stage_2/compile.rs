@@ -647,6 +647,8 @@ fn do_com_prog_(
                 transform_program_atom(
                     allocator,
                     prog,
+                    // This is a false positive due to Allocator lifetime.
+                    #[allow(clippy::unnecessary_to_owned)]
                     &prog_atom.as_ref().to_vec(),
                     symbol_table
                 )
