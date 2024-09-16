@@ -85,15 +85,23 @@ fn run_string_get_program_and_output_dialect(
     let sexp_args =
         parse_sexp(srcloc.clone(), args.bytes()).map_err(|e| CompileErr(e.0, e.1))?[0].clone();
 
+    let mut included = Vec::new();
     compile_file(
         &mut allocator,
         runner.clone(),
         opts,
         &content,
         &mut HashMap::new(),
+        &mut included,
     )
     .and_then(|program| {
-        run_with_cost(&mut allocator, runner, Rc::new(program), sexp_args).map_err(|e| match e {
+        run_with_cost(
+            &mut allocator,
+            runner,
+            Rc::new(program.to_sexp()),
+            sexp_args,
+        )
+        .map_err(|e| match e {
             RunFailure::RunErr(l, s) => CompileErr(l, s),
             RunFailure::RunExn(l, s) => CompileErr(l, s.to_string()),
         })

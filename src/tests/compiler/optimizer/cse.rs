@@ -863,6 +863,7 @@ fn test_generated_cse(n: u32) {
         .set_optimize(true);
     let mut allocator = Allocator::new();
     let mut symbols = HashMap::new();
+    let mut includes = Vec::new();
     let compiled21;
     let compiled23;
 
@@ -873,6 +874,7 @@ fn test_generated_cse(n: u32) {
             runner.clone(),
             &mut symbols,
             get_optimizer(&generated.loc(), opts21.clone()).expect("should be ok dialect"),
+            &mut includes,
         );
         eprintln!("21 compile");
         compiled21 = Rc::new(
@@ -888,6 +890,7 @@ fn test_generated_cse(n: u32) {
             runner.clone(),
             &mut symbols,
             get_optimizer(&generated.loc(), opts23.clone()).expect("should be ok dialect"),
+            &mut includes,
         );
         eprintln!("23 compile");
         compiled23 = Rc::new(

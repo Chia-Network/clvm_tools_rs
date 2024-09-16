@@ -6,6 +6,7 @@ use rand::prelude::Distribution;
 use rand::Rng;
 
 use std::borrow::Borrow;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -289,7 +290,7 @@ fn from_hex(l: Srcloc, v: &[u8]) -> SExp {
     SExp::QuotedString(l, b'x', result)
 }
 
-fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
+pub fn make_atom(l: Srcloc, v: Vec<u8>) -> SExp {
     let alen = v.len();
     if alen > 1 && v[0] == b'#' {
         // Search prims for appropriate primitive
@@ -504,7 +505,7 @@ impl SExp {
                 (SExp::Cons(_, r, s), SExp::Cons(_, t, u)) => r.equal_to(t) && s.equal_to(u),
                 (SExp::Cons(_, _, _), _) => false,
                 (_, SExp::Cons(_, _, _)) => false,
-                (SExp::Integer(l, a), b) => SExp::Atom(l.clone(), u8_from_number(a.clone())) == *b,
+                (SExp::Integer(_, _), b) => self.atomize() == *b,
                 (SExp::QuotedString(l, _, a), b) => SExp::Atom(l.clone(), a.clone()) == *b,
                 (SExp::Nil(l), b) => SExp::Atom(l.clone(), Vec::new()) == *b,
                 (SExp::Atom(_, _), SExp::Integer(_, _)) => other == self,
@@ -1090,10 +1091,12 @@ pub enum Rest<T> {
 #[derive(Debug, Clone)]
 pub struct ThisNode;
 
+#[derive(Debug, Clone)]
 pub enum Atom<T> {
     Here(T),
 }
 
+#[derive(Debug, Clone)]
 pub enum AtomValue<T> {
     Here(T),
 }
@@ -1231,6 +1234,98 @@ where
         } else {
             Err(E::from((s.loc(), "not a cons".to_string())))
         }
+    }
+}
+
+pub trait ToSExp {
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp>;
+}
+
+impl ToSExp for SExp {
+    fn to_sexp(&self, _srcloc: Srcloc) -> Rc<SExp> {
+        Rc::new(self.clone())
+    }
+}
+
+impl ToSExp for [u8] {
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        Rc::new(SExp::Atom(srcloc, self.to_vec()))
+    }
+}
+
+impl ToSExp for Vec<u8> {
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        Rc::new(SExp::Atom(srcloc, self.clone()))
+    }
+}
+
+impl ToSExp for &str {
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        self.as_bytes().to_sexp(srcloc)
+    }
+}
+
+impl<V> ToSExp for Vec<V>
+where
+    V: ToSExp,
+{
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        let converted: Vec<Rc<SExp>> = self.iter().map(|x| x.to_sexp(srcloc.clone())).collect();
+        Rc::new(enlist(srcloc, &converted))
+    }
+}
+
+impl<V> ToSExp for HashSet<V>
+where
+    V: ToSExp,
+{
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        let converted: Vec<Rc<SExp>> = self.iter().map(|x| x.to_sexp(srcloc.clone())).collect();
+        Rc::new(enlist(srcloc, &converted))
+    }
+}
+
+impl<V> ToSExp for BTreeSet<V>
+where
+    V: ToSExp,
+{
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        let converted: Vec<Rc<SExp>> = self.iter().map(|x| x.to_sexp(srcloc.clone())).collect();
+        Rc::new(enlist(srcloc, &converted))
+    }
+}
+
+impl<K, V> ToSExp for BTreeMap<K, V>
+where
+    K: ToSExp,
+    V: ToSExp,
+{
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        let converted: Vec<Rc<SExp>> = self
+            .iter()
+            .map(|(k, v)| {
+                let cvt = vec![k.to_sexp(srcloc.clone()), v.to_sexp(srcloc.clone())];
+                Rc::new(enlist(srcloc.clone(), &cvt))
+            })
+            .collect();
+        Rc::new(enlist(srcloc, &converted))
+    }
+}
+
+impl<K, V> ToSExp for HashMap<K, V>
+where
+    K: ToSExp,
+    V: ToSExp,
+{
+    fn to_sexp(&self, srcloc: Srcloc) -> Rc<SExp> {
+        let converted: Vec<Rc<SExp>> = self
+            .iter()
+            .map(|(k, v)| {
+                let cvt = vec![k.to_sexp(srcloc.clone()), v.to_sexp(srcloc.clone())];
+                Rc::new(enlist(srcloc.clone(), &cvt))
+            })
+            .collect();
+        Rc::new(enlist(srcloc, &converted))
     }
 }
 

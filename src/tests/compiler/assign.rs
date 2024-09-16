@@ -20,13 +20,6 @@ impl TestCompute for ComposedComputation {
     }
 }
 
-struct XPlus1 {}
-impl TestCompute for XPlus1 {
-    fn compute(&self, x: i64, y: i64) -> (i64, i64) {
-        (x + 1, y)
-    }
-}
-
 struct YPlus1 {}
 impl TestCompute for YPlus1 {
     fn compute(&self, x: i64, y: i64) -> (i64, i64) {

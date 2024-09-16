@@ -11,10 +11,12 @@ use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{CompileErr, CompilerOpts};
 use crate::compiler::dialect::{AcceptedDialect, KNOWN_DIALECTS};
 use crate::compiler::frontend::{collect_used_names_sexp, frontend};
+use crate::compiler::optimize::get_optimizer;
 use crate::compiler::rename::rename_in_cons;
 use crate::compiler::runtypes::RunFailure;
 use crate::compiler::sexp::{decode_string, enlist, parse_sexp, SExp};
 use crate::compiler::srcloc::Srcloc;
+use crate::compiler::BasicCompileContext;
 
 use crate::tests::classic::run::do_basic_brun;
 
@@ -25,7 +27,15 @@ fn compile_string(content: &String) -> Result<String, CompileErr> {
     let runner = Rc::new(DefaultProgramRunner::new());
     let opts = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
 
-    compile_file(&mut allocator, runner, opts, &content, &mut HashMap::new()).map(|x| x.to_string())
+    compile_file(
+        &mut allocator,
+        runner,
+        opts,
+        &content,
+        &mut HashMap::new(),
+        &mut Vec::new(),
+    )
+    .map(|x| x.to_sexp().to_string())
 }
 
 fn run_string_maybe_opt(
@@ -58,13 +68,14 @@ fn run_string_maybe_opt(
         opts,
         &content,
         &mut HashMap::new(),
+        &mut Vec::new(),
     )
     .and_then(|x| {
         run(
             &mut allocator,
             runner,
             Rc::new(HashMap::new()),
-            Rc::new(x),
+            Rc::new(x.to_sexp()),
             sexp_args,
             None,
             Some(TEST_TIMEOUT),
@@ -1545,6 +1556,7 @@ fn test_assign_detect_multiple_definition() {
     .to_string();
     if let Err(CompileErr(l, e)) = run_string(&prog, &"(11)".to_string()) {
         assert_eq!(l.line, 17);
+        eprintln!("error {e}");
         assert!(e.starts_with("Duplicate"));
     } else {
         assert!(false);
@@ -1999,7 +2011,7 @@ fn test_inline_in_assign_not_actually_recursive() {
 fn test_simple_rest_call_0() {
     let prog = indoc! {"
 (mod X
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun F Xs
     (if Xs
@@ -2019,7 +2031,7 @@ fn test_simple_rest_call_0() {
 fn test_simple_rest_call_inline() {
     let prog = indoc! {"
 (mod X
-  (include *standard-cl-21*)
+  (include *standard-cl-23*)
 
   (defun sum (Xs)
     (if Xs
@@ -2385,12 +2397,78 @@ fn test_rename_in_compileform_simple() {
     let opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new(&"*test*".to_string()));
     let compiled = frontend(opts, &parsed).expect("should compile");
     let helper_f: Vec<_> = compiled
+        .compileform()
         .helpers
         .iter()
         .filter(|f| f.name() == b"F")
         .collect();
     let renamed_helperform = squash_name_differences(helper_f[0].to_sexp()).expect("should rename");
     assert_eq!(renamed_helperform.to_string(), desired_outcome);
+}
+
+#[test]
+fn test_check_for_argument_presence_0() {
+    let prog = indoc! {"
+(mod (X)
+
+  (include *standard-cl-23*)
+
+  (defun F (A B C)
+    (if (@ C 1)
+      (+ A B C)
+      (x \"no argument C\")
+      )
+    )
+
+  (F &rest X)
+  )"}
+    .to_string();
+    let res1 = run_string(&prog, &"((1 2 3))".to_string()).expect("should compile and run");
+    assert_eq!(res1.to_string(), "6");
+
+    let res2 = run_string(&prog, &"((1 2))".to_string());
+    match res2 {
+        Err(CompileErr(_, err_str)) => {
+            assert!(err_str.contains("clvm raise"));
+            assert!(err_str.contains("no argument C"));
+        }
+        Ok(_) => {
+            assert!(false);
+        }
+    }
+}
+
+#[test]
+fn test_check_for_argument_presence_1() {
+    let prog = indoc! {"
+(mod (X)
+
+  (include *standard-cl-23*)
+
+  (defun F ((Q R S) B C)
+    (if (@ S 1)
+      (+ Q R S B C)
+      (x \"no argument S\")
+      )
+    )
+
+  (F &rest X)
+  )"}
+    .to_string();
+    let res1 =
+        run_string(&prog, &"(((99 101 103) 2 3))".to_string()).expect("should compile and run");
+    assert_eq!(res1.to_string(), "308");
+
+    let res2 = run_string(&prog, &"(((99 101) 2 3))".to_string());
+    match res2 {
+        Err(CompileErr(_, err_str)) => {
+            assert!(err_str.contains("clvm raise"));
+            assert!(err_str.contains("no argument S"));
+        }
+        Ok(_) => {
+            assert!(false);
+        }
+    }
 }
 
 #[test]
@@ -2419,18 +2497,26 @@ fn test_handle_explicit_empty_atom() {
             Rc::new(SExp::Integer(srcloc.clone(), bi_one())),
         ]),
     ]);
-    let mut allocator = Allocator::new();
-    let mut symbols = HashMap::new();
+    let allocator = Allocator::new();
+    let symbols = HashMap::new();
+    let includes = Vec::new();
     let runner = Rc::new(DefaultProgramRunner::new());
 
+    let mut context = BasicCompileContext::new(
+        allocator,
+        runner.clone(),
+        symbols,
+        get_optimizer(&Srcloc::start(&opts.filename()), opts.clone()).unwrap(),
+        includes,
+    );
     let compiled = opts
-        .compile_program(&mut allocator, runner.clone(), program, &mut symbols)
+        .compile_program(&mut context, program)
         .expect("should compile");
     let outcome = run(
-        &mut allocator,
+        &mut context.allocator(),
         runner,
         opts.prim_map(),
-        Rc::new(compiled),
+        Rc::new(compiled.to_sexp()),
         nil,
         None,
         None,
@@ -2500,27 +2586,32 @@ fn test_exhaustive_chars() {
 
             let sub_qe = Rc::new(SExp::QuotedString(srcloc.clone(), b'"', substitute.clone()));
 
-            let mut allocator = Allocator::new();
+            let allocator = Allocator::new();
             let mut opts: Rc<dyn CompilerOpts> = Rc::new(DefaultCompilerOpts::new("*extest*"));
             let dialect = KNOWN_DIALECTS["*standard-cl-23.1*"].accepted.clone();
             opts = opts.set_dialect(dialect);
+            let mut context = BasicCompileContext::new(
+                allocator,
+                runner.clone(),
+                HashMap::new(),
+                get_optimizer(&Srcloc::start("*test*"), opts.clone()).expect("should get"),
+                Vec::new(),
+            );
 
             let compiled = opts
-                .compile_program(
-                    &mut allocator,
-                    runner.clone(),
-                    make_test_program(sub_qe),
-                    &mut HashMap::new(),
-                )
+                .compile_program(&mut context, make_test_program(sub_qe))
                 .expect("should compile");
 
-            let compiled_output = compiled.to_string();
+            let compiled_output = compiled.to_sexp().to_string();
             let result = do_basic_brun(&vec!["brun".to_string(), compiled_output])
                 .trim()
                 .to_string();
 
-            let classic_atom = allocator.new_atom(&substitute).expect("should work");
-            let disassembled = disassemble(&mut allocator, classic_atom, None);
+            let classic_atom = context
+                .allocator()
+                .new_atom(&substitute)
+                .expect("should work");
+            let disassembled = disassemble(context.allocator(), classic_atom, None);
             assert_eq!(result, disassembled);
 
             substitute[i] = b'x';
