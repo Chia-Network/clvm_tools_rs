@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use clvmr::allocator::Allocator;
+use clvmr::NodePtr;
 
 use crate::classic::clvm_tools::binutils::assemble;
 use crate::classic::clvm_tools::clvmc::compile_clvm_text_maybe_opt;
@@ -459,7 +460,7 @@ impl Preprocessor {
         let pre_forms = parse_sexp(srcloc.clone(), content.iter().copied())?;
         let (have_module, dialect, classic_parse) =
             if let Some(dialect) = detect_chialisp_module(&pre_forms) {
-                (true, dialect, allocator.null())
+                (true, dialect, NodePtr::NIL)
             } else {
                 let classic_parse = assemble(&mut allocator, &program_text).map_err(|_| {
                     CompileErr(

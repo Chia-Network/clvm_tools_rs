@@ -51,7 +51,7 @@ jobs:
     - name: Install dependencies
       run: |
           python -m pip install --upgrade pip
-          python -m pip install maturin==1.1.0
+          python -m pip install maturin==1.7.0
 
     - name: Build MacOs with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'macos')

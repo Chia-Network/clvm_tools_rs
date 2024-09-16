@@ -110,8 +110,10 @@ fn include_dialect(allocator: &Allocator, e: &[NodePtr]) -> Option<AcceptedDiale
         allocator.sexp(include_keyword_sexp),
         allocator.sexp(name_sexp),
     ) {
-        if allocator.atom(include_keyword_sexp) == "include".as_bytes().to_vec() {
-            if let Some(dialect) = KNOWN_DIALECTS.get(&decode_string(allocator.atom(name_sexp))) {
+        let include_keyword_atom = allocator.atom(include_keyword_sexp);
+        let name_atom = allocator.atom(name_sexp);
+        if include_keyword_atom.as_ref() == b"include" {
+            if let Some(dialect) = KNOWN_DIALECTS.get(&decode_string(name_atom.as_ref())) {
                 return Some(dialect.accepted.clone());
             }
         }
