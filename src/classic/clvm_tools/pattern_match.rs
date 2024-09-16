@@ -61,12 +61,13 @@ pub fn match_sexp(
         }
         (SExp::Pair(pleft, pright), _) => match (allocator.sexp(pleft), allocator.sexp(pright)) {
             (SExp::Atom, SExp::Atom) => {
+                let left_atom = allocator.atom(pleft);
+                let right_atom = allocator.atom(pright);
+
                 match allocator.sexp(sexp) {
                     SExp::Atom => {
                         // Expression is ($ . $), sexp is '$', result: no capture.
                         // Avoid double borrow.
-                        let left_atom = allocator.atom(pleft);
-                        let right_atom = allocator.atom(pright);
                         let sexp_atom = allocator.atom(sexp);
                         if left_atom.as_ref() == ATOM_MATCH {
                             if right_atom.as_ref() == ATOM_MATCH {
@@ -101,9 +102,6 @@ pub fn match_sexp(
                         None
                     }
                     SExp::Pair(sleft, sright) => {
-                        let left_atom = allocator.atom(sleft);
-                        let right_atom = allocator.atom(sright);
-
                         if left_atom.as_ref() == SEXP_MATCH && right_atom.as_ref() != SEXP_MATCH {
                             return unify_bindings(
                                 allocator,
