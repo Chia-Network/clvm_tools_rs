@@ -71,7 +71,7 @@ jobs:
           python -m venv venv && \
           source ./venv/bin/activate && \
           pip install --upgrade pip && \
-          pip install --extra-index-url https://pypi.chia.net/simple/ maturin==1.2.3 && \
+          pip install --extra-index-url https://pypi.chia.net/simple/ maturin==1.5.0 && \
           maturin build -i python --release --strip \
           '
 
