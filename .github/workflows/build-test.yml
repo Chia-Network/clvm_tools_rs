@@ -63,7 +63,7 @@ jobs:
     - name: Build Linux in manylinux_2_28 with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'ubuntu')
       run: |
-        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.7.0 build --release --strip --manylinux 2_28
+        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.7.0 build --release --strip --manylinux 2_28 --sdist
         # Refresh in case any ownerships changed.
         mv target target.docker && cp -r target.docker target
         # Ensure an empty .cargo-lock file exists.
@@ -154,7 +154,7 @@ jobs:
         # Check that recompiling deployed puzzles match with their deployed hashes
         cp support/install_deps.sh support/verify_compiler_version.sh chia-blockchain
         (cd chia-blockchain && python -m venv .venv && . .venv/bin/activate && pip install --upgrade pip && \
-          python -m pip install maturin==1.1.0 && \
+          python -m pip install maturin==1.7.0 && \
           cd .. && pip install --no-index --find-links target/wheels/ clvm_tools_rs && \
           cd chia-blockchain && \
           # deps for manage_clvm.py
