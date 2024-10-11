@@ -1,8 +1,3 @@
-
 (include *standard-cl-23*)
 (import std.reduce exposing reduce)
-(reduce (lambda (a b) (+ a b)) 0 (list 1 2 3))
-
-
-
-
+(export () (reduce (lambda (a b) (+ a b)) 0 (list 1 2 3)))
