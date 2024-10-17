@@ -287,14 +287,13 @@ impl ArgumentParser {
                                 lcopy.push(v);
                                 params.insert(name, ArgumentValue::ArgArray(lcopy));
                             }
-                            _ => match &optional_arg.options.default {
-                                Some(v) => {
+                            _ => {
+                                if let Some(v) = &optional_arg.options.default {
                                     let mut lcopy = l.clone();
                                     lcopy.push(v.clone());
                                     params.insert(name, ArgumentValue::ArgArray(lcopy));
                                 }
-                                None => {}
-                            },
+                            }
                         },
                         _ => {
                             if let Ok(v) = converter.convert(value) {
