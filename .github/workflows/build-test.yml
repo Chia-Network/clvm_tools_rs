@@ -36,7 +36,7 @@ jobs:
       with:
         toolchain: stable
 
-    - uses: actions/setup-python@v4
+    - uses: actions/setup-python@v5
       name: Install Python ${{ matrix.python }}
       with:
         python-version: ${{ matrix.python }}
