@@ -48,6 +48,8 @@ jobs:
         rm rustup-init checksum.txt
 
     - name: Build m1 wheels
+      env:
+        MACOSX_DEPLOYMENT_TARGET: '13.0'
       run: |
         python3 -m venv venv
         . ./venv/bin/activate
