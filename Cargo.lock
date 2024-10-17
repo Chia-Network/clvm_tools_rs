@@ -221,7 +221,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "pyo3",
- "pyo3-build-config 0.15.2",
+ "pyo3-build-config",
  "rand",
  "rand_chacha",
  "regex",
@@ -941,19 +941,10 @@ dependencies = [
  "libc",
  "memoffset",
  "parking_lot",
- "pyo3-build-config 0.20.2",
+ "pyo3-build-config",
  "pyo3-ffi",
  "pyo3-macros",
  "unindent",
-]
-
-[[package]]
-name = "pyo3-build-config"
-version = "0.15.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "779239fc40b8e18bc8416d3a37d280ca9b9fb04bda54b98037bb6748595c2410"
-dependencies = [
- "once_cell",
 ]
 
 [[package]]
@@ -973,7 +964,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dbb7dec17e17766b46bca4f1a4215a85006b4c2ecde122076c562dd058da6cf1"
 dependencies = [
  "libc",
- "pyo3-build-config 0.20.2",
+ "pyo3-build-config",
 ]
 
 [[package]]
