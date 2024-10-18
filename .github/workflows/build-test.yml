@@ -27,7 +27,7 @@ jobs:
         python: [3.9, '3.10', 3.11]
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
@@ -235,7 +235,7 @@ jobs:
     needs: build_wheels
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
@@ -310,7 +310,7 @@ jobs:
     runs-on: ubuntu-20.04
     name: cargo fmt
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 1
       - name: Install rust
@@ -325,7 +325,7 @@ jobs:
   clippy:
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -342,7 +342,7 @@ jobs:
     runs-on: ubuntu-20.04
     name: Unit tests
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 1
       - name: Install rust
@@ -356,7 +356,7 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions-rs/toolchain@v1
         with:
             toolchain: stable
