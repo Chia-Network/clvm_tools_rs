@@ -27,12 +27,12 @@ fn shrink_expr_from_string(s: String) -> Result<String, CompileErr> {
             return frontend(opts.clone(), &parsed_program);
         })
         .and_then(|program| {
-            let e = Evaluator::new(opts.clone(), runner, program.helpers);
+            let e = Evaluator::new(opts.clone(), runner, program.compileform().helpers.clone());
             return e.shrink_bodyform(
                 &mut allocator,
-                program.args.clone(),
+                program.compileform().args.clone(),
                 &HashMap::new(),
-                program.exp.clone(),
+                program.compileform().exp.clone(),
                 false,
                 Some(EVAL_STACK_LIMIT),
             );
@@ -113,7 +113,15 @@ fn compile_with_fe_opt(s: String) -> Result<String, CompileErr> {
     let mut opts: Rc<dyn CompilerOpts> =
         Rc::new(DefaultCompilerOpts::new(&"*program*".to_string()));
     opts = opts.set_frontend_opt(true);
-    compile_file(&mut allocator, runner, opts, &s, &mut HashMap::new()).map(|r| r.to_string())
+    compile_file(
+        &mut allocator,
+        runner,
+        opts,
+        &s,
+        &mut HashMap::new(),
+        &mut Vec::new(),
+    )
+    .map(|r| r.to_sexp().to_string())
 }
 
 #[test]

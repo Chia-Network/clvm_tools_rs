@@ -112,12 +112,14 @@ fn run_clvm_compilation(
         CompileClvmAction::CompileCode(output) => {
             let mut allocator = Allocator::new();
             let mut symbols = HashMap::new();
+            let mut includes = Vec::new();
 
             // Output is a program represented as clvm data in allocator.
             let clvm_result = clvmc::compile_clvm_text(
                 &mut allocator,
                 opts.clone(),
                 &mut symbols,
+                &mut includes,
                 &file_content,
                 &path_string,
                 true,
@@ -402,6 +404,7 @@ fn launch_tool(tool_name: String, args: Vec<String>, default_stage: u32) -> Vec<
 }
 
 #[pyfunction]
+#[pyo3(signature = (tool_name, args))]
 fn call_tool(tool_name: String, args: Vec<String>) -> PyResult<Vec<u8>> {
     let mut allocator = Allocator::new();
     let mut stdout = Stream::new(None);
