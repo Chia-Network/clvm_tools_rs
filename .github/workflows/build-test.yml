@@ -224,7 +224,7 @@ jobs:
         docker run -v ${GITHUB_WORKSPACE}:/root/clvm_tools_rs -t clvm-tools-rs-alpine sh /root/build-alpine.sh
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: wheels
         path: ./target/wheels/

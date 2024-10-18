@@ -53,7 +53,7 @@ jobs:
       run: cargo publish --dry-run
 
     - name: Upload crate artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: crate
         path: ./target/package/clvm_tools_rs-*.crate
