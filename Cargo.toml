@@ -36,7 +36,7 @@ binascii = "0.1.4"
 yaml-rust2 = "0.9"
 hashlink = "0.9.1"
 serde = { version = "1.0", features = ["derive", "rc"] }
-regex = "1.8.4"
+regex = "1.11.0"
 rand = { version = "0.8.5", optional = true }
 rand_chacha = { version = "0.3.1", optional = true }
 lfsr = { version = "0.3.0", optional = true }
