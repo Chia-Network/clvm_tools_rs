@@ -224,9 +224,9 @@ jobs:
         docker run -v ${GITHUB_WORKSPACE}:/root/clvm_tools_rs -t clvm-tools-rs-alpine sh /root/build-alpine.sh
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        name: wheels
+        name: wheels-${{ matrix.os }}-py-${{ matrix.python }}
         path: ./target/wheels/
 
   upload:
@@ -250,9 +250,10 @@ jobs:
         python-version: "3.10"
 
     - name: Download artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
-        name: wheels
+        merge-multiple: true
+        pattern: wheels-*
         path: ./target/wheels/
 
     - name: Check for incompatible wheels and bail if found
