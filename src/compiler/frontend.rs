@@ -1128,6 +1128,7 @@ pub fn frontend(
     Ok(FrontendOutput::CompileForm(CompileForm {
         include_forms: includes.to_vec(),
         helpers: live_helpers,
+        loc: pre_forms[0].loc(),
         ..our_mod
     }))
 }
