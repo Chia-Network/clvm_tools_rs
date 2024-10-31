@@ -262,7 +262,7 @@ const KW_PAIRS: [KwAtomPair; 49] = [
         version: 1,
     },
     KwAtomPair {
-        v: &[0x40],
+        v: &[0x3E],
         n: "keccak256",
         version: 2,
     },
