@@ -2297,7 +2297,10 @@ fn test_classic_obeys_operator_choice_at_compile_time_version_0() {
     ])
     .trim()
     .to_string();
-    assert_eq!(compiled, "FAIL: unimplemented operator 48");
+    assert_eq!(
+        compiled,
+        "(q . 0x97c3f14ced4dfc280611fd8d9b158163e8981b3bce4d1bb6dd0bcc679a2e2455)"
+    );
 }
 
 #[test]

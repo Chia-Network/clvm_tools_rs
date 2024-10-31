@@ -12,7 +12,7 @@ pub mod syntax_error;
 /// each time a new set of operators is included in the primitive set in clvm.
 /// We keep track of what was added when so users can specify what version of the
 /// tools' output they're expecting when it matters.
-pub const OPERATORS_LATEST_VERSION: usize = 1;
+pub const OPERATORS_LATEST_VERSION: usize = 2;
 
 struct KwAtomPair {
     v: &'static [u8],
@@ -20,7 +20,7 @@ struct KwAtomPair {
     version: usize,
 }
 
-const KW_PAIRS: [KwAtomPair; 48] = [
+const KW_PAIRS: [KwAtomPair; 49] = [
     KwAtomPair {
         v: &[0x01],
         n: "q",
@@ -261,6 +261,11 @@ const KW_PAIRS: [KwAtomPair; 48] = [
         n: "secp256r1_verify",
         version: 1,
     },
+    KwAtomPair {
+        v: &[0x40],
+        n: "keccak256",
+        version: 2,
+    },
 ];
 
 lazy_static! {
@@ -292,20 +297,34 @@ lazy_static! {
         }
         result
     };
+    pub static ref KEYWORD_FROM_ATOM_2: HashMap<Vec<u8>, String> = {
+        let mut result = HashMap::new();
+        for pair in KW_PAIRS.iter().filter(|p| p.version <= 2) {
+            result.insert(pair.v.to_vec(), pair.n.to_string());
+        }
+        result
+    };
+    pub static ref KEYWORD_TO_ATOM_2: HashMap<String, Vec<u8>> = {
+        let mut result = HashMap::new();
+        for pair in KW_PAIRS.iter().filter(|p| p.version <= 2) {
+            result.insert(pair.n.to_string(), pair.v.to_vec());
+        }
+        result
+    };
 }
 
 pub fn keyword_from_atom(version: usize) -> &'static HashMap<Vec<u8>, String> {
-    if version == 0 {
-        &KEYWORD_FROM_ATOM_0
-    } else {
-        &KEYWORD_FROM_ATOM_1
+    match version {
+        0 => &KEYWORD_FROM_ATOM_0,
+        1 => &KEYWORD_FROM_ATOM_1,
+        _ => &KEYWORD_FROM_ATOM_2,
     }
 }
 
 pub fn keyword_to_atom(version: usize) -> &'static HashMap<String, Vec<u8>> {
-    if version == 0 {
-        &KEYWORD_TO_ATOM_0
-    } else {
-        &KEYWORD_TO_ATOM_1
+    match version {
+        0 => &KEYWORD_TO_ATOM_0,
+        1 => &KEYWORD_TO_ATOM_1,
+        _ => &KEYWORD_TO_ATOM_2,
     }
 }
