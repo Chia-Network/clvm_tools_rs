@@ -363,8 +363,8 @@ impl Dialect for CompilerOperatorsInternal {
     // The softfork operator comes with an extension argument.
     fn softfork_extension(&self, ext: u32) -> OperatorSet {
         match ext {
-            0 => OperatorSet::Default,
-            1 => OperatorSet::Keccak,
+            0 | 1 => OperatorSet::Default,
+            2 => OperatorSet::Keccak,
             // new extensions go here
             _ => OperatorSet::Unknown,
         }

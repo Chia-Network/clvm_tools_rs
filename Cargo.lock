@@ -244,7 +244,7 @@ dependencies = [
 [[package]]
 name = "clvmr"
 version = "0.9.1"
-source = "git+https://github.com/Chia-Network/clvm_rs?rev=fe356d69b556f345b818d605a667596620585a85#fe356d69b556f345b818d605a667596620585a85"
+source = "git+https://github.com/Chia-Network/clvm_rs?rev=ad539f504ade075262ac1754a9e0010c2789255f#ad539f504ade075262ac1754a9e0010c2789255f"
 dependencies = [
  "chia-bls",
  "hex-literal",
