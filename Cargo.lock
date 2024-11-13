@@ -218,7 +218,7 @@ dependencies = [
  "getrandom",
  "hashlink",
  "hex",
- "indoc 1.0.9",
+ "indoc",
  "js-sys",
  "lazy_static",
  "lfsr",
@@ -547,12 +547,6 @@ dependencies = [
  "equivalent",
  "hashbrown",
 ]
-
-[[package]]
-name = "indoc"
-version = "1.0.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfa799dd5ed20a7e349f3b4639aa80d74549c81716d9ec4f994c9b5815598306"
 
 [[package]]
 name = "indoc"
@@ -937,7 +931,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a5e00b96a521718e08e03b1a622f01c8a8deb50719335de3f60b3b3950f069d8"
 dependencies = [
  "cfg-if",
- "indoc 2.0.4",
+ "indoc",
  "libc",
  "memoffset",
  "parking_lot",
