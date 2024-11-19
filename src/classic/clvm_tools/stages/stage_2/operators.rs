@@ -179,10 +179,10 @@ impl CompilerOperatorsInternal {
         let ops_version = self
             .get_operators_version()
             .unwrap_or(OPERATORS_LATEST_VERSION);
-        if ops_version == 0 {
-            OperatorSet::Default
+        if ops_version > 1 {
+            OperatorSet::Keccak
         } else {
-            OperatorSet::BLS
+            OperatorSet::Default
         }
     }
 
@@ -363,9 +363,10 @@ impl Dialect for CompilerOperatorsInternal {
     // The softfork operator comes with an extension argument.
     fn softfork_extension(&self, ext: u32) -> OperatorSet {
         match ext {
-            0 => OperatorSet::BLS,
+            0 | 1 => OperatorSet::Default,
+            2 => OperatorSet::Keccak,
             // new extensions go here
-            _ => OperatorSet::Default,
+            _ => OperatorSet::Unknown,
         }
     }
 
