@@ -226,7 +226,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "pyo3",
- "pyo3-build-config",
+ "pyo3-build-config 0.23.3",
  "rand",
  "rand_chacha",
  "regex",
@@ -936,7 +936,7 @@ dependencies = [
  "memoffset",
  "parking_lot",
  "portable-atomic",
- "pyo3-build-config",
+ "pyo3-build-config 0.21.2",
  "pyo3-ffi",
  "pyo3-macros",
  "unindent",
@@ -953,13 +953,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyo3-build-config"
+version = "0.23.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc0e0469a84f208e20044b98965e1561028180219e35352a2afaf2b942beff3b"
+dependencies = [
+ "once_cell",
+ "target-lexicon",
+]
+
+[[package]]
 name = "pyo3-ffi"
 version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01be5843dc60b916ab4dad1dca6d20b9b4e6ddc8e15f50c47fe6d85f1fb97403"
 dependencies = [
  "libc",
- "pyo3-build-config",
+ "pyo3-build-config 0.21.2",
 ]
 
 [[package]]
@@ -982,7 +992,7 @@ checksum = "08260721f32db5e1a5beae69a55553f56b99bd0e1c3e6e0a5e8851a9d0f5a85c"
 dependencies = [
  "heck",
  "proc-macro2 1.0.66",
- "pyo3-build-config",
+ "pyo3-build-config 0.21.2",
  "quote 1.0.32",
  "syn 2.0.32",
 ]
@@ -1251,9 +1261,9 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "target-lexicon"
-version = "0.12.13"
+version = "0.12.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69758bda2e78f098e4ccb393021a0963bb3442eac05f135c30f61b7370bbafae"
+checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 
 [[package]]
 name = "tempfile"
