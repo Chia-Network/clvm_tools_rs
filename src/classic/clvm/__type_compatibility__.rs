@@ -22,7 +22,7 @@ pub fn char_to_string(ch: char) -> String {
 }
 
 pub fn vec_to_string(r: &[u8]) -> String {
-    return String::from_utf8_lossy(r).as_ref().to_string();
+    String::from_utf8_lossy(r).as_ref().to_string()
 }
 
 /**
