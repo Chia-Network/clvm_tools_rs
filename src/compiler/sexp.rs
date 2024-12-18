@@ -367,7 +367,7 @@ fn list_no_parens(a: &SExp, b: &SExp) -> String {
 }
 
 pub fn decode_string(v: &[u8]) -> String {
-    return String::from_utf8_lossy(v).as_ref().to_string();
+    String::from_utf8_lossy(v).as_ref().to_string()
 }
 
 pub fn printable(a: &[u8], quoted: bool) -> bool {

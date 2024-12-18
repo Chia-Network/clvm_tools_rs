@@ -202,7 +202,7 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
         ));
     }
 
-    return match stack.pop() {
+    match stack.pop() {
         None => Err(EvalErr(NodePtr::NIL, "stack empty".to_string())),
         Some(top) => match top.borrow() {
             CastableType::CLVMObject(o) => Ok(*o),
@@ -211,7 +211,7 @@ pub fn to_sexp_type(allocator: &mut Allocator, value: CastableType) -> Result<No
                 format!("unimplemented {:?}", stack[0]),
             )),
         },
-    };
+    }
 }
 
 pub fn sexp_as_bin(allocator: &mut Allocator, sexp: NodePtr) -> Bytes {
