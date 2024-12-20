@@ -91,7 +91,7 @@ impl<'a> SExpToBytesIterator<'a> {
     }
 }
 
-impl<'a> Iterator for SExpToBytesIterator<'a> {
+impl Iterator for SExpToBytesIterator<'_> {
     type Item = Vec<u8>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -281,6 +281,6 @@ pub fn atom_from_stream<'a>(
         if blob.length() != size as usize {
             return Err(EvalErr(NodePtr::NIL, "bad encoding".to_string()));
         }
-        return allocator.new_atom(blob.data());
+        allocator.new_atom(blob.data())
     })
 }
