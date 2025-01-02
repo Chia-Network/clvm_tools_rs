@@ -8,7 +8,7 @@ features = ["extension-module"]
 
 [project]
 name = "clvm_tools_rs"
-dynamic = "version"
+dynamic = ["version"]
 
 # - Reenable these when we switch over from clvm_tools.
 # [project.scripts]
