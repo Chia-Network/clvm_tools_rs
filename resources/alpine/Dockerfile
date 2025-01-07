@@ -5,6 +5,6 @@ RUN curl --proto '=https' --tlsv1.2 -sSf -o rustup https://sh.rustup.rs
 RUN sh ./rustup -y
 WORKDIR /root/clvm_tools_rs
 RUN python3 -m venv venv
-RUN source venv/bin/activate
+ENV PATH="/root/clvm_tools_rs/venv/bin:$PATH"
 RUN pip install maturin[patchelf]
 COPY ./build-alpine.sh /root
