@@ -374,15 +374,16 @@ impl Dialect for CompilerOperatorsInternal {
         max_cost: Cost,
         _extension: OperatorSet,
     ) -> Response {
-        let new_operators = self.get_operators_version().unwrap_or(OPERATORS_LATEST_VERSION);
-        let base_dialect =
-            if new_operators > 0 {
-                let rc: Box<dyn Dialect> = Box::new(ChiaDialect::new(NO_UNKNOWN_OPS));
-                rc
-            } else {
-                let rc: Box<dyn Dialect> = Box::new(OriginalDialect::new(NO_UNKNOWN_OPS));
-                rc
-            };
+        let new_operators = self
+            .get_operators_version()
+            .unwrap_or(OPERATORS_LATEST_VERSION);
+        let base_dialect = if new_operators > 0 {
+            let rc: Box<dyn Dialect> = Box::new(ChiaDialect::new(NO_UNKNOWN_OPS));
+            rc
+        } else {
+            let rc: Box<dyn Dialect> = Box::new(OriginalDialect::new(NO_UNKNOWN_OPS));
+            rc
+        };
         // Ensure we have at least the bls extensions available.
         // The extension passed in above is based on the state of whether
         // we're approaching from within softfork...  As the compiler author

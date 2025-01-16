@@ -4,7 +4,11 @@ use clvm_rs::core_ops::{op_cons, op_eq, op_first, op_if, op_listp, op_raise, op_
 use clvm_rs::cost::Cost;
 use clvm_rs::dialect::{Dialect, OperatorSet};
 use clvm_rs::err_utils::err;
-use clvm_rs::more_ops::{op_add, op_all, op_any, op_ash, op_concat, op_div, op_divmod, op_gr, op_gr_bytes, op_logand, op_logior, op_lognot, op_logxor, op_lsh, op_multiply, op_not, op_point_add, op_pubkey_for_exp, op_sha256, op_strlen, op_substr, op_subtract, op_unknown};
+use clvm_rs::more_ops::{
+    op_add, op_all, op_any, op_ash, op_concat, op_div, op_divmod, op_gr, op_gr_bytes, op_logand,
+    op_logior, op_lognot, op_logxor, op_lsh, op_multiply, op_not, op_point_add, op_pubkey_for_exp,
+    op_sha256, op_strlen, op_substr, op_subtract, op_unknown,
+};
 use clvm_rs::reduction::{EvalErr, Reduction, Response};
 
 use clvm_rs::run_program::{run_program_with_pre_eval, PreEval};
@@ -41,9 +45,8 @@ impl Default for DefaultProgramRunner {
     }
 }
 
-
 pub struct OriginalDialect {
-    flags: u32
+    flags: u32,
 }
 
 impl OriginalDialect {
@@ -154,16 +157,18 @@ fn run_program_with_pre_eval_dialect<D: Dialect>(
     program: NodePtr,
     args: NodePtr,
     max_cost: Cost,
-    pre_eval_f: Option<Box<dyn Fn(&mut Allocator, NodePtr, NodePtr) -> Result<Option<Box<dyn Fn(&mut Allocator, Option<NodePtr>)>>, EvalErr>>>
+    pre_eval_f: Option<
+        Box<
+            dyn Fn(
+                &mut Allocator,
+                NodePtr,
+                NodePtr,
+            )
+                -> Result<Option<Box<dyn Fn(&mut Allocator, Option<NodePtr>)>>, EvalErr>,
+        >,
+    >,
 ) -> Result<Reduction, EvalErr> {
-    run_program_with_pre_eval(
-        allocator,
-        dialect,
-        program,
-        args,
-        max_cost,
-        pre_eval_f,
-    )
+    run_program_with_pre_eval(allocator, dialect, program, args, max_cost, pre_eval_f)
 }
 
 impl TRunProgram for DefaultProgramRunner {
