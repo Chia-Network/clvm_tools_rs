@@ -29,6 +29,7 @@ use crate::compiler::comptypes::{
     BodyForm, CallSpec, Callable, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm,
     PrimaryCodegen, SyntheticType,
 };
+use crate::compiler::dialect::{BASE_STEPPING, MAX_STEPPING};
 use crate::compiler::evaluate::{
     build_reflex_captures, dequote, is_i_atom, is_not_atom, Evaluator, EVAL_STACK_LIMIT,
 };
@@ -699,12 +700,12 @@ pub fn get_optimizer(
                 loc.clone(),
                 format!("minimum language stepping is 21, {s} specified"),
             ));
-        } else if s > 23 {
+        } else if s > MAX_STEPPING {
             return Err(CompileErr(
                 loc.clone(),
-                format!("maximum language stepping is 23 at this time, {s} specified"),
+                format!("maximum language stepping is {MAX_STEPPING} at this time, {s} specified"),
             ));
-        } else if s == 23 && opts.optimize() {
+        } else if s >= BASE_STEPPING && opts.optimize() {
             return Ok(Box::new(Strategy23::new()));
         }
     }

@@ -2543,3 +2543,16 @@ fn test_include_bin_should_not_be_parsed() {
     let result = do_basic_brun(&vec!["brun".to_string(), program]);
     assert_eq!(result.trim(), "\"'test\"");
 }
+
+#[test]
+fn test_cl24_compilation() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (X) (include *standard-cl-24*) 1337)"
+            .to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), program]);
+    assert_eq!(result.trim(), "1337");
+}
