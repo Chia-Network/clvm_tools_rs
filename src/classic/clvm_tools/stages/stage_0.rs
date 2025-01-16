@@ -151,22 +151,16 @@ impl Dialect for OriginalDialect {
     }
 }
 
+type PostEvalT = Box<dyn Fn(&mut Allocator, Option<NodePtr>)>;
+type PreEvalT = Box<dyn Fn(&mut Allocator, NodePtr, NodePtr) -> Result<Option<PostEvalT>, EvalErr>>;
+
 fn run_program_with_pre_eval_dialect<D: Dialect>(
     allocator: &mut Allocator,
     dialect: &D,
     program: NodePtr,
     args: NodePtr,
     max_cost: Cost,
-    pre_eval_f: Option<
-        Box<
-            dyn Fn(
-                &mut Allocator,
-                NodePtr,
-                NodePtr,
-            )
-                -> Result<Option<Box<dyn Fn(&mut Allocator, Option<NodePtr>)>>, EvalErr>,
-        >,
-    >,
+    pre_eval_f: Option<PreEvalT>,
 ) -> Result<Reduction, EvalErr> {
     run_program_with_pre_eval(allocator, dialect, program, args, max_cost, pre_eval_f)
 }
