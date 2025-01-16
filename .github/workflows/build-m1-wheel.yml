@@ -51,7 +51,10 @@ jobs:
       env:
         MACOSX_DEPLOYMENT_TARGET: '13.0'
       run: |
-        python3 -m venv venv
+        python3 -m venv ./test-init
+        source ./test-init/bin/activate
+        pip install virtualenv
+        python3 -m virtualenv -p python3.12 ./venv
         . ./venv/bin/activate
         export PATH=~/.cargo/bin:$PATH
         pip install maturin==1.7.0
@@ -68,7 +71,7 @@ jobs:
       run: |
         . ./venv/bin/activate
         python -m pip install pytest
-        python -m pip install blspy==2.0.0
+        python -m pip install blspy
 
     - name: install clvm & clvm_tools
       run: |
