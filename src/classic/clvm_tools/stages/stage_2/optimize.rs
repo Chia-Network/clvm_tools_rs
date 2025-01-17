@@ -165,7 +165,7 @@ pub fn cons_q_a_optimizer(
 
     let matched = match_sexp(allocator, cons_q_a_optimizer_pattern, r, HashMap::new());
 
-    return match (
+    match (
         matched.as_ref().and_then(|t1| t1.get("args").copied()),
         matched.as_ref().and_then(|t1| t1.get("sexp").copied()),
     ) {
@@ -177,7 +177,7 @@ pub fn cons_q_a_optimizer(
             }
         }
         _ => Ok(r),
-    };
+    }
 }
 
 fn cons_pattern(allocator: &mut Allocator) -> NodePtr {
@@ -521,41 +521,35 @@ fn path_optimizer(
     let first_match = match_sexp(allocator, first_atom_pattern, r, HashMap::new());
     let rest_match = match_sexp(allocator, rest_atom_pattern, r, HashMap::new());
 
-    return m! {
-        match (first_match, rest_match) {
-            (Some(first), _) => {
-                match first.
-                    get("atom").
-                    and_then(|a| atom(allocator, *a).ok()).
-                    map(|atom| number_from_u8(&atom))
-                {
-                    Some(atom) => {
-                        let node =
-                            NodePath::new(Some(atom)).
-                            add(NodePath::new(None).first());
-                        allocator.new_atom(node.as_path().data())
-                    },
-                    _ => { Ok(r) }
+    match (first_match, rest_match) {
+        (Some(first), _) => {
+            match first
+                .get("atom")
+                .and_then(|a| atom(allocator, *a).ok())
+                .map(|atom| number_from_u8(&atom))
+            {
+                Some(atom) => {
+                    let node = NodePath::new(Some(atom)).add(NodePath::new(None).first());
+                    allocator.new_atom(node.as_path().data())
                 }
-            },
-            (_, Some(rest)) => {
-                match rest.
-                    get("atom").
-                    and_then(|a| atom(allocator, *a).ok()).
-                    map(|atom| number_from_u8(&atom))
-                {
-                    Some(atom) => {
-                        let node =
-                            NodePath::new(Some(atom)).
-                            add(NodePath::new(None).rest());
-                        allocator.new_atom(node.as_path().data())
-                    },
-                    _ => { Ok(r) }
-                }
-            },
-            _ => Ok(r)
+                _ => Ok(r),
+            }
         }
-    };
+        (_, Some(rest)) => {
+            match rest
+                .get("atom")
+                .and_then(|a| atom(allocator, *a).ok())
+                .map(|atom| number_from_u8(&atom))
+            {
+                Some(atom) => {
+                    let node = NodePath::new(Some(atom)).add(NodePath::new(None).rest());
+                    allocator.new_atom(node.as_path().data())
+                }
+                _ => Ok(r),
+            }
+        }
+        _ => Ok(r),
+    }
 }
 
 fn quote_pattern_1(allocator: &mut Allocator) -> NodePtr {

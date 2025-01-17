@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -43,7 +43,7 @@ jobs:
         run: wasm-pack build --release --target=nodejs wasm && wasm-pack pack wasm
 
       - name: Setup Node 16.x
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '16.x'
 
@@ -62,7 +62,7 @@ jobs:
           cd wasm/tests/clvm-tools-interface && npm install && yarn test
 
       - name: Upload npm pkg artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: npm-pkg
           path: ./wasm/pkg/clvm_tools_wasm-*.tgz

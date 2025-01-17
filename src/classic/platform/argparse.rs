@@ -69,11 +69,9 @@ impl IntConversion {
     }
 }
 
-#[derive(Derivative, Clone)]
-#[derivative(Debug)]
+#[derive(Clone)]
 pub struct Argument {
     action: TArgOptionAction,
-    #[derivative(Debug = "ignore")]
     typeofarg: Rc<dyn ArgumentValueConv>,
     default: Option<ArgumentValue>,
     help: String,
@@ -124,7 +122,7 @@ impl Default for Argument {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Arg {
     names: Vec<String>,
     options: Argument,
@@ -141,7 +139,7 @@ pub struct TArgumentParserProps {
     pub prog: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ArgumentParser {
     prog: String,
     // desc: String,
