@@ -113,6 +113,8 @@ fn run_clvm_compilation(
             let mut allocator = Allocator::new();
             let mut symbols = HashMap::new();
 
+            eprintln!("compile code {path_string} {file_content}");
+
             // Output is a program represented as clvm data in allocator.
             let clvm_result = clvmc::compile_clvm_text(
                 &mut allocator,
