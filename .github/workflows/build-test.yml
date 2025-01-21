@@ -141,7 +141,7 @@ jobs:
 
 
     - name: Verify recompilation of old sources match with new compiler
-      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.11')
+      if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.9')
       run: |
         set -x
         # Build cmd line tools
