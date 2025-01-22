@@ -126,7 +126,7 @@ fn run_clvm_compilation(
             )
             .map_err(|e| {
                 let eres = CompError::new_err(e.format(&allocator, opts));
-                debug!("error from compile: {eres:?}");
+                eprintln!("error from compile: {eres:?}");
                 eres
             })?;
 
