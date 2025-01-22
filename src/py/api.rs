@@ -113,9 +113,6 @@ fn run_clvm_compilation(
             let mut allocator = Allocator::new();
             let mut symbols = HashMap::new();
 
-            eprintln!("compile code {path_string} {file_content}");
-            eprintln!("include paths {search_paths:?}");
-
             // Output is a program represented as clvm data in allocator.
             let clvm_result = clvmc::compile_clvm_text(
                 &mut allocator,
@@ -125,11 +122,7 @@ fn run_clvm_compilation(
                 &path_string,
                 true,
             )
-            .map_err(|e| {
-                let eres = CompError::new_err(e.format(&allocator, opts));
-                eprintln!("error from compile: {eres:?}");
-                eres
-            })?;
+            .map_err(|e| CompError::new_err(e.format(&allocator, opts)))?;
 
             // Get the text representation, which will go either to the output file
             // or result.
