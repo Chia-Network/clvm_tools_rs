@@ -207,7 +207,11 @@ impl CompilerOperatorsInternal {
                         Bytes::new(Some(BytesFromType::Raw(atom.as_ref().to_vec()))).decode();
                     // Use the read interface in CompilerOpts if we have one.
                     if let Some(opts) = self.get_compiler_opts() {
-                        eprintln!("read {} search paths {:?}", filename, opts.get_search_paths());
+                        eprintln!(
+                            "read {} search paths {:?}",
+                            filename,
+                            opts.get_search_paths()
+                        );
                         if let Ok((_, content)) =
                             opts.read_new_file(self.source_file.clone(), filename.clone())
                         {

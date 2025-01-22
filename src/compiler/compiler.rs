@@ -296,7 +296,8 @@ impl CompilerOpts for DefaultCompilerOpts {
             let mut p = PathBuf::from(dir);
             p.push(filename.clone());
             match fs::read(p.clone()) {
-                Err(_e) => {
+                Err(e) => {
+                    eprintln!("error reading {filename}: {e:?}");
                     continue;
                 }
                 Ok(content) => {
