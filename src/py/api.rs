@@ -114,6 +114,7 @@ fn run_clvm_compilation(
             let mut symbols = HashMap::new();
 
             eprintln!("compile code {path_string} {file_content}");
+            eprintln!("include paths {search_paths:?}");
 
             // Output is a program represented as clvm data in allocator.
             let clvm_result = clvmc::compile_clvm_text(
