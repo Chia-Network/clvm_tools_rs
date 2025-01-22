@@ -297,7 +297,7 @@ impl CompilerOpts for DefaultCompilerOpts {
             p.push(filename.clone());
             match fs::read(p.clone()) {
                 Err(e) => {
-                    eprintln!("error reading {filename}: {e:?}");
+                    eprintln!("error reading {p:?}: {e:?}");
                     continue;
                 }
                 Ok(content) => {
