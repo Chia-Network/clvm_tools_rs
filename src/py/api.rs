@@ -126,6 +126,8 @@ fn run_clvm_compilation(
             )
             .map_err(|e| CompError::new_err(e.format(&allocator, opts)))?;
 
+            eprintln!("result {clvm_result:?}");
+
             // Get the text representation, which will go either to the output file
             // or result.
             let mut hex_text = Bytes::new(Some(BytesFromType::Raw(node_to_bytes(
