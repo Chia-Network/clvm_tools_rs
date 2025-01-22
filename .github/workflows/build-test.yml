@@ -160,7 +160,7 @@ jobs:
           # deps for manage_clvm.py
           pip install click typing_extensions chia_rs clvm chia_puzzles_py && \
           export PYTHONPATH=${PYTHONPATH}:$(pwd) && \
-          ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && . .venv/bin/activate && python tools/manage_clvm.py check)
+          ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && . .venv/bin/activate && python chia_puzzles_py/manage_clvm.py check)
 
     - name: Test Classic command line tools with pytest
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.9')
