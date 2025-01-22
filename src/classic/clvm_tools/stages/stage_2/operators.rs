@@ -216,7 +216,9 @@ impl CompilerOperatorsInternal {
                     // Use the filesystem like normal if the opts couldn't find
                     // the file.
                     fs::read_to_string(&filename)
-                        .map_err(|_| EvalErr(NodePtr::NIL, format!("Failed to read file {filename}")))
+                        .map_err(|_| {
+                            EvalErr(NodePtr::NIL, format!("Failed to read file {filename}"))
+                        })
                         .and_then(|content| parse_file_content(allocator, &content))
                 }
                 _ => Err(EvalErr(NodePtr::NIL, "filename is not an atom".to_string())),
