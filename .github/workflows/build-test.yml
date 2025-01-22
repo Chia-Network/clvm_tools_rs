@@ -150,6 +150,7 @@ jobs:
         # Grab chia-blockchain
         rm -rf chia-blockchain
         git clone https://github.com/Chia-Network/chia-blockchain
+        (cd chia-blockchain && git submodule update --init)
 
         # Check that recompiling deployed puzzles match with their deployed hashes
         cp support/install_deps.sh support/verify_compiler_version.sh chia-blockchain
