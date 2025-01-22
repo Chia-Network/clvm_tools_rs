@@ -152,7 +152,7 @@ jobs:
         git clone https://github.com/Chia-Network/chia_puzzles
 
         # Check that recompiling deployed puzzles match with their deployed hashes
-        cp support/install_deps.sh support/verify_compiler_version.sh chia-blockchain
+        cp support/install_deps.sh support/verify_compiler_version.sh chia_puzzles
         (cd chia_puzzles && python -m venv .venv && . .venv/bin/activate && pip install --upgrade pip && \
           python -m pip install maturin==1.7.0 && \
           cd .. && pip install --no-index --find-links target/wheels/ clvm_tools_rs && \
