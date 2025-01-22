@@ -124,9 +124,11 @@ fn run_clvm_compilation(
                 &path_string,
                 true,
             )
-            .map_err(|e| CompError::new_err(e.format(&allocator, opts)))?;
-
-            eprintln!("result {clvm_result:?}");
+            .map_err(|e| {
+                let eres = CompError::new_err(e.format(&allocator, opts));
+                debug!("error from compile: {eres:?}");
+                eres
+            })?;
 
             // Get the text representation, which will go either to the output file
             // or result.
