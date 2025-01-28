@@ -701,11 +701,14 @@ pub fn get_optimizer(
                 format!("minimum language stepping is 21, {s} specified"),
             ));
         } else if s > MAX_STEPPING {
+            // There's no definition yet for language steppings above what we defined.
             return Err(CompileErr(
                 loc.clone(),
                 format!("maximum language stepping is {MAX_STEPPING} at this time, {s} specified"),
             ));
         } else if s >= BASE_STEPPING && opts.optimize() {
+            // For language steppings between BASE_STEPPING and MAX_STEPPING inclusive,
+            // use a strategy object for optimization.
             return Ok(Box::new(Strategy23::new()));
         }
     }
