@@ -6,6 +6,13 @@ use crate::classic::clvm::sexp::proper_list;
 
 use crate::compiler::sexp::decode_string;
 
+/// Stepping 21 and 22 do optimization in special ways with flags
+/// I made this more general for other dialects, starting at
+/// BASE_STEPPING, all of which should use similar optimizer objects.
+pub const OPT_STRATEGY_BASE_STEPPING: i32 = 23;
+/// The maximum stepping of the language so far.
+pub const MAX_STEPPING: i32 = 24;
+
 /// Specifying how the language is spoken.
 #[derive(Clone, Debug, Default)]
 pub struct AcceptedDialect {
@@ -91,6 +98,20 @@ lazy_static! {
                     },
                     content: indoc! {"(
                     (defconstant *chialisp-version* 23)
+                )"}
+                    .to_string(),
+                },
+            ),
+            (
+                "*standard-cl-24*",
+                DialectDescription {
+                    accepted: AcceptedDialect {
+                        stepping: Some(24),
+                        strict: true,
+                        int_fix: true,
+                    },
+                    content: indoc! {"(
+                    (defconstant *chialisp-version* 24)
                 )"}
                     .to_string(),
                 },
