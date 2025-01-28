@@ -9,7 +9,7 @@ use crate::compiler::sexp::decode_string;
 /// Stepping 21 and 22 do optimization in special ways with flags
 /// I made this more general for other dialects, starting at
 /// BASE_STEPPING, all of which should use similar optimizer objects.
-pub const BASE_STEPPING: i32 = 23;
+pub const OPT_STRATEGY_BASE_STEPPING: i32 = 23;
 /// The maximum stepping of the language so far.
 pub const MAX_STEPPING: i32 = 24;
 
