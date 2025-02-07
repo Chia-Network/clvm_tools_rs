@@ -30,12 +30,12 @@
   (defun NOT (X) (not X))
   (defun ANY (X Y) (any X Y))
   (defun ALL (X Y) (all X Y))
-  (defun SF (COST CODE) (softfork COST CODE))
+  (defun SF (COST CODE) (softfork COST () CODE ()))
 
   (defun nth (n lst) (if n (nth (- n 1) (r lst)) (f lst)))
 
   (defun OPS1 (sel val)
-    (a (nth sel (list F R L X SHA256 STRLEN PFE NOT)) (list () val))
+    (a (nth sel (list F R L X SHA256 STRLEN LOGNOT PFE NOT)) (list () val))
     )
 
   (defun OPS2 (sel v1 v2)
@@ -46,13 +46,18 @@
     (a (nth sel (list I SUBSTR)) (list () v1 v2 v3))
     )
 
+  (defun ll (N X) (if X (ll (+ N 1) (r X)) N))
+
   (defun OP ((@ ALLARGS (ARGS . NEXT)))
     (if ALLARGS
-      (if (r (r (r ARGS)))
+      (if (= (ll 0 ARGS) 4)
         (c (OPS3 (f ARGS) (f (r ARGS)) (f (r (r ARGS))) (f (r (r (r ARGS))))) (OP NEXT))
-        (if (r (r ARGS))
+        (if (= (ll 0 ARGS) 3)
           (c (OPS2 (f ARGS) (f (r ARGS)) (f (r (r ARGS)))) (OP NEXT))
-          (c (OPS1 (f ARGS) (f (r ARGS))) (OP NEXT))
+          (if (= (ll 0 ARGS) 2)
+            (c (OPS1 (f ARGS) (f (r ARGS))) (OP NEXT))
+            ()
+            )
           )
         )
       ()

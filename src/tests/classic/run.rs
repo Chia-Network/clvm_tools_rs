@@ -2555,3 +2555,30 @@ fn test_cl24_compilation() {
     let result = do_basic_brun(&vec!["brun".to_string(), program]);
     assert_eq!(result.trim(), "1337");
 }
+
+// This is an exhaustive test to ensure that the operator 0 list is the same as it was before
+// we had to implement the original operator set ourselves to preserve it.
+#[test]
+fn test_big_operator_list() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "--operators-version".to_string(),
+        "0".to_string(),
+        "resources/tests/all_operators.clsp".to_string(),
+    ]);
+    let target_program = fs::read_to_string("resources/tests/all_operators-0_1_43.clvm").expect("should exist");
+    // Assert that the program output is the same.
+    assert_eq!(program, target_program);
+    // Run it with an input that exercises every opreator.
+    // If the operator set that's reproduced for v0 is wrong, this should have different
+    // output.
+    let result = do_basic_brun(&vec![
+        "brun".to_string(),
+        "--operators-version".to_string(),
+        "0".to_string(),
+        program,
+        "resources/tests/all_operators_inputs.clvm".to_string()
+    ]).trim().to_string();
+    let target_output = fs::read_to_string("resources/tests/all_operators_result.clvm").expect("should exist").trim().to_string();
+    assert_eq!(result, target_output);
+}
