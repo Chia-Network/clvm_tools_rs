@@ -2566,7 +2566,8 @@ fn test_big_operator_list() {
         "0".to_string(),
         "resources/tests/all_operators.clsp".to_string(),
     ]);
-    let target_program = fs::read_to_string("resources/tests/all_operators-0_1_43.clvm").expect("should exist");
+    let target_program =
+        fs::read_to_string("resources/tests/all_operators-0_1_43.clvm").expect("should exist");
     // Assert that the program output is the same.
     assert_eq!(program, target_program);
     // Run it with an input that exercises every opreator.
@@ -2577,8 +2578,13 @@ fn test_big_operator_list() {
         "--operators-version".to_string(),
         "0".to_string(),
         program,
-        "resources/tests/all_operators_inputs.clvm".to_string()
-    ]).trim().to_string();
-    let target_output = fs::read_to_string("resources/tests/all_operators_result.clvm").expect("should exist").trim().to_string();
+        "resources/tests/all_operators_inputs.clvm".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let target_output = fs::read_to_string("resources/tests/all_operators_result.clvm")
+        .expect("should exist")
+        .trim()
+        .to_string();
     assert_eq!(result, target_output);
 }
