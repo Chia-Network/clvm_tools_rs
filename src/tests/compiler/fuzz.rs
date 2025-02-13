@@ -1,6 +1,6 @@
 use num_bigint::ToBigInt;
 
-use rand::distributions::Standard;
+use rand::distr::StandardUniform;
 use rand::prelude::Distribution;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -261,9 +261,9 @@ impl SupportedOperators {
     }
 }
 
-impl Distribution<SupportedOperators> for Standard {
+impl Distribution<SupportedOperators> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SupportedOperators {
-        match rng.gen::<u8>() % 3 {
+        match rng.random::<u8>() % 3 {
             0 => SupportedOperators::Plus,
             1 => SupportedOperators::Minus,
             _ => SupportedOperators::Times,

@@ -163,7 +163,7 @@ impl ComplexAssignExpression {
 
         let generate_constant = |rng: &mut R| {
             // Constant value
-            let random_number: i8 = rng.gen();
+            let random_number: i8 = rng.random();
             let sexp = Rc::new(SExp::Integer(
                 srcloc.clone(),
                 random_number.to_bigint().unwrap(),
@@ -173,7 +173,7 @@ impl ComplexAssignExpression {
         };
 
         let generate_reference = |rng: &mut R| {
-            let variable_choice: usize = rng.gen();
+            let variable_choice: usize = rng.random::<u64>() as usize;
             let variable = in_scope[variable_choice % in_scope.len()].to_vec();
             let var_sexp = Rc::new(SExp::Atom(srcloc.clone(), variable.clone()));
             let reference = Rc::new(ValueSpecification::VarRef(variable.clone()));
@@ -185,7 +185,7 @@ impl ComplexAssignExpression {
         };
 
         let generate_simple = |rng: &mut R| {
-            if in_scope.is_empty() || rng.gen() {
+            if in_scope.is_empty() || rng.random() {
                 generate_constant(rng)
             } else {
                 generate_reference(rng)
@@ -193,7 +193,7 @@ impl ComplexAssignExpression {
         };
 
         let mut result = generate_simple(rng);
-        let complexity: usize = rng.gen();
+        let complexity: usize = rng.random::<u64>() as usize;
 
         // Generate up to a certain number of operations.
         for _ in 0..(complexity % wanted_complexity) {
@@ -201,8 +201,8 @@ impl ComplexAssignExpression {
             let other_result = generate_simple(rng);
 
             // Generate a binop.
-            let random_op: SupportedOperators = rng.gen();
-            let (left, right) = if rng.gen() {
+            let random_op: SupportedOperators = rng.random();
+            let (left, right) = if rng.random() {
                 (result, other_result)
             } else {
                 (other_result, result)
@@ -460,7 +460,7 @@ pub fn create_complex_assign_expression<R: Rng>(
 
     while !v_start.is_empty() {
         // Choose a variable.
-        let chosen_idx: usize = rng.gen();
+        let chosen_idx: usize = rng.random::<u64>() as usize;
         let chosen = v_start
             .iter()
             .skip(chosen_idx % v_start.len())
@@ -470,14 +470,14 @@ pub fn create_complex_assign_expression<R: Rng>(
 
         // Decide whether it's toplevel (we always choose one if there are
         // no toplevel choices.
-        let coin_flip_toplevel: usize = rng.gen();
+        let coin_flip_toplevel: usize = rng.random::<u64>() as usize;
         if (usage.toplevel.is_empty() || (coin_flip_toplevel % 3) == 0) && usage.toplevel.len() < 5
         {
             // if so, copy it to the toplevel set.
             usage.toplevel.insert(chosen.clone());
         } else {
             // otherwise, choose a key from result, add it there.
-            let parent_idx: usize = rng.gen();
+            let parent_idx: usize = rng.random::<u64>() as usize;
             let parent = usage
                 .bindings
                 .keys()
