@@ -6,7 +6,7 @@ clvm_tools_rs
 ![Build Wheels](https://github.com/Chia-Network/clvm_tools_rs/actions/workflows/build-test.yml/badge.svg)
 
 ![PyPI](https://img.shields.io/pypi/v/clvm_tools_rs?logo=pypi)
-[![Crates.io](https://img.shields.io/crates/v/chia.svg)](https://crates.io/crates/clvm_tools_rs)
+[![Crates.io](https://img.shields.io/crates/v/clvm_tools_rs.svg)](https://crates.io/crates/clvm_tools_rs)
 
 Theory of operation of the modern compiler: ./HOW_CHIALISP_IS_COMPILED.md
 -
