@@ -1,5 +1,5 @@
 #[cfg(test)]
-use rand::distributions::Standard;
+use rand::distr::StandardUniform;
 #[cfg(test)]
 use rand::prelude::Distribution;
 #[cfg(test)]
@@ -55,7 +55,7 @@ pub fn random_atom_name<R: Rng + ?Sized>(rng: &mut R, min_size: usize) -> Vec<u8
     let mut bytevec: Vec<u8> = Vec::new();
     let mut len = 0;
     loop {
-        let mut n: u8 = rng.gen();
+        let mut n: u8 = rng.random();
         n %= 40;
         len += 1;
         if n < 26 || len < min_size {
@@ -78,11 +78,11 @@ pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
         random_atom(rng)
     } else {
         let loc = || Srcloc::start("*rng*");
-        let alternative: usize = rng.gen_range(0..=2);
+        let alternative: usize = rng.random_range(0..=2);
         match alternative {
             0 => {
                 // list
-                let length = rng.gen_range(1..=remaining);
+                let length = rng.random_range(1..=remaining);
                 let costs = vec![remaining / length; length];
                 let collected_list: Vec<Rc<SExp>> = costs
                     .iter()
@@ -92,7 +92,7 @@ pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
             }
             1 => {
                 // cons
-                let left_cost = rng.gen_range(1..=remaining);
+                let left_cost = rng.random_range(1..=remaining);
                 let right_cost = remaining - left_cost;
                 SExp::Cons(
                     loc(),
@@ -110,7 +110,7 @@ pub fn random_sexp<R: Rng + ?Sized>(rng: &mut R, remaining: usize) -> SExp {
 
 // Thanks: https://stackoverflow.com/questions/48490049/how-do-i-choose-a-random-value-from-an-enum
 #[cfg(test)]
-impl Distribution<SExp> for Standard {
+impl Distribution<SExp> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SExp {
         random_sexp(rng, MAX_SEXP_COST)
     }

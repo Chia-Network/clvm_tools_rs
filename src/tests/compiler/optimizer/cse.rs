@@ -685,35 +685,35 @@ fn test_if_with_gate_generate_0() {
 impl GenerateTrickyCSE {
     fn new<R: Rng + ?Sized>(rng: &mut R) -> Self {
         // Generate number tree.
-        let number_of_numbers = 5 + rng.gen::<usize>() % 11;
-        let numbers_set: BTreeSet<u16> = (0..number_of_numbers).map(|_| rng.gen()).collect();
+        let number_of_numbers = 5 + (rng.random::<u64>() as usize) % 11;
+        let numbers_set: BTreeSet<u16> = (0..number_of_numbers).map(|_| rng.random()).collect();
         let numbers: Vec<u16> = numbers_set.iter().copied().collect();
         let mut number_tree = TreeNode::default();
         create_number_tree(&mut number_tree, &numbers);
 
         // Now we have a number tree.  Choose some random values and find their
         // paths in the tree.
-        let num_choices = 3 + (rng.gen::<usize>() % 7);
+        let num_choices = 3 + ((rng.random::<u64>() as usize) % 7);
         let mut choices: Vec<CheckAndRetrieve> = (0..num_choices)
             .map(|_| {
                 let retrieve = choose_in_tree(
                     &number_tree,
-                    numbers[rng.gen::<usize>() % number_of_numbers],
+                    numbers[(rng.random::<u64>() as usize) % number_of_numbers],
                 );
-                let gate = if rng.gen() {
+                let gate = if rng.random() {
                     Some(choose_in_tree(
                         &number_tree,
-                        numbers[rng.gen::<usize>() % number_of_numbers],
+                        numbers[(rng.random::<u64>() as usize) % number_of_numbers],
                     ))
                 } else {
                     None
                 };
-                let num_checks = rng.gen::<usize>() % 3;
+                let num_checks = (rng.random::<u64>() as usize) % 3;
                 let checks: Vec<TreeChoice> = (0..num_checks)
                     .map(|_| {
                         choose_in_tree(
                             &number_tree,
-                            numbers[rng.gen::<usize>() % number_of_numbers],
+                            numbers[(rng.random::<u64>() as usize) % number_of_numbers],
                         )
                     })
                     .collect();
@@ -901,7 +901,7 @@ fn test_generated_cse(n: u32) {
         .numbers
         .iter()
         .filter(|_| {
-            let check: u8 = rng.gen();
+            let check: u8 = rng.random();
             check & 15 >= 1
         })
         .copied()
