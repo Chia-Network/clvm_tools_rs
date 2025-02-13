@@ -1,5 +1,12 @@
 clvm_tools_rs
 =
+![GitHub](https://img.shields.io/github/license/Chia-Network/clvm_tools_rs?logo=Github)
+[![Coverage Status](https://coveralls.io/repos/github/Chia-Network/clvm_tools_rs/badge.svg?branch=base)](https://coveralls.io/github/Chia-Network/clvm_tools_rs?branch=base)
+![Build Crate](https://github.com/Chia-Network/clvm_tools_rs/actions/workflows/build-crate.yml/badge.svg)
+![Build Wheels](https://github.com/Chia-Network/clvm_tools_rs/actions/workflows/build-test.yml/badge.svg)
+
+![PyPI](https://img.shields.io/pypi/v/clvm_tools_rs?logo=pypi)
+[![Crates.io](https://img.shields.io/crates/v/chia.svg)](https://crates.io/crates/clvm_tools_rs)
 
 Theory of operation of the modern compiler: ./HOW_CHIALISP_IS_COMPILED.md
 -
