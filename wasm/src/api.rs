@@ -53,15 +53,9 @@ struct JsRepl {
 }
 
 thread_local! {
-    static NEXT_ID: AtomicUsize = {
-        return AtomicUsize::new(0);
-    };
-    static RUNNERS: RefCell<HashMap<i32, JsRunStep>> = {
-        return RefCell::new(HashMap::new());
-    };
-    static REPLS: RefCell<HashMap<i32, JsRepl>> = {
-        return RefCell::new(HashMap::new());
-    };
+    static NEXT_ID: AtomicUsize = const { AtomicUsize::new(0) };
+    static RUNNERS: RefCell<HashMap<i32, JsRunStep>> = RefCell::new(HashMap::new());
+    static REPLS: RefCell<HashMap<i32, JsRepl>> = RefCell::new(HashMap::new());
 }
 
 pub fn get_next_id() -> i32 {
@@ -471,13 +465,7 @@ pub fn repl_run_string(repl_id: i32, input: String) -> JsValue {
             }
         })
         .map(|v| v.map(|v| js_object_from_sexp(v.to_sexp()).unwrap_or_else(|e| e)))
-        .unwrap_or_else(|e| {
-            Some(create_clvm_runner_err(format!(
-                "{}: {}",
-                e.0.to_string(),
-                e.1
-            )))
-        })
+        .unwrap_or_else(|e| Some(create_clvm_runner_err(format!("{}: {}", e.0, e.1))))
         .unwrap_or_else(JsValue::null)
 }
 
