@@ -240,8 +240,8 @@ thread_local! {
     static OBJECT_CACHE: RefCell<ObjectCache> = {
         return RefCell::new(ObjectCache::default());
     };
-    static PROGRAM_PROTOTYPE: RefCell<Option<JsValue>> = RefCell::new(None);
-    static TUPLE_PROTOTYPE: RefCell<Option<JsValue>> = RefCell::new(None);
+    static PROGRAM_PROTOTYPE: RefCell<Option<JsValue>> = const { RefCell::new(None) };
+    static TUPLE_PROTOTYPE: RefCell<Option<JsValue>> = const { RefCell::new(None) };
     static SRCLOC: Srcloc = Srcloc::start("*var*");
 }
 
@@ -471,9 +471,9 @@ impl Program {
     pub fn to_internal(input: &JsValue) -> Result<JsValue, JsValue> {
         let loc = get_srcloc();
         let sexp = sexp_from_js_object(loc, input).map(Ok).unwrap_or_else(|| {
-            Err(create_clvm_runner_err(format!(
-                "unable to convert to value"
-            )))
+            Err(create_clvm_runner_err(
+                "unable to convert to value".to_string(),
+            ))
         })?;
 
         let new_id = get_next_id();
