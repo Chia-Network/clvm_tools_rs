@@ -60,8 +60,8 @@ fuzz = ["dep:rand", "dep:rand_chacha", "dep:lfsr"]
 default = []
 
 [target.'cfg(target_family="wasm")'.dependencies]
-wasm-bindgen = { version = "0.2.80", features = ["serde-serialize"] }
-wasm-bindgen-test = "0.3.25"
+wasm-bindgen = { version = "0.2.100", features = ["serde-serialize"] }
+wasm-bindgen-test = "0.3.50"
 js-sys = "0.3.58"
 getrandom = { version = "0.2", features = ["js"] }
 
