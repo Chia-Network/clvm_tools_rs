@@ -358,7 +358,7 @@ fn form_module_program_common_body(
             let target_name = exdef
                 .as_name
                 .as_ref()
-                .unwrap_or_else(|| &exdef.name)
+                .unwrap_or(&exdef.name)
                 .value
                 .clone();
             if !standalone_constants.contains(&exdef.name.value) {

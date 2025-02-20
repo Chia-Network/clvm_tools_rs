@@ -718,7 +718,7 @@ pub struct NamespaceRefData {
 #[derive(Clone, Debug, Serialize)]
 pub enum HelperForm {
     /// A namespace collection.
-    Defnamespace(NamespaceData),
+    Defnamespace(Box<NamespaceData>),
     /// A namespace reference.
     Defnsref(Box<NamespaceRefData>),
     /// A constant definition (see DefconstData).
@@ -1832,7 +1832,7 @@ pub struct ExportFunctionDesc {
 #[derive(Debug, Clone, Serialize)]
 pub enum Export {
     MainProgram(ExportProgramDesc),
-    Function(ExportFunctionDesc),
+    Function(Box<ExportFunctionDesc>),
 }
 
 #[derive(Debug, Clone, Serialize)]

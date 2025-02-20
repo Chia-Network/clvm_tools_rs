@@ -719,7 +719,7 @@ pub fn match_export_form(
         }
 
         if let Some(efd) = match_as_named(form.loc(), &lst, 1) {
-            return Ok(Some(Export::Function(efd)));
+            return Ok(Some(Export::Function(Box::new(efd))));
         }
 
         // A main export
@@ -784,14 +784,14 @@ pub fn compile_namespace(
         }
     }
 
-    Ok(HelperForm::Defnamespace(NamespaceData {
+    Ok(HelperForm::Defnamespace(Box::new(NamespaceData {
         loc: loc.clone(),
         kw: internal[0].loc(),
         nl: internal[1].loc(),
         rendered_name: parsed.as_u8_vec(LongNameTranslation::Namespace),
         longname: parsed,
         helpers,
-    }))
+    })))
 }
 
 pub fn compile_nsref(loc: Srcloc, internal: &[SExp]) -> Result<HelperForm, CompileErr> {

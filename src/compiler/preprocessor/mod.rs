@@ -397,14 +397,14 @@ impl Preprocessor {
             vec![]
         };
 
-        HelperForm::Defnamespace(NamespaceData {
+        HelperForm::Defnamespace(Box::new(NamespaceData {
             loc: loc.clone(),
             nl: loc.clone(),
             kw: loc.clone(),
             rendered_name: name.as_u8_vec(LongNameTranslation::Namespace),
             longname: name.clone(),
             helpers,
-        })
+        }))
     }
 
     /// Compute the expected filename from a module name.  It must be absolute

@@ -583,10 +583,10 @@ fn resolve_namespaces_in_helper(
             }
 
             Ok(HelperFormResult::new(&[HelperForm::Defnamespace(
-                NamespaceData {
+                Box::new(NamespaceData {
                     helpers: result_helpers,
-                    ..ns.clone()
-                },
+                    ..*ns.clone()
+                }),
             )]))
         }
         HelperForm::Defnsref(_) => Ok(HelperFormResult::new(&[helper.clone()])),
