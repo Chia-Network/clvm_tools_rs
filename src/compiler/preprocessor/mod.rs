@@ -273,18 +273,21 @@ pub fn test_detect_chialisp_module_classic() {
     assert!(detect_chialisp_module(&parsed).is_none());
 }
 
+#[derive(Debug)]
 pub struct ToplevelMod {
     pub forms: Vec<Rc<SExp>>,
     pub stripped_args: Rc<SExp>,
+    pub loc: Srcloc,
 }
 
 pub enum ToplevelModParseResult {
     Mod(ToplevelMod),
-    Simple(Vec<Rc<SExp>>),
+    Simple(Srcloc, Vec<Rc<SExp>>),
 }
 
 pub fn parse_toplevel_mod(
     opts: Rc<dyn CompilerOpts>,
+    top_loc: Option<Srcloc>,
     pre_forms: &[Rc<SExp>],
 ) -> Result<ToplevelModParseResult, CompileErr> {
     if pre_forms.is_empty() {
@@ -292,9 +295,16 @@ pub fn parse_toplevel_mod(
             Srcloc::start(&opts.filename()),
             "empty source file not allowed".to_string(),
         ));
-    } else if let Some(x) = pre_forms[0].proper_list() {
+    }
+
+    let overall = top_loc.unwrap_or_else(|| {
+        pre_forms
+            .iter()
+            .fold(pre_forms[0].loc(), |sum, val| sum.ext(&val.loc()))
+    });
+    if let Some(x) = pre_forms[0].proper_list() {
         if x.is_empty() {
-            return Ok(ToplevelModParseResult::Simple(pre_forms.to_vec()));
+            return Ok(ToplevelModParseResult::Simple(overall, pre_forms.to_vec()));
         }
 
         if let SExp::Atom(_, mod_atom) = &x[0] {
@@ -320,14 +330,16 @@ pub fn parse_toplevel_mod(
                         .map(|s| Rc::new(s.clone()))
                         .collect(),
                     stripped_args: args,
+                    loc: overall,
                 }));
             }
         }
     }
 
-    Ok(ToplevelModParseResult::Simple(pre_forms.to_vec()))
+    Ok(ToplevelModParseResult::Simple(overall, pre_forms.to_vec()))
 }
 
+#[derive(Debug)]
 pub struct PreprocessResult {
     pub forms: Vec<Rc<SExp>>,
     pub modules: bool,

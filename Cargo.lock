@@ -46,12 +46,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c6cb57a04249c6480766f7f7cef5467412af1490f8d1e243141daddada3264f"
 
 [[package]]
-name = "anyhow"
-version = "1.0.89"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86fdf8605db99b54d3cd748a44c6d04df638eb5dafb219b135d0149bd0db01f6"
-
-[[package]]
 name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -208,12 +202,12 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "chia-bls"
-version = "0.10.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "725b43b268cb81f014559eed11a74d0e5b9dd55282cae272ff509796099ab0b9"
+checksum = "53dea95bd7dac1e69c59ef6839ecf30ff3fe29170c16c4aa00093be21e0d789e"
 dependencies = [
- "anyhow",
  "blst",
+ "chia-sha2",
  "chia-traits",
  "hex",
  "hkdf",
@@ -223,21 +217,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "chia-traits"
-version = "0.10.0"
+name = "chia-sha2"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fb786114e5c748fe0af3ba1e95840fa1910b28f7300c05184506045aff60bb6"
+checksum = "7020f53eeae8b4c24c5666165738173a167c6478e0c0a9e1c428a491a2e1383d"
 dependencies = [
- "chia_streamable_macro",
  "sha2 0.10.8",
+]
+
+[[package]]
+name = "chia-traits"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e57bbde886b38a9a5df185e751d90e295d14e99659bf43df7fa701d52d4da1ea"
+dependencies = [
+ "chia-sha2",
+ "chia_streamable_macro",
  "thiserror",
 ]
 
 [[package]]
 name = "chia_streamable_macro"
-version = "0.10.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43975e01fb4293021af4950366a6f80c45d7301d499622359c7533bd7af19592"
+checksum = "00e78b5981952d2383b08344fdc6e6f843e72cc9d502d46d1d2824c485b34694"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2 1.0.86",
@@ -284,11 +287,13 @@ dependencies = [
 
 [[package]]
 name = "clvmr"
-version = "0.8.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "903233f3bc9392b44a589f0cea46a53a67fedc3afb4b1303f636977074a505c5"
+checksum = "1485694ccaae3198b921ce3dac1954235acadd971289bae970c030f0a4f66174"
 dependencies = [
+ "bitvec",
  "chia-bls",
+ "chia-sha2",
  "hex-literal",
  "k256",
  "lazy_static",
@@ -296,7 +301,8 @@ dependencies = [
  "num-integer",
  "num-traits",
  "p256",
- "sha2 0.10.8",
+ "rand",
+ "sha3",
 ]
 
 [[package]]
@@ -692,9 +698,9 @@ dependencies = [
 
 [[package]]
 name = "k256"
-version = "0.13.3"
+version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "956ff9b67e26e1a6a866cb758f12c6f8746208489e3e4a4b5580802f2f0a587b"
+checksum = "f6e3919bbaa2945715f0bb6d3934a173d1e9a59ac23767fbaaef277265a7411b"
 dependencies = [
  "cfg-if",
  "ecdsa",
@@ -702,6 +708,15 @@ dependencies = [
  "once_cell",
  "sha2 0.10.8",
  "signature",
+]
+
+[[package]]
+name = "keccak"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ecc2af9a1119c51f12a14607e783cb977bde58bc069ff0c3da1095e635d70654"
+dependencies = [
+ "cpufeatures",
 ]
 
 [[package]]
@@ -1416,6 +1431,16 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest 0.10.7",
+]
+
+[[package]]
+name = "sha3"
+version = "0.10.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75872d278a8f37ef87fa0ddbda7802605cb18344497949862c0d4dcb291eba60"
+dependencies = [
+ "digest 0.10.7",
+ "keccak",
 ]
 
 [[package]]

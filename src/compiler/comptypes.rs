@@ -460,7 +460,7 @@ pub enum ModuleImportSpec {
     Hiding(Srcloc, Vec<ModuleImportListedName>),
 }
 
-pub fn match_as_named(lst: &[SExp], offset: usize) -> Option<(Srcloc, Vec<u8>, Option<Vec<u8>>)> {
+pub fn match_as_named(loc: Srcloc, lst: &[SExp], offset: usize) -> Option<ExportFunctionDesc> {
     let name_offset = offset;
     let small = 1 + offset;
     let as_kw = 1 + offset;
@@ -471,32 +471,44 @@ pub fn match_as_named(lst: &[SExp], offset: usize) -> Option<(Srcloc, Vec<u8>, O
         return None;
     }
 
-    let export_name = if lst.len() == large {
-        if let SExp::Atom(_, as_atom) = lst[as_kw].borrow() {
-            // Not 'as'
-            if as_atom != b"as" {
-                return None;
-            }
-        } else {
-            return None;
-        }
-
-        if let SExp::Atom(_, as_name) = lst[as_name_offset].borrow() {
-            Some(as_name.clone())
-        } else {
-            return None;
-        }
-    } else {
-        None
-    };
-
-    let from_name = if let SExp::Atom(_, from_name) = lst[name_offset].borrow() {
-        from_name.clone()
+    let (_from_loc, from_name) = if let SExp::Atom(from_loc, from_name) = lst[name_offset].borrow()
+    {
+        (from_loc.clone(), from_name.clone())
     } else {
         return None;
     };
 
-    Some((lst[name_offset].loc(), from_name, export_name))
+    let mut result = ExportFunctionDesc {
+        loc,
+        kw_loc: Some(lst[0].loc()),
+        name: NameAndLoc {
+            value: from_name,
+            loc: Some(lst[name_offset].loc()),
+        },
+        as_loc: None,
+        as_name: None,
+    };
+
+    if lst.len() == large {
+        if let SExp::Atom(as_loc, as_atom) = lst[as_kw].borrow() {
+            // Not 'as'
+            if as_atom != b"as" {
+                return None;
+            }
+            result.as_loc = Some(as_loc.clone());
+        } else {
+            return None;
+        }
+
+        if let SExp::Atom(as_name_loc, as_name) = lst[as_name_offset].borrow() {
+            result.as_name = Some(NameAndLoc {
+                value: as_name.clone(),
+                loc: Some(as_name_loc.clone()),
+            });
+        }
+    };
+
+    Some(result)
 }
 
 impl ModuleImportSpec {
@@ -592,11 +604,16 @@ impl ModuleImportSpec {
         if let SExp::Atom(kw_loc, kw) = &forms[skip] {
             let mut words = vec![];
             for atom in forms.iter().skip(skip + 1) {
-                if let Some((import_name_loc, import_name, export_name)) =
-                    atom.proper_list().and_then(|lst| match_as_named(&lst, 0))
+                if let Some(desc) = atom
+                    .proper_list()
+                    .and_then(|lst| match_as_named(loc.clone(), &lst, 0))
                 {
+                    let import_name_loc = desc.name.loc.clone();
+                    let import_name = desc.name.value.clone();
+                    let export_name = desc.as_name.map(|n| n.value.clone());
+
                     words.push(ModuleImportListedName {
-                        nl: import_name_loc,
+                        nl: import_name_loc.unwrap_or_else(|| kw_loc.clone()),
                         name: import_name,
                         alias: export_name,
                     });
@@ -1790,9 +1807,32 @@ impl CompilerOutput {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct NameAndLoc {
+    pub value: Vec<u8>,
+    pub loc: Option<Srcloc>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExportProgramDesc {
+    pub loc: Srcloc,
+    pub kw_loc: Option<Srcloc>,
+    pub args: Rc<SExp>,
+    pub expr: Rc<BodyForm>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExportFunctionDesc {
+    pub loc: Srcloc,
+    pub kw_loc: Option<Srcloc>,
+    pub name: NameAndLoc,
+    pub as_loc: Option<Srcloc>,
+    pub as_name: Option<NameAndLoc>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub enum Export {
-    MainProgram(Rc<SExp>, Rc<BodyForm>),
-    Function(Vec<u8>, Option<Vec<u8>>),
+    MainProgram(ExportProgramDesc),
+    Function(ExportFunctionDesc),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1806,6 +1846,28 @@ impl FrontendOutput {
         match self {
             FrontendOutput::CompileForm(cf) => cf,
             FrontendOutput::Module(cf, _) => cf,
+        }
+    }
+
+    pub fn replace_helpers(&self, new_helpers: &[HelperForm]) -> Self {
+        match self {
+            FrontendOutput::CompileForm(cf) => {
+                FrontendOutput::CompileForm(cf.replace_helpers(new_helpers))
+            }
+            FrontendOutput::Module(cf, exports) => {
+                FrontendOutput::Module(cf.replace_helpers(new_helpers), exports.clone())
+            }
+        }
+    }
+
+    pub fn remove_helpers(&self, to_remove: &HashSet<Vec<u8>>) -> Self {
+        match self {
+            FrontendOutput::CompileForm(cf) => {
+                FrontendOutput::CompileForm(cf.remove_helpers(to_remove))
+            }
+            FrontendOutput::Module(cf, exports) => {
+                FrontendOutput::Module(cf.remove_helpers(to_remove), exports.clone())
+            }
         }
     }
 }

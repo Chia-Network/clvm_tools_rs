@@ -22,7 +22,7 @@ use crate::classic::clvm_tools::ir::reader::read_ir;
 use crate::classic::clvm_tools::ir::writer::write_ir_to_stream;
 use crate::classic::clvm_tools::sha256tree::TreeHash;
 use crate::classic::clvm_tools::stages::stage_0::{
-    DefaultProgramRunner, RunProgramOption, TRunProgram,
+    DefaultProgramRunner, OriginalDialect, RunProgramOption, TRunProgram,
 };
 use crate::classic::clvm_tools::stages::stage_2::compile::do_com_prog_for_dialect;
 use crate::classic::clvm_tools::stages::stage_2::optimize::do_optimize;
@@ -47,7 +47,6 @@ impl AllocatorRefOrTreeHash {
 }
 
 pub struct CompilerOperatorsInternal {
-    base_dialect: Rc<dyn Dialect>,
     source_file: String,
     search_paths: Vec<String>,
     symbols_extra_info: bool,
@@ -122,10 +121,8 @@ impl Drop for CompilerOperators {
 
 impl CompilerOperatorsInternal {
     pub fn new(source_file: &str, search_paths: Vec<String>, symbols_extra_info: bool) -> Self {
-        let base_dialect = Rc::new(ChiaDialect::new(NO_UNKNOWN_OPS));
         let base_runner = Rc::new(DefaultProgramRunner::new());
         CompilerOperatorsInternal {
-            base_dialect,
             source_file: source_file.to_owned(),
             search_paths,
             symbols_extra_info,
@@ -182,7 +179,7 @@ impl CompilerOperatorsInternal {
         if ops_version == 0 {
             OperatorSet::Default
         } else {
-            OperatorSet::BLS
+            OperatorSet::Bls
         }
     }
 
@@ -218,8 +215,10 @@ impl CompilerOperatorsInternal {
 
                     // Use the filesystem like normal if the opts couldn't find
                     // the file.
-                    fs::read_to_string(filename)
-                        .map_err(|_| EvalErr(NodePtr::NIL, "Failed to read file".to_string()))
+                    fs::read_to_string(&filename)
+                        .map_err(|_| {
+                            EvalErr(NodePtr::NIL, format!("Failed to read file {filename}"))
+                        })
                         .and_then(|content| parse_file_content(allocator, &content))
                 }
                 _ => Err(EvalErr(NodePtr::NIL, "filename is not an atom".to_string())),
@@ -363,7 +362,7 @@ impl Dialect for CompilerOperatorsInternal {
     // The softfork operator comes with an extension argument.
     fn softfork_extension(&self, ext: u32) -> OperatorSet {
         match ext {
-            0 => OperatorSet::BLS,
+            0 => OperatorSet::Bls,
             // new extensions go here
             _ => OperatorSet::Default,
         }
@@ -377,6 +376,16 @@ impl Dialect for CompilerOperatorsInternal {
         max_cost: Cost,
         _extension: OperatorSet,
     ) -> Response {
+        let new_operators = self
+            .get_operators_version()
+            .unwrap_or(OPERATORS_LATEST_VERSION);
+        let base_dialect = if new_operators > 0 {
+            let rc: Box<dyn Dialect> = Box::new(ChiaDialect::new(NO_UNKNOWN_OPS));
+            rc
+        } else {
+            let rc: Box<dyn Dialect> = Box::new(OriginalDialect::new(NO_UNKNOWN_OPS));
+            rc
+        };
         // Ensure we have at least the bls extensions available.
         // The extension passed in above is based on the state of whether
         // we're approaching from within softfork...  As the compiler author
@@ -411,7 +420,7 @@ impl Dialect for CompilerOperatorsInternal {
                 } else if opbuf == b"_get_source_file" {
                     self.get_source_file(allocator)
                 } else {
-                    self.base_dialect.op(
+                    base_dialect.op(
                         allocator,
                         op,
                         sexp,
@@ -420,7 +429,7 @@ impl Dialect for CompilerOperatorsInternal {
                     )
                 }
             }
-            _ => self.base_dialect.op(
+            _ => base_dialect.op(
                 allocator,
                 op,
                 sexp,

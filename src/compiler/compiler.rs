@@ -261,8 +261,8 @@ fn capture_standalone_constants(
             capture_standalone_constants(standalone_constants, depgraph, &ns.helpers, exports)
         } else if matches!(h, HelperForm::Defconstant(_) | HelperForm::Defun(_, _)) {
             let match_exports = exports.iter().any(|e| match e {
-                Export::MainProgram(_, _) => false,
-                Export::Function(name, _) => name == h.name(),
+                Export::MainProgram(_) => false,
+                Export::Function(exdef) => &exdef.name.value == h.name(),
             });
 
             // It isn't exported so it isn't standalone.
@@ -354,10 +354,15 @@ fn form_module_program_common_body(
     };
 
     for (target_name, capture) in exports.iter().filter_map(|e| {
-        if let Export::Function(name, as_name) = e {
-            let target_name = as_name.clone().unwrap_or_else(|| name.clone());
-            if !standalone_constants.contains(name) {
-                return Some((target_name, name.clone()));
+        if let Export::Function(exdef) = e {
+            let target_name = exdef
+                .as_name
+                .as_ref()
+                .unwrap_or_else(|| &exdef.name)
+                .value
+                .clone();
+            if !standalone_constants.contains(&exdef.name.value) {
+                return Some((target_name, exdef.name.value.clone()));
             }
         }
 
@@ -440,10 +445,10 @@ pub fn compile_module(
     }
 
     if exports.len() == 1 {
-        if let Export::MainProgram(args, expr) = &exports[0] {
+        if let Export::MainProgram(desc) = &exports[0] {
             // Single program.
-            program.args = args.clone();
-            program.exp = expr.clone();
+            program.args = desc.args.clone();
+            program.exp = desc.expr.clone();
 
             program = resolve_namespaces(opts.clone(), &program)?;
             modernize_constants(&mut program.helpers, standalone_constants);
@@ -477,13 +482,13 @@ pub fn compile_module(
     // Add hash functions for exports.
     let hash_loc = program.loc();
     for e in exports.iter() {
-        if let Export::Function(fun_name, _) = &e {
-            if !standalone_constants.contains(fun_name) {
+        if let Export::Function(exdef) = &e {
+            if !standalone_constants.contains(&exdef.name.value) {
                 eprintln!(
                     "add inline hash function for export {}",
-                    decode_string(fun_name)
+                    decode_string(&exdef.name.value)
                 );
-                add_inline_hash_for_constant(&mut program, &hash_loc, fun_name);
+                add_inline_hash_for_constant(&mut program, &hash_loc, &exdef.name.value);
             }
         }
     }
@@ -538,11 +543,17 @@ pub fn compile_module(
             left_env_value: env,
         })));
     for fun in exports.iter() {
-        let (fun_name, export_name) = if let Export::Function(name, as_name) = fun {
+        let (fun_name, export_name) = if let Export::Function(exdef) = fun {
             // Otherwise, capture it to produce to the output.
             (
-                name.clone(),
-                as_name.as_ref().cloned().unwrap_or_else(|| name.to_vec()),
+                exdef.name.value.clone(),
+                exdef
+                    .as_name
+                    .as_ref()
+                    .cloned()
+                    .unwrap_or_else(|| exdef.name.clone())
+                    .value
+                    .to_vec(),
             )
         } else {
             return Err(CompileErr(
@@ -668,13 +679,13 @@ fn get_hex_name_of_export(
     export: &Export,
 ) -> Result<String, CompileErr> {
     match export {
-        Export::MainProgram(_, _) => {
+        Export::MainProgram(_) => {
             let mut output_path = PathBuf::from(&opts.filename());
             output_path.set_extension("hex");
             Ok(output_path.into_os_string().to_string_lossy().to_string())
         }
-        Export::Function(name, as_name) => {
-            let use_name = decode_string(as_name.as_ref().unwrap_or(name));
+        Export::Function(desc) => {
+            let use_name = decode_string(&desc.as_name.as_ref().unwrap_or(&desc.name).value);
             create_hex_output_path(loc.clone(), &opts.filename(), &use_name)
         }
     }
@@ -758,8 +769,8 @@ pub fn try_to_use_existing_hex_outputs(
                     cf.loc.clone(),
                     &decode_string(&hex_data),
                 )?;
-                let shortname = if let Export::Function(name, _) = e {
-                    name.clone()
+                let shortname = if let Export::Function(desc) = e {
+                    desc.name.value.clone()
                 } else {
                     b"program".to_vec()
                 };

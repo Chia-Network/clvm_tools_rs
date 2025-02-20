@@ -7,8 +7,9 @@ use crate::classic::clvm::__type_compatibility__::bi_one;
 use crate::compiler::comptypes::{
     list_to_cons, match_as_named, ArgsAndTail, Binding, BindingPattern, BodyForm, CompileErr,
     CompileForm, CompilerOpts, ConstantKind, DefconstData, DefmacData, DefunData, Export,
-    FrontendOutput, HelperForm, ImportLongName, IncludeDesc, LetData, LetFormInlineHint,
-    LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, NamespaceData, NamespaceRefData,
+    ExportProgramDesc, FrontendOutput, HelperForm, ImportLongName, IncludeDesc, LetData,
+    LetFormInlineHint, LetFormKind, LongNameTranslation, ModAccum, ModuleImportSpec, NamespaceData,
+    NamespaceRefData,
 };
 use crate::compiler::lambda::handle_lambda;
 use crate::compiler::preprocessor::{
@@ -717,8 +718,8 @@ pub fn match_export_form(
             return Ok(None);
         }
 
-        if let Some((_, fun_name, export_name)) = match_as_named(&lst, 1) {
-            return Ok(Some(Export::Function(fun_name, export_name)));
+        if let Some(efd) = match_as_named(form.loc(), &lst, 1) {
+            return Ok(Some(Export::Function(efd)));
         }
 
         // A main export
@@ -727,10 +728,12 @@ pub fn match_export_form(
         }
 
         let expr = compile_bodyform(opts.clone(), Rc::new(lst[2].clone()))?;
-        return Ok(Some(Export::MainProgram(
-            Rc::new(lst[1].clone()),
-            Rc::new(expr),
-        )));
+        return Ok(Some(Export::MainProgram(ExportProgramDesc {
+            loc: form.loc(),
+            kw_loc: Some(lst[0].loc()),
+            args: Rc::new(lst[1].clone()),
+            expr: Rc::new(expr),
+        })));
     }
 
     Ok(None)
@@ -804,7 +807,7 @@ pub fn compile_nsref(loc: Srcloc, internal: &[SExp]) -> Result<HelperForm, Compi
         return Ok(HelperForm::Defnsref(Box::new(NamespaceRefData {
             loc,
             kw: internal[0].loc(),
-            nl: q.nl.clone(),
+            nl: internal[1].loc(),
             rendered_name: q.name.as_u8_vec(LongNameTranslation::Namespace),
             longname: q.name.clone(),
             specification: import_spec.clone(),
@@ -823,7 +826,7 @@ pub fn compile_nsref(loc: Srcloc, internal: &[SExp]) -> Result<HelperForm, Compi
     Ok(HelperForm::Defnsref(Box::new(NamespaceRefData {
         loc,
         kw: internal[0].loc(),
-        nl: import_spec.name_loc(),
+        nl: internal[1].loc(),
         rendered_name: parsed.as_u8_vec(LongNameTranslation::Namespace),
         longname: parsed,
         specification: import_spec,
@@ -978,9 +981,9 @@ impl ModCompileForms for ModAccum {
 fn frontend_step_finish(
     opts: Rc<dyn CompilerOpts>,
     includes: &mut Vec<IncludeDesc>,
+    loc: Srcloc,
     pre_forms: &[Rc<SExp>],
 ) -> Result<ModAccum, CompileErr> {
-    let loc = pre_forms[0].loc();
     frontend_start(
         opts.clone(),
         includes,
@@ -1001,12 +1004,12 @@ fn frontend_start(
     includes: &mut Vec<IncludeDesc>,
     pre_forms: &[Rc<SExp>],
 ) -> Result<ModAccum, CompileErr> {
-    match parse_toplevel_mod(opts.clone(), pre_forms)? {
+    let top_loc = pre_forms.iter().next().map(|f| f.loc());
+    match parse_toplevel_mod(opts.clone(), top_loc, pre_forms)? {
         ToplevelModParseResult::Mod(tm) => {
             let ls = preprocess(opts.clone(), includes, &tm.forms)?;
-            let l = ls.forms[0].loc();
 
-            let mut ma = ModAccum::new(l.clone());
+            let mut ma = ModAccum::new(tm.loc.clone());
             for form in ls.forms.iter().take(ls.forms.len() - 1) {
                 ma = ma.compile_mod_helper(opts.clone(), tm.stripped_args.clone(), form.clone())?;
             }
@@ -1018,7 +1021,7 @@ fn frontend_start(
                 ls.forms[ls.forms.len() - 1].clone(),
             )
         }
-        ToplevelModParseResult::Simple(t) => frontend_step_finish(opts.clone(), includes, &t),
+        ToplevelModParseResult::Simple(l, t) => frontend_step_finish(opts.clone(), includes, l, &t),
     }
 }
 
