@@ -355,12 +355,7 @@ fn form_module_program_common_body(
 
     for (target_name, capture) in exports.iter().filter_map(|e| {
         if let Export::Function(exdef) = e {
-            let target_name = exdef
-                .as_name
-                .as_ref()
-                .unwrap_or(&exdef.name)
-                .value
-                .clone();
+            let target_name = exdef.as_name.as_ref().unwrap_or(&exdef.name).value.clone();
             if !standalone_constants.contains(&exdef.name.value) {
                 return Some((target_name, exdef.name.value.clone()));
             }
