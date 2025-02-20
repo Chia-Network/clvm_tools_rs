@@ -1,3 +1,4 @@
+#![allow(unexpected_cfgs)]
 use js_sys;
 use std::cell::RefCell;
 use std::collections::HashMap;
