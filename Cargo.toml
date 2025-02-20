@@ -45,7 +45,7 @@ features = ["flamegraph"]
 optional = true
 
 [dependencies.pyo3]
-version = "0.21.2"
+version = "=0.21.2"
 features = ["abi3-py38", "extension-module"]
 optional = true
 

@@ -14,8 +14,8 @@ create_exception!(mymodule, ConvError, PyException);
 
 fn convert_to_external(
     allocator: &Allocator,
-    cons: &PyAny,
-    from_bytes: &PyAny,
+    cons: Bound<'_, PyAny>,
+    from_bytes: Bound<'_, PyAny>,
     root_node: NodePtr,
 ) -> PyResult<PyObject> {
     let mut stack: Vec<NodePtr> = vec![root_node];
@@ -34,7 +34,7 @@ fn convert_to_external(
                     let result: PyObject = Python::with_gil(|py| {
                         let a = finished.get(&left).unwrap();
                         let b = finished.get(&right).unwrap();
-                        let args = PyTuple::new(py, &[a, b]);
+                        let args = PyTuple::new_bound(py, [a, b]);
                         cons.call1(args)
                     })?
                     .into();
@@ -52,15 +52,15 @@ fn convert_to_external(
             SExp::Atom => {
                 stack.pop();
 
-                if !finished.contains_key(&node) {
+                if let std::collections::hash_map::Entry::Vacant(e) = finished.entry(node) {
                     let converted: PyObject = Python::with_gil(|py| {
                         let atom = allocator.atom(node);
-                        let bytes = PyBytes::new(py, atom.as_ref());
-                        let args = PyTuple::new(py, &[bytes]);
+                        let bytes = PyBytes::new_bound(py, atom.as_ref());
+                        let args = PyTuple::new_bound(py, &[bytes]);
                         from_bytes.call1(args)
                     })?
                     .into();
-                    finished.insert(node, converted);
+                    e.insert(converted);
                 }
             }
         }
@@ -73,7 +73,7 @@ fn convert_to_external(
 }
 
 #[pyfunction]
-pub fn assemble_generic(cons: &PyAny, from_bytes: &PyAny, args: String) -> PyResult<PyObject> {
+pub fn assemble_generic(cons: Bound<'_, PyAny>, from_bytes: Bound<'_, PyAny>, args: String) -> PyResult<PyObject> {
     let mut allocator = Allocator::new();
     let assembled =
         binutils::assemble(&mut allocator, &args).map_err(|e| ConvError::new_err(e.to_string()))?;
@@ -81,7 +81,7 @@ pub fn assemble_generic(cons: &PyAny, from_bytes: &PyAny, args: String) -> PyRes
 }
 
 #[pyfunction]
-pub fn disassemble_generic(program_bytes: &PyBytes) -> PyResult<String> {
+pub fn disassemble_generic(program_bytes: Bound<'_, PyBytes>) -> PyResult<String> {
     let mut allocator = Allocator::new();
     let mut stream = Stream::new(Some(Bytes::new(Some(BytesFromType::Raw(
         program_bytes.as_bytes().to_vec(),
@@ -98,9 +98,9 @@ pub fn disassemble_generic(program_bytes: &PyBytes) -> PyResult<String> {
     Ok(disassembled)
 }
 
-pub fn create_binutils_module(py: Python) -> PyResult<&'_ PyModule> {
-    let m = PyModule::new(py, "binutils")?;
-    m.add_function(wrap_pyfunction!(assemble_generic, m)?)?;
-    m.add_function(wrap_pyfunction!(disassemble_generic, m)?)?;
+pub fn create_binutils_module(py: Python) -> PyResult<Bound<'_, PyModule>> {
+    let m = PyModule::new_bound(py, "binutils")?;
+    m.add_function(wrap_pyfunction!(assemble_generic, m.clone())?)?;
+    m.add_function(wrap_pyfunction!(disassemble_generic, m.clone())?)?;
     Ok(m)
 }
