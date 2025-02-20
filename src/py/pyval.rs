@@ -15,7 +15,7 @@ pub fn map_err_to_pyerr<PA>(srcloc: Srcloc, r: PyResult<PA>) -> Result<PA, RunFa
     r.map_err(|e| RunFailure::RunErr(srcloc, format!("{e}")))
 }
 
-pub fn python_value_to_clvm(val: &PyAny) -> Result<Rc<SExp>, RunFailure> {
+pub fn python_value_to_clvm(val: Bound<'_, PyAny>) -> Result<Rc<SExp>, RunFailure> {
     let srcloc = Srcloc::start("*python*");
     val.downcast::<PyList>()
         .ok()
@@ -92,10 +92,10 @@ pub fn clvm_value_to_python(py: Python, val: Rc<SExp>) -> Py<PyAny> {
             for i in lst {
                 vallist.push(clvm_value_to_python(py, Rc::new(i.clone())));
             }
-            PyList::new(py, &vallist).into_py(py)
+            PyList::new_bound(py, &vallist).into_py(py)
         })
         .unwrap_or_else(|| match val.borrow() {
-            SExp::Cons(_, a, b) => PyTuple::new(
+            SExp::Cons(_, a, b) => PyTuple::new_bound(
                 py,
                 vec![
                     clvm_value_to_python(py, a.clone()),
@@ -106,17 +106,17 @@ pub fn clvm_value_to_python(py: Python, val: Rc<SExp>) -> Py<PyAny> {
             SExp::Integer(_, i) => {
                 let int_val: Py<PyAny> = map_err_to_pyerr(
                     val.loc(),
-                    py.eval(&format!("int({i})"), None, None)
+                    py.eval_bound(&format!("int({i})"), None, None)
                         .map(|x| x.into_py(py)),
                 )
                 .unwrap();
                 int_val
             }
-            SExp::Atom(_, v) => PyBytes::new(py, v).into_py(py),
-            SExp::QuotedString(_, _, v) => PyBytes::new(py, v).into_py(py),
+            SExp::Atom(_, v) => PyBytes::new_bound(py, v).into_py(py),
+            SExp::QuotedString(_, _, v) => PyBytes::new_bound(py, v).into_py(py),
             SExp::Nil(_) => {
                 let emptybytes: Vec<u8> = vec![];
-                PyList::new(py, &emptybytes).into_py(py)
+                PyList::new_bound(py, &emptybytes).into_py(py)
             }
         })
 }

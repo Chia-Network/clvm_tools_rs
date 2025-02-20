@@ -329,9 +329,14 @@ fn constant_fun_result(
                 };
 
                 let mut symbols = HashMap::new();
-                let mut wrapper =
-                    CompileContextWrapper::new(allocator, runner.clone(), &mut symbols, optimizer);
-
+                let mut includes = Vec::new();
+                let mut wrapper = CompileContextWrapper::new(
+                    allocator,
+                    runner.clone(),
+                    &mut symbols,
+                    optimizer,
+                    &mut includes,
+                );
                 if let Ok(code) = codegen(&mut wrapper.context, opts.clone(), &to_compile) {
                     code
                 } else {
@@ -524,12 +529,14 @@ pub fn optimize_expr(
             if let Some(stepping) = opts.dialect().stepping {
                 if stepping >= 23 {
                     let mut throwaway_symbols = HashMap::new();
+                    let mut includes = Vec::new();
                     if let Ok(optimizer) = get_optimizer(l, opts.clone()) {
                         let mut wrapper = CompileContextWrapper::new(
                             allocator,
                             runner,
                             &mut throwaway_symbols,
                             optimizer,
+                            &mut includes,
                         );
                         if let Ok(compiled) = do_mod_codegen(&mut wrapper.context, opts.clone(), cf)
                         {

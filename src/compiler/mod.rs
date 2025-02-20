@@ -28,6 +28,7 @@ pub mod preprocessor;
 pub mod prims;
 pub mod rename;
 pub mod repl;
+pub mod resolve;
 pub mod runtypes;
 pub mod sexp;
 pub mod srcloc;
@@ -41,7 +42,8 @@ use std::rc::Rc;
 
 use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
+    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, IncludeDesc,
+    PrimaryCodegen,
 };
 use crate::compiler::optimize::Optimization;
 use crate::compiler::sexp::SExp;
@@ -53,21 +55,27 @@ pub struct BasicCompileContext {
     pub runner: Rc<dyn TRunProgram>,
     pub symbols: HashMap<String, String>,
     pub optimizer: Box<dyn Optimization>,
+    pub includes: Vec<IncludeDesc>,
 }
 
 impl BasicCompileContext {
     /// Get a mutable allocator reference from this compile context. The
     /// allocator is used any time we need to execute pure CLVM operators, such
     /// as when evaluating macros or constant folding any chialisp expression.
-    fn allocator(&mut self) -> &mut Allocator {
+    pub fn allocator(&mut self) -> &mut Allocator {
         &mut self.allocator
     }
 
     /// Get the runner this compile context carries. This is used with the
     /// allocator above to execute pure CLVM when needed either on behalf of a
     /// macro or constant folding.
-    fn runner(&self) -> Rc<dyn TRunProgram> {
+    pub fn runner(&self) -> Rc<dyn TRunProgram> {
         self.runner.clone()
+    }
+
+    /// Get the list of includes traversed while processing the current compile.
+    pub fn includes(&mut self) -> &mut Vec<IncludeDesc> {
+        &mut self.includes
     }
 
     /// Get the mutable symbol store this compile context carries. During
@@ -78,13 +86,13 @@ impl BasicCompileContext {
     /// There are times when we're in a subcompile (such as mod expressions when
     /// the compile context needs to do swap in or out symbols or transform them
     /// on behalf of the child.
-    fn symbols(&mut self) -> &mut HashMap<String, String> {
+    pub fn symbols(&mut self) -> &mut HashMap<String, String> {
         &mut self.symbols
     }
 
     /// Called after frontend parsing and preprocessing when we have a complete
     /// picture of the user's intended semantics.
-    fn frontend_optimization(
+    pub fn frontend_optimization(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         cf: CompileForm,
@@ -94,7 +102,7 @@ impl BasicCompileContext {
             .frontend_optimization(&mut self.allocator, runner, opts, cf)
     }
 
-    fn post_desugar_optimization(
+    pub fn post_desugar_optimization(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         cf: CompileForm,
@@ -106,7 +114,7 @@ impl BasicCompileContext {
 
     /// Shrink the program prior to generating the final environment map and
     /// doing other codegen tasks.  This also serves as a tree-shaking pass.
-    fn start_of_codegen_optimization(
+    pub fn start_of_codegen_optimization(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         to_optimize: StartOfCodegenOptimization,
@@ -119,7 +127,7 @@ impl BasicCompileContext {
     /// Note: must take measures to ensure that the symbols are changed along
     /// with any code that's changed.  It's likely better to do optimizations
     /// at other stages, such as post_codegen_function_optimize.
-    fn post_codegen_output_optimize(
+    pub fn post_codegen_output_optimize(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         generated: SExp,
@@ -128,7 +136,7 @@ impl BasicCompileContext {
     }
 
     /// Called when a full macro program optimization is used.
-    fn macro_optimization(
+    pub fn macro_optimization(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         code: Rc<SExp>,
@@ -139,7 +147,7 @@ impl BasicCompileContext {
 
     /// Called to transform a defun before generating code from it.
     /// Returns a new bodyform.
-    fn pre_codegen_function_optimize(
+    pub fn pre_codegen_function_optimize(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         codegen: &PrimaryCodegen,
@@ -155,7 +163,7 @@ impl BasicCompileContext {
     }
 
     /// Called to transform the function body after code generation.
-    fn post_codegen_function_optimize(
+    pub fn post_codegen_function_optimize(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         helper: Option<&HelperForm>,
@@ -172,7 +180,7 @@ impl BasicCompileContext {
 
     /// Call in final_codegen to get the final main bodyform to generate
     /// code from.
-    fn pre_final_codegen_optimize(
+    pub fn pre_final_codegen_optimize(
         &mut self,
         opts: Rc<dyn CompilerOpts>,
         codegen: &PrimaryCodegen,
@@ -194,12 +202,14 @@ impl BasicCompileContext {
         runner: Rc<dyn TRunProgram>,
         symbols: HashMap<String, String>,
         optimizer: Box<dyn Optimization>,
+        includes: Vec<IncludeDesc>,
     ) -> Self {
         BasicCompileContext {
             allocator,
             runner,
             symbols,
             optimizer,
+            includes,
         }
     }
 }
@@ -212,6 +222,7 @@ impl BasicCompileContext {
 pub struct CompileContextWrapper<'a> {
     pub allocator: &'a mut Allocator,
     pub symbols: &'a mut HashMap<String, String>,
+    pub includes: &'a mut Vec<IncludeDesc>,
     pub context: BasicCompileContext,
 }
 
@@ -238,17 +249,43 @@ impl<'a> CompileContextWrapper<'a> {
         runner: Rc<dyn TRunProgram>,
         symbols: &'a mut HashMap<String, String>,
         optimizer: Box<dyn Optimization>,
+        includes: &'a mut Vec<IncludeDesc>,
     ) -> Self {
         let bcc = BasicCompileContext {
             allocator: Allocator::new(),
             runner,
             symbols: HashMap::new(),
             optimizer,
+            includes: Vec::new(),
         };
         let mut wrapper = CompileContextWrapper {
             allocator,
             symbols,
             context: bcc,
+            includes,
+        };
+        wrapper.switch();
+        wrapper
+    }
+
+    pub fn from_context(
+        context: &'a mut BasicCompileContext,
+        symbols: &'a mut HashMap<String, String>,
+    ) -> Self {
+        let runner = context.runner();
+        let optimizer = context.optimizer.duplicate();
+        let bcc = BasicCompileContext {
+            allocator: Allocator::new(),
+            runner,
+            symbols: HashMap::new(),
+            optimizer,
+            includes: Vec::new(),
+        };
+        let mut wrapper = CompileContextWrapper {
+            allocator: &mut context.allocator,
+            symbols,
+            context: bcc,
+            includes: &mut context.includes,
         };
         wrapper.switch();
         wrapper
@@ -262,6 +299,7 @@ impl<'a> CompileContextWrapper<'a> {
     fn switch(&mut self) {
         swap(self.allocator, &mut self.context.allocator);
         swap(self.symbols, &mut self.context.symbols);
+        swap(self.includes, &mut self.context.includes);
     }
 }
 

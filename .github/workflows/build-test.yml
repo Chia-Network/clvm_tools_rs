@@ -222,7 +222,7 @@ jobs:
       run: |
         cargo install grcov
         rustup component add llvm-tools-preview
-        python ./resources/coverage/run_coverage.py --require-percent 60
+        python ./resources/coverage/run_coverage.py --require-percent 60 --test-args="--features="
 
     - name: Build alpine wheel via docker
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.9')
@@ -362,7 +362,7 @@ jobs:
         run: cargo test
 
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rs/toolchain@v1

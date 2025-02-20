@@ -35,6 +35,7 @@ impl<'info, T> VisitedMarker<'info, T> {
         T: HasDepthLimit<L, E>,
     {
         let info = prev.take();
+        assert!(info.is_some());
         let depth = prev.depth();
         if let Some(ref info) = info {
             if let Some(limit) = info.depth_limit() {

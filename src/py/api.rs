@@ -55,7 +55,7 @@ fn get_version() -> PyResult<String> {
 }
 
 enum CompileClvmSource<'a> {
-    SourcePath(&'a PyAny),
+    SourcePath(&'a Bound<'a, PyAny>),
     SourceCode(String, String),
 }
 
@@ -112,12 +112,14 @@ fn run_clvm_compilation(
         CompileClvmAction::CompileCode(output) => {
             let mut allocator = Allocator::new();
             let mut symbols = HashMap::new();
+            let mut includes = Vec::new();
 
             // Output is a program represented as clvm data in allocator.
             let clvm_result = clvmc::compile_clvm_text(
                 &mut allocator,
                 opts.clone(),
                 &mut symbols,
+                &mut includes,
                 &file_content,
                 &path_string,
                 true,
@@ -170,13 +172,13 @@ fn run_clvm_compilation(
 #[pyfunction]
 #[pyo3(signature = (input_path, output_path, search_paths = Vec::new(), export_symbols = None))]
 fn compile_clvm(
-    input_path: &PyAny,
+    input_path: Bound<'_, PyAny>,
     output_path: String,
     search_paths: Vec<String>,
     export_symbols: Option<bool>,
 ) -> PyResult<PyObject> {
     run_clvm_compilation(
-        CompileClvmSource::SourcePath(input_path),
+        CompileClvmSource::SourcePath(&input_path),
         CompileClvmAction::CompileCode(Some(output_path)),
         search_paths,
         export_symbols,
@@ -200,9 +202,12 @@ fn compile(
 
 #[pyfunction]
 #[pyo3(signature = (input_path, search_paths=Vec::new()))]
-fn check_dependencies(input_path: &PyAny, search_paths: Vec<String>) -> PyResult<PyObject> {
+fn check_dependencies(
+    input_path: Bound<'_, PyAny>,
+    search_paths: Vec<String>,
+) -> PyResult<PyObject> {
     run_clvm_compilation(
-        CompileClvmSource::SourcePath(input_path),
+        CompileClvmSource::SourcePath(&input_path),
         CompileClvmAction::CheckDependencies,
         search_paths,
         None,
@@ -240,9 +245,9 @@ fn runstep(myself: &mut PythonRunStep) -> PyResult<Option<PyObject>> {
     // Return a dict if one was returned.
     let dict_result = res.1.map(|m| {
         Python::with_gil(|py| {
-            let dict = PyDict::new(py);
+            let dict = PyDict::new_bound(py);
             for (k, v) in m.iter() {
-                let _ = dict.set_item(PyString::new(py, k), PyString::new(py, v));
+                let _ = dict.set_item(PyString::new_bound(py, k), PyString::new_bound(py, v));
             }
             dict.to_object(py)
         })
@@ -284,9 +289,9 @@ impl CldbSingleBespokeOverride for CldbSinglePythonOverride {
             let arg_value = clvm_value_to_python(py, env.clone());
             let res = self
                 .pycode
-                .call1(py, PyTuple::new(py, &vec![arg_value]))
+                .call1(py, PyTuple::new_bound(py, &vec![arg_value]))
                 .map_err(|e| RunFailure::RunErr(env.loc(), format!("{}", e)))?;
-            let res_ref: &PyAny = res.as_ref(py);
+            let res_ref: Bound<'_, PyAny> = res.bind(py).clone();
             python_value_to_clvm(res_ref)
         })
     }
@@ -308,11 +313,11 @@ fn start_clvm_program(
         let print_only_option = run_options
             .and_then(|h| h.get("print").map(|p| p.clone()))
             .unwrap_or_else(|| {
-                let any: Py<PyAny> = PyBool::new(py, false).into();
-                any
+                let any: Bound<'_, PyAny> = PyBool::new_bound(py, false).as_ref().clone();
+                any.into()
             });
 
-        PyBool::new(py, true).compare(print_only_option)
+        PyBool::new_bound(py, true).compare(print_only_option)
     })?;
 
     let print_only = print_only_value == Ordering::Equal;
@@ -402,6 +407,7 @@ fn launch_tool(tool_name: String, args: Vec<String>, default_stage: u32) -> Vec<
 }
 
 #[pyfunction]
+#[pyo3(signature = (tool_name, args))]
 fn call_tool(tool_name: String, args: Vec<String>) -> PyResult<Vec<u8>> {
     let mut allocator = Allocator::new();
     let mut stdout = Stream::new(None);
@@ -494,21 +500,21 @@ pub fn compose_run_function(
 }
 
 #[pymodule]
-fn clvm_tools_rs(py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_submodule(create_cmds_module(py)?)?;
-    m.add_submodule(create_binutils_module(py)?)?;
+fn clvm_tools_rs(py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_submodule(&create_cmds_module(py)?)?;
+    m.add_submodule(&create_binutils_module(py)?)?;
 
-    m.add("CldbError", py.get_type::<CldbError>())?;
-    m.add("CompError", py.get_type::<CompError>())?;
+    m.add("CldbError", py.get_type_bound::<CldbError>())?;
+    m.add("CompError", py.get_type_bound::<CompError>())?;
 
-    m.add_function(wrap_pyfunction!(compile_clvm, m)?)?;
-    m.add_function(wrap_pyfunction!(compile, m)?)?;
-    m.add_function(wrap_pyfunction!(get_version, m)?)?;
-    m.add_function(wrap_pyfunction!(start_clvm_program, m)?)?;
-    m.add_function(wrap_pyfunction!(launch_tool, m)?)?;
-    m.add_function(wrap_pyfunction!(call_tool, m)?)?;
-    m.add_function(wrap_pyfunction!(check_dependencies, m)?)?;
-    m.add_function(wrap_pyfunction!(compose_run_function, m)?)?;
+    m.add_function(wrap_pyfunction!(compile_clvm, m.clone())?)?;
+    m.add_function(wrap_pyfunction!(compile, m.clone())?)?;
+    m.add_function(wrap_pyfunction!(get_version, m.clone())?)?;
+    m.add_function(wrap_pyfunction!(start_clvm_program, m.clone())?)?;
+    m.add_function(wrap_pyfunction!(launch_tool, m.clone())?)?;
+    m.add_function(wrap_pyfunction!(call_tool, m.clone())?)?;
+    m.add_function(wrap_pyfunction!(check_dependencies, m.clone())?)?;
+    m.add_function(wrap_pyfunction!(compose_run_function, m.clone())?)?;
     m.add_class::<PythonRunStep>()?;
     Ok(())
 }

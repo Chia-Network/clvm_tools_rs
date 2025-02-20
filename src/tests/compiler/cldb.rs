@@ -98,6 +98,7 @@ fn test_run_clvm_in_cldb() {
     let runner = Rc::new(DefaultProgramRunner::new());
     let opts = Rc::new(DefaultCompilerOpts::new(program_name));
     let mut symbols = HashMap::new();
+    let mut includes = Vec::new();
     let args = parse_sexp(Srcloc::start("*args*"), "(5)".bytes()).expect("should parse")[0].clone();
 
     let program = compile_file(
@@ -106,6 +107,7 @@ fn test_run_clvm_in_cldb() {
         opts,
         &program_code,
         &mut symbols,
+        &mut includes,
     )
     .expect("should compile");
 
@@ -115,7 +117,7 @@ fn test_run_clvm_in_cldb() {
         run_clvm_in_cldb(
             program_name,
             Rc::new(program_lines),
-            Rc::new(program),
+            Rc::new(program.to_sexp()),
             symbols,
             args,
             &mut DoesntWatchCldb {},
@@ -182,6 +184,7 @@ fn compile_and_run_program_with_tree(
         .set_search_paths(search_paths);
 
     let mut use_symbol_table = HashMap::new();
+    let mut includes = Vec::new();
 
     let program = compile_file(
         &mut allocator,
@@ -189,6 +192,7 @@ fn compile_and_run_program_with_tree(
         opts.clone(),
         &input_program_text,
         &mut use_symbol_table,
+        &mut includes,
     )
     .expect("should compile");
     let args = parse_sexp(program.loc(), args_text.as_bytes().iter().copied())
@@ -208,7 +212,7 @@ fn compile_and_run_program_with_tree(
         input_file_name: Some(input_file.to_owned()),
         lines: program_lines,
         symbol_table: Rc::new(use_symbol_table),
-        prog: Rc::new(program),
+        prog: Rc::new(program.to_sexp()),
         args,
         flags,
     })

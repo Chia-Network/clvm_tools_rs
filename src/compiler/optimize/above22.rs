@@ -9,7 +9,8 @@ use crate::classic::clvm_tools::stages::stage_0::TRunProgram;
 #[cfg(any(test, feature = "fuzz"))]
 use crate::compiler::compiler::FUZZ_TEST_PRE_CSE_MERGE_FIX_FLAG;
 use crate::compiler::comptypes::{
-    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, PrimaryCodegen,
+    BodyForm, CompileErr, CompileForm, CompilerOpts, DefunData, HelperForm, ModulePhase,
+    PrimaryCodegen,
 };
 use crate::compiler::frontend::compute_live_helpers;
 use crate::compiler::optimize::brief::brief_path_selection;
@@ -91,8 +92,18 @@ impl Optimization for Strategy23 {
         cf: CompileForm,
     ) -> Result<CompileForm, CompileErr> {
         let mut symbols = HashMap::new();
-        let mut wrapper =
-            CompileContextWrapper::new(allocator, runner, &mut symbols, self.duplicate());
+        let mut includes = Vec::new();
+        let mut wrapper = CompileContextWrapper::new(
+            allocator,
+            runner,
+            &mut symbols,
+            self.duplicate(),
+            &mut includes,
+        );
+        if matches!(opts.module_phase(), Some(ModulePhase::StandalonePhase(_))) {
+            return Ok(cf);
+        }
+
         deinline_opt(&mut wrapper.context, opts.clone(), cf)
     }
 

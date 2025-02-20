@@ -761,7 +761,7 @@ impl<'info> Evaluator {
                     visited,
                     prog_args.clone(),
                     env,
-                    program.exp,
+                    program.compileform().exp.clone(),
                     false,
                 )
             })
@@ -1487,12 +1487,14 @@ impl<'info> Evaluator {
             BodyForm::Mod(l, program) => {
                 // A mod form yields the compiled code.
                 let mut symbols = HashMap::new();
+                let mut includes = Vec::new();
                 let optimizer = get_optimizer(l, self.opts.clone())?;
                 let mut context_wrapper = CompileContextWrapper::new(
                     allocator,
                     self.runner.clone(),
                     &mut symbols,
                     optimizer,
+                    &mut includes,
                 );
                 let code = codegen(&mut context_wrapper.context, self.opts.clone(), program)?;
                 Ok(Rc::new(BodyForm::Quoted(code)))
@@ -1646,14 +1648,18 @@ impl<'info> Evaluator {
             .set_in_defun(in_defun)
             .set_frontend_opt(false);
 
-        let com_result = updated_opts.compile_program(
+        let mut symbols = HashMap::new();
+        let mut includes = Vec::new();
+        let mut context = CompileContextWrapper::new(
             allocator,
             self.runner.clone(),
-            use_body,
-            &mut HashMap::new(),
-        )?;
+            &mut symbols,
+            get_optimizer(&Srcloc::start(&self.opts.filename()), self.opts.clone())?,
+            &mut includes,
+        );
+        let com_result = updated_opts.compile_program(&mut context.context, use_body)?;
 
-        Ok(Rc::new(com_result))
+        Ok(Rc::new(com_result.to_sexp()))
     }
 
     pub fn add_helper(&mut self, h: &HelperForm) {

@@ -17,8 +17,9 @@ use clvmr::allocator::Allocator;
 
 use crate::classic::clvm::__type_compatibility__::{bi_one, bi_zero, Stream};
 use crate::classic::clvm_tools::binutils::disassemble;
-use crate::classic::clvm_tools::cmds::launch_tool;
+use crate::classic::clvm_tools::cmds::{launch_tool, OpcConversion, OpdConversion, TConversion};
 use crate::classic::clvm_tools::node_path::NodePath;
+use crate::classic::clvm_tools::sha256tree::sha256tree;
 
 use crate::compiler::clvm::convert_to_clvm_rs;
 use crate::compiler::sexp;
@@ -655,6 +656,89 @@ fn test_embed_file_9() {
 }
 
 #[test]
+fn test_get_dependencies_2() {
+    let dep_set = run_dependencies("resources/tests/test_treehash_constant.cl");
+
+    let mut expect_set = HashSet::new();
+    expect_set.insert("resources/tests/sha256tree.clib".to_owned());
+    expect_set.insert("resources/tests/secret_number.cl".to_owned());
+    expect_set.insert("resources/tests/test_sub_include.cl".to_owned());
+    assert_eq!(dep_set, expect_set);
+}
+
+fn compute_hash_of_program(disk_file: &str) -> String {
+    let mut allocator = Allocator::new();
+    let want_program_repr = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        disk_file.to_string(),
+    ])
+    .trim()
+    .to_string();
+
+    let hexed = OpcConversion {}
+        .invoke(&mut allocator, &want_program_repr)
+        .unwrap();
+    let sexp = OpdConversion {
+        op_version: Some(0),
+    }
+    .invoke(&mut allocator, &hexed.rest())
+    .unwrap();
+    format!("0x{}", sha256tree(&mut allocator, *sexp.first()).hex())
+}
+
+#[test]
+fn test_treehash_constant_21() {
+    let want_inner_program_hash =
+        "0xfb5255887665727c721852a42493d43710a66a331f7ba50e0248459e23d0a0b2";
+    let result_text = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/test_treehash_constant_21.cl".to_string(),
+    ])
+    .trim()
+    .to_string();
+
+    assert_eq!(
+        compute_hash_of_program("resources/tests/secret_number.cl"),
+        want_inner_program_hash
+    );
+
+    let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
+        .trim()
+        .to_string();
+
+    assert_eq!(result_hash, want_inner_program_hash);
+}
+
+#[test]
+fn test_treehash_constant_21_2() {
+    let expected_hash = "0xd9e5da863d7f61605f4430d4f59d2e7b65e87bf8aa664a28a73c73e1523a7a17";
+
+    let result_text = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "resources/tests/test_treehash_constant_21_2.cl".to_string(),
+    ])
+    .trim()
+    .to_string();
+
+    assert_eq!(
+        compute_hash_of_program("resources/tests/secret_number2.cl"),
+        expected_hash
+    );
+
+    let result_hash = do_basic_brun(&vec!["brun".to_string(), result_text, "()".to_string()])
+        .trim()
+        .to_string();
+
+    assert_eq!(result_hash, expected_hash);
+}
+
+#[test]
 fn test_num_encoding_just_less_than_5_bytes() {
     let res = do_basic_run(&vec!["run".to_string(), "4281419728".to_string()])
         .trim()
@@ -1066,7 +1150,7 @@ fn test_assign_lambda_code_generation() {
 }
 
 #[test]
-fn test_assign_lambda_code_generation_normally_inlines() {
+fn test_assign_lambda_code_generation_inline() {
     let tname = "test_assign_inline_code_generation.sym".to_string();
     do_basic_run(&vec![
         "run".to_string(),
@@ -1417,7 +1501,9 @@ fn test_defmac_if_smoke_preprocess() {
         "resources/tests/strict".to_string(),
         "-E".to_string(),
         "resources/tests/strict/defmac_if_smoke.clsp".to_string(),
-    ]);
+    ])
+    .trim()
+    .to_string();
     assert_eq!(
         result_prog,
         "(mod () (include *strict-cl-21*) (a (i t1 (com t2) (com t3)) @))"
@@ -1437,7 +1523,9 @@ fn test_defmac_assert_smoke_preprocess() {
         "resources/tests/strict".to_string(),
         "-E".to_string(),
         "resources/tests/strict/assert.clsp".to_string(),
-    ]);
+    ])
+    .trim()
+    .to_string();
     assert_eq!(
         result_prog,
         "(mod (A) (include *strict-cl-21*) (a (i 1 (com (a (i A (com 13) (com (x))) @)) (com (x))) @))"
@@ -1448,7 +1536,9 @@ fn test_defmac_assert_smoke_preprocess() {
         "-i".to_string(),
         "resources/tests/strict".to_string(),
         "resources/tests/strict/assert.clsp".to_string(),
-    ]);
+    ])
+    .trim()
+    .to_string();
     assert_eq!(result_after_preproc, result_with_preproc);
     let run_result_true = do_basic_brun(&vec![
         "brun".to_string(),

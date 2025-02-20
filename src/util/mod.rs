@@ -5,7 +5,6 @@ use std::io::Write;
 use std::mem::swap;
 use std::path::Path;
 use tempfile::NamedTempFile;
-use unicode_segmentation::UnicodeSegmentation;
 
 pub type Number = BigInt;
 
@@ -40,7 +39,7 @@ where
 }
 
 pub fn skip_leading(s: &str, dash: &str) -> String {
-    s.graphemes(true).skip_while(|ch| dash == *ch).collect()
+    s.chars().skip_while(|ch| dash.contains(*ch)).collect()
 }
 
 pub fn collapse<A>(r: Result<A, A>) -> A {

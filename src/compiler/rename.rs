@@ -5,7 +5,7 @@ use std::rc::Rc;
 use crate::compiler::codegen::toposort_assign_bindings;
 use crate::compiler::comptypes::{
     map_m, map_m_reverse, Binding, BindingPattern, BodyForm, CompileErr, CompileForm, DefconstData,
-    DefmacData, DefunData, HelperForm, LambdaData, LetData, LetFormKind,
+    DefmacData, DefunData, HelperForm, LambdaData, LetData, LetFormKind, NamespaceData,
 };
 use crate::compiler::gensym::gensym;
 use crate::compiler::sexp::SExp;
@@ -92,7 +92,7 @@ pub fn rename_in_cons(
 }
 
 /* Returns a list of pairs containing the old and new atom names */
-fn invent_new_names_sexp(body: Rc<SExp>) -> Vec<(Vec<u8>, Vec<u8>)> {
+pub fn invent_new_names_sexp(body: Rc<SExp>) -> Vec<(Vec<u8>, Vec<u8>)> {
     match body.borrow() {
         SExp::Atom(_, name) => {
             if name != b"@" {
@@ -405,6 +405,8 @@ fn rename_in_helperform(
     h: &HelperForm,
 ) -> Result<HelperForm, CompileErr> {
     match h {
+        HelperForm::Defnamespace(_ns) => todo!(),
+        HelperForm::Defnsref(_ns) => todo!(),
         HelperForm::Defconstant(defc) => Ok(HelperForm::Defconstant(DefconstData {
             body: Rc::new(rename_in_bodyform(namemap, defc.body.clone())?),
             ..defc.clone()
@@ -425,6 +427,14 @@ fn rename_in_helperform(
 
 pub fn rename_args_helperform(h: &HelperForm) -> Result<HelperForm, CompileErr> {
     match h {
+        HelperForm::Defnamespace(ns) => {
+            let renamed = map_m(rename_args_helperform, &ns.helpers)?;
+            Ok(HelperForm::Defnamespace(Box::new(NamespaceData {
+                helpers: renamed,
+                ..*ns.clone()
+            })))
+        }
+        HelperForm::Defnsref(_) => Ok(h.clone()),
         HelperForm::Defconstant(defc) => Ok(HelperForm::Defconstant(DefconstData {
             body: Rc::new(rename_args_bodyform(defc.body.borrow())?),
             ..defc.clone()

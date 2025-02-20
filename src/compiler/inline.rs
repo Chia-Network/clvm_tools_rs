@@ -523,11 +523,10 @@ pub fn replace_in_inline(
     tail: Option<Rc<BodyForm>>,
 ) -> Result<CompiledCode, CompileErr> {
     let mut visited = HashSet::new();
-    let runner = context.runner();
     visited.insert(inline.name.clone());
     replace_inline_body(
         &mut visited,
-        runner.clone(),
+        context.runner.clone(),
         opts.clone(),
         compiler,
         loc,
@@ -539,10 +538,7 @@ pub fn replace_in_inline(
     )
     .and_then(|x| {
         let mut symbols = HashMap::new();
-        let runner = context.runner();
-        let optimizer = context.optimizer.duplicate();
-        let mut context_wrapper =
-            CompileContextWrapper::new(context.allocator(), runner, &mut symbols, optimizer);
+        let mut context_wrapper = CompileContextWrapper::from_context(context, &mut symbols);
         generate_expr_code(&mut context_wrapper.context, opts, compiler, x)
     })
 }
