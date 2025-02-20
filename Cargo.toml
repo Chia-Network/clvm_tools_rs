@@ -22,7 +22,6 @@ bls12_381 = { version = "=0.8.0", features = ["experimental"] }
 bytestream = "0.4.1"
 num-traits = "0.2.14"
 lazy_static = "1.4.0"
-unicode-segmentation = "1.12.0"
 encoding8 = "0.3.2"
 num = "0.4.3"
 indoc = "2.0"
