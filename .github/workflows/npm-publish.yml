@@ -37,7 +37,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: install wasm-pack
-        run: cargo install --version 0.12.1 wasm-pack
+        run: cargo install --version 0.11.1 wasm-pack
 
       - name: wasm-pack build and pack
         run: |
