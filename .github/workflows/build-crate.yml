@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
@@ -39,7 +39,7 @@ jobs:
     - name: fmt (stable)
       run: cargo +stable fmt -- --files-with-diff --check
     - name: clippy (stable)
-      run: cargo +stable clippy
+      run: cargo +stable clippy && cargo +stable clippy --manifest-path wasm/Cargo.toml
     - name: tests
       run: cargo test && cargo test --release
     # The design of 'run' causes it to drop main.sym unannounced when compiling.
@@ -53,7 +53,7 @@ jobs:
       run: cargo publish --dry-run
 
     - name: Upload crate artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: crate
         path: ./target/package/clvm_tools_rs-*.crate

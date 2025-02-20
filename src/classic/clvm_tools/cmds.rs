@@ -14,8 +14,8 @@ use std::time::SystemTime;
 
 use core::cmp::max;
 
-use linked_hash_map::LinkedHashMap;
-use yaml_rust::{Yaml, YamlEmitter};
+use hashlink::LinkedHashMap;
+use yaml_rust2::{Yaml, YamlEmitter};
 
 use clvm_rs::allocator::{Allocator, NodePtr};
 use clvm_rs::reduction::EvalErr;

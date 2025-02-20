@@ -1,16 +1,17 @@
+use num_bigint::ToBigInt;
+
+use rand::distr::StandardUniform;
+use rand::prelude::Distribution;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 use std::borrow::Borrow;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::{Debug, Display};
 use std::rc::Rc;
 
 use clvmr::Allocator;
-use num_bigint::ToBigInt;
-use rand::distributions::Standard;
-use rand::prelude::*;
-use rand_chacha::ChaCha8Rng;
 
 use crate::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
-
 use crate::compiler::clvm::{convert_to_clvm_rs, run};
 use crate::compiler::compiler::{compile_file, DefaultCompilerOpts};
 use crate::compiler::comptypes::{BodyForm, CompileErr, CompilerOpts, HasCompilerOptsDelegation};
@@ -271,9 +272,9 @@ impl SupportedOperators {
     }
 }
 
-impl Distribution<SupportedOperators> for Standard {
+impl Distribution<SupportedOperators> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SupportedOperators {
-        match rng.gen::<u8>() % 3 {
+        match rng.random::<u8>() % 3 {
             0 => SupportedOperators::Plus,
             1 => SupportedOperators::Minus,
             _ => SupportedOperators::Times,

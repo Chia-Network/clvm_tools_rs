@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
@@ -36,7 +36,7 @@ jobs:
         toolchain: stable
         components: rustfmt, clippy
 
-    - uses: actions/setup-python@v4
+    - uses: actions/setup-python@v5
       name: Install Python 3.11
       with:
         python-version: 3.11
