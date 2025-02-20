@@ -25,3 +25,6 @@ js-sys = "=0.3.58"
 num-bigint = "0.4.0"
 num-traits = "0.2.15"
 lol_alloc = "0.4.1"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(wasm_bindgen_unstable_test_coverage)'] }

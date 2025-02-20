@@ -170,7 +170,6 @@ impl CldbSingleBespokeOverride for JsBespokeOverride {
 /* Given a program in text (utf-8) form and arguments, compile the program and
  * return a runner object.
  */
-#[allow(unexpected_cfgs)]
 #[wasm_bindgen]
 pub fn create_clvm_runner(
     hex_prog: String,
@@ -244,7 +243,6 @@ pub fn create_clvm_runner(
     JsValue::from(this_id)
 }
 
-#[allow(unexpected_cfgs)]
 #[wasm_bindgen]
 pub fn final_value(runner: i32) -> JsValue {
     with_runner(runner, |r| {
@@ -255,14 +253,12 @@ pub fn final_value(runner: i32) -> JsValue {
     .unwrap_or_else(JsValue::null)
 }
 
-#[allow(unexpected_cfgs)]
 #[wasm_bindgen]
 pub fn remove_clvm_runner(runner: i32) {
     remove_runner(runner);
 }
 
 // Run until the given step, returning the current machine state.
-#[allow(unexpected_cfgs)]
 #[wasm_bindgen]
 pub fn run_step(runner: i32) -> JsValue {
     with_runner(runner, |r| {
@@ -299,7 +295,6 @@ fn make_compile_output(result_stream: &Stream, symbol_table: &HashMap<String, St
 // {"hex": "02392349234...", "symbols":{...}}
 // or
 // {"error": ...}
-#[allow(unexpected_cfgs)]
 #[wasm_bindgen]
 pub fn compile(input_js: JsValue, filename_js: JsValue, search_paths_js: Vec<JsValue>) -> JsValue {
     let mut allocator = Allocator::new();
@@ -342,7 +337,6 @@ fn find_function_hash(symbol_table: &HashMap<String, String>, f: &String) -> Opt
 // function with some given arguments as though the program's primary expression
 // had been that.
 // returns a string or {"error"...}
-#[allow(unexpected_cfgs)]
 #[wasm_bindgen]
 pub fn compose_run_function(
     hex_prog: String,
@@ -415,7 +409,6 @@ pub fn compose_run_function(
 }
 
 // Create a repl session
-#[allow(unexpected_cfgs)]
 #[wasm_bindgen]
 pub fn create_repl() -> i32 {
     let allocator = Allocator::new();
@@ -447,7 +440,6 @@ pub fn create_repl() -> i32 {
     new_id
 }
 
-#[allow(unexpected_cfgs)]
 #[wasm_bindgen]
 pub fn destroy_repl(repl_id: i32) {
     REPLS.with(|repls| {
@@ -460,7 +452,6 @@ pub fn destroy_repl(repl_id: i32) {
     });
 }
 
-#[allow(unexpected_cfgs)]
 #[wasm_bindgen]
 pub fn repl_run_string(repl_id: i32, input: String) -> JsValue {
     REPLS
@@ -484,7 +475,6 @@ pub fn repl_run_string(repl_id: i32, input: String) -> JsValue {
         .unwrap_or_else(JsValue::null)
 }
 
-#[allow(unexpected_cfgs)]
 #[wasm_bindgen]
 pub fn sexp_to_string(v: &JsValue) -> JsValue {
     let loc = Srcloc::start("*val*");
@@ -494,7 +484,6 @@ pub fn sexp_to_string(v: &JsValue) -> JsValue {
         .unwrap_or_else(|| create_clvm_runner_err("unable to convert to value".to_string()))
 }
 
-#[allow(unexpected_cfgs)]
 #[wasm_bindgen]
 pub fn h(v: String) -> Result<Vec<u8>, JsValue> {
     let hex_data = Bytes::new_validated(Some(UnvalidatedBytesFromType::Hex(v)))
@@ -502,7 +491,6 @@ pub fn h(v: String) -> Result<Vec<u8>, JsValue> {
     Ok(hex_data.data().clone())
 }
 
-#[allow(unexpected_cfgs)]
 #[wasm_bindgen]
 pub fn t(a: &JsValue, b: &JsValue) -> Result<JsValue, JsValue> {
     Program::as_pair_internal(
