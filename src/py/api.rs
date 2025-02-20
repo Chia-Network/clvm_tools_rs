@@ -202,7 +202,10 @@ fn compile(
 
 #[pyfunction]
 #[pyo3(signature = (input_path, search_paths=Vec::new()))]
-fn check_dependencies(input_path: Bound<'_, PyAny>, search_paths: Vec<String>) -> PyResult<PyObject> {
+fn check_dependencies(
+    input_path: Bound<'_, PyAny>,
+    search_paths: Vec<String>,
+) -> PyResult<PyObject> {
     run_clvm_compilation(
         CompileClvmSource::SourcePath(&input_path),
         CompileClvmAction::CheckDependencies,

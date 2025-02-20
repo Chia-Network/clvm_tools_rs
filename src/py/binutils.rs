@@ -73,7 +73,11 @@ fn convert_to_external(
 }
 
 #[pyfunction]
-pub fn assemble_generic(cons: Bound<'_, PyAny>, from_bytes: Bound<'_, PyAny>, args: String) -> PyResult<PyObject> {
+pub fn assemble_generic(
+    cons: Bound<'_, PyAny>,
+    from_bytes: Bound<'_, PyAny>,
+    args: String,
+) -> PyResult<PyObject> {
     let mut allocator = Allocator::new();
     let assembled =
         binutils::assemble(&mut allocator, &args).map_err(|e| ConvError::new_err(e.to_string()))?;
