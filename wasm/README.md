@@ -23,7 +23,7 @@ wasm-pack build --release --target=nodejs
 Test
 -----
 Prerequisite:
-- NodeJS >= 16
+- NodeJS >= 18
 - Wasm files built by `wasm-pack` command exist at `<clvm_tools_rs root>/wasm/pkg/`
 
 ```bash

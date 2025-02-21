@@ -1,7 +1,7 @@
 use num_bigint::ToBigInt;
 
 #[cfg(test)]
-use rand::distributions::Standard;
+use rand::distr::StandardUniform;
 #[cfg(test)]
 use rand::prelude::*;
 #[cfg(test)]
@@ -417,6 +417,7 @@ fn test_type_def_1() {
             "run".to_string(),
             indoc! {"
 (mod (A) -> Atom
+   (include *standard-cl-23*)
    (deftype Struct ((A : Atom) . (B : Atom32)))
    (defun-inline foo (X) (new_Struct X 3))
    (get_Struct_A (foo A))
@@ -424,7 +425,7 @@ fn test_type_def_1() {
             .to_string()
         ])
         .trim(),
-        "(a (q . 2) (c 2 (q . 3)))"
+        "(2 (1 . 2) (4 2 (1 . 3)))"
     );
 }
 
@@ -739,13 +740,13 @@ fn test_classic_mod_form() {
 pub fn random_clvm_number<R: Rng + ?Sized>(rng: &mut R) -> RandomClvmNumber {
     // Make a number by creating some random atom bytes.
     // Set high bit randomly.
-    let natoms = rng.gen_range(0..=NUM_GEN_ATOMS);
+    let natoms = rng.random_range(0..=NUM_GEN_ATOMS);
     let mut result_bytes = Vec::new();
     for _ in 0..=natoms {
         let mut new_bytes = sexp::random_atom_name(rng, 3)
             .iter()
             .map(|x| {
-                if rng.gen() {
+                if rng.random() {
                     // The possibility of negative values.
                     x | 0x80
                 } else {
@@ -763,7 +764,7 @@ pub fn random_clvm_number<R: Rng + ?Sized>(rng: &mut R) -> RandomClvmNumber {
 }
 
 #[cfg(test)]
-impl Distribution<RandomClvmNumber> for Standard {
+impl Distribution<RandomClvmNumber> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> RandomClvmNumber {
         random_clvm_number(rng)
     }
@@ -772,9 +773,9 @@ impl Distribution<RandomClvmNumber> for Standard {
 // Finally add property based testing in here.
 #[test]
 fn test_encoding_properties() {
-    let mut rng = ChaChaRng::from_entropy();
+    let mut rng = ChaChaRng::from_os_rng();
     for _ in 1..=200 {
-        let number_spec: RandomClvmNumber = rng.gen();
+        let number_spec: RandomClvmNumber = rng.random();
 
         // We'll have it compile a constant value.
         // The representation of the number will come out most likely
@@ -841,7 +842,7 @@ fn stringize(sexp: &sexp::SExp) -> sexp::SExp {
 
 #[test]
 fn test_check_tricky_arg_path_random() {
-    let mut rng = ChaChaRng::from_entropy();
+    let mut rng = ChaChaRng::from_os_rng();
     // Make a very deep random sexp and make a path table in it.
     let random_tree = Rc::new(stringize(&sexp::random_sexp(&mut rng, SEXP_RNG_HORIZON)));
     let mut deep_tree = random_tree.clone();
@@ -851,7 +852,7 @@ fn test_check_tricky_arg_path_random() {
     let mut deep_path = bi_one();
     for _ in 1..=SEXP_DEPTH {
         deep_path *= 2_u32.to_bigint().unwrap();
-        if rng.gen() {
+        if rng.random() {
             deep_path |= bi_one();
             deep_tree = Rc::new(sexp::SExp::Cons(
                 random_tree.loc(),
@@ -2464,4 +2465,224 @@ fn test_assign_rename_tricky() {
         .trim()
         .to_string();
     assert_eq!(run_result_41, "15375");
+}
+
+#[test]
+fn test_cse_breakage_example() {
+    let filename = "resources/tests/cse-bad.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+
+    eprintln!(">> {program}");
+    assert!(program.starts_with("("));
+
+    let run_result_11 = do_basic_brun(&vec![
+        "brun".to_string(),
+        program.clone(),
+        "(())".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(run_result_11, "((a 3) (a 3) (a 3))");
+}
+
+#[test]
+fn test_cse_breakage_example_letstar() {
+    let filename = "resources/tests/cse-bad-letstar.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+
+    eprintln!(">> {program}");
+    assert!(program.starts_with("("));
+
+    let run_result_11 = do_basic_brun(&vec![
+        "brun".to_string(),
+        program.clone(),
+        "(())".to_string(),
+    ])
+    .trim()
+    .to_string();
+    assert_eq!(run_result_11, "((a 3) (a 3) (a 3))");
+}
+
+#[test]
+fn test_representation_of_tricky_nested_assigns() {
+    let filename = "resources/tests/cse-overlap.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+    let wanted_repr = "(2 (1 2 4 (4 2 (4 (4 5 (4 (1 . 99) (4 (1 . 100) (4 (1 . 101) (4 (1 . 102) ()))))) ()))) (4 (1 (2 10 (4 2 (4 (6 (4 2 (4 3 (4 29 ())))) (4 29 ())))) (2 14 (4 2 (4 3 (4 (4 (4 11 21) (4 21 ())) (4 (4 11 49) ()))))) 4 21 (4 23 (4 (4 23 41) (4 11 ())))) 1))";
+    assert_eq!(program, wanted_repr);
+}
+
+#[test]
+fn test_assign_cse_tricky_2() {
+    let filename = "resources/tests/cse-tricky-basic.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+    let wanted_repr = "(2 (1 2 10 (4 2 (4 5 ()))) (4 (1 ((11 5 11) 2 8 (4 2 (4 5 (4 11 ())))) (2 22 (4 2 (4 3 (4 (18 5 (1 . 11)) (4 (16 5 (1 . 1)) ()))))) (2 30 (4 2 (4 3 (4 (1 . 121) ())))) 2 (3 (9 17 (1 . 13)) (1 2 12 (4 2 (4 45 (4 21 ())))) (1 2 (3 (9 17 (1 . 15)) (1 2 8 (4 2 (4 45 (4 21 ())))) (1 . 11)) 1)) 1) 1))";
+    assert_eq!(program, wanted_repr);
+}
+
+#[test]
+fn test_quote_string_generation() {
+    // The program run here produces a list of strings and quoted atoms that have
+    // representations that must be flattened in various ways in this test.
+    let filename = "resources/tests/test_string_repr.clsp";
+    let program = do_basic_run(&vec!["run".to_string(), filename.to_string()])
+        .trim()
+        .to_string();
+    // The proram produces this list
+    //   (list (qs '"') (qs "'") (qs " hi") (atom '"') (atom "'") (atom "_hi"))
+    //
+    // where qs puts "test" in front of the given string and atom puts test in front of the
+    // given string, converts it to an atom and quotes it so that it won't be interpreted
+    // as an identifier.
+    //
+    // in other words
+    //   (list 'test"' "test'" "test hi"
+    //     (q . (string->symbol (string-append "test" '"')))
+    //     (q . (string->symbol (string-append "test" "'")))
+    //     (q . test_hi)
+    //     )
+    //
+    // The result below shows that the strings and atoms are reproduced as expected.
+    let wanted_repr = "(4 (1 . 0x7465737422) (4 (1 . \"test'\") (4 (1 . \"test hi\") (4 (1 . 499918271522) (4 (1 . 499918271527) (4 (1 . test_hi) ()))))))";
+    assert_eq!(program, wanted_repr);
+    let brun_result = do_basic_brun(&vec!["brun".to_string(), program])
+        .trim()
+        .to_string();
+    // This shows that brun interpreted and passed through the values successfully.
+    assert_eq!(
+        brun_result,
+        "(0x7465737422 \"test'\" \"test hi\" 0x7465737422 \"test'\" \"test_hi\")"
+    );
+}
+
+#[test]
+fn test_classic_modpow() {
+    let result = do_basic_brun(&vec![
+        "brun".to_string(),
+        "(modpow (q . 2) (q . 6) (q . 5))".to_string(),
+    ]);
+    // 64 % 5 == 4
+    assert_eq!(result.trim(), "4");
+}
+
+#[test]
+fn test_classic_mod_op() {
+    let result = do_basic_brun(&vec![
+        "brun".to_string(),
+        "(% (q . 13) (q . 10))".to_string(),
+    ]);
+    // 13 % 10 == 3
+    assert_eq!(result.trim(), "3");
+}
+
+#[test]
+fn test_modern_modpow() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "(mod (X Y Z) (include *standard-cl-23*) (modpow X Y Z))".to_string(),
+    ]);
+    assert_eq!(program.trim(), "(60 2 5 11)");
+    let result = do_basic_brun(&vec!["brun".to_string(), program, "(2 7 10)".to_string()]);
+    // 128 % 10 == 8
+    assert_eq!(result.trim(), "8");
+}
+
+#[test]
+fn test_modern_mod_op() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "(mod (X Y) (include *standard-cl-23*) (% X Y))".to_string(),
+    ]);
+    assert_eq!(program.trim(), "(61 2 5)");
+    let result = do_basic_brun(&vec!["brun".to_string(), program, "(137 6)".to_string()]);
+    // 137 % 6 == 5
+    assert_eq!(result.trim(), "5");
+}
+
+#[test]
+fn test_include_zero_bin() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (X) (include *standard-cl-23.1*) (embed-file lz bin lz.bin) (concat 1 lz))"
+            .to_string(),
+    ]);
+    assert_eq!(program, "(2 (1 14 (1 . 1) 2) (4 (1 . 0x0001) 1))");
+}
+
+#[test]
+fn test_include_zero_bin_pre_fix() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (X) (include *standard-cl-23*) (embed-file lz bin lz.bin) (concat 1 lz))".to_string(),
+    ]);
+    assert_eq!(program, "(2 (1 14 (1 . 1) 2) (4 (1 . 1) 1))");
+}
+
+#[test]
+fn test_include_bin_should_not_be_parsed() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (X) (include *standard-cl-23.1*) (embed-file test bin bin-quote.bin) test)"
+            .to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), program]);
+    assert_eq!(result.trim(), "\"'test\"");
+}
+
+#[test]
+fn test_cl24_compilation() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "resources/tests".to_string(),
+        "(mod (X) (include *standard-cl-24*) 1337)".to_string(),
+    ]);
+    let result = do_basic_brun(&vec!["brun".to_string(), program]);
+    assert_eq!(result.trim(), "1337");
+}
+
+// This is an exhaustive test to ensure that the operator 0 list is the same as it was before
+// we had to implement the original operator set ourselves to preserve it.
+#[test]
+fn test_big_operator_list() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "--operators-version".to_string(),
+        "0".to_string(),
+        "resources/tests/all_operators.clsp".to_string(),
+    ]);
+    let target_program =
+        fs::read_to_string("resources/tests/all_operators-0_1_43.clvm").expect("should exist");
+    // Assert that the program output is the same.
+    assert_eq!(program, target_program);
+    // Run it with an input that exercises every opreator.
+    // If the operator set that's reproduced for v0 is wrong, this should have different
+    // output.
+    let result = do_basic_brun(&vec![
+        "brun".to_string(),
+        "--operators-version".to_string(),
+        "0".to_string(),
+        program,
+        "resources/tests/all_operators_inputs.clvm".to_string(),
+    ])
+    .trim()
+    .to_string();
+    let target_output = fs::read_to_string("resources/tests/all_operators_result.clvm")
+        .expect("should exist")
+        .trim()
+        .to_string();
+    assert_eq!(result, target_output);
 }

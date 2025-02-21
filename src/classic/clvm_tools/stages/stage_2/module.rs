@@ -52,7 +52,7 @@ impl CompileOutput {
 // export type TBuildTree = Bytes | Tuple<TBuildTree, TBuildTree> | [];
 fn build_tree(allocator: &mut Allocator, items: &[Vec<u8>]) -> Result<NodePtr, EvalErr> {
     if items.is_empty() {
-        Ok(allocator.null())
+        Ok(NodePtr::NIL)
     } else if items.len() == 1 {
         allocator.new_atom(&items[0])
     } else {
@@ -72,7 +72,7 @@ fn build_tree_program(allocator: &mut Allocator, items: &[NodePtr]) -> Result<No
     let size = items.len();
     if size == 0 {
         m! {
-            list_of_nil <- enlist(allocator, &[allocator.null()]);
+            list_of_nil <- enlist(allocator, &[NodePtr::NIL]);
             quote(allocator, list_of_nil)
         }
     } else if size == 1 {
@@ -147,7 +147,8 @@ fn build_used_constants_names(
             let matching_names = matching_names_1.iter().filter_map(|v| {
                 // Only v usefully in scope.
                 if let SExp::Atom = allocator.sexp(*v) {
-                    Some(allocator.atom(*v).to_vec())
+                    let atom = allocator.atom(*v);
+                    Some(atom.as_ref().to_vec())
                 } else {
                     None
                 }
@@ -229,7 +230,7 @@ fn unquote_args(
             let code_atom = allocator.atom(code);
             let matching_args = args
                 .iter()
-                .filter(|arg| *arg == code_atom)
+                .filter(|arg| *arg == code_atom.as_ref())
                 .cloned()
                 .collect::<Vec<Vec<u8>>>();
             if !matching_args.is_empty() {
@@ -293,8 +294,8 @@ fn defun_inline_to_macro(
                 None
             }
         })
-        .filter(|x| !x.is_empty())
-        .map(|v| v.to_vec())
+        .filter(|x| !x.as_ref().is_empty())
+        .map(|v| v.as_ref().to_vec())
         .collect::<Vec<Vec<u8>>>();
 
     let unquoted_code = unquote_args(allocator, code, &arg_name_list, &destructure_matches)?;
@@ -326,12 +327,18 @@ fn parse_mod_sexp(
 
     let op = match allocator.sexp(op_node) {
         // op_node in use.
-        SExp::Atom => allocator.atom(op_node).to_vec(),
+        SExp::Atom => {
+            let atom = allocator.atom(op_node);
+            atom.as_ref().to_vec()
+        }
         _ => Vec::new(),
     };
     let name = match allocator.sexp(name_node) {
         // name_node in use.
-        SExp::Atom => allocator.atom(name_node).to_vec(),
+        SExp::Atom => {
+            let atom = allocator.atom(name_node);
+            atom.as_ref().to_vec()
+        }
         _ => Vec::new(),
     };
 
@@ -462,7 +469,7 @@ fn compile_mod_stage_1(
                         let main_list =
                             enlist(
                                 allocator,
-                                &[allocator.null(), *delayed_body]
+                                &[NodePtr::NIL, *delayed_body]
                             )?;
 
                         result_collection.functions.insert(
@@ -499,7 +506,7 @@ fn compile_mod_stage_1(
                             run_program.run_program(
                                 allocator,
                                 compiled,
-                                allocator.null(),
+                                NodePtr::NIL,
                                 None
                             )?;
 
@@ -507,7 +514,7 @@ fn compile_mod_stage_1(
                             run_program.run_program(
                                 allocator,
                                 compilation_result.1,
-                                allocator.null(),
+                                NodePtr::NIL,
                                 None
                             )?;
 
@@ -518,11 +525,11 @@ fn compile_mod_stage_1(
                     }
 
                     if !processed {
-                        return Err(EvalErr(allocator.null(), "got stuck untangling defconst dependencies".to_string()));
+                        return Err(EvalErr(NodePtr::NIL, "got stuck untangling defconst dependencies".to_string()));
                     }
                 }
 
-                let uncompiled_main = nonempty_last(allocator.null(), &alist)?;
+                let uncompiled_main = nonempty_last(NodePtr::NIL, &alist)?;
                 let main_list =
                     enlist(
                         allocator,
@@ -835,7 +842,7 @@ pub fn compile_mod(
 ) -> Result<NodePtr, EvalErr> {
     // Deal with the "mod" keyword.
     let produce_extra_info_prog = assemble(allocator, "(_symbols_extra_info)")?;
-    let produce_extra_info_null = allocator.null();
+    let produce_extra_info_null = NodePtr::NIL;
     let extra_info_res = run_program.run_program(
         allocator,
         produce_extra_info_prog,

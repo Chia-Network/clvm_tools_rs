@@ -18,14 +18,11 @@ pub fn to_hexstr(r: &[u8]) -> String {
 }
 
 pub fn char_to_string(ch: char) -> String {
-    match String::from_utf8(vec![ch as u8]) {
-        Ok(s) => s,
-        _ => String::new(),
-    }
+    String::from_utf8(vec![ch as u8]).unwrap_or_default()
 }
 
 pub fn vec_to_string(r: &[u8]) -> String {
-    return String::from_utf8_lossy(r).as_ref().to_string();
+    String::from_utf8_lossy(r).as_ref().to_string()
 }
 
 /**

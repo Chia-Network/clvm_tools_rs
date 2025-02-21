@@ -91,7 +91,7 @@ pub fn compile_clvm_text_maybe_opt(
     input_path: &str,
     classic_with_opts: bool,
 ) -> Result<NodePtr, CompileError> {
-    let ir_src = read_ir(text).map_err(|s| EvalErr(allocator.null(), s.to_string()))?;
+    let ir_src = read_ir(text).map_err(|s| EvalErr(NodePtr::NIL, s.to_string()))?;
     let assembled_sexp = assemble_from_ir(allocator, Rc::new(ir_src))?;
     let untyped_sexp = untype_code(allocator, Srcloc::start(input_path), assembled_sexp)?;
 
@@ -120,7 +120,7 @@ pub fn compile_clvm_text_maybe_opt(
         Ok(convert_to_clvm_rs(allocator, res)?)
     } else {
         let compile_invoke_code = run(allocator);
-        let input_sexp = allocator.new_pair(untyped_sexp, allocator.null())?;
+        let input_sexp = allocator.new_pair(untyped_sexp, NodePtr::NIL)?;
         let run_program = run_program_for_search_paths(input_path, &opts.get_search_paths(), false);
         if classic_with_opts {
             run_program.set_compiler_opts(Some(opts));

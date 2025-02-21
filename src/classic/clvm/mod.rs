@@ -20,7 +20,7 @@ struct KwAtomPair {
     version: usize,
 }
 
-const KW_PAIRS: [KwAtomPair; 46] = [
+const KW_PAIRS: [KwAtomPair; 48] = [
     KwAtomPair {
         v: &[0x01],
         n: "q",
@@ -239,6 +239,16 @@ const KW_PAIRS: [KwAtomPair; 46] = [
     KwAtomPair {
         v: &[0x3b],
         n: "bls_verify",
+        version: 1,
+    },
+    KwAtomPair {
+        v: &[0x3c],
+        n: "modpow",
+        version: 1,
+    },
+    KwAtomPair {
+        v: &[0x3d],
+        n: "%",
         version: 1,
     },
     KwAtomPair {
