@@ -387,20 +387,16 @@ fn populate_export_map(
         None,
         None,
     )?;
-    eprintln!("populate_export_map: list {result}");
 
     while let SExp::Cons(_, first, rest) = result.borrow() {
-        eprintln!("{first} . {rest}");
         if let SExp::Cons(_, name, value) = first.borrow() {
             if let SExp::Atom(_, name) = name.atomize().borrow() {
                 let mut hash_name: Vec<u8> = name.clone();
                 hash_name.append(&mut b"_hash".to_vec());
-                eprintln!("{}", decode_string(&hash_name));
                 export_map.insert(
                     hash_name,
                     Rc::new(SExp::Atom(value.loc(), sha256tree(value.clone()))),
                 );
-                eprintln!("{} = {value}", decode_string(name));
                 export_map.insert(name.clone(), value.clone());
             }
         }
@@ -488,8 +484,6 @@ pub fn compile_module(
         }
     }
 
-    eprintln!("program with hashes {}", program.to_sexp());
-
     // First pass compilation: remove standalone constant helpers and produce
     // a body which contains all the non-standalone exports.
     let common_opts = opts.set_module_phase(Some(ModulePhase::CommonPhase));
@@ -498,9 +492,7 @@ pub fn compile_module(
         &form_module_program_common_body(standalone_constants, program.clone(), exports)?,
     )?;
     modernize_constants(&mut common_program.helpers, standalone_constants);
-    eprintln!("common program {}", common_program.to_sexp());
     let common_output = compile_from_compileform(context, common_opts, common_program.clone())?;
-    eprintln!("common_output {}", common_output);
 
     let mut captured_export_map: BTreeMap<Vec<u8>, Rc<SExp>> = BTreeMap::new();
     // Capture exports that are members of the common set.
@@ -525,7 +517,6 @@ pub fn compile_module(
         .keys()
         .map(|k| decode_string(k))
         .collect();
-    eprintln!("have common export keys {keys_strings:?}");
 
     // Second pass compilation: for each export in standalone constants
     let cons = Rc::new(BodyForm::Value(SExp::Integer(
@@ -557,7 +548,6 @@ pub fn compile_module(
             ));
         };
 
-        eprintln!("process export {}", decode_string(&export_name));
         let second_stage_program = if let Some(h) =
             find_exported_helper(opts.clone(), &program, &fun_name)?
         {
@@ -595,10 +585,6 @@ pub fn compile_module(
             ));
         };
 
-        eprintln!(
-            "resolve namespaces in program {}",
-            second_stage_program.to_sexp()
-        );
         // remove_standalone_constant(&mut second_stage_program, &fun_name);
         let mut constant_culled_second_stage_program =
             resolve_namespaces(second_stage_opts.clone(), &second_stage_program)?;
@@ -606,18 +592,12 @@ pub fn compile_module(
             &mut constant_culled_second_stage_program.helpers,
             standalone_constants,
         );
-        eprintln!(
-            "standalone program for {}: {}",
-            decode_string(&fun_name),
-            constant_culled_second_stage_program.to_sexp()
-        );
 
         let compiled_result = Rc::new(compile_from_compileform(
             context,
             second_stage_opts.clone(),
             constant_culled_second_stage_program,
         )?);
-        eprintln!("compiled_result {compiled_result}");
 
         populate_export_map(
             context,
@@ -974,7 +954,6 @@ impl CompilerOpts for DefaultCompilerOpts {
     }
     fn set_module_phase(&self, module_phase: Option<ModulePhase>) -> Rc<dyn CompilerOpts> {
         let mut copy = self.clone();
-        eprintln!("set module_phase {module_phase:?}");
         copy.module_phase = module_phase;
         Rc::new(copy)
     }
@@ -1028,6 +1007,9 @@ impl CompilerOpts for DefaultCompilerOpts {
                     ));
                 }
             }
+        }
+        if filename.contains(".hex") {
+            todo!();
         }
         Err(CompileErr(
             Srcloc::start(&inc_from),

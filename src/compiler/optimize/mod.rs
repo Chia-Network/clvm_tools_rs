@@ -400,7 +400,7 @@ pub fn optimize_expr(
                 return None;
             }
 
-            let examine_call = |al: Srcloc, an: &Vec<u8>| {
+            let mut examine_call = |al: Srcloc, an: &Vec<u8>| {
                 get_callable(
                     opts.clone(),
                     compiler,
@@ -415,31 +415,31 @@ pub fn optimize_expr(
                     // expression or all its arguments are constant and
                     // its body doesn't include an environment reference.
                     Callable::CallDefun(l, _target) => {
-                        if let Some(constant_invocation) = constant_fun_result(
-                            allocator,
-                            opts.clone(),
-                            runner.clone(),
-                            compiler,
-                            &CallSpec {
-                                loc: l,
-                                name: an,
-                                args: forms,
-                                tail: tail.clone(),
-                                original: body.clone(),
-                            },
-                        ) {
-                            return Some(
-                                optimize_expr(
-                                    allocator,
-                                    opts.clone(),
-                                    runner,
-                                    compiler,
-                                    constant_invocation.clone(),
-                                )
-                                .map(|(_, optimize)| (true, optimize))
-                                .unwrap_or_else(|| (true, constant_invocation)),
-                            );
-                        }
+                        // if let Some(constant_invocation) = constant_fun_result(
+                        //     allocator,
+                        //     opts.clone(),
+                        //     runner.clone(),
+                        //     compiler,
+                        //     &CallSpec {
+                        //         loc: l,
+                        //         name: an,
+                        //         args: forms,
+                        //         tail: tail.clone(),
+                        //         original: body.clone(),
+                        //     },
+                        // ) {
+                        //     return Some(
+                        //         optimize_expr(
+                        //             allocator,
+                        //             opts.clone(),
+                        //             runner,
+                        //             compiler,
+                        //             constant_invocation.clone(),
+                        //         )
+                        //         .map(|(_, optimize)| (true, optimize))
+                        //         .unwrap_or_else(|| (true, constant_invocation)),
+                        //     );
+                        // }
 
                         None
                     }

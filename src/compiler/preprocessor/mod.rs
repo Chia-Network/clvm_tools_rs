@@ -585,6 +585,7 @@ impl Preprocessor {
             &import_name.as_u8_vec(LongNameTranslation::Filename(".clinc".to_string())),
         );
 
+        eprintln!("filename_clsp {filename_clsp}");
         if let Ok((full_name, content)) =
             self.opts.read_new_file(self.opts.filename(), filename_clsp)
         {
@@ -650,6 +651,7 @@ impl Preprocessor {
         spec: &ModuleImportSpec,
         import_name: &[u8],
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
+        eprintln!("import_module {}", decode_string(import_name));
         // The name of a module needs more processing.
         let full_import_name = self.import_name_to_module_name(loc.clone(), import_name)?;
         let ns_helper = make_namespace_ref(&loc, &kw, &nl, &full_import_name, spec);
