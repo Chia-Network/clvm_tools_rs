@@ -417,7 +417,6 @@ fn test_type_def_1() {
             "run".to_string(),
             indoc! {"
 (mod (A) -> Atom
-   (include *standard-cl-23*)
    (deftype Struct ((A : Atom) . (B : Atom32)))
    (defun-inline foo (X) (new_Struct X 3))
    (get_Struct_A (foo A))
@@ -425,7 +424,7 @@ fn test_type_def_1() {
             .to_string()
         ])
         .trim(),
-        "(2 (1 . 2) (4 2 (1 . 3)))"
+        "(a (q . 2) (c 2 (q . 3)))"
     );
 }
 

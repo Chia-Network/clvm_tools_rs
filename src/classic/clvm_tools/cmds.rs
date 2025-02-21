@@ -43,6 +43,7 @@ use crate::classic::clvm_tools::stages::stage_0::{
     DefaultProgramRunner, RunProgramOption, TRunProgram,
 };
 use crate::classic::clvm_tools::stages::stage_2::operators::run_program_for_search_paths;
+
 use crate::classic::platform::PathJoin;
 
 use crate::classic::platform::argparse::{
@@ -1202,10 +1203,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
         }
     };
 
-    if do_check_unused || typecheck {
-        let opts = Rc::new(DefaultCompilerOpts::new(&parsed.use_filename()))
-            .set_search_paths(&parsed.search_paths);
-        match check_unused(opts.clone(), &parsed.program.content) {
+    if do_check_unused {
+        match check_unused(parsed.opts.clone(), &parsed.program.content) {
             Ok((success, output)) => {
                 stderr_output(output);
                 if !success {
@@ -1217,22 +1216,19 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                 return;
             }
         }
-
-        if typecheck {
-            let cmd_str = "*cmd*".to_string();
-            let loc = Srcloc::start(parsed.program.path.as_ref().unwrap_or(&cmd_str));
-            if let Err(e) = parse_sexp(loc, parsed.program.content.bytes())
-                .map_err(|e| CompileErr(e.0.clone(), e.1))
-                .and_then(|pre_forms| {
-                    let context = standard_type_context();
-                    let compileform = frontend(opts.clone(), &pre_forms)?;
-                    let target_type = context.typecheck_chialisp_program(opts, &compileform)?;
-                    Ok(context.reify(&target_type, None))
-                })
-            {
-                stderr_output(format!("{}: {}\n", e.0, e.1));
-                return;
-            }
+    } else if typecheck {
+        let loc = Srcloc::start(&parsed.program.path.clone().unwrap_or(parsed.program.use_filename()));
+        if let Err(e) = parse_sexp(loc, parsed.program.content.bytes())
+            .map_err(|e| CompileErr(e.0.clone(), e.1))
+            .and_then(|pre_forms| {
+                let context = standard_type_context();
+                let compileform = frontend(parsed.opts.clone(), &pre_forms)?;
+                let target_type = context.typecheck_chialisp_program(parsed.opts.clone(), &compileform)?;
+                Ok(context.reify(&target_type, None))
+            })
+        {
+            stderr_output(format!("{}: {}\n", e.0, e.1));
+            return;
         }
     }
 

@@ -17,6 +17,8 @@ use crate::compiler::debug::build_symbol_table_mut;
 use crate::compiler::dialect::{detect_modern, AcceptedDialect};
 use crate::compiler::optimize::maybe_finalize_program_via_classic_optimizer;
 use crate::compiler::sexp;
+use crate::compiler::srcloc::Srcloc;
+use crate::compiler::untype::untype_code;
 
 pub fn get_disassembly_ver(p: &HashMap<String, ArgumentValue>) -> Option<usize> {
     if let Some(ArgumentValue::ArgInt(x)) = p.get("operators_version") {
@@ -104,11 +106,13 @@ pub fn parse_tool_input_sexp(
             read_ir(&use_sexp_text)
                 .map_err(|e| format!("{e:?}"))
                 .and_then(|v| {
+                    let assembled = assemble_from_ir(allocator, Rc::new(v))
+                        .map_err(|e| format!("{e:?}"))?;
+                    let untyped = untype_code(allocator, Srcloc::start(&path.clone().unwrap_or("*cmd*".to_string())), assembled).map_err(|e| format!("{e:?}"))?;
                     Ok(ParsedInputPathOrCode {
                         path,
                         content: use_sexp_text,
-                        parsed: assemble_from_ir(allocator, Rc::new(v))
-                            .map_err(|e| format!("{e:?}"))?,
+                        parsed: untyped,
                     })
                 })
         }
