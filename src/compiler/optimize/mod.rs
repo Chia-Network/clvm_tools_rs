@@ -399,8 +399,7 @@ fn constant_fun_result(
         .collect();
 
     let optimized_tail: Option<(bool, Rc<BodyForm>)> = call_spec.tail.as_ref().map(|t| {
-        let optimized =
-            optimize_expr(allocator, opts.clone(), runner.clone(), compiler, t.clone());
+        let optimized = optimize_expr(allocator, opts.clone(), runner.clone(), compiler, t.clone());
         constant = constant && optimized.as_ref().map(|x| x.0).unwrap_or_else(|| false);
         optimized
             .map(|x| (x.0, x.1))
@@ -418,8 +417,9 @@ fn constant_fun_result(
         compiler,
         call_spec,
         &optimized_args,
-        optimized_tail.as_ref()
-    ).and_then(|compiled_body| {
+        optimized_tail.as_ref(),
+    )
+    .and_then(|compiled_body| {
         reify_optimized_call(call_spec, compiled_body, &optimized_args, optimized_tail)
     })
 }
@@ -434,8 +434,7 @@ fn optimize_prim(
 ) -> Option<(bool, Rc<BodyForm>)> {
     let mut constant = true;
 
-    if let Some(not_invert) = condition_invert_optimize(opts.clone(), &l, forms)
-    {
+    if let Some(not_invert) = condition_invert_optimize(opts.clone(), &l, forms) {
         return Some(
             optimize_expr(
                 allocator,
@@ -444,8 +443,8 @@ fn optimize_prim(
                 compiler,
                 Rc::new(not_invert.clone()),
             )
-                .map(|(_, optimize)| (true, optimize))
-                .unwrap_or_else(|| (true, Rc::new(not_invert))),
+            .map(|(_, optimize)| (true, optimize))
+            .unwrap_or_else(|| (true, Rc::new(not_invert))),
         );
     }
 
@@ -453,15 +452,9 @@ fn optimize_prim(
         .iter()
         .skip(1)
         .map(|a| {
-            let optimized = optimize_expr(
-                allocator,
-                opts.clone(),
-                runner.clone(),
-                compiler,
-                a.clone(),
-            );
-            constant = constant
-                && optimized.as_ref().map(|x| x.0).unwrap_or_else(|| false);
+            let optimized =
+                optimize_expr(allocator, opts.clone(), runner.clone(), compiler, a.clone());
+            constant = constant && optimized.as_ref().map(|x| x.0).unwrap_or_else(|| false);
             optimized
                 .map(|x| (x.0, x.1))
                 .unwrap_or_else(|| (false, a.clone()))
@@ -469,8 +462,7 @@ fn optimize_prim(
         .collect();
 
     let mut result_list = vec![forms[0].clone()];
-    let mut replaced_args =
-        optimized_args.iter().map(|x| x.1.clone()).collect();
+    let mut replaced_args = optimized_args.iter().map(|x| x.1.clone()).collect();
     result_list.append(&mut replaced_args);
     // Primitive call: no tail.
     let code = BodyForm::Call(l.clone(), result_list, None);
@@ -485,11 +477,11 @@ fn optimize_prim(
             None,
             Some(CONST_FOLD_LIMIT),
         )
-            .map(|x| {
-                let x_borrow: &SExp = x.borrow();
-                Some((true, Rc::new(BodyForm::Quoted(x_borrow.clone()))))
-            })
-            .unwrap_or_else(|_| Some((false, Rc::new(code))))
+        .map(|x| {
+            let x_borrow: &SExp = x.borrow();
+            Some((true, Rc::new(BodyForm::Quoted(x_borrow.clone()))))
+        })
+        .unwrap_or_else(|_| Some((false, Rc::new(code))))
     } else {
         Some((false, Rc::new(code)))
     }
@@ -527,8 +519,8 @@ fn optimize_defun_call(
                 compiler,
                 constant_invocation.clone(),
             )
-                .map(|(_, optimize)| (true, optimize))
-                .unwrap_or_else(|| (true, constant_invocation)),
+            .map(|(_, optimize)| (true, optimize))
+            .unwrap_or_else(|| (true, constant_invocation)),
         );
     }
 
@@ -559,40 +551,36 @@ pub fn optimize_call_expr(
             l.clone(),
             Rc::new(SExp::Atom(al, an.to_vec())),
         )
-            .map(|calltype| match calltype {
-                // A macro invocation emits a bodyform, which we
-                // run back through the frontend and check.
-                Callable::CallMacro(_l, _) => None,
-                // A function is constant if its body is a constant
-                // expression or all its arguments are constant and
-                // its body doesn't include an environment reference.
-                Callable::CallDefun(l, _target) => {
-                    optimize_defun_call(
-                        allocator,
-                        opts.clone(),
-                        runner.clone(),
-                        compiler,
-                        l.clone(),
-                        an,
-                        body.clone(),
-                        &forms,
-                        tail
-                    )
-                }
-                // A primcall is constant if its arguments are constant
-                Callable::CallPrim(l, _) => {
-                    optimize_prim(
-                        allocator,
-                        opts.clone(),
-                        runner.clone(),
-                        compiler,
-                        l.clone(),
-                        forms
-                    )
-                }
-                _ => None,
-            })
-            .unwrap_or_else(|_| None)
+        .map(|calltype| match calltype {
+            // A macro invocation emits a bodyform, which we
+            // run back through the frontend and check.
+            Callable::CallMacro(_l, _) => None,
+            // A function is constant if its body is a constant
+            // expression or all its arguments are constant and
+            // its body doesn't include an environment reference.
+            Callable::CallDefun(l, _target) => optimize_defun_call(
+                allocator,
+                opts.clone(),
+                runner.clone(),
+                compiler,
+                l.clone(),
+                an,
+                body.clone(),
+                &forms,
+                tail,
+            ),
+            // A primcall is constant if its arguments are constant
+            Callable::CallPrim(l, _) => optimize_prim(
+                allocator,
+                opts.clone(),
+                runner.clone(),
+                compiler,
+                l.clone(),
+                forms,
+            ),
+            _ => None,
+        })
+        .unwrap_or_else(|_| None)
     };
 
     match forms[0].borrow() {
@@ -613,37 +601,32 @@ fn optimize_mod(
     l: Srcloc,
     cf: &CompileForm,
 ) -> Option<(bool, Rc<BodyForm>)> {
-            let stepping = opts.dialect().stepping.unwrap_or(0);
-            if stepping < 23 {
-                return None;
-            }
+    let stepping = opts.dialect().stepping.unwrap_or(0);
+    if stepping < 23 {
+        return None;
+    }
 
-            let mut throwaway_symbols = HashMap::new();
-            let mut includes = Vec::new();
-            if let Ok(optimizer) = get_optimizer(&l, opts.clone()) {
-                let mut wrapper = CompileContextWrapper::new(
-                    allocator,
-                    runner,
-                    &mut throwaway_symbols,
-                    optimizer,
-                    &mut includes,
-                );
-                if let Ok(compiled) = do_mod_codegen(&mut wrapper.context, opts.clone(), cf)
-                {
-                    if let Ok(NodeSel::Cons(_, body)) =
-                        NodeSel::Cons(AtomValue::Here(&[1]), ThisNode)
-                        .select_nodes(compiled.1)
-                    {
-                        let borrowed_body: &SExp = body.borrow();
-                        return Some((
-                            true,
-                            Rc::new(BodyForm::Quoted(borrowed_body.clone())),
-                        ));
-                    }
-                }
+    let mut throwaway_symbols = HashMap::new();
+    let mut includes = Vec::new();
+    if let Ok(optimizer) = get_optimizer(&l, opts.clone()) {
+        let mut wrapper = CompileContextWrapper::new(
+            allocator,
+            runner,
+            &mut throwaway_symbols,
+            optimizer,
+            &mut includes,
+        );
+        if let Ok(compiled) = do_mod_codegen(&mut wrapper.context, opts.clone(), cf) {
+            if let Ok(NodeSel::Cons(_, body)) =
+                NodeSel::Cons(AtomValue::Here(&[1]), ThisNode).select_nodes(compiled.1)
+            {
+                let borrowed_body: &SExp = body.borrow();
+                return Some((true, Rc::new(BodyForm::Quoted(borrowed_body.clone()))));
             }
+        }
+    }
 
-            None
+    None
 }
 
 /// At this point, very rudimentary constant folding on body expressions.
@@ -656,32 +639,21 @@ pub fn optimize_expr(
 ) -> Option<(bool, Rc<BodyForm>)> {
     match body.borrow() {
         BodyForm::Quoted(_) => Some((true, body)),
-        BodyForm::Call(l, forms, tail) => {
-            optimize_call_expr(
-                allocator,
-                opts,
-                runner,
-                compiler,
-                l.clone(),
-                body.clone(),
-                &forms,
-                tail.clone()
-            )
-        }
+        BodyForm::Call(l, forms, tail) => optimize_call_expr(
+            allocator,
+            opts,
+            runner,
+            compiler,
+            l.clone(),
+            body.clone(),
+            &forms,
+            tail.clone(),
+        ),
         BodyForm::Value(SExp::Integer(l, i)) => Some((
             true,
             Rc::new(BodyForm::Quoted(SExp::Integer(l.clone(), i.clone()))),
         )),
-        BodyForm::Mod(l, cf) => {
-            optimize_mod(
-                allocator,
-                opts,
-                runner,
-                compiler,
-                l.clone(),
-                cf,
-            )
-        }
+        BodyForm::Mod(l, cf) => optimize_mod(allocator, opts, runner, compiler, l.clone(), cf),
         _ => None,
     }
 }
