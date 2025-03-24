@@ -2588,3 +2588,25 @@ fn test_big_operator_list() {
         .to_string();
     assert_eq!(result, target_output);
 }
+
+const KECCAK_TEST_SIG: &'static str = "\"baz(uint32,bool)\"";
+const KECCAK_TEST_RESULT: &'static str =
+    "0xcdcd77c0992ec5bbfc459984220f8c45084cc24d9b6efed1fae540db8de801d2";
+
+#[test]
+fn test_keccak_compilation() {
+    for p in [
+        "(mod X (keccak256 X))",
+        "(mod X (include *standard-cl-24*) (keccak256 X))",
+    ]
+    .iter()
+    {
+        let program = do_basic_run(&vec!["run".to_string(), p.to_string()]);
+        let result = do_basic_brun(&vec![
+            "brun".to_string(),
+            program,
+            KECCAK_TEST_SIG.to_string(),
+        ]);
+        assert_eq!(result.trim(), KECCAK_TEST_RESULT,);
+    }
+}
