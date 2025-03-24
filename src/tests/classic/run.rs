@@ -2610,3 +2610,14 @@ fn test_keccak_compilation() {
         assert_eq!(result.trim(), KECCAK_TEST_RESULT,);
     }
 }
+
+#[test]
+fn test_keccak_opversion() {
+    let program = do_basic_run(&vec![
+        "run".to_string(),
+        "--operators-version".to_string(),
+        "1".to_string(),
+        "(mod () (keccak256 999))".to_string(),
+    ]);
+    assert_eq!(program.trim(), "FAIL: unimplemented operator 62");
+}
