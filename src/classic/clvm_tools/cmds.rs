@@ -1390,7 +1390,8 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
                     Some(max_cost as u64)
                 },
                 pre_eval_f,
-                new_operators: false,
+                operators_version: get_disassembly_ver(&parsed_args)
+                    .unwrap_or(OPERATORS_LATEST_VERSION),
                 strict: parsed_args
                     .get("strict")
                     .map(|_| true)
