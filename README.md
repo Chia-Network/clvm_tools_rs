@@ -27,7 +27,7 @@ The most current version of the language is in the nightly branch:
 
 To install from a specific branch:
 
-    cargo install --no-default-features --git 'https://github.com/Chia-Network/clvm_tools_rs' --branch nightly
+    cargo install --git 'https://github.com/Chia-Network/clvm_tools_rs' --branch nightly
     
 To install a git checkout into your current python environment (must be in some kind of venv or conda environment):
 
@@ -183,7 +183,7 @@ The directory structure is expected to be:
 Mac M1
 ===
 
-Use ```cargo build --no-default-features``` due to differences in how mac m1 and
+Use ```cargo build``` due to differences in how mac m1 and
 other platforms handle python extensions.
 
 Use with chia-blockchain
