@@ -236,6 +236,13 @@ jobs:
         name: wheels-${{ matrix.os }}-py-${{ matrix.python }}
         path: ./target/wheels/
 
+  show_artifacts:
+    name: Show the artifact output
+    steps:
+    - name: List files in target/wheels
+      run: |
+        ls -ltr target/wheels
+
   upload:
     name: Upload to PyPI
     runs-on: ubuntu-latest
