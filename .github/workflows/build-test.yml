@@ -260,7 +260,7 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         merge-multiple: true
-        pattern: wheels-*
+        pattern: wheels-*-py-3.10
         path: ./target/wheels/
 
     - name: Check for incompatible wheels and bail if found
