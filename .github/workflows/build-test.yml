@@ -238,6 +238,7 @@ jobs:
 
   show_artifacts:
     name: Show the artifact output
+    runs-on: ${{ matrix.os }}
     steps:
     - name: List files in target/wheels
       run: |
