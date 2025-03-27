@@ -263,6 +263,16 @@ jobs:
         pattern: wheels-*
         path: ./target/wheels/
 
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: all
+        path: ./target/wheels/
+
+    - name: sha256sum
+      run: |
+        sha256sum ./target/wheels/*
+
     - name: Check for incompatible wheels and bail if found
       run: |
         set -e
