@@ -120,8 +120,14 @@ jobs:
         docker run -v ${GITHUB_WORKSPACE}:/root/clvm_tools_rs -t clvm-tools-rs-alpine sh /root/build-alpine.sh
 
     - name: sha256sum
+      if: matrix.runs-on != 'macos-13'
       run: |
         sha256sum ./target/wheels/*
+
+    - name: shasum -a 256
+      if: matrix.runs-on == 'macos-13'
+      run: |
+        shasum -a 256 ./target/wheels/*
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
