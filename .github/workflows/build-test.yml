@@ -231,6 +231,7 @@ jobs:
         docker run -v ${GITHUB_WORKSPACE}:/root/clvm_tools_rs -t clvm-tools-rs-alpine sh /root/build-alpine.sh
 
     - name: Output Hashes
+      shell: bash
       run: |
         find ./target/wheels -name '*.whl' -type f | while read -r file; do
           echo "$(sha256sum "$file")"
@@ -277,6 +278,7 @@ jobs:
         find target -name \*-linux_x86_64.whl -exec /bin/false '{}' '+'
 
     - name: Output Hashes
+      shell: bash
       run: |
         find ./target/wheels -name '*.whl' -type f | while read -r file; do
           echo "$(sha256sum "$file")"
