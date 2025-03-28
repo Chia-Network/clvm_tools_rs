@@ -263,6 +263,11 @@ jobs:
         pattern: wheels-*-py-3.9
         path: ./target/wheels/
 
+    - name: List artifacts
+      run: |
+        ls -la target/wheels/
+        sha256sum target/wheels/*
+
     - name: Check for incompatible wheels and bail if found
       run: |
         set -e
