@@ -192,7 +192,7 @@ dependencies = [
 
 [[package]]
 name = "clvm_tools_rs"
-version = "0.1.47"
+version = "0.1.48"
 dependencies = [
  "binascii",
  "bls12_381",
@@ -223,7 +223,7 @@ dependencies = [
 
 [[package]]
 name = "clvm_tools_wasm"
-version = "0.1.47"
+version = "0.1.48"
 dependencies = [
  "clvm_tools_rs",
  "clvmr",
