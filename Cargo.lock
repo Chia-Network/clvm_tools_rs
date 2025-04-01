@@ -129,9 +129,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.13.0"
+version = "3.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3e2c3daef883ecc1b5d58c15adae93470a91d425f3532ba1695849656af3fc1"
+checksum = "1628fb46dfa0b37568d12e5edd512553eccf6a22a78e8bde00bb4aed84d5bdbf"
 
 [[package]]
 name = "byteorder"
@@ -245,13 +245,15 @@ dependencies = [
 
 [[package]]
 name = "clvmr"
-version = "0.12.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1485694ccaae3198b921ce3dac1954235acadd971289bae970c030f0a4f66174"
+checksum = "2630e56b575dc9a923b1070d25f5efc140f09a95b65badd4fdf02f58f485c8fe"
 dependencies = [
  "bitvec",
+ "bumpalo",
  "chia-bls",
  "chia-sha2",
+ "hex",
  "hex-literal",
  "k256",
  "lazy_static",
@@ -260,6 +262,7 @@ dependencies = [
  "num-traits",
  "p256",
  "rand 0.8.5",
+ "sha1",
  "sha3",
 ]
 
@@ -1257,6 +1260,17 @@ dependencies = [
  "memchr",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "sha1"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3bf829a2d51ab4a5ddf1352d8470c140cadc8301b2ae1789db023f01cedd6ba"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest 0.10.7",
 ]
 
 [[package]]
