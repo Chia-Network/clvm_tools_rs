@@ -2,10 +2,9 @@ use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::rc::Rc;
 
+use chia_bls::PublicKey;
 use clvm_rs::allocator::{Allocator, NodePtr, SExp};
 use clvm_rs::reduction::EvalErr;
-
-use bls12_381::G1Affine;
 
 use crate::classic::clvm::__type_compatibility__::{Bytes, BytesFromType, Stream};
 use crate::classic::clvm::serialize::sexp_to_stream;
@@ -17,7 +16,7 @@ pub enum CastableType {
     Bytes(Bytes),
     String(String),
     Number(Number),
-    G1Affine(G1Affine),
+    G1Affine(PublicKey),
     ListOf(usize, Vec<Rc<CastableType>>),
     TupleOf(Rc<CastableType>, Rc<CastableType>),
 }
