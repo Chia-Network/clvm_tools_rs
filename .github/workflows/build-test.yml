@@ -63,7 +63,7 @@ jobs:
     - name: Build Linux in manylinux_2_28 with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'ubuntu')
       run: |
-        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.7.0 build --release --strip --manylinux 2_28 --sdist
+        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.8.3 build --release --strip --manylinux 2_28 --sdist
         # Refresh in case any ownerships changed.
         mv target target.docker && cp -r target.docker target
         # Ensure an empty .cargo-lock file exists.
