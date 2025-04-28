@@ -1,7 +1,5 @@
 use clvm_rs::allocator::{Allocator, NodePtr};
-use clvm_rs::chia_dialect::{
-    ChiaDialect, ENABLE_KECCAK, ENABLE_KECCAK_OPS_OUTSIDE_GUARD, NO_UNKNOWN_OPS,
-};
+use clvm_rs::chia_dialect::{ChiaDialect, ENABLE_KECCAK_OPS_OUTSIDE_GUARD, NO_UNKNOWN_OPS};
 use clvm_rs::core_ops::{op_cons, op_eq, op_first, op_if, op_listp, op_raise, op_rest};
 use clvm_rs::cost::Cost;
 use clvm_rs::dialect::{Dialect, OperatorSet};
@@ -202,7 +200,7 @@ impl TRunProgram for DefaultProgramRunner {
             ),
             _ => run_program_with_pre_eval_dialect(
                 allocator,
-                &ChiaDialect::new(NO_UNKNOWN_OPS | ENABLE_KECCAK | ENABLE_KECCAK_OPS_OUTSIDE_GUARD),
+                &ChiaDialect::new(NO_UNKNOWN_OPS | ENABLE_KECCAK_OPS_OUTSIDE_GUARD),
                 program,
                 args,
                 max_cost,
