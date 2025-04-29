@@ -223,7 +223,7 @@ dependencies = [
 
 [[package]]
 name = "clvm_tools_rs"
-version = "0.1.48"
+version = "0.2.0"
 dependencies = [
  "binascii",
  "chia-bls 0.22.0",
