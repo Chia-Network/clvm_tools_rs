@@ -158,7 +158,7 @@ jobs:
         # chia_puzzles_py/manage_clvm.py while being in ./chia_puzzles.
         cp support/install_deps.sh support/verify_compiler_version.sh chia_puzzles
         pip install toml
-        python resources/tests/edit-poetry.py --change-pkg clvm_tools_rs --target-path "$(pwd)" chia_puzzles/pyproject.toml
+        python resources/tests/edit-poetry.py --change-pkg clvm-tools-rs --target-path "$(pwd)" chia_puzzles/pyproject.toml
         (cd chia_puzzles && python -m venv .venv && . .venv/bin/activate && pip install --upgrade pip && \
           python -m pip install maturin==1.7.0 && \
           pip install click typing_extensions chia_rs clvm chia_puzzles_py && \
