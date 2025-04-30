@@ -164,6 +164,7 @@ jobs:
           # deps for manage_clvm.py
           pip install click typing_extensions chia_rs clvm chia_puzzles_py && \
           export PYTHONPATH=${PYTHONPATH}:$(pwd) && \
+          maturin develop && \
           ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && . .venv/bin/activate && \
           echo "Running check" && \
           python chia_puzzles_py/manage_clvm.py check && \
