@@ -940,22 +940,29 @@ impl Preprocessor {
     fn expand_macros(
         &mut self,
         body: Rc<SExp>,
-        start: bool,
     ) -> Result<Option<Rc<SExp>>, CompileErr> {
-        if let SExp::Cons(l, f, r) = body.borrow() {
+        if let SExp::Cons(_, _, _) = body.borrow() {
             // First expand inner macros.
-            let first_expanded = self.expand_macros(f.clone(), true)?;
-            let rest_expanded = self.expand_macros(r.clone(), false)?;
-            let new_self = match (first_expanded, rest_expanded) {
-                (None, None) => Some(body.clone()),
-                (Some(f), None) => Some(Rc::new(SExp::Cons(l.clone(), f, r.clone()))),
-                (None, Some(r)) => Some(Rc::new(SExp::Cons(l.clone(), f.clone(), r))),
-                (Some(f), Some(r)) => Some(Rc::new(SExp::Cons(l.clone(), f, r))),
-            };
-
-            if !start {
-                return Ok(new_self);
+            let mut rest_list = Vec::new();
+            let mut rest = body.clone();
+            while let SExp::Cons(l, head, next_rest) = rest.borrow() {
+                rest_list.push((l.clone(), head.clone(), next_rest.clone()));
+                rest = next_rest.clone();
             }
+
+            let mut rest_expanded = self.expand_macros(rest.clone())?;
+            let mut any_expanded = rest_expanded.is_some();
+            for (l, head, tail) in rest_list.into_iter().rev() {
+                let first_expanded = self.expand_macros(head.clone())?;
+                any_expanded = any_expanded || first_expanded.is_some();
+                if any_expanded {
+                    let new_first = first_expanded.unwrap_or_else(|| head.clone());
+                    let new_rest = rest_expanded.unwrap_or_else(|| tail.clone());
+                    rest_expanded = Some(Rc::new(SExp::Cons(l.clone(), new_first, new_rest)));
+                }
+            }
+
+            let new_self = rest_expanded;
 
             if let Ok(NodeSel::Cons((_, name), args)) = NodeSel::Cons(Atom::Here(()), ThisNode)
                 .select_nodes(new_self.clone().unwrap_or_else(|| body.clone()))
@@ -978,7 +985,7 @@ impl Preprocessor {
                     .map(nilize)
                     .map_err(CompileErr::from)?;
 
-                    if let Some(final_result) = self.expand_macros(res.clone(), true)? {
+                    if let Some(final_result) = self.expand_macros(res.clone())? {
                         return Ok(Some(final_result));
                     } else {
                         return Ok(Some(res));
@@ -1211,7 +1218,7 @@ impl Preprocessor {
         unexpanded_body: Rc<SExp>,
     ) -> Result<Vec<Rc<SExp>>, CompileErr> {
         let body = self
-            .expand_macros(unexpanded_body.clone(), true)?
+            .expand_macros(unexpanded_body.clone())?
             .unwrap_or_else(|| unexpanded_body.clone());
         // Support using the preprocessor to collect dependencies recursively.
         let as_list: Option<Vec<SExp>> = body
