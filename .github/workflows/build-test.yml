@@ -63,7 +63,7 @@ jobs:
     - name: Build Linux in manylinux_2_28 with maturin on Python ${{ matrix.python }}
       if: startsWith(matrix.os, 'ubuntu')
       run: |
-        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.7.0 build --release --strip --manylinux 2_28 --sdist
+        docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin:v1.8.3 build --release --strip --manylinux 2_28 --sdist
         # Refresh in case any ownerships changed.
         mv target target.docker && cp -r target.docker target
         # Ensure an empty .cargo-lock file exists.
@@ -161,13 +161,14 @@ jobs:
           python -m pip install maturin==1.7.0 && \
           cd .. && pip install --no-index --find-links target/wheels/ clvm_tools_rs && \
           cd chia_puzzles && \
-          # deps for manage_clvm.py
-          pip install click typing_extensions chia_rs clvm chia_puzzles_py && \
-          export PYTHONPATH=${PYTHONPATH}:$(pwd) && \
-          ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && . .venv/bin/activate && \
-          echo "Running check" && \
-          python chia_puzzles_py/manage_clvm.py check && \
-          echo "Check successful")
+          pip install click typing_extensions chia_rs clvm chia_puzzles_py) && \
+        pip uninstall -y clvm_tools_rs && \
+        pip install --no-index --find-links target/wheels/ clvm_tools_rs && \
+        (cd chia_puzzles && export PYTHONPATH=${PYTHONPATH}:$(pwd) && \
+        ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && . .venv/bin/activate && \
+        echo "Running check" && \
+        python chia_puzzles_py/manage_clvm.py check && \
+        echo "Check successful")
 
     - name: Test Classic command line tools with pytest
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.9')
@@ -260,8 +261,13 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         merge-multiple: true
-        pattern: wheels-*
+        pattern: wheels-*-py-3.9
         path: ./target/wheels/
+
+    - name: List artifacts
+      run: |
+        ls -la target/wheels/
+        sha256sum target/wheels/*
 
     - name: Check for incompatible wheels and bail if found
       run: |

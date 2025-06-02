@@ -176,10 +176,10 @@ impl CompilerOperatorsInternal {
         let ops_version = self
             .get_operators_version()
             .unwrap_or(OPERATORS_LATEST_VERSION);
-        if ops_version == 0 {
-            OperatorSet::Default
-        } else {
-            OperatorSet::Bls
+        match ops_version {
+            0 => OperatorSet::Default,
+            1 => OperatorSet::Bls,
+            _ => OperatorSet::Keccak,
         }
     }
 
