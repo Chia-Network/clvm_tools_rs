@@ -178,7 +178,7 @@ fn compile_clvm(
     export_symbols: Option<bool>,
 ) -> PyResult<PyObject> {
     run_clvm_compilation(
-        CompileClvmSource::SourcePath(&input_path),
+        CompileClvmSource::SourcePath(input_path),
         CompileClvmAction::CompileCode(Some(output_path)),
         search_paths,
         export_symbols,
@@ -207,7 +207,7 @@ fn check_dependencies(
     search_paths: Vec<String>,
 ) -> PyResult<PyObject> {
     run_clvm_compilation(
-        CompileClvmSource::SourcePath(&input_path),
+        CompileClvmSource::SourcePath(input_path),
         CompileClvmAction::CheckDependencies,
         search_paths,
         None,
@@ -320,7 +320,7 @@ fn start_clvm_program(
             .or_else(|| Some(PyBool::new(py, false).into_py_any(py)))
             .transpose()?;
 
-        PyBool::new_bound(py, true).compare(print_only_option)
+        PyBool::new(py, true).compare(print_only_option)
     })?;
 
     let print_only = print_only_value == Ordering::Equal;
@@ -508,8 +508,8 @@ fn clvm_tools_rs(py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
     m.add_submodule(&create_cmds_module(py)?)?;
     m.add_submodule(&create_binutils_module(py)?)?;
 
-    m.add("CldbError", py.get_type_bound::<CldbError>())?;
-    m.add("CompError", py.get_type_bound::<CompError>())?;
+    m.add("CldbError", py.get_type::<CldbError>())?;
+    m.add("CompError", py.get_type::<CompError>())?;
 
     m.add_function(wrap_pyfunction!(compile_clvm, &m)?)?;
     m.add_function(wrap_pyfunction!(compile, &m)?)?;
