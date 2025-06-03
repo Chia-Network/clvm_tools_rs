@@ -22,6 +22,6 @@ impl fmt::Display for SyntaxErr {
 
 impl From<SyntaxErr> for io::Error {
     fn from(err: SyntaxErr) -> Self {
-        Self::new(io::ErrorKind::Other, err.msg)
+        Self::other(err.msg)
     }
 }
