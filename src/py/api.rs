@@ -3,8 +3,8 @@
 // Eventually this can be downgraded and applied just to compile_clvm
 // re: https://github.com/rust-lang/rust-clippy/issues/8971
 use pyo3::exceptions::PyException;
+use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyString, PyTuple};
-use pyo3::{create_exception, prelude::*, IntoPyObjectExt};
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
@@ -55,7 +55,7 @@ fn get_version() -> PyResult<String> {
 }
 
 enum CompileClvmSource<'a> {
-    SourcePath(Bound<'a, PyAny>),
+    SourcePath(&'a Bound<'a, PyAny>),
     SourceCode(String, String),
 }
 
@@ -148,11 +148,11 @@ fn run_clvm_compilation(
             Python::with_gil(|py| {
                 if export_symbols == Some(true) {
                     let mut result_dict = HashMap::new();
-                    result_dict.insert("output".to_string(), compiled.into_py_any(py)?);
-                    result_dict.insert("symbols".to_string(), symbols.into_py_any(py)?);
-                    result_dict.into_py_any(py)
+                    result_dict.insert("output".to_string(), compiled.into_py(py));
+                    result_dict.insert("symbols".to_string(), symbols.into_py(py));
+                    Ok(result_dict.into_py(py))
                 } else {
-                    compiled.into_py_any(py)
+                    Ok(compiled.into_py(py))
                 }
             })
         }
@@ -164,7 +164,7 @@ fn run_clvm_compilation(
                     .map(|rlist| rlist.iter().map(|i| decode_string(&i.name)).collect())?;
 
             // Return all visited files.
-            Python::with_gil(|py| result_deps.into_py_any(py))
+            Python::with_gil(|py| Ok(result_deps.into_py(py)))
         }
     }
 }
@@ -214,7 +214,7 @@ fn check_dependencies(
     )
 }
 
-#[pyclass(unsendable)]
+#[pyclass]
 struct PythonRunStep {
     ended: bool,
 
@@ -243,18 +243,15 @@ fn runstep(myself: &mut PythonRunStep) -> PyResult<Option<PyObject>> {
     }
 
     // Return a dict if one was returned.
-    let dict_result = res
-        .1
-        .map(|m| {
-            Python::with_gil(|py| {
-                let dict = PyDict::new(py);
-                for (k, v) in m.iter() {
-                    let _ = dict.set_item(PyString::new(py, k), PyString::new(py, v));
-                }
-                dict.into_py_any(py)
-            })
+    let dict_result = res.1.map(|m| {
+        Python::with_gil(|py| {
+            let dict = PyDict::new_bound(py);
+            for (k, v) in m.iter() {
+                let _ = dict.set_item(PyString::new_bound(py, k), PyString::new_bound(py, v));
+            }
+            dict.to_object(py)
         })
-        .transpose()?;
+    });
     Ok(dict_result)
 }
 
@@ -279,25 +276,23 @@ struct CldbSinglePythonOverride {
 }
 
 impl CldbSinglePythonOverride {
-    fn new(pycode: Py<PyAny>) -> Self {
-        CldbSinglePythonOverride { pycode }
+    fn new(pycode: &Py<PyAny>) -> Self {
+        CldbSinglePythonOverride {
+            pycode: pycode.clone(),
+        }
     }
 }
 
 impl CldbSingleBespokeOverride for CldbSinglePythonOverride {
     fn get_override(&self, env: Rc<SExp>) -> Result<Rc<SExp>, RunFailure> {
         Python::with_gil(|py| {
-            let arg_value = clvm_value_to_python(py, env.clone())
-                .map_err(|e| RunFailure::RunErr(env.loc(), format!("{}", e)))?;
+            let arg_value = clvm_value_to_python(py, env.clone());
             let res = self
                 .pycode
-                .call1(
-                    py,
-                    PyTuple::new(py, &vec![arg_value])
-                        .map_err(|e| RunFailure::RunErr(env.loc(), format!("{}", e)))?,
-                )
+                .call1(py, PyTuple::new_bound(py, &vec![arg_value]))
                 .map_err(|e| RunFailure::RunErr(env.loc(), format!("{}", e)))?;
-            python_value_to_clvm(res.into_bound(py))
+            let res_ref: Bound<'_, PyAny> = res.bind(py).clone();
+            python_value_to_clvm(res_ref)
         })
     }
 }
@@ -316,9 +311,11 @@ fn start_clvm_program(
 
     let print_only_value = Python::with_gil(|py| {
         let print_only_option = run_options
-            .and_then(|h| h.get("print").map(|p| Ok(p.clone_ref(py))))
-            .or_else(|| Some(PyBool::new(py, false).into_py_any(py)))
-            .transpose()?;
+            .and_then(|h| h.get("print").map(|p| p.clone()))
+            .unwrap_or_else(|| {
+                let any: Bound<'_, PyAny> = PyBool::new_bound(py, false).as_ref().clone();
+                any.into()
+            });
 
         PyBool::new_bound(py, true).compare(print_only_option)
     })?;
@@ -358,8 +355,7 @@ fn start_clvm_program(
             HashMap::new();
         if let Some(t) = overrides {
             for (k, v) in t.iter() {
-                let v_clone = Python::with_gil(|py| v.clone_ref(py));
-                let override_fun_callable = CldbSinglePythonOverride::new(v_clone);
+                let override_fun_callable = CldbSinglePythonOverride::new(v);
                 overrides_table.insert(k.clone(), Box::new(override_fun_callable));
             }
         }
@@ -511,14 +507,14 @@ fn clvm_tools_rs(py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
     m.add("CldbError", py.get_type_bound::<CldbError>())?;
     m.add("CompError", py.get_type_bound::<CompError>())?;
 
-    m.add_function(wrap_pyfunction!(compile_clvm, &m)?)?;
-    m.add_function(wrap_pyfunction!(compile, &m)?)?;
-    m.add_function(wrap_pyfunction!(get_version, &m)?)?;
-    m.add_function(wrap_pyfunction!(start_clvm_program, &m)?)?;
-    m.add_function(wrap_pyfunction!(launch_tool, &m)?)?;
-    m.add_function(wrap_pyfunction!(call_tool, &m)?)?;
-    m.add_function(wrap_pyfunction!(check_dependencies, &m)?)?;
-    m.add_function(wrap_pyfunction!(compose_run_function, &m)?)?;
+    m.add_function(wrap_pyfunction!(compile_clvm, m.clone())?)?;
+    m.add_function(wrap_pyfunction!(compile, m.clone())?)?;
+    m.add_function(wrap_pyfunction!(get_version, m.clone())?)?;
+    m.add_function(wrap_pyfunction!(start_clvm_program, m.clone())?)?;
+    m.add_function(wrap_pyfunction!(launch_tool, m.clone())?)?;
+    m.add_function(wrap_pyfunction!(call_tool, m.clone())?)?;
+    m.add_function(wrap_pyfunction!(check_dependencies, m.clone())?)?;
+    m.add_function(wrap_pyfunction!(compose_run_function, m.clone())?)?;
     m.add_class::<PythonRunStep>()?;
     Ok(())
 }
