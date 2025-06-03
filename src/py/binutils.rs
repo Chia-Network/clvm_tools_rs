@@ -52,7 +52,7 @@ fn convert_to_external<'a>(
             SExp::Atom => {
                 stack.pop();
 
-                if let std::collections::hash_map::Entry::Vacant(e) = finished.entry(node) {
+                if !finished.contains_key(&node) {
                     let converted: PyObject = Python::with_gil(|py| {
                         let atom = allocator.atom(node);
                         let bytes = PyBytes::new(py, atom.as_ref());
@@ -62,7 +62,7 @@ fn convert_to_external<'a>(
                             .and_then(|value| value.into_py_any(py))
                     })?
                     .into();
-                    e.insert(converted);
+                    finished.insert(node, converted);
                 }
             }
         }
