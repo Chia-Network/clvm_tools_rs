@@ -34,6 +34,13 @@ fn find_roots(
     }
 }
 
+fn stepping_over_24(opts: Rc<dyn CompilerOpts>) -> bool {
+    if let Some(s) = &opts.dialect().stepping {
+        return *s > 24;
+    }
+    false
+}
+
 // Should take a desugared program.
 pub fn deinline_opt(
     context: &mut BasicCompileContext,
@@ -182,13 +189,29 @@ pub fn deinline_opt(
         })
         .collect();
 
-    for (_, function_set) in root_set_to_inline_tree.iter() {
+    let mut root_set_to_inline_tree_vec: Vec<(&BTreeSet<Vec<u8>>, Vec<&Vec<u8>>)> = root_set_to_inline_tree.iter().map(|(k, function_set)| {
+        let mut fset_vec: Vec<&Vec<u8>> = function_set.iter().collect();
+
+        // Sort which normalizes order.
+        if stepping_over_24(opts.clone()) {
+            fset_vec.sort();
+        }
+
+        (k, fset_vec)
+    }).collect();
+
+    // Sort which normalizes order.
+    if stepping_over_24(opts.clone()) {
+        root_set_to_inline_tree_vec.sort();
+    }
+
+    for (_, function_set) in root_set_to_inline_tree_vec.iter() {
         loop {
             let start_metric = metric;
 
             for f in function_set.iter() {
                 // Get index of helper identified by this leaf name.
-                let i = if let Some(i) = helper_to_index.get(f) {
+                let i = if let Some(i) = helper_to_index.get(*f) {
                     *i
                 } else {
                     return Err(CompileErr(
