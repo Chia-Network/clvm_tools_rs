@@ -191,20 +191,19 @@ pub fn deinline_opt(
         })
         .collect();
 
-    let mut root_set_to_inline_tree_vec: VecOfRootSetTree<'_> =
-        root_set_to_inline_tree
-            .iter()
-            .map(|(k, function_set)| {
-                let mut fset_vec: Vec<&Vec<u8>> = function_set.iter().collect();
+    let mut root_set_to_inline_tree_vec: VecOfRootSetTree<'_> = root_set_to_inline_tree
+        .iter()
+        .map(|(k, function_set)| {
+            let mut fset_vec: Vec<&Vec<u8>> = function_set.iter().collect();
 
-                // Sort which normalizes order.
-                if stepping_over_24(opts.clone()) {
-                    fset_vec.sort();
-                }
+            // Sort which normalizes order.
+            if stepping_over_24(opts.clone()) {
+                fset_vec.sort();
+            }
 
-                (k, fset_vec)
-            })
-            .collect();
+            (k, fset_vec)
+        })
+        .collect();
 
     // Sort which normalizes order.
     if stepping_over_24(opts.clone()) {
