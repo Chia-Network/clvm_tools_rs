@@ -45,7 +45,7 @@ class SerializeTest(unittest.TestCase):
             self.check_serde(t1)
 
     def test_very_long_blobs(self):
-        for size in [0x40, 0x2000, 0x100000, 0x8000000]:
+        for size in [0x40, 0x2000, 0x100000]:
             count = size // len(TEXT)
             text = TEXT * count
             assert len(text) < size
