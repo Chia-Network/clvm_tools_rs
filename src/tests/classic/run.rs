@@ -2622,19 +2622,12 @@ fn test_keccak_opversion() {
     assert_eq!(program.trim(), "FAIL: unimplemented operator 62");
 }
 
-#[cfg(debug_assertions)]
-const PATH_TO_RUN: &'static str = "./target/debug/run";
-#[cfg(not(debug_assertions))]
-const PATH_TO_RUN: &'static str = "./target/release/run";
-
 #[test]
 fn test_reproduce_variable_repr_bug_deinline() {
     let source_program = "(mod (A) (include *standard-cl-24*) (defun F (X Y Z)
     (assign Q X R Q (list R Y Z))) (F &rest A))";
 
-    let compile = |p: &str| {
-        do_basic_run(&vec!["run".to_string(), p.to_string()])
-    };
+    let compile = |p: &str| do_basic_run(&vec!["run".to_string(), p.to_string()]);
 
     let mut output = compile(&source_program);
     // Produce the same program 30 times.  Demonstrates that this program didn't
