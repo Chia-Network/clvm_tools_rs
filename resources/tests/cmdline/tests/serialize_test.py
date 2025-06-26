@@ -16,7 +16,7 @@ class SerializeTest(unittest.TestCase):
         if v != v1:
             print("%s: %d %s %s" % (v, len(b), b, v1))
             breakpoint()
-            b = v.as_bin()
+            b = v.as_bin(max_size=0x4000000)
             v1 = sexp_from_stream(io.BytesIO(b), to_sexp_f)
         self.assertEqual(v, v1)
 
@@ -45,7 +45,7 @@ class SerializeTest(unittest.TestCase):
             self.check_serde(t1)
 
     def test_very_long_blobs(self):
-        for size in [0x40, 0x2000, 0x100000]:
+        for size in [0x40, 0x2000, 0x100000, 0x8000000]:
             count = size // len(TEXT)
             text = TEXT * count
             assert len(text) < size
