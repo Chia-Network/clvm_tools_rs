@@ -117,14 +117,14 @@ pub fn create_clvm_runner_err(error: String) -> JsValue {
 
 fn create_clvm_runner_run_failure(err: &RunFailure) -> JsValue {
     match err {
-        RunFailure::RunErr(l, e) => create_clvm_runner_err(format!("{}: Error {}", l, e)),
-        RunFailure::RunExn(l, e) => create_clvm_runner_err(format!("{}: Exn {}", l, e)),
+        RunFailure::RunErr(l, e) => create_clvm_runner_err(format!("{l}: Error {e}")),
+        RunFailure::RunExn(l, e) => create_clvm_runner_err(format!("{l}: Exn {e}")),
     }
 }
 
 fn create_clvm_compile_failure(err: &CompileErr) -> JsValue {
     match err {
-        CompileErr(l, e) => create_clvm_runner_err(format!("{}: Error {}", l, e)),
+        CompileErr(l, e) => create_clvm_runner_err(format!("{l}: Error {e}")),
     }
 }
 
@@ -199,7 +199,7 @@ pub fn create_clvm_runner(
         Err(e) => {
             return create_clvm_runner_run_failure(&RunFailure::RunErr(
                 args_srcloc.clone(),
-                format!("failed to read symbol table: {}", e),
+                format!("failed to read symbol table: {e}"),
             ));
         }
     };
@@ -354,7 +354,7 @@ pub fn compose_run_function(
         _ => {
             return create_clvm_compile_failure(&CompileErr(
                 loc.clone(),
-                format!("function not found in symbols: {}", function_name),
+                format!("function not found in symbols: {function_name}"),
             ));
         }
     };
@@ -387,8 +387,7 @@ pub fn compose_run_function(
             return create_clvm_compile_failure(&CompileErr(
                 program.loc(),
                 format!(
-                    "could not find function with hash from symbols: {}",
-                    function_name
+                    "could not find function with hash from symbols: {function_name}"
                 ),
             ));
         }

@@ -244,7 +244,7 @@ pub fn read_string_to_string_map(
                 result.insert(key, val);
             }
             _ => {
-                return Err(format!("key {} wasn't string", key));
+                return Err(format!("key {key} wasn't string"));
             }
         }
     }
