@@ -11,12 +11,12 @@ TEXT = b"the quick brown fox jumps over the lazy dogs"
 class SerializeTest(unittest.TestCase):
     def check_serde(self, s):
         v = to_sexp_f(s)
-        b = v.as_bin()
+        b = v.as_bin(max_size=0x4000000)
         v1 = sexp_from_stream(io.BytesIO(b), to_sexp_f)
         if v != v1:
             print("%s: %d %s %s" % (v, len(b), b, v1))
             breakpoint()
-            b = v.as_bin(max_size=0x4000000)
+            b = v.as_bin()
             v1 = sexp_from_stream(io.BytesIO(b), to_sexp_f)
         self.assertEqual(v, v1)
 
