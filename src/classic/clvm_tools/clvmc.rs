@@ -63,7 +63,7 @@ impl CompileError {
                 )
             }
             CompileError::Modern(loc, message) => {
-                format!("{}: {}", loc, message)
+                format!("{loc}: {message}")
             }
         }
     }
