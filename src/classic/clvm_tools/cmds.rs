@@ -895,7 +895,7 @@ fn perform_preprocessing(
         with_stepping,
     );
 
-    stdout.write_str(&format!("{}", whole_mod));
+    stdout.write_str(&format!("{whole_mod}"));
     Ok(())
 }
 
